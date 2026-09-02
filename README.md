@@ -6,7 +6,18 @@ The first supported runtimes are Codex and Pi. The product architecture and phas
 
 ## Current status
 
-Phase 0 protocol probes are complete on the local macOS validation host, and the architecture is frozen for a macOS-first release. Codex App Server and both Pi paths (the locked SDK host and the RPC compatibility path) have passed real streaming, abort, and history-resume smoke checks. Windows is a follow-up compatibility gate after native Pi login. Phase 1 now prepares the Svelte 5 + Tauri 2 application skeleton, workspace persistence, and diagnostics before real adapters are integrated.
+Phase 0 protocol probes are complete on the local macOS validation host, and the architecture is frozen for a macOS-first release. Codex App Server and both Pi paths (the locked SDK host and the RPC compatibility path) have passed real streaming, abort, and history-resume smoke checks. Windows is a follow-up compatibility gate after native Pi login. Phase 1 is now implementing the Svelte 5 + Tauri 2 application skeleton, workspace persistence, and diagnostics before real adapters are integrated.
+
+## Phase 1 desktop shell
+
+The macOS-first shell currently provides workspace CRUD, canonical path validation, explicit trust state, SQLite/WAL migrations, and Codex/Pi installation diagnostics. Run the desktop development app with:
+
+```sh
+pnpm install
+pnpm tauri dev
+```
+
+The browser-only `pnpm dev` command remains useful for UI preview; it uses clearly marked sample data and does not persist workspace changes.
 
 ## Phase 0 probes
 

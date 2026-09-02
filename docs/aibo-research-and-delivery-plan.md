@@ -1,6 +1,6 @@
 # Aibo 多 Agent 工作台：调研、架构建议与实施计划
 
-> 状态：架构已冻结（macOS 首发）；Phase 0 macOS 复验完成，Windows 后续验证，Phase 1 尚未开始
+> 状态：架构已冻结（macOS 首发）；Phase 0 macOS 复验完成，Windows 后续验证，Phase 1 开发中
 > 调研日期：2026-09-02  
 > 首批目标：Codex、Pi；首发平台：macOS（当前基线为 arm64）
 > 技术栈：Svelte 5 + Tauri 2
@@ -26,7 +26,7 @@ Aibo 应定位为“本地 Agent 客户端与上下文交换层”，而不是�
 
 ## 2. 当前仓库与本机基线
 
-当前工作区已包含 Phase 0 探针、脱敏 fixture 和 `AgentEvent v1` envelope，但尚无 Svelte/Tauri/Rust 应用脚手架。架构评审冻结记录见 [docs/architecture-freeze.md](architecture-freeze.md)；Phase 1 以 macOS arm64 为开发和验收基线，不需要兼容历史产品实现。
+当前工作区包含 Phase 0 探针、脱敏 fixture、`AgentEvent v1` envelope，以及 Phase 1 的 Svelte/Tauri/Rust 应用骨架。架构评审冻结记录见 [docs/architecture-freeze.md](architecture-freeze.md)；Phase 1 以 macOS arm64 为开发和验收基线，不需要兼容历史产品实现。
 
 本机已检测到：
 

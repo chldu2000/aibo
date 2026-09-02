@@ -1,7 +1,7 @@
 # Aibo 架构评审冻结：macOS 首发与 Phase 1 准备
 
 > 日期：2026-09-02
-> 状态：已冻结（首发平台为 macOS）
+> 状态：已冻结（首发平台为 macOS）；Phase 1 开发中
 > 范围：本地桌面 MVP、Codex、Pi、Phase 1 应用骨架
 
 ## 1. 评审结论
