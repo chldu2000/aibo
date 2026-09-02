@@ -1,8 +1,8 @@
 # Aibo 多 Agent 工作台：调研、架构建议与实施计划
 
-> 状态：架构提案待评审；Phase 0 macOS 复验完成，Windows 目标门禁待重跑，Phase 1 尚未开始
+> 状态：架构已冻结（macOS 首发）；Phase 0 macOS 复验完成，Windows 后续验证，Phase 1 尚未开始
 > 调研日期：2026-09-02  
-> 首批目标：Codex、Pi  
+> 首批目标：Codex、Pi；首发平台：macOS（当前基线为 arm64）
 > 技术栈：Svelte 5 + Tauri 2
 
 ## 1. 结论先行
@@ -26,7 +26,7 @@ Aibo 应定位为“本地 Agent 客户端与上下文交换层”，而不是�
 
 ## 2. 当前仓库与本机基线
 
-当前工作区已包含 Phase 0 探针、脱敏 fixture 和 `AgentEvent v1` envelope，但尚无 Svelte/Tauri/Rust 应用脚手架；可以继续按目标架构初始化，不需要兼容历史产品实现。
+当前工作区已包含 Phase 0 探针、脱敏 fixture 和 `AgentEvent v1` envelope，但尚无 Svelte/Tauri/Rust 应用脚手架。架构评审冻结记录见 [docs/architecture-freeze.md](architecture-freeze.md)；Phase 1 以 macOS arm64 为开发和验收基线，不需要兼容历史产品实现。
 
 本机已检测到：
 
@@ -36,7 +36,7 @@ Aibo 应定位为“本地 Agent 客户端与上下文交换层”，而不是�
 - Pi `0.84.1`
 - 可发现 Codex 可执行文件；版本探测在当前受限环境中没有成功返回版本号
 
-这足以开展 Windows 优先的技术验证，但正式工程应锁定并验证项目级版本，而不是依赖本机全局版本。
+这足以开展 macOS 首发的 Phase 1 工程；Windows 的真实 Pi 会话和平台进程行为仍需在目标环境单独验证。正式工程应锁定并验证项目级版本，而不是依赖本机全局版本。
 
 ## 3. 调研结果
 
@@ -129,7 +129,8 @@ flowchart LR
   SUP --> CA[Codex Adapter]
   SUP --> PA[Pi Adapter]
   CA -->|stdio JSON-RPC| C[codex app-server]
-  PA -->|stdio JSONL RPC| P[pi --mode rpc]
+  PA -->|versioned JSONL| P[Pi SDK host]
+  P -->|AgentSession / SessionManager| PI[@earendil-works/pi-coding-agent]
   HX --> SKILL[shared aibo-handoff skill]
   HX -. later .-> MCP[optional Aibo MCP/resource bridge]
 ```
@@ -401,17 +402,17 @@ V1 后为 Pi 增加可选 container/VM/平台 sandbox runner；统一权限 prof
 - 保存双方原始事件样本和版本信息。
 - 基于样本确定 `AgentEvent v1` 与 capability matrix。
 
-退出条件：Windows 上两个 Agent 都能在无原生 UI 条件下完成一次可恢复会话；失败/退出不会挂死父进程。
+退出条件：macOS 首发基线上的两个 Agent 都能在无原生 UI 条件下完成一次可恢复会话；失败/退出不会挂死父进程。Windows 目标环境的同一门禁作为后续兼容性验证。
 
-### Phase 1：应用骨架与工作区（4–6 天）
+### Phase 1：macOS 应用骨架与工作区（4–6 天）
 
-- 初始化 Svelte 5 + Tauri 2 + pnpm + Rust workspace。
-- 建立 typed IPC、SQLite migration、tracing、错误模型。
-- 工作区添加/删除/最近使用/路径校验/信任状态。
-- Agent 安装探测与诊断页。
-- 建立三栏壳和空时间线。
+- 初始化 Svelte 5 + Tauri 2 + pnpm + Rust workspace，macOS arm64 作为首发开发基线。
+- 建立 typed IPC、SQLite migration（WAL）、tracing、错误模型。
+- 工作区添加/删除/最近使用/canonical path 校验/symlink 逃逸检查/信任状态。
+- Agent 安装探测与诊断页；不读取或保存认证 secret。
+- 建立三栏壳和可消费 `AgentEvent v1` fixture 的空时间线。
 
-退出条件：重启应用后工作区与 Agent 探测结果稳定恢复；WebView 无任意 shell 权限。
+退出条件：macOS arm64 上重启应用后工作区与 Agent 探测结果稳定恢复；路径越界和未信任写入被拒绝；WebView 无任意 shell 权限；Windows 只作为后续验证门。
 
 ### Phase 2：Codex Adapter（5–8 天）
 
@@ -528,14 +529,14 @@ MVP 不做：
 | 把 skill 当作安全边界 | 可绕过 | 权限在 Core/OS 层实施，skill 仅是行为说明 |
 | 原生认证差异 | onboarding 复杂 | 首版复用各 Agent 登录状态，Aibo 不接管 secret |
 
-## 13. 首个决策门与下一步
+## 13. 架构冻结与下一步
 
-macOS 本机 Phase 0 已通过；在宣布 Windows/跨平台 Phase 0 完成前，做一次 60–90 分钟架构评审，只需要冻结以下内容：
+macOS 本机 Phase 0 已通过，架构评审结果已经冻结在 [docs/architecture-freeze.md](architecture-freeze.md)：
 
-1. `AgentEvent v1` 和 session state machine。
-2. Codex/Pi 的 capability matrix。
-3. `SessionSnapshot v1` 与 `Handoff Envelope v1`。
-4. Pi 首版运行是否接受“宿主机当前用户权限”；如果不接受，必须把容器/VM runner 提前到 Phase 1。
-5. 首发平台是否仅 Windows。若同时支持 macOS/Linux，SDK host 发现、路径、进程组和 installer 工作量需要单独增加。
+1. 首发平台为 macOS，当前基线为 arm64；Windows 改为后续验证门。
+2. Codex 使用 App Server；Pi 使用项目锁版 SDK host，RPC 仅作兼容/诊断。
+3. `AgentEvent v1`、session state machine、`SessionSnapshot v1` 和 `Handoff Envelope v1` 的边界已确定。
+4. Pi 首版接受宿主机当前用户权限，但必须通过 workspace trust 明示风险；不提前引入容器/VM。
+5. Phase 1 只做应用骨架、工作区、诊断、持久化和安全边界；真实 Codex/Pi 会话分别进入 Phase 2/3。
 
-建议的第一个可演示里程碑不是完整聊天 UI，而是：在同一个工作区中由 Codex 完成一个小修改，在 Aibo 中 `@` 该 Codex 会话，把冻结的 handoff 交给 Pi 验证测试并继续处理；整个过程不出现任一 Agent 的原生 UI，且每一步都能回链到源 turn 和文件证据。
+Phase 1 的第一个可验收切片是：macOS 上添加工作区，完成路径/信任检查，显示 Codex/Pi 诊断，退出后重启并恢复状态；该切片通过后再接入 Codex 的真实会话流。

@@ -4,7 +4,7 @@
 >
 > 平台：Windows 10.0.26200 x86_64；另有 macOS arm64 本机复验
 >
-> 状态：Windows 目标门禁有条件通过；macOS 本机门禁已通过
+> 状态：macOS 首发门禁已通过；Windows 目标门禁待后续重跑
 
 ## 1. 结论
 
@@ -166,4 +166,4 @@ macOS 本机的五项门禁已经关闭。Windows 目标环境仍需在完成 Pi
 4. 增加并验证一次 abort 场景。
 5. 将真实 Pi 流脱敏后更新 fixture，不提交原始事件。
 
-在 Windows 目标环境的五项门禁完成前，不能宣称跨平台的“双 Agent 可恢复真实会话”退出条件已完全达成；Phase 1 的应用骨架可以继续基于 macOS 已验证的契约并行搭建。
+在 Windows 目标环境的五项门禁完成前，不能宣称跨平台的“双 Agent 可恢复真实会话”退出条件已完全达成；这不阻塞 macOS 首发的 Phase 1 应用骨架。架构冻结和 Phase 1 边界见 [docs/architecture-freeze.md](architecture-freeze.md)。
