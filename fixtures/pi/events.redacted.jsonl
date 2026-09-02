@@ -1,0 +1,5 @@
+{"direction":"agent-to-aibo","payload":{"id":"request-1","type":"response","command":"get_state","success":true,"data":{"model":{"id":"unknown","provider":"unknown"},"isStreaming":false,"sessionFile":"<session-file>","sessionId":"session-1","sessionName":"aibo-phase0-probe","messageCount":0}}}
+{"direction":"agent-to-aibo","payload":{"type":"session_info_changed","name":"aibo-phase0-probe-persisted"}}
+{"direction":"agent-to-aibo","payload":{"id":"request-2","type":"response","command":"set_session_name","success":true}}
+{"direction":"agent-to-aibo","payload":{"type":"bash_execution_update","id":"request-3","delta":"streamed command output"}}
+{"direction":"agent-to-aibo","payload":{"id":"request-3","type":"response","command":"bash","success":true,"data":{"output":"streamed command output","exitCode":1,"cancelled":false,"truncated":false}}}

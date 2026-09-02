@@ -1,0 +1,151 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://aibo.local/contracts/agent-event.v1.schema.json",
+  "title": "Aibo AgentEvent v1",
+  "description": "The durable event envelope emitted by every Aibo agent adapter.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "eventId",
+    "generationId",
+    "sequence",
+    "occurredAt",
+    "source",
+    "workspaceId",
+    "sessionId",
+    "type",
+    "payload"
+  ],
+  "properties": {
+    "schemaVersion": {
+      "const": "1.0"
+    },
+    "eventId": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Globally unique event ID; Aibo Core will use ULID."
+    },
+    "generationId": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Identifies one adapter process generation. Late events from an older generation are rejected."
+    },
+    "sequence": {
+      "type": "integer",
+      "minimum": 0,
+      "description": "Strictly increasing within one generation."
+    },
+    "occurredAt": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "source": {
+      "$ref": "#/$defs/source"
+    },
+    "workspaceId": {
+      "type": "string",
+      "minLength": 1
+    },
+    "sessionId": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Stable Aibo session ID."
+    },
+    "externalSessionId": {
+      "type": ["string", "null"],
+      "description": "Native Codex thread ID or Pi session ID/file binding."
+    },
+    "turnId": {
+      "type": ["string", "null"]
+    },
+    "type": {
+      "$ref": "#/$defs/eventType"
+    },
+    "correlation": {
+      "$ref": "#/$defs/correlation"
+    },
+    "payload": {
+      "type": "object",
+      "description": "Event-specific normalized data. Adapter-private fields belong under payload.vendor."
+    },
+    "rawRef": {
+      "type": ["string", "null"],
+      "description": "Optional reference to access-controlled raw protocol data; raw payloads are not embedded here."
+    }
+  },
+  "$defs": {
+    "source": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["agent", "transport", "adapterVersion"],
+      "properties": {
+        "agent": {
+          "enum": ["codex", "pi"]
+        },
+        "transport": {
+          "enum": ["app-server", "pi-sdk", "pi-rpc", "replay"]
+        },
+        "adapterVersion": {
+          "type": "string",
+          "minLength": 1
+        },
+        "agentVersion": {
+          "type": ["string", "null"]
+        },
+        "protocolVersion": {
+          "type": ["string", "null"]
+        }
+      }
+    },
+    "correlation": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "requestId": {
+          "type": ["string", "integer", "null"]
+        },
+        "itemId": {
+          "type": ["string", "null"]
+        },
+        "toolCallId": {
+          "type": ["string", "null"]
+        },
+        "approvalId": {
+          "type": ["string", "integer", "null"]
+        }
+      }
+    },
+    "eventType": {
+      "enum": [
+        "session.started",
+        "session.state_changed",
+        "turn.started",
+        "turn.completed",
+        "turn.failed",
+        "message.delta",
+        "message.completed",
+        "tool.started",
+        "tool.updated",
+        "tool.completed",
+        "approval.requested",
+        "approval.resolved",
+        "usage.updated",
+        "adapter.warning",
+        "adapter.crashed"
+      ]
+    },
+    "sessionState": {
+      "enum": [
+        "created",
+        "starting",
+        "idle",
+        "running",
+        "waiting_approval",
+        "interrupted",
+        "failed",
+        "closed"
+      ]
+    }
+  }
+}

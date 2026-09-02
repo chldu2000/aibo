@@ -1,0 +1,23 @@
+{
+  "name": "aibo",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "probe:codex": "node probes/codex-app-server.mjs",
+    "probe:codex:smoke": "node probes/codex-app-server.mjs --smoke",
+    "probe:codex:approval": "node probes/codex-app-server.mjs --approval",
+    "probe:pi": "node probes/run-pi.mjs",
+    "probe:pi:sdk": "node probes/pi-sdk.mjs",
+    "probe:pi:rpc": "node probes/pi-rpc.mjs",
+    "probe:pi:smoke": "node probes/pi-rpc.mjs --smoke",
+    "probe": "node probes/run-all.mjs",
+    "test": "node --test"
+  },
+  "engines": {
+    "node": ">=22"
+  },
+  "dependencies": {
+    "@earendil-works/pi-coding-agent": "0.84.4"
+  }
+}

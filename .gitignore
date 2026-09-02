@@ -1,0 +1,7 @@
+.aibo/
+.pnpm-store/
+node_modules/
+dist/
+target/
+.DS_Store
+Thumbs.db

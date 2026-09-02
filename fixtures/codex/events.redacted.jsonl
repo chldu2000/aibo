@@ -1,0 +1,8 @@
+{"direction":"agent-to-aibo","payload":{"id":"request-1","result":{"userAgent":"codex/<version> (<platform>)","codexHome":"<redacted>","platformFamily":"windows","platformOs":"windows"}}}
+{"direction":"agent-to-aibo","payload":{"method":"thread/started","params":{"thread":{"id":"thread-1","sessionId":"thread-1","cwd":"<workspace>","status":{"type":"idle"},"turns":[]}}}}
+{"direction":"agent-to-aibo","payload":{"method":"turn/started","params":{"threadId":"thread-1","turn":{"id":"turn-1","items":[],"status":"inProgress"}}}}
+{"direction":"agent-to-aibo","payload":{"method":"item/agentMessage/delta","params":{"threadId":"thread-1","turnId":"turn-1","itemId":"message-1","delta":"partial text"}}}
+{"direction":"agent-to-aibo","payload":{"method":"item/commandExecution/requestApproval","id":0,"params":{"kind":"command","threadId":"thread-1","turnId":"turn-1","itemId":"tool-1","command":"Get-Location","cwd":"<workspace>","availableDecisions":["accept","cancel"]}}}
+{"direction":"aibo-to-agent","payload":{"id":0,"result":{"decision":"decline"}}}
+{"direction":"agent-to-aibo","payload":{"method":"serverRequest/resolved","params":{"threadId":"thread-1","requestId":0}}}
+{"direction":"agent-to-aibo","payload":{"method":"turn/completed","params":{"threadId":"thread-1","turn":{"id":"turn-1","items":[{"type":"agentMessage","id":"message-2","text":"AIBO_CODEX_APPROVAL_PROBE_OK","phase":"final_answer"}],"status":"completed"}}}}
