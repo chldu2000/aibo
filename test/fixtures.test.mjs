@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import path from "node:path";
 import test from "node:test";
+import { assertProbe } from "../probes/lib/probe-output.mjs";
 
 const root = path.resolve(process.cwd());
 
@@ -14,9 +15,16 @@ test("AgentEvent v1 schema is valid JSON with a frozen version", async () => {
   assert.ok(schema.$defs.sessionState.enum.includes("interrupted"));
 });
 
+test("probe assertions fail loudly so a false gate cannot pass", () => {
+  assert.doesNotThrow(() => assertProbe(true, "must pass"));
+  assert.throws(() => assertProbe(false, "must fail"), /Probe assertion failed: must fail/);
+});
+
 for (const fixture of [
   ["codex", "events.redacted.jsonl"],
+  ["codex", "events.macos.redacted.jsonl"],
   ["pi", "events.redacted.jsonl"],
+  ["pi", "events.macos.redacted.jsonl"],
   ["pi", "session.redacted.jsonl"],
 ]) {
   test(`fixture ${fixture.join("/")} contains valid LF-delimited JSON`, async () => {

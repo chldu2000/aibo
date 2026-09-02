@@ -10,7 +10,7 @@
     "probe:pi": "node probes/run-pi.mjs",
     "probe:pi:sdk": "node probes/pi-sdk.mjs",
     "probe:pi:rpc": "node probes/pi-rpc.mjs",
-    "probe:pi:smoke": "node probes/pi-rpc.mjs --smoke",
+    "probe:pi:smoke": "node probes/pi-sdk.mjs --smoke",
     "probe": "node probes/run-all.mjs",
     "test": "node --test"
   },

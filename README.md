@@ -6,7 +6,7 @@ The first supported runtimes are Codex and Pi. The product architecture and phas
 
 ## Current status
 
-Phase 0 protocol probes are in progress. The Codex and Pi RPC probes use Node.js built-ins; the Pi SDK probe pins the adapter dependency that supplies native PowerShell execution on Windows. This validates protocol and process behavior before the Svelte 5 + Tauri 2 application is scaffolded.
+Phase 0 protocol probes are complete on the local macOS validation host. Codex App Server and both Pi paths (the locked SDK host and the RPC compatibility path) have passed real streaming, abort, and history-resume smoke checks. The Windows target still needs the same smoke gate rerun after native Pi login. This validates protocol and process behavior before the Svelte 5 + Tauri 2 application is scaffolded.
 
 ## Phase 0 probes
 
@@ -16,12 +16,12 @@ Requirements:
 - `codex` on `PATH` for the Codex probe
 - `pi` on `PATH` for the Pi RPC/model probe
 - project dependencies installed with `pnpm install` for the Pi SDK probe
-- Native agent authentication for an optional real-model smoke turn
+- Native agent authentication for a real-model smoke turn
 
-Transport and session-state checks do not call a model. On Windows the Pi SDK
-probe executes the read-only command `node --version` through Pi's native
-PowerShell tool, then persists and reopens a Pi session. The Pi RPC probe is
-also retained to expose platform/protocol differences:
+Transport and session-state checks do not call a model. The Pi SDK probe
+executes the read-only command `node --version` through the platform-native
+shell tool, then persists and reopens a Pi session. The Pi RPC probe is also
+retained to expose platform/protocol differences:
 
 ```powershell
 pnpm probe:codex
@@ -34,6 +34,9 @@ The Pi paths can also be run independently:
 pnpm probe:pi:sdk
 pnpm probe:pi:rpc
 ```
+
+`pnpm probe:pi:smoke` exercises the project-locked SDK host. To exercise the
+RPC compatibility path with a real model turn, run `pnpm probe:pi:rpc -- --smoke`.
 
 Add `--smoke` to run a minimal model turn with all mutation tools disabled or read-only:
 

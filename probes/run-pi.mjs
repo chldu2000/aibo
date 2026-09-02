@@ -16,7 +16,7 @@ function run(script, args = []) {
   });
 }
 
-const sdkResult = await run("probes/pi-sdk.mjs");
+const sdkResult = await run("probes/pi-sdk.mjs", smoke ? ["--smoke"] : []);
 const rpcResult = await run(
   "probes/pi-rpc.mjs",
   smoke ? ["--smoke"] : [],

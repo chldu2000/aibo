@@ -1,6 +1,6 @@
 # Aibo 多 Agent 工作台：调研、架构建议与实施计划
 
-> 状态：提案（待评审）  
+> 状态：架构提案待评审；Phase 0 macOS 复验完成，Windows 目标门禁待重跑，Phase 1 尚未开始
 > 调研日期：2026-09-02  
 > 首批目标：Codex、Pi  
 > 技术栈：Svelte 5 + Tauri 2
@@ -19,14 +19,14 @@ Aibo 应定位为“本地 Agent 客户端与上下文交换层”，而不是�
 最重要的架构判断：
 
 - **Codex 首选 App Server，不以 `codex exec` 或 SDK 作为主客户端接口。** App Server 原生覆盖认证、线程历史、审批、流式事件、读取、恢复、分叉等工作台所需能力。[Codex App Server](https://learn.chatgpt.com/docs/app-server)
-- **Pi 首版首选 RPC sidecar。** Pi 的 RPC 模式明确面向无头嵌入、自定义 UI，并通过 stdin/stdout JSONL 提供命令和流式事件；直接 SDK 可作为后续 Node adapter host 方案。[Pi RPC](https://pi.dev/docs/latest/rpc)
+- **Pi 首版采用项目锁版 SDK adapter host。** SDK 直接提供 `AgentSession`、事件订阅、abort 和会话树能力；RPC 保留为兼容/诊断路径。[Pi RPC](https://pi.dev/docs/latest/rpc)
 - **handoff 的权威实现必须在 Aibo，不应依赖单个 Agent 的插件。** Agent Skill 用于统一“如何生成、如何消费”handoff 的语义；会话读取、快照冻结、传输、权限、引用解析和持久化由 Aibo 控制。
 - **首版不宣称无损迁移 Agent 内部上下文。** 可移交的是可观察记录、用户约束、工具结果、文件/版本状态、决策、未完成事项和工件；不可依赖或伪造隐藏推理、进程内私有状态和厂商未公开状态。
 - **Pi 安全模型必须单独处理。** Pi 官方说明其没有内建沙箱，默认继承启动用户权限。首版必须把“工作区信任”和“执行隔离”分开表达，不能把 project trust 当成沙箱。[Pi Security](https://pi.dev/docs/latest/security)
 
 ## 2. 当前仓库与本机基线
 
-当前工作区为空，尚无 Git 仓库、应用脚手架或现存代码，因此可以按目标架构直接初始化，不需要兼容历史实现。
+当前工作区已包含 Phase 0 探针、脱敏 fixture 和 `AgentEvent v1` envelope，但尚无 Svelte/Tauri/Rust 应用脚手架；可以继续按目标架构初始化，不需要兼容历史产品实现。
 
 本机已检测到：
 
@@ -63,7 +63,7 @@ Pi 提供两条可用集成路线：
 - **RPC 模式**：`pi --mode rpc`，stdin 接收 JSON 命令，stdout 输出 JSONL response/event；支持 prompt、steer、follow-up、abort、会话切换、状态查询、模型设置、队列、compaction 和扩展 UI 请求。
 - **TypeScript SDK**：`@earendil-works/pi-coding-agent`，可直接创建 `AgentSession`、订阅事件、操作会话树并注入自定义 skill/tool/resource loader。[Pi SDK](https://pi.dev/docs/latest/sdk)
 
-对于 Tauri 桌面端，RPC sidecar 的优势是进程边界清楚、崩溃隔离好、与 Codex 的 stdio 模式形态接近。SDK 的优势是类型完整、可定制工具和资源加载器；它要求额外的 Node adapter host。建议先 RPC，只有当审批/安全工具替换或深度扩展成为硬需求时再引入 SDK host。
+对于 Tauri 桌面端，SDK host 的优势是类型完整、可定制工具和资源加载器，且 macOS 本机已验证真实 turn、stream、abort 和 session resume。它要求额外的 Node adapter host，因此 RPC 仍保留作兼容/诊断路径；Windows 主路径以项目锁版 SDK 为准。
 
 Pi 会话为 JSONL，entry 通过 `id/parentId` 组成树，原生支持分支。这一模型与 Codex 的 thread/fork 不完全相同，Aibo 需要保留各自原生标识，同时对 UI 暴露统一的 session/branch 概念。[Pi Session Format](https://pi.dev/docs/latest/session-format)
 
@@ -207,7 +207,7 @@ interface AgentAdapter {
 ### 5.4 进程模型
 
 - Codex：一个安装/身份 profile 对应一个常驻 App Server，可多路复用多个 thread；首版只用 stdio。
-- Pi：每个活跃 Aibo session 一个 RPC 进程，打开/继续其原生 session；会话空闲后可释放进程，再按 binding 恢复。
+- Pi：每个活跃 Aibo session 一个项目锁版 Node SDK host 进程，打开/继续其原生 session；会话空闲后可释放进程，再按 binding 恢复。RPC 进程仅用于兼容/诊断。
 - 每个进程有 generation ID，旧进程迟到事件不得写入新 generation。
 - 应用退出时先停止接收输入，再中断/等待正在运行的 turn，最后关闭 sidecar；崩溃后标记 session 为 `interrupted` 而非假定完成。
 
@@ -425,10 +425,10 @@ V1 后为 Pi 增加可选 container/VM/平台 sandbox runner；统一权限 prof
 
 ### Phase 3：Pi Adapter（5–8 天）
 
-- 严格 LF JSONL framing；不要使用会把 Unicode separator 当换行的通用 line reader。
-- prompt/steer/follow-up/abort/get_state。
+- Node SDK host 生命周期、`AgentSession` 事件订阅与请求关联。
+- prompt/steer/follow-up/abort 和模型/工具状态映射。
 - session create/open/switch/tree 映射。
-- tool/compaction/retry/extension UI event 归一化。
+- tool/compaction/retry/extension UI event 归一化；RPC framing 仅保留兼容测试。
 - project trust 提示和“不具备内建沙箱”状态标识。
 
 退出条件：与 Codex 共用同一套时间线、composer 和 session state UI；恢复原生 Pi session 不丢失分支关系。
@@ -530,12 +530,12 @@ MVP 不做：
 
 ## 13. 首个决策门与下一步
 
-在开始搭建正式 UI 前，先完成 Phase 0，并做一次 60–90 分钟架构评审，只需要冻结以下内容：
+macOS 本机 Phase 0 已通过；在宣布 Windows/跨平台 Phase 0 完成前，做一次 60–90 分钟架构评审，只需要冻结以下内容：
 
 1. `AgentEvent v1` 和 session state machine。
 2. Codex/Pi 的 capability matrix。
 3. `SessionSnapshot v1` 与 `Handoff Envelope v1`。
 4. Pi 首版运行是否接受“宿主机当前用户权限”；如果不接受，必须把容器/VM runner 提前到 Phase 1。
-5. 首发平台是否仅 Windows。若同时支持 macOS/Linux，sidecar 发现、路径、进程组和 installer 工作量需要单独增加。
+5. 首发平台是否仅 Windows。若同时支持 macOS/Linux，SDK host 发现、路径、进程组和 installer 工作量需要单独增加。
 
 建议的第一个可演示里程碑不是完整聊天 UI，而是：在同一个工作区中由 Codex 完成一个小修改，在 Aibo 中 `@` 该 Codex 会话，把冻结的 handoff 交给 Pi 验证测试并继续处理；整个过程不出现任一 Agent 的原生 UI，且每一步都能回链到源 turn 和文件证据。

@@ -12,15 +12,23 @@ export async function createProbeOutput(agent, cwd = process.cwd()) {
   const runDir = path.join(baseDir, `${agent}-${safeTimestamp()}`);
   await mkdir(runDir, { recursive: true });
 
+  let writeTail = Promise.resolve();
+
   return {
     runDir,
-    async appendRaw(direction, payload) {
+    appendRaw(direction, payload) {
       const record = {
         at: new Date().toISOString(),
         direction,
         payload,
       };
-      await appendFile(path.join(runDir, "events.jsonl"), `${JSON.stringify(record)}\n`);
+      writeTail = writeTail.then(() =>
+        appendFile(path.join(runDir, "events.jsonl"), `${JSON.stringify(record)}\n`),
+      );
+      return writeTail;
+    },
+    async flush() {
+      await writeTail;
     },
     async writeSummary(summary) {
       await writeFile(
@@ -29,6 +37,10 @@ export async function createProbeOutput(agent, cwd = process.cwd()) {
       );
     },
   };
+}
+
+export function assertProbe(condition, message) {
+  if (!condition) throw new Error(`Probe assertion failed: ${message}`);
 }
 
 export function eventName(message) {

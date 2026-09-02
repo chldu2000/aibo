@@ -2,9 +2,9 @@
 
 > 日期：2026-09-02
 >
-> 平台：Windows 10.0.26200 x86_64
+> 平台：Windows 10.0.26200 x86_64；另有 macOS arm64 本机复验
 >
-> 状态：有条件通过；Pi 真实模型回合受本机未登录阻塞
+> 状态：Windows 目标门禁有条件通过；macOS 本机门禁已通过
 
 ## 1. 结论
 
@@ -15,12 +15,12 @@ Phase 0 已证明 Aibo 可以在不显示 Agent 原生 UI 的前提下：
 - 通过 Pi SDK `0.84.4` 在 Windows 原生 PowerShell 中执行工具，并用公开 `SessionManager` API 持久化和重新打开会话。
 - 用自动化测试固定一个易错协议点：Pi 的流式事件可能与最终 response 使用相同 request id，client 不能把中间事件误判为响应。
 
-Phase 0 尚未证明 Pi 的真实模型 prompt/stream/abort/history resume。原因不是协议 client，而是本机 Pi 没有配置任何 provider 凭据。运行 `pnpm probe:pi:smoke` 会明确返回 `No API key found for the selected model`。用户完成 Pi 原生 `/login` 后应重跑该门禁。
+Windows 目标环境尚未证明 Pi 的真实模型 prompt/stream/abort/history resume，原因是当时本机 Pi 没有配置 provider 凭据。macOS 本机已在完成 Pi 原生登录后跑通 SDK host 的同一组门禁；Windows 仍需在目标环境重跑并保留独立结果。
 
 Windows 上的实现路线据实调整为：
 
 - Codex：Rust Core 管理 `codex app-server` stdio JSON-RPC。
-- Pi：Rust Core 管理一个项目锁版的 Node SDK adapter host；host 使用 `@earendil-works/pi-coding-agent >= 0.84.4` 和原生 `powershell` tool。
+- Pi：Rust Core 管理一个项目锁版的 Node SDK adapter host；host 使用 `@earendil-works/pi-coding-agent 0.84.4` 和平台原生 shell tool。
 - Pi RPC：保留为兼容/诊断路径，并可用于 macOS/Linux；当前 Windows CLI 的 `bash` RPC 命令依赖 `/bin/bash`/WSL，不作为 Windows 主执行路径。
 
 ## 2. 实测基线
@@ -62,9 +62,9 @@ Pi SDK 从 `0.84.4` 起在当前安装包中公开 `createPowerShellTool` / `cre
 | 严格 LF JSONL framing | 通过 | `get_state`、`set_session_name`、事件和 response 均可解析 |
 | 相同 request id 的中间事件 | 通过 | client 仅在 `type=response` 时完成请求 |
 | Windows 直接命令 | 不通过 | `bash` 走 WSL/`/bin/bash`；沙箱外也报告 `/bin/bash` 不存在 |
-| 空会话 resume | 不成立 | Pi 在首个 assistant message 前延迟创建 session 文件；只有路径，无可恢复文件 |
-| 真实 prompt/stream | 阻塞 | 本机未配置 Pi provider 凭据 |
-| abort 与真实历史恢复 | 未验证 | 依赖一个可运行的真实模型 turn |
+| 空会话 resume | Windows 不成立 | Pi 在首个 assistant message 前延迟创建 session 文件；只有路径，无可恢复文件 |
+| 真实 prompt/stream | macOS 已验证；Windows 阻塞 | 依赖目标环境的 Pi provider 凭据 |
+| abort 与真实历史恢复 | macOS 已验证；Windows 待重跑 | 依赖一个可运行的真实模型 turn |
 
 RPC 的 `set_session_name` 会发出 `session_info_changed`，但这不代表空会话已经落盘。Aibo 不得只凭返回的 session path 声称会话可恢复。
 
@@ -76,9 +76,27 @@ RPC 的 `set_session_name` 会发出 `session_info_changed`，但这不代表空
 | Windows PowerShell tool | 通过 | `createPowerShellTool(...).execute()` 返回 Node 版本 |
 | SessionManager 持久化 | 通过 | 写入标识清楚的 synthetic assistant probe record 后生成 JSONL |
 | SessionManager reopen | 通过 | session id、name、自定义 entry 均一致 |
-| 真实模型事件 | 阻塞 | 与 RPC 相同，等待 Pi 原生登录 |
+| 真实模型事件 | macOS 已验证；Windows 待重跑 | SDK host smoke 已验证 prompt、stream、abort、history resume |
 
 synthetic record 只用于无模型的存储 API 验证，内容固定为 `AIBO_PI_SDK_PERSISTENCE_PROBE`，不能算作真实模型回合。
+
+### 3.4 macOS 本机复验（2026-09-02）
+
+本机环境为 macOS arm64、Node.js `24.18.0`、pnpm `10.32.1`、Codex `0.149.0`、全局 Pi `0.82.1`、项目 Pi SDK `0.84.4`。在允许 Agent 访问其原生认证/状态目录后，以下门禁均通过：
+
+| 检查 | 结果 | 运行入口 |
+| --- | --- | --- |
+| Codex initialize/list | 通过 | `pnpm probe:codex` |
+| Codex 真实 turn + resume/read | 通过 | `pnpm probe:codex:smoke` |
+| Codex approval decline | 通过，观察到 1 次 approval | `pnpm probe:codex:approval` |
+| Pi SDK host 真实 turn/stream | 通过 | `pnpm probe:pi:smoke` |
+| Pi SDK abort | 通过 | `pnpm probe:pi:smoke` |
+| Pi SDK session/history resume | 通过 | `pnpm probe:pi:smoke` |
+| Pi SDK session list/tree | 通过 | `pnpm probe:pi:smoke` |
+| Pi RPC 兼容路径真实 turn/abort/resume | 通过 | `pnpm probe:pi:rpc -- --smoke` |
+| Codex + Pi 聚合门禁 | 通过 | `pnpm probe -- --smoke` |
+
+本机 smoke 运行产生的原始事件仍位于被 Git 忽略的 `.aibo/probe/runs/`；提交的仅是脱敏样本 [fixtures/codex/events.macos.redacted.jsonl](../fixtures/codex/events.macos.redacted.jsonl) 和 [fixtures/pi/events.macos.redacted.jsonl](../fixtures/pi/events.macos.redacted.jsonl)。
 
 ## 4. Capability matrix
 
@@ -88,10 +106,10 @@ synthetic record 只用于无模型的存储 API 验证，内容固定为 `AIBO_
 | --- | --- | --- | --- | --- |
 | headless 输入输出 | 已验证 | 已验证（直接 API） | 已验证 | Codex App Server / Pi SDK host |
 | session create/open | 已验证 | 已验证 | 传输已验证，空会话不可恢复 | SDK host |
-| session list/read | 已验证 | 文档支持，open 已验证 | 文档支持 | adapter 统一投影 |
-| 真实 turn streaming | 已验证 | 阻塞 | 阻塞 | 登录后补门禁 |
-| history resume | 已验证 | 存储层已验证，真实历史阻塞 | 空会话不成立，真实历史阻塞 | SDK host |
-| interrupt/abort | 文档支持 | 文档支持 | 文档支持 | Phase 2/3 contract test |
+| session list/read | 已验证 | macOS 已验证；Windows 待重跑 | macOS 已验证；Windows 待重跑 | adapter 统一投影 |
+| 真实 turn streaming | 已验证 | macOS 已验证；Windows 待重跑 | macOS 已验证；Windows 待重跑 | SDK host |
+| history resume | 已验证 | macOS 已验证；Windows 待重跑 | macOS 已验证；Windows 待重跑 | SDK host |
+| interrupt/abort | 文档支持 | macOS 已验证；Windows 待重跑 | macOS 已验证；Windows 待重跑 | SDK host |
 | command approval | 已验证 | Aibo host 自建策略 | 无 Codex 等价原生沙箱 | Core 审批 + SDK tool wrapper |
 | Windows shell tool | 审批路径已观察 | 已验证 PowerShell | 不支持（依赖 bash/WSL） | SDK `powershell` |
 | native sandbox | protocol 可表达并观察到 read-only | 不支持 | 不支持 | UI 明示 enforced/unsupported |
@@ -102,7 +120,9 @@ synthetic record 只用于无模型的存储 API 验证，内容固定为 `AIBO_
 
 - `contracts/agent-event.v1.schema.json`：统一 envelope、事件类型、generation/sequence 规则。
 - `fixtures/codex/events.redacted.jsonl`：Codex turn、delta、approval、completion 最小脱敏流。
+- `fixtures/codex/events.macos.redacted.jsonl`：macOS Codex smoke/approval 脱敏流。
 - `fixtures/pi/events.redacted.jsonl`：Pi response/event 同 id 的最小脱敏流。
+- `fixtures/pi/events.macos.redacted.jsonl`：macOS Pi streaming/abort 脱敏流。
 - `fixtures/pi/session.redacted.jsonl`：Pi append-only session tree 最小脱敏样本。
 - 原始运行数据位于 `.aibo/probe/runs/`，默认被 Git 忽略，因为可能含账户、绝对路径、会话内容和本机配置。
 
@@ -132,13 +152,13 @@ pnpm probe:pi:rpc
 pnpm probe:pi:smoke
 ```
 
-`probe:codex:smoke`、`probe:codex:approval` 和 `probe:pi:smoke` 会使用对应 Agent 的本机身份并产生真实模型调用。其他探针不调用模型。
+`probe:codex:smoke`、`probe:codex:approval` 和 `probe:pi:smoke` 会使用对应 Agent 的本机身份并产生真实模型调用。`probe:pi:smoke` 走 SDK host；RPC 兼容路径需显式运行 `pnpm probe:pi:rpc -- --smoke`。其他探针不调用模型。
 
 pnpm 安装当前报告忽略了 `@google/genai` 与 `protobufjs` 的 build scripts。现有 probe 不依赖这些脚本；在正式 adapter host 打包前需通过 `pnpm approve-builds` 审核，而不是直接全量放行。
 
 ## 7. Phase 0 剩余门禁
 
-完成 Pi 原生登录后：
+macOS 本机的五项门禁已经关闭。Windows 目标环境仍需在完成 Pi 原生登录后：
 
 1. 运行 `pnpm probe:pi:smoke`。
 2. 验证 prompt、增量 event、agent settled、真实 session 文件生成。
@@ -146,4 +166,4 @@ pnpm 安装当前报告忽略了 `@google/genai` 与 `protobufjs` 的 build scri
 4. 增加并验证一次 abort 场景。
 5. 将真实 Pi 流脱敏后更新 fixture，不提交原始事件。
 
-在这五项完成前，Phase 1 可以开始搭建不依赖 Pi 模型的应用骨架，但不能宣称 Phase 0 的“双 Agent 可恢复真实会话”退出条件已完全达成。
+在 Windows 目标环境的五项门禁完成前，不能宣称跨平台的“双 Agent 可恢复真实会话”退出条件已完全达成；Phase 1 的应用骨架可以继续基于 macOS 已验证的契约并行搭建。

@@ -110,6 +110,7 @@ export class JsonlProcess extends EventEmitter {
         cleanup();
         reject(new Error(`Timed out after ${timeoutMs} ms waiting for JSONL event`));
       }, timeoutMs);
+      timer.unref?.();
       const cleanup = () => {
         clearTimeout(timer);
         this.off("message", onMessage);
@@ -125,13 +126,28 @@ export class JsonlProcess extends EventEmitter {
     this.#child.stdin.end();
 
     const exited = new Promise((resolve) => this.#child.once("exit", resolve));
-    const timeout = new Promise((resolve) =>
-      setTimeout(() => {
-        if (!this.#closed) this.#child.kill();
-        resolve();
-      }, graceMs),
-    );
-    await Promise.race([exited, timeout]);
+    let graceTimer;
+    const timeout = new Promise((resolve) => {
+      graceTimer = setTimeout(() => resolve(false), graceMs);
+      graceTimer.unref?.();
+    });
+
+    if (await Promise.race([exited.then(() => true), timeout])) {
+      clearTimeout(graceTimer);
+      return;
+    }
+
+    if (!this.#closed) this.#child.kill();
+    let killTimer;
+    await Promise.race([
+      exited,
+      new Promise((resolve) => {
+        killTimer = setTimeout(resolve, graceMs);
+        killTimer.unref?.();
+      }),
+    ]);
+    clearTimeout(graceTimer);
+    clearTimeout(killTimer);
   }
 
   #onStdout(chunk) {

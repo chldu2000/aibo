@@ -1,16 +1,18 @@
 import path from "node:path";
 import process from "node:process";
 import { JsonlProcess } from "./lib/jsonl-process.mjs";
-import { countEvents, createProbeOutput } from "./lib/probe-output.mjs";
+import { assertProbe, countEvents, createProbeOutput } from "./lib/probe-output.mjs";
 
 const approval = process.argv.includes("--approval");
 const smoke = process.argv.includes("--smoke") || approval;
 const codexBin = process.env.AIBO_CODEX_BIN ?? "codex";
 const cwd = path.resolve(process.cwd());
+const approvalCommand = process.platform === "win32" ? "Get-Location" : "pwd";
 const output = await createProbeOutput("codex", cwd);
 const messages = [];
 const warnings = [];
 let approvalsObserved = 0;
+let approvalsResolved = 0;
 
 function startClient() {
   const client = new JsonlProcess(codexBin, ["app-server", "--stdio"], { cwd }).start();
@@ -29,6 +31,7 @@ function startClient() {
       void output.appendRaw("aibo-to-agent", response);
       client.send(response);
     }
+    if (message.method === "serverRequest/resolved") approvalsResolved += 1;
   });
   client.on("stderr", (text) => {
     const trimmed = text.trim();
@@ -71,6 +74,7 @@ try {
     sortDirection: "desc",
   });
   transportPassed = Array.isArray(listed.result?.data) && initialized !== undefined;
+  assertProbe(transportPassed, "initialize and thread/list must return valid responses");
 
   if (smoke) {
     const started = await client.rpcRequest("thread/start", {
@@ -94,14 +98,20 @@ try {
         {
           type: "text",
           text: approval
-            ? "Run the read-only command `Get-Location` exactly once, then reply with AIBO_CODEX_APPROVAL_PROBE_OK. Do not modify files."
+            ? `Run the read-only command \`${approvalCommand}\` exactly once, then reply with AIBO_CODEX_APPROVAL_PROBE_OK. Do not modify files.`
             : "Reply with exactly AIBO_CODEX_PROBE_OK. Do not use tools or modify files.",
         },
       ],
     });
     turnId = turn.result?.turn?.id;
+    assertProbe(turnId, "turn/start did not return a turn id");
     const completedEvent = await completed;
     smokePassed = completedEvent.params?.turn?.status === "completed";
+    assertProbe(smokePassed, "turn did not complete successfully");
+    if (approval) {
+      assertProbe(approvalsObserved > 0, "approval probe did not observe an approval request");
+      assertProbe(approvalsResolved > 0, "approval probe did not observe serverRequest/resolved");
+    }
 
     const read = await client.rpcRequest("thread/read", {
       threadId,
@@ -122,12 +132,14 @@ try {
     resumePassed =
       resumed.result?.thread?.id === threadId &&
       reread.result?.thread?.turns?.some((item) => item.id === turnId);
+    assertProbe(resumePassed, "thread/resume did not restore the completed turn");
   }
 } catch (error) {
   failure = error instanceof Error ? error.message : String(error);
   process.exitCode = 1;
 } finally {
   await client?.close();
+  await output.flush();
   const summary = {
     agent: "codex",
     probeVersion: 1,
@@ -135,6 +147,7 @@ try {
     smokeRequested: smoke,
     approvalRequested: approval,
     approvalsObserved,
+    approvalsResolved,
     transportPassed,
     smokePassed: smoke ? smokePassed : null,
     resumePassed: smoke ? resumePassed : null,

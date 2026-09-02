@@ -1,0 +1,9 @@
+{"direction":"agent-to-aibo","payload":{"id":"request-1","type":"response","command":"get_state","success":true,"data":{"model":{"id":"<model>","provider":"<provider>"},"isStreaming":false,"sessionFile":"<session-file>","sessionId":"session-macos-1","messageCount":0}}}
+{"direction":"agent-to-aibo","payload":{"id":"request-2","type":"response","command":"prompt","success":true}}
+{"direction":"agent-to-aibo","payload":{"type":"agent_start"}}
+{"direction":"agent-to-aibo","payload":{"type":"turn_start"}}
+{"direction":"agent-to-aibo","payload":{"type":"message_update","assistantMessageEvent":{"type":"text_delta","delta":"AIBO_PI_PROBE_OK"}}}
+{"direction":"agent-to-aibo","payload":{"type":"turn_end","message":{"role":"assistant","content":[{"type":"text","text":"AIBO_PI_PROBE_OK"}],"stopReason":"stop"}}}
+{"direction":"agent-to-aibo","payload":{"type":"agent_end","messages":[{"role":"assistant","content":[{"type":"text","text":"1."}],"stopReason":"aborted"}],"willRetry":false}}
+{"direction":"agent-to-aibo","payload":{"type":"agent_settled"}}
+{"direction":"agent-to-aibo","payload":{"id":"request-3","type":"response","command":"abort","success":true}}

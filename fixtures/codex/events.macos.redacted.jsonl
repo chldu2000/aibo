@@ -1,0 +1,8 @@
+{"direction":"agent-to-aibo","payload":{"id":"request-1","result":{"userAgent":"codex/<version> (<platform>)","platformFamily":"<platform>"}}}
+{"direction":"agent-to-aibo","payload":{"method":"thread/started","params":{"thread":{"id":"thread-macos-1","cwd":"<workspace>","status":{"type":"idle"},"turns":[]}}}}
+{"direction":"agent-to-aibo","payload":{"method":"turn/started","params":{"threadId":"thread-macos-1","turn":{"id":"turn-macos-1","items":[],"status":"inProgress"}}}}
+{"direction":"agent-to-aibo","payload":{"method":"item/agentMessage/delta","params":{"threadId":"thread-macos-1","turnId":"turn-macos-1","itemId":"message-macos-1","delta":"AIBO_CODEX_PROBE_OK"}}}
+{"direction":"agent-to-aibo","payload":{"method":"item/commandExecution/requestApproval","id":0,"params":{"kind":"command","threadId":"thread-macos-1","turnId":"turn-macos-1","itemId":"tool-macos-1","command":"pwd","cwd":"<workspace>","availableDecisions":["accept","cancel"]}}}
+{"direction":"aibo-to-agent","payload":{"id":0,"result":{"decision":"decline"}}}
+{"direction":"agent-to-aibo","payload":{"method":"serverRequest/resolved","params":{"threadId":"thread-macos-1","requestId":0}}}
+{"direction":"agent-to-aibo","payload":{"method":"turn/completed","params":{"threadId":"thread-macos-1","turn":{"id":"turn-macos-1","items":[{"type":"agentMessage","id":"message-macos-2","text":"AIBO_CODEX_APPROVAL_PROBE_OK","phase":"final_answer"}],"status":"completed"}}}}
