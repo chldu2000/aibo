@@ -1,0 +1,5 @@
+{"direction":"agent-to-aibo","payload":{"method":"item/commandExecution/requestApproval","id":42,"params":{"kind":"command","threadId":"thread-recovery-1","turnId":"turn-recovery-1","itemId":"tool-recovery-1","command":"rm <fixture>","cwd":"<workspace>","availableDecisions":["accept","cancel"]}}}
+{"direction":"agent-to-aibo","payload":{"method":"aibo/process-exited","params":{"reason":"codex exited","pendingApprovalCount":1,"approvalsDiscarded":true}}}
+{"direction":"agent-to-aibo","payload":{"method":"item/commandExecution/requestApproval","id":43,"params":{"kind":"command","threadId":"thread-recovery-1","turnId":"turn-recovery-2","itemId":"tool-recovery-2","command":"pwd","cwd":"<workspace>","availableDecisions":["accept","cancel"]}}}
+{"direction":"aibo-to-agent","payload":{"id":43,"result":{"decision":"cancel"}}}
+{"direction":"agent-to-aibo","payload":{"method":"serverRequest/resolved","params":{"threadId":"thread-recovery-1","turnId":"turn-recovery-2","requestId":43}}}

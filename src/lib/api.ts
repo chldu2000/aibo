@@ -57,6 +57,9 @@ export const forkCodexThread = (
 export const archiveCodexThread = (sessionId: string): Promise<Session> =>
   invoke<Session>('archive_codex_thread', { sessionId });
 
+export const unarchiveCodexThread = (sessionId: string): Promise<Session> =>
+  invoke<Session>('unarchive_codex_thread', { sessionId });
+
 export const createCodexSession = (workspaceId: string): Promise<Session> =>
   invoke<Session>('create_codex_session', { workspaceId });
 

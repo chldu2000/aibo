@@ -1,0 +1,7 @@
+{"direction":"aibo-to-agent","payload":{"id":"fork-1","method":"thread/fork","params":{"threadId":"thread-parent","lastTurnId":"turn-1"}}}
+{"direction":"agent-to-aibo","payload":{"id":"fork-1","result":{"thread":{"id":"thread-child","forkedFromId":"thread-parent"}}}}
+{"direction":"aibo-to-agent","payload":{"id":"archive-1","method":"thread/archive","params":{"threadId":"thread-child"}}}
+{"direction":"agent-to-aibo","payload":{"id":"archive-1","result":{}}}
+{"direction":"aibo-to-agent","payload":{"id":"unarchive-1","method":"thread/unarchive","params":{"threadId":"thread-child"}}}
+{"direction":"agent-to-aibo","payload":{"id":"unarchive-1","result":{"thread":{"id":"thread-child","name":"Restored thread"}}}}
+{"direction":"agent-to-aibo","payload":{"method":"thread/unarchived","params":{"threadId":"thread-child"}}}

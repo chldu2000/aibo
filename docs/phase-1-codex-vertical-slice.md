@@ -44,6 +44,6 @@ pnpm tauri dev --no-watch
 
 ## 当前刻意保留的缺口
 
-1. 审批请求暂存于活动 adapter 内存中，应用重启后的待审批请求恢复留待后续批次。
-2. thread 列表、读取、分叉和归档已在 Phase 2 接入；完整工具事件投影仍待后续批次。
+1. 审批请求暂存于活动 adapter 内存中；应用重启会显式清空 pending 状态并将 session 标记为 `interrupted`，不会自动重放原生 request。
+2. thread 列表、读取、分叉、归档和取消归档已在 Phase 2 接入；command/file/MCP tool item 与 usage 事件已投影到统一时间线。
 3. Pi adapter、跨 Agent handoff 和 Windows 进程行为继续作为后续验证/阶段。

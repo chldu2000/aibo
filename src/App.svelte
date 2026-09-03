@@ -32,6 +32,7 @@
     resolveCodexApproval,
     sendCodexPrompt,
     setWorkspaceTrust,
+    unarchiveCodexThread,
   } from './lib/api';
   import type {
     AgentDiagnostic,
@@ -288,6 +289,17 @@
       pendingApprovals = pendingApprovals.filter((approval) => approval.sessionId !== event.sessionId);
     }
 
+    if (event.type === 'adapter.crashed' && event.sessionId === selectedSessionId) {
+      const discarded =
+        typeof event.payload.pendingApprovalCount === 'number'
+          ? event.payload.pendingApprovalCount
+          : 0;
+      notice =
+        discarded > 0
+          ? `Codex 进程已退出，${discarded} 个待审批请求已清除；请重新发送。`
+          : 'Codex 进程已退出，会话已中断；可重新发送以恢复。';
+    }
+
     if (event.sessionId === selectedSessionId && event.type === 'message.delta') {
       const externalMessageId = stringPayload(event.payload.itemId) ?? `delta:${event.eventId}`;
       const delta = stringPayload(event.payload.delta) ?? '';
@@ -309,6 +321,55 @@
             role: 'assistant',
             content: delta,
             status: 'streaming',
+            createdAt: event.occurredAt,
+            updatedAt: event.occurredAt,
+          },
+        ];
+      }
+    }
+
+    if (
+      event.sessionId === selectedSessionId &&
+      (event.type === 'tool.started' || event.type === 'tool.updated' || event.type === 'tool.completed')
+    ) {
+      const externalMessageId = stringPayload(event.payload.itemId) ?? `tool:${event.eventId}`;
+      const delta = event.type === 'tool.updated' ? stringPayload(event.payload.delta) : null;
+      const summary = stringPayload(event.payload.summary) ?? delta ?? '工具操作';
+      const output = stringPayload(event.payload.output);
+      const statusValue = stringPayload(event.payload.status);
+      const status: TimelineItem['status'] =
+        event.type === 'tool.completed'
+          ? statusValue === 'failed' || statusValue === 'error'
+            ? 'failed'
+            : 'completed'
+          : 'streaming';
+      const existing = timeline.find((item) => item.externalMessageId === externalMessageId);
+      if (existing) {
+        timeline = timeline.map((item) =>
+          item.id === existing.id
+            ? {
+                ...item,
+                content: delta
+                  ? item.content + delta
+                  : event.type === 'tool.started' || output
+                    ? summary
+                    : item.content,
+                status,
+                updatedAt: event.occurredAt,
+              }
+            : item,
+        );
+      } else {
+        timeline = [
+          ...timeline,
+          {
+            id: `live:${event.eventId}`,
+            sessionId: event.sessionId,
+            turnId: event.turnId,
+            externalMessageId,
+            role: 'tool',
+            content: summary,
+            status,
             createdAt: event.occurredAt,
             updatedAt: event.occurredAt,
           },
@@ -412,7 +473,7 @@
       return;
     }
     if (selectedSession?.archived) {
-      errorMessage = '已归档的 Codex 会话不能继续发送消息，请先创建分支。';
+      errorMessage = '已归档的 Codex 会话不能继续发送消息，请先取消归档或创建分支。';
       return;
     }
     if (!desktop) {
@@ -548,6 +609,25 @@
       codexThreadSnapshot = null;
       void refreshCodexThreads(archived.workspaceId);
       notice = 'Codex 线程已归档；本地时间线仍保留。';
+    } catch (error) {
+      errorMessage = toErrorMessage(error);
+    } finally {
+      busy = false;
+    }
+  }
+
+  async function unarchiveSession() {
+    if (!selectedSession || !desktop || !selectedSession.archived) return;
+    busy = true;
+    errorMessage = null;
+    try {
+      const restored = await unarchiveCodexThread(selectedSession.id);
+      sessions = sessions.map((item) => (item.id === restored.id ? restored : item));
+      selectedSessionId = restored.id;
+      timeline = await getTimeline(restored.id);
+      void refreshCodexThread(restored.id, true);
+      void refreshCodexThreads(restored.workspaceId);
+      notice = 'Codex 线程已取消归档，可以继续发送消息。';
     } catch (error) {
       errorMessage = toErrorMessage(error);
     } finally {
@@ -723,6 +803,7 @@
           {#if selectedSession}
             {#if sessionArchived}
               <Badge variant="secondary">已归档</Badge>
+              <Button variant="outline" size="sm" type="button" onclick={() => void unarchiveSession()} disabled={busy}>取消归档</Button>
             {:else}
               <Button variant="ghost" size="sm" type="button" onclick={() => void forkSession()} disabled={busy || sessionRunning}>分支</Button>
               <Button variant="ghost" size="sm" type="button" onclick={requestArchiveSession} disabled={busy || sessionRunning}>归档</Button>
@@ -755,10 +836,10 @@
             {#each timeline as item (item.id)}
               <Card
                 as="article"
-                class={`timeline-entry ${item.role === 'assistant' ? 'assistant-entry' : item.role === 'user' ? 'user-entry' : ''}`}
+                class={`timeline-entry ${item.role === 'assistant' ? 'assistant-entry' : item.role === 'user' ? 'user-entry' : item.role === 'tool' ? 'tool-entry' : ''}`}
               >
                 <div class="entry-meta">
-                  <Badge variant={item.role === 'assistant' ? 'secondary' : 'outline'}>{item.role === 'assistant' ? 'CODEX' : item.role.toUpperCase()}</Badge>
+                  <Badge variant={item.role === 'assistant' ? 'secondary' : item.role === 'tool' ? 'outline' : 'outline'}>{item.role === 'assistant' ? 'CODEX' : item.role.toUpperCase()}</Badge>
                   <Badge variant="outline">{item.status}</Badge>
                 </div>
                 <div class="entry-content">{item.content || '…'}</div>
@@ -813,7 +894,7 @@
           class="composer-textarea"
           bind:value={composerText}
           rows="2"
-          placeholder={sessionArchived ? '该会话已归档，请创建分支继续…' : selectedSession ? '输入消息，⌘/Ctrl + Enter 发送…' : '先新建或选择一个 Codex 会话…'}
+          placeholder={sessionArchived ? '该会话已归档，请取消归档或创建分支继续…' : selectedSession ? '输入消息，⌘/Ctrl + Enter 发送…' : '先新建或选择一个 Codex 会话…'}
           disabled={!selectedSession || sessionArchived || sessionRunning || busy}
           onkeydown={(event) => {
             if ((event.metaKey || event.ctrlKey) && event.key === 'Enter') {

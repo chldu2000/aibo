@@ -14,9 +14,13 @@ const messages = [];
 const warnings = [];
 let approvalsObserved = 0;
 let approvalsResolved = 0;
+let toolStartedObserved = 0;
+let toolCompletedObserved = 0;
+let usageObserved = 0;
 let forkedThreadId;
 let forkPassed = false;
 let archivePassed = false;
+let unarchivePassed = false;
 
 function startClient() {
   const client = new JsonlProcess(codexBin, ["app-server", "--stdio"], { cwd }).start();
@@ -36,6 +40,19 @@ function startClient() {
       client.send(response);
     }
     if (message.method === "serverRequest/resolved") approvalsResolved += 1;
+    if (
+      message.method === "item/started" &&
+      ["commandExecution", "fileChange", "mcpToolCall"].includes(message.params?.item?.type)
+    ) {
+      toolStartedObserved += 1;
+    }
+    if (
+      message.method === "item/completed" &&
+      ["commandExecution", "fileChange", "mcpToolCall"].includes(message.params?.item?.type)
+    ) {
+      toolCompletedObserved += 1;
+    }
+    if (message.method === "thread/tokenUsage/updated") usageObserved += 1;
   });
   client.on("stderr", (text) => {
     const trimmed = text.trim();
@@ -116,6 +133,8 @@ try {
     if (approval) {
       assertProbe(approvalsObserved > 0, "approval probe did not observe an approval request");
       assertProbe(approvalsResolved > 0, "approval probe did not observe serverRequest/resolved");
+      assertProbe(toolStartedObserved > 0, "approval probe did not observe a command tool start");
+      assertProbe(toolCompletedObserved > 0, "approval probe did not observe a command tool completion");
     }
 
     const read = await client.rpcRequest("thread/read", {
@@ -160,6 +179,26 @@ try {
         archived.result !== undefined &&
         !listedAfterArchive.result?.data?.some((item) => item.id === forkedThreadId);
       assertProbe(archivePassed, "thread/archive did not remove the child from active listings");
+      const unarchivedEvent = lifecycleClient.waitFor(
+        (message) =>
+          message.method === "thread/unarchived" &&
+          message.params?.threadId === forkedThreadId,
+        { timeoutMs: 20_000 },
+      );
+      const unarchived = await lifecycleClient.rpcRequest("thread/unarchive", {
+        threadId: forkedThreadId,
+      });
+      await unarchivedEvent;
+      const listedAfterUnarchive = await lifecycleClient.rpcRequest("thread/list", {
+        limit: 100,
+        cwd,
+        sortKey: "updated_at",
+        sortDirection: "desc",
+      });
+      unarchivePassed =
+        unarchived.result?.thread?.id === forkedThreadId &&
+        listedAfterUnarchive.result?.data?.some((item) => item.id === forkedThreadId);
+      assertProbe(unarchivePassed, "thread/unarchive did not restore the child to active listings");
       await lifecycleClient.close();
       lifecycleClient = undefined;
     }
@@ -193,11 +232,15 @@ try {
     lifecycleRequested: lifecycle,
     approvalsObserved,
     approvalsResolved,
+    toolStartedObserved,
+    toolCompletedObserved,
+    usageObserved,
     transportPassed,
     smokePassed: smoke ? smokePassed : null,
     resumePassed: smoke ? resumePassed : null,
     forkPassed: lifecycle ? forkPassed : null,
     archivePassed: lifecycle ? archivePassed : null,
+    unarchivePassed: lifecycle ? unarchivePassed : null,
     threadId: threadId ?? null,
     turnId: turnId ?? null,
     forkedThreadId: forkedThreadId ?? null,

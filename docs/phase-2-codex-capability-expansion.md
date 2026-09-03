@@ -1,6 +1,6 @@
 # Phase 2：Codex Adapter 能力扩展
 
-> 状态：审批闭环与 thread 生命周期已实现，后续工具事件批次开发中
+> 状态：审批闭环、thread 生命周期、工具事件投影与恢复契约已实现
 > 平台：macOS arm64 首发基线
 > 前置：Phase 1 Codex 真实会话已通过 macOS UI 验收
 
@@ -51,16 +51,18 @@ pnpm tauri dev --no-watch
 
 - `fork_codex_thread(sessionId, throughTurnId?)` 使用最近一条已完成 turn 作为默认边界，创建新的 Aibo session，并复制本地可见的 turns/messages 投影。
 - `archive_codex_thread(sessionId)` 只归档远端 Codex 日志，将本地 session 标记为 `archived`，保留 SQLite 时间线，不执行永久删除。
+- `unarchive_codex_thread(sessionId)` 调用 `thread/unarchive` 恢复远端日志，保持原 external thread binding，并将本地会话恢复为可继续发送的状态。
 - 分支 binding 记录 `parentExternalSessionId`，为后续统一 session tree 和 handoff provenance 保留关系。
 - 活跃 turn 不允许 fork/archive；归档会话不能继续发送消息或再次创建分支。
 
-## 后续批次
+## 本批次：事件投影与一致性
 
-1. 为 list/read/fork/archive 增加绑定一致性检查，并补充可逆的 thread/unarchive 操作评估。
-2. 归一化 command、file change、diff、usage 等 tool/item 事件并投影到 timeline。
-3. 为 approval、adapter crash、旧 generation 增加 fixture replay 和 contract tests。
-4. 评估待审批请求在应用重启后的可解释恢复策略；不能假定原生 server request 可安全重放。
+1. `item/started|updated|completed` 及 command/file/MCP output progress 被归一化为 `tool.started|updated|completed`，工具摘要写入 `messages(role=tool)`，原始协议字段不直接暴露给 UI。
+2. token usage 通知被归一化为 `usage.updated`，仅保留可审计的 token 计数。
+3. 事件循环按绑定 thread ID 丢弃跨线程通知；每次持久化仍校验当前 `generationId`，旧 generation 事件不会污染新运行。
+4. read/unarchive 使用短生命周期客户端，并校验响应 thread ID 与本地 binding 一致；read 不会为了读取历史而启动持久 runtime，fork 也拒绝复用源 thread ID。
+5. approval、工具生命周期、fork/archive/unarchive、进程退出和旧 generation 均有脱敏 fixture replay/contract tests。进程退出会显式记录被丢弃的 pending approval 数量，不自动重放审批。
 
 ## 退出条件
 
-macOS 上不显示 Codex 原生 UI；Aibo 能完成会话创建、流式显示、显式审批、拒绝/允许结果投影和恢复，并通过 Codex adapter contract tests。
+macOS 上不显示 Codex 原生 UI；Aibo 能完成会话创建、流式消息与工具事件显示、显式审批、拒绝/允许结果投影、线程归档/取消归档和恢复，并通过 Codex adapter contract tests。

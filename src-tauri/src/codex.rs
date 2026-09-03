@@ -349,9 +349,9 @@ fn parse_thread_list(value: &Value) -> Result<Vec<CodexThreadSummary>, CodexErro
 }
 
 fn parse_thread_snapshot(value: &Value) -> Result<CodexThreadSnapshot, CodexError> {
-    let thread = value
-        .pointer("/result/thread")
-        .ok_or_else(|| CodexError::Protocol("thread/read did not return a thread".to_owned()))?;
+    let thread = value.pointer("/result/thread").ok_or_else(|| {
+        CodexError::Protocol("Codex thread response did not return a thread".to_owned())
+    })?;
     let summary = parse_thread_summary(thread)?;
     let turn_count = thread
         .get("turns")
@@ -382,6 +382,208 @@ fn parse_forked_thread(value: &Value) -> Result<(String, Option<String>), CodexE
         .and_then(Value::as_str)
         .map(ToOwned::to_owned);
     Ok((thread_id, parent_id))
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct ToolProjection {
+    item_id: String,
+    item_type: String,
+    status: String,
+    summary: String,
+    delta: Option<String>,
+    output: Option<String>,
+}
+
+fn event_thread_id(params: &Value) -> Option<&str> {
+    params
+        .get("threadId")
+        .and_then(Value::as_str)
+        .or_else(|| params.pointer("/thread/id").and_then(Value::as_str))
+}
+
+fn event_turn_id(params: &Value) -> Option<String> {
+    params
+        .get("turnId")
+        .and_then(Value::as_str)
+        .or_else(|| params.pointer("/turn/id").and_then(Value::as_str))
+        .map(ToOwned::to_owned)
+}
+
+fn truncate_text(text: &str, max_chars: usize) -> String {
+    let mut chars = text.chars();
+    let value: String = chars.by_ref().take(max_chars).collect();
+    if chars.next().is_some() {
+        format!("{value}…")
+    } else {
+        value
+    }
+}
+
+fn tool_event_kind(method: &str) -> Option<&'static str> {
+    match method {
+        "item/started" => Some("tool.started"),
+        "item/updated"
+        | "item/commandExecution/outputDelta"
+        | "item/fileChange/outputDelta"
+        | "item/mcpToolCall/progress" => Some("tool.updated"),
+        "item/completed" => Some("tool.completed"),
+        _ => None,
+    }
+}
+
+fn is_tool_item_type(item_type: &str) -> bool {
+    let normalized = item_type.to_ascii_lowercase();
+    normalized.contains("command")
+        || normalized.contains("file")
+        || normalized.contains("tool")
+        || normalized.contains("shell")
+        || normalized.contains("search")
+        || normalized.contains("computer")
+        || normalized.contains("patch")
+        || normalized.contains("diff")
+        || normalized.contains("edit")
+}
+
+fn tool_projection(method: &str, params: &Value) -> Option<ToolProjection> {
+    let item = params.get("item").unwrap_or(params);
+    let item_id = params
+        .get("itemId")
+        .and_then(Value::as_str)
+        .or_else(|| item.get("id").and_then(Value::as_str))?
+        .to_owned();
+    let item_type = item
+        .get("type")
+        .and_then(Value::as_str)
+        .or_else(|| params.get("kind").and_then(Value::as_str))
+        .or_else(|| method.split('/').nth(1))
+        .unwrap_or("tool")
+        .to_owned();
+    if !is_tool_item_type(&item_type) {
+        return None;
+    }
+    let status = item
+        .get("status")
+        .and_then(Value::as_str)
+        .map(ToOwned::to_owned)
+        .unwrap_or_else(|| match tool_event_kind(method) {
+            Some("tool.completed") => "completed".to_owned(),
+            _ => "inProgress".to_owned(),
+        });
+    let delta = params
+        .get("delta")
+        .and_then(Value::as_str)
+        .map(|value| truncate_text(value, 4_000));
+    let primary = [
+        item.get("command").and_then(Value::as_str),
+        item.get("path").and_then(Value::as_str),
+        item.get("filePath").and_then(Value::as_str),
+        item.get("toolName").and_then(Value::as_str),
+        item.get("name").and_then(Value::as_str),
+        item.get("description").and_then(Value::as_str),
+        item.get("text").and_then(Value::as_str),
+    ]
+    .into_iter()
+    .flatten()
+    .next()
+    .map(|value| truncate_text(value, 2_000));
+    let output = [
+        item.get("aggregatedOutput").and_then(Value::as_str),
+        item.get("output").and_then(Value::as_str),
+        item.get("stdout").and_then(Value::as_str),
+        item.get("stderr").and_then(Value::as_str),
+    ]
+    .into_iter()
+    .flatten()
+    .next()
+    .map(|value| truncate_text(value, 4_000));
+    let summary = match (primary, output.as_deref()) {
+        (Some(primary), Some(output)) if !output.is_empty() => {
+            truncate_text(&format!("{primary}\n{output}"), 6_000)
+        }
+        (Some(primary), _) => primary.to_owned(),
+        (None, Some(output)) if !output.is_empty() => output.to_owned(),
+        (None, _) => delta.clone().unwrap_or_else(|| item_type.clone()),
+    };
+    Some(ToolProjection {
+        item_id,
+        item_type,
+        status,
+        summary,
+        delta,
+        output,
+    })
+}
+
+fn map_tool_status(status: &str, event_type: &str) -> &'static str {
+    if event_type == "tool.completed" {
+        return match status {
+            "failed" | "error" | "declined" | "cancelled" | "canceled" => "failed",
+            _ => "completed",
+        };
+    }
+    match status {
+        "failed" | "error" | "declined" | "cancelled" | "canceled" => "failed",
+        "completed" | "succeeded" => "completed",
+        _ => "streaming",
+    }
+}
+
+fn usage_projection(params: &Value) -> Option<Value> {
+    let usage = params
+        .get("usage")
+        .or_else(|| params.get("tokenUsage"))
+        .or_else(|| params.get("totalUsage"))
+        .filter(|value| value.is_object())
+        .cloned()
+        .or_else(|| params.is_object().then(|| params.clone()))?;
+    let usage = usage
+        .get("total")
+        .filter(|value| value.is_object())
+        .unwrap_or(&usage);
+    let fields: [(&str, &[&str]); 8] = [
+        ("inputTokens", &["inputTokens"]),
+        ("outputTokens", &["outputTokens"]),
+        (
+            "cachedInputTokens",
+            &["cachedInputTokens", "cacheReadInputTokens"],
+        ),
+        (
+            "cacheWriteTokens",
+            &["cacheWriteTokens", "cacheWriteInputTokens"],
+        ),
+        ("totalTokens", &["totalTokens"]),
+        ("reasoningOutputTokens", &["reasoningOutputTokens"]),
+        ("modelContextWindow", &["modelContextWindow"]),
+        ("cacheReadTokens", &["cacheReadTokens"]),
+    ];
+    let mut normalized = serde_json::Map::new();
+    for (canonical, aliases) in fields {
+        if let Some(value) = aliases
+            .iter()
+            .find_map(|key| usage.get(*key).and_then(Value::as_u64))
+        {
+            normalized.insert(canonical.to_owned(), json!(value));
+        }
+    }
+    if normalized.is_empty() {
+        None
+    } else {
+        Some(Value::Object(normalized))
+    }
+}
+
+fn matching_thread_id(expected: &str, actual: &str) -> Result<(), CodexError> {
+    if expected == actual {
+        Ok(())
+    } else {
+        Err(CodexError::Session(format!(
+            "Codex thread binding mismatch: expected {expected}, got {actual}"
+        )))
+    }
+}
+
+fn generation_matches(expected: &str, current: Option<&str>) -> bool {
+    current == Some(expected)
 }
 
 async fn initialize_client(client: &CodexClient) -> Result<(), CodexError> {
@@ -473,6 +675,13 @@ impl CodexSession {
             .and_then(Value::as_str)
             .unwrap_or_default();
         let params = message.get("params").cloned().unwrap_or_else(|| json!({}));
+        if let Some(event_thread_id) = event_thread_id(&params) {
+            if let Some(bound_thread_id) = self.thread_id.lock().await.clone() {
+                if event_thread_id != bound_thread_id {
+                    return Ok(());
+                }
+            }
+        }
         match method {
             "thread/started" => {
                 if let Some(thread_id) = params.pointer("/thread/id").and_then(Value::as_str) {
@@ -527,6 +736,25 @@ impl CodexSession {
                         Some(turn_id.to_owned()),
                         json!({ "itemId": item_id, "delta": delta }),
                         Some(json!({ "itemId": item_id })),
+                    )
+                    .await?;
+                }
+            }
+            "item/started"
+            | "item/updated"
+            | "item/completed"
+            | "item/commandExecution/outputDelta"
+            | "item/fileChange/outputDelta"
+            | "item/mcpToolCall/progress" => {
+                self.handle_tool_event(method, &params).await?;
+            }
+            "thread/tokenUsage/updated" | "turn/tokenUsage/updated" | "usage/updated" => {
+                if let Some(usage) = usage_projection(&params) {
+                    self.emit_event(
+                        "usage.updated",
+                        event_turn_id(&params),
+                        json!({ "usage": usage }),
+                        None,
                     )
                     .await?;
                 }
@@ -665,12 +893,17 @@ impl CodexSession {
             }
             "aibo/process-exited" => {
                 *self.current_turn_id.lock().await = None;
+                let discarded_approvals = self.pending_approvals.lock().await.len();
                 self.pending_approvals.lock().await.clear();
                 self.set_state("interrupted").await?;
                 self.emit_event(
                     "adapter.crashed",
                     None,
-                    json!({ "reason": params.get("reason").cloned().unwrap_or(Value::Null) }),
+                    json!({
+                        "reason": params.get("reason").cloned().unwrap_or(Value::Null),
+                        "pendingApprovalCount": discarded_approvals,
+                        "approvalsDiscarded": discarded_approvals > 0
+                    }),
                     None,
                 )
                 .await?;
@@ -704,7 +937,10 @@ impl CodexSession {
                 .fetch_optional(&self.db)
                 .await?
                 .flatten();
-        Ok(generation.as_deref() == Some(self.generation_id.as_str()))
+        Ok(generation_matches(
+            &self.generation_id,
+            generation.as_deref(),
+        ))
     }
 
     async fn set_thread_id(&self, thread_id: String) {
@@ -794,6 +1030,88 @@ impl CodexSession {
             .await?;
         }
         Ok(())
+    }
+
+    async fn handle_tool_event(&self, method: &str, params: &Value) -> Result<(), CodexError> {
+        let Some(event_type) = tool_event_kind(method) else {
+            return Ok(());
+        };
+        let Some(projection) = tool_projection(method, params) else {
+            return Ok(());
+        };
+        let external_turn_id = event_turn_id(params);
+        let internal_turn_id = if let Some(turn_id) = external_turn_id.as_deref() {
+            Some(self.ensure_turn(turn_id, "").await?)
+        } else {
+            None
+        };
+        let status = map_tool_status(&projection.status, event_type);
+        let now = now_iso();
+        let updated = if method.ends_with("outputDelta") || method == "item/mcpToolCall/progress" {
+            sqlx::query(
+                "UPDATE messages SET content = content || ?, turn_id = COALESCE(?, turn_id),
+                        status = ?, updated_at = ?
+                 WHERE session_id = ? AND external_message_id = ? AND role = 'tool'",
+            )
+            .bind(projection.delta.as_deref().unwrap_or(&projection.summary))
+            .bind(internal_turn_id.as_deref())
+            .bind(status)
+            .bind(&now)
+            .bind(&self.session_id)
+            .bind(&projection.item_id)
+            .execute(&self.db)
+            .await?
+        } else {
+            let replace_content = method == "item/started" || projection.output.is_some();
+            sqlx::query(
+                "UPDATE messages SET content = CASE WHEN ? = 1 OR content = '' THEN ? ELSE content END,
+                        turn_id = COALESCE(?, turn_id),
+                        status = ?, updated_at = ?
+                 WHERE session_id = ? AND external_message_id = ? AND role = 'tool'",
+            )
+            .bind(if replace_content { 1_i64 } else { 0_i64 })
+            .bind(&projection.summary)
+            .bind(internal_turn_id.as_deref())
+            .bind(status)
+            .bind(&now)
+            .bind(&self.session_id)
+            .bind(&projection.item_id)
+            .execute(&self.db)
+            .await?
+        };
+        if updated.rows_affected() == 0 {
+            sqlx::query(
+                "INSERT INTO messages
+                 (id, session_id, turn_id, external_message_id, role, content, status,
+                  sequence, created_at, updated_at)
+                 VALUES (?, ?, ?, ?, 'tool', ?, ?, ?, ?, ?)",
+            )
+            .bind(Ulid::new().to_string())
+            .bind(&self.session_id)
+            .bind(internal_turn_id)
+            .bind(&projection.item_id)
+            .bind(&projection.summary)
+            .bind(status)
+            .bind(self.sequence.load(Ordering::Relaxed) as i64)
+            .bind(&now)
+            .bind(&now)
+            .execute(&self.db)
+            .await?;
+        }
+        self.emit_event(
+            event_type,
+            external_turn_id,
+            json!({
+                "itemId": projection.item_id,
+                "itemType": projection.item_type,
+                "status": status,
+                "summary": projection.summary,
+                "delta": projection.delta,
+                "output": projection.output
+            }),
+            Some(json!({ "itemId": projection.item_id })),
+        )
+        .await
     }
 
     async fn complete_assistant_messages(
@@ -1119,6 +1437,11 @@ impl CodexManager {
                 "session is not a Codex session".to_owned(),
             ));
         }
+        if session.archived {
+            return Err(CodexError::Session(
+                "archived Codex session must be unarchived before use".to_owned(),
+            ));
+        }
         let external_id: Option<String> = sqlx::query_scalar(
             "SELECT external_session_id FROM session_bindings WHERE session_id = ?",
         )
@@ -1183,25 +1506,60 @@ impl CodexManager {
         Ok(runtime)
     }
 
+    async fn open_bound_client(
+        &self,
+        session_id: &str,
+    ) -> Result<(super::Session, String, Arc<CodexClient>), CodexError> {
+        let session = session_by_id(&self.db, session_id)
+            .await
+            .map_err(|error| CodexError::Session(error.to_string()))?;
+        if session.agent != "codex" {
+            return Err(CodexError::Session(
+                "session is not a Codex session".to_owned(),
+            ));
+        }
+        let thread_id: String = sqlx::query_scalar(
+            "SELECT external_session_id FROM session_bindings WHERE session_id = ?",
+        )
+        .bind(session_id)
+        .fetch_optional(&self.db)
+        .await?
+        .flatten()
+        .ok_or_else(|| {
+            CodexError::Session("Codex session has no external thread binding".to_owned())
+        })?;
+        let workspace_path: String = sqlx::query_scalar("SELECT path FROM workspaces WHERE id = ?")
+            .bind(&session.workspace_id)
+            .fetch_one(&self.db)
+            .await?;
+        let codex_path = find_executable("codex").ok_or(CodexError::MissingExecutable)?;
+        let client = CodexClient::spawn(codex_path, Path::new(&workspace_path)).await?;
+        if let Err(error) = initialize_client(&client).await {
+            client.close().await;
+            return Err(error);
+        }
+        Ok((session, thread_id, client))
+    }
+
     pub(crate) async fn read_thread(
         &self,
         session_id: &str,
     ) -> Result<CodexThreadSnapshot, CodexError> {
-        let session = self.ensure_runtime(session_id).await?;
-        let thread_id = session
-            .thread_id
-            .lock()
-            .await
-            .clone()
-            .ok_or_else(|| CodexError::Session("Codex session has no thread id".to_owned()))?;
-        let response = session
-            .client
-            .request(
-                "thread/read",
-                json!({ "threadId": thread_id, "includeTurns": true }),
-            )
-            .await?;
-        parse_thread_snapshot(&response)
+        let (_, thread_id, client) = self.open_bound_client(session_id).await?;
+        let result = async {
+            let response = client
+                .request(
+                    "thread/read",
+                    json!({ "threadId": thread_id, "includeTurns": true }),
+                )
+                .await?;
+            let snapshot = parse_thread_snapshot(&response)?;
+            matching_thread_id(&thread_id, &snapshot.id)?;
+            Ok(snapshot)
+        }
+        .await;
+        client.close().await;
+        result
     }
 
     pub(crate) async fn fork(
@@ -1286,12 +1644,15 @@ impl CodexManager {
                 "thread/fork returned the source thread id".to_owned(),
             ));
         }
+        if let Some(parent_thread_id) = parent_thread_id.as_deref() {
+            matching_thread_id(&source_thread_id, parent_thread_id)?;
+        }
 
         let new_session_id = Ulid::new().to_string();
         let generation_id = Ulid::new().to_string();
         let now = now_iso();
         let label = format!("{} · 分支", source.label);
-        let parent_thread_id = parent_thread_id.unwrap_or(source_thread_id);
+        let parent_thread_id = parent_thread_id.unwrap_or_else(|| source_thread_id.clone());
         let mut transaction = self.db.begin().await?;
         sqlx::query(
             "INSERT INTO sessions
@@ -1448,6 +1809,41 @@ impl CodexManager {
         session.deactivate();
         self.sessions.lock().await.remove(session_id);
         session.client.close().await;
+        super::session_by_id(&self.db, session_id)
+            .await
+            .map_err(|error| CodexError::Session(error.to_string()))
+    }
+
+    pub(crate) async fn unarchive(&self, session_id: &str) -> Result<super::Session, CodexError> {
+        let existing = super::session_by_id(&self.db, session_id)
+            .await
+            .map_err(|error| CodexError::Session(error.to_string()))?;
+        if existing.agent != "codex" {
+            return Err(CodexError::Session(
+                "session is not a Codex session".to_owned(),
+            ));
+        }
+        if !existing.archived {
+            return Ok(existing);
+        }
+        let (_, thread_id, client) = self.open_bound_client(session_id).await?;
+        let result = async {
+            let response = client
+                .request("thread/unarchive", json!({ "threadId": thread_id }))
+                .await?;
+            let snapshot = parse_thread_snapshot(&response)?;
+            matching_thread_id(&thread_id, &snapshot.id)
+        }
+        .await;
+        client.close().await;
+        result?;
+        sqlx::query(
+            "UPDATE sessions SET archived = 0, state = 'closed', updated_at = ? WHERE id = ?",
+        )
+        .bind(now_iso())
+        .bind(session_id)
+        .execute(&self.db)
+        .await?;
         super::session_by_id(&self.db, session_id)
             .await
             .map_err(|error| CodexError::Session(error.to_string()))
@@ -1614,8 +2010,9 @@ impl CodexManager {
 #[cfg(test)]
 mod tests {
     use super::{
-        final_turn_text, map_turn_status, parse_forked_thread, parse_thread_list,
-        parse_thread_snapshot, value_id,
+        event_thread_id, final_turn_text, generation_matches, map_tool_status, map_turn_status,
+        matching_thread_id, parse_forked_thread, parse_thread_list, parse_thread_snapshot,
+        tool_projection, usage_projection, value_id,
     };
     use serde_json::json;
 
@@ -1703,5 +2100,53 @@ mod tests {
         let (thread_id, parent_id) = parse_forked_thread(&response).expect("thread/fork response");
         assert_eq!(thread_id, "thread-child");
         assert_eq!(parent_id.as_deref(), Some("thread-parent"));
+    }
+
+    #[test]
+    fn normalizes_tool_item_lifecycle_and_usage_fixture() {
+        let fixture = include_str!("../../fixtures/codex/events.tools.redacted.jsonl");
+        let mut methods = Vec::new();
+        for line in fixture.lines() {
+            let record: serde_json::Value = serde_json::from_str(line).expect("fixture JSON");
+            let payload = &record["payload"];
+            if let Some(method) = payload.get("method").and_then(serde_json::Value::as_str) {
+                methods.push(method.to_owned());
+                if method == "item/started" {
+                    let projection = tool_projection(method, &payload["params"])
+                        .expect("tool started projection");
+                    assert_eq!(projection.item_id, "tool-1");
+                    assert_eq!(projection.item_type, "commandExecution");
+                    assert_eq!(projection.summary, "pwd");
+                }
+                if method == "item/completed" {
+                    let projection = tool_projection(method, &payload["params"])
+                        .expect("tool completed projection");
+                    assert!(projection.summary.contains("<workspace>"));
+                    assert!(projection.output.is_some());
+                }
+                if method == "turn/tokenUsage/updated" {
+                    let usage = usage_projection(&payload["params"]).expect("usage projection");
+                    assert_eq!(usage["totalTokens"], 19);
+                }
+            }
+        }
+        assert_eq!(methods[2], "item/started");
+        assert_eq!(map_tool_status("completed", "tool.completed"), "completed");
+        assert_eq!(map_tool_status("declined", "tool.completed"), "failed");
+    }
+
+    #[test]
+    fn rejects_events_from_a_different_thread_binding() {
+        assert!(matching_thread_id("thread-1", "thread-1").is_ok());
+        assert!(matching_thread_id("thread-1", "thread-2").is_err());
+        let params = serde_json::json!({ "thread": { "id": "thread-1" } });
+        assert_eq!(event_thread_id(&params), Some("thread-1"));
+    }
+
+    #[test]
+    fn rejects_late_events_from_an_old_generation() {
+        assert!(generation_matches("generation-2", Some("generation-2")));
+        assert!(!generation_matches("generation-2", Some("generation-1")));
+        assert!(!generation_matches("generation-2", None));
     }
 }

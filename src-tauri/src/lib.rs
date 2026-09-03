@@ -458,6 +458,14 @@ async fn archive_codex_thread(
 }
 
 #[tauri::command]
+async fn unarchive_codex_thread(
+    session_id: String,
+    state: State<'_, AppState>,
+) -> Result<Session, CoreError> {
+    state.codex.unarchive(&session_id).await.map_err(Into::into)
+}
+
+#[tauri::command]
 async fn create_codex_session(
     workspace_id: String,
     state: State<'_, AppState>,
@@ -689,6 +697,7 @@ pub fn run() {
             read_codex_thread,
             fork_codex_thread,
             archive_codex_thread,
+            unarchive_codex_thread,
             create_codex_session,
             send_codex_prompt,
             abort_codex_turn,

@@ -1,6 +1,6 @@
 # Aibo 多 Agent 工作台：调研、架构建议与实施计划
 
-> 状态：架构已冻结（macOS 首发）；Phase 0 macOS 复验完成，Phase 1 Codex 真实会话已验收，Phase 2 审批与 Codex thread 生命周期已实现，Windows 后续验证
+> 状态：架构已冻结（macOS 首发）；Phase 0 macOS 复验完成，Phase 1 Codex 真实会话已验收，Phase 2 审批、Codex thread 生命周期、工具事件投影与恢复契约已实现，Windows 后续验证
 > 调研日期：2026-09-02  
 > 首批目标：Codex、Pi；首发平台：macOS（当前基线为 arm64）
 > 技术栈：Svelte 5 + Tauri 2
@@ -432,7 +432,7 @@ V1 后为 Pi 增加可选 container/VM/平台 sandbox runner；统一权限 prof
 - approval 卡片、interrupt、崩溃恢复。
 - Codex capability contract tests。
 
-当前门禁：不出现 Codex 原生 UI；Aibo 已完成会话创建、流式显示、审批、恢复、thread list/read、fork 和 archive。下一门禁转向工具事件投影与绑定一致性检查。
+当前门禁：不出现 Codex 原生 UI；Aibo 已完成会话创建、流式显示、审批、恢复、thread list/read/fork/archive/unarchive、工具 item/usage 投影与绑定一致性检查。下一门禁转向跨 Agent handoff 与统一 session tree。
 
 ### Phase 3：Pi Adapter（5–8 天）
 
