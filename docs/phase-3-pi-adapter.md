@@ -10,7 +10,9 @@ Aibo 在 Rust Core 中为每个 Pi 会话启动一个 Node SDK host（`src-tauri
 
 - `start`：以工作区路径和 Aibo 管理的 `sessionDir` 创建或打开 `SessionManager`。
 - `prompt`：立即返回 accepted，在同一 stdout 流中异步转发 SDK 事件。
+- `steer` / `followUp`：仅在活动 turn 中接受排队消息，分别对应“插入当前响应”和“当前响应结束后跟进”。
 - `abort`：调用 `AgentSession.abort()`。
+- `tree`：读取 Pi 原生 `SessionManager` 树，返回当前 leaf、父子关系、角色和截断后的摘要。
 - `dispose`：释放 SDK session 和 host 进程。
 
 Pi SDK 的 `message_start/update/end`、`turn_end`、`agent_start`、`agent_error` 和工具执行事件在 Rust 侧被收敛为 `turn.*`、`message.*`、`tool.*`、`usage.updated`、`adapter.*`，因此前端继续复用 Codex 的时间线和 composer。
@@ -23,10 +25,16 @@ Pi SDK 的 `message_start/update/end`、`turn_end`、`agent_start`、`agent_erro
 
 ## 本机验证
 
-已验证 Node host 可在 macOS 上启动并返回协议版本、Pi session id、持久化 session 文件和只读 capability。完整真实模型 smoke 仍使用项目已有 `pnpm run probe:pi:sdk -- --smoke` 门禁；Windows 需要重新验证 Node 路径、session 路径及进程退出行为。
+已在 macOS 上验证 Node host 可启动并返回协议版本、Pi session id、持久化 session 文件和只读 capability；真实模型 smoke 已覆盖首轮响应、session tree leaf、流式 `steer`、`followUp` 和 `abort`。Windows 仍需重新验证 Node 路径、session 路径及进程退出行为。
+
+## 当前批次已完成
+
+1. `steer` / `followUp` 已映射到统一 composer 队列语义，并在真实 SDK host smoke 中验证 accepted 和 abort 边界。
+2. Pi session tree 已通过 host、Rust command 和 Svelte inspector 展示当前 leaf 与父子层级。
+3. SDK host fixture 已增加 tree response；compaction/retry/extension 事件仍保留在下一批。
 
 ## 下一批
 
-1. 将 steer/follow-up 映射到统一 composer/队列语义。
-2. 显示 Pi session tree、分支和恢复关系。
-3. 投影 compaction/retry/extension 状态，并为 SDK host 增加录制 fixture 与崩溃恢复测试。
+1. 投影 compaction、retry、extension 状态和消息，补齐事件 fixture。
+2. 增加 host 崩溃、重启后 reopen 及 generation 隔离测试。
+3. 在树视图中加入安全的分支切换/恢复动作，并为跨 Agent handoff 预留 snapshot 接口。

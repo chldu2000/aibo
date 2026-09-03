@@ -23,6 +23,7 @@
     createPiSession,
     forkCodexThread,
     getTimeline,
+    getPiSessionTree,
     isTauri,
     listCodexThreads,
     listWorkspaces,
@@ -34,6 +35,8 @@
     resolveCodexApproval,
     sendCodexPrompt,
     sendPiPrompt,
+    steerPiPrompt,
+    followUpPiPrompt,
     abortPiTurn,
     setWorkspaceTrust,
     unarchiveCodexThread,
@@ -46,6 +49,8 @@
     CodexThreadSnapshot,
     CodexThreadSummary,
     Session,
+    PiSessionTreeNode,
+    PiSessionTreeSnapshot,
     TimelineItem,
     Workspace,
   } from './lib/types';
@@ -92,6 +97,7 @@
   let pendingApprovals = $state<ApprovalRequest[]>([]);
   let codexThreads = $state<CodexThreadSummary[]>([]);
   let codexThreadSnapshot = $state<CodexThreadSnapshot | null>(null);
+  let piTree = $state<PiSessionTreeSnapshot | null>(null);
   let selectedWorkspaceId = $state<string | null>(null);
   let selectedSessionId = $state<string | null>(null);
   let workspacePath = $state('');
@@ -174,6 +180,7 @@
         timeline = [];
         codexThreads = [];
         codexThreadSnapshot = null;
+        piTree = null;
       }
     } catch (error) {
       errorMessage = toErrorMessage(error);
@@ -193,9 +200,11 @@
     if (selectedSessionId) {
       await refreshTimeline(selectedSessionId);
       void refreshCodexThread(selectedSessionId);
+      void refreshPiTree(selectedSessionId);
     } else {
       timeline = [];
       codexThreadSnapshot = null;
+      piTree = null;
     }
   }
 
@@ -256,6 +265,21 @@
   async function refreshTimeline(sessionId: string) {
     const loadedTimeline = await getTimeline(sessionId);
     if (sessionId === selectedSessionId) timeline = loadedTimeline;
+  }
+
+  async function refreshPiTree(sessionId: string) {
+    const session = sessions.find((item) => item.id === sessionId);
+    if (!desktop || !session || session.agent !== 'pi') {
+      if (sessionId === selectedSessionId) piTree = null;
+      return;
+    }
+    try {
+      const snapshot = await getPiSessionTree(sessionId);
+      if (sessionId === selectedSessionId) piTree = snapshot;
+    } catch (error) {
+      if (sessionId === selectedSessionId) piTree = null;
+      console.warn('unable to read Pi session tree', error);
+    }
   }
 
   function handleAgentEvent(event: AgentEvent) {
@@ -487,6 +511,8 @@
       sessions = [session, ...sessions.filter(({ id }) => id !== session.id)];
       selectedSessionId = session.id;
       timeline = [];
+      piTree = null;
+      void refreshPiTree(session.id);
       notice = 'Pi SDK 会话已启动；当前仅开放只读工具，Pi 本身不提供原生沙箱。';
     } catch (error) {
       errorMessage = toErrorMessage(error);
@@ -551,6 +577,23 @@
     }
   }
 
+  async function queuePiPrompt(mode: 'steer' | 'followUp') {
+    const input = composerText.trim();
+    if (!input || !selectedSession || selectedSession.agent !== 'pi' || !desktop) return;
+    busy = true;
+    errorMessage = null;
+    try {
+      if (mode === 'steer') await steerPiPrompt(selectedSession.id, input);
+      else await followUpPiPrompt(selectedSession.id, input);
+      await refreshTimeline(selectedSession.id);
+      composerText = '';
+    } catch (error) {
+      errorMessage = toErrorMessage(error);
+    } finally {
+      busy = false;
+    }
+  }
+
   async function resolveApproval(approval: ApprovalRequest, decision: ApprovalDecision) {
     if (!desktop) {
       notice = '当前是 Web 预览；审批操作需要在 Tauri 桌面模式中执行。';
@@ -586,7 +629,9 @@
       sessions = remaining;
       selectedSessionId = remaining[0]?.id ?? null;
       codexThreadSnapshot = null;
+      piTree = null;
       timeline = selectedSessionId ? await getTimeline(selectedSessionId) : [];
+      if (selectedSessionId) void refreshPiTree(selectedSessionId);
       notice = `${closingAgent === 'pi' ? 'Pi' : 'Codex'} 会话已关闭；已保存的时间线仍可在下次启动时读取。`;
     } catch (error) {
       errorMessage = toErrorMessage(error);
@@ -674,6 +719,7 @@
     if (desktop) {
       void refreshTimeline(id);
       void refreshCodexThread(id);
+      void refreshPiTree(id);
     }
   }
 
@@ -712,6 +758,7 @@
       timeline = [];
       codexThreads = [];
       codexThreadSnapshot = null;
+      piTree = null;
       if (selectedWorkspaceId) {
         void refreshSessions(selectedWorkspaceId);
         void refreshCodexThreads(selectedWorkspaceId);
@@ -731,6 +778,7 @@
     timeline = [];
     codexThreads = [];
     codexThreadSnapshot = null;
+    piTree = null;
     if (desktop) {
       void refreshSessions(id);
       void refreshCodexThreads(id);
@@ -744,6 +792,13 @@
       return String(error.message);
     }
     return '操作失败，请查看诊断日志。';
+  }
+
+  function flattenPiTree(nodes: PiSessionTreeNode[], depth = 0): Array<{ node: PiSessionTreeNode; depth: number }> {
+    return nodes.flatMap((node) => [
+      { node, depth },
+      ...flattenPiTree(node.children ?? [], depth + 1),
+    ]);
   }
 </script>
 
@@ -935,15 +990,20 @@
           bind:value={composerText}
           rows="2"
           placeholder={sessionArchived ? '该会话已归档，请取消归档或创建分支继续…' : selectedSession ? '输入消息，⌘/Ctrl + Enter 发送…' : '先新建或选择一个 Agent 会话…'}
-          disabled={!selectedSession || sessionArchived || sessionRunning || busy}
+          disabled={!selectedSession || sessionArchived || (sessionRunning && selectedSession?.agent === 'codex') || busy}
           onkeydown={(event) => {
             if ((event.metaKey || event.ctrlKey) && event.key === 'Enter') {
               event.preventDefault();
-              void sendPrompt();
+              if (sessionRunning && selectedSession?.agent === 'pi') void queuePiPrompt('steer');
+              else void sendPrompt();
             }
           }}
         ></Textarea>
         {#if sessionRunning}
+          {#if selectedSession?.agent === 'pi'}
+            <Button variant="outline" size="sm" type="button" onclick={() => void queuePiPrompt('steer')} disabled={busy || !composerText.trim()}>插入</Button>
+            <Button variant="outline" size="sm" type="button" onclick={() => void queuePiPrompt('followUp')} disabled={busy || !composerText.trim()}>跟进</Button>
+          {/if}
           <Button variant="destructive" size="icon" type="button" onclick={() => void abortPrompt()} disabled={busy} aria-label="中止">
             <SquareIcon size={13} fill="currentColor" />
           </Button>
@@ -1010,6 +1070,34 @@
             {/if}
             <Button variant="ghost" size="sm" type="button" onclick={() => void syncCodexThreads()} disabled={threadBusy || busy}>
               <RefreshCwIcon size={13} /> 刷新线程
+            </Button>
+          </CardContent>
+        </Card>
+      {/if}
+
+      {#if selectedSession?.agent === 'pi' && desktop && piTree}
+        <Card class="thread-card">
+          <CardHeader class="thread-card-heading">
+            <CardTitle>Pi 会话树</CardTitle>
+            <Badge variant="secondary" class="count-pill">{flattenPiTree(piTree.tree).length}</Badge>
+          </CardHeader>
+          <CardContent class="thread-card-content">
+            {#if piTree.tree.length === 0}
+              <p class="thread-empty">首条消息后生成会话树</p>
+            {:else}
+              <div class="thread-list" aria-label="Pi 会话树">
+                {#each flattenPiTree(piTree.tree) as entry (entry.node.id)}
+                  <div class="thread-item" style={`padding-left: ${entry.depth * 14}px`}>
+                    <div class="thread-copy">
+                      <strong>{entry.node.label ?? entry.node.summary ?? entry.node.type}</strong>
+                      <small>{entry.node.role ?? entry.node.type}{entry.node.id === piTree.leafId ? ' · 当前分支' : ''}</small>
+                    </div>
+                  </div>
+                {/each}
+              </div>
+            {/if}
+            <Button variant="ghost" size="sm" type="button" onclick={() => void refreshPiTree(selectedSession.id)} disabled={busy}>
+              <RefreshCwIcon size={13} /> 刷新会话树
             </Button>
           </CardContent>
         </Card>

@@ -994,6 +994,83 @@ impl PiManager {
         Ok(())
     }
 
+    async fn enqueue_message(
+        &self,
+        session_id: &str,
+        input: &str,
+        mode: &str,
+    ) -> Result<(), PiError> {
+        let input = input.trim();
+        if input.is_empty() {
+            return Err(PiError::Session(
+                "queued prompt must not be empty".to_owned(),
+            ));
+        }
+        let session = self.ensure_runtime(session_id).await?;
+        if !matches!(session.state.lock().await.as_str(), "running") {
+            return Err(PiError::Session(format!(
+                "Pi {mode} requires an active turn"
+            )));
+        }
+        let external_turn = session
+            .current_turn_id
+            .lock()
+            .await
+            .clone()
+            .ok_or_else(|| PiError::Session("Pi session has no active turn".to_owned()))?;
+        let internal_turn = session.ensure_turn(&external_turn, "").await?;
+        let user_message_id = Ulid::new().to_string();
+        let now = now_iso();
+        sqlx::query("INSERT INTO messages (id, session_id, turn_id, external_message_id, role, content, status, sequence, created_at, updated_at) VALUES (?, ?, ?, ?, 'user', ?, 'completed', ?, ?, ?)")
+            .bind(&user_message_id)
+            .bind(session_id)
+            .bind(&internal_turn)
+            .bind(format!("user:{user_message_id}"))
+            .bind(input)
+            .bind(session.sequence.load(Ordering::Relaxed) as i64)
+            .bind(&now)
+            .bind(&now)
+            .execute(&self.db)
+            .await?;
+        let result = session.client.request(mode, json!({ "text": input })).await;
+        if result.is_err() {
+            // The host can finish between the state check and the request.
+            // Do not leave a queued user message behind when the SDK rejects
+            // that race or the host has already exited.
+            let _ = sqlx::query("DELETE FROM messages WHERE id = ?")
+                .bind(&user_message_id)
+                .execute(&self.db)
+                .await;
+        }
+        result.map(|_| ())
+    }
+
+    pub(crate) async fn steer(&self, session_id: &str, input: &str) -> Result<(), PiError> {
+        self.enqueue_message(session_id, input, "steer").await
+    }
+
+    pub(crate) async fn follow_up(&self, session_id: &str, input: &str) -> Result<(), PiError> {
+        self.enqueue_message(session_id, input, "followUp").await
+    }
+
+    pub(crate) async fn tree(&self, session_id: &str) -> Result<Value, PiError> {
+        let session = self.ensure_runtime(session_id).await?;
+        let response = session.client.request("tree", json!({})).await?;
+        let result = response.get("result").cloned().unwrap_or_else(|| json!({}));
+        let tree = result
+            .get("tree")
+            .and_then(Value::as_array)
+            .ok_or_else(|| {
+                PiError::Protocol("Pi host tree did not return a tree array".to_owned())
+            })?;
+        Ok(json!({
+            "sessionId": session.session_id,
+            "externalSessionId": session.external_session_id.lock().await.clone(),
+            "leafId": result.get("leafId").cloned().unwrap_or(Value::Null),
+            "tree": tree,
+        }))
+    }
+
     pub(crate) async fn abort(&self, session_id: &str) -> Result<(), PiError> {
         let session = self.ensure_runtime(session_id).await?;
         if session.current_turn_id.lock().await.is_none() {

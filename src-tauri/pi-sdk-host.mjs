@@ -41,6 +41,30 @@ function compactMessage(message) {
   };
 }
 
+function compactTreeNode(node) {
+  const entry = node?.entry ?? {};
+  const message = entry.message;
+  const summary = entry.type === "message"
+    ? textContent(message)
+    : entry.type === "compaction" || entry.type === "branch_summary"
+      ? entry.summary
+      : entry.type === "model_change"
+        ? `${entry.provider ?? ""}/${entry.modelId ?? ""}`
+        : entry.type === "session_info"
+          ? entry.name
+          : undefined;
+  return {
+    id: entry.id,
+    parentId: entry.parentId ?? null,
+    type: entry.type,
+    timestamp: entry.timestamp,
+    role: message?.role,
+    summary: summary?.slice(0, 500),
+    label: node.label,
+    children: Array.isArray(node.children) ? node.children.map(compactTreeNode) : [],
+  };
+}
+
 function compactEvent(event) {
   const type = event?.type;
   if (!type) return null;
@@ -160,6 +184,14 @@ async function handle(message) {
       respond(id, { accepted: true, turnId: activeTurnId });
       return;
     }
+    if (method === "steer" || method === "followUp") {
+      if (!session.isStreaming) throw new Error(`Pi ${method} requires an active turn`);
+      const text = String(params.text ?? "").trim();
+      if (!text) throw new Error(`Pi ${method} text must not be empty`);
+      await session[method](text);
+      respond(id, { accepted: true, mode: method, turnId: activeTurnId });
+      return;
+    }
     if (method === "abort") {
       await session.abort();
       respond(id, { aborted: true });
@@ -176,6 +208,14 @@ async function handle(message) {
     }
     if (method === "state") {
       respond(id, { sessionId: session.sessionId, isStreaming: session.isStreaming, sessionFile: session.sessionFile ?? null });
+      return;
+    }
+    if (method === "tree") {
+      respond(id, {
+        sessionId: session.sessionId,
+        leafId: session.sessionManager.getLeafId(),
+        tree: session.sessionManager.getTree().map(compactTreeNode),
+      });
       return;
     }
     throw new Error(`Unknown Pi SDK host method: ${method}`);

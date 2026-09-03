@@ -7,6 +7,7 @@ import type {
   AppSnapshot,
   CodexThreadSnapshot,
   CodexThreadSummary,
+  PiSessionTreeSnapshot,
   Session,
   TimelineItem,
   Workspace,
@@ -89,6 +90,15 @@ export const abortPiTurn = (sessionId: string): Promise<void> =>
 
 export const closePiSession = (sessionId: string): Promise<void> =>
   invoke('close_pi_session', { sessionId });
+
+export const steerPiPrompt = (sessionId: string, input: string): Promise<void> =>
+  invoke('steer_pi_prompt', { sessionId, input });
+
+export const followUpPiPrompt = (sessionId: string, input: string): Promise<void> =>
+  invoke('follow_up_pi_prompt', { sessionId, input });
+
+export const getPiSessionTree = (sessionId: string): Promise<PiSessionTreeSnapshot> =>
+  invoke<PiSessionTreeSnapshot>('get_pi_session_tree', { sessionId });
 
 export const listenToAgentEvents = (
   handler: (event: AgentEvent) => void,

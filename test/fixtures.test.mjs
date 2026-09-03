@@ -131,4 +131,8 @@ test("Pi SDK host fixture keeps the versioned stream and turn binding intact", a
   );
   assert.ok(events.every((record) => record.params.turnId === "pi-turn-1"));
   assert.equal(events[2].params.event.assistantMessageEvent.delta, "hello");
+  const tree = records.find((record) => record.result?.tree)?.result;
+  assert.equal(tree.sessionId, "pi-session-1");
+  assert.equal(tree.leafId, "entry-2");
+  assert.equal(tree.tree[0].children[0].role, "assistant");
 });

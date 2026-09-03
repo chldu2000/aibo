@@ -52,6 +52,24 @@ export interface Session {
   updatedAt: string;
 }
 
+export interface PiSessionTreeNode {
+  id: string;
+  parentId: string | null;
+  type: string;
+  timestamp: string;
+  role?: string;
+  summary?: string;
+  label?: string;
+  children: PiSessionTreeNode[];
+}
+
+export interface PiSessionTreeSnapshot {
+  sessionId: string;
+  externalSessionId: string | null;
+  leafId: string | null;
+  tree: PiSessionTreeNode[];
+}
+
 export interface CodexThreadSummary {
   id: string;
   title: string | null;
