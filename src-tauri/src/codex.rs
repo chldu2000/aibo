@@ -1,7 +1,7 @@
 use super::{find_executable, now_iso, session_by_id, workspace_by_id};
 use serde::Serialize;
 use serde_json::{json, Value};
-use sqlx::SqlitePool;
+use sqlx::{Row, SqlitePool};
 use std::{
     collections::HashMap,
     path::{Path, PathBuf},
@@ -365,6 +365,23 @@ fn parse_thread_snapshot(value: &Value) -> Result<CodexThreadSnapshot, CodexErro
         updated_at: summary.updated_at,
         turn_count,
     })
+}
+
+fn parse_forked_thread(value: &Value) -> Result<(String, Option<String>), CodexError> {
+    let thread = value
+        .pointer("/result/thread")
+        .ok_or_else(|| CodexError::Protocol("thread/fork did not return a thread".to_owned()))?;
+    let thread_id = thread
+        .get("id")
+        .and_then(Value::as_str)
+        .ok_or_else(|| CodexError::Protocol("thread/fork did not return a thread id".to_owned()))?
+        .to_owned();
+    let parent_id = thread
+        .get("forkedFromId")
+        .or_else(|| thread.get("forked_from_id"))
+        .and_then(Value::as_str)
+        .map(ToOwned::to_owned);
+    Ok((thread_id, parent_id))
 }
 
 async fn initialize_client(client: &CodexClient) -> Result<(), CodexError> {
@@ -1187,6 +1204,255 @@ impl CodexManager {
         parse_thread_snapshot(&response)
     }
 
+    pub(crate) async fn fork(
+        &self,
+        session_id: &str,
+        through_turn_id: Option<&str>,
+    ) -> Result<super::Session, CodexError> {
+        let source = super::session_by_id(&self.db, session_id)
+            .await
+            .map_err(|error| CodexError::Session(error.to_string()))?;
+        if source.agent != "codex" {
+            return Err(CodexError::Session(
+                "session is not a Codex session".to_owned(),
+            ));
+        }
+        if source.archived {
+            return Err(CodexError::Session(
+                "archived Codex sessions cannot be forked".to_owned(),
+            ));
+        }
+        let source_runtime = self.ensure_runtime(session_id).await?;
+        {
+            let state = source_runtime.state.lock().await;
+            if matches!(state.as_str(), "running" | "waiting_approval") {
+                return Err(CodexError::Session(
+                    "Codex session must be idle before it is forked".to_owned(),
+                ));
+            }
+        }
+        let source_thread_id = source_runtime
+            .thread_id
+            .lock()
+            .await
+            .clone()
+            .ok_or_else(|| CodexError::Session("Codex session has no thread id".to_owned()))?;
+
+        let requested_last_turn = if let Some(turn_id) = through_turn_id {
+            let exists: Option<String> = sqlx::query_scalar(
+                "SELECT external_turn_id FROM turns
+                 WHERE session_id = ? AND external_turn_id = ? AND status = 'completed'",
+            )
+            .bind(session_id)
+            .bind(turn_id)
+            .fetch_optional(&self.db)
+            .await?;
+            if exists.is_none() {
+                return Err(CodexError::Session(
+                    "fork boundary must reference a completed turn".to_owned(),
+                ));
+            }
+            Some(turn_id.to_owned())
+        } else {
+            sqlx::query_scalar(
+                "SELECT external_turn_id FROM turns
+                 WHERE session_id = ? AND status = 'completed'
+                 ORDER BY started_at DESC, id DESC LIMIT 1",
+            )
+            .bind(session_id)
+            .fetch_optional(&self.db)
+            .await?
+        };
+
+        let workspace = workspace_by_id(&self.db, &source.workspace_id)
+            .await
+            .map_err(|error| CodexError::Session(error.to_string()))?;
+        let codex_path = find_executable("codex").ok_or(CodexError::MissingExecutable)?;
+        let fork_client = CodexClient::spawn(codex_path, Path::new(&workspace.path)).await?;
+        let fork_result = async {
+            initialize_client(&fork_client).await?;
+            let mut params = json!({ "threadId": source_thread_id });
+            if let Some(last_turn_id) = requested_last_turn.as_deref() {
+                params["lastTurnId"] = json!(last_turn_id);
+            }
+            let response = fork_client.request("thread/fork", params).await?;
+            parse_forked_thread(&response)
+        }
+        .await;
+        fork_client.close().await;
+        let (forked_thread_id, parent_thread_id) = fork_result?;
+        if forked_thread_id == source_thread_id {
+            return Err(CodexError::Protocol(
+                "thread/fork returned the source thread id".to_owned(),
+            ));
+        }
+
+        let new_session_id = Ulid::new().to_string();
+        let generation_id = Ulid::new().to_string();
+        let now = now_iso();
+        let label = format!("{} · 分支", source.label);
+        let parent_thread_id = parent_thread_id.unwrap_or(source_thread_id);
+        let mut transaction = self.db.begin().await?;
+        sqlx::query(
+            "INSERT INTO sessions
+             (id, workspace_id, agent, label, state, archived, created_at, updated_at)
+             VALUES (?, ?, 'codex', ?, 'starting', 0, ?, ?)",
+        )
+        .bind(&new_session_id)
+        .bind(&source.workspace_id)
+        .bind(&label)
+        .bind(&now)
+        .bind(&now)
+        .execute(&mut *transaction)
+        .await?;
+        sqlx::query(
+            "INSERT INTO session_bindings
+             (session_id, external_session_id, generation_id, adapter_version,
+              parent_external_session_id, bound_at)
+             VALUES (?, ?, ?, ?, ?, ?)",
+        )
+        .bind(&new_session_id)
+        .bind(&forked_thread_id)
+        .bind(&generation_id)
+        .bind(CODEX_ADAPTER_VERSION)
+        .bind(&parent_thread_id)
+        .bind(&now)
+        .execute(&mut *transaction)
+        .await?;
+
+        let source_turns = sqlx::query(
+            "SELECT id, external_turn_id, status, input_text, output_text,
+                    started_at, completed_at
+             FROM turns WHERE session_id = ? ORDER BY started_at ASC, id ASC",
+        )
+        .bind(session_id)
+        .fetch_all(&mut *transaction)
+        .await?;
+        let mut turn_ids = HashMap::new();
+        for row in source_turns {
+            let old_id: String = row.try_get("id")?;
+            let external_turn_id: String = row.try_get("external_turn_id")?;
+            let new_id = Ulid::new().to_string();
+            turn_ids.insert(old_id, new_id.clone());
+            sqlx::query(
+                "INSERT INTO turns
+                 (id, session_id, external_turn_id, status, input_text, output_text,
+                  started_at, completed_at)
+                 VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+            )
+            .bind(&new_id)
+            .bind(&new_session_id)
+            .bind(&external_turn_id)
+            .bind(row.try_get::<String, _>("status")?)
+            .bind(row.try_get::<String, _>("input_text")?)
+            .bind(row.try_get::<String, _>("output_text")?)
+            .bind(row.try_get::<String, _>("started_at")?)
+            .bind(row.try_get::<Option<String>, _>("completed_at")?)
+            .execute(&mut *transaction)
+            .await?;
+            if requested_last_turn.as_deref() == Some(external_turn_id.as_str()) {
+                break;
+            }
+        }
+
+        let source_messages = sqlx::query(
+            "SELECT turn_id, external_message_id, role, content, status,
+                    sequence, created_at, updated_at
+             FROM messages WHERE session_id = ?
+             ORDER BY created_at ASC, sequence ASC, id ASC",
+        )
+        .bind(session_id)
+        .fetch_all(&mut *transaction)
+        .await?;
+        for row in source_messages {
+            let old_turn_id = row.try_get::<Option<String>, _>("turn_id")?;
+            let new_turn_id = old_turn_id
+                .as_ref()
+                .and_then(|id| turn_ids.get(id))
+                .cloned();
+            if old_turn_id.is_some() && new_turn_id.is_none() {
+                continue;
+            }
+            sqlx::query(
+                "INSERT INTO messages
+                 (id, session_id, turn_id, external_message_id, role, content, status,
+                  sequence, created_at, updated_at)
+                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            )
+            .bind(Ulid::new().to_string())
+            .bind(&new_session_id)
+            .bind(new_turn_id)
+            .bind(row.try_get::<Option<String>, _>("external_message_id")?)
+            .bind(row.try_get::<String, _>("role")?)
+            .bind(row.try_get::<String, _>("content")?)
+            .bind(row.try_get::<String, _>("status")?)
+            .bind(row.try_get::<i64, _>("sequence")?)
+            .bind(row.try_get::<String, _>("created_at")?)
+            .bind(row.try_get::<String, _>("updated_at")?)
+            .execute(&mut *transaction)
+            .await?;
+        }
+        transaction.commit().await?;
+
+        if let Err(error) = self.ensure_runtime(&new_session_id).await {
+            let _ =
+                sqlx::query("UPDATE sessions SET state = 'failed', updated_at = ? WHERE id = ?")
+                    .bind(now_iso())
+                    .bind(&new_session_id)
+                    .execute(&self.db)
+                    .await;
+            return Err(error);
+        }
+        super::session_by_id(&self.db, &new_session_id)
+            .await
+            .map_err(|error| CodexError::Session(error.to_string()))
+    }
+
+    pub(crate) async fn archive(&self, session_id: &str) -> Result<super::Session, CodexError> {
+        let existing = super::session_by_id(&self.db, session_id)
+            .await
+            .map_err(|error| CodexError::Session(error.to_string()))?;
+        if existing.agent != "codex" {
+            return Err(CodexError::Session(
+                "session is not a Codex session".to_owned(),
+            ));
+        }
+        if existing.archived {
+            return Ok(existing);
+        }
+        let session = self.ensure_runtime(session_id).await?;
+        {
+            let state = session.state.lock().await;
+            if matches!(state.as_str(), "running" | "waiting_approval") {
+                return Err(CodexError::Session(
+                    "Codex session must be idle before it is archived".to_owned(),
+                ));
+            }
+        }
+        let thread_id = session
+            .thread_id
+            .lock()
+            .await
+            .clone()
+            .ok_or_else(|| CodexError::Session("Codex session has no thread id".to_owned()))?;
+        session
+            .client
+            .request("thread/archive", json!({ "threadId": thread_id }))
+            .await?;
+        session.set_state("closed").await?;
+        sqlx::query("UPDATE sessions SET archived = 1, updated_at = ? WHERE id = ?")
+            .bind(now_iso())
+            .bind(session_id)
+            .execute(&self.db)
+            .await?;
+        session.deactivate();
+        self.sessions.lock().await.remove(session_id);
+        session.client.close().await;
+        super::session_by_id(&self.db, session_id)
+            .await
+            .map_err(|error| CodexError::Session(error.to_string()))
+    }
+
     pub(crate) async fn send_prompt(
         &self,
         session_id: &str,
@@ -1348,7 +1614,8 @@ impl CodexManager {
 #[cfg(test)]
 mod tests {
     use super::{
-        final_turn_text, map_turn_status, parse_thread_list, parse_thread_snapshot, value_id,
+        final_turn_text, map_turn_status, parse_forked_thread, parse_thread_list,
+        parse_thread_snapshot, value_id,
     };
     use serde_json::json;
 
@@ -1420,5 +1687,21 @@ mod tests {
         assert_eq!(snapshot.id, "thread-1");
         assert_eq!(snapshot.title.as_deref(), Some("Aibo session"));
         assert_eq!(snapshot.turn_count, 2);
+    }
+
+    #[test]
+    fn parses_fork_response_and_preserves_parent_thread_id() {
+        let response = json!({
+            "result": {
+                "thread": {
+                    "id": "thread-child",
+                    "sessionId": "thread-root",
+                    "forkedFromId": "thread-parent"
+                }
+            }
+        });
+        let (thread_id, parent_id) = parse_forked_thread(&response).expect("thread/fork response");
+        assert_eq!(thread_id, "thread-child");
+        assert_eq!(parent_id.as_deref(), Some("thread-parent"));
     }
 }

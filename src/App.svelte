@@ -6,6 +6,7 @@
   import ShieldCheckIcon from '@lucide/svelte/icons/shield-check';
   import SquareIcon from '@lucide/svelte/icons/square';
   import { Badge } from '$lib/components/ui/badge';
+  import { AlertDialog } from '$lib/components/ui/alert-dialog';
   import { Button } from '$lib/components/ui/button';
   import { Card, CardContent, CardHeader, CardTitle } from '$lib/components/ui/card';
   import { Input } from '$lib/components/ui/input';
@@ -15,8 +16,10 @@
   import {
     addWorkspace,
     abortCodexTurn,
+    archiveCodexThread,
     closeCodexSession,
     createCodexSession,
+    forkCodexThread,
     getTimeline,
     isTauri,
     listCodexThreads,
@@ -93,6 +96,7 @@
   let notice = $state<string | null>(null);
   let desktop = $state(false);
   let threadBusy = $state(false);
+  let archiveConfirmationSessionId = $state<string | null>(null);
 
   const selectedWorkspace = $derived(
     workspaces.find((workspace) => workspace.id === selectedWorkspaceId) ?? null,
@@ -106,6 +110,7 @@
   const sessionRunning = $derived(
     selectedSession?.state === 'running' || selectedSession?.state === 'waiting_approval',
   );
+  const sessionArchived = $derived(selectedSession?.archived === true);
   const selectedApprovals = $derived(
     pendingApprovals.filter((approval) => approval.sessionId === selectedSessionId),
   );
@@ -202,7 +207,13 @@
 
   async function refreshCodexThread(sessionId: string, announce = false) {
     const session = sessions.find((item) => item.id === sessionId);
-    if (!desktop || !session || session.agent !== 'codex' || !session.externalSessionId) {
+    if (
+      !desktop ||
+      !session ||
+      session.agent !== 'codex' ||
+      session.archived ||
+      !session.externalSessionId
+    ) {
       if (sessionId === selectedSessionId) codexThreadSnapshot = null;
       return;
     }
@@ -384,6 +395,7 @@
       sessions = [session, ...sessions.filter(({ id }) => id !== session.id)];
       selectedSessionId = session.id;
       timeline = [];
+      void refreshCodexThreads(selectedWorkspace.id);
       notice = 'Codex 会话已启动，可以发送第一条消息。';
     } catch (error) {
       errorMessage = toErrorMessage(error);
@@ -397,6 +409,10 @@
     if (!input) return;
     if (!selectedWorkspace) {
       errorMessage = '请先选择一个工作区。';
+      return;
+    }
+    if (selectedSession?.archived) {
+      errorMessage = '已归档的 Codex 会话不能继续发送消息，请先创建分支。';
       return;
     }
     if (!desktop) {
@@ -477,6 +493,61 @@
       codexThreadSnapshot = null;
       timeline = selectedSessionId ? await getTimeline(selectedSessionId) : [];
       notice = 'Codex 会话已关闭；已保存的时间线仍可在下次启动时读取。';
+    } catch (error) {
+      errorMessage = toErrorMessage(error);
+    } finally {
+      busy = false;
+    }
+  }
+
+  async function forkSession() {
+    if (!selectedSession || !desktop || selectedSession.archived) return;
+    if (sessionRunning) {
+      errorMessage = '请等待当前 turn 完成后再创建分支。';
+      return;
+    }
+    busy = true;
+    errorMessage = null;
+    try {
+      const forked = await forkCodexThread(selectedSession.id);
+      sessions = [forked, ...sessions.filter(({ id }) => id !== forked.id)];
+      selectedSessionId = forked.id;
+      timeline = await getTimeline(forked.id);
+      codexThreadSnapshot = null;
+      void refreshCodexThread(forked.id);
+      void refreshCodexThreads(selectedWorkspaceId ?? forked.workspaceId);
+      notice = 'Codex 分支已创建，已复制最近一条已完成 turn。';
+    } catch (error) {
+      errorMessage = toErrorMessage(error);
+    } finally {
+      busy = false;
+    }
+  }
+
+  function requestArchiveSession() {
+    if (!selectedSession || !desktop || selectedSession.archived) return;
+    if (sessionRunning) {
+      errorMessage = '请等待当前 turn 完成后再归档。';
+      return;
+    }
+    archiveConfirmationSessionId = selectedSession.id;
+  }
+
+  async function confirmArchiveSession() {
+    const sessionId = archiveConfirmationSessionId;
+    archiveConfirmationSessionId = null;
+    if (!sessionId) return;
+    const target = sessions.find((item) => item.id === sessionId);
+    if (!target || target.archived) return;
+    busy = true;
+    errorMessage = null;
+    try {
+      const archived = await archiveCodexThread(sessionId);
+      sessions = sessions.map((item) => (item.id === archived.id ? archived : item));
+      pendingApprovals = pendingApprovals.filter((item) => item.sessionId !== archived.id);
+      codexThreadSnapshot = null;
+      void refreshCodexThreads(archived.workspaceId);
+      notice = 'Codex 线程已归档；本地时间线仍保留。';
     } catch (error) {
       errorMessage = toErrorMessage(error);
     } finally {
@@ -628,7 +699,9 @@
         <CardTitle>{selectedSession?.label ?? selectedWorkspace?.label ?? '选择工作区'}</CardTitle>
         <div class="timeline-heading-actions">
           {#if selectedSession}
-            <Badge variant={sessionRunning ? 'warning' : 'outline'}>{selectedSession.state}</Badge>
+            <Badge variant={sessionArchived ? 'secondary' : sessionRunning ? 'warning' : 'outline'}>
+              {sessionArchived ? '已归档' : selectedSession.state}
+            </Badge>
             {#if codexThreadSnapshot && codexThreadSnapshot.id === selectedSession.externalSessionId}
               <Badge variant="outline">远端 {codexThreadSnapshot.turnCount} 轮</Badge>
             {/if}
@@ -648,10 +721,16 @@
             <PlusIcon size={14} /> 新建会话
           </Button>
           {#if selectedSession}
-            <Button variant="ghost" size="sm" type="button" onclick={() => void closeSession()} disabled={busy || sessionRunning}>关闭</Button>
-            <Button variant="ghost" size="sm" type="button" onclick={() => void syncCodexThread(selectedSession.id)} disabled={threadBusy || busy}>
-              <RefreshCwIcon size={13} /> 读取线程
-            </Button>
+            {#if sessionArchived}
+              <Badge variant="secondary">已归档</Badge>
+            {:else}
+              <Button variant="ghost" size="sm" type="button" onclick={() => void forkSession()} disabled={busy || sessionRunning}>分支</Button>
+              <Button variant="ghost" size="sm" type="button" onclick={requestArchiveSession} disabled={busy || sessionRunning}>归档</Button>
+              <Button variant="ghost" size="sm" type="button" onclick={() => void closeSession()} disabled={busy || sessionRunning}>关闭</Button>
+              <Button variant="ghost" size="sm" type="button" onclick={() => void syncCodexThread(selectedSession.id)} disabled={threadBusy || busy}>
+                <RefreshCwIcon size={13} /> 读取线程
+              </Button>
+            {/if}
           {/if}
           {#if sessions.length > 0}
             <div class="session-list" aria-label="Codex 会话列表">
@@ -663,7 +742,7 @@
                   onclick={() => selectSession(session.id)}
                 >
                   <span class="session-item-label">{session.label}</span>
-                  <span class="session-item-state">{session.state}</span>
+                  <span class="session-item-state">{session.archived ? '已归档' : session.state}</span>
                 </Button>
               {/each}
             </div>
@@ -734,8 +813,8 @@
           class="composer-textarea"
           bind:value={composerText}
           rows="2"
-          placeholder={selectedSession ? '输入消息，⌘/Ctrl + Enter 发送…' : '先新建或选择一个 Codex 会话…'}
-          disabled={!selectedSession || sessionRunning || busy}
+          placeholder={sessionArchived ? '该会话已归档，请创建分支继续…' : selectedSession ? '输入消息，⌘/Ctrl + Enter 发送…' : '先新建或选择一个 Codex 会话…'}
+          disabled={!selectedSession || sessionArchived || sessionRunning || busy}
           onkeydown={(event) => {
             if ((event.metaKey || event.ctrlKey) && event.key === 'Enter') {
               event.preventDefault();
@@ -748,7 +827,7 @@
             <SquareIcon size={13} fill="currentColor" />
           </Button>
         {:else}
-          <Button size="icon" type="submit" disabled={!selectedSession || !composerText.trim() || busy} aria-label="发送">
+          <Button size="icon" type="submit" disabled={!selectedSession || sessionArchived || !composerText.trim() || busy} aria-label="发送">
             <SendIcon size={14} />
           </Button>
         {/if}
@@ -839,4 +918,13 @@
 
   {#if errorMessage}<Card class="toast error-toast">{errorMessage}</Card>{/if}
   {#if notice}<Card class="toast notice-toast">{notice}</Card>{/if}
+  <AlertDialog
+    open={archiveConfirmationSessionId !== null}
+    title="归档 Codex 线程？"
+    description="归档会隐藏远端线程，但不会删除 Aibo 中已保存的本地时间线。"
+    confirmText="归档"
+    cancelText="取消"
+    onConfirm={() => void confirmArchiveSession()}
+    onCancel={() => (archiveConfirmationSessionId = null)}
+  />
 </div>

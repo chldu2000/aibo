@@ -68,6 +68,7 @@ pub struct Session {
     pub(crate) agent: String,
     pub(crate) label: String,
     pub(crate) state: String,
+    pub(crate) archived: bool,
     pub(crate) external_session_id: Option<String>,
     pub(crate) created_at: String,
     pub(crate) updated_at: String,
@@ -337,6 +338,7 @@ fn row_to_session(row: &sqlx::sqlite::SqliteRow) -> Result<Session, CoreError> {
         agent: row.try_get("agent")?,
         label: row.try_get("label")?,
         state: row.try_get("state")?,
+        archived: row.try_get::<i64, _>("archived")? != 0,
         external_session_id: row.try_get("external_session_id")?,
         created_at: row.try_get("created_at")?,
         updated_at: row.try_get("updated_at")?,
@@ -359,7 +361,7 @@ fn row_to_timeline_item(row: &sqlx::sqlite::SqliteRow) -> Result<TimelineItem, C
 
 async fn session_by_id(db: &SqlitePool, id: &str) -> Result<Session, CoreError> {
     let row = sqlx::query(
-        "SELECT s.id, s.workspace_id, s.agent, s.label, s.state,
+        "SELECT s.id, s.workspace_id, s.agent, s.label, s.state, s.archived,
                 b.external_session_id, s.created_at, s.updated_at
          FROM sessions s
          LEFT JOIN session_bindings b ON b.session_id = s.id
@@ -378,7 +380,7 @@ async fn list_sessions(
     state: State<'_, AppState>,
 ) -> Result<Vec<Session>, CoreError> {
     let rows = sqlx::query(
-        "SELECT s.id, s.workspace_id, s.agent, s.label, s.state,
+        "SELECT s.id, s.workspace_id, s.agent, s.label, s.state, s.archived,
                 b.external_session_id, s.created_at, s.updated_at
          FROM sessions s
          LEFT JOIN session_bindings b ON b.session_id = s.id
@@ -432,6 +434,27 @@ async fn read_codex_thread(
         .read_thread(&session_id)
         .await
         .map_err(Into::into)
+}
+
+#[tauri::command]
+async fn fork_codex_thread(
+    session_id: String,
+    through_turn_id: Option<String>,
+    state: State<'_, AppState>,
+) -> Result<Session, CoreError> {
+    state
+        .codex
+        .fork(&session_id, through_turn_id.as_deref())
+        .await
+        .map_err(Into::into)
+}
+
+#[tauri::command]
+async fn archive_codex_thread(
+    session_id: String,
+    state: State<'_, AppState>,
+) -> Result<Session, CoreError> {
+    state.codex.archive(&session_id).await.map_err(Into::into)
 }
 
 #[tauri::command]
@@ -664,6 +687,8 @@ pub fn run() {
             get_timeline,
             list_codex_threads,
             read_codex_thread,
+            fork_codex_thread,
+            archive_codex_thread,
             create_codex_session,
             send_codex_prompt,
             abort_codex_turn,
@@ -743,6 +768,20 @@ mod tests {
             )
             .expect("query phase 1 table");
             assert_eq!(present, 1, "missing migrated table {table}");
+        }
+
+        for (table, column) in [
+            ("sessions", "archived"),
+            ("session_bindings", "parent_external_session_id"),
+        ] {
+            let present: i64 = tauri::async_runtime::block_on(
+                sqlx::query_scalar("SELECT COUNT(*) FROM pragma_table_info(?) WHERE name = ?")
+                    .bind(table)
+                    .bind(column)
+                    .fetch_one(&pool),
+            )
+            .expect("query lifecycle column");
+            assert_eq!(present, 1, "missing migrated column {table}.{column}");
         }
 
         let journal_mode: String =

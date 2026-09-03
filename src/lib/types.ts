@@ -46,6 +46,7 @@ export interface Session {
   agent: 'codex' | 'pi';
   label: string;
   state: SessionState;
+  archived: boolean;
   externalSessionId: string | null;
   createdAt: string;
   updatedAt: string;

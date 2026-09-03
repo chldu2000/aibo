@@ -4,7 +4,8 @@ import { JsonlProcess } from "./lib/jsonl-process.mjs";
 import { assertProbe, countEvents, createProbeOutput } from "./lib/probe-output.mjs";
 
 const approval = process.argv.includes("--approval");
-const smoke = process.argv.includes("--smoke") || approval;
+const lifecycle = process.argv.includes("--lifecycle");
+const smoke = process.argv.includes("--smoke") || approval || lifecycle;
 const codexBin = process.env.AIBO_CODEX_BIN ?? "codex";
 const cwd = path.resolve(process.cwd());
 const approvalCommand = process.platform === "win32" ? "Get-Location" : "pwd";
@@ -13,6 +14,9 @@ const messages = [];
 const warnings = [];
 let approvalsObserved = 0;
 let approvalsResolved = 0;
+let forkedThreadId;
+let forkPassed = false;
+let archivePassed = false;
 
 function startClient() {
   const client = new JsonlProcess(codexBin, ["app-server", "--stdio"], { cwd }).start();
@@ -57,6 +61,7 @@ async function initialize(client) {
 }
 
 let client;
+let lifecycleClient;
 let threadId;
 let turnId;
 let transportPassed = false;
@@ -121,6 +126,44 @@ try {
       throw new Error("Codex thread/read did not return turn history");
     }
 
+    if (lifecycle) {
+      lifecycleClient = startClient();
+      await initialize(lifecycleClient);
+      const forked = await lifecycleClient.rpcRequest("thread/fork", {
+        threadId,
+        lastTurnId: turnId,
+      });
+      forkedThreadId = forked.result?.thread?.id;
+      forkPassed =
+        typeof forkedThreadId === "string" &&
+        forkedThreadId !== threadId &&
+        forked.result?.thread?.forkedFromId === threadId;
+      assertProbe(forkPassed, "thread/fork did not return a distinct child thread");
+
+      const archivedEvent = lifecycleClient.waitFor(
+        (message) =>
+          message.method === "thread/archived" &&
+          message.params?.threadId === forkedThreadId,
+        { timeoutMs: 20_000 },
+      );
+      const archived = await lifecycleClient.rpcRequest("thread/archive", {
+        threadId: forkedThreadId,
+      });
+      await archivedEvent;
+      const listedAfterArchive = await lifecycleClient.rpcRequest("thread/list", {
+        limit: 100,
+        cwd,
+        sortKey: "updated_at",
+        sortDirection: "desc",
+      });
+      archivePassed =
+        archived.result !== undefined &&
+        !listedAfterArchive.result?.data?.some((item) => item.id === forkedThreadId);
+      assertProbe(archivePassed, "thread/archive did not remove the child from active listings");
+      await lifecycleClient.close();
+      lifecycleClient = undefined;
+    }
+
     await client.close();
     client = startClient();
     await initialize(client);
@@ -139,6 +182,7 @@ try {
   process.exitCode = 1;
 } finally {
   await client?.close();
+  await lifecycleClient?.close();
   await output.flush();
   const summary = {
     agent: "codex",
@@ -146,13 +190,17 @@ try {
     cwd,
     smokeRequested: smoke,
     approvalRequested: approval,
+    lifecycleRequested: lifecycle,
     approvalsObserved,
     approvalsResolved,
     transportPassed,
     smokePassed: smoke ? smokePassed : null,
     resumePassed: smoke ? resumePassed : null,
+    forkPassed: lifecycle ? forkPassed : null,
+    archivePassed: lifecycle ? archivePassed : null,
     threadId: threadId ?? null,
     turnId: turnId ?? null,
+    forkedThreadId: forkedThreadId ?? null,
     eventCounts: countEvents(messages),
     warnings: [...new Set(warnings)],
     failure: failure ?? null,

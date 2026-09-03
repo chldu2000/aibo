@@ -1,6 +1,6 @@
 # Phase 2：Codex Adapter 能力扩展
 
-> 状态：审批闭环与 thread list/read 已实现，后续批次开发中
+> 状态：审批闭环与 thread 生命周期已实现，后续工具事件批次开发中
 > 平台：macOS arm64 首发基线
 > 前置：Phase 1 Codex 真实会话已通过 macOS UI 验收
 
@@ -30,6 +30,7 @@ pnpm build
 pnpm test
 cargo test --manifest-path src-tauri/Cargo.toml
 pnpm probe:codex:approval
+pnpm probe:codex:lifecycle
 pnpm tauri dev --no-watch
 ```
 
@@ -44,9 +45,18 @@ pnpm tauri dev --no-watch
 
 前端右侧诊断区显示最近线程，当前会话标题旁显示远端 turn 数量；这些读取结果仍以 Codex 为权威，不覆盖 Aibo 的 SQLite 时间线投影。
 
+## 第三批：线程生命周期
+
+本批次补齐了持久 Codex 线程的分支与归档：
+
+- `fork_codex_thread(sessionId, throughTurnId?)` 使用最近一条已完成 turn 作为默认边界，创建新的 Aibo session，并复制本地可见的 turns/messages 投影。
+- `archive_codex_thread(sessionId)` 只归档远端 Codex 日志，将本地 session 标记为 `archived`，保留 SQLite 时间线，不执行永久删除。
+- 分支 binding 记录 `parentExternalSessionId`，为后续统一 session tree 和 handoff provenance 保留关系。
+- 活跃 turn 不允许 fork/archive；归档会话不能继续发送消息或再次创建分支。
+
 ## 后续批次
 
-1. 将 thread resume/fork/archive 补齐为统一 session API，并为 list/read 增加绑定一致性检查。
+1. 为 list/read/fork/archive 增加绑定一致性检查，并补充可逆的 thread/unarchive 操作评估。
 2. 归一化 command、file change、diff、usage 等 tool/item 事件并投影到 timeline。
 3. 为 approval、adapter crash、旧 generation 增加 fixture replay 和 contract tests。
 4. 评估待审批请求在应用重启后的可解释恢复策略；不能假定原生 server request 可安全重放。

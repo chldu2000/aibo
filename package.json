@@ -12,6 +12,7 @@
     "probe:codex": "node probes/codex-app-server.mjs",
     "probe:codex:smoke": "node probes/codex-app-server.mjs --smoke",
     "probe:codex:approval": "node probes/codex-app-server.mjs --approval",
+    "probe:codex:lifecycle": "node probes/codex-app-server.mjs --lifecycle",
     "probe:pi": "node probes/run-pi.mjs",
     "probe:pi:sdk": "node probes/pi-sdk.mjs",
     "probe:pi:rpc": "node probes/pi-rpc.mjs",

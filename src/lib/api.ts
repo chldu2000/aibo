@@ -48,6 +48,15 @@ export const listCodexThreads = (workspaceId: string): Promise<CodexThreadSummar
 export const readCodexThread = (sessionId: string): Promise<CodexThreadSnapshot> =>
   invoke<CodexThreadSnapshot>('read_codex_thread', { sessionId });
 
+export const forkCodexThread = (
+  sessionId: string,
+  throughTurnId?: string | null,
+): Promise<Session> =>
+  invoke<Session>('fork_codex_thread', { sessionId, throughTurnId: throughTurnId ?? null });
+
+export const archiveCodexThread = (sessionId: string): Promise<Session> =>
+  invoke<Session>('archive_codex_thread', { sessionId });
+
 export const createCodexSession = (workspaceId: string): Promise<Session> =>
   invoke<Session>('create_codex_session', { workspaceId });
 
