@@ -16,12 +16,15 @@
 - Codex/Pi 共用归档与取消归档 Tauri command；Pi 归档会释放 SDK host，保留本地时间线和原生 session binding。
 - 默认仅显示未归档会话，归档会话可通过“已归档”筛选恢复。
 - 会话列表显示 Agent 标识和本地化状态标签。
+- 新增 `AgentEventReplay` contract harness，以脱敏 Codex/Pi fixture 回放统一事件。
+- 回放强制校验 schema version、session/workspace/external binding、generation、sequence 和重复事件。
+- 覆盖工具生命周期、Pi SDK 事件映射、旧 generation 丢弃、重复 completion 和崩溃后审批清理。
 
 ## 下一步
 
-1. 补齐 adapter contract replay harness，覆盖并行会话、事件顺序、duplicate suppression、崩溃恢复和 unsupported capability。
-2. 将时间线拆分为可延迟加载/可虚拟化的消息、工具输出、diff、usage 和错误重试区域。
-3. 在 Codex/Pi 真实会话上验证同一工作区并行运行和异常退出后的 UI 状态恢复。
+1. 将时间线拆分为可延迟加载/可虚拟化的消息、工具输出、diff、usage 和错误重试区域。
+2. 在 Codex/Pi 真实会话上验证同一工作区并行运行和异常退出后的 UI 状态恢复。
+3. 将 contract harness 扩展到并行 session binding 和 unsupported capability 的负向用例。
 
 ## 退出条件
 

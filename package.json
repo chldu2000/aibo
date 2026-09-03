@@ -21,6 +21,7 @@
     "probe:pi:rpc": "node probes/pi-rpc.mjs",
     "probe:pi:smoke": "node probes/pi-sdk.mjs --smoke",
     "probe": "node probes/run-all.mjs",
+    "test:contracts": "node --test test/adapter-contract.test.mjs",
     "test": "node --test"
   },
   "engines": {
