@@ -782,7 +782,7 @@ impl CodexSession {
                     .bind(&internal_turn_id)
                     .execute(&self.db)
                     .await?;
-                    self.complete_assistant_messages(&internal_turn_id, &output)
+                    self.complete_assistant_messages(&internal_turn_id, &turn)
                         .await?;
                     *self.current_turn_id.lock().await = None;
                     self.pending_approvals.lock().await.clear();
@@ -1117,24 +1117,68 @@ impl CodexSession {
     async fn complete_assistant_messages(
         &self,
         turn_id: &str,
-        output: &str,
+        turn: &Value,
     ) -> Result<(), CodexError> {
         let now = now_iso();
-        let updated = sqlx::query(
-            "UPDATE messages SET content = CASE WHEN ? <> '' THEN ? ELSE content END,
-                    status = 'completed', updated_at = ?
+        let mut projected_any = false;
+        // A turn may contain multiple agentMessage items (for example commentary and a
+        // final answer). Reconcile each item by its external ID instead of copying the
+        // concatenated turn text into every assistant row.
+        for (external_message_id, text) in agent_message_items(turn) {
+            let Some(external_message_id) = external_message_id else {
+                continue;
+            };
+            let updated = sqlx::query(
+                "UPDATE messages SET content = CASE WHEN ? <> '' THEN ? ELSE content END,
+                        turn_id = ?, status = 'completed', updated_at = ?
+                 WHERE session_id = ? AND external_message_id = ? AND role = 'assistant'",
+            )
+            .bind(&text)
+            .bind(&text)
+            .bind(turn_id)
+            .bind(&now)
+            .bind(&self.session_id)
+            .bind(&external_message_id)
+            .execute(&self.db)
+            .await?;
+            if updated.rows_affected() > 0 {
+                projected_any = true;
+            } else if !text.is_empty() {
+                sqlx::query(
+                    "INSERT OR IGNORE INTO messages
+                     (id, session_id, turn_id, external_message_id, role, content, status,
+                      sequence, created_at, updated_at)
+                     VALUES (?, ?, ?, ?, 'assistant', ?, 'completed', ?, ?, ?)",
+                )
+                .bind(Ulid::new().to_string())
+                .bind(&self.session_id)
+                .bind(turn_id)
+                .bind(&external_message_id)
+                .bind(&text)
+                .bind(self.sequence.load(Ordering::Relaxed) as i64)
+                .bind(&now)
+                .bind(&now)
+                .execute(&self.db)
+                .await?;
+                projected_any = true;
+            }
+        }
+
+        let completed = sqlx::query(
+            "UPDATE messages SET status = 'completed', updated_at = ?
              WHERE session_id = ? AND turn_id = ? AND role = 'assistant'",
         )
-        .bind(output)
-        .bind(output)
         .bind(&now)
         .bind(&self.session_id)
         .bind(turn_id)
         .execute(&self.db)
         .await?;
-        if updated.rows_affected() == 0 && !output.is_empty() {
+        projected_any |= completed.rows_affected() > 0;
+
+        let output = final_turn_text(turn);
+        if !projected_any && !output.is_empty() {
             sqlx::query(
-                "INSERT INTO messages
+                "INSERT OR IGNORE INTO messages
                  (id, session_id, turn_id, external_message_id, role, content, status, sequence, created_at, updated_at)
                  VALUES (?, ?, ?, ?, 'assistant', ?, 'completed', ?, ?, ?)",
             )
@@ -1236,14 +1280,32 @@ fn map_turn_status(status: &str) -> &'static str {
 }
 
 fn final_turn_text(turn: &Value) -> String {
+    agent_message_items(turn)
+        .into_iter()
+        .map(|(_, text)| text)
+        .filter(|text| !text.is_empty())
+        .collect::<Vec<_>>()
+        .join("\n")
+}
+
+fn agent_message_items(turn: &Value) -> Vec<(Option<String>, String)> {
     turn.get("items")
         .and_then(Value::as_array)
         .into_iter()
         .flatten()
         .filter(|item| item.get("type").and_then(Value::as_str) == Some("agentMessage"))
-        .filter_map(|item| item.get("text").and_then(Value::as_str))
-        .collect::<Vec<_>>()
-        .join("\n")
+        .map(|item| {
+            (
+                item.get("id")
+                    .and_then(Value::as_str)
+                    .map(ToOwned::to_owned),
+                item.get("text")
+                    .and_then(Value::as_str)
+                    .unwrap_or_default()
+                    .to_owned(),
+            )
+        })
+        .collect()
 }
 
 #[derive(Clone)]
@@ -2010,9 +2072,9 @@ impl CodexManager {
 #[cfg(test)]
 mod tests {
     use super::{
-        event_thread_id, final_turn_text, generation_matches, map_tool_status, map_turn_status,
-        matching_thread_id, parse_forked_thread, parse_thread_list, parse_thread_snapshot,
-        tool_projection, usage_projection, value_id,
+        agent_message_items, event_thread_id, final_turn_text, generation_matches, map_tool_status,
+        map_turn_status, matching_thread_id, parse_forked_thread, parse_thread_list,
+        parse_thread_snapshot, tool_projection, usage_projection, value_id,
     };
     use serde_json::json;
 
@@ -2034,6 +2096,23 @@ mod tests {
             ]
         });
         assert_eq!(final_turn_text(&turn), "first\nsecond");
+        assert_eq!(
+            agent_message_items(&turn),
+            vec![(None, "first".to_owned()), (None, "second".to_owned())]
+        );
+        let multi_item_turn = json!({
+            "items": [
+                { "type": "agentMessage", "id": "message-1", "text": "commentary" },
+                { "type": "agentMessage", "id": "message-2", "text": "final" }
+            ]
+        });
+        assert_eq!(
+            agent_message_items(&multi_item_turn),
+            vec![
+                (Some("message-1".to_owned()), "commentary".to_owned()),
+                (Some("message-2".to_owned()), "final".to_owned())
+            ]
+        );
     }
 
     #[test]
