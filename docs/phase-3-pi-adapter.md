@@ -37,4 +37,4 @@ Pi SDK 的 `message_start/update/end`、`turn_end`、`agent_start`、`agent_erro
 
 1. 在 Windows 上重新验证 Node 路径、session 路径及进程退出行为。
 2. 将 snapshot 接口接入跨 Agent handoff 的不可变快照工件。
-3. 进入 Phase 4，补齐统一会话搜索、状态筛选和时间线体验。
+3. 进入 Phase 4，补齐统一会话搜索、状态筛选和时间线体验（已开始）。

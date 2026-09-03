@@ -10,6 +10,7 @@ import type {
   PiSessionTreeNavigation,
   PiSessionSnapshot,
   PiSessionTreeSnapshot,
+  SessionListOptions,
   Session,
   TimelineItem,
   Workspace,
@@ -39,8 +40,24 @@ export const probeAgents = (): Promise<AgentDiagnostic[]> =>
 export const getAppSnapshot = (): Promise<AppSnapshot> =>
   invoke<AppSnapshot>('get_app_snapshot');
 
-export const listSessions = (workspaceId: string): Promise<Session[]> =>
-  invoke<Session[]>('list_sessions', { workspaceId });
+export const listSessions = (
+  workspaceId: string,
+  options: SessionListOptions = {},
+): Promise<Session[]> =>
+  invoke<Session[]>('list_sessions', {
+    workspaceId,
+    search: options.search ?? null,
+    statusFilter: options.statusFilter ?? null,
+  });
+
+export const renameSession = (sessionId: string, label: string): Promise<Session> =>
+  invoke<Session>('rename_session', { sessionId, label });
+
+export const archiveSession = (sessionId: string): Promise<Session> =>
+  invoke<Session>('archive_session', { sessionId });
+
+export const unarchiveSession = (sessionId: string): Promise<Session> =>
+  invoke<Session>('unarchive_session', { sessionId });
 
 export const getTimeline = (sessionId: string): Promise<TimelineItem[]> =>
   invoke<TimelineItem[]>('get_timeline', { sessionId });

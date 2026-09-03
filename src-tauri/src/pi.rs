@@ -1418,6 +1418,67 @@ impl PiManager {
         Ok(())
     }
 
+    pub(crate) async fn archive(&self, session_id: &str) -> Result<super::Session, PiError> {
+        let existing = super::session_by_id(&self.db, session_id)
+            .await
+            .map_err(|error| PiError::Session(error.to_string()))?;
+        if existing.agent != "pi" {
+            return Err(PiError::Session("session is not a Pi session".to_owned()));
+        }
+        if existing.archived {
+            return Ok(existing);
+        }
+
+        if let Some(session) = self.sessions.lock().await.get(session_id).cloned() {
+            let current_state = session.state.lock().await.clone();
+            if matches!(current_state.as_str(), "running" | "waiting_approval") {
+                return Err(PiError::Session(
+                    "Pi session must be idle before it is archived".to_owned(),
+                ));
+            }
+            session.deactivate();
+            self.sessions.lock().await.remove(session_id);
+            session.client.close().await;
+        } else if matches!(existing.state.as_str(), "running" | "waiting_approval") {
+            return Err(PiError::Session(
+                "Pi session must be idle before it is archived".to_owned(),
+            ));
+        }
+
+        sqlx::query(
+            "UPDATE sessions SET archived = 1, state = 'closed', updated_at = ? WHERE id = ?",
+        )
+        .bind(now_iso())
+        .bind(session_id)
+        .execute(&self.db)
+        .await?;
+        super::session_by_id(&self.db, session_id)
+            .await
+            .map_err(|error| PiError::Session(error.to_string()))
+    }
+
+    pub(crate) async fn unarchive(&self, session_id: &str) -> Result<super::Session, PiError> {
+        let existing = super::session_by_id(&self.db, session_id)
+            .await
+            .map_err(|error| PiError::Session(error.to_string()))?;
+        if existing.agent != "pi" {
+            return Err(PiError::Session("session is not a Pi session".to_owned()));
+        }
+        if !existing.archived {
+            return Ok(existing);
+        }
+        sqlx::query(
+            "UPDATE sessions SET archived = 0, state = 'closed', updated_at = ? WHERE id = ?",
+        )
+        .bind(now_iso())
+        .bind(session_id)
+        .execute(&self.db)
+        .await?;
+        super::session_by_id(&self.db, session_id)
+            .await
+            .map_err(|error| PiError::Session(error.to_string()))
+    }
+
     pub(crate) async fn close_workspace(&self, workspace_id: &str) -> Result<(), PiError> {
         let ids = self
             .sessions

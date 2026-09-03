@@ -40,6 +40,13 @@ export type SessionState =
   | 'failed'
   | 'closed';
 
+export type SessionFilter = 'all' | 'active' | 'archived' | SessionState;
+
+export interface SessionListOptions {
+  search?: string;
+  statusFilter?: SessionFilter;
+}
+
 export interface Session {
   id: string;
   workspaceId: string;

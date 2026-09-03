@@ -16,7 +16,7 @@
   import {
     addWorkspace,
     abortCodexTurn,
-    archiveCodexThread,
+    archiveSession as archiveSessionApi,
     closeCodexSession,
     closePiSession,
     createCodexSession,
@@ -32,6 +32,7 @@
     navigatePiSessionTree,
     probeAgents,
     readCodexThread,
+    renameSession as renameSessionApi,
     removeWorkspace,
     resolveCodexApproval,
     sendCodexPrompt,
@@ -40,7 +41,7 @@
     followUpPiPrompt,
     abortPiTurn,
     setWorkspaceTrust,
-    unarchiveCodexThread,
+    unarchiveSession as unarchiveSessionApi,
   } from './lib/api';
   import type {
     AgentDiagnostic,
@@ -50,6 +51,7 @@
     CodexThreadSnapshot,
     CodexThreadSummary,
     Session,
+    SessionFilter,
     PiSessionTreeNode,
     PiSessionTreeSnapshot,
     TimelineItem,
@@ -110,6 +112,10 @@
   let threadBusy = $state(false);
   let archiveConfirmationSessionId = $state<string | null>(null);
   let piNavigationEntryId = $state<string | null>(null);
+  let sessionSearch = $state('');
+  let sessionFilter = $state<SessionFilter>('active');
+  let renamingSessionId = $state<string | null>(null);
+  let sessionLabelDraft = $state('');
 
   const selectedWorkspace = $derived(
     workspaces.find((workspace) => workspace.id === selectedWorkspaceId) ?? null,
@@ -193,7 +199,10 @@
   }
 
   async function refreshSessions(workspaceId: string) {
-    const loadedSessions = await listSessions(workspaceId);
+    const loadedSessions = await listSessions(workspaceId, {
+      search: sessionSearch,
+      statusFilter: sessionFilter,
+    });
     if (workspaceId !== selectedWorkspaceId) return;
     sessions = loadedSessions;
     selectedSessionId =
@@ -534,7 +543,7 @@
       return;
     }
     if (selectedSession?.archived) {
-      errorMessage = '已归档的 Codex 会话不能继续发送消息，请先取消归档或创建分支。';
+      errorMessage = '已归档的会话不能继续发送消息，请先取消归档或创建分支。';
       return;
     }
     if (!desktop) {
@@ -650,6 +659,35 @@
     }
   }
 
+  function beginRenameSession() {
+    if (!selectedSession || !desktop) return;
+    renamingSessionId = selectedSession.id;
+    sessionLabelDraft = selectedSession.label;
+  }
+
+  function cancelRenameSession() {
+    renamingSessionId = null;
+    sessionLabelDraft = '';
+  }
+
+  async function saveSessionRename() {
+    const sessionId = renamingSessionId;
+    const label = sessionLabelDraft.trim();
+    if (!sessionId || !label || !desktop) return;
+    busy = true;
+    errorMessage = null;
+    try {
+      const renamed = await renameSessionApi(sessionId, label);
+      sessions = sessions.map((item) => (item.id === renamed.id ? renamed : item));
+      cancelRenameSession();
+      notice = '会话名称已更新。';
+    } catch (error) {
+      errorMessage = toErrorMessage(error);
+    } finally {
+      busy = false;
+    }
+  }
+
   async function closeSession() {
     if (!selectedSession || !desktop) return;
     busy = true;
@@ -717,12 +755,12 @@
     busy = true;
     errorMessage = null;
     try {
-      const archived = await archiveCodexThread(sessionId);
-      sessions = sessions.map((item) => (item.id === archived.id ? archived : item));
+      const archived = await archiveSessionApi(sessionId);
       pendingApprovals = pendingApprovals.filter((item) => item.sessionId !== archived.id);
       codexThreadSnapshot = null;
       void refreshCodexThreads(archived.workspaceId);
-      notice = 'Codex 线程已归档；本地时间线仍保留。';
+      await refreshSessions(archived.workspaceId);
+      notice = `${archived.agent === 'pi' ? 'Pi 会话' : 'Codex 线程'}已归档；本地时间线仍保留。`;
     } catch (error) {
       errorMessage = toErrorMessage(error);
     } finally {
@@ -735,13 +773,18 @@
     busy = true;
     errorMessage = null;
     try {
-      const restored = await unarchiveCodexThread(selectedSession.id);
-      sessions = sessions.map((item) => (item.id === restored.id ? restored : item));
+      const restored = await unarchiveSessionApi(selectedSession.id);
       selectedSessionId = restored.id;
       timeline = await getTimeline(restored.id);
-      void refreshCodexThread(restored.id, true);
-      void refreshCodexThreads(restored.workspaceId);
-      notice = 'Codex 线程已取消归档，可以继续发送消息。';
+      if (restored.agent === 'codex') {
+        void refreshCodexThread(restored.id, true);
+        void refreshCodexThreads(restored.workspaceId);
+      }
+      await refreshSessions(restored.workspaceId);
+      if (sessions.some((item) => item.id === restored.id)) {
+        selectedSessionId = restored.id;
+      }
+      notice = `${restored.agent === 'pi' ? 'Pi 会话' : 'Codex 线程'}已取消归档，可以继续发送消息。`;
     } catch (error) {
       errorMessage = toErrorMessage(error);
     } finally {
@@ -837,6 +880,28 @@
       ...flattenPiTree(node.children ?? [], depth + 1),
     ]);
   }
+
+  function sessionStateLabel(session: Session): string {
+    if (session.archived) return '已归档';
+    switch (session.state) {
+      case 'waiting_approval':
+        return '待审批';
+      case 'running':
+        return '运行中';
+      case 'interrupted':
+        return '已中断';
+      case 'failed':
+        return '失败';
+      case 'closed':
+        return '已关闭';
+      case 'starting':
+        return '启动中';
+      case 'created':
+        return '新建';
+      default:
+        return '空闲';
+    }
+  }
 </script>
 
 <svelte:head>
@@ -906,7 +971,7 @@
         <div class="timeline-heading-actions">
           {#if selectedSession}
             <Badge variant={sessionArchived ? 'secondary' : sessionRunning ? 'warning' : 'outline'}>
-              {sessionArchived ? '已归档' : selectedSession.state}
+              {sessionStateLabel(selectedSession)}
             </Badge>
             {#if codexThreadSnapshot && codexThreadSnapshot.id === selectedSession.externalSessionId}
               <Badge variant="outline">远端 {codexThreadSnapshot.turnCount} 轮</Badge>
@@ -930,7 +995,24 @@
             <PlusIcon size={14} /> 新建 Pi
           </Button>
           {#if selectedSession}
-            {#if selectedSession.agent === 'codex' && sessionArchived}
+            {#if renamingSessionId === selectedSession.id}
+              <Input
+                class="session-rename-input"
+                bind:value={sessionLabelDraft}
+                aria-label="会话名称"
+                maxlength="120"
+                onkeydown={(event) => {
+                  if (event.key === 'Enter') {
+                    event.preventDefault();
+                    void saveSessionRename();
+                  } else if (event.key === 'Escape') {
+                    cancelRenameSession();
+                  }
+                }}
+              />
+              <Button variant="outline" size="sm" type="button" onclick={() => void saveSessionRename()} disabled={busy || !sessionLabelDraft.trim()}>保存</Button>
+              <Button variant="ghost" size="sm" type="button" onclick={cancelRenameSession} disabled={busy}>取消</Button>
+            {:else if sessionArchived}
               <Badge variant="secondary">已归档</Badge>
               <Button variant="outline" size="sm" type="button" onclick={() => void unarchiveSession()} disabled={busy}>取消归档</Button>
             {:else if selectedSession.agent === 'codex'}
@@ -942,9 +1024,42 @@
               </Button>
             {:else}
               <Badge variant="outline">SDK host · 只读工具</Badge>
+              <Button variant="ghost" size="sm" type="button" onclick={requestArchiveSession} disabled={busy || sessionRunning}>归档</Button>
               <Button variant="ghost" size="sm" type="button" onclick={() => void closeSession()} disabled={busy || sessionRunning}>关闭</Button>
             {/if}
+            {#if renamingSessionId !== selectedSession.id}
+              <Button variant="ghost" size="sm" type="button" onclick={beginRenameSession} disabled={busy}>改名</Button>
+            {/if}
           {/if}
+          <form
+            class="session-filter-form"
+            aria-label="会话搜索与筛选"
+            onsubmit={(event) => {
+              event.preventDefault();
+              if (selectedWorkspaceId) void refreshSessions(selectedWorkspaceId);
+            }}
+          >
+            <Input class="session-search-input" bind:value={sessionSearch} placeholder="搜索会话或消息…" aria-label="搜索会话或消息" />
+            <select
+              class="session-filter-select"
+              bind:value={sessionFilter}
+              aria-label="会话状态筛选"
+              onchange={() => {
+                if (selectedWorkspaceId) void refreshSessions(selectedWorkspaceId);
+              }}
+            >
+              <option value="active">活动会话</option>
+              <option value="all">全部</option>
+              <option value="archived">已归档</option>
+              <option value="running">运行中</option>
+              <option value="waiting_approval">待审批</option>
+              <option value="idle">空闲</option>
+              <option value="interrupted">已中断</option>
+              <option value="failed">失败</option>
+              <option value="closed">已关闭</option>
+            </select>
+            <Button variant="outline" size="sm" type="submit">查找</Button>
+          </form>
           {#if sessions.length > 0}
             <div class="session-list" aria-label="Agent 会话列表">
               {#each sessions as session (session.id)}
@@ -954,11 +1069,14 @@
                   class="session-item"
                   onclick={() => selectSession(session.id)}
                 >
+                  <span class={`session-agent session-agent-${session.agent}`}>{session.agent === 'pi' ? 'PI' : 'CX'}</span>
                   <span class="session-item-label">{session.label}</span>
-                  <span class="session-item-state">{session.archived ? '已归档' : session.state}</span>
+                  <span class="session-item-state">{sessionStateLabel(session)}</span>
                 </Button>
               {/each}
             </div>
+          {:else}
+            <span class="session-filter-empty">没有匹配的会话</span>
           {/if}
         </div>
         <Separator />
@@ -1169,8 +1287,8 @@
   {#if notice}<Card class="toast notice-toast">{notice}</Card>{/if}
   <AlertDialog
     open={archiveConfirmationSessionId !== null}
-    title="归档 Codex 线程？"
-    description="归档会隐藏远端线程，但不会删除 Aibo 中已保存的本地时间线。"
+    title="归档会话？"
+    description="归档会隐藏会话，但不会删除 Aibo 中已保存的本地时间线。"
     confirmText="归档"
     cancelText="取消"
     onConfirm={() => void confirmArchiveSession()}

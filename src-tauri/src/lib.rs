@@ -99,6 +99,10 @@ pub enum CoreError {
     WorkspaceNotFound(String),
     #[error("session not found: {0}")]
     SessionNotFound(String),
+    #[error("invalid session label: {0}")]
+    InvalidSessionLabel(String),
+    #[error("invalid session filter: {0}")]
+    InvalidSessionFilter(String),
     #[error("database error: {0}")]
     Database(String),
     #[error("agent probe failed: {0}")]
@@ -126,6 +130,8 @@ impl Serialize for CoreError {
             Self::InvalidWorkspacePath(_) => "invalid_workspace_path",
             Self::WorkspaceNotFound(_) => "workspace_not_found",
             Self::SessionNotFound(_) => "session_not_found",
+            Self::InvalidSessionLabel(_) => "invalid_session_label",
+            Self::InvalidSessionFilter(_) => "invalid_session_filter",
             Self::Database(_) => "database_error",
             Self::AgentProbe(_) => "agent_probe_error",
             Self::Codex(_) => "codex_error",
@@ -387,23 +393,105 @@ async fn session_by_id(db: &SqlitePool, id: &str) -> Result<Session, CoreError> 
     row_to_session(&row)
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum SessionListFilter {
+    All,
+    Active,
+    Archived,
+    State(&'static str),
+}
+
+fn normalize_session_filter(raw: Option<&str>) -> Result<SessionListFilter, CoreError> {
+    match raw.map(str::trim).filter(|value| !value.is_empty()) {
+        None | Some("active") => Ok(SessionListFilter::Active),
+        Some("all") => Ok(SessionListFilter::All),
+        Some("archived") => Ok(SessionListFilter::Archived),
+        Some("created") => Ok(SessionListFilter::State("created")),
+        Some("starting") => Ok(SessionListFilter::State("starting")),
+        Some("idle") => Ok(SessionListFilter::State("idle")),
+        Some("running") => Ok(SessionListFilter::State("running")),
+        Some("waiting_approval") => Ok(SessionListFilter::State("waiting_approval")),
+        Some("interrupted") => Ok(SessionListFilter::State("interrupted")),
+        Some("failed") => Ok(SessionListFilter::State("failed")),
+        Some("closed") => Ok(SessionListFilter::State("closed")),
+        Some(value) => Err(CoreError::InvalidSessionFilter(value.to_owned())),
+    }
+}
+
 #[tauri::command]
 async fn list_sessions(
     workspace_id: String,
+    search: Option<String>,
+    status_filter: Option<String>,
     state: State<'_, AppState>,
 ) -> Result<Vec<Session>, CoreError> {
-    let rows = sqlx::query(
+    let filter = normalize_session_filter(status_filter.as_deref())?;
+    let search = search
+        .as_deref()
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(|value| format!("%{}%", value.to_lowercase()));
+    let mut query_text = String::from(
         "SELECT s.id, s.workspace_id, s.agent, s.label, s.state, s.archived,
                 b.external_session_id, s.created_at, s.updated_at
          FROM sessions s
          LEFT JOIN session_bindings b ON b.session_id = s.id
-         WHERE s.workspace_id = ?
-         ORDER BY s.updated_at DESC",
-    )
-    .bind(workspace_id)
-    .fetch_all(&state.db)
-    .await?;
+         WHERE s.workspace_id = ?",
+    );
+    if search.is_some() {
+        query_text.push_str(
+            " AND (lower(s.label) LIKE ? OR lower(s.agent) LIKE ?
+                   OR EXISTS (SELECT 1 FROM messages m
+                              WHERE m.session_id = s.id AND lower(m.content) LIKE ?))",
+        );
+    }
+    match filter {
+        SessionListFilter::All => {}
+        SessionListFilter::Active => query_text.push_str(" AND s.archived = 0"),
+        SessionListFilter::Archived => query_text.push_str(" AND s.archived = 1"),
+        SessionListFilter::State(_) => query_text.push_str(" AND s.archived = 0 AND s.state = ?"),
+    }
+    query_text.push_str(" ORDER BY s.archived ASC, s.updated_at DESC");
+
+    let mut query = sqlx::query(&query_text).bind(&workspace_id);
+    if let Some(search) = search {
+        query = query.bind(search.clone()).bind(search.clone()).bind(search);
+    }
+    if let SessionListFilter::State(value) = filter {
+        query = query.bind(value);
+    }
+    let rows = query.fetch_all(&state.db).await?;
     rows.iter().map(row_to_session).collect()
+}
+
+#[tauri::command]
+async fn rename_session(
+    session_id: String,
+    label: String,
+    state: State<'_, AppState>,
+) -> Result<Session, CoreError> {
+    let label = label.trim();
+    if label.is_empty() {
+        return Err(CoreError::InvalidSessionLabel(
+            "label must not be empty".to_owned(),
+        ));
+    }
+    if label.chars().count() > 120 {
+        return Err(CoreError::InvalidSessionLabel(
+            "label must be at most 120 characters".to_owned(),
+        ));
+    }
+    session_by_id(&state.db, &session_id).await?;
+    let updated = sqlx::query("UPDATE sessions SET label = ?, updated_at = ? WHERE id = ?")
+        .bind(label)
+        .bind(now_iso())
+        .bind(&session_id)
+        .execute(&state.db)
+        .await?;
+    if updated.rows_affected() == 0 {
+        return Err(CoreError::SessionNotFound(session_id));
+    }
+    session_by_id(&state.db, &session_id).await
 }
 
 #[tauri::command]
@@ -476,6 +564,36 @@ async fn unarchive_codex_thread(
     state: State<'_, AppState>,
 ) -> Result<Session, CoreError> {
     state.codex.unarchive(&session_id).await.map_err(Into::into)
+}
+
+#[tauri::command]
+async fn archive_session(
+    session_id: String,
+    state: State<'_, AppState>,
+) -> Result<Session, CoreError> {
+    let session = session_by_id(&state.db, &session_id).await?;
+    match session.agent.as_str() {
+        "codex" => state.codex.archive(&session_id).await.map_err(Into::into),
+        "pi" => state.pi.archive(&session_id).await.map_err(Into::into),
+        agent => Err(CoreError::Initialization(format!(
+            "unsupported session agent: {agent}"
+        ))),
+    }
+}
+
+#[tauri::command]
+async fn unarchive_session(
+    session_id: String,
+    state: State<'_, AppState>,
+) -> Result<Session, CoreError> {
+    let session = session_by_id(&state.db, &session_id).await?;
+    match session.agent.as_str() {
+        "codex" => state.codex.unarchive(&session_id).await.map_err(Into::into),
+        "pi" => state.pi.unarchive(&session_id).await.map_err(Into::into),
+        agent => Err(CoreError::Initialization(format!(
+            "unsupported session agent: {agent}"
+        ))),
+    }
 }
 
 #[tauri::command]
@@ -807,11 +925,14 @@ pub fn run() {
             get_app_snapshot,
             list_sessions,
             get_timeline,
+            rename_session,
             list_codex_threads,
             read_codex_thread,
             fork_codex_thread,
             archive_codex_thread,
             unarchive_codex_thread,
+            archive_session,
+            unarchive_session,
             create_codex_session,
             send_codex_prompt,
             abort_codex_turn,
@@ -833,7 +954,10 @@ pub fn run() {
 
 #[cfg(test)]
 mod tests {
-    use super::{canonical_workspace_path, find_executable, open_database, workspace_label};
+    use super::{
+        canonical_workspace_path, find_executable, normalize_session_filter, open_database,
+        workspace_label, SessionListFilter,
+    };
     use sqlx::Row;
     use std::{fs, path::PathBuf};
     use ulid::Ulid;
@@ -866,6 +990,23 @@ mod tests {
     #[test]
     fn finds_a_known_executable_without_shelling_out() {
         assert!(find_executable("sh").is_some() || cfg!(windows));
+    }
+
+    #[test]
+    fn normalizes_session_filters_with_active_default() {
+        assert_eq!(
+            normalize_session_filter(None).expect("default filter"),
+            SessionListFilter::Active
+        );
+        assert_eq!(
+            normalize_session_filter(Some(" archived ")).expect("archived filter"),
+            SessionListFilter::Archived
+        );
+        assert_eq!(
+            normalize_session_filter(Some("running")).expect("state filter"),
+            SessionListFilter::State("running")
+        );
+        assert!(normalize_session_filter(Some("unknown")).is_err());
     }
 
     #[test]

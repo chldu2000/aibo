@@ -1,6 +1,6 @@
 # Aibo 多 Agent 工作台：调研、架构建议与实施计划
 
-> 状态：架构已冻结（macOS 首发）；Phase 0 macOS 复验完成，Phase 1 Codex 真实会话已验收，Phase 2 审批、Codex thread 生命周期、工具事件投影与恢复契约已实现，Phase 3 Pi SDK host 首批垂直链路已开始，Windows 后续验证
+> 状态：架构已冻结（macOS 首发）；Phase 0 macOS 复验完成，Phase 1 Codex 真实会话已验收，Phase 2 审批、Codex thread 生命周期、工具事件投影与恢复契约已实现，Phase 3 macOS 门禁已完成，Phase 4 统一会话体验开发中，Windows 后续验证
 > 调研日期：2026-09-02  
 > 首批目标：Codex、Pi；首发平台：macOS（当前基线为 arm64）
 > 技术栈：Svelte 5 + Tauri 2
@@ -434,7 +434,7 @@ V1 后为 Pi 增加可选 container/VM/平台 sandbox runner；统一权限 prof
 
 当前门禁：不出现 Codex 原生 UI；Aibo 已完成会话创建、流式显示、审批、恢复、thread list/read/fork/archive/unarchive、工具 item/usage 投影与绑定一致性检查。下一门禁转向跨 Agent handoff 与统一 session tree。
 
-### Phase 3：Pi Adapter（5–8 天，当前阶段）
+### Phase 3：Pi Adapter（5–8 天，macOS 已完成）
 
 - Node SDK host 生命周期、`AgentSession` 事件订阅与请求关联。
 - prompt/steer/follow-up/abort 和模型/工具状态映射。
@@ -446,7 +446,7 @@ V1 后为 Pi 增加可选 container/VM/平台 sandbox runner；统一权限 prof
 
 退出条件：与 Codex 共用同一套时间线、composer 和 session state UI；恢复原生 Pi session 不丢失分支关系。
 
-### Phase 4：统一会话体验（4–6 天）
+### Phase 4：统一会话体验（4–6 天，当前阶段）
 
 - 会话搜索、改名、归档、状态筛选。
 - 时间线虚拟化、工具输出、diff、usage、错误重试。
