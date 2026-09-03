@@ -8,6 +8,8 @@ export const buttonVariants = tv({
         'border-[var(--aibo-accent-border)] bg-[var(--aibo-accent)] text-[var(--aibo-bg)] hover:bg-[var(--aibo-accent-hover)]',
       outline:
         'border-[var(--aibo-border-strong)] bg-transparent text-[var(--aibo-text)] hover:border-[var(--aibo-accent-border)] hover:bg-[var(--aibo-surface-hover)]',
+      secondary:
+        'border-transparent bg-[var(--aibo-surface-hover)] text-[var(--aibo-text)] hover:bg-[var(--aibo-border-strong)]',
       ghost:
         'border-transparent bg-transparent text-[var(--aibo-muted)] hover:bg-[var(--aibo-surface-hover)] hover:text-[var(--aibo-text)]',
       destructive:

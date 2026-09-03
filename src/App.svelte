@@ -7,6 +7,11 @@
   import SquareIcon from '@lucide/svelte/icons/square';
   import { Badge } from '$lib/components/ui/badge';
   import { Button } from '$lib/components/ui/button';
+  import { Card, CardContent, CardHeader, CardTitle } from '$lib/components/ui/card';
+  import { Input } from '$lib/components/ui/input';
+  import { Label } from '$lib/components/ui/label';
+  import { Separator } from '$lib/components/ui/separator';
+  import { Textarea } from '$lib/components/ui/textarea';
   import {
     addWorkspace,
     abortCodexTurn,
@@ -412,29 +417,30 @@
   </header>
 
   <main class="workspace-grid">
-    <aside class="sidebar panel">
-      <div class="panel-heading">
-        <h2>工作区</h2>
+    <Card as="aside" class="sidebar" aria-label="工作区">
+      <CardHeader class="panel-heading">
+        <CardTitle>工作区</CardTitle>
         <Badge variant="secondary" class="count-pill">{workspaces.length}</Badge>
-      </div>
+      </CardHeader>
 
       <form class="workspace-form" onsubmit={(event) => { event.preventDefault(); void createWorkspace(); }}>
-        <label for="workspace-path">添加本地目录</label>
+        <Label class="mb-2 block" for="workspace-path">添加本地目录</Label>
         <div class="input-row">
-          <input id="workspace-path" bind:value={workspacePath} placeholder="/Users/you/Workspace/project" autocomplete="off" />
+          <Input id="workspace-path" bind:value={workspacePath} placeholder="/Users/you/Workspace/project" autocomplete="off" />
           <Button size="icon" type="submit" aria-label="添加工作区" disabled={busy}>
             <PlusIcon size={15} strokeWidth={2.25} />
           </Button>
         </div>
       </form>
+      <Separator />
 
       <div class="workspace-list" aria-label="工作区列表">
         {#if workspaces.length === 0}
           <div class="empty-list">暂无工作区</div>
         {:else}
           {#each workspaces as workspace (workspace.id)}
-            <button
-              class:active={workspace.id === selectedWorkspaceId}
+            <Button
+              variant={workspace.id === selectedWorkspaceId ? 'secondary' : 'ghost'}
               class="workspace-item"
               type="button"
               onclick={() => selectWorkspace(workspace.id)}
@@ -444,7 +450,7 @@
                 <small>{workspace.path}</small>
               </span>
               <span class:trusted={workspace.trust === 'trusted'} class="trust-dot" title={workspace.trust}></span>
-            </button>
+            </Button>
           {/each}
         {/if}
       </div>
@@ -453,13 +459,11 @@
         <span class="legend"><span class="trust-dot trusted"></span> 可信</span>
         <span class="legend"><span class="trust-dot"></span> 待确认</span>
       </div>
-    </aside>
+    </Card>
 
-    <section class="timeline panel">
-      <div class="panel-heading timeline-heading">
-        <div>
-          <h2>{selectedSession?.label ?? selectedWorkspace?.label ?? '选择工作区'}</h2>
-        </div>
+    <Card as="section" class="timeline" aria-label="会话时间线">
+      <CardHeader class="panel-heading timeline-heading">
+        <CardTitle>{selectedSession?.label ?? selectedWorkspace?.label ?? '选择工作区'}</CardTitle>
         <div class="timeline-heading-actions">
           {#if selectedSession}
             <Badge variant={sessionRunning ? 'warning' : 'outline'}>{selectedSession.state}</Badge>
@@ -470,7 +474,8 @@
             </Badge>
           {/if}
         </div>
-      </div>
+      </CardHeader>
+      <Separator />
 
       {#if selectedWorkspace}
         <div class="session-toolbar">
@@ -483,30 +488,34 @@
           {#if sessions.length > 0}
             <div class="session-list" aria-label="Codex 会话列表">
               {#each sessions as session (session.id)}
-                <button
+                <Button
+                  variant={session.id === selectedSessionId ? 'secondary' : 'ghost'}
                   type="button"
-                  class:active={session.id === selectedSessionId}
                   class="session-item"
                   onclick={() => selectSession(session.id)}
                 >
                   <span class="session-item-label">{session.label}</span>
                   <span class="session-item-state">{session.state}</span>
-                </button>
+                </Button>
               {/each}
             </div>
           {/if}
         </div>
+        <Separator />
 
         {#if timeline.length > 0}
           <div class="timeline-feed" aria-live="polite">
             {#each timeline as item (item.id)}
-              <article class:assistant-entry={item.role === 'assistant'} class:user-entry={item.role === 'user'} class="timeline-entry">
+              <Card
+                as="article"
+                class={`timeline-entry ${item.role === 'assistant' ? 'assistant-entry' : item.role === 'user' ? 'user-entry' : ''}`}
+              >
                 <div class="entry-meta">
-                  <span>{item.role === 'assistant' ? 'CODEX' : item.role.toUpperCase()}</span>
-                  <span>{item.status}</span>
+                  <Badge variant={item.role === 'assistant' ? 'secondary' : 'outline'}>{item.role === 'assistant' ? 'CODEX' : item.role.toUpperCase()}</Badge>
+                  <Badge variant="outline">{item.status}</Badge>
                 </div>
                 <div class="entry-content">{item.content || '…'}</div>
-              </article>
+              </Card>
             {/each}
           </div>
         {:else if selectedSession}
@@ -527,8 +536,9 @@
         </div>
       {/if}
 
-      <form class="composer" onsubmit={(event) => { event.preventDefault(); void sendPrompt(); }}>
-        <textarea
+      <Card as="form" class="composer" onsubmit={(event) => { event.preventDefault(); void sendPrompt(); }}>
+        <Textarea
+          class="composer-textarea"
           bind:value={composerText}
           rows="2"
           placeholder={selectedSession ? '输入消息，⌘/Ctrl + Enter 发送…' : '先新建或选择一个 Codex 会话…'}
@@ -539,7 +549,7 @@
               void sendPrompt();
             }
           }}
-        ></textarea>
+        ></Textarea>
         {#if sessionRunning}
           <Button variant="destructive" size="icon" type="button" onclick={() => void abortPrompt()} disabled={busy} aria-label="中止">
             <SquareIcon size={13} fill="currentColor" />
@@ -549,38 +559,41 @@
             <SendIcon size={14} />
           </Button>
         {/if}
-      </form>
-    </section>
+      </Card>
+    </Card>
 
-    <aside class="inspector panel">
-      <div class="panel-heading">
-        <h2>Agent 诊断</h2>
+    <Card as="aside" class="inspector" aria-label="Agent 诊断">
+      <CardHeader class="panel-heading">
+        <CardTitle>Agent 诊断</CardTitle>
         <Badge variant="success">{readyAgents}/{diagnostics.length} 就绪</Badge>
-      </div>
+      </CardHeader>
+      <Separator />
 
       <div class="agent-cards">
         {#each diagnostics as agent (agent.agent)}
-          <article class="agent-card">
-            <div class="agent-card-head">
+          <Card as="article" class="agent-card">
+            <CardHeader class="agent-card-head">
               <div class="agent-identity">
                 <div><strong>{agent.label}</strong><small>{agent.version ?? 'version unavailable'}</small></div>
               </div>
               <Badge variant={agent.status === 'ready' ? 'success' : 'warning'}>{agent.status}</Badge>
-            </div>
-            <dl>
+            </CardHeader>
+            <CardContent class="agent-card-content">
+              <dl>
               <div><dt>通道</dt><dd>{agent.agent === 'codex' ? 'app-server' : 'sdk-host'}</dd></div>
               <div><dt>认证</dt><dd>{agent.authState === 'delegated' ? '系统凭据' : agent.authState}</dd></div>
               {#if agent.executable}<div><dt>可执行文件</dt><dd title={agent.executable}>{agent.executable}</dd></div>{/if}
-            </dl>
-            <div class="capability-list">
-              {#each agent.capabilities as capability}<span>{capability}</span>{/each}
-            </div>
-          </article>
+              </dl>
+              <div class="capability-list">
+                {#each agent.capabilities as capability}<Badge variant="outline">{capability}</Badge>{/each}
+              </div>
+            </CardContent>
+          </Card>
         {/each}
       </div>
 
       {#if selectedWorkspace}
-        <div class="trust-card">
+        <Card class="trust-card">
           <div class="trust-card-heading"><ShieldCheckIcon size={16} /><strong>工作区信任</strong></div>
           <p>{selectedWorkspace.trust === 'trusted' ? '当前目录已允许 Agent 操作。' : '确认目录来源后再启用 Agent 操作。'}</p>
           <div class="trust-actions">
@@ -589,17 +602,18 @@
             </Button>
             <Button variant="ghost" size="sm" type="button" onclick={() => void deleteWorkspace(selectedWorkspace)} disabled={busy}>移除</Button>
           </div>
-        </div>
+        </Card>
       {/if}
 
+      <Separator />
       <div class="inspector-footer">
         <Button variant="ghost" size="sm" type="button" onclick={() => void refresh()} disabled={busy}>
           <RefreshCwIcon size={13} /> 刷新诊断
         </Button>
       </div>
-    </aside>
+    </Card>
   </main>
 
-  {#if errorMessage}<div class="toast error-toast">{errorMessage}</div>{/if}
-  {#if notice}<div class="toast notice-toast">{notice}</div>{/if}
+  {#if errorMessage}<Card class="toast error-toast">{errorMessage}</Card>{/if}
+  {#if notice}<Card class="toast notice-toast">{notice}</Card>{/if}
 </div>
