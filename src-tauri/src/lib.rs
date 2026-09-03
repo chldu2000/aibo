@@ -1,3 +1,6 @@
+mod codex;
+
+use codex::CodexManager;
 use serde::Serialize;
 use sqlx::{
     sqlite::{SqliteConnectOptions, SqliteJournalMode, SqlitePoolOptions},
@@ -20,6 +23,7 @@ const PI_SDK_VERSION: &str = "0.84.4";
 #[derive(Clone)]
 pub struct AppState {
     db: SqlitePool,
+    codex: CodexManager,
 }
 
 #[derive(Debug, Serialize)]
@@ -56,16 +60,47 @@ pub struct AppSnapshot {
     diagnostics: Vec<AgentDiagnostic>,
 }
 
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Session {
+    pub(crate) id: String,
+    pub(crate) workspace_id: String,
+    pub(crate) agent: String,
+    pub(crate) label: String,
+    pub(crate) state: String,
+    pub(crate) external_session_id: Option<String>,
+    pub(crate) created_at: String,
+    pub(crate) updated_at: String,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TimelineItem {
+    pub(crate) id: String,
+    pub(crate) session_id: String,
+    pub(crate) turn_id: Option<String>,
+    pub(crate) external_message_id: Option<String>,
+    pub(crate) role: String,
+    pub(crate) content: String,
+    pub(crate) status: String,
+    pub(crate) created_at: String,
+    pub(crate) updated_at: String,
+}
+
 #[derive(Debug, thiserror::Error)]
 pub enum CoreError {
     #[error("invalid workspace path: {0}")]
     InvalidWorkspacePath(String),
     #[error("workspace not found: {0}")]
     WorkspaceNotFound(String),
+    #[error("session not found: {0}")]
+    SessionNotFound(String),
     #[error("database error: {0}")]
     Database(String),
     #[error("agent probe failed: {0}")]
     AgentProbe(String),
+    #[error("codex adapter error: {0}")]
+    Codex(String),
     #[error("app initialization failed: {0}")]
     Initialization(String),
 }
@@ -84,8 +119,10 @@ impl Serialize for CoreError {
         let code = match self {
             Self::InvalidWorkspacePath(_) => "invalid_workspace_path",
             Self::WorkspaceNotFound(_) => "workspace_not_found",
+            Self::SessionNotFound(_) => "session_not_found",
             Self::Database(_) => "database_error",
             Self::AgentProbe(_) => "agent_probe_error",
+            Self::Codex(_) => "codex_error",
             Self::Initialization(_) => "initialization_error",
         };
         ErrorPayload {
@@ -105,6 +142,12 @@ impl From<sqlx::Error> for CoreError {
 impl From<sqlx::migrate::MigrateError> for CoreError {
     fn from(error: sqlx::migrate::MigrateError) -> Self {
         Self::Database(format!("migration failed: {error}"))
+    }
+}
+
+impl From<codex::CodexError> for CoreError {
+    fn from(error: codex::CodexError) -> Self {
+        Self::Codex(error.to_string())
     }
 }
 
@@ -276,6 +319,7 @@ async fn remove_workspace(
     workspace_id: String,
     state: State<'_, AppState>,
 ) -> Result<(), CoreError> {
+    state.codex.close_workspace(&workspace_id).await?;
     let result = sqlx::query("DELETE FROM workspaces WHERE id = ?")
         .bind(&workspace_id)
         .execute(&state.db)
@@ -284,6 +328,124 @@ async fn remove_workspace(
         return Err(CoreError::WorkspaceNotFound(workspace_id));
     }
     Ok(())
+}
+
+fn row_to_session(row: &sqlx::sqlite::SqliteRow) -> Result<Session, CoreError> {
+    Ok(Session {
+        id: row.try_get("id")?,
+        workspace_id: row.try_get("workspace_id")?,
+        agent: row.try_get("agent")?,
+        label: row.try_get("label")?,
+        state: row.try_get("state")?,
+        external_session_id: row.try_get("external_session_id")?,
+        created_at: row.try_get("created_at")?,
+        updated_at: row.try_get("updated_at")?,
+    })
+}
+
+fn row_to_timeline_item(row: &sqlx::sqlite::SqliteRow) -> Result<TimelineItem, CoreError> {
+    Ok(TimelineItem {
+        id: row.try_get("id")?,
+        session_id: row.try_get("session_id")?,
+        turn_id: row.try_get("turn_id")?,
+        external_message_id: row.try_get("external_message_id")?,
+        role: row.try_get("role")?,
+        content: row.try_get("content")?,
+        status: row.try_get("status")?,
+        created_at: row.try_get("created_at")?,
+        updated_at: row.try_get("updated_at")?,
+    })
+}
+
+async fn session_by_id(db: &SqlitePool, id: &str) -> Result<Session, CoreError> {
+    let row = sqlx::query(
+        "SELECT s.id, s.workspace_id, s.agent, s.label, s.state,
+                b.external_session_id, s.created_at, s.updated_at
+         FROM sessions s
+         LEFT JOIN session_bindings b ON b.session_id = s.id
+         WHERE s.id = ?",
+    )
+    .bind(id)
+    .fetch_optional(db)
+    .await?
+    .ok_or_else(|| CoreError::SessionNotFound(id.to_owned()))?;
+    row_to_session(&row)
+}
+
+#[tauri::command]
+async fn list_sessions(
+    workspace_id: String,
+    state: State<'_, AppState>,
+) -> Result<Vec<Session>, CoreError> {
+    let rows = sqlx::query(
+        "SELECT s.id, s.workspace_id, s.agent, s.label, s.state,
+                b.external_session_id, s.created_at, s.updated_at
+         FROM sessions s
+         LEFT JOIN session_bindings b ON b.session_id = s.id
+         WHERE s.workspace_id = ?
+         ORDER BY s.updated_at DESC",
+    )
+    .bind(workspace_id)
+    .fetch_all(&state.db)
+    .await?;
+    rows.iter().map(row_to_session).collect()
+}
+
+#[tauri::command]
+async fn get_timeline(
+    session_id: String,
+    state: State<'_, AppState>,
+) -> Result<Vec<TimelineItem>, CoreError> {
+    session_by_id(&state.db, &session_id).await?;
+    let rows = sqlx::query(
+        "SELECT id, session_id, turn_id, external_message_id, role, content,
+                status, created_at, updated_at
+         FROM messages
+         WHERE session_id = ?
+         ORDER BY created_at ASC, sequence ASC, id ASC",
+    )
+    .bind(session_id)
+    .fetch_all(&state.db)
+    .await?;
+    rows.iter().map(row_to_timeline_item).collect()
+}
+
+#[tauri::command]
+async fn create_codex_session(
+    workspace_id: String,
+    state: State<'_, AppState>,
+) -> Result<Session, CoreError> {
+    state
+        .codex
+        .create_session(&workspace_id)
+        .await
+        .map_err(Into::into)
+}
+
+#[tauri::command]
+async fn send_codex_prompt(
+    session_id: String,
+    input: String,
+    state: State<'_, AppState>,
+) -> Result<(), CoreError> {
+    state
+        .codex
+        .send_prompt(&session_id, &input)
+        .await
+        .map_err(Into::into)
+}
+
+#[tauri::command]
+async fn abort_codex_turn(session_id: String, state: State<'_, AppState>) -> Result<(), CoreError> {
+    state.codex.abort(&session_id).await.map_err(Into::into)
+}
+
+#[tauri::command]
+async fn close_codex_session(
+    session_id: String,
+    state: State<'_, AppState>,
+) -> Result<(), CoreError> {
+    state.codex.close(&session_id).await.map_err(Into::into)
 }
 
 fn find_executable(name: &str) -> Option<PathBuf> {
@@ -449,7 +611,8 @@ pub fn run() {
             let db = tauri::async_runtime::block_on(open_database(&db_path))
                 .map_err(|error| Box::new(error) as Box<dyn Error>)?;
             info!(path = %db_path.display(), "aibo core initialized");
-            app.manage(AppState { db });
+            let codex = CodexManager::new(app.handle().clone(), db.clone());
+            app.manage(AppState { db, codex });
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
@@ -458,7 +621,13 @@ pub fn run() {
             set_workspace_trust,
             remove_workspace,
             probe_agents,
-            get_app_snapshot
+            get_app_snapshot,
+            list_sessions,
+            get_timeline,
+            create_codex_session,
+            send_codex_prompt,
+            abort_codex_turn,
+            close_codex_session
         ])
         .run(tauri::generate_context!())
         .expect("error while running Aibo");
@@ -516,6 +685,24 @@ mod tests {
         )
         .expect("query workspace table");
         assert_eq!(table_count, 1);
+
+        for table in [
+            "sessions",
+            "session_bindings",
+            "turns",
+            "messages",
+            "agent_events",
+        ] {
+            let present: i64 = tauri::async_runtime::block_on(
+                sqlx::query_scalar(
+                    "SELECT COUNT(*) FROM sqlite_master WHERE type = 'table' AND name = ?",
+                )
+                .bind(table)
+                .fetch_one(&pool),
+            )
+            .expect("query phase 1 table");
+            assert_eq!(present, 1, "missing migrated table {table}");
+        }
 
         let journal_mode: String =
             tauri::async_runtime::block_on(sqlx::query("PRAGMA journal_mode").fetch_one(&pool))

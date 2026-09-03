@@ -1,6 +1,6 @@
 # Aibo 多 Agent 工作台：调研、架构建议与实施计划
 
-> 状态：架构已冻结（macOS 首发）；Phase 0 macOS 复验完成，Windows 后续验证，Phase 1 开发中
+> 状态：架构已冻结（macOS 首发）；Phase 0 macOS 复验完成，Phase 1 Codex 真实会话垂直链路开发中，Windows 后续验证
 > 调研日期：2026-09-02  
 > 首批目标：Codex、Pi；首发平台：macOS（当前基线为 arm64）
 > 技术栈：Svelte 5 + Tauri 2
@@ -414,7 +414,17 @@ V1 后为 Pi 增加可选 container/VM/平台 sandbox runner；统一权限 prof
 
 退出条件：macOS arm64 上重启应用后工作区与 Agent 探测结果稳定恢复；路径越界和未信任写入被拒绝；WebView 无任意 shell 权限；Windows 只作为后续验证门。
 
-### Phase 2：Codex Adapter（5–8 天）
+### Phase 1B：Codex 真实会话垂直链路（当前批次）
+
+- 在 Rust Core 内启动和监管 `codex app-server --stdio`。
+- 完成 initialize、thread/start、turn/start、流式 delta、completed、interrupt 和 thread/resume。
+- 以 `AgentEvent v1` 归一化事件，同时持久化 session、turn、message 和 event projection。
+- 在 Svelte 时间线中完成新建会话、发送提示、流式显示、中止和重启读取。
+- 初始会话固定只读 sandbox 与 `approvalPolicy=never`；审批请求安全拒绝并留下后续 UI 扩展点。
+
+退出条件：macOS arm64 上可完成“工作区 → Codex thread → 真实 turn → 流式时间线 → SQLite 恢复”的演示门禁；进程异常、超时和旧 generation 不得静默污染当前会话。
+
+### Phase 2：Codex Adapter 能力扩展（5–8 天）
 
 - stdio JSON-RPC client、schema/version 适配。
 - thread list/start/read/resume/fork/archive。
@@ -537,6 +547,6 @@ macOS 本机 Phase 0 已通过，架构评审结果已经冻结在 [docs/archite
 2. Codex 使用 App Server；Pi 使用项目锁版 SDK host，RPC 仅作兼容/诊断。
 3. `AgentEvent v1`、session state machine、`SessionSnapshot v1` 和 `Handoff Envelope v1` 的边界已确定。
 4. Pi 首版接受宿主机当前用户权限，但必须通过 workspace trust 明示风险；不提前引入容器/VM。
-5. Phase 1 只做应用骨架、工作区、诊断、持久化和安全边界；真实 Codex/Pi 会话分别进入 Phase 2/3。
+5. Phase 1 先完成应用骨架、工作区、诊断、持久化和安全边界，再推进 Codex 的最小真实会话垂直链路；Pi 会话进入后续阶段。
 
-Phase 1 的第一个可验收切片是：macOS 上添加工作区，完成路径/信任检查，显示 Codex/Pi 诊断，退出后重启并恢复状态；该切片通过后再接入 Codex 的真实会话流。
+Phase 1 当前的可验收切片是：macOS 上添加工作区，完成路径/信任检查，启动真实 Codex thread，显示流式响应并在退出后重启恢复时间线；范围见 [phase-1-codex-vertical-slice.md](phase-1-codex-vertical-slice.md)。

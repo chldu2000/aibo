@@ -1,7 +1,7 @@
 # Aibo 架构评审冻结：macOS 首发与 Phase 1 准备
 
 > 日期：2026-09-02
-> 状态：已冻结（首发平台为 macOS）；Phase 1 开发中
+> 状态：已冻结（首发平台为 macOS）；Phase 1 Codex 真实会话垂直链路开发中
 > 范围：本地桌面 MVP、Codex、Pi、Phase 1 应用骨架
 
 ## 1. 评审结论
@@ -16,7 +16,7 @@ Phase 0 的 macOS 本机门禁已经通过，Aibo 现在进入 Phase 1。Windows
 - Pi 使用项目锁版 `@earendil-works/pi-coding-agent@0.84.4`，由独立 Node SDK host 承载。
 - Pi RPC 保留为兼容、诊断和协议回归路径，不与 SDK host 并行维护一套完整产品逻辑。
 
-Phase 1 的目标不是接通完整 Agent 聊天，而是交付一个能稳定管理工作区、持久化状态并展示 Agent 诊断的 macOS 应用骨架。
+Phase 1 先交付稳定的 macOS 应用骨架，再以 Codex App Server 为首条真实 Agent 会话垂直链路：创建 thread、发送 turn、归一化流式事件、持久化时间线并支持重启恢复。Pi 和完整多 Agent 体验仍按后续阶段推进。
 
 ## 2. 已冻结的架构决策
 
@@ -84,26 +84,27 @@ Rust Aibo Core
 2. typed IPC、统一错误模型、`tracing` 初始化和 SQLite migration。
 3. 工作区添加、删除、最近使用、canonical path 校验、symlink 逃逸检查和显式 trust 状态。
 4. Codex/Pi 安装探测与诊断：可执行路径、版本、已知能力和认证状态；不得读取 secret 内容。
-5. 三栏 UI 壳、空时间线、工作区/Agent 状态投影和重启恢复。
-6. macOS arm64 的路径、子进程退出、generation 和迁移测试。
+5. 三栏 UI 壳、AgentEvent v1 时间线、工作区/Agent 状态投影和重启恢复。
+6. Codex 真实会话垂直链路：stdio App Server、thread/turn 生命周期、delta/completed/interrupt 和 SQLite projection。
+7. macOS arm64 的路径、子进程退出、generation 和迁移测试。
 
 ### 明确不做
 
-- Phase 1 不实现 Codex/Pi 的完整会话 UI；真实 adapter 接入分别进入 Phase 2/3。
+- Phase 1 不实现 Codex/Pi 的完整会话 UI；当前只接入 Codex 的最小真实会话垂直切片，完整能力仍进入后续阶段。
 - 不实现 `@`、handoff、MCP、云同步、自动提交/推送或远程 Agent host。
 - 不在 Phase 1 引入 Pi 容器/VM；如果安全评审拒绝宿主机权限模型，必须先开新的决策变更。
 - 不因为 Windows 尚未重跑就复制一套平台分支；平台差异收敛在 adapter/tool factory 和 Core 的路径/进程抽象中。
 
-## 4. Phase 1 退出条件
+## 4. Phase 1 基础壳退出条件
 
-在 macOS arm64 上同时满足以下条件，才进入 Phase 2：
+以下条件定义基础壳门禁；通过后即可进入本文件第 6 节所述的 Codex 真实会话垂直切片：
 
 - `pnpm tauri dev` 可启动应用，WebView 没有任意 shell/文件系统能力。
 - 用户添加的工作区被 canonicalize、持久化，关闭并重启后能恢复；越界路径和未信任写入会被拒绝。
 - 诊断页能稳定展示 Codex/Pi 的发现结果和明确的 unsupported/missing-auth 状态，且不泄漏 secret。
 - SQLite migration 可重复执行，WAL 开启，损坏/版本错误返回可解释错误。
 - 进程 generation、超时和退出状态有测试；旧 generation 的事件不会污染新会话。
-- 三栏壳和空时间线能消费 `AgentEvent v1` fixture，后续接入真实 adapter 不需要改 UI 数据模型。
+- 三栏壳和时间线能消费 `AgentEvent v1` fixture，接入真实 adapter 不需要改 UI 数据模型。
 
 ## 5. Windows 后续验证门
 
@@ -120,4 +121,4 @@ Windows 在 Phase 1 之后单独执行，不改变已冻结的 macOS 主路线�
 2. 实现 Core 的 workspace repository、trust policy、agent probe 和 typed IPC。
 3. 用脱敏 fixture 驱动三栏壳与空时间线，先验证投影和重启恢复。
 4. 在 macOS 上完成一次“添加工作区 → 诊断 Agent → 退出 → 重启恢复”的演示门禁。
-5. 退出条件满足后，再进入 Codex adapter 的真实会话垂直切片。
+5. 基础壳门禁满足后，进入 Codex adapter 的真实会话垂直切片；当前批次记录在 [phase-1-codex-vertical-slice.md](phase-1-codex-vertical-slice.md)。
