@@ -26,6 +26,7 @@
   },
   "bundle": {
     "active": false,
+    "resources": ["pi-sdk-host.mjs"],
     "icon": ["icons/icon.png"]
   }
 }

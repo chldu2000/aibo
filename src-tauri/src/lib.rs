@@ -1,6 +1,8 @@
 mod codex;
+mod pi;
 
 use codex::{CodexManager, CodexThreadSnapshot, CodexThreadSummary};
+use pi::PiManager;
 use serde::Serialize;
 use sqlx::{
     sqlite::{SqliteConnectOptions, SqliteJournalMode, SqlitePoolOptions},
@@ -24,6 +26,7 @@ const PI_SDK_VERSION: &str = "0.84.4";
 pub struct AppState {
     db: SqlitePool,
     codex: CodexManager,
+    pi: PiManager,
 }
 
 #[derive(Debug, Serialize)]
@@ -102,6 +105,8 @@ pub enum CoreError {
     AgentProbe(String),
     #[error("codex adapter error: {0}")]
     Codex(String),
+    #[error("Pi adapter error: {0}")]
+    Pi(String),
     #[error("app initialization failed: {0}")]
     Initialization(String),
 }
@@ -124,6 +129,7 @@ impl Serialize for CoreError {
             Self::Database(_) => "database_error",
             Self::AgentProbe(_) => "agent_probe_error",
             Self::Codex(_) => "codex_error",
+            Self::Pi(_) => "pi_error",
             Self::Initialization(_) => "initialization_error",
         };
         ErrorPayload {
@@ -149,6 +155,12 @@ impl From<sqlx::migrate::MigrateError> for CoreError {
 impl From<codex::CodexError> for CoreError {
     fn from(error: codex::CodexError) -> Self {
         Self::Codex(error.to_string())
+    }
+}
+
+impl From<pi::PiError> for CoreError {
+    fn from(error: pi::PiError) -> Self {
+        Self::Pi(error.to_string())
     }
 }
 
@@ -321,6 +333,7 @@ async fn remove_workspace(
     state: State<'_, AppState>,
 ) -> Result<(), CoreError> {
     state.codex.close_workspace(&workspace_id).await?;
+    state.pi.close_workspace(&workspace_id).await?;
     let result = sqlx::query("DELETE FROM workspaces WHERE id = ?")
         .bind(&workspace_id)
         .execute(&state.db)
@@ -517,6 +530,41 @@ async fn close_codex_session(
     state.codex.close(&session_id).await.map_err(Into::into)
 }
 
+#[tauri::command]
+async fn create_pi_session(
+    workspace_id: String,
+    state: State<'_, AppState>,
+) -> Result<Session, CoreError> {
+    state
+        .pi
+        .create_session(&workspace_id)
+        .await
+        .map_err(Into::into)
+}
+
+#[tauri::command]
+async fn send_pi_prompt(
+    session_id: String,
+    input: String,
+    state: State<'_, AppState>,
+) -> Result<(), CoreError> {
+    state
+        .pi
+        .send_prompt(&session_id, &input)
+        .await
+        .map_err(Into::into)
+}
+
+#[tauri::command]
+async fn abort_pi_turn(session_id: String, state: State<'_, AppState>) -> Result<(), CoreError> {
+    state.pi.abort(&session_id).await.map_err(Into::into)
+}
+
+#[tauri::command]
+async fn close_pi_session(session_id: String, state: State<'_, AppState>) -> Result<(), CoreError> {
+    state.pi.close(&session_id).await.map_err(Into::into)
+}
+
 fn find_executable(name: &str) -> Option<PathBuf> {
     let path_var = env::var_os("PATH")?;
     for directory in env::split_paths(&path_var) {
@@ -612,24 +660,34 @@ fn probe_binary(agent: &str, label: &str, capabilities: &[&str]) -> AgentDiagnos
 
 fn probe_pi() -> AgentDiagnostic {
     let cli_path = find_executable("pi");
+    let node_path = find_executable("node");
+    let host_ready = node_path.is_some();
     AgentDiagnostic {
         agent: "pi".to_owned(),
         label: "Pi".to_owned(),
-        status: "ready".to_owned(),
-        executable: cli_path
+        status: if host_ready { "ready" } else { "missing" }.to_owned(),
+        executable: node_path
             .as_ref()
             .map(|path| path.to_string_lossy().into_owned()),
         version: Some(format!("SDK {PI_SDK_VERSION}")),
-        capabilities: ["sdk-host", "streaming", "abort", "session-tree"]
-            .into_iter()
-            .map(ToOwned::to_owned)
-            .collect(),
+        capabilities: [
+            "sdk-host",
+            "streaming",
+            "abort",
+            "session-tree",
+            "read-only-tools",
+        ]
+        .into_iter()
+        .map(ToOwned::to_owned)
+        .collect(),
         auth_state: "delegated".to_owned(),
-        message: Some(match cli_path {
-            Some(_) => {
-                "Project-locked SDK host ready; RPC CLI compatibility is available.".to_owned()
+        message: Some(if host_ready {
+            match cli_path {
+                Some(_) => "Project-locked SDK host ready; first slice exposes read-only tools; Pi has no native sandbox.".to_owned(),
+                None => "Project-locked SDK host ready; read-only tools only; global Pi CLI is optional; Pi has no native sandbox.".to_owned(),
             }
-            None => "Project-locked SDK host ready; global Pi CLI is optional.".to_owned(),
+        } else {
+            "Node.js is required to start the project-locked Pi SDK host.".to_owned()
         }),
     }
 }
@@ -681,7 +739,8 @@ pub fn run() {
                 .map_err(|error| Box::new(error) as Box<dyn Error>)?;
             info!(path = %db_path.display(), "aibo core initialized");
             let codex = CodexManager::new(app.handle().clone(), db.clone());
-            app.manage(AppState { db, codex });
+            let pi = PiManager::new(app.handle().clone(), db.clone(), data_dir);
+            app.manage(AppState { db, codex, pi });
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
@@ -702,7 +761,11 @@ pub fn run() {
             send_codex_prompt,
             abort_codex_turn,
             resolve_codex_approval,
-            close_codex_session
+            close_codex_session,
+            create_pi_session,
+            send_pi_prompt,
+            abort_pi_turn,
+            close_pi_session
         ])
         .run(tauri::generate_context!())
         .expect("error while running Aibo");

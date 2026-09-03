@@ -1,0 +1,6 @@
+{"id":"aibo-pi-1","result":{"protocol":"aibo-pi-sdk-host.v1","sessionId":"pi-session-1","sessionFile":"/Users/REDACTED/Library/Application Support/aibo/pi-sessions/workspace/pi-session-1.jsonl","capabilities":["streaming","abort","session-tree","read-only-tools"]}}
+{"method":"aibo/event","params":{"protocol":"aibo-pi-sdk-host.v1","turnId":"pi-turn-1","event":{"type":"agent_start"}}}
+{"method":"aibo/event","params":{"protocol":"aibo-pi-sdk-host.v1","turnId":"pi-turn-1","event":{"type":"message_start","message":{"role":"assistant","text":"","stopReason":"pending"}}}}
+{"method":"aibo/event","params":{"protocol":"aibo-pi-sdk-host.v1","turnId":"pi-turn-1","event":{"type":"message_update","assistantMessageEvent":{"type":"text_delta","contentIndex":0,"delta":"hello"},"usage":{"input":4,"output":1,"total":5}}}}
+{"method":"aibo/event","params":{"protocol":"aibo-pi-sdk-host.v1","turnId":"pi-turn-1","event":{"type":"message_end","message":{"role":"assistant","text":"hello","stopReason":"stop"}}}}
+{"method":"aibo/event","params":{"protocol":"aibo-pi-sdk-host.v1","turnId":"pi-turn-1","event":{"type":"turn_end","message":{"role":"assistant","text":"hello","stopReason":"stop"},"toolResults":[]}}}

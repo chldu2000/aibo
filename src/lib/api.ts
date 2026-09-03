@@ -78,6 +78,18 @@ export const resolveCodexApproval = (
 export const closeCodexSession = (sessionId: string): Promise<void> =>
   invoke('close_codex_session', { sessionId });
 
+export const createPiSession = (workspaceId: string): Promise<Session> =>
+  invoke<Session>('create_pi_session', { workspaceId });
+
+export const sendPiPrompt = (sessionId: string, input: string): Promise<void> =>
+  invoke('send_pi_prompt', { sessionId, input });
+
+export const abortPiTurn = (sessionId: string): Promise<void> =>
+  invoke('abort_pi_turn', { sessionId });
+
+export const closePiSession = (sessionId: string): Promise<void> =>
+  invoke('close_pi_session', { sessionId });
+
 export const listenToAgentEvents = (
   handler: (event: AgentEvent) => void,
 ): Promise<UnlistenFn> => listen<AgentEvent>('agent-event', (event) => handler(event.payload));

@@ -1,6 +1,6 @@
 # Aibo 多 Agent 工作台：调研、架构建议与实施计划
 
-> 状态：架构已冻结（macOS 首发）；Phase 0 macOS 复验完成，Phase 1 Codex 真实会话已验收，Phase 2 审批、Codex thread 生命周期、工具事件投影与恢复契约已实现，Windows 后续验证
+> 状态：架构已冻结（macOS 首发）；Phase 0 macOS 复验完成，Phase 1 Codex 真实会话已验收，Phase 2 审批、Codex thread 生命周期、工具事件投影与恢复契约已实现，Phase 3 Pi SDK host 首批垂直链路已开始，Windows 后续验证
 > 调研日期：2026-09-02  
 > 首批目标：Codex、Pi；首发平台：macOS（当前基线为 arm64）
 > 技术栈：Svelte 5 + Tauri 2
@@ -434,13 +434,15 @@ V1 后为 Pi 增加可选 container/VM/平台 sandbox runner；统一权限 prof
 
 当前门禁：不出现 Codex 原生 UI；Aibo 已完成会话创建、流式显示、审批、恢复、thread list/read/fork/archive/unarchive、工具 item/usage 投影与绑定一致性检查。下一门禁转向跨 Agent handoff 与统一 session tree。
 
-### Phase 3：Pi Adapter（5–8 天）
+### Phase 3：Pi Adapter（5–8 天，当前阶段）
 
 - Node SDK host 生命周期、`AgentSession` 事件订阅与请求关联。
 - prompt/steer/follow-up/abort 和模型/工具状态映射。
 - session create/open/switch/tree 映射。
 - tool/compaction/retry/extension UI event 归一化；RPC framing 仅保留兼容测试。
 - project trust 提示和“不具备内建沙箱”状态标识。
+
+当前门禁：已落地版本化 `aibo-pi-sdk-host.v1` JSONL host、Pi `AgentSession` 的 create/open、streaming、abort、SQLite 投影和统一 `AgentEvent v1` 事件；首批 host 只开放 `read/grep/find/ls` 只读工具，并在诊断与会话 UI 中明确 Pi 没有原生沙箱。详细边界见 [Phase 3 记录](phase-3-pi-adapter.md)。下一批补齐 steer/follow-up、session tree 可视化和 compaction/retry/extension 事件。
 
 退出条件：与 Codex 共用同一套时间线、composer 和 session state UI；恢复原生 Pi session 不丢失分支关系。
 
@@ -547,6 +549,6 @@ macOS 本机 Phase 0 已通过，架构评审结果已经冻结在 [docs/archite
 2. Codex 使用 App Server；Pi 使用项目锁版 SDK host，RPC 仅作兼容/诊断。
 3. `AgentEvent v1`、session state machine、`SessionSnapshot v1` 和 `Handoff Envelope v1` 的边界已确定。
 4. Pi 首版接受宿主机当前用户权限，但必须通过 workspace trust 明示风险；不提前引入容器/VM。
-5. Phase 1 已完成应用骨架、工作区、诊断、持久化、安全边界和 Codex 最小真实会话垂直链路；当前进入 Phase 2 Codex 能力扩展，Pi 会话进入后续阶段。
+5. Phase 1 已完成应用骨架、工作区、诊断、持久化、安全边界和 Codex 最小真实会话垂直链路；Phase 2 已完成 Codex 能力扩展，当前进入 Phase 3 Pi SDK host 与统一会话事件链路。
 
 Phase 1 的 macOS 验收切片已完成：添加工作区、路径/信任检查、真实 Codex thread、流式响应和退出后时间线恢复均已验证。Phase 2 当前批次见 [phase-2-codex-capability-expansion.md](phase-2-codex-capability-expansion.md)。

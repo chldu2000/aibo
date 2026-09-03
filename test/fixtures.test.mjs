@@ -29,6 +29,7 @@ for (const fixture of [
   ["pi", "events.redacted.jsonl"],
   ["pi", "events.macos.redacted.jsonl"],
   ["pi", "session.redacted.jsonl"],
+  ["pi", "sdk-host.events.macos.redacted.jsonl"],
 ]) {
   test(`fixture ${fixture.join("/")} contains valid LF-delimited JSON`, async () => {
     const contents = await readFile(path.join(root, "fixtures", ...fixture), "utf8");
@@ -112,4 +113,22 @@ test("Codex recovery fixture makes approval and crash boundaries explicit", asyn
   assert.equal(resolved.payload.params.requestId, request.payload.id);
   assert.equal(crashed.payload.params.pendingApprovalCount, 1);
   assert.equal(crashed.payload.params.approvalsDiscarded, true);
+});
+
+test("Pi SDK host fixture keeps the versioned stream and turn binding intact", async () => {
+  const contents = await readFile(
+    path.join(root, "fixtures", "pi", "sdk-host.events.macos.redacted.jsonl"),
+    "utf8",
+  );
+  const records = contents.trimEnd().split("\n").map((line) => JSON.parse(line));
+  assert.equal(records[0].result.protocol, "aibo-pi-sdk-host.v1");
+  const events = records.filter((record) => record.method === "aibo/event");
+  assert.ok(events.length >= 4);
+  assert.ok(events.every((record) => record.params.protocol === "aibo-pi-sdk-host.v1"));
+  assert.deepEqual(
+    events.map((record) => record.params.event.type),
+    ["agent_start", "message_start", "message_update", "message_end", "turn_end"],
+  );
+  assert.ok(events.every((record) => record.params.turnId === "pi-turn-1"));
+  assert.equal(events[2].params.event.assistantMessageEvent.delta, "hello");
 });

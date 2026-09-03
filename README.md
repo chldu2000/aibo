@@ -6,7 +6,7 @@ The first supported runtimes are Codex and Pi. The product architecture and phas
 
 ## Current status
 
-Phase 0 protocol probes are complete on the local macOS validation host, and the architecture is frozen for a macOS-first release. Codex App Server and both Pi paths (the locked SDK host and the RPC compatibility path) have passed real streaming, abort, and history-resume smoke checks. Windows is a follow-up compatibility gate after native Pi login. Phase 1 Codex real-session acceptance is complete on the local macOS host: the Svelte 5 + Tauri 2 shell, Rust Core, SQLite projection, stdio App Server adapter, streaming timeline, interruption, and restart resume passed the real UI gate. Phase 2 now covers explicit approval, normalized tool/usage projection, binding checks, and typed Codex thread list/read/fork/archive/unarchive APIs. Pi remains out of this slice.
+Phase 0 protocol probes are complete on the local macOS validation host, and the architecture is frozen for a macOS-first release. Codex App Server and both Pi paths (the locked SDK host and the RPC compatibility path) have passed the recorded protocol/history probes; real-model smoke still depends on native agent credentials. Windows is a follow-up compatibility gate after native Pi login. Phase 1 Codex real-session acceptance is complete on the local macOS host: the Svelte 5 + Tauri 2 shell, Rust Core, SQLite projection, stdio App Server adapter, streaming timeline, interruption, and restart resume passed the real UI gate. Phase 2 covers explicit approval, normalized tool/usage projection, binding checks, and typed Codex thread list/read/fork/archive/unarchive APIs. Phase 3 now adds a Pi SDK host with create/open, streaming, abort, and shared timeline projection; the first Pi slice exposes read-only tools and explicitly does not claim a native sandbox.
 
 ## Phase 1 Codex vertical slice
 
@@ -22,6 +22,23 @@ The browser-only `pnpm dev` command remains useful for UI preview; it uses clear
 ## Phase 2 Codex capability expansion
 
 Phase 2 adds an explicit approval path, typed Codex thread lifecycle, and normalized tool/usage events. Codex requests use the `on-request` policy while retaining the read-only sandbox. Aibo projects approval requests as reviewable cards, sends an explicit `accept` or `cancel` decision, reads remote history, creates persistent branches, archives without deleting the local timeline, and can unarchive a thread; it never auto-approves. Command/file/MCP item progress is projected into the unified timeline, with binding and generation checks guarding recovery.
+
+## Phase 3 Pi SDK adapter
+
+The Pi path runs through the project-locked `@earendil-works/pi-coding-agent`
+SDK in a small Node JSONL host. Rust owns lifecycle, generation checks, SQLite,
+and the shared `AgentEvent v1` projection. Create a Pi session from the desktop
+toolbar to exercise the same composer/timeline as Codex. The initial host only
+allows Pi's `read`, `grep`, `find`, and `ls` tools; Pi has no native OS sandbox,
+so workspace trust and the UI warning remain explicit. The host contract probe
+is available without credentials:
+
+```sh
+pnpm run probe:pi:sdk-host
+```
+
+The optional real-model host smoke (`pnpm run probe:pi:sdk-host:smoke`) requires
+Pi-native authentication.
 
 ## Phase 0 probes
 

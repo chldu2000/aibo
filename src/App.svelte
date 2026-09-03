@@ -18,7 +18,9 @@
     abortCodexTurn,
     archiveCodexThread,
     closeCodexSession,
+    closePiSession,
     createCodexSession,
+    createPiSession,
     forkCodexThread,
     getTimeline,
     isTauri,
@@ -31,6 +33,8 @@
     removeWorkspace,
     resolveCodexApproval,
     sendCodexPrompt,
+    sendPiPrompt,
+    abortPiTurn,
     setWorkspaceTrust,
     unarchiveCodexThread,
   } from './lib/api';
@@ -75,9 +79,9 @@
       status: 'ready',
       executable: null,
       version: 'SDK 0.84.4',
-      capabilities: ['sdk-host', 'streaming', 'abort', 'session-tree'],
+      capabilities: ['sdk-host', 'streaming', 'abort', 'session-tree', 'read-only-tools'],
       authState: 'delegated',
-      message: 'Project-locked SDK host; native authentication remains with Pi.',
+      message: 'Project-locked SDK host; read-only tools only; native authentication remains with Pi.',
     },
   ];
 
@@ -294,10 +298,11 @@
         typeof event.payload.pendingApprovalCount === 'number'
           ? event.payload.pendingApprovalCount
           : 0;
+      const agentLabel = selectedSession?.agent === 'pi' ? 'Pi' : 'Codex';
       notice =
         discarded > 0
-          ? `Codex 进程已退出，${discarded} 个待审批请求已清除；请重新发送。`
-          : 'Codex 进程已退出，会话已中断；可重新发送以恢复。';
+          ? `${agentLabel} 进程已退出，${discarded} 个待审批请求已清除；请重新发送。`
+          : `${agentLabel} 进程已退出，会话已中断；可重新发送以恢复。`;
     }
 
     if (event.sessionId === selectedSessionId && event.type === 'message.delta') {
@@ -465,6 +470,31 @@
     }
   }
 
+  async function createPi() {
+    if (!selectedWorkspace) {
+      errorMessage = '请先选择一个工作区。';
+      return;
+    }
+    if (!desktop) {
+      notice = '当前是 Web 预览；请在 Tauri 桌面模式中启动 Pi。';
+      return;
+    }
+
+    busy = true;
+    errorMessage = null;
+    try {
+      const session = await createPiSession(selectedWorkspace.id);
+      sessions = [session, ...sessions.filter(({ id }) => id !== session.id)];
+      selectedSessionId = session.id;
+      timeline = [];
+      notice = 'Pi SDK 会话已启动；当前仅开放只读工具，Pi 本身不提供原生沙箱。';
+    } catch (error) {
+      errorMessage = toErrorMessage(error);
+    } finally {
+      busy = false;
+    }
+  }
+
   async function sendPrompt() {
     const input = composerText.trim();
     if (!input) return;
@@ -490,7 +520,8 @@
         sessions = [session, ...sessions.filter(({ id }) => id !== session.id)];
         selectedSessionId = session.id;
       }
-      await sendCodexPrompt(session.id, input);
+      if (session.agent === 'pi') await sendPiPrompt(session.id, input);
+      else await sendCodexPrompt(session.id, input);
       await refreshTimeline(session.id);
       composerText = '';
       sessions = sessions.map((item) =>
@@ -508,7 +539,8 @@
     busy = true;
     errorMessage = null;
     try {
-      await abortCodexTurn(selectedSession.id);
+      if (selectedSession.agent === 'pi') await abortPiTurn(selectedSession.id);
+      else await abortCodexTurn(selectedSession.id);
       pendingApprovals = pendingApprovals.filter(
         (approval) => approval.sessionId !== selectedSession?.id,
       );
@@ -547,13 +579,15 @@
     errorMessage = null;
     try {
       const closingId = selectedSession.id;
-      await closeCodexSession(closingId);
+      const closingAgent = selectedSession.agent;
+      if (selectedSession.agent === 'pi') await closePiSession(closingId);
+      else await closeCodexSession(closingId);
       const remaining = sessions.filter(({ id }) => id !== closingId);
       sessions = remaining;
       selectedSessionId = remaining[0]?.id ?? null;
       codexThreadSnapshot = null;
       timeline = selectedSessionId ? await getTimeline(selectedSessionId) : [];
-      notice = 'Codex 会话已关闭；已保存的时间线仍可在下次启动时读取。';
+      notice = `${closingAgent === 'pi' ? 'Pi' : 'Codex'} 会话已关闭；已保存的时间线仍可在下次启动时读取。`;
     } catch (error) {
       errorMessage = toErrorMessage(error);
     } finally {
@@ -798,23 +832,29 @@
       {#if selectedWorkspace}
         <div class="session-toolbar">
           <Button size="sm" type="button" onclick={() => void createCodex()} disabled={busy}>
-            <PlusIcon size={14} /> 新建会话
+            <PlusIcon size={14} /> 新建 Codex
+          </Button>
+          <Button variant="outline" size="sm" type="button" onclick={() => void createPi()} disabled={busy}>
+            <PlusIcon size={14} /> 新建 Pi
           </Button>
           {#if selectedSession}
-            {#if sessionArchived}
+            {#if selectedSession.agent === 'codex' && sessionArchived}
               <Badge variant="secondary">已归档</Badge>
               <Button variant="outline" size="sm" type="button" onclick={() => void unarchiveSession()} disabled={busy}>取消归档</Button>
-            {:else}
+            {:else if selectedSession.agent === 'codex'}
               <Button variant="ghost" size="sm" type="button" onclick={() => void forkSession()} disabled={busy || sessionRunning}>分支</Button>
               <Button variant="ghost" size="sm" type="button" onclick={requestArchiveSession} disabled={busy || sessionRunning}>归档</Button>
               <Button variant="ghost" size="sm" type="button" onclick={() => void closeSession()} disabled={busy || sessionRunning}>关闭</Button>
               <Button variant="ghost" size="sm" type="button" onclick={() => void syncCodexThread(selectedSession.id)} disabled={threadBusy || busy}>
                 <RefreshCwIcon size={13} /> 读取线程
               </Button>
+            {:else}
+              <Badge variant="outline">SDK host · 只读工具</Badge>
+              <Button variant="ghost" size="sm" type="button" onclick={() => void closeSession()} disabled={busy || sessionRunning}>关闭</Button>
             {/if}
           {/if}
           {#if sessions.length > 0}
-            <div class="session-list" aria-label="Codex 会话列表">
+            <div class="session-list" aria-label="Agent 会话列表">
               {#each sessions as session (session.id)}
                 <Button
                   variant={session.id === selectedSessionId ? 'secondary' : 'ghost'}
@@ -839,7 +879,7 @@
                 class={`timeline-entry ${item.role === 'assistant' ? 'assistant-entry' : item.role === 'user' ? 'user-entry' : item.role === 'tool' ? 'tool-entry' : ''}`}
               >
                 <div class="entry-meta">
-                  <Badge variant={item.role === 'assistant' ? 'secondary' : item.role === 'tool' ? 'outline' : 'outline'}>{item.role === 'assistant' ? 'CODEX' : item.role.toUpperCase()}</Badge>
+                  <Badge variant={item.role === 'assistant' ? 'secondary' : item.role === 'tool' ? 'outline' : 'outline'}>{item.role === 'assistant' ? (selectedSession?.agent === 'pi' ? 'PI' : 'CODEX') : item.role.toUpperCase()}</Badge>
                   <Badge variant="outline">{item.status}</Badge>
                 </div>
                 <div class="entry-content">{item.content || '…'}</div>
@@ -894,7 +934,7 @@
           class="composer-textarea"
           bind:value={composerText}
           rows="2"
-          placeholder={sessionArchived ? '该会话已归档，请取消归档或创建分支继续…' : selectedSession ? '输入消息，⌘/Ctrl + Enter 发送…' : '先新建或选择一个 Codex 会话…'}
+          placeholder={sessionArchived ? '该会话已归档，请取消归档或创建分支继续…' : selectedSession ? '输入消息，⌘/Ctrl + Enter 发送…' : '先新建或选择一个 Agent 会话…'}
           disabled={!selectedSession || sessionArchived || sessionRunning || busy}
           onkeydown={(event) => {
             if ((event.metaKey || event.ctrlKey) && event.key === 'Enter') {

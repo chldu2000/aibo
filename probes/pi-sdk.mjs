@@ -3,6 +3,7 @@ import path from "node:path";
 import process from "node:process";
 import {
   createAgentSession,
+  ModelRuntime,
   SessionManager,
   createBashTool,
   createPowerShellTool,
@@ -115,9 +116,11 @@ async function runStorageProbe() {
 
 async function runModelProbe() {
   const manager = SessionManager.create(cwd, sessionDir);
+  const modelRuntime = await ModelRuntime.create();
   const { session, modelFallbackMessage: fallback } = await createAgentSession({
     cwd,
     sessionManager: manager,
+    modelRuntime,
     noTools: "all",
     tools: [],
   });
@@ -170,6 +173,7 @@ async function runModelProbe() {
   const reopened = await createAgentSession({
     cwd,
     sessionManager: SessionManager.open(sessionFile, sessionDir, cwd),
+    modelRuntime,
     noTools: "all",
     tools: [],
   });
