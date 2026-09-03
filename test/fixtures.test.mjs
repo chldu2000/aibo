@@ -12,6 +12,9 @@ test("AgentEvent v1 schema is valid JSON with a frozen version", async () => {
   );
   assert.equal(schema.properties.schemaVersion.const, "1.0");
   assert.ok(schema.$defs.eventType.enum.includes("approval.requested"));
+  assert.ok(schema.$defs.eventType.enum.includes("compaction.completed"));
+  assert.ok(schema.$defs.eventType.enum.includes("retry.started"));
+  assert.ok(schema.$defs.eventType.enum.includes("extension.updated"));
   assert.ok(schema.$defs.sessionState.enum.includes("interrupted"));
 });
 
@@ -30,6 +33,7 @@ for (const fixture of [
   ["pi", "events.macos.redacted.jsonl"],
   ["pi", "session.redacted.jsonl"],
   ["pi", "sdk-host.events.macos.redacted.jsonl"],
+  ["pi", "sdk-host.lifecycle.macos.redacted.jsonl"],
 ]) {
   test(`fixture ${fixture.join("/")} contains valid LF-delimited JSON`, async () => {
     const contents = await readFile(path.join(root, "fixtures", ...fixture), "utf8");
@@ -135,4 +139,31 @@ test("Pi SDK host fixture keeps the versioned stream and turn binding intact", a
   assert.equal(tree.sessionId, "pi-session-1");
   assert.equal(tree.leafId, "entry-2");
   assert.equal(tree.tree[0].children[0].role, "assistant");
+});
+
+test("Pi SDK host lifecycle fixture preserves compaction, retry, and extension fields", async () => {
+  const contents = await readFile(
+    path.join(root, "fixtures", "pi", "sdk-host.lifecycle.macos.redacted.jsonl"),
+    "utf8",
+  );
+  const records = contents.trimEnd().split("\n").map((line) => JSON.parse(line));
+  const events = records.filter((record) => record.method === "aibo/event");
+  assert.deepEqual(
+    events.map((record) => record.params.event.type),
+    [
+      "queue_update",
+      "compaction_start",
+      "compaction_end",
+      "auto_retry_start",
+      "auto_retry_end",
+      "summarization_retry_scheduled",
+      "summarization_retry_attempt_start",
+      "summarization_retry_finished",
+      "session_info_changed",
+      "entry_appended",
+    ],
+  );
+  assert.equal(events[2].params.event.result.tokensBefore, 12000);
+  assert.equal(events[3].params.event.attempt, 1);
+  assert.equal(events.at(-1).params.event.entry.customType, "probe");
 });

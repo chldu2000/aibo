@@ -137,6 +137,13 @@ export interface AgentEvent {
     | 'approval.requested'
     | 'approval.resolved'
     | 'usage.updated'
+    | 'queue.updated'
+    | 'compaction.started'
+    | 'compaction.completed'
+    | 'retry.started'
+    | 'retry.completed'
+    | 'extension.updated'
+    | 'session.info_changed'
     | 'adapter.warning'
     | 'adapter.crashed';
   correlation: Record<string, string | number | null> | null;

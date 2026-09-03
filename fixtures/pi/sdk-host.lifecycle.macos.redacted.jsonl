@@ -1,0 +1,11 @@
+{"id":"aibo-pi-start-1","result":{"protocol":"aibo-pi-sdk-host.v1","sessionId":"pi-session-lifecycle","capabilities":["streaming","session-tree","read-only-tools"]}}
+{"method":"aibo/event","params":{"protocol":"aibo-pi-sdk-host.v1","turnId":"pi-turn-1","event":{"type":"queue_update","steering":["stop"],"followUp":["summarize"]}}}
+{"method":"aibo/event","params":{"protocol":"aibo-pi-sdk-host.v1","turnId":"pi-turn-1","event":{"type":"compaction_start","reason":"threshold"}}}
+{"method":"aibo/event","params":{"protocol":"aibo-pi-sdk-host.v1","turnId":"pi-turn-1","event":{"type":"compaction_end","reason":"threshold","aborted":false,"willRetry":true,"result":{"summary":"keep the latest work","firstKeptEntryId":"entry-4","tokensBefore":12000,"estimatedTokensAfter":4000}}}}
+{"method":"aibo/event","params":{"protocol":"aibo-pi-sdk-host.v1","turnId":"pi-turn-1","event":{"type":"auto_retry_start","attempt":1,"maxAttempts":3,"delayMs":1000,"errorMessage":"temporarily unavailable"}}}
+{"method":"aibo/event","params":{"protocol":"aibo-pi-sdk-host.v1","turnId":"pi-turn-1","event":{"type":"auto_retry_end","success":true,"attempt":1}}}
+{"method":"aibo/event","params":{"protocol":"aibo-pi-sdk-host.v1","turnId":null,"event":{"type":"summarization_retry_scheduled","attempt":1,"maxAttempts":2,"delayMs":500,"errorMessage":"summary failed"}}}
+{"method":"aibo/event","params":{"protocol":"aibo-pi-sdk-host.v1","turnId":null,"event":{"type":"summarization_retry_attempt_start","source":"compaction","reason":"threshold"}}}
+{"method":"aibo/event","params":{"protocol":"aibo-pi-sdk-host.v1","turnId":null,"event":{"type":"summarization_retry_finished"}}}
+{"method":"aibo/event","params":{"protocol":"aibo-pi-sdk-host.v1","turnId":null,"event":{"type":"session_info_changed","name":"Pi lifecycle probe"}}}
+{"method":"aibo/event","params":{"protocol":"aibo-pi-sdk-host.v1","turnId":null,"event":{"type":"entry_appended","entry":{"id":"entry-extension-1","parentId":"entry-4","type":"custom","timestamp":"2026-01-01T00:00:02.000Z","customType":"probe","data":{"ok":true}}}}}

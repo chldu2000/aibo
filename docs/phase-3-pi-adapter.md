@@ -15,7 +15,7 @@ Aibo 在 Rust Core 中为每个 Pi 会话启动一个 Node SDK host（`src-tauri
 - `tree`：读取 Pi 原生 `SessionManager` 树，返回当前 leaf、父子关系、角色和截断后的摘要。
 - `dispose`：释放 SDK session 和 host 进程。
 
-Pi SDK 的 `message_start/update/end`、`turn_end`、`agent_start`、`agent_error` 和工具执行事件在 Rust 侧被收敛为 `turn.*`、`message.*`、`tool.*`、`usage.updated`、`adapter.*`，因此前端继续复用 Codex 的时间线和 composer。
+Pi SDK 的 `message_start/update/end`、`turn_end`、`agent_start`、`agent_error` 和工具执行事件在 Rust 侧被收敛为 `turn.*`、`message.*`、`tool.*`、`usage.updated`、`adapter.*`；队列、compaction、retry、extension 和 session metadata 分别投影为 `queue.updated`、`compaction.*`、`retry.*`、`extension.updated`、`session.info_changed`，因此前端继续复用 Codex 的时间线和 composer。
 
 ## 安全边界
 
@@ -31,10 +31,10 @@ Pi SDK 的 `message_start/update/end`、`turn_end`、`agent_start`、`agent_erro
 
 1. `steer` / `followUp` 已映射到统一 composer 队列语义，并在真实 SDK host smoke 中验证 accepted 和 abort 边界。
 2. Pi session tree 已通过 host、Rust command 和 Svelte inspector 展示当前 leaf 与父子层级。
-3. SDK host fixture 已增加 tree response；compaction/retry/extension 事件仍保留在下一批。
+3. SDK host fixture 已增加 tree response 及 compaction/retry/extension 生命周期事件。
 
 ## 下一批
 
-1. 投影 compaction、retry、extension 状态和消息，补齐事件 fixture。
+1. 在 UI 时间线中呈现 compaction、retry、extension 的系统状态卡片，并保留可恢复的 payload。
 2. 增加 host 崩溃、重启后 reopen 及 generation 隔离测试。
 3. 在树视图中加入安全的分支切换/恢复动作，并为跨 Agent handoff 预留 snapshot 接口。

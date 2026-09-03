@@ -79,7 +79,7 @@ try {
     assertProbe(Array.isArray(tree.result?.tree) && countTreeNodes(tree.result.tree) >= 2, "Pi SDK host tree did not retain the completed turn");
     events.length = 0;
     await request("prompt", { turnId: "probe-turn-2", text: "Generate a long numbered response and keep going until aborted." });
-    await waitFor((event) => event.type === "message_update" && event.assistantMessageEvent?.type === "text_delta");
+    await waitFor((event) => event.type === "message_start" && event.message?.role === "assistant");
     const steered = await request("steer", { text: "Stop the current response and summarize in one sentence." });
     assertProbe(steered.result?.accepted === true && steered.result?.mode === "steer", "Pi SDK host did not accept steer");
     await request("abort");
@@ -87,7 +87,7 @@ try {
     assertProbe(aborted.message?.stopReason === "aborted", "Pi SDK host abort did not produce an aborted turn");
     events.length = 0;
     await request("prompt", { turnId: "probe-turn-3", text: "Generate a long numbered response and keep going until aborted." });
-    await waitFor((event) => event.type === "message_update" && event.assistantMessageEvent?.type === "text_delta");
+    await waitFor((event) => event.type === "message_start" && event.message?.role === "assistant");
     const followed = await request("followUp", { text: "After this response, add a one-line summary." });
     assertProbe(followed.result?.accepted === true && followed.result?.mode === "followUp", "Pi SDK host did not accept follow-up");
     await request("abort");

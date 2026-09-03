@@ -65,6 +65,20 @@ function compactTreeNode(node) {
   };
 }
 
+function compactSessionEntry(entry) {
+  if (!entry || typeof entry !== "object") return undefined;
+  return {
+    id: entry.id,
+    parentId: entry.parentId ?? null,
+    type: entry.type,
+    timestamp: entry.timestamp,
+    customType: entry.customType,
+    display: entry.display,
+    summary: typeof entry.summary === "string" ? entry.summary.slice(0, 500) : undefined,
+    data: entry.data,
+  };
+}
+
 function compactEvent(event) {
   const type = event?.type;
   if (!type) return null;
@@ -99,6 +113,58 @@ function compactEvent(event) {
     compact.isError = event.isError;
   } else if (type === "agent_error") {
     compact.error = event.error ?? event.message;
+  } else if (type === "queue_update") {
+    compact.steering = Array.isArray(event.steering) ? event.steering : [];
+    compact.followUp = Array.isArray(event.followUp) ? event.followUp : [];
+  } else if (type === "compaction_start") {
+    compact.reason = event.reason;
+  } else if (type === "compaction_end") {
+    compact.reason = event.reason;
+    compact.aborted = event.aborted === true;
+    compact.willRetry = event.willRetry === true;
+    compact.errorMessage = event.errorMessage;
+    if (event.result) {
+      compact.result = {
+        summary: event.result.summary,
+        firstKeptEntryId: event.result.firstKeptEntryId,
+        tokensBefore: event.result.tokensBefore,
+        estimatedTokensAfter: event.result.estimatedTokensAfter,
+        usage: event.result.usage,
+        details: event.result.details,
+      };
+    }
+  } else if (type === "auto_retry_start") {
+    compact.kind = "agent";
+    compact.attempt = event.attempt;
+    compact.maxAttempts = event.maxAttempts;
+    compact.delayMs = event.delayMs;
+    compact.errorMessage = event.errorMessage;
+  } else if (type === "auto_retry_end") {
+    compact.kind = "agent";
+    compact.success = event.success === true;
+    compact.attempt = event.attempt;
+    compact.finalError = event.finalError;
+  } else if (type === "summarization_retry_scheduled") {
+    compact.kind = "summarization";
+    compact.phase = "scheduled";
+    compact.attempt = event.attempt;
+    compact.maxAttempts = event.maxAttempts;
+    compact.delayMs = event.delayMs;
+    compact.errorMessage = event.errorMessage;
+  } else if (type === "summarization_retry_attempt_start") {
+    compact.kind = "summarization";
+    compact.phase = "attempt_start";
+    compact.source = event.source;
+    compact.reason = event.reason;
+  } else if (type === "summarization_retry_finished") {
+    compact.kind = "summarization";
+    compact.phase = "finished";
+  } else if (type === "session_info_changed") {
+    compact.name = event.name;
+  } else if (type === "entry_appended") {
+    compact.entry = compactSessionEntry(event.entry);
+  } else if (type === "thinking_level_changed") {
+    compact.level = event.level;
   }
   return compact;
 }

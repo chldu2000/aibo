@@ -553,6 +553,238 @@ impl PiSession {
             "tool_execution_start" | "tool_execution_update" | "tool_execution_end" => {
                 self.handle_tool_event(event_type, event, turn_id).await?;
             }
+            "queue_update" => {
+                self.emit_event(
+                    "queue.updated",
+                    turn_id,
+                    json!({
+                        "steering": event.get("steering").cloned().unwrap_or_else(|| json!([])),
+                        "followUp": event.get("followUp").cloned().unwrap_or_else(|| json!([])),
+                    }),
+                    None,
+                )
+                .await?;
+            }
+            "compaction_start" => {
+                let reason = event
+                    .get("reason")
+                    .and_then(Value::as_str)
+                    .unwrap_or("unknown");
+                self.append_system_notice(
+                    turn_id.as_deref(),
+                    format!("Pi 上下文压缩开始（{reason}）"),
+                    "completed",
+                )
+                .await?;
+                self.emit_event(
+                    "compaction.started",
+                    turn_id,
+                    json!({ "reason": event.get("reason") }),
+                    None,
+                )
+                .await?;
+            }
+            "compaction_end" => {
+                let result = event.get("result").cloned().unwrap_or(Value::Null);
+                let aborted = event
+                    .get("aborted")
+                    .and_then(Value::as_bool)
+                    .unwrap_or(false);
+                let error_message = event.get("errorMessage").and_then(Value::as_str);
+                let reason = event
+                    .get("reason")
+                    .and_then(Value::as_str)
+                    .unwrap_or("unknown");
+                let content = if aborted {
+                    format!("Pi 上下文压缩已取消（{reason}）")
+                } else if let Some(error) = error_message {
+                    format!("Pi 上下文压缩失败（{reason}）：{error}")
+                } else {
+                    format!("Pi 上下文压缩完成（{reason}）")
+                };
+                self.append_system_notice(
+                    turn_id.as_deref(),
+                    content,
+                    if error_message.is_some() {
+                        "failed"
+                    } else {
+                        "completed"
+                    },
+                )
+                .await?;
+                self.emit_event(
+                    "compaction.completed",
+                    turn_id,
+                    json!({
+                        "reason": event.get("reason"),
+                        "aborted": event.get("aborted").and_then(Value::as_bool).unwrap_or(false),
+                        "willRetry": event.get("willRetry").and_then(Value::as_bool).unwrap_or(false),
+                        "errorMessage": event.get("errorMessage"),
+                        "result": result,
+                    }),
+                    None,
+                )
+                .await?;
+            }
+            "auto_retry_start" => {
+                let attempt = event.get("attempt").and_then(Value::as_u64).unwrap_or(0);
+                let max_attempts = event
+                    .get("maxAttempts")
+                    .and_then(Value::as_u64)
+                    .unwrap_or(0);
+                self.append_system_notice(
+                    turn_id.as_deref(),
+                    format!("Pi 正在重试模型请求（{attempt}/{max_attempts}）"),
+                    "completed",
+                )
+                .await?;
+                self.emit_event(
+                    "retry.started",
+                    turn_id,
+                    json!({
+                        "kind": "agent",
+                        "attempt": event.get("attempt"),
+                        "maxAttempts": event.get("maxAttempts"),
+                        "delayMs": event.get("delayMs"),
+                        "errorMessage": event.get("errorMessage"),
+                    }),
+                    None,
+                )
+                .await?;
+            }
+            "auto_retry_end" => {
+                let success = event
+                    .get("success")
+                    .and_then(Value::as_bool)
+                    .unwrap_or(false);
+                self.append_system_notice(
+                    turn_id.as_deref(),
+                    if success {
+                        "Pi 模型请求重试成功".to_owned()
+                    } else {
+                        format!(
+                            "Pi 模型请求重试结束：{}",
+                            event
+                                .get("finalError")
+                                .and_then(Value::as_str)
+                                .unwrap_or("失败")
+                        )
+                    },
+                    if success { "completed" } else { "failed" },
+                )
+                .await?;
+                self.emit_event(
+                    "retry.completed",
+                    turn_id,
+                    json!({
+                        "kind": "agent",
+                        "success": event.get("success").and_then(Value::as_bool).unwrap_or(false),
+                        "attempt": event.get("attempt"),
+                        "finalError": event.get("finalError"),
+                    }),
+                    None,
+                )
+                .await?;
+            }
+            "summarization_retry_scheduled" => {
+                let attempt = event.get("attempt").and_then(Value::as_u64).unwrap_or(0);
+                let max_attempts = event
+                    .get("maxAttempts")
+                    .and_then(Value::as_u64)
+                    .unwrap_or(0);
+                self.append_system_notice(
+                    turn_id.as_deref(),
+                    format!("Pi 摘要生成将在稍后重试（{attempt}/{max_attempts}）"),
+                    "completed",
+                )
+                .await?;
+                self.emit_event(
+                    "retry.started",
+                    turn_id,
+                    json!({
+                        "kind": "summarization",
+                        "phase": "scheduled",
+                        "attempt": event.get("attempt"),
+                        "maxAttempts": event.get("maxAttempts"),
+                        "delayMs": event.get("delayMs"),
+                        "errorMessage": event.get("errorMessage"),
+                    }),
+                    None,
+                )
+                .await?;
+            }
+            "summarization_retry_attempt_start" => {
+                self.append_system_notice(
+                    turn_id.as_deref(),
+                    "Pi 摘要生成重试开始".to_owned(),
+                    "completed",
+                )
+                .await?;
+                self.emit_event(
+                    "retry.started",
+                    turn_id,
+                    json!({
+                        "kind": "summarization",
+                        "phase": "attempt_start",
+                        "source": event.get("source"),
+                        "reason": event.get("reason"),
+                    }),
+                    None,
+                )
+                .await?;
+            }
+            "summarization_retry_finished" => {
+                self.append_system_notice(
+                    turn_id.as_deref(),
+                    "Pi 摘要生成重试结束".to_owned(),
+                    "completed",
+                )
+                .await?;
+                self.emit_event(
+                    "retry.completed",
+                    turn_id,
+                    json!({ "kind": "summarization", "phase": "finished" }),
+                    None,
+                )
+                .await?;
+            }
+            "session_info_changed" => {
+                self.emit_event(
+                    "session.info_changed",
+                    turn_id,
+                    json!({ "name": event.get("name") }),
+                    None,
+                )
+                .await?;
+            }
+            "entry_appended" => {
+                let custom_type = event
+                    .pointer("/entry/customType")
+                    .and_then(Value::as_str)
+                    .unwrap_or("custom");
+                self.append_system_notice(
+                    turn_id.as_deref(),
+                    format!("Pi 扩展记录已更新（{custom_type}）"),
+                    "completed",
+                )
+                .await?;
+                self.emit_event(
+                    "extension.updated",
+                    turn_id,
+                    json!({ "entry": event.get("entry") }),
+                    None,
+                )
+                .await?;
+            }
+            "thinking_level_changed" => {
+                self.emit_event(
+                    "session.info_changed",
+                    turn_id,
+                    json!({ "thinkingLevel": event.get("level") }),
+                    None,
+                )
+                .await?;
+            }
             _ => {}
         }
         Ok(())
@@ -652,6 +884,34 @@ impl PiSession {
                 .bind(Ulid::new().to_string()).bind(&self.session_id).bind(turn_id).bind(external_id).bind(text)
                 .bind(self.sequence.load(Ordering::Relaxed) as i64).bind(&now).bind(&now).execute(&self.db).await?;
         }
+        Ok(())
+    }
+
+    async fn append_system_notice(
+        &self,
+        turn_id: Option<&str>,
+        content: impl Into<String>,
+        status: &str,
+    ) -> Result<(), PiError> {
+        let internal_turn = if let Some(turn) = turn_id {
+            Some(self.ensure_turn(turn, "").await?)
+        } else {
+            None
+        };
+        let id = Ulid::new().to_string();
+        let now = now_iso();
+        sqlx::query("INSERT INTO messages (id, session_id, turn_id, external_message_id, role, content, status, sequence, created_at, updated_at) VALUES (?, ?, ?, ?, 'system', ?, ?, ?, ?, ?)")
+            .bind(&id)
+            .bind(&self.session_id)
+            .bind(internal_turn)
+            .bind(format!("pi-system:{id}"))
+            .bind(content.into())
+            .bind(status)
+            .bind(self.sequence.load(Ordering::Relaxed) as i64)
+            .bind(&now)
+            .bind(&now)
+            .execute(&self.db)
+            .await?;
         Ok(())
     }
 
