@@ -63,6 +63,18 @@ export interface TimelineItem {
   updatedAt: string;
 }
 
+export type ApprovalDecision = 'accept' | 'cancel';
+
+export interface ApprovalRequest {
+  requestId: string;
+  sessionId: string;
+  turnId: string | null;
+  kind: string;
+  command: string | null;
+  cwd: string | null;
+  availableDecisions: ApprovalDecision[];
+}
+
 export interface AgentEvent {
   schemaVersion: '1.0';
   eventId: string;

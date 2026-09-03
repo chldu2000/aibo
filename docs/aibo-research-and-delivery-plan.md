@@ -1,6 +1,6 @@
 # Aibo 多 Agent 工作台：调研、架构建议与实施计划
 
-> 状态：架构已冻结（macOS 首发）；Phase 0 macOS 复验完成，Phase 1 Codex 真实会话垂直链路开发中，Windows 后续验证
+> 状态：架构已冻结（macOS 首发）；Phase 0 macOS 复验完成，Phase 1 Codex 真实会话已验收，Phase 2 审批闭环开发中，Windows 后续验证
 > 调研日期：2026-09-02  
 > 首批目标：Codex、Pi；首发平台：macOS（当前基线为 arm64）
 > 技术栈：Svelte 5 + Tauri 2
@@ -26,7 +26,7 @@ Aibo 应定位为“本地 Agent 客户端与上下文交换层”，而不是�
 
 ## 2. 当前仓库与本机基线
 
-当前工作区包含 Phase 0 探针、脱敏 fixture、`AgentEvent v1` envelope，以及 Phase 1 的 Svelte/Tauri/Rust 应用骨架。架构评审冻结记录见 [docs/architecture-freeze.md](architecture-freeze.md)；Phase 1 以 macOS arm64 为开发和验收基线，不需要兼容历史产品实现。
+当前工作区包含 Phase 0 探针、脱敏 fixture、`AgentEvent v1` envelope，以及已通过 macOS 验收的 Phase 1 Svelte/Tauri/Rust 应用骨架。架构评审冻结记录见 [docs/architecture-freeze.md](architecture-freeze.md)；Phase 2 继续以 macOS arm64 为开发和验收基线，不需要兼容历史产品实现。
 
 本机已检测到：
 
@@ -414,7 +414,7 @@ V1 后为 Pi 增加可选 container/VM/平台 sandbox runner；统一权限 prof
 
 退出条件：macOS arm64 上重启应用后工作区与 Agent 探测结果稳定恢复；路径越界和未信任写入被拒绝；WebView 无任意 shell 权限；Windows 只作为后续验证门。
 
-### Phase 1B：Codex 真实会话垂直链路（当前批次）
+### Phase 1B：Codex 真实会话垂直链路（已完成 macOS 验收）
 
 - 在 Rust Core 内启动和监管 `codex app-server --stdio`。
 - 完成 initialize、thread/start、turn/start、流式 delta、completed、interrupt 和 thread/resume。
@@ -424,7 +424,7 @@ V1 后为 Pi 增加可选 container/VM/平台 sandbox runner；统一权限 prof
 
 退出条件：macOS arm64 上可完成“工作区 → Codex thread → 真实 turn → 流式时间线 → SQLite 恢复”的演示门禁；进程异常、超时和旧 generation 不得静默污染当前会话。
 
-### Phase 2：Codex Adapter 能力扩展（5–8 天）
+### Phase 2：Codex Adapter 能力扩展（5–8 天，当前阶段）
 
 - stdio JSON-RPC client、schema/version 适配。
 - thread list/start/read/resume/fork/archive。
@@ -547,6 +547,6 @@ macOS 本机 Phase 0 已通过，架构评审结果已经冻结在 [docs/archite
 2. Codex 使用 App Server；Pi 使用项目锁版 SDK host，RPC 仅作兼容/诊断。
 3. `AgentEvent v1`、session state machine、`SessionSnapshot v1` 和 `Handoff Envelope v1` 的边界已确定。
 4. Pi 首版接受宿主机当前用户权限，但必须通过 workspace trust 明示风险；不提前引入容器/VM。
-5. Phase 1 先完成应用骨架、工作区、诊断、持久化和安全边界，再推进 Codex 的最小真实会话垂直链路；Pi 会话进入后续阶段。
+5. Phase 1 已完成应用骨架、工作区、诊断、持久化、安全边界和 Codex 最小真实会话垂直链路；当前进入 Phase 2 Codex 能力扩展，Pi 会话进入后续阶段。
 
-Phase 1 当前的可验收切片是：macOS 上添加工作区，完成路径/信任检查，启动真实 Codex thread，显示流式响应并在退出后重启恢复时间线；范围见 [phase-1-codex-vertical-slice.md](phase-1-codex-vertical-slice.md)。
+Phase 1 的 macOS 验收切片已完成：添加工作区、路径/信任检查、真实 Codex thread、流式响应和退出后时间线恢复均已验证。Phase 2 当前批次见 [phase-2-codex-capability-expansion.md](phase-2-codex-capability-expansion.md)。

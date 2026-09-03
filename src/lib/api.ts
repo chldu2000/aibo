@@ -3,6 +3,7 @@ import { listen, type UnlistenFn } from '@tauri-apps/api/event';
 import type {
   AgentDiagnostic,
   AgentEvent,
+  ApprovalDecision,
   AppSnapshot,
   Session,
   TimelineItem,
@@ -47,6 +48,12 @@ export const sendCodexPrompt = (sessionId: string, input: string): Promise<void>
 
 export const abortCodexTurn = (sessionId: string): Promise<void> =>
   invoke('abort_codex_turn', { sessionId });
+
+export const resolveCodexApproval = (
+  sessionId: string,
+  requestId: string,
+  decision: ApprovalDecision,
+): Promise<void> => invoke('resolve_codex_approval', { sessionId, requestId, decision });
 
 export const closeCodexSession = (sessionId: string): Promise<void> =>
   invoke('close_codex_session', { sessionId });

@@ -441,6 +441,20 @@ async fn abort_codex_turn(session_id: String, state: State<'_, AppState>) -> Res
 }
 
 #[tauri::command]
+async fn resolve_codex_approval(
+    session_id: String,
+    request_id: String,
+    decision: String,
+    state: State<'_, AppState>,
+) -> Result<(), CoreError> {
+    state
+        .codex
+        .resolve_approval(&session_id, &request_id, &decision)
+        .await
+        .map_err(Into::into)
+}
+
+#[tauri::command]
 async fn close_codex_session(
     session_id: String,
     state: State<'_, AppState>,
@@ -627,6 +641,7 @@ pub fn run() {
             create_codex_session,
             send_codex_prompt,
             abort_codex_turn,
+            resolve_codex_approval,
             close_codex_session
         ])
         .run(tauri::generate_context!())

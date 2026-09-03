@@ -24,10 +24,19 @@
     listenToAgentEvents,
     probeAgents,
     removeWorkspace,
+    resolveCodexApproval,
     sendCodexPrompt,
     setWorkspaceTrust,
   } from './lib/api';
-  import type { AgentDiagnostic, AgentEvent, Session, TimelineItem, Workspace } from './lib/types';
+  import type {
+    AgentDiagnostic,
+    AgentEvent,
+    ApprovalDecision,
+    ApprovalRequest,
+    Session,
+    TimelineItem,
+    Workspace,
+  } from './lib/types';
 
   const previewWorkspaces: Workspace[] = [
     {
@@ -68,6 +77,7 @@
   let diagnostics = $state<AgentDiagnostic[]>([]);
   let sessions = $state<Session[]>([]);
   let timeline = $state<TimelineItem[]>([]);
+  let pendingApprovals = $state<ApprovalRequest[]>([]);
   let selectedWorkspaceId = $state<string | null>(null);
   let selectedSessionId = $state<string | null>(null);
   let workspacePath = $state('');
@@ -88,6 +98,9 @@
   const readyAgents = $derived(diagnostics.filter((agent) => agent.status === 'ready').length);
   const sessionRunning = $derived(
     selectedSession?.state === 'running' || selectedSession?.state === 'waiting_approval',
+  );
+  const selectedApprovals = $derived(
+    pendingApprovals.filter((approval) => approval.sessionId === selectedSessionId),
   );
 
   onMount(() => {
@@ -179,6 +192,31 @@
       );
     }
 
+    if (event.type === 'approval.requested') {
+      const approval = approvalFromEvent(event);
+      if (approval) {
+        pendingApprovals = [
+          ...pendingApprovals.filter(
+            (item) => item.sessionId !== approval.sessionId || item.requestId !== approval.requestId,
+          ),
+          approval,
+        ];
+      }
+    }
+
+    if (event.type === 'approval.resolved') {
+      const requestId = payloadString(event.payload.requestId);
+      if (requestId) {
+        pendingApprovals = pendingApprovals.filter(
+          (approval) => approval.sessionId !== event.sessionId || approval.requestId !== requestId,
+        );
+      }
+    }
+
+    if (event.type === 'adapter.crashed' || event.type === 'turn.completed' || event.type === 'turn.failed') {
+      pendingApprovals = pendingApprovals.filter((approval) => approval.sessionId !== event.sessionId);
+    }
+
     if (event.sessionId === selectedSessionId && event.type === 'message.delta') {
       const externalMessageId = stringPayload(event.payload.itemId) ?? `delta:${event.eventId}`;
       const delta = stringPayload(event.payload.delta) ?? '';
@@ -214,6 +252,31 @@
 
   function stringPayload(value: unknown): string | null {
     return typeof value === 'string' ? value : null;
+  }
+
+  function payloadString(value: unknown): string | null {
+    if (typeof value === 'string') return value;
+    if (typeof value === 'number' && Number.isFinite(value)) return String(value);
+    return null;
+  }
+
+  function approvalFromEvent(event: AgentEvent): ApprovalRequest | null {
+    const requestId = payloadString(event.payload.requestId);
+    if (!requestId) return null;
+    const availableDecisions = Array.isArray(event.payload.availableDecisions)
+      ? event.payload.availableDecisions.filter(
+          (decision): decision is ApprovalDecision => decision === 'accept' || decision === 'cancel',
+        )
+      : [];
+    return {
+      requestId,
+      sessionId: event.sessionId,
+      turnId: event.turnId,
+      kind: payloadString(event.payload.kind) ?? 'approval',
+      command: payloadString(event.payload.command),
+      cwd: payloadString(event.payload.cwd),
+      availableDecisions: availableDecisions.length > 0 ? availableDecisions : ['accept', 'cancel'],
+    };
   }
 
   async function createWorkspace() {
@@ -309,6 +372,31 @@
     errorMessage = null;
     try {
       await abortCodexTurn(selectedSession.id);
+      pendingApprovals = pendingApprovals.filter(
+        (approval) => approval.sessionId !== selectedSession?.id,
+      );
+    } catch (error) {
+      errorMessage = toErrorMessage(error);
+    } finally {
+      busy = false;
+    }
+  }
+
+  async function resolveApproval(approval: ApprovalRequest, decision: ApprovalDecision) {
+    if (!desktop) {
+      notice = '当前是 Web 预览；审批操作需要在 Tauri 桌面模式中执行。';
+      return;
+    }
+    if (!approval.availableDecisions.includes(decision)) return;
+
+    busy = true;
+    errorMessage = null;
+    try {
+      await resolveCodexApproval(approval.sessionId, approval.requestId, decision);
+      pendingApprovals = pendingApprovals.filter(
+        (item) => item.sessionId !== approval.sessionId || item.requestId !== approval.requestId,
+      );
+      notice = decision === 'accept' ? '已允许本次操作。' : '已拒绝本次操作。';
     } catch (error) {
       errorMessage = toErrorMessage(error);
     } finally {
@@ -533,6 +621,31 @@
         <div class="timeline-empty">
           <div class="empty-symbol">+</div>
           <h3>选择工作区</h3>
+        </div>
+      {/if}
+
+      {#if selectedApprovals.length > 0}
+        <div class="approval-list" aria-live="assertive">
+          {#each selectedApprovals as approval (approval.requestId)}
+            <Card class="approval-card">
+              <CardHeader class="approval-card-heading">
+                <CardTitle>需要确认</CardTitle>
+                <Badge variant="warning">{approval.kind}</Badge>
+              </CardHeader>
+              <CardContent class="approval-card-content">
+                {#if approval.command}<code>{approval.command}</code>{/if}
+                {#if approval.cwd}<small>{approval.cwd}</small>{/if}
+                <div class="approval-actions">
+                  {#if approval.availableDecisions.includes('cancel')}
+                    <Button variant="ghost" size="sm" type="button" onclick={() => void resolveApproval(approval, 'cancel')} disabled={busy}>拒绝</Button>
+                  {/if}
+                  {#if approval.availableDecisions.includes('accept')}
+                    <Button size="sm" type="button" onclick={() => void resolveApproval(approval, 'accept')} disabled={busy}>允许</Button>
+                  {/if}
+                </div>
+              </CardContent>
+            </Card>
+          {/each}
         </div>
       {/if}
 

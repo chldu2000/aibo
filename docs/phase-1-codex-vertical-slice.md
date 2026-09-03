@@ -1,6 +1,6 @@
 # Phase 1：Codex 真实会话垂直链路
 
-> 状态：开发中
+> 状态：macOS arm64 验收完成
 > 平台：macOS arm64 首发基线
 > 范围：Codex App Server；Pi、handoff 和完整工具审批 UI 不在本切片内
 
@@ -27,7 +27,7 @@
 - `turn/start`、assistant message delta、完成/失败/中止映射到 `AgentEvent v1`。
 - `sessions`、`turns`、`messages`、`agent_events` 写入 SQLite；应用重启后通过 `thread/resume` 恢复 binding。
 - UI 支持新建/选择会话、流式时间线、发送提示和中止当前 turn。
-- 初始 thread 固定 `approvalPolicy=never`、`sandbox=read-only`；审批请求会被记录并安全拒绝，审批卡片交互留待后续批次。
+- Phase 1 验收时使用 `approvalPolicy=never`、`sandbox=read-only`；审批交互已移入 Phase 2，当前批次改为 `on-request` 并保留 `read-only` sandbox。
 
 ## macOS 验证门
 
@@ -44,7 +44,6 @@ pnpm tauri dev --no-watch
 
 ## 当前刻意保留的缺口
 
-1. 还没有审批请求的允许/拒绝 UI；默认只读策略保证本切片不会隐式获得写权限。
+1. 审批请求暂存于活动 adapter 内存中，应用重启后的待审批请求恢复留待后续批次。
 2. 尚未实现 thread 列表、分叉、归档和完整工具事件投影。
 3. Pi adapter、跨 Agent handoff 和 Windows 进程行为继续作为后续验证/阶段。
-4. 需要在真实 UI 操作门禁中进一步确认 macOS 原生认证、异常退出和恢复后的用户体验。

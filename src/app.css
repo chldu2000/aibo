@@ -96,6 +96,14 @@ h2 { font-size: 16px; letter-spacing: -0.02em; }
 .composer:focus-within { border-color: var(--aibo-focus); box-shadow: 0 0 0 3px #a1a1aa1f; }
 .composer-textarea { flex: 1; min-width: 0; resize: vertical; border-color: transparent; padding: 0; background: transparent; box-shadow: none; }
 .composer-textarea:focus-visible { border-color: transparent; box-shadow: none; }
+.approval-list { display: grid; gap: 8px; margin: 0 16px 12px; }
+.approval-card { border-color: var(--aibo-warning-border); background: var(--aibo-warning-surface); }
+.approval-card-heading { flex-direction: row; justify-content: space-between; gap: 8px; padding: 12px 13px 8px; }
+.approval-card-heading > :not(:first-child) { margin-top: 0; }
+.approval-card-content { display: grid; gap: 8px; padding: 0 13px 13px; }
+.approval-card code { overflow: auto; border: 1px solid var(--aibo-warning-border); border-radius: 6px; padding: 7px 8px; color: var(--aibo-warning-text); background: #09090b66; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 10px; white-space: pre-wrap; overflow-wrap: anywhere; }
+.approval-card small { color: #fde68a; font-size: 10px; overflow-wrap: anywhere; }
+.approval-actions { display: flex; justify-content: flex-end; gap: 6px; }
 .inspector { min-width: 0; }
 .agent-cards { padding: 0 12px; }
 .agent-card { margin-bottom: 9px; }

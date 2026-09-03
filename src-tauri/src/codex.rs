@@ -23,7 +23,7 @@ use tokio::{
 use tracing::{debug, warn};
 use ulid::Ulid;
 
-const CODEX_ADAPTER_VERSION: &str = "phase1-codex-0.1.0";
+const CODEX_ADAPTER_VERSION: &str = "phase2-codex-0.1.0";
 const REQUEST_TIMEOUT: Duration = Duration::from_secs(30);
 
 #[derive(Debug, Error)]
@@ -288,6 +288,7 @@ struct CodexSession {
     generation_id: String,
     thread_id: Mutex<Option<String>>,
     current_turn_id: Mutex<Option<String>>,
+    pending_approvals: Mutex<HashMap<String, Value>>,
     state: Mutex<String>,
     sequence: AtomicU64,
     active: AtomicBool,
@@ -311,6 +312,7 @@ impl CodexSession {
             generation_id,
             thread_id: Mutex::new(None),
             current_turn_id: Mutex::new(None),
+            pending_approvals: Mutex::new(HashMap::new()),
             state: Mutex::new("starting".to_owned()),
             sequence: AtomicU64::new(0),
             active: AtomicBool::new(true),
@@ -433,6 +435,7 @@ impl CodexSession {
                     self.complete_assistant_messages(&internal_turn_id, &output)
                         .await?;
                     *self.current_turn_id.lock().await = None;
+                    self.pending_approvals.lock().await.clear();
                     if mapped_status == "completed" {
                         self.set_state("idle").await?;
                     } else if mapped_status == "interrupted" {
@@ -481,6 +484,7 @@ impl CodexSession {
                     .await?;
                 }
                 *self.current_turn_id.lock().await = None;
+                self.pending_approvals.lock().await.clear();
                 self.set_state("failed").await?;
                 self.emit_event(
                     "turn.failed",
@@ -491,6 +495,15 @@ impl CodexSession {
                 .await?;
             }
             "item/commandExecution/requestApproval" | "item/fileChange/requestApproval" => {
+                let Some(request_id) = message.get("id").and_then(value_id) else {
+                    return Err(CodexError::Protocol(
+                        "approval request did not include a request id".to_owned(),
+                    ));
+                };
+                self.pending_approvals
+                    .lock()
+                    .await
+                    .insert(request_id.clone(), message.get("id").cloned().unwrap_or(Value::Null));
                 self.set_state("waiting_approval").await?;
                 self.emit_event(
                     "approval.requested",
@@ -499,34 +512,38 @@ impl CodexSession {
                         .and_then(Value::as_str)
                         .map(ToOwned::to_owned),
                     json!({
-                        "requestId": message.get("id").cloned().unwrap_or(Value::Null),
+                        "requestId": request_id,
                         "kind": params.get("kind").cloned().unwrap_or(Value::Null),
                         "command": params.get("command").cloned().unwrap_or(Value::Null),
-                        "cwd": params.get("cwd").cloned().unwrap_or(Value::Null)
+                        "cwd": params.get("cwd").cloned().unwrap_or(Value::Null),
+                        "availableDecisions": params
+                            .get("availableDecisions")
+                            .cloned()
+                            .unwrap_or_else(|| json!(["accept", "cancel"]))
                     }),
                     Some(
                         json!({ "approvalId": message.get("id").cloned().unwrap_or(Value::Null) }),
                     ),
                 )
                 .await?;
-                if let Some(request_id) = message.get("id").cloned() {
-                    self.client
-                        .respond(request_id, json!({ "decision": "decline" }))
-                        .await?;
-                }
             }
             "serverRequest/resolved" => {
-                self.set_state("running").await?;
-                self.emit_event(
-                    "approval.resolved",
-                    None,
-                    json!({ "requestId": params.get("requestId").cloned().unwrap_or(Value::Null) }),
-                    None,
-                )
-                .await?;
+                let request_id = params.get("requestId").and_then(value_id);
+                if let Some(request_id) = request_id {
+                    self.pending_approvals.lock().await.remove(&request_id);
+                    self.set_state("running").await?;
+                    self.emit_event(
+                        "approval.resolved",
+                        None,
+                        json!({ "requestId": request_id }),
+                        None,
+                    )
+                    .await?;
+                }
             }
             "aibo/process-exited" => {
                 *self.current_turn_id.lock().await = None;
+                self.pending_approvals.lock().await.clear();
                 self.set_state("interrupted").await?;
                 self.emit_event(
                     "adapter.crashed",
@@ -556,8 +573,8 @@ impl CodexSession {
                 "initialize",
                 json!({
                     "clientInfo": {
-                        "name": "aibo_phase1",
-                        "title": "Aibo Phase 1",
+                        "name": "aibo_phase2",
+                        "title": "Aibo Phase 2",
                         "version": env!("CARGO_PKG_VERSION")
                     },
                     "capabilities": { "experimentalApi": true }
@@ -897,9 +914,9 @@ impl CodexManager {
                 "thread/start",
                 json!({
                     "cwd": workspace.path,
-                    "approvalPolicy": "never",
+                    "approvalPolicy": "on-request",
                     "sandbox": "read-only",
-                    "serviceName": "aibo_phase1"
+                    "serviceName": "aibo_phase2"
                 }),
             )
             .await
@@ -1093,6 +1110,47 @@ impl CodexManager {
             .execute(&self.db)
             .await?;
         Ok(())
+    }
+
+    pub(crate) async fn resolve_approval(
+        &self,
+        session_id: &str,
+        request_id: &str,
+        decision: &str,
+    ) -> Result<(), CodexError> {
+        let decision = match decision {
+            "accept" | "cancel" => decision,
+            _ => {
+                return Err(CodexError::Session(
+                    "approval decision must be accept or cancel".to_owned(),
+                ));
+            }
+        };
+        let session = self.ensure_runtime(session_id).await?;
+        let raw_request_id = session
+            .pending_approvals
+            .lock()
+            .await
+            .get(request_id)
+            .cloned()
+            .ok_or_else(|| {
+                CodexError::Session("approval request is no longer pending".to_owned())
+            })?;
+        session
+            .client
+            .respond(raw_request_id, json!({ "decision": decision }))
+            .await?;
+        session.pending_approvals.lock().await.remove(request_id);
+        session.set_state("running").await?;
+        let turn_id = session.current_turn_id.lock().await.clone();
+        session
+            .emit_event(
+                "approval.resolved",
+                turn_id,
+                json!({ "requestId": request_id, "decision": decision }),
+                None,
+            )
+            .await
     }
 
     pub(crate) async fn abort(&self, session_id: &str) -> Result<(), CodexError> {
