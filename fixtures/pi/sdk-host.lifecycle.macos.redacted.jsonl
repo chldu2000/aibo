@@ -1,4 +1,6 @@
-{"id":"aibo-pi-start-1","result":{"protocol":"aibo-pi-sdk-host.v1","sessionId":"pi-session-lifecycle","capabilities":["streaming","session-tree","read-only-tools"]}}
+{"id":"aibo-pi-start-1","result":{"protocol":"aibo-pi-sdk-host.v1","sessionId":"pi-session-lifecycle","capabilities":["streaming","session-tree","session-tree-navigation","session-snapshot","read-only-tools"]}}
+{"id":"aibo-pi-nav-1","result":{"cancelled":false,"sessionId":"pi-session-lifecycle","leafId":"entry-3","editorText":"continue from here"}}
+{"id":"aibo-pi-snapshot-1","result":{"sessionId":"pi-session-lifecycle","leafId":"entry-3","branch":[{"id":"entry-1","parentId":null,"type":"message","timestamp":"2026-01-01T00:00:00.000Z","role":"user","summary":"hello"},{"id":"entry-3","parentId":"entry-1","type":"message","timestamp":"2026-01-01T00:00:01.000Z","role":"assistant","summary":"hello"}],"tree":[]}}
 {"method":"aibo/event","params":{"protocol":"aibo-pi-sdk-host.v1","turnId":"pi-turn-1","event":{"type":"queue_update","steering":["stop"],"followUp":["summarize"]}}}
 {"method":"aibo/event","params":{"protocol":"aibo-pi-sdk-host.v1","turnId":"pi-turn-1","event":{"type":"compaction_start","reason":"threshold"}}}
 {"method":"aibo/event","params":{"protocol":"aibo-pi-sdk-host.v1","turnId":"pi-turn-1","event":{"type":"compaction_end","reason":"threshold","aborted":false,"willRetry":true,"result":{"summary":"keep the latest work","firstKeptEntryId":"entry-4","tokensBefore":12000,"estimatedTokensAfter":4000}}}}

@@ -599,6 +599,27 @@ async fn get_pi_session_tree(
     state.pi.tree(&session_id).await.map_err(Into::into)
 }
 
+#[tauri::command]
+async fn navigate_pi_session_tree(
+    session_id: String,
+    entry_id: String,
+    state: State<'_, AppState>,
+) -> Result<serde_json::Value, CoreError> {
+    state
+        .pi
+        .navigate_tree(&session_id, &entry_id)
+        .await
+        .map_err(Into::into)
+}
+
+#[tauri::command]
+async fn get_pi_session_snapshot(
+    session_id: String,
+    state: State<'_, AppState>,
+) -> Result<serde_json::Value, CoreError> {
+    state.pi.snapshot(&session_id).await.map_err(Into::into)
+}
+
 fn find_executable(name: &str) -> Option<PathBuf> {
     let path_var = env::var_os("PATH")?;
     for directory in env::split_paths(&path_var) {
@@ -802,7 +823,9 @@ pub fn run() {
             close_pi_session,
             steer_pi_prompt,
             follow_up_pi_prompt,
-            get_pi_session_tree
+            get_pi_session_tree,
+            navigate_pi_session_tree,
+            get_pi_session_snapshot
         ])
         .run(tauri::generate_context!())
         .expect("error while running Aibo");

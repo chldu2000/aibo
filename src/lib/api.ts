@@ -7,6 +7,8 @@ import type {
   AppSnapshot,
   CodexThreadSnapshot,
   CodexThreadSummary,
+  PiSessionTreeNavigation,
+  PiSessionSnapshot,
   PiSessionTreeSnapshot,
   Session,
   TimelineItem,
@@ -99,6 +101,15 @@ export const followUpPiPrompt = (sessionId: string, input: string): Promise<void
 
 export const getPiSessionTree = (sessionId: string): Promise<PiSessionTreeSnapshot> =>
   invoke<PiSessionTreeSnapshot>('get_pi_session_tree', { sessionId });
+
+export const navigatePiSessionTree = (
+  sessionId: string,
+  entryId: string,
+): Promise<PiSessionTreeNavigation> =>
+  invoke<PiSessionTreeNavigation>('navigate_pi_session_tree', { sessionId, entryId });
+
+export const getPiSessionSnapshot = (sessionId: string): Promise<PiSessionSnapshot> =>
+  invoke<PiSessionSnapshot>('get_pi_session_snapshot', { sessionId });
 
 export const listenToAgentEvents = (
   handler: (event: AgentEvent) => void,

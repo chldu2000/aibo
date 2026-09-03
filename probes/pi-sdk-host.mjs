@@ -61,6 +61,15 @@ function countTreeNodes(nodes) {
   return nodes.reduce((count, node) => count + 1 + countTreeNodes(node.children ?? []), 0);
 }
 
+function findTreeNode(nodes, predicate) {
+  for (const node of nodes) {
+    if (predicate(node)) return node;
+    const child = findTreeNode(node.children ?? [], predicate);
+    if (child) return child;
+  }
+  return null;
+}
+
 let failure = null;
 let startResponse = null;
 try {
@@ -77,6 +86,14 @@ try {
     const tree = await request("tree");
     assertProbe(tree.result?.leafId, "Pi SDK host did not expose the current tree leaf after a turn");
     assertProbe(Array.isArray(tree.result?.tree) && countTreeNodes(tree.result.tree) >= 2, "Pi SDK host tree did not retain the completed turn");
+    const userEntry = findTreeNode(tree.result.tree, (node) => node.type === "message" && node.role === "user");
+    assertProbe(userEntry?.id, "Pi SDK host tree did not expose a navigable user entry");
+    const navigation = await request("navigateTree", { entryId: userEntry.id });
+    assertProbe(navigation.result?.cancelled === false, "Pi SDK host tree navigation was cancelled unexpectedly");
+    assertProbe(navigation.result?.leafId !== tree.result.leafId, "Pi SDK host tree navigation did not move the leaf");
+    const snapshot = await request("snapshot");
+    assertProbe(Array.isArray(snapshot.result?.branch), "Pi SDK host snapshot did not expose the active branch");
+    assertProbe(snapshot.result?.leafId === navigation.result.leafId, "Pi SDK host snapshot leaf did not match navigation");
     events.length = 0;
     await request("prompt", { turnId: "probe-turn-2", text: "Generate a long numbered response and keep going until aborted." });
     await waitFor((event) => event.type === "message_start" && event.message?.role === "assistant");

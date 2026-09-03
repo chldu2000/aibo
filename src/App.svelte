@@ -29,6 +29,7 @@
     listWorkspaces,
     listSessions,
     listenToAgentEvents,
+    navigatePiSessionTree,
     probeAgents,
     readCodexThread,
     removeWorkspace,
@@ -84,7 +85,7 @@
       status: 'ready',
       executable: null,
       version: 'SDK 0.84.4',
-      capabilities: ['sdk-host', 'streaming', 'abort', 'session-tree', 'read-only-tools'],
+      capabilities: ['sdk-host', 'streaming', 'abort', 'session-tree', 'session-tree-navigation', 'session-snapshot', 'read-only-tools'],
       authState: 'delegated',
       message: 'Project-locked SDK host; read-only tools only; native authentication remains with Pi.',
     },
@@ -108,6 +109,7 @@
   let desktop = $state(false);
   let threadBusy = $state(false);
   let archiveConfirmationSessionId = $state<string | null>(null);
+  let piNavigationEntryId = $state<string | null>(null);
 
   const selectedWorkspace = $derived(
     workspaces.find((workspace) => workspace.id === selectedWorkspaceId) ?? null,
@@ -181,6 +183,7 @@
         codexThreads = [];
         codexThreadSnapshot = null;
         piTree = null;
+        piNavigationEntryId = null;
       }
     } catch (error) {
       errorMessage = toErrorMessage(error);
@@ -205,6 +208,7 @@
       timeline = [];
       codexThreadSnapshot = null;
       piTree = null;
+      piNavigationEntryId = null;
     }
   }
 
@@ -512,6 +516,7 @@
       selectedSessionId = session.id;
       timeline = [];
       piTree = null;
+      piNavigationEntryId = null;
       void refreshPiTree(session.id);
       notice = 'Pi SDK 会话已启动；当前仅开放只读工具，Pi 本身不提供原生沙箱。';
     } catch (error) {
@@ -594,6 +599,35 @@
     }
   }
 
+  function requestPiTreeNavigation(entryId: string) {
+    if (!selectedSession || selectedSession.agent !== 'pi' || sessionRunning || entryId === piTree?.leafId) return;
+    piNavigationEntryId = entryId;
+  }
+
+  async function confirmPiTreeNavigation() {
+    const entryId = piNavigationEntryId;
+    const sessionId = selectedSessionId;
+    piNavigationEntryId = null;
+    if (!entryId || !sessionId || !selectedSession || selectedSession.agent !== 'pi') return;
+    busy = true;
+    errorMessage = null;
+    try {
+      const navigation = await navigatePiSessionTree(sessionId, entryId);
+      if (navigation.cancelled) {
+        notice = 'Pi 分支切换已取消。';
+      } else {
+        piTree = navigation;
+        timeline = await getTimeline(sessionId);
+        if (navigation.editorText !== null) composerText = navigation.editorText;
+        notice = 'Pi 会话已切换到选定分支；原分支仍保留在会话树中。';
+      }
+    } catch (error) {
+      errorMessage = toErrorMessage(error);
+    } finally {
+      busy = false;
+    }
+  }
+
   async function resolveApproval(approval: ApprovalRequest, decision: ApprovalDecision) {
     if (!desktop) {
       notice = '当前是 Web 预览；审批操作需要在 Tauri 桌面模式中执行。';
@@ -630,6 +664,7 @@
       selectedSessionId = remaining[0]?.id ?? null;
       codexThreadSnapshot = null;
       piTree = null;
+      piNavigationEntryId = null;
       timeline = selectedSessionId ? await getTimeline(selectedSessionId) : [];
       if (selectedSessionId) void refreshPiTree(selectedSessionId);
       notice = `${closingAgent === 'pi' ? 'Pi' : 'Codex'} 会话已关闭；已保存的时间线仍可在下次启动时读取。`;
@@ -759,6 +794,7 @@
       codexThreads = [];
       codexThreadSnapshot = null;
       piTree = null;
+      piNavigationEntryId = null;
       if (selectedWorkspaceId) {
         void refreshSessions(selectedWorkspaceId);
         void refreshCodexThreads(selectedWorkspaceId);
@@ -779,6 +815,7 @@
     codexThreads = [];
     codexThreadSnapshot = null;
     piTree = null;
+    piNavigationEntryId = null;
     if (desktop) {
       void refreshSessions(id);
       void refreshCodexThreads(id);
@@ -931,7 +968,7 @@
             {#each timeline as item (item.id)}
               <Card
                 as="article"
-                class={`timeline-entry ${item.role === 'assistant' ? 'assistant-entry' : item.role === 'user' ? 'user-entry' : item.role === 'tool' ? 'tool-entry' : ''}`}
+                class={`timeline-entry ${item.role === 'assistant' ? 'assistant-entry' : item.role === 'user' ? 'user-entry' : item.role === 'tool' ? 'tool-entry' : item.role === 'system' ? 'system-entry' : ''}`}
               >
                 <div class="entry-meta">
                   <Badge variant={item.role === 'assistant' ? 'secondary' : item.role === 'tool' ? 'outline' : 'outline'}>{item.role === 'assistant' ? (selectedSession?.agent === 'pi' ? 'PI' : 'CODEX') : item.role.toUpperCase()}</Badge>
@@ -1092,6 +1129,9 @@
                       <strong>{entry.node.label ?? entry.node.summary ?? entry.node.type}</strong>
                       <small>{entry.node.role ?? entry.node.type}{entry.node.id === piTree.leafId ? ' · 当前分支' : ''}</small>
                     </div>
+                    {#if entry.node.id !== piTree.leafId}
+                      <Button variant="ghost" size="sm" type="button" onclick={() => requestPiTreeNavigation(entry.node.id)} disabled={busy || sessionRunning}>切换</Button>
+                    {/if}
                   </div>
                 {/each}
               </div>
@@ -1135,5 +1175,14 @@
     cancelText="取消"
     onConfirm={() => void confirmArchiveSession()}
     onCancel={() => (archiveConfirmationSessionId = null)}
+  />
+  <AlertDialog
+    open={piNavigationEntryId !== null}
+    title="切换 Pi 分支？"
+    description="切换只会移动 Pi 原生 session 的当前 leaf，不会删除 Aibo 已保存的时间线；切换后仍可返回其他分支。"
+    confirmText="切换"
+    cancelText="取消"
+    onConfirm={() => void confirmPiTreeNavigation()}
+    onCancel={() => (piNavigationEntryId = null)}
   />
 </div>

@@ -82,6 +82,8 @@ h2 { font-size: 16px; letter-spacing: -0.02em; }
 .timeline-entry.user-entry { margin-left: auto; border-color: var(--aibo-border-strong); background: var(--aibo-surface-hover); }
 .timeline-entry.assistant-entry { margin-right: auto; background: var(--aibo-bg); }
 .timeline-entry.tool-entry { margin-right: auto; max-width: 92%; border-style: dashed; border-color: var(--aibo-border-strong); background: var(--aibo-surface-hover); }
+.timeline-entry.system-entry { margin-right: auto; max-width: 94%; border-style: dashed; border-color: var(--aibo-accent-border); background: var(--aibo-surface); }
+.timeline-entry.system-entry .entry-content { color: var(--aibo-muted); font-size: 11px; }
 .entry-meta { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
 .entry-content { margin-top: 7px; color: var(--aibo-text); font-size: 12px; line-height: 1.6; white-space: pre-wrap; overflow-wrap: anywhere; }
 .timeline-empty.compact-empty { min-height: 260px; }

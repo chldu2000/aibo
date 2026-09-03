@@ -1,6 +1,6 @@
 # Phase 3：Pi SDK Adapter
 
-状态：macOS 首批垂直链路已实现，Windows 作为后续验证门。
+状态：macOS Phase 3 门禁已完成，Windows 作为后续兼容性验证门。
 
 ## 本批范围
 
@@ -35,6 +35,6 @@ Pi SDK 的 `message_start/update/end`、`turn_end`、`agent_start`、`agent_erro
 
 ## 下一批
 
-1. 在 UI 时间线中呈现 compaction、retry、extension 的系统状态卡片，并保留可恢复的 payload。
-2. 增加 host 崩溃、重启后 reopen 及 generation 隔离测试。
-3. 在树视图中加入安全的分支切换/恢复动作，并为跨 Agent handoff 预留 snapshot 接口。
+1. 在 Windows 上重新验证 Node 路径、session 路径及进程退出行为。
+2. 将 snapshot 接口接入跨 Agent handoff 的不可变快照工件。
+3. 进入 Phase 4，补齐统一会话搜索、状态筛选和时间线体验。

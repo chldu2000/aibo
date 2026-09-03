@@ -442,7 +442,7 @@ V1 后为 Pi 增加可选 container/VM/平台 sandbox runner；统一权限 prof
 - tool/compaction/retry/extension UI event 归一化；RPC framing 仅保留兼容测试。
 - project trust 提示和“不具备内建沙箱”状态标识。
 
-当前门禁：已落地版本化 `aibo-pi-sdk-host.v1` JSONL host、Pi `AgentSession` 的 create/open、streaming、abort、steer/follow-up、SQLite 投影、session tree 读取、compaction/retry/extension 生命周期投影和统一 `AgentEvent v1` 事件；首批 host 只开放 `read/grep/find/ls` 只读工具，并在诊断与会话 UI 中明确 Pi 没有原生沙箱。macOS 真实模型 smoke 已覆盖响应、tree leaf、排队消息和 abort。详细边界见 [Phase 3 记录](phase-3-pi-adapter.md)。下一批补齐 UI 状态卡片、崩溃恢复和安全分支动作。
+当前门禁：macOS Phase 3 已完成。已落地版本化 `aibo-pi-sdk-host.v1` JSONL host、Pi `AgentSession` 的 create/open、streaming、abort、steer/follow-up、SQLite 投影、session tree 读取与安全导航、compaction/retry/extension 生命周期投影、system timeline 卡片、handoff snapshot 预留接口，以及 host 崩溃后 reopen 和 generation 隔离门禁；首批 host 只开放 `read/grep/find/ls` 只读工具，并在诊断与会话 UI 中明确 Pi 没有原生沙箱。macOS 真实模型 smoke 已覆盖响应、tree leaf、分支导航、排队消息和 abort。详细边界见 [Phase 3 记录](phase-3-pi-adapter.md)。Windows 仍需完成兼容性验证，随后进入 Phase 4。
 
 退出条件：与 Codex 共用同一套时间线、composer 和 session state UI；恢复原生 Pi session 不丢失分支关系。
 

@@ -70,6 +70,26 @@ export interface PiSessionTreeSnapshot {
   tree: PiSessionTreeNode[];
 }
 
+export interface PiSessionTreeNavigation extends PiSessionTreeSnapshot {
+  cancelled: boolean;
+  editorText: string | null;
+}
+
+export interface PiSessionSnapshotEntry {
+  id: string;
+  parentId: string | null;
+  type: string;
+  timestamp: string;
+  role?: string;
+  customType?: string;
+  summary?: string;
+  data?: unknown;
+}
+
+export interface PiSessionSnapshot extends PiSessionTreeSnapshot {
+  branch: PiSessionSnapshotEntry[];
+}
+
 export interface CodexThreadSummary {
   id: string;
   title: string | null;

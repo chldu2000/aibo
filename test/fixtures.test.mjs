@@ -166,4 +166,10 @@ test("Pi SDK host lifecycle fixture preserves compaction, retry, and extension f
   assert.equal(events[2].params.event.result.tokensBefore, 12000);
   assert.equal(events[3].params.event.attempt, 1);
   assert.equal(events.at(-1).params.event.entry.customType, "probe");
+  const navigation = records.find((record) => record.id === "aibo-pi-nav-1")?.result;
+  assert.equal(navigation.cancelled, false);
+  assert.equal(navigation.leafId, "entry-3");
+  const snapshot = records.find((record) => record.id === "aibo-pi-snapshot-1")?.result;
+  assert.equal(snapshot.leafId, "entry-3");
+  assert.equal(snapshot.branch.length, 2);
 });

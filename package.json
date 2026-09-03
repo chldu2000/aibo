@@ -17,6 +17,7 @@
     "probe:pi:sdk": "node probes/pi-sdk.mjs",
     "probe:pi:sdk-host": "node probes/pi-sdk-host.mjs",
     "probe:pi:sdk-host:smoke": "node probes/pi-sdk-host.mjs --smoke",
+    "probe:pi:sdk-host:reopen": "node probes/pi-sdk-host-reopen.mjs",
     "probe:pi:rpc": "node probes/pi-rpc.mjs",
     "probe:pi:smoke": "node probes/pi-sdk.mjs --smoke",
     "probe": "node probes/run-all.mjs",

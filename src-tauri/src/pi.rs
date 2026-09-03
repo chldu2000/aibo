@@ -815,7 +815,10 @@ impl PiSession {
                 .fetch_optional(&self.db)
                 .await?
                 .flatten();
-        Ok(generation.as_deref() == Some(self.generation_id.as_str()))
+        Ok(generation_matches(
+            generation.as_deref(),
+            self.generation_id.as_str(),
+        ))
     }
 
     async fn set_external_id(&self, external_id: String) {
@@ -1046,6 +1049,10 @@ fn futures_turn_id_placeholder(session: &PiSession) -> Option<String> {
         .and_then(|guard| guard.clone())
 }
 
+fn generation_matches(binding_generation: Option<&str>, current_generation: &str) -> bool {
+    binding_generation == Some(current_generation)
+}
+
 #[derive(Clone)]
 pub(crate) struct PiManager {
     app: AppHandle,
@@ -1134,7 +1141,7 @@ impl PiManager {
             return Err(PiError::Database(error));
         }
         if let Err(error) = runtime
-            .emit_event("session.started", None, json!({ "externalSessionId": started, "capabilities": ["streaming", "abort", "session-tree", "read-only-tools"], "sandbox": "none" }), None)
+            .emit_event("session.started", None, json!({ "externalSessionId": started, "capabilities": ["streaming", "abort", "session-tree", "session-tree-navigation", "session-snapshot", "read-only-tools"], "sandbox": "none" }), None)
             .await
         {
             runtime.deactivate();
@@ -1331,6 +1338,66 @@ impl PiManager {
         }))
     }
 
+    pub(crate) async fn navigate_tree(
+        &self,
+        session_id: &str,
+        entry_id: &str,
+    ) -> Result<Value, PiError> {
+        let entry_id = entry_id.trim();
+        if entry_id.is_empty() {
+            return Err(PiError::Session(
+                "Pi tree entry id must not be empty".to_owned(),
+            ));
+        }
+        let session = self.ensure_runtime(session_id).await?;
+        if session.current_turn_id.lock().await.is_some()
+            || !matches!(session.state.lock().await.as_str(), "idle")
+        {
+            return Err(PiError::Session(
+                "Pi session tree navigation requires an idle session".to_owned(),
+            ));
+        }
+        let response = session
+            .client
+            .request("navigateTree", json!({ "entryId": entry_id }))
+            .await?;
+        let navigation = response.get("result").cloned().unwrap_or_else(|| json!({}));
+        let snapshot = self.tree(session_id).await?;
+        Ok(json!({
+            "cancelled": navigation.get("cancelled").and_then(Value::as_bool).unwrap_or(false),
+            "editorText": navigation.get("editorText").cloned().unwrap_or(Value::Null),
+            "sessionId": snapshot.get("sessionId"),
+            "externalSessionId": snapshot.get("externalSessionId"),
+            "leafId": snapshot.get("leafId"),
+            "tree": snapshot.get("tree"),
+        }))
+    }
+
+    pub(crate) async fn snapshot(&self, session_id: &str) -> Result<Value, PiError> {
+        let session = self.ensure_runtime(session_id).await?;
+        let response = session.client.request("snapshot", json!({})).await?;
+        let result = response.get("result").cloned().unwrap_or_else(|| json!({}));
+        let tree = result
+            .get("tree")
+            .and_then(Value::as_array)
+            .ok_or_else(|| {
+                PiError::Protocol("Pi host snapshot did not return a tree".to_owned())
+            })?;
+        let branch = result
+            .get("branch")
+            .and_then(Value::as_array)
+            .ok_or_else(|| {
+                PiError::Protocol("Pi host snapshot did not return a branch".to_owned())
+            })?;
+        Ok(json!({
+            "sessionId": session.session_id,
+            "externalSessionId": session.external_session_id.lock().await.clone(),
+            "leafId": result.get("leafId").cloned().unwrap_or(Value::Null),
+            "branch": branch,
+            "tree": tree,
+        }))
+    }
+
     pub(crate) async fn abort(&self, session_id: &str) -> Result<(), PiError> {
         let session = self.ensure_runtime(session_id).await?;
         if session.current_turn_id.lock().await.is_none() {
@@ -1369,7 +1436,7 @@ impl PiManager {
 
 #[cfg(test)]
 mod tests {
-    use super::{text_from_message, PI_ADAPTER_VERSION, PI_HOST_PROTOCOL};
+    use super::{generation_matches, text_from_message, PI_ADAPTER_VERSION, PI_HOST_PROTOCOL};
     use serde_json::json;
 
     #[test]
@@ -1390,5 +1457,18 @@ mod tests {
     fn adapter_contract_is_versioned() {
         assert_eq!(PI_HOST_PROTOCOL, "aibo-pi-sdk-host.v1");
         assert!(PI_ADAPTER_VERSION.starts_with("phase3-pi-sdk-"));
+    }
+
+    #[test]
+    fn rejects_events_from_an_old_generation() {
+        assert!(generation_matches(
+            Some("generation-current"),
+            "generation-current"
+        ));
+        assert!(!generation_matches(
+            Some("generation-old"),
+            "generation-current"
+        ));
+        assert!(!generation_matches(None, "generation-current"));
     }
 }

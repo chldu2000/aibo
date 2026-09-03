@@ -67,14 +67,19 @@ function compactTreeNode(node) {
 
 function compactSessionEntry(entry) {
   if (!entry || typeof entry !== "object") return undefined;
+  const message = entry.message;
+  const summary = entry.type === "message"
+    ? textContent(message)
+    : typeof entry.summary === "string" ? entry.summary : undefined;
   return {
     id: entry.id,
     parentId: entry.parentId ?? null,
     type: entry.type,
     timestamp: entry.timestamp,
+    role: message?.role,
     customType: entry.customType,
     display: entry.display,
-    summary: typeof entry.summary === "string" ? entry.summary.slice(0, 500) : undefined,
+    summary: summary?.slice(0, 500),
     data: entry.data,
   };
 }
@@ -212,7 +217,7 @@ async function start(params) {
     sessionFile: session.sessionFile ?? null,
     sessionName: session.sessionManager.getSessionName(),
     resumed: resumedSession,
-    capabilities: ["streaming", "abort", "session-tree", "read-only-tools"],
+    capabilities: ["streaming", "abort", "session-tree", "session-tree-navigation", "session-snapshot", "read-only-tools"],
   };
 }
 
@@ -280,6 +285,27 @@ async function handle(message) {
       respond(id, {
         sessionId: session.sessionId,
         leafId: session.sessionManager.getLeafId(),
+        tree: session.sessionManager.getTree().map(compactTreeNode),
+      });
+      return;
+    }
+    if (method === "navigateTree") {
+      if (session.isStreaming) throw new Error("Pi session tree navigation requires an idle session");
+      const entryId = String(params.entryId ?? "").trim();
+      if (!entryId) throw new Error("Pi tree entryId must not be empty");
+      const navigation = await session.navigateTree(entryId, { summarize: false });
+      respond(id, {
+        ...navigation,
+        sessionId: session.sessionId,
+        leafId: session.sessionManager.getLeafId(),
+      });
+      return;
+    }
+    if (method === "snapshot") {
+      respond(id, {
+        sessionId: session.sessionId,
+        leafId: session.sessionManager.getLeafId(),
+        branch: session.sessionManager.getBranch().map(compactSessionEntry),
         tree: session.sessionManager.getTree().map(compactTreeNode),
       });
       return;
