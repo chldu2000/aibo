@@ -1,5 +1,12 @@
 <script lang="ts">
   import { onMount } from 'svelte';
+  import PlusIcon from '@lucide/svelte/icons/plus';
+  import RefreshCwIcon from '@lucide/svelte/icons/refresh-cw';
+  import SendIcon from '@lucide/svelte/icons/send';
+  import ShieldCheckIcon from '@lucide/svelte/icons/shield-check';
+  import SquareIcon from '@lucide/svelte/icons/square';
+  import { Badge } from '$lib/components/ui/badge';
+  import { Button } from '$lib/components/ui/button';
   import {
     addWorkspace,
     abortCodexTurn,
@@ -394,41 +401,36 @@
 
 <div class="app-shell">
   <header class="topbar">
-    <div class="brand-lockup">
-      <div class="brand-mark">A</div>
-      <div>
-        <div class="eyebrow">LOCAL AGENT WORKBENCH</div>
-        <h1>Aibo</h1>
-      </div>
+    <div class="topbar-context">
+      <span class="topbar-title">工作区</span>
+      {#if selectedWorkspace}<span class="topbar-path">{selectedWorkspace.label}</span>{/if}
     </div>
     <div class="topbar-meta">
-      <span class:desktop-badge={desktop} class="mode-badge">{desktop ? 'macOS desktop' : 'Web preview'}</span>
-      <span class="connection"><span class="status-dot"></span> Core ready</span>
+      <Badge variant={desktop ? 'success' : 'outline'}>{desktop ? 'macOS' : 'Web 预览'}</Badge>
+      <span class="connection"><span class="status-dot"></span> 就绪</span>
     </div>
   </header>
 
   <main class="workspace-grid">
     <aside class="sidebar panel">
       <div class="panel-heading">
-        <div>
-          <div class="eyebrow">WORKSPACES</div>
-          <h2>工作区</h2>
-        </div>
-        <span class="count-pill">{workspaces.length}</span>
+        <h2>工作区</h2>
+        <Badge variant="secondary" class="count-pill">{workspaces.length}</Badge>
       </div>
 
       <form class="workspace-form" onsubmit={(event) => { event.preventDefault(); void createWorkspace(); }}>
         <label for="workspace-path">添加本地目录</label>
         <div class="input-row">
           <input id="workspace-path" bind:value={workspacePath} placeholder="/Users/you/Workspace/project" autocomplete="off" />
-          <button class="icon-button" type="submit" aria-label="添加工作区" disabled={busy}>+</button>
+          <Button size="icon" type="submit" aria-label="添加工作区" disabled={busy}>
+            <PlusIcon size={15} strokeWidth={2.25} />
+          </Button>
         </div>
-        <p class="field-help">路径必须已存在；Aibo 只保存 canonical path。</p>
       </form>
 
       <div class="workspace-list" aria-label="工作区列表">
         {#if workspaces.length === 0}
-          <div class="empty-list">还没有工作区<br /><span>从上方添加一个目录开始</span></div>
+          <div class="empty-list">暂无工作区</div>
         {:else}
           {#each workspaces as workspace (workspace.id)}
             <button
@@ -437,7 +439,6 @@
               type="button"
               onclick={() => selectWorkspace(workspace.id)}
             >
-              <span class="workspace-icon">⌘</span>
               <span class="workspace-copy">
                 <strong>{workspace.label}</strong>
                 <small>{workspace.path}</small>
@@ -449,34 +450,35 @@
       </div>
 
       <div class="sidebar-footer">
-        <span class="legend"><span class="trust-dot trusted"></span> trusted</span>
-        <span class="legend"><span class="trust-dot"></span> review required</span>
+        <span class="legend"><span class="trust-dot trusted"></span> 可信</span>
+        <span class="legend"><span class="trust-dot"></span> 待确认</span>
       </div>
     </aside>
 
     <section class="timeline panel">
       <div class="panel-heading timeline-heading">
         <div>
-          <div class="eyebrow">TIMELINE</div>
-          <h2>{selectedSession?.label ?? selectedWorkspace?.label ?? '选择一个工作区'}</h2>
+          <h2>{selectedSession?.label ?? selectedWorkspace?.label ?? '选择工作区'}</h2>
         </div>
         <div class="timeline-heading-actions">
-          {#if selectedSession}<span class="session-state">{selectedSession.state}</span>{/if}
+          {#if selectedSession}
+            <Badge variant={sessionRunning ? 'warning' : 'outline'}>{selectedSession.state}</Badge>
+          {/if}
           {#if selectedWorkspace}
-            <span class:trusted={selectedWorkspace.trust === 'trusted'} class="trust-label">
-              {selectedWorkspace.trust === 'trusted' ? 'Trusted workspace' : 'Trust required'}
-            </span>
+            <Badge variant={selectedWorkspace.trust === 'trusted' ? 'success' : 'warning'}>
+              {selectedWorkspace.trust === 'trusted' ? '可信' : '待确认'}
+            </Badge>
           {/if}
         </div>
       </div>
 
       {#if selectedWorkspace}
         <div class="session-toolbar">
-          <button type="button" class="new-session-button" onclick={() => void createCodex()} disabled={busy}>
-            <span>＋</span> 新建 Codex 会话
-          </button>
+          <Button size="sm" type="button" onclick={() => void createCodex()} disabled={busy}>
+            <PlusIcon size={14} /> 新建会话
+          </Button>
           {#if selectedSession}
-            <button type="button" class="close-session-button" onclick={() => void closeSession()} disabled={busy || sessionRunning}>关闭</button>
+            <Button variant="ghost" size="sm" type="button" onclick={() => void closeSession()} disabled={busy || sessionRunning}>关闭</Button>
           {/if}
           {#if sessions.length > 0}
             <div class="session-list" aria-label="Codex 会话列表">
@@ -511,20 +513,17 @@
           <div class="timeline-empty compact-empty">
             <div class="orbit"><span></span><span></span><span></span></div>
             <h3>发送第一条消息</h3>
-            <p>Codex App Server 已连接；输入提示后会在这里实时显示响应。</p>
           </div>
         {:else}
           <div class="timeline-empty compact-empty">
-            <div class="empty-symbol">⌘</div>
-            <h3>新建一个 Codex 会话</h3>
-            <p>会话绑定当前工作区，并在本机 SQLite 中保存可恢复的时间线。</p>
+            <div class="empty-symbol">+</div>
+            <h3>新建会话</h3>
           </div>
         {/if}
       {:else}
         <div class="timeline-empty">
-          <div class="empty-symbol">⌘</div>
-          <h3>从一个工作区开始</h3>
-          <p>添加本地目录后，Aibo 会在这里呈现统一的 Agent 时间线。</p>
+          <div class="empty-symbol">+</div>
+          <h3>选择工作区</h3>
         </div>
       {/if}
 
@@ -542,20 +541,21 @@
           }}
         ></textarea>
         {#if sessionRunning}
-          <button type="button" class="send-button stop-button" onclick={() => void abortPrompt()} disabled={busy} aria-label="中止">■</button>
+          <Button variant="destructive" size="icon" type="button" onclick={() => void abortPrompt()} disabled={busy} aria-label="中止">
+            <SquareIcon size={13} fill="currentColor" />
+          </Button>
         {:else}
-          <button type="submit" class="send-button" disabled={!selectedSession || !composerText.trim() || busy} aria-label="发送">↑</button>
+          <Button size="icon" type="submit" disabled={!selectedSession || !composerText.trim() || busy} aria-label="发送">
+            <SendIcon size={14} />
+          </Button>
         {/if}
       </form>
     </section>
 
     <aside class="inspector panel">
       <div class="panel-heading">
-        <div>
-          <div class="eyebrow">SYSTEM CHECK</div>
-          <h2>Agent 诊断</h2>
-        </div>
-        <span class="ready-count">{readyAgents}/{diagnostics.length} ready</span>
+        <h2>Agent 诊断</h2>
+        <Badge variant="success">{readyAgents}/{diagnostics.length} 就绪</Badge>
       </div>
 
       <div class="agent-cards">
@@ -563,38 +563,40 @@
           <article class="agent-card">
             <div class="agent-card-head">
               <div class="agent-identity">
-                <span class:pi={agent.agent === 'pi'} class="agent-avatar">{agent.agent === 'codex' ? 'C' : 'P'}</span>
                 <div><strong>{agent.label}</strong><small>{agent.version ?? 'version unavailable'}</small></div>
               </div>
-              <span class:missing={agent.status !== 'ready'} class="status-label"><span class="status-dot"></span>{agent.status}</span>
+              <Badge variant={agent.status === 'ready' ? 'success' : 'warning'}>{agent.status}</Badge>
             </div>
             <dl>
-              <div><dt>transport</dt><dd>{agent.agent === 'codex' ? 'app-server' : 'sdk-host'}</dd></div>
-              <div><dt>auth</dt><dd>{agent.authState === 'delegated' ? 'native store' : agent.authState}</dd></div>
-              {#if agent.executable}<div><dt>binary</dt><dd title={agent.executable}>{agent.executable}</dd></div>{/if}
+              <div><dt>通道</dt><dd>{agent.agent === 'codex' ? 'app-server' : 'sdk-host'}</dd></div>
+              <div><dt>认证</dt><dd>{agent.authState === 'delegated' ? '系统凭据' : agent.authState}</dd></div>
+              {#if agent.executable}<div><dt>可执行文件</dt><dd title={agent.executable}>{agent.executable}</dd></div>{/if}
             </dl>
             <div class="capability-list">
               {#each agent.capabilities as capability}<span>{capability}</span>{/each}
             </div>
-            {#if agent.message}<p class="agent-message">{agent.message}</p>{/if}
           </article>
         {/each}
       </div>
 
       {#if selectedWorkspace}
         <div class="trust-card">
-          <div class="trust-card-heading"><span class="shield">⌁</span><strong>Workspace trust</strong></div>
-          <p>{selectedWorkspace.trust === 'trusted' ? '该目录允许启动可写 Agent 会话。' : '确认目录来源后再允许 Pi 启动可写会话。'}</p>
+          <div class="trust-card-heading"><ShieldCheckIcon size={16} /><strong>工作区信任</strong></div>
+          <p>{selectedWorkspace.trust === 'trusted' ? '当前目录已允许 Agent 操作。' : '确认目录来源后再启用 Agent 操作。'}</p>
           <div class="trust-actions">
-            <button type="button" class="secondary-button" onclick={() => void toggleTrust(selectedWorkspace)} disabled={busy}>
+            <Button variant="outline" size="sm" type="button" onclick={() => void toggleTrust(selectedWorkspace)} disabled={busy}>
               {selectedWorkspace.trust === 'trusted' ? '撤销信任' : '标记为可信'}
-            </button>
-            <button type="button" class="danger-link" onclick={() => void deleteWorkspace(selectedWorkspace)} disabled={busy}>移除</button>
+            </Button>
+            <Button variant="ghost" size="sm" type="button" onclick={() => void deleteWorkspace(selectedWorkspace)} disabled={busy}>移除</Button>
           </div>
         </div>
       {/if}
 
-      <div class="inspector-footer"><button type="button" class="refresh-link" onclick={() => void refresh()} disabled={busy}>↻ 刷新诊断</button></div>
+      <div class="inspector-footer">
+        <Button variant="ghost" size="sm" type="button" onclick={() => void refresh()} disabled={busy}>
+          <RefreshCwIcon size={13} /> 刷新诊断
+        </Button>
+      </div>
     </aside>
   </main>
 

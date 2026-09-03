@@ -9,6 +9,11 @@
     "isolatedModules": true,
     "moduleDetection": "force",
     "lib": ["ES2022", "DOM", "DOM.Iterable"],
+    "baseUrl": ".",
+    "paths": {
+      "$lib": ["./src/lib"],
+      "$lib/*": ["./src/lib/*"]
+    },
     "strict": true,
     "noEmit": true,
     "skipLibCheck": true
