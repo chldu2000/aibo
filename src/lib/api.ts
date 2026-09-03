@@ -5,6 +5,8 @@ import type {
   AgentEvent,
   ApprovalDecision,
   AppSnapshot,
+  CodexThreadSnapshot,
+  CodexThreadSummary,
   Session,
   TimelineItem,
   Workspace,
@@ -39,6 +41,12 @@ export const listSessions = (workspaceId: string): Promise<Session[]> =>
 
 export const getTimeline = (sessionId: string): Promise<TimelineItem[]> =>
   invoke<TimelineItem[]>('get_timeline', { sessionId });
+
+export const listCodexThreads = (workspaceId: string): Promise<CodexThreadSummary[]> =>
+  invoke<CodexThreadSummary[]>('list_codex_threads', { workspaceId });
+
+export const readCodexThread = (sessionId: string): Promise<CodexThreadSnapshot> =>
+  invoke<CodexThreadSnapshot>('read_codex_thread', { sessionId });
 
 export const createCodexSession = (workspaceId: string): Promise<Session> =>
   invoke<Session>('create_codex_session', { workspaceId });

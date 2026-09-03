@@ -51,6 +51,18 @@ export interface Session {
   updatedAt: string;
 }
 
+export interface CodexThreadSummary {
+  id: string;
+  title: string | null;
+  cwd: string | null;
+  status: string | null;
+  updatedAt: string | null;
+}
+
+export interface CodexThreadSnapshot extends CodexThreadSummary {
+  turnCount: number;
+}
+
 export interface TimelineItem {
   id: string;
   sessionId: string;

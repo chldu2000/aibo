@@ -19,10 +19,12 @@
     createCodexSession,
     getTimeline,
     isTauri,
+    listCodexThreads,
     listWorkspaces,
     listSessions,
     listenToAgentEvents,
     probeAgents,
+    readCodexThread,
     removeWorkspace,
     resolveCodexApproval,
     sendCodexPrompt,
@@ -33,6 +35,8 @@
     AgentEvent,
     ApprovalDecision,
     ApprovalRequest,
+    CodexThreadSnapshot,
+    CodexThreadSummary,
     Session,
     TimelineItem,
     Workspace,
@@ -78,6 +82,8 @@
   let sessions = $state<Session[]>([]);
   let timeline = $state<TimelineItem[]>([]);
   let pendingApprovals = $state<ApprovalRequest[]>([]);
+  let codexThreads = $state<CodexThreadSummary[]>([]);
+  let codexThreadSnapshot = $state<CodexThreadSnapshot | null>(null);
   let selectedWorkspaceId = $state<string | null>(null);
   let selectedSessionId = $state<string | null>(null);
   let workspacePath = $state('');
@@ -86,6 +92,7 @@
   let errorMessage = $state<string | null>(null);
   let notice = $state<string | null>(null);
   let desktop = $state(false);
+  let threadBusy = $state(false);
 
   const selectedWorkspace = $derived(
     workspaces.find((workspace) => workspace.id === selectedWorkspaceId) ?? null,
@@ -151,9 +158,12 @@
       const activeWorkspaceId = selectedWorkspaceId;
       if (activeWorkspaceId) {
         await refreshSessions(activeWorkspaceId);
+        await refreshCodexThreads(activeWorkspaceId);
       } else {
         sessions = [];
         timeline = [];
+        codexThreads = [];
+        codexThreadSnapshot = null;
       }
     } catch (error) {
       errorMessage = toErrorMessage(error);
@@ -172,8 +182,58 @@
         : (loadedSessions[0]?.id ?? null);
     if (selectedSessionId) {
       await refreshTimeline(selectedSessionId);
+      void refreshCodexThread(selectedSessionId);
     } else {
       timeline = [];
+      codexThreadSnapshot = null;
+    }
+  }
+
+  async function refreshCodexThreads(workspaceId: string, announce = false) {
+    if (!desktop) return;
+    try {
+      const loadedThreads = await listCodexThreads(workspaceId);
+      if (workspaceId === selectedWorkspaceId) codexThreads = loadedThreads;
+      if (announce) notice = `已读取 ${loadedThreads.length} 个 Codex 线程。`;
+    } catch (error) {
+      if (announce) errorMessage = toErrorMessage(error);
+    }
+  }
+
+  async function refreshCodexThread(sessionId: string, announce = false) {
+    const session = sessions.find((item) => item.id === sessionId);
+    if (!desktop || !session || session.agent !== 'codex' || !session.externalSessionId) {
+      if (sessionId === selectedSessionId) codexThreadSnapshot = null;
+      return;
+    }
+    try {
+      const snapshot = await readCodexThread(sessionId);
+      if (sessionId === selectedSessionId) codexThreadSnapshot = snapshot;
+      if (announce) notice = `已读取远端线程，共 ${snapshot.turnCount} 轮。`;
+    } catch (error) {
+      if (sessionId === selectedSessionId) codexThreadSnapshot = null;
+      if (announce) errorMessage = toErrorMessage(error);
+    }
+  }
+
+  async function syncCodexThreads() {
+    if (!selectedWorkspaceId || !desktop) return;
+    threadBusy = true;
+    errorMessage = null;
+    try {
+      await refreshCodexThreads(selectedWorkspaceId, true);
+    } finally {
+      threadBusy = false;
+    }
+  }
+
+  async function syncCodexThread(sessionId: string) {
+    threadBusy = true;
+    errorMessage = null;
+    try {
+      await refreshCodexThread(sessionId, true);
+    } finally {
+      threadBusy = false;
     }
   }
 
@@ -414,6 +474,7 @@
       const remaining = sessions.filter(({ id }) => id !== closingId);
       sessions = remaining;
       selectedSessionId = remaining[0]?.id ?? null;
+      codexThreadSnapshot = null;
       timeline = selectedSessionId ? await getTimeline(selectedSessionId) : [];
       notice = 'Codex 会话已关闭；已保存的时间线仍可在下次启动时读取。';
     } catch (error) {
@@ -425,7 +486,10 @@
 
   function selectSession(id: string) {
     selectedSessionId = id;
-    if (desktop) void refreshTimeline(id);
+    if (desktop) {
+      void refreshTimeline(id);
+      void refreshCodexThread(id);
+    }
   }
 
   async function toggleTrust(workspace: Workspace) {
@@ -461,7 +525,12 @@
       selectedWorkspaceId = workspaces[0]?.id ?? null;
       sessions = [];
       timeline = [];
-      if (selectedWorkspaceId) void refreshSessions(selectedWorkspaceId);
+      codexThreads = [];
+      codexThreadSnapshot = null;
+      if (selectedWorkspaceId) {
+        void refreshSessions(selectedWorkspaceId);
+        void refreshCodexThreads(selectedWorkspaceId);
+      }
       notice = '工作区已从 Aibo 移除；本地目录未被删除。';
     } catch (error) {
       errorMessage = toErrorMessage(error);
@@ -475,7 +544,12 @@
     selectedSessionId = null;
     sessions = [];
     timeline = [];
-    if (desktop) void refreshSessions(id);
+    codexThreads = [];
+    codexThreadSnapshot = null;
+    if (desktop) {
+      void refreshSessions(id);
+      void refreshCodexThreads(id);
+    }
     notice = null;
   }
 
@@ -555,6 +629,9 @@
         <div class="timeline-heading-actions">
           {#if selectedSession}
             <Badge variant={sessionRunning ? 'warning' : 'outline'}>{selectedSession.state}</Badge>
+            {#if codexThreadSnapshot && codexThreadSnapshot.id === selectedSession.externalSessionId}
+              <Badge variant="outline">远端 {codexThreadSnapshot.turnCount} 轮</Badge>
+            {/if}
           {/if}
           {#if selectedWorkspace}
             <Badge variant={selectedWorkspace.trust === 'trusted' ? 'success' : 'warning'}>
@@ -572,6 +649,9 @@
           </Button>
           {#if selectedSession}
             <Button variant="ghost" size="sm" type="button" onclick={() => void closeSession()} disabled={busy || sessionRunning}>关闭</Button>
+            <Button variant="ghost" size="sm" type="button" onclick={() => void syncCodexThread(selectedSession.id)} disabled={threadBusy || busy}>
+              <RefreshCwIcon size={13} /> 读取线程
+            </Button>
           {/if}
           {#if sessions.length > 0}
             <div class="session-list" aria-label="Codex 会话列表">
@@ -704,6 +784,36 @@
           </Card>
         {/each}
       </div>
+
+      {#if selectedWorkspace && desktop}
+        <Card class="thread-card">
+          <CardHeader class="thread-card-heading">
+            <CardTitle>Codex 线程</CardTitle>
+            <Badge variant="secondary" class="count-pill">{codexThreads.length}</Badge>
+          </CardHeader>
+          <CardContent class="thread-card-content">
+            {#if codexThreads.length === 0}
+              <p class="thread-empty">暂无远端线程</p>
+            {:else}
+              <div class="thread-list" aria-label="Codex 线程列表">
+                {#each codexThreads.slice(0, 5) as thread (thread.id)}
+                  <div class="thread-item">
+                    <div class="thread-copy">
+                      <strong>{thread.title ?? thread.id}</strong>
+                      <small>{thread.cwd ?? '当前工作区'}{thread.updatedAt ? ` · ${thread.updatedAt}` : ''}</small>
+                    </div>
+                    <Badge variant="outline">{thread.status ?? 'unknown'}</Badge>
+                  </div>
+                {/each}
+              </div>
+              {#if codexThreads.length > 5}<small class="thread-more">仅显示最近 5 个线程</small>{/if}
+            {/if}
+            <Button variant="ghost" size="sm" type="button" onclick={() => void syncCodexThreads()} disabled={threadBusy || busy}>
+              <RefreshCwIcon size={13} /> 刷新线程
+            </Button>
+          </CardContent>
+        </Card>
+      {/if}
 
       {#if selectedWorkspace}
         <Card class="trust-card">

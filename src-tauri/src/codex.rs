@@ -76,6 +76,27 @@ struct AgentEvent {
     raw_ref: Option<String>,
 }
 
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct CodexThreadSummary {
+    pub(crate) id: String,
+    pub(crate) title: Option<String>,
+    pub(crate) cwd: Option<String>,
+    pub(crate) status: Option<String>,
+    pub(crate) updated_at: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct CodexThreadSnapshot {
+    pub(crate) id: String,
+    pub(crate) title: Option<String>,
+    pub(crate) cwd: Option<String>,
+    pub(crate) status: Option<String>,
+    pub(crate) updated_at: Option<String>,
+    pub(crate) turn_count: usize,
+}
+
 struct CodexClient {
     process: Mutex<Child>,
     stdin: Mutex<ChildStdin>,
@@ -277,6 +298,90 @@ fn value_id(value: &Value) -> Option<String> {
         Value::Number(value) => Some(value.to_string()),
         _ => None,
     }
+}
+
+fn optional_string(value: &Value, keys: &[&str]) -> Option<String> {
+    keys.iter().find_map(|key| {
+        value
+            .get(*key)
+            .and_then(Value::as_str)
+            .map(ToOwned::to_owned)
+    })
+}
+
+fn thread_status(value: &Value) -> Option<String> {
+    let status = value.get("status")?;
+    status.as_str().map(ToOwned::to_owned).or_else(|| {
+        ["type", "state", "status"].iter().find_map(|key| {
+            status
+                .get(*key)
+                .and_then(Value::as_str)
+                .map(ToOwned::to_owned)
+        })
+    })
+}
+
+fn parse_thread_summary(value: &Value) -> Result<CodexThreadSummary, CodexError> {
+    let id = value
+        .get("id")
+        .and_then(Value::as_str)
+        .ok_or_else(|| {
+            CodexError::Protocol("Codex thread summary did not include an id".to_owned())
+        })?
+        .to_owned();
+    Ok(CodexThreadSummary {
+        id,
+        title: optional_string(value, &["title", "name", "preview"]),
+        cwd: optional_string(value, &["cwd", "path"]),
+        status: thread_status(value),
+        updated_at: optional_string(value, &["updatedAt", "updated_at", "lastUpdatedAt"]),
+    })
+}
+
+fn parse_thread_list(value: &Value) -> Result<Vec<CodexThreadSummary>, CodexError> {
+    let threads = value
+        .pointer("/result/data")
+        .and_then(Value::as_array)
+        .ok_or_else(|| {
+            CodexError::Protocol("thread/list did not return a data array".to_owned())
+        })?;
+    threads.iter().map(parse_thread_summary).collect()
+}
+
+fn parse_thread_snapshot(value: &Value) -> Result<CodexThreadSnapshot, CodexError> {
+    let thread = value
+        .pointer("/result/thread")
+        .ok_or_else(|| CodexError::Protocol("thread/read did not return a thread".to_owned()))?;
+    let summary = parse_thread_summary(thread)?;
+    let turn_count = thread
+        .get("turns")
+        .and_then(Value::as_array)
+        .map_or(0, Vec::len);
+    Ok(CodexThreadSnapshot {
+        id: summary.id,
+        title: summary.title,
+        cwd: summary.cwd,
+        status: summary.status,
+        updated_at: summary.updated_at,
+        turn_count,
+    })
+}
+
+async fn initialize_client(client: &CodexClient) -> Result<(), CodexError> {
+    client
+        .request(
+            "initialize",
+            json!({
+                "clientInfo": {
+                    "name": "aibo_phase2",
+                    "title": "Aibo Phase 2",
+                    "version": env!("CARGO_PKG_VERSION")
+                },
+                "capabilities": { "experimentalApi": true }
+            }),
+        )
+        .await?;
+    client.notify("initialized", json!({})).await
 }
 
 struct CodexSession {
@@ -500,10 +605,10 @@ impl CodexSession {
                         "approval request did not include a request id".to_owned(),
                     ));
                 };
-                self.pending_approvals
-                    .lock()
-                    .await
-                    .insert(request_id.clone(), message.get("id").cloned().unwrap_or(Value::Null));
+                self.pending_approvals.lock().await.insert(
+                    request_id.clone(),
+                    message.get("id").cloned().unwrap_or(Value::Null),
+                );
                 self.set_state("waiting_approval").await?;
                 self.emit_event(
                     "approval.requested",
@@ -568,20 +673,7 @@ impl CodexSession {
     }
 
     async fn initialize(&self) -> Result<(), CodexError> {
-        self.client
-            .request(
-                "initialize",
-                json!({
-                    "clientInfo": {
-                        "name": "aibo_phase2",
-                        "title": "Aibo Phase 2",
-                        "version": env!("CARGO_PKG_VERSION")
-                    },
-                    "capabilities": { "experimentalApi": true }
-                }),
-            )
-            .await?;
-        self.client.notify("initialized", json!({})).await
+        initialize_client(&self.client).await
     }
 
     fn deactivate(&self) {
@@ -966,6 +1058,35 @@ impl CodexManager {
             .map_err(|error| CodexError::Session(error.to_string()))
     }
 
+    pub(crate) async fn list_threads(
+        &self,
+        workspace_id: &str,
+    ) -> Result<Vec<CodexThreadSummary>, CodexError> {
+        let workspace = workspace_by_id(&self.db, workspace_id)
+            .await
+            .map_err(|error| CodexError::Session(error.to_string()))?;
+        let codex_path = find_executable("codex").ok_or(CodexError::MissingExecutable)?;
+        let client = CodexClient::spawn(codex_path, Path::new(&workspace.path)).await?;
+        let result = async {
+            initialize_client(&client).await?;
+            let response = client
+                .request(
+                    "thread/list",
+                    json!({
+                        "limit": 100,
+                        "cwd": workspace.path,
+                        "sortKey": "updated_at",
+                        "sortDirection": "desc"
+                    }),
+                )
+                .await?;
+            parse_thread_list(&response)
+        }
+        .await;
+        client.close().await;
+        result
+    }
+
     async fn ensure_runtime(&self, session_id: &str) -> Result<Arc<CodexSession>, CodexError> {
         if let Some(session) = self.sessions.lock().await.get(session_id).cloned() {
             if !session.client.closed.load(Ordering::SeqCst) {
@@ -1043,6 +1164,27 @@ impl CodexManager {
         .execute(&self.db)
         .await?;
         Ok(runtime)
+    }
+
+    pub(crate) async fn read_thread(
+        &self,
+        session_id: &str,
+    ) -> Result<CodexThreadSnapshot, CodexError> {
+        let session = self.ensure_runtime(session_id).await?;
+        let thread_id = session
+            .thread_id
+            .lock()
+            .await
+            .clone()
+            .ok_or_else(|| CodexError::Session("Codex session has no thread id".to_owned()))?;
+        let response = session
+            .client
+            .request(
+                "thread/read",
+                json!({ "threadId": thread_id, "includeTurns": true }),
+            )
+            .await?;
+        parse_thread_snapshot(&response)
     }
 
     pub(crate) async fn send_prompt(
@@ -1205,7 +1347,9 @@ impl CodexManager {
 
 #[cfg(test)]
 mod tests {
-    use super::{final_turn_text, map_turn_status, value_id};
+    use super::{
+        final_turn_text, map_turn_status, parse_thread_list, parse_thread_snapshot, value_id,
+    };
     use serde_json::json;
 
     #[test]
@@ -1233,5 +1377,48 @@ mod tests {
         assert_eq!(value_id(&json!("request-1")), Some("request-1".to_owned()));
         assert_eq!(value_id(&json!(7)), Some("7".to_owned()));
         assert_eq!(value_id(&json!(null)), None);
+    }
+
+    #[test]
+    fn parses_thread_list_summaries_with_protocol_aliases() {
+        let response = json!({
+            "result": {
+                "data": [
+                    {
+                        "id": "thread-1",
+                        "preview": "Investigate issue",
+                        "path": "/tmp/project",
+                        "status": { "type": "idle" },
+                        "updated_at": "2026-09-03T00:00:00Z"
+                    }
+                ]
+            }
+        });
+        let threads = parse_thread_list(&response).expect("thread/list response");
+        assert_eq!(threads.len(), 1);
+        assert_eq!(threads[0].id, "thread-1");
+        assert_eq!(threads[0].title.as_deref(), Some("Investigate issue"));
+        assert_eq!(threads[0].cwd.as_deref(), Some("/tmp/project"));
+        assert_eq!(threads[0].status.as_deref(), Some("idle"));
+    }
+
+    #[test]
+    fn parses_thread_read_snapshot_and_turn_count() {
+        let response = json!({
+            "result": {
+                "thread": {
+                    "id": "thread-1",
+                    "name": "Aibo session",
+                    "cwd": "/tmp/project",
+                    "status": "running",
+                    "updatedAt": "2026-09-03T00:00:00Z",
+                    "turns": [{ "id": "turn-1" }, { "id": "turn-2" }]
+                }
+            }
+        });
+        let snapshot = parse_thread_snapshot(&response).expect("thread/read response");
+        assert_eq!(snapshot.id, "thread-1");
+        assert_eq!(snapshot.title.as_deref(), Some("Aibo session"));
+        assert_eq!(snapshot.turn_count, 2);
     }
 }

@@ -1,6 +1,6 @@
 mod codex;
 
-use codex::CodexManager;
+use codex::{CodexManager, CodexThreadSnapshot, CodexThreadSummary};
 use serde::Serialize;
 use sqlx::{
     sqlite::{SqliteConnectOptions, SqliteJournalMode, SqlitePoolOptions},
@@ -411,6 +411,30 @@ async fn get_timeline(
 }
 
 #[tauri::command]
+async fn list_codex_threads(
+    workspace_id: String,
+    state: State<'_, AppState>,
+) -> Result<Vec<CodexThreadSummary>, CoreError> {
+    state
+        .codex
+        .list_threads(&workspace_id)
+        .await
+        .map_err(Into::into)
+}
+
+#[tauri::command]
+async fn read_codex_thread(
+    session_id: String,
+    state: State<'_, AppState>,
+) -> Result<CodexThreadSnapshot, CoreError> {
+    state
+        .codex
+        .read_thread(&session_id)
+        .await
+        .map_err(Into::into)
+}
+
+#[tauri::command]
 async fn create_codex_session(
     workspace_id: String,
     state: State<'_, AppState>,
@@ -638,6 +662,8 @@ pub fn run() {
             get_app_snapshot,
             list_sessions,
             get_timeline,
+            list_codex_threads,
+            read_codex_thread,
             create_codex_session,
             send_codex_prompt,
             abort_codex_turn,

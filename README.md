@@ -6,7 +6,7 @@ The first supported runtimes are Codex and Pi. The product architecture and phas
 
 ## Current status
 
-Phase 0 protocol probes are complete on the local macOS validation host, and the architecture is frozen for a macOS-first release. Codex App Server and both Pi paths (the locked SDK host and the RPC compatibility path) have passed real streaming, abort, and history-resume smoke checks. Windows is a follow-up compatibility gate after native Pi login. Phase 1 Codex real-session acceptance is complete on the local macOS host: the Svelte 5 + Tauri 2 shell, Rust Core, SQLite projection, stdio App Server adapter, streaming timeline, interruption, and restart resume passed the real UI gate. Phase 2 has started with Codex approval request projection and explicit allow/deny actions. Pi remains out of this slice.
+Phase 0 protocol probes are complete on the local macOS validation host, and the architecture is frozen for a macOS-first release. Codex App Server and both Pi paths (the locked SDK host and the RPC compatibility path) have passed real streaming, abort, and history-resume smoke checks. Windows is a follow-up compatibility gate after native Pi login. Phase 1 Codex real-session acceptance is complete on the local macOS host: the Svelte 5 + Tauri 2 shell, Rust Core, SQLite projection, stdio App Server adapter, streaming timeline, interruption, and restart resume passed the real UI gate. Phase 2 approval projection and explicit allow/deny are complete, and the next batch now exposes typed Codex thread list/read APIs. Pi remains out of this slice.
 
 ## Phase 1 Codex vertical slice
 
@@ -21,7 +21,7 @@ The browser-only `pnpm dev` command remains useful for UI preview; it uses clear
 
 ## Phase 2 Codex capability expansion
 
-The first Phase 2 batch adds an explicit approval path. Codex requests use the `on-request` policy while retaining the read-only sandbox. Aibo projects the request as a reviewable card and sends an explicit `accept` or `cancel` decision; it never auto-approves. Thread listing, fork/archive, and full tool event projection remain subsequent batches.
+Phase 2 adds an explicit approval path and typed Codex thread discovery. Codex requests use the `on-request` policy while retaining the read-only sandbox. Aibo projects the request as a reviewable card, sends an explicit `accept` or `cancel` decision, and reads `thread/list`/`thread/read` for remote history state; it never auto-approves. Thread fork/archive and full tool event projection remain subsequent batches.
 
 ## Phase 0 probes
 
