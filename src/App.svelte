@@ -3,10 +3,15 @@
   import ArchiveIcon from '@lucide/svelte/icons/archive';
   import ArchiveRestoreIcon from '@lucide/svelte/icons/archive-restore';
   import CheckIcon from '@lucide/svelte/icons/check';
+  import ChevronDownIcon from '@lucide/svelte/icons/chevron-down';
+  import FolderIcon from '@lucide/svelte/icons/folder';
+  import FolderPlusIcon from '@lucide/svelte/icons/folder-plus';
   import GitBranchIcon from '@lucide/svelte/icons/git-branch';
+  import ListFilterIcon from '@lucide/svelte/icons/list-filter';
   import PencilIcon from '@lucide/svelte/icons/pencil';
   import PlusIcon from '@lucide/svelte/icons/plus';
   import RefreshCwIcon from '@lucide/svelte/icons/refresh-cw';
+  import SearchIcon from '@lucide/svelte/icons/search';
   import SendIcon from '@lucide/svelte/icons/send';
   import SettingsIcon from '@lucide/svelte/icons/settings-2';
   import ShieldCheckIcon from '@lucide/svelte/icons/shield-check';
@@ -19,7 +24,6 @@
   import { Button } from '$lib/components/ui/button';
   import { Card, CardContent, CardHeader, CardTitle } from '$lib/components/ui/card';
   import { Input } from '$lib/components/ui/input';
-  import { Label } from '$lib/components/ui/label';
   import { Separator } from '$lib/components/ui/separator';
   import { Textarea } from '$lib/components/ui/textarea';
   import {
@@ -111,7 +115,10 @@
   let codexThreadSnapshot = $state<CodexThreadSnapshot | null>(null);
   let piTree = $state<PiSessionTreeSnapshot | null>(null);
   let selectedWorkspaceId = $state<string | null>(null);
+  let expandedWorkspaceId = $state<string | null>(null);
   let selectedSessionId = $state<string | null>(null);
+  let sessionsLoadingWorkspaceId = $state<string | null>(null);
+  let sessionLoadRequestId = 0;
   let workspacePath = $state('');
   let composerText = $state('');
   let busy = $state(false);
@@ -123,6 +130,10 @@
   let piNavigationEntryId = $state<string | null>(null);
   let sessionSearch = $state('');
   let sessionFilter = $state<SessionFilter>('active');
+  let workspaceFormOpen = $state(false);
+  let sessionSearchOpen = $state(false);
+  let sessionFilterOpen = $state(false);
+  let createSessionWorkspaceId = $state<string | null>(null);
   let renamingSessionId = $state<string | null>(null);
   let sessionLabelDraft = $state('');
   let timelineVisibleCount = $state(80);
@@ -188,6 +199,7 @@
         workspaces = previewWorkspaces;
         diagnostics = previewDiagnostics;
         selectedWorkspaceId = previewWorkspaces[0]?.id ?? null;
+        expandedWorkspaceId = selectedWorkspaceId;
         return;
       }
 
@@ -225,6 +237,7 @@
           ? selectedWorkspaceId
           : (loadedWorkspaces[0]?.id ?? null);
       const activeWorkspaceId = selectedWorkspaceId;
+      expandedWorkspaceId = activeWorkspaceId;
       if (activeWorkspaceId) {
         await refreshSessions(activeWorkspaceId);
         await refreshCodexThreads(activeWorkspaceId);
@@ -244,28 +257,34 @@
   }
 
   async function refreshSessions(workspaceId: string) {
-    const loadedSessions = await listSessions(workspaceId, {
-      search: sessionSearch,
-      statusFilter: sessionFilter,
-    });
-    if (workspaceId !== selectedWorkspaceId) return;
-    sessions = loadedSessions;
-    selectedSessionId =
-      selectedSessionId && loadedSessions.some(({ id }) => id === selectedSessionId)
-        ? selectedSessionId
-        : (loadedSessions[0]?.id ?? null);
-    if (selectedSessionId) {
-      await refreshTimeline(selectedSessionId);
-      void refreshCodexThread(selectedSessionId);
-      void refreshPiTree(selectedSessionId);
-    } else {
-      timeline = [];
-      codexThreadSnapshot = null;
-      piTree = null;
-      piNavigationEntryId = null;
-      usageSnapshot = null;
-      retryPrompt = null;
-      retryReason = null;
+    const requestId = ++sessionLoadRequestId;
+    sessionsLoadingWorkspaceId = workspaceId;
+    try {
+      const loadedSessions = await listSessions(workspaceId, {
+        search: sessionSearch,
+        statusFilter: sessionFilter,
+      });
+      if (workspaceId !== selectedWorkspaceId) return;
+      sessions = loadedSessions;
+      selectedSessionId =
+        selectedSessionId && loadedSessions.some(({ id }) => id === selectedSessionId)
+          ? selectedSessionId
+          : (loadedSessions[0]?.id ?? null);
+      if (selectedSessionId) {
+        await refreshTimeline(selectedSessionId);
+        void refreshCodexThread(selectedSessionId);
+        void refreshPiTree(selectedSessionId);
+      } else {
+        timeline = [];
+        codexThreadSnapshot = null;
+        piTree = null;
+        piNavigationEntryId = null;
+        usageSnapshot = null;
+        retryPrompt = null;
+        retryReason = null;
+      }
+    } finally {
+      if (requestId === sessionLoadRequestId) sessionsLoadingWorkspaceId = null;
     }
   }
 
@@ -595,7 +614,9 @@
       const workspace = await addWorkspace(path);
       workspaces = [workspace, ...workspaces.filter(({ id }) => id !== workspace.id)];
       selectedWorkspaceId = workspace.id;
+      expandedWorkspaceId = workspace.id;
       workspacePath = '';
+      workspaceFormOpen = false;
       notice = '工作区已添加。首次运行 Agent 前请明确确认信任状态。';
     } catch (error) {
       errorMessage = toErrorMessage(error);
@@ -625,6 +646,7 @@
       retryPrompt = null;
       retryReason = null;
       lastSubmittedPrompt = null;
+      createSessionWorkspaceId = null;
       void refreshCodexThreads(selectedWorkspace.id);
       notice = 'Codex 会话已启动，可以发送第一条消息。';
     } catch (error) {
@@ -657,6 +679,7 @@
       lastSubmittedPrompt = null;
       piTree = null;
       piNavigationEntryId = null;
+      createSessionWorkspaceId = null;
       void refreshPiTree(session.id);
       notice = 'Pi SDK 会话已启动；当前仅开放只读工具，Pi 本身不提供原生沙箱。';
     } catch (error) {
@@ -984,6 +1007,7 @@
       await removeWorkspace(workspace.id);
       workspaces = workspaces.filter(({ id }) => id !== workspace.id);
       selectedWorkspaceId = workspaces[0]?.id ?? null;
+      expandedWorkspaceId = selectedWorkspaceId;
       sessions = [];
       timeline = [];
       codexThreads = [];
@@ -1003,19 +1027,41 @@
   }
 
   function selectWorkspace(id: string) {
+    const isCurrentWorkspace = id === selectedWorkspaceId;
+    if (isCurrentWorkspace && expandedWorkspaceId === id) {
+      expandedWorkspaceId = null;
+      createSessionWorkspaceId = null;
+      notice = null;
+      return;
+    }
+
     selectedWorkspaceId = id;
-    selectedSessionId = null;
-    sessions = [];
-    timeline = [];
-    codexThreads = [];
-    codexThreadSnapshot = null;
-    piTree = null;
-    piNavigationEntryId = null;
-    if (desktop) {
-      void refreshSessions(id);
-      void refreshCodexThreads(id);
+    expandedWorkspaceId = id;
+    if (!isCurrentWorkspace) {
+      createSessionWorkspaceId = null;
+      selectedSessionId = null;
+      sessions = [];
+      timeline = [];
+      codexThreads = [];
+      codexThreadSnapshot = null;
+      piTree = null;
+      piNavigationEntryId = null;
+      if (desktop) {
+        void refreshSessions(id);
+        void refreshCodexThreads(id);
+      }
     }
     notice = null;
+  }
+
+  function toggleSessionCreator(workspaceId: string) {
+    if (workspaceId !== selectedWorkspaceId) {
+      selectWorkspace(workspaceId);
+    } else if (expandedWorkspaceId !== workspaceId) {
+      expandedWorkspaceId = workspaceId;
+    }
+    createSessionWorkspaceId =
+      createSessionWorkspaceId === workspaceId ? null : workspaceId;
   }
 
   function toErrorMessage(error: unknown): string {
@@ -1110,6 +1156,25 @@
     }
   }
 
+  function sessionStatusTone(session: Session): string {
+    if (session.archived || session.state === 'closed') return 'muted';
+    if (session.state === 'running' || session.state === 'starting') return 'running';
+    if (session.state === 'waiting_approval') return 'attention';
+    if (session.state === 'failed' || session.state === 'interrupted') return 'danger';
+    return 'idle';
+  }
+
+  function relativeTimeLabel(value: string): string {
+    const timestamp = Date.parse(value);
+    if (!Number.isFinite(timestamp)) return '';
+    const elapsedSeconds = Math.max(0, Math.floor((Date.now() - timestamp) / 1000));
+    if (elapsedSeconds < 60) return '刚刚';
+    if (elapsedSeconds < 60 * 60) return `${Math.floor(elapsedSeconds / 60)}分`;
+    if (elapsedSeconds < 24 * 60 * 60) return `${Math.floor(elapsedSeconds / (60 * 60))}时`;
+    if (elapsedSeconds < 30 * 24 * 60 * 60) return `${Math.floor(elapsedSeconds / (24 * 60 * 60))}天`;
+    return new Intl.DateTimeFormat('zh-CN', { month: 'numeric', day: 'numeric' }).format(timestamp);
+  }
+
   function isSessionRunning(session: Session | null | undefined): boolean {
     return session?.state === 'running' || session?.state === 'waiting_approval';
   }
@@ -1133,91 +1198,68 @@
     <Card as="aside" class="sidebar" aria-label="工作区">
       <CardHeader class="panel-heading">
         <CardTitle>工作区</CardTitle>
-        <Badge variant="secondary" class="count-pill">{workspaces.length}</Badge>
-      </CardHeader>
-
-      <form class="workspace-form" onsubmit={(event) => { event.preventDefault(); void createWorkspace(); }}>
-        <Label class="mb-2 block" for="workspace-path">添加本地目录</Label>
-        <div class="input-row">
-          <Input id="workspace-path" bind:value={workspacePath} placeholder="/Users/you/Workspace/project" autocomplete="off" />
-          <Button size="icon" type="submit" aria-label="添加工作区" disabled={busy}>
-            <PlusIcon size={15} strokeWidth={2.25} />
+        <div class="workspace-toolbar" aria-label="工作区工具">
+          <Button
+            variant="ghost"
+            size="icon"
+            type="button"
+            class={sessionSearchOpen || sessionSearch ? 'active' : undefined}
+            aria-label="搜索会话"
+            title="搜索会话"
+            aria-pressed={sessionSearchOpen}
+            onclick={() => (sessionSearchOpen = !sessionSearchOpen)}
+          >
+            <SearchIcon size={16} />
+          </Button>
+          <Button
+            variant="ghost"
+            size="icon"
+            type="button"
+            class={sessionFilterOpen || sessionFilter !== 'active' ? 'active' : undefined}
+            aria-label="筛选会话"
+            title="筛选会话"
+            aria-pressed={sessionFilterOpen}
+            onclick={() => (sessionFilterOpen = !sessionFilterOpen)}
+          >
+            <ListFilterIcon size={16} />
+          </Button>
+          <Button
+            variant="ghost"
+            size="icon"
+            type="button"
+            class={workspaceFormOpen ? 'active' : undefined}
+            aria-label="添加工作区"
+            title="添加工作区"
+            aria-pressed={workspaceFormOpen}
+            onclick={() => (workspaceFormOpen = !workspaceFormOpen)}
+          >
+            <FolderPlusIcon size={16} />
           </Button>
         </div>
-      </form>
-      <Separator />
+      </CardHeader>
 
-      <div class="workspace-list" aria-label="工作区列表">
-        {#if workspaces.length === 0}
-          <div class="empty-list">暂无工作区</div>
-        {:else}
-          {#each workspaces as workspace (workspace.id)}
-            <div class:selected={workspace.id === selectedWorkspaceId} class="workspace-item-row">
-              <Button
-                variant={workspace.id === selectedWorkspaceId ? 'secondary' : 'ghost'}
-                class="workspace-item"
-                type="button"
-                onclick={() => selectWorkspace(workspace.id)}
-              >
-                <span class="workspace-copy">
-                  <strong>{workspace.label}</strong>
-                  <small>{workspace.path}</small>
-                </span>
-                <span class:trusted={workspace.trust === 'trusted'} class="trust-dot workspace-trust-dot" title={workspace.trust === 'trusted' ? '可信' : '待确认'}></span>
-              </Button>
-              <div class="workspace-item-actions" aria-label={`${workspace.label} 管理操作`}>
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  type="button"
-                  aria-label={workspace.trust === 'trusted' ? '撤销信任' : '标记为可信'}
-                  title={workspace.trust === 'trusted' ? '撤销信任' : '标记为可信'}
-                  onclick={(event) => { event.stopPropagation(); void toggleTrust(workspace); }}
-                  disabled={busy}
-                >
-                  {#if workspace.trust === 'trusted'}<ShieldOffIcon size={14} />{:else}<ShieldCheckIcon size={14} />{/if}
-                </Button>
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  type="button"
-                  aria-label="移除工作区"
-                  title="移除工作区"
-                  onclick={(event) => { event.stopPropagation(); void deleteWorkspace(workspace); }}
-                  disabled={busy}
-                >
-                  <Trash2Icon size={14} />
-                </Button>
-              </div>
-            </div>
-          {/each}
-        {/if}
-      </div>
+      {#if workspaceFormOpen}
+        <form class="workspace-form workspace-tool-panel" onsubmit={(event) => { event.preventDefault(); void createWorkspace(); }}>
+          <Input id="workspace-path" bind:value={workspacePath} placeholder="本地目录路径" aria-label="本地目录路径" autocomplete="off" />
+          <Button size="icon" type="submit" aria-label="确认添加工作区" disabled={busy || !workspacePath.trim()}>
+            <PlusIcon size={15} strokeWidth={2.25} />
+          </Button>
+        </form>
+      {/if}
 
-      {#if selectedWorkspace}
-        <Separator />
-        <section class="session-nav" aria-label="会话导航">
-          <div class="sidebar-section-heading">
-            <span>会话</span>
-            <Badge variant="secondary" class="count-pill">{sessions.length}</Badge>
-          </div>
-          <div class="session-create-actions">
-            <Button size="sm" type="button" onclick={() => void createCodex()} disabled={busy}>
-              <PlusIcon size={14} /> 新建 Codex
-            </Button>
-            <Button variant="outline" size="sm" type="button" onclick={() => void createPi()} disabled={busy}>
-              <PlusIcon size={14} /> 新建 Pi
-            </Button>
-          </div>
-          <form
-            class="session-filter-form"
-            aria-label="会话搜索与筛选"
-            onsubmit={(event) => {
-              event.preventDefault();
-              if (selectedWorkspaceId) void refreshSessions(selectedWorkspaceId);
-            }}
-          >
+      {#if sessionSearchOpen || sessionFilterOpen}
+        <form
+          class="workspace-tool-panel session-filter-form"
+          aria-label="会话搜索与筛选"
+          onsubmit={(event) => {
+            event.preventDefault();
+            if (selectedWorkspaceId) void refreshSessions(selectedWorkspaceId);
+          }}
+        >
+          {#if sessionSearchOpen}
             <Input class="session-search-input" bind:value={sessionSearch} placeholder="搜索会话…" aria-label="搜索会话或消息" />
+          {/if}
+          {#if sessionFilterOpen}
             <select
               class="session-filter-select"
               bind:value={sessionFilter}
@@ -1236,90 +1278,169 @@
               <option value="failed">失败</option>
               <option value="closed">已关闭</option>
             </select>
-            <Button variant="outline" size="sm" type="submit" aria-label="查找会话">查找</Button>
-          </form>
-          {#if sessions.length > 0}
-            <div class="session-list" aria-label="Agent 会话列表">
-              {#each sessions as session (session.id)}
-                <div class:selected={session.id === selectedSessionId} class:is-renaming={renamingSessionId === session.id} class="session-item-row">
-                  {#if renamingSessionId === session.id}
-                    <div class="session-rename-inline">
-                      <Input
-                        bind:value={sessionLabelDraft}
-                        aria-label="会话名称"
-                        maxlength="120"
-                        onkeydown={(event) => {
-                          if (event.key === 'Enter') {
-                            event.preventDefault();
-                            void saveSessionRename();
-                          } else if (event.key === 'Escape') {
-                            cancelRenameSession();
-                          }
-                        }}
-                      />
-                      <Button variant="outline" size="icon" type="button" aria-label="保存会话名称" title="保存" onclick={() => void saveSessionRename()} disabled={busy || !sessionLabelDraft.trim()}>
-                        <CheckIcon size={14} />
-                      </Button>
-                      <Button variant="ghost" size="icon" type="button" aria-label="取消改名" title="取消" onclick={cancelRenameSession} disabled={busy}>
-                        <XIcon size={14} />
-                      </Button>
-                    </div>
-                  {:else}
-                    <Button
-                      variant={session.id === selectedSessionId ? 'secondary' : 'ghost'}
-                      type="button"
-                      class="session-item"
-                      onclick={() => selectSession(session.id)}
-                    >
-                      <span class={`session-agent session-agent-${session.agent}`}>{session.agent === 'pi' ? 'PI' : 'CX'}</span>
-                      <span class="session-item-copy">
-                        <span class="session-item-label">{session.label}</span>
-                        <span class="session-item-state">{sessionStateLabel(session)}</span>
-                      </span>
-                    </Button>
-                    <div class="session-item-actions" aria-label={`${session.label} 操作`}>
-                      {#if session.archived}
-                        <Button variant="ghost" size="icon" type="button" aria-label="取消归档" title="取消归档" onclick={() => void unarchiveSession(session.id)} disabled={busy}>
-                          <ArchiveRestoreIcon size={13} />
-                        </Button>
-                      {:else if session.agent === 'codex'}
-                        <Button variant="ghost" size="icon" type="button" aria-label="创建分支" title="分支" onclick={() => void forkSession(session.id)} disabled={busy || isSessionRunning(session)}>
-                          <GitBranchIcon size={13} />
-                        </Button>
-                        <Button variant="ghost" size="icon" type="button" aria-label="归档会话" title="归档" onclick={() => requestArchiveSession(session.id)} disabled={busy || isSessionRunning(session)}>
-                          <ArchiveIcon size={13} />
-                        </Button>
-                        <Button variant="ghost" size="icon" type="button" aria-label="关闭会话" title="关闭" onclick={() => void closeSession(session.id)} disabled={busy || isSessionRunning(session)}>
-                          <XIcon size={13} />
-                        </Button>
-                        <Button variant="ghost" size="icon" type="button" aria-label="读取线程" title="读取线程" onclick={() => void syncCodexThread(session.id)} disabled={threadBusy || busy}>
-                          <RefreshCwIcon size={13} />
-                        </Button>
-                      {:else}
-                        <Button variant="ghost" size="icon" type="button" aria-label="归档会话" title="归档" onclick={() => requestArchiveSession(session.id)} disabled={busy || isSessionRunning(session)}>
-                          <ArchiveIcon size={13} />
-                        </Button>
-                        <Button variant="ghost" size="icon" type="button" aria-label="关闭会话" title="关闭" onclick={() => void closeSession(session.id)} disabled={busy || isSessionRunning(session)}>
-                          <XIcon size={13} />
-                        </Button>
-                      {/if}
-                      <Button variant="ghost" size="icon" type="button" aria-label="改名" title="改名" onclick={() => beginRenameSession(session.id)} disabled={busy}>
-                        <PencilIcon size={13} />
-                      </Button>
-                    </div>
-                  {/if}
-                </div>
-              {/each}
-            </div>
-          {:else}
-            <span class="session-filter-empty">没有匹配的会话</span>
           {/if}
-        </section>
+          <Button variant="ghost" size="icon" type="submit" aria-label="应用搜索和筛选" disabled={!selectedWorkspaceId}>
+            <SearchIcon size={14} />
+          </Button>
+        </form>
       {/if}
 
-      <div class="sidebar-footer">
-        <span class="legend"><span class="trust-dot trusted"></span> 可信</span>
-        <span class="legend"><span class="trust-dot"></span> 待确认</span>
+      <div class="workspace-list" aria-label="工作区列表">
+        {#if workspaces.length === 0}
+          <div class="empty-list">暂无工作区</div>
+        {:else}
+          {#each workspaces as workspace (workspace.id)}
+            {@const workspaceExpanded = workspace.id === expandedWorkspaceId}
+            <div class:expanded={workspaceExpanded} class="workspace-group">
+              <div class:selected={workspace.id === selectedWorkspaceId} class="workspace-item-row">
+                <Button
+                  variant={workspace.id === selectedWorkspaceId ? 'secondary' : 'ghost'}
+                  class="workspace-item"
+                  type="button"
+                  aria-expanded={workspaceExpanded}
+                  aria-controls={workspaceExpanded ? `workspace-sessions-${workspace.id}` : undefined}
+                  aria-label={`${workspace.label}，${workspace.trust === 'trusted' ? '可信' : '待确认'}`}
+                  title={workspace.path}
+                  onclick={() => selectWorkspace(workspace.id)}
+                >
+                  {#if workspaceExpanded}
+                    <ChevronDownIcon class="workspace-leading-icon" size={16} />
+                  {:else}
+                    <FolderIcon class="workspace-leading-icon" size={16} />
+                  {/if}
+                  <span class="workspace-copy">
+                    <strong>{workspace.label}</strong>
+                  </span>
+                  <span class:trusted={workspace.trust === 'trusted'} class="trust-dot workspace-trust-dot" title={workspace.trust === 'trusted' ? '可信' : '待确认'}></span>
+                </Button>
+                <div class="workspace-item-actions" aria-label={`${workspace.label} 管理操作`}>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    type="button"
+                    aria-label="新建 Agent 会话"
+                    title="新建会话"
+                    onclick={(event) => { event.stopPropagation(); toggleSessionCreator(workspace.id); }}
+                    disabled={busy}
+                  >
+                    <PlusIcon size={15} />
+                  </Button>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    type="button"
+                    aria-label={workspace.trust === 'trusted' ? '撤销信任' : '标记为可信'}
+                    title={workspace.trust === 'trusted' ? '撤销信任' : '标记为可信'}
+                    onclick={(event) => { event.stopPropagation(); void toggleTrust(workspace); }}
+                    disabled={busy}
+                  >
+                    {#if workspace.trust === 'trusted'}<ShieldOffIcon size={14} />{:else}<ShieldCheckIcon size={14} />{/if}
+                  </Button>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    type="button"
+                    aria-label="移除工作区"
+                    title="移除工作区"
+                    onclick={(event) => { event.stopPropagation(); void deleteWorkspace(workspace); }}
+                    disabled={busy}
+                  >
+                    <Trash2Icon size={14} />
+                  </Button>
+                </div>
+              </div>
+
+              {#if workspaceExpanded}
+                <section id={`workspace-sessions-${workspace.id}`} class="workspace-session-group" aria-label={`${workspace.label} 的会话`}>
+                  {#if createSessionWorkspaceId === workspace.id}
+                    <div class="session-create-actions" aria-label="选择 Agent">
+                      <Button size="sm" type="button" onclick={() => void createCodex()} disabled={busy}>Codex</Button>
+                      <Button variant="outline" size="sm" type="button" onclick={() => void createPi()} disabled={busy}>Pi</Button>
+                    </div>
+                  {/if}
+                  {#if sessionsLoadingWorkspaceId === workspace.id}
+                    <span class="session-filter-empty">加载会话…</span>
+                  {:else if sessions.length > 0}
+                    <div class="session-list" aria-label="Agent 会话列表">
+                      {#each sessions as session (session.id)}
+                        <div class:selected={session.id === selectedSessionId} class:is-renaming={renamingSessionId === session.id} class="session-item-row">
+                          {#if renamingSessionId === session.id}
+                            <div class="session-rename-inline">
+                              <Input
+                                bind:value={sessionLabelDraft}
+                                aria-label="会话名称"
+                                maxlength="120"
+                                onkeydown={(event) => {
+                                  if (event.key === 'Enter') {
+                                    event.preventDefault();
+                                    void saveSessionRename();
+                                  } else if (event.key === 'Escape') {
+                                    cancelRenameSession();
+                                  }
+                                }}
+                              />
+                              <Button variant="outline" size="icon" type="button" aria-label="保存会话名称" title="保存" onclick={() => void saveSessionRename()} disabled={busy || !sessionLabelDraft.trim()}>
+                                <CheckIcon size={14} />
+                              </Button>
+                              <Button variant="ghost" size="icon" type="button" aria-label="取消改名" title="取消" onclick={cancelRenameSession} disabled={busy}>
+                                <XIcon size={14} />
+                              </Button>
+                            </div>
+                          {:else}
+                            <Button
+                              variant={session.id === selectedSessionId ? 'secondary' : 'ghost'}
+                              type="button"
+                              class="session-item"
+                              aria-label={`${session.label}，${session.agent === 'pi' ? 'Pi' : 'Codex'}，${sessionStateLabel(session)}`}
+                              title={`${session.agent === 'pi' ? 'Pi' : 'Codex'} · ${sessionStateLabel(session)}`}
+                              onclick={() => selectSession(session.id)}
+                            >
+                              <span class={`session-state-dot ${sessionStatusTone(session)}`} aria-hidden="true"></span>
+                              <span class="session-item-label">{session.label}</span>
+                              <time class="session-updated" datetime={session.updatedAt}>{relativeTimeLabel(session.updatedAt)}</time>
+                            </Button>
+                            <div class="session-item-actions" aria-label={`${session.label} 操作`}>
+                              {#if session.archived}
+                                <Button variant="ghost" size="icon" type="button" aria-label="取消归档" title="取消归档" onclick={() => void unarchiveSession(session.id)} disabled={busy}>
+                                  <ArchiveRestoreIcon size={13} />
+                                </Button>
+                              {:else if session.agent === 'codex'}
+                                <Button variant="ghost" size="icon" type="button" aria-label="创建分支" title="分支" onclick={() => void forkSession(session.id)} disabled={busy || isSessionRunning(session)}>
+                                  <GitBranchIcon size={13} />
+                                </Button>
+                                <Button variant="ghost" size="icon" type="button" aria-label="归档会话" title="归档" onclick={() => requestArchiveSession(session.id)} disabled={busy || isSessionRunning(session)}>
+                                  <ArchiveIcon size={13} />
+                                </Button>
+                                <Button variant="ghost" size="icon" type="button" aria-label="关闭会话" title="关闭" onclick={() => void closeSession(session.id)} disabled={busy || isSessionRunning(session)}>
+                                  <XIcon size={13} />
+                                </Button>
+                                <Button variant="ghost" size="icon" type="button" aria-label="读取线程" title="读取线程" onclick={() => void syncCodexThread(session.id)} disabled={threadBusy || busy}>
+                                  <RefreshCwIcon size={13} />
+                                </Button>
+                              {:else}
+                                <Button variant="ghost" size="icon" type="button" aria-label="归档会话" title="归档" onclick={() => requestArchiveSession(session.id)} disabled={busy || isSessionRunning(session)}>
+                                  <ArchiveIcon size={13} />
+                                </Button>
+                                <Button variant="ghost" size="icon" type="button" aria-label="关闭会话" title="关闭" onclick={() => void closeSession(session.id)} disabled={busy || isSessionRunning(session)}>
+                                  <XIcon size={13} />
+                                </Button>
+                              {/if}
+                              <Button variant="ghost" size="icon" type="button" aria-label="改名" title="改名" onclick={() => beginRenameSession(session.id)} disabled={busy}>
+                                <PencilIcon size={13} />
+                              </Button>
+                            </div>
+                          {/if}
+                        </div>
+                      {/each}
+                    </div>
+                  {:else}
+                    <span class="session-filter-empty">{sessionSearch || sessionFilter !== 'active' ? '没有匹配的会话' : '暂无会话'}</span>
+                  {/if}
+                </section>
+              {/if}
+            </div>
+          {/each}
+        {/if}
       </div>
     </Card>
 
