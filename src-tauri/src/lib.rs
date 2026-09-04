@@ -903,6 +903,7 @@ pub fn run() {
         .try_init();
 
     tauri::Builder::default()
+        .plugin(tauri_plugin_dialog::init())
         .setup(|app| {
             let data_dir = app.path().app_data_dir().map_err(|error| {
                 Box::new(CoreError::Initialization(format!(

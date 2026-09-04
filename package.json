@@ -31,6 +31,7 @@
     "@earendil-works/pi-coding-agent": "0.84.4",
     "@lucide/svelte": "^1.39.0",
     "@tauri-apps/api": "^2.8.0",
+    "@tauri-apps/plugin-dialog": "^2.7.3",
     "clsx": "^2.1.1",
     "tailwind-merge": "^3.6.0"
   },

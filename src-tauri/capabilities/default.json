@@ -3,5 +3,5 @@
   "identifier": "main-capability",
   "description": "Minimal desktop capability for the Aibo workbench.",
   "windows": ["main"],
-  "permissions": ["core:default"]
+  "permissions": ["core:default", "dialog:default"]
 }

@@ -12,6 +12,7 @@
   import PlusIcon from '@lucide/svelte/icons/plus';
   import RefreshCwIcon from '@lucide/svelte/icons/refresh-cw';
   import SearchIcon from '@lucide/svelte/icons/search';
+  import { open } from '@tauri-apps/plugin-dialog';
   import SendIcon from '@lucide/svelte/icons/send';
   import SettingsIcon from '@lucide/svelte/icons/settings-2';
   import ShieldCheckIcon from '@lucide/svelte/icons/shield-check';
@@ -119,7 +120,6 @@
   let selectedSessionId = $state<string | null>(null);
   let sessionsLoadingWorkspaceId = $state<string | null>(null);
   let sessionLoadRequestId = 0;
-  let workspacePath = $state('');
   let composerText = $state('');
   let busy = $state(false);
   let errorMessage = $state<string | null>(null);
@@ -130,7 +130,6 @@
   let piNavigationEntryId = $state<string | null>(null);
   let sessionSearch = $state('');
   let sessionFilter = $state<SessionFilter>('active');
-  let workspaceFormOpen = $state(false);
   let sessionSearchOpen = $state(false);
   let sessionFilterOpen = $state(false);
   let createSessionWorkspaceId = $state<string | null>(null);
@@ -595,10 +594,10 @@
     };
   }
 
-  async function createWorkspace() {
-    const path = workspacePath.trim();
-    if (!path) {
-      errorMessage = '请输入一个已经存在的本地目录。';
+  async function createWorkspace(path: string) {
+    const normalizedPath = path.trim();
+    if (!normalizedPath) {
+      errorMessage = '请选择一个已经存在的本地目录。';
       return;
     }
 
@@ -611,13 +610,36 @@
     errorMessage = null;
     notice = null;
     try {
-      const workspace = await addWorkspace(path);
+      const workspace = await addWorkspace(normalizedPath);
       workspaces = [workspace, ...workspaces.filter(({ id }) => id !== workspace.id)];
-      selectedWorkspaceId = workspace.id;
-      expandedWorkspaceId = workspace.id;
-      workspacePath = '';
-      workspaceFormOpen = false;
+      selectWorkspace(workspace.id);
       notice = '工作区已添加。首次运行 Agent 前请明确确认信任状态。';
+    } catch (error) {
+      errorMessage = toErrorMessage(error);
+    } finally {
+      busy = false;
+    }
+  }
+
+  async function chooseWorkspaceDirectory() {
+    if (!desktop) {
+      notice = '当前是 Web 预览；请在 Tauri 桌面模式中使用系统目录选择器。';
+      return;
+    }
+
+    busy = true;
+    errorMessage = null;
+    try {
+      const selectedPath = await open({
+        title: '选择工作区目录',
+        directory: true,
+        multiple: false,
+        recursive: true,
+        canCreateDirectories: false,
+      });
+      if (typeof selectedPath === 'string' && selectedPath.trim()) {
+        await createWorkspace(selectedPath);
+      }
     } catch (error) {
       errorMessage = toErrorMessage(error);
     } finally {
@@ -1227,25 +1249,15 @@
             variant="ghost"
             size="icon"
             type="button"
-            class={workspaceFormOpen ? 'active' : undefined}
             aria-label="添加工作区"
             title="添加工作区"
-            aria-pressed={workspaceFormOpen}
-            onclick={() => (workspaceFormOpen = !workspaceFormOpen)}
+            onclick={() => void chooseWorkspaceDirectory()}
+            disabled={busy}
           >
             <FolderPlusIcon size={16} />
           </Button>
         </div>
       </CardHeader>
-
-      {#if workspaceFormOpen}
-        <form class="workspace-form workspace-tool-panel" onsubmit={(event) => { event.preventDefault(); void createWorkspace(); }}>
-          <Input id="workspace-path" bind:value={workspacePath} placeholder="本地目录路径" aria-label="本地目录路径" autocomplete="off" />
-          <Button size="icon" type="submit" aria-label="确认添加工作区" disabled={busy || !workspacePath.trim()}>
-            <PlusIcon size={15} strokeWidth={2.25} />
-          </Button>
-        </form>
-      {/if}
 
       {#if sessionSearchOpen || sessionFilterOpen}
         <form
