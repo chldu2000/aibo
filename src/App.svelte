@@ -109,17 +109,17 @@
 
   let workspaces = $state<Workspace[]>([]);
   let diagnostics = $state<AgentDiagnostic[]>([]);
-  let sessions = $state<Session[]>([]);
+  let workspaceSessionMap = $state<Record<string, Session[]>>({});
   let timeline = $state<TimelineItem[]>([]);
   let pendingApprovals = $state<ApprovalRequest[]>([]);
   let codexThreads = $state<CodexThreadSummary[]>([]);
   let codexThreadSnapshot = $state<CodexThreadSnapshot | null>(null);
   let piTree = $state<PiSessionTreeSnapshot | null>(null);
   let selectedWorkspaceId = $state<string | null>(null);
-  let expandedWorkspaceId = $state<string | null>(null);
+  let expandedWorkspaceIds = $state<string[]>([]);
   let selectedSessionId = $state<string | null>(null);
-  let sessionsLoadingWorkspaceId = $state<string | null>(null);
-  let sessionLoadRequestId = 0;
+  let sessionsLoadingWorkspaceIds = $state<string[]>([]);
+  let sessionLoadGenerations = $state<Record<string, number>>({});
   let composerText = $state('');
   let busy = $state(false);
   let errorMessage = $state<string | null>(null);
@@ -152,6 +152,8 @@
   const selectedWorkspace = $derived(
     workspaces.find((workspace) => workspace.id === selectedWorkspaceId) ?? null,
   );
+
+  const sessions = $derived(workspaceSessionMap[selectedWorkspaceId ?? ''] ?? []);
 
   const selectedSession = $derived(
     sessions.find((session) => session.id === selectedSessionId) ?? null,
@@ -198,7 +200,7 @@
         workspaces = previewWorkspaces;
         diagnostics = previewDiagnostics;
         selectedWorkspaceId = previewWorkspaces[0]?.id ?? null;
-        expandedWorkspaceId = selectedWorkspaceId;
+        expandedWorkspaceIds = selectedWorkspaceId ? [selectedWorkspaceId] : [];
         return;
       }
 
@@ -236,12 +238,17 @@
           ? selectedWorkspaceId
           : (loadedWorkspaces[0]?.id ?? null);
       const activeWorkspaceId = selectedWorkspaceId;
-      expandedWorkspaceId = activeWorkspaceId;
+      const validWorkspaceIds = new Set(loadedWorkspaces.map(({ id }) => id));
+      expandedWorkspaceIds = expandedWorkspaceIds.filter((id) => validWorkspaceIds.has(id));
+      if (activeWorkspaceId && !expandedWorkspaceIds.includes(activeWorkspaceId)) {
+        expandedWorkspaceIds = [...expandedWorkspaceIds, activeWorkspaceId];
+      }
       if (activeWorkspaceId) {
-        await refreshSessions(activeWorkspaceId);
+        const workspaceIds = Array.from(new Set([activeWorkspaceId, ...expandedWorkspaceIds]));
+        await Promise.all(workspaceIds.map((id) => refreshSessions(id)));
         await refreshCodexThreads(activeWorkspaceId);
       } else {
-        sessions = [];
+        workspaceSessionMap = {};
         timeline = [];
         codexThreads = [];
         codexThreadSnapshot = null;
@@ -256,15 +263,19 @@
   }
 
   async function refreshSessions(workspaceId: string) {
-    const requestId = ++sessionLoadRequestId;
-    sessionsLoadingWorkspaceId = workspaceId;
+    const generation = (sessionLoadGenerations[workspaceId] ?? 0) + 1;
+    sessionLoadGenerations = { ...sessionLoadGenerations, [workspaceId]: generation };
+    if (!sessionsLoadingWorkspaceIds.includes(workspaceId)) {
+      sessionsLoadingWorkspaceIds = [...sessionsLoadingWorkspaceIds, workspaceId];
+    }
     try {
       const loadedSessions = await listSessions(workspaceId, {
         search: sessionSearch,
         statusFilter: sessionFilter,
       });
+      if (sessionLoadGenerations[workspaceId] !== generation) return;
+      workspaceSessionMap = { ...workspaceSessionMap, [workspaceId]: loadedSessions };
       if (workspaceId !== selectedWorkspaceId) return;
-      sessions = loadedSessions;
       selectedSessionId =
         selectedSessionId && loadedSessions.some(({ id }) => id === selectedSessionId)
           ? selectedSessionId
@@ -283,8 +294,36 @@
         retryReason = null;
       }
     } finally {
-      if (requestId === sessionLoadRequestId) sessionsLoadingWorkspaceId = null;
+      if (sessionLoadGenerations[workspaceId] === generation) {
+        sessionsLoadingWorkspaceIds = sessionsLoadingWorkspaceIds.filter((id) => id !== workspaceId);
+      }
     }
+  }
+
+  async function refreshExpandedSessions() {
+    const workspaceIds = Array.from(
+      new Set([selectedWorkspaceId, ...expandedWorkspaceIds].filter((id): id is string => Boolean(id))),
+    );
+    await Promise.all(workspaceIds.map((id) => refreshSessions(id)));
+  }
+
+  function getWorkspaceSessions(workspaceId: string): Session[] {
+    return workspaceSessionMap[workspaceId] ?? [];
+  }
+
+  function updateWorkspaceSessions(workspaceId: string, updater: (items: Session[]) => Session[]) {
+    workspaceSessionMap = {
+      ...workspaceSessionMap,
+      [workspaceId]: updater(getWorkspaceSessions(workspaceId)),
+    };
+  }
+
+  function findSession(sessionId: string): Session | null {
+    for (const workspaceSessions of Object.values(workspaceSessionMap)) {
+      const session = workspaceSessions.find((item) => item.id === sessionId);
+      if (session) return session;
+    }
+    return null;
   }
 
   async function refreshCodexThreads(workspaceId: string, announce = false) {
@@ -299,7 +338,7 @@
   }
 
   async function refreshCodexThread(sessionId: string, announce = false) {
-    const session = sessions.find((item) => item.id === sessionId);
+    const session = findSession(sessionId);
     if (
       !desktop ||
       !session ||
@@ -350,7 +389,7 @@
   }
 
   async function refreshPiTree(sessionId: string) {
-    const session = sessions.find((item) => item.id === sessionId);
+    const session = findSession(sessionId);
     if (!desktop || !session || session.agent !== 'pi') {
       if (sessionId === selectedSessionId) piTree = null;
       return;
@@ -365,12 +404,12 @@
   }
 
   function handleAgentEvent(event: AgentEvent) {
-    if (event.workspaceId !== selectedWorkspaceId) return;
-
     const state = event.type === 'session.state_changed' ? event.payload.state : undefined;
     if (typeof state === 'string') {
-      sessions = sessions.map((session) =>
-        session.id === event.sessionId ? { ...session, state: state as Session['state'] } : session,
+      updateWorkspaceSessions(event.workspaceId, (items) =>
+        items.map((session) =>
+          session.id === event.sessionId ? { ...session, state: state as Session['state'] } : session,
+        ),
       );
     }
 
@@ -661,7 +700,10 @@
     errorMessage = null;
     try {
       const session = await createCodexSession(selectedWorkspace.id);
-      sessions = [session, ...sessions.filter(({ id }) => id !== session.id)];
+      updateWorkspaceSessions(selectedWorkspace.id, (items) => [
+        session,
+        ...items.filter(({ id }) => id !== session.id),
+      ]);
       selectedSessionId = session.id;
       timeline = [];
       usageSnapshot = null;
@@ -692,7 +734,10 @@
     errorMessage = null;
     try {
       const session = await createPiSession(selectedWorkspace.id);
-      sessions = [session, ...sessions.filter(({ id }) => id !== session.id)];
+      updateWorkspaceSessions(selectedWorkspace.id, (items) => [
+        session,
+        ...items.filter(({ id }) => id !== session.id),
+      ]);
       selectedSessionId = session.id;
       timeline = [];
       usageSnapshot = null;
@@ -735,15 +780,18 @@
       let session = selectedSession;
       if (!session) {
         session = await createCodexSession(selectedWorkspace.id);
-        sessions = [session, ...sessions.filter(({ id }) => id !== session.id)];
+        updateWorkspaceSessions(selectedWorkspace.id, (items) => [
+          session as Session,
+          ...items.filter(({ id }) => id !== session?.id),
+        ]);
         selectedSessionId = session.id;
       }
       if (session.agent === 'pi') await sendPiPrompt(session.id, input);
       else await sendCodexPrompt(session.id, input);
       await refreshTimeline(session.id);
       composerText = '';
-      sessions = sessions.map((item) =>
-        item.id === session?.id ? { ...item, state: 'running' } : item,
+      updateWorkspaceSessions(session.workspaceId, (items) =>
+        items.map((item) => item.id === session?.id ? { ...item, state: 'running' } : item),
       );
     } catch (error) {
       errorMessage = toErrorMessage(error);
@@ -845,7 +893,7 @@
   }
 
   function beginRenameSession(sessionId = selectedSessionId) {
-    const session = sessions.find((item) => item.id === sessionId);
+    const session = sessionId ? findSession(sessionId) : null;
     if (!session || !desktop) return;
     renamingSessionId = session.id;
     sessionLabelDraft = session.label;
@@ -864,7 +912,9 @@
     errorMessage = null;
     try {
       const renamed = await renameSessionApi(sessionId, label);
-      sessions = sessions.map((item) => (item.id === renamed.id ? renamed : item));
+      updateWorkspaceSessions(renamed.workspaceId, (items) =>
+        items.map((item) => (item.id === renamed.id ? renamed : item)),
+      );
       cancelRenameSession();
       notice = '会话名称已更新。';
     } catch (error) {
@@ -875,7 +925,7 @@
   }
 
   async function closeSession(sessionId = selectedSessionId) {
-    const target = sessions.find((item) => item.id === sessionId);
+    const target = sessionId ? findSession(sessionId) : null;
     if (!target || !desktop) return;
     busy = true;
     errorMessage = null;
@@ -884,8 +934,8 @@
       const closingAgent = target.agent;
       if (target.agent === 'pi') await closePiSession(closingId);
       else await closeCodexSession(closingId);
-      const remaining = sessions.filter(({ id }) => id !== closingId);
-      sessions = remaining;
+      const remaining = getWorkspaceSessions(target.workspaceId).filter(({ id }) => id !== closingId);
+      updateWorkspaceSessions(target.workspaceId, () => remaining);
       if (selectedSessionId === closingId) {
         selectedSessionId = remaining[0]?.id ?? null;
         codexThreadSnapshot = null;
@@ -903,7 +953,7 @@
   }
 
   async function forkSession(sessionId = selectedSessionId) {
-    const target = sessions.find((item) => item.id === sessionId);
+    const target = sessionId ? findSession(sessionId) : null;
     if (!target || !desktop || target.archived) return;
     if (isSessionRunning(target)) {
       errorMessage = '请等待当前 turn 完成后再创建分支。';
@@ -913,7 +963,11 @@
     errorMessage = null;
     try {
       const forked = await forkCodexThread(target.id);
-      sessions = [forked, ...sessions.filter(({ id }) => id !== forked.id)];
+      updateWorkspaceSessions(forked.workspaceId, (items) => [
+        forked,
+        ...items.filter(({ id }) => id !== forked.id),
+      ]);
+      activateWorkspace(forked.workspaceId);
       selectedSessionId = forked.id;
       timeline = await getTimeline(forked.id);
       codexThreadSnapshot = null;
@@ -928,7 +982,7 @@
   }
 
   function requestArchiveSession(sessionId = selectedSessionId) {
-    const target = sessions.find((item) => item.id === sessionId);
+    const target = sessionId ? findSession(sessionId) : null;
     if (!target || !desktop || target.archived) return;
     if (isSessionRunning(target)) {
       errorMessage = '请等待当前 turn 完成后再归档。';
@@ -941,7 +995,7 @@
     const sessionId = archiveConfirmationSessionId;
     archiveConfirmationSessionId = null;
     if (!sessionId) return;
-    const target = sessions.find((item) => item.id === sessionId);
+    const target = findSession(sessionId);
     if (!target || target.archived) return;
     busy = true;
     errorMessage = null;
@@ -960,12 +1014,13 @@
   }
 
   async function unarchiveSession(sessionId = selectedSessionId) {
-    const target = sessions.find((item) => item.id === sessionId);
+    const target = sessionId ? findSession(sessionId) : null;
     if (!target || !desktop || !target.archived) return;
     busy = true;
     errorMessage = null;
     try {
       const restored = await unarchiveSessionApi(target.id);
+      activateWorkspace(restored.workspaceId);
       selectedSessionId = restored.id;
       timeline = await getTimeline(restored.id);
       if (restored.agent === 'codex') {
@@ -973,7 +1028,7 @@
         void refreshCodexThreads(restored.workspaceId);
       }
       await refreshSessions(restored.workspaceId);
-      if (sessions.some((item) => item.id === restored.id)) {
+      if (getWorkspaceSessions(restored.workspaceId).some((item) => item.id === restored.id)) {
         selectedSessionId = restored.id;
       }
       notice = `${restored.agent === 'pi' ? 'Pi 会话' : 'Codex 线程'}已取消归档，可以继续发送消息。`;
@@ -985,6 +1040,9 @@
   }
 
   function selectSession(id: string) {
+    const session = findSession(id);
+    if (!session) return;
+    activateWorkspace(session.workspaceId);
     selectedSessionId = id;
     usageSnapshot = null;
     retryPrompt = null;
@@ -1028,15 +1086,19 @@
     try {
       await removeWorkspace(workspace.id);
       workspaces = workspaces.filter(({ id }) => id !== workspace.id);
+      const { [workspace.id]: _removedSessions, ...remainingSessionMap } = workspaceSessionMap;
+      workspaceSessionMap = remainingSessionMap;
+      expandedWorkspaceIds = expandedWorkspaceIds.filter((id) => id !== workspace.id);
       selectedWorkspaceId = workspaces[0]?.id ?? null;
-      expandedWorkspaceId = selectedWorkspaceId;
-      sessions = [];
       timeline = [];
       codexThreads = [];
       codexThreadSnapshot = null;
       piTree = null;
       piNavigationEntryId = null;
       if (selectedWorkspaceId) {
+        if (!expandedWorkspaceIds.includes(selectedWorkspaceId)) {
+          expandedWorkspaceIds = [...expandedWorkspaceIds, selectedWorkspaceId];
+        }
         void refreshSessions(selectedWorkspaceId);
         void refreshCodexThreads(selectedWorkspaceId);
       }
@@ -1048,21 +1110,19 @@
     }
   }
 
-  function selectWorkspace(id: string) {
-    const isCurrentWorkspace = id === selectedWorkspaceId;
-    if (isCurrentWorkspace && expandedWorkspaceId === id) {
-      expandedWorkspaceId = null;
-      createSessionWorkspaceId = null;
-      notice = null;
-      return;
+  function ensureWorkspaceExpanded(id: string) {
+    if (!expandedWorkspaceIds.includes(id)) {
+      expandedWorkspaceIds = [...expandedWorkspaceIds, id];
     }
+  }
 
+  function activateWorkspace(id: string) {
+    const isCurrentWorkspace = id === selectedWorkspaceId;
     selectedWorkspaceId = id;
-    expandedWorkspaceId = id;
+    ensureWorkspaceExpanded(id);
     if (!isCurrentWorkspace) {
       createSessionWorkspaceId = null;
       selectedSessionId = null;
-      sessions = [];
       timeline = [];
       codexThreads = [];
       codexThreadSnapshot = null;
@@ -1073,15 +1133,20 @@
         void refreshCodexThreads(id);
       }
     }
+  }
+
+  function selectWorkspace(id: string) {
+    const workspaceExpanded = expandedWorkspaceIds.includes(id);
+    activateWorkspace(id);
+    if (workspaceExpanded) {
+      expandedWorkspaceIds = expandedWorkspaceIds.filter((workspaceId) => workspaceId !== id);
+      if (createSessionWorkspaceId === id) createSessionWorkspaceId = null;
+    }
     notice = null;
   }
 
   function toggleSessionCreator(workspaceId: string) {
-    if (workspaceId !== selectedWorkspaceId) {
-      selectWorkspace(workspaceId);
-    } else if (expandedWorkspaceId !== workspaceId) {
-      expandedWorkspaceId = workspaceId;
-    }
+    activateWorkspace(workspaceId);
     createSessionWorkspaceId =
       createSessionWorkspaceId === workspaceId ? null : workspaceId;
   }
@@ -1265,7 +1330,7 @@
           aria-label="会话搜索与筛选"
           onsubmit={(event) => {
             event.preventDefault();
-            if (selectedWorkspaceId) void refreshSessions(selectedWorkspaceId);
+            void refreshExpandedSessions();
           }}
         >
           {#if sessionSearchOpen}
@@ -1277,7 +1342,7 @@
               bind:value={sessionFilter}
               aria-label="会话状态筛选"
               onchange={() => {
-                if (selectedWorkspaceId) void refreshSessions(selectedWorkspaceId);
+                void refreshExpandedSessions();
               }}
             >
               <option value="active">活动</option>
@@ -1302,7 +1367,8 @@
           <div class="empty-list">暂无工作区</div>
         {:else}
           {#each workspaces as workspace (workspace.id)}
-            {@const workspaceExpanded = workspace.id === expandedWorkspaceId}
+            {@const workspaceExpanded = expandedWorkspaceIds.includes(workspace.id)}
+            {@const workspaceSessions = workspaceSessionMap[workspace.id] ?? []}
             <div class:expanded={workspaceExpanded} class="workspace-group">
               <div class:selected={workspace.id === selectedWorkspaceId} class="workspace-item-row">
                 <Button
@@ -1370,11 +1436,11 @@
                       <Button variant="outline" size="sm" type="button" onclick={() => void createPi()} disabled={busy}>Pi</Button>
                     </div>
                   {/if}
-                  {#if sessionsLoadingWorkspaceId === workspace.id}
+                  {#if sessionsLoadingWorkspaceIds.includes(workspace.id)}
                     <span class="session-filter-empty">加载会话…</span>
-                  {:else if sessions.length > 0}
+                  {:else if workspaceSessions.length > 0}
                     <div class="session-list" aria-label="Agent 会话列表">
-                      {#each sessions as session (session.id)}
+                      {#each workspaceSessions as session (session.id)}
                         <div class:selected={session.id === selectedSessionId} class:is-renaming={renamingSessionId === session.id} class="session-item-row">
                           {#if renamingSessionId === session.id}
                             <div class="session-rename-inline">
