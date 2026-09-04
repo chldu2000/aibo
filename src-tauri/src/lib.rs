@@ -9,18 +9,36 @@ use sqlx::{
     Row, SqlitePool,
 };
 use std::{
+    collections::HashMap,
     env,
     error::Error,
     fs,
     path::{Path, PathBuf},
     process::Command,
+    sync::Arc,
 };
 use tauri::{Manager, State};
 use time::{format_description::well_known::Rfc3339, OffsetDateTime};
+use tokio::sync::Mutex;
 use tracing::{info, warn};
 use ulid::Ulid;
 
 const PI_SDK_VERSION: &str = "0.84.4";
+
+async fn clone_cached_runtime<T>(
+    runtimes: &Mutex<HashMap<String, Arc<T>>>,
+    session_id: &str,
+) -> Option<Arc<T>> {
+    let runtimes = runtimes.lock().await;
+    runtimes.get(session_id).cloned()
+}
+
+async fn remove_cached_runtime<T>(
+    runtimes: &Mutex<HashMap<String, Arc<T>>>,
+    session_id: &str,
+) -> Option<Arc<T>> {
+    runtimes.lock().await.remove(session_id)
+}
 
 #[derive(Clone)]
 pub struct AppState {
@@ -958,11 +976,12 @@ pub fn run() {
 #[cfg(test)]
 mod tests {
     use super::{
-        canonical_workspace_path, find_executable, normalize_session_filter, open_database,
-        workspace_label, SessionListFilter,
+        canonical_workspace_path, clone_cached_runtime, find_executable, normalize_session_filter,
+        open_database, remove_cached_runtime, workspace_label, SessionListFilter,
     };
     use sqlx::Row;
-    use std::{fs, path::PathBuf};
+    use std::{collections::HashMap, fs, path::PathBuf, sync::Arc, time::Duration};
+    use tokio::sync::Mutex;
     use ulid::Ulid;
 
     fn test_directory() -> PathBuf {
@@ -993,6 +1012,28 @@ mod tests {
     #[test]
     fn finds_a_known_executable_without_shelling_out() {
         assert!(find_executable("sh").is_some() || cfg!(windows));
+    }
+
+    #[test]
+    fn runtime_cache_access_releases_the_mutex_before_follow_up_work() {
+        tauri::async_runtime::block_on(async {
+            let runtime = Arc::new(7_u8);
+            let runtimes = Mutex::new(HashMap::from([("session".to_owned(), runtime.clone())]));
+
+            let cached = clone_cached_runtime(&runtimes, "session")
+                .await
+                .expect("cached runtime");
+            let removed = tokio::time::timeout(
+                Duration::from_millis(100),
+                remove_cached_runtime(&runtimes, "session"),
+            )
+            .await
+            .expect("runtime cache mutex should not remain locked")
+            .expect("removed runtime");
+
+            assert!(Arc::ptr_eq(&cached, &removed));
+            assert!(runtimes.lock().await.is_empty());
+        });
     }
 
     #[test]

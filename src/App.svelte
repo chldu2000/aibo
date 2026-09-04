@@ -127,6 +127,8 @@
   let desktop = $state(false);
   let threadBusy = $state(false);
   let archiveConfirmationSessionId = $state<string | null>(null);
+  let archivingSessionId = $state<string | null>(null);
+  let archivingWorkspaceId = $state<string | null>(null);
   let piNavigationEntryId = $state<string | null>(null);
   let sessionSearch = $state('');
   let sessionFilter = $state<SessionFilter>('active');
@@ -163,11 +165,16 @@
   const readyAgents = $derived(diagnostics.filter((agent) => agent.status === 'ready').length);
   const sessionRunning = $derived(isSessionRunning(selectedSession));
   const sessionArchived = $derived(selectedSession?.archived === true);
+  const selectedSessionArchiving = $derived(
+    selectedSessionId !== null && selectedSessionId === archivingSessionId,
+  );
   const selectedApprovals = $derived(
     pendingApprovals.filter((approval) => approval.sessionId === selectedSessionId),
   );
   const agentActivityLabel = $derived.by(() => {
-    if (!selectedSession || (!sessionRunning && !promptInFlight)) return null;
+    if (!selectedSession) return null;
+    if (selectedSessionArchiving) return '正在归档会话…';
+    if (!sessionRunning && !promptInFlight) return null;
     if (selectedSession.state === 'waiting_approval' || selectedApprovals.length > 0) {
       return '等待你的确认…';
     }
@@ -352,6 +359,7 @@
   }
 
   async function refreshCodexThread(sessionId: string, announce = false) {
+    if (sessionId === archivingSessionId) return;
     const session = findSession(sessionId);
     if (
       !desktop ||
@@ -403,6 +411,7 @@
   }
 
   async function refreshPiTree(sessionId: string) {
+    if (sessionId === archivingSessionId) return;
     const session = findSession(sessionId);
     if (!desktop || !session || session.agent !== 'pi') {
       if (sessionId === selectedSessionId) piTree = null;
@@ -781,6 +790,10 @@
       errorMessage = '已归档的会话不能继续发送消息，请先取消归档或创建分支。';
       return;
     }
+    if (selectedSessionArchiving) {
+      errorMessage = '该会话正在归档，请稍候。';
+      return;
+    }
     if (!desktop) {
       notice = '当前是 Web 预览；请在 Tauri 桌面模式中发送真实 Codex 请求。';
       return;
@@ -908,7 +921,7 @@
 
   function beginRenameSession(sessionId = selectedSessionId) {
     const session = sessionId ? findSession(sessionId) : null;
-    if (!session || !desktop) return;
+    if (!session || !desktop || session.id === archivingSessionId) return;
     renamingSessionId = session.id;
     sessionLabelDraft = session.label;
   }
@@ -940,7 +953,7 @@
 
   async function closeSession(sessionId = selectedSessionId) {
     const target = sessionId ? findSession(sessionId) : null;
-    if (!target || !desktop) return;
+    if (!target || !desktop || target.id === archivingSessionId) return;
     busy = true;
     errorMessage = null;
     try {
@@ -968,7 +981,7 @@
 
   async function forkSession(sessionId = selectedSessionId) {
     const target = sessionId ? findSession(sessionId) : null;
-    if (!target || !desktop || target.archived) return;
+    if (!target || !desktop || target.archived || target.id === archivingSessionId) return;
     if (isSessionRunning(target)) {
       errorMessage = '请等待当前 turn 完成后再创建分支。';
       return;
@@ -997,7 +1010,7 @@
 
   function requestArchiveSession(sessionId = selectedSessionId) {
     const target = sessionId ? findSession(sessionId) : null;
-    if (!target || !desktop || target.archived) return;
+    if (!target || !desktop || target.archived || archivingSessionId !== null) return;
     if (isSessionRunning(target)) {
       errorMessage = '请等待当前 turn 完成后再归档。';
       return;
@@ -1010,8 +1023,9 @@
     archiveConfirmationSessionId = null;
     if (!sessionId) return;
     const target = findSession(sessionId);
-    if (!target || target.archived) return;
-    busy = true;
+    if (!target || target.archived || archivingSessionId !== null) return;
+    archivingSessionId = target.id;
+    archivingWorkspaceId = target.workspaceId;
     errorMessage = null;
     try {
       const archived = await archiveSessionApi(sessionId);
@@ -1023,7 +1037,10 @@
     } catch (error) {
       errorMessage = toErrorMessage(error);
     } finally {
-      busy = false;
+      if (archivingSessionId === sessionId) {
+        archivingSessionId = null;
+        archivingWorkspaceId = null;
+      }
     }
   }
 
@@ -1055,7 +1072,7 @@
 
   function selectSession(id: string) {
     const session = findSession(id);
-    if (!session) return;
+    if (!session || session.id === archivingSessionId) return;
     activateWorkspace(session.workspaceId);
     selectedSessionId = id;
     usageSnapshot = null;
@@ -1094,6 +1111,7 @@
       notice = '当前是 Web 预览；删除操作需要在 Tauri 桌面模式中执行。';
       return;
     }
+    if (workspace.id === archivingWorkspaceId) return;
 
     busy = true;
     errorMessage = null;
@@ -1435,7 +1453,7 @@
                     aria-label="移除工作区"
                     title="移除工作区"
                     onclick={(event) => { event.stopPropagation(); void deleteWorkspace(workspace); }}
-                    disabled={busy}
+                    disabled={busy || archivingWorkspaceId === workspace.id}
                   >
                     <Trash2Icon size={14} />
                   </Button>
@@ -1486,10 +1504,13 @@
                               aria-label={`${session.label}，${session.agent === 'pi' ? 'Pi' : 'Codex'}，${sessionStateLabel(session)}`}
                               title={`${session.agent === 'pi' ? 'Pi' : 'Codex'} · ${sessionStateLabel(session)}`}
                               onclick={() => selectSession(session.id)}
+                              disabled={archivingSessionId === session.id}
                             >
                               <span class={`session-state-dot ${sessionStatusTone(session)}`} aria-hidden="true"></span>
                               <span class="session-item-label">{session.label}</span>
-                              <time class="session-updated" datetime={session.updatedAt}>{relativeTimeLabel(session.updatedAt)}</time>
+                              <time class="session-updated" datetime={session.updatedAt}>
+                                {archivingSessionId === session.id ? '归档中' : relativeTimeLabel(session.updatedAt)}
+                              </time>
                             </Button>
                             <div class="session-item-actions" aria-label={`${session.label} 操作`}>
                               {#if session.archived}
@@ -1497,27 +1518,27 @@
                                   <ArchiveRestoreIcon size={13} />
                                 </Button>
                               {:else if session.agent === 'codex'}
-                                <Button variant="ghost" size="icon" type="button" aria-label="创建分支" title="分支" onclick={() => void forkSession(session.id)} disabled={busy || isSessionRunning(session)}>
+                                <Button variant="ghost" size="icon" type="button" aria-label="创建分支" title="分支" onclick={() => void forkSession(session.id)} disabled={busy || isSessionRunning(session) || archivingSessionId === session.id}>
                                   <GitBranchIcon size={13} />
                                 </Button>
-                                <Button variant="ghost" size="icon" type="button" aria-label="归档会话" title="归档" onclick={() => requestArchiveSession(session.id)} disabled={busy || isSessionRunning(session)}>
+                                <Button variant="ghost" size="icon" type="button" aria-label="归档会话" title="归档" onclick={() => requestArchiveSession(session.id)} disabled={busy || isSessionRunning(session) || archivingSessionId !== null}>
                                   <ArchiveIcon size={13} />
                                 </Button>
-                                <Button variant="ghost" size="icon" type="button" aria-label="关闭会话" title="关闭" onclick={() => void closeSession(session.id)} disabled={busy || isSessionRunning(session)}>
+                                <Button variant="ghost" size="icon" type="button" aria-label="关闭会话" title="关闭" onclick={() => void closeSession(session.id)} disabled={busy || isSessionRunning(session) || archivingSessionId === session.id}>
                                   <XIcon size={13} />
                                 </Button>
-                                <Button variant="ghost" size="icon" type="button" aria-label="读取线程" title="读取线程" onclick={() => void syncCodexThread(session.id)} disabled={threadBusy || busy}>
+                                <Button variant="ghost" size="icon" type="button" aria-label="读取线程" title="读取线程" onclick={() => void syncCodexThread(session.id)} disabled={threadBusy || busy || archivingSessionId === session.id}>
                                   <RefreshCwIcon size={13} />
                                 </Button>
                               {:else}
-                                <Button variant="ghost" size="icon" type="button" aria-label="归档会话" title="归档" onclick={() => requestArchiveSession(session.id)} disabled={busy || isSessionRunning(session)}>
+                                <Button variant="ghost" size="icon" type="button" aria-label="归档会话" title="归档" onclick={() => requestArchiveSession(session.id)} disabled={busy || isSessionRunning(session) || archivingSessionId !== null}>
                                   <ArchiveIcon size={13} />
                                 </Button>
-                                <Button variant="ghost" size="icon" type="button" aria-label="关闭会话" title="关闭" onclick={() => void closeSession(session.id)} disabled={busy || isSessionRunning(session)}>
+                                <Button variant="ghost" size="icon" type="button" aria-label="关闭会话" title="关闭" onclick={() => void closeSession(session.id)} disabled={busy || isSessionRunning(session) || archivingSessionId === session.id}>
                                   <XIcon size={13} />
                                 </Button>
                               {/if}
-                              <Button variant="ghost" size="icon" type="button" aria-label="改名" title="改名" onclick={() => beginRenameSession(session.id)} disabled={busy}>
+                              <Button variant="ghost" size="icon" type="button" aria-label="改名" title="改名" onclick={() => beginRenameSession(session.id)} disabled={busy || archivingSessionId === session.id}>
                                 <PencilIcon size={13} />
                               </Button>
                             </div>
@@ -1541,8 +1562,8 @@
         <CardTitle>{selectedSession?.label ?? selectedWorkspace?.label ?? '选择工作区'}</CardTitle>
         <div class="timeline-heading-actions">
           {#if selectedSession}
-            <Badge variant={sessionArchived ? 'secondary' : sessionRunning ? 'warning' : 'outline'}>
-              {sessionStateLabel(selectedSession)}
+            <Badge variant={sessionArchived ? 'secondary' : sessionRunning || selectedSessionArchiving ? 'warning' : 'outline'}>
+              {selectedSessionArchiving ? '归档中' : sessionStateLabel(selectedSession)}
             </Badge>
             {#if codexThreadSnapshot && codexThreadSnapshot.id === selectedSession.externalSessionId}
               <Badge variant="outline">远端 {codexThreadSnapshot.turnCount} 轮</Badge>
@@ -1570,7 +1591,7 @@
         {#if retryPrompt && selectedSession && !sessionRunning && !sessionArchived}
           <div class="timeline-retry" role="status">
             <span>{retryReason ?? '上一回合未完成，可以重试。'}</span>
-            <Button variant="outline" size="sm" type="button" onclick={() => void retryLastPrompt()} disabled={busy}>重试上一条</Button>
+            <Button variant="outline" size="sm" type="button" onclick={() => void retryLastPrompt()} disabled={busy || selectedSessionArchiving}>重试上一条</Button>
           </div>
         {/if}
 
@@ -1690,7 +1711,7 @@
           bind:value={composerText}
           rows="2"
           placeholder={sessionArchived ? '该会话已归档，请取消归档或创建分支继续…' : selectedSession ? '输入消息，⌘/Ctrl + Enter 发送…' : '先新建或选择一个 Agent 会话…'}
-          disabled={!selectedSession || sessionArchived || (sessionRunning && selectedSession?.agent === 'codex') || busy}
+          disabled={!selectedSession || sessionArchived || selectedSessionArchiving || (sessionRunning && selectedSession?.agent === 'codex') || busy}
           onkeydown={(event) => {
             if ((event.metaKey || event.ctrlKey) && event.key === 'Enter') {
               event.preventDefault();
@@ -1708,7 +1729,7 @@
             <SquareIcon size={13} fill="currentColor" />
           </Button>
         {:else}
-          <Button size="icon" type="submit" disabled={!selectedSession || sessionArchived || !composerText.trim() || busy} aria-label="发送">
+          <Button size="icon" type="submit" disabled={!selectedSession || sessionArchived || selectedSessionArchiving || !composerText.trim() || busy} aria-label="发送">
             <SendIcon size={14} />
           </Button>
         {/if}
@@ -1719,7 +1740,9 @@
       <CardHeader class="panel-heading">
         <CardTitle>上下文</CardTitle>
         {#if selectedSession}
-          <Badge variant={sessionArchived ? 'secondary' : sessionRunning ? 'warning' : 'outline'}>{sessionStateLabel(selectedSession)}</Badge>
+          <Badge variant={sessionArchived ? 'secondary' : sessionRunning || selectedSessionArchiving ? 'warning' : 'outline'}>
+            {selectedSessionArchiving ? '归档中' : sessionStateLabel(selectedSession)}
+          </Badge>
         {:else}
           <Badge variant="secondary">未选择</Badge>
         {/if}
@@ -1797,13 +1820,13 @@
                       <small>{entry.node.role ?? entry.node.type}{entry.node.id === piTree.leafId ? ' · 当前分支' : ''}</small>
                     </div>
                     {#if entry.node.id !== piTree.leafId}
-                      <Button variant="ghost" size="sm" type="button" onclick={() => requestPiTreeNavigation(entry.node.id)} disabled={busy || sessionRunning}>切换</Button>
+                      <Button variant="ghost" size="sm" type="button" onclick={() => requestPiTreeNavigation(entry.node.id)} disabled={busy || sessionRunning || selectedSessionArchiving}>切换</Button>
                     {/if}
                   </div>
                 {/each}
               </div>
             {/if}
-            <Button variant="ghost" size="sm" type="button" onclick={() => void refreshPiTree(selectedSession.id)} disabled={busy}>
+            <Button variant="ghost" size="sm" type="button" onclick={() => void refreshPiTree(selectedSession.id)} disabled={busy || selectedSessionArchiving}>
               <RefreshCwIcon size={13} /> 刷新会话树
             </Button>
           </CardContent>

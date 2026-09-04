@@ -1,4 +1,7 @@
-use super::{find_executable, now_iso, session_by_id, workspace_by_id};
+use super::{
+    clone_cached_runtime, find_executable, now_iso, remove_cached_runtime, session_by_id,
+    workspace_by_id,
+};
 use serde::Serialize;
 use serde_json::{json, Value};
 use sqlx::SqlitePool;
@@ -1185,11 +1188,12 @@ impl PiManager {
     }
 
     async fn ensure_runtime(&self, session_id: &str) -> Result<Arc<PiSession>, PiError> {
-        if let Some(session) = self.sessions.lock().await.get(session_id).cloned() {
+        let cached_session = clone_cached_runtime(&self.sessions, session_id).await;
+        if let Some(session) = cached_session {
             if !session.client.closed.load(Ordering::SeqCst) {
                 return Ok(session);
             }
-            self.sessions.lock().await.remove(session_id);
+            remove_cached_runtime(&self.sessions, session_id).await;
         }
         let session = session_by_id(&self.db, session_id)
             .await
@@ -1410,7 +1414,8 @@ impl PiManager {
     }
 
     pub(crate) async fn close(&self, session_id: &str) -> Result<(), PiError> {
-        if let Some(session) = self.sessions.lock().await.remove(session_id) {
+        let session = remove_cached_runtime(&self.sessions, session_id).await;
+        if let Some(session) = session {
             session.deactivate();
             session.client.close().await;
             session.set_state("closed").await?;
@@ -1429,7 +1434,8 @@ impl PiManager {
             return Ok(existing);
         }
 
-        if let Some(session) = self.sessions.lock().await.get(session_id).cloned() {
+        let cached_session = clone_cached_runtime(&self.sessions, session_id).await;
+        if let Some(session) = cached_session {
             let current_state = session.state.lock().await.clone();
             if matches!(current_state.as_str(), "running" | "waiting_approval") {
                 return Err(PiError::Session(
@@ -1437,7 +1443,7 @@ impl PiManager {
                 ));
             }
             session.deactivate();
-            self.sessions.lock().await.remove(session_id);
+            remove_cached_runtime(&self.sessions, session_id).await;
             session.client.close().await;
         } else if matches!(existing.state.as_str(), "running" | "waiting_approval") {
             return Err(PiError::Session(
