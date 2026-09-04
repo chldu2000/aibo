@@ -35,8 +35,9 @@
 
 ## 下一步
 
-1. 在 Codex/Pi 真实会话上验证同一工作区并行运行和异常退出后的 UI 状态恢复。
-2. 将时间线批次加载替换为滚动锚点，并评估超大工具输出的 artifact 外置策略。
+1. 进入 [Phase 4.5 常规 Agent 工作台能力补全](phase-4.5-agent-workbench-completion.md)，先完成 Execution Profile、安全执行、变更审阅和 checkpoint。
+2. 在 Codex/Pi 真实会话上验证同一工作区并行运行和异常退出后的 UI 状态恢复。
+3. 将时间线批次加载替换为滚动锚点，并在 Phase 4.5 中落地超大工具输出的 artifact 外置策略。
 
 ## 退出条件
 

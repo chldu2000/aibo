@@ -1,6 +1,6 @@
 # Aibo 多 Agent 工作台：调研、架构建议与实施计划
 
-> 状态：架构已冻结（macOS 首发）；Phase 0 macOS 复验完成，Phase 1 Codex 真实会话已验收，Phase 2 审批、Codex thread 生命周期、工具事件投影与恢复契约已实现，Phase 3 macOS 门禁已完成，Phase 4 统一会话体验开发中，Windows 后续验证
+> 状态：架构已冻结（macOS 首发）；Phase 0–3 已完成 macOS 门禁，Phase 4 统一会话体验的实现与离线门禁完成，Phase 4.5 常规 Agent 工作台能力补全待实施，Windows 后续验证
 > 调研日期：2026-09-02  
 > 首批目标：Codex、Pi；首发平台：macOS（当前基线为 arm64）
 > 技术栈：Svelte 5 + Tauri 2
@@ -424,7 +424,7 @@ V1 后为 Pi 增加可选 container/VM/平台 sandbox runner；统一权限 prof
 
 退出条件：macOS arm64 上可完成“工作区 → Codex thread → 真实 turn → 流式时间线 → SQLite 恢复”的演示门禁；进程异常、超时和旧 generation 不得静默污染当前会话。
 
-### Phase 2：Codex Adapter 能力扩展（5–8 天，当前阶段）
+### Phase 2：Codex Adapter 能力扩展（5–8 天，已完成）
 
 - stdio JSON-RPC client、schema/version 适配。
 - thread list/start/read/resume/fork/archive。
@@ -432,7 +432,7 @@ V1 后为 Pi 增加可选 container/VM/平台 sandbox runner；统一权限 prof
 - approval 卡片、interrupt、崩溃恢复。
 - Codex capability contract tests。
 
-当前门禁：不出现 Codex 原生 UI；Aibo 已完成会话创建、流式显示、审批、恢复、thread list/read/fork/archive/unarchive、工具 item/usage 投影与绑定一致性检查。下一门禁转向跨 Agent handoff 与统一 session tree。
+完成门禁：不出现 Codex 原生 UI；Aibo 已完成会话创建、流式显示、审批、恢复、thread list/read/fork/archive/unarchive、工具 item/usage 投影与绑定一致性检查。
 
 ### Phase 3：Pi Adapter（5–8 天，macOS 已完成）
 
@@ -455,6 +455,17 @@ V1 后为 Pi 增加可选 container/VM/平台 sandbox runner；统一权限 prof
 
 退出条件：同一工作区可并行运行 Codex/Pi，会话状态不会串线，异常退出可解释并可恢复。macOS 的统一 API/UI、fixture replay、generation 隔离和恢复契约已完成；真实模型 smoke 依赖 provider/网络可用性时复跑。
 
+### Phase 4.5：常规 Agent 工作台能力补全（19–31 天，待实施）
+
+- 版本化 Execution Profile、capability resolution 与 Ask/Plan/Edit 模式。
+- Codex 原生 sandbox/approval 映射，以及 Pi 通过 Aibo Core 控制的安全写入和命令工具边界。
+- turn baseline/result、Git/文件变更归属、diff/hunk 审阅与结构化 verification。
+- Agent 文件 checkpoint、恢复预检、用户后续修改冲突保护和 artifact store。
+- 文件/目录/图片上下文附件、安全 Markdown、代码/diff/命令/测试卡片。
+- 任务进度、等待状态、队列、project actions 与能力检查器。
+
+退出条件：Codex 与 Pi 均能在 macOS 可丢弃工作区完成“结构化上下文 → 受控编辑 → 测试 → 变更审阅 → 安全恢复 → 重启恢复”；requested/enforced/unsupported 权限明确，dirty workspace 不丢失用户修改，路径越界和静默降级均被阻止。详细计划和验收矩阵见 [Phase 4.5 记录](phase-4.5-agent-workbench-completion.md)。
+
 ### Phase 5：`@` 与 Handoff v1（6–10 天）
 
 - mention picker 与结构化 token。
@@ -476,7 +487,7 @@ V1 后为 Pi 增加可选 container/VM/平台 sandbox runner；统一权限 prof
 
 退出条件：核心 E2E 连续通过；已知不支持能力在 UI 中明确显示且不会静默降级。
 
-粗略总工期：**32–51 个工程日**。建议先完成 Phase 0 再对后续排期二次估算，因为 Codex/Pi 版本差异和 Windows 进程控制会显著影响成本。
+加入 Phase 4.5 后的历史粗略总工期为 **51–82 个工程日**。Phase 0–4 已实施部分不再据此反推实际成本；Phase 4.5 应在完成 Pi 受控工具边界和 Git fixture 首个切片后重新估算剩余工作。
 
 ## 10. MVP 范围
 
@@ -488,6 +499,10 @@ MVP 必须有：
 - 统一流式消息、工具事件、停止按钮。
 - Codex 原生审批 UI 接管。
 - Pi 无沙箱风险提示与工作区信任。
+- 会话级执行 profile、明确的 requested/enforced/unsupported 权限状态。
+- Codex/Pi 受控编辑与工程验证主链路。
+- 按 turn 的变更审阅、checkpoint、恢复冲突保护和结构化 artifact。
+- 文件/目录上下文附件与安全的 Markdown、代码、diff、命令和测试呈现。
 - `@会话`、冻结快照、Handoff v1、来源回链。
 - 本地 SQLite、重启恢复、基础搜索。
 
@@ -549,6 +564,6 @@ macOS 本机 Phase 0 已通过，架构评审结果已经冻结在 [docs/archite
 2. Codex 使用 App Server；Pi 使用项目锁版 SDK host，RPC 仅作兼容/诊断。
 3. `AgentEvent v1`、session state machine、`SessionSnapshot v1` 和 `Handoff Envelope v1` 的边界已确定。
 4. Pi 首版接受宿主机当前用户权限，但必须通过 workspace trust 明示风险；不提前引入容器/VM。
-5. Phase 1 已完成应用骨架、工作区、诊断、持久化、安全边界和 Codex 最小真实会话垂直链路；Phase 2 已完成 Codex 能力扩展，当前进入 Phase 3 Pi SDK host 与统一会话事件链路。
+5. Phase 1–4 已完成应用骨架、Codex/Pi adapter 与统一会话体验；当前先实施 [Phase 4.5](phase-4.5-agent-workbench-completion.md)，补齐执行、审阅、恢复与 artifact 事实，再进入 Handoff v1。
 
-Phase 1 的 macOS 验收切片已完成：添加工作区、路径/信任检查、真实 Codex thread、流式响应和退出后时间线恢复均已验证。Phase 2 当前批次见 [phase-2-codex-capability-expansion.md](phase-2-codex-capability-expansion.md)。
+Phase 4.5 的首个切片为 Execution Profile 契约、capability resolution 和存储骨架；详细分批及准入条件见 [Phase 4.5 计划与验收](phase-4.5-agent-workbench-completion.md)。
