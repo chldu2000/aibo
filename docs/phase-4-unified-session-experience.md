@@ -24,6 +24,7 @@
 - `turn.failed`/adapter crash 提供上一条用户提示的重试入口。
 - contract harness 覆盖交错 Codex/Pi session binding 和 unsupported capability 的负向用例。
 - Phase 5 前完成首轮 UI 架构整理：主界面采用 shadcn-svelte 的 neutral dark token，左侧承载工作区与会话导航，中间聚焦时间线和 composer，右侧聚焦当前会话上下文。
+- UI 与业务边界已进一步收敛：页面组件通过 props/callbacks 接收投影数据，领域投影、Agent 事件处理、选择持久化、消息发送、审批决策和 Pi 分支导航移入无 UI 依赖模块；基础组件与 AlertDialog 通过 `$lib/ui-kit` adapter 访问。
 - Agent 诊断从默认工作区移入设置面板，避免诊断卡片挤占会话上下文；设置面板同时保留运行环境摘要和手动刷新入口。
 - 新建、搜索、筛选和会话列表均归入左侧导航，保留既有会话状态、归档、改名、分支和 Pi/Codex 操作逻辑。
 - macOS 窗口使用原生 Overlay title bar；网页层仅保留 Aibo 标识和设置入口，工作区/平台/就绪状态不再重复占用标题栏。
