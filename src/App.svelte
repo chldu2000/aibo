@@ -3,8 +3,10 @@
   import PlusIcon from '@lucide/svelte/icons/plus';
   import RefreshCwIcon from '@lucide/svelte/icons/refresh-cw';
   import SendIcon from '@lucide/svelte/icons/send';
+  import SettingsIcon from '@lucide/svelte/icons/settings-2';
   import ShieldCheckIcon from '@lucide/svelte/icons/shield-check';
   import SquareIcon from '@lucide/svelte/icons/square';
+  import XIcon from '@lucide/svelte/icons/x';
   import { Badge } from '$lib/components/ui/badge';
   import { AlertDialog } from '$lib/components/ui/alert-dialog';
   import { Button } from '$lib/components/ui/button';
@@ -121,6 +123,7 @@
   let retryPrompt = $state<string | null>(null);
   let retryReason = $state<string | null>(null);
   let lastSubmittedPrompt = $state<string | null>(null);
+  let settingsOpen = $state(false);
 
   const visibleTimeline = $derived(
     timeline.slice(Math.max(0, timeline.length - timelineVisibleCount)),
@@ -386,6 +389,7 @@
             turnId: event.turnId,
             externalMessageId,
             role: 'assistant',
+            toolName: null,
             content: delta,
             status: 'streaming',
             createdAt: event.occurredAt,
@@ -400,6 +404,7 @@
       (event.type === 'tool.started' || event.type === 'tool.updated' || event.type === 'tool.completed')
     ) {
       const externalMessageId = stringPayload(event.payload.itemId) ?? `tool:${event.eventId}`;
+      const toolName = stringPayload(event.payload.itemType);
       const delta = event.type === 'tool.updated' ? stringPayload(event.payload.delta) : null;
       const summary = stringPayload(event.payload.summary) ?? delta ?? '工具操作';
       const output = stringPayload(event.payload.output);
@@ -416,6 +421,7 @@
           item.id === existing.id
             ? {
                 ...item,
+                toolName: toolName ?? item.toolName,
                 content: delta
                   ? item.content + delta
                   : event.type === 'tool.started' || output
@@ -435,6 +441,7 @@
             turnId: event.turnId,
             externalMessageId,
             role: 'tool',
+            toolName,
             content: output ?? summary,
             status,
             createdAt: event.occurredAt,
@@ -985,6 +992,61 @@
     ]);
   }
 
+  type TimelineRenderItem =
+    | { kind: 'entry'; id: string; item: TimelineItem }
+    | { kind: 'tool-group'; id: string; items: TimelineItem[] };
+
+  function groupTimelineItems(items: TimelineItem[]): TimelineRenderItem[] {
+    const grouped: TimelineRenderItem[] = [];
+    let toolItems: TimelineItem[] = [];
+
+    const flushTools = () => {
+      if (toolItems.length === 1) {
+        grouped.push({ kind: 'entry', id: toolItems[0].id, item: toolItems[0] });
+      } else if (toolItems.length > 1) {
+        grouped.push({ kind: 'tool-group', id: `tool-group-${toolItems[0].id}`, items: toolItems });
+      }
+      toolItems = [];
+    };
+
+    for (const item of items) {
+      if (item.role === 'tool') {
+        toolItems.push(item);
+      } else {
+        flushTools();
+        grouped.push({ kind: 'entry', id: item.id, item });
+      }
+    }
+    flushTools();
+    return grouped;
+  }
+
+  function toolLabel(item: TimelineItem): string {
+    const explicitName = item.toolName?.trim();
+    const firstLine = item.content
+      .split('\n')
+      .map((line) => line.trim())
+      .find((line) => line.length > 0);
+    if (!explicitName) return truncateToolLabel(firstLine ?? '工具操作');
+
+    const friendlyName: Record<string, string> = {
+      commandExecution: '命令执行',
+      fileRead: '读取文件',
+      fileChange: '修改文件',
+      mcpToolCall: 'MCP 工具',
+      webSearch: '网页搜索',
+    };
+    const label = friendlyName[explicitName] ?? explicitName.replace(/([a-z])([A-Z])/g, '$1 $2');
+    if (firstLine && firstLine !== explicitName && !firstLine.startsWith('{') && firstLine.length <= 64) {
+      return truncateToolLabel(`${label} · ${firstLine}`);
+    }
+    return truncateToolLabel(label);
+  }
+
+  function truncateToolLabel(value: string): string {
+    return value.length > 88 ? `${value.slice(0, 85)}…` : value;
+  }
+
   function sessionStateLabel(session: Session): string {
     if (session.archived) return '已归档';
     switch (session.state) {
@@ -1009,18 +1071,16 @@
 </script>
 
 <svelte:head>
-  <title>Aibo · Local Agent Workbench</title>
+  <title>Aibo</title>
 </svelte:head>
 
 <div class="app-shell">
-  <header class="topbar">
-    <div class="topbar-context">
-      <span class="topbar-title">工作区</span>
-      {#if selectedWorkspace}<span class="topbar-path">{selectedWorkspace.label}</span>{/if}
-    </div>
-    <div class="topbar-meta">
-      <Badge variant={desktop ? 'success' : 'outline'}>{desktop ? 'macOS' : 'Web 预览'}</Badge>
-      <span class="connection"><span class="status-dot"></span> 就绪</span>
+  <header class="window-titlebar" data-tauri-drag-region>
+    <span class="window-title">Aibo</span>
+    <div class="window-actions">
+      <Button variant="ghost" size="icon" type="button" aria-label="打开设置" title="设置" onclick={() => (settingsOpen = true)}>
+        <SettingsIcon size={16} />
+      </Button>
     </div>
   </header>
 
@@ -1063,6 +1123,73 @@
         {/if}
       </div>
 
+      {#if selectedWorkspace}
+        <Separator />
+        <section class="session-nav" aria-label="会话导航">
+          <div class="sidebar-section-heading">
+            <span>会话</span>
+            <Badge variant="secondary" class="count-pill">{sessions.length}</Badge>
+          </div>
+          <div class="session-create-actions">
+            <Button size="sm" type="button" onclick={() => void createCodex()} disabled={busy}>
+              <PlusIcon size={14} /> 新建 Codex
+            </Button>
+            <Button variant="outline" size="sm" type="button" onclick={() => void createPi()} disabled={busy}>
+              <PlusIcon size={14} /> 新建 Pi
+            </Button>
+          </div>
+          <form
+            class="session-filter-form"
+            aria-label="会话搜索与筛选"
+            onsubmit={(event) => {
+              event.preventDefault();
+              if (selectedWorkspaceId) void refreshSessions(selectedWorkspaceId);
+            }}
+          >
+            <Input class="session-search-input" bind:value={sessionSearch} placeholder="搜索会话…" aria-label="搜索会话或消息" />
+            <select
+              class="session-filter-select"
+              bind:value={sessionFilter}
+              aria-label="会话状态筛选"
+              onchange={() => {
+                if (selectedWorkspaceId) void refreshSessions(selectedWorkspaceId);
+              }}
+            >
+              <option value="active">活动</option>
+              <option value="all">全部</option>
+              <option value="archived">已归档</option>
+              <option value="running">运行中</option>
+              <option value="waiting_approval">待审批</option>
+              <option value="idle">空闲</option>
+              <option value="interrupted">已中断</option>
+              <option value="failed">失败</option>
+              <option value="closed">已关闭</option>
+            </select>
+            <Button variant="outline" size="sm" type="submit" aria-label="查找会话">查找</Button>
+          </form>
+          {#if sessions.length > 0}
+            <div class="session-list" aria-label="Agent 会话列表">
+              {#each sessions as session (session.id)}
+                <Button
+                  variant={session.id === selectedSessionId ? 'secondary' : 'ghost'}
+                  type="button"
+                  class="session-item"
+                  onclick={() => selectSession(session.id)}
+                >
+                  <span class={`session-agent session-agent-${session.agent}`}>{session.agent === 'pi' ? 'PI' : 'CX'}</span>
+                  <span class="session-item-copy">
+                    <span class="session-item-label">{session.label}</span>
+                    <span class="session-item-state">{sessionStateLabel(session)}</span>
+                  </span>
+                </Button>
+              {/each}
+            </div>
+          {:else}
+            <span class="session-filter-empty">没有匹配的会话</span>
+          {/if}
+        </section>
+      {/if}
+
       <div class="sidebar-footer">
         <span class="legend"><span class="trust-dot trusted"></span> 可信</span>
         <span class="legend"><span class="trust-dot"></span> 待确认</span>
@@ -1092,12 +1219,6 @@
 
       {#if selectedWorkspace}
         <div class="session-toolbar">
-          <Button size="sm" type="button" onclick={() => void createCodex()} disabled={busy}>
-            <PlusIcon size={14} /> 新建 Codex
-          </Button>
-          <Button variant="outline" size="sm" type="button" onclick={() => void createPi()} disabled={busy}>
-            <PlusIcon size={14} /> 新建 Pi
-          </Button>
           {#if selectedSession}
             {#if renamingSessionId === selectedSession.id}
               <Input
@@ -1135,53 +1256,6 @@
               <Button variant="ghost" size="sm" type="button" onclick={beginRenameSession} disabled={busy}>改名</Button>
             {/if}
           {/if}
-          <form
-            class="session-filter-form"
-            aria-label="会话搜索与筛选"
-            onsubmit={(event) => {
-              event.preventDefault();
-              if (selectedWorkspaceId) void refreshSessions(selectedWorkspaceId);
-            }}
-          >
-            <Input class="session-search-input" bind:value={sessionSearch} placeholder="搜索会话或消息…" aria-label="搜索会话或消息" />
-            <select
-              class="session-filter-select"
-              bind:value={sessionFilter}
-              aria-label="会话状态筛选"
-              onchange={() => {
-                if (selectedWorkspaceId) void refreshSessions(selectedWorkspaceId);
-              }}
-            >
-              <option value="active">活动会话</option>
-              <option value="all">全部</option>
-              <option value="archived">已归档</option>
-              <option value="running">运行中</option>
-              <option value="waiting_approval">待审批</option>
-              <option value="idle">空闲</option>
-              <option value="interrupted">已中断</option>
-              <option value="failed">失败</option>
-              <option value="closed">已关闭</option>
-            </select>
-            <Button variant="outline" size="sm" type="submit">查找</Button>
-          </form>
-          {#if sessions.length > 0}
-            <div class="session-list" aria-label="Agent 会话列表">
-              {#each sessions as session (session.id)}
-                <Button
-                  variant={session.id === selectedSessionId ? 'secondary' : 'ghost'}
-                  type="button"
-                  class="session-item"
-                  onclick={() => selectSession(session.id)}
-                >
-                  <span class={`session-agent session-agent-${session.agent}`}>{session.agent === 'pi' ? 'PI' : 'CX'}</span>
-                  <span class="session-item-label">{session.label}</span>
-                  <span class="session-item-state">{sessionStateLabel(session)}</span>
-                </Button>
-              {/each}
-            </div>
-          {:else}
-            <span class="session-filter-empty">没有匹配的会话</span>
-          {/if}
         </div>
         <Separator />
 
@@ -1212,24 +1286,53 @@
                 onclick={loadOlderTimeline}
               >加载更早的 {Math.min(hiddenTimelineCount, 80)} 条消息</Button>
             {/if}
-            {#each visibleTimeline as item (item.id)}
-              <Card
-                as="article"
-                class={`timeline-entry ${item.role === 'assistant' ? 'assistant-entry' : item.role === 'user' ? 'user-entry' : item.role === 'tool' ? 'tool-entry' : item.role === 'system' ? 'system-entry' : ''}`}
-              >
-                <div class="entry-meta">
-                  <Badge variant={item.role === 'assistant' ? 'secondary' : item.role === 'tool' ? 'outline' : 'outline'}>{item.role === 'assistant' ? (selectedSession?.agent === 'pi' ? 'PI' : 'CODEX') : item.role.toUpperCase()}</Badge>
-                  <Badge variant="outline">{item.status}</Badge>
-                </div>
-                {#if item.role === 'tool'}
-                  <details class="tool-output" open={item.content.length < 180}>
-                    <summary>{isDiffContent(item.content) ? '查看 diff' : '查看工具输出'}</summary>
-                    <pre class:diff-content={isDiffContent(item.content)}>{item.content || '…'}</pre>
+            {#each groupTimelineItems(visibleTimeline) as renderItem (renderItem.id)}
+              {#if renderItem.kind === 'tool-group'}
+                <Card as="article" class="timeline-entry tool-entry tool-group-entry">
+                  <details class="tool-group">
+                    <summary>
+                      <span class="tool-group-title">
+                        <Badge variant="outline">TOOL</Badge>
+                        <span>工具调用 · {renderItem.items.length} 项</span>
+                      </span>
+                      <Badge variant="outline">{renderItem.items.filter((item) => item.status === 'completed').length}/{renderItem.items.length} 完成</Badge>
+                    </summary>
+                    <div class="tool-group-items">
+                      {#each renderItem.items as tool (tool.id)}
+                        <details class="tool-output">
+                          <summary>
+                            <span class="tool-output-name">{toolLabel(tool)}</span>
+                            <span class="tool-output-action">{isDiffContent(tool.content) ? '查看 diff' : '查看工具输出'}</span>
+                          </summary>
+                          <pre class:diff-content={isDiffContent(tool.content)}>{tool.content || '…'}</pre>
+                        </details>
+                      {/each}
+                    </div>
                   </details>
-                {:else}
-                  <div class="entry-content">{item.content || '…'}</div>
-                {/if}
-              </Card>
+                </Card>
+              {:else}
+                {@const item = renderItem.item}
+                <Card
+                  as="article"
+                  class={`timeline-entry ${item.role === 'assistant' ? 'assistant-entry' : item.role === 'user' ? 'user-entry' : item.role === 'tool' ? 'tool-entry' : item.role === 'system' ? 'system-entry' : ''}`}
+                >
+                  <div class="entry-meta">
+                    <Badge variant={item.role === 'assistant' ? 'secondary' : item.role === 'tool' ? 'outline' : 'outline'}>{item.role === 'assistant' ? (selectedSession?.agent === 'pi' ? 'PI' : 'CODEX') : item.role.toUpperCase()}</Badge>
+                    <Badge variant="outline">{item.status}</Badge>
+                  </div>
+                  {#if item.role === 'tool'}
+                    <details class="tool-output">
+                      <summary>
+                        <span class="tool-output-name">{toolLabel(item)}</span>
+                        <span class="tool-output-action">{isDiffContent(item.content) ? '查看 diff' : '查看工具输出'}</span>
+                      </summary>
+                      <pre class:diff-content={isDiffContent(item.content)}>{item.content || '…'}</pre>
+                    </details>
+                  {:else}
+                    <div class="entry-content">{item.content || '…'}</div>
+                  {/if}
+                </Card>
+              {/if}
             {/each}
           </div>
         {:else if selectedSession}
@@ -1306,35 +1409,39 @@
       </Card>
     </Card>
 
-    <Card as="aside" class="inspector" aria-label="Agent 诊断">
+    <Card as="aside" class="inspector" aria-label="会话上下文">
       <CardHeader class="panel-heading">
-        <CardTitle>Agent 诊断</CardTitle>
-        <Badge variant="success">{readyAgents}/{diagnostics.length} 就绪</Badge>
+        <CardTitle>上下文</CardTitle>
+        {#if selectedSession}
+          <Badge variant={sessionArchived ? 'secondary' : sessionRunning ? 'warning' : 'outline'}>{sessionStateLabel(selectedSession)}</Badge>
+        {:else}
+          <Badge variant="secondary">未选择</Badge>
+        {/if}
       </CardHeader>
       <Separator />
 
-      <div class="agent-cards">
-        {#each diagnostics as agent (agent.agent)}
-          <Card as="article" class="agent-card">
-            <CardHeader class="agent-card-head">
-              <div class="agent-identity">
-                <div><strong>{agent.label}</strong><small>{agent.version ?? 'version unavailable'}</small></div>
+      {#if selectedSession}
+        <Card class="session-context-card">
+          <CardHeader class="session-context-heading">
+            <div class="session-context-title">
+              <span class={`session-agent session-agent-${selectedSession.agent}`}>{selectedSession.agent === 'pi' ? 'PI' : 'CX'}</span>
+              <div>
+                <CardTitle>{selectedSession.label}</CardTitle>
+                <small>{selectedSession.agent === 'pi' ? 'Pi SDK host' : 'Codex app-server'}</small>
               </div>
-              <Badge variant={agent.status === 'ready' ? 'success' : 'warning'}>{agent.status}</Badge>
-            </CardHeader>
-            <CardContent class="agent-card-content">
-              <dl>
-              <div><dt>通道</dt><dd>{agent.agent === 'codex' ? 'app-server' : 'sdk-host'}</dd></div>
-              <div><dt>认证</dt><dd>{agent.authState === 'delegated' ? '系统凭据' : agent.authState}</dd></div>
-              {#if agent.executable}<div><dt>可执行文件</dt><dd title={agent.executable}>{agent.executable}</dd></div>{/if}
-              </dl>
-              <div class="capability-list">
-                {#each agent.capabilities as capability}<Badge variant="outline">{capability}</Badge>{/each}
-              </div>
-            </CardContent>
-          </Card>
-        {/each}
-      </div>
+            </div>
+          </CardHeader>
+          <CardContent class="session-context-content">
+            <dl>
+              <div><dt>会话 ID</dt><dd title={selectedSession.id}>{selectedSession.id}</dd></div>
+              {#if selectedSession.externalSessionId}<div><dt>远端绑定</dt><dd title={selectedSession.externalSessionId}>{selectedSession.externalSessionId}</dd></div>{/if}
+              <div><dt>更新时间</dt><dd>{selectedSession.updatedAt}</dd></div>
+            </dl>
+          </CardContent>
+        </Card>
+      {:else}
+        <div class="inspector-empty">从左侧选择一个会话查看上下文。</div>
+      {/if}
 
       {#if selectedWorkspace && desktop}
         <Card class="thread-card">
@@ -1413,11 +1520,81 @@
       <Separator />
       <div class="inspector-footer">
         <Button variant="ghost" size="sm" type="button" onclick={() => void refresh()} disabled={busy}>
-          <RefreshCwIcon size={13} /> 刷新诊断
+          <RefreshCwIcon size={13} /> 刷新数据
         </Button>
       </div>
     </Card>
   </main>
+
+  {#if settingsOpen}
+    <div class="settings-overlay" role="presentation" onclick={() => (settingsOpen = false)}>
+      <Card class="settings-panel" role="dialog" aria-modal="true" aria-labelledby="settings-title" onclick={(event) => event.stopPropagation()}>
+        <CardHeader class="settings-header">
+          <div>
+            <CardTitle id="settings-title">设置</CardTitle>
+            <p>管理 Agent 连接状态与工作区运行信息。</p>
+          </div>
+          <Button variant="ghost" size="icon" type="button" aria-label="关闭设置" title="关闭" onclick={() => (settingsOpen = false)}>
+            <XIcon size={16} />
+          </Button>
+        </CardHeader>
+        <Separator />
+        <div class="settings-content">
+          <section class="settings-section" aria-labelledby="agent-diagnostics-title">
+            <div class="settings-section-heading">
+              <div>
+                <h2 id="agent-diagnostics-title">Agent 状态</h2>
+                <p>连接诊断仅在设置中展示，不占用会话工作区。</p>
+              </div>
+              <Badge variant={diagnostics.length > 0 && readyAgents === diagnostics.length ? 'success' : 'warning'}>{readyAgents}/{diagnostics.length} 就绪</Badge>
+            </div>
+            <div class="settings-agent-cards">
+              {#each diagnostics as agent (agent.agent)}
+                <Card as="article" class="agent-card">
+                  <CardHeader class="agent-card-head">
+                    <div class="agent-identity">
+                      <div><strong>{agent.label}</strong><small>{agent.version ?? 'version unavailable'}</small></div>
+                    </div>
+                    <Badge variant={agent.status === 'ready' ? 'success' : 'warning'}>{agent.status}</Badge>
+                  </CardHeader>
+                  <CardContent class="agent-card-content">
+                    <dl>
+                    <div><dt>通道</dt><dd>{agent.agent === 'codex' ? 'app-server' : 'sdk-host'}</dd></div>
+                    <div><dt>认证</dt><dd>{agent.authState === 'delegated' ? '系统凭据' : agent.authState}</dd></div>
+                    {#if agent.executable}<div><dt>可执行文件</dt><dd title={agent.executable}>{agent.executable}</dd></div>{/if}
+                    </dl>
+                    <div class="capability-list">
+                      {#each agent.capabilities as capability}<Badge variant="outline">{capability}</Badge>{/each}
+                    </div>
+                  </CardContent>
+                </Card>
+              {/each}
+            </div>
+          </section>
+          <Separator />
+          <section class="settings-section" aria-labelledby="runtime-info-title">
+            <div class="settings-section-heading">
+              <div>
+                <h2 id="runtime-info-title">运行环境</h2>
+                <p>当前首发平台与本地工作区摘要。</p>
+              </div>
+            </div>
+            <dl class="settings-runtime-list">
+              <div><dt>平台</dt><dd>{desktop ? 'macOS · Tauri' : 'Web 预览'}</dd></div>
+              <div><dt>工作区</dt><dd>{workspaces.length}</dd></div>
+              <div><dt>会话</dt><dd>{sessions.length}</dd></div>
+            </dl>
+          </section>
+        </div>
+        <div class="settings-footer">
+          <Button variant="outline" size="sm" type="button" onclick={() => void refresh()} disabled={busy}>
+            <RefreshCwIcon size={13} /> 刷新诊断
+          </Button>
+          <Button size="sm" type="button" onclick={() => (settingsOpen = false)}>完成</Button>
+        </div>
+      </Card>
+    </div>
+  {/if}
 
   {#if errorMessage}<Card class="toast error-toast">{errorMessage}</Card>{/if}
   {#if notice}<Card class="toast notice-toast">{notice}</Card>{/if}

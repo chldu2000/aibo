@@ -959,11 +959,11 @@ impl PiSession {
             None
         };
         let now = now_iso();
-        let updated = sqlx::query("UPDATE messages SET content = CASE WHEN ? = 1 OR content = '' THEN ? ELSE content END, turn_id = COALESCE(?, turn_id), status = ?, updated_at = ? WHERE session_id = ? AND external_message_id = ? AND role = 'tool'")
-            .bind(if kind == "tool_execution_start" { 1_i64 } else { 0_i64 }).bind(&summary).bind(internal_turn.as_deref()).bind(status).bind(&now).bind(&self.session_id).bind(&item_id).execute(&self.db).await?;
+        let updated = sqlx::query("UPDATE messages SET content = CASE WHEN ? = 1 OR content = '' THEN ? ELSE content END, tool_name = COALESCE(?, tool_name), turn_id = COALESCE(?, turn_id), status = ?, updated_at = ? WHERE session_id = ? AND external_message_id = ? AND role = 'tool'")
+            .bind(if kind == "tool_execution_start" { 1_i64 } else { 0_i64 }).bind(&summary).bind(tool_name).bind(internal_turn.as_deref()).bind(status).bind(&now).bind(&self.session_id).bind(&item_id).execute(&self.db).await?;
         if updated.rows_affected() == 0 {
-            sqlx::query("INSERT INTO messages (id, session_id, turn_id, external_message_id, role, content, status, sequence, created_at, updated_at) VALUES (?, ?, ?, ?, 'tool', ?, ?, ?, ?, ?)")
-                .bind(Ulid::new().to_string()).bind(&self.session_id).bind(internal_turn).bind(&item_id).bind(&summary).bind(status)
+            sqlx::query("INSERT INTO messages (id, session_id, turn_id, external_message_id, role, tool_name, content, status, sequence, created_at, updated_at) VALUES (?, ?, ?, ?, 'tool', ?, ?, ?, ?, ?, ?)")
+                .bind(Ulid::new().to_string()).bind(&self.session_id).bind(internal_turn).bind(&item_id).bind(tool_name).bind(&summary).bind(status)
                 .bind(self.sequence.load(Ordering::Relaxed) as i64).bind(&now).bind(&now).execute(&self.db).await?;
         }
         let event_name = match kind {

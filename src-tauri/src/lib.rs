@@ -85,6 +85,7 @@ pub struct TimelineItem {
     pub(crate) turn_id: Option<String>,
     pub(crate) external_message_id: Option<String>,
     pub(crate) role: String,
+    pub(crate) tool_name: Option<String>,
     pub(crate) content: String,
     pub(crate) status: String,
     pub(crate) created_at: String,
@@ -371,6 +372,7 @@ fn row_to_timeline_item(row: &sqlx::sqlite::SqliteRow) -> Result<TimelineItem, C
         turn_id: row.try_get("turn_id")?,
         external_message_id: row.try_get("external_message_id")?,
         role: row.try_get("role")?,
+        tool_name: row.try_get("tool_name")?,
         content: row.try_get("content")?,
         status: row.try_get("status")?,
         created_at: row.try_get("created_at")?,
@@ -501,7 +503,7 @@ async fn get_timeline(
 ) -> Result<Vec<TimelineItem>, CoreError> {
     session_by_id(&state.db, &session_id).await?;
     let rows = sqlx::query(
-        "SELECT id, session_id, turn_id, external_message_id, role, content,
+        "SELECT id, session_id, turn_id, external_message_id, role, tool_name, content,
                 status, created_at, updated_at
          FROM messages
          WHERE session_id = ?
@@ -1046,6 +1048,7 @@ mod tests {
         for (table, column) in [
             ("sessions", "archived"),
             ("session_bindings", "parent_external_session_id"),
+            ("messages", "tool_name"),
         ] {
             let present: i64 = tauri::async_runtime::block_on(
                 sqlx::query_scalar("SELECT COUNT(*) FROM pragma_table_info(?) WHERE name = ?")

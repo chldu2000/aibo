@@ -1049,11 +1049,12 @@ impl CodexSession {
         let now = now_iso();
         let updated = if method.ends_with("outputDelta") || method == "item/mcpToolCall/progress" {
             sqlx::query(
-                "UPDATE messages SET content = content || ?, turn_id = COALESCE(?, turn_id),
+                "UPDATE messages SET content = content || ?, tool_name = COALESCE(?, tool_name), turn_id = COALESCE(?, turn_id),
                         status = ?, updated_at = ?
                  WHERE session_id = ? AND external_message_id = ? AND role = 'tool'",
             )
             .bind(projection.delta.as_deref().unwrap_or(&projection.summary))
+            .bind(&projection.item_type)
             .bind(internal_turn_id.as_deref())
             .bind(status)
             .bind(&now)
@@ -1065,12 +1066,14 @@ impl CodexSession {
             let replace_content = method == "item/started" || projection.output.is_some();
             sqlx::query(
                 "UPDATE messages SET content = CASE WHEN ? = 1 OR content = '' THEN ? ELSE content END,
+                        tool_name = COALESCE(?, tool_name),
                         turn_id = COALESCE(?, turn_id),
                         status = ?, updated_at = ?
                  WHERE session_id = ? AND external_message_id = ? AND role = 'tool'",
             )
             .bind(if replace_content { 1_i64 } else { 0_i64 })
             .bind(&projection.summary)
+            .bind(&projection.item_type)
             .bind(internal_turn_id.as_deref())
             .bind(status)
             .bind(&now)
@@ -1082,14 +1085,15 @@ impl CodexSession {
         if updated.rows_affected() == 0 {
             sqlx::query(
                 "INSERT INTO messages
-                 (id, session_id, turn_id, external_message_id, role, content, status,
-                  sequence, created_at, updated_at)
-                 VALUES (?, ?, ?, ?, 'tool', ?, ?, ?, ?, ?)",
+                 (id, session_id, turn_id, external_message_id, role, tool_name, content,
+                  status, sequence, created_at, updated_at)
+                 VALUES (?, ?, ?, ?, 'tool', ?, ?, ?, ?, ?, ?)",
             )
             .bind(Ulid::new().to_string())
             .bind(&self.session_id)
             .bind(internal_turn_id)
             .bind(&projection.item_id)
+            .bind(&projection.item_type)
             .bind(&projection.summary)
             .bind(status)
             .bind(self.sequence.load(Ordering::Relaxed) as i64)
@@ -1779,7 +1783,7 @@ impl CodexManager {
         }
 
         let source_messages = sqlx::query(
-            "SELECT turn_id, external_message_id, role, content, status,
+            "SELECT turn_id, external_message_id, role, tool_name, content, status,
                     sequence, created_at, updated_at
              FROM messages WHERE session_id = ?
              ORDER BY created_at ASC, sequence ASC, id ASC",
@@ -1798,15 +1802,16 @@ impl CodexManager {
             }
             sqlx::query(
                 "INSERT INTO messages
-                 (id, session_id, turn_id, external_message_id, role, content, status,
-                  sequence, created_at, updated_at)
-                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                 (id, session_id, turn_id, external_message_id, role, tool_name, content,
+                  status, sequence, created_at, updated_at)
+                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
             )
             .bind(Ulid::new().to_string())
             .bind(&new_session_id)
             .bind(new_turn_id)
             .bind(row.try_get::<Option<String>, _>("external_message_id")?)
             .bind(row.try_get::<String, _>("role")?)
+            .bind(row.try_get::<Option<String>, _>("tool_name")?)
             .bind(row.try_get::<String, _>("content")?)
             .bind(row.try_get::<String, _>("status")?)
             .bind(row.try_get::<i64, _>("sequence")?)

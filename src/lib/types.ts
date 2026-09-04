@@ -115,6 +115,7 @@ export interface TimelineItem {
   turnId: string | null;
   externalMessageId: string | null;
   role: 'user' | 'assistant' | 'system' | 'tool';
+  toolName: string | null;
   content: string;
   status: 'streaming' | 'completed' | 'failed';
   createdAt: string;

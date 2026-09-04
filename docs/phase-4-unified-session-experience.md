@@ -23,6 +23,12 @@
 - 工具输出支持折叠查看，diff 内容使用独立代码块呈现；usage 在时间线工具栏汇总。
 - `turn.failed`/adapter crash 提供上一条用户提示的重试入口。
 - contract harness 覆盖交错 Codex/Pi session binding 和 unsupported capability 的负向用例。
+- Phase 5 前完成首轮 UI 架构整理：主界面采用 shadcn-svelte 的 neutral dark token，左侧承载工作区与会话导航，中间聚焦时间线和 composer，右侧聚焦当前会话上下文。
+- Agent 诊断从默认工作区移入设置面板，避免诊断卡片挤占会话上下文；设置面板同时保留运行环境摘要和手动刷新入口。
+- 新建、搜索、筛选和会话列表均归入左侧导航，保留既有会话状态、归档、改名、分支和 Pi/Codex 操作逻辑。
+- macOS 窗口使用原生 Overlay title bar；网页层仅保留 Aibo 标识和设置入口，工作区/平台/就绪状态不再重复占用标题栏。
+- 时间线消息气泡统一内边距；连续 tool calling 合并为可折叠摘要，单条工具输出默认收起，避免工具事件挤占对话空间。
+- 工具时间线保存规范化 `toolName`，折叠组展开后按条目显示“工具类型 · 调用摘要”；历史记录缺少名称时回退到输出首行。
 
 ## 下一步
 
