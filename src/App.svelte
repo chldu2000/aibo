@@ -1,11 +1,18 @@
 <script lang="ts">
   import { onMount } from 'svelte';
+  import ArchiveIcon from '@lucide/svelte/icons/archive';
+  import ArchiveRestoreIcon from '@lucide/svelte/icons/archive-restore';
+  import CheckIcon from '@lucide/svelte/icons/check';
+  import GitBranchIcon from '@lucide/svelte/icons/git-branch';
+  import PencilIcon from '@lucide/svelte/icons/pencil';
   import PlusIcon from '@lucide/svelte/icons/plus';
   import RefreshCwIcon from '@lucide/svelte/icons/refresh-cw';
   import SendIcon from '@lucide/svelte/icons/send';
   import SettingsIcon from '@lucide/svelte/icons/settings-2';
   import ShieldCheckIcon from '@lucide/svelte/icons/shield-check';
+  import ShieldOffIcon from '@lucide/svelte/icons/shield-off';
   import SquareIcon from '@lucide/svelte/icons/square';
+  import Trash2Icon from '@lucide/svelte/icons/trash-2';
   import XIcon from '@lucide/svelte/icons/x';
   import { Badge } from '$lib/components/ui/badge';
   import { AlertDialog } from '$lib/components/ui/alert-dialog';
@@ -124,6 +131,8 @@
   let retryReason = $state<string | null>(null);
   let lastSubmittedPrompt = $state<string | null>(null);
   let settingsOpen = $state(false);
+  let promptInFlight = $state(false);
+  let noticeTimer: ReturnType<typeof setTimeout> | undefined;
 
   const visibleTimeline = $derived(
     timeline.slice(Math.max(0, timeline.length - timelineVisibleCount)),
@@ -139,13 +148,36 @@
   );
 
   const readyAgents = $derived(diagnostics.filter((agent) => agent.status === 'ready').length);
-  const sessionRunning = $derived(
-    selectedSession?.state === 'running' || selectedSession?.state === 'waiting_approval',
-  );
+  const sessionRunning = $derived(isSessionRunning(selectedSession));
   const sessionArchived = $derived(selectedSession?.archived === true);
   const selectedApprovals = $derived(
     pendingApprovals.filter((approval) => approval.sessionId === selectedSessionId),
   );
+  const agentActivityLabel = $derived.by(() => {
+    if (!selectedSession || (!sessionRunning && !promptInFlight)) return null;
+    if (selectedSession.state === 'waiting_approval' || selectedApprovals.length > 0) {
+      return '等待你的确认…';
+    }
+    const latest = timeline.at(-1);
+    const agentLabel = selectedSession.agent === 'pi' ? 'Pi' : 'Codex';
+    if (latest?.role === 'tool' && latest.status === 'streaming') {
+      return `${agentLabel} 正在调用 ${toolLabel(latest)}…`;
+    }
+    return `${agentLabel} 正在响应…`;
+  });
+
+  $effect(() => {
+    const message = notice;
+    if (noticeTimer) clearTimeout(noticeTimer);
+    noticeTimer = undefined;
+    if (!message) return;
+    const timer = setTimeout(() => {
+      if (notice === message) notice = null;
+      noticeTimer = undefined;
+    }, 3600);
+    noticeTimer = timer;
+    return () => clearTimeout(timer);
+  });
 
   onMount(() => {
     let stopListening: (() => void) | undefined;
@@ -653,6 +685,7 @@
     busy = true;
     errorMessage = null;
     lastSubmittedPrompt = input;
+    promptInFlight = true;
     try {
       let session = selectedSession;
       if (!session) {
@@ -670,6 +703,7 @@
     } catch (error) {
       errorMessage = toErrorMessage(error);
     } finally {
+      promptInFlight = false;
       busy = false;
     }
   }
@@ -765,10 +799,11 @@
     }
   }
 
-  function beginRenameSession() {
-    if (!selectedSession || !desktop) return;
-    renamingSessionId = selectedSession.id;
-    sessionLabelDraft = selectedSession.label;
+  function beginRenameSession(sessionId = selectedSessionId) {
+    const session = sessions.find((item) => item.id === sessionId);
+    if (!session || !desktop) return;
+    renamingSessionId = session.id;
+    sessionLabelDraft = session.label;
   }
 
   function cancelRenameSession() {
@@ -794,23 +829,26 @@
     }
   }
 
-  async function closeSession() {
-    if (!selectedSession || !desktop) return;
+  async function closeSession(sessionId = selectedSessionId) {
+    const target = sessions.find((item) => item.id === sessionId);
+    if (!target || !desktop) return;
     busy = true;
     errorMessage = null;
     try {
-      const closingId = selectedSession.id;
-      const closingAgent = selectedSession.agent;
-      if (selectedSession.agent === 'pi') await closePiSession(closingId);
+      const closingId = target.id;
+      const closingAgent = target.agent;
+      if (target.agent === 'pi') await closePiSession(closingId);
       else await closeCodexSession(closingId);
       const remaining = sessions.filter(({ id }) => id !== closingId);
       sessions = remaining;
-      selectedSessionId = remaining[0]?.id ?? null;
-      codexThreadSnapshot = null;
-      piTree = null;
-      piNavigationEntryId = null;
-      timeline = selectedSessionId ? await getTimeline(selectedSessionId) : [];
-      if (selectedSessionId) void refreshPiTree(selectedSessionId);
+      if (selectedSessionId === closingId) {
+        selectedSessionId = remaining[0]?.id ?? null;
+        codexThreadSnapshot = null;
+        piTree = null;
+        piNavigationEntryId = null;
+        timeline = selectedSessionId ? await getTimeline(selectedSessionId) : [];
+        if (selectedSessionId) void refreshPiTree(selectedSessionId);
+      }
       notice = `${closingAgent === 'pi' ? 'Pi' : 'Codex'} 会话已关闭；已保存的时间线仍可在下次启动时读取。`;
     } catch (error) {
       errorMessage = toErrorMessage(error);
@@ -819,16 +857,17 @@
     }
   }
 
-  async function forkSession() {
-    if (!selectedSession || !desktop || selectedSession.archived) return;
-    if (sessionRunning) {
+  async function forkSession(sessionId = selectedSessionId) {
+    const target = sessions.find((item) => item.id === sessionId);
+    if (!target || !desktop || target.archived) return;
+    if (isSessionRunning(target)) {
       errorMessage = '请等待当前 turn 完成后再创建分支。';
       return;
     }
     busy = true;
     errorMessage = null;
     try {
-      const forked = await forkCodexThread(selectedSession.id);
+      const forked = await forkCodexThread(target.id);
       sessions = [forked, ...sessions.filter(({ id }) => id !== forked.id)];
       selectedSessionId = forked.id;
       timeline = await getTimeline(forked.id);
@@ -843,13 +882,14 @@
     }
   }
 
-  function requestArchiveSession() {
-    if (!selectedSession || !desktop || selectedSession.archived) return;
-    if (sessionRunning) {
+  function requestArchiveSession(sessionId = selectedSessionId) {
+    const target = sessions.find((item) => item.id === sessionId);
+    if (!target || !desktop || target.archived) return;
+    if (isSessionRunning(target)) {
       errorMessage = '请等待当前 turn 完成后再归档。';
       return;
     }
-    archiveConfirmationSessionId = selectedSession.id;
+    archiveConfirmationSessionId = target.id;
   }
 
   async function confirmArchiveSession() {
@@ -874,12 +914,13 @@
     }
   }
 
-  async function unarchiveSession() {
-    if (!selectedSession || !desktop || !selectedSession.archived) return;
+  async function unarchiveSession(sessionId = selectedSessionId) {
+    const target = sessions.find((item) => item.id === sessionId);
+    if (!target || !desktop || !target.archived) return;
     busy = true;
     errorMessage = null;
     try {
-      const restored = await unarchiveSessionApi(selectedSession.id);
+      const restored = await unarchiveSessionApi(target.id);
       selectedSessionId = restored.id;
       timeline = await getTimeline(restored.id);
       if (restored.agent === 'codex') {
@@ -1068,6 +1109,10 @@
         return '空闲';
     }
   }
+
+  function isSessionRunning(session: Session | null | undefined): boolean {
+    return session?.state === 'running' || session?.state === 'waiting_approval';
+  }
 </script>
 
 <svelte:head>
@@ -1107,18 +1152,44 @@
           <div class="empty-list">暂无工作区</div>
         {:else}
           {#each workspaces as workspace (workspace.id)}
-            <Button
-              variant={workspace.id === selectedWorkspaceId ? 'secondary' : 'ghost'}
-              class="workspace-item"
-              type="button"
-              onclick={() => selectWorkspace(workspace.id)}
-            >
-              <span class="workspace-copy">
-                <strong>{workspace.label}</strong>
-                <small>{workspace.path}</small>
-              </span>
-              <span class:trusted={workspace.trust === 'trusted'} class="trust-dot" title={workspace.trust}></span>
-            </Button>
+            <div class:selected={workspace.id === selectedWorkspaceId} class="workspace-item-row">
+              <Button
+                variant={workspace.id === selectedWorkspaceId ? 'secondary' : 'ghost'}
+                class="workspace-item"
+                type="button"
+                onclick={() => selectWorkspace(workspace.id)}
+              >
+                <span class="workspace-copy">
+                  <strong>{workspace.label}</strong>
+                  <small>{workspace.path}</small>
+                </span>
+                <span class:trusted={workspace.trust === 'trusted'} class="trust-dot workspace-trust-dot" title={workspace.trust === 'trusted' ? '可信' : '待确认'}></span>
+              </Button>
+              <div class="workspace-item-actions" aria-label={`${workspace.label} 管理操作`}>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  type="button"
+                  aria-label={workspace.trust === 'trusted' ? '撤销信任' : '标记为可信'}
+                  title={workspace.trust === 'trusted' ? '撤销信任' : '标记为可信'}
+                  onclick={(event) => { event.stopPropagation(); void toggleTrust(workspace); }}
+                  disabled={busy}
+                >
+                  {#if workspace.trust === 'trusted'}<ShieldOffIcon size={14} />{:else}<ShieldCheckIcon size={14} />{/if}
+                </Button>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  type="button"
+                  aria-label="移除工作区"
+                  title="移除工作区"
+                  onclick={(event) => { event.stopPropagation(); void deleteWorkspace(workspace); }}
+                  disabled={busy}
+                >
+                  <Trash2Icon size={14} />
+                </Button>
+              </div>
+            </div>
           {/each}
         {/if}
       </div>
@@ -1170,18 +1241,74 @@
           {#if sessions.length > 0}
             <div class="session-list" aria-label="Agent 会话列表">
               {#each sessions as session (session.id)}
-                <Button
-                  variant={session.id === selectedSessionId ? 'secondary' : 'ghost'}
-                  type="button"
-                  class="session-item"
-                  onclick={() => selectSession(session.id)}
-                >
-                  <span class={`session-agent session-agent-${session.agent}`}>{session.agent === 'pi' ? 'PI' : 'CX'}</span>
-                  <span class="session-item-copy">
-                    <span class="session-item-label">{session.label}</span>
-                    <span class="session-item-state">{sessionStateLabel(session)}</span>
-                  </span>
-                </Button>
+                <div class:selected={session.id === selectedSessionId} class:is-renaming={renamingSessionId === session.id} class="session-item-row">
+                  {#if renamingSessionId === session.id}
+                    <div class="session-rename-inline">
+                      <Input
+                        bind:value={sessionLabelDraft}
+                        aria-label="会话名称"
+                        maxlength="120"
+                        onkeydown={(event) => {
+                          if (event.key === 'Enter') {
+                            event.preventDefault();
+                            void saveSessionRename();
+                          } else if (event.key === 'Escape') {
+                            cancelRenameSession();
+                          }
+                        }}
+                      />
+                      <Button variant="outline" size="icon" type="button" aria-label="保存会话名称" title="保存" onclick={() => void saveSessionRename()} disabled={busy || !sessionLabelDraft.trim()}>
+                        <CheckIcon size={14} />
+                      </Button>
+                      <Button variant="ghost" size="icon" type="button" aria-label="取消改名" title="取消" onclick={cancelRenameSession} disabled={busy}>
+                        <XIcon size={14} />
+                      </Button>
+                    </div>
+                  {:else}
+                    <Button
+                      variant={session.id === selectedSessionId ? 'secondary' : 'ghost'}
+                      type="button"
+                      class="session-item"
+                      onclick={() => selectSession(session.id)}
+                    >
+                      <span class={`session-agent session-agent-${session.agent}`}>{session.agent === 'pi' ? 'PI' : 'CX'}</span>
+                      <span class="session-item-copy">
+                        <span class="session-item-label">{session.label}</span>
+                        <span class="session-item-state">{sessionStateLabel(session)}</span>
+                      </span>
+                    </Button>
+                    <div class="session-item-actions" aria-label={`${session.label} 操作`}>
+                      {#if session.archived}
+                        <Button variant="ghost" size="icon" type="button" aria-label="取消归档" title="取消归档" onclick={() => void unarchiveSession(session.id)} disabled={busy}>
+                          <ArchiveRestoreIcon size={13} />
+                        </Button>
+                      {:else if session.agent === 'codex'}
+                        <Button variant="ghost" size="icon" type="button" aria-label="创建分支" title="分支" onclick={() => void forkSession(session.id)} disabled={busy || isSessionRunning(session)}>
+                          <GitBranchIcon size={13} />
+                        </Button>
+                        <Button variant="ghost" size="icon" type="button" aria-label="归档会话" title="归档" onclick={() => requestArchiveSession(session.id)} disabled={busy || isSessionRunning(session)}>
+                          <ArchiveIcon size={13} />
+                        </Button>
+                        <Button variant="ghost" size="icon" type="button" aria-label="关闭会话" title="关闭" onclick={() => void closeSession(session.id)} disabled={busy || isSessionRunning(session)}>
+                          <XIcon size={13} />
+                        </Button>
+                        <Button variant="ghost" size="icon" type="button" aria-label="读取线程" title="读取线程" onclick={() => void syncCodexThread(session.id)} disabled={threadBusy || busy}>
+                          <RefreshCwIcon size={13} />
+                        </Button>
+                      {:else}
+                        <Button variant="ghost" size="icon" type="button" aria-label="归档会话" title="归档" onclick={() => requestArchiveSession(session.id)} disabled={busy || isSessionRunning(session)}>
+                          <ArchiveIcon size={13} />
+                        </Button>
+                        <Button variant="ghost" size="icon" type="button" aria-label="关闭会话" title="关闭" onclick={() => void closeSession(session.id)} disabled={busy || isSessionRunning(session)}>
+                          <XIcon size={13} />
+                        </Button>
+                      {/if}
+                      <Button variant="ghost" size="icon" type="button" aria-label="改名" title="改名" onclick={() => beginRenameSession(session.id)} disabled={busy}>
+                        <PencilIcon size={13} />
+                      </Button>
+                    </div>
+                  {/if}
+                </div>
               {/each}
             </div>
           {:else}
@@ -1215,48 +1342,7 @@
           {/if}
         </div>
       </CardHeader>
-      <Separator />
-
       {#if selectedWorkspace}
-        <div class="session-toolbar">
-          {#if selectedSession}
-            {#if renamingSessionId === selectedSession.id}
-              <Input
-                class="session-rename-input"
-                bind:value={sessionLabelDraft}
-                aria-label="会话名称"
-                maxlength="120"
-                onkeydown={(event) => {
-                  if (event.key === 'Enter') {
-                    event.preventDefault();
-                    void saveSessionRename();
-                  } else if (event.key === 'Escape') {
-                    cancelRenameSession();
-                  }
-                }}
-              />
-              <Button variant="outline" size="sm" type="button" onclick={() => void saveSessionRename()} disabled={busy || !sessionLabelDraft.trim()}>保存</Button>
-              <Button variant="ghost" size="sm" type="button" onclick={cancelRenameSession} disabled={busy}>取消</Button>
-            {:else if sessionArchived}
-              <Badge variant="secondary">已归档</Badge>
-              <Button variant="outline" size="sm" type="button" onclick={() => void unarchiveSession()} disabled={busy}>取消归档</Button>
-            {:else if selectedSession.agent === 'codex'}
-              <Button variant="ghost" size="sm" type="button" onclick={() => void forkSession()} disabled={busy || sessionRunning}>分支</Button>
-              <Button variant="ghost" size="sm" type="button" onclick={requestArchiveSession} disabled={busy || sessionRunning}>归档</Button>
-              <Button variant="ghost" size="sm" type="button" onclick={() => void closeSession()} disabled={busy || sessionRunning}>关闭</Button>
-              <Button variant="ghost" size="sm" type="button" onclick={() => void syncCodexThread(selectedSession.id)} disabled={threadBusy || busy}>
-                <RefreshCwIcon size={13} /> 读取线程
-              </Button>
-            {:else}
-              <Badge variant="outline">SDK host · 只读工具</Badge>
-              <Button variant="ghost" size="sm" type="button" onclick={requestArchiveSession} disabled={busy || sessionRunning}>归档</Button>
-              <Button variant="ghost" size="sm" type="button" onclick={() => void closeSession()} disabled={busy || sessionRunning}>关闭</Button>
-            {/if}
-            {#if renamingSessionId !== selectedSession.id}
-              <Button variant="ghost" size="sm" type="button" onclick={beginRenameSession} disabled={busy}>改名</Button>
-            {/if}
-          {/if}
-        </div>
         <Separator />
 
         {#if usageSnapshot}
@@ -1375,6 +1461,13 @@
               </CardContent>
             </Card>
           {/each}
+        </div>
+      {/if}
+
+      {#if agentActivityLabel}
+        <div class="agent-activity" role="status" aria-live="polite">
+          <span class="activity-dots" aria-hidden="true"><span></span><span></span><span></span></span>
+          <span>{agentActivityLabel}</span>
         </div>
       {/if}
 
@@ -1508,12 +1601,6 @@
         <Card class="trust-card">
           <div class="trust-card-heading"><ShieldCheckIcon size={16} /><strong>工作区信任</strong></div>
           <p>{selectedWorkspace.trust === 'trusted' ? '当前目录已允许 Agent 操作。' : '确认目录来源后再启用 Agent 操作。'}</p>
-          <div class="trust-actions">
-            <Button variant="outline" size="sm" type="button" onclick={() => void toggleTrust(selectedWorkspace)} disabled={busy}>
-              {selectedWorkspace.trust === 'trusted' ? '撤销信任' : '标记为可信'}
-            </Button>
-            <Button variant="ghost" size="sm" type="button" onclick={() => void deleteWorkspace(selectedWorkspace)} disabled={busy}>移除</Button>
-          </div>
         </Card>
       {/if}
 
