@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import path from "node:path";
 import test from "node:test";
-import { AgentEventReplay, makeAgentEvent } from "../probes/lib/agent-event-replay.mjs";
+import { AgentEventReplay, checkCapabilities, makeAgentEvent } from "../probes/lib/agent-event-replay.mjs";
 
 const root = path.resolve(process.cwd());
 
@@ -297,4 +297,111 @@ test("replay clears pending approvals after adapter crash", async () => {
   assert.equal(snapshot.pendingApprovalCount, 0);
   assert.equal(snapshot.state, "running");
   assert.equal(snapshot.rejectedCount, 0);
+});
+
+test("interleaved Codex and Pi bindings cannot cross-pollute", () => {
+  const codex = new AgentEventReplay({
+    agent: "codex",
+    workspaceId: "workspace-1",
+    sessionId: "codex-session",
+    externalSessionId: "codex-thread",
+    generationId: "codex-generation",
+  });
+  const pi = new AgentEventReplay({
+    agent: "pi",
+    workspaceId: "workspace-1",
+    sessionId: "pi-session",
+    externalSessionId: "pi-session-file",
+    generationId: "pi-generation",
+  });
+  const codexEvent = makeAgentEvent({
+    agent: "codex",
+    workspaceId: "workspace-1",
+    sessionId: "codex-session",
+    externalSessionId: "codex-thread",
+    generationId: "codex-generation",
+    sequence: 0,
+    type: "turn.started",
+    payload: { status: "running" },
+  });
+  const piEvent = makeAgentEvent({
+    agent: "pi",
+    workspaceId: "workspace-1",
+    sessionId: "pi-session",
+    externalSessionId: "pi-session-file",
+    generationId: "pi-generation",
+    sequence: 0,
+    type: "turn.started",
+    payload: { status: "running" },
+  });
+  assert.equal(codex.accept(codexEvent).accepted, true);
+  assert.equal(pi.accept(piEvent).accepted, true);
+  assert.equal(codex.accept({ ...piEvent, eventId: "cross-agent-event" }).reason, "invalid");
+  assert.equal(pi.accept({ ...codexEvent, eventId: "cross-session-event" }).reason, "invalid");
+  assert.equal(codex.snapshot().acceptedCount, 1);
+  assert.equal(pi.snapshot().acceptedCount, 1);
+});
+
+test("unsupported adapter capabilities are explicit", () => {
+  assert.deepEqual(
+    checkCapabilities(["streaming", "abort"], ["streaming", "fork"]),
+    { supported: false, missing: ["fork"] },
+  );
+  assert.deepEqual(
+    checkCapabilities(["streaming", "abort", "session-tree"], ["streaming", "abort"]),
+    { supported: true, missing: [] },
+  );
+});
+
+test("a crashed generation is recoverable without accepting its late events", () => {
+  const replay = new AgentEventReplay({
+    agent: "pi",
+    workspaceId: "workspace-1",
+    sessionId: "pi-session",
+    externalSessionId: "pi-session-file",
+    generationId: "generation-1",
+  });
+  const firstTurn = makeAgentEvent({
+    agent: "pi",
+    workspaceId: "workspace-1",
+    sessionId: "pi-session",
+    externalSessionId: "pi-session-file",
+    generationId: "generation-1",
+    sequence: 0,
+    type: "turn.started",
+    turnId: "turn-1",
+    payload: { status: "running" },
+  });
+  const crashed = makeAgentEvent({
+    agent: "pi",
+    workspaceId: "workspace-1",
+    sessionId: "pi-session",
+    externalSessionId: "pi-session-file",
+    generationId: "generation-1",
+    sequence: 1,
+    type: "adapter.crashed",
+    turnId: "turn-1",
+    payload: { reason: "host exited" },
+  });
+  assert.equal(replay.accept(firstTurn).accepted, true);
+  assert.equal(replay.accept(crashed).accepted, true);
+  assert.equal(replay.snapshot().state, "interrupted");
+
+  replay.restart("generation-2");
+  assert.equal(replay.accept({ ...firstTurn, eventId: "late-old-turn", sequence: 42 }).reason, "stale_generation");
+  const resumed = makeAgentEvent({
+    agent: "pi",
+    workspaceId: "workspace-1",
+    sessionId: "pi-session",
+    externalSessionId: "pi-session-file",
+    generationId: "generation-2",
+    sequence: 0,
+    eventId: "resumed-turn",
+    type: "turn.started",
+    turnId: "turn-2",
+    payload: { status: "running" },
+  });
+  assert.equal(replay.accept(resumed).accepted, true);
+  assert.equal(replay.snapshot().state, "running");
+  assert.equal(replay.snapshot().ignoredCount, 1);
 });

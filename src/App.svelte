@@ -116,6 +116,16 @@
   let sessionFilter = $state<SessionFilter>('active');
   let renamingSessionId = $state<string | null>(null);
   let sessionLabelDraft = $state('');
+  let timelineVisibleCount = $state(80);
+  let usageSnapshot = $state<Record<string, unknown> | null>(null);
+  let retryPrompt = $state<string | null>(null);
+  let retryReason = $state<string | null>(null);
+  let lastSubmittedPrompt = $state<string | null>(null);
+
+  const visibleTimeline = $derived(
+    timeline.slice(Math.max(0, timeline.length - timelineVisibleCount)),
+  );
+  const hiddenTimelineCount = $derived(Math.max(0, timeline.length - visibleTimeline.length));
 
   const selectedWorkspace = $derived(
     workspaces.find((workspace) => workspace.id === selectedWorkspaceId) ?? null,
@@ -218,6 +228,9 @@
       codexThreadSnapshot = null;
       piTree = null;
       piNavigationEntryId = null;
+      usageSnapshot = null;
+      retryPrompt = null;
+      retryReason = null;
     }
   }
 
@@ -277,7 +290,10 @@
 
   async function refreshTimeline(sessionId: string) {
     const loadedTimeline = await getTimeline(sessionId);
-    if (sessionId === selectedSessionId) timeline = loadedTimeline;
+    if (sessionId === selectedSessionId) {
+      timeline = loadedTimeline;
+      timelineVisibleCount = 80;
+    }
   }
 
   async function refreshPiTree(sessionId: string) {
@@ -340,6 +356,15 @@
         discarded > 0
           ? `${agentLabel} 进程已退出，${discarded} 个待审批请求已清除；请重新发送。`
           : `${agentLabel} 进程已退出，会话已中断；可重新发送以恢复。`;
+      retryPrompt = latestUserPrompt(event.turnId);
+      retryReason = stringPayload(event.payload.reason) ?? 'Agent 进程异常退出';
+    }
+
+    if (event.sessionId === selectedSessionId && event.type === 'usage.updated') {
+      const usage = event.payload.usage;
+      usageSnapshot = usage && typeof usage === 'object' && !Array.isArray(usage)
+        ? (usage as Record<string, unknown>)
+        : null;
     }
 
     if (event.sessionId === selectedSessionId && event.type === 'message.delta') {
@@ -394,7 +419,7 @@
                 content: delta
                   ? item.content + delta
                   : event.type === 'tool.started' || output
-                    ? summary
+                    ? output ?? summary
                     : item.content,
                 status,
                 updatedAt: event.occurredAt,
@@ -410,7 +435,7 @@
             turnId: event.turnId,
             externalMessageId,
             role: 'tool',
-            content: summary,
+            content: output ?? summary,
             status,
             createdAt: event.occurredAt,
             updatedAt: event.occurredAt,
@@ -419,7 +444,16 @@
       }
     }
 
+    if (event.sessionId === selectedSessionId && event.type === 'turn.failed') {
+      retryPrompt = latestUserPrompt(event.turnId);
+      retryReason = errorPayload(event.payload.error) ?? '本回合执行失败';
+    }
+
     if (event.type === 'message.completed' || event.type === 'turn.completed' || event.type === 'turn.failed') {
+      if (event.type === 'turn.completed' && event.payload.status !== 'failed' && event.payload.status !== 'interrupted') {
+        retryPrompt = null;
+        retryReason = null;
+      }
       void refreshSessions(event.workspaceId);
     }
   }
@@ -432,6 +466,56 @@
     if (typeof value === 'string') return value;
     if (typeof value === 'number' && Number.isFinite(value)) return String(value);
     return null;
+  }
+
+  function errorPayload(value: unknown): string | null {
+    if (typeof value === 'string' && value.trim()) return value;
+    if (value && typeof value === 'object') {
+      const message = (value as Record<string, unknown>).message ?? (value as Record<string, unknown>).error;
+      if (typeof message === 'string' && message.trim()) return message;
+    }
+    return null;
+  }
+
+  function latestUserPrompt(turnId: string | null): string | null {
+    for (let index = timeline.length - 1; index >= 0; index -= 1) {
+      const item = timeline[index];
+      if (item.role === 'user' && (!turnId || item.turnId === turnId)) return item.content;
+    }
+    return lastSubmittedPrompt;
+  }
+
+  function usageValue(key: 'input' | 'output' | 'total'): number | null {
+    if (!usageSnapshot) return null;
+    const usage = usageSnapshot as Record<string, unknown>;
+    const total = usage.total;
+    if (key === 'total') {
+      if (typeof usage.totalTokens === 'number') return usage.totalTokens;
+      if (total && typeof total === 'object' && !Array.isArray(total)) {
+        const value = (total as Record<string, unknown>).totalTokens;
+        if (typeof value === 'number') return value;
+      }
+      return typeof total === 'number' ? total : null;
+    }
+    if (typeof usage[key] === 'number') return usage[key] as number;
+    if (total && typeof total === 'object' && !Array.isArray(total)) {
+      const value = (total as Record<string, unknown>)[`${key}Tokens`];
+      if (typeof value === 'number') return value;
+    }
+    return null;
+  }
+
+  function isDiffContent(content: string): boolean {
+    return /(^diff --git |^@@ |^\+\+\+ |^--- )/m.test(content);
+  }
+
+  function loadOlderTimeline() {
+    timelineVisibleCount = Math.min(timeline.length, timelineVisibleCount + 80);
+  }
+
+  function handleTimelineScroll(event: Event) {
+    const target = event.currentTarget as HTMLElement;
+    if (target.scrollTop < 48 && hiddenTimelineCount > 0) loadOlderTimeline();
   }
 
   function approvalFromEvent(event: AgentEvent): ApprovalRequest | null {
@@ -498,6 +582,10 @@
       sessions = [session, ...sessions.filter(({ id }) => id !== session.id)];
       selectedSessionId = session.id;
       timeline = [];
+      usageSnapshot = null;
+      retryPrompt = null;
+      retryReason = null;
+      lastSubmittedPrompt = null;
       void refreshCodexThreads(selectedWorkspace.id);
       notice = 'Codex 会话已启动，可以发送第一条消息。';
     } catch (error) {
@@ -524,6 +612,10 @@
       sessions = [session, ...sessions.filter(({ id }) => id !== session.id)];
       selectedSessionId = session.id;
       timeline = [];
+      usageSnapshot = null;
+      retryPrompt = null;
+      retryReason = null;
+      lastSubmittedPrompt = null;
       piTree = null;
       piNavigationEntryId = null;
       void refreshPiTree(session.id);
@@ -553,6 +645,7 @@
 
     busy = true;
     errorMessage = null;
+    lastSubmittedPrompt = input;
     try {
       let session = selectedSession;
       if (!session) {
@@ -572,6 +665,12 @@
     } finally {
       busy = false;
     }
+  }
+
+  async function retryLastPrompt() {
+    if (!retryPrompt || !selectedSession || sessionRunning || selectedSession.archived) return;
+    composerText = retryPrompt;
+    await sendPrompt();
   }
 
   async function abortPrompt() {
@@ -794,6 +893,11 @@
 
   function selectSession(id: string) {
     selectedSessionId = id;
+    usageSnapshot = null;
+    retryPrompt = null;
+    retryReason = null;
+    lastSubmittedPrompt = null;
+    timelineVisibleCount = 80;
     if (desktop) {
       void refreshTimeline(id);
       void refreshCodexThread(id);
@@ -1081,9 +1185,34 @@
         </div>
         <Separator />
 
+        {#if usageSnapshot}
+          <div class="usage-strip" aria-label="Token 使用量">
+            <span>Token</span>
+            {#if usageValue('input') !== null}<span>输入 {usageValue('input')}</span>{/if}
+            {#if usageValue('output') !== null}<span>输出 {usageValue('output')}</span>{/if}
+            {#if usageValue('total') !== null}<span>总计 {usageValue('total')}</span>{/if}
+          </div>
+        {/if}
+
+        {#if retryPrompt && selectedSession && !sessionRunning && !sessionArchived}
+          <div class="timeline-retry" role="status">
+            <span>{retryReason ?? '上一回合未完成，可以重试。'}</span>
+            <Button variant="outline" size="sm" type="button" onclick={() => void retryLastPrompt()} disabled={busy}>重试上一条</Button>
+          </div>
+        {/if}
+
         {#if timeline.length > 0}
-          <div class="timeline-feed" aria-live="polite">
-            {#each timeline as item (item.id)}
+          <div class="timeline-feed" aria-live="polite" onscroll={handleTimelineScroll}>
+            {#if hiddenTimelineCount > 0}
+              <Button
+                class="timeline-load-more"
+                variant="ghost"
+                size="sm"
+                type="button"
+                onclick={loadOlderTimeline}
+              >加载更早的 {Math.min(hiddenTimelineCount, 80)} 条消息</Button>
+            {/if}
+            {#each visibleTimeline as item (item.id)}
               <Card
                 as="article"
                 class={`timeline-entry ${item.role === 'assistant' ? 'assistant-entry' : item.role === 'user' ? 'user-entry' : item.role === 'tool' ? 'tool-entry' : item.role === 'system' ? 'system-entry' : ''}`}
@@ -1092,7 +1221,14 @@
                   <Badge variant={item.role === 'assistant' ? 'secondary' : item.role === 'tool' ? 'outline' : 'outline'}>{item.role === 'assistant' ? (selectedSession?.agent === 'pi' ? 'PI' : 'CODEX') : item.role.toUpperCase()}</Badge>
                   <Badge variant="outline">{item.status}</Badge>
                 </div>
-                <div class="entry-content">{item.content || '…'}</div>
+                {#if item.role === 'tool'}
+                  <details class="tool-output" open={item.content.length < 180}>
+                    <summary>{isDiffContent(item.content) ? '查看 diff' : '查看工具输出'}</summary>
+                    <pre class:diff-content={isDiffContent(item.content)}>{item.content || '…'}</pre>
+                  </details>
+                {:else}
+                  <div class="entry-content">{item.content || '…'}</div>
+                {/if}
               </Card>
             {/each}
           </div>

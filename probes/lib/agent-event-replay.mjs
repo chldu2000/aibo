@@ -235,3 +235,9 @@ export function makeAgentEvent({
     rawRef: null,
   };
 }
+
+export function checkCapabilities(advertised, required) {
+  const available = new Set(Array.isArray(advertised) ? advertised : []);
+  const missing = (Array.isArray(required) ? required : []).filter((capability) => !available.has(capability));
+  return { supported: missing.length === 0, missing };
+}

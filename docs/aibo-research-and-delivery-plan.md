@@ -446,14 +446,14 @@ V1 后为 Pi 增加可选 container/VM/平台 sandbox runner；统一权限 prof
 
 退出条件：与 Codex 共用同一套时间线、composer 和 session state UI；恢复原生 Pi session 不丢失分支关系。
 
-### Phase 4：统一会话体验（4–6 天，当前阶段）
+### Phase 4：统一会话体验（4–6 天，macOS 实现与离线门禁完成）
 
 - 会话搜索、改名、归档、状态筛选。
 - 时间线虚拟化、工具输出、diff、usage、错误重试。
 - 进程 generation、应用退出与重启恢复。
 - adapter contract test harness，使用录制协议 fixture 做回放。
 
-退出条件：同一工作区可并行运行 Codex/Pi，会话状态不会串线，异常退出可解释并可恢复。
+退出条件：同一工作区可并行运行 Codex/Pi，会话状态不会串线，异常退出可解释并可恢复。macOS 的统一 API/UI、fixture replay、generation 隔离和恢复契约已完成；真实模型 smoke 依赖 provider/网络可用性时复跑。
 
 ### Phase 5：`@` 与 Handoff v1（6–10 天）
 
