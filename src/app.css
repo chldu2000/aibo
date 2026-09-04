@@ -223,9 +223,12 @@ dd { max-width: 68%; overflow: hidden; margin: 0; color: var(--aibo-muted); font
 .settings-runtime-list div { border-top: 1px solid var(--aibo-border); padding-top: 9px; }
 .settings-runtime-list div:first-child { border-top: 0; padding-top: 0; }
 .settings-footer { display: flex; justify-content: flex-end; gap: 8px; border-top: 1px solid var(--aibo-border); padding: 13px 20px; }
-.toast { position: fixed; right: 26px; bottom: 24px; max-width: 360px; padding: 11px 14px; font-size: 11px; }
+.toast-region { position: fixed; z-index: 50; top: 54px; left: 50%; display: grid; width: min(520px, calc(100vw - 32px)); gap: 8px; pointer-events: none; transform: translateX(-50%); }
+.toast { width: 100%; max-width: none; padding: 11px 14px; box-shadow: 0 12px 36px #00000066; font-size: 11px; line-height: 1.5; overflow-wrap: anywhere; animation: toast-enter 160ms ease-out; }
 .error-toast { border-color: var(--aibo-danger-border); color: var(--aibo-danger-text); background: var(--aibo-danger-surface); }
 .notice-toast { border-color: var(--aibo-success-border); color: var(--aibo-success-text); background: var(--aibo-success-surface); }
+@keyframes toast-enter { from { opacity: 0; transform: translateY(-6px); } to { opacity: 1; transform: translateY(0); } }
+@media (prefers-reduced-motion: reduce) { .toast { animation: none; } }
 .alert-dialog-overlay { position: fixed; z-index: 20; inset: 0; display: grid; place-items: center; padding: 24px; background: #00000099; }
 .alert-dialog { width: min(420px, 100%); border-color: var(--aibo-border-strong); background: var(--aibo-surface); box-shadow: 0 20px 60px #00000066; }
 .alert-dialog-header { padding: 18px 18px 8px; }

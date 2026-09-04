@@ -143,6 +143,7 @@
   let settingsOpen = $state(false);
   let promptInFlight = $state(false);
   let noticeTimer: ReturnType<typeof setTimeout> | undefined;
+  let errorTimer: ReturnType<typeof setTimeout> | undefined;
 
   const visibleTimeline = $derived(
     timeline.slice(Math.max(0, timeline.length - timelineVisibleCount)),
@@ -188,6 +189,19 @@
       noticeTimer = undefined;
     }, 3600);
     noticeTimer = timer;
+    return () => clearTimeout(timer);
+  });
+
+  $effect(() => {
+    const message = errorMessage;
+    if (errorTimer) clearTimeout(errorTimer);
+    errorTimer = undefined;
+    if (!message) return;
+    const timer = setTimeout(() => {
+      if (errorMessage === message) errorMessage = null;
+      errorTimer = undefined;
+    }, 6000);
+    errorTimer = timer;
     return () => clearTimeout(timer);
   });
 
@@ -1882,8 +1896,20 @@
     </div>
   {/if}
 
-  {#if errorMessage}<Card class="toast error-toast">{errorMessage}</Card>{/if}
-  {#if notice}<Card class="toast notice-toast">{notice}</Card>{/if}
+  {#if errorMessage || notice}
+    <div class="toast-region" aria-label="应用通知">
+      {#if errorMessage}
+        <Card class="toast error-toast" role="alert" aria-live="assertive" aria-atomic="true">
+          {errorMessage}
+        </Card>
+      {/if}
+      {#if notice}
+        <Card class="toast notice-toast" role="status" aria-live="polite" aria-atomic="true">
+          {notice}
+        </Card>
+      {/if}
+    </div>
+  {/if}
   <AlertDialog
     open={archiveConfirmationSessionId !== null}
     title="归档会话？"
