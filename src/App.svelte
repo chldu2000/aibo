@@ -107,6 +107,36 @@
     },
   ];
 
+  const selectedSessionStorageKey = 'aibo.selected-session';
+  type PersistedSelection = { workspaceId: string; sessionId: string };
+
+  function readPersistedSelection(): PersistedSelection | null {
+    if (typeof window === 'undefined') return null;
+    try {
+      const raw = window.localStorage.getItem(selectedSessionStorageKey);
+      if (!raw) return null;
+      const parsed: unknown = JSON.parse(raw);
+      if (!parsed || typeof parsed !== 'object') return null;
+      const value = parsed as Record<string, unknown>;
+      return typeof value.workspaceId === 'string' && value.workspaceId.trim() &&
+          typeof value.sessionId === 'string' && value.sessionId.trim()
+        ? { workspaceId: value.workspaceId, sessionId: value.sessionId }
+        : null;
+    } catch {
+      return null;
+    }
+  }
+
+  function writePersistedSelection(selection: PersistedSelection | null) {
+    if (typeof window === 'undefined') return;
+    try {
+      if (selection) window.localStorage.setItem(selectedSessionStorageKey, JSON.stringify(selection));
+      else window.localStorage.removeItem(selectedSessionStorageKey);
+    } catch {
+      // Storage can be unavailable in a restricted WebView; session state still works in memory.
+    }
+  }
+
   let workspaces = $state<Workspace[]>([]);
   let diagnostics = $state<AgentDiagnostic[]>([]);
   let workspaceSessionMap = $state<Record<string, Session[]>>({});
@@ -118,6 +148,8 @@
   let selectedWorkspaceId = $state<string | null>(null);
   let expandedWorkspaceIds = $state<string[]>([]);
   let selectedSessionId = $state<string | null>(null);
+  let persistedSelection = $state<PersistedSelection | null>(null);
+  let restoringSelection = $state(false);
   let sessionsLoadingWorkspaceIds = $state<string[]>([]);
   let sessionLoadGenerations = $state<Record<string, number>>({});
   let composerText = $state('');
@@ -158,9 +190,24 @@
 
   const sessions = $derived(workspaceSessionMap[selectedWorkspaceId ?? ''] ?? []);
 
-  const selectedSession = $derived(
-    sessions.find((session) => session.id === selectedSessionId) ?? null,
-  );
+  const selectedSession = $derived.by(() => {
+    if (!selectedSessionId) return null;
+    for (const workspaceSessions of Object.values(workspaceSessionMap)) {
+      const session = workspaceSessions.find((item) => item.id === selectedSessionId);
+      if (session) return session;
+    }
+    return null;
+  });
+
+  $effect(() => {
+    if (desktop && !restoringSelection) {
+      writePersistedSelection(
+        selectedSession
+          ? { workspaceId: selectedSession.workspaceId, sessionId: selectedSession.id }
+          : null,
+      );
+    }
+  });
 
   const readyAgents = $derived(diagnostics.filter((agent) => agent.status === 'ready').length);
   const sessionRunning = $derived(isSessionRunning(selectedSession));
@@ -216,8 +263,8 @@
     let stopListening: (() => void) | undefined;
     let disposed = false;
     void (async () => {
-      desktop = isTauri();
-      if (!desktop) {
+      const runningDesktop = isTauri();
+      if (!runningDesktop) {
         workspaces = previewWorkspaces;
         diagnostics = previewDiagnostics;
         selectedWorkspaceId = previewWorkspaces[0]?.id ?? null;
@@ -225,13 +272,22 @@
         return;
       }
 
+      restoringSelection = true;
+      persistedSelection = readPersistedSelection();
+      desktop = true;
+
       const unlisten = await listenToAgentEvents(handleAgentEvent);
       if (disposed) {
         unlisten();
+        restoringSelection = false;
         return;
       }
       stopListening = unlisten;
-      await refresh();
+      try {
+        await refresh();
+      } finally {
+        restoringSelection = false;
+      }
     })();
 
     return () => {
@@ -254,10 +310,13 @@
       ]);
       workspaces = loadedWorkspaces;
       diagnostics = loadedDiagnostics;
+      const rememberedWorkspaceId = restoringSelection ? persistedSelection?.workspaceId : null;
       selectedWorkspaceId =
-        selectedWorkspaceId && loadedWorkspaces.some(({ id }) => id === selectedWorkspaceId)
-          ? selectedWorkspaceId
-          : (loadedWorkspaces[0]?.id ?? null);
+        rememberedWorkspaceId && loadedWorkspaces.some(({ id }) => id === rememberedWorkspaceId)
+          ? rememberedWorkspaceId
+          : selectedWorkspaceId && loadedWorkspaces.some(({ id }) => id === selectedWorkspaceId)
+            ? selectedWorkspaceId
+            : (loadedWorkspaces[0]?.id ?? null);
       const activeWorkspaceId = selectedWorkspaceId;
       const validWorkspaceIds = new Set(loadedWorkspaces.map(({ id }) => id));
       expandedWorkspaceIds = expandedWorkspaceIds.filter((id) => validWorkspaceIds.has(id));
@@ -270,7 +329,7 @@
         await refreshCodexThreads(activeWorkspaceId);
       } else {
         workspaceSessionMap = {};
-        timeline = [];
+        clearSelectedSessionContext();
         codexThreads = [];
         codexThreadSnapshot = null;
         piTree = null;
@@ -290,6 +349,10 @@
       sessionsLoadingWorkspaceIds = [...sessionsLoadingWorkspaceIds, workspaceId];
     }
     try {
+      const previousSessions = getWorkspaceSessions(workspaceId);
+      const selectedSessionWasInWorkspace = Boolean(
+        selectedSessionId && previousSessions.some(({ id }) => id === selectedSessionId),
+      );
       const loadedSessions = await listSessions(workspaceId, {
         search: sessionSearch,
         statusFilter: sessionFilter,
@@ -297,22 +360,33 @@
       if (sessionLoadGenerations[workspaceId] !== generation) return;
       workspaceSessionMap = { ...workspaceSessionMap, [workspaceId]: loadedSessions };
       if (workspaceId !== selectedWorkspaceId) return;
-      selectedSessionId =
-        selectedSessionId && loadedSessions.some(({ id }) => id === selectedSessionId)
-          ? selectedSessionId
-          : (loadedSessions[0]?.id ?? null);
+
+      const rememberedSessionId =
+        restoringSelection && persistedSelection?.workspaceId === workspaceId
+          ? persistedSelection.sessionId
+          : null;
+      const selectedSessionIsVisible = Boolean(
+        selectedSessionId && loadedSessions.some(({ id }) => id === selectedSessionId),
+      );
+      const restoredSessionIsVisible = Boolean(
+        rememberedSessionId && loadedSessions.some(({ id }) => id === rememberedSessionId),
+      );
+      if (!selectedSessionIsVisible && restoredSessionIsVisible) {
+        selectedSessionId = rememberedSessionId;
+      } else if (!selectedSessionIsVisible && !restoredSessionIsVisible) {
+        // Never pick an arbitrary first item. An absent selection is intentional (for
+        // example after archiving/closing the current session).
+        if (selectedSessionWasInWorkspace || selectedSessionId === null) {
+          clearSelectedSessionContext();
+        }
+        return;
+      }
       if (selectedSessionId) {
         await refreshTimeline(selectedSessionId);
         void refreshCodexThread(selectedSessionId);
         void refreshPiTree(selectedSessionId);
       } else {
-        timeline = [];
-        codexThreadSnapshot = null;
-        piTree = null;
-        piNavigationEntryId = null;
-        usageSnapshot = null;
-        retryPrompt = null;
-        retryReason = null;
+        clearSelectedSessionContext();
       }
     } finally {
       if (sessionLoadGenerations[workspaceId] === generation) {
@@ -345,6 +419,18 @@
       if (session) return session;
     }
     return null;
+  }
+
+  function clearSelectedSessionContext() {
+    selectedSessionId = null;
+    timeline = [];
+    codexThreadSnapshot = null;
+    piTree = null;
+    piNavigationEntryId = null;
+    usageSnapshot = null;
+    retryPrompt = null;
+    retryReason = null;
+    lastSubmittedPrompt = null;
   }
 
   async function refreshCodexThreads(workspaceId: string, announce = false) {
@@ -964,12 +1050,7 @@
       const remaining = getWorkspaceSessions(target.workspaceId).filter(({ id }) => id !== closingId);
       updateWorkspaceSessions(target.workspaceId, () => remaining);
       if (selectedSessionId === closingId) {
-        selectedSessionId = remaining[0]?.id ?? null;
-        codexThreadSnapshot = null;
-        piTree = null;
-        piNavigationEntryId = null;
-        timeline = selectedSessionId ? await getTimeline(selectedSessionId) : [];
-        if (selectedSessionId) void refreshPiTree(selectedSessionId);
+        clearSelectedSessionContext();
       }
       notice = `${closingAgent === 'pi' ? 'Pi' : 'Codex'} 会话已关闭；已保存的时间线仍可在下次启动时读取。`;
     } catch (error) {
@@ -1029,8 +1110,9 @@
     errorMessage = null;
     try {
       const archived = await archiveSessionApi(sessionId);
+      const invalidatedCurrentSession = selectedSessionId === archived.id;
       pendingApprovals = pendingApprovals.filter((item) => item.sessionId !== archived.id);
-      codexThreadSnapshot = null;
+      if (invalidatedCurrentSession) clearSelectedSessionContext();
       void refreshCodexThreads(archived.workspaceId);
       await refreshSessions(archived.workspaceId);
       notice = `${archived.agent === 'pi' ? 'Pi 会话' : 'Codex 线程'}已归档；本地时间线仍保留。`;
@@ -1116,18 +1198,26 @@
     busy = true;
     errorMessage = null;
     try {
+      const deletingSelectedWorkspace = selectedWorkspaceId === workspace.id;
+      const deletingSelectedSession = Boolean(
+        selectedSessionId && getWorkspaceSessions(workspace.id).some(({ id }) => id === selectedSessionId),
+      );
       await removeWorkspace(workspace.id);
       workspaces = workspaces.filter(({ id }) => id !== workspace.id);
       const { [workspace.id]: _removedSessions, ...remainingSessionMap } = workspaceSessionMap;
       workspaceSessionMap = remainingSessionMap;
       expandedWorkspaceIds = expandedWorkspaceIds.filter((id) => id !== workspace.id);
-      selectedWorkspaceId = workspaces[0]?.id ?? null;
-      timeline = [];
-      codexThreads = [];
-      codexThreadSnapshot = null;
-      piTree = null;
-      piNavigationEntryId = null;
-      if (selectedWorkspaceId) {
+      selectedWorkspaceId = deletingSelectedWorkspace
+        ? (workspaces[0]?.id ?? null)
+        : selectedWorkspaceId;
+      if (deletingSelectedSession) clearSelectedSessionContext();
+      if (deletingSelectedWorkspace) {
+        codexThreads = [];
+        codexThreadSnapshot = null;
+        piTree = null;
+        piNavigationEntryId = null;
+      }
+      if (deletingSelectedWorkspace && selectedWorkspaceId) {
         if (!expandedWorkspaceIds.includes(selectedWorkspaceId)) {
           expandedWorkspaceIds = [...expandedWorkspaceIds, selectedWorkspaceId];
         }
@@ -1154,12 +1244,8 @@
     ensureWorkspaceExpanded(id);
     if (!isCurrentWorkspace) {
       createSessionWorkspaceId = null;
-      selectedSessionId = null;
-      timeline = [];
+      clearSelectedSessionContext();
       codexThreads = [];
-      codexThreadSnapshot = null;
-      piTree = null;
-      piNavigationEntryId = null;
       if (desktop) {
         void refreshSessions(id);
         void refreshCodexThreads(id);
@@ -1169,11 +1255,19 @@
 
   function selectWorkspace(id: string) {
     const workspaceExpanded = expandedWorkspaceIds.includes(id);
-    activateWorkspace(id);
     if (workspaceExpanded) {
       expandedWorkspaceIds = expandedWorkspaceIds.filter((workspaceId) => workspaceId !== id);
       if (createSessionWorkspaceId === id) createSessionWorkspaceId = null;
+    } else {
+      expandedWorkspaceIds = [...expandedWorkspaceIds, id];
+      if (desktop) {
+        void refreshSessions(id);
+        void refreshCodexThreads(id);
+      }
     }
+    // Expanding or collapsing a workspace only changes the list context. Keep the
+    // conversation currently open in the main pane until the user selects a session.
+    selectedWorkspaceId = id;
     notice = null;
   }
 
