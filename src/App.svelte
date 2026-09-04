@@ -1308,7 +1308,7 @@
     <span class="window-title">Aibo</span>
     <div class="window-actions">
       <Button variant="ghost" size="icon" type="button" aria-label="打开设置" title="设置" onclick={() => (settingsOpen = true)}>
-        <SettingsIcon size={16} />
+        <SettingsIcon size={15} />
       </Button>
     </div>
   </header>

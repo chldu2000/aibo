@@ -26,6 +26,7 @@
   --aibo-danger-surface: #450a0a;
   --aibo-danger-hover: #7f1d1d;
   --aibo-danger-text: #fecaca;
+  --aibo-titlebar-height: 36px;
   font-family: Inter, ui-sans-serif, -apple-system, BlinkMacSystemFont, "SF Pro Display", "Segoe UI", sans-serif;
   color: var(--aibo-text);
   background: var(--aibo-bg);
@@ -41,14 +42,15 @@ button { cursor: pointer; }
 button:disabled { cursor: default; opacity: 0.55; }
 
 .app-shell { height: 100%; min-height: 0; display: flex; flex-direction: column; overflow: hidden; padding: 0 18px 18px; }
-.window-titlebar { height: 42px; flex: none; display: flex; align-items: center; justify-content: space-between; margin: 0 -18px; padding: 0 18px 0 94px; background: transparent; }
-.window-title { color: var(--aibo-text); font-size: 13px; font-weight: 600; letter-spacing: -0.01em; }
+.window-titlebar { height: var(--aibo-titlebar-height); flex: none; display: flex; align-items: center; justify-content: space-between; margin: 0 -18px; padding: 0 14px 0 88px; background: transparent; }
+.window-title { color: var(--aibo-text); font-size: 12px; font-weight: 600; letter-spacing: -0.01em; }
+.window-actions [data-slot='button'] { width: 28px; height: 28px; }
 .window-actions, .agent-identity, .agent-card-head, .panel-heading, .workspace-toolbar, .trust-card-heading { display: flex; align-items: center; }
 h1, h2, h3, p { margin: 0; }
 h2 { font-size: 16px; letter-spacing: -0.02em; }
 .timeline-empty h3 { margin-top: 18px; font-size: 17px; }
 .count-pill { min-width: 24px; justify-content: center; }
-.workspace-grid { display: grid; grid-template-columns: minmax(0, 0.78fr) minmax(0, 1.85fr) minmax(0, 0.95fr); flex: 1; min-height: 0; gap: 14px; padding-top: 14px; }
+.workspace-grid { display: grid; grid-template-columns: minmax(0, 0.78fr) minmax(0, 1.85fr) minmax(0, 0.95fr); flex: 1; min-height: 0; gap: 14px; padding-top: 6px; }
 .workspace-grid > * { min-width: 0; min-height: 0; }
 .sidebar, .inspector { display: flex; min-height: 0; flex-direction: column; overflow: hidden; }
 .sidebar { border-color: transparent; border-radius: 0; background: transparent; box-shadow: none; }
@@ -209,7 +211,7 @@ dd { max-width: 68%; overflow: hidden; margin: 0; color: var(--aibo-muted); font
 .trust-card p { margin-top: 8px; color: #fde68a; font-size: 10px; line-height: 1.5; }
 .trust-actions { justify-content: space-between; gap: 10px; margin-top: 12px; }
 .inspector-footer { position: sticky; bottom: 0; z-index: 1; flex: none; border-top: 1px solid var(--aibo-border); padding: 13px 16px; background: var(--aibo-surface); }
-.settings-overlay { position: fixed; z-index: 30; inset: 0; display: grid; place-items: start end; padding: 74px 24px 24px; background: #00000066; }
+.settings-overlay { position: fixed; z-index: 30; inset: 0; display: grid; place-items: start end; padding: calc(var(--aibo-titlebar-height) + 16px) 24px 24px; background: #00000066; }
 .settings-panel { width: min(560px, calc(100vw - 48px)); max-height: calc(100vh - 98px); display: flex; flex-direction: column; overflow: hidden; border-color: var(--aibo-border-strong); background: var(--aibo-surface); box-shadow: 0 24px 80px #00000080; }
 .settings-header { flex-direction: row; align-items: flex-start; justify-content: space-between; gap: 16px; padding: 20px 20px 16px; }
 .settings-header p, .settings-section-heading p { margin-top: 5px; color: var(--aibo-subtle); font-size: 10px; line-height: 1.5; }
@@ -223,7 +225,7 @@ dd { max-width: 68%; overflow: hidden; margin: 0; color: var(--aibo-muted); font
 .settings-runtime-list div { border-top: 1px solid var(--aibo-border); padding-top: 9px; }
 .settings-runtime-list div:first-child { border-top: 0; padding-top: 0; }
 .settings-footer { display: flex; justify-content: flex-end; gap: 8px; border-top: 1px solid var(--aibo-border); padding: 13px 20px; }
-.toast-region { position: fixed; z-index: 50; top: 54px; left: 50%; display: grid; width: min(520px, calc(100vw - 32px)); gap: 8px; pointer-events: none; transform: translateX(-50%); }
+.toast-region { position: fixed; z-index: 50; top: calc(var(--aibo-titlebar-height) + 10px); left: 50%; display: grid; width: min(520px, calc(100vw - 32px)); gap: 8px; pointer-events: none; transform: translateX(-50%); }
 .toast { width: 100%; max-width: none; padding: 11px 14px; box-shadow: 0 12px 36px #00000066; font-size: 11px; line-height: 1.5; overflow-wrap: anywhere; animation: toast-enter 160ms ease-out; }
 .error-toast { border-color: var(--aibo-danger-border); color: var(--aibo-danger-text); background: var(--aibo-danger-surface); }
 .notice-toast { border-color: var(--aibo-success-border); color: var(--aibo-success-text); background: var(--aibo-success-surface); }
