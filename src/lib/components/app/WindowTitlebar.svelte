@@ -1,6 +1,5 @@
 <script lang="ts">
-  import SettingsIcon from '@lucide/svelte/icons/settings-2';
-  import { Button } from '$lib/ui-kit';
+  import { Button, Icon } from '$lib/ui-kit';
 
   type WindowTitlebarProps = {
     onOpenSettings: () => void;
@@ -13,7 +12,7 @@
   <span class="window-title">Aibo</span>
   <div class="window-actions">
     <Button variant="ghost" size="icon" type="button" aria-label="打开设置" title="设置" onclick={onOpenSettings}>
-      <SettingsIcon size={15} />
+      <Icon name="settings" size={15} />
     </Button>
   </div>
 </header>

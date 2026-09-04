@@ -7,6 +7,22 @@
  * and native attributes) and can be wired here without touching business code.
  */
 export * from './primitives';
-export type { UiKitAdapter } from './contract';
-export { activeUiKit } from './registry';
+export type {
+  AppearanceSelection,
+  UiIconName,
+  UiKitAdapter,
+  UiKitOption,
+  UiKitRegistration,
+  UiThemeRegistration,
+} from './contract';
+export {
+  activeTheme,
+  activeThemeStyle,
+  activeUiKit,
+  activeUiKitName,
+  appearanceSelection,
+  availableUiKits,
+  setUiKit,
+  setUiTheme,
+} from './registry';
 export type { UiKitName } from './registry';

@@ -12,9 +12,37 @@
 ## 添加另一套 UI Kit
 
 1. 在 `src/lib/ui-kit/kits/` 新增 adapter，并实现 `UiKitAdapter` 中的组件：`AlertDialog`、`Button`、`Badge`、`Card`、`Input`、`Textarea`、`Separator` 等。
-2. 保持现有基础接口：`variant`、`size`、`class`、`children`、原生 HTML 属性，以及 `data-slot` 标识。
-3. 在 `src/lib/ui-kit/registry.ts` 注册 adapter。
-4. 使用 `VITE_AIBO_UI_KIT=<name>` 选择构建时实现；未配置或名称错误时回退到 `shadcn`。
+2. 保持现有基础接口：`variant`、`size`、`class`、`children`、原生 HTML 属性，以及 `data-slot` 标识；语义图标通过 `Icon` 和 `UiIconName` 映射，不在页面组件中直接绑定具体图标库。
+3. 在 `src/lib/ui-kit/registry.ts` 注册 adapter，同时提供皮肤名称、默认主题和可选主题色。每个主题通过 CSS token 映射 Aibo 的语义颜色，不应在页面组件里写皮肤专属色值。
+4. 用户可在「设置 → 外观」中运行时切换皮肤和主题色。选择写入 `localStorage`，重启后恢复；`VITE_AIBO_UI_KIT=<name>` 仅作为没有本地选择时的开发默认值。
+
+`UiKitRegistration` 是皮肤入口，包含 `adapter`、`defaultThemeId` 和 `themes`。
+`UiThemeRegistration` 可注册名称、预览色块和任意 `--*` token。注册表导出的
+runtime proxy 会订阅当前 adapter，因此切换皮肤时页面已使用的 `Button`、`Card`、
+`Icon` 等基础组件会一起替换，不要求刷新窗口，也不会触碰会话状态。
+主题还需声明 `colorScheme`，使原生表单控件和滚动区域与亮色或深色外观一致。
+当前 shadcn-svelte 提供 Zinc、Blue、Emerald 和 Light，Material 3 提供 Ocean、
+Sage、Violet 和 Daylight。
+
+当前的第一个外挂样式示例是 `material3`：它使用
+[`m3-svelte`](https://github.com/KTibow/m3-svelte) 的 Material 3 交互按钮，
+并用兼容包装补齐 Aibo 所需的卡片与其他基础原语。卡片保持 Aibo 自己的
+语义元素和零布局副作用，避免第三方组件的 padding、flex 方向或交互 DOM
+改变三栏布局。可以直接在「设置 → 外观」中切换，也可以在没有已保存外观设置时指定开发默认值：
+
+```bash
+VITE_AIBO_UI_KIT=material3 pnpm run dev
+```
+
+Material 3 token 只作用于 `[data-ui-kit='material3']`，切换视觉实现不需要
+修改页面组件或业务逻辑。该 adapter 目前标记为实验性，正式发布前仍需完成
+视觉覆盖和依赖许可证审查；当前 `m3-svelte` 包采用 Apache-2.0 OR GPL-3.0-only
+双许可证，发布前需要结合桌面发行策略确认选用的许可证。
+
+Adapter 的组件需要同时满足两类约束：Aibo 页面类拥有尺寸、滚动、flex/grid
+方向和内容密度的最终决定权；皮肤拥有颜色、形状、状态层、焦点反馈、字重与
+图标语言。第三方组件若自带会改变页面结构的 padding 或 DOM 语义，应在
+adapter 内归一化，不能把覆盖补丁散落到业务组件。
 
 第三方组件库应作为 npm 依赖打包进 Tauri，不应在运行时从网络加载。组件库自带的全局 CSS 需要通过作用域或 CSS layer 接入，避免覆盖 Tauri 窗口和应用布局。
 

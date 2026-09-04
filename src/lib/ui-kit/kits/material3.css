@@ -1,0 +1,358 @@
+/*
+ * Material 3 theme bridge. The selectors are deliberately scoped to the
+ * adapter marker, so the default shadcn kit never inherits these tokens.
+ */
+.app-shell[data-ui-kit='material3'] {
+  --m3c-primary: #a8c7fa;
+  --m3c-on-primary: #062e6f;
+  --m3c-primary-container: #1a3f78;
+  --m3c-on-primary-container: #d8e2ff;
+  --m3c-secondary: #bec6dc;
+  --m3c-on-secondary: #283044;
+  --m3c-secondary-container: #3e475e;
+  --m3c-on-secondary-container: #dae2f9;
+  --m3c-tertiary-container: #5a3f5d;
+  --m3c-on-tertiary-container: #ffd7fa;
+  --m3c-surface: #101318;
+  --m3c-surface-container: #1c1b20;
+  --m3c-surface-container-low: #191a1f;
+  --m3c-surface-container-high: #292a2f;
+  --m3c-surface-container-highest: #34353a;
+  --m3c-on-surface: #e2e2e9;
+  --m3c-on-surface-variant: #c4c6d0;
+  --m3c-outline: #8e9099;
+  --m3c-outline-variant: #44474f;
+  --m3c-shadow: #000000;
+  --m3-shape-extra-small: 4px;
+  --m3-shape-small: 8px;
+  --m3-shape-medium: 12px;
+  --m3-shape-large: 16px;
+  --m3-card-shape: 12px;
+  --m3-font: 'Google Sans Flex', 'Google Sans', Inter, ui-sans-serif, system-ui, sans-serif;
+  --m3-font-mono: 'Google Sans Code', ui-monospace, SFMono-Regular, Menlo, monospace;
+  --m3-elevation-1: 0 1px 2px rgb(0 0 0 / 0.3), 0 1px 3px 1px rgb(0 0 0 / 0.15);
+  --m3-elevation-2: 0 1px 2px rgb(0 0 0 / 0.3), 0 2px 6px 2px rgb(0 0 0 / 0.15);
+  --m3-easing-fast: 150ms ease;
+  --m3-easing-fast-spatial: 250ms cubic-bezier(0.2, 0, 0, 1);
+  --aibo-bg: var(--m3c-surface);
+  --aibo-text: var(--m3c-on-surface);
+  --aibo-muted: var(--m3c-on-surface-variant);
+  --aibo-subtle: #92939c;
+  --aibo-border: var(--m3c-outline-variant);
+  --aibo-border-strong: var(--m3c-outline);
+  --aibo-surface: var(--m3c-surface-container);
+  --aibo-surface-hover: var(--m3c-surface-container-high);
+  --aibo-accent: var(--m3c-primary);
+  --aibo-accent-hover: #c0d7ff;
+  --aibo-accent-border: var(--m3c-primary);
+  --aibo-accent-soft: var(--m3c-primary-container);
+  --aibo-accent-text: var(--m3c-on-primary-container);
+  --aibo-focus: var(--m3c-primary);
+  font-family: var(--m3-font);
+}
+
+:where(.app-shell[data-ui-kit='material3']) .m3-aibo-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 32px;
+  border: 0;
+  border-radius: 10px;
+  padding: 0 12px;
+  gap: 6px;
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+  line-height: 1;
+  white-space: nowrap;
+  transition: box-shadow 150ms ease, background-color 150ms ease, color 150ms ease;
+}
+
+.app-shell[data-ui-kit='material3'] .m3-aibo-button.m3-aibo-button-default {
+  background: var(--m3c-primary);
+  color: var(--m3c-on-primary);
+}
+
+.app-shell[data-ui-kit='material3'] .m3-aibo-button.m3-aibo-button-secondary {
+  background: var(--m3c-secondary-container);
+  color: var(--m3c-on-secondary-container);
+}
+
+.app-shell[data-ui-kit='material3'] .m3-aibo-button.m3-aibo-button-destructive {
+  background: #ffb4ab;
+  color: #690005;
+}
+
+.app-shell[data-ui-kit='material3'] .m3-aibo-button.m3-aibo-button-outline {
+  background: transparent;
+  color: var(--m3c-on-surface-variant);
+  outline: 1px solid var(--m3c-outline);
+}
+
+.app-shell[data-ui-kit='material3'] .m3-aibo-button.m3-aibo-button-ghost {
+  background: transparent;
+  color: var(--m3c-on-surface-variant);
+  box-shadow: none;
+}
+
+.app-shell[data-ui-kit='material3'] .m3-aibo-button.m3-aibo-button-link {
+  background: transparent;
+  color: var(--m3c-primary);
+  box-shadow: none;
+}
+
+.app-shell[data-ui-kit='material3'] .m3-aibo-button:hover:not(:disabled) {
+  filter: brightness(1.06);
+}
+
+.app-shell[data-ui-kit='material3'] .m3-aibo-button-ghost:hover:not(:disabled) {
+  background: var(--m3c-surface-container-high);
+  color: var(--m3c-on-surface);
+  box-shadow: none;
+}
+
+.app-shell[data-ui-kit='material3'] .m3-aibo-button.workspace-item,
+.app-shell[data-ui-kit='material3'] .m3-aibo-button.session-item {
+  height: auto;
+  border-radius: 999px;
+  box-shadow: none;
+  outline: none;
+}
+
+.app-shell[data-ui-kit='material3'] .m3-aibo-button.workspace-item {
+  min-height: 40px;
+  gap: 9px;
+  padding: 6px 10px;
+}
+
+.app-shell[data-ui-kit='material3'] .m3-aibo-button.session-item {
+  min-height: 38px;
+  gap: 8px;
+  padding: 6px 9px;
+}
+
+.app-shell[data-ui-kit='material3'] .composer.m3-aibo-card {
+  border-color: var(--m3c-outline-variant);
+  border-radius: 16px;
+  background: var(--m3c-surface-container);
+}
+
+.app-shell[data-ui-kit='material3'] .composer.m3-aibo-card:focus-within {
+  border-color: var(--m3c-primary);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--m3c-primary) 24%, transparent);
+}
+
+.app-shell[data-ui-kit='material3'] .composer .m3-aibo-textarea,
+.app-shell[data-ui-kit='material3'] .composer .m3-aibo-textarea:focus {
+  min-height: 40px;
+  max-height: 160px;
+  resize: none;
+  border: 0;
+  border-radius: 0;
+  padding: 5px 3px;
+  background: transparent;
+  box-shadow: none;
+  font-size: 14px;
+  line-height: 1.5;
+}
+
+.app-shell[data-ui-kit='material3'] .m3-aibo-button:focus-visible {
+  outline: 2px solid var(--m3c-primary);
+  outline-offset: 2px;
+}
+
+.app-shell[data-ui-kit='material3'] .m3-aibo-button:disabled {
+  background: color-mix(in srgb, var(--m3c-on-surface) 12%, transparent);
+  color: color-mix(in srgb, var(--m3c-on-surface) 38%, transparent);
+  box-shadow: none;
+}
+
+:where(.app-shell[data-ui-kit='material3']) .m3-aibo-icon-button.m3-aibo-icon-button {
+  width: 32px;
+  height: 32px;
+  min-height: 32px;
+  padding: 0;
+}
+
+.app-shell[data-ui-kit='material3'] .window-actions [data-slot='button'],
+.app-shell[data-ui-kit='material3'] .workspace-toolbar [data-slot='button'],
+.app-shell[data-ui-kit='material3'] .workspace-item-actions [data-slot='button'],
+.app-shell[data-ui-kit='material3'] .session-item-actions [data-slot='button'] {
+  min-width: 0;
+  min-height: 0;
+}
+
+:where(.app-shell[data-ui-kit='material3']) .m3-aibo-card {
+  border: 1px solid transparent;
+  border-radius: var(--m3-shape-medium);
+  background: var(--m3c-surface-container-low);
+  color: var(--m3c-on-surface);
+  box-shadow: none;
+}
+
+:where(.app-shell[data-ui-kit='material3']) .m3-aibo-card-header {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 16px;
+}
+
+:where(.app-shell[data-ui-kit='material3']) .m3-aibo-card-content {
+  padding: 0 16px 16px;
+}
+
+:where(.app-shell[data-ui-kit='material3']) .m3-aibo-card-footer {
+  display: flex;
+  align-items: center;
+  padding: 0 16px 16px;
+}
+
+:where(.app-shell[data-ui-kit='material3']) .m3-aibo-card-title {
+  color: var(--m3c-on-surface);
+  font-size: 15px;
+  font-weight: 600;
+  line-height: 1.3;
+}
+
+:where(.app-shell[data-ui-kit='material3']) .m3-aibo-badge {
+  display: inline-flex;
+  align-items: center;
+  min-height: 20px;
+  border-radius: 7px;
+  padding: 1px 8px;
+  background: var(--m3c-secondary-container);
+  color: var(--m3c-on-secondary-container);
+  font-size: 11px;
+  font-weight: 600;
+}
+
+:where(.app-shell[data-ui-kit='material3']) .m3-aibo-badge-outline {
+  border: 1px solid var(--m3c-outline);
+  background: transparent;
+  color: var(--m3c-on-surface-variant);
+}
+
+:where(.app-shell[data-ui-kit='material3']) .m3-aibo-badge-success {
+  border-color: var(--aibo-success-border);
+  background: var(--aibo-success-surface);
+  color: var(--aibo-success-text);
+}
+
+:where(.app-shell[data-ui-kit='material3']) .m3-aibo-badge-warning {
+  border-color: var(--aibo-warning-border);
+  background: var(--aibo-warning-surface);
+  color: var(--aibo-warning-text);
+}
+
+:where(.app-shell[data-ui-kit='material3']) .m3-aibo-badge-destructive {
+  border-color: var(--aibo-danger-border);
+  background: var(--aibo-danger-surface);
+  color: var(--aibo-danger-text);
+}
+
+:where(.app-shell[data-ui-kit='material3']) .m3-aibo-input,
+:where(.app-shell[data-ui-kit='material3']) .m3-aibo-textarea {
+  width: 100%;
+  border: 0;
+  border-bottom: 1px solid var(--m3c-outline);
+  border-radius: 4px 4px 0 0;
+  padding: 12px 16px;
+  background: var(--m3c-surface-container-highest);
+  color: var(--m3c-on-surface);
+  outline: none;
+  transition: background-color 150ms ease, border-color 150ms ease;
+}
+
+:where(.app-shell[data-ui-kit='material3']) .m3-aibo-input {
+  min-height: 44px;
+}
+
+:where(.app-shell[data-ui-kit='material3']) .m3-aibo-textarea {
+  min-height: 84px;
+  resize: vertical;
+}
+
+:where(.app-shell[data-ui-kit='material3']) .m3-aibo-input:focus,
+:where(.app-shell[data-ui-kit='material3']) .m3-aibo-textarea:focus {
+  border-bottom: 2px solid var(--m3c-primary);
+  background: var(--m3c-surface-container-high);
+}
+
+:where(.app-shell[data-ui-kit='material3']) .m3-aibo-input::placeholder,
+:where(.app-shell[data-ui-kit='material3']) .m3-aibo-textarea::placeholder {
+  color: color-mix(in srgb, var(--m3c-on-surface-variant) 72%, transparent);
+}
+
+:where(.app-shell[data-ui-kit='material3']) .m3-aibo-label {
+  color: var(--m3c-on-surface-variant);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+:where(.app-shell[data-ui-kit='material3']) .m3-aibo-separator {
+  flex: none;
+  background: var(--m3c-outline-variant);
+}
+
+:where(.app-shell[data-ui-kit='material3']) .m3-aibo-separator-horizontal {
+  width: 100%;
+  height: 1px;
+}
+
+:where(.app-shell[data-ui-kit='material3']) .m3-aibo-separator-vertical {
+  width: 1px;
+  height: 100%;
+}
+
+.m3-aibo-alert-overlay {
+  position: fixed;
+  z-index: 50;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+  background: rgb(0 0 0 / 0.52);
+}
+
+.app-shell[data-ui-kit='material3'] .m3-aibo-alert-dialog {
+  width: min(440px, calc(100vw - 48px));
+  box-shadow: var(--m3-elevation-2);
+}
+
+.app-shell[data-ui-kit='material3'] .m3-aibo-alert-header {
+  padding-bottom: 8px;
+}
+
+.app-shell[data-ui-kit='material3'] .m3-aibo-alert-content {
+  color: var(--m3c-on-surface-variant);
+  line-height: 1.5;
+}
+
+.app-shell[data-ui-kit='material3'] .m3-aibo-alert-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  padding: 0 16px 16px;
+}
+
+.app-shell[data-ui-kit='material3'] .settings-tab {
+  border-radius: 999px;
+}
+
+.app-shell[data-ui-kit='material3'] .appearance-kit-option,
+.app-shell[data-ui-kit='material3'] .appearance-theme-option {
+  border-color: var(--m3c-outline-variant);
+  border-radius: var(--m3-shape-large);
+  background: var(--m3c-surface-container-low);
+}
+
+.app-shell[data-ui-kit='material3'] .appearance-kit-option:hover,
+.app-shell[data-ui-kit='material3'] .appearance-theme-option:hover {
+  background: var(--m3c-surface-container-high);
+}
+
+.app-shell[data-ui-kit='material3'] .appearance-kit-option.active,
+.app-shell[data-ui-kit='material3'] .appearance-theme-option.active {
+  border-color: var(--m3c-primary);
+  background: var(--m3c-primary-container);
+}

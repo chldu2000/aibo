@@ -1,6 +1,5 @@
 <script lang="ts">
   import { Badge, Button, Card, CardContent, CardHeader, CardTitle, Separator } from '$lib/ui-kit';
-  import RefreshCwIcon from '@lucide/svelte/icons/refresh-cw';
   import type { ApprovalDecision } from '$lib/types';
   import Composer from './Composer.svelte';
   import { sessionStateLabel } from './session-utils';

@@ -1,0 +1,7 @@
+/* Build-time helper consumed by vite-plugin-functions-mixins. This file is
+ * intentionally not imported at runtime; m3-svelte uses the same function
+ * syntax in component styles and expects the function registry to provide it.
+ */
+@function --m3-density(--size) {
+  result: var(--size);
+}

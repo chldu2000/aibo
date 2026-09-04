@@ -29,10 +29,12 @@
   },
   "dependencies": {
     "@earendil-works/pi-coding-agent": "0.84.4",
+    "@ktibow/iconset-material-symbols": "0.0.1764827375",
     "@lucide/svelte": "^1.39.0",
     "@tauri-apps/api": "^2.8.0",
     "@tauri-apps/plugin-dialog": "^2.7.3",
     "clsx": "^2.1.1",
+    "m3-svelte": "7.2.0",
     "tailwind-merge": "^3.6.0"
   },
   "devDependencies": {
@@ -44,6 +46,7 @@
     "tailwind-variants": "^3.3.1",
     "tailwindcss": "^4.3.3",
     "typescript": "^5.9.2",
-    "vite": "^7.1.5"
+    "vite": "^7.1.5",
+    "vite-plugin-functions-mixins": "0.4.1"
   }
 }

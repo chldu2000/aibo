@@ -1,5 +1,26 @@
 import type { Component } from 'svelte';
 
+export type UiIconName =
+  | 'add'
+  | 'archive'
+  | 'archive-restore'
+  | 'branch'
+  | 'check'
+  | 'chevron-down'
+  | 'close'
+  | 'delete'
+  | 'edit'
+  | 'filter'
+  | 'folder'
+  | 'folder-add'
+  | 'refresh'
+  | 'search'
+  | 'send'
+  | 'settings'
+  | 'stop'
+  | 'trust'
+  | 'untrust';
+
 /**
  * The minimum visual surface consumed by Aibo's app-level components.
  * Concrete kits may wrap shadcn-svelte, another Svelte library, or local
@@ -16,8 +37,34 @@ export type UiKitAdapter = {
   CardFooter: Component;
   CardHeader: Component;
   CardTitle: Component;
+  Icon: Component;
   Input: Component;
   Label: Component;
   Separator: Component;
   Textarea: Component;
 };
+
+export type UiThemeRegistration = {
+  id: string;
+  label: string;
+  description: string;
+  colorScheme: 'dark' | 'light';
+  swatches: readonly string[];
+  tokens: Readonly<Record<`--${string}`, string>>;
+};
+
+export type UiKitRegistration = {
+  id: string;
+  label: string;
+  description: string;
+  adapter: UiKitAdapter;
+  defaultThemeId: string;
+  themes: readonly UiThemeRegistration[];
+};
+
+export type AppearanceSelection = {
+  kitId: string;
+  themeId: string;
+};
+
+export type UiKitOption = Omit<UiKitRegistration, 'adapter'>;

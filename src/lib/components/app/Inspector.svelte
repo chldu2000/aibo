@@ -1,7 +1,5 @@
 <script lang="ts">
-  import RefreshCwIcon from '@lucide/svelte/icons/refresh-cw';
-  import ShieldCheckIcon from '@lucide/svelte/icons/shield-check';
-  import { Badge, Button, Card, CardContent, CardHeader, CardTitle, Separator } from '$lib/ui-kit';
+  import { Badge, Button, Card, CardContent, CardHeader, CardTitle, Icon, Separator } from '$lib/ui-kit';
   import { sessionStateLabel } from './session-utils';
   import { flattenPiTree } from './inspector-utils';
   import type {
@@ -104,7 +102,7 @@
           {#if codexThreads.length > 5}<small class="thread-more">仅显示最近 5 个线程</small>{/if}
         {/if}
         <Button variant="ghost" size="sm" type="button" onclick={onSyncCodexThreads} disabled={threadBusy || busy}>
-          <RefreshCwIcon size={13} /> 刷新线程
+          <Icon name="refresh" size={13} /> 刷新线程
         </Button>
       </CardContent>
     </Card>
@@ -135,7 +133,7 @@
           </div>
         {/if}
         <Button variant="ghost" size="sm" type="button" onclick={() => onRefreshPiTree(session.id)} disabled={busy || selectedSessionArchiving}>
-          <RefreshCwIcon size={13} /> 刷新会话树
+          <Icon name="refresh" size={13} /> 刷新会话树
         </Button>
       </CardContent>
     </Card>
@@ -143,7 +141,7 @@
 
   {#if workspace}
     <Card class="trust-card">
-      <div class="trust-card-heading"><ShieldCheckIcon size={16} /><strong>工作区信任</strong></div>
+      <div class="trust-card-heading"><Icon name="trust" size={16} /><strong>工作区信任</strong></div>
       <p>{workspace.trust === 'trusted' ? '当前目录已允许 Agent 操作。' : '确认目录来源后再启用 Agent 操作。'}</p>
     </Card>
   {/if}
@@ -151,7 +149,7 @@
   <Separator />
   <div class="inspector-footer">
     <Button variant="ghost" size="sm" type="button" onclick={onRefresh} disabled={busy}>
-      <RefreshCwIcon size={13} /> 刷新数据
+      <Icon name="refresh" size={13} /> 刷新数据
     </Button>
   </div>
 </Card>

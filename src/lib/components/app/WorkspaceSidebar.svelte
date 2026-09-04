@@ -1,21 +1,5 @@
 <script lang="ts">
-  import ArchiveIcon from '@lucide/svelte/icons/archive';
-  import ArchiveRestoreIcon from '@lucide/svelte/icons/archive-restore';
-  import CheckIcon from '@lucide/svelte/icons/check';
-  import ChevronDownIcon from '@lucide/svelte/icons/chevron-down';
-  import FolderIcon from '@lucide/svelte/icons/folder';
-  import FolderPlusIcon from '@lucide/svelte/icons/folder-plus';
-  import GitBranchIcon from '@lucide/svelte/icons/git-branch';
-  import ListFilterIcon from '@lucide/svelte/icons/list-filter';
-  import PencilIcon from '@lucide/svelte/icons/pencil';
-  import PlusIcon from '@lucide/svelte/icons/plus';
-  import RefreshCwIcon from '@lucide/svelte/icons/refresh-cw';
-  import SearchIcon from '@lucide/svelte/icons/search';
-  import ShieldCheckIcon from '@lucide/svelte/icons/shield-check';
-  import ShieldOffIcon from '@lucide/svelte/icons/shield-off';
-  import Trash2Icon from '@lucide/svelte/icons/trash-2';
-  import XIcon from '@lucide/svelte/icons/x';
-  import { Button, Card, CardHeader, CardTitle, Input } from '$lib/ui-kit';
+  import { Button, Card, CardHeader, CardTitle, Icon, Input } from '$lib/ui-kit';
   import type { SessionFilter } from '$lib/types';
   import { relativeTimeLabel, sessionStateLabel, sessionStatusTone, isSessionRunning } from './session-utils';
   import type { SessionListItem, WorkspaceListItem } from './view-types';
@@ -114,7 +98,7 @@
         aria-pressed={sessionSearchOpen}
         onclick={onToggleSearch}
       >
-        <SearchIcon size={16} />
+        <Icon name="search" size={16} />
       </Button>
       <Button
         variant="ghost"
@@ -126,7 +110,7 @@
         aria-pressed={sessionFilterOpen}
         onclick={onToggleFilter}
       >
-        <ListFilterIcon size={16} />
+        <Icon name="filter" size={16} />
       </Button>
       <Button
         variant="ghost"
@@ -137,7 +121,7 @@
         onclick={onChooseWorkspaceDirectory}
         disabled={busy}
       >
-        <FolderPlusIcon size={16} />
+        <Icon name="folder-add" size={16} />
       </Button>
     </div>
   </CardHeader>
@@ -173,7 +157,7 @@
         </select>
       {/if}
       <Button variant="ghost" size="icon" type="submit" aria-label="应用搜索和筛选" disabled={!selectedWorkspaceId}>
-        <SearchIcon size={14} />
+        <Icon name="search" size={14} />
       </Button>
     </form>
   {/if}
@@ -198,9 +182,9 @@
               onclick={() => onSelectWorkspace(workspace.id)}
             >
               {#if workspaceExpanded}
-                <ChevronDownIcon class="workspace-leading-icon" size={16} />
+                <Icon name="chevron-down" class="workspace-leading-icon" size={16} />
               {:else}
-                <FolderIcon class="workspace-leading-icon" size={16} />
+                <Icon name="folder" class="workspace-leading-icon" size={16} />
               {/if}
               <span class="workspace-copy">
                 <strong>{workspace.label}</strong>
@@ -217,7 +201,7 @@
                 onclick={(event) => { event.stopPropagation(); onToggleSessionCreator(workspace.id); }}
                 disabled={busy}
               >
-                <PlusIcon size={15} />
+                <Icon name="add" size={15} />
               </Button>
               <Button
                 variant="ghost"
@@ -228,7 +212,7 @@
                 onclick={(event) => { event.stopPropagation(); onToggleTrust(workspace.id); }}
                 disabled={busy}
               >
-                {#if workspace.trust === 'trusted'}<ShieldOffIcon size={14} />{:else}<ShieldCheckIcon size={14} />{/if}
+                {#if workspace.trust === 'trusted'}<Icon name="untrust" size={14} />{:else}<Icon name="trust" size={14} />{/if}
               </Button>
               <Button
                 variant="ghost"
@@ -239,7 +223,7 @@
                 onclick={(event) => { event.stopPropagation(); onDeleteWorkspace(workspace.id); }}
                 disabled={busy || archivingWorkspaceId === workspace.id}
               >
-                <Trash2Icon size={14} />
+                <Icon name="delete" size={14} />
               </Button>
             </div>
           </div>
@@ -274,10 +258,10 @@
                             }}
                           />
                           <Button variant="outline" size="icon" type="button" aria-label="保存会话名称" title="保存" onclick={onSaveSessionRename} disabled={busy || !sessionLabelDraft.trim()}>
-                            <CheckIcon size={14} />
+                            <Icon name="check" size={14} />
                           </Button>
                           <Button variant="ghost" size="icon" type="button" aria-label="取消改名" title="取消" onclick={onCancelRenameSession} disabled={busy}>
-                            <XIcon size={14} />
+                            <Icon name="close" size={14} />
                           </Button>
                         </div>
                       {:else}
@@ -299,31 +283,31 @@
                         <div class="session-item-actions" aria-label={`${session.label} 操作`}>
                           {#if session.archived}
                             <Button variant="ghost" size="icon" type="button" aria-label="取消归档" title="取消归档" onclick={() => onUnarchiveSession(session.id)} disabled={busy}>
-                              <ArchiveRestoreIcon size={13} />
+                              <Icon name="archive-restore" size={13} />
                             </Button>
                           {:else if session.agent === 'codex'}
                             <Button variant="ghost" size="icon" type="button" aria-label="创建分支" title="分支" onclick={() => onForkSession(session.id)} disabled={busy || isSessionRunning(session) || archivingSessionId === session.id}>
-                              <GitBranchIcon size={13} />
+                              <Icon name="branch" size={13} />
                             </Button>
                             <Button variant="ghost" size="icon" type="button" aria-label="归档会话" title="归档" onclick={() => onRequestArchiveSession(session.id)} disabled={busy || isSessionRunning(session) || archivingSessionId !== null}>
-                              <ArchiveIcon size={13} />
+                              <Icon name="archive" size={13} />
                             </Button>
                             <Button variant="ghost" size="icon" type="button" aria-label="关闭会话" title="关闭" onclick={() => onCloseSession(session.id)} disabled={busy || isSessionRunning(session) || archivingSessionId === session.id}>
-                              <XIcon size={13} />
+                              <Icon name="close" size={13} />
                             </Button>
                             <Button variant="ghost" size="icon" type="button" aria-label="读取线程" title="读取线程" onclick={() => onSyncCodexThread(session.id)} disabled={threadBusy || busy || archivingSessionId === session.id}>
-                              <RefreshCwIcon size={13} />
+                              <Icon name="refresh" size={13} />
                             </Button>
                           {:else}
                             <Button variant="ghost" size="icon" type="button" aria-label="归档会话" title="归档" onclick={() => onRequestArchiveSession(session.id)} disabled={busy || isSessionRunning(session) || archivingSessionId !== null}>
-                              <ArchiveIcon size={13} />
+                              <Icon name="archive" size={13} />
                             </Button>
                             <Button variant="ghost" size="icon" type="button" aria-label="关闭会话" title="关闭" onclick={() => onCloseSession(session.id)} disabled={busy || isSessionRunning(session) || archivingSessionId === session.id}>
-                              <XIcon size={13} />
+                              <Icon name="close" size={13} />
                             </Button>
                           {/if}
                           <Button variant="ghost" size="icon" type="button" aria-label="改名" title="改名" onclick={() => onBeginRenameSession(session.id)} disabled={busy || archivingSessionId === session.id}>
-                            <PencilIcon size={13} />
+                            <Icon name="edit" size={13} />
                           </Button>
                         </div>
                       {/if}

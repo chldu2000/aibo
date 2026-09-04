@@ -24,6 +24,11 @@ test('app-level components use the UI kit seam', async () => {
       /from ['"]\$lib\/components\/ui(?:\/|['"])/,
       `${path.basename(file)} must not bind to a concrete UI implementation`,
     );
+    assert.doesNotMatch(
+      source,
+      /from ['"](?:@lucide\/svelte|@ktibow\/iconset-material-symbols)/,
+      `${path.basename(file)} must source visual icons through the kit seam`,
+    );
     assert.match(
       source,
       /from ['"]\$lib\/ui-kit['"]|from ['"]\$lib\/ui-kit\//,

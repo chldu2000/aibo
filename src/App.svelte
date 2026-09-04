@@ -75,6 +75,14 @@
     Workspace,
   } from './lib/types';
   import type { SessionListItem, WorkspaceListItem } from './lib/components/app/view-types';
+  import {
+    activeTheme,
+    activeThemeStyle,
+    activeUiKitName,
+    availableUiKits,
+    setUiKit,
+    setUiTheme,
+  } from '$lib/ui-kit';
 
   const previewWorkspaces: Workspace[] = [
     {
@@ -750,7 +758,13 @@
   <title>Aibo</title>
 </svelte:head>
 
-<div class="app-shell">
+<div
+  class="app-shell"
+  data-ui-kit={$activeUiKitName}
+  data-ui-theme={$activeTheme.id}
+  data-color-scheme={$activeTheme.colorScheme}
+  style={$activeThemeStyle}
+>
   <WindowTitlebar onOpenSettings={() => (settingsOpen = true)} />
 
   <main class="workspace-grid">
@@ -854,6 +868,11 @@
     workspaceCount={workspaces.length}
     sessionCount={sessions.length}
     busy={busy}
+    uiKits={availableUiKits}
+    activeUiKitName={$activeUiKitName}
+    activeThemeId={$activeTheme.id}
+    onSelectUiKit={setUiKit}
+    onSelectTheme={setUiTheme}
     onRefresh={() => void refresh()}
     onClose={() => (settingsOpen = false)}
   />

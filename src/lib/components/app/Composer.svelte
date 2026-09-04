@@ -1,7 +1,5 @@
 <script lang="ts">
-  import SendIcon from '@lucide/svelte/icons/send';
-  import SquareIcon from '@lucide/svelte/icons/square';
-  import { Button, Card, Textarea } from '$lib/ui-kit';
+  import { Button, Card, Icon, Textarea } from '$lib/ui-kit';
 
   type ComposerProps = {
     selectedAgent: 'codex' | 'pi' | null;
@@ -51,11 +49,11 @@
       <Button variant="outline" size="sm" type="button" onclick={() => onQueue('followUp')} disabled={busy || !text.trim()}>跟进</Button>
     {/if}
     <Button variant="destructive" size="icon" type="button" onclick={onAbort} disabled={busy} aria-label="中止">
-      <SquareIcon size={13} fill="currentColor" />
+      <Icon name="stop" size={13} />
     </Button>
   {:else}
     <Button size="icon" type="submit" disabled={!selectedSession || sessionArchived || selectedSessionArchiving || !text.trim() || busy} aria-label="发送">
-      <SendIcon size={14} />
+      <Icon name="send" size={14} />
     </Button>
   {/if}
 </Card>
