@@ -181,6 +181,10 @@ h2 { font-size: 16px; letter-spacing: -0.02em; }
 .session-context-title .card-title { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .session-context-title small { display: block; margin-top: 3px; color: var(--aibo-subtle); font-size: 9px; }
 .session-context-content { padding: 0 13px 12px; }
+.profile-card { margin: 0 12px 10px; background: var(--aibo-bg); }
+.profile-card-content { padding: 0 13px 11px; }
+.profile-card-content dl { margin-bottom: 4px; }
+.profile-warning { margin-top: 8px; color: var(--aibo-warning-text); font-size: 9px; line-height: 1.45; overflow-wrap: anywhere; }
 .session-context-content dl { margin: 0; }
 .session-context-content dl div { margin-top: 7px; }
 .agent-cards, .settings-agent-cards { padding: 0 12px; }

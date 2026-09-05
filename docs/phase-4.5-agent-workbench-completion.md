@@ -1,6 +1,6 @@
 # Phase 4.5：常规 Agent 工作台能力补全
 
-> 状态：计划草案，待实施评审
+> 状态：实施中；4.5A 已完成，4.5B 工作区边界守卫已落地
 > 平台：macOS arm64 首发基线；Windows 延后验证
 > 前置：Phase 4 统一会话体验的 macOS 实现与离线门禁完成
 > 后续：Phase 5 `@` 与 Handoff v1
@@ -115,6 +115,7 @@ type ResolvedExecutionProfileV1 = {
   enforced: ExecutionProfileV1;
   unsupported: string[];
   adapterCapabilities: string[];
+  nativeSandbox: boolean;
   resolvedAt: string;
 };
 ```
@@ -280,6 +281,21 @@ Changes 视图支持安全的 stage/unstage 和按文件或 hunk 恢复，但不
 具体表结构在首个 migration PR 前冻结。所有 durable object 必须有 schema/version、创建时间、workspace/session/turn 归属和删除策略。
 
 ## 8. 实施批次
+
+### 当前进度
+
+4.5A 已落地：
+
+- 新增 `aibo.execution-profile/v1` JSON Schema、Rust/TypeScript 类型与 capability resolver。
+- Codex/Pi 新建会话都会保存 requested/enforced profile、unsupported 项、adapter capabilities 和 native sandbox 标记。
+- 新增 `resolve_execution_profile` 与 `get_session_execution_profile` typed Tauri command/API。
+- Codex 的 `thread/start` 已由 resolved profile 驱动；Pi 当前仍明确解析为只读、无原生沙箱。
+- 历史会话读取 profile 时回退为 `legacy_session_profile_missing`，不会假装拥有新 profile。
+- 覆盖默认 profile、Codex 可写请求、Pi 不支持能力、Plan 只读约束、非法值和 SQLite 持久化测试。
+
+4.5A 门禁：`cargo test` 29 项通过，`pnpm test` 30 项通过，`pnpm exec tsc --noEmit`、`pnpm build` 和 `cargo fmt --check` 通过。
+
+4.5B 已开始：新增共享工作区边界守卫，覆盖绝对/相对路径、`..` 与 symlink 逃逸，并为不存在的新文件保留安全的父目录校验；Pi 的写入/命令工具仍未直接开放。
 
 ### 4.5A：契约、能力解析与存储骨架（3–4 天）
 

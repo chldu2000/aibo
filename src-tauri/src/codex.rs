@@ -1,3 +1,4 @@
+use super::execution_profile::ResolvedExecutionProfile;
 use super::{
     clone_cached_runtime, find_executable, now_iso, remove_cached_runtime, session_by_id,
     workspace_by_id,
@@ -1334,6 +1335,7 @@ impl CodexManager {
     pub(crate) async fn create_session(
         &self,
         workspace_id: &str,
+        profile: &ResolvedExecutionProfile,
     ) -> Result<super::Session, CodexError> {
         let workspace = workspace_by_id(&self.db, workspace_id)
             .await
@@ -1410,9 +1412,9 @@ impl CodexManager {
                 "thread/start",
                 json!({
                     "cwd": workspace.path,
-                    "approvalPolicy": "on-request",
-                    "sandbox": "read-only",
-                    "serviceName": "aibo_phase2"
+                    "approvalPolicy": if profile.enforced.approval_policy == "trusted" { "never" } else { profile.enforced.approval_policy.as_str() },
+                    "sandbox": profile.enforced.filesystem_policy,
+                    "serviceName": "aibo_phase4_5"
                 }),
             )
             .await

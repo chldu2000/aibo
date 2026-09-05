@@ -3,6 +3,7 @@ import type {
   CodexThreadSummary,
   PiSessionTreeSnapshot,
   Session,
+  SessionExecutionProfile,
   SessionFilter,
   Workspace,
 } from '$lib/types';
@@ -44,9 +45,11 @@ export type RefreshControllerContext = {
   refreshCodexThreads: (workspaceId: string) => Promise<void> | void;
   refreshCodexThread: (sessionId: string) => Promise<void> | void;
   refreshPiTree: (sessionId: string) => Promise<void> | void;
+  refreshExecutionProfile: (sessionId: string) => Promise<void> | void;
   setCodexThreads: (value: CodexThreadSummary[]) => void;
   setCodexThreadSnapshot: (value: null) => void;
   setPiTree: (value: PiSessionTreeSnapshot | null) => void;
+  setExecutionProfile: (value: SessionExecutionProfile | null) => void;
   setPiNavigationEntryId: (value: null) => void;
 };
 
@@ -102,6 +105,7 @@ export function createRefreshController(context: RefreshControllerContext) {
       const nextSelectedSessionId = context.getSelectedSessionId();
       if (nextSelectedSessionId) {
         await context.refreshTimeline(nextSelectedSessionId);
+        await context.refreshExecutionProfile(nextSelectedSessionId);
         void context.refreshCodexThread(nextSelectedSessionId);
         void context.refreshPiTree(nextSelectedSessionId);
       } else {
@@ -157,6 +161,7 @@ export function createRefreshController(context: RefreshControllerContext) {
         context.setCodexThreads([]);
         context.setCodexThreadSnapshot(null);
         context.setPiTree(null);
+        context.setExecutionProfile(null);
         context.setPiNavigationEntryId(null);
       }
     } catch (error) {

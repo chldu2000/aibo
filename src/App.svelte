@@ -40,6 +40,7 @@
     closeCodexSession,
     closePiSession,
     forkCodexThread,
+    getSessionExecutionProfile,
     getTimeline,
     getPiSessionTree,
     isTauri,
@@ -69,6 +70,7 @@
     CodexThreadSnapshot,
     CodexThreadSummary,
     Session,
+    SessionExecutionProfile,
     SessionFilter,
     PiSessionTreeSnapshot,
     TimelineItem,
@@ -145,6 +147,7 @@
   let codexThreads = $state<CodexThreadSummary[]>([]);
   let codexThreadSnapshot = $state<CodexThreadSnapshot | null>(null);
   let piTree = $state<PiSessionTreeSnapshot | null>(null);
+  let executionProfile = $state<SessionExecutionProfile | null>(null);
   let selectedWorkspaceId = $state<string | null>(null);
   let expandedWorkspaceIds = $state<string[]>([]);
   let selectedSessionId = $state<string | null>(null);
@@ -334,6 +337,7 @@
     timeline = [];
     codexThreadSnapshot = null;
     piTree = null;
+    executionProfile = null;
     piNavigationEntryId = null;
     usageSnapshot = null;
     retryPrompt = null;
@@ -500,6 +504,7 @@
       readCodexThread,
       getTimeline,
       getPiSessionTree,
+      getSessionExecutionProfile,
     },
     getDesktop: () => desktop,
     getSelectedWorkspaceId: () => selectedWorkspaceId,
@@ -509,6 +514,7 @@
     setCodexThreads: (value) => (codexThreads = value),
     setCodexThreadSnapshot: (value) => (codexThreadSnapshot = value),
     setPiTree: (value) => (piTree = value),
+    setExecutionProfile: (value) => (executionProfile = value),
     setTimeline: (value) => (timeline = value),
     setTimelineVisibleCount: (value) => (timelineVisibleCount = value),
     setThreadBusy: (value) => (threadBusy = value),
@@ -533,6 +539,7 @@
       retryReason = reason;
     },
     setLastSubmittedPrompt: (value) => (lastSubmittedPrompt = value),
+    setExecutionProfile: (value) => (executionProfile = value),
     setTimelineVisibleCount: (value) => (timelineVisibleCount = value),
     setCodexThreads: (value) => (codexThreads = value),
     setNotice: (value) => (notice = value),
@@ -542,6 +549,7 @@
     refreshTimeline,
     refreshCodexThread,
     refreshPiTree,
+    refreshExecutionProfile,
   });
 
   const sessionLifecycle = createSessionLifecycleController({
@@ -610,6 +618,7 @@
     setNotice: (value) => (notice = value),
     refreshCodexThreads,
     refreshPiTree,
+    refreshExecutionProfile,
   });
 
   const workspaceController = createWorkspaceController({
@@ -658,6 +667,7 @@
       listWorkspaces,
       probeAgents,
       listSessions,
+      getSessionExecutionProfile,
     },
     getDesktop: () => desktop,
     getRestoringSelection: () => restoringSelection,
@@ -690,6 +700,7 @@
     setCodexThreads: (value) => (codexThreads = value),
     setCodexThreadSnapshot: (value) => (codexThreadSnapshot = value),
     setPiTree: (value) => (piTree = value),
+    setExecutionProfile: (value) => (executionProfile = value),
     setPiNavigationEntryId: (value) => (piNavigationEntryId = value),
   });
 

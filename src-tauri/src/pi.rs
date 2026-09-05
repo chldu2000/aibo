@@ -1,3 +1,4 @@
+use super::execution_profile::ResolvedExecutionProfile;
 use super::{
     clone_cached_runtime, find_executable, now_iso, remove_cached_runtime, session_by_id,
     workspace_by_id,
@@ -1159,6 +1160,7 @@ impl PiManager {
     pub(crate) async fn create_session(
         &self,
         workspace_id: &str,
+        _profile: &ResolvedExecutionProfile,
     ) -> Result<super::Session, PiError> {
         let workspace = workspace_by_id(&self.db, workspace_id)
             .await

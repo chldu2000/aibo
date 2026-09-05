@@ -1,6 +1,6 @@
 # Aibo 多 Agent 工作台：调研、架构建议与实施计划
 
-> 状态：架构已冻结（macOS 首发）；Phase 0–3 已完成 macOS 门禁，Phase 4 统一会话体验的实现与离线门禁完成，Phase 4.5 常规 Agent 工作台能力补全待实施，Windows 后续验证
+> 状态：架构已冻结（macOS 首发）；Phase 0–3 已完成 macOS 门禁，Phase 4 统一会话体验的实现与离线门禁完成，Phase 4.5A 契约/能力解析/持久化骨架已完成，Phase 4.5 其余工作实施中，Windows 后续验证
 > 调研日期：2026-09-02  
 > 首批目标：Codex、Pi；首发平台：macOS（当前基线为 arm64）
 > 技术栈：Svelte 5 + Tauri 2
@@ -455,16 +455,16 @@ V1 后为 Pi 增加可选 container/VM/平台 sandbox runner；统一权限 prof
 
 退出条件：同一工作区可并行运行 Codex/Pi，会话状态不会串线，异常退出可解释并可恢复。macOS 的统一 API/UI、fixture replay、generation 隔离和恢复契约已完成；真实模型 smoke 依赖 provider/网络可用性时复跑。
 
-### Phase 4.5：常规 Agent 工作台能力补全（19–31 天，待实施）
+### Phase 4.5：常规 Agent 工作台能力补全（19–31 天，实施中）
 
-- 版本化 Execution Profile、capability resolution 与 Ask/Plan/Edit 模式。
+- 版本化 Execution Profile、capability resolution 与 Ask/Plan/Edit 模式（4.5A 已完成契约、解析与持久化骨架）。
 - Codex 原生 sandbox/approval 映射，以及 Pi 通过 Aibo Core 控制的安全写入和命令工具边界。
 - turn baseline/result、Git/文件变更归属、diff/hunk 审阅与结构化 verification。
 - Agent 文件 checkpoint、恢复预检、用户后续修改冲突保护和 artifact store。
 - 文件/目录/图片上下文附件、安全 Markdown、代码/diff/命令/测试卡片。
 - 任务进度、等待状态、队列、project actions 与能力检查器。
 
-退出条件：Codex 与 Pi 均能在 macOS 可丢弃工作区完成“结构化上下文 → 受控编辑 → 测试 → 变更审阅 → 安全恢复 → 重启恢复”；requested/enforced/unsupported 权限明确，dirty workspace 不丢失用户修改，路径越界和静默降级均被阻止。详细计划和验收矩阵见 [Phase 4.5 记录](phase-4.5-agent-workbench-completion.md)。
+退出条件：Codex 与 Pi 均能在 macOS 可丢弃工作区完成“结构化上下文 → 受控编辑 → 测试 → 变更审阅 → 安全恢复 → 重启恢复”；requested/enforced/unsupported 权限明确，dirty workspace 不丢失用户修改，路径越界和静默降级均被阻止。详细计划、当前进度和验收矩阵见 [Phase 4.5 记录](phase-4.5-agent-workbench-completion.md)。
 
 ### Phase 5：`@` 与 Handoff v1（6–10 天）
 
@@ -566,4 +566,4 @@ macOS 本机 Phase 0 已通过，架构评审结果已经冻结在 [docs/archite
 4. Pi 首版接受宿主机当前用户权限，但必须通过 workspace trust 明示风险；不提前引入容器/VM。
 5. Phase 1–4 已完成应用骨架、Codex/Pi adapter 与统一会话体验；当前先实施 [Phase 4.5](phase-4.5-agent-workbench-completion.md)，补齐执行、审阅、恢复与 artifact 事实，再进入 Handoff v1。
 
-Phase 4.5 的首个切片为 Execution Profile 契约、capability resolution 和存储骨架；详细分批及准入条件见 [Phase 4.5 计划与验收](phase-4.5-agent-workbench-completion.md)。
+Phase 4.5A 的首个切片已完成：Execution Profile 契约、capability resolution 和 session profile 存储骨架及其门禁已通过；下一步进入 4.5B 安全执行主链路。详细分批及准入条件见 [Phase 4.5 计划与验收](phase-4.5-agent-workbench-completion.md)。

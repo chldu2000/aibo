@@ -1,7 +1,14 @@
 mod codex;
+mod execution_profile;
 mod pi;
+mod workspace_guard;
 
 use codex::{CodexManager, CodexThreadSnapshot, CodexThreadSummary};
+use execution_profile::{
+    default_requested_profile, from_row as profile_from_row, resolve as resolve_profile,
+    save_for_session as save_session_profile, ExecutionProfile, ResolvedExecutionProfile,
+    SessionExecutionProfile,
+};
 use pi::PiManager;
 use serde::Serialize;
 use sqlx::{
@@ -116,12 +123,16 @@ pub enum CoreError {
     InvalidWorkspacePath(String),
     #[error("workspace not found: {0}")]
     WorkspaceNotFound(String),
+    #[error("workspace trust is required for the requested execution profile")]
+    WorkspaceTrustRequired,
     #[error("session not found: {0}")]
     SessionNotFound(String),
     #[error("invalid session label: {0}")]
     InvalidSessionLabel(String),
     #[error("invalid session filter: {0}")]
     InvalidSessionFilter(String),
+    #[error("invalid execution profile: {0}")]
+    InvalidExecutionProfile(String),
     #[error("database error: {0}")]
     Database(String),
     #[error("agent probe failed: {0}")]
@@ -148,9 +159,11 @@ impl Serialize for CoreError {
         let code = match self {
             Self::InvalidWorkspacePath(_) => "invalid_workspace_path",
             Self::WorkspaceNotFound(_) => "workspace_not_found",
+            Self::WorkspaceTrustRequired => "workspace_trust_required",
             Self::SessionNotFound(_) => "session_not_found",
             Self::InvalidSessionLabel(_) => "invalid_session_label",
             Self::InvalidSessionFilter(_) => "invalid_session_filter",
+            Self::InvalidExecutionProfile(_) => "invalid_execution_profile",
             Self::Database(_) => "database_error",
             Self::AgentProbe(_) => "agent_probe_error",
             Self::Codex(_) => "codex_error",
@@ -413,6 +426,72 @@ async fn session_by_id(db: &SqlitePool, id: &str) -> Result<Session, CoreError> 
     row_to_session(&row)
 }
 
+async fn session_agent(db: &SqlitePool, session_id: &str) -> Result<String, CoreError> {
+    sqlx::query_scalar("SELECT agent FROM sessions WHERE id = ?")
+        .bind(session_id)
+        .fetch_optional(db)
+        .await?
+        .ok_or_else(|| CoreError::SessionNotFound(session_id.to_owned()))
+}
+
+fn require_trusted_workspace(
+    workspace: &Workspace,
+    profile: &ResolvedExecutionProfile,
+) -> Result<(), CoreError> {
+    let requests_side_effects = profile.enforced.filesystem_policy == "workspace-write"
+        || profile.enforced.command_policy != "disabled"
+        || profile.enforced.network_policy != "disabled";
+    if requests_side_effects && workspace.trust != "trusted" {
+        return Err(CoreError::WorkspaceTrustRequired);
+    }
+    Ok(())
+}
+
+async fn session_execution_profile(
+    db: &SqlitePool,
+    session_id: &str,
+) -> Result<SessionExecutionProfile, CoreError> {
+    let row = sqlx::query(
+        "SELECT session_id, schema_version, requested_json, enforced_json, unsupported_json,
+                adapter_capabilities_json, native_sandbox, resolved_at
+         FROM session_execution_profiles WHERE session_id = ?",
+    )
+    .bind(session_id)
+    .fetch_optional(db)
+    .await?;
+    if let Some(row) = row {
+        return profile_from_row(&row, session_id.to_owned())
+            .map_err(CoreError::InvalidExecutionProfile);
+    }
+
+    let agent = session_agent(db, session_id).await?;
+    let mut resolved = resolve_profile(&agent, default_requested_profile(&agent).ok(), now_iso())
+        .map_err(CoreError::InvalidExecutionProfile)?;
+    resolved
+        .unsupported
+        .push("legacy_session_profile_missing".to_owned());
+    Ok(SessionExecutionProfile {
+        session_id: session_id.to_owned(),
+        profile: resolved,
+    })
+}
+
+#[tauri::command]
+async fn resolve_execution_profile(
+    agent: String,
+    requested: Option<ExecutionProfile>,
+) -> Result<ResolvedExecutionProfile, CoreError> {
+    resolve_profile(&agent, requested, now_iso()).map_err(CoreError::InvalidExecutionProfile)
+}
+
+#[tauri::command]
+async fn get_session_execution_profile(
+    session_id: String,
+    state: State<'_, AppState>,
+) -> Result<SessionExecutionProfile, CoreError> {
+    session_execution_profile(&state.db, &session_id).await
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum SessionListFilter {
     All,
@@ -563,11 +642,14 @@ async fn fork_codex_thread(
     through_turn_id: Option<String>,
     state: State<'_, AppState>,
 ) -> Result<Session, CoreError> {
-    state
+    let source_profile = session_execution_profile(&state.db, &session_id).await?;
+    let forked = state
         .codex
         .fork(&session_id, through_turn_id.as_deref())
         .await
-        .map_err(Into::into)
+        .map_err(CoreError::from)?;
+    save_session_profile(&state.db, &forked.id, &source_profile.profile).await?;
+    Ok(forked)
 }
 
 #[tauri::command]
@@ -619,13 +701,20 @@ async fn unarchive_session(
 #[tauri::command]
 async fn create_codex_session(
     workspace_id: String,
+    requested_profile: Option<ExecutionProfile>,
     state: State<'_, AppState>,
 ) -> Result<Session, CoreError> {
-    state
+    let profile = resolve_profile("codex", requested_profile, now_iso())
+        .map_err(CoreError::InvalidExecutionProfile)?;
+    let workspace = workspace_by_id(&state.db, &workspace_id).await?;
+    require_trusted_workspace(&workspace, &profile)?;
+    let session = state
         .codex
-        .create_session(&workspace_id)
+        .create_session(&workspace_id, &profile)
         .await
-        .map_err(Into::into)
+        .map_err(CoreError::from)?;
+    save_session_profile(&state.db, &session.id, &profile).await?;
+    Ok(session)
 }
 
 #[tauri::command]
@@ -671,13 +760,20 @@ async fn close_codex_session(
 #[tauri::command]
 async fn create_pi_session(
     workspace_id: String,
+    requested_profile: Option<ExecutionProfile>,
     state: State<'_, AppState>,
 ) -> Result<Session, CoreError> {
-    state
+    let profile = resolve_profile("pi", requested_profile, now_iso())
+        .map_err(CoreError::InvalidExecutionProfile)?;
+    let workspace = workspace_by_id(&state.db, &workspace_id).await?;
+    require_trusted_workspace(&workspace, &profile)?;
+    let session = state
         .pi
-        .create_session(&workspace_id)
+        .create_session(&workspace_id, &profile)
         .await
-        .map_err(Into::into)
+        .map_err(CoreError::from)?;
+    save_session_profile(&state.db, &session.id, &profile).await?;
+    Ok(session)
 }
 
 #[tauri::command]
@@ -944,6 +1040,8 @@ pub fn run() {
             remove_workspace,
             probe_agents,
             get_app_snapshot,
+            resolve_execution_profile,
+            get_session_execution_profile,
             list_sessions,
             get_timeline,
             rename_session,
@@ -977,8 +1075,10 @@ pub fn run() {
 mod tests {
     use super::{
         canonical_workspace_path, clone_cached_runtime, find_executable, normalize_session_filter,
-        open_database, remove_cached_runtime, workspace_label, SessionListFilter,
+        now_iso, open_database, remove_cached_runtime, require_trusted_workspace,
+        session_execution_profile, workspace_label, CoreError, SessionListFilter, Workspace,
     };
+    use crate::execution_profile;
     use sqlx::Row;
     use std::{collections::HashMap, fs, path::PathBuf, sync::Arc, time::Duration};
     use tokio::sync::Mutex;
@@ -1075,6 +1175,7 @@ mod tests {
             "turns",
             "messages",
             "agent_events",
+            "session_execution_profiles",
         ] {
             let present: i64 = tauri::async_runtime::block_on(
                 sqlx::query_scalar(
@@ -1091,6 +1192,9 @@ mod tests {
             ("sessions", "archived"),
             ("session_bindings", "parent_external_session_id"),
             ("messages", "tool_name"),
+            ("session_execution_profiles", "requested_json"),
+            ("session_execution_profiles", "enforced_json"),
+            ("session_execution_profiles", "native_sandbox"),
         ] {
             let present: i64 = tauri::async_runtime::block_on(
                 sqlx::query_scalar("SELECT COUNT(*) FROM pragma_table_info(?) WHERE name = ?")
@@ -1114,5 +1218,91 @@ mod tests {
         let _ = fs::remove_file(database_path.with_extension("sqlite3-wal"));
         let _ = fs::remove_file(database_path.with_extension("sqlite3-shm"));
         fs::remove_dir_all(directory).expect("remove test directory");
+    }
+
+    #[test]
+    fn persists_and_reads_a_session_execution_profile() {
+        let directory = test_directory();
+        let database_path = directory.join("aibo.sqlite3");
+        let pool = tauri::async_runtime::block_on(open_database(&database_path))
+            .expect("open and migrate database");
+        let workspace_id = Ulid::new().to_string();
+        let session_id = Ulid::new().to_string();
+        let directory_string = directory.to_string_lossy().into_owned();
+        tauri::async_runtime::block_on(async {
+            let now = now_iso();
+            sqlx::query(
+                "INSERT INTO workspaces (id, path, label, trusted, created_at, updated_at)
+                 VALUES (?, ?, ?, 1, ?, ?)",
+            )
+            .bind(&workspace_id)
+            .bind(&directory_string)
+            .bind("profile-fixture")
+            .bind(&now)
+            .bind(&now)
+            .execute(&pool)
+            .await
+            .expect("insert workspace");
+            sqlx::query(
+                "INSERT INTO sessions (id, workspace_id, agent, label, state, created_at, updated_at)
+                 VALUES (?, ?, 'codex', ?, 'idle', ?, ?)",
+            )
+            .bind(&session_id)
+            .bind(&workspace_id)
+            .bind("Codex · profile-fixture")
+            .bind(&now)
+            .bind(&now)
+            .execute(&pool)
+            .await
+            .expect("insert session");
+            let profile = execution_profile::resolve("codex", None, now.clone())
+                .expect("resolve default profile");
+            execution_profile::save_for_session(&pool, &session_id, &profile)
+                .await
+                .expect("save session profile");
+            let loaded = session_execution_profile(&pool, &session_id)
+                .await
+                .expect("load session profile");
+            assert_eq!(loaded.session_id, session_id);
+            assert_eq!(loaded.profile.enforced, profile.enforced);
+            assert_eq!(loaded.profile.native_sandbox, profile.native_sandbox);
+        });
+        tauri::async_runtime::block_on(pool.close());
+        fs::remove_file(&database_path).expect("remove test database");
+        let _ = fs::remove_file(database_path.with_extension("sqlite3-wal"));
+        let _ = fs::remove_file(database_path.with_extension("sqlite3-shm"));
+        fs::remove_dir_all(directory).expect("remove test directory");
+    }
+
+    #[test]
+    fn writable_execution_requires_workspace_trust() {
+        let profile = execution_profile::resolve(
+            "codex",
+            Some(execution_profile::ExecutionProfile {
+                schema: execution_profile::EXECUTION_PROFILE_SCHEMA.to_owned(),
+                interaction_mode: "edit".to_owned(),
+                approval_policy: "on-request".to_owned(),
+                filesystem_policy: "workspace-write".to_owned(),
+                command_policy: "approved".to_owned(),
+                network_policy: "disabled".to_owned(),
+                model: None,
+                reasoning_effort: None,
+            }),
+            now_iso(),
+        )
+        .expect("resolve writable profile");
+        let workspace = Workspace {
+            id: "workspace".to_owned(),
+            path: "/tmp/workspace".to_owned(),
+            label: "workspace".to_owned(),
+            trust: "untrusted".to_owned(),
+            last_opened_at: None,
+            created_at: now_iso(),
+            updated_at: now_iso(),
+        };
+        assert!(matches!(
+            require_trusted_workspace(&workspace, &profile),
+            Err(CoreError::WorkspaceTrustRequired)
+        ));
     }
 }

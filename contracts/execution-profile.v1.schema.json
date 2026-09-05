@@ -1,0 +1,52 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://aibo.local/contracts/execution-profile.v1.schema.json",
+  "title": "Aibo execution profile v1",
+  "type": "object",
+  "required": [
+    "schema",
+    "interactionMode",
+    "approvalPolicy",
+    "filesystemPolicy",
+    "commandPolicy",
+    "networkPolicy"
+  ],
+  "properties": {
+    "schema": { "const": "aibo.execution-profile/v1" },
+    "interactionMode": { "enum": ["ask", "plan", "edit"] },
+    "approvalPolicy": { "enum": ["never", "on-request", "trusted"] },
+    "filesystemPolicy": { "enum": ["read-only", "workspace-write"] },
+    "commandPolicy": { "enum": ["disabled", "approved", "trusted"] },
+    "networkPolicy": { "enum": ["disabled", "agent-managed"] },
+    "model": { "type": ["string", "null"] },
+    "reasoningEffort": { "type": ["string", "null"] }
+  },
+  "additionalProperties": false,
+  "$defs": {
+    "resolved": {
+      "type": "object",
+      "required": [
+        "schema",
+        "requested",
+        "enforced",
+        "unsupported",
+        "adapterCapabilities",
+        "nativeSandbox",
+        "resolvedAt"
+      ],
+      "properties": {
+        "schema": { "const": "aibo.execution-profile/v1" },
+        "requested": { "$ref": "#" },
+        "enforced": { "$ref": "#" },
+        "unsupported": { "type": "array", "items": { "type": "string" } },
+        "adapterCapabilities": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "nativeSandbox": { "type": "boolean" },
+        "resolvedAt": { "type": "string", "format": "date-time" }
+      },
+      "additionalProperties": false
+    }
+  }
+}

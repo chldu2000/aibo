@@ -3,6 +3,7 @@ import { listen, type UnlistenFn } from '@tauri-apps/api/event';
 import type {
   AgentDiagnostic,
   AgentEvent,
+  AgentName,
   ApprovalDecision,
   AppSnapshot,
   CodexThreadSnapshot,
@@ -11,6 +12,9 @@ import type {
   PiSessionSnapshot,
   PiSessionTreeSnapshot,
   SessionListOptions,
+  ExecutionProfile,
+  ResolvedExecutionProfile,
+  SessionExecutionProfile,
   Session,
   TimelineItem,
   Workspace,
@@ -39,6 +43,20 @@ export const probeAgents = (): Promise<AgentDiagnostic[]> =>
 
 export const getAppSnapshot = (): Promise<AppSnapshot> =>
   invoke<AppSnapshot>('get_app_snapshot');
+
+export const resolveExecutionProfile = (
+  agent: AgentName,
+  requested?: ExecutionProfile | null,
+): Promise<ResolvedExecutionProfile> =>
+  invoke<ResolvedExecutionProfile>('resolve_execution_profile', {
+    agent,
+    requested: requested ?? null,
+  });
+
+export const getSessionExecutionProfile = (
+  sessionId: string,
+): Promise<SessionExecutionProfile> =>
+  invoke<SessionExecutionProfile>('get_session_execution_profile', { sessionId });
 
 export const listSessions = (
   workspaceId: string,
@@ -80,8 +98,14 @@ export const archiveCodexThread = (sessionId: string): Promise<Session> =>
 export const unarchiveCodexThread = (sessionId: string): Promise<Session> =>
   invoke<Session>('unarchive_codex_thread', { sessionId });
 
-export const createCodexSession = (workspaceId: string): Promise<Session> =>
-  invoke<Session>('create_codex_session', { workspaceId });
+export const createCodexSession = (
+  workspaceId: string,
+  requestedProfile?: ExecutionProfile | null,
+): Promise<Session> =>
+  invoke<Session>('create_codex_session', {
+    workspaceId,
+    requestedProfile: requestedProfile ?? null,
+  });
 
 export const sendCodexPrompt = (sessionId: string, input: string): Promise<void> =>
   invoke('send_codex_prompt', { sessionId, input });
@@ -98,8 +122,14 @@ export const resolveCodexApproval = (
 export const closeCodexSession = (sessionId: string): Promise<void> =>
   invoke('close_codex_session', { sessionId });
 
-export const createPiSession = (workspaceId: string): Promise<Session> =>
-  invoke<Session>('create_pi_session', { workspaceId });
+export const createPiSession = (
+  workspaceId: string,
+  requestedProfile?: ExecutionProfile | null,
+): Promise<Session> =>
+  invoke<Session>('create_pi_session', {
+    workspaceId,
+    requestedProfile: requestedProfile ?? null,
+  });
 
 export const sendPiPrompt = (sessionId: string, input: string): Promise<void> =>
   invoke('send_pi_prompt', { sessionId, input });

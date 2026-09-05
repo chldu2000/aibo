@@ -18,6 +18,20 @@ test("AgentEvent v1 schema is valid JSON with a frozen version", async () => {
   assert.ok(schema.$defs.sessionState.enum.includes("interrupted"));
 });
 
+test("Execution Profile v1 schema keeps requested and enforced policy separate", async () => {
+  const schema = JSON.parse(
+    await readFile(path.join(root, "contracts", "execution-profile.v1.schema.json"), "utf8"),
+  );
+  assert.equal(schema.properties.schema.const, "aibo.execution-profile/v1");
+  assert.deepEqual(schema.properties.interactionMode.enum, ["ask", "plan", "edit"]);
+  assert.deepEqual(schema.$defs.resolved.required.slice(0, 3), [
+    "schema",
+    "requested",
+    "enforced",
+  ]);
+  assert.equal(schema.$defs.resolved.properties.nativeSandbox.type, "boolean");
+});
+
 test("probe assertions fail loudly so a false gate cannot pass", () => {
   assert.doesNotThrow(() => assertProbe(true, "must pass"));
   assert.throws(() => assertProbe(false, "must fail"), /Probe assertion failed: must fail/);

@@ -2,6 +2,7 @@ import type {
   CodexThreadSnapshot,
   CodexThreadSummary,
   PiSessionTreeSnapshot,
+  SessionExecutionProfile,
   Session,
   TimelineItem,
 } from '$lib/types';
@@ -13,6 +14,7 @@ export type SessionContextControllerContext = {
     readCodexThread: (sessionId: string) => Promise<CodexThreadSnapshot>;
     getTimeline: (sessionId: string) => Promise<TimelineItem[]>;
     getPiSessionTree: (sessionId: string) => Promise<PiSessionTreeSnapshot>;
+    getSessionExecutionProfile: (sessionId: string) => Promise<SessionExecutionProfile>;
   };
   getDesktop: () => boolean;
   getSelectedWorkspaceId: () => string | null;
@@ -22,6 +24,7 @@ export type SessionContextControllerContext = {
   setCodexThreads: (value: CodexThreadSummary[]) => void;
   setCodexThreadSnapshot: (value: CodexThreadSnapshot | null) => void;
   setPiTree: (value: PiSessionTreeSnapshot | null) => void;
+  setExecutionProfile: (value: SessionExecutionProfile | null) => void;
   setTimeline: (value: TimelineItem[]) => void;
   setTimelineVisibleCount: (value: number) => void;
   setThreadBusy: (value: boolean) => void;
@@ -87,6 +90,20 @@ export function createSessionContextController(context: SessionContextController
     }
   }
 
+  async function refreshExecutionProfile(sessionId: string): Promise<void> {
+    if (!context.getDesktop()) {
+      if (sessionId === context.getSelectedSessionId()) context.setExecutionProfile(null);
+      return;
+    }
+    try {
+      const profile = await context.api.getSessionExecutionProfile(sessionId);
+      if (sessionId === context.getSelectedSessionId()) context.setExecutionProfile(profile);
+    } catch (error) {
+      if (sessionId === context.getSelectedSessionId()) context.setExecutionProfile(null);
+      console.warn('unable to read session execution profile', error);
+    }
+  }
+
   async function refreshPiTree(sessionId: string): Promise<void> {
     if (sessionId === context.getArchivingSessionId()) return;
     const session = context.findSession(sessionId);
@@ -129,6 +146,7 @@ export function createSessionContextController(context: SessionContextController
     refreshCodexThreads,
     refreshCodexThread,
     refreshTimeline,
+    refreshExecutionProfile,
     refreshPiTree,
     syncCodexThreads,
     syncCodexThread,

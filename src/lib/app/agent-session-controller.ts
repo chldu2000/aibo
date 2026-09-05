@@ -23,6 +23,7 @@ export type AgentSessionControllerContext = {
   setNotice: (value: string) => void;
   refreshCodexThreads: (workspaceId: string) => Promise<void> | void;
   refreshPiTree: (sessionId: string) => Promise<void> | void;
+  refreshExecutionProfile: (sessionId: string) => Promise<void> | void;
 };
 
 export function createAgentSessionController(context: AgentSessionControllerContext) {
@@ -54,6 +55,7 @@ export function createAgentSessionController(context: AgentSessionControllerCont
       resetSessionContext();
       context.setCreateSessionWorkspaceId(null);
       void context.refreshCodexThreads(workspace.id);
+      void context.refreshExecutionProfile(session.id);
       context.setNotice('Codex 会话已启动，可以发送第一条消息。');
     } catch (error) {
       context.setErrorMessage(toErrorMessage(error));
@@ -81,6 +83,7 @@ export function createAgentSessionController(context: AgentSessionControllerCont
       resetSessionContext();
       context.setCreateSessionWorkspaceId(null);
       void context.refreshPiTree(session.id);
+      void context.refreshExecutionProfile(session.id);
       context.setNotice('Pi SDK 会话已启动；当前仅开放只读工具，Pi 本身不提供原生沙箱。');
     } catch (error) {
       context.setErrorMessage(toErrorMessage(error));

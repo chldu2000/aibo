@@ -1,5 +1,37 @@
 export type WorkspaceTrust = 'trusted' | 'untrusted';
 
+export type AgentName = 'codex' | 'pi';
+export type InteractionMode = 'ask' | 'plan' | 'edit';
+export type ApprovalPolicy = 'never' | 'on-request' | 'trusted';
+export type FilesystemPolicy = 'read-only' | 'workspace-write';
+export type CommandPolicy = 'disabled' | 'approved' | 'trusted';
+export type NetworkPolicy = 'disabled' | 'agent-managed';
+
+export interface ExecutionProfile {
+  schema: 'aibo.execution-profile/v1';
+  interactionMode: InteractionMode;
+  approvalPolicy: ApprovalPolicy;
+  filesystemPolicy: FilesystemPolicy;
+  commandPolicy: CommandPolicy;
+  networkPolicy: NetworkPolicy;
+  model?: string | null;
+  reasoningEffort?: string | null;
+}
+
+export interface ResolvedExecutionProfile {
+  schema: 'aibo.execution-profile/v1';
+  requested: ExecutionProfile;
+  enforced: ExecutionProfile;
+  unsupported: string[];
+  adapterCapabilities: string[];
+  nativeSandbox: boolean;
+  resolvedAt: string;
+}
+
+export interface SessionExecutionProfile extends ResolvedExecutionProfile {
+  sessionId: string;
+}
+
 export interface Workspace {
   id: string;
   path: string;

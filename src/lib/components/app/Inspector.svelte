@@ -7,7 +7,7 @@
     SessionPanelView,
     WorkspaceListItem,
   } from './view-types';
-  import type { PiSessionTreeSnapshot } from '$lib/types';
+  import type { PiSessionTreeSnapshot, SessionExecutionProfile } from '$lib/types';
 
   type InspectorProps = {
     workspace: WorkspaceListItem | null;
@@ -15,6 +15,7 @@
     desktop: boolean;
     codexThreads: CodexThreadListItem[];
     piTree: PiSessionTreeSnapshot | null;
+    executionProfile: SessionExecutionProfile | null;
     threadBusy: boolean;
     busy: boolean;
     sessionRunning: boolean;
@@ -31,6 +32,7 @@
     desktop,
     codexThreads,
     piTree,
+    executionProfile,
     threadBusy,
     busy,
     sessionRunning,
@@ -40,6 +42,18 @@
     onRefreshPiTree,
     onRefresh,
   }: InspectorProps = $props();
+
+  function modeLabel(mode: string): string {
+    return mode === 'plan' ? '计划' : mode === 'edit' ? '编辑' : '问答';
+  }
+
+  function filesystemLabel(policy: string): string {
+    return policy === 'workspace-write' ? '工作区可写' : '只读';
+  }
+
+  function commandLabel(policy: string): string {
+    return policy === 'trusted' ? '自动执行' : policy === 'approved' ? '需审批' : '禁用';
+  }
 </script>
 
 <Card as="aside" class="inspector" data-ui-component="inspector" aria-label="会话上下文">
@@ -74,6 +88,27 @@
         </dl>
       </CardContent>
     </Card>
+    {#if executionProfile}
+      <Card class="profile-card">
+        <CardHeader class="thread-card-heading">
+          <CardTitle>执行配置</CardTitle>
+          <Badge variant={executionProfile.nativeSandbox ? 'success' : 'warning'}>
+            {executionProfile.nativeSandbox ? '原生沙箱' : '无原生沙箱'}
+          </Badge>
+        </CardHeader>
+        <CardContent class="profile-card-content">
+          <dl>
+            <div><dt>模式</dt><dd>{modeLabel(executionProfile.enforced.interactionMode)}</dd></div>
+            <div><dt>文件</dt><dd>{filesystemLabel(executionProfile.enforced.filesystemPolicy)}</dd></div>
+            <div><dt>命令</dt><dd>{commandLabel(executionProfile.enforced.commandPolicy)}</dd></div>
+            <div><dt>审批</dt><dd>{executionProfile.enforced.approvalPolicy}</dd></div>
+          </dl>
+          {#if executionProfile.unsupported.length > 0}
+            <p class="profile-warning">未启用：{executionProfile.unsupported.join('、')}</p>
+          {/if}
+        </CardContent>
+      </Card>
+    {/if}
   {:else}
     <div class="inspector-empty">从左侧选择一个会话查看上下文。</div>
   {/if}
