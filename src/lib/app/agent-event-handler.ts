@@ -13,6 +13,7 @@ export type AgentEventHandlerContext = {
   timeline: TimelineItem[];
   pendingApprovals: ApprovalRequest[];
   lastSubmittedPrompt: string | null;
+  setAgentActivity: (sessionId: string, active: boolean, label?: string) => void;
   updateWorkspaceSessions: (
     workspaceId: string,
     updater: (items: Session[]) => Session[],
@@ -33,12 +34,71 @@ export type AgentEventHandlerContext = {
 export function handleAgentEvent(event: AgentEvent, context: AgentEventHandlerContext): void {
   const selectedSessionId = context.selectedSessionId;
   const state = event.type === 'session.state_changed' ? event.payload.state : undefined;
+
+  // A turn can spend time between two streamed items (for example, after a
+  // tool completes and before Pi starts its next response). Keep that phase
+  // observable instead of deriving activity only from the last timeline row.
+  if (
+    event.type === 'turn.started' ||
+    event.type === 'message.delta' ||
+    event.type === 'tool.started' ||
+    event.type === 'tool.updated' ||
+    event.type === 'tool.completed' ||
+    event.type === 'approval.requested' ||
+    event.type === 'approval.resolved' ||
+    event.type === 'retry.started' ||
+    event.type === 'compaction.started'
+  ) {
+    context.setAgentActivity(event.sessionId, true);
+  }
+  if (
+    event.type === 'turn.completed' ||
+    event.type === 'turn.failed' ||
+    event.type === 'adapter.crashed' ||
+    state === 'failed' ||
+    state === 'interrupted' ||
+    state === 'closed'
+  ) {
+    context.setAgentActivity(event.sessionId, false);
+  }
+
   if (typeof state === 'string') {
     context.updateWorkspaceSessions(event.workspaceId, (items) =>
       items.map((session) =>
         session.id === event.sessionId ? { ...session, state: state as Session['state'] } : session,
       ),
     );
+  }
+
+  if (event.type === 'retry.started') {
+    const agent = event.source.agent === 'pi' ? 'Pi' : 'Codex';
+    const attempt = event.payload.attempt;
+    context.setAgentActivity(event.sessionId, true,
+      `${agent} 请求暂未成功，等待重试${typeof attempt === 'number' ? `（第 ${attempt} 次）` : ''}…`);
+  }
+  if (event.type === 'retry.completed') {
+    context.setAgentActivity(event.sessionId, event.payload.success !== false);
+  }
+
+  if (event.type === 'message.completed' && event.sessionId === selectedSessionId) {
+    const itemId = stringPayload(event.payload.itemId);
+    if (itemId) context.setTimeline(context.timeline.map((item) =>
+      item.externalMessageId === itemId
+        ? { ...item, content: stringPayload(event.payload.text) ?? item.content, status: 'completed' }
+        : item));
+  }
+
+  if (event.type === 'adapter.warning' && event.payload.kind === 'session.binding_recovered') {
+    context.updateWorkspaceSessions(event.workspaceId, (items) =>
+      items.map((session) =>
+        session.id === event.sessionId
+          ? { ...session, externalSessionId: event.externalSessionId ?? session.externalSessionId, state: 'idle' }
+          : session,
+      ),
+    );
+    if (event.sessionId === selectedSessionId) {
+      context.setNotice('Codex 原线程不可恢复，已创建新的远端线程；本地时间线已保留。');
+    }
   }
 
   if (event.type === 'approval.requested') {

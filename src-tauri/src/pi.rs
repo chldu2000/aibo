@@ -380,6 +380,22 @@ fn value_id(value: &Value) -> Option<String> {
     }
 }
 
+// SDK turn_end is an intermediate model/tool cycle, not an Aibo request end.
+// Retrying agent_end events likewise leave the same request active.
+fn final_agent_message(event: &Value) -> Option<&Value> {
+    if event.get("type").and_then(Value::as_str) != Some("agent_end")
+        || event.get("willRetry").and_then(Value::as_bool) == Some(true)
+    {
+        return None;
+    }
+    event
+        .get("messages")?
+        .as_array()?
+        .iter()
+        .rev()
+        .find(|message| message.get("role").and_then(Value::as_str) == Some("assistant"))
+}
+
 fn text_from_message(value: &Value) -> String {
     if let Some(text) = value.get("text").and_then(Value::as_str) {
         return text.to_owned();
@@ -1168,11 +1184,11 @@ impl PiSession {
                     }
                 }
             }
-            "turn_end" => {
+            "agent_end" if event.get("willRetry").and_then(Value::as_bool) != Some(true) => {
                 if let Some(turn) = turn_id.as_deref() {
                     let internal = self.ensure_turn(turn, "").await?;
                     self.finalize_turn_changes(turn).await?;
-                    let message = event.get("message").unwrap_or(&Value::Null);
+                    let message = final_agent_message(event).unwrap_or(&Value::Null);
                     let text = text_from_message(message);
                     let status = match message
                         .get("stopReason")
@@ -1180,7 +1196,7 @@ impl PiSession {
                         .unwrap_or("stop")
                     {
                         "aborted" | "cancelled" | "canceled" => "interrupted",
-                        "stop" | "completed" => "completed",
+                        "stop" | "completed" | "length" => "completed",
                         _ => "failed",
                     };
                     sqlx::query("UPDATE turns SET status = ?, output_text = ?, completed_at = ? WHERE id = ?")
@@ -1203,9 +1219,9 @@ impl PiSession {
                     )
                     .await?;
                     self.emit_event(
-                        "turn.completed",
+                        if status == "failed" { "turn.failed" } else { "turn.completed" },
                         Some(turn.to_owned()),
-                        json!({ "status": status }),
+                        json!({ "status": status, "error": message.get("errorMessage").and_then(Value::as_str).unwrap_or("Pi 模型请求失败") }),
                         None,
                     )
                     .await?;
@@ -1692,7 +1708,7 @@ impl PiSession {
             .execute(&self.db)
             .await?;
         if updated.rows_affected() == 0 {
-            sqlx::query("INSERT INTO messages (id, session_id, turn_id, external_message_id, role, tool_name, tool_command, tool_cwd, tool_exit_code, content, status, sequence, created_at, updated_at) VALUES (?, ?, ?, ?, 'tool', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)")
+            sqlx::query("INSERT INTO messages (id, session_id, turn_id, external_message_id, role, tool_name, tool_command, tool_cwd, tool_exit_code, content, status, sequence, created_at, updated_at) VALUES (?, ?, ?, ?, 'tool', ?, ?, ?, ?, ?, ?, ?, ?, ?)")
                 .bind(Ulid::new().to_string()).bind(&self.session_id).bind(&internal_turn).bind(&item_id).bind(tool_name).bind(&command).bind(&cwd).bind(exit_code).bind(&summary).bind(status)
                 .bind(self.sequence.load(Ordering::Relaxed) as i64).bind(&now).bind(&now).execute(&self.db).await?;
         }
@@ -2453,13 +2469,31 @@ impl PiManager {
 #[cfg(test)]
 mod tests {
     use super::{
-        generation_matches, redact_command_line, run_shell_command, text_from_message,
-        truncate_command_output, PI_ADAPTER_VERSION, PI_HOST_PROTOCOL,
+        final_agent_message, generation_matches, redact_command_line, run_shell_command,
+        text_from_message, truncate_command_output, PI_ADAPTER_VERSION, PI_HOST_PROTOCOL,
     };
     use serde_json::json;
     use std::{fs, path::PathBuf};
     use tokio::time::{sleep, Duration};
     use ulid::Ulid;
+
+    #[test]
+    fn pi_tool_cycles_and_retries_do_not_finish_the_request() {
+        assert!(final_agent_message(
+            &json!({"type":"turn_end", "message":{"role":"assistant", "stopReason":"toolUse"}})
+        )
+        .is_none());
+        assert!(final_agent_message(&json!({"type":"agent_end", "willRetry":true, "messages":[{"role":"assistant", "stopReason":"error"}]})).is_none());
+        let event = json!({"type":"agent_end", "willRetry":false, "messages":[
+            {"role":"assistant", "stopReason":"toolUse"},
+            {"role":"toolResult"},
+            {"role":"assistant", "stopReason":"stop", "text":"done"}
+        ]});
+        assert_eq!(
+            text_from_message(final_agent_message(&event).unwrap()),
+            "done"
+        );
+    }
 
     #[test]
     fn extracts_only_visible_pi_text() {

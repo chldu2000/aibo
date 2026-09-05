@@ -266,6 +266,8 @@
   let settingsOpen = $state(false);
   let commandPaletteOpen = $state(false);
   let promptInFlight = $state(false);
+  let activeAgentSessionIds = $state<string[]>([]);
+  let agentActivityOverrides = $state<Record<string, string | undefined>>({});
   let noticeTimer: ReturnType<typeof setTimeout> | undefined;
   let errorTimer: ReturnType<typeof setTimeout> | undefined;
 
@@ -309,19 +311,57 @@
   const selectedApprovals = $derived(
     pendingApprovals.filter((approval) => approval.sessionId === selectedSessionId),
   );
+  const streamingTimelineItem = $derived.by(() => {
+    for (let index = timeline.length - 1; index >= 0; index -= 1) {
+      const item = timeline[index];
+      if (item?.status === 'streaming') return item;
+    }
+    return null;
+  });
+  const activeAgentSession = $derived(
+    selectedSession ? activeAgentSessionIds.includes(selectedSession.id) : false,
+  );
   const agentActivityLabel = $derived.by(() => {
     if (!selectedSession) return null;
     if (selectedSessionArchiving) return '正在归档会话…';
-    if (!sessionRunning && !promptInFlight) return null;
+    if (
+      !promptInFlight &&
+      ['failed', 'interrupted', 'closed'].includes(selectedSession.state)
+    ) {
+      return null;
+    }
+    // Keep the activity indicator visible while a tool or assistant message
+    // is still streaming, even if the durable session state has already
+    // transitioned to idle and the timeline refresh is still in flight.
+    if (
+      !sessionRunning &&
+      !promptInFlight &&
+      !activeAgentSession &&
+      !streamingTimelineItem
+    ) return null;
     if (selectedSession.state === 'waiting_approval' || selectedApprovals.length > 0) {
       return '等待你的确认…';
     }
-    const latest = timeline.at(-1);
     const agentLabel = selectedSession.agent === 'pi' ? 'Pi' : 'Codex';
-    if (latest?.role === 'tool' && latest.status === 'streaming') {
-      return `${agentLabel} 正在调用 ${toolLabel(latest)}…`;
+    const activityOverride = agentActivityOverrides[selectedSession.id];
+    if (activityOverride) return activityOverride;
+    if (streamingTimelineItem?.role === 'tool') {
+      return `${agentLabel} 正在执行 ${toolLabel(streamingTimelineItem)}…`;
     }
-    return `${agentLabel} 正在响应…`;
+    if (streamingTimelineItem?.role === 'assistant') {
+      return `${agentLabel} 正在生成回复…`;
+    }
+    const latest = timeline.at(-1);
+    if (latest?.role === 'tool' && latest.status === 'failed') {
+      return `${agentLabel} 正在处理工具错误…`;
+    }
+    if (latest?.role === 'tool' && latest.status === 'completed') {
+      return `${agentLabel} 工具执行完成，等待模型继续响应…`;
+    }
+    if (promptInFlight && !sessionRunning && !activeAgentSession) {
+      return `${agentLabel} 正在启动请求…`;
+    }
+    return `${agentLabel} 等待模型响应（可能正在思考）…`;
   });
 
   $effect(() => {
@@ -522,6 +562,17 @@
       ...workspaceSessionMap,
       [workspaceId]: updater(getWorkspaceSessions(workspaceId)),
     };
+  }
+
+  function setAgentActivity(sessionId: string, active: boolean, label?: string): void {
+    agentActivityOverrides = { ...agentActivityOverrides, [sessionId]: active ? label : undefined };
+    if (active) {
+      if (!activeAgentSessionIds.includes(sessionId)) {
+        activeAgentSessionIds = [...activeAgentSessionIds, sessionId];
+      }
+      return;
+    }
+    activeAgentSessionIds = activeAgentSessionIds.filter((id) => id !== sessionId);
   }
 
   function markSessionIdle(session: Session): void {
@@ -787,6 +838,7 @@
       timeline,
       pendingApprovals,
       lastSubmittedPrompt,
+      setAgentActivity,
       updateWorkspaceSessions,
       setPendingApprovals: (approvals) => (pendingApprovals = approvals),
       setUsageSnapshot: (usage) => (usageSnapshot = usage),

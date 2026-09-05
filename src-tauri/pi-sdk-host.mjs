@@ -98,6 +98,7 @@ function compactMessage(message) {
     role: message.role,
     text: textContent(message),
     stopReason: message.stopReason,
+    errorMessage: message.errorMessage,
   };
 }
 
