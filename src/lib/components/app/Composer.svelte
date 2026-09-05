@@ -177,7 +177,7 @@
             <Icon name="folder" size={12} />
             <span>{attachmentName(attachment.path)}</span>
             <Button
-              variant="ghost"
+              variant="toolbar"
               size="icon"
               type="button"
               class="composer-attachment-remove"
@@ -303,7 +303,7 @@
     <div class="composer-toolbar-group composer-toolbar-start">
       <div class="composer-menu-anchor">
         <Button
-          variant="ghost"
+          variant="toolbar"
           size="icon"
           type="button"
           class="composer-toolbar-icon"
@@ -333,7 +333,7 @@
       {#if selectedSession}
         <div class="composer-menu-anchor">
           <Button
-            variant="ghost"
+            variant="toolbar"
             type="button"
             class="composer-toolbar-control composer-access-control"
             onclick={() => { sessionMenuOpen = !sessionMenuOpen; attachmentMenuOpen = false; modelMenuOpen = false; }}
@@ -383,7 +383,7 @@
       {#if selectedSession}
         <div class="composer-menu-anchor">
           <Button
-            variant="ghost"
+            variant="toolbar"
             type="button"
             class="composer-toolbar-control composer-model-control"
             onclick={openModelMenu}
@@ -413,14 +413,14 @@
 
       {#if sessionRunning}
         {#if selectedAgent === 'pi'}
-          <Button variant="outline" size="sm" type="button" onclick={() => onQueue('steer')} disabled={busy || !text.trim()}>插入</Button>
-          <Button variant="outline" size="sm" type="button" onclick={() => onQueue('followUp')} disabled={busy || !text.trim()}>跟进</Button>
+          <Button variant="queue" class="composer-action composer-action-queue" size="sm" type="button" onclick={() => onQueue('steer')} disabled={busy || !text.trim()}>插入</Button>
+          <Button variant="queue" class="composer-action composer-action-queue" size="sm" type="button" onclick={() => onQueue('followUp')} disabled={busy || !text.trim()}>跟进</Button>
         {/if}
-        <Button variant="destructive" size="icon" type="button" onclick={onAbort} disabled={busy} aria-label="中止">
+        <Button variant="abort" class="composer-action composer-action-abort" size="icon" type="button" onclick={onAbort} disabled={busy} aria-label="中止">
           <Icon name="stop" size={13} />
         </Button>
       {:else}
-        <Button class="composer-send" size="icon" type="submit" disabled={!selectedSession || sessionArchived || selectedSessionArchiving || !text.trim() || busy} aria-label="发送">
+        <Button variant="send" class="composer-action composer-action-send" size="icon" type="submit" disabled={!selectedSession || sessionArchived || selectedSessionArchiving || !text.trim() || busy} aria-label="发送">
           <Icon name="send" size={16} />
         </Button>
       {/if}

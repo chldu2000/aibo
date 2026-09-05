@@ -25,6 +25,24 @@ export type UiIconName =
   | 'untrust';
 
 /**
+ * Semantic button intents exposed to page components.
+ *
+ * The application chooses what an action means; each UI kit chooses how that
+ * intent is rendered (shape, color, state layer, typography, and elevation).
+ */
+export type UiButtonVariant =
+  | 'default'
+  | 'secondary'
+  | 'destructive'
+  | 'outline'
+  | 'ghost'
+  | 'link'
+  | 'toolbar'
+  | 'queue'
+  | 'abort'
+  | 'send';
+
+/**
  * The minimum visual surface consumed by Aibo's app-level components.
  * Concrete kits may wrap shadcn-svelte, another Svelte library, or local
  * components as long as they keep this component set available. AlertDialog

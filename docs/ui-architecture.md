@@ -12,7 +12,7 @@
 ## 添加另一套 UI Kit
 
 1. 在 `src/lib/ui-kit/kits/` 新增 adapter，并实现 `UiKitAdapter` 中的组件：`AlertDialog`、`Button`、`Badge`、`Card`、`Input`、`Textarea`、`Separator` 等。
-2. 保持现有基础接口：`variant`、`size`、`class`、`children`、原生 HTML 属性，以及 `data-slot` 标识；语义图标通过 `Icon` 和 `UiIconName` 映射，不在页面组件中直接绑定具体图标库。
+2. 保持现有基础接口：`variant`、`size`、`class`、`children`、原生 HTML 属性，以及 `data-slot` 标识；按钮变体包含 `toolbar`、`queue`、`abort`、`send` 等语义意图，由 adapter 决定形状、颜色和状态层；语义图标通过 `Icon` 和 `UiIconName` 映射，不在页面组件中直接绑定具体图标库。
 3. 在 `src/lib/ui-kit/registry.ts` 注册 adapter，同时提供皮肤名称、默认主题和可选主题色。每个主题通过 CSS token 映射 Aibo 的语义颜色，不应在页面组件里写皮肤专属色值。
 4. 用户可在「设置 → 外观」中运行时切换皮肤和主题色。选择写入 `localStorage`，重启后恢复；`VITE_AIBO_UI_KIT=<name>` 仅作为没有本地选择时的开发默认值。
 

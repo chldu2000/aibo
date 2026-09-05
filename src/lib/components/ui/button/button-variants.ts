@@ -1,4 +1,5 @@
 import { tv, type VariantProps } from 'tailwind-variants';
+import type { UiButtonVariant } from '$lib/ui-kit/contract';
 
 export const buttonVariants = tv({
   base: 'inline-flex shrink-0 items-center justify-center gap-1.5 rounded-md border text-xs font-medium transition-colors outline-none focus-visible:ring-2 focus-visible:ring-[var(--aibo-focus)] disabled:pointer-events-none disabled:opacity-50',
@@ -14,6 +15,14 @@ export const buttonVariants = tv({
         'border-transparent bg-transparent text-[var(--aibo-muted)] hover:bg-[var(--aibo-surface-hover)] hover:text-[var(--aibo-text)]',
       destructive:
         'border-[var(--aibo-danger-border)] bg-[var(--aibo-danger-surface)] text-[var(--aibo-danger-text)] hover:bg-[var(--aibo-danger-hover)]',
+      toolbar:
+        'border-transparent bg-transparent text-[var(--aibo-muted)] hover:bg-[var(--aibo-surface-hover)] hover:text-[var(--aibo-text)]',
+      queue:
+        'border-[var(--aibo-border-strong)] bg-transparent text-[var(--aibo-text)] hover:border-[var(--aibo-accent-border)] hover:bg-[var(--aibo-surface-hover)]',
+      abort:
+        'border-[var(--aibo-danger-border)] bg-[var(--aibo-danger-surface)] text-[var(--aibo-danger-text)] hover:bg-[var(--aibo-danger-hover)]',
+      send:
+        'border-[var(--aibo-accent-border)] bg-[var(--aibo-accent)] text-[var(--aibo-bg)] hover:bg-[var(--aibo-accent-hover)]',
     },
     size: {
       default: 'h-8 px-3',
@@ -27,5 +36,5 @@ export const buttonVariants = tv({
   },
 });
 
-export type ButtonVariant = VariantProps<typeof buttonVariants>['variant'];
+export type ButtonVariant = UiButtonVariant;
 export type ButtonSize = VariantProps<typeof buttonVariants>['size'];

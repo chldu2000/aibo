@@ -83,6 +83,25 @@
   color: #690005;
 }
 
+.app-shell[data-ui-kit='material3'] .m3-aibo-button.m3-aibo-button-toolbar {
+  border-radius: var(--m3-shape-small);
+  background: transparent;
+  color: var(--m3c-on-surface-variant);
+  box-shadow: none;
+}
+
+.app-shell[data-ui-kit='material3'] .m3-aibo-button.m3-aibo-button-queue {
+  border-radius: var(--m3-shape-medium);
+  background: transparent;
+  color: var(--m3c-on-surface-variant);
+}
+
+.app-shell[data-ui-kit='material3'] .m3-aibo-button.m3-aibo-button-abort {
+  border-radius: var(--m3-shape-medium);
+  background: #ffb4ab;
+  color: #690005;
+}
+
 .app-shell[data-ui-kit='material3'] .m3-aibo-button.m3-aibo-button-outline {
   background: transparent;
   color: var(--m3c-on-surface-variant);
@@ -172,6 +191,12 @@
   height: 32px;
   min-height: 32px;
   padding: 0;
+}
+
+.app-shell[data-ui-kit='material3'] .m3-aibo-button-send {
+  border-radius: 999px;
+  background: var(--m3c-primary);
+  color: var(--m3c-on-primary);
 }
 
 .app-shell[data-ui-kit='material3'] .window-actions [data-slot='button'],

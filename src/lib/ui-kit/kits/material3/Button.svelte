@@ -3,8 +3,9 @@
   import type { Snippet } from 'svelte';
   import type { HTMLButtonAttributes } from 'svelte/elements';
   import { cn } from '$lib/utils';
+  import type { UiButtonVariant } from '../../contract';
 
-  type ButtonVariant = 'default' | 'secondary' | 'destructive' | 'outline' | 'ghost' | 'link';
+  type ButtonVariant = UiButtonVariant;
   type ButtonSize = 'default' | 'sm' | 'lg' | 'icon';
   type ButtonProps = HTMLButtonAttributes & {
     variant?: ButtonVariant;
@@ -25,6 +26,10 @@
     default: 'filled',
     secondary: 'tonal',
     destructive: 'filled',
+    toolbar: 'text',
+    queue: 'outlined',
+    abort: 'filled',
+    send: 'filled',
     outline: 'outlined',
     ghost: 'text',
     link: 'text',
