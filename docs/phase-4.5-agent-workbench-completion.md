@@ -289,6 +289,7 @@ Changes 视图支持安全的 stage/unstage 和按文件或 hunk 恢复，但不
 - 新增 `aibo.execution-profile/v1` JSON Schema、Rust/TypeScript 类型与 capability resolver。
 - Codex/Pi 新建会话都会保存 requested/enforced profile、unsupported 项、adapter capabilities 和 native sandbox 标记。
 - 新增 `resolve_execution_profile` 与 `get_session_execution_profile` typed Tauri command/API；Codex 的 model/reasoning profile 会映射到 `thread/start` 与 `turn/start`，不会只停留在 UI 快照。
+- Codex 建立会话后会校验 Provider 返回的 approval、sandbox 与显式 model；发生权限或模型降级时会话失败并明确报错，不会继续展示为已启用。reasoning effort 按 `turn/start` 级别发送。
 - Codex 的 `thread/start` 已由 resolved profile 驱动；Pi 默认只读，但 `edit + workspace-write` 会注册 Core 写入网关，并持续标记无原生沙箱。
 - 历史会话读取 profile 时回退为 `legacy_session_profile_missing`，不会假装拥有新 profile。
 - 覆盖默认 profile、Codex 可写请求、Pi 不支持能力、Plan 只读约束、非法值和 SQLite 持久化测试。

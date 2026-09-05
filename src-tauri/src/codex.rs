@@ -48,8 +48,75 @@ fn codex_thread_start_params(cwd: &str, profile: &ResolvedExecutionProfile) -> V
     });
     if let Some(model) = profile.enforced.model.as_deref() {
         params["model"] = json!(model);
+        // A requested model must not silently fall back to the provider's
+        // default when Codex cannot resolve it.
+        params["allowProviderModelFallback"] = json!(false);
     }
     params
+}
+
+fn validate_codex_thread_start_response(
+    response: &Value,
+    profile: &ResolvedExecutionProfile,
+) -> Result<(), CodexError> {
+    let result = response
+        .get("result")
+        .ok_or_else(|| CodexError::Protocol("thread/start response has no result".to_owned()))?;
+    let expected_approval = if profile.enforced.approval_policy == "trusted" {
+        "never"
+    } else {
+        profile.enforced.approval_policy.as_str()
+    };
+    let actual_approval = result
+        .get("approvalPolicy")
+        .and_then(Value::as_str)
+        .ok_or_else(|| {
+            CodexError::Protocol(
+                "thread/start response omitted the enforced approval policy".to_owned(),
+            )
+        })?;
+    if actual_approval != expected_approval {
+        return Err(CodexError::Protocol(format!(
+            "Codex enforced approval policy {actual_approval:?}, expected {expected_approval:?}"
+        )));
+    }
+
+    let expected_sandbox = match profile.enforced.filesystem_policy.as_str() {
+        "read-only" => "readOnly",
+        "workspace-write" => "workspaceWrite",
+        other => {
+            return Err(CodexError::Protocol(format!(
+                "unsupported enforced filesystem policy {other:?}"
+            )))
+        }
+    };
+    let actual_sandbox = result
+        .pointer("/sandbox/type")
+        .and_then(Value::as_str)
+        .ok_or_else(|| {
+            CodexError::Protocol(
+                "thread/start response omitted the enforced sandbox policy".to_owned(),
+            )
+        })?;
+    if actual_sandbox != expected_sandbox {
+        return Err(CodexError::Protocol(format!(
+            "Codex enforced sandbox {actual_sandbox:?}, expected {expected_sandbox:?}"
+        )));
+    }
+    if let Some(expected_model) = profile.enforced.model.as_deref() {
+        let actual_model = result.get("model").and_then(Value::as_str).ok_or_else(|| {
+            CodexError::Protocol("thread/start response omitted the requested model".to_owned())
+        })?;
+        if actual_model != expected_model {
+            return Err(CodexError::Protocol(format!(
+                "Codex selected model {actual_model:?}, expected {expected_model:?}"
+            )));
+        }
+    }
+    // Reasoning effort is applied at turn/start (not thread/start) in the
+    // current app-server protocol, so there is no thread-level value to
+    // validate here. The turn request still carries the resolved value.
+    Ok(())
 }
 
 fn codex_turn_start_params(
@@ -1741,6 +1808,18 @@ impl CodexManager {
                 return Err(error);
             }
         };
+        if let Err(error) = validate_codex_thread_start_response(&started, profile) {
+            session.deactivate();
+            self.sessions.lock().await.remove(&session_id);
+            client.close().await;
+            let _ =
+                sqlx::query("UPDATE sessions SET state = 'failed', updated_at = ? WHERE id = ?")
+                    .bind(now_iso())
+                    .bind(&session_id)
+                    .execute(&self.db)
+                    .await;
+            return Err(error);
+        }
         let thread_id = match started.pointer("/result/thread/id").and_then(Value::as_str) {
             Some(thread_id) => thread_id.to_owned(),
             None => {
@@ -2423,7 +2502,7 @@ mod tests {
         agent_message_items, codex_thread_start_params, codex_turn_start_params, event_thread_id,
         final_turn_text, generation_matches, map_tool_status, map_turn_status, matching_thread_id,
         parse_forked_thread, parse_thread_list, parse_thread_snapshot, tool_projection,
-        usage_projection, value_id,
+        usage_projection, validate_codex_thread_start_response, value_id,
     };
     use crate::execution_profile::{
         ExecutionProfile, ResolvedExecutionProfile, EXECUTION_PROFILE_SCHEMA,
@@ -2632,10 +2711,56 @@ mod tests {
         };
         let thread = codex_thread_start_params("/tmp/workspace", &profile);
         assert_eq!(thread["model"], "gpt-test");
+        assert_eq!(thread["allowProviderModelFallback"], false);
         assert_eq!(thread["sandbox"], "workspace-write");
         let turn = codex_turn_start_params("thread-1", "hello", &profile);
         assert_eq!(turn["model"], "gpt-test");
         assert_eq!(turn["effort"], "high");
         assert_eq!(turn["threadId"], "thread-1");
+    }
+
+    #[test]
+    fn rejects_codex_thread_start_when_provider_downgrades_profile() {
+        let profile = ResolvedExecutionProfile {
+            schema: EXECUTION_PROFILE_SCHEMA.to_owned(),
+            requested: ExecutionProfile {
+                schema: EXECUTION_PROFILE_SCHEMA.to_owned(),
+                interaction_mode: "edit".to_owned(),
+                approval_policy: "on-request".to_owned(),
+                filesystem_policy: "workspace-write".to_owned(),
+                command_policy: "approved".to_owned(),
+                network_policy: "disabled".to_owned(),
+                model: Some("gpt-test".to_owned()),
+                reasoning_effort: Some("high".to_owned()),
+            },
+            enforced: ExecutionProfile {
+                schema: EXECUTION_PROFILE_SCHEMA.to_owned(),
+                interaction_mode: "edit".to_owned(),
+                approval_policy: "on-request".to_owned(),
+                filesystem_policy: "workspace-write".to_owned(),
+                command_policy: "approved".to_owned(),
+                network_policy: "disabled".to_owned(),
+                model: Some("gpt-test".to_owned()),
+                reasoning_effort: Some("high".to_owned()),
+            },
+            unsupported: Vec::new(),
+            adapter_capabilities: Vec::new(),
+            native_sandbox: true,
+            resolved_at: "now".to_owned(),
+        };
+        let response = json!({
+            "result": {
+                "approvalPolicy": "on-request",
+                "sandbox": { "type": "readOnly" },
+                "model": "gpt-test",
+                "reasoningEffort": null
+            }
+        });
+        assert!(validate_codex_thread_start_response(&response, &profile).is_err());
+        let mut downgraded = response;
+        downgraded["result"]["sandbox"]["type"] = json!("workspaceWrite");
+        assert!(validate_codex_thread_start_response(&downgraded, &profile).is_ok());
+        downgraded["result"]["model"] = json!("gpt-default");
+        assert!(validate_codex_thread_start_response(&downgraded, &profile).is_err());
     }
 }
