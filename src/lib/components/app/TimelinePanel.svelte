@@ -1,6 +1,6 @@
 <script lang="ts">
   import { Badge, Button, Card, CardContent, CardHeader, CardTitle, Separator } from '$lib/ui-kit';
-  import type { AgentCommand, AgentQueueSnapshot, ApprovalDecision, ContextAttachment, WorkspacePathSuggestion } from '$lib/types';
+  import type { AgentCommand, AgentQueueSnapshot, ApprovalDecision, ContextAttachment, SessionExecutionProfile, WorkspacePathSuggestion } from '$lib/types';
   import Composer from './Composer.svelte';
   import MarkdownContent from './MarkdownContent.svelte';
   import { sessionStateLabel } from './session-utils';
@@ -35,6 +35,7 @@
     selectedSessionArchiving: boolean;
     busy: boolean;
     attachments: ContextAttachment[];
+    executionProfile: SessionExecutionProfile | null;
     workspacePathSuggestions: WorkspacePathSuggestion[];
     agentCommands: AgentCommand[];
     agentCommandsLoading: boolean;
@@ -50,6 +51,7 @@
     onQueue: (mode: 'steer' | 'followUp') => void;
     onClearQueue: () => void;
     onAbort: () => void;
+    onOpenSettings: () => void;
     onComposerInput: (text: string) => void;
     onSelectWorkspacePath: (path: string) => void | Promise<void>;
   };
@@ -70,6 +72,7 @@
     selectedSessionArchiving,
     busy,
     attachments,
+    executionProfile,
     workspacePathSuggestions,
     agentCommands,
     agentCommandsLoading,
@@ -82,6 +85,7 @@
     onQueue,
     onClearQueue,
     onAbort,
+    onOpenSettings,
     onAddAttachments,
     onAddDirectory,
     onRemoveAttachment,
@@ -277,6 +281,7 @@
     selectedSessionArchiving={selectedSessionArchiving}
     busy={busy}
     attachments={attachments}
+    executionProfile={executionProfile}
     workspacePathSuggestions={workspacePathSuggestions}
     agentCommands={agentCommands}
     agentCommandsLoading={agentCommandsLoading}
@@ -287,6 +292,7 @@
     onSend={onSend}
     onQueue={onQueue}
     onAbort={onAbort}
+    onOpenSettings={onOpenSettings}
     onComposerInput={onComposerInput}
     onSelectWorkspacePath={onSelectWorkspacePath}
   />

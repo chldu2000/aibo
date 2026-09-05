@@ -1,6 +1,6 @@
 <script lang="ts">
   import { Button, Card, Icon, Textarea } from '$lib/ui-kit';
-  import type { AgentCommand, ContextAttachment, WorkspacePathSuggestion } from '$lib/types';
+  import type { AgentCommand, ContextAttachment, SessionExecutionProfile, WorkspacePathSuggestion } from '$lib/types';
 
   type ComposerProps = {
     selectedAgent: 'codex' | 'pi' | null;
@@ -10,6 +10,7 @@
     selectedSessionArchiving: boolean;
     busy: boolean;
     attachments: ContextAttachment[];
+    executionProfile: SessionExecutionProfile | null;
     workspacePathSuggestions: WorkspacePathSuggestion[];
     agentCommands: AgentCommand[];
     agentCommandsLoading: boolean;
@@ -20,6 +21,7 @@
     onSend: () => void;
     onQueue: (mode: 'steer' | 'followUp') => void;
     onAbort: () => void;
+    onOpenSettings: () => void;
     onComposerInput: (text: string) => void;
     onSelectWorkspacePath: (path: string) => void | Promise<void>;
   };
@@ -32,6 +34,7 @@
     selectedSessionArchiving,
     busy,
     attachments,
+    executionProfile,
     workspacePathSuggestions,
     agentCommands,
     agentCommandsLoading,
@@ -42,6 +45,7 @@
     onSend,
     onQueue,
     onAbort,
+    onOpenSettings,
     onComposerInput,
     onSelectWorkspacePath,
   }: ComposerProps = $props();
@@ -53,6 +57,9 @@
 
   let mentionActiveIndex = $state(0);
   let slashActiveIndex = $state(0);
+  let attachmentMenuOpen = $state(false);
+  let sessionMenuOpen = $state(false);
+  let modelMenuOpen = $state(false);
   const activeMentionQuery = $derived.by(() => {
     const match = text.match(/(?:^|\s)@([^\s]*)$/);
     return match ? match[1] : null;
@@ -73,6 +80,26 @@
   const showSlashMenu = $derived(
     activeSlashQuery !== null && selectedAgent !== null && slashActiveIndex >= 0,
   );
+
+  const activeProfile = $derived(executionProfile?.enforced ?? executionProfile?.requested ?? null);
+  const accessLabel = $derived(
+    !selectedSession
+      ? '会话设置'
+      : activeProfile?.filesystemPolicy === 'workspace-write'
+        ? '工作区写入'
+        : activeProfile?.interactionMode === 'plan'
+          ? '计划模式'
+          : '只读',
+  );
+  const accessDetail = $derived(
+    activeProfile
+      ? `${activeProfile.filesystemPolicy === 'workspace-write' ? '可修改工作区' : '仅查看'} · ${activeProfile.commandPolicy === 'disabled' ? '命令关闭' : activeProfile.approvalPolicy === 'on-request' ? '命令需审批' : '命令受信任'}`
+      : '选择会话后可查看当前执行配置',
+  );
+  const modelLabel = $derived(
+    activeProfile?.model || (selectedAgent === 'codex' ? 'Codex 默认模型' : selectedAgent === 'pi' ? 'Pi 默认模型' : '模型'),
+  );
+  const reasoningLabel = $derived(activeProfile?.reasoningEffort ? ` · ${activeProfile.reasoningEffort}` : '');
 
   function attachmentName(path: string): string {
     return path.split(/[\\/]/).filter(Boolean).at(-1) ?? path;
@@ -105,7 +132,17 @@
     slashActiveIndex = -1;
     onComposerInput(text);
   }
+
+  function handleWindowClick(event: MouseEvent): void {
+    const target = event.target;
+    if (target instanceof Element && target.closest('.composer-menu-anchor')) return;
+    attachmentMenuOpen = false;
+    sessionMenuOpen = false;
+    modelMenuOpen = false;
+  }
 </script>
+
+<svelte:window onclick={handleWindowClick} />
 
 <Card as="form" class="composer" data-ui-component="composer" onsubmit={(event) => { event.preventDefault(); onSend(); }}>
   <div class="composer-body">
@@ -238,39 +275,109 @@
       </div>
     {/if}
   </div>
-  <Button
-    variant="ghost"
-    size="icon"
-    type="button"
-    onclick={onAddAttachments}
-    disabled={!selectedSession || sessionArchived || selectedSessionArchiving || busy}
-    aria-label="添加上下文"
-    title="添加文件或目录"
-  >
-    <Icon name="folder-add" size={14} />
-  </Button>
-  <Button
-    variant="ghost"
-    size="icon"
-    type="button"
-    onclick={onAddDirectory}
-    disabled={!selectedSession || sessionArchived || selectedSessionArchiving || busy}
-    aria-label="添加上下文目录"
-    title="添加目录上下文"
-  >
-    <Icon name="folder" size={14} />
-  </Button>
-  {#if sessionRunning}
-    {#if selectedAgent === 'pi'}
-      <Button variant="outline" size="sm" type="button" onclick={() => onQueue('steer')} disabled={busy || !text.trim()}>插入</Button>
-      <Button variant="outline" size="sm" type="button" onclick={() => onQueue('followUp')} disabled={busy || !text.trim()}>跟进</Button>
-    {/if}
-    <Button variant="destructive" size="icon" type="button" onclick={onAbort} disabled={busy} aria-label="中止">
-      <Icon name="stop" size={13} />
-    </Button>
-  {:else}
-    <Button size="icon" type="submit" disabled={!selectedSession || sessionArchived || selectedSessionArchiving || !text.trim() || busy} aria-label="发送">
-      <Icon name="send" size={14} />
-    </Button>
-  {/if}
+  <div class="composer-toolbar">
+    <div class="composer-toolbar-group composer-toolbar-start">
+      <div class="composer-menu-anchor">
+        <Button
+          variant="ghost"
+          size="icon"
+          type="button"
+          class="composer-toolbar-icon"
+          onclick={() => { attachmentMenuOpen = !attachmentMenuOpen; sessionMenuOpen = false; modelMenuOpen = false; }}
+          disabled={!selectedSession || sessionArchived || selectedSessionArchiving || busy}
+          aria-label="添加上下文"
+          aria-haspopup="menu"
+          aria-expanded={attachmentMenuOpen}
+          title="添加上下文"
+        >
+          <Icon name="add" size={20} />
+        </Button>
+        {#if attachmentMenuOpen}
+          <div class="composer-menu composer-attachment-menu" role="menu" aria-label="添加上下文">
+            <button type="button" role="menuitem" onclick={() => { attachmentMenuOpen = false; onAddAttachments(); }}>
+              <Icon name="folder-add" size={15} />
+              <span>添加文件</span>
+            </button>
+            <button type="button" role="menuitem" onclick={() => { attachmentMenuOpen = false; onAddDirectory(); }}>
+              <Icon name="folder" size={15} />
+              <span>添加目录</span>
+            </button>
+          </div>
+        {/if}
+      </div>
+
+      {#if selectedSession}
+        <div class="composer-menu-anchor">
+          <Button
+            variant="ghost"
+            type="button"
+            class="composer-toolbar-control composer-access-control"
+            onclick={() => { sessionMenuOpen = !sessionMenuOpen; attachmentMenuOpen = false; modelMenuOpen = false; }}
+            aria-haspopup="menu"
+            aria-expanded={sessionMenuOpen}
+            title={accessDetail}
+          >
+            <Icon name={activeProfile?.filesystemPolicy === 'workspace-write' ? 'trust' : 'untrust'} size={16} />
+            <span>{accessLabel}</span>
+          </Button>
+          {#if sessionMenuOpen}
+            <div class="composer-menu composer-profile-menu" role="menu" aria-label="会话设置">
+              <div class="composer-menu-heading">会话设置</div>
+              <div class="composer-menu-detail">{accessDetail}</div>
+              {#if executionProfile?.unsupported && executionProfile.unsupported.length > 0}
+                <div class="composer-menu-warning">未启用：{executionProfile.unsupported.join('、')}</div>
+              {/if}
+              <button type="button" role="menuitem" onclick={() => { sessionMenuOpen = false; onOpenSettings(); }}>
+                <Icon name="settings" size={15} />
+                <span>打开设置</span>
+              </button>
+            </div>
+          {/if}
+        </div>
+      {/if}
+    </div>
+
+    <div class="composer-toolbar-group composer-toolbar-end">
+      {#if selectedSession}
+        <div class="composer-menu-anchor">
+          <Button
+            variant="ghost"
+            type="button"
+            class="composer-toolbar-control composer-model-control"
+            onclick={() => { modelMenuOpen = !modelMenuOpen; attachmentMenuOpen = false; sessionMenuOpen = false; }}
+            aria-haspopup="menu"
+            aria-expanded={modelMenuOpen}
+            title={`${modelLabel}${reasoningLabel}`}
+          >
+            <span class="composer-model-label">{modelLabel}{reasoningLabel}</span>
+            <Icon name="chevron-down" size={15} />
+          </Button>
+          {#if modelMenuOpen}
+            <div class="composer-menu composer-model-menu" role="menu" aria-label="模型设置">
+              <div class="composer-menu-heading">模型与推理</div>
+              <div class="composer-menu-detail">{modelLabel}{reasoningLabel}</div>
+              <button type="button" role="menuitem" onclick={() => { modelMenuOpen = false; onOpenSettings(); }}>
+                <Icon name="settings" size={15} />
+                <span>打开设置</span>
+              </button>
+            </div>
+          {/if}
+        </div>
+      {/if}
+
+      {#if sessionRunning}
+        {#if selectedAgent === 'pi'}
+          <Button variant="outline" size="sm" type="button" onclick={() => onQueue('steer')} disabled={busy || !text.trim()}>插入</Button>
+          <Button variant="outline" size="sm" type="button" onclick={() => onQueue('followUp')} disabled={busy || !text.trim()}>跟进</Button>
+        {/if}
+        <Button variant="destructive" size="icon" type="button" onclick={onAbort} disabled={busy} aria-label="中止">
+          <Icon name="stop" size={13} />
+        </Button>
+      {:else}
+        <Button class="composer-send" size="icon" type="submit" disabled={!selectedSession || sessionArchived || selectedSessionArchiving || !text.trim() || busy} aria-label="发送">
+          <Icon name="send" size={16} />
+        </Button>
+      {/if}
+    </div>
+  </div>
 </Card>

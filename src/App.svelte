@@ -1638,6 +1638,7 @@
       onQueue={(mode) => void queuePiPrompt(mode)}
       onClearQueue={() => void clearPiPromptQueue()}
       onAbort={() => void abortPrompt()}
+      onOpenSettings={() => (settingsOpen = true)}
     />
     <Inspector
       workspace={selectedWorkspace}

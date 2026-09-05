@@ -89,7 +89,7 @@ h2 { font-size: 16px; letter-spacing: -0.02em; }
 .session-create-actions [data-slot='button'] { min-width: 0; }
 .session-profile-choice { grid-column: 1 / -1; display: flex; align-items: center; justify-content: space-between; gap: 8px; min-width: 0; color: var(--muted-foreground); font-size: 0.72rem; }
 .session-profile-choice select { min-width: 0; flex: 1; border: 1px solid var(--border); border-radius: 6px; background: var(--background); color: var(--foreground); padding: 4px 6px; font: inherit; }
-.timeline { display: flex; min-width: 0; min-height: 0; flex-direction: column; overflow: hidden; }
+.timeline { display: flex; min-width: 0; min-height: 0; flex-direction: column; overflow: visible; }
 .timeline-heading { border-bottom: 0; }
 .timeline-heading-actions { display: flex; align-items: center; gap: 7px; }
 .session-filter-form { display: flex; min-width: 0; align-items: center; gap: 6px; }
@@ -188,7 +188,7 @@ h2 { font-size: 16px; letter-spacing: -0.02em; }
 .orbit span { width: 7px; height: 7px; position: absolute; top: -3px; left: 24px; border-radius: 50%; background: var(--aibo-muted); }
 .orbit span:nth-child(2) { top: 26px; left: -3px; background: var(--aibo-text); }
 .orbit span:nth-child(3) { top: 44px; left: 39px; background: var(--aibo-subtle); }
-.composer { display: flex; align-items: flex-end; gap: 8px; margin: 0 16px 16px; padding: 8px 8px 8px 13px; }
+.composer { position: relative; z-index: 5; display: grid; gap: 8px; margin: 0 16px 16px; padding: 13px 13px 10px; border-radius: 18px; background: var(--aibo-surface); }
 .composer:focus-within { border-color: var(--aibo-focus); box-shadow: 0 0 0 3px color-mix(in srgb, var(--aibo-focus) 14%, transparent); }
 .composer-body { position: relative; display: grid; min-width: 0; flex: 1; gap: 5px; }
 .composer-attachments { display: flex; min-width: 0; flex-wrap: wrap; gap: 4px; }
@@ -196,7 +196,7 @@ h2 { font-size: 16px; letter-spacing: -0.02em; }
 .composer-attachment { display: inline-flex; min-width: 0; max-width: 220px; align-items: center; gap: 4px; border: 1px solid var(--aibo-border); border-radius: 999px; padding: 2px 3px 2px 7px; color: var(--aibo-muted); background: var(--aibo-surface); font-size: 9px; }
 .composer-attachment > span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .composer-attachment-remove { width: 18px !important; height: 18px !important; flex: none; color: var(--aibo-subtle); }
-.composer-textarea { flex: 1; min-width: 0; resize: vertical; border-color: transparent; padding: 0; background: transparent; box-shadow: none; }
+.composer-textarea { min-width: 0; min-height: 74px; resize: vertical; border-color: transparent; padding: 1px 4px 0; background: transparent; box-shadow: none; font-size: 14px; line-height: 1.55; }
 .composer-textarea:focus-visible { border-color: transparent; box-shadow: none; }
 .composer-suggestions { position: absolute; z-index: 30; right: 0; bottom: calc(100% + 8px); left: 0; display: grid; max-height: 236px; overflow-y: auto; border: 1px solid var(--aibo-border-strong); border-radius: 8px; padding: 4px; background: var(--aibo-surface); box-shadow: 0 12px 28px rgb(0 0 0 / 28%); }
 .composer-suggestions button { display: flex; min-width: 0; align-items: center; gap: 8px; border: 0; border-radius: 5px; padding: 7px 8px; color: var(--aibo-muted); background: transparent; text-align: left; font-size: 11px; }
@@ -205,6 +205,27 @@ h2 { font-size: 16px; letter-spacing: -0.02em; }
 .composer-suggestions button > span:not(.composer-command-prefix) { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .composer-suggestions button > small { flex: none; margin-left: auto; color: var(--aibo-subtle); font-size: 9px; }
 .composer-command-prefix { flex: none; color: var(--aibo-text); font-family: var(--aibo-mono); font-size: 10px; }
+.composer-toolbar { display: flex; min-width: 0; align-items: center; justify-content: space-between; gap: 10px; }
+.composer-toolbar-group { display: flex; min-width: 0; align-items: center; gap: 4px; }
+.composer-toolbar-start { flex: 1; }
+.composer-toolbar-end { flex: none; }
+.composer-menu-anchor { position: relative; }
+.composer-toolbar-icon { width: 34px !important; height: 34px !important; color: var(--aibo-muted); }
+.composer-toolbar-icon:hover, .composer-toolbar-control:hover { color: var(--aibo-text); background: var(--aibo-surface-hover); }
+.composer-toolbar-control { min-width: 0; height: 32px; gap: 7px; border-radius: 8px; padding: 0 9px; color: var(--aibo-muted); font-size: 11px; }
+.composer-access-control { color: var(--aibo-warning-text); }
+.composer-access-control:hover { color: var(--aibo-warning-text); }
+.composer-model-control { max-width: min(280px, 38vw); }
+.composer-model-label { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.composer-send { width: 38px !important; height: 38px !important; border-radius: 50% !important; }
+.composer-menu { position: absolute; z-index: 35; bottom: calc(100% + 8px); display: grid; width: min(240px, calc(100vw - 32px)); min-width: 0; gap: 3px; border: 1px solid var(--aibo-border-strong); border-radius: 10px; padding: 5px; background: var(--aibo-surface); box-shadow: 0 16px 36px rgb(0 0 0 / 34%); }
+.composer-attachment-menu { left: 0; }
+.composer-profile-menu, .composer-model-menu { right: 0; }
+.composer-menu-heading { padding: 6px 8px 3px; color: var(--aibo-text); font-size: 11px; font-weight: 600; }
+.composer-menu-detail { overflow-wrap: anywhere; padding: 0 8px 6px; color: var(--aibo-subtle); font-size: 10px; line-height: 1.45; }
+.composer-menu-warning { padding: 0 8px 5px; color: var(--aibo-warning-text); font-size: 9px; line-height: 1.4; }
+.composer-menu button { display: flex; min-width: 0; align-items: center; gap: 8px; border: 0; border-radius: 6px; padding: 8px; color: var(--aibo-muted); background: transparent; text-align: left; font-size: 11px; }
+.composer-menu button:hover, .composer-menu button:focus-visible { color: var(--aibo-text); background: var(--aibo-surface-hover); outline: none; }
 .approval-list { display: grid; gap: 8px; margin: 0 16px 12px; }
 .approval-card { border-color: var(--aibo-warning-border); background: var(--aibo-warning-surface); }
 .approval-card-heading { flex-direction: row; justify-content: space-between; gap: 8px; padding: 12px 13px 8px; }
@@ -388,4 +409,12 @@ dd { max-width: 68%; overflow: hidden; margin: 0; color: var(--aibo-muted); font
   .app-shell { padding: 0 14px 14px; }
   .workspace-grid { grid-template-columns: minmax(0, 0.7fr) minmax(0, 1.5fr) minmax(0, 0.9fr); }
   .window-titlebar { margin: 0 -14px; padding-left: 82px; }
+}
+
+@media (max-width: 680px) {
+  .composer { margin: 0 8px 8px; padding: 10px; }
+  .composer-textarea { min-height: 64px; font-size: 13px; }
+  .composer-toolbar-control { padding-inline: 7px; }
+  .composer-model-control { max-width: 42vw; }
+  .composer-model-label { max-width: 26vw; }
 }
