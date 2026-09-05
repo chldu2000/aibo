@@ -11,6 +11,7 @@ export type UiIconName =
   | 'delete'
   | 'edit'
   | 'filter'
+  | 'file'
   | 'folder'
   | 'folder-add'
   | 'refresh'

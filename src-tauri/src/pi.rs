@@ -1903,6 +1903,7 @@ impl PiManager {
             "session-tree",
             "session-tree-navigation",
             "session-snapshot",
+            "slash-commands",
             "read-only-tools",
         ];
         if profile.enforced.filesystem_policy == "workspace-write" {
@@ -2184,6 +2185,82 @@ impl PiManager {
             }
         }
         Ok(())
+    }
+
+    pub(crate) async fn commands(&self, session_id: &str) -> Result<Value, PiError> {
+        let session = self.ensure_runtime(session_id).await?;
+        let response = session.client.request("commands", json!({})).await?;
+        Ok(response
+            .get("result")
+            .and_then(|result| result.get("commands"))
+            .cloned()
+            .unwrap_or_else(|| json!([])))
+    }
+
+    pub(crate) async fn compact(
+        &self,
+        session_id: &str,
+        instructions: Option<&str>,
+    ) -> Result<Value, PiError> {
+        let session = self.ensure_runtime(session_id).await?;
+        if session.current_turn_id.lock().await.is_some()
+            || !matches!(session.state.lock().await.as_str(), "idle")
+        {
+            return Err(PiError::Session(
+                "Pi context compaction requires an idle session".to_owned(),
+            ));
+        }
+        let response = session
+            .client
+            .request(
+                "compact",
+                json!({ "instructions": instructions.unwrap_or_default() }),
+            )
+            .await?;
+        Ok(response.get("result").cloned().unwrap_or_else(|| json!({})))
+    }
+
+    pub(crate) async fn thinking(
+        &self,
+        session_id: &str,
+        level: Option<&str>,
+    ) -> Result<Value, PiError> {
+        let session = self.ensure_runtime(session_id).await?;
+        let response = session
+            .client
+            .request("thinking", json!({ "level": level.unwrap_or_default() }))
+            .await?;
+        Ok(response.get("result").cloned().unwrap_or_else(|| json!({})))
+    }
+
+    pub(crate) async fn model(
+        &self,
+        session_id: &str,
+        reference: Option<&str>,
+    ) -> Result<Value, PiError> {
+        let session = self.ensure_runtime(session_id).await?;
+        let response = session
+            .client
+            .request(
+                "model",
+                json!({ "reference": reference.unwrap_or_default() }),
+            )
+            .await?;
+        Ok(response.get("result").cloned().unwrap_or_else(|| json!({})))
+    }
+
+    pub(crate) async fn reload(&self, session_id: &str) -> Result<Value, PiError> {
+        let session = self.ensure_runtime(session_id).await?;
+        let workspace = workspace_by_id(&self.db, &session.workspace_id)
+            .await
+            .map_err(|error| PiError::Session(error.to_string()))?;
+        if workspace.trust != "trusted" {
+            return Err(PiError::Session(
+                "Pi resource reload requires a trusted workspace".to_owned(),
+            ));
+        }
+        let response = session.client.request("reload", json!({})).await?;
+        Ok(response.get("result").cloned().unwrap_or_else(|| json!({})))
     }
 
     pub(crate) async fn tree(&self, session_id: &str) -> Result<Value, PiError> {

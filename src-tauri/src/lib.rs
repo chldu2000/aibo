@@ -78,6 +78,13 @@ pub struct Workspace {
 
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
+pub struct WorkspacePathSuggestion {
+    path: String,
+    is_directory: bool,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct AgentDiagnostic {
     agent: String,
     label: String,
@@ -864,6 +871,87 @@ async fn list_workspaces(state: State<'_, AppState>) -> Result<Vec<Workspace>, C
     .fetch_all(&state.db)
     .await?;
     rows.iter().map(row_to_workspace).collect()
+}
+
+const WORKSPACE_PATH_RESULT_LIMIT: usize = 100;
+
+fn normalize_workspace_path_query(query: &str) -> String {
+    query
+        .trim()
+        .trim_start_matches('@')
+        .trim_start_matches("./")
+        .replace('\\', "/")
+        .to_lowercase()
+}
+
+fn collect_workspace_paths(
+    root: &Path,
+    current: &Path,
+    query: &str,
+    results: &mut Vec<WorkspacePathSuggestion>,
+    depth: usize,
+) {
+    if results.len() >= WORKSPACE_PATH_RESULT_LIMIT || depth > 12 {
+        return;
+    }
+    let Ok(entries) = fs::read_dir(current) else {
+        return;
+    };
+    for entry in entries.flatten() {
+        if results.len() >= WORKSPACE_PATH_RESULT_LIMIT {
+            break;
+        }
+        let path = entry.path();
+        let Ok(metadata) = fs::symlink_metadata(&path) else {
+            continue;
+        };
+        let is_directory = metadata.is_dir();
+        if is_directory
+            && path
+                .file_name()
+                .and_then(|name| name.to_str())
+                .is_some_and(|name| matches!(name, ".git" | ".aibo" | "node_modules" | "target"))
+        {
+            continue;
+        }
+        let Ok(relative) = path.strip_prefix(root) else {
+            continue;
+        };
+        let relative = relative.to_string_lossy().replace('\\', "/");
+        if query.is_empty() || relative.to_lowercase().contains(query) {
+            results.push(WorkspacePathSuggestion {
+                path: relative,
+                is_directory,
+            });
+        }
+        if is_directory {
+            collect_workspace_paths(root, &path, query, results, depth + 1);
+        }
+    }
+}
+
+#[tauri::command]
+async fn search_workspace_paths(
+    workspace_id: String,
+    query: String,
+    state: State<'_, AppState>,
+) -> Result<Vec<WorkspacePathSuggestion>, CoreError> {
+    let workspace = workspace_by_id(&state.db, &workspace_id).await?;
+    let root = canonical_workspace_path(&workspace.path)?;
+    let normalized_query = normalize_workspace_path_query(&query);
+    tauri::async_runtime::spawn_blocking(move || {
+        let mut results = Vec::with_capacity(WORKSPACE_PATH_RESULT_LIMIT);
+        collect_workspace_paths(&root, &root, &normalized_query, &mut results, 0);
+        results.sort_by(|left, right| {
+            right
+                .is_directory
+                .cmp(&left.is_directory)
+                .then_with(|| left.path.to_lowercase().cmp(&right.path.to_lowercase()))
+        });
+        results
+    })
+    .await
+    .map_err(|error| CoreError::InvalidWorkspacePath(format!("scan workspace: {error}")))
 }
 
 #[tauri::command]
@@ -3375,6 +3463,61 @@ async fn clear_pi_queue(session_id: String, state: State<'_, AppState>) -> Resul
 }
 
 #[tauri::command]
+async fn list_pi_commands(
+    session_id: String,
+    state: State<'_, AppState>,
+) -> Result<serde_json::Value, CoreError> {
+    state.pi.commands(&session_id).await.map_err(Into::into)
+}
+
+#[tauri::command]
+async fn compact_pi_session(
+    session_id: String,
+    instructions: Option<String>,
+    state: State<'_, AppState>,
+) -> Result<serde_json::Value, CoreError> {
+    state
+        .pi
+        .compact(&session_id, instructions.as_deref())
+        .await
+        .map_err(Into::into)
+}
+
+#[tauri::command]
+async fn set_pi_thinking_level(
+    session_id: String,
+    level: Option<String>,
+    state: State<'_, AppState>,
+) -> Result<serde_json::Value, CoreError> {
+    state
+        .pi
+        .thinking(&session_id, level.as_deref())
+        .await
+        .map_err(Into::into)
+}
+
+#[tauri::command]
+async fn set_pi_model(
+    session_id: String,
+    reference: Option<String>,
+    state: State<'_, AppState>,
+) -> Result<serde_json::Value, CoreError> {
+    state
+        .pi
+        .model(&session_id, reference.as_deref())
+        .await
+        .map_err(Into::into)
+}
+
+#[tauri::command]
+async fn reload_pi_session(
+    session_id: String,
+    state: State<'_, AppState>,
+) -> Result<serde_json::Value, CoreError> {
+    state.pi.reload(&session_id).await.map_err(Into::into)
+}
+
+#[tauri::command]
 async fn get_pi_session_tree(
     session_id: String,
     state: State<'_, AppState>,
@@ -3764,6 +3907,7 @@ pub fn run() {
         })
         .invoke_handler(tauri::generate_handler![
             list_workspaces,
+            search_workspace_paths,
             add_workspace,
             set_workspace_trust,
             remove_workspace,
@@ -3815,6 +3959,11 @@ pub fn run() {
             steer_pi_prompt,
             follow_up_pi_prompt,
             clear_pi_queue,
+            list_pi_commands,
+            compact_pi_session,
+            set_pi_thinking_level,
+            set_pi_model,
+            reload_pi_session,
             get_pi_session_tree,
             navigate_pi_session_tree,
             get_pi_session_snapshot

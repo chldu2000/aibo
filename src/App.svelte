@@ -29,6 +29,10 @@
   import { createNavigationController } from '$lib/app/navigation-controller';
   import { createPiTreeController } from '$lib/app/pi-tree-controller';
   import { createWorkspaceController } from '$lib/app/workspace-controller';
+  import {
+    AIBO_PI_COMMANDS,
+    parsePiCommand,
+  } from '$lib/app/pi-commands';
   import { workspaceIdsForRefresh } from '$lib/app/session-transitions';
   import type { PersistedSelection } from '$lib/app/selection-storage';
   import { isSessionRunning } from '$lib/app/session-state';
@@ -66,6 +70,12 @@
     isTauri,
     listCodexThreads,
     listWorkspaces,
+    searchWorkspacePaths,
+    listPiCommands,
+    compactPiSession,
+    setPiThinkingLevel,
+    setPiModel,
+    reloadPiSession,
     listSessions,
     listenToAgentEvents,
     navigatePiSessionTree,
@@ -88,6 +98,7 @@
   } from './lib/api';
   import type {
     AgentQueueSnapshot,
+    AgentCommand,
     AgentDiagnostic,
     AgentEvent,
     ApprovalDecision,
@@ -112,6 +123,7 @@
     TimelineItem,
     Workspace,
     WorkspaceCapabilityInventory,
+    WorkspacePathSuggestion,
   } from './lib/types';
   import type { SessionListItem, WorkspaceListItem } from './lib/components/app/view-types';
   import type { CommandPaletteCommand } from '$lib/components/app';
@@ -153,7 +165,7 @@
       status: 'ready',
       executable: null,
       version: 'SDK 0.84.4',
-      capabilities: ['sdk-host', 'streaming', 'abort', 'session-tree', 'session-tree-navigation', 'session-snapshot', 'queue-management', 'read-only-tools', 'workspace-write-gateway', 'workspace-command-gateway', 'aibo-approval'],
+      capabilities: ['sdk-host', 'streaming', 'abort', 'session-tree', 'session-tree-navigation', 'session-snapshot', 'slash-commands', 'queue-management', 'read-only-tools', 'workspace-write-gateway', 'workspace-command-gateway', 'aibo-approval'],
       authState: 'delegated',
       message: 'Project-locked SDK host; workspace writes are mediated by Aibo Core; native authentication remains with Pi.',
     },
@@ -205,6 +217,24 @@
   let sessionsLoadingWorkspaceIds = $state<string[]>([]);
   let sessionLoadGenerations = $state<Record<string, number>>({});
   let composerText = $state('');
+  let workspacePathSuggestions = $state<WorkspacePathSuggestion[]>([]);
+  let agentCommands = $state<AgentCommand[]>([]);
+  let agentCommandsLoading = $state(false);
+  let pathSearchGeneration = 0;
+  let pathSearchTimer: ReturnType<typeof setTimeout> | undefined;
+
+  const visibleAgentCommands = $derived.by(() => {
+    if (selectedSession?.agent !== 'pi') return [];
+    const commands = [...AIBO_PI_COMMANDS, ...agentCommands];
+    const seen = new Set<string>();
+    return commands.filter((command) => {
+      const name = command.name.toLocaleLowerCase();
+      if (seen.has(name)) return false;
+      seen.add(name);
+      return true;
+    });
+  });
+  let commandSearchGeneration = 0;
   let busy = $state(false);
   let errorMessage = $state<string | null>(null);
   let notice = $state<string | null>(null);
@@ -286,6 +316,30 @@
       return `${agentLabel} 正在调用 ${toolLabel(latest)}…`;
     }
     return `${agentLabel} 正在响应…`;
+  });
+
+  $effect(() => {
+    const session = selectedSession;
+    if (!desktop || !session || session.agent !== 'pi' || session.archived) {
+      agentCommands = [];
+      agentCommandsLoading = false;
+      return;
+    }
+    agentCommandsLoading = true;
+    const generation = ++commandSearchGeneration;
+    void listPiCommands(session.id)
+      .then((commands) => {
+        if (generation === commandSearchGeneration && selectedSessionId === session.id) {
+          agentCommands = commands;
+          agentCommandsLoading = false;
+        }
+      })
+      .catch(() => {
+        if (generation === commandSearchGeneration && selectedSessionId === session.id) {
+          agentCommands = [];
+          agentCommandsLoading = false;
+        }
+      });
   });
 
   const commandPaletteCommands = $derived.by((): CommandPaletteCommand[] => [
@@ -491,6 +545,41 @@
     retryPrompt = null;
     retryReason = null;
     lastSubmittedPrompt = null;
+    workspacePathSuggestions = [];
+    agentCommands = [];
+    agentCommandsLoading = false;
+  }
+
+  function handleComposerInput(value: string): void {
+    const match = value.match(/(?:^|\s)@([^\s]*)$/);
+    const workspaceId = selectedSession?.workspaceId ?? selectedWorkspaceId;
+    if (!desktop || !workspaceId || !selectedSession || selectedSession.archived || !match) {
+      if (pathSearchTimer) clearTimeout(pathSearchTimer);
+      pathSearchTimer = undefined;
+      workspacePathSuggestions = [];
+      ++pathSearchGeneration;
+      return;
+    }
+    const query = match[1] ?? '';
+    const generation = ++pathSearchGeneration;
+    if (pathSearchTimer) clearTimeout(pathSearchTimer);
+    pathSearchTimer = setTimeout(() => {
+      pathSearchTimer = undefined;
+      void searchWorkspacePaths(workspaceId, query)
+        .then((suggestions) => {
+          if (generation === pathSearchGeneration && selectedSession?.workspaceId === workspaceId) {
+            workspacePathSuggestions = suggestions;
+          }
+        })
+        .catch(() => {
+          if (generation === pathSearchGeneration) workspacePathSuggestions = [];
+        });
+    }, 120);
+  }
+
+  function selectComposerWorkspacePath(path: string): void {
+    workspacePathSuggestions = [];
+    void registerAttachmentPaths([path]);
   }
 
   async function refreshCodexThreads(workspaceId: string, announce = false) {
@@ -690,6 +779,7 @@
       setUsageSnapshot: (usage) => (usageSnapshot = usage),
       setQueueSnapshot: (queue) => (queueSnapshot = queue),
       setTimeline: (nextTimeline) => (timeline = nextTimeline),
+      refreshTimeline,
       setRetry: (prompt, reason) => {
         retryPrompt = prompt;
         retryReason = reason;
@@ -727,7 +817,170 @@
     await agentSessionController.createPi(selectedWorkspace);
   }
 
+  async function executePiBuiltinCommand(input: string): Promise<boolean> {
+    const command = parsePiCommand(input);
+    if (!command || selectedSession?.agent !== 'pi') return false;
+
+    const session = selectedSession;
+    const workspace = selectedWorkspace;
+    const run = async (operation: () => Promise<void>): Promise<void> => {
+      busy = true;
+      errorMessage = null;
+      try {
+        await operation();
+        composerText = '';
+      } catch (error) {
+        errorMessage = toErrorMessage(error);
+      } finally {
+        busy = false;
+      }
+    };
+
+    switch (command.name) {
+      case 'settings':
+        if (command.args) {
+          errorMessage = '/settings 不接受参数。';
+          return true;
+        }
+        settingsOpen = true;
+        composerText = '';
+        return true;
+      case 'new':
+        if (command.args) {
+          errorMessage = '/new 不接受参数。';
+          return true;
+        }
+        if (!workspace) {
+          errorMessage = '请先选择一个工作区。';
+          return true;
+        }
+        toggleSessionCreator(workspace.id);
+        composerText = '';
+        return true;
+      case 'name':
+        if (!command.args) {
+          beginRenameSession(session.id);
+          composerText = '';
+          return true;
+        }
+        await run(async () => {
+          const renamed = await renameSessionApi(session.id, command.args);
+          updateWorkspaceSessions(session.workspaceId, (items) =>
+            items.map((item) => (item.id === renamed.id ? renamed : item)),
+          );
+          notice = '会话名称已更新。';
+        });
+        return true;
+      case 'trust':
+        if (!workspace) {
+          errorMessage = '请先选择一个工作区。';
+          return true;
+        }
+        if (command.args && !['on', 'off', 'true', 'false', 'trusted', 'untrusted'].includes(command.args.toLocaleLowerCase())) {
+          errorMessage = '/trust 可选参数为 on 或 off。';
+          return true;
+        }
+        if (command.args) {
+          const shouldTrust = ['on', 'true', 'trusted'].includes(command.args.toLocaleLowerCase());
+          if ((workspace.trust === 'trusted') !== shouldTrust) await run(() => toggleTrust(workspace));
+          else composerText = '';
+        } else {
+          await run(() => toggleTrust(workspace));
+        }
+        return true;
+      case 'tree':
+        if (command.args) {
+          errorMessage = '/tree 不接受参数。';
+          return true;
+        }
+        await run(async () => {
+          await refreshPiTree(session.id);
+          notice = '会话树已刷新。';
+        });
+        return true;
+      case 'session':
+        if (command.args) {
+          errorMessage = '/session 不接受参数。';
+          return true;
+        }
+        notice = `${session.label} · ${session.externalSessionId ?? '尚未绑定 Pi 会话 ID'}`;
+        composerText = '';
+        return true;
+      case 'resume':
+        if (command.args) {
+          errorMessage = '/resume 不接受参数。';
+          return true;
+        }
+        if (!workspace) {
+          errorMessage = '请先选择一个工作区。';
+          return true;
+        }
+        await run(async () => {
+          activateWorkspace(workspace.id);
+          await refreshSessions(workspace.id);
+          notice = '会话列表已刷新。';
+        });
+        return true;
+      case 'compact':
+        await run(async () => {
+          await compactPiSession(session.id, command.args);
+          timeline = await getTimeline(session.id);
+          notice = 'Pi 上下文压缩已完成。';
+        });
+        return true;
+      case 'thinking':
+        await run(async () => {
+          const result = await setPiThinkingLevel(session.id, command.args || undefined);
+          const level = typeof result.level === 'string' ? result.level : null;
+          const available = Array.isArray(result.availableLevels)
+            ? result.availableLevels.filter((item): item is string => typeof item === 'string')
+            : [];
+          notice = command.args
+            ? `思考级别已设置为 ${level ?? command.args}。`
+            : `当前思考级别：${level ?? '未知'}${available.length > 0 ? `（可选：${available.join('、')}）` : ''}`;
+        });
+        return true;
+      case 'model':
+        await run(async () => {
+          const result = await setPiModel(session.id, command.args || undefined);
+          if (command.args) {
+            const provider = typeof result.provider === 'string' ? result.provider : '';
+            const id = typeof result.id === 'string' ? result.id : command.args;
+            notice = `当前模型已切换为 ${provider ? `${provider}/` : ''}${id}。`;
+          } else {
+            const current = result.current && typeof result.current === 'object'
+              ? result.current as { provider?: unknown; id?: unknown }
+              : null;
+            const models = Array.isArray(result.models)
+              ? result.models.filter((item): item is { provider?: unknown; id?: unknown } => Boolean(item && typeof item === 'object'))
+              : [];
+            const currentLabel = current && typeof current.provider === 'string' && typeof current.id === 'string'
+              ? `${current.provider}/${current.id}`
+              : '未选择';
+            notice = `当前模型：${currentLabel}${models.length > 0 ? ` · 可用 ${models.length} 个` : ''}`;
+          }
+        });
+        return true;
+      case 'reload':
+        if (command.args) {
+          errorMessage = '/reload 不接受参数。';
+          return true;
+        }
+        await run(async () => {
+          const result = await reloadPiSession(session.id);
+          if (Array.isArray(result.commands)) {
+            agentCommands = result.commands.filter((item): item is AgentCommand => Boolean(item && typeof item === 'object' && typeof item.name === 'string'));
+          }
+          notice = 'Pi 会话资源已重新加载。';
+        });
+        return true;
+      default:
+        return false;
+    }
+  }
+
   async function sendPrompt() {
+    if (selectedSession?.agent === 'pi' && await executePiBuiltinCommand(composerText)) return;
     await messageController.sendPrompt();
   }
 
@@ -740,6 +993,7 @@
   }
 
   async function queuePiPrompt(mode: 'steer' | 'followUp') {
+    if (selectedSession?.agent === 'pi' && await executePiBuiltinCommand(composerText)) return;
     await messageController.queuePiPrompt(mode);
   }
 
@@ -1236,7 +1490,12 @@
       selectedSessionArchiving={selectedSessionArchiving}
       busy={busy}
       attachments={attachments}
+      workspacePathSuggestions={workspacePathSuggestions}
+      agentCommands={visibleAgentCommands}
+      agentCommandsLoading={agentCommandsLoading}
       bind:composerText
+      onComposerInput={handleComposerInput}
+      onSelectWorkspacePath={selectComposerWorkspacePath}
       onAddAttachments={() => void chooseSessionAttachments()}
       onAddDirectory={() => void chooseSessionAttachmentDirectory()}
       onRemoveAttachment={(attachmentId) => void removeAttachment(attachmentId)}

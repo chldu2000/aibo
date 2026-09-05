@@ -78,6 +78,10 @@ try {
   assertProbe(Array.isArray(startResponse.result.capabilities) && startResponse.result.capabilities.includes("read-only-tools"), "Pi SDK host did not advertise read-only tools");
   const initialTree = await request("tree");
   assertProbe(Array.isArray(initialTree.result?.tree), "Pi SDK host did not return a session tree");
+  const commands = await request("commands");
+  assertProbe(Array.isArray(commands.result?.commands), "Pi SDK host did not return slash commands");
+  const commandNames = new Set(commands.result.commands.map((command) => command?.name));
+  assertProbe(commandNames.has("compact") && commandNames.has("thinking") && commandNames.has("model") && commandNames.has("reload"), "Pi SDK host did not advertise embedded Pi built-ins");
   if (smoke) {
     await request("prompt", { turnId: "probe-turn-1", text: "Reply with exactly AIBO_PI_SDK_HOST_OK. No tools are needed." });
     const completed = await waitFor((event) => event.type === "turn_end");

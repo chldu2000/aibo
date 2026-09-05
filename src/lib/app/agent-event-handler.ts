@@ -21,6 +21,7 @@ export type AgentEventHandlerContext = {
   setUsageSnapshot: (usage: Record<string, unknown> | null) => void;
   setQueueSnapshot: (queue: AgentQueueSnapshot | null) => void;
   setTimeline: (timeline: TimelineItem[]) => void;
+  refreshTimeline?: (sessionId: string) => void | Promise<void>;
   setRetry: (prompt: string | null, reason: string | null) => void;
   setNotice: (notice: string) => void;
   refreshSessions: (workspaceId: string) => void | Promise<void>;
@@ -105,6 +106,10 @@ export function handleAgentEvent(event: AgentEvent, context: AgentEventHandlerCo
         ? (usage as Record<string, unknown>)
         : null,
     );
+  }
+
+  if (event.sessionId === selectedSessionId && event.type === 'compaction.completed') {
+    void context.refreshTimeline?.(event.sessionId);
   }
 
   if (event.sessionId === selectedSessionId && event.type === 'message.delta') {

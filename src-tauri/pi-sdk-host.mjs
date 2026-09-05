@@ -15,6 +15,38 @@ let resumedSession = false;
 let nextCoreToolRequestId = 1;
 const pendingCoreToolRequests = new Map();
 
+// These are the Pi built-ins that have a direct, non-interactive SDK
+// equivalent in the embedded Aibo host.  TUI-only commands (for example
+// /share, /login and /quit) are deliberately not advertised here: showing a
+// command that cannot be completed inside Aibo is worse than leaving it out.
+const EMBEDDED_BUILTIN_COMMANDS = [
+  { name: "compact", description: "压缩当前会话上下文", source: "builtin" },
+  { name: "model", description: "查看或切换当前模型", source: "builtin" },
+  { name: "thinking", description: "查看或设置思考级别", source: "builtin" },
+  { name: "reload", description: "重新加载会话资源", source: "builtin" },
+];
+
+function registeredCommands() {
+  return [
+    ...EMBEDDED_BUILTIN_COMMANDS,
+    ...session.extensionRunner.getRegisteredCommands().map((command) => ({
+      name: command.invocationName,
+      description: command.description ?? null,
+      source: "extension",
+    })),
+    ...session.promptTemplates.map((template) => ({
+      name: template.name,
+      description: template.description ?? null,
+      source: "prompt",
+    })),
+    ...session.resourceLoader.getSkills().skills.map((skill) => ({
+      name: `skill:${skill.name}`,
+      description: skill.description ?? null,
+      source: "skill",
+    })),
+  ];
+}
+
 function write(message) {
   process.stdout.write(`${JSON.stringify(message)}\n`);
 }
@@ -286,6 +318,7 @@ async function start(params) {
       "session-tree",
       "session-tree-navigation",
       "session-snapshot",
+      "slash-commands",
       "queue-management",
       "read-only-tools",
       ...(workspaceWriteEnabled ? ["workspace-write-gateway"] : []),
@@ -362,6 +395,69 @@ async function handle(message) {
     }
     if (method === "state") {
       respond(id, { sessionId: session.sessionId, isStreaming: session.isStreaming, sessionFile: session.sessionFile ?? null });
+      return;
+    }
+    if (method === "commands") {
+      respond(id, { commands: registeredCommands() });
+      return;
+    }
+    if (method === "compact") {
+      if (session.isStreaming) throw new Error("Pi compact requires an idle session");
+      const instructions = String(params.instructions ?? "").trim();
+      const result = await session.compact(instructions || undefined);
+      respond(id, { accepted: true, result });
+      return;
+    }
+    if (method === "thinking") {
+      const requested = String(params.level ?? "").trim();
+      if (!requested) {
+        respond(id, {
+          level: session.thinkingLevel,
+          availableLevels: session.getAvailableThinkingLevels(),
+        });
+        return;
+      }
+      session.setThinkingLevel(requested);
+      respond(id, {
+        level: session.thinkingLevel,
+        availableLevels: session.getAvailableThinkingLevels(),
+      });
+      return;
+    }
+    if (method === "model") {
+      const reference = String(params.reference ?? "").trim();
+      if (!reference) {
+        const current = session.model;
+        respond(id, {
+          current: current ? { provider: current.provider, id: current.id } : null,
+          models: modelRuntime.getAvailableSnapshot().map((model) => ({
+            provider: model.provider,
+            id: model.id,
+          })),
+        });
+        return;
+      }
+      const separator = reference.indexOf("/");
+      let model;
+      if (separator > 0) {
+        model = modelRuntime.getModel(reference.slice(0, separator), reference.slice(separator + 1));
+      } else {
+        model = modelRuntime.getAvailableSnapshot().find((candidate) => candidate.id === reference);
+      }
+      if (!model) throw new Error(`Model not found: ${reference}`);
+      await session.setModel(model);
+      respond(id, {
+        provider: model.provider,
+        id: model.id,
+      });
+      return;
+    }
+    if (method === "reload") {
+      await session.reload();
+      respond(id, {
+        reloaded: true,
+        commands: registeredCommands(),
+      });
       return;
     }
     if (method === "tree") {

@@ -42,6 +42,17 @@ export interface Workspace {
   updatedAt: string;
 }
 
+export interface WorkspacePathSuggestion {
+  path: string;
+  isDirectory: boolean;
+}
+
+export interface AgentCommand {
+  name: string;
+  description: string | null;
+  source: 'extension' | 'prompt' | 'skill' | string;
+}
+
 export type AgentStatus = 'ready' | 'missing' | 'error';
 
 export interface AgentDiagnostic {

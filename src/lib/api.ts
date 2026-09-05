@@ -35,6 +35,8 @@ import type {
   ProjectActionKind,
   ProjectActionRun,
   Workspace,
+  WorkspacePathSuggestion,
+  AgentCommand,
 } from './types';
 
 export const isTauri = (): boolean =>
@@ -42,6 +44,45 @@ export const isTauri = (): boolean =>
 
 export const listWorkspaces = (): Promise<Workspace[]> =>
   invoke<Workspace[]>('list_workspaces');
+
+export const searchWorkspacePaths = (
+  workspaceId: string,
+  query: string,
+): Promise<WorkspacePathSuggestion[]> =>
+  invoke<WorkspacePathSuggestion[]>('search_workspace_paths', { workspaceId, query });
+
+export const listPiCommands = (sessionId: string): Promise<AgentCommand[]> =>
+  invoke<AgentCommand[]>('list_pi_commands', { sessionId });
+
+export const compactPiSession = (
+  sessionId: string,
+  instructions?: string,
+): Promise<Record<string, unknown>> =>
+  invoke<Record<string, unknown>>('compact_pi_session', {
+    sessionId,
+    instructions: instructions?.trim() || null,
+  });
+
+export const setPiThinkingLevel = (
+  sessionId: string,
+  level?: string,
+): Promise<Record<string, unknown>> =>
+  invoke<Record<string, unknown>>('set_pi_thinking_level', {
+    sessionId,
+    level: level?.trim() || null,
+  });
+
+export const setPiModel = (
+  sessionId: string,
+  reference?: string,
+): Promise<Record<string, unknown>> =>
+  invoke<Record<string, unknown>>('set_pi_model', {
+    sessionId,
+    reference: reference?.trim() || null,
+  });
+
+export const reloadPiSession = (sessionId: string): Promise<Record<string, unknown>> =>
+  invoke<Record<string, unknown>>('reload_pi_session', { sessionId });
 
 export const addWorkspace = (path: string): Promise<Workspace> =>
   invoke<Workspace>('add_workspace', { path });

@@ -9,6 +9,7 @@
   import DeleteIcon from '@lucide/svelte/icons/trash-2';
   import EditIcon from '@lucide/svelte/icons/pencil';
   import FilterIcon from '@lucide/svelte/icons/list-filter';
+  import FileIcon from '@lucide/svelte/icons/file';
   import FolderIcon from '@lucide/svelte/icons/folder';
   import FolderAddIcon from '@lucide/svelte/icons/folder-plus';
   import RefreshIcon from '@lucide/svelte/icons/refresh-cw';
@@ -41,6 +42,7 @@
     delete: DeleteIcon,
     edit: EditIcon,
     filter: FilterIcon,
+    file: FileIcon,
     folder: FolderIcon,
     'folder-add': FolderAddIcon,
     refresh: RefreshIcon,

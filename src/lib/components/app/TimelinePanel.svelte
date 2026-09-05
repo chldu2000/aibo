@@ -1,6 +1,6 @@
 <script lang="ts">
   import { Badge, Button, Card, CardContent, CardHeader, CardTitle, Separator } from '$lib/ui-kit';
-  import type { AgentQueueSnapshot, ApprovalDecision, ContextAttachment } from '$lib/types';
+  import type { AgentCommand, AgentQueueSnapshot, ApprovalDecision, ContextAttachment, WorkspacePathSuggestion } from '$lib/types';
   import Composer from './Composer.svelte';
   import MarkdownContent from './MarkdownContent.svelte';
   import { sessionStateLabel } from './session-utils';
@@ -35,6 +35,9 @@
     selectedSessionArchiving: boolean;
     busy: boolean;
     attachments: ContextAttachment[];
+    workspacePathSuggestions: WorkspacePathSuggestion[];
+    agentCommands: AgentCommand[];
+    agentCommandsLoading: boolean;
     composerText?: string;
     onAddAttachments: () => void;
     onAddDirectory: () => void;
@@ -47,6 +50,8 @@
     onQueue: (mode: 'steer' | 'followUp') => void;
     onClearQueue: () => void;
     onAbort: () => void;
+    onComposerInput: (text: string) => void;
+    onSelectWorkspacePath: (path: string) => void | Promise<void>;
   };
 
   let {
@@ -65,6 +70,9 @@
     selectedSessionArchiving,
     busy,
     attachments,
+    workspacePathSuggestions,
+    agentCommands,
+    agentCommandsLoading,
     composerText = $bindable(''),
     onLoadOlderTimeline,
     onTimelineScroll,
@@ -77,6 +85,8 @@
     onAddAttachments,
     onAddDirectory,
     onRemoveAttachment,
+    onComposerInput,
+    onSelectWorkspacePath,
   }: TimelinePanelProps = $props();
 
   const visibleTimeline = $derived(
@@ -267,6 +277,9 @@
     selectedSessionArchiving={selectedSessionArchiving}
     busy={busy}
     attachments={attachments}
+    workspacePathSuggestions={workspacePathSuggestions}
+    agentCommands={agentCommands}
+    agentCommandsLoading={agentCommandsLoading}
     bind:text={composerText}
     onAddAttachments={onAddAttachments}
     onAddDirectory={onAddDirectory}
@@ -274,5 +287,7 @@
     onSend={onSend}
     onQueue={onQueue}
     onAbort={onAbort}
+    onComposerInput={onComposerInput}
+    onSelectWorkspacePath={onSelectWorkspacePath}
   />
 </Card>

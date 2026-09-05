@@ -190,7 +190,7 @@ h2 { font-size: 16px; letter-spacing: -0.02em; }
 .orbit span:nth-child(3) { top: 44px; left: 39px; background: var(--aibo-subtle); }
 .composer { display: flex; align-items: flex-end; gap: 8px; margin: 0 16px 16px; padding: 8px 8px 8px 13px; }
 .composer:focus-within { border-color: var(--aibo-focus); box-shadow: 0 0 0 3px color-mix(in srgb, var(--aibo-focus) 14%, transparent); }
-.composer-body { display: grid; min-width: 0; flex: 1; gap: 5px; }
+.composer-body { position: relative; display: grid; min-width: 0; flex: 1; gap: 5px; }
 .composer-attachments { display: flex; min-width: 0; flex-wrap: wrap; gap: 4px; }
 .composer-context-summary { color: var(--aibo-subtle); font-size: 9px; }
 .composer-attachment { display: inline-flex; min-width: 0; max-width: 220px; align-items: center; gap: 4px; border: 1px solid var(--aibo-border); border-radius: 999px; padding: 2px 3px 2px 7px; color: var(--aibo-muted); background: var(--aibo-surface); font-size: 9px; }
@@ -198,6 +198,13 @@ h2 { font-size: 16px; letter-spacing: -0.02em; }
 .composer-attachment-remove { width: 18px !important; height: 18px !important; flex: none; color: var(--aibo-subtle); }
 .composer-textarea { flex: 1; min-width: 0; resize: vertical; border-color: transparent; padding: 0; background: transparent; box-shadow: none; }
 .composer-textarea:focus-visible { border-color: transparent; box-shadow: none; }
+.composer-suggestions { position: absolute; z-index: 30; right: 0; bottom: calc(100% + 8px); left: 0; display: grid; max-height: 236px; overflow-y: auto; border: 1px solid var(--aibo-border-strong); border-radius: 8px; padding: 4px; background: var(--aibo-surface); box-shadow: 0 12px 28px rgb(0 0 0 / 28%); }
+.composer-suggestions button { display: flex; min-width: 0; align-items: center; gap: 8px; border: 0; border-radius: 5px; padding: 7px 8px; color: var(--aibo-muted); background: transparent; text-align: left; font-size: 11px; }
+.composer-suggestions button:hover, .composer-suggestions button.active { color: var(--aibo-text); background: var(--aibo-surface-hover); }
+.composer-suggestions-empty { padding: 8px; color: var(--aibo-subtle); font-size: 10px; }
+.composer-suggestions button > span:not(.composer-command-prefix) { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.composer-suggestions button > small { flex: none; margin-left: auto; color: var(--aibo-subtle); font-size: 9px; }
+.composer-command-prefix { flex: none; color: var(--aibo-text); font-family: var(--aibo-mono); font-size: 10px; }
 .approval-list { display: grid; gap: 8px; margin: 0 16px 12px; }
 .approval-card { border-color: var(--aibo-warning-border); background: var(--aibo-warning-surface); }
 .approval-card-heading { flex-direction: row; justify-content: space-between; gap: 8px; padding: 12px 13px 8px; }
