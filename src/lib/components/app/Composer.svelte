@@ -71,7 +71,7 @@
     activeMentionQuery !== null && workspacePathSuggestions.length > 0,
   );
   const showSlashMenu = $derived(
-    activeSlashQuery !== null && selectedAgent === 'pi' && slashActiveIndex >= 0,
+    activeSlashQuery !== null && selectedAgent !== null && slashActiveIndex >= 0,
   );
 
   function attachmentName(path: string): string {

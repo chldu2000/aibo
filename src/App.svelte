@@ -30,9 +30,10 @@
   import { createPiTreeController } from '$lib/app/pi-tree-controller';
   import { createWorkspaceController } from '$lib/app/workspace-controller';
   import {
+    AIBO_CODEX_COMMANDS,
     AIBO_PI_COMMANDS,
-    parsePiCommand,
-  } from '$lib/app/pi-commands';
+    parseAgentCommand,
+  } from '$lib/app/agent-commands';
   import { workspaceIdsForRefresh } from '$lib/app/session-transitions';
   import type { PersistedSelection } from '$lib/app/selection-storage';
   import { isSessionRunning } from '$lib/app/session-state';
@@ -224,8 +225,9 @@
   let pathSearchTimer: ReturnType<typeof setTimeout> | undefined;
 
   const visibleAgentCommands = $derived.by(() => {
-    if (selectedSession?.agent !== 'pi') return [];
-    const commands = [...AIBO_PI_COMMANDS, ...agentCommands];
+    if (!selectedSession) return [];
+    const builtinCommands = selectedSession.agent === 'pi' ? AIBO_PI_COMMANDS : AIBO_CODEX_COMMANDS;
+    const commands = [...builtinCommands, ...(selectedSession.agent === 'pi' ? agentCommands : [])];
     const seen = new Set<string>();
     return commands.filter((command) => {
       const name = command.name.toLocaleLowerCase();
@@ -818,7 +820,7 @@
   }
 
   async function executePiBuiltinCommand(input: string): Promise<boolean> {
-    const command = parsePiCommand(input);
+    const command = parseAgentCommand(input);
     if (!command || selectedSession?.agent !== 'pi') return false;
 
     const session = selectedSession;
@@ -979,7 +981,133 @@
     }
   }
 
+  async function executeCodexBuiltinCommand(input: string): Promise<boolean> {
+    const command = parseAgentCommand(input);
+    if (!command || selectedSession?.agent !== 'codex') return false;
+
+    const session = selectedSession;
+    const workspace = selectedWorkspace;
+    const run = async (operation: () => Promise<void>): Promise<void> => {
+      busy = true;
+      errorMessage = null;
+      try {
+        await operation();
+        composerText = '';
+      } catch (error) {
+        errorMessage = toErrorMessage(error);
+      } finally {
+        busy = false;
+      }
+    };
+
+    switch (command.name) {
+      case 'settings':
+        if (command.args) {
+          errorMessage = '/settings 不接受参数。';
+          return true;
+        }
+        settingsOpen = true;
+        composerText = '';
+        return true;
+      case 'new':
+        if (command.args) {
+          errorMessage = '/new 不接受参数。';
+          return true;
+        }
+        if (!workspace) {
+          errorMessage = '请先选择一个工作区。';
+          return true;
+        }
+        toggleSessionCreator(workspace.id);
+        composerText = '';
+        return true;
+      case 'name':
+        if (!command.args) {
+          beginRenameSession(session.id);
+          composerText = '';
+          return true;
+        }
+        await run(async () => {
+          const renamed = await renameSessionApi(session.id, command.args);
+          updateWorkspaceSessions(session.workspaceId, (items) =>
+            items.map((item) => (item.id === renamed.id ? renamed : item)),
+          );
+          notice = '会话名称已更新。';
+        });
+        return true;
+      case 'trust':
+        if (!workspace) {
+          errorMessage = '请先选择一个工作区。';
+          return true;
+        }
+        if (command.args && !['on', 'off', 'true', 'false', 'trusted', 'untrusted'].includes(command.args.toLocaleLowerCase())) {
+          errorMessage = '/trust 可选参数为 on 或 off。';
+          return true;
+        }
+        if (command.args) {
+          const shouldTrust = ['on', 'true', 'trusted'].includes(command.args.toLocaleLowerCase());
+          if ((workspace.trust === 'trusted') !== shouldTrust) await run(() => toggleTrust(workspace));
+          else composerText = '';
+        } else {
+          await run(() => toggleTrust(workspace));
+        }
+        return true;
+      case 'tree':
+        if (command.args) {
+          errorMessage = '/tree 不接受参数。';
+          return true;
+        }
+        await run(async () => {
+          await refreshCodexThread(session.id);
+          notice = 'Codex 线程已刷新。';
+        });
+        return true;
+      case 'session':
+        if (command.args) {
+          errorMessage = '/session 不接受参数。';
+          return true;
+        }
+        notice = `${session.label} · ${session.externalSessionId ?? '尚未绑定 Codex 线程 ID'}`;
+        composerText = '';
+        return true;
+      case 'resume':
+        if (command.args) {
+          errorMessage = '/resume 不接受参数。';
+          return true;
+        }
+        if (!workspace) {
+          errorMessage = '请先选择一个工作区。';
+          return true;
+        }
+        await run(async () => {
+          activateWorkspace(workspace.id);
+          await refreshSessions(workspace.id);
+          await refreshCodexThread(session.id);
+          notice = 'Codex 线程已恢复。';
+        });
+        return true;
+      case 'fork':
+        if (command.args) {
+          errorMessage = '/fork 不接受参数。';
+          return true;
+        }
+        await run(() => forkSession(session.id));
+        return true;
+      case 'archive':
+        if (command.args) {
+          errorMessage = '/archive 不接受参数。';
+          return true;
+        }
+        requestArchiveSession(session.id);
+        composerText = '';
+        return true;
+      default:
+        return false;
+    }
+  }
+
   async function sendPrompt() {
+    if (selectedSession?.agent === 'codex' && await executeCodexBuiltinCommand(composerText)) return;
     if (selectedSession?.agent === 'pi' && await executePiBuiltinCommand(composerText)) return;
     await messageController.sendPrompt();
   }
