@@ -34,13 +34,15 @@
     "fileChange": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["path", "kind", "baselineExists", "baselineHash", "baselineSize", "resultExists", "resultHash", "resultSize"],
+      "required": ["path", "previousPath", "kind", "baselineExists", "baselineHash", "baselineSize", "baselineDirty", "resultExists", "resultHash", "resultSize"],
       "properties": {
         "path": { "type": "string", "minLength": 1 },
+        "previousPath": { "type": ["string", "null"], "minLength": 1 },
         "kind": { "enum": ["added", "modified", "deleted", "renamed"] },
         "baselineExists": { "type": "boolean" },
         "baselineHash": { "type": ["string", "null"] },
         "baselineSize": { "type": ["integer", "null"], "minimum": 0 },
+        "baselineDirty": { "type": "boolean" },
         "resultExists": { "type": "boolean" },
         "resultHash": { "type": ["string", "null"] },
         "resultSize": { "type": ["integer", "null"], "minimum": 0 }

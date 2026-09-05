@@ -1,4 +1,4 @@
-import type { AgentName, ExecutionProfile, Session, TimelineItem, Workspace } from '$lib/types';
+import type { AgentName, AgentQueueSnapshot, CheckpointFile, ContextAttachment, ExecutionProfile, InteractionMode, Session, TimelineItem, Workspace } from '$lib/types';
 import { toErrorMessage } from './error-utils';
 import { upsertSession } from './session-transitions';
 
@@ -13,13 +13,16 @@ export type AgentSessionControllerContext = {
   setSelectedSessionId: (value: string | null) => void;
   setTimeline: (value: TimelineItem[]) => void;
   setUsageSnapshot: (value: Record<string, unknown> | null) => void;
+  setQueueSnapshot: (value: AgentQueueSnapshot | null) => void;
+  setCheckpoints: (value: CheckpointFile[]) => void;
   setRetry: (prompt: string | null, reason: string | null) => void;
   setLastSubmittedPrompt: (value: string | null) => void;
   setPiTree: (value: null) => void;
+  setAttachments: (value: ContextAttachment[]) => void;
   setPiNavigationEntryId: (value: string | null) => void;
   setCreateSessionWorkspaceId: (value: string | null) => void;
-  getCreateProfileMode: () => 'read-only' | 'edit';
-  setCreateProfileMode: (value: 'read-only' | 'edit') => void;
+  getCreateProfileMode: () => InteractionMode;
+  setCreateProfileMode: (value: InteractionMode) => void;
   setBusy: (value: boolean) => void;
   setErrorMessage: (value: string | null) => void;
   setNotice: (value: string) => void;
@@ -30,13 +33,14 @@ export type AgentSessionControllerContext = {
 
 export function createAgentSessionController(context: AgentSessionControllerContext) {
   function requestedProfile(agent: AgentName): ExecutionProfile {
-    const editable = context.getCreateProfileMode() === 'edit';
+    const mode = context.getCreateProfileMode();
+    const editable = mode === 'edit';
     return {
       schema: 'aibo.execution-profile/v1',
-      interactionMode: editable ? 'edit' : 'ask',
+      interactionMode: mode,
       approvalPolicy: editable ? 'on-request' : agent === 'codex' ? 'on-request' : 'never',
       filesystemPolicy: editable ? 'workspace-write' : 'read-only',
-      commandPolicy: 'disabled',
+      commandPolicy: editable ? 'approved' : 'disabled',
       networkPolicy: 'disabled',
       model: null,
       reasoningEffort: null,
@@ -46,9 +50,12 @@ export function createAgentSessionController(context: AgentSessionControllerCont
   function resetSessionContext(): void {
     context.setTimeline([]);
     context.setUsageSnapshot(null);
+    context.setQueueSnapshot(null);
+    context.setCheckpoints([]);
     context.setRetry(null, null);
     context.setLastSubmittedPrompt(null);
     context.setPiTree(null);
+    context.setAttachments([]);
     context.setPiNavigationEntryId(null);
   }
 

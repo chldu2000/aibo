@@ -1,0 +1,20 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://aibo.local/contracts/restore-operation.v1.schema.json",
+  "title": "Aibo Restore Operation v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema", "id", "workspaceId", "sessionId", "turnId", "status", "restored", "conflicts", "unsupported", "createdAt"],
+  "properties": {
+    "schema": { "const": "aibo.restore-operation/v1" },
+    "id": { "type": "string", "minLength": 1 },
+    "workspaceId": { "type": "string", "minLength": 1 },
+    "sessionId": { "type": "string", "minLength": 1 },
+    "turnId": { "type": "string", "minLength": 1 },
+    "status": { "enum": ["completed", "blocked", "failed"] },
+    "restored": { "type": "array", "items": { "type": "string", "minLength": 1 } },
+    "conflicts": { "type": "array", "items": { "type": "string", "minLength": 1 } },
+    "unsupported": { "type": "array", "items": { "type": "string", "minLength": 1 } },
+    "createdAt": { "type": "string", "format": "date-time" }
+  }
+}

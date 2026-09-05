@@ -1,4 +1,5 @@
 import type {
+  AgentQueueSnapshot,
   AgentEvent,
   ApprovalDecision,
   ApprovalRequest,
@@ -18,16 +19,22 @@ export type AgentEventHandlerContext = {
   ) => void;
   setPendingApprovals: (approvals: ApprovalRequest[]) => void;
   setUsageSnapshot: (usage: Record<string, unknown> | null) => void;
+  setQueueSnapshot: (queue: AgentQueueSnapshot | null) => void;
   setTimeline: (timeline: TimelineItem[]) => void;
   setRetry: (prompt: string | null, reason: string | null) => void;
   setNotice: (notice: string) => void;
   refreshSessions: (workspaceId: string) => void | Promise<void>;
   refreshTurnChangeSet?: (sessionId: string) => void | Promise<void>;
+  refreshArtifacts?: (sessionId: string) => void | Promise<void>;
   refreshWorkspaceChanges?: (workspaceId: string) => void | Promise<void>;
+  bindAttachments?: (sessionId: string, turnId: string) => void | Promise<void>;
 };
 
 export function handleAgentEvent(event: AgentEvent, context: AgentEventHandlerContext): void {
   const selectedSessionId = context.selectedSessionId;
+  if (event.type === 'turn.started' && event.turnId) {
+    void context.bindAttachments?.(event.sessionId, event.turnId);
+  }
   const state = event.type === 'session.state_changed' ? event.payload.state : undefined;
   if (typeof state === 'string') {
     context.updateWorkspaceSessions(event.workspaceId, (items) =>
@@ -60,10 +67,22 @@ export function handleAgentEvent(event: AgentEvent, context: AgentEventHandlerCo
     }
   }
 
+  if (event.type === 'queue.updated' && event.sessionId === selectedSessionId) {
+    context.setQueueSnapshot(queueFromEvent(event));
+  }
+
   if (event.type === 'adapter.crashed' || event.type === 'turn.completed' || event.type === 'turn.failed') {
     context.setPendingApprovals(
       context.pendingApprovals.filter((approval) => approval.sessionId !== event.sessionId),
     );
+    if (event.sessionId === selectedSessionId) context.setQueueSnapshot(null);
+  }
+
+  if (
+    (event.type === 'tool.completed' || event.type === 'turn.completed' || event.type === 'turn.failed') &&
+    event.sessionId === selectedSessionId
+  ) {
+    void context.refreshArtifacts?.(event.sessionId);
   }
 
   if (event.type === 'adapter.crashed' && event.sessionId === selectedSessionId) {
@@ -196,6 +215,30 @@ export function handleAgentEvent(event: AgentEvent, context: AgentEventHandlerCo
     if (event.sessionId === selectedSessionId) void context.refreshTurnChangeSet?.(event.sessionId);
     void context.refreshWorkspaceChanges?.(event.workspaceId);
   }
+}
+
+function queueFromEvent(event: AgentEvent): AgentQueueSnapshot {
+  return {
+    sessionId: event.sessionId,
+    steering: queueItems(event.payload.steering),
+    followUp: queueItems(event.payload.followUp),
+    updatedAt: event.occurredAt,
+  };
+}
+
+function queueItems(value: unknown): string[] {
+  if (!Array.isArray(value)) return [];
+  return value
+    .map((item) => {
+      if (typeof item === 'string') return item.trim();
+      if (!item || typeof item !== 'object') return '';
+      const record = item as Record<string, unknown>;
+      for (const key of ['text', 'message', 'content', 'prompt', 'input']) {
+        if (typeof record[key] === 'string' && record[key].trim()) return record[key].trim();
+      }
+      return '';
+    })
+    .filter(Boolean);
 }
 
 export function approvalFromEvent(event: AgentEvent): ApprovalRequest | null {

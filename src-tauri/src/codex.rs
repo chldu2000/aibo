@@ -1,11 +1,12 @@
+use super::artifact::{artifact_root_from_checkpoint, persist_text, sanitize_content};
 use super::change_set::{
     capture as capture_workspace, persist as persist_change_set, persist_baseline_checkpoint,
-    WorkspaceSnapshot,
+    persist_checkpoint_metadata, WorkspaceSnapshot,
 };
 use super::execution_profile::ResolvedExecutionProfile;
 use super::{
-    clone_cached_runtime, find_executable, now_iso, remove_cached_runtime, session_by_id,
-    workspace_by_id,
+    clone_cached_runtime, find_executable, mark_turn_interrupted, now_iso, remove_cached_runtime,
+    session_by_id, session_execution_profile, workspace_by_id,
 };
 use serde::Serialize;
 use serde_json::{json, Value};
@@ -33,6 +34,41 @@ use ulid::Ulid;
 
 const CODEX_ADAPTER_VERSION: &str = "phase2-codex-0.1.0";
 const REQUEST_TIMEOUT: Duration = Duration::from_secs(30);
+
+fn codex_thread_start_params(cwd: &str, profile: &ResolvedExecutionProfile) -> Value {
+    let mut params = json!({
+        "cwd": cwd,
+        "approvalPolicy": if profile.enforced.approval_policy == "trusted" {
+            "never"
+        } else {
+            profile.enforced.approval_policy.as_str()
+        },
+        "sandbox": profile.enforced.filesystem_policy,
+        "serviceName": "aibo_phase4_5"
+    });
+    if let Some(model) = profile.enforced.model.as_deref() {
+        params["model"] = json!(model);
+    }
+    params
+}
+
+fn codex_turn_start_params(
+    thread_id: &str,
+    input: &str,
+    profile: &ResolvedExecutionProfile,
+) -> Value {
+    let mut params = json!({
+        "threadId": thread_id,
+        "input": [{ "type": "text", "text": input }]
+    });
+    if let Some(model) = profile.enforced.model.as_deref() {
+        params["model"] = json!(model);
+    }
+    if let Some(effort) = profile.enforced.reasoning_effort.as_deref() {
+        params["effort"] = json!(effort);
+    }
+    params
+}
 
 #[derive(Debug, Error)]
 pub enum CodexError {
@@ -522,7 +558,14 @@ fn tool_projection(method: &str, params: &Value) -> Option<ToolProjection> {
     .into_iter()
     .flatten()
     .next()
-    .map(|value| truncate_text(value, 4_000));
+    .map(|value| {
+        let output = truncate_text(value, 4_000);
+        if item_type.to_ascii_lowercase().contains("command") {
+            sanitize_content("codex.command", &output)
+        } else {
+            output
+        }
+    });
     let summary = match (primary, output.as_deref()) {
         (Some(primary), Some(output)) if !output.is_empty() => {
             truncate_text(&format!("{primary}\n{output}"), 6_000)
@@ -640,6 +683,7 @@ struct CodexSession {
     session_id: String,
     workspace_id: String,
     generation_id: String,
+    execution_profile: ResolvedExecutionProfile,
     thread_id: Mutex<Option<String>>,
     current_turn_id: Mutex<Option<String>>,
     pending_approvals: Mutex<HashMap<String, Value>>,
@@ -651,6 +695,7 @@ struct CodexSession {
 }
 
 impl CodexSession {
+    #[allow(clippy::too_many_arguments)]
     fn new(
         app: AppHandle,
         db: SqlitePool,
@@ -658,6 +703,7 @@ impl CodexSession {
         session_id: String,
         workspace_id: String,
         generation_id: String,
+        execution_profile: ResolvedExecutionProfile,
         checkpoint_root: PathBuf,
     ) -> Arc<Self> {
         Arc::new(Self {
@@ -667,6 +713,7 @@ impl CodexSession {
             session_id,
             workspace_id,
             generation_id,
+            execution_profile,
             thread_id: Mutex::new(None),
             current_turn_id: Mutex::new(None),
             pending_approvals: Mutex::new(HashMap::new()),
@@ -702,6 +749,7 @@ impl CodexSession {
     }
 
     async fn capture_turn_baseline(&self, external_turn_id: &str) -> Result<(), CodexError> {
+        let internal_turn_id = self.ensure_turn(external_turn_id, "").await?;
         let workspace_path: String = sqlx::query_scalar("SELECT path FROM workspaces WHERE id = ?")
             .bind(&self.workspace_id)
             .fetch_one(&self.db)
@@ -711,13 +759,24 @@ impl CodexSession {
                 if let Err(error) = persist_baseline_checkpoint(
                     &self.checkpoint_root,
                     &self.session_id,
-                    external_turn_id,
+                    &internal_turn_id,
                     Path::new(&workspace_path),
                     &snapshot,
                 )
                 .await
                 {
                     warn!(session_id = %self.session_id, turn_id = %external_turn_id, error = %error, "baseline checkpoint capture failed");
+                } else if let Err(error) = persist_checkpoint_metadata(
+                    &self.db,
+                    &self.checkpoint_root,
+                    &self.workspace_id,
+                    &self.session_id,
+                    &internal_turn_id,
+                    &snapshot,
+                )
+                .await
+                {
+                    warn!(session_id = %self.session_id, turn_id = %external_turn_id, error = %error, "checkpoint metadata persistence failed");
                 }
                 self.turn_baselines
                     .lock()
@@ -891,7 +950,16 @@ impl CodexSession {
                     let internal_turn_id = self.ensure_turn(turn_id, "").await?;
                     self.finalize_turn_changes(turn_id).await?;
                     let output = final_turn_text(&turn);
-                    let mapped_status = map_turn_status(status);
+                    let was_interrupted: Option<String> =
+                        sqlx::query_scalar("SELECT status FROM turns WHERE id = ?")
+                            .bind(&internal_turn_id)
+                            .fetch_optional(&self.db)
+                            .await?;
+                    let mapped_status = if was_interrupted.as_deref() == Some("interrupted") {
+                        "interrupted"
+                    } else {
+                        map_turn_status(status)
+                    };
                     sqlx::query(
                         "UPDATE turns SET status = ?, output_text = ?, completed_at = ? WHERE id = ?",
                     )
@@ -901,8 +969,20 @@ impl CodexSession {
                     .bind(&internal_turn_id)
                     .execute(&self.db)
                     .await?;
-                    self.complete_assistant_messages(&internal_turn_id, &turn)
+                    if mapped_status == "completed" {
+                        self.complete_assistant_messages(&internal_turn_id, &turn)
+                            .await?;
+                    } else {
+                        sqlx::query(
+                            "UPDATE messages SET status = 'failed', updated_at = ?
+                             WHERE session_id = ? AND turn_id = ? AND role = 'assistant' AND status = 'streaming'",
+                        )
+                        .bind(now_iso())
+                        .bind(&self.session_id)
+                        .bind(&internal_turn_id)
+                        .execute(&self.db)
                         .await?;
+                    }
                     *self.current_turn_id.lock().await = None;
                     self.pending_approvals.lock().await.clear();
                     if mapped_status == "completed" {
@@ -933,16 +1013,26 @@ impl CodexSession {
                     .pointer("/turnId")
                     .and_then(Value::as_str)
                     .map(ToOwned::to_owned);
+                let mut terminal_status = "failed";
                 if let Some(turn_id) = turn_id.as_deref() {
                     let internal_turn_id = self.ensure_turn(turn_id, "").await?;
                     self.finalize_turn_changes(turn_id).await?;
-                    sqlx::query(
-                        "UPDATE turns SET status = 'failed', completed_at = ? WHERE id = ?",
-                    )
-                    .bind(now_iso())
-                    .bind(&internal_turn_id)
-                    .execute(&self.db)
-                    .await?;
+                    let was_interrupted: Option<String> =
+                        sqlx::query_scalar("SELECT status FROM turns WHERE id = ?")
+                            .bind(&internal_turn_id)
+                            .fetch_optional(&self.db)
+                            .await?;
+                    terminal_status = if was_interrupted.as_deref() == Some("interrupted") {
+                        "interrupted"
+                    } else {
+                        "failed"
+                    };
+                    sqlx::query("UPDATE turns SET status = ?, completed_at = ? WHERE id = ?")
+                        .bind(terminal_status)
+                        .bind(now_iso())
+                        .bind(&internal_turn_id)
+                        .execute(&self.db)
+                        .await?;
                     sqlx::query(
                         "UPDATE messages SET status = 'failed', updated_at = ?
                          WHERE session_id = ? AND turn_id = ? AND role = 'assistant'",
@@ -955,11 +1045,14 @@ impl CodexSession {
                 }
                 *self.current_turn_id.lock().await = None;
                 self.pending_approvals.lock().await.clear();
-                self.set_state("failed").await?;
+                self.set_state(terminal_status).await?;
                 self.emit_event(
                     "turn.failed",
                     turn_id,
-                    json!({ "error": params.get("error").cloned().unwrap_or(Value::Null) }),
+                    json!({
+                        "error": params.get("error").cloned().unwrap_or(Value::Null),
+                        "status": terminal_status
+                    }),
                     None,
                 )
                 .await?;
@@ -984,7 +1077,11 @@ impl CodexSession {
                     json!({
                         "requestId": request_id,
                         "kind": params.get("kind").cloned().unwrap_or(Value::Null),
-                        "command": params.get("command").cloned().unwrap_or(Value::Null),
+                        "command": params
+                            .get("command")
+                            .and_then(Value::as_str)
+                            .map(|value| Value::String(sanitize_content("codex.command", value)))
+                            .unwrap_or(Value::Null),
                         "cwd": params.get("cwd").cloned().unwrap_or(Value::Null),
                         "availableDecisions": params
                             .get("availableDecisions")
@@ -1012,8 +1109,30 @@ impl CodexSession {
                 }
             }
             "aibo/process-exited" => {
-                if let Some(turn_id) = self.current_turn_id.lock().await.clone() {
-                    self.finalize_turn_changes(&turn_id).await?;
+                // The provider can exit between `turn/start` and the event
+                // loop recording `current_turn_id`. Recover the durable
+                // running turn as a fallback so a crash never leaves a
+                // streaming/queued timeline stuck indefinitely.
+                let turn_id = if let Some(turn_id) = self.current_turn_id.lock().await.clone() {
+                    Some(turn_id)
+                } else {
+                    sqlx::query_scalar::<_, String>(
+                        "SELECT external_turn_id FROM turns
+                         WHERE session_id = ? AND status = 'running'
+                         ORDER BY started_at DESC, id DESC LIMIT 1",
+                    )
+                    .bind(&self.session_id)
+                    .fetch_optional(&self.db)
+                    .await?
+                };
+                if let Some(turn_id) = turn_id {
+                    if let Ok(internal_turn_id) = self.ensure_turn(&turn_id, "").await {
+                        if let Err(error) = self.finalize_turn_changes(&turn_id).await {
+                            warn!(session_id = %self.session_id, turn_id = %turn_id, error = %error, "Codex crash result capture failed");
+                        }
+                        mark_turn_interrupted(&self.db, &self.session_id, &internal_turn_id)
+                            .await?;
+                    }
                 }
                 *self.current_turn_id.lock().await = None;
                 let discarded_approvals = self.pending_approvals.lock().await.len();
@@ -1162,6 +1281,39 @@ impl CodexSession {
         let Some(projection) = tool_projection(method, params) else {
             return Ok(());
         };
+        // Tool output and command previews are persisted in the timeline and
+        // emitted to the WebView. Keep the command execution result usable
+        // for the adapter, but redact secrets in every durable/UI projection.
+        let is_command = projection
+            .item_type
+            .to_ascii_lowercase()
+            .contains("command");
+        let safe_command = projection.command.as_deref().map(|value| {
+            if is_command {
+                sanitize_content("codex.command", value)
+            } else {
+                value.to_owned()
+            }
+        });
+        let safe_delta = projection.delta.as_deref().map(|value| {
+            if is_command {
+                sanitize_content("codex.command", value)
+            } else {
+                value.to_owned()
+            }
+        });
+        let safe_output = projection.output.as_deref().map(|value| {
+            if is_command {
+                sanitize_content("codex.command", value)
+            } else {
+                value.to_owned()
+            }
+        });
+        let safe_summary = if is_command {
+            sanitize_content("codex.command", &projection.summary)
+        } else {
+            projection.summary.clone()
+        };
         let external_turn_id = event_turn_id(params);
         let internal_turn_id = if let Some(turn_id) = external_turn_id.as_deref() {
             Some(self.ensure_turn(turn_id, "").await?)
@@ -1178,9 +1330,9 @@ impl CodexSession {
                         status = ?, updated_at = ?
                  WHERE session_id = ? AND external_message_id = ? AND role = 'tool'",
             )
-            .bind(projection.delta.as_deref().unwrap_or(&projection.summary))
+            .bind(safe_delta.as_deref().unwrap_or(&safe_summary))
             .bind(&projection.item_type)
-            .bind(&projection.command)
+            .bind(&safe_command)
             .bind(&projection.cwd)
             .bind(projection.exit_code)
             .bind(internal_turn_id.as_deref())
@@ -1191,7 +1343,7 @@ impl CodexSession {
             .execute(&self.db)
             .await?
         } else {
-            let replace_content = method == "item/started" || projection.output.is_some();
+            let replace_content = method == "item/started" || safe_output.is_some();
             sqlx::query(
                 "UPDATE messages SET content = CASE WHEN ? = 1 OR content = '' THEN ? ELSE content END,
                         tool_name = COALESCE(?, tool_name),
@@ -1202,9 +1354,9 @@ impl CodexSession {
                  WHERE session_id = ? AND external_message_id = ? AND role = 'tool'",
             )
             .bind(if replace_content { 1_i64 } else { 0_i64 })
-            .bind(&projection.summary)
+            .bind(&safe_summary)
             .bind(&projection.item_type)
-            .bind(&projection.command)
+            .bind(&safe_command)
             .bind(&projection.cwd)
             .bind(projection.exit_code)
             .bind(internal_turn_id.as_deref())
@@ -1225,19 +1377,42 @@ impl CodexSession {
             )
             .bind(Ulid::new().to_string())
             .bind(&self.session_id)
-            .bind(internal_turn_id)
+            .bind(&internal_turn_id)
             .bind(&projection.item_id)
             .bind(&projection.item_type)
-            .bind(&projection.command)
+            .bind(&safe_command)
             .bind(&projection.cwd)
             .bind(projection.exit_code)
-            .bind(&projection.summary)
+            .bind(&safe_summary)
             .bind(status)
             .bind(self.sequence.load(Ordering::Relaxed) as i64)
             .bind(&now)
             .bind(&now)
             .execute(&self.db)
             .await?;
+        }
+        if event_type == "tool.completed" {
+            if let (Some(output), Some(turn_id)) =
+                (safe_output.as_deref(), internal_turn_id.as_deref())
+            {
+                if is_command {
+                    let artifact_root = artifact_root_from_checkpoint(&self.checkpoint_root);
+                    if let Err(error) = persist_text(
+                        &self.db,
+                        &artifact_root,
+                        &self.workspace_id,
+                        &self.session_id,
+                        Some(turn_id),
+                        "codex.command",
+                        "text/plain",
+                        output,
+                    )
+                    .await
+                    {
+                        warn!(session_id = %self.session_id, error = %error, "unable to persist Codex command artifact");
+                    }
+                }
+            }
         }
         self.emit_event(
             event_type,
@@ -1246,9 +1421,9 @@ impl CodexSession {
                 "itemId": projection.item_id,
                 "itemType": projection.item_type,
                 "status": status,
-                "summary": projection.summary,
-                "delta": projection.delta,
-                "output": projection.output
+                "summary": safe_summary,
+                "delta": safe_delta,
+                "output": safe_output
             }),
             Some(json!({ "itemId": projection.item_id })),
         )
@@ -1523,6 +1698,7 @@ impl CodexManager {
             session_id.clone(),
             workspace_id.to_owned(),
             generation_id,
+            profile.clone(),
             self.checkpoint_root.clone(),
         );
         self.sessions
@@ -1546,12 +1722,7 @@ impl CodexManager {
         let started = match client
             .request(
                 "thread/start",
-                json!({
-                    "cwd": workspace.path,
-                    "approvalPolicy": if profile.enforced.approval_policy == "trusted" { "never" } else { profile.enforced.approval_policy.as_str() },
-                    "sandbox": profile.enforced.filesystem_policy,
-                    "serviceName": "aibo_phase4_5"
-                }),
+                codex_thread_start_params(&workspace.path, profile),
             )
             .await
         {
@@ -1664,6 +1835,9 @@ impl CodexManager {
             .bind(&session.workspace_id)
             .fetch_one(&self.db)
             .await?;
+        let execution_profile = session_execution_profile(&self.db, session_id)
+            .await
+            .map_err(|error| CodexError::Session(error.to_string()))?;
         let codex_path = find_executable("codex").ok_or(CodexError::MissingExecutable)?;
         let generation_id = Ulid::new().to_string();
         let client = CodexClient::spawn(codex_path, Path::new(&workspace_path)).await?;
@@ -1674,6 +1848,7 @@ impl CodexManager {
             session_id.to_owned(),
             session.workspace_id.clone(),
             generation_id.clone(),
+            execution_profile.profile,
             self.checkpoint_root.clone(),
         );
         runtime.set_thread_id(thread_id.clone()).await;
@@ -2100,21 +2275,24 @@ impl CodexManager {
         .execute(&self.db)
         .await?;
         session.set_state("running").await?;
-        let response = session
-            .client
-            .request(
-                "turn/start",
-                json!({
-                    "threadId": thread_id,
-                    "input": [{ "type": "text", "text": input }]
-                }),
-            )
-            .await?;
-        let turn_id = response
+        let turn_params = codex_turn_start_params(&thread_id, input, &session.execution_profile);
+        let response = match session.client.request("turn/start", turn_params).await {
+            Ok(response) => response,
+            Err(error) => {
+                let _ = session.set_state("failed").await;
+                return Err(error);
+            }
+        };
+        let Some(turn_id) = response
             .pointer("/result/turn/id")
             .and_then(Value::as_str)
-            .ok_or_else(|| CodexError::Protocol("turn/start did not return a turn id".to_owned()))?
-            .to_owned();
+            .map(ToOwned::to_owned)
+        else {
+            let _ = session.set_state("failed").await;
+            return Err(CodexError::Protocol(
+                "turn/start did not return a turn id".to_owned(),
+            ));
+        };
         *session.current_turn_id.lock().await = Some(turn_id.clone());
         let internal_turn_id = session.ensure_turn(&turn_id, input).await?;
         sqlx::query("UPDATE messages SET turn_id = ?, updated_at = ? WHERE id = ?")
@@ -2188,6 +2366,27 @@ impl CodexManager {
                 json!({ "threadId": thread_id, "turnId": turn_id }),
             )
             .await?;
+        // Do not depend solely on a provider terminal event to make an
+        // interrupted turn durable. The request can succeed while the
+        // terminal notification is delayed or lost; capture the result now
+        // so Changes and restart recovery have a safe boundary. A later
+        // terminal event is reconciled idempotently by finalize_turn_changes.
+        let internal_turn_id = session.ensure_turn(&turn_id, "").await?;
+        session.finalize_turn_changes(&turn_id).await?;
+        sqlx::query("UPDATE turns SET status = 'interrupted', completed_at = ? WHERE id = ?")
+            .bind(now_iso())
+            .bind(&internal_turn_id)
+            .execute(&self.db)
+            .await?;
+        sqlx::query(
+            "UPDATE messages SET status = 'failed', updated_at = ?
+             WHERE session_id = ? AND turn_id = ? AND role = 'assistant' AND status = 'streaming'",
+        )
+        .bind(now_iso())
+        .bind(&session.session_id)
+        .bind(&internal_turn_id)
+        .execute(&self.db)
+        .await?;
         *session.current_turn_id.lock().await = None;
         session.set_state("interrupted").await
     }
@@ -2221,9 +2420,13 @@ impl CodexManager {
 #[cfg(test)]
 mod tests {
     use super::{
-        agent_message_items, event_thread_id, final_turn_text, generation_matches, map_tool_status,
-        map_turn_status, matching_thread_id, parse_forked_thread, parse_thread_list,
-        parse_thread_snapshot, tool_projection, usage_projection, value_id,
+        agent_message_items, codex_thread_start_params, codex_turn_start_params, event_thread_id,
+        final_turn_text, generation_matches, map_tool_status, map_turn_status, matching_thread_id,
+        parse_forked_thread, parse_thread_list, parse_thread_snapshot, tool_projection,
+        usage_projection, value_id,
+    };
+    use crate::execution_profile::{
+        ExecutionProfile, ResolvedExecutionProfile, EXECUTION_PROFILE_SCHEMA,
     };
     use serde_json::json;
 
@@ -2366,6 +2569,24 @@ mod tests {
     }
 
     #[test]
+    fn redacts_command_output_before_projection() {
+        let projection = tool_projection(
+            "item/completed",
+            &json!({
+                "item": {
+                    "id": "tool-secret",
+                    "type": "commandExecution",
+                    "command": "echo token=secret-value",
+                    "aggregatedOutput": "token=secret-value"
+                }
+            }),
+        )
+        .expect("command projection");
+        assert_eq!(projection.output.as_deref(), Some("token=[REDACTED]"));
+        assert!(projection.summary.contains("[REDACTED]"));
+    }
+
+    #[test]
     fn rejects_events_from_a_different_thread_binding() {
         assert!(matching_thread_id("thread-1", "thread-1").is_ok());
         assert!(matching_thread_id("thread-1", "thread-2").is_err());
@@ -2378,5 +2599,43 @@ mod tests {
         assert!(generation_matches("generation-2", Some("generation-2")));
         assert!(!generation_matches("generation-2", Some("generation-1")));
         assert!(!generation_matches("generation-2", None));
+    }
+
+    #[test]
+    fn maps_codex_profile_overrides_to_thread_and_turn_requests() {
+        let profile = ResolvedExecutionProfile {
+            schema: EXECUTION_PROFILE_SCHEMA.to_owned(),
+            requested: ExecutionProfile {
+                schema: EXECUTION_PROFILE_SCHEMA.to_owned(),
+                interaction_mode: "edit".to_owned(),
+                approval_policy: "on-request".to_owned(),
+                filesystem_policy: "workspace-write".to_owned(),
+                command_policy: "approved".to_owned(),
+                network_policy: "disabled".to_owned(),
+                model: Some("gpt-test".to_owned()),
+                reasoning_effort: Some("high".to_owned()),
+            },
+            enforced: ExecutionProfile {
+                schema: EXECUTION_PROFILE_SCHEMA.to_owned(),
+                interaction_mode: "edit".to_owned(),
+                approval_policy: "on-request".to_owned(),
+                filesystem_policy: "workspace-write".to_owned(),
+                command_policy: "approved".to_owned(),
+                network_policy: "disabled".to_owned(),
+                model: Some("gpt-test".to_owned()),
+                reasoning_effort: Some("high".to_owned()),
+            },
+            unsupported: Vec::new(),
+            adapter_capabilities: Vec::new(),
+            native_sandbox: true,
+            resolved_at: "now".to_owned(),
+        };
+        let thread = codex_thread_start_params("/tmp/workspace", &profile);
+        assert_eq!(thread["model"], "gpt-test");
+        assert_eq!(thread["sandbox"], "workspace-write");
+        let turn = codex_turn_start_params("thread-1", "hello", &profile);
+        assert_eq!(turn["model"], "gpt-test");
+        assert_eq!(turn["effort"], "high");
+        assert_eq!(turn["threadId"], "thread-1");
     }
 }

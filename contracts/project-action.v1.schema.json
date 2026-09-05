@@ -1,0 +1,21 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://aibo.local/contracts/project-action.v1.schema.json",
+  "title": "Aibo Project Action v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema", "id", "workspaceId", "name", "kind", "program", "args", "cwd", "enabled", "createdAt", "updatedAt"],
+  "properties": {
+    "schema": { "const": "aibo.project-action/v1" },
+    "id": { "type": "string", "minLength": 1 },
+    "workspaceId": { "type": "string", "minLength": 1 },
+    "name": { "type": "string", "minLength": 1, "maxLength": 80 },
+    "kind": { "enum": ["test", "lint", "build", "custom"] },
+    "program": { "type": "string", "minLength": 1, "maxLength": 255 },
+    "args": { "type": "array", "maxItems": 32, "items": { "type": "string", "maxLength": 4096 } },
+    "cwd": { "type": "string", "minLength": 1 },
+    "enabled": { "type": "boolean" },
+    "createdAt": { "type": "string", "format": "date-time" },
+    "updatedAt": { "type": "string", "format": "date-time" }
+  }
+}

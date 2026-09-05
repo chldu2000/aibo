@@ -42,6 +42,97 @@ test("Turn ChangeSet v1 schema freezes per-turn file attribution fields", async 
   assert.ok(schema.required.includes("commands"));
   assert.ok(schema.required.includes("verification"));
   assert.ok(schema.$defs.fileChange.required.includes("baselineHash"));
+  assert.ok(schema.$defs.fileChange.required.includes("baselineDirty"));
+  assert.ok(schema.$defs.fileChange.required.includes("previousPath"));
+  assert.ok(schema.$defs.fileChange.properties.kind.enum.includes("renamed"));
+});
+
+test("Context Attachment v1 schema freezes workspace-relative references", async () => {
+  const schema = JSON.parse(
+    await readFile(path.join(root, "contracts", "context-attachment.v1.schema.json"), "utf8"),
+  );
+  assert.equal(schema.properties.schema.const, "aibo.context-attachment/v1");
+  assert.deepEqual(schema.properties.source.enum, ["picker", "drop", "manual"]);
+  assert.deepEqual(schema.properties.sendStrategy.enum, ["reference", "inline"]);
+  assert.match(schema.properties.path.pattern, /\\\.\\\./);
+});
+
+test("Artifact v1 schema freezes content-addressed metadata", async () => {
+  const schema = JSON.parse(
+    await readFile(path.join(root, "contracts", "artifact.v1.schema.json"), "utf8"),
+  );
+  assert.equal(schema.properties.schema.const, "aibo.artifact/v1");
+  assert.ok(schema.required.includes("contentHash"));
+  assert.ok(schema.required.includes("storagePath"));
+  assert.match(schema.properties.contentHash.pattern, /sha256/);
+});
+
+test("Checkpoint v1 schema freezes restart-safe baseline metadata", async () => {
+  const schema = JSON.parse(
+    await readFile(path.join(root, "contracts", "checkpoint.v1.schema.json"), "utf8"),
+  );
+  assert.equal(schema.properties.schema.const, "aibo.checkpoint/v1");
+  assert.ok(schema.required.includes("storagePath"));
+  assert.ok(schema.required.includes("fileExists"));
+  assert.ok(schema.required.includes("baselineDirty"));
+  assert.match(schema.properties.path.pattern, /\\\.\\\./);
+});
+
+test("Restore operation v1 schema keeps recovery audit outcomes structured", async () => {
+  const schema = JSON.parse(
+    await readFile(path.join(root, "contracts", "restore-operation.v1.schema.json"), "utf8"),
+  );
+  assert.equal(schema.properties.schema.const, "aibo.restore-operation/v1");
+  assert.deepEqual(schema.properties.status.enum, ["completed", "blocked", "failed"]);
+  assert.ok(schema.required.includes("restored"));
+  assert.ok(schema.required.includes("conflicts"));
+  assert.ok(schema.required.includes("unsupported"));
+});
+
+test("Project action contracts keep execution argv structured", async () => {
+  const action = JSON.parse(await readFile(path.join(root, "contracts", "project-action.v1.schema.json"), "utf8"));
+  const run = JSON.parse(await readFile(path.join(root, "contracts", "project-action-run.v1.schema.json"), "utf8"));
+  assert.equal(action.properties.schema.const, "aibo.project-action/v1");
+  assert.deepEqual(action.properties.kind.enum, ["test", "lint", "build", "custom"]);
+  assert.equal(action.properties.args.type, "array");
+  assert.equal(run.properties.schema.const, "aibo.project-action-run/v1");
+});
+
+test("rendered Markdown stays in the safe component path", async () => {
+  const renderer = await readFile(
+    path.join(root, "src", "lib", "components", "app", "MarkdownContent.svelte"),
+    "utf8",
+  );
+  assert.doesNotMatch(renderer, /\{@html/);
+  assert.match(renderer, /SAFE_LINK/);
+  assert.match(renderer, /https\?:\\\/\\\//);
+  assert.match(renderer, /rel="noreferrer"/);
+  assert.match(renderer, /navigator\.clipboard/);
+  assert.match(renderer, /复制/);
+});
+
+test("command palette is wired through the UI kit seam", async () => {
+  const palette = await readFile(
+    path.join(root, "src", "lib", "components", "app", "CommandPalette.svelte"),
+    "utf8",
+  );
+  assert.match(palette, /from '\$lib\/ui-kit'/);
+  assert.match(palette, /ArrowDown/);
+  assert.match(palette, /role="listbox"/);
+});
+
+test("workspace capability checker exposes resource inventory without config contents", async () => {
+  const inspector = await readFile(
+    path.join(root, "src", "lib", "components", "app", "Inspector.svelte"),
+    "utf8",
+  );
+  const api = await readFile(path.join(root, "src", "lib", "api.ts"), "utf8");
+  assert.match(inspector, /workspaceCapabilities/);
+  assert.match(inspector, /工作区能力/);
+  assert.match(inspector, /mcpServers/);
+  assert.match(inspector, /恢复记录/);
+  assert.match(api, /inspect_workspace_capabilities/);
+  assert.doesNotMatch(inspector, /apiKey|accessToken|clientSecret/);
 });
 
 test("probe assertions fail loudly so a false gate cannot pass", () => {

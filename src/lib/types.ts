@@ -55,6 +55,21 @@ export interface AgentDiagnostic {
   message: string | null;
 }
 
+export interface CapabilityEntry {
+  name: string;
+  source: string;
+}
+
+export interface WorkspaceCapabilityInventory {
+  workspaceId: string;
+  inspectedAt: string;
+  instructions: CapabilityEntry[];
+  skills: CapabilityEntry[];
+  tools: CapabilityEntry[];
+  mcpServers: CapabilityEntry[];
+  warnings: string[];
+}
+
 export interface AppSnapshot {
   platform: string;
   appVersion: string;
@@ -149,7 +164,7 @@ export interface TimelineItem {
   role: 'user' | 'assistant' | 'system' | 'tool';
   toolName: string | null;
   content: string;
-  status: 'streaming' | 'completed' | 'failed';
+  status: 'streaming' | 'completed' | 'failed' | 'queued' | 'interrupted';
   createdAt: string;
   updatedAt: string;
 }
@@ -162,10 +177,12 @@ export interface ChangeSetState {
 
 export interface FileChange {
   path: string;
+  previousPath: string | null;
   kind: 'added' | 'modified' | 'deleted' | 'renamed';
   baselineExists: boolean;
   baselineHash: string | null;
   baselineSize: number | null;
+  baselineDirty: boolean;
   resultExists: boolean;
   resultHash: string | null;
   resultSize: number | null;
@@ -210,8 +227,39 @@ export interface RestoreTurnChangeSetResult {
   unsupported: string[];
 }
 
+export interface RestoreOperation {
+  schema: 'aibo.restore-operation/v1';
+  id: string;
+  workspaceId: string;
+  sessionId: string;
+  turnId: string;
+  status: 'completed' | 'blocked' | 'failed';
+  restored: string[];
+  conflicts: string[];
+  unsupported: string[];
+  createdAt: string;
+}
+
+export interface CheckpointFile {
+  schema: 'aibo.checkpoint/v1';
+  id: string;
+  workspaceId: string;
+  sessionId: string;
+  turnId: string;
+  path: string;
+  fileExists: boolean;
+  contentHash: string | null;
+  size: number | null;
+  storagePath: string | null;
+  baselineDirty: boolean;
+  available: boolean;
+  reason: string | null;
+  createdAt: string;
+}
+
 export interface WorkspaceFileChange {
   path: string;
+  previousPath: string | null;
   kind: 'added' | 'modified' | 'deleted' | 'renamed';
 }
 
@@ -229,10 +277,99 @@ export interface TurnFileDiff {
   path: string;
   available: boolean;
   diff: string;
+  hunks: TurnDiffHunk[];
   reason: string | null;
 }
 
+export interface TurnDiffHunk {
+  index: number;
+  header: string;
+  content: string;
+}
+
+export interface ContextAttachment {
+  schema: 'aibo.context-attachment/v1';
+  id: string;
+  workspaceId: string;
+  sessionId: string;
+  turnId: string | null;
+  path: string;
+  contentHash: string | null;
+  size: number | null;
+  mediaType: string;
+  source: 'picker' | 'drop' | 'manual' | string;
+  sendStrategy: 'reference' | 'inline' | string;
+  createdAt: string;
+}
+
+export interface ContextAttachmentValidation {
+  id: string;
+  path: string;
+  status: 'ready' | 'missing' | 'changed' | string;
+  reason: string | null;
+  currentHash: string | null;
+  size: number | null;
+}
+
+export interface Artifact {
+  schema: 'aibo.artifact/v1';
+  id: string;
+  workspaceId: string;
+  sessionId: string;
+  turnId: string | null;
+  source: string;
+  mediaType: string;
+  size: number;
+  contentHash: string;
+  storagePath: string;
+  createdAt: string;
+}
+
+export interface ArtifactContent {
+  artifact: Artifact;
+  content: string;
+  truncated: boolean;
+}
+
+export type ProjectActionKind = 'test' | 'lint' | 'build' | 'custom';
+
+export interface ProjectAction {
+  schema: 'aibo.project-action/v1';
+  id: string;
+  workspaceId: string;
+  name: string;
+  kind: ProjectActionKind;
+  program: string;
+  args: string[];
+  cwd: string;
+  enabled: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface ProjectActionRun {
+  schema: 'aibo.project-action-run/v1';
+  id: string;
+  actionId: string;
+  workspaceId: string;
+  sessionId: string | null;
+  status: 'completed' | 'failed' | 'timed_out' | string;
+  exitCode: number | null;
+  output: string;
+  artifactId: string | null;
+  startedAt: string;
+  completedAt: string;
+}
+
 export type GitFileAction = 'stage' | 'unstage' | 'revert';
+
+export interface GitHunkActionResult {
+  path: string;
+  hunkIndex: number;
+  action: GitFileAction;
+  applied: boolean;
+  message: string;
+}
 
 export interface GitFileActionResult {
   path: string;
@@ -251,6 +388,14 @@ export interface ApprovalRequest {
   command: string | null;
   cwd: string | null;
   availableDecisions: ApprovalDecision[];
+}
+
+/** Adapter-neutral view of work queued while an Agent is busy. */
+export interface AgentQueueSnapshot {
+  sessionId: string;
+  steering: string[];
+  followUp: string[];
+  updatedAt: string;
 }
 
 export interface AgentEvent {

@@ -1,6 +1,6 @@
 <script lang="ts">
   import { Button, Card, CardHeader, CardTitle, Icon, Input } from '$lib/ui-kit';
-  import type { SessionFilter } from '$lib/types';
+  import type { InteractionMode, SessionFilter } from '$lib/types';
   import { relativeTimeLabel, sessionStateLabel, sessionStatusTone, isSessionRunning } from './session-utils';
   import type { SessionListItem, WorkspaceListItem } from './view-types';
 
@@ -20,7 +20,7 @@
     sessionSearch?: string;
     sessionFilter?: SessionFilter;
     createSessionWorkspaceId: string | null;
-    createProfileMode: 'read-only' | 'edit';
+    createProfileMode: InteractionMode;
     renamingSessionId: string | null;
     sessionLabelDraft?: string;
     onToggleSearch: () => void;
@@ -29,9 +29,10 @@
     onChooseWorkspaceDirectory: () => void;
     onSelectWorkspace: (workspaceId: string) => void;
     onToggleSessionCreator: (workspaceId: string) => void;
-    onSetCreateProfileMode: (mode: 'read-only' | 'edit') => void;
+    onSetCreateProfileMode: (mode: InteractionMode) => void;
     onToggleTrust: (workspaceId: string) => void;
     onDeleteWorkspace: (workspaceId: string) => void;
+    onOpenWorkspaceLocation: (workspaceId: string, target: 'finder' | 'terminal' | 'editor') => void;
     onCreateCodex: (workspaceId: string) => void;
     onCreatePi: (workspaceId: string) => void;
     onSelectSession: (sessionId: string) => void;
@@ -73,6 +74,7 @@
     onSetCreateProfileMode,
     onToggleTrust,
     onDeleteWorkspace,
+    onOpenWorkspaceLocation,
     onCreateCodex,
     onCreatePi,
     onSelectSession,
@@ -222,6 +224,39 @@
                 variant="ghost"
                 size="icon"
                 type="button"
+                aria-label="在 Finder 中打开工作区"
+                title="在 Finder 中打开"
+                onclick={(event) => { event.stopPropagation(); onOpenWorkspaceLocation(workspace.id, 'finder'); }}
+                disabled={busy}
+              >
+                <Icon name="folder" size={14} />
+              </Button>
+              <Button
+                variant="ghost"
+                size="icon"
+                type="button"
+                aria-label="在终端中打开工作区"
+                title="在终端中打开"
+                onclick={(event) => { event.stopPropagation(); onOpenWorkspaceLocation(workspace.id, 'terminal'); }}
+                disabled={busy}
+              >
+                <Icon name="terminal" size={14} />
+              </Button>
+              <Button
+                variant="ghost"
+                size="icon"
+                type="button"
+                aria-label="在编辑器中打开工作区"
+                title="在编辑器中打开（需配置 AIBO_EDITOR）"
+                onclick={(event) => { event.stopPropagation(); onOpenWorkspaceLocation(workspace.id, 'editor'); }}
+                disabled={busy}
+              >
+                <Icon name="edit" size={14} />
+              </Button>
+              <Button
+                variant="ghost"
+                size="icon"
+                type="button"
                 aria-label="移除工作区"
                 title="移除工作区"
                 onclick={(event) => { event.stopPropagation(); onDeleteWorkspace(workspace.id); }}
@@ -237,14 +272,15 @@
               {#if createSessionWorkspaceId === workspace.id}
                 <div class="session-create-actions" aria-label="选择 Agent">
                   <label class="session-profile-choice">
-                    <span>权限</span>
+                    <span>模式</span>
                     <select
                       value={createProfileMode}
-                      aria-label="新会话权限"
-                      onchange={(event) => onSetCreateProfileMode((event.currentTarget as HTMLSelectElement).value as 'read-only' | 'edit')}
+                      aria-label="新会话模式"
+                      onchange={(event) => onSetCreateProfileMode((event.currentTarget as HTMLSelectElement).value as InteractionMode)}
                     >
-                      <option value="read-only">只读</option>
-                      <option value="edit">可编辑（需审批）</option>
+                      <option value="ask">问答（只读）</option>
+                      <option value="plan">计划（只读）</option>
+                      <option value="edit">编辑（需审批）</option>
                     </select>
                   </label>
                   <Button size="sm" type="button" onclick={() => onCreateCodex(workspace.id)} disabled={busy}>Codex</Button>

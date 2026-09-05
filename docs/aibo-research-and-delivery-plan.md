@@ -1,6 +1,6 @@
 # Aibo 多 Agent 工作台：调研、架构建议与实施计划
 
-> 状态：架构已冻结（macOS 首发）；Phase 0–3 已完成 macOS 门禁，Phase 4 统一会话体验的实现与离线门禁完成，Phase 4.5A 契约/能力解析/持久化骨架已完成，Phase 4.5 其余工作实施中，Windows 后续验证
+> 状态：架构已冻结（macOS 首发）；Phase 0–3 已完成 macOS 门禁，Phase 4 统一会话体验与 Phase 4.5A–F 核心链路已完成，当前进行自动化回归与真实 Provider 验收（G5），Windows 后续验证
 > 调研日期：2026-09-02  
 > 首批目标：Codex、Pi；首发平台：macOS（当前基线为 arm64）
 > 技术栈：Svelte 5 + Tauri 2
@@ -30,11 +30,11 @@ Aibo 应定位为“本地 Agent 客户端与上下文交换层”，而不是�
 
 本机已检测到：
 
-- Node.js `24.19.0`
-- pnpm `11.21.0`
-- Rust/Cargo `1.94.1`
-- Pi `0.84.1`
-- 可发现 Codex 可执行文件；版本探测在当前受限环境中没有成功返回版本号
+- Node.js `24.18.0`
+- pnpm `10.32.1`
+- Rust/Cargo `1.97.1`
+- Pi `0.84.4`
+- Codex `0.149.0`
 
 这足以开展 macOS 首发的 Phase 1 工程；Windows 的真实 Pi 会话和平台进程行为仍需在目标环境单独验证。正式工程应锁定并验证项目级版本，而不是依赖本机全局版本。
 
@@ -457,10 +457,10 @@ V1 后为 Pi 增加可选 container/VM/平台 sandbox runner；统一权限 prof
 
 ### Phase 4.5：常规 Agent 工作台能力补全（19–31 天，实施中）
 
-- 版本化 Execution Profile、capability resolution 与 Ask/Plan/Edit 模式（4.5A 已完成契约、解析与持久化骨架）。
-- Codex 原生 sandbox/approval 映射，以及 Pi 通过 Aibo Core 控制的安全写入和命令工具边界（写入网关已开始落地，命令仍保持禁用）。
+- 版本化 Execution Profile、capability resolution 与 Ask/Plan/Edit 模式。
+- Codex 原生 sandbox/approval 映射，以及 Pi 通过 Aibo Core 控制的安全写入和命令工具边界。
 - turn baseline/result、Git/文件变更归属、diff/hunk 审阅与结构化 verification。
-- Agent 文件 checkpoint、恢复预检、用户后续修改冲突保护和 artifact store。
+- Agent 文件 checkpoint、恢复预检、用户后续修改冲突保护、结构化恢复审计和 artifact store。
 - 文件/目录/图片上下文附件、安全 Markdown、代码/diff/命令/测试卡片。
 - 任务进度、等待状态、队列、project actions 与能力检查器。
 
@@ -566,4 +566,4 @@ macOS 本机 Phase 0 已通过，架构评审结果已经冻结在 [docs/archite
 4. Pi 首版接受宿主机当前用户权限，但必须通过 workspace trust 明示风险；不提前引入容器/VM。
 5. Phase 1–4 已完成应用骨架、Codex/Pi adapter 与统一会话体验；当前先实施 [Phase 4.5](phase-4.5-agent-workbench-completion.md)，补齐执行、审阅、恢复与 artifact 事实，再进入 Handoff v1。
 
-Phase 4.5A 的首个切片已完成：Execution Profile 契约、capability resolution 和 session profile 存储骨架及其门禁已通过；下一步进入 4.5B 安全执行主链路。详细分批及准入条件见 [Phase 4.5 计划与验收](phase-4.5-agent-workbench-completion.md)。
+Phase 4.5A–F 的核心链路已完成：执行 profile、安全写入与命令网关、变更审阅、checkpoint/恢复（含 `aibo.restore-operation/v1` 结构化审计）、结构化上下文、artifact、队列、project actions 和能力检查器均已落地；能力检查器可列出工作区指令文件、Skills、Core 工具与 MCP server 名称（不暴露配置内容）；当前只剩真实 Codex/Pi macOS 端到端 G5 验收，受限执行环境暂不能使用已登录 Provider 的真实模型请求，随后再进入 Handoff v1。详细分批及准入条件见 [Phase 4.5 计划与验收](phase-4.5-agent-workbench-completion.md)。

@@ -1,7 +1,7 @@
 import { mkdir } from "node:fs/promises";
 import readline from "node:readline";
 import process from "node:process";
-import { createAgentSession, createWriteToolDefinition, ModelRuntime, SessionManager } from "@earendil-works/pi-coding-agent";
+import { createAgentSession, createBashToolDefinition, createWriteToolDefinition, ModelRuntime, SessionManager } from "@earendil-works/pi-coding-agent";
 
 // The host is intentionally a small, versioned JSONL boundary. Rust owns the
 // durable Aibo session; this process owns only one Pi AgentSession at a time.
@@ -230,8 +230,10 @@ async function start(params) {
   const workspaceWriteEnabled =
     enforcedProfile.interactionMode === "edit" &&
     enforcedProfile.filesystemPolicy === "workspace-write";
-  const customTools = workspaceWriteEnabled
-    ? [createWriteToolDefinition(cwd, {
+  const commandEnabled = enforcedProfile.interactionMode === "edit" &&
+    enforcedProfile.commandPolicy !== "disabled";
+  const customTools = [];
+  if (workspaceWriteEnabled) customTools.push(createWriteToolDefinition(cwd, {
       operations: {
         // The Core write gateway creates missing parent directories as part of
         // the atomic request, so this hook intentionally does not mutate the
@@ -242,8 +244,21 @@ async function start(params) {
           content,
         }),
       },
-    })]
-    : undefined;
+    }));
+  if (commandEnabled) customTools.push(createBashToolDefinition(cwd, {
+    operations: {
+      exec: async (command, commandCwd, { onData, timeout }) => {
+        const result = await requestCoreTool("run_command", {
+          command,
+          cwd: commandCwd,
+          timeout,
+        });
+        const output = typeof result?.output === "string" ? result.output : "";
+        if (output) onData(Buffer.from(output));
+        return { exitCode: typeof result?.exitCode === "number" ? result.exitCode : null };
+      },
+    },
+  }));
   const created = await createAgentSession({
     cwd,
     sessionManager: manager,
@@ -251,11 +266,11 @@ async function start(params) {
     // and is required for OAuth/API-key credentials to be visible to an
     // embedded AgentSession.
     modelRuntime: modelRuntime ??= await ModelRuntime.create(),
-    // Pi has no native sandbox. Aibo deliberately limits this first vertical
-    // slice to read-only tools unless Core explicitly resolved a workspace
-    // write profile and supplied the mediated custom tool below.
+    // Pi has no native sandbox. Aibo only exposes custom write/command tools
+    // after Core resolves the profile; both operations stay on the JSONL
+    // gateway so the host never mutates the workspace directly.
     tools: ["read", "grep", "find", "ls"],
-    customTools,
+    customTools: customTools.length > 0 ? customTools : undefined,
   });
   session = created.session;
   unsubscribe = session.subscribe(emitEvent);
@@ -271,8 +286,10 @@ async function start(params) {
       "session-tree",
       "session-tree-navigation",
       "session-snapshot",
+      "queue-management",
       "read-only-tools",
       ...(workspaceWriteEnabled ? ["workspace-write-gateway"] : []),
+      ...(commandEnabled ? ["workspace-command-gateway"] : []),
       ...(enforcedProfile.approvalPolicy === "on-request" ? ["aibo-approval"] : []),
     ],
   };
@@ -319,6 +336,14 @@ async function handle(message) {
       if (!text) throw new Error(`Pi ${method} text must not be empty`);
       await session[method](text);
       respond(id, { accepted: true, mode: method, turnId: activeTurnId });
+      return;
+    }
+    if (method === "clearQueue") {
+      const cleared = session.clearQueue();
+      respond(id, {
+        steering: Array.isArray(cleared?.steering) ? cleared.steering : [],
+        followUp: Array.isArray(cleared?.followUp) ? cleared.followUp : [],
+      });
       return;
     }
     if (method === "abort") {

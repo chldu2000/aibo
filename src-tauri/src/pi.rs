@@ -1,12 +1,15 @@
+use super::artifact::{
+    artifact_root_from_checkpoint, persist_text, sanitize_content, truncate_utf8,
+};
 use super::change_set::{
     capture as capture_workspace, persist as persist_change_set, persist_baseline_checkpoint,
-    WorkspaceSnapshot,
+    persist_checkpoint_metadata, WorkspaceSnapshot,
 };
 use super::execution_profile::ResolvedExecutionProfile;
 use super::workspace_guard::canonicalize_target;
 use super::{
-    clone_cached_runtime, find_executable, now_iso, remove_cached_runtime, session_by_id,
-    session_execution_profile, workspace_by_id,
+    clone_cached_runtime, find_executable, mark_turn_interrupted, now_iso, remove_cached_runtime,
+    session_by_id, session_execution_profile, workspace_by_id,
 };
 use serde::Serialize;
 use serde_json::{json, Value};
@@ -14,7 +17,7 @@ use sqlx::SqlitePool;
 use std::{
     collections::HashMap,
     path::{Path, PathBuf},
-    process::Stdio,
+    process::{Output, Stdio},
     sync::{
         atomic::{AtomicBool, AtomicU64, Ordering},
         Arc,
@@ -36,6 +39,70 @@ const PI_ADAPTER_VERSION: &str = "phase3-pi-sdk-0.1.0";
 const PI_HOST_PROTOCOL: &str = "aibo-pi-sdk-host.v1";
 const REQUEST_TIMEOUT: Duration = Duration::from_secs(30);
 const MAX_WRITE_BYTES: usize = 10 * 1024 * 1024;
+const MAX_COMMAND_OUTPUT_BYTES: usize = 1024 * 1024;
+
+fn truncate_command_output(output: &str) -> String {
+    let redacted = output
+        .lines()
+        .map(redact_command_line)
+        .collect::<Vec<_>>()
+        .join("\n");
+    if redacted.len() <= MAX_COMMAND_OUTPUT_BYTES {
+        return redacted;
+    }
+    truncate_utf8(
+        &redacted,
+        MAX_COMMAND_OUTPUT_BYTES,
+        "\n[… command output truncated …]",
+    )
+}
+
+fn redact_command_line(line: &str) -> String {
+    let lower = line.to_ascii_lowercase();
+    let markers = ["api_key", "api-key", "token", "secret", "password"];
+    let Some(marker) = markers.iter().find(|marker| lower.contains(**marker)) else {
+        return line.to_owned();
+    };
+    let marker_end = lower.find(marker).unwrap_or(0) + marker.len();
+    let suffix = &line[marker_end..];
+    let Some(delimiter) = suffix.find(['=', ':']) else {
+        return line.to_owned();
+    };
+    let value_start = marker_end + delimiter + 1;
+    let secret_start = value_start
+        + line[value_start..]
+            .find(|character: char| !character.is_whitespace())
+            .unwrap_or(0);
+    let value_end = line[secret_start..]
+        .find(char::is_whitespace)
+        .map(|offset| secret_start + offset)
+        .unwrap_or(line.len());
+    format!("{}[REDACTED]{}", &line[..secret_start], &line[value_end..])
+}
+
+async fn run_shell_command(
+    command: &str,
+    cwd: &Path,
+    timeout_seconds: f64,
+) -> Result<Output, PiError> {
+    let mut command_process = if cfg!(windows) {
+        let mut process = Command::new("cmd");
+        process.args(["/C", command]);
+        process
+    } else {
+        let mut process = Command::new("/bin/sh");
+        process.args(["-lc", command]);
+        process
+    };
+    command_process.current_dir(cwd).kill_on_drop(true);
+    time::timeout(
+        Duration::from_secs_f64(timeout_seconds),
+        command_process.output(),
+    )
+    .await
+    .map_err(|_| PiError::Session(format!("command timed out after {timeout_seconds}s")))?
+    .map_err(|error| PiError::Session(format!("spawn command: {error}")))
+}
 
 #[derive(Debug, Error)]
 pub enum PiError {
@@ -337,6 +404,7 @@ struct PendingPiToolRequest {
 }
 
 impl PiSession {
+    #[allow(clippy::too_many_arguments)]
     fn new(
         app: AppHandle,
         db: SqlitePool,
@@ -391,6 +459,7 @@ impl PiSession {
     }
 
     async fn capture_turn_baseline(&self, external_turn_id: &str) -> Result<(), PiError> {
+        let internal_turn_id = self.ensure_turn(external_turn_id, "").await?;
         let workspace_path: String = sqlx::query_scalar("SELECT path FROM workspaces WHERE id = ?")
             .bind(&self.workspace_id)
             .fetch_one(&self.db)
@@ -400,13 +469,24 @@ impl PiSession {
                 if let Err(error) = persist_baseline_checkpoint(
                     &self.checkpoint_root,
                     &self.session_id,
-                    external_turn_id,
+                    &internal_turn_id,
                     Path::new(&workspace_path),
                     &snapshot,
                 )
                 .await
                 {
                     warn!(session_id = %self.session_id, turn_id = %external_turn_id, error = %error, "baseline checkpoint capture failed");
+                } else if let Err(error) = persist_checkpoint_metadata(
+                    &self.db,
+                    &self.checkpoint_root,
+                    &self.workspace_id,
+                    &self.session_id,
+                    &internal_turn_id,
+                    &snapshot,
+                )
+                .await
+                {
+                    warn!(session_id = %self.session_id, turn_id = %external_turn_id, error = %error, "checkpoint metadata persistence failed");
                 }
                 self.turn_baselines
                     .lock()
@@ -495,8 +575,29 @@ impl PiSession {
         }
         match method {
             "aibo/process-exited" => {
-                if let Some(turn_id) = self.current_turn_id.lock().await.clone() {
-                    self.finalize_turn_changes(&turn_id).await?;
+                // The host can exit before the acknowledgement reaches the
+                // adapter, so recover the latest durable running turn when
+                // the in-memory turn id is still empty.
+                let turn_id = if let Some(turn_id) = self.current_turn_id.lock().await.clone() {
+                    Some(turn_id)
+                } else {
+                    sqlx::query_scalar::<_, String>(
+                        "SELECT external_turn_id FROM turns
+                         WHERE session_id = ? AND status = 'running'
+                         ORDER BY started_at DESC, id DESC LIMIT 1",
+                    )
+                    .bind(&self.session_id)
+                    .fetch_optional(&self.db)
+                    .await?
+                };
+                if let Some(turn_id) = turn_id {
+                    if let Ok(internal_turn_id) = self.ensure_turn(&turn_id, "").await {
+                        if let Err(error) = self.finalize_turn_changes(&turn_id).await {
+                            warn!(session_id = %self.session_id, turn_id = %turn_id, error = %error, "Pi crash result capture failed");
+                        }
+                        mark_turn_interrupted(&self.db, &self.session_id, &internal_turn_id)
+                            .await?;
+                    }
                 }
                 *self.current_turn_id.lock().await = None;
                 *self.current_message_id.lock().await = None;
@@ -537,6 +638,9 @@ impl PiSession {
             .get("tool")
             .and_then(Value::as_str)
             .unwrap_or_default();
+        if tool == "run_command" {
+            return self.handle_command_request(host_request_id, params).await;
+        }
         if tool != "write_file" {
             return self
                 .client
@@ -655,9 +759,130 @@ impl PiSession {
         self.execute_tool_request(pending).await
     }
 
+    async fn handle_command_request(
+        &self,
+        host_request_id: &str,
+        params: &Value,
+    ) -> Result<(), PiError> {
+        if self.execution_profile.enforced.interaction_mode != "edit"
+            || self.execution_profile.enforced.command_policy == "disabled"
+        {
+            return self
+                .client
+                .reply(
+                    host_request_id,
+                    Err("当前 Pi 会话未启用命令执行能力".to_owned()),
+                )
+                .await;
+        }
+        let workspace = match workspace_by_id(&self.db, &self.workspace_id).await {
+            Ok(workspace) => workspace,
+            Err(error) => {
+                return self
+                    .client
+                    .reply(host_request_id, Err(error.to_string()))
+                    .await;
+            }
+        };
+        if workspace.trust != "trusted" {
+            return self
+                .client
+                .reply(
+                    host_request_id,
+                    Err("工作区尚未信任，拒绝 Pi 命令请求".to_owned()),
+                )
+                .await;
+        }
+        let Some(command) = params
+            .get("command")
+            .and_then(Value::as_str)
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+        else {
+            return self
+                .client
+                .reply(
+                    host_request_id,
+                    Err("Pi command request is missing command".to_owned()),
+                )
+                .await;
+        };
+        if command.len() > 16 * 1024 {
+            return self
+                .client
+                .reply(
+                    host_request_id,
+                    Err("Pi command request is too long".to_owned()),
+                )
+                .await;
+        }
+        let raw_cwd = params
+            .get("cwd")
+            .and_then(Value::as_str)
+            .unwrap_or(&workspace.path);
+        let cwd = match canonicalize_target(Path::new(&workspace.path), Path::new(raw_cwd)) {
+            Ok(path) if path.is_dir() => path,
+            Ok(_) => {
+                return self
+                    .client
+                    .reply(
+                        host_request_id,
+                        Err("Pi command cwd is not a directory".to_owned()),
+                    )
+                    .await;
+            }
+            Err(error) => return self.client.reply(host_request_id, Err(error)).await,
+        };
+        let turn_id = params
+            .get("turnId")
+            .and_then(Value::as_str)
+            .map(ToOwned::to_owned);
+        let pending = PendingPiToolRequest {
+            host_request_id: host_request_id.to_owned(),
+            tool: "run_command".to_owned(),
+            params: json!({
+                "command": command,
+                "cwd": cwd,
+                "timeout": params.get("timeout").cloned().unwrap_or(Value::Null),
+            }),
+            turn_id: turn_id.clone(),
+        };
+        let requires_approval = self.execution_profile.enforced.approval_policy == "on-request"
+            || self.execution_profile.enforced.command_policy == "approved";
+        if requires_approval {
+            let approval_id = format!("pi-tool:{host_request_id}");
+            self.pending_tool_requests
+                .lock()
+                .await
+                .insert(approval_id.clone(), pending);
+            self.set_state("waiting_approval").await?;
+            self.emit_event(
+                "approval.requested",
+                turn_id,
+                json!({
+                    "requestId": approval_id,
+                    "kind": "pi_command",
+                    "command": sanitize_content("pi.command", command),
+                    "cwd": cwd,
+                    "availableDecisions": ["accept", "cancel"]
+                }),
+                Some(json!({ "tool": "run_command", "hostRequestId": host_request_id })),
+            )
+            .await?;
+            return Ok(());
+        }
+        self.execute_tool_request(pending).await
+    }
+
     async fn execute_tool_request(&self, request: PendingPiToolRequest) -> Result<(), PiError> {
         let host_request_id = request.host_request_id.clone();
-        let result = self.perform_tool_write(&request).await;
+        let result = match request.tool.as_str() {
+            "write_file" => self.perform_tool_write(&request).await,
+            "run_command" => self.perform_tool_command(&request).await,
+            other => Err(PiError::Protocol(format!(
+                "unsupported Pi Core tool: {other}"
+            ))),
+        };
         self.client
             .reply(&host_request_id, result.map_err(|error| error.to_string()))
             .await
@@ -698,6 +923,60 @@ impl PiSession {
             .await
             .map_err(|error| PiError::Session(format!("write workspace file: {error}")))?;
         Ok(json!({ "path": resolved, "bytes": content.len(), "tool": request.tool }))
+    }
+
+    async fn perform_tool_command(&self, request: &PendingPiToolRequest) -> Result<Value, PiError> {
+        let workspace = workspace_by_id(&self.db, &self.workspace_id)
+            .await
+            .map_err(|error| PiError::Session(error.to_string()))?;
+        if workspace.trust != "trusted" {
+            return Err(PiError::Session(
+                "工作区信任已撤销，拒绝 Pi 命令请求".to_owned(),
+            ));
+        }
+        let command = request
+            .params
+            .get("command")
+            .and_then(Value::as_str)
+            .ok_or_else(|| PiError::Protocol("resolved Pi command is missing".to_owned()))?;
+        let cwd = request
+            .params
+            .get("cwd")
+            .and_then(Value::as_str)
+            .ok_or_else(|| PiError::Protocol("resolved Pi command cwd is missing".to_owned()))?;
+        let cwd = canonicalize_target(Path::new(&workspace.path), Path::new(cwd))
+            .map_err(PiError::Session)?;
+        if !cwd.is_dir() {
+            return Err(PiError::Session(
+                "Pi command cwd is not a directory".to_owned(),
+            ));
+        }
+        let timeout_seconds = request
+            .params
+            .get("timeout")
+            .and_then(Value::as_f64)
+            .filter(|value| value.is_finite() && *value > 0.0)
+            .unwrap_or(120.0)
+            .min(300.0);
+        let output = run_shell_command(command, &cwd, timeout_seconds).await?;
+        let stdout = truncate_command_output(String::from_utf8_lossy(&output.stdout).as_ref());
+        let stderr = truncate_command_output(String::from_utf8_lossy(&output.stderr).as_ref());
+        let combined = if stderr.is_empty() {
+            stdout.clone()
+        } else if stdout.is_empty() {
+            stderr.clone()
+        } else {
+            format!("{stdout}\n{stderr}")
+        };
+        let combined = truncate_command_output(&combined);
+        Ok(json!({
+            "command": command,
+            "cwd": cwd,
+            "exitCode": output.status.code(),
+            "stdout": stdout,
+            "stderr": stderr,
+            "output": combined,
+        }))
     }
 
     async fn resolve_tool_approval(
@@ -864,6 +1143,8 @@ impl PiSession {
                         .bind(status).bind(&text).bind(now_iso()).bind(&internal).execute(&self.db).await?;
                     sqlx::query("UPDATE messages SET status = ?, updated_at = ? WHERE session_id = ? AND turn_id = ? AND role = 'assistant'")
                         .bind(status).bind(now_iso()).bind(&self.session_id).bind(&internal).execute(&self.db).await?;
+                    sqlx::query("UPDATE messages SET status = 'completed', updated_at = ? WHERE session_id = ? AND turn_id = ? AND role = 'user' AND status = 'queued'")
+                        .bind(now_iso()).bind(&self.session_id).bind(&internal).execute(&self.db).await?;
                     self.set_state(if status == "completed" {
                         "idle"
                     } else {
@@ -1325,18 +1606,73 @@ impl PiSession {
             .map(|value| value.to_string())
             .or_else(|| event.get("args").map(|value| value.to_string()))
             .unwrap_or_else(|| tool_name.to_owned());
+        let summary = if tool_name == "run_command" {
+            sanitize_content("pi.command", &summary)
+        } else {
+            summary
+        };
+        let args = event.get("args").and_then(Value::as_object);
+        let result = event.get("result").and_then(Value::as_object);
+        let command = args
+            .and_then(|value| value.get("command"))
+            .or_else(|| result.and_then(|value| value.get("command")))
+            .and_then(Value::as_str)
+            .map(|value| sanitize_content("pi.command", value));
+        let cwd = args
+            .and_then(|value| value.get("cwd"))
+            .or_else(|| result.and_then(|value| value.get("cwd")))
+            .and_then(Value::as_str)
+            .map(ToOwned::to_owned);
+        let exit_code = result
+            .and_then(|value| value.get("exitCode"))
+            .or_else(|| result.and_then(|value| value.get("exit_code")))
+            .and_then(Value::as_i64);
         let internal_turn = if let Some(turn) = turn_id.as_deref() {
             Some(self.ensure_turn(turn, "").await?)
         } else {
             None
         };
         let now = now_iso();
-        let updated = sqlx::query("UPDATE messages SET content = CASE WHEN ? = 1 OR content = '' THEN ? ELSE content END, tool_name = COALESCE(?, tool_name), turn_id = COALESCE(?, turn_id), status = ?, updated_at = ? WHERE session_id = ? AND external_message_id = ? AND role = 'tool'")
-            .bind(if kind == "tool_execution_start" { 1_i64 } else { 0_i64 }).bind(&summary).bind(tool_name).bind(internal_turn.as_deref()).bind(status).bind(&now).bind(&self.session_id).bind(&item_id).execute(&self.db).await?;
+        let updated = sqlx::query("UPDATE messages SET content = CASE WHEN ? = 1 OR content = '' THEN ? ELSE content END, tool_name = COALESCE(?, tool_name), tool_command = COALESCE(?, tool_command), tool_cwd = COALESCE(?, tool_cwd), tool_exit_code = COALESCE(?, tool_exit_code), turn_id = COALESCE(?, turn_id), status = ?, updated_at = ? WHERE session_id = ? AND external_message_id = ? AND role = 'tool'")
+            .bind(if kind == "tool_execution_start" { 1_i64 } else { 0_i64 })
+            .bind(&summary)
+            .bind(tool_name)
+            .bind(&command)
+            .bind(&cwd)
+            .bind(exit_code)
+            .bind(internal_turn.as_deref())
+            .bind(status)
+            .bind(&now)
+            .bind(&self.session_id)
+            .bind(&item_id)
+            .execute(&self.db)
+            .await?;
         if updated.rows_affected() == 0 {
-            sqlx::query("INSERT INTO messages (id, session_id, turn_id, external_message_id, role, tool_name, content, status, sequence, created_at, updated_at) VALUES (?, ?, ?, ?, 'tool', ?, ?, ?, ?, ?, ?)")
-                .bind(Ulid::new().to_string()).bind(&self.session_id).bind(internal_turn).bind(&item_id).bind(tool_name).bind(&summary).bind(status)
+            sqlx::query("INSERT INTO messages (id, session_id, turn_id, external_message_id, role, tool_name, tool_command, tool_cwd, tool_exit_code, content, status, sequence, created_at, updated_at) VALUES (?, ?, ?, ?, 'tool', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)")
+                .bind(Ulid::new().to_string()).bind(&self.session_id).bind(&internal_turn).bind(&item_id).bind(tool_name).bind(&command).bind(&cwd).bind(exit_code).bind(&summary).bind(status)
                 .bind(self.sequence.load(Ordering::Relaxed) as i64).bind(&now).bind(&now).execute(&self.db).await?;
+        }
+        if kind == "tool_execution_end" && tool_name == "run_command" {
+            if let Some(output) = result
+                .and_then(|value| value.get("output"))
+                .and_then(Value::as_str)
+            {
+                let artifact_root = artifact_root_from_checkpoint(&self.checkpoint_root);
+                if let Err(error) = persist_text(
+                    &self.db,
+                    &artifact_root,
+                    &self.workspace_id,
+                    &self.session_id,
+                    internal_turn.as_deref(),
+                    "pi.command",
+                    "text/plain",
+                    output,
+                )
+                .await
+                {
+                    warn!(session_id = %self.session_id, error = %error, "unable to persist Pi command artifact");
+                }
+            }
         }
         let event_name = match kind {
             "tool_execution_start" => "tool.started",
@@ -1685,7 +2021,7 @@ impl PiManager {
         let internal_turn = session.ensure_turn(&external_turn, "").await?;
         let user_message_id = Ulid::new().to_string();
         let now = now_iso();
-        sqlx::query("INSERT INTO messages (id, session_id, turn_id, external_message_id, role, content, status, sequence, created_at, updated_at) VALUES (?, ?, ?, ?, 'user', ?, 'completed', ?, ?, ?)")
+        sqlx::query("INSERT INTO messages (id, session_id, turn_id, external_message_id, role, content, status, sequence, created_at, updated_at) VALUES (?, ?, ?, ?, 'user', ?, 'queued', ?, ?, ?)")
             .bind(&user_message_id)
             .bind(session_id)
             .bind(&internal_turn)
@@ -1715,6 +2051,52 @@ impl PiManager {
 
     pub(crate) async fn follow_up(&self, session_id: &str, input: &str) -> Result<(), PiError> {
         self.enqueue_message(session_id, input, "followUp").await
+    }
+
+    pub(crate) async fn clear_queue(&self, session_id: &str) -> Result<(), PiError> {
+        let session = self.ensure_runtime(session_id).await?;
+        let response = session.client.request("clearQueue", json!({})).await?;
+        if let Some(turn_id) = session.current_turn_id.lock().await.clone() {
+            let internal_turn = session.ensure_turn(&turn_id, "").await?;
+            let result = response.get("result").cloned().unwrap_or_else(|| json!({}));
+            let mut cleared = HashMap::<String, usize>::new();
+            for key in ["steering", "followUp"] {
+                if let Some(items) = result.get(key).and_then(Value::as_array) {
+                    for item in items {
+                        let text = item
+                            .as_str()
+                            .or_else(|| item.get("text").and_then(Value::as_str))
+                            .or_else(|| item.get("message").and_then(Value::as_str))
+                            .or_else(|| item.get("content").and_then(Value::as_str))
+                            .map(str::trim)
+                            .filter(|text| !text.is_empty());
+                        if let Some(text) = text {
+                            *cleared.entry(text.to_owned()).or_default() += 1;
+                        }
+                    }
+                }
+            }
+            for (text, count) in cleared {
+                for _ in 0..count {
+                    let id = sqlx::query_scalar::<_, String>(
+                        "SELECT id FROM messages
+                         WHERE session_id = ? AND turn_id = ? AND role = 'user' AND content = ?
+                         ORDER BY created_at DESC LIMIT 1",
+                    )
+                    .bind(session_id)
+                    .bind(&internal_turn)
+                    .bind(&text)
+                    .fetch_optional(&self.db)
+                    .await?;
+                    let Some(id) = id else { break };
+                    sqlx::query("DELETE FROM messages WHERE id = ?")
+                        .bind(id)
+                        .execute(&self.db)
+                        .await?;
+                }
+            }
+        }
+        Ok(())
     }
 
     pub(crate) async fn tree(&self, session_id: &str) -> Result<Value, PiError> {
@@ -1906,8 +2288,14 @@ impl PiManager {
 
 #[cfg(test)]
 mod tests {
-    use super::{generation_matches, text_from_message, PI_ADAPTER_VERSION, PI_HOST_PROTOCOL};
+    use super::{
+        generation_matches, redact_command_line, run_shell_command, text_from_message,
+        truncate_command_output, PI_ADAPTER_VERSION, PI_HOST_PROTOCOL,
+    };
     use serde_json::json;
+    use std::{fs, path::PathBuf};
+    use tokio::time::{sleep, Duration};
+    use ulid::Ulid;
 
     #[test]
     fn extracts_only_visible_pi_text() {
@@ -1940,5 +2328,55 @@ mod tests {
             "generation-current"
         ));
         assert!(!generation_matches(None, "generation-current"));
+    }
+
+    #[test]
+    fn redacts_common_secret_assignments_from_command_output() {
+        assert_eq!(
+            redact_command_line("OPENAI_API_KEY=super-secret"),
+            "OPENAI_API_KEY=[REDACTED]"
+        );
+        assert_eq!(
+            redact_command_line("token: abc123 next"),
+            "token: [REDACTED] next"
+        );
+        assert_eq!(redact_command_line("normal output"), "normal output");
+    }
+
+    #[test]
+    fn command_timeout_does_not_leave_the_shell_running() {
+        tauri::async_runtime::block_on(async {
+            let directory = std::env::temp_dir().join(format!("aibo-pi-timeout-{}", Ulid::new()));
+            fs::create_dir_all(&directory).expect("create timeout directory");
+            let marker = directory.join("completed");
+            let command = if cfg!(windows) {
+                format!(
+                    "ping -n 4 127.0.0.1 >NUL & echo done > \"{}\"",
+                    marker.display()
+                )
+            } else {
+                format!("sleep 1; echo done > \"{}\"", marker.display())
+            };
+            let error = run_shell_command(&command, &PathBuf::from(&directory), 0.05)
+                .await
+                .expect_err("command should time out");
+            assert!(error.to_string().contains("timed out"));
+            sleep(Duration::from_millis(100)).await;
+            assert!(
+                !marker.exists(),
+                "timed out command left a completion marker"
+            );
+            fs::remove_dir_all(directory).expect("cleanup timeout directory");
+        });
+    }
+
+    #[test]
+    fn command_output_limit_applies_after_stdout_and_stderr_are_combined() {
+        let stdout = "x".repeat(1024 * 1024);
+        let stderr = "y".repeat(1024 * 1024);
+        let combined = format!("{stdout}\n{stderr}");
+        let truncated = truncate_command_output(&combined);
+        assert!(truncated.len() <= 1024 * 1024 + 40);
+        assert!(truncated.contains("command output truncated"));
     }
 }

@@ -6,6 +6,13 @@ import type {
   Session,
   TimelineItem,
   TurnChangeSet,
+  ContextAttachment,
+  Artifact,
+  ProjectAction,
+  ProjectActionRun,
+  CheckpointFile,
+  WorkspaceCapabilityInventory,
+  RestoreOperation,
 } from '$lib/types';
 import { toErrorMessage } from './error-utils';
 
@@ -17,6 +24,13 @@ export type SessionContextControllerContext = {
     getPiSessionTree: (sessionId: string) => Promise<PiSessionTreeSnapshot>;
     getSessionExecutionProfile: (sessionId: string) => Promise<SessionExecutionProfile>;
     getTurnChangeSet: (sessionId: string, turnId?: string | null) => Promise<TurnChangeSet | null>;
+    listTurnCheckpoints: (sessionId: string, turnId?: string | null) => Promise<CheckpointFile[]>;
+    listRestoreOperations: (sessionId: string, turnId?: string | null) => Promise<RestoreOperation[]>;
+    listSessionAttachments: (sessionId: string) => Promise<ContextAttachment[]>;
+    listTurnArtifacts: (sessionId: string, turnId?: string | null) => Promise<Artifact[]>;
+    listProjectActions: (workspaceId: string) => Promise<ProjectAction[]>;
+    listProjectActionRuns: (workspaceId: string, limit?: number) => Promise<ProjectActionRun[]>;
+    inspectWorkspaceCapabilities: (workspaceId: string) => Promise<WorkspaceCapabilityInventory>;
   };
   getDesktop: () => boolean;
   getSelectedWorkspaceId: () => string | null;
@@ -28,6 +42,13 @@ export type SessionContextControllerContext = {
   setPiTree: (value: PiSessionTreeSnapshot | null) => void;
   setExecutionProfile: (value: SessionExecutionProfile | null) => void;
   setTurnChangeSet: (value: TurnChangeSet | null) => void;
+  setCheckpoints: (value: CheckpointFile[]) => void;
+  setRestoreOperations: (value: RestoreOperation[]) => void;
+  setAttachments: (value: ContextAttachment[]) => void;
+  setArtifacts: (value: Artifact[]) => void;
+  setProjectActions: (value: ProjectAction[]) => void;
+  setProjectActionRuns: (value: ProjectActionRun[]) => void;
+  setWorkspaceCapabilities: (value: WorkspaceCapabilityInventory | null) => void;
   setTimeline: (value: TimelineItem[]) => void;
   setTimelineVisibleCount: (value: number) => void;
   setThreadBusy: (value: boolean) => void;
@@ -110,14 +131,89 @@ export function createSessionContextController(context: SessionContextController
   async function refreshTurnChangeSet(sessionId: string): Promise<void> {
     if (!context.getDesktop()) {
       if (sessionId === context.getSelectedSessionId()) context.setTurnChangeSet(null);
+      if (sessionId === context.getSelectedSessionId()) context.setCheckpoints([]);
+      if (sessionId === context.getSelectedSessionId()) context.setRestoreOperations([]);
       return;
     }
     try {
       const changeSet = await context.api.getTurnChangeSet(sessionId);
       if (sessionId === context.getSelectedSessionId()) context.setTurnChangeSet(changeSet);
+      const checkpoints = changeSet
+        ? await context.api.listTurnCheckpoints(sessionId, changeSet.turnId)
+        : [];
+      if (sessionId === context.getSelectedSessionId()) context.setCheckpoints(checkpoints);
+      const restoreOperations = await context.api.listRestoreOperations(
+        sessionId,
+        changeSet?.turnId ?? null,
+      );
+      if (sessionId === context.getSelectedSessionId()) context.setRestoreOperations(restoreOperations);
     } catch (error) {
       if (sessionId === context.getSelectedSessionId()) context.setTurnChangeSet(null);
+      if (sessionId === context.getSelectedSessionId()) context.setCheckpoints([]);
+      if (sessionId === context.getSelectedSessionId()) context.setRestoreOperations([]);
       console.warn('unable to read turn change set', error);
+    }
+  }
+
+  async function refreshAttachments(sessionId: string): Promise<void> {
+    if (!context.getDesktop()) {
+      if (sessionId === context.getSelectedSessionId()) context.setAttachments([]);
+      return;
+    }
+    try {
+      const attachments = await context.api.listSessionAttachments(sessionId);
+      if (sessionId === context.getSelectedSessionId()) context.setAttachments(attachments);
+    } catch (error) {
+      if (sessionId === context.getSelectedSessionId()) context.setAttachments([]);
+      console.warn('unable to read session attachments', error);
+    }
+  }
+
+  async function refreshArtifacts(sessionId: string): Promise<void> {
+    if (!context.getDesktop()) {
+      if (sessionId === context.getSelectedSessionId()) context.setArtifacts([]);
+      return;
+    }
+    try {
+      const artifacts = await context.api.listTurnArtifacts(sessionId);
+      if (sessionId === context.getSelectedSessionId()) context.setArtifacts(artifacts);
+    } catch (error) {
+      if (sessionId === context.getSelectedSessionId()) context.setArtifacts([]);
+      console.warn('unable to read session artifacts', error);
+    }
+  }
+
+  async function refreshProjectActions(workspaceId: string): Promise<void> {
+    if (!context.getDesktop()) {
+      if (workspaceId === context.getSelectedWorkspaceId()) context.setProjectActions([]);
+      if (workspaceId === context.getSelectedWorkspaceId()) context.setProjectActionRuns([]);
+      return;
+    }
+    try {
+      const [actions, runs] = await Promise.all([
+        context.api.listProjectActions(workspaceId),
+        context.api.listProjectActionRuns(workspaceId),
+      ]);
+      if (workspaceId === context.getSelectedWorkspaceId()) context.setProjectActions(actions);
+      if (workspaceId === context.getSelectedWorkspaceId()) context.setProjectActionRuns(runs);
+    } catch (error) {
+      if (workspaceId === context.getSelectedWorkspaceId()) context.setProjectActions([]);
+      if (workspaceId === context.getSelectedWorkspaceId()) context.setProjectActionRuns([]);
+      console.warn('unable to read project actions', error);
+    }
+  }
+
+  async function refreshWorkspaceCapabilities(workspaceId: string): Promise<void> {
+    if (!context.getDesktop()) {
+      if (workspaceId === context.getSelectedWorkspaceId()) context.setWorkspaceCapabilities(null);
+      return;
+    }
+    try {
+      const inventory = await context.api.inspectWorkspaceCapabilities(workspaceId);
+      if (workspaceId === context.getSelectedWorkspaceId()) context.setWorkspaceCapabilities(inventory);
+    } catch (error) {
+      if (workspaceId === context.getSelectedWorkspaceId()) context.setWorkspaceCapabilities(null);
+      console.warn('unable to inspect workspace capabilities', error);
     }
   }
 
@@ -165,6 +261,10 @@ export function createSessionContextController(context: SessionContextController
     refreshTimeline,
     refreshExecutionProfile,
     refreshTurnChangeSet,
+    refreshAttachments,
+    refreshArtifacts,
+    refreshProjectActions,
+    refreshWorkspaceCapabilities,
     refreshPiTree,
     syncCodexThreads,
     syncCodexThread,

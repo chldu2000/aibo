@@ -1,4 +1,4 @@
-import type { ApprovalRequest, Session, Workspace } from '$lib/types';
+import type { ApprovalRequest, ContextAttachment, ContextAttachmentValidation, Session, Workspace } from '$lib/types';
 import { toErrorMessage } from './error-utils';
 import { upsertSession } from './session-transitions';
 
@@ -11,6 +11,7 @@ export type MessageControllerContext = {
     abortPiTurn: (sessionId: string) => Promise<void>;
     steerPiPrompt: (sessionId: string, input: string) => Promise<void>;
     followUpPiPrompt: (sessionId: string, input: string) => Promise<void>;
+    validateSessionAttachments: (sessionId: string) => Promise<ContextAttachmentValidation[]>;
   };
   getDesktop: () => boolean;
   getSelectedWorkspace: () => Workspace | null;
@@ -19,6 +20,8 @@ export type MessageControllerContext = {
   getSessionRunning: () => boolean;
   getComposerText: () => string;
   setComposerText: (value: string) => void;
+  getAttachments: () => ContextAttachment[];
+  setAttachments: (value: ContextAttachment[]) => void;
   getRetryPrompt: () => string | null;
   setLastSubmittedPrompt: (value: string | null) => void;
   setPromptInFlight: (value: boolean) => void;
@@ -32,12 +35,34 @@ export type MessageControllerContext = {
     updater: (items: Session[]) => Session[],
   ) => void;
   refreshTimeline: (sessionId: string) => Promise<void>;
+  refreshTurnChangeSet?: (sessionId: string) => Promise<void>;
   setBusy: (value: boolean) => void;
   setErrorMessage: (value: string | null) => void;
   setNotice: (value: string) => void;
 };
 
 export function createMessageController(context: MessageControllerContext) {
+  function withAttachmentContext(input: string): string {
+    const attachments = context.getAttachments().filter((attachment) => attachment.turnId === null);
+    if (attachments.length === 0) return input;
+    const references = attachments
+      .map((attachment) => {
+        const metadata = [attachment.mediaType, attachment.size === null ? null : `${attachment.size} bytes`, attachment.contentHash]
+          .filter(Boolean)
+          .join(', ');
+        return `- ${attachment.path}${metadata ? ` (${metadata})` : ''} [attachment:${attachment.id}]`;
+      })
+      .join('\n');
+    return `${input}\n\n[AIBO_CONTEXT_ATTACHMENTS]\n${references}\n[/AIBO_CONTEXT_ATTACHMENTS]`;
+  }
+
+  function unsupportedAttachmentPaths(): string[] {
+    return context
+      .getAttachments()
+      .filter((attachment) => attachment.turnId === null && attachment.mediaType.startsWith('image/'))
+      .map((attachment) => attachment.path);
+  }
+
   async function sendPrompt(): Promise<void> {
     const input = context.getComposerText().trim();
     if (!input) return;
@@ -60,10 +85,25 @@ export function createMessageController(context: MessageControllerContext) {
       return;
     }
 
+    if (selectedSession) {
+      const unsupported = unsupportedAttachmentPaths();
+      if (unsupported.length > 0) {
+        context.setErrorMessage(`当前 Agent 不支持图片上下文：${unsupported.join('、')}`);
+        return;
+      }
+      const validation = await context.api.validateSessionAttachments(selectedSession.id);
+      const invalid = validation.filter((item) => item.status !== 'ready');
+      if (invalid.length > 0) {
+        context.setErrorMessage(`附件已变化或不可用：${invalid.map((item) => item.path).join('、')}`);
+        return;
+      }
+    }
+
     context.setBusy(true);
     context.setErrorMessage(null);
     context.setLastSubmittedPrompt(input);
     context.setPromptInFlight(true);
+    const requestInput = withAttachmentContext(input);
     try {
       let session = selectedSession;
       if (!session) {
@@ -71,8 +111,8 @@ export function createMessageController(context: MessageControllerContext) {
         context.setWorkspaceSessionMap(upsertSession(context.getWorkspaceSessionMap(), session));
         context.setSelectedSessionId(session.id);
       }
-      if (session.agent === 'pi') await context.api.sendPiPrompt(session.id, input);
-      else await context.api.sendCodexPrompt(session.id, input);
+      if (session.agent === 'pi') await context.api.sendPiPrompt(session.id, requestInput);
+      else await context.api.sendCodexPrompt(session.id, requestInput);
       await context.refreshTimeline(session.id);
       context.setComposerText('');
       context.updateWorkspaceSessions(session.workspaceId, (items) =>
@@ -106,6 +146,11 @@ export function createMessageController(context: MessageControllerContext) {
       context.setPendingApprovals(
         context.getPendingApprovals().filter((approval) => approval.sessionId !== session.id),
       );
+      context.updateWorkspaceSessions(session.workspaceId, (items) =>
+        items.map((item) => (item.id === session.id ? { ...item, state: 'interrupted' } : item)),
+      );
+      await context.refreshTimeline(session.id);
+      await context.refreshTurnChangeSet?.(session.id);
     } catch (error) {
       context.setErrorMessage(toErrorMessage(error));
     } finally {
@@ -117,11 +162,23 @@ export function createMessageController(context: MessageControllerContext) {
     const input = context.getComposerText().trim();
     const session = context.getSelectedSession();
     if (!input || !session || session.agent !== 'pi' || !context.getDesktop()) return;
+    const unsupported = unsupportedAttachmentPaths();
+    if (unsupported.length > 0) {
+      context.setErrorMessage(`当前 Agent 不支持图片上下文：${unsupported.join('、')}`);
+      return;
+    }
+    const validation = await context.api.validateSessionAttachments(session.id);
+    const invalid = validation.filter((item) => item.status !== 'ready');
+    if (invalid.length > 0) {
+      context.setErrorMessage(`附件已变化或不可用：${invalid.map((item) => item.path).join('、')}`);
+      return;
+    }
     context.setBusy(true);
     context.setErrorMessage(null);
+    const requestInput = withAttachmentContext(input);
     try {
-      if (mode === 'steer') await context.api.steerPiPrompt(session.id, input);
-      else await context.api.followUpPiPrompt(session.id, input);
+      if (mode === 'steer') await context.api.steerPiPrompt(session.id, requestInput);
+      else await context.api.followUpPiPrompt(session.id, requestInput);
       await context.refreshTimeline(session.id);
       context.setComposerText('');
     } catch (error) {

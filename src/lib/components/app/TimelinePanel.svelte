@@ -1,7 +1,8 @@
 <script lang="ts">
   import { Badge, Button, Card, CardContent, CardHeader, CardTitle, Separator } from '$lib/ui-kit';
-  import type { ApprovalDecision } from '$lib/types';
+  import type { AgentQueueSnapshot, ApprovalDecision, ContextAttachment } from '$lib/types';
   import Composer from './Composer.svelte';
+  import MarkdownContent from './MarkdownContent.svelte';
   import { sessionStateLabel } from './session-utils';
   import { groupTimelineItems, isDiffContent, toolLabel } from './timeline-utils';
   import type {
@@ -28,17 +29,23 @@
     retryPrompt: string | null;
     retryReason: string | null;
     approvals: ApprovalView[];
+    queueSnapshot: AgentQueueSnapshot | null;
     agentActivityLabel: string | null;
     sessionRunning: boolean;
     selectedSessionArchiving: boolean;
     busy: boolean;
+    attachments: ContextAttachment[];
     composerText?: string;
+    onAddAttachments: () => void;
+    onAddDirectory: () => void;
+    onRemoveAttachment: (id: string) => void;
     onLoadOlderTimeline: () => void;
     onTimelineScroll: (event: Event) => void;
     onRetry: () => void;
     onResolveApproval: (requestId: string, decision: ApprovalDecision) => void;
     onSend: () => void;
     onQueue: (mode: 'steer' | 'followUp') => void;
+    onClearQueue: () => void;
     onAbort: () => void;
   };
 
@@ -52,10 +59,12 @@
     retryPrompt,
     retryReason,
     approvals,
+    queueSnapshot,
     agentActivityLabel,
     sessionRunning,
     selectedSessionArchiving,
     busy,
+    attachments,
     composerText = $bindable(''),
     onLoadOlderTimeline,
     onTimelineScroll,
@@ -63,7 +72,11 @@
     onResolveApproval,
     onSend,
     onQueue,
+    onClearQueue,
     onAbort,
+    onAddAttachments,
+    onAddDirectory,
+    onRemoveAttachment,
   }: TimelinePanelProps = $props();
 
   const visibleTimeline = $derived(
@@ -71,6 +84,20 @@
   );
   const hiddenTimelineCount = $derived(Math.max(0, timeline.length - visibleTimeline.length));
   const sessionArchived = $derived(session?.archived === true);
+
+  function statusLabel(status: TimelineViewItem['status']): string {
+    return status === 'streaming'
+      ? '生成中'
+      : status === 'completed'
+        ? '完成'
+        : status === 'failed'
+          ? '失败'
+          : status === 'queued'
+            ? '排队中'
+            : status === 'interrupted'
+              ? '已中断'
+              : status;
+  }
 </script>
 
 <Card as="section" class="timeline" data-ui-component="timeline-panel" aria-label="会话时间线">
@@ -150,7 +177,7 @@
             >
               <div class="entry-meta">
                 <Badge variant={item.role === 'assistant' ? 'secondary' : 'outline'}>{item.role === 'assistant' ? (session?.agent === 'pi' ? 'PI' : 'CODEX') : item.role.toUpperCase()}</Badge>
-                <Badge variant="outline">{item.status}</Badge>
+                <Badge variant={item.status === 'failed' ? 'destructive' : item.status === 'queued' ? 'secondary' : 'outline'}>{statusLabel(item.status)}</Badge>
               </div>
               {#if item.role === 'tool'}
                 <details class="tool-output">
@@ -161,7 +188,7 @@
                   <pre class:diff-content={isDiffContent(item.content)}>{item.content || '…'}</pre>
                 </details>
               {:else}
-                <div class="entry-content">{item.content || '…'}</div>
+                <div class="entry-content">{#if item.content}<MarkdownContent content={item.content} />{:else}…{/if}</div>
               {/if}
             </Card>
           {/if}
@@ -217,6 +244,21 @@
     </div>
   {/if}
 
+  {#if queueSnapshot && (queueSnapshot.steering.length > 0 || queueSnapshot.followUp.length > 0)}
+    <div class="agent-queue" role="status" aria-label="待处理消息队列">
+      <div class="agent-queue-heading">
+        <span>队列 · {queueSnapshot.steering.length + queueSnapshot.followUp.length}</span>
+        <Button variant="ghost" size="sm" type="button" onclick={onClearQueue} disabled={busy || !sessionRunning}>清空</Button>
+      </div>
+      {#each queueSnapshot.steering as item, index}
+        <div class="agent-queue-item"><Badge variant="secondary">插入</Badge><span>{item}</span><small>#{index + 1}</small></div>
+      {/each}
+      {#each queueSnapshot.followUp as item, index}
+        <div class="agent-queue-item"><Badge variant="outline">跟进</Badge><span>{item}</span><small>#{index + 1}</small></div>
+      {/each}
+    </div>
+  {/if}
+
   <Composer
     selectedAgent={session?.agent ?? null}
     selectedSession={session !== null}
@@ -224,7 +266,11 @@
     sessionRunning={sessionRunning}
     selectedSessionArchiving={selectedSessionArchiving}
     busy={busy}
+    attachments={attachments}
     bind:text={composerText}
+    onAddAttachments={onAddAttachments}
+    onAddDirectory={onAddDirectory}
+    onRemoveAttachment={onRemoveAttachment}
     onSend={onSend}
     onQueue={onQueue}
     onAbort={onAbort}

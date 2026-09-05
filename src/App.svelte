@@ -3,6 +3,7 @@
   import { open } from '@tauri-apps/plugin-dialog';
   import {
     AppOverlays,
+    CommandPalette,
     Inspector,
     SettingsPanel,
     TimelinePanel,
@@ -42,9 +43,22 @@
     forkCodexThread,
     getSessionExecutionProfile,
     getTurnChangeSet,
+    listTurnCheckpoints,
     getWorkspaceChanges,
     getTurnFileDiff,
     applyGitFileAction,
+    applyGitHunkAction,
+    listSessionAttachments,
+    listTurnArtifacts,
+    readArtifact,
+    listProjectActions,
+    listProjectActionRuns,
+    saveProjectAction,
+    deleteProjectAction,
+    runProjectAction,
+    registerSessionAttachments,
+    removeSessionAttachment,
+    validateSessionAttachments,
     restoreTurnChangeSet as restoreTurnChangeSetApi,
     getTimeline,
     getPiSessionTree,
@@ -55,9 +69,11 @@
     listenToAgentEvents,
     navigatePiSessionTree,
     probeAgents,
+    inspectWorkspaceCapabilities,
     readCodexThread,
     renameSession as renameSessionApi,
     removeWorkspace,
+    openWorkspaceLocation as openWorkspaceLocationApi,
     resolveCodexApproval,
     resolvePiApproval,
     sendCodexPrompt,
@@ -65,28 +81,40 @@
     steerPiPrompt,
     followUpPiPrompt,
     abortPiTurn,
+    clearPiQueue,
+    bindSessionAttachments,
     setWorkspaceTrust,
     unarchiveSession as unarchiveSessionApi,
   } from './lib/api';
   import type {
+    AgentQueueSnapshot,
     AgentDiagnostic,
     AgentEvent,
     ApprovalDecision,
     ApprovalRequest,
+    ContextAttachment,
+    CheckpointFile,
+    Artifact,
+    ProjectAction,
+    ProjectActionRun,
     CodexThreadSnapshot,
     CodexThreadSummary,
     Session,
     SessionExecutionProfile,
     TurnChangeSet,
+    RestoreOperation,
     WorkspaceChanges,
     GitFileAction,
     TurnFileDiff,
     SessionFilter,
+    InteractionMode,
     PiSessionTreeSnapshot,
     TimelineItem,
     Workspace,
+    WorkspaceCapabilityInventory,
   } from './lib/types';
   import type { SessionListItem, WorkspaceListItem } from './lib/components/app/view-types';
+  import type { CommandPaletteCommand } from '$lib/components/app';
   import {
     activeTheme,
     activeThemeStyle,
@@ -125,7 +153,7 @@
       status: 'ready',
       executable: null,
       version: 'SDK 0.84.4',
-      capabilities: ['sdk-host', 'streaming', 'abort', 'session-tree', 'session-tree-navigation', 'session-snapshot', 'read-only-tools', 'workspace-write-gateway', 'aibo-approval'],
+      capabilities: ['sdk-host', 'streaming', 'abort', 'session-tree', 'session-tree-navigation', 'session-snapshot', 'queue-management', 'read-only-tools', 'workspace-write-gateway', 'workspace-command-gateway', 'aibo-approval'],
       authState: 'delegated',
       message: 'Project-locked SDK host; workspace writes are mediated by Aibo Core; native authentication remains with Pi.',
     },
@@ -151,16 +179,24 @@
 
   let workspaces = $state<Workspace[]>([]);
   let diagnostics = $state<AgentDiagnostic[]>([]);
+  let workspaceCapabilities = $state<WorkspaceCapabilityInventory | null>(null);
   let workspaceSessionMap = $state<Record<string, Session[]>>({});
   let timeline = $state<TimelineItem[]>([]);
   let pendingApprovals = $state<ApprovalRequest[]>([]);
+  let queueSnapshot = $state<AgentQueueSnapshot | null>(null);
   let codexThreads = $state<CodexThreadSummary[]>([]);
   let codexThreadSnapshot = $state<CodexThreadSnapshot | null>(null);
   let piTree = $state<PiSessionTreeSnapshot | null>(null);
   let executionProfile = $state<SessionExecutionProfile | null>(null);
   let turnChangeSet = $state<TurnChangeSet | null>(null);
+  let checkpoints = $state<CheckpointFile[]>([]);
+  let restoreOperations = $state<RestoreOperation[]>([]);
   let workspaceChanges = $state<WorkspaceChanges | null>(null);
   let turnFileDiff = $state<TurnFileDiff | null>(null);
+  let attachments = $state<ContextAttachment[]>([]);
+  let artifacts = $state<Artifact[]>([]);
+  let projectActions = $state<ProjectAction[]>([]);
+  let projectActionRuns = $state<ProjectActionRun[]>([]);
   let selectedWorkspaceId = $state<string | null>(null);
   let expandedWorkspaceIds = $state<string[]>([]);
   let selectedSessionId = $state<string | null>(null);
@@ -183,7 +219,7 @@
   let sessionSearchOpen = $state(false);
   let sessionFilterOpen = $state(false);
   let createSessionWorkspaceId = $state<string | null>(null);
-  let createProfileMode = $state<'read-only' | 'edit'>('read-only');
+  let createProfileMode = $state<InteractionMode>('ask');
   let renamingSessionId = $state<string | null>(null);
   let sessionLabelDraft = $state('');
   let timelineVisibleCount = $state(80);
@@ -192,6 +228,7 @@
   let retryReason = $state<string | null>(null);
   let lastSubmittedPrompt = $state<string | null>(null);
   let settingsOpen = $state(false);
+  let commandPaletteOpen = $state(false);
   let promptInFlight = $state(false);
   let noticeTimer: ReturnType<typeof setTimeout> | undefined;
   let errorTimer: ReturnType<typeof setTimeout> | undefined;
@@ -250,6 +287,95 @@
     }
     return `${agentLabel} 正在响应…`;
   });
+
+  const commandPaletteCommands = $derived.by((): CommandPaletteCommand[] => [
+    {
+      id: 'new-session',
+      label: '新建会话',
+      description: selectedWorkspace ? `在 ${selectedWorkspace.label} 中选择 Agent` : '先选择一个工作区',
+      shortcut: '⌘N',
+      disabled: selectedWorkspaceId === null || busy,
+      run: () => {
+        if (selectedWorkspaceId) toggleSessionCreator(selectedWorkspaceId);
+      },
+    },
+    {
+      id: 'focus-composer',
+      label: '聚焦消息输入框',
+      description: selectedSession ? '开始输入消息' : '需要先选择会话',
+      shortcut: '⌘I',
+      disabled: selectedSession === null || busy,
+      run: () => {
+        document.querySelector<HTMLElement>('[data-composer-input]')?.focus();
+      },
+    },
+    {
+      id: 'refresh',
+      label: '刷新数据',
+      description: '重新读取工作区、会话与当前线程',
+      shortcut: '⌘R',
+      disabled: busy,
+      run: () => void refresh(),
+    },
+    {
+      id: 'settings',
+      label: '打开设置',
+      description: '外观与 Agent 诊断',
+      shortcut: '⌘,',
+      run: () => (settingsOpen = true),
+    },
+    {
+      id: 'archive-session',
+      label: '归档当前会话',
+      description: selectedSession?.label ?? '需要先选择会话',
+      disabled: selectedSessionId === null || busy || selectedSessionArchiving,
+      run: () => requestArchiveSession(),
+    },
+    {
+      id: 'clear-pi-queue',
+      label: '清空 Pi 队列',
+      description: '移除当前 Pi 会话中尚未发送的消息',
+      disabled: selectedSession?.agent !== 'pi'
+        || queueSnapshot === null
+        || (queueSnapshot.steering.length === 0 && queueSnapshot.followUp.length === 0)
+        || busy,
+      run: () => void clearPiPromptQueue(),
+    },
+  ]);
+
+  function handleGlobalKeydown(event: KeyboardEvent): void {
+    const key = event.key.toLocaleLowerCase();
+    const modifier = event.metaKey || event.ctrlKey;
+    if (modifier && key === 'k') {
+      event.preventDefault();
+      commandPaletteOpen = !commandPaletteOpen;
+      return;
+    }
+    if (modifier && key === 'n' && selectedWorkspaceId && !busy) {
+      event.preventDefault();
+      toggleSessionCreator(selectedWorkspaceId);
+      return;
+    }
+    if (modifier && key === 'i' && selectedSession && !busy) {
+      event.preventDefault();
+      document.querySelector<HTMLElement>('[data-composer-input]')?.focus();
+      return;
+    }
+    if (modifier && key === 'r' && !busy) {
+      event.preventDefault();
+      void refresh();
+      return;
+    }
+    if (modifier && event.key === ',') {
+      event.preventDefault();
+      settingsOpen = true;
+      return;
+    }
+    if (event.key === 'Escape' && commandPaletteOpen) {
+      event.preventDefault();
+      commandPaletteOpen = false;
+    }
+  }
 
   $effect(() => {
     const message = notice;
@@ -348,13 +474,18 @@
 
   function clearSelectedSessionContext() {
     selectedSessionId = null;
+    queueSnapshot = null;
     timeline = [];
     codexThreadSnapshot = null;
     piTree = null;
     executionProfile = null;
     turnChangeSet = null;
+    checkpoints = [];
+    restoreOperations = [];
     workspaceChanges = null;
     turnFileDiff = null;
+    attachments = [];
+    artifacts = [];
     piNavigationEntryId = null;
     usageSnapshot = null;
     retryPrompt = null;
@@ -390,6 +521,10 @@
     await sessionContextController.refreshTurnChangeSet(sessionId);
   }
 
+  async function refreshArtifacts(sessionId: string) {
+    await sessionContextController.refreshArtifacts(sessionId);
+  }
+
   async function refreshWorkspaceChanges(workspaceId: string) {
     if (!desktop) {
       if (workspaceId === selectedWorkspaceId) workspaceChanges = null;
@@ -404,6 +539,62 @@
     }
   }
 
+  async function registerAttachmentPaths(paths: string[]) {
+    const session = selectedSession;
+    if (!desktop || !session || session.archived || selectedSessionArchiving) return;
+    try {
+      if (paths.length === 0) return;
+      const registered = await registerSessionAttachments(session.id, paths);
+      const existing = new Set(attachments.map((item) => item.id));
+      attachments = [...attachments, ...registered.filter((item) => !existing.has(item.id))];
+      notice = registered.length > 0 ? `已添加 ${registered.length} 个上下文附件。` : '没有添加新的上下文附件。';
+    } catch (error) {
+      errorMessage = toErrorMessage(error);
+    }
+  }
+
+  async function chooseSessionAttachments() {
+    try {
+      const selected = await open({
+        title: '添加上下文文件',
+        multiple: true,
+        directory: false,
+        recursive: true,
+        canCreateDirectories: false,
+      });
+      const paths = Array.isArray(selected) ? selected : selected ? [selected] : [];
+      await registerAttachmentPaths(paths);
+    } catch (error) {
+      errorMessage = toErrorMessage(error);
+    }
+  }
+
+  async function chooseSessionAttachmentDirectory() {
+    try {
+      const selected = await open({
+        title: '添加上下文目录',
+        multiple: false,
+        directory: true,
+        recursive: true,
+        canCreateDirectories: false,
+      });
+      if (typeof selected === 'string') await registerAttachmentPaths([selected]);
+    } catch (error) {
+      errorMessage = toErrorMessage(error);
+    }
+  }
+
+  async function removeAttachment(attachmentId: string) {
+    const session = selectedSession;
+    if (!desktop || !session) return;
+    try {
+      await removeSessionAttachment(session.id, attachmentId);
+      attachments = attachments.filter((item) => item.id !== attachmentId);
+    } catch (error) {
+      errorMessage = toErrorMessage(error);
+    }
+  }
+
   async function showTurnFileDiff(sessionId: string, turnId: string, path: string) {
     try {
       turnFileDiff = await getTurnFileDiff(sessionId, turnId, path);
@@ -413,12 +604,34 @@
     }
   }
 
-  async function applyGitFileActionFromInspector(sessionId: string, path: string, action: GitFileAction) {
+  async function applyGitFileActionFromInspector(sessionId: string, turnId: string, path: string, action: GitFileAction) {
     if (action === 'revert' && !window.confirm(`确认撤销文件变更：${path}？此操作不可撤销。`)) return;
     try {
-      const result = await applyGitFileAction(sessionId, path, action);
+      const result = await applyGitFileAction(sessionId, path, action, turnId);
       if (result.applied) {
         notice = action === 'stage' ? '文件已暂存。' : action === 'unstage' ? '已取消暂存。' : '文件变更已撤销。';
+        const session = findSession(sessionId);
+        if (session) await refreshWorkspaceChanges(session.workspaceId);
+      } else {
+        errorMessage = result.message;
+      }
+    } catch (error) {
+      errorMessage = toErrorMessage(error);
+    }
+  }
+
+  async function applyGitHunkActionFromInspector(
+    sessionId: string,
+    turnId: string,
+    path: string,
+    hunkIndex: number,
+    action: GitFileAction,
+  ) {
+    if (action === 'revert' && !window.confirm(`确认撤销第 ${hunkIndex + 1} 个 hunk：${path}？此操作不可撤销。`)) return;
+    try {
+      const result = await applyGitHunkAction(sessionId, turnId, path, hunkIndex, action);
+      if (result.applied) {
+        notice = action === 'stage' ? 'hunk 已暂存。' : action === 'unstage' ? 'hunk 已取消暂存。' : 'hunk 变更已撤销。';
         const session = findSession(sessionId);
         if (session) await refreshWorkspaceChanges(session.workspaceId);
       } else {
@@ -436,6 +649,7 @@
       const result = await restoreTurnChangeSetApi(sessionId, turnId);
       if (result.applied) {
         notice = result.restored.length > 0 ? `已恢复 ${result.restored.length} 个文件。` : '本轮没有可恢复的文件。';
+        await refreshTimeline(sessionId);
         await refreshTurnChangeSet(sessionId);
       } else if (result.conflicts.length > 0) {
         notice = `恢复已阻止：${result.conflicts.length} 个文件在本轮后发生了变化。`;
@@ -466,6 +680,7 @@
       updateWorkspaceSessions,
       setPendingApprovals: (approvals) => (pendingApprovals = approvals),
       setUsageSnapshot: (usage) => (usageSnapshot = usage),
+      setQueueSnapshot: (queue) => (queueSnapshot = queue),
       setTimeline: (nextTimeline) => (timeline = nextTimeline),
       setRetry: (prompt, reason) => {
         retryPrompt = prompt;
@@ -475,6 +690,11 @@
       refreshSessions,
       refreshTurnChangeSet,
       refreshWorkspaceChanges,
+      refreshArtifacts,
+      bindAttachments: async (sessionId, turnId) => {
+        await bindSessionAttachments(sessionId, turnId);
+        await refreshAttachments(sessionId);
+      },
     });
   }
 
@@ -484,6 +704,15 @@
 
   async function chooseWorkspaceDirectory() {
     await workspaceController.chooseWorkspaceDirectory();
+  }
+
+  async function openWorkspaceLocation(workspaceId: string, target: 'finder' | 'terminal' | 'editor') {
+    if (!desktop) return;
+    try {
+      await openWorkspaceLocationApi(workspaceId, target);
+    } catch (error) {
+      errorMessage = toErrorMessage(error);
+    }
   }
 
   async function createCodex() {
@@ -508,6 +737,18 @@
 
   async function queuePiPrompt(mode: 'steer' | 'followUp') {
     await messageController.queuePiPrompt(mode);
+  }
+
+  async function clearPiPromptQueue() {
+    if (!selectedSession || selectedSession.agent !== 'pi') return;
+    try {
+      await clearPiQueue(selectedSession.id);
+      queueSnapshot = null;
+      timeline = await getTimeline(selectedSession.id);
+      notice = '已清空 Pi 待处理消息。';
+    } catch (error) {
+      errorMessage = toErrorMessage(error);
+    }
   }
 
   function requestPiTreeNavigation(entryId: string) {
@@ -567,10 +808,12 @@
   }
 
   function activateWorkspace(id: string) {
+    if (id !== selectedWorkspaceId) projectActionRuns = [];
     navigationController.activateWorkspace(id);
   }
 
   function selectWorkspace(id: string) {
+    if (id !== selectedWorkspaceId) projectActionRuns = [];
     navigationController.selectWorkspace(id);
   }
 
@@ -586,6 +829,13 @@
       getPiSessionTree,
       getSessionExecutionProfile,
       getTurnChangeSet,
+      listRestoreOperations,
+      listTurnCheckpoints,
+      listSessionAttachments,
+      listTurnArtifacts,
+      listProjectActions,
+      listProjectActionRuns,
+      inspectWorkspaceCapabilities,
     },
     getDesktop: () => desktop,
     getSelectedWorkspaceId: () => selectedWorkspaceId,
@@ -597,6 +847,13 @@
     setPiTree: (value) => (piTree = value),
     setExecutionProfile: (value) => (executionProfile = value),
     setTurnChangeSet: (value) => (turnChangeSet = value),
+    setCheckpoints: (value) => (checkpoints = value),
+    setRestoreOperations: (value) => (restoreOperations = value),
+    setAttachments: (value) => (attachments = value),
+    setArtifacts: (value) => (artifacts = value),
+    setProjectActions: (value) => (projectActions = value),
+    setProjectActionRuns: (value) => (projectActionRuns = value),
+    setWorkspaceCapabilities: (value) => (workspaceCapabilities = value),
     setTimeline: (value) => (timeline = value),
     setTimelineVisibleCount: (value) => (timelineVisibleCount = value),
     setThreadBusy: (value) => (threadBusy = value),
@@ -616,13 +873,21 @@
     setExpandedWorkspaceIds: (value) => (expandedWorkspaceIds = value),
     setCreateSessionWorkspaceId: (value) => (createSessionWorkspaceId = value),
     setUsageSnapshot: (value) => (usageSnapshot = value),
+    setQueueSnapshot: (value) => (queueSnapshot = value),
     setRetry: (prompt, reason) => {
       retryPrompt = prompt;
       retryReason = reason;
     },
     setLastSubmittedPrompt: (value) => (lastSubmittedPrompt = value),
     setExecutionProfile: (value) => (executionProfile = value),
+    setCheckpoints: (value) => (checkpoints = value),
+    setRestoreOperations: (value) => (restoreOperations = value),
     setTurnFileDiff: (value) => (turnFileDiff = value),
+    setAttachments: (value) => (attachments = value),
+    setArtifacts: (value) => (artifacts = value),
+    setProjectActions: (value) => (projectActions = value),
+    setProjectActionRuns: (value) => (projectActionRuns = value),
+    setWorkspaceCapabilities: (value) => (workspaceCapabilities = value),
     setTimelineVisibleCount: (value) => (timelineVisibleCount = value),
     setCodexThreads: (value) => (codexThreads = value),
     setNotice: (value) => (notice = value),
@@ -634,6 +899,10 @@
     refreshPiTree,
     refreshExecutionProfile,
     refreshTurnChangeSet,
+    refreshAttachments: (sessionId) => sessionContextController.refreshAttachments(sessionId),
+    refreshArtifacts: (sessionId) => sessionContextController.refreshArtifacts(sessionId),
+    refreshProjectActions: (workspaceId) => sessionContextController.refreshProjectActions(workspaceId),
+    refreshWorkspaceCapabilities: (workspaceId) => sessionContextController.refreshWorkspaceCapabilities(workspaceId),
     refreshWorkspaceChanges,
   });
 
@@ -690,12 +959,15 @@
     setSelectedSessionId: (value) => (selectedSessionId = value),
     setTimeline: (value) => (timeline = value),
     setUsageSnapshot: (value) => (usageSnapshot = value),
+    setQueueSnapshot: (value) => (queueSnapshot = value),
+    setCheckpoints: (value) => (checkpoints = value),
     setRetry: (prompt, reason) => {
       retryPrompt = prompt;
       retryReason = reason;
     },
     setLastSubmittedPrompt: (value) => (lastSubmittedPrompt = value),
     setPiTree: (value) => (piTree = value),
+    setAttachments: (value) => (attachments = value),
     setPiNavigationEntryId: (value) => (piNavigationEntryId = value),
     setCreateSessionWorkspaceId: (value) => (createSessionWorkspaceId = value),
     getCreateProfileMode: () => createProfileMode,
@@ -741,6 +1013,7 @@
     setCodexThreadSnapshot: (value) => (codexThreadSnapshot = value),
     setPiTree: (value) => (piTree = value),
     setPiNavigationEntryId: (value) => (piNavigationEntryId = value),
+    setWorkspaceCapabilities: (value) => (workspaceCapabilities = value),
     clearSelectedSessionContext,
     refreshSessions,
     refreshCodexThreads,
@@ -755,6 +1028,7 @@
       listWorkspaces,
       probeAgents,
       listSessions,
+      inspectWorkspaceCapabilities,
       getSessionExecutionProfile,
       getTurnChangeSet,
       getWorkspaceChanges,
@@ -787,6 +1061,10 @@
     refreshCodexThreads,
     refreshCodexThread,
     refreshPiTree,
+    refreshAttachments: (sessionId) => sessionContextController.refreshAttachments(sessionId),
+    refreshArtifacts: (sessionId) => sessionContextController.refreshArtifacts(sessionId),
+    refreshProjectActions: (workspaceId) => sessionContextController.refreshProjectActions(workspaceId),
+    refreshWorkspaceCapabilities: (workspaceId) => sessionContextController.refreshWorkspaceCapabilities(workspaceId),
     refreshWorkspaceChanges,
     setCodexThreads: (value) => (codexThreads = value),
     setCodexThreadSnapshot: (value) => (codexThreadSnapshot = value),
@@ -794,6 +1072,12 @@
     setExecutionProfile: (value) => (executionProfile = value),
     setTurnChangeSet: (value) => (turnChangeSet = value),
     setWorkspaceChanges: (value) => (workspaceChanges = value),
+    setAttachments: (value) => (attachments = value),
+    setArtifacts: (value) => (artifacts = value),
+    setProjectActions: (value) => (projectActions = value),
+    setProjectActionRuns: (value) => (projectActionRuns = value),
+    setWorkspaceCapabilities: (value) => (workspaceCapabilities = value),
+    setRestoreOperations: (value) => (restoreOperations = value),
     setPiNavigationEntryId: (value) => (piNavigationEntryId = value),
   });
 
@@ -806,6 +1090,7 @@
       abortPiTurn,
       steerPiPrompt,
       followUpPiPrompt,
+      validateSessionAttachments,
     },
     getDesktop: () => desktop,
     getSelectedWorkspace: () => selectedWorkspace,
@@ -814,6 +1099,8 @@
     getSessionRunning: () => sessionRunning,
     getComposerText: () => composerText,
     setComposerText: (value) => (composerText = value),
+    getAttachments: () => attachments,
+    setAttachments: (value) => (attachments = value),
     getRetryPrompt: () => retryPrompt,
     setLastSubmittedPrompt: (value) => (lastSubmittedPrompt = value),
     setPromptInFlight: (value) => (promptInFlight = value),
@@ -824,6 +1111,7 @@
     setPendingApprovals: (value) => (pendingApprovals = value),
     updateWorkspaceSessions,
     refreshTimeline,
+    refreshTurnChangeSet,
     setBusy: (value) => (busy = value),
     setErrorMessage: (value) => (errorMessage = value),
     setNotice: (value) => (notice = value),
@@ -861,6 +1149,8 @@
 <svelte:head>
   <title>Aibo</title>
 </svelte:head>
+
+<svelte:window onkeydown={handleGlobalKeydown} />
 
 <div
   class="app-shell"
@@ -906,6 +1196,7 @@
         const workspace = workspaces.find((item) => item.id === workspaceId);
         if (workspace) void deleteWorkspace(workspace);
       }}
+      onOpenWorkspaceLocation={(workspaceId, target) => void openWorkspaceLocation(workspaceId, target)}
       onCreateCodex={(workspaceId) => {
         if (workspaceId !== selectedWorkspaceId) activateWorkspace(workspaceId);
         void createCodex();
@@ -934,11 +1225,16 @@
       retryPrompt={retryPrompt}
       retryReason={retryReason}
       approvals={selectedApprovals}
+      queueSnapshot={queueSnapshot}
       agentActivityLabel={agentActivityLabel}
       sessionRunning={sessionRunning}
       selectedSessionArchiving={selectedSessionArchiving}
       busy={busy}
+      attachments={attachments}
       bind:composerText
+      onAddAttachments={() => void chooseSessionAttachments()}
+      onAddDirectory={() => void chooseSessionAttachmentDirectory()}
+      onRemoveAttachment={(attachmentId) => void removeAttachment(attachmentId)}
       onLoadOlderTimeline={loadOlderTimeline}
       onTimelineScroll={handleTimelineScroll}
       onRetry={() => void retryLastPrompt()}
@@ -948,16 +1244,25 @@
       }}
       onSend={() => void sendPrompt()}
       onQueue={(mode) => void queuePiPrompt(mode)}
+      onClearQueue={() => void clearPiPromptQueue()}
       onAbort={() => void abortPrompt()}
     />
     <Inspector
       workspace={selectedWorkspace}
       session={selectedSession}
       desktop={desktop}
+      {diagnostics}
+      workspaceCapabilities={workspaceCapabilities}
       codexThreads={codexThreads}
       piTree={piTree}
       executionProfile={executionProfile}
+      attachments={attachments}
+      artifacts={artifacts}
+      projectActions={projectActions}
+      projectActionRuns={projectActionRuns}
       turnChangeSet={turnChangeSet}
+      checkpoints={checkpoints}
+      restoreOperations={restoreOperations}
       workspaceChanges={workspaceChanges}
       turnFileDiff={turnFileDiff}
       threadBusy={threadBusy}
@@ -970,6 +1275,39 @@
       onRestoreTurnChangeSet={restoreTurnChangeSet}
       onShowTurnFileDiff={showTurnFileDiff}
       onApplyGitFileAction={applyGitFileActionFromInspector}
+      onApplyGitHunkAction={applyGitHunkActionFromInspector}
+      onReadArtifact={readArtifact}
+      onSaveProjectAction={async (input) => {
+        try {
+          const saved = await saveProjectAction(input);
+          projectActions = projectActions.some((item) => item.id === saved.id)
+            ? projectActions.map((item) => (item.id === saved.id ? saved : item))
+            : [...projectActions, saved];
+        } catch (error) {
+          errorMessage = toErrorMessage(error);
+        }
+      }}
+      onDeleteProjectAction={async (actionId) => {
+        try {
+          if (selectedWorkspaceId) {
+            await deleteProjectAction(selectedWorkspaceId, actionId);
+            projectActions = projectActions.filter((item) => item.id !== actionId);
+          }
+        } catch (error) {
+          errorMessage = toErrorMessage(error);
+        }
+      }}
+      onRunProjectAction={async (actionId) => {
+        try {
+          if (!selectedWorkspaceId) return;
+          const result = await runProjectAction(selectedWorkspaceId, actionId, selectedSessionId);
+          projectActionRuns = [result, ...projectActionRuns.filter((item) => item.id !== result.id)].slice(0, 20);
+          if (selectedSessionId) await refreshArtifacts(selectedSessionId);
+          notice = result.status === 'completed' ? '工程动作已完成。' : `工程动作${result.status === 'timed_out' ? '超时' : '失败'}。`;
+        } catch (error) {
+          errorMessage = toErrorMessage(error);
+        }
+      }}
       onRefresh={() => void refresh()}
     />
   </main>
@@ -988,6 +1326,11 @@
     onSelectTheme={setUiTheme}
     onRefresh={() => void refresh()}
     onClose={() => (settingsOpen = false)}
+  />
+  <CommandPalette
+    open={commandPaletteOpen}
+    commands={commandPaletteCommands}
+    onClose={() => (commandPaletteOpen = false)}
   />
   <AppOverlays
     {errorMessage}

@@ -2,6 +2,7 @@ import { invoke } from '@tauri-apps/api/core';
 import { listen, type UnlistenFn } from '@tauri-apps/api/event';
 import type {
   AgentDiagnostic,
+  WorkspaceCapabilityInventory,
   AgentEvent,
   AgentName,
   ApprovalDecision,
@@ -19,10 +20,20 @@ import type {
   TimelineItem,
   TurnChangeSet,
   RestoreTurnChangeSetResult,
+  RestoreOperation,
   WorkspaceChanges,
   TurnFileDiff,
   GitFileAction,
   GitFileActionResult,
+  GitHunkActionResult,
+  ContextAttachment,
+  ContextAttachmentValidation,
+  CheckpointFile,
+  Artifact,
+  ArtifactContent,
+  ProjectAction,
+  ProjectActionKind,
+  ProjectActionRun,
   Workspace,
 } from './types';
 
@@ -44,8 +55,18 @@ export const setWorkspaceTrust = (
 export const removeWorkspace = (workspaceId: string): Promise<void> =>
   invoke('remove_workspace', { workspaceId });
 
+export const openWorkspaceLocation = (
+  workspaceId: string,
+  target: 'finder' | 'terminal' | 'editor',
+): Promise<void> => invoke('open_workspace_location', { workspaceId, target });
+
 export const probeAgents = (): Promise<AgentDiagnostic[]> =>
   invoke<AgentDiagnostic[]>('probe_agents');
+
+export const inspectWorkspaceCapabilities = (
+  workspaceId: string,
+): Promise<WorkspaceCapabilityInventory> =>
+  invoke<WorkspaceCapabilityInventory>('inspect_workspace_capabilities', { workspaceId });
 
 export const getAppSnapshot = (): Promise<AppSnapshot> =>
   invoke<AppSnapshot>('get_app_snapshot');
@@ -101,6 +122,24 @@ export const restoreTurnChangeSet = (
 ): Promise<RestoreTurnChangeSetResult> =>
   invoke<RestoreTurnChangeSetResult>('restore_turn_change_set', { sessionId, turnId });
 
+export const listTurnCheckpoints = (
+  sessionId: string,
+  turnId?: string | null,
+): Promise<CheckpointFile[]> =>
+  invoke<CheckpointFile[]>('list_turn_checkpoints', {
+    sessionId,
+    turnId: turnId ?? null,
+  });
+
+export const listRestoreOperations = (
+  sessionId: string,
+  turnId?: string | null,
+): Promise<RestoreOperation[]> =>
+  invoke<RestoreOperation[]>('list_restore_operations', {
+    sessionId,
+    turnId: turnId ?? null,
+  });
+
 export const getWorkspaceChanges = (workspaceId: string): Promise<WorkspaceChanges> =>
   invoke<WorkspaceChanges>('get_workspace_changes', { workspaceId });
 
@@ -114,8 +153,102 @@ export const applyGitFileAction = (
   sessionId: string,
   path: string,
   action: GitFileAction,
+  turnId?: string | null,
 ): Promise<GitFileActionResult> =>
-  invoke<GitFileActionResult>('apply_git_file_action', { sessionId, path, action });
+  invoke<GitFileActionResult>('apply_git_file_action', {
+    sessionId,
+    path,
+    action,
+    turnId: turnId ?? null,
+  });
+
+export const applyGitHunkAction = (
+  sessionId: string,
+  turnId: string,
+  path: string,
+  hunkIndex: number,
+  action: GitFileAction,
+): Promise<GitHunkActionResult> =>
+  invoke<GitHunkActionResult>('apply_git_hunk_action', {
+    sessionId,
+    turnId,
+    path,
+    hunkIndex,
+    action,
+  });
+
+export const registerSessionAttachments = (
+  sessionId: string,
+  paths: string[],
+): Promise<ContextAttachment[]> =>
+  invoke<ContextAttachment[]>('register_session_attachments', { sessionId, paths });
+
+export const listSessionAttachments = (sessionId: string): Promise<ContextAttachment[]> =>
+  invoke<ContextAttachment[]>('list_session_attachments', { sessionId });
+
+export const removeSessionAttachment = (sessionId: string, attachmentId: string): Promise<void> =>
+  invoke('remove_session_attachment', { sessionId, attachmentId });
+
+export const validateSessionAttachments = (
+  sessionId: string,
+): Promise<ContextAttachmentValidation[]> =>
+  invoke<ContextAttachmentValidation[]>('validate_session_attachments', { sessionId });
+
+export const bindSessionAttachments = (sessionId: string, turnId: string): Promise<void> =>
+  invoke('bind_session_attachments', { sessionId, turnId });
+
+export const listTurnArtifacts = (
+  sessionId: string,
+  turnId?: string | null,
+): Promise<Artifact[]> =>
+  invoke<Artifact[]>('list_turn_artifacts', { sessionId, turnId: turnId ?? null });
+
+export const readArtifact = (sessionId: string, artifactId: string): Promise<ArtifactContent> =>
+  invoke<ArtifactContent>('read_artifact', { sessionId, artifactId });
+
+export const listProjectActions = (workspaceId: string): Promise<ProjectAction[]> =>
+  invoke<ProjectAction[]>('list_project_actions', { workspaceId });
+
+export const saveProjectAction = (input: {
+  workspaceId: string;
+  actionId?: string | null;
+  name: string;
+  kind: ProjectActionKind;
+  program: string;
+  args: string[];
+  cwd?: string | null;
+  enabled?: boolean;
+}): Promise<ProjectAction> =>
+  invoke<ProjectAction>('save_project_action', {
+    workspaceId: input.workspaceId,
+    actionId: input.actionId ?? null,
+    name: input.name,
+    kind: input.kind,
+    program: input.program,
+    args: input.args,
+    cwd: input.cwd ?? null,
+    enabled: input.enabled ?? true,
+  });
+
+export const deleteProjectAction = (workspaceId: string, actionId: string): Promise<void> =>
+  invoke('delete_project_action', { workspaceId, actionId });
+
+export const runProjectAction = (
+  workspaceId: string,
+  actionId: string,
+  sessionId?: string | null,
+): Promise<ProjectActionRun> =>
+  invoke<ProjectActionRun>('run_project_action', {
+    workspaceId,
+    actionId,
+    sessionId: sessionId ?? null,
+  });
+
+export const listProjectActionRuns = (
+  workspaceId: string,
+  limit = 10,
+): Promise<ProjectActionRun[]> =>
+  invoke<ProjectActionRun[]>('list_project_action_runs', { workspaceId, limit });
 
 export const listCodexThreads = (workspaceId: string): Promise<CodexThreadSummary[]> =>
   invoke<CodexThreadSummary[]>('list_codex_threads', { workspaceId });
@@ -188,6 +321,9 @@ export const steerPiPrompt = (sessionId: string, input: string): Promise<void> =
 
 export const followUpPiPrompt = (sessionId: string, input: string): Promise<void> =>
   invoke('follow_up_pi_prompt', { sessionId, input });
+
+export const clearPiQueue = (sessionId: string): Promise<void> =>
+  invoke('clear_pi_queue', { sessionId });
 
 export const getPiSessionTree = (sessionId: string): Promise<PiSessionTreeSnapshot> =>
   invoke<PiSessionTreeSnapshot>('get_pi_session_tree', { sessionId });

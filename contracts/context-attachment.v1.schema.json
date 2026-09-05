@@ -1,0 +1,22 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://aibo.local/contracts/context-attachment.v1.schema.json",
+  "title": "Aibo Context Attachment v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema", "id", "workspaceId", "sessionId", "turnId", "path", "contentHash", "size", "mediaType", "source", "sendStrategy", "createdAt"],
+  "properties": {
+    "schema": { "const": "aibo.context-attachment/v1" },
+    "id": { "type": "string", "minLength": 1 },
+    "workspaceId": { "type": "string", "minLength": 1 },
+    "sessionId": { "type": "string", "minLength": 1 },
+    "turnId": { "type": ["string", "null"] },
+    "path": { "type": "string", "minLength": 1, "pattern": "^(?!/)(?!.*(?:^|/)\\.\\.(?:/|$)).+" },
+    "contentHash": { "type": ["string", "null"] },
+    "size": { "type": ["integer", "null"], "minimum": 0 },
+    "mediaType": { "type": "string", "minLength": 1 },
+    "source": { "enum": ["picker", "drop", "manual"] },
+    "sendStrategy": { "enum": ["reference", "inline"] },
+    "createdAt": { "type": "string", "format": "date-time" }
+  }
+}

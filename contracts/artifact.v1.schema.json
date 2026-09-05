@@ -1,0 +1,21 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://aibo.local/contracts/artifact.v1.schema.json",
+  "title": "Aibo Artifact v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema", "id", "workspaceId", "sessionId", "turnId", "source", "mediaType", "size", "contentHash", "storagePath", "createdAt"],
+  "properties": {
+    "schema": { "const": "aibo.artifact/v1" },
+    "id": { "type": "string", "minLength": 1 },
+    "workspaceId": { "type": "string", "minLength": 1 },
+    "sessionId": { "type": "string", "minLength": 1 },
+    "turnId": { "type": ["string", "null"] },
+    "source": { "type": "string", "minLength": 1 },
+    "mediaType": { "type": "string", "minLength": 1 },
+    "size": { "type": "integer", "minimum": 0 },
+    "contentHash": { "type": "string", "pattern": "^sha256:[a-f0-9]{64}$" },
+    "storagePath": { "type": "string", "minLength": 1 },
+    "createdAt": { "type": "string", "format": "date-time" }
+  }
+}

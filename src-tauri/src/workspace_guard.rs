@@ -59,16 +59,23 @@ fn split_existing_prefix(path: &Path) -> Result<(PathBuf, Vec<std::ffi::OsString
 #[cfg(test)]
 mod tests {
     use super::canonicalize_target;
-    use std::{fs, path::PathBuf};
+    use std::{
+        fs,
+        path::PathBuf,
+        sync::atomic::{AtomicU64, Ordering},
+    };
+
+    static TEMP_SEQUENCE: AtomicU64 = AtomicU64::new(0);
 
     fn tempdir() -> PathBuf {
         let path = std::env::temp_dir().join(format!(
-            "aibo-workspace-{}-{}",
+            "aibo-workspace-{}-{}-{}",
             std::process::id(),
             std::time::SystemTime::now()
                 .duration_since(std::time::UNIX_EPOCH)
                 .expect("clock")
-                .as_nanos()
+                .as_nanos(),
+            TEMP_SEQUENCE.fetch_add(1, Ordering::Relaxed),
         ));
         fs::create_dir_all(&path).expect("temp directory");
         path

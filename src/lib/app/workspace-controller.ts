@@ -25,6 +25,7 @@ export type WorkspaceControllerContext = {
   setCodexThreadSnapshot: (value: null) => void;
   setPiTree: (value: PiSessionTreeSnapshot | null) => void;
   setPiNavigationEntryId: (value: null) => void;
+  setWorkspaceCapabilities: (value: import('$lib/types').WorkspaceCapabilityInventory | null) => void;
   clearSelectedSessionContext: () => void;
   refreshSessions: (workspaceId: string) => Promise<void> | void;
   refreshCodexThreads: (workspaceId: string) => Promise<void> | void;
@@ -139,6 +140,7 @@ export function createWorkspaceController(context: WorkspaceControllerContext) {
         context.setCodexThreadSnapshot(null);
         context.setPiTree(null);
         context.setPiNavigationEntryId(null);
+        context.setWorkspaceCapabilities(null);
       }
       if (deletingSelectedWorkspace && nextSelectedWorkspaceId) {
         context.setExpandedWorkspaceIds(

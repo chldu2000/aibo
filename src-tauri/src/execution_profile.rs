@@ -143,6 +143,8 @@ pub(crate) fn resolve(
                     "approval.command".to_owned(),
                     "permissions.nativeSandbox".to_owned(),
                     "filesystem.workspace-write".to_owned(),
+                    "model.selection".to_owned(),
+                    "reasoning-effort.selection".to_owned(),
                 ],
                 true,
             )
@@ -152,10 +154,6 @@ pub(crate) fn resolve(
             // Aibo Core mediate workspace writes. The profile therefore keeps
             // edit/write semantics when requested; the host only exposes the
             // proxy tool after Core has resolved and trust-checked the session.
-            if requested.command_policy != "disabled" {
-                unsupported.push("command.execution".to_owned());
-                enforced.command_policy = "disabled".to_owned();
-            }
             if requested.network_policy != "disabled" {
                 unsupported.push("network.agent-managed".to_owned());
                 enforced.network_policy = "disabled".to_owned();
@@ -175,6 +173,7 @@ pub(crate) fn resolve(
                     "events.streaming".to_owned(),
                     "tools.read-only".to_owned(),
                     "tools.workspace-write-gateway".to_owned(),
+                    "tools.workspace-command-gateway".to_owned(),
                     "permissions.aiboApproval".to_owned(),
                     "permissions.noNativeSandbox".to_owned(),
                 ],
@@ -304,16 +303,16 @@ mod tests {
     }
 
     #[test]
-    fn pi_resolves_core_mediated_write_but_rejects_commands() {
+    fn pi_resolves_core_mediated_write_and_command_gateway() {
         let resolved = resolve("pi", Some(editable_profile()), "now".to_owned())
             .expect("Pi profile should resolve");
         assert_eq!(resolved.enforced.interaction_mode, "edit");
         assert_eq!(resolved.enforced.filesystem_policy, "workspace-write");
-        assert_eq!(resolved.enforced.command_policy, "disabled");
-        assert!(!resolved.native_sandbox);
+        assert_eq!(resolved.enforced.command_policy, "approved");
         assert!(resolved
-            .unsupported
-            .contains(&"command.execution".to_owned()));
+            .adapter_capabilities
+            .contains(&"tools.workspace-command-gateway".to_owned()));
+        assert!(!resolved.native_sandbox);
     }
 
     #[test]

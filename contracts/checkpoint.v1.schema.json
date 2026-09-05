@@ -1,0 +1,45 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://aibo.local/contracts/checkpoint.v1.schema.json",
+  "title": "Aibo Checkpoint v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema",
+    "id",
+    "workspaceId",
+    "sessionId",
+    "turnId",
+    "path",
+    "fileExists",
+    "contentHash",
+    "size",
+    "storagePath",
+    "baselineDirty",
+    "createdAt"
+  ],
+  "properties": {
+    "schema": { "const": "aibo.checkpoint/v1" },
+    "id": { "type": "string", "minLength": 1 },
+    "workspaceId": { "type": "string", "minLength": 1 },
+    "sessionId": { "type": "string", "minLength": 1 },
+    "turnId": { "type": "string", "minLength": 1 },
+    "path": { "type": "string", "minLength": 1, "pattern": "^(?!/)(?!.*(?:^|/)\\.\\.(?:/|$))" },
+    "fileExists": { "type": "boolean" },
+    "contentHash": {
+      "anyOf": [
+        { "type": "null" },
+        { "type": "string", "pattern": "^sha256:[0-9a-f]{64}$" }
+      ]
+    },
+    "size": { "anyOf": [{ "type": "null" }, { "type": "integer", "minimum": 0 }] },
+    "storagePath": {
+      "anyOf": [
+        { "type": "null" },
+        { "type": "string", "pattern": "^(?!/)(?!.*(?:^|/)\\.\\.(?:/|$))" }
+      ]
+    },
+    "baselineDirty": { "type": "boolean" },
+    "createdAt": { "type": "string", "minLength": 1 }
+  }
+}

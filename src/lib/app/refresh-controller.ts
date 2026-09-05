@@ -1,6 +1,10 @@
 import type {
   AgentDiagnostic,
   CodexThreadSummary,
+  ContextAttachment,
+  Artifact,
+  ProjectAction,
+  ProjectActionRun,
   PiSessionTreeSnapshot,
   Session,
   SessionExecutionProfile,
@@ -8,6 +12,8 @@ import type {
   TurnChangeSet,
   WorkspaceChanges,
   Workspace,
+  WorkspaceCapabilityInventory,
+  RestoreOperation,
 } from '$lib/types';
 import type { PersistedSelection } from './selection-storage';
 import { ensureWorkspaceExpanded, workspaceIdsForRefresh } from './session-transitions';
@@ -52,12 +58,22 @@ export type RefreshControllerContext = {
   refreshExecutionProfile: (sessionId: string) => Promise<void> | void;
   refreshTurnChangeSet: (sessionId: string) => Promise<void> | void;
   refreshWorkspaceChanges: (workspaceId: string) => Promise<void> | void;
+  refreshAttachments: (sessionId: string) => Promise<void> | void;
+  refreshArtifacts: (sessionId: string) => Promise<void> | void;
+  refreshProjectActions: (workspaceId: string) => Promise<void> | void;
+  refreshWorkspaceCapabilities: (workspaceId: string) => Promise<void> | void;
   setCodexThreads: (value: CodexThreadSummary[]) => void;
   setCodexThreadSnapshot: (value: null) => void;
   setPiTree: (value: PiSessionTreeSnapshot | null) => void;
   setExecutionProfile: (value: SessionExecutionProfile | null) => void;
   setTurnChangeSet: (value: TurnChangeSet | null) => void;
   setWorkspaceChanges: (value: WorkspaceChanges | null) => void;
+  setAttachments: (value: ContextAttachment[]) => void;
+  setArtifacts: (value: Artifact[]) => void;
+  setProjectActions: (value: ProjectAction[]) => void;
+  setProjectActionRuns: (value: ProjectActionRun[]) => void;
+  setWorkspaceCapabilities: (value: WorkspaceCapabilityInventory | null) => void;
+  setRestoreOperations: (value: RestoreOperation[]) => void;
   setPiNavigationEntryId: (value: null) => void;
 };
 
@@ -115,6 +131,8 @@ export function createRefreshController(context: RefreshControllerContext) {
         await context.refreshTimeline(nextSelectedSessionId);
         await context.refreshExecutionProfile(nextSelectedSessionId);
         await context.refreshTurnChangeSet(nextSelectedSessionId);
+        await context.refreshAttachments(nextSelectedSessionId);
+        await context.refreshArtifacts(nextSelectedSessionId);
         void context.refreshCodexThread(nextSelectedSessionId);
         void context.refreshPiTree(nextSelectedSessionId);
       } else {
@@ -165,6 +183,8 @@ export function createRefreshController(context: RefreshControllerContext) {
         await Promise.all(workspaceIds.map((id) => refreshSessions(id)));
         await context.refreshWorkspaceChanges(nextSelectedWorkspaceId);
         await context.refreshCodexThreads(nextSelectedWorkspaceId);
+        await context.refreshProjectActions(nextSelectedWorkspaceId);
+        await context.refreshWorkspaceCapabilities(nextSelectedWorkspaceId);
       } else {
         context.setWorkspaceSessionMap({});
         context.clearSelectedSessionContext();
@@ -174,6 +194,12 @@ export function createRefreshController(context: RefreshControllerContext) {
         context.setExecutionProfile(null);
         context.setTurnChangeSet(null);
         context.setWorkspaceChanges(null);
+        context.setAttachments([]);
+        context.setArtifacts([]);
+        context.setProjectActions([]);
+        context.setProjectActionRuns([]);
+        context.setWorkspaceCapabilities(null);
+        context.setRestoreOperations([]);
         context.setPiNavigationEntryId(null);
       }
     } catch (error) {

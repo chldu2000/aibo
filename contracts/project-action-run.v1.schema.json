@@ -1,0 +1,21 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://aibo.local/contracts/project-action-run.v1.schema.json",
+  "title": "Aibo Project Action Run v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema", "id", "actionId", "workspaceId", "sessionId", "status", "exitCode", "output", "artifactId", "startedAt", "completedAt"],
+  "properties": {
+    "schema": { "const": "aibo.project-action-run/v1" },
+    "id": { "type": "string", "minLength": 1 },
+    "actionId": { "type": "string", "minLength": 1 },
+    "workspaceId": { "type": "string", "minLength": 1 },
+    "sessionId": { "type": ["string", "null"] },
+    "status": { "enum": ["completed", "failed", "timed_out"] },
+    "exitCode": { "type": ["integer", "null"] },
+    "output": { "type": "string" },
+    "artifactId": { "type": ["string", "null"] },
+    "startedAt": { "type": "string", "format": "date-time" },
+    "completedAt": { "type": "string", "format": "date-time" }
+  }
+}
