@@ -3,7 +3,7 @@
 > 本记录只保存脱敏的环境、探针和门禁结果，不包含认证信息、用户主目录内容或原始 Provider payload。
 
 - 日期：2026-09-05
-- Aibo commit：`a25d44d`
+- Aibo implementation commit：`3e2dd91`
 - macOS / arch：macOS 27.0 / arm64
 - Codex：`codex-cli 0.149.0`
 - Pi：`0.84.4`
