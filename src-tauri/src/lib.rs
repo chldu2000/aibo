@@ -1247,7 +1247,10 @@ async fn update_session_execution_profile(
                 .to_owned(),
         ));
     }
-    if matches!(session.state.as_str(), "starting" | "running" | "waiting_approval") {
+    if matches!(
+        session.state.as_str(),
+        "starting" | "running" | "waiting_approval"
+    ) {
         return Err(CoreError::SessionBusy);
     }
     let resolved = resolve_profile(&session.agent, Some(requested), now_iso())
@@ -1258,7 +1261,11 @@ async fn update_session_execution_profile(
     // A runtime captures the resolved profile when it is created. Close an
     // idle runtime so the next prompt reopens it with the updated profile.
     match session.agent.as_str() {
-        "codex" => state.codex.close(&session_id).await.map_err(CoreError::from)?,
+        "codex" => state
+            .codex
+            .close(&session_id)
+            .await
+            .map_err(CoreError::from)?,
         "pi" => state.pi.close(&session_id).await.map_err(CoreError::from)?,
         agent => {
             return Err(CoreError::Initialization(format!(

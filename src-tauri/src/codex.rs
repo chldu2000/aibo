@@ -723,6 +723,32 @@ fn matching_thread_id(expected: &str, actual: &str) -> Result<(), CodexError> {
     }
 }
 
+fn is_missing_rollout_error(error: &CodexError) -> bool {
+    let CodexError::Request(message) = error else {
+        return false;
+    };
+    let message = message.to_ascii_lowercase();
+    message.contains("no rollout found")
+        || message.contains("thread not loaded")
+        || message.contains("thread not found")
+}
+
+async fn start_thread(
+    client: &CodexClient,
+    cwd: &str,
+    profile: &ResolvedExecutionProfile,
+) -> Result<String, CodexError> {
+    let response = client
+        .request("thread/start", codex_thread_start_params(cwd, profile))
+        .await?;
+    validate_codex_thread_start_response(&response, profile)?;
+    response
+        .pointer("/result/thread/id")
+        .and_then(Value::as_str)
+        .map(ToOwned::to_owned)
+        .ok_or_else(|| CodexError::Protocol("thread/start did not return a thread id".to_owned()))
+}
+
 fn generation_matches(expected: &str, current: Option<&str>) -> bool {
     current == Some(expected)
 }
@@ -1985,6 +2011,14 @@ impl CodexManager {
     }
 
     async fn ensure_runtime(&self, session_id: &str) -> Result<Arc<CodexSession>, CodexError> {
+        self.ensure_runtime_with_recovery(session_id, true).await
+    }
+
+    async fn ensure_runtime_with_recovery(
+        &self,
+        session_id: &str,
+        recover_missing_rollout: bool,
+    ) -> Result<Arc<CodexSession>, CodexError> {
         let cached_session = clone_cached_runtime(&self.sessions, session_id).await;
         if let Some(session) = cached_session {
             if !session.client.closed.load(Ordering::SeqCst) {
@@ -2047,20 +2081,66 @@ impl CodexManager {
             client.close().await;
             return Err(error);
         }
+        let mut rebound_from = None;
         if let Err(error) = client
             .request("thread/resume", json!({ "threadId": thread_id }))
             .await
         {
-            runtime.deactivate();
-            self.sessions.lock().await.remove(session_id);
-            client.close().await;
-            let _ =
-                sqlx::query("UPDATE sessions SET state = 'failed', updated_at = ? WHERE id = ?")
-                    .bind(now_iso())
-                    .bind(session_id)
-                    .execute(&self.db)
-                    .await;
-            return Err(error);
+            if recover_missing_rollout && is_missing_rollout_error(&error) {
+                // Some Codex versions index a thread at thread/start but do
+                // not materialize its rollout until the first turn. Once the
+                // runtime is recreated, thread/resume then fails even though
+                // the Aibo binding is otherwise valid. Start a replacement
+                // thread and keep the logical Aibo session usable.
+                warn!(
+                    session_id = %session_id,
+                    thread_id = %thread_id,
+                    "Codex rollout is unavailable; starting a replacement thread"
+                );
+                let replacement = match start_thread(
+                    &client,
+                    &workspace_path,
+                    &runtime.execution_profile,
+                )
+                .await
+                {
+                    Ok(thread_id) => thread_id,
+                    Err(start_error) => {
+                        runtime.deactivate();
+                        self.sessions.lock().await.remove(session_id);
+                        client.close().await;
+                        let _ = sqlx::query(
+                            "UPDATE sessions SET state = 'failed', updated_at = ? WHERE id = ?",
+                        )
+                        .bind(now_iso())
+                        .bind(session_id)
+                        .execute(&self.db)
+                        .await;
+                        return Err(start_error);
+                    }
+                };
+                runtime.set_thread_id(replacement.clone()).await;
+                sqlx::query(
+                    "UPDATE session_bindings SET external_session_id = ? WHERE session_id = ?",
+                )
+                .bind(&replacement)
+                .bind(session_id)
+                .execute(&self.db)
+                .await?;
+                rebound_from = Some((thread_id, replacement));
+            } else {
+                runtime.deactivate();
+                self.sessions.lock().await.remove(session_id);
+                client.close().await;
+                let _ = sqlx::query(
+                    "UPDATE sessions SET state = 'failed', updated_at = ? WHERE id = ?",
+                )
+                .bind(now_iso())
+                .bind(session_id)
+                .execute(&self.db)
+                .await;
+                return Err(error);
+            }
         }
         runtime.set_state("idle").await?;
         sqlx::query(
@@ -2071,6 +2151,28 @@ impl CodexManager {
         .bind(session_id)
         .execute(&self.db)
         .await?;
+        if let Some((previous_thread_id, replacement_thread_id)) = rebound_from {
+            if let Err(error) = runtime
+                .emit_event(
+                    "adapter.warning",
+                    None,
+                    json!({
+                        "kind": "session.binding_recovered",
+                        "previousExternalSessionId": previous_thread_id,
+                        "externalSessionId": replacement_thread_id,
+                        "reason": "rollout_not_found",
+                    }),
+                    None,
+                )
+                .await
+            {
+                warn!(
+                    session_id = %session_id,
+                    error = %error,
+                    "unable to persist Codex rollout recovery notice"
+                );
+            }
+        }
         Ok(runtime)
     }
 
@@ -2338,6 +2440,26 @@ impl CodexManager {
             .map_err(|error| CodexError::Session(error.to_string()))
     }
 
+    async fn archive_without_remote_rollout(
+        &self,
+        session_id: &str,
+    ) -> Result<super::Session, CodexError> {
+        if let Some(session) = remove_cached_runtime(&self.sessions, session_id).await {
+            session.deactivate();
+            session.client.close().await;
+        }
+        sqlx::query(
+            "UPDATE sessions SET archived = 1, state = 'closed', updated_at = ? WHERE id = ?",
+        )
+        .bind(now_iso())
+        .bind(session_id)
+        .execute(&self.db)
+        .await?;
+        super::session_by_id(&self.db, session_id)
+            .await
+            .map_err(|error| CodexError::Session(error.to_string()))
+    }
+
     pub(crate) async fn archive(&self, session_id: &str) -> Result<super::Session, CodexError> {
         let existing = super::session_by_id(&self.db, session_id)
             .await
@@ -2350,7 +2472,15 @@ impl CodexManager {
         if existing.archived {
             return Ok(existing);
         }
-        let session = self.ensure_runtime(session_id).await?;
+        let session = match self.ensure_runtime_with_recovery(session_id, false).await {
+            Ok(session) => session,
+            Err(error) if is_missing_rollout_error(&error) => {
+                // The remote rollout is already gone, so archiving locally is
+                // the only meaningful cleanup and should remain available.
+                return self.archive_without_remote_rollout(session_id).await;
+            }
+            Err(error) => return Err(error),
+        };
         {
             let state = session.state.lock().await;
             if matches!(state.as_str(), "running" | "waiting_approval") {
@@ -2365,10 +2495,16 @@ impl CodexManager {
             .await
             .clone()
             .ok_or_else(|| CodexError::Session("Codex session has no thread id".to_owned()))?;
-        session
+        if let Err(error) = session
             .client
             .request("thread/archive", json!({ "threadId": thread_id }))
-            .await?;
+            .await
+        {
+            if is_missing_rollout_error(&error) {
+                return self.archive_without_remote_rollout(session_id).await;
+            }
+            return Err(error);
+        }
         session.set_state("closed").await?;
         sqlx::query("UPDATE sessions SET archived = 1, updated_at = ? WHERE id = ?")
             .bind(now_iso())
@@ -2396,14 +2532,38 @@ impl CodexManager {
             return Ok(existing);
         }
         let (_, thread_id, client) = self.open_bound_client(session_id).await?;
-        let result = async {
-            let response = client
-                .request("thread/unarchive", json!({ "threadId": thread_id }))
+        let result = match client
+            .request("thread/unarchive", json!({ "threadId": thread_id }))
+            .await
+        {
+            Ok(response) => {
+                let snapshot = parse_thread_snapshot(&response)?;
+                matching_thread_id(&thread_id, &snapshot.id)
+            }
+            Err(error) if is_missing_rollout_error(&error) => {
+                // The archived rollout may have been pruned externally. A
+                // fresh thread is the only resumable representation left for
+                // this logical Aibo session.
+                let workspace_path: String =
+                    sqlx::query_scalar("SELECT path FROM workspaces WHERE id = ?")
+                        .bind(&existing.workspace_id)
+                        .fetch_one(&self.db)
+                        .await?;
+                let profile = session_execution_profile(&self.db, session_id)
+                    .await
+                    .map_err(|error| CodexError::Session(error.to_string()))?;
+                let replacement = start_thread(&client, &workspace_path, &profile.profile).await?;
+                sqlx::query(
+                    "UPDATE session_bindings SET external_session_id = ? WHERE session_id = ?",
+                )
+                .bind(replacement)
+                .bind(session_id)
+                .execute(&self.db)
                 .await?;
-            let snapshot = parse_thread_snapshot(&response)?;
-            matching_thread_id(&thread_id, &snapshot.id)
-        }
-        .await;
+                Ok(())
+            }
+            Err(error) => Err(error),
+        };
         client.close().await;
         result?;
         sqlx::query(
@@ -2611,9 +2771,10 @@ impl CodexManager {
 mod tests {
     use super::{
         agent_message_items, codex_thread_start_params, codex_turn_start_params, event_thread_id,
-        final_turn_text, generation_matches, map_tool_status, map_turn_status, matching_thread_id,
-        parse_forked_thread, parse_thread_list, parse_thread_snapshot, tool_projection,
-        usage_projection, validate_codex_thread_start_response, value_id,
+        final_turn_text, generation_matches, is_missing_rollout_error, map_tool_status,
+        map_turn_status, matching_thread_id, parse_forked_thread, parse_thread_list,
+        parse_thread_snapshot, tool_projection, usage_projection,
+        validate_codex_thread_start_response, value_id,
     };
     use crate::execution_profile::{
         ExecutionProfile, ResolvedExecutionProfile, EXECUTION_PROFILE_SCHEMA,
@@ -2789,6 +2950,22 @@ mod tests {
         assert!(generation_matches("generation-2", Some("generation-2")));
         assert!(!generation_matches("generation-2", Some("generation-1")));
         assert!(!generation_matches("generation-2", None));
+    }
+
+    #[test]
+    fn recognizes_only_missing_rollout_request_errors() {
+        assert!(is_missing_rollout_error(&super::CodexError::Request(
+            r#"{"code":-32600,"message":"no rollout found for thread id thread-1"}"#.to_owned(),
+        )));
+        assert!(is_missing_rollout_error(&super::CodexError::Request(
+            r#"{"code":-32600,"message":"thread not loaded: thread-1"}"#.to_owned(),
+        )));
+        assert!(!is_missing_rollout_error(&super::CodexError::Request(
+            r#"{"code":-32600,"message":"failed to load configuration: config.toml"}"#.to_owned(),
+        )));
+        assert!(!is_missing_rollout_error(&super::CodexError::Protocol(
+            "no rollout found".to_owned(),
+        )));
     }
 
     #[test]
