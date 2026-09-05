@@ -154,6 +154,93 @@ export interface TimelineItem {
   updatedAt: string;
 }
 
+export interface ChangeSetState {
+  head: string | null;
+  dirty: boolean | null;
+  capturedAt: string | null;
+}
+
+export interface FileChange {
+  path: string;
+  kind: 'added' | 'modified' | 'deleted' | 'renamed';
+  baselineExists: boolean;
+  baselineHash: string | null;
+  baselineSize: number | null;
+  resultExists: boolean;
+  resultHash: string | null;
+  resultSize: number | null;
+}
+
+export interface CommandRunRef {
+  id: string;
+  toolName: string | null;
+  command: string | null;
+  cwd: string | null;
+  exitCode: number | null;
+  status: 'streaming' | 'completed' | 'failed' | string;
+  output: string;
+}
+
+export interface VerificationRef {
+  id: string;
+  status: 'running' | 'passed' | 'failed' | string;
+  output: string;
+}
+
+export interface TurnChangeSet {
+  id: string;
+  schema: 'aibo.turn-changeset/v1';
+  workspaceId: string;
+  sessionId: string;
+  turnId: string;
+  baseline: ChangeSetState;
+  result: ChangeSetState;
+  files: FileChange[];
+  commands: CommandRunRef[];
+  verification: VerificationRef[];
+  attribution: 'agent' | 'mixed' | 'unknown';
+  captureStatus: 'captured' | 'partial' | 'failed';
+  captureError: string | null;
+}
+
+export interface RestoreTurnChangeSetResult {
+  applied: boolean;
+  restored: string[];
+  conflicts: string[];
+  unsupported: string[];
+}
+
+export interface WorkspaceFileChange {
+  path: string;
+  kind: 'added' | 'modified' | 'deleted' | 'renamed';
+}
+
+export interface WorkspaceChanges {
+  workspaceId: string;
+  head: string | null;
+  dirty: boolean;
+  capturedAt: string;
+  files: WorkspaceFileChange[];
+  captureStatus: 'captured' | 'unsupported' | 'failed';
+  captureError: string | null;
+}
+
+export interface TurnFileDiff {
+  path: string;
+  available: boolean;
+  diff: string;
+  reason: string | null;
+}
+
+export type GitFileAction = 'stage' | 'unstage' | 'revert';
+
+export interface GitFileActionResult {
+  path: string;
+  action: GitFileAction;
+  applied: boolean;
+  message: string;
+}
+
 export type ApprovalDecision = 'accept' | 'cancel';
 
 export interface ApprovalRequest {

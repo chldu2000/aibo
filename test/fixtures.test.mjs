@@ -32,6 +32,18 @@ test("Execution Profile v1 schema keeps requested and enforced policy separate",
   assert.equal(schema.$defs.resolved.properties.nativeSandbox.type, "boolean");
 });
 
+test("Turn ChangeSet v1 schema freezes per-turn file attribution fields", async () => {
+  const schema = JSON.parse(
+    await readFile(path.join(root, "contracts", "turn-changeset.v1.schema.json"), "utf8"),
+  );
+  assert.equal(schema.properties.schema.const, "aibo.turn-changeset/v1");
+  assert.deepEqual(schema.properties.attribution.enum, ["agent", "mixed", "unknown"]);
+  assert.deepEqual(schema.properties.captureStatus.enum, ["captured", "partial", "failed"]);
+  assert.ok(schema.required.includes("commands"));
+  assert.ok(schema.required.includes("verification"));
+  assert.ok(schema.$defs.fileChange.required.includes("baselineHash"));
+});
+
 test("probe assertions fail loudly so a false gate cannot pass", () => {
   assert.doesNotThrow(() => assertProbe(true, "must pass"));
   assert.throws(() => assertProbe(false, "must fail"), /Probe assertion failed: must fail/);

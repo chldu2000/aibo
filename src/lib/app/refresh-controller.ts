@@ -5,6 +5,8 @@ import type {
   Session,
   SessionExecutionProfile,
   SessionFilter,
+  TurnChangeSet,
+  WorkspaceChanges,
   Workspace,
 } from '$lib/types';
 import type { PersistedSelection } from './selection-storage';
@@ -16,6 +18,8 @@ export type RefreshControllerContext = {
     listWorkspaces: () => Promise<Workspace[]>;
     probeAgents: () => Promise<AgentDiagnostic[]>;
     listSessions: (workspaceId: string, options: { search: string; statusFilter: SessionFilter }) => Promise<Session[]>;
+    getTurnChangeSet: (sessionId: string, turnId?: string | null) => Promise<TurnChangeSet | null>;
+    getWorkspaceChanges: (workspaceId: string) => Promise<WorkspaceChanges>;
   };
   getDesktop: () => boolean;
   getRestoringSelection: () => boolean;
@@ -46,10 +50,14 @@ export type RefreshControllerContext = {
   refreshCodexThread: (sessionId: string) => Promise<void> | void;
   refreshPiTree: (sessionId: string) => Promise<void> | void;
   refreshExecutionProfile: (sessionId: string) => Promise<void> | void;
+  refreshTurnChangeSet: (sessionId: string) => Promise<void> | void;
+  refreshWorkspaceChanges: (workspaceId: string) => Promise<void> | void;
   setCodexThreads: (value: CodexThreadSummary[]) => void;
   setCodexThreadSnapshot: (value: null) => void;
   setPiTree: (value: PiSessionTreeSnapshot | null) => void;
   setExecutionProfile: (value: SessionExecutionProfile | null) => void;
+  setTurnChangeSet: (value: TurnChangeSet | null) => void;
+  setWorkspaceChanges: (value: WorkspaceChanges | null) => void;
   setPiNavigationEntryId: (value: null) => void;
 };
 
@@ -106,6 +114,7 @@ export function createRefreshController(context: RefreshControllerContext) {
       if (nextSelectedSessionId) {
         await context.refreshTimeline(nextSelectedSessionId);
         await context.refreshExecutionProfile(nextSelectedSessionId);
+        await context.refreshTurnChangeSet(nextSelectedSessionId);
         void context.refreshCodexThread(nextSelectedSessionId);
         void context.refreshPiTree(nextSelectedSessionId);
       } else {
@@ -154,6 +163,7 @@ export function createRefreshController(context: RefreshControllerContext) {
       if (nextSelectedWorkspaceId) {
         const workspaceIds = workspaceIdsForRefresh(nextSelectedWorkspaceId, expandedWorkspaceIds);
         await Promise.all(workspaceIds.map((id) => refreshSessions(id)));
+        await context.refreshWorkspaceChanges(nextSelectedWorkspaceId);
         await context.refreshCodexThreads(nextSelectedWorkspaceId);
       } else {
         context.setWorkspaceSessionMap({});
@@ -162,6 +172,8 @@ export function createRefreshController(context: RefreshControllerContext) {
         context.setCodexThreadSnapshot(null);
         context.setPiTree(null);
         context.setExecutionProfile(null);
+        context.setTurnChangeSet(null);
+        context.setWorkspaceChanges(null);
         context.setPiNavigationEntryId(null);
       }
     } catch (error) {

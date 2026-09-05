@@ -85,8 +85,10 @@ h2 { font-size: 16px; letter-spacing: -0.02em; }
 .workspace-trust-dot { align-self: center; margin-top: 0; }
 .empty-list { padding: 26px 12px; color: var(--aibo-muted); text-align: center; font-size: 12px; }
 .workspace-session-group { display: flex; min-width: 0; min-height: 0; flex-direction: column; gap: 2px; margin: 0 0 4px; padding: 2px 0 4px 24px; }
-.session-create-actions { display: grid; grid-template-columns: 1fr 1fr; gap: 5px; padding: 3px 6px 5px; }
+.session-create-actions { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 5px; padding: 3px 6px 5px; }
 .session-create-actions [data-slot='button'] { min-width: 0; }
+.session-profile-choice { grid-column: 1 / -1; display: flex; align-items: center; justify-content: space-between; gap: 8px; min-width: 0; color: var(--muted-foreground); font-size: 0.72rem; }
+.session-profile-choice select { min-width: 0; flex: 1; border: 1px solid var(--border); border-radius: 6px; background: var(--background); color: var(--foreground); padding: 4px 6px; font: inherit; }
 .timeline { display: flex; min-width: 0; min-height: 0; flex-direction: column; overflow: hidden; }
 .timeline-heading { border-bottom: 0; }
 .timeline-heading-actions { display: flex; align-items: center; gap: 7px; }
@@ -185,6 +187,26 @@ h2 { font-size: 16px; letter-spacing: -0.02em; }
 .profile-card-content { padding: 0 13px 11px; }
 .profile-card-content dl { margin-bottom: 4px; }
 .profile-warning { margin-top: 8px; color: var(--aibo-warning-text); font-size: 9px; line-height: 1.45; overflow-wrap: anywhere; }
+.changeset-card { margin: 0 12px 10px; background: var(--aibo-bg); }
+.changeset-card .thread-card-heading { align-items: center; }
+.changeset-status { display: block; color: var(--aibo-subtle); font-size: 9px; line-height: 1.4; }
+.changeset-file { align-items: center; gap: 7px; min-width: 0; }
+.changeset-file code { min-width: 0; overflow: hidden; color: var(--aibo-muted); font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 9px; text-overflow: ellipsis; white-space: nowrap; }
+.changeset-file .thread-copy code { display: block; }
+.changeset-file-button { width: 100%; min-width: 0; justify-content: flex-start; gap: 7px; padding: 2px 4px; }
+.changeset-file-button code { min-width: 0; text-align: left; }
+.changeset-file-row { align-items: center; }
+.changeset-file-row .changeset-file-button { flex: 1; }
+.changeset-actions { display: flex; flex: none; gap: 2px; opacity: 0; transition: opacity 120ms ease; }
+.changeset-file-row:hover .changeset-actions, .changeset-file-row:focus-within .changeset-actions { opacity: 1; }
+.changeset-actions button { padding: 2px 4px; color: var(--aibo-subtle); font-size: 8px; }
+.turn-file-diff { display: grid; gap: 5px; margin-top: 4px; }
+.turn-file-diff > small { overflow: hidden; color: var(--aibo-subtle); font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 9px; text-overflow: ellipsis; white-space: nowrap; }
+.turn-file-diff pre { max-height: 240px; overflow: auto; border: 1px solid var(--aibo-border); border-radius: 6px; padding: 8px; color: var(--aibo-muted); background: var(--aibo-surface); font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 9px; line-height: 1.45; white-space: pre-wrap; }
+.change-kind { display: inline-flex; width: 15px; flex: 0 0 15px; justify-content: center; color: var(--aibo-muted); font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 11px; font-weight: 700; }
+.change-kind-added { color: var(--aibo-success-text); }
+.change-kind-deleted { color: var(--aibo-danger-text); }
+.change-kind-modified { color: var(--aibo-warning-text); }
 .session-context-content dl { margin: 0; }
 .session-context-content dl div { margin-top: 7px; }
 .agent-cards, .settings-agent-cards { padding: 0 12px; }

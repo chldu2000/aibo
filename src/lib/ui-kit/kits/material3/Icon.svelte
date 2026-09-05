@@ -17,6 +17,7 @@
   import settings from '@ktibow/iconset-material-symbols/tune-rounded';
   import stop from '@ktibow/iconset-material-symbols/stop-rounded';
   import trust from '@ktibow/iconset-material-symbols/verified-user-outline-rounded';
+  import undo from '@ktibow/iconset-material-symbols/undo-rounded';
   import untrust from '@ktibow/iconset-material-symbols/gpp-bad-outline-rounded';
   import { Icon as MaterialIcon } from 'm3-svelte';
   import type { SVGAttributes } from 'svelte/elements';
@@ -48,6 +49,7 @@
     settings,
     stop,
     trust,
+    undo,
     untrust,
   };
 </script>

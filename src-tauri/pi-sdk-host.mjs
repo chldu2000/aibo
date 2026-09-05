@@ -1,7 +1,7 @@
 import { mkdir } from "node:fs/promises";
 import readline from "node:readline";
 import process from "node:process";
-import { createAgentSession, ModelRuntime, SessionManager } from "@earendil-works/pi-coding-agent";
+import { createAgentSession, createWriteToolDefinition, ModelRuntime, SessionManager } from "@earendil-works/pi-coding-agent";
 
 // The host is intentionally a small, versioned JSONL boundary. Rust owns the
 // durable Aibo session; this process owns only one Pi AgentSession at a time.
@@ -12,6 +12,8 @@ let modelRuntime = null;
 let activeTurnId = null;
 let unsubscribe = null;
 let resumedSession = false;
+let nextCoreToolRequestId = 1;
+const pendingCoreToolRequests = new Map();
 
 function write(message) {
   process.stdout.write(`${JSON.stringify(message)}\n`);
@@ -23,6 +25,32 @@ function respond(id, result) {
 
 function fail(id, error) {
   write({ id, error: { code: "pi_sdk_host_error", message: error instanceof Error ? error.message : String(error) } });
+}
+
+function requestCoreTool(tool, params) {
+  const id = `aibo-tool-${nextCoreToolRequestId++}`;
+  return new Promise((resolve, reject) => {
+    pendingCoreToolRequests.set(id, { resolve, reject });
+    write({
+      id,
+      method: "aibo/tool-request",
+      params: { ...params, tool, turnId: activeTurnId },
+    });
+  });
+}
+
+function consumeCoreToolResponse(message) {
+  if (!message || message.method || message.id === undefined) return false;
+  const id = String(message.id);
+  const pending = pendingCoreToolRequests.get(id);
+  if (!pending) return false;
+  pendingCoreToolRequests.delete(id);
+  if (message.error) {
+    pending.reject(new Error(message.error.message ?? String(message.error)));
+  } else {
+    pending.resolve(message.result ?? null);
+  }
+  return true;
 }
 
 function textContent(message) {
@@ -198,6 +226,24 @@ async function start(params) {
   } else {
     manager = SessionManager.create(cwd, sessionDir);
   }
+  const enforcedProfile = params?.executionProfile ?? {};
+  const workspaceWriteEnabled =
+    enforcedProfile.interactionMode === "edit" &&
+    enforcedProfile.filesystemPolicy === "workspace-write";
+  const customTools = workspaceWriteEnabled
+    ? [createWriteToolDefinition(cwd, {
+      operations: {
+        // The Core write gateway creates missing parent directories as part of
+        // the atomic request, so this hook intentionally does not mutate the
+        // host filesystem or create a second approval request.
+        mkdir: async () => {},
+        writeFile: (absolutePath, content) => requestCoreTool("write_file", {
+          path: absolutePath,
+          content,
+        }),
+      },
+    })]
+    : undefined;
   const created = await createAgentSession({
     cwd,
     sessionManager: manager,
@@ -206,8 +252,10 @@ async function start(params) {
     // embedded AgentSession.
     modelRuntime: modelRuntime ??= await ModelRuntime.create(),
     // Pi has no native sandbox. Aibo deliberately limits this first vertical
-    // slice to read-only tools; write/command tools are not exposed here.
+    // slice to read-only tools unless Core explicitly resolved a workspace
+    // write profile and supplied the mediated custom tool below.
     tools: ["read", "grep", "find", "ls"],
+    customTools,
   });
   session = created.session;
   unsubscribe = session.subscribe(emitEvent);
@@ -217,7 +265,16 @@ async function start(params) {
     sessionFile: session.sessionFile ?? null,
     sessionName: session.sessionManager.getSessionName(),
     resumed: resumedSession,
-    capabilities: ["streaming", "abort", "session-tree", "session-tree-navigation", "session-snapshot", "read-only-tools"],
+    capabilities: [
+      "streaming",
+      "abort",
+      "session-tree",
+      "session-tree-navigation",
+      "session-snapshot",
+      "read-only-tools",
+      ...(workspaceWriteEnabled ? ["workspace-write-gateway"] : []),
+      ...(enforcedProfile.approvalPolicy === "on-request" ? ["aibo-approval"] : []),
+    ],
   };
 }
 
@@ -233,6 +290,7 @@ async function openManager(cwd, sessionDir, sessionId) {
 }
 
 async function handle(message) {
+  if (consumeCoreToolResponse(message)) return;
   const id = message?.id;
   const method = message?.method;
   const params = message?.params ?? {};

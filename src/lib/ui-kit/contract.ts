@@ -19,6 +19,7 @@ export type UiIconName =
   | 'settings'
   | 'stop'
   | 'trust'
+  | 'undo'
   | 'untrust';
 
 /**

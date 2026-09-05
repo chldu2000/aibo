@@ -5,6 +5,7 @@ import type {
   SessionExecutionProfile,
   Session,
   TimelineItem,
+  TurnChangeSet,
 } from '$lib/types';
 import { toErrorMessage } from './error-utils';
 
@@ -15,6 +16,7 @@ export type SessionContextControllerContext = {
     getTimeline: (sessionId: string) => Promise<TimelineItem[]>;
     getPiSessionTree: (sessionId: string) => Promise<PiSessionTreeSnapshot>;
     getSessionExecutionProfile: (sessionId: string) => Promise<SessionExecutionProfile>;
+    getTurnChangeSet: (sessionId: string, turnId?: string | null) => Promise<TurnChangeSet | null>;
   };
   getDesktop: () => boolean;
   getSelectedWorkspaceId: () => string | null;
@@ -25,6 +27,7 @@ export type SessionContextControllerContext = {
   setCodexThreadSnapshot: (value: CodexThreadSnapshot | null) => void;
   setPiTree: (value: PiSessionTreeSnapshot | null) => void;
   setExecutionProfile: (value: SessionExecutionProfile | null) => void;
+  setTurnChangeSet: (value: TurnChangeSet | null) => void;
   setTimeline: (value: TimelineItem[]) => void;
   setTimelineVisibleCount: (value: number) => void;
   setThreadBusy: (value: boolean) => void;
@@ -104,6 +107,20 @@ export function createSessionContextController(context: SessionContextController
     }
   }
 
+  async function refreshTurnChangeSet(sessionId: string): Promise<void> {
+    if (!context.getDesktop()) {
+      if (sessionId === context.getSelectedSessionId()) context.setTurnChangeSet(null);
+      return;
+    }
+    try {
+      const changeSet = await context.api.getTurnChangeSet(sessionId);
+      if (sessionId === context.getSelectedSessionId()) context.setTurnChangeSet(changeSet);
+    } catch (error) {
+      if (sessionId === context.getSelectedSessionId()) context.setTurnChangeSet(null);
+      console.warn('unable to read turn change set', error);
+    }
+  }
+
   async function refreshPiTree(sessionId: string): Promise<void> {
     if (sessionId === context.getArchivingSessionId()) return;
     const session = context.findSession(sessionId);
@@ -147,6 +164,7 @@ export function createSessionContextController(context: SessionContextController
     refreshCodexThread,
     refreshTimeline,
     refreshExecutionProfile,
+    refreshTurnChangeSet,
     refreshPiTree,
     syncCodexThreads,
     syncCodexThread,

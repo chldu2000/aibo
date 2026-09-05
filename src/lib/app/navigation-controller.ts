@@ -1,4 +1,4 @@
-import type { CodexThreadSummary, Session, SessionExecutionProfile } from '$lib/types';
+import type { CodexThreadSummary, Session, SessionExecutionProfile, TurnFileDiff } from '$lib/types';
 import {
   ensureWorkspaceExpanded,
   toggleWorkspaceExpanded,
@@ -19,6 +19,7 @@ export type NavigationControllerContext = {
   setRetry: (prompt: string | null, reason: string | null) => void;
   setLastSubmittedPrompt: (value: string | null) => void;
   setExecutionProfile: (value: SessionExecutionProfile | null) => void;
+  setTurnFileDiff: (value: TurnFileDiff | null) => void;
   setTimelineVisibleCount: (value: number) => void;
   setCodexThreads: (value: CodexThreadSummary[]) => void;
   setNotice: (value: string | null) => void;
@@ -29,6 +30,8 @@ export type NavigationControllerContext = {
   refreshCodexThread: (sessionId: string) => Promise<void> | void;
   refreshPiTree: (sessionId: string) => Promise<void> | void;
   refreshExecutionProfile: (sessionId: string) => Promise<void> | void;
+  refreshTurnChangeSet: (sessionId: string) => Promise<void> | void;
+  refreshWorkspaceChanges: (workspaceId: string) => Promise<void> | void;
 };
 
 /** Coordinates list navigation while keeping the open conversation stable. */
@@ -46,6 +49,7 @@ export function createNavigationController(context: NavigationControllerContext)
       if (context.getDesktop()) {
         void context.refreshSessions(workspaceId);
         void context.refreshCodexThreads(workspaceId);
+        void context.refreshWorkspaceChanges(workspaceId);
       }
     }
   }
@@ -62,6 +66,7 @@ export function createNavigationController(context: NavigationControllerContext)
     } else if (context.getDesktop()) {
       void context.refreshSessions(workspaceId);
       void context.refreshCodexThreads(workspaceId);
+      void context.refreshWorkspaceChanges(workspaceId);
     }
     // Expanding or collapsing a workspace only changes the list context. Keep the
     // conversation currently open in the main pane until the user selects a session.
@@ -78,12 +83,14 @@ export function createNavigationController(context: NavigationControllerContext)
     context.setRetry(null, null);
     context.setLastSubmittedPrompt(null);
     context.setExecutionProfile(null);
+    context.setTurnFileDiff(null);
     context.setTimelineVisibleCount(80);
     if (context.getDesktop()) {
       void context.refreshTimeline(session.id);
       void context.refreshCodexThread(session.id);
       void context.refreshPiTree(session.id);
       void context.refreshExecutionProfile(session.id);
+      void context.refreshTurnChangeSet(session.id);
     }
   }
 

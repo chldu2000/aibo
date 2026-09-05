@@ -41,6 +41,11 @@
     closePiSession,
     forkCodexThread,
     getSessionExecutionProfile,
+    getTurnChangeSet,
+    getWorkspaceChanges,
+    getTurnFileDiff,
+    applyGitFileAction,
+    restoreTurnChangeSet as restoreTurnChangeSetApi,
     getTimeline,
     getPiSessionTree,
     isTauri,
@@ -54,6 +59,7 @@
     renameSession as renameSessionApi,
     removeWorkspace,
     resolveCodexApproval,
+    resolvePiApproval,
     sendCodexPrompt,
     sendPiPrompt,
     steerPiPrompt,
@@ -71,6 +77,10 @@
     CodexThreadSummary,
     Session,
     SessionExecutionProfile,
+    TurnChangeSet,
+    WorkspaceChanges,
+    GitFileAction,
+    TurnFileDiff,
     SessionFilter,
     PiSessionTreeSnapshot,
     TimelineItem,
@@ -115,9 +125,9 @@
       status: 'ready',
       executable: null,
       version: 'SDK 0.84.4',
-      capabilities: ['sdk-host', 'streaming', 'abort', 'session-tree', 'session-tree-navigation', 'session-snapshot', 'read-only-tools'],
+      capabilities: ['sdk-host', 'streaming', 'abort', 'session-tree', 'session-tree-navigation', 'session-snapshot', 'read-only-tools', 'workspace-write-gateway', 'aibo-approval'],
       authState: 'delegated',
-      message: 'Project-locked SDK host; read-only tools only; native authentication remains with Pi.',
+      message: 'Project-locked SDK host; workspace writes are mediated by Aibo Core; native authentication remains with Pi.',
     },
   ];
 
@@ -148,6 +158,9 @@
   let codexThreadSnapshot = $state<CodexThreadSnapshot | null>(null);
   let piTree = $state<PiSessionTreeSnapshot | null>(null);
   let executionProfile = $state<SessionExecutionProfile | null>(null);
+  let turnChangeSet = $state<TurnChangeSet | null>(null);
+  let workspaceChanges = $state<WorkspaceChanges | null>(null);
+  let turnFileDiff = $state<TurnFileDiff | null>(null);
   let selectedWorkspaceId = $state<string | null>(null);
   let expandedWorkspaceIds = $state<string[]>([]);
   let selectedSessionId = $state<string | null>(null);
@@ -170,6 +183,7 @@
   let sessionSearchOpen = $state(false);
   let sessionFilterOpen = $state(false);
   let createSessionWorkspaceId = $state<string | null>(null);
+  let createProfileMode = $state<'read-only' | 'edit'>('read-only');
   let renamingSessionId = $state<string | null>(null);
   let sessionLabelDraft = $state('');
   let timelineVisibleCount = $state(80);
@@ -338,6 +352,9 @@
     codexThreadSnapshot = null;
     piTree = null;
     executionProfile = null;
+    turnChangeSet = null;
+    workspaceChanges = null;
+    turnFileDiff = null;
     piNavigationEntryId = null;
     usageSnapshot = null;
     retryPrompt = null;
@@ -369,6 +386,67 @@
     await sessionContextController.refreshPiTree(sessionId);
   }
 
+  async function refreshTurnChangeSet(sessionId: string) {
+    await sessionContextController.refreshTurnChangeSet(sessionId);
+  }
+
+  async function refreshWorkspaceChanges(workspaceId: string) {
+    if (!desktop) {
+      if (workspaceId === selectedWorkspaceId) workspaceChanges = null;
+      return;
+    }
+    try {
+      const changes = await getWorkspaceChanges(workspaceId);
+      if (workspaceId === selectedWorkspaceId) workspaceChanges = changes;
+    } catch (error) {
+      if (workspaceId === selectedWorkspaceId) workspaceChanges = null;
+      console.warn('unable to read workspace changes', error);
+    }
+  }
+
+  async function showTurnFileDiff(sessionId: string, turnId: string, path: string) {
+    try {
+      turnFileDiff = await getTurnFileDiff(sessionId, turnId, path);
+    } catch (error) {
+      errorMessage = toErrorMessage(error);
+      turnFileDiff = null;
+    }
+  }
+
+  async function applyGitFileActionFromInspector(sessionId: string, path: string, action: GitFileAction) {
+    if (action === 'revert' && !window.confirm(`确认撤销文件变更：${path}？此操作不可撤销。`)) return;
+    try {
+      const result = await applyGitFileAction(sessionId, path, action);
+      if (result.applied) {
+        notice = action === 'stage' ? '文件已暂存。' : action === 'unstage' ? '已取消暂存。' : '文件变更已撤销。';
+        const session = findSession(sessionId);
+        if (session) await refreshWorkspaceChanges(session.workspaceId);
+      } else {
+        errorMessage = result.message;
+      }
+    } catch (error) {
+      errorMessage = toErrorMessage(error);
+    }
+  }
+
+  async function restoreTurnChangeSet(sessionId: string, turnId: string) {
+    if (!desktop) return;
+    if (!window.confirm('确认恢复本轮 Agent 变更？只有当前文件未被后续修改时才会执行。')) return;
+    try {
+      const result = await restoreTurnChangeSetApi(sessionId, turnId);
+      if (result.applied) {
+        notice = result.restored.length > 0 ? `已恢复 ${result.restored.length} 个文件。` : '本轮没有可恢复的文件。';
+        await refreshTurnChangeSet(sessionId);
+      } else if (result.conflicts.length > 0) {
+        notice = `恢复已阻止：${result.conflicts.length} 个文件在本轮后发生了变化。`;
+      } else {
+        notice = `恢复已阻止：${result.unsupported.join('、') || '当前变更无法安全恢复'}。`;
+      }
+    } catch (error) {
+      errorMessage = toErrorMessage(error);
+    }
+  }
+
   function loadOlderTimeline() {
     timelineVisibleCount = Math.min(timeline.length, timelineVisibleCount + 80);
   }
@@ -395,6 +473,8 @@
       },
       setNotice: (message) => (notice = message),
       refreshSessions,
+      refreshTurnChangeSet,
+      refreshWorkspaceChanges,
     });
   }
 
@@ -505,6 +585,7 @@
       getTimeline,
       getPiSessionTree,
       getSessionExecutionProfile,
+      getTurnChangeSet,
     },
     getDesktop: () => desktop,
     getSelectedWorkspaceId: () => selectedWorkspaceId,
@@ -515,6 +596,7 @@
     setCodexThreadSnapshot: (value) => (codexThreadSnapshot = value),
     setPiTree: (value) => (piTree = value),
     setExecutionProfile: (value) => (executionProfile = value),
+    setTurnChangeSet: (value) => (turnChangeSet = value),
     setTimeline: (value) => (timeline = value),
     setTimelineVisibleCount: (value) => (timelineVisibleCount = value),
     setThreadBusy: (value) => (threadBusy = value),
@@ -540,6 +622,7 @@
     },
     setLastSubmittedPrompt: (value) => (lastSubmittedPrompt = value),
     setExecutionProfile: (value) => (executionProfile = value),
+    setTurnFileDiff: (value) => (turnFileDiff = value),
     setTimelineVisibleCount: (value) => (timelineVisibleCount = value),
     setCodexThreads: (value) => (codexThreads = value),
     setNotice: (value) => (notice = value),
@@ -550,6 +633,8 @@
     refreshCodexThread,
     refreshPiTree,
     refreshExecutionProfile,
+    refreshTurnChangeSet,
+    refreshWorkspaceChanges,
   });
 
   const sessionLifecycle = createSessionLifecycleController({
@@ -613,11 +698,14 @@
     setPiTree: (value) => (piTree = value),
     setPiNavigationEntryId: (value) => (piNavigationEntryId = value),
     setCreateSessionWorkspaceId: (value) => (createSessionWorkspaceId = value),
+    getCreateProfileMode: () => createProfileMode,
+    setCreateProfileMode: (value) => (createProfileMode = value),
     setBusy: (value) => (busy = value),
     setErrorMessage: (value) => (errorMessage = value),
     setNotice: (value) => (notice = value),
     refreshCodexThreads,
     refreshPiTree,
+    refreshTurnChangeSet,
     refreshExecutionProfile,
   });
 
@@ -668,6 +756,8 @@
       probeAgents,
       listSessions,
       getSessionExecutionProfile,
+      getTurnChangeSet,
+      getWorkspaceChanges,
     },
     getDesktop: () => desktop,
     getRestoringSelection: () => restoringSelection,
@@ -697,10 +787,13 @@
     refreshCodexThreads,
     refreshCodexThread,
     refreshPiTree,
+    refreshWorkspaceChanges,
     setCodexThreads: (value) => (codexThreads = value),
     setCodexThreadSnapshot: (value) => (codexThreadSnapshot = value),
     setPiTree: (value) => (piTree = value),
     setExecutionProfile: (value) => (executionProfile = value),
+    setTurnChangeSet: (value) => (turnChangeSet = value),
+    setWorkspaceChanges: (value) => (workspaceChanges = value),
     setPiNavigationEntryId: (value) => (piNavigationEntryId = value),
   });
 
@@ -737,7 +830,7 @@
   });
 
   const approvalController = createApprovalController({
-    api: { resolveCodexApproval },
+    api: { resolveCodexApproval, resolvePiApproval },
     getDesktop: () => desktop,
     getPendingApprovals: () => pendingApprovals,
     setPendingApprovals: (value) => (pendingApprovals = value),
@@ -795,6 +888,7 @@
       bind:sessionSearch
       bind:sessionFilter
       createSessionWorkspaceId={createSessionWorkspaceId}
+      createProfileMode={createProfileMode}
       renamingSessionId={renamingSessionId}
       bind:sessionLabelDraft
       onToggleSearch={() => (sessionSearchOpen = !sessionSearchOpen)}
@@ -803,6 +897,7 @@
       onChooseWorkspaceDirectory={() => void chooseWorkspaceDirectory()}
       onSelectWorkspace={selectWorkspace}
       onToggleSessionCreator={toggleSessionCreator}
+      onSetCreateProfileMode={(mode) => (createProfileMode = mode)}
       onToggleTrust={(workspaceId) => {
         const workspace = workspaces.find((item) => item.id === workspaceId);
         if (workspace) void toggleTrust(workspace);
@@ -861,6 +956,10 @@
       desktop={desktop}
       codexThreads={codexThreads}
       piTree={piTree}
+      executionProfile={executionProfile}
+      turnChangeSet={turnChangeSet}
+      workspaceChanges={workspaceChanges}
+      turnFileDiff={turnFileDiff}
       threadBusy={threadBusy}
       busy={busy}
       sessionRunning={sessionRunning}
@@ -868,6 +967,9 @@
       onSyncCodexThreads={() => void syncCodexThreads()}
       onRequestPiTreeNavigation={requestPiTreeNavigation}
       onRefreshPiTree={(sessionId) => void refreshPiTree(sessionId)}
+      onRestoreTurnChangeSet={restoreTurnChangeSet}
+      onShowTurnFileDiff={showTurnFileDiff}
+      onApplyGitFileAction={applyGitFileActionFromInspector}
       onRefresh={() => void refresh()}
     />
   </main>

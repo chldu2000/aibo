@@ -1,0 +1,74 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://aibo.dev/contracts/turn-changeset.v1.schema.json",
+  "title": "Aibo Turn Change Set v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["id", "schema", "workspaceId", "sessionId", "turnId", "baseline", "result", "files", "commands", "verification", "attribution", "captureStatus", "captureError"],
+  "properties": {
+    "id": { "type": "string", "minLength": 1 },
+    "schema": { "const": "aibo.turn-changeset/v1" },
+    "workspaceId": { "type": "string", "minLength": 1 },
+    "sessionId": { "type": "string", "minLength": 1 },
+    "turnId": { "type": "string", "minLength": 1 },
+    "baseline": { "$ref": "#/$defs/state" },
+    "result": { "$ref": "#/$defs/state" },
+    "files": { "type": "array", "items": { "$ref": "#/$defs/fileChange" } },
+    "commands": { "type": "array", "items": { "$ref": "#/$defs/command" } },
+    "verification": { "type": "array", "items": { "$ref": "#/$defs/verification" } },
+    "attribution": { "enum": ["agent", "mixed", "unknown"] },
+    "captureStatus": { "enum": ["captured", "partial", "failed"] },
+    "captureError": { "type": ["string", "null"] }
+  },
+  "$defs": {
+    "state": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["head", "dirty", "capturedAt"],
+      "properties": {
+        "head": { "type": ["string", "null"] },
+        "dirty": { "type": ["boolean", "null"] },
+        "capturedAt": { "type": ["string", "null"], "format": "date-time" }
+      }
+    },
+    "fileChange": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["path", "kind", "baselineExists", "baselineHash", "baselineSize", "resultExists", "resultHash", "resultSize"],
+      "properties": {
+        "path": { "type": "string", "minLength": 1 },
+        "kind": { "enum": ["added", "modified", "deleted", "renamed"] },
+        "baselineExists": { "type": "boolean" },
+        "baselineHash": { "type": ["string", "null"] },
+        "baselineSize": { "type": ["integer", "null"], "minimum": 0 },
+        "resultExists": { "type": "boolean" },
+        "resultHash": { "type": ["string", "null"] },
+        "resultSize": { "type": ["integer", "null"], "minimum": 0 }
+      }
+    },
+    "command": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "toolName", "command", "cwd", "exitCode", "status", "output"],
+      "properties": {
+        "id": { "type": "string", "minLength": 1 },
+        "toolName": { "type": ["string", "null"] },
+        "command": { "type": ["string", "null"] },
+        "cwd": { "type": ["string", "null"] },
+        "exitCode": { "type": ["integer", "null"] },
+        "status": { "type": "string", "minLength": 1 },
+        "output": { "type": "string" }
+      }
+    },
+    "verification": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "status", "output"],
+      "properties": {
+        "id": { "type": "string", "minLength": 1 },
+        "status": { "type": "string", "minLength": 1 },
+        "output": { "type": "string" }
+      }
+    }
+  }
+}

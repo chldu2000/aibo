@@ -8,6 +8,11 @@ export type ApprovalControllerContext = {
       requestId: string,
       decision: ApprovalDecision,
     ) => Promise<void>;
+    resolvePiApproval: (
+      sessionId: string,
+      requestId: string,
+      decision: ApprovalDecision,
+    ) => Promise<void>;
   };
   getDesktop: () => boolean;
   getPendingApprovals: () => ApprovalRequest[];
@@ -32,11 +37,10 @@ export function createApprovalController(context: ApprovalControllerContext) {
     context.setBusy(true);
     context.setErrorMessage(null);
     try {
-      await context.api.resolveCodexApproval(
-        approval.sessionId,
-        approval.requestId,
-        decision,
-      );
+      const resolve = approval.kind === 'pi_tool'
+        ? context.api.resolvePiApproval
+        : context.api.resolveCodexApproval;
+      await resolve(approval.sessionId, approval.requestId, decision);
       context.setPendingApprovals(
         context.getPendingApprovals().filter(
           (item) =>

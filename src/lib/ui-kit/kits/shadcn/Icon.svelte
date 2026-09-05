@@ -17,6 +17,7 @@
   import SettingsIcon from '@lucide/svelte/icons/settings-2';
   import StopIcon from '@lucide/svelte/icons/square';
   import TrustIcon from '@lucide/svelte/icons/shield-check';
+  import UndoIcon from '@lucide/svelte/icons/undo-2';
   import UntrustIcon from '@lucide/svelte/icons/shield-off';
   import type { SVGAttributes } from 'svelte/elements';
   import type { UiIconName } from '../../contract';
@@ -47,6 +48,7 @@
     settings: SettingsIcon,
     stop: StopIcon,
     trust: TrustIcon,
+    undo: UndoIcon,
     untrust: UntrustIcon,
   };
 

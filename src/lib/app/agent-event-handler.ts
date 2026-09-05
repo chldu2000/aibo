@@ -22,6 +22,8 @@ export type AgentEventHandlerContext = {
   setRetry: (prompt: string | null, reason: string | null) => void;
   setNotice: (notice: string) => void;
   refreshSessions: (workspaceId: string) => void | Promise<void>;
+  refreshTurnChangeSet?: (sessionId: string) => void | Promise<void>;
+  refreshWorkspaceChanges?: (workspaceId: string) => void | Promise<void>;
 };
 
 export function handleAgentEvent(event: AgentEvent, context: AgentEventHandlerContext): void {
@@ -191,6 +193,8 @@ export function handleAgentEvent(event: AgentEvent, context: AgentEventHandlerCo
       context.setRetry(null, null);
     }
     void context.refreshSessions(event.workspaceId);
+    if (event.sessionId === selectedSessionId) void context.refreshTurnChangeSet?.(event.sessionId);
+    void context.refreshWorkspaceChanges?.(event.workspaceId);
   }
 }
 

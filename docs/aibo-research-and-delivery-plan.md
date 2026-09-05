@@ -458,7 +458,7 @@ V1 后为 Pi 增加可选 container/VM/平台 sandbox runner；统一权限 prof
 ### Phase 4.5：常规 Agent 工作台能力补全（19–31 天，实施中）
 
 - 版本化 Execution Profile、capability resolution 与 Ask/Plan/Edit 模式（4.5A 已完成契约、解析与持久化骨架）。
-- Codex 原生 sandbox/approval 映射，以及 Pi 通过 Aibo Core 控制的安全写入和命令工具边界。
+- Codex 原生 sandbox/approval 映射，以及 Pi 通过 Aibo Core 控制的安全写入和命令工具边界（写入网关已开始落地，命令仍保持禁用）。
 - turn baseline/result、Git/文件变更归属、diff/hunk 审阅与结构化 verification。
 - Agent 文件 checkpoint、恢复预检、用户后续修改冲突保护和 artifact store。
 - 文件/目录/图片上下文附件、安全 Markdown、代码/diff/命令/测试卡片。

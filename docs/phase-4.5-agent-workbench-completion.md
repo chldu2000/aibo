@@ -1,6 +1,6 @@
 # Phase 4.5：常规 Agent 工作台能力补全
 
-> 状态：实施中；4.5A 已完成，4.5B 工作区边界守卫已落地
+> 状态：实施中；4.5A 已完成，4.5B 工作区边界守卫已落地，4.5C 变更集基础链路已接通，4.5D Git 恢复预检已开始
 > 平台：macOS arm64 首发基线；Windows 延后验证
 > 前置：Phase 4 统一会话体验的 macOS 实现与离线门禁完成
 > 后续：Phase 5 `@` 与 Handoff v1
@@ -40,7 +40,7 @@ Phase 5 应直接复用这些事实生成 Handoff，不再从对话文本猜测�
 
 - Codex/Pi 真实会话、流式消息、停止、重启恢复和原生 binding。
 - Codex 审批、thread 生命周期与工具事件投影。
-- Pi SDK host、session tree、steer/follow-up、只读工具与无原生沙箱提示。
+- Pi SDK host、session tree、steer/follow-up、只读工具与无原生沙箱提示；4.5B 增加了可选的 Core 写入网关。
 - 工作区 canonical path、信任状态与统一会话生命周期。
 - 会话搜索、筛选、归档、时间线工具分组、usage 与错误重试。
 - UI 领域投影、业务动作和基础视觉组件已分层。
@@ -49,7 +49,7 @@ Phase 5 应直接复用这些事实生成 Handoff，不再从对话文本猜测�
 
 | 能力域 | 当前限制 | Phase 4.5 目标 |
 | --- | --- | --- |
-| 执行配置 | Codex profile 固定；Pi 仅开放只读工具 | 会话级、可解释、可验证的执行 profile |
+| 执行配置 | Codex profile 固定；Pi 默认只读 | 会话级、可解释、可验证的执行 profile |
 | 写入与命令 | Pi 无安全的可写/命令主链路 | 通过 Core 控制的写入、命令和审批边界 |
 | 变更审阅 | 没有 Git 状态、diff 和本轮变更归属 | Changes 视图与 `TurnChangeSet` |
 | 安全恢复 | 没有文件 checkpoint | 有冲突检测的 Agent 变更恢复 |
@@ -289,13 +289,17 @@ Changes 视图支持安全的 stage/unstage 和按文件或 hunk 恢复，但不
 - 新增 `aibo.execution-profile/v1` JSON Schema、Rust/TypeScript 类型与 capability resolver。
 - Codex/Pi 新建会话都会保存 requested/enforced profile、unsupported 项、adapter capabilities 和 native sandbox 标记。
 - 新增 `resolve_execution_profile` 与 `get_session_execution_profile` typed Tauri command/API。
-- Codex 的 `thread/start` 已由 resolved profile 驱动；Pi 当前仍明确解析为只读、无原生沙箱。
+- Codex 的 `thread/start` 已由 resolved profile 驱动；Pi 默认只读，但 `edit + workspace-write` 会注册 Core 写入网关，并持续标记无原生沙箱。
 - 历史会话读取 profile 时回退为 `legacy_session_profile_missing`，不会假装拥有新 profile。
 - 覆盖默认 profile、Codex 可写请求、Pi 不支持能力、Plan 只读约束、非法值和 SQLite 持久化测试。
 
-4.5A 门禁：`cargo test` 29 项通过，`pnpm test` 30 项通过，`pnpm exec tsc --noEmit`、`pnpm build` 和 `cargo fmt --check` 通过。
+当前自动化门禁：`cargo test` 34 项通过，`pnpm test` 31 项通过，`pnpm exec tsc --noEmit`、`pnpm build` 和 `cargo fmt --check` 通过。
 
-4.5B 已开始：新增共享工作区边界守卫，覆盖绝对/相对路径、`..` 与 symlink 逃逸，并为不存在的新文件保留安全的父目录校验；Pi 的写入/命令工具仍未直接开放。
+4.5B 已开始：共享工作区边界守卫已覆盖绝对/相对路径、`..` 与 symlink 逃逸；Pi 的 `write` 通过 JSONL 请求回 Rust Core，按 profile 和工作区信任检查，`on-request` 复用审批 UI，命令工具仍未开放。
+
+4.5C 已开始：Codex/Pi turn 起止事件会采集工作区 baseline/result，按 Git 或受限文件遍历生成 `TurnChangeSet`，并持久化 `file_changes`；Codex 命令的 command/cwd/exit code 元数据也已进入结构化记录，并对常见测试命令生成 verification 投影；Inspector 已支持本轮变更、Git 全局状态、命令/验证元数据、单文件 unified diff，以及经 Core 校验的 stage/unstage/revert 入口。
+
+4.5D 已开始：turn 开始时将可安全哈希的 baseline 内容持久化到 app data；Git 与非 Git 工作区均可恢复可验证文件。当前内容发生后续修改、baseline 不可确认或大文件无法哈希时，Core 在写入前阻止恢复，并覆盖恢复成功、冲突阻止和写入回滚测试。
 
 ### 4.5A：契约、能力解析与存储骨架（3–4 天）
 

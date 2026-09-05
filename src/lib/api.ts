@@ -17,6 +17,12 @@ import type {
   SessionExecutionProfile,
   Session,
   TimelineItem,
+  TurnChangeSet,
+  RestoreTurnChangeSetResult,
+  WorkspaceChanges,
+  TurnFileDiff,
+  GitFileAction,
+  GitFileActionResult,
   Workspace,
 } from './types';
 
@@ -80,6 +86,37 @@ export const unarchiveSession = (sessionId: string): Promise<Session> =>
 export const getTimeline = (sessionId: string): Promise<TimelineItem[]> =>
   invoke<TimelineItem[]>('get_timeline', { sessionId });
 
+export const getTurnChangeSet = (
+  sessionId: string,
+  turnId?: string | null,
+): Promise<TurnChangeSet | null> =>
+  invoke<TurnChangeSet | null>('get_turn_change_set', {
+    sessionId,
+    turnId: turnId ?? null,
+  });
+
+export const restoreTurnChangeSet = (
+  sessionId: string,
+  turnId: string,
+): Promise<RestoreTurnChangeSetResult> =>
+  invoke<RestoreTurnChangeSetResult>('restore_turn_change_set', { sessionId, turnId });
+
+export const getWorkspaceChanges = (workspaceId: string): Promise<WorkspaceChanges> =>
+  invoke<WorkspaceChanges>('get_workspace_changes', { workspaceId });
+
+export const getTurnFileDiff = (
+  sessionId: string,
+  turnId: string,
+  path: string,
+): Promise<TurnFileDiff> => invoke<TurnFileDiff>('get_turn_file_diff', { sessionId, turnId, path });
+
+export const applyGitFileAction = (
+  sessionId: string,
+  path: string,
+  action: GitFileAction,
+): Promise<GitFileActionResult> =>
+  invoke<GitFileActionResult>('apply_git_file_action', { sessionId, path, action });
+
 export const listCodexThreads = (workspaceId: string): Promise<CodexThreadSummary[]> =>
   invoke<CodexThreadSummary[]>('list_codex_threads', { workspaceId });
 
@@ -118,6 +155,12 @@ export const resolveCodexApproval = (
   requestId: string,
   decision: ApprovalDecision,
 ): Promise<void> => invoke('resolve_codex_approval', { sessionId, requestId, decision });
+
+export const resolvePiApproval = (
+  sessionId: string,
+  requestId: string,
+  decision: ApprovalDecision,
+): Promise<void> => invoke('resolve_pi_approval', { sessionId, requestId, decision });
 
 export const closeCodexSession = (sessionId: string): Promise<void> =>
   invoke('close_codex_session', { sessionId });

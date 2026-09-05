@@ -1,11 +1,11 @@
-import type { Session, TimelineItem, Workspace } from '$lib/types';
+import type { AgentName, ExecutionProfile, Session, TimelineItem, Workspace } from '$lib/types';
 import { toErrorMessage } from './error-utils';
 import { upsertSession } from './session-transitions';
 
 export type AgentSessionControllerContext = {
   api: {
-    createCodexSession: (workspaceId: string) => Promise<Session>;
-    createPiSession: (workspaceId: string) => Promise<Session>;
+    createCodexSession: (workspaceId: string, profile?: ExecutionProfile | null) => Promise<Session>;
+    createPiSession: (workspaceId: string, profile?: ExecutionProfile | null) => Promise<Session>;
   };
   getDesktop: () => boolean;
   getWorkspaceSessionMap: () => Record<string, Session[]>;
@@ -18,6 +18,8 @@ export type AgentSessionControllerContext = {
   setPiTree: (value: null) => void;
   setPiNavigationEntryId: (value: string | null) => void;
   setCreateSessionWorkspaceId: (value: string | null) => void;
+  getCreateProfileMode: () => 'read-only' | 'edit';
+  setCreateProfileMode: (value: 'read-only' | 'edit') => void;
   setBusy: (value: boolean) => void;
   setErrorMessage: (value: string | null) => void;
   setNotice: (value: string) => void;
@@ -27,6 +29,20 @@ export type AgentSessionControllerContext = {
 };
 
 export function createAgentSessionController(context: AgentSessionControllerContext) {
+  function requestedProfile(agent: AgentName): ExecutionProfile {
+    const editable = context.getCreateProfileMode() === 'edit';
+    return {
+      schema: 'aibo.execution-profile/v1',
+      interactionMode: editable ? 'edit' : 'ask',
+      approvalPolicy: editable ? 'on-request' : agent === 'codex' ? 'on-request' : 'never',
+      filesystemPolicy: editable ? 'workspace-write' : 'read-only',
+      commandPolicy: 'disabled',
+      networkPolicy: 'disabled',
+      model: null,
+      reasoningEffort: null,
+    };
+  }
+
   function resetSessionContext(): void {
     context.setTimeline([]);
     context.setUsageSnapshot(null);
@@ -49,7 +65,7 @@ export function createAgentSessionController(context: AgentSessionControllerCont
     context.setBusy(true);
     context.setErrorMessage(null);
     try {
-      const session = await context.api.createCodexSession(workspace.id);
+      const session = await context.api.createCodexSession(workspace.id, requestedProfile('codex'));
       context.setWorkspaceSessionMap(upsertSession(context.getWorkspaceSessionMap(), session));
       context.setSelectedSessionId(session.id);
       resetSessionContext();
@@ -77,14 +93,14 @@ export function createAgentSessionController(context: AgentSessionControllerCont
     context.setBusy(true);
     context.setErrorMessage(null);
     try {
-      const session = await context.api.createPiSession(workspace.id);
+      const session = await context.api.createPiSession(workspace.id, requestedProfile('pi'));
       context.setWorkspaceSessionMap(upsertSession(context.getWorkspaceSessionMap(), session));
       context.setSelectedSessionId(session.id);
       resetSessionContext();
       context.setCreateSessionWorkspaceId(null);
       void context.refreshPiTree(session.id);
       void context.refreshExecutionProfile(session.id);
-      context.setNotice('Pi SDK 会话已启动；当前仅开放只读工具，Pi 本身不提供原生沙箱。');
+      context.setNotice('Pi SDK 会话已启动；工具权限由 Aibo Core profile 控制，Pi 本身不提供原生沙箱。');
     } catch (error) {
       context.setErrorMessage(toErrorMessage(error));
     } finally {

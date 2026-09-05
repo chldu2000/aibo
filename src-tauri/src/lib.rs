@@ -1,8 +1,10 @@
+mod change_set;
 mod codex;
 mod execution_profile;
 mod pi;
 mod workspace_guard;
 
+use change_set::{restore as restore_change_set, workspace_changes};
 use codex::{CodexManager, CodexThreadSnapshot, CodexThreadSummary};
 use execution_profile::{
     default_requested_profile, from_row as profile_from_row, resolve as resolve_profile,
@@ -11,6 +13,7 @@ use execution_profile::{
 };
 use pi::PiManager;
 use serde::Serialize;
+use sha2::{Digest, Sha256};
 use sqlx::{
     sqlite::{SqliteConnectOptions, SqliteJournalMode, SqlitePoolOptions},
     Row, SqlitePool,
@@ -52,6 +55,7 @@ pub struct AppState {
     db: SqlitePool,
     codex: CodexManager,
     pi: PiManager,
+    data_dir: PathBuf,
 }
 
 #[derive(Debug, Serialize)]
@@ -115,6 +119,127 @@ pub struct TimelineItem {
     pub(crate) status: String,
     pub(crate) created_at: String,
     pub(crate) updated_at: String,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ChangeSetState {
+    pub(crate) head: Option<String>,
+    pub(crate) dirty: Option<bool>,
+    pub(crate) captured_at: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct FileChange {
+    pub(crate) path: String,
+    pub(crate) kind: String,
+    pub(crate) baseline_exists: bool,
+    pub(crate) baseline_hash: Option<String>,
+    pub(crate) baseline_size: Option<i64>,
+    pub(crate) result_exists: bool,
+    pub(crate) result_hash: Option<String>,
+    pub(crate) result_size: Option<i64>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CommandRunRef {
+    pub(crate) id: String,
+    pub(crate) tool_name: Option<String>,
+    pub(crate) command: Option<String>,
+    pub(crate) cwd: Option<String>,
+    pub(crate) exit_code: Option<i64>,
+    pub(crate) status: String,
+    pub(crate) output: String,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct VerificationRef {
+    pub(crate) id: String,
+    pub(crate) status: String,
+    pub(crate) output: String,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TurnChangeSet {
+    pub(crate) id: String,
+    pub(crate) schema: String,
+    pub(crate) workspace_id: String,
+    pub(crate) session_id: String,
+    pub(crate) turn_id: String,
+    pub(crate) baseline: ChangeSetState,
+    pub(crate) result: ChangeSetState,
+    pub(crate) files: Vec<FileChange>,
+    pub(crate) commands: Vec<CommandRunRef>,
+    pub(crate) verification: Vec<VerificationRef>,
+    pub(crate) attribution: String,
+    pub(crate) capture_status: String,
+    pub(crate) capture_error: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RestoreTurnChangeSetResult {
+    pub(crate) applied: bool,
+    pub(crate) restored: Vec<String>,
+    pub(crate) conflicts: Vec<String>,
+    pub(crate) unsupported: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct WorkspaceFileChange {
+    pub(crate) path: String,
+    pub(crate) kind: String,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct WorkspaceChanges {
+    pub(crate) workspace_id: String,
+    pub(crate) head: Option<String>,
+    pub(crate) dirty: bool,
+    pub(crate) captured_at: String,
+    pub(crate) files: Vec<WorkspaceFileChange>,
+    pub(crate) capture_status: String,
+    pub(crate) capture_error: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TurnFileDiff {
+    pub(crate) path: String,
+    pub(crate) available: bool,
+    pub(crate) diff: String,
+    pub(crate) reason: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct GitFileActionResult {
+    pub(crate) path: String,
+    pub(crate) action: String,
+    pub(crate) applied: bool,
+    pub(crate) message: String,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ContextAttachment {
+    pub(crate) id: String,
+    pub(crate) workspace_id: String,
+    pub(crate) session_id: String,
+    pub(crate) turn_id: Option<String>,
+    pub(crate) path: String,
+    pub(crate) content_hash: Option<String>,
+    pub(crate) size: Option<i64>,
+    pub(crate) media_type: String,
+    pub(crate) source: String,
+    pub(crate) send_strategy: String,
+    pub(crate) created_at: String,
 }
 
 #[derive(Debug, thiserror::Error)]
@@ -206,6 +331,47 @@ fn now_iso() -> String {
     OffsetDateTime::now_utc()
         .format(&Rfc3339)
         .unwrap_or_else(|_| "1970-01-01T00:00:00Z".to_owned())
+}
+
+fn is_verification_command(command: Option<&str>) -> bool {
+    let Some(command) = command else { return false };
+    let command = command.trim_start().to_ascii_lowercase();
+    [
+        "pnpm test",
+        "pnpm build",
+        "pnpm exec tsc",
+        "npm test",
+        "yarn test",
+        "cargo test",
+        "cargo fmt --check",
+        "pytest",
+        "vitest",
+    ]
+    .iter()
+    .any(|prefix| command.starts_with(prefix))
+}
+
+fn attachment_media_type(path: &Path, is_dir: bool) -> String {
+    if is_dir {
+        return "inode/directory".to_owned();
+    }
+    match path
+        .extension()
+        .and_then(|value| value.to_str())
+        .map(str::to_ascii_lowercase)
+        .as_deref()
+    {
+        Some("md" | "markdown") => "text/markdown".to_owned(),
+        Some("txt" | "log") => "text/plain".to_owned(),
+        Some("json") => "application/json".to_owned(),
+        Some("png") => "image/png".to_owned(),
+        Some("jpg" | "jpeg") => "image/jpeg".to_owned(),
+        Some("gif") => "image/gif".to_owned(),
+        Some("svg") => "image/svg+xml".to_owned(),
+        Some("rs") => "text/x-rust".to_owned(),
+        Some("ts" | "tsx" | "js" | "jsx" | "svelte") => "text/javascript".to_owned(),
+        _ => "application/octet-stream".to_owned(),
+    }
 }
 
 async fn open_database(path: &Path) -> Result<SqlitePool, CoreError> {
@@ -613,6 +779,424 @@ async fn get_timeline(
 }
 
 #[tauri::command]
+async fn get_turn_change_set(
+    session_id: String,
+    turn_id: Option<String>,
+    state: State<'_, AppState>,
+) -> Result<Option<TurnChangeSet>, CoreError> {
+    session_by_id(&state.db, &session_id).await?;
+    let row = sqlx::query(
+        "SELECT id, schema_version, workspace_id, session_id, turn_id,
+                baseline_head, baseline_dirty, baseline_captured_at,
+                result_head, result_dirty, result_captured_at,
+                attribution, capture_status, capture_error
+         FROM turn_change_sets
+         WHERE session_id = ? AND (? IS NULL OR turn_id = ?)
+         ORDER BY updated_at DESC LIMIT 1",
+    )
+    .bind(&session_id)
+    .bind(&turn_id)
+    .bind(&turn_id)
+    .fetch_optional(&state.db)
+    .await?;
+    let Some(row) = row else { return Ok(None) };
+    let change_set_id: String = row.try_get("id")?;
+    let file_rows = sqlx::query(
+        "SELECT path, change_kind, baseline_exists, baseline_hash, baseline_size,
+                result_exists, result_hash, result_size
+         FROM file_changes WHERE change_set_id = ? ORDER BY path ASC",
+    )
+    .bind(&change_set_id)
+    .fetch_all(&state.db)
+    .await?;
+    let files = file_rows
+        .iter()
+        .map(|file| {
+            Ok(FileChange {
+                path: file.try_get("path")?,
+                kind: file.try_get("change_kind")?,
+                baseline_exists: file.try_get::<i64, _>("baseline_exists")? != 0,
+                baseline_hash: file.try_get("baseline_hash")?,
+                baseline_size: file.try_get("baseline_size")?,
+                result_exists: file.try_get::<i64, _>("result_exists")? != 0,
+                result_hash: file.try_get("result_hash")?,
+                result_size: file.try_get("result_size")?,
+            })
+        })
+        .collect::<Result<Vec<_>, sqlx::Error>>()?;
+    let command_rows = sqlx::query(
+        "SELECT id, tool_name, tool_command, tool_cwd, tool_exit_code, status, content FROM messages
+         WHERE session_id = ? AND turn_id = ? AND role = 'tool'
+           AND lower(COALESCE(tool_name, '')) LIKE '%command%'
+         ORDER BY created_at ASC",
+    )
+    .bind(&session_id)
+    .bind(row.try_get::<String, _>("turn_id")?)
+    .fetch_all(&state.db)
+    .await?;
+    let commands = command_rows
+        .iter()
+        .map(|command| {
+            Ok(CommandRunRef {
+                id: command.try_get("id")?,
+                tool_name: command.try_get("tool_name")?,
+                command: command.try_get("tool_command")?,
+                cwd: command.try_get("tool_cwd")?,
+                exit_code: command.try_get("tool_exit_code")?,
+                status: command.try_get("status")?,
+                output: command.try_get("content")?,
+            })
+        })
+        .collect::<Result<Vec<_>, sqlx::Error>>()?;
+    let verification = commands
+        .iter()
+        .filter(|command| is_verification_command(command.command.as_deref()))
+        .map(|command| VerificationRef {
+            id: command.id.clone(),
+            status: if command.exit_code.is_some_and(|code| code != 0) || command.status == "failed"
+            {
+                "failed".to_owned()
+            } else if command.status == "completed" {
+                "passed".to_owned()
+            } else {
+                "running".to_owned()
+            },
+            output: command.output.clone(),
+        })
+        .collect();
+    Ok(Some(TurnChangeSet {
+        id: change_set_id,
+        schema: row.try_get("schema_version")?,
+        workspace_id: row.try_get("workspace_id")?,
+        session_id: row.try_get("session_id")?,
+        turn_id: row.try_get("turn_id")?,
+        baseline: ChangeSetState {
+            head: row.try_get("baseline_head")?,
+            dirty: row
+                .try_get::<Option<i64>, _>("baseline_dirty")?
+                .map(|value| value != 0),
+            captured_at: row.try_get("baseline_captured_at")?,
+        },
+        result: ChangeSetState {
+            head: row.try_get("result_head")?,
+            dirty: row
+                .try_get::<Option<i64>, _>("result_dirty")?
+                .map(|value| value != 0),
+            captured_at: row.try_get("result_captured_at")?,
+        },
+        files,
+        commands,
+        verification,
+        attribution: row.try_get("attribution")?,
+        capture_status: row.try_get("capture_status")?,
+        capture_error: row.try_get("capture_error")?,
+    }))
+}
+
+#[tauri::command]
+async fn restore_turn_change_set(
+    session_id: String,
+    turn_id: String,
+    state: State<'_, AppState>,
+) -> Result<RestoreTurnChangeSetResult, CoreError> {
+    let session = session_by_id(&state.db, &session_id).await?;
+    let workspace = workspace_by_id(&state.db, &session.workspace_id).await?;
+    if workspace.trust != "trusted" {
+        return Err(CoreError::WorkspaceTrustRequired);
+    }
+    let report = restore_change_set(
+        &state.db,
+        &state.data_dir.join("checkpoints"),
+        Path::new(&workspace.path),
+        &session_id,
+        &turn_id,
+    )
+    .await
+    .map_err(CoreError::Database)?;
+    Ok(RestoreTurnChangeSetResult {
+        applied: report.applied,
+        restored: report.restored,
+        conflicts: report.conflicts,
+        unsupported: report.unsupported,
+    })
+}
+
+#[tauri::command]
+async fn get_workspace_changes(
+    workspace_id: String,
+    state: State<'_, AppState>,
+) -> Result<WorkspaceChanges, CoreError> {
+    let workspace = workspace_by_id(&state.db, &workspace_id).await?;
+    let changes = workspace_changes(Path::new(&workspace.path))
+        .await
+        .map_err(CoreError::Database)?;
+    Ok(WorkspaceChanges {
+        workspace_id,
+        head: changes.head,
+        dirty: changes.dirty,
+        captured_at: changes.captured_at,
+        files: changes
+            .files
+            .into_iter()
+            .map(|file| WorkspaceFileChange {
+                path: file.path,
+                kind: file.kind.to_owned(),
+            })
+            .collect(),
+        capture_status: changes.capture_status.to_owned(),
+        capture_error: changes.capture_error,
+    })
+}
+
+#[tauri::command]
+async fn get_turn_file_diff(
+    session_id: String,
+    turn_id: String,
+    path: String,
+    state: State<'_, AppState>,
+) -> Result<TurnFileDiff, CoreError> {
+    let session = session_by_id(&state.db, &session_id).await?;
+    let workspace = workspace_by_id(&state.db, &session.workspace_id).await?;
+    let changed: i64 = sqlx::query_scalar(
+        "SELECT COUNT(*) FROM file_changes WHERE path = ? AND change_set_id = (
+           SELECT id FROM turn_change_sets WHERE session_id = ? AND turn_id = ?
+         )",
+    )
+    .bind(&path)
+    .bind(&session_id)
+    .bind(&turn_id)
+    .fetch_one(&state.db)
+    .await?;
+    if changed == 0 {
+        return Err(CoreError::Database(
+            "requested file is not in the turn change set".to_owned(),
+        ));
+    }
+    let root = Path::new(&workspace.path);
+    crate::workspace_guard::canonicalize_target(root, Path::new(&path))
+        .map_err(CoreError::InvalidWorkspacePath)?;
+    let git = Command::new("git")
+        .args(["-C", &workspace.path, "rev-parse", "--is-inside-work-tree"])
+        .output();
+    let Ok(git) = git else {
+        return Ok(TurnFileDiff {
+            path,
+            available: false,
+            diff: String::new(),
+            reason: Some("Git 不可用，当前工作区暂不提供 unified diff".to_owned()),
+        });
+    };
+    if !git.status.success() || String::from_utf8_lossy(&git.stdout).trim() != "true" {
+        return Ok(TurnFileDiff {
+            path,
+            available: false,
+            diff: String::new(),
+            reason: Some("非 Git 工作区暂不提供 unified diff".to_owned()),
+        });
+    }
+    let output = Command::new("git")
+        .args([
+            "-C",
+            &workspace.path,
+            "diff",
+            "--no-ext-diff",
+            "--unified=3",
+            "HEAD",
+            "--",
+            &path,
+        ])
+        .output()
+        .map_err(|error| CoreError::Database(format!("read file diff: {error}")))?;
+    if !output.status.success() {
+        return Err(CoreError::Database(format!(
+            "git diff exited with {}",
+            output.status
+        )));
+    }
+    let mut diff = String::from_utf8_lossy(&output.stdout).to_string();
+    if diff.len() > 200_000 {
+        diff.truncate(200_000);
+        diff.push_str("\n… diff 已截断");
+    }
+    Ok(TurnFileDiff {
+        path,
+        available: true,
+        diff,
+        reason: None,
+    })
+}
+
+#[tauri::command]
+async fn apply_git_file_action(
+    session_id: String,
+    path: String,
+    action: String,
+    state: State<'_, AppState>,
+) -> Result<GitFileActionResult, CoreError> {
+    let session = session_by_id(&state.db, &session_id).await?;
+    let workspace = workspace_by_id(&state.db, &session.workspace_id).await?;
+    if workspace.trust != "trusted" {
+        return Err(CoreError::WorkspaceTrustRequired);
+    }
+    if !matches!(action.as_str(), "stage" | "unstage" | "revert") {
+        return Err(CoreError::InvalidWorkspacePath(
+            "unsupported Git file action".to_owned(),
+        ));
+    }
+    let root = Path::new(&workspace.path);
+    crate::workspace_guard::canonicalize_target(root, Path::new(&path))
+        .map_err(CoreError::InvalidWorkspacePath)?;
+    let args: Vec<&str> = match action.as_str() {
+        "stage" => vec!["-C", &workspace.path, "add", "--", &path],
+        "unstage" => vec!["-C", &workspace.path, "restore", "--staged", "--", &path],
+        "revert" => vec!["-C", &workspace.path, "restore", "--worktree", "--", &path],
+        _ => unreachable!(),
+    };
+    let output = Command::new("git")
+        .args(args)
+        .output()
+        .map_err(|error| CoreError::Database(format!("run Git file action: {error}")))?;
+    let message = String::from_utf8_lossy(if output.status.success() {
+        &output.stdout
+    } else {
+        &output.stderr
+    })
+    .trim()
+    .to_owned();
+    if !output.status.success() {
+        return Ok(GitFileActionResult {
+            path,
+            action,
+            applied: false,
+            message: if message.is_empty() {
+                format!("git exited with {}", output.status)
+            } else {
+                message
+            },
+        });
+    }
+    Ok(GitFileActionResult {
+        path,
+        action,
+        applied: true,
+        message: if message.is_empty() {
+            "Git 操作已完成".to_owned()
+        } else {
+            message
+        },
+    })
+}
+
+#[tauri::command]
+async fn register_session_attachments(
+    session_id: String,
+    paths: Vec<String>,
+    state: State<'_, AppState>,
+) -> Result<Vec<ContextAttachment>, CoreError> {
+    let session = session_by_id(&state.db, &session_id).await?;
+    let workspace = workspace_by_id(&state.db, &session.workspace_id).await?;
+    let root = fs::canonicalize(&workspace.path)
+        .map_err(|error| CoreError::InvalidWorkspacePath(error.to_string()))?;
+    let now = now_iso();
+    let mut attachments = Vec::new();
+    for raw_path in paths {
+        let target = crate::workspace_guard::canonicalize_target(&root, Path::new(&raw_path))
+            .map_err(CoreError::InvalidWorkspacePath)?;
+        let metadata = fs::metadata(&target).map_err(|error| {
+            CoreError::InvalidWorkspacePath(format!("attachment is unavailable: {error}"))
+        })?;
+        let is_dir = metadata.is_dir();
+        if !is_dir && !metadata.is_file() {
+            return Err(CoreError::InvalidWorkspacePath(
+                "only files and directories can be attached".to_owned(),
+            ));
+        }
+        let relative = target
+            .strip_prefix(&root)
+            .map_err(|error| CoreError::InvalidWorkspacePath(error.to_string()))?
+            .to_string_lossy()
+            .replace('\\', "/");
+        let size = (!is_dir)
+            .then_some(metadata.len())
+            .map(|value| value as i64);
+        let content_hash = if !is_dir && metadata.len() <= 10 * 1024 * 1024 {
+            let bytes =
+                fs::read(&target).map_err(|error| CoreError::Database(error.to_string()))?;
+            let mut digest = Sha256::new();
+            digest.update(bytes);
+            Some(format!("sha256:{:x}", digest.finalize()))
+        } else {
+            None
+        };
+        let id = Ulid::new().to_string();
+        sqlx::query(
+            "INSERT INTO attachments
+             (id, workspace_id, session_id, turn_id, path, content_hash, size,
+              media_type, source, send_strategy, created_at)
+             VALUES (?, ?, ?, NULL, ?, ?, ?, ?, 'picker', 'reference', ?)",
+        )
+        .bind(&id)
+        .bind(&workspace.id)
+        .bind(&session_id)
+        .bind(&relative)
+        .bind(&content_hash)
+        .bind(size)
+        .bind(attachment_media_type(&target, is_dir))
+        .bind(&now)
+        .execute(&state.db)
+        .await?;
+        attachments.push(ContextAttachment {
+            id,
+            workspace_id: workspace.id.clone(),
+            session_id: session_id.clone(),
+            turn_id: None,
+            path: relative,
+            content_hash,
+            size,
+            media_type: attachment_media_type(&target, is_dir),
+            source: "picker".to_owned(),
+            send_strategy: "reference".to_owned(),
+            created_at: now.clone(),
+        });
+    }
+    Ok(attachments)
+}
+
+#[tauri::command]
+async fn list_session_attachments(
+    session_id: String,
+    state: State<'_, AppState>,
+) -> Result<Vec<ContextAttachment>, CoreError> {
+    session_by_id(&state.db, &session_id).await?;
+    let rows = sqlx::query(
+        "SELECT id, workspace_id, session_id, turn_id, path, content_hash, size,
+                media_type, source, send_strategy, created_at
+         FROM attachments WHERE session_id = ? ORDER BY created_at ASC",
+    )
+    .bind(&session_id)
+    .fetch_all(&state.db)
+    .await?;
+    rows.iter()
+        .map(|row| {
+            Ok(ContextAttachment {
+                id: row.try_get("id")?,
+                workspace_id: row.try_get("workspace_id")?,
+                session_id: row.try_get("session_id")?,
+                turn_id: row.try_get("turn_id")?,
+                path: row.try_get("path")?,
+                content_hash: row.try_get("content_hash")?,
+                size: row.try_get("size")?,
+                media_type: row.try_get("media_type")?,
+                source: row.try_get("source")?,
+                send_strategy: row.try_get("send_strategy")?,
+                created_at: row.try_get("created_at")?,
+            })
+        })
+        .collect::<Result<Vec<_>, sqlx::Error>>()
+        .map_err(Into::into)
+}
+
+#[tauri::command]
 async fn list_codex_threads(
     workspace_id: String,
     state: State<'_, AppState>,
@@ -795,6 +1379,20 @@ async fn abort_pi_turn(session_id: String, state: State<'_, AppState>) -> Result
 }
 
 #[tauri::command]
+async fn resolve_pi_approval(
+    session_id: String,
+    request_id: String,
+    decision: String,
+    state: State<'_, AppState>,
+) -> Result<(), CoreError> {
+    state
+        .pi
+        .resolve_approval(&session_id, &request_id, &decision)
+        .await
+        .map_err(Into::into)
+}
+
+#[tauri::command]
 async fn close_pi_session(session_id: String, state: State<'_, AppState>) -> Result<(), CoreError> {
     state.pi.close(&session_id).await.map_err(Into::into)
 }
@@ -965,6 +1563,8 @@ fn probe_pi() -> AgentDiagnostic {
             "abort",
             "session-tree",
             "read-only-tools",
+            "workspace-write-gateway",
+            "aibo-approval",
         ]
         .into_iter()
         .map(ToOwned::to_owned)
@@ -972,8 +1572,8 @@ fn probe_pi() -> AgentDiagnostic {
         auth_state: "delegated".to_owned(),
         message: Some(if host_ready {
             match cli_path {
-                Some(_) => "Project-locked SDK host ready; first slice exposes read-only tools; Pi has no native sandbox.".to_owned(),
-                None => "Project-locked SDK host ready; read-only tools only; global Pi CLI is optional; Pi has no native sandbox.".to_owned(),
+                Some(_) => "Project-locked SDK host ready; workspace writes are mediated by Aibo Core; Pi has no native sandbox.".to_owned(),
+                None => "Project-locked SDK host ready; workspace writes are mediated by Aibo Core; global Pi CLI is optional; Pi has no native sandbox.".to_owned(),
             }
         } else {
             "Node.js is required to start the project-locked Pi SDK host.".to_owned()
@@ -1028,9 +1628,14 @@ pub fn run() {
             let db = tauri::async_runtime::block_on(open_database(&db_path))
                 .map_err(|error| Box::new(error) as Box<dyn Error>)?;
             info!(path = %db_path.display(), "aibo core initialized");
-            let codex = CodexManager::new(app.handle().clone(), db.clone());
-            let pi = PiManager::new(app.handle().clone(), db.clone(), data_dir);
-            app.manage(AppState { db, codex, pi });
+            let codex = CodexManager::new(app.handle().clone(), db.clone(), data_dir.clone());
+            let pi = PiManager::new(app.handle().clone(), db.clone(), data_dir.clone());
+            app.manage(AppState {
+                db,
+                codex,
+                pi,
+                data_dir,
+            });
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
@@ -1044,6 +1649,13 @@ pub fn run() {
             get_session_execution_profile,
             list_sessions,
             get_timeline,
+            get_turn_change_set,
+            restore_turn_change_set,
+            get_workspace_changes,
+            get_turn_file_diff,
+            apply_git_file_action,
+            register_session_attachments,
+            list_session_attachments,
             rename_session,
             list_codex_threads,
             read_codex_thread,
@@ -1060,6 +1672,7 @@ pub fn run() {
             create_pi_session,
             send_pi_prompt,
             abort_pi_turn,
+            resolve_pi_approval,
             close_pi_session,
             steer_pi_prompt,
             follow_up_pi_prompt,
@@ -1176,6 +1789,8 @@ mod tests {
             "messages",
             "agent_events",
             "session_execution_profiles",
+            "turn_change_sets",
+            "file_changes",
         ] {
             let present: i64 = tauri::async_runtime::block_on(
                 sqlx::query_scalar(
@@ -1195,6 +1810,9 @@ mod tests {
             ("session_execution_profiles", "requested_json"),
             ("session_execution_profiles", "enforced_json"),
             ("session_execution_profiles", "native_sandbox"),
+            ("messages", "tool_command"),
+            ("messages", "tool_cwd"),
+            ("messages", "tool_exit_code"),
         ] {
             let present: i64 = tauri::async_runtime::block_on(
                 sqlx::query_scalar("SELECT COUNT(*) FROM pragma_table_info(?) WHERE name = ?")

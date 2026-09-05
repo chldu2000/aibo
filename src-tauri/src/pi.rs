@@ -1,7 +1,12 @@
+use super::change_set::{
+    capture as capture_workspace, persist as persist_change_set, persist_baseline_checkpoint,
+    WorkspaceSnapshot,
+};
 use super::execution_profile::ResolvedExecutionProfile;
+use super::workspace_guard::canonicalize_target;
 use super::{
     clone_cached_runtime, find_executable, now_iso, remove_cached_runtime, session_by_id,
-    workspace_by_id,
+    session_execution_profile, workspace_by_id,
 };
 use serde::Serialize;
 use serde_json::{json, Value};
@@ -30,6 +35,7 @@ use ulid::Ulid;
 const PI_ADAPTER_VERSION: &str = "phase3-pi-sdk-0.1.0";
 const PI_HOST_PROTOCOL: &str = "aibo-pi-sdk-host.v1";
 const REQUEST_TIMEOUT: Duration = Duration::from_secs(30);
+const MAX_WRITE_BYTES: usize = 10 * 1024 * 1024;
 
 #[derive(Debug, Error)]
 pub enum PiError {
@@ -229,6 +235,22 @@ impl PiClient {
         stdin.flush().await.map_err(|_| PiError::ProcessClosed)
     }
 
+    async fn reply(&self, request_id: &str, result: Result<Value, String>) -> Result<(), PiError> {
+        match result {
+            Ok(value) => {
+                self.write_message(json!({ "id": request_id, "result": value }))
+                    .await
+            }
+            Err(message) => {
+                self.write_message(json!({
+                    "id": request_id,
+                    "error": { "code": "aibo_tool_error", "message": message }
+                }))
+                .await
+            }
+        }
+    }
+
     async fn mark_closed(&self, reason: &str) {
         if !self.closed.swap(true, Ordering::SeqCst) {
             let mut pending = self.pending.lock().await;
@@ -295,12 +317,23 @@ struct PiSession {
     session_id: String,
     workspace_id: String,
     generation_id: String,
+    execution_profile: ResolvedExecutionProfile,
     external_session_id: Mutex<Option<String>>,
     current_turn_id: Mutex<Option<String>>,
     current_message_id: Mutex<Option<String>>,
     state: Mutex<String>,
     sequence: AtomicU64,
     active: AtomicBool,
+    pending_tool_requests: Mutex<HashMap<String, PendingPiToolRequest>>,
+    turn_baselines: Mutex<HashMap<String, WorkspaceSnapshot>>,
+    checkpoint_root: PathBuf,
+}
+
+struct PendingPiToolRequest {
+    host_request_id: String,
+    tool: String,
+    params: Value,
+    turn_id: Option<String>,
 }
 
 impl PiSession {
@@ -311,6 +344,8 @@ impl PiSession {
         session_id: String,
         workspace_id: String,
         generation_id: String,
+        execution_profile: ResolvedExecutionProfile,
+        checkpoint_root: PathBuf,
     ) -> Arc<Self> {
         Arc::new(Self {
             app,
@@ -319,12 +354,16 @@ impl PiSession {
             session_id,
             workspace_id,
             generation_id,
+            execution_profile,
             external_session_id: Mutex::new(None),
             current_turn_id: Mutex::new(None),
             current_message_id: Mutex::new(None),
             state: Mutex::new("starting".to_owned()),
             sequence: AtomicU64::new(0),
             active: AtomicBool::new(true),
+            pending_tool_requests: Mutex::new(HashMap::new()),
+            turn_baselines: Mutex::new(HashMap::new()),
+            checkpoint_root,
         })
     }
 
@@ -351,6 +390,88 @@ impl PiSession {
         });
     }
 
+    async fn capture_turn_baseline(&self, external_turn_id: &str) -> Result<(), PiError> {
+        let workspace_path: String = sqlx::query_scalar("SELECT path FROM workspaces WHERE id = ?")
+            .bind(&self.workspace_id)
+            .fetch_one(&self.db)
+            .await?;
+        match capture_workspace(Path::new(&workspace_path)).await {
+            Ok(snapshot) => {
+                if let Err(error) = persist_baseline_checkpoint(
+                    &self.checkpoint_root,
+                    &self.session_id,
+                    external_turn_id,
+                    Path::new(&workspace_path),
+                    &snapshot,
+                )
+                .await
+                {
+                    warn!(session_id = %self.session_id, turn_id = %external_turn_id, error = %error, "baseline checkpoint capture failed");
+                }
+                self.turn_baselines
+                    .lock()
+                    .await
+                    .insert(external_turn_id.to_owned(), snapshot);
+                Ok(())
+            }
+            Err(error) => {
+                self.emit_event(
+                    "adapter.warning",
+                    Some(external_turn_id.to_owned()),
+                    json!({ "message": format!("turn baseline capture failed: {error}"), "phase": "baseline" }),
+                    None,
+                )
+                .await
+            }
+        }
+    }
+
+    async fn finalize_turn_changes(&self, external_turn_id: &str) -> Result<(), PiError> {
+        let internal_turn = self.ensure_turn(external_turn_id, "").await?;
+        let baseline = self.turn_baselines.lock().await.remove(external_turn_id);
+        if baseline.is_none()
+            && sqlx::query_scalar::<_, i64>(
+                "SELECT COUNT(*) FROM turn_change_sets WHERE session_id = ? AND turn_id = ?",
+            )
+            .bind(&self.session_id)
+            .bind(&internal_turn)
+            .fetch_one(&self.db)
+            .await?
+                > 0
+        {
+            return Ok(());
+        }
+        let workspace_path: String = sqlx::query_scalar("SELECT path FROM workspaces WHERE id = ?")
+            .bind(&self.workspace_id)
+            .fetch_one(&self.db)
+            .await?;
+        let (result, capture_error) = match capture_workspace(Path::new(&workspace_path)).await {
+            Ok(snapshot) => (Some(snapshot), None),
+            Err(error) => (None, Some(error)),
+        };
+        persist_change_set(
+            &self.db,
+            &self.workspace_id,
+            &self.session_id,
+            &internal_turn,
+            baseline.as_ref(),
+            result.as_ref(),
+            capture_error.as_deref(),
+        )
+        .await
+        .map_err(PiError::Database)?;
+        if let Some(error) = capture_error {
+            self.emit_event(
+                "adapter.warning",
+                Some(external_turn_id.to_owned()),
+                json!({ "message": format!("turn result capture failed: {error}"), "phase": "result" }),
+                None,
+            )
+            .await?;
+        }
+        Ok(())
+    }
+
     async fn handle_event(&self, message: Value) -> Result<(), PiError> {
         if !self.active.load(Ordering::SeqCst) || !self.is_current_generation().await? {
             return Ok(());
@@ -358,6 +479,12 @@ impl PiSession {
         let Some((method, params)) = event_params(&message) else {
             return Ok(());
         };
+        if method == "aibo/tool-request" {
+            let request_id = message.get("id").and_then(value_id).ok_or_else(|| {
+                PiError::Protocol("Pi tool request did not include an id".to_owned())
+            })?;
+            return self.handle_tool_request(&request_id, params).await;
+        }
         if method == "aibo/event" {
             let event = params.get("event").cloned().unwrap_or_else(|| json!({}));
             let turn_id = params
@@ -368,11 +495,21 @@ impl PiSession {
         }
         match method {
             "aibo/process-exited" => {
+                if let Some(turn_id) = self.current_turn_id.lock().await.clone() {
+                    self.finalize_turn_changes(&turn_id).await?;
+                }
+                *self.current_turn_id.lock().await = None;
+                *self.current_message_id.lock().await = None;
+                let discarded_approvals = self.pending_tool_requests.lock().await.len();
+                self.pending_tool_requests.lock().await.clear();
                 self.set_state("interrupted").await?;
                 self.emit_event(
                     "adapter.crashed",
                     None,
-                    json!({ "reason": params.get("reason") }),
+                    json!({
+                        "reason": params.get("reason"),
+                        "pendingApprovalCount": discarded_approvals,
+                    }),
                     None,
                 )
                 .await?;
@@ -389,6 +526,228 @@ impl PiSession {
             _ => {}
         }
         Ok(())
+    }
+
+    async fn handle_tool_request(
+        &self,
+        host_request_id: &str,
+        params: &Value,
+    ) -> Result<(), PiError> {
+        let tool = params
+            .get("tool")
+            .and_then(Value::as_str)
+            .unwrap_or_default();
+        if tool != "write_file" {
+            return self
+                .client
+                .reply(
+                    host_request_id,
+                    Err(format!("unsupported Pi Core tool: {tool}")),
+                )
+                .await;
+        }
+        if self.execution_profile.enforced.interaction_mode != "edit"
+            || self.execution_profile.enforced.filesystem_policy != "workspace-write"
+        {
+            return self
+                .client
+                .reply(
+                    host_request_id,
+                    Err("当前 Pi 会话未启用工作区写入能力".to_owned()),
+                )
+                .await;
+        }
+
+        let workspace = match workspace_by_id(&self.db, &self.workspace_id).await {
+            Ok(workspace) => workspace,
+            Err(error) => {
+                return self
+                    .client
+                    .reply(host_request_id, Err(error.to_string()))
+                    .await;
+            }
+        };
+        if workspace.trust != "trusted" {
+            return self
+                .client
+                .reply(
+                    host_request_id,
+                    Err("工作区尚未信任，拒绝 Pi 写入请求".to_owned()),
+                )
+                .await;
+        }
+        let Some(path) = params
+            .get("path")
+            .and_then(Value::as_str)
+            .filter(|value| !value.trim().is_empty())
+        else {
+            return self
+                .client
+                .reply(
+                    host_request_id,
+                    Err("Pi write request is missing path".to_owned()),
+                )
+                .await;
+        };
+        let Some(content) = params.get("content").and_then(Value::as_str) else {
+            return self
+                .client
+                .reply(
+                    host_request_id,
+                    Err("Pi write request is missing content".to_owned()),
+                )
+                .await;
+        };
+        if content.len() > MAX_WRITE_BYTES {
+            return self
+                .client
+                .reply(
+                    host_request_id,
+                    Err(format!("Pi write request exceeds {MAX_WRITE_BYTES} bytes")),
+                )
+                .await;
+        }
+        let resolved = match canonicalize_target(Path::new(&workspace.path), Path::new(path)) {
+            Ok(path) => path,
+            Err(error) => {
+                return self.client.reply(host_request_id, Err(error)).await;
+            }
+        };
+        let relative = resolved
+            .strip_prefix(&workspace.path)
+            .map(|value| value.display().to_string())
+            .unwrap_or_else(|_| resolved.display().to_string());
+        let display = format!("write {relative}");
+        let turn_id = params
+            .get("turnId")
+            .and_then(Value::as_str)
+            .map(ToOwned::to_owned);
+        let pending = PendingPiToolRequest {
+            host_request_id: host_request_id.to_owned(),
+            tool: tool.to_owned(),
+            params: json!({ "path": resolved, "content": content }),
+            turn_id: turn_id.clone(),
+        };
+
+        if self.execution_profile.enforced.approval_policy == "on-request" {
+            let approval_id = format!("pi-tool:{host_request_id}");
+            self.pending_tool_requests
+                .lock()
+                .await
+                .insert(approval_id.clone(), pending);
+            self.set_state("waiting_approval").await?;
+            self.emit_event(
+                "approval.requested",
+                turn_id,
+                json!({
+                    "requestId": approval_id,
+                    "kind": "pi_tool",
+                    "command": display,
+                    "cwd": workspace.path,
+                    "availableDecisions": ["accept", "cancel"]
+                }),
+                Some(json!({ "tool": tool, "hostRequestId": host_request_id })),
+            )
+            .await?;
+            return Ok(());
+        }
+
+        self.execute_tool_request(pending).await
+    }
+
+    async fn execute_tool_request(&self, request: PendingPiToolRequest) -> Result<(), PiError> {
+        let host_request_id = request.host_request_id.clone();
+        let result = self.perform_tool_write(&request).await;
+        self.client
+            .reply(&host_request_id, result.map_err(|error| error.to_string()))
+            .await
+    }
+
+    async fn perform_tool_write(&self, request: &PendingPiToolRequest) -> Result<Value, PiError> {
+        let workspace = workspace_by_id(&self.db, &self.workspace_id)
+            .await
+            .map_err(|error| PiError::Session(error.to_string()))?;
+        if workspace.trust != "trusted" {
+            return Err(PiError::Session(
+                "工作区信任已撤销，拒绝 Pi 写入请求".to_owned(),
+            ));
+        }
+        let path = request
+            .params
+            .get("path")
+            .and_then(Value::as_str)
+            .ok_or_else(|| PiError::Protocol("resolved Pi write path is missing".to_owned()))?;
+        let content = request
+            .params
+            .get("content")
+            .and_then(Value::as_str)
+            .ok_or_else(|| PiError::Protocol("resolved Pi write content is missing".to_owned()))?;
+        let resolved = canonicalize_target(Path::new(&workspace.path), Path::new(path))
+            .map_err(PiError::Session)?;
+        if content.len() > MAX_WRITE_BYTES {
+            return Err(PiError::Session(format!(
+                "Pi write request exceeds {MAX_WRITE_BYTES} bytes"
+            )));
+        }
+        if let Some(parent) = resolved.parent() {
+            tokio::fs::create_dir_all(parent)
+                .await
+                .map_err(|error| PiError::Session(format!("create write directory: {error}")))?;
+        }
+        tokio::fs::write(&resolved, content)
+            .await
+            .map_err(|error| PiError::Session(format!("write workspace file: {error}")))?;
+        Ok(json!({ "path": resolved, "bytes": content.len(), "tool": request.tool }))
+    }
+
+    async fn resolve_tool_approval(
+        &self,
+        approval_id: &str,
+        decision: &str,
+    ) -> Result<(), PiError> {
+        if decision != "accept" && decision != "cancel" {
+            return Err(PiError::Session(
+                "approval decision must be accept or cancel".to_owned(),
+            ));
+        }
+        let request = self
+            .pending_tool_requests
+            .lock()
+            .await
+            .remove(approval_id)
+            .ok_or_else(|| PiError::Session("Pi tool approval is no longer pending".to_owned()))?;
+        if decision == "accept" {
+            let turn_id = request.turn_id.clone();
+            let tool = request.tool.clone();
+            self.execute_tool_request(request).await?;
+            self.emit_event(
+                "approval.resolved",
+                turn_id,
+                json!({ "requestId": approval_id, "decision": "accept", "tool": tool }),
+                None,
+            )
+            .await?;
+        } else {
+            self.client
+                .reply(
+                    &request.host_request_id,
+                    Err("用户拒绝了 Pi 工作区写入".to_owned()),
+                )
+                .await?;
+            self.emit_event(
+                "approval.resolved",
+                request.turn_id.clone(),
+                json!({ "requestId": approval_id, "decision": "cancel", "tool": request.tool }),
+                None,
+            )
+            .await?;
+        }
+        let next_state = if self.current_turn_id.lock().await.is_some() {
+            "running"
+        } else {
+            "idle"
+        };
+        self.set_state(next_state).await
     }
 
     async fn handle_sdk_event(
@@ -409,6 +768,7 @@ impl PiSession {
                 self.ensure_turn(&turn, "").await?;
                 *self.current_turn_id.lock().await = Some(turn.clone());
                 *self.current_message_id.lock().await = None;
+                self.capture_turn_baseline(&turn).await?;
                 self.set_state("running").await?;
                 self.emit_event(
                     "turn.started",
@@ -488,6 +848,7 @@ impl PiSession {
             "turn_end" => {
                 if let Some(turn) = turn_id.as_deref() {
                     let internal = self.ensure_turn(turn, "").await?;
+                    self.finalize_turn_changes(turn).await?;
                     let message = event.get("message").unwrap_or(&Value::Null);
                     let text = text_from_message(message);
                     let status = match message
@@ -530,6 +891,7 @@ impl PiSession {
             "agent_error" => {
                 if let Some(turn) = turn_id.as_deref() {
                     let internal = self.ensure_turn(turn, "").await?;
+                    self.finalize_turn_changes(turn).await?;
                     sqlx::query(
                         "UPDATE turns SET status = 'failed', completed_at = ? WHERE id = ?",
                     )
@@ -799,12 +1161,18 @@ impl PiSession {
         cwd: &str,
         session_dir: &Path,
         external_id: Option<&str>,
+        profile: &ResolvedExecutionProfile,
     ) -> Result<String, PiError> {
         let response = self
             .client
             .request(
                 "start",
-                json!({ "cwd": cwd, "sessionDir": session_dir, "sessionId": external_id }),
+                json!({
+                    "cwd": cwd,
+                    "sessionDir": session_dir,
+                    "sessionId": external_id,
+                    "executionProfile": profile.enforced,
+                }),
             )
             .await?;
         session_id_from_start(&response).ok_or_else(|| {
@@ -1063,6 +1431,7 @@ pub(crate) struct PiManager {
     db: SqlitePool,
     sessions: Arc<Mutex<HashMap<String, Arc<PiSession>>>>,
     session_root: PathBuf,
+    checkpoint_root: PathBuf,
 }
 
 impl PiManager {
@@ -1072,6 +1441,7 @@ impl PiManager {
             db,
             sessions: Arc::new(Mutex::new(HashMap::new())),
             session_root: data_dir.join("pi-sessions"),
+            checkpoint_root: data_dir.join("checkpoints"),
         }
     }
 
@@ -1095,6 +1465,7 @@ impl PiManager {
         workspace_id: &str,
         workspace_path: &str,
         external_id: Option<&str>,
+        profile: &ResolvedExecutionProfile,
     ) -> Result<Arc<PiSession>, PiError> {
         let node = find_executable("node").ok_or(PiError::MissingNode)?;
         let script = Self::host_script(&self.app)?;
@@ -1111,6 +1482,8 @@ impl PiManager {
             session_id.to_owned(),
             workspace_id.to_owned(),
             generation_id.clone(),
+            profile.clone(),
+            self.checkpoint_root.clone(),
         );
         self.sessions
             .lock()
@@ -1118,7 +1491,7 @@ impl PiManager {
             .insert(session_id.to_owned(), runtime.clone());
         runtime.start_event_loop();
         let started = match runtime
-            .initialize(workspace_path, &session_dir, external_id)
+            .initialize(workspace_path, &session_dir, external_id, profile)
             .await
         {
             Ok(started) => started,
@@ -1144,8 +1517,22 @@ impl PiManager {
             client.close().await;
             return Err(PiError::Database(error));
         }
+        let mut capabilities = vec![
+            "streaming",
+            "abort",
+            "session-tree",
+            "session-tree-navigation",
+            "session-snapshot",
+            "read-only-tools",
+        ];
+        if profile.enforced.filesystem_policy == "workspace-write" {
+            capabilities.push("workspace-write-gateway");
+        }
+        if profile.enforced.approval_policy == "on-request" {
+            capabilities.push("aibo-approval");
+        }
         if let Err(error) = runtime
-            .emit_event("session.started", None, json!({ "externalSessionId": started, "capabilities": ["streaming", "abort", "session-tree", "session-tree-navigation", "session-snapshot", "read-only-tools"], "sandbox": "none" }), None)
+            .emit_event("session.started", None, json!({ "externalSessionId": started, "capabilities": capabilities, "sandbox": "none", "nativeSandbox": false }), None)
             .await
         {
             runtime.deactivate();
@@ -1160,7 +1547,7 @@ impl PiManager {
     pub(crate) async fn create_session(
         &self,
         workspace_id: &str,
-        _profile: &ResolvedExecutionProfile,
+        profile: &ResolvedExecutionProfile,
     ) -> Result<super::Session, PiError> {
         let workspace = workspace_by_id(&self.db, workspace_id)
             .await
@@ -1173,7 +1560,7 @@ impl PiManager {
         sqlx::query("INSERT INTO session_bindings (session_id, external_session_id, generation_id, adapter_version, bound_at) VALUES (?, NULL, ?, ?, ?)")
             .bind(&session_id).bind(&generation_id).bind(PI_ADAPTER_VERSION).bind(&now).execute(&self.db).await?;
         if let Err(error) = self
-            .spawn_runtime(&session_id, workspace_id, &workspace.path, None)
+            .spawn_runtime(&session_id, workspace_id, &workspace.path, None, profile)
             .await
         {
             let _ =
@@ -1219,11 +1606,15 @@ impl PiManager {
             .bind(&session.workspace_id)
             .fetch_one(&self.db)
             .await?;
+        let profile = session_execution_profile(&self.db, session_id)
+            .await
+            .map_err(|error| PiError::Session(error.to_string()))?;
         self.spawn_runtime(
             session_id,
             &session.workspace_id,
             &workspace_path,
             external_id.as_deref(),
+            &profile.profile,
         )
         .await
     }
@@ -1413,6 +1804,16 @@ impl PiManager {
         // The SDK emits the authoritative aborted `turn_end`; the event loop
         // will persist it and transition the session without a duplicate turn.
         Ok(())
+    }
+
+    pub(crate) async fn resolve_approval(
+        &self,
+        session_id: &str,
+        request_id: &str,
+        decision: &str,
+    ) -> Result<(), PiError> {
+        let session = self.ensure_runtime(session_id).await?;
+        session.resolve_tool_approval(request_id, decision).await
     }
 
     pub(crate) async fn close(&self, session_id: &str) -> Result<(), PiError> {

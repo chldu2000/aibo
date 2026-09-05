@@ -7,7 +7,7 @@
     SessionPanelView,
     WorkspaceListItem,
   } from './view-types';
-  import type { PiSessionTreeSnapshot, SessionExecutionProfile } from '$lib/types';
+  import type { GitFileAction, PiSessionTreeSnapshot, SessionExecutionProfile, TurnChangeSet, TurnFileDiff, WorkspaceChanges } from '$lib/types';
 
   type InspectorProps = {
     workspace: WorkspaceListItem | null;
@@ -16,6 +16,9 @@
     codexThreads: CodexThreadListItem[];
     piTree: PiSessionTreeSnapshot | null;
     executionProfile: SessionExecutionProfile | null;
+    turnChangeSet: TurnChangeSet | null;
+    workspaceChanges: WorkspaceChanges | null;
+    turnFileDiff: TurnFileDiff | null;
     threadBusy: boolean;
     busy: boolean;
     sessionRunning: boolean;
@@ -23,6 +26,9 @@
     onSyncCodexThreads: () => void;
     onRequestPiTreeNavigation: (entryId: string) => void;
     onRefreshPiTree: (sessionId: string) => void;
+    onRestoreTurnChangeSet: (sessionId: string, turnId: string) => void;
+    onShowTurnFileDiff: (sessionId: string, turnId: string, path: string) => void;
+    onApplyGitFileAction: (sessionId: string, path: string, action: GitFileAction) => void;
     onRefresh: () => void;
   };
 
@@ -33,6 +39,9 @@
     codexThreads,
     piTree,
     executionProfile,
+    turnChangeSet,
+    workspaceChanges,
+    turnFileDiff,
     threadBusy,
     busy,
     sessionRunning,
@@ -40,6 +49,9 @@
     onSyncCodexThreads,
     onRequestPiTreeNavigation,
     onRefreshPiTree,
+    onRestoreTurnChangeSet,
+    onShowTurnFileDiff,
+    onApplyGitFileAction,
     onRefresh,
   }: InspectorProps = $props();
 
@@ -105,6 +117,101 @@
           </dl>
           {#if executionProfile.unsupported.length > 0}
             <p class="profile-warning">未启用：{executionProfile.unsupported.join('、')}</p>
+          {/if}
+        </CardContent>
+      </Card>
+    {/if}
+    {#if turnChangeSet}
+      <Card class="changeset-card">
+        <CardHeader class="thread-card-heading">
+          <CardTitle>本轮变更</CardTitle>
+          <Badge variant={turnChangeSet.files.length > 0 ? 'warning' : 'secondary'}>
+            {turnChangeSet.files.length} 个文件
+          </Badge>
+        </CardHeader>
+        <CardContent class="thread-card-content">
+          <small class="changeset-status">{turnChangeSet.captureStatus === 'captured' ? '已采集' : turnChangeSet.captureStatus === 'partial' ? '部分采集' : '采集失败'} · {turnChangeSet.attribution}</small>
+          {#if turnChangeSet.commands.length > 0}
+            <small class="changeset-status">命令 · {turnChangeSet.commands.length} 项</small>
+            <div class="thread-list" aria-label="本轮命令">
+              {#each turnChangeSet.commands.slice(0, 5) as command (command.id)}
+                <div class="thread-item changeset-file">
+                  <span class={`change-kind ${command.status === 'failed' ? 'change-kind-deleted' : 'change-kind-modified'}`}>{command.status === 'failed' ? '!' : '>'}</span>
+                  <div class="thread-copy">
+                    <code title={command.command ?? command.output}>{command.command || command.output || command.toolName || '命令'}</code>
+                    <small>{command.cwd ?? '当前工作区'}{command.exitCode === null ? '' : ` · 退出码 ${command.exitCode}`}</small>
+                  </div>
+                </div>
+              {/each}
+            </div>
+          {/if}
+          {#if turnChangeSet.verification.length > 0}
+            <small class="changeset-status">验证 · {turnChangeSet.verification.filter((item) => item.status === 'passed').length}/{turnChangeSet.verification.length} 通过</small>
+          {/if}
+          {#if turnChangeSet.files.length > 0}
+            <div class="thread-list" aria-label="本轮文件变更">
+              {#each turnChangeSet.files.slice(0, 8) as file (file.path)}
+                <div class="thread-item changeset-file changeset-file-row">
+                  <Button variant="ghost" size="sm" type="button" class="changeset-file-button" onclick={() => onShowTurnFileDiff(turnChangeSet.sessionId, turnChangeSet.turnId, file.path)} disabled={busy || sessionRunning || selectedSessionArchiving} title="查看文件 diff">
+                    <span class={`change-kind change-kind-${file.kind}`}>{file.kind === 'added' ? '+' : file.kind === 'deleted' ? '−' : '~'}</span>
+                    <code title={file.path}>{file.path}</code>
+                  </Button>
+                  {#if workspaceChanges?.captureStatus === 'captured'}
+                    <div class="changeset-actions">
+                      <Button variant="ghost" size="sm" type="button" onclick={() => onApplyGitFileAction(turnChangeSet.sessionId, file.path, 'stage')} disabled={busy || sessionRunning || selectedSessionArchiving} title="暂存">暂存</Button>
+                      <Button variant="ghost" size="sm" type="button" onclick={() => onApplyGitFileAction(turnChangeSet.sessionId, file.path, 'unstage')} disabled={busy || sessionRunning || selectedSessionArchiving} title="取消暂存">撤销暂存</Button>
+                      <Button variant="ghost" size="sm" type="button" onclick={() => onApplyGitFileAction(turnChangeSet.sessionId, file.path, 'revert')} disabled={busy || sessionRunning || selectedSessionArchiving} title="撤销文件变更">还原</Button>
+                    </div>
+                  {/if}
+                </div>
+              {/each}
+            </div>
+            {#if turnChangeSet.files.length > 8}<small class="thread-more">还有 {turnChangeSet.files.length - 8} 个文件</small>{/if}
+          {:else}
+            <p class="thread-empty">本轮没有检测到文件变化</p>
+          {/if}
+          {#if turnChangeSet.captureError}<p class="profile-warning">{turnChangeSet.captureError}</p>{/if}
+          {#if turnFileDiff}
+            <div class="turn-file-diff">
+              <small>{turnFileDiff.path}</small>
+              {#if turnFileDiff.available}
+                <pre>{turnFileDiff.diff || '没有可显示的 diff'}</pre>
+              {:else}
+                <p class="thread-empty">{turnFileDiff.reason}</p>
+              {/if}
+            </div>
+          {/if}
+          {#if turnChangeSet.files.length > 0}
+            <Button variant="outline" size="sm" type="button" onclick={() => onRestoreTurnChangeSet(turnChangeSet.sessionId, turnChangeSet.turnId)} disabled={busy || sessionRunning || selectedSessionArchiving || turnChangeSet.attribution !== 'agent'}>
+              <Icon name="undo" size={13} /> 恢复本轮变更
+            </Button>
+          {/if}
+        </CardContent>
+      </Card>
+    {/if}
+    {#if workspaceChanges}
+      <Card class="changeset-card workspace-changes-card">
+        <CardHeader class="thread-card-heading">
+          <CardTitle>整个工作区</CardTitle>
+          <Badge variant={workspaceChanges.captureStatus === 'captured' && workspaceChanges.dirty ? 'warning' : 'secondary'}>
+            {workspaceChanges.captureStatus === 'captured' ? `${workspaceChanges.files.length} 项` : '不可用'}
+          </Badge>
+        </CardHeader>
+        <CardContent class="thread-card-content">
+          {#if workspaceChanges.captureError}
+            <p class="thread-empty">{workspaceChanges.captureError}</p>
+          {:else if workspaceChanges.files.length > 0}
+            <div class="thread-list" aria-label="整个工作区文件变更">
+              {#each workspaceChanges.files.slice(0, 8) as file (file.path)}
+                <div class="thread-item changeset-file">
+                  <span class={`change-kind change-kind-${file.kind}`}>{file.kind === 'added' ? '+' : file.kind === 'deleted' ? '−' : file.kind === 'renamed' ? '↪' : '~'}</span>
+                  <code title={file.path}>{file.path}</code>
+                </div>
+              {/each}
+            </div>
+            {#if workspaceChanges.files.length > 8}<small class="thread-more">还有 {workspaceChanges.files.length - 8} 项</small>{/if}
+          {:else}
+            <p class="thread-empty">工作区干净</p>
           {/if}
         </CardContent>
       </Card>

@@ -20,6 +20,7 @@
     sessionSearch?: string;
     sessionFilter?: SessionFilter;
     createSessionWorkspaceId: string | null;
+    createProfileMode: 'read-only' | 'edit';
     renamingSessionId: string | null;
     sessionLabelDraft?: string;
     onToggleSearch: () => void;
@@ -28,6 +29,7 @@
     onChooseWorkspaceDirectory: () => void;
     onSelectWorkspace: (workspaceId: string) => void;
     onToggleSessionCreator: (workspaceId: string) => void;
+    onSetCreateProfileMode: (mode: 'read-only' | 'edit') => void;
     onToggleTrust: (workspaceId: string) => void;
     onDeleteWorkspace: (workspaceId: string) => void;
     onCreateCodex: (workspaceId: string) => void;
@@ -59,6 +61,7 @@
     sessionSearch = $bindable(''),
     sessionFilter = $bindable<SessionFilter>('active'),
     createSessionWorkspaceId,
+    createProfileMode,
     renamingSessionId,
     sessionLabelDraft = $bindable(''),
     onToggleSearch,
@@ -67,6 +70,7 @@
     onChooseWorkspaceDirectory,
     onSelectWorkspace,
     onToggleSessionCreator,
+    onSetCreateProfileMode,
     onToggleTrust,
     onDeleteWorkspace,
     onCreateCodex,
@@ -232,6 +236,17 @@
             <section id={`workspace-sessions-${workspace.id}`} class="workspace-session-group" aria-label={`${workspace.label} 的会话`}>
               {#if createSessionWorkspaceId === workspace.id}
                 <div class="session-create-actions" aria-label="选择 Agent">
+                  <label class="session-profile-choice">
+                    <span>权限</span>
+                    <select
+                      value={createProfileMode}
+                      aria-label="新会话权限"
+                      onchange={(event) => onSetCreateProfileMode((event.currentTarget as HTMLSelectElement).value as 'read-only' | 'edit')}
+                    >
+                      <option value="read-only">只读</option>
+                      <option value="edit">可编辑（需审批）</option>
+                    </select>
+                  </label>
                   <Button size="sm" type="button" onclick={() => onCreateCodex(workspace.id)} disabled={busy}>Codex</Button>
                   <Button variant="outline" size="sm" type="button" onclick={() => onCreatePi(workspace.id)} disabled={busy}>Pi</Button>
                 </div>

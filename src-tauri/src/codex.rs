@@ -1,3 +1,7 @@
+use super::change_set::{
+    capture as capture_workspace, persist as persist_change_set, persist_baseline_checkpoint,
+    WorkspaceSnapshot,
+};
 use super::execution_profile::ResolvedExecutionProfile;
 use super::{
     clone_cached_runtime, find_executable, now_iso, remove_cached_runtime, session_by_id,
@@ -393,6 +397,9 @@ struct ToolProjection {
     item_id: String,
     item_type: String,
     status: String,
+    command: Option<String>,
+    cwd: Option<String>,
+    exit_code: Option<i64>,
     summary: String,
     delta: Option<String>,
     output: Option<String>,
@@ -473,6 +480,22 @@ fn tool_projection(method: &str, params: &Value) -> Option<ToolProjection> {
             Some("tool.completed") => "completed".to_owned(),
             _ => "inProgress".to_owned(),
         });
+    let command = item
+        .get("command")
+        .and_then(Value::as_str)
+        .or_else(|| params.get("command").and_then(Value::as_str))
+        .map(ToOwned::to_owned);
+    let cwd = item
+        .get("cwd")
+        .and_then(Value::as_str)
+        .or_else(|| params.get("cwd").and_then(Value::as_str))
+        .map(ToOwned::to_owned);
+    let exit_code = item
+        .get("exitCode")
+        .or_else(|| item.get("exit_code"))
+        .or_else(|| item.get("returnCode"))
+        .or_else(|| params.get("exitCode"))
+        .and_then(Value::as_i64);
     let delta = params
         .get("delta")
         .and_then(Value::as_str)
@@ -512,6 +535,9 @@ fn tool_projection(method: &str, params: &Value) -> Option<ToolProjection> {
         item_id,
         item_type,
         status,
+        command,
+        cwd,
+        exit_code,
         summary,
         delta,
         output,
@@ -620,6 +646,8 @@ struct CodexSession {
     state: Mutex<String>,
     sequence: AtomicU64,
     active: AtomicBool,
+    turn_baselines: Mutex<HashMap<String, WorkspaceSnapshot>>,
+    checkpoint_root: PathBuf,
 }
 
 impl CodexSession {
@@ -630,6 +658,7 @@ impl CodexSession {
         session_id: String,
         workspace_id: String,
         generation_id: String,
+        checkpoint_root: PathBuf,
     ) -> Arc<Self> {
         Arc::new(Self {
             app,
@@ -644,6 +673,8 @@ impl CodexSession {
             state: Mutex::new("starting".to_owned()),
             sequence: AtomicU64::new(0),
             active: AtomicBool::new(true),
+            turn_baselines: Mutex::new(HashMap::new()),
+            checkpoint_root,
         })
     }
 
@@ -668,6 +699,88 @@ impl CodexSession {
                 }
             }
         });
+    }
+
+    async fn capture_turn_baseline(&self, external_turn_id: &str) -> Result<(), CodexError> {
+        let workspace_path: String = sqlx::query_scalar("SELECT path FROM workspaces WHERE id = ?")
+            .bind(&self.workspace_id)
+            .fetch_one(&self.db)
+            .await?;
+        match capture_workspace(Path::new(&workspace_path)).await {
+            Ok(snapshot) => {
+                if let Err(error) = persist_baseline_checkpoint(
+                    &self.checkpoint_root,
+                    &self.session_id,
+                    external_turn_id,
+                    Path::new(&workspace_path),
+                    &snapshot,
+                )
+                .await
+                {
+                    warn!(session_id = %self.session_id, turn_id = %external_turn_id, error = %error, "baseline checkpoint capture failed");
+                }
+                self.turn_baselines
+                    .lock()
+                    .await
+                    .insert(external_turn_id.to_owned(), snapshot);
+                Ok(())
+            }
+            Err(error) => {
+                self.emit_event(
+                    "adapter.warning",
+                    Some(external_turn_id.to_owned()),
+                    json!({ "message": format!("turn baseline capture failed: {error}"), "phase": "baseline" }),
+                    None,
+                )
+                .await
+            }
+        }
+    }
+
+    async fn finalize_turn_changes(&self, external_turn_id: &str) -> Result<(), CodexError> {
+        let internal_turn = self.ensure_turn(external_turn_id, "").await?;
+        let baseline = self.turn_baselines.lock().await.remove(external_turn_id);
+        if baseline.is_none()
+            && sqlx::query_scalar::<_, i64>(
+                "SELECT COUNT(*) FROM turn_change_sets WHERE session_id = ? AND turn_id = ?",
+            )
+            .bind(&self.session_id)
+            .bind(&internal_turn)
+            .fetch_one(&self.db)
+            .await?
+                > 0
+        {
+            return Ok(());
+        }
+        let workspace_path: String = sqlx::query_scalar("SELECT path FROM workspaces WHERE id = ?")
+            .bind(&self.workspace_id)
+            .fetch_one(&self.db)
+            .await?;
+        let (result, capture_error) = match capture_workspace(Path::new(&workspace_path)).await {
+            Ok(snapshot) => (Some(snapshot), None),
+            Err(error) => (None, Some(error)),
+        };
+        persist_change_set(
+            &self.db,
+            &self.workspace_id,
+            &self.session_id,
+            &internal_turn,
+            baseline.as_ref(),
+            result.as_ref(),
+            capture_error.as_deref(),
+        )
+        .await
+        .map_err(CodexError::Database)?;
+        if let Some(error) = capture_error {
+            self.emit_event(
+                "adapter.warning",
+                Some(external_turn_id.to_owned()),
+                json!({ "message": format!("turn result capture failed: {error}"), "phase": "result" }),
+                None,
+            )
+            .await?;
+        }
+        Ok(())
     }
 
     async fn handle_event(&self, message: Value) -> Result<(), CodexError> {
@@ -708,6 +821,7 @@ impl CodexSession {
                 if let Some(turn_id) = turn_id.as_deref() {
                     self.ensure_turn(turn_id, "").await?;
                     *self.current_turn_id.lock().await = Some(turn_id.to_owned());
+                    self.capture_turn_baseline(turn_id).await?;
                 }
                 self.set_state("running").await?;
                 self.emit_event(
@@ -775,6 +889,7 @@ impl CodexSession {
                     .unwrap_or("completed");
                 if let Some(turn_id) = turn_id.as_deref() {
                     let internal_turn_id = self.ensure_turn(turn_id, "").await?;
+                    self.finalize_turn_changes(turn_id).await?;
                     let output = final_turn_text(&turn);
                     let mapped_status = map_turn_status(status);
                     sqlx::query(
@@ -820,6 +935,7 @@ impl CodexSession {
                     .map(ToOwned::to_owned);
                 if let Some(turn_id) = turn_id.as_deref() {
                     let internal_turn_id = self.ensure_turn(turn_id, "").await?;
+                    self.finalize_turn_changes(turn_id).await?;
                     sqlx::query(
                         "UPDATE turns SET status = 'failed', completed_at = ? WHERE id = ?",
                     )
@@ -896,6 +1012,9 @@ impl CodexSession {
                 }
             }
             "aibo/process-exited" => {
+                if let Some(turn_id) = self.current_turn_id.lock().await.clone() {
+                    self.finalize_turn_changes(&turn_id).await?;
+                }
                 *self.current_turn_id.lock().await = None;
                 let discarded_approvals = self.pending_approvals.lock().await.len();
                 self.pending_approvals.lock().await.clear();
@@ -1053,12 +1172,17 @@ impl CodexSession {
         let now = now_iso();
         let updated = if method.ends_with("outputDelta") || method == "item/mcpToolCall/progress" {
             sqlx::query(
-                "UPDATE messages SET content = content || ?, tool_name = COALESCE(?, tool_name), turn_id = COALESCE(?, turn_id),
+                "UPDATE messages SET content = content || ?, tool_name = COALESCE(?, tool_name),
+                        tool_command = COALESCE(?, tool_command), tool_cwd = COALESCE(?, tool_cwd),
+                        tool_exit_code = COALESCE(?, tool_exit_code), turn_id = COALESCE(?, turn_id),
                         status = ?, updated_at = ?
                  WHERE session_id = ? AND external_message_id = ? AND role = 'tool'",
             )
             .bind(projection.delta.as_deref().unwrap_or(&projection.summary))
             .bind(&projection.item_type)
+            .bind(&projection.command)
+            .bind(&projection.cwd)
+            .bind(projection.exit_code)
             .bind(internal_turn_id.as_deref())
             .bind(status)
             .bind(&now)
@@ -1071,6 +1195,8 @@ impl CodexSession {
             sqlx::query(
                 "UPDATE messages SET content = CASE WHEN ? = 1 OR content = '' THEN ? ELSE content END,
                         tool_name = COALESCE(?, tool_name),
+                        tool_command = COALESCE(?, tool_command), tool_cwd = COALESCE(?, tool_cwd),
+                        tool_exit_code = COALESCE(?, tool_exit_code),
                         turn_id = COALESCE(?, turn_id),
                         status = ?, updated_at = ?
                  WHERE session_id = ? AND external_message_id = ? AND role = 'tool'",
@@ -1078,6 +1204,9 @@ impl CodexSession {
             .bind(if replace_content { 1_i64 } else { 0_i64 })
             .bind(&projection.summary)
             .bind(&projection.item_type)
+            .bind(&projection.command)
+            .bind(&projection.cwd)
+            .bind(projection.exit_code)
             .bind(internal_turn_id.as_deref())
             .bind(status)
             .bind(&now)
@@ -1089,15 +1218,19 @@ impl CodexSession {
         if updated.rows_affected() == 0 {
             sqlx::query(
                 "INSERT INTO messages
-                 (id, session_id, turn_id, external_message_id, role, tool_name, content,
-                  status, sequence, created_at, updated_at)
-                 VALUES (?, ?, ?, ?, 'tool', ?, ?, ?, ?, ?, ?)",
+                 (id, session_id, turn_id, external_message_id, role, tool_name,
+                  tool_command, tool_cwd, tool_exit_code, content, status, sequence,
+                  created_at, updated_at)
+                 VALUES (?, ?, ?, ?, 'tool', ?, ?, ?, ?, ?, ?, ?, ?, ?)",
             )
             .bind(Ulid::new().to_string())
             .bind(&self.session_id)
             .bind(internal_turn_id)
             .bind(&projection.item_id)
             .bind(&projection.item_type)
+            .bind(&projection.command)
+            .bind(&projection.cwd)
+            .bind(projection.exit_code)
             .bind(&projection.summary)
             .bind(status)
             .bind(self.sequence.load(Ordering::Relaxed) as i64)
@@ -1321,14 +1454,16 @@ pub(crate) struct CodexManager {
     app: AppHandle,
     db: SqlitePool,
     sessions: Arc<Mutex<HashMap<String, Arc<CodexSession>>>>,
+    checkpoint_root: PathBuf,
 }
 
 impl CodexManager {
-    pub(crate) fn new(app: AppHandle, db: SqlitePool) -> Self {
+    pub(crate) fn new(app: AppHandle, db: SqlitePool, data_dir: PathBuf) -> Self {
         Self {
             app,
             db,
             sessions: Arc::new(Mutex::new(HashMap::new())),
+            checkpoint_root: data_dir.join("checkpoints"),
         }
     }
 
@@ -1388,6 +1523,7 @@ impl CodexManager {
             session_id.clone(),
             workspace_id.to_owned(),
             generation_id,
+            self.checkpoint_root.clone(),
         );
         self.sessions
             .lock()
@@ -1538,6 +1674,7 @@ impl CodexManager {
             session_id.to_owned(),
             session.workspace_id.clone(),
             generation_id.clone(),
+            self.checkpoint_root.clone(),
         );
         runtime.set_thread_id(thread_id.clone()).await;
         self.sessions
@@ -2207,6 +2344,8 @@ mod tests {
                         .expect("tool started projection");
                     assert_eq!(projection.item_id, "tool-1");
                     assert_eq!(projection.item_type, "commandExecution");
+                    assert_eq!(projection.command.as_deref(), Some("pwd"));
+                    assert_eq!(projection.cwd.as_deref(), Some("<workspace>"));
                     assert_eq!(projection.summary, "pwd");
                 }
                 if method == "item/completed" {

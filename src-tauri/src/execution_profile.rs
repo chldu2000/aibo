@@ -148,18 +148,10 @@ pub(crate) fn resolve(
             )
         }
         "pi" => {
-            if requested.interaction_mode == "edit" {
-                unsupported.push("interaction.edit".to_owned());
-                enforced.interaction_mode = "plan".to_owned();
-            }
-            if requested.approval_policy != "never" {
-                unsupported.push("approval.native".to_owned());
-                enforced.approval_policy = "never".to_owned();
-            }
-            if requested.filesystem_policy != "read-only" {
-                unsupported.push("filesystem.workspace-write".to_owned());
-                enforced.filesystem_policy = "read-only".to_owned();
-            }
+            // Pi has no native sandbox, but its SDK custom-tool boundary lets
+            // Aibo Core mediate workspace writes. The profile therefore keeps
+            // edit/write semantics when requested; the host only exposes the
+            // proxy tool after Core has resolved and trust-checked the session.
             if requested.command_policy != "disabled" {
                 unsupported.push("command.execution".to_owned());
                 enforced.command_policy = "disabled".to_owned();
@@ -182,6 +174,8 @@ pub(crate) fn resolve(
                     "session.resume".to_owned(),
                     "events.streaming".to_owned(),
                     "tools.read-only".to_owned(),
+                    "tools.workspace-write-gateway".to_owned(),
+                    "permissions.aiboApproval".to_owned(),
                     "permissions.noNativeSandbox".to_owned(),
                 ],
                 false,
@@ -310,16 +304,13 @@ mod tests {
     }
 
     #[test]
-    fn pi_explicitly_reports_unsupported_write_capabilities() {
+    fn pi_resolves_core_mediated_write_but_rejects_commands() {
         let resolved = resolve("pi", Some(editable_profile()), "now".to_owned())
             .expect("Pi profile should resolve");
-        assert_eq!(resolved.enforced.interaction_mode, "plan");
-        assert_eq!(resolved.enforced.filesystem_policy, "read-only");
+        assert_eq!(resolved.enforced.interaction_mode, "edit");
+        assert_eq!(resolved.enforced.filesystem_policy, "workspace-write");
         assert_eq!(resolved.enforced.command_policy, "disabled");
         assert!(!resolved.native_sandbox);
-        assert!(resolved
-            .unsupported
-            .contains(&"filesystem.workspace-write".to_owned()));
         assert!(resolved
             .unsupported
             .contains(&"command.execution".to_owned()));
