@@ -492,6 +492,8 @@ Codex 和 Pi 分别执行同一组任务：
 
 ## 12. 验收证据模板
 
+当前 macOS 自动化与协议探针记录见 [Phase 4.5 macOS 验收记录](phase-4.5-macos-smoke-report.md)；其中 G5 真实 Provider 任务仍保持 pending。
+
 每次真实 smoke 保存一份脱敏报告：
 
 ```markdown
