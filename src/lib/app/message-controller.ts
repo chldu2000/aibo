@@ -35,6 +35,7 @@ export type MessageControllerContext = {
     updater: (items: Session[]) => Session[],
   ) => void;
   refreshTimeline: (sessionId: string) => Promise<void>;
+  refreshAttachments: (sessionId: string) => Promise<void>;
   refreshTurnChangeSet?: (sessionId: string) => Promise<void>;
   setBusy: (value: boolean) => void;
   setErrorMessage: (value: string | null) => void;
@@ -113,7 +114,7 @@ export function createMessageController(context: MessageControllerContext) {
       }
       if (session.agent === 'pi') await context.api.sendPiPrompt(session.id, requestInput);
       else await context.api.sendCodexPrompt(session.id, requestInput);
-      await context.refreshTimeline(session.id);
+      await Promise.all([context.refreshTimeline(session.id), context.refreshAttachments(session.id)]);
       context.setComposerText('');
       context.updateWorkspaceSessions(session.workspaceId, (items) =>
         items.map((item) => (item.id === session?.id ? { ...item, state: 'running' } : item)),
@@ -179,7 +180,7 @@ export function createMessageController(context: MessageControllerContext) {
     try {
       if (mode === 'steer') await context.api.steerPiPrompt(session.id, requestInput);
       else await context.api.followUpPiPrompt(session.id, requestInput);
-      await context.refreshTimeline(session.id);
+      await Promise.all([context.refreshTimeline(session.id), context.refreshAttachments(session.id)]);
       context.setComposerText('');
     } catch (error) {
       context.setErrorMessage(toErrorMessage(error));

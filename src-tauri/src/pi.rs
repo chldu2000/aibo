@@ -2,14 +2,15 @@ use super::artifact::{
     artifact_root_from_checkpoint, persist_text, sanitize_content, truncate_utf8,
 };
 use super::change_set::{
-    capture as capture_workspace, persist as persist_change_set, persist_baseline_checkpoint,
-    persist_checkpoint_metadata, WorkspaceSnapshot,
+    capture as capture_workspace, discard_baseline_checkpoint, persist as persist_change_set,
+    persist_baseline_checkpoint, persist_checkpoint_metadata, WorkspaceSnapshot,
 };
 use super::execution_profile::ResolvedExecutionProfile;
 use super::workspace_guard::canonicalize_target;
 use super::{
-    clone_cached_runtime, find_executable, mark_turn_interrupted, now_iso, remove_cached_runtime,
-    session_by_id, session_execution_profile, workspace_by_id,
+    bind_pending_attachments_to_turn, clone_cached_runtime, find_executable, isolate_process_tree,
+    mark_turn_interrupted, now_iso, read_process_output, remove_cached_runtime, session_by_id,
+    session_execution_profile, terminate_process_tree, workspace_by_id,
 };
 use serde::Serialize;
 use serde_json::{json, Value};
@@ -94,14 +95,43 @@ async fn run_shell_command(
         process.args(["-lc", command]);
         process
     };
-    command_process.current_dir(cwd).kill_on_drop(true);
-    time::timeout(
-        Duration::from_secs_f64(timeout_seconds),
-        command_process.output(),
-    )
-    .await
-    .map_err(|_| PiError::Session(format!("command timed out after {timeout_seconds}s")))?
-    .map_err(|error| PiError::Session(format!("spawn command: {error}")))
+    command_process
+        .current_dir(cwd)
+        .kill_on_drop(true)
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped());
+    isolate_process_tree(&mut command_process);
+    let mut child = command_process
+        .spawn()
+        .map_err(|error| PiError::Session(format!("spawn command: {error}")))?;
+    let stdout = child
+        .stdout
+        .take()
+        .ok_or_else(|| PiError::Session("command stdout unavailable".to_owned()))?;
+    let stderr = child
+        .stderr
+        .take()
+        .ok_or_else(|| PiError::Session("command stderr unavailable".to_owned()))?;
+    let stdout_task = tokio::spawn(read_process_output(stdout));
+    let stderr_task = tokio::spawn(read_process_output(stderr));
+    let status = match time::timeout(Duration::from_secs_f64(timeout_seconds), child.wait()).await {
+        Ok(result) => {
+            result.map_err(|error| PiError::Session(format!("wait for command: {error}")))?
+        }
+        Err(_) => {
+            terminate_process_tree(&mut child).await;
+            let _ = stdout_task.await;
+            let _ = stderr_task.await;
+            return Err(PiError::Session(format!(
+                "command timed out after {timeout_seconds}s"
+            )));
+        }
+    };
+    Ok(Output {
+        status,
+        stdout: stdout_task.await.unwrap_or_default(),
+        stderr: stderr_task.await.unwrap_or_default(),
+    })
 }
 
 #[derive(Debug, Error)]
@@ -503,6 +533,21 @@ impl PiSession {
                 )
                 .await
             }
+        }
+    }
+
+    async fn discard_turn_baseline(&self, external_turn_id: &str, internal_turn_id: &str) {
+        self.turn_baselines.lock().await.remove(external_turn_id);
+        let _ = sqlx::query("DELETE FROM checkpoints WHERE session_id = ? AND turn_id = ?")
+            .bind(&self.session_id)
+            .bind(internal_turn_id)
+            .execute(&self.db)
+            .await;
+        if let Err(error) =
+            discard_baseline_checkpoint(&self.checkpoint_root, &self.session_id, internal_turn_id)
+                .await
+        {
+            warn!(session_id = %self.session_id, turn_id = %external_turn_id, error = %error, "discard rejected Pi turn baseline failed");
         }
     }
 
@@ -1047,7 +1092,6 @@ impl PiSession {
                 self.ensure_turn(&turn, "").await?;
                 *self.current_turn_id.lock().await = Some(turn.clone());
                 *self.current_message_id.lock().await = None;
-                self.capture_turn_baseline(&turn).await?;
                 self.set_state("running").await?;
                 self.emit_event(
                     "turn.started",
@@ -1983,14 +2027,55 @@ impl PiManager {
             .await?;
         *session.current_turn_id.lock().await = Some(turn_id.clone());
         session.set_state("running").await?;
+        // Pi can emit agent_start immediately after accepting the prompt, so
+        // the workspace baseline must be durable before the request is sent.
+        if let Err(error) = session.capture_turn_baseline(&turn_id).await {
+            session
+                .discard_turn_baseline(&turn_id, &internal_turn)
+                .await;
+            let _ = session.set_state("failed").await;
+            *session.current_turn_id.lock().await = None;
+            let failed_at = now_iso();
+            let _ =
+                sqlx::query("UPDATE turns SET status = 'failed', completed_at = ? WHERE id = ?")
+                    .bind(&failed_at)
+                    .bind(&internal_turn)
+                    .execute(&self.db)
+                    .await;
+            let _ =
+                sqlx::query("UPDATE messages SET status = 'failed', updated_at = ? WHERE id = ?")
+                    .bind(&failed_at)
+                    .bind(&user_message_id)
+                    .execute(&self.db)
+                    .await;
+            return Err(error);
+        }
         if let Err(error) = session
             .client
             .request("prompt", json!({ "text": input, "turnId": turn_id }))
             .await
         {
+            session
+                .discard_turn_baseline(&turn_id, &internal_turn)
+                .await;
+            *session.current_turn_id.lock().await = None;
+            let failed_at = now_iso();
+            let _ =
+                sqlx::query("UPDATE turns SET status = 'failed', completed_at = ? WHERE id = ?")
+                    .bind(&failed_at)
+                    .bind(&internal_turn)
+                    .execute(&self.db)
+                    .await;
+            let _ =
+                sqlx::query("UPDATE messages SET status = 'failed', updated_at = ? WHERE id = ?")
+                    .bind(&failed_at)
+                    .bind(&user_message_id)
+                    .execute(&self.db)
+                    .await;
             let _ = session.set_state("failed").await;
             return Err(error);
         }
+        bind_pending_attachments_to_turn(&self.db, session_id, &internal_turn).await?;
         Ok(())
     }
 
@@ -2042,7 +2127,9 @@ impl PiManager {
                 .execute(&self.db)
                 .await;
         }
-        result.map(|_| ())
+        result?;
+        bind_pending_attachments_to_turn(&self.db, session_id, &internal_turn).await?;
+        Ok(())
     }
 
     pub(crate) async fn steer(&self, session_id: &str, input: &str) -> Result<(), PiError> {
@@ -2355,13 +2442,13 @@ mod tests {
                     marker.display()
                 )
             } else {
-                format!("sleep 1; echo done > \"{}\"", marker.display())
+                format!("(sleep 0.2; echo done > \"{}\") & wait", marker.display())
             };
             let error = run_shell_command(&command, &PathBuf::from(&directory), 0.05)
                 .await
                 .expect_err("command should time out");
             assert!(error.to_string().contains("timed out"));
-            sleep(Duration::from_millis(100)).await;
+            sleep(Duration::from_millis(350)).await;
             assert!(
                 !marker.exists(),
                 "timed out command left a completion marker"

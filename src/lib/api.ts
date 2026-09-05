@@ -194,9 +194,6 @@ export const validateSessionAttachments = (
 ): Promise<ContextAttachmentValidation[]> =>
   invoke<ContextAttachmentValidation[]>('validate_session_attachments', { sessionId });
 
-export const bindSessionAttachments = (sessionId: string, turnId: string): Promise<void> =>
-  invoke('bind_session_attachments', { sessionId, turnId });
-
 export const listTurnArtifacts = (
   sessionId: string,
   turnId?: string | null,

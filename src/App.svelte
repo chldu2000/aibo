@@ -43,6 +43,7 @@
     forkCodexThread,
     getSessionExecutionProfile,
     getTurnChangeSet,
+    listRestoreOperations,
     listTurnCheckpoints,
     getWorkspaceChanges,
     getTurnFileDiff,
@@ -82,7 +83,6 @@
     followUpPiPrompt,
     abortPiTurn,
     clearPiQueue,
-    bindSessionAttachments,
     setWorkspaceTrust,
     unarchiveSession as unarchiveSessionApi,
   } from './lib/api';
@@ -517,6 +517,14 @@
     await sessionContextController.refreshPiTree(sessionId);
   }
 
+  async function refreshExecutionProfile(sessionId: string) {
+    await sessionContextController.refreshExecutionProfile(sessionId);
+  }
+
+  async function refreshAttachments(sessionId: string) {
+    await sessionContextController.refreshAttachments(sessionId);
+  }
+
   async function refreshTurnChangeSet(sessionId: string) {
     await sessionContextController.refreshTurnChangeSet(sessionId);
   }
@@ -691,10 +699,6 @@
       refreshTurnChangeSet,
       refreshWorkspaceChanges,
       refreshArtifacts,
-      bindAttachments: async (sessionId, turnId) => {
-        await bindSessionAttachments(sessionId, turnId);
-        await refreshAttachments(sessionId);
-      },
     });
   }
 
@@ -1111,6 +1115,7 @@
     setPendingApprovals: (value) => (pendingApprovals = value),
     updateWorkspaceSessions,
     refreshTimeline,
+    refreshAttachments,
     refreshTurnChangeSet,
     setBusy: (value) => (busy = value),
     setErrorMessage: (value) => (errorMessage = value),

@@ -27,14 +27,10 @@ export type AgentEventHandlerContext = {
   refreshTurnChangeSet?: (sessionId: string) => void | Promise<void>;
   refreshArtifacts?: (sessionId: string) => void | Promise<void>;
   refreshWorkspaceChanges?: (workspaceId: string) => void | Promise<void>;
-  bindAttachments?: (sessionId: string, turnId: string) => void | Promise<void>;
 };
 
 export function handleAgentEvent(event: AgentEvent, context: AgentEventHandlerContext): void {
   const selectedSessionId = context.selectedSessionId;
-  if (event.type === 'turn.started' && event.turnId) {
-    void context.bindAttachments?.(event.sessionId, event.turnId);
-  }
   const state = event.type === 'session.state_changed' ? event.payload.state : undefined;
   if (typeof state === 'string') {
     context.updateWorkspaceSessions(event.workspaceId, (items) =>

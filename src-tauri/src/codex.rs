@@ -1,12 +1,13 @@
 use super::artifact::{artifact_root_from_checkpoint, persist_text, sanitize_content};
 use super::change_set::{
-    capture as capture_workspace, persist as persist_change_set, persist_baseline_checkpoint,
-    persist_checkpoint_metadata, WorkspaceSnapshot,
+    capture as capture_workspace, discard_baseline_checkpoint, persist as persist_change_set,
+    persist_baseline_checkpoint, persist_checkpoint_metadata, relocate_baseline_checkpoint,
+    WorkspaceSnapshot,
 };
 use super::execution_profile::ResolvedExecutionProfile;
 use super::{
-    clone_cached_runtime, find_executable, mark_turn_interrupted, now_iso, remove_cached_runtime,
-    session_by_id, session_execution_profile, workspace_by_id,
+    bind_pending_attachments_to_turn, clone_cached_runtime, find_executable, mark_turn_interrupted,
+    now_iso, remove_cached_runtime, session_by_id, session_execution_profile, workspace_by_id,
 };
 use serde::Serialize;
 use serde_json::{json, Value};
@@ -758,7 +759,14 @@ struct CodexSession {
     sequence: AtomicU64,
     active: AtomicBool,
     turn_baselines: Mutex<HashMap<String, WorkspaceSnapshot>>,
+    pending_turn_baseline: Mutex<Option<PreparedTurnBaseline>>,
+    baseline_capture_lock: Mutex<()>,
     checkpoint_root: PathBuf,
+}
+
+struct PreparedTurnBaseline {
+    internal_turn_id: String,
+    snapshot: Result<WorkspaceSnapshot, String>,
 }
 
 impl CodexSession {
@@ -788,6 +796,8 @@ impl CodexSession {
             sequence: AtomicU64::new(0),
             active: AtomicBool::new(true),
             turn_baselines: Mutex::new(HashMap::new()),
+            pending_turn_baseline: Mutex::new(None),
+            baseline_capture_lock: Mutex::new(()),
             checkpoint_root,
         })
     }
@@ -815,25 +825,108 @@ impl CodexSession {
         });
     }
 
-    async fn capture_turn_baseline(&self, external_turn_id: &str) -> Result<(), CodexError> {
-        let internal_turn_id = self.ensure_turn(external_turn_id, "").await?;
-        let workspace_path: String = sqlx::query_scalar("SELECT path FROM workspaces WHERE id = ?")
-            .bind(&self.workspace_id)
-            .fetch_one(&self.db)
-            .await?;
-        match capture_workspace(Path::new(&workspace_path)).await {
-            Ok(snapshot) => {
-                if let Err(error) = persist_baseline_checkpoint(
+    async fn prepare_turn_baseline(&self) {
+        let internal_turn_id = Ulid::new().to_string();
+        let capture = match sqlx::query_scalar::<_, String>(
+            "SELECT path FROM workspaces WHERE id = ?",
+        )
+        .bind(&self.workspace_id)
+        .fetch_one(&self.db)
+        .await
+        {
+            Ok(workspace_path) => match capture_workspace(Path::new(&workspace_path)).await {
+                Ok(snapshot) => {
+                    if let Err(error) = persist_baseline_checkpoint(
+                        &self.checkpoint_root,
+                        &self.session_id,
+                        &internal_turn_id,
+                        Path::new(&workspace_path),
+                        &snapshot,
+                    )
+                    .await
+                    {
+                        warn!(session_id = %self.session_id, error = %error, "prepared baseline checkpoint capture failed");
+                    }
+                    Ok(snapshot)
+                }
+                Err(error) => Err(error),
+            },
+            Err(error) => Err(format!("read workspace for baseline: {error}")),
+        };
+        *self.pending_turn_baseline.lock().await = Some(PreparedTurnBaseline {
+            internal_turn_id,
+            snapshot: capture,
+        });
+    }
+
+    async fn clear_pending_turn_baseline(&self) {
+        if let Some(prepared) = self.pending_turn_baseline.lock().await.take() {
+            if let Err(error) = discard_baseline_checkpoint(
+                &self.checkpoint_root,
+                &self.session_id,
+                &prepared.internal_turn_id,
+            )
+            .await
+            {
+                warn!(session_id = %self.session_id, error = %error, "discard prepared baseline failed");
+            }
+        }
+    }
+
+    async fn capture_turn_baseline(
+        &self,
+        external_turn_id: &str,
+        input_text: &str,
+    ) -> Result<String, CodexError> {
+        let _capture_guard = self.baseline_capture_lock.lock().await;
+        if self
+            .turn_baselines
+            .lock()
+            .await
+            .contains_key(external_turn_id)
+        {
+            return self.ensure_turn(external_turn_id, input_text).await;
+        }
+        let prepared = self.pending_turn_baseline.lock().await.take();
+        let internal_turn_id = if let Some(prepared) = prepared.as_ref() {
+            let internal_turn_id = self
+                .ensure_turn_with_id(
+                    external_turn_id,
+                    input_text,
+                    Some(&prepared.internal_turn_id),
+                )
+                .await?;
+            if internal_turn_id != prepared.internal_turn_id {
+                relocate_baseline_checkpoint(
                     &self.checkpoint_root,
                     &self.session_id,
+                    &prepared.internal_turn_id,
                     &internal_turn_id,
-                    Path::new(&workspace_path),
-                    &snapshot,
                 )
                 .await
-                {
-                    warn!(session_id = %self.session_id, turn_id = %external_turn_id, error = %error, "baseline checkpoint capture failed");
-                } else if let Err(error) = persist_checkpoint_metadata(
+                .map_err(CodexError::Session)?;
+            }
+            internal_turn_id
+        } else {
+            self.ensure_turn(external_turn_id, input_text).await?
+        };
+        if sqlx::query_scalar::<_, i64>(
+            "SELECT COUNT(*) FROM turn_change_sets WHERE session_id = ? AND turn_id = ?",
+        )
+        .bind(&self.session_id)
+        .bind(&internal_turn_id)
+        .fetch_one(&self.db)
+        .await?
+            > 0
+        {
+            return Ok(internal_turn_id);
+        }
+        let snapshot = prepared
+            .map(|prepared| prepared.snapshot)
+            .unwrap_or_else(|| Err("turn baseline was not prepared before turn/start".to_owned()));
+        match snapshot {
+            Ok(snapshot) => {
+                if let Err(error) = persist_checkpoint_metadata(
                     &self.db,
                     &self.checkpoint_root,
                     &self.workspace_id,
@@ -849,7 +942,7 @@ impl CodexSession {
                     .lock()
                     .await
                     .insert(external_turn_id.to_owned(), snapshot);
-                Ok(())
+                Ok(internal_turn_id)
             }
             Err(error) => {
                 self.emit_event(
@@ -858,7 +951,8 @@ impl CodexSession {
                     json!({ "message": format!("turn baseline capture failed: {error}"), "phase": "baseline" }),
                     None,
                 )
-                .await
+                .await?;
+                Ok(internal_turn_id)
             }
         }
     }
@@ -945,9 +1039,8 @@ impl CodexSession {
                     .and_then(Value::as_str)
                     .map(ToOwned::to_owned);
                 if let Some(turn_id) = turn_id.as_deref() {
-                    self.ensure_turn(turn_id, "").await?;
+                    self.capture_turn_baseline(turn_id, "").await?;
                     *self.current_turn_id.lock().await = Some(turn_id.to_owned());
-                    self.capture_turn_baseline(turn_id).await?;
                 }
                 self.set_state("running").await?;
                 self.emit_event(
@@ -1261,6 +1354,16 @@ impl CodexSession {
         external_turn_id: &str,
         input_text: &str,
     ) -> Result<String, CodexError> {
+        self.ensure_turn_with_id(external_turn_id, input_text, None)
+            .await
+    }
+
+    async fn ensure_turn_with_id(
+        &self,
+        external_turn_id: &str,
+        input_text: &str,
+        preferred_id: Option<&str>,
+    ) -> Result<String, CodexError> {
         if let Some(id) = sqlx::query_scalar::<_, String>(
             "SELECT id FROM turns WHERE session_id = ? AND external_turn_id = ?",
         )
@@ -1281,7 +1384,9 @@ impl CodexSession {
             }
             return Ok(id);
         }
-        let id = Ulid::new().to_string();
+        let id = preferred_id
+            .map(ToOwned::to_owned)
+            .unwrap_or_else(|| Ulid::new().to_string());
         sqlx::query(
             "INSERT OR IGNORE INTO turns
              (id, session_id, external_turn_id, status, input_text, started_at)
@@ -2354,10 +2459,14 @@ impl CodexManager {
         .execute(&self.db)
         .await?;
         session.set_state("running").await?;
+        // Capture before turn/start is sent: the provider can begin tool
+        // execution before either the response or turn/started event arrives.
+        session.prepare_turn_baseline().await;
         let turn_params = codex_turn_start_params(&thread_id, input, &session.execution_profile);
         let response = match session.client.request("turn/start", turn_params).await {
             Ok(response) => response,
             Err(error) => {
+                session.clear_pending_turn_baseline().await;
                 let _ = session.set_state("failed").await;
                 return Err(error);
             }
@@ -2367,19 +2476,21 @@ impl CodexManager {
             .and_then(Value::as_str)
             .map(ToOwned::to_owned)
         else {
+            session.clear_pending_turn_baseline().await;
             let _ = session.set_state("failed").await;
             return Err(CodexError::Protocol(
                 "turn/start did not return a turn id".to_owned(),
             ));
         };
         *session.current_turn_id.lock().await = Some(turn_id.clone());
-        let internal_turn_id = session.ensure_turn(&turn_id, input).await?;
+        let internal_turn_id = session.capture_turn_baseline(&turn_id, input).await?;
         sqlx::query("UPDATE messages SET turn_id = ?, updated_at = ? WHERE id = ?")
-            .bind(internal_turn_id)
+            .bind(&internal_turn_id)
             .bind(now_iso())
             .bind(user_message_id)
             .execute(&self.db)
             .await?;
+        bind_pending_attachments_to_turn(&self.db, session_id, &internal_turn_id).await?;
         Ok(())
     }
 

@@ -130,6 +130,15 @@ pub(crate) async fn persist_baseline_checkpoint(
                 .map_err(|error| format!("unsafe checkpoint path {}: {error}", file.path))?;
             let bytes = fs::read(&resolved)
                 .map_err(|error| format!("read checkpoint file {}: {error}", file.path))?;
+            let mut digest = Sha256::new();
+            digest.update(&bytes);
+            let actual_hash = format!("sha256:{:x}", digest.finalize());
+            if file.hash.as_deref() != Some(actual_hash.as_str()) {
+                return Err(format!(
+                    "workspace changed while capturing checkpoint: {}",
+                    file.path
+                ));
+            }
             let target = checkpoint_file_path(&checkpoint_root, &session_id, &turn_id, &file.path);
             fs::write(target, bytes)
                 .map_err(|error| format!("write checkpoint file {}: {error}", file.path))?;
@@ -139,6 +148,43 @@ pub(crate) async fn persist_baseline_checkpoint(
     })
     .await
     .map_err(|error| format!("checkpoint task failed: {error}"))?
+}
+
+pub(crate) async fn relocate_baseline_checkpoint(
+    checkpoint_root: &Path,
+    session_id: &str,
+    from_turn_id: &str,
+    to_turn_id: &str,
+) -> Result<(), String> {
+    if from_turn_id == to_turn_id {
+        return Ok(());
+    }
+    let from = checkpoint_scope(checkpoint_root, session_id, from_turn_id);
+    let to = checkpoint_scope(checkpoint_root, session_id, to_turn_id);
+    task::spawn_blocking(move || {
+        if !from.exists() {
+            return Ok(());
+        }
+        if to.exists() {
+            return Err("target checkpoint directory already exists".to_owned());
+        }
+        fs::rename(from, to).map_err(|error| format!("relocate prepared checkpoint: {error}"))
+    })
+    .await
+    .map_err(|error| format!("checkpoint relocation task failed: {error}"))?
+}
+
+pub(crate) async fn discard_baseline_checkpoint(
+    checkpoint_root: &Path,
+    session_id: &str,
+    turn_id: &str,
+) -> Result<(), String> {
+    let path = checkpoint_scope(checkpoint_root, session_id, turn_id);
+    match tokio::fs::remove_dir_all(path).await {
+        Ok(()) => Ok(()),
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(()),
+        Err(error) => Err(format!("discard prepared checkpoint: {error}")),
+    }
 }
 
 /// Persist one durable row per baseline file after its checkpoint bytes have
@@ -280,13 +326,12 @@ fn capture_git(root: &Path) -> Result<Option<WorkspaceSnapshot>, String> {
             continue;
         }
         let code = String::from_utf8_lossy(&record[..2]);
-        let mut path = String::from_utf8_lossy(&record[3..]).to_string();
-        // Rename/copy records can contain an old path followed by a new path.
-        // The final path is the one whose resulting content we need to hash.
+        let path = String::from_utf8_lossy(&record[3..]).to_string();
+        // With porcelain v1 -z, rename/copy records contain the destination
+        // path in the status record and the source path in the next record.
+        // The destination is the one whose resulting content we need to hash.
         if code.contains('R') || code.contains('C') {
-            if let Some(next) = records.next() {
-                path = String::from_utf8_lossy(next).to_string();
-            }
+            let _ = records.next();
         }
         dirty_paths.insert(path.clone());
         paths.insert(path, ());
@@ -379,11 +424,10 @@ fn workspace_changes_sync(root: &Path) -> Result<WorkspaceChanges, String> {
         let code = String::from_utf8_lossy(&record[..2]);
         let path = String::from_utf8_lossy(&record[3..]).to_string();
         let kind = if code.contains('R') || code.contains('C') {
-            let source_path = path;
-            let next = records
+            let source_path = records
                 .next()
                 .map(|value| String::from_utf8_lossy(value).to_string());
-            if let Some(path) = next {
+            if let Some(source_path) = source_path {
                 files.push(WorkspaceFileChange {
                     path,
                     kind: "renamed",
@@ -391,7 +435,7 @@ fn workspace_changes_sync(root: &Path) -> Result<WorkspaceChanges, String> {
                 });
             } else {
                 files.push(WorkspaceFileChange {
-                    path: source_path,
+                    path,
                     kind: "modified",
                     previous_path: None,
                 });
@@ -1118,6 +1162,74 @@ mod tests {
         assert_eq!(workspace_changes.files[0].path, "tracked.txt");
         assert_eq!(workspace_changes.files[0].kind, "modified");
         fs::remove_dir_all(root).expect("cleanup");
+    }
+
+    #[test]
+    fn porcelain_rename_uses_destination_as_current_path() {
+        let root = tempdir();
+        fs::write(root.join("old.txt"), "content").expect("file");
+        assert!(Command::new("git")
+            .args(["-C", root.to_str().unwrap(), "init", "-q"])
+            .status()
+            .unwrap()
+            .success());
+        assert!(Command::new("git")
+            .args(["-C", root.to_str().unwrap(), "add", "old.txt"])
+            .status()
+            .unwrap()
+            .success());
+        assert!(Command::new("git")
+            .args([
+                "-C",
+                root.to_str().unwrap(),
+                "-c",
+                "user.name=Aibo",
+                "-c",
+                "user.email=aibo@example.invalid",
+                "commit",
+                "-qm",
+                "initial",
+            ])
+            .status()
+            .unwrap()
+            .success());
+        assert!(Command::new("git")
+            .args(["-C", root.to_str().unwrap(), "mv", "old.txt", "new.txt"])
+            .status()
+            .unwrap()
+            .success());
+
+        let snapshot = tauri::async_runtime::block_on(super::capture(&root)).expect("snapshot");
+        assert!(snapshot.dirty_paths.contains("new.txt"));
+        assert!(!snapshot.dirty_paths.contains("old.txt"));
+        let changes = super::workspace_changes_sync(&root).expect("workspace changes");
+        assert_eq!(changes.files.len(), 1);
+        assert_eq!(changes.files[0].path, "new.txt");
+        assert_eq!(changes.files[0].previous_path.as_deref(), Some("old.txt"));
+        assert_eq!(changes.files[0].kind, "renamed");
+        fs::remove_dir_all(root).expect("cleanup");
+    }
+
+    #[test]
+    fn checkpoint_rejects_files_changed_after_snapshot_hashing() {
+        tauri::async_runtime::block_on(async {
+            let root = tempdir();
+            let checkpoint_root = root.join("checkpoints");
+            fs::write(root.join("tracked.txt"), "before").expect("file");
+            let snapshot = super::capture(&root).await.expect("snapshot");
+            fs::write(root.join("tracked.txt"), "after").expect("concurrent edit");
+            let error = super::persist_baseline_checkpoint(
+                &checkpoint_root,
+                "session",
+                "turn",
+                &root,
+                &snapshot,
+            )
+            .await
+            .expect_err("changed file must not be checkpointed under its old hash");
+            assert!(error.contains("changed while capturing checkpoint"));
+            fs::remove_dir_all(root).expect("cleanup");
+        });
     }
 
     #[test]

@@ -1813,6 +1813,8 @@ async fn get_turn_file_diff(
 struct TurnDiffSources {
     baseline: Vec<u8>,
     result: Vec<u8>,
+    baseline_exists: bool,
+    result_exists: bool,
     baseline_dirty: bool,
 }
 
@@ -1830,10 +1832,11 @@ async fn load_turn_diff_sources(
     session_id: &str,
     turn_id: &str,
     path: &str,
+    require_text: bool,
 ) -> Result<TurnDiffSources, TurnDiffSourceError> {
     let row = sqlx::query(
         "SELECT previous_path, change_kind, baseline_exists, baseline_hash, baseline_dirty,
-                result_exists, result_hash, baseline_head
+                result_exists, result_hash, baseline_head, attribution
          FROM file_changes
          JOIN turn_change_sets ON turn_change_sets.id = file_changes.change_set_id
          WHERE file_changes.path = ? AND turn_change_sets.session_id = ?
@@ -1856,7 +1859,7 @@ async fn load_turn_diff_sources(
         .map_err(|error| TurnDiffSourceError::Failed(error.to_string()))?;
     if change_kind == "renamed" {
         return Err(TurnDiffSourceError::Unavailable(
-            "重命名文件暂不支持 hunk 级操作，请使用文件级恢复".to_owned(),
+            "重命名文件请使用“恢复本轮变更”，以便同时恢复源路径".to_owned(),
         ));
     }
     let baseline_path = previous_path.as_deref().unwrap_or(path);
@@ -1937,6 +1940,16 @@ async fn load_turn_diff_sources(
             ));
         }
     };
+    if baseline_exists {
+        let mut digest = Sha256::new();
+        digest.update(&baseline);
+        let checkpoint_hash = format!("sha256:{:x}", digest.finalize());
+        if baseline_hash.as_deref() != Some(checkpoint_hash.as_str()) {
+            return Err(TurnDiffSourceError::Unavailable(
+                "baseline checkpoint 校验失败，拒绝还原".to_owned(),
+            ));
+        }
+    }
     let result = if result_exists {
         let bytes = fs::read(&target)
             .map_err(|error| TurnDiffSourceError::Failed(format!("read current file: {error}")))?;
@@ -1952,6 +1965,11 @@ async fn load_turn_diff_sources(
         }
         bytes
     } else {
+        if target.exists() {
+            return Err(TurnDiffSourceError::Unavailable(
+                "当前文件已在本轮后重新出现，拒绝覆盖后续修改".to_owned(),
+            ));
+        }
         Vec::new()
     };
     if baseline.len() > 10 * 1024 * 1024 || result.len() > 10 * 1024 * 1024 {
@@ -1959,7 +1977,9 @@ async fn load_turn_diff_sources(
             "文件超过 inline diff 限额".to_owned(),
         ));
     }
-    if std::str::from_utf8(&baseline).is_err() || std::str::from_utf8(&result).is_err() {
+    if require_text
+        && (std::str::from_utf8(&baseline).is_err() || std::str::from_utf8(&result).is_err())
+    {
         return Err(TurnDiffSourceError::Unavailable(
             "二进制文件暂不支持 hunk 操作".to_owned(),
         ));
@@ -1967,6 +1987,8 @@ async fn load_turn_diff_sources(
     Ok(TurnDiffSources {
         baseline,
         result,
+        baseline_exists,
+        result_exists,
         baseline_dirty,
     })
 }
@@ -2108,6 +2130,7 @@ async fn apply_git_hunk_action(
         &session_id,
         &turn_id,
         &path,
+        true,
     )
     .await
     {
@@ -2226,6 +2249,65 @@ async fn apply_git_hunk_action(
     })
 }
 
+async fn restore_git_file_baseline(
+    workspace_path: &str,
+    path: &str,
+    target: &Path,
+    sources: &TurnDiffSources,
+) -> Result<(), String> {
+    if sources.baseline_exists {
+        if let Some(parent) = target.parent() {
+            tokio::fs::create_dir_all(parent)
+                .await
+                .map_err(|error| format!("create restore directory: {error}"))?;
+        }
+        tokio::fs::write(target, &sources.baseline)
+            .await
+            .map_err(|error| format!("restore file baseline: {error}"))?;
+    } else if sources.result_exists {
+        tokio::fs::remove_file(target)
+            .await
+            .map_err(|error| format!("remove added file: {error}"))?;
+    }
+
+    // Keep the index consistent with the exact recorded baseline. Using
+    // `git restore` here would restore from the current index and can both
+    // lose post-turn edits and leave staged Agent changes untouched.
+    let output = if sources.baseline_exists {
+        Command::new("git")
+            .args(["-C", workspace_path, "add", "--", path])
+            .output()
+    } else {
+        Command::new("git")
+            .args([
+                "-C",
+                workspace_path,
+                "rm",
+                "--cached",
+                "--ignore-unmatch",
+                "--",
+                path,
+            ])
+            .output()
+    }
+    .map_err(|error| format!("update Git restore state: {error}"))?;
+    if output.status.success() {
+        return Ok(());
+    }
+
+    if sources.result_exists {
+        let _ = tokio::fs::write(target, &sources.result).await;
+    } else {
+        let _ = tokio::fs::remove_file(target).await;
+    }
+    let message = String::from_utf8_lossy(&output.stderr).trim().to_owned();
+    Err(if message.is_empty() {
+        format!("git exited with {}", output.status)
+    } else {
+        message
+    })
+}
+
 #[tauri::command]
 async fn apply_git_file_action(
     session_id: String,
@@ -2244,52 +2326,81 @@ async fn apply_git_file_action(
             "unsupported Git file action".to_owned(),
         ));
     }
-    if action == "revert" {
-        if let Some(turn_id) = turn_id.as_deref() {
-            let metadata = sqlx::query(
-                "SELECT baseline_dirty, change_kind FROM file_changes
-                 JOIN turn_change_sets ON turn_change_sets.id = file_changes.change_set_id
-                 WHERE file_changes.path = ? AND turn_change_sets.session_id = ?
-                   AND turn_change_sets.turn_id = ?",
-            )
-            .bind(&path)
-            .bind(&session_id)
-            .bind(turn_id)
-            .fetch_optional(&state.db)
-            .await?;
-            let baseline_dirty = metadata
-                .as_ref()
-                .map(|row| row.try_get::<i64, _>("baseline_dirty"))
-                .transpose()?;
-            let change_kind = metadata
-                .as_ref()
-                .map(|row| row.try_get::<String, _>("change_kind"))
-                .transpose()?;
-            if change_kind.as_deref() == Some("renamed") {
-                return Ok(GitFileActionResult {
-                    path,
-                    action,
-                    applied: false,
-                    message: "重命名文件请使用“恢复本轮变更”，以便同时恢复源路径".to_owned(),
-                });
-            }
-            if baseline_dirty == Some(1) {
-                return Ok(GitFileActionResult {
-                    path,
-                    action,
-                    applied: false,
-                    message: "本轮前已有修改，禁止整文件还原；请审阅后处理".to_owned(),
-                });
-            }
-        }
-    }
     let root = Path::new(&workspace.path);
-    crate::workspace_guard::canonicalize_target(root, Path::new(&path))
+    let target = crate::workspace_guard::canonicalize_target(root, Path::new(&path))
         .map_err(CoreError::InvalidWorkspacePath)?;
+    if action == "revert" {
+        let Some(turn_id) = turn_id.as_deref() else {
+            return Ok(GitFileActionResult {
+                path,
+                action,
+                applied: false,
+                message: "整文件还原需要明确的本轮变更记录".to_owned(),
+            });
+        };
+        let sources = match load_turn_diff_sources(
+            &state.db,
+            &state.data_dir,
+            &workspace.path,
+            &session_id,
+            turn_id,
+            &path,
+            false,
+        )
+        .await
+        {
+            Ok(sources) => sources,
+            Err(TurnDiffSourceError::NotChanged) => {
+                return Ok(GitFileActionResult {
+                    path,
+                    action,
+                    applied: false,
+                    message: "该文件不在本轮变更记录中".to_owned(),
+                });
+            }
+            Err(TurnDiffSourceError::UnsafePath(error)) => {
+                return Err(CoreError::InvalidWorkspacePath(error));
+            }
+            Err(TurnDiffSourceError::Unavailable(message)) => {
+                return Ok(GitFileActionResult {
+                    path,
+                    action,
+                    applied: false,
+                    message,
+                });
+            }
+            Err(TurnDiffSourceError::Failed(error)) => return Err(CoreError::Database(error)),
+        };
+        if sources.baseline_dirty {
+            return Ok(GitFileActionResult {
+                path,
+                action,
+                applied: false,
+                message: "本轮前已有修改，禁止整文件还原；请审阅后处理".to_owned(),
+            });
+        }
+
+        if let Err(message) =
+            restore_git_file_baseline(&workspace.path, &path, &target, &sources).await
+        {
+            return Ok(GitFileActionResult {
+                path,
+                action,
+                applied: false,
+                message,
+            });
+        }
+        return Ok(GitFileActionResult {
+            path,
+            action,
+            applied: true,
+            message: "已恢复到本轮开始前的文件内容".to_owned(),
+        });
+    }
     let args: Vec<&str> = match action.as_str() {
         "stage" => vec!["-C", &workspace.path, "add", "--", &path],
         "unstage" => vec!["-C", &workspace.path, "restore", "--staged", "--", &path],
-        "revert" => vec!["-C", &workspace.path, "restore", "--worktree", "--", &path],
+        "revert" => unreachable!(),
         _ => unreachable!(),
     };
     let output = Command::new("git")
@@ -2453,30 +2564,15 @@ async fn remove_session_attachment(
     Ok(())
 }
 
-#[tauri::command]
-async fn bind_session_attachments(
-    session_id: String,
-    turn_id: String,
-    state: State<'_, AppState>,
-) -> Result<(), CoreError> {
-    session_by_id(&state.db, &session_id).await?;
-    let internal_turn_id: String = sqlx::query_scalar(
-        "SELECT id FROM turns
-         WHERE session_id = ? AND (id = ? OR external_turn_id = ?)
-         ORDER BY CASE WHEN id = ? THEN 0 ELSE 1 END
-         LIMIT 1",
-    )
-    .bind(&session_id)
-    .bind(&turn_id)
-    .bind(&turn_id)
-    .bind(&turn_id)
-    .fetch_optional(&state.db)
-    .await?
-    .ok_or_else(|| CoreError::SessionNotFound(format!("turn {turn_id}")))?;
+pub(crate) async fn bind_pending_attachments_to_turn(
+    db: &SqlitePool,
+    session_id: &str,
+    internal_turn_id: &str,
+) -> Result<(), sqlx::Error> {
     sqlx::query("UPDATE attachments SET turn_id = ? WHERE session_id = ? AND turn_id IS NULL")
         .bind(internal_turn_id)
         .bind(session_id)
-        .execute(&state.db)
+        .execute(db)
         .await?;
     Ok(())
 }
@@ -2826,7 +2922,7 @@ async fn delete_project_action(
     Ok(())
 }
 
-async fn read_process_output<R: tokio::io::AsyncRead + Unpin>(reader: R) -> Vec<u8> {
+pub(crate) async fn read_process_output<R: tokio::io::AsyncRead + Unpin>(reader: R) -> Vec<u8> {
     const MAX: usize = 1024 * 1024 + 1;
     let mut bytes = Vec::new();
     let mut reader = reader;
@@ -2842,6 +2938,35 @@ async fn read_process_output<R: tokio::io::AsyncRead + Unpin>(reader: R) -> Vec<
         }
     }
     bytes
+}
+
+#[cfg(unix)]
+pub(crate) fn isolate_process_tree(command: &mut TokioCommand) {
+    command.process_group(0);
+}
+
+#[cfg(not(unix))]
+pub(crate) fn isolate_process_tree(_command: &mut TokioCommand) {}
+
+pub(crate) async fn terminate_process_tree(child: &mut tokio::process::Child) {
+    let pid = child.id();
+    #[cfg(unix)]
+    if let Some(pid) = pid {
+        // Each controlled command is started as its own process group. A
+        // negative pid addresses that entire group, including grandchildren.
+        unsafe {
+            libc::kill(-(pid as i32), libc::SIGKILL);
+        }
+    }
+    #[cfg(windows)]
+    if let Some(pid) = pid {
+        let _ = TokioCommand::new("taskkill")
+            .args(["/PID", &pid.to_string(), "/T", "/F"])
+            .status()
+            .await;
+    }
+    let _ = child.kill().await;
+    let _ = child.wait().await;
 }
 
 #[tauri::command]
@@ -2880,6 +3005,7 @@ async fn run_project_action(
         .current_dir(&cwd)
         .stdout(std::process::Stdio::piped())
         .stderr(std::process::Stdio::piped());
+    isolate_process_tree(&mut command);
     let mut child = command
         .kill_on_drop(true)
         .spawn()
@@ -2910,11 +3036,7 @@ async fn run_project_action(
             )
         }
         Err(_) => {
-            let _ = child.kill().await;
-            // Reap the process before collecting its pipes. This keeps a
-            // timed-out project action from surviving its audit record or
-            // holding the workspace command open after the UI reports timeout.
-            let _ = child.wait().await;
+            terminate_process_tree(&mut child).await;
             ("timed_out", None)
         }
     };
@@ -3664,7 +3786,6 @@ pub fn run() {
             register_session_attachments,
             list_session_attachments,
             remove_session_attachment,
-            bind_session_attachments,
             validate_session_attachments,
             list_turn_artifacts,
             read_artifact,
@@ -3705,11 +3826,12 @@ pub fn run() {
 #[cfg(test)]
 mod tests {
     use super::{
-        canonical_workspace_path, clone_cached_runtime, collect_workspace_capabilities,
-        find_executable, mark_turn_interrupted, normalize_session_filter, now_iso, open_database,
-        persist_restore_operation, recover_interrupted_sessions, recover_interrupted_turn_changes,
-        remove_cached_runtime, require_trusted_workspace, session_execution_profile,
-        workspace_label, CoreError, SessionListFilter, Workspace,
+        bind_pending_attachments_to_turn, canonical_workspace_path, clone_cached_runtime,
+        collect_workspace_capabilities, find_executable, mark_turn_interrupted,
+        normalize_session_filter, now_iso, open_database, persist_restore_operation,
+        recover_interrupted_sessions, recover_interrupted_turn_changes, remove_cached_runtime,
+        require_trusted_workspace, restore_git_file_baseline, session_execution_profile,
+        workspace_label, CoreError, SessionListFilter, TurnDiffSources, Workspace,
     };
     use crate::change_set::{
         capture as capture_workspace, persist_baseline_checkpoint, persist_checkpoint_metadata,
@@ -3787,6 +3909,65 @@ mod tests {
         assert!(hunks[0].content.contains("+  new();"));
         let patch = super::select_unified_hunk(&diff, 0).expect("select hunk patch");
         assert!(patch.starts_with("--- a/src/main.rs\n+++ b/src/main.rs\n@@ "));
+    }
+
+    #[test]
+    fn whole_file_restore_uses_turn_baseline_even_when_agent_result_is_staged() {
+        let root = test_directory();
+        let target = root.join("tracked.txt");
+        fs::write(&target, "baseline").expect("baseline file");
+        assert!(std::process::Command::new("git")
+            .args(["-C", root.to_str().unwrap(), "init", "-q"])
+            .status()
+            .unwrap()
+            .success());
+        assert!(std::process::Command::new("git")
+            .args(["-C", root.to_str().unwrap(), "add", "tracked.txt"])
+            .status()
+            .unwrap()
+            .success());
+        assert!(std::process::Command::new("git")
+            .args([
+                "-C",
+                root.to_str().unwrap(),
+                "-c",
+                "user.name=Aibo",
+                "-c",
+                "user.email=aibo@example.invalid",
+                "commit",
+                "-qm",
+                "initial",
+            ])
+            .status()
+            .unwrap()
+            .success());
+        fs::write(&target, "agent result").expect("agent result");
+        assert!(std::process::Command::new("git")
+            .args(["-C", root.to_str().unwrap(), "add", "tracked.txt"])
+            .status()
+            .unwrap()
+            .success());
+
+        tauri::async_runtime::block_on(restore_git_file_baseline(
+            root.to_str().unwrap(),
+            "tracked.txt",
+            &target,
+            &TurnDiffSources {
+                baseline: b"baseline".to_vec(),
+                result: b"agent result".to_vec(),
+                baseline_exists: true,
+                result_exists: true,
+                baseline_dirty: false,
+            },
+        ))
+        .expect("restore turn baseline");
+        assert_eq!(fs::read_to_string(&target).unwrap(), "baseline");
+        assert!(std::process::Command::new("git")
+            .args(["-C", root.to_str().unwrap(), "diff", "--cached", "--quiet"])
+            .status()
+            .unwrap()
+            .success());
+        fs::remove_dir_all(root).expect("cleanup");
     }
 
     #[test]
@@ -4423,5 +4604,58 @@ mod tests {
             .any(|entry| entry.name == "checkpoint-restore"));
         assert!(inventory.warnings.is_empty());
         fs::remove_dir_all(directory).expect("cleanup");
+    }
+
+    #[test]
+    fn binds_only_pending_attachments_for_the_requested_session() {
+        tauri::async_runtime::block_on(async {
+            let pool = sqlx::SqlitePool::connect("sqlite::memory:")
+                .await
+                .expect("database");
+            sqlx::query(
+                "CREATE TABLE attachments (id TEXT PRIMARY KEY, session_id TEXT, turn_id TEXT)",
+            )
+            .execute(&pool)
+            .await
+            .expect("attachments table");
+            for (id, session_id, turn_id) in [
+                ("pending", "session", None),
+                ("bound", "session", Some("old-turn")),
+                ("other", "other-session", None),
+            ] {
+                sqlx::query("INSERT INTO attachments (id, session_id, turn_id) VALUES (?, ?, ?)")
+                    .bind(id)
+                    .bind(session_id)
+                    .bind(turn_id)
+                    .execute(&pool)
+                    .await
+                    .expect("attachment");
+            }
+
+            bind_pending_attachments_to_turn(&pool, "session", "new-turn")
+                .await
+                .expect("bind pending attachments");
+            let rows = sqlx::query("SELECT id, turn_id FROM attachments ORDER BY id")
+                .fetch_all(&pool)
+                .await
+                .expect("attachment rows");
+            let values = rows
+                .iter()
+                .map(|row| {
+                    (
+                        row.get::<String, _>("id"),
+                        row.get::<Option<String>, _>("turn_id"),
+                    )
+                })
+                .collect::<Vec<_>>();
+            assert_eq!(
+                values,
+                vec![
+                    ("bound".to_owned(), Some("old-turn".to_owned())),
+                    ("other".to_owned(), None),
+                    ("pending".to_owned(), Some("new-turn".to_owned())),
+                ]
+            );
+        });
     }
 }

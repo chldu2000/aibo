@@ -13,6 +13,10 @@ export default defineConfig({
   },
   clearScreen: false,
   server: {
+    // Keep the Tauri WebView and Vite on the same address family. macOS can
+    // resolve `localhost` differently between Node and WebKit, leaving a
+    // blank window when Vite only binds to ::1.
+    host: '127.0.0.1',
     port: 1420,
     strictPort: true,
   },
