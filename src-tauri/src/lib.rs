@@ -408,6 +408,8 @@ pub enum CoreError {
     WorkspaceTrustRequired,
     #[error("session not found: {0}")]
     SessionNotFound(String),
+    #[error("session must be idle before its execution profile can change")]
+    SessionBusy,
     #[error("invalid session label: {0}")]
     InvalidSessionLabel(String),
     #[error("invalid session filter: {0}")]
@@ -442,6 +444,7 @@ impl Serialize for CoreError {
             Self::WorkspaceNotFound(_) => "workspace_not_found",
             Self::WorkspaceTrustRequired => "workspace_trust_required",
             Self::SessionNotFound(_) => "session_not_found",
+            Self::SessionBusy => "session_busy",
             Self::InvalidSessionLabel(_) => "invalid_session_label",
             Self::InvalidSessionFilter(_) => "invalid_session_filter",
             Self::InvalidExecutionProfile(_) => "invalid_execution_profile",
@@ -1228,6 +1231,47 @@ async fn get_session_execution_profile(
     session_id: String,
     state: State<'_, AppState>,
 ) -> Result<SessionExecutionProfile, CoreError> {
+    session_execution_profile(&state.db, &session_id).await
+}
+
+#[tauri::command]
+async fn update_session_execution_profile(
+    session_id: String,
+    requested: ExecutionProfile,
+    state: State<'_, AppState>,
+) -> Result<SessionExecutionProfile, CoreError> {
+    let session = session_by_id(&state.db, &session_id).await?;
+    if session.archived {
+        return Err(CoreError::Initialization(
+            "archived sessions must be unarchived before changing their execution profile"
+                .to_owned(),
+        ));
+    }
+    if matches!(session.state.as_str(), "starting" | "running" | "waiting_approval") {
+        return Err(CoreError::SessionBusy);
+    }
+    let resolved = resolve_profile(&session.agent, Some(requested), now_iso())
+        .map_err(CoreError::InvalidExecutionProfile)?;
+    let workspace = workspace_by_id(&state.db, &session.workspace_id).await?;
+    require_trusted_workspace(&workspace, &resolved)?;
+
+    // A runtime captures the resolved profile when it is created. Close an
+    // idle runtime so the next prompt reopens it with the updated profile.
+    match session.agent.as_str() {
+        "codex" => state.codex.close(&session_id).await.map_err(CoreError::from)?,
+        "pi" => state.pi.close(&session_id).await.map_err(CoreError::from)?,
+        agent => {
+            return Err(CoreError::Initialization(format!(
+                "unsupported session agent: {agent}"
+            )))
+        }
+    }
+    save_session_profile(&state.db, &session_id, &resolved).await?;
+    sqlx::query("UPDATE sessions SET state = 'idle', updated_at = ? WHERE id = ?")
+        .bind(now_iso())
+        .bind(&session_id)
+        .execute(&state.db)
+        .await?;
     session_execution_profile(&state.db, &session_id).await
 }
 
@@ -3917,6 +3961,7 @@ pub fn run() {
             get_app_snapshot,
             resolve_execution_profile,
             get_session_execution_profile,
+            update_session_execution_profile,
             list_sessions,
             get_timeline,
             get_turn_change_set,

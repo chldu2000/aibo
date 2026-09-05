@@ -76,6 +76,7 @@
     compactPiSession,
     setPiThinkingLevel,
     setPiModel,
+    updateSessionExecutionProfile,
     reloadPiSession,
     listSessions,
     listenToAgentEvents,
@@ -105,6 +106,7 @@
     ApprovalDecision,
     ApprovalRequest,
     ContextAttachment,
+    ExecutionProfile,
     CheckpointFile,
     Artifact,
     ProjectAction,
@@ -112,6 +114,7 @@
     CodexThreadSnapshot,
     CodexThreadSummary,
     Session,
+    SessionAccessMode,
     SessionExecutionProfile,
     TurnChangeSet,
     RestoreOperation,
@@ -201,6 +204,7 @@
   let codexThreadSnapshot = $state<CodexThreadSnapshot | null>(null);
   let piTree = $state<PiSessionTreeSnapshot | null>(null);
   let executionProfile = $state<SessionExecutionProfile | null>(null);
+  let sessionModelOverride = $state<string | null>(null);
   let turnChangeSet = $state<TurnChangeSet | null>(null);
   let checkpoints = $state<CheckpointFile[]>([]);
   let restoreOperations = $state<RestoreOperation[]>([]);
@@ -520,6 +524,12 @@
     };
   }
 
+  function markSessionIdle(session: Session): void {
+    updateWorkspaceSessions(session.workspaceId, (items) =>
+      items.map((item) => (item.id === session.id ? { ...item, state: 'idle' } : item)),
+    );
+  }
+
   function findSession(sessionId: string): Session | null {
     for (const workspaceSessions of Object.values(workspaceSessionMap)) {
       const session = workspaceSessions.find((item) => item.id === sessionId);
@@ -535,6 +545,7 @@
     codexThreadSnapshot = null;
     piTree = null;
     executionProfile = null;
+    sessionModelOverride = null;
     turnChangeSet = null;
     checkpoints = [];
     restoreOperations = [];
@@ -817,6 +828,117 @@
 
   async function createPi() {
     await agentSessionController.createPi(selectedWorkspace);
+  }
+
+  function profileForAccess(mode: SessionAccessMode): ExecutionProfile {
+    const session = selectedSession;
+    const current = executionProfile?.requested ?? {
+      schema: 'aibo.execution-profile/v1' as const,
+      interactionMode: 'ask' as const,
+      approvalPolicy: session?.agent === 'pi' ? 'never' as const : 'on-request' as const,
+      filesystemPolicy: 'read-only' as const,
+      commandPolicy: 'disabled' as const,
+      networkPolicy: 'disabled' as const,
+      model: null,
+      reasoningEffort: null,
+    };
+    if (mode === 'workspace-write') {
+      return {
+        ...current,
+        interactionMode: 'edit',
+        approvalPolicy: 'on-request',
+        filesystemPolicy: 'workspace-write',
+        commandPolicy: 'approved',
+      };
+    }
+    if (mode === 'plan') {
+      return {
+        ...current,
+        interactionMode: 'plan',
+        approvalPolicy: 'never',
+        filesystemPolicy: 'read-only',
+        commandPolicy: 'disabled',
+      };
+    }
+    return {
+      ...current,
+      interactionMode: 'ask',
+      approvalPolicy: 'never',
+      filesystemPolicy: 'read-only',
+      commandPolicy: 'disabled',
+    };
+  }
+
+  async function applySessionAccess(mode: SessionAccessMode): Promise<void> {
+    const session = selectedSession;
+    if (!session) return;
+    if (!desktop) {
+      errorMessage = '当前是 Web 预览；请在 Tauri 桌面模式中调整会话权限。';
+      return;
+    }
+    if (sessionRunning || selectedSessionArchiving) {
+      errorMessage = '会话运行中不能切换权限，请等待当前回合结束。';
+      return;
+    }
+    busy = true;
+    errorMessage = null;
+    try {
+      executionProfile = await updateSessionExecutionProfile(session.id, profileForAccess(mode));
+      // The profile belongs to this session only. Keep the current list entry
+      // coherent after the backend closes its idle runtime, without reloading
+      // every session in the workspace (which also reloads unrelated list and
+      // conversation context on this path).
+      markSessionIdle(session);
+      notice = mode === 'workspace-write' ? '会话权限已切换为工作区写入。' : mode === 'plan' ? '会话已切换为计划模式。' : '会话权限已切换为只读。';
+    } catch (error) {
+      errorMessage = toErrorMessage(error);
+    } finally {
+      busy = false;
+    }
+  }
+
+  async function applySessionModel(model: string | null): Promise<void> {
+    const session = selectedSession;
+    if (!session) return;
+    if (!desktop) {
+      errorMessage = '当前是 Web 预览；请在 Tauri 桌面模式中调整会话模型。';
+      return;
+    }
+    if (sessionRunning || selectedSessionArchiving) {
+      errorMessage = '会话运行中不能切换模型，请等待当前回合结束。';
+      return;
+    }
+    busy = true;
+    errorMessage = null;
+    try {
+      if (session.agent === 'pi') {
+        const result = await setPiModel(session.id, model ?? undefined);
+        const current = result.current && typeof result.current === 'object'
+          ? result.current as { provider?: unknown; id?: unknown }
+          : result;
+        const provider = typeof current.provider === 'string' ? current.provider : '';
+        const id = typeof current.id === 'string' ? current.id : null;
+        sessionModelOverride = id ? `${provider ? `${provider}/` : ''}${id}` : model;
+        notice = sessionModelOverride ? `Pi 模型已切换为 ${sessionModelOverride}。` : '已读取 Pi 当前模型。';
+      } else {
+        const current = executionProfile?.requested;
+        if (!current) {
+          errorMessage = '当前会话配置尚未加载，请稍候重试。';
+          return;
+        }
+        if ((current.model ?? null) === model) {
+          notice = model ? `Codex 当前已使用 ${model}。` : 'Codex 当前已使用默认模型。';
+          return;
+        }
+        executionProfile = await updateSessionExecutionProfile(session.id, { ...current, model });
+        markSessionIdle(session);
+        notice = model ? `Codex 模型已切换为 ${model}。` : 'Codex 将使用默认模型。';
+      }
+    } catch (error) {
+      errorMessage = toErrorMessage(error);
+    } finally {
+      busy = false;
+    }
   }
 
   async function executePiBuiltinCommand(input: string): Promise<boolean> {
@@ -1447,6 +1569,7 @@
     refreshCodexThreads,
     refreshCodexThread,
     refreshPiTree,
+    refreshExecutionProfile,
     refreshAttachments: (sessionId) => sessionContextController.refreshAttachments(sessionId),
     refreshArtifacts: (sessionId) => sessionContextController.refreshArtifacts(sessionId),
     refreshProjectActions: (workspaceId) => sessionContextController.refreshProjectActions(workspaceId),
@@ -1618,6 +1741,8 @@
       selectedSessionArchiving={selectedSessionArchiving}
       busy={busy}
       attachments={attachments}
+      executionProfile={executionProfile}
+      modelOverride={sessionModelOverride}
       workspacePathSuggestions={workspacePathSuggestions}
       agentCommands={visibleAgentCommands}
       agentCommandsLoading={agentCommandsLoading}
@@ -1638,7 +1763,8 @@
       onQueue={(mode) => void queuePiPrompt(mode)}
       onClearQueue={() => void clearPiPromptQueue()}
       onAbort={() => void abortPrompt()}
-      onOpenSettings={() => (settingsOpen = true)}
+      onSelectAccess={(mode) => void applySessionAccess(mode)}
+      onSelectModel={(model) => void applySessionModel(model)}
     />
     <Inspector
       workspace={selectedWorkspace}

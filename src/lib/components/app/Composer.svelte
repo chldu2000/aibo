@@ -1,6 +1,6 @@
 <script lang="ts">
   import { Button, Card, Icon, Textarea } from '$lib/ui-kit';
-  import type { AgentCommand, ContextAttachment, SessionExecutionProfile, WorkspacePathSuggestion } from '$lib/types';
+  import type { AgentCommand, ContextAttachment, SessionAccessMode, SessionExecutionProfile, WorkspacePathSuggestion } from '$lib/types';
 
   type ComposerProps = {
     selectedAgent: 'codex' | 'pi' | null;
@@ -11,6 +11,7 @@
     busy: boolean;
     attachments: ContextAttachment[];
     executionProfile: SessionExecutionProfile | null;
+    modelOverride?: string | null;
     workspacePathSuggestions: WorkspacePathSuggestion[];
     agentCommands: AgentCommand[];
     agentCommandsLoading: boolean;
@@ -21,7 +22,8 @@
     onSend: () => void;
     onQueue: (mode: 'steer' | 'followUp') => void;
     onAbort: () => void;
-    onOpenSettings: () => void;
+    onSelectAccess: (mode: SessionAccessMode) => void | Promise<void>;
+    onSelectModel: (model: string | null) => void | Promise<void>;
     onComposerInput: (text: string) => void;
     onSelectWorkspacePath: (path: string) => void | Promise<void>;
   };
@@ -35,6 +37,7 @@
     busy,
     attachments,
     executionProfile,
+    modelOverride = null,
     workspacePathSuggestions,
     agentCommands,
     agentCommandsLoading,
@@ -45,7 +48,8 @@
     onSend,
     onQueue,
     onAbort,
-    onOpenSettings,
+    onSelectAccess,
+    onSelectModel,
     onComposerInput,
     onSelectWorkspacePath,
   }: ComposerProps = $props();
@@ -60,6 +64,7 @@
   let attachmentMenuOpen = $state(false);
   let sessionMenuOpen = $state(false);
   let modelMenuOpen = $state(false);
+  let modelDraft = $state('');
   const activeMentionQuery = $derived.by(() => {
     const match = text.match(/(?:^|\s)@([^\s]*)$/);
     return match ? match[1] : null;
@@ -96,8 +101,20 @@
       ? `${activeProfile.filesystemPolicy === 'workspace-write' ? '可修改工作区' : '仅查看'} · ${activeProfile.commandPolicy === 'disabled' ? '命令关闭' : activeProfile.approvalPolicy === 'on-request' ? '命令需审批' : '命令受信任'}`
       : '选择会话后可查看当前执行配置',
   );
+  const accessOptions: Array<{ mode: SessionAccessMode; label: string; detail: string }> = [
+    { mode: 'read-only', label: '只读', detail: '查看文件，不修改工作区' },
+    { mode: 'plan', label: '计划', detail: '分析并制定方案，不执行修改' },
+    { mode: 'workspace-write', label: '工作区写入', detail: '允许修改工作区，命令需要审批' },
+  ];
+  const activeAccessMode = $derived<SessionAccessMode>(
+    activeProfile?.filesystemPolicy === 'workspace-write'
+      ? 'workspace-write'
+      : activeProfile?.interactionMode === 'plan'
+        ? 'plan'
+        : 'read-only',
+  );
   const modelLabel = $derived(
-    activeProfile?.model || (selectedAgent === 'codex' ? 'Codex 默认模型' : selectedAgent === 'pi' ? 'Pi 默认模型' : '模型'),
+    modelOverride || activeProfile?.model || (selectedAgent === 'codex' ? 'Codex 默认模型' : selectedAgent === 'pi' ? 'Pi 默认模型' : '模型'),
   );
   const reasoningLabel = $derived(activeProfile?.reasoningEffort ? ` · ${activeProfile.reasoningEffort}` : '');
 
@@ -139,6 +156,13 @@
     attachmentMenuOpen = false;
     sessionMenuOpen = false;
     modelMenuOpen = false;
+  }
+
+  function openModelMenu(): void {
+    modelDraft = modelOverride || activeProfile?.model || '';
+    modelMenuOpen = !modelMenuOpen;
+    attachmentMenuOpen = false;
+    sessionMenuOpen = false;
   }
 </script>
 
@@ -322,15 +346,33 @@
           </Button>
           {#if sessionMenuOpen}
             <div class="composer-menu composer-profile-menu" role="menu" aria-label="会话设置">
-              <div class="composer-menu-heading">会话设置</div>
+              <div class="composer-menu-heading">会话权限</div>
               <div class="composer-menu-detail">{accessDetail}</div>
+              <div class="composer-access-options" role="group" aria-label="选择会话权限">
+                {#each accessOptions as option (option.mode)}
+                  <button
+                    class:active={option.mode === activeAccessMode}
+                    type="button"
+                    role="menuitemradio"
+                    aria-checked={option.mode === activeAccessMode}
+                    onclick={() => {
+                      sessionMenuOpen = false;
+                      if (option.mode !== activeAccessMode) void onSelectAccess(option.mode);
+                    }}
+                    disabled={busy || selectedSessionArchiving || sessionRunning}
+                  >
+                    <Icon name={option.mode === 'workspace-write' ? 'trust' : option.mode === 'plan' ? 'file' : 'untrust'} size={15} />
+                    <span class="composer-access-option-copy">
+                      <strong>{option.label}</strong>
+                      <small>{option.detail}</small>
+                    </span>
+                    {#if option.mode === activeAccessMode}<Icon name="check" size={14} />{/if}
+                  </button>
+                {/each}
+              </div>
               {#if executionProfile?.unsupported && executionProfile.unsupported.length > 0}
                 <div class="composer-menu-warning">未启用：{executionProfile.unsupported.join('、')}</div>
               {/if}
-              <button type="button" role="menuitem" onclick={() => { sessionMenuOpen = false; onOpenSettings(); }}>
-                <Icon name="settings" size={15} />
-                <span>打开设置</span>
-              </button>
             </div>
           {/if}
         </div>
@@ -344,7 +386,7 @@
             variant="ghost"
             type="button"
             class="composer-toolbar-control composer-model-control"
-            onclick={() => { modelMenuOpen = !modelMenuOpen; attachmentMenuOpen = false; sessionMenuOpen = false; }}
+            onclick={openModelMenu}
             aria-haspopup="menu"
             aria-expanded={modelMenuOpen}
             title={`${modelLabel}${reasoningLabel}`}
@@ -355,11 +397,15 @@
           {#if modelMenuOpen}
             <div class="composer-menu composer-model-menu" role="menu" aria-label="模型设置">
               <div class="composer-menu-heading">模型与推理</div>
-              <div class="composer-menu-detail">{modelLabel}{reasoningLabel}</div>
-              <button type="button" role="menuitem" onclick={() => { modelMenuOpen = false; onOpenSettings(); }}>
-                <Icon name="settings" size={15} />
-                <span>打开设置</span>
-              </button>
+              <div class="composer-menu-detail">当前：{modelLabel}{reasoningLabel}</div>
+              <Input bind:value={modelDraft} class="composer-model-input" placeholder={selectedAgent === 'pi' ? 'provider/model' : 'provider/model，留空使用默认'} aria-label="模型标识" />
+              <Button
+                size="sm"
+                type="button"
+                class="composer-model-apply"
+                onclick={() => { modelMenuOpen = false; void onSelectModel(modelDraft.trim() || null); }}
+                disabled={busy || selectedSessionArchiving || sessionRunning || (selectedAgent === 'pi' && !modelDraft.trim())}
+              >应用模型</Button>
             </div>
           {/if}
         </div>

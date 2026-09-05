@@ -126,6 +126,15 @@ export const getSessionExecutionProfile = (
 ): Promise<SessionExecutionProfile> =>
   invoke<SessionExecutionProfile>('get_session_execution_profile', { sessionId });
 
+export const updateSessionExecutionProfile = (
+  sessionId: string,
+  requested: ExecutionProfile,
+): Promise<SessionExecutionProfile> =>
+  invoke<SessionExecutionProfile>('update_session_execution_profile', {
+    sessionId,
+    requested,
+  });
+
 export const listSessions = (
   workspaceId: string,
   options: SessionListOptions = {},

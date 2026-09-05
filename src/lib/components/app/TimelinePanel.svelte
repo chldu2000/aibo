@@ -1,6 +1,6 @@
 <script lang="ts">
   import { Badge, Button, Card, CardContent, CardHeader, CardTitle, Separator } from '$lib/ui-kit';
-  import type { AgentCommand, AgentQueueSnapshot, ApprovalDecision, ContextAttachment, SessionExecutionProfile, WorkspacePathSuggestion } from '$lib/types';
+  import type { AgentCommand, AgentQueueSnapshot, ApprovalDecision, ContextAttachment, SessionAccessMode, SessionExecutionProfile, WorkspacePathSuggestion } from '$lib/types';
   import Composer from './Composer.svelte';
   import MarkdownContent from './MarkdownContent.svelte';
   import { sessionStateLabel } from './session-utils';
@@ -36,6 +36,7 @@
     busy: boolean;
     attachments: ContextAttachment[];
     executionProfile: SessionExecutionProfile | null;
+    modelOverride?: string | null;
     workspacePathSuggestions: WorkspacePathSuggestion[];
     agentCommands: AgentCommand[];
     agentCommandsLoading: boolean;
@@ -51,7 +52,8 @@
     onQueue: (mode: 'steer' | 'followUp') => void;
     onClearQueue: () => void;
     onAbort: () => void;
-    onOpenSettings: () => void;
+    onSelectAccess: (mode: SessionAccessMode) => void | Promise<void>;
+    onSelectModel: (model: string | null) => void | Promise<void>;
     onComposerInput: (text: string) => void;
     onSelectWorkspacePath: (path: string) => void | Promise<void>;
   };
@@ -73,6 +75,7 @@
     busy,
     attachments,
     executionProfile,
+    modelOverride = null,
     workspacePathSuggestions,
     agentCommands,
     agentCommandsLoading,
@@ -85,7 +88,8 @@
     onQueue,
     onClearQueue,
     onAbort,
-    onOpenSettings,
+    onSelectAccess,
+    onSelectModel,
     onAddAttachments,
     onAddDirectory,
     onRemoveAttachment,
@@ -282,6 +286,7 @@
     busy={busy}
     attachments={attachments}
     executionProfile={executionProfile}
+    {modelOverride}
     workspacePathSuggestions={workspacePathSuggestions}
     agentCommands={agentCommands}
     agentCommandsLoading={agentCommandsLoading}
@@ -292,7 +297,8 @@
     onSend={onSend}
     onQueue={onQueue}
     onAbort={onAbort}
-    onOpenSettings={onOpenSettings}
+    onSelectAccess={onSelectAccess}
+    onSelectModel={onSelectModel}
     onComposerInput={onComposerInput}
     onSelectWorkspacePath={onSelectWorkspacePath}
   />

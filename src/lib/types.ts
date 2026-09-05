@@ -2,6 +2,7 @@ export type WorkspaceTrust = 'trusted' | 'untrusted';
 
 export type AgentName = 'codex' | 'pi';
 export type InteractionMode = 'ask' | 'plan' | 'edit';
+export type SessionAccessMode = 'read-only' | 'plan' | 'workspace-write';
 export type ApprovalPolicy = 'never' | 'on-request' | 'trusted';
 export type FilesystemPolicy = 'read-only' | 'workspace-write';
 export type CommandPolicy = 'disabled' | 'approved' | 'trusted';
