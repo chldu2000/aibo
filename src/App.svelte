@@ -110,6 +110,7 @@
     abortPiTurn,
     clearPiQueue,
     setWorkspaceTrust,
+    startWindowDragging,
     unarchiveSession as unarchiveSessionApi,
   } from './lib/api';
   import type {
@@ -334,6 +335,12 @@
   function openDiagnosticsPanel(): void {
     settingsOpen = false;
     diagnosticsOpen = true;
+  }
+
+  function dragWindow(): void {
+    void startWindowDragging().catch((error) => {
+      console.warn('unable to start window dragging', error);
+    });
   }
 
   const selectedWorkspace = $derived(
@@ -2349,6 +2356,7 @@
     onOpenDiagnostics={openDiagnosticsPanel}
     {inspectorOpen}
     onToggleInspector={() => (inspectorOpen = !inspectorOpen)}
+    onStartDragging={dragWindow}
   />
 
   <main class:inspector-hidden={!inspectorOpen} class="workspace-grid">

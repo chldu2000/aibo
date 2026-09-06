@@ -1,5 +1,6 @@
 import { invoke } from '@tauri-apps/api/core';
 import { listen, type UnlistenFn } from '@tauri-apps/api/event';
+import { getCurrentWindow } from '@tauri-apps/api/window';
 import type {
   AgentDiagnostic,
   WorkspaceCapabilityInventory,
@@ -43,6 +44,8 @@ import type {
 
 export const isTauri = (): boolean =>
   typeof window !== 'undefined' && '__TAURI_INTERNALS__' in window;
+
+export const startWindowDragging = (): Promise<void> => getCurrentWindow().startDragging();
 
 export const listWorkspaces = (): Promise<Workspace[]> =>
   invoke<Workspace[]>('list_workspaces');

@@ -3,5 +3,9 @@
   "identifier": "main-capability",
   "description": "Minimal desktop capability for the Aibo workbench.",
   "windows": ["main"],
-  "permissions": ["core:default", "dialog:default"]
+  "permissions": [
+    "core:default",
+    "core:window:allow-start-dragging",
+    "dialog:default"
+  ]
 }

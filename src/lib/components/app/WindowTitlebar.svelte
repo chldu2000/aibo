@@ -6,12 +6,33 @@
     onOpenDiagnostics: () => void;
     inspectorOpen: boolean;
     onToggleInspector: () => void;
+    onStartDragging: () => void;
   };
 
-  let { onOpenSettings, onOpenDiagnostics, inspectorOpen, onToggleInspector }: WindowTitlebarProps = $props();
+  let {
+    onOpenSettings,
+    onOpenDiagnostics,
+    inspectorOpen,
+    onToggleInspector,
+    onStartDragging,
+  }: WindowTitlebarProps = $props();
+
+  function handleTitlebarMouseDown(event: MouseEvent): void {
+    if (event.button !== 0) return;
+    const target = event.target instanceof Element ? event.target : null;
+    if (target?.closest('button, input, textarea, select, a, [role="button"]')) return;
+    onStartDragging();
+  }
 </script>
 
-<header class="window-titlebar" data-tauri-drag-region data-ui-component="window-titlebar">
+<header
+  class="window-titlebar"
+  data-ui-component="window-titlebar"
+  role="toolbar"
+  aria-label="窗口标题栏"
+  tabindex="-1"
+  onmousedown={handleTitlebarMouseDown}
+>
   <span class="window-title">Aibo</span>
   <div class="window-actions">
     <Button variant="ghost" size="icon" type="button" aria-label="打开设置" title="设置" onclick={onOpenSettings}>
