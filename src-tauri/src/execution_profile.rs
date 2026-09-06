@@ -145,6 +145,9 @@ pub(crate) fn resolve(
                     "filesystem.workspace-write".to_owned(),
                     "model.selection".to_owned(),
                     "reasoning-effort.selection".to_owned(),
+                    "skills.discovery".to_owned(),
+                    "plan.native".to_owned(),
+                    "goals.native".to_owned(),
                 ],
                 true,
             )
@@ -158,14 +161,6 @@ pub(crate) fn resolve(
                 unsupported.push("network.agent-managed".to_owned());
                 enforced.network_policy = "disabled".to_owned();
             }
-            if requested.model.is_some() {
-                unsupported.push("model.selection".to_owned());
-                enforced.model = None;
-            }
-            if requested.reasoning_effort.is_some() {
-                unsupported.push("reasoning-effort.selection".to_owned());
-                enforced.reasoning_effort = None;
-            }
             (
                 vec![
                     "history.read".to_owned(),
@@ -176,6 +171,9 @@ pub(crate) fn resolve(
                     "tools.workspace-command-gateway".to_owned(),
                     "permissions.aiboApproval".to_owned(),
                     "permissions.noNativeSandbox".to_owned(),
+                    "model.selection".to_owned(),
+                    "reasoning-effort.selection".to_owned(),
+                    "skills.discovery".to_owned(),
                 ],
                 false,
             )
@@ -312,6 +310,8 @@ mod tests {
         assert!(resolved
             .adapter_capabilities
             .contains(&"tools.workspace-command-gateway".to_owned()));
+        assert_eq!(resolved.enforced.model.as_deref(), Some("test-model"));
+        assert_eq!(resolved.enforced.reasoning_effort.as_deref(), Some("high"));
         assert!(!resolved.native_sandbox);
     }
 

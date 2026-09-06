@@ -1,10 +1,13 @@
 <script lang="ts">
   import { Button, Card, Icon, Input, Textarea } from '$lib/ui-kit';
-  import type { AgentCommand, ContextAttachment, SessionAccessMode, SessionExecutionProfile, SessionModelCatalog, WorkspacePathSuggestion } from '$lib/types';
+  import type { AgentCommand, AgentCommandCategory, ContextAttachment, SessionAccessMode, SessionExecutionProfile, SessionModelCatalog, WorkspacePathSuggestion } from '$lib/types';
+
+  type SlashCategory = 'all' | AgentCommandCategory;
 
   type ComposerProps = {
     selectedAgent: 'codex' | 'pi' | null;
     selectedSession: boolean;
+    selectedSessionId: string | null;
     sessionArchived: boolean;
     sessionRunning: boolean;
     selectedSessionArchiving: boolean;
@@ -27,6 +30,7 @@
     onSelectAccess: (mode: SessionAccessMode) => void | Promise<void>;
     onLoadModels: () => void | Promise<void>;
     onSelectModel: (model: string | null) => void | Promise<void>;
+    onSelectReasoning: (reasoningEffort: string | null) => void | Promise<void>;
     onComposerInput: (text: string) => void;
     onSelectWorkspacePath: (path: string) => void | Promise<void>;
   };
@@ -34,6 +38,7 @@
   let {
     selectedAgent,
     selectedSession,
+    selectedSessionId,
     sessionArchived,
     sessionRunning,
     selectedSessionArchiving,
@@ -56,6 +61,7 @@
     onSelectAccess,
     onLoadModels,
     onSelectModel,
+    onSelectReasoning,
     onComposerInput,
     onSelectWorkspacePath,
   }: ComposerProps = $props();
@@ -67,10 +73,20 @@
 
   let mentionActiveIndex = $state(0);
   let slashActiveIndex = $state(0);
+  let slashCategory = $state<SlashCategory>('all');
   let attachmentMenuOpen = $state(false);
   let sessionMenuOpen = $state(false);
   let modelMenuOpen = $state(false);
   let modelDraft = $state('');
+
+  $effect(() => {
+    // The category is a view preference for the current command list. A new
+    // session can expose a completely different set of commands, so do not
+    // carry a stale filter across the session boundary.
+    selectedSessionId;
+    slashCategory = 'all';
+    slashActiveIndex = 0;
+  });
   const activeMentionQuery = $derived.by(() => {
     const match = text.match(/(?:^|\s)@([^\s]*)$/);
     return match ? match[1] : null;
@@ -82,9 +98,25 @@
   const filteredAgentCommands = $derived.by(() => {
     if (activeSlashQuery === null) return [];
     return agentCommands
-      .filter((command) => command.name.toLocaleLowerCase().startsWith(activeSlashQuery))
-      .slice(0, 8);
+      .filter((command) => {
+        const category = command.category
+          ?? (command.source === 'skill' ? 'skill' : command.source === 'extension' || command.source === 'prompt' ? 'extension' : 'agent');
+        if (slashCategory !== 'all' && category !== slashCategory) return false;
+        const query = activeSlashQuery.trim();
+        if (!query) return true;
+        const haystack = [command.name, ...(command.aliases ?? []), command.description ?? '']
+          .join(' ')
+          .toLocaleLowerCase();
+        return haystack.includes(query);
+      })
+      .slice(0, 24);
   });
+  const slashCategories: Array<{ id: SlashCategory; label: string }> = [
+    { id: 'all', label: '全部' },
+    { id: 'agent', label: 'Agent' },
+    { id: 'skill', label: 'Skills' },
+    { id: 'extension', label: 'Extension' },
+  ];
   const showMentionSuggestions = $derived(
     activeMentionQuery !== null && workspacePathSuggestions.length > 0,
   );
@@ -122,7 +154,22 @@
   const modelLabel = $derived(
     modelOverride || modelCatalog?.current?.label || activeProfile?.model || (modelCatalogLoading ? '正在读取模型…' : '模型未读取'),
   );
-  const reasoningLabel = $derived(activeProfile?.reasoningEffort ? ` · ${activeProfile.reasoningEffort}` : '');
+  const currentReasoningEffort = $derived(
+    modelCatalog?.currentReasoningEffort
+      || activeProfile?.reasoningEffort
+      || modelCatalog?.current?.defaultReasoningEffort
+      || null,
+  );
+  const reasoningLabel = $derived(currentReasoningEffort ? ` · ${currentReasoningEffort}` : '');
+  const selectedReasoningEffort = $derived(
+    activeProfile?.reasoningEffort
+      ?? (selectedAgent === 'pi' ? currentReasoningEffort : null),
+  );
+  const reasoningOptions = $derived(
+    modelCatalog?.current?.reasoningEfforts?.length
+      ? modelCatalog.current.reasoningEfforts
+      : modelCatalog?.reasoningEfforts ?? [],
+  );
 
   function attachmentName(path: string): string {
     return path.split(/[\\/]/).filter(Boolean).at(-1) ?? path;
@@ -233,6 +280,16 @@
             return;
           }
         }
+        if (showSlashMenu) {
+          if (event.key === 'Tab') {
+            event.preventDefault();
+            const currentIndex = slashCategories.findIndex((category) => category.id === slashCategory);
+            const nextIndex = (currentIndex + (event.shiftKey ? -1 : 1) + slashCategories.length) % slashCategories.length;
+            slashCategory = slashCategories[nextIndex]?.id ?? 'all';
+            slashActiveIndex = 0;
+            return;
+          }
+        }
         if (showSlashMenu && filteredAgentCommands.length > 0) {
           if (event.key === 'ArrowDown') {
             event.preventDefault();
@@ -244,7 +301,7 @@
             slashActiveIndex = (slashActiveIndex - 1 + filteredAgentCommands.length) % filteredAgentCommands.length;
             return;
           }
-          if ((event.key === 'Enter' && !event.metaKey && !event.ctrlKey) || event.key === 'Tab') {
+          if (event.key === 'Enter' && !event.metaKey && !event.ctrlKey) {
             event.preventDefault();
             const command = filteredAgentCommands[slashActiveIndex];
             if (command) selectAgentCommand(command);
@@ -283,6 +340,18 @@
       </div>
     {:else if showSlashMenu}
       <div class="composer-suggestions" role="listbox" aria-label="Agent 命令">
+        <div class="composer-command-categories" role="tablist" aria-label="命令分类">
+          {#each slashCategories as category (`slash-category-${category.id}`)}
+            <button
+              type="button"
+              role="tab"
+              aria-selected={slashCategory === category.id}
+              class:active={slashCategory === category.id}
+              onclick={() => { slashCategory = category.id; slashActiveIndex = 0; }}
+              onmousedown={(event) => event.preventDefault()}
+            >{category.label}</button>
+          {/each}
+        </div>
         {#if agentCommandsLoading && filteredAgentCommands.length === 0}
           <div class="composer-suggestions-empty">正在加载 Agent 命令…</div>
         {:else if filteredAgentCommands.length === 0}
@@ -300,7 +369,8 @@
               onmousedown={(event) => event.preventDefault()}
             >
               <span class="composer-command-prefix">/{command.name}</span>
-              <span>{command.description ?? (command.source === 'skill' ? 'Skill' : command.source)}</span>
+              <span class="composer-command-description">{command.description ?? (command.source === 'skill' ? 'Skill' : command.source)}</span>
+              <small>{command.category === 'skill' || command.source === 'skill' ? 'Skill' : command.category === 'extension' || command.source === 'extension' || command.source === 'prompt' ? 'Extension' : 'Agent'}</small>
             </button>
           {/each}
         {/if}
@@ -433,6 +503,45 @@
                 </div>
               {:else}
                 <div class="composer-suggestions-empty">未获取到可用模型，可手动输入模型标识。</div>
+              {/if}
+              <div class="composer-menu-section-heading">推理强度</div>
+              {#if reasoningOptions.length > 0}
+                <div class="composer-model-options composer-reasoning-options" role="group" aria-label="可用推理强度">
+                  {#if selectedAgent === 'codex'}
+                    <button
+                      type="button"
+                      role="menuitemradio"
+                      aria-checked={selectedReasoningEffort === null}
+                      class:active={selectedReasoningEffort === null}
+                      disabled={busy || sessionArchived || selectedSessionArchiving || sessionRunning}
+                      onclick={() => { modelMenuOpen = false; void onSelectReasoning(null); }}
+                    >
+                      <span class="composer-model-option-copy">
+                        <strong>模型默认</strong>
+                        <small>由当前模型决定</small>
+                      </span>
+                      {#if selectedReasoningEffort === null}<Icon name="check" size={14} />{/if}
+                    </button>
+                  {/if}
+                  {#each reasoningOptions as option (option.id)}
+                    <button
+                      type="button"
+                      role="menuitemradio"
+                      aria-checked={option.id === selectedReasoningEffort}
+                      class:active={option.id === selectedReasoningEffort}
+                      disabled={busy || sessionArchived || selectedSessionArchiving || sessionRunning}
+                      onclick={() => { modelMenuOpen = false; void onSelectReasoning(option.id); }}
+                    >
+                      <span class="composer-model-option-copy">
+                        <strong>{option.label}</strong>
+                        {#if option.description}<small>{option.description}</small>{/if}
+                      </span>
+                      {#if option.id === selectedReasoningEffort}<Icon name="check" size={14} />{/if}
+                    </button>
+                  {/each}
+                </div>
+              {:else}
+                <div class="composer-suggestions-empty">当前模型未提供可选推理强度。</div>
               {/if}
               <Input bind:value={modelDraft} class="composer-model-input" placeholder={selectedAgent === 'pi' ? 'provider/model' : 'provider/model，留空使用默认'} aria-label="模型标识" />
               <Button

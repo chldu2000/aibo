@@ -7,6 +7,9 @@ export type UsageValues = {
   input: number | null;
   output: number | null;
   total: number | null;
+  contextUsed: number | null;
+  contextLimit: number | null;
+  contextEstimated: boolean;
 };
 
 /**
@@ -69,9 +72,37 @@ export function readUsageValue(
 
 export function toUsageValues(snapshot: UsageSnapshot | null | undefined): UsageValues | null {
   if (!snapshot) return null;
+  const explicitContext = firstNumber(snapshot, [
+    'contextTokens',
+    'contextUsedTokens',
+    'usedContextTokens',
+  ]);
+  const contextLimit = firstNumber(snapshot, [
+    'contextWindow',
+    'contextLimit',
+    'modelContextWindow',
+  ]);
   return {
     input: readUsageValue(snapshot, 'input'),
     output: readUsageValue(snapshot, 'output'),
     total: readUsageValue(snapshot, 'total'),
+    contextUsed: explicitContext ?? readUsageValue(snapshot, 'input'),
+    contextLimit,
+    contextEstimated: explicitContext === null,
   };
+}
+
+function firstNumber(snapshot: UsageSnapshot, keys: string[]): number | null {
+  for (const key of keys) {
+    const value = snapshot[key];
+    if (typeof value === 'number' && Number.isFinite(value)) return value;
+  }
+  const total = snapshot.total;
+  if (total && typeof total === 'object' && !Array.isArray(total)) {
+    for (const key of keys) {
+      const value = (total as Record<string, unknown>)[key];
+      if (typeof value === 'number' && Number.isFinite(value)) return value;
+    }
+  }
+  return null;
 }

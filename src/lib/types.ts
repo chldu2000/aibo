@@ -48,10 +48,21 @@ export interface WorkspacePathSuggestion {
   isDirectory: boolean;
 }
 
+export type AgentCommandCategory = 'agent' | 'skill' | 'extension';
+export type AgentCommandExecution = 'aibo' | 'adapter' | 'prompt';
+
 export interface AgentCommand {
+  id?: string;
   name: string;
+  aliases?: string[];
   description: string | null;
   source: 'extension' | 'prompt' | 'skill' | string;
+  category?: AgentCommandCategory;
+  execution?: AgentCommandExecution;
+  agent?: AgentName | 'both';
+  enabled?: boolean;
+  argumentHint?: string;
+  capability?: string;
 }
 
 export type AgentStatus = 'ready' | 'missing' | 'error';
@@ -95,6 +106,8 @@ export type SessionState =
   | 'idle'
   | 'running'
   | 'waiting_approval'
+  | 'waiting_user'
+  | 'compacting'
   | 'interrupted'
   | 'failed'
   | 'closed';
@@ -125,11 +138,29 @@ export interface SessionModelOption {
   id: string;
   description: string | null;
   isDefault: boolean;
+  defaultReasoningEffort: string | null;
+  reasoningEfforts: SessionReasoningOption[];
+}
+
+export interface SessionReasoningOption {
+  id: string;
+  label: string;
+  description: string | null;
 }
 
 export interface SessionModelCatalog {
   current: SessionModelOption | null;
   models: SessionModelOption[];
+  currentReasoningEffort: string | null;
+  reasoningEfforts: SessionReasoningOption[];
+}
+
+export interface AgentGoal {
+  objective: string;
+  status: 'active' | 'paused' | 'completed' | 'cleared' | 'unknown';
+  tokenBudget: number | null;
+  tokensUsed: number | null;
+  updatedAt: string | null;
 }
 
 export interface PiSessionTreeNode {
@@ -424,6 +455,14 @@ export interface AgentQueueSnapshot {
   updatedAt: string;
 }
 
+/** A normalized context budget projection. Values may be estimated when the provider
+ * only reports cumulative input usage rather than an exact live context size. */
+export interface ContextUsage {
+  used: number | null;
+  limit: number | null;
+  estimated: boolean;
+}
+
 export interface AgentEvent {
   schemaVersion: '1.0';
   eventId: string;
@@ -454,6 +493,8 @@ export interface AgentEvent {
     | 'tool.completed'
     | 'approval.requested'
     | 'approval.resolved'
+    | 'user_input.requested'
+    | 'user_input.resolved'
     | 'usage.updated'
     | 'queue.updated'
     | 'compaction.started'

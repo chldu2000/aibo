@@ -36,6 +36,11 @@
   } from '$lib/app/agent-commands';
   import { workspaceIdsForRefresh } from '$lib/app/session-transitions';
   import type { PersistedSelection } from '$lib/app/selection-storage';
+  import {
+    readComposerDrafts,
+    writeComposerDrafts,
+  } from '$lib/app/composer-draft-storage';
+  import type { ComposerDrafts } from '$lib/app/composer-draft-storage';
   import { isSessionRunning } from '$lib/app/session-state';
   import {
     addWorkspace,
@@ -77,6 +82,10 @@
     setPiThinkingLevel,
     setPiModel,
     getSessionModels,
+    listCodexSkills,
+    getCodexGoal,
+    setCodexGoal,
+    clearCodexGoal,
     updateSessionExecutionProfile,
     reloadPiSession,
     listSessions,
@@ -118,6 +127,7 @@
     SessionModelCatalog,
     SessionAccessMode,
     SessionExecutionProfile,
+    AgentGoal,
     TurnChangeSet,
     RestoreOperation,
     WorkspaceChanges,
@@ -195,6 +205,24 @@
     }
   }
 
+  function readPersistedComposerDrafts(): ComposerDrafts {
+    if (typeof window === 'undefined') return {};
+    try {
+      return readComposerDrafts(window.localStorage);
+    } catch {
+      return {};
+    }
+  }
+
+  function writePersistedComposerDrafts(drafts: ComposerDrafts) {
+    if (typeof window === 'undefined') return;
+    try {
+      writeComposerDrafts(window.localStorage, drafts);
+    } catch {
+      // Drafts are best-effort when the WebView denies localStorage access.
+    }
+  }
+
   let workspaces = $state<Workspace[]>([]);
   let diagnostics = $state<AgentDiagnostic[]>([]);
   let workspaceCapabilities = $state<WorkspaceCapabilityInventory | null>(null);
@@ -209,6 +237,7 @@
   let sessionModelOverride = $state<string | null>(null);
   let sessionModelCatalog = $state<SessionModelCatalog | null>(null);
   let sessionModelCatalogLoading = $state(false);
+  let codexGoal = $state<AgentGoal | null>(null);
   let sessionModelRequestGeneration = 0;
   let turnChangeSet = $state<TurnChangeSet | null>(null);
   let checkpoints = $state<CheckpointFile[]>([]);
@@ -223,6 +252,7 @@
   let expandedWorkspaceIds = $state<string[]>([]);
   let selectedSessionId = $state<string | null>(null);
   let persistedSelection = $state<PersistedSelection | null>(null);
+  let composerDrafts = $state<ComposerDrafts>({});
   let restoringSelection = $state(false);
   let sessionsLoadingWorkspaceIds = $state<string[]>([]);
   let sessionLoadGenerations = $state<Record<string, number>>({});
@@ -239,6 +269,8 @@
     const commands = [...builtinCommands, ...(selectedSession.agent === 'pi' ? agentCommands : [])];
     const seen = new Set<string>();
     return commands.filter((command) => {
+      if (command.enabled === false) return false;
+      if (command.agent && command.agent !== 'both' && command.agent !== selectedSession.agent) return false;
       const name = command.name.toLocaleLowerCase();
       if (seen.has(name)) return false;
       seen.add(name);
@@ -289,6 +321,9 @@
   );
 
   const usageValues = $derived(toUsageValues(usageSnapshot));
+  const composerDraftFailed = $derived(
+    selectedSessionId ? composerDrafts[selectedSessionId]?.sendFailed === true : false,
+  );
 
   const selectedSession = $derived.by(() => {
     if (!selectedSessionId) return null;
@@ -298,6 +333,8 @@
     }
     return null;
   });
+  const selectedSessionAgent = $derived(selectedSession?.agent ?? null);
+  const selectedSessionArchived = $derived(selectedSession?.archived ?? false);
 
   $effect(() => {
     if (desktop && !restoringSelection) {
@@ -307,6 +344,73 @@
           : null,
       );
     }
+  });
+
+  function normalizeCodexGoal(value: Record<string, unknown>): AgentGoal | null {
+    const candidate = value.goal && typeof value.goal === 'object'
+      ? value.goal as Record<string, unknown>
+      : value;
+    const objective = typeof candidate.objective === 'string' ? candidate.objective.trim() : '';
+    if (!objective) return null;
+    const rawStatus = typeof candidate.status === 'string' ? candidate.status : 'unknown';
+    const status: AgentGoal['status'] = ['active', 'paused', 'completed', 'cleared'].includes(rawStatus)
+      ? rawStatus as AgentGoal['status']
+      : 'unknown';
+    return {
+      objective,
+      status,
+      tokenBudget: typeof candidate.tokenBudget === 'number' ? candidate.tokenBudget : null,
+      tokensUsed: typeof candidate.tokensUsed === 'number' ? candidate.tokensUsed : null,
+      updatedAt: typeof candidate.updatedAt === 'string' ? candidate.updatedAt : null,
+    };
+  }
+
+  $effect(() => {
+    const id = selectedSessionId;
+    const agent = selectedSessionAgent;
+    const archived = selectedSessionArchived;
+    if (!desktop || agent !== 'codex' || archived || !id) {
+      codexGoal = null;
+      return;
+    }
+    codexGoal = null;
+    void getCodexGoal(id)
+      .then((value) => {
+        if (selectedSessionId === id) codexGoal = normalizeCodexGoal(value);
+      })
+      .catch(() => {
+        if (selectedSessionId === id) codexGoal = null;
+      });
+  });
+
+  $effect(() => {
+    const id = selectedSessionId;
+    const enabled = desktop;
+    const draft = id ? untrack(() => composerDrafts[id]?.text ?? '') : '';
+    untrack(() => {
+      composerText = draft;
+      if (enabled && id && draft) notice = '已恢复当前会话草稿。';
+    });
+  });
+
+  $effect(() => {
+    const id = selectedSessionId;
+    const text = composerText;
+    if (!desktop || !id) return;
+    untrack(() => {
+      const next = { ...composerDrafts };
+      if (text.trim()) {
+        next[id] = {
+          text,
+          updatedAt: new Date().toISOString(),
+          sendFailed: next[id]?.sendFailed,
+        };
+      } else {
+        delete next[id];
+      }
+      composerDrafts = next;
+      writePersistedComposerDrafts(next);
+    });
   });
 
   const sessionRunning = $derived(isSessionRunning(selectedSession));
@@ -347,6 +451,8 @@
     if (selectedSession.state === 'waiting_approval' || selectedApprovals.length > 0) {
       return '等待你的确认…';
     }
+    if (selectedSession.state === 'waiting_user') return '等待你的输入…';
+    if (selectedSession.state === 'compacting') return '正在压缩上下文…';
     const agentLabel = selectedSession.agent === 'pi' ? 'Pi' : 'Codex';
     const activityOverride = agentActivityOverrides[selectedSession.id];
     if (activityOverride) return activityOverride;
@@ -368,17 +474,19 @@
     }
     return `${agentLabel} 等待模型响应（可能正在思考）…`;
   });
+  const contextCompacting = $derived(agentActivityLabel?.includes('压缩上下文') ?? false);
 
   $effect(() => {
     const session = selectedSession;
-    if (!desktop || !session || session.agent !== 'pi' || session.archived) {
+    if (!desktop || !session || session.archived) {
       agentCommands = [];
       agentCommandsLoading = false;
       return;
     }
     agentCommandsLoading = true;
     const generation = ++commandSearchGeneration;
-    void listPiCommands(session.id)
+    const loadCommands = session.agent === 'pi' ? listPiCommands(session.id) : listCodexSkills(session.id);
+    void loadCommands
       .then((commands) => {
         if (generation === commandSearchGeneration && selectedSessionId === session.id) {
           agentCommands = commands;
@@ -509,6 +617,7 @@
   });
 
   onMount(() => {
+    composerDrafts = readPersistedComposerDrafts();
     let stopListening: (() => void) | undefined;
     let disposed = false;
     void (async () => {
@@ -623,6 +732,14 @@
   }
 
   function handleComposerInput(value: string): void {
+    if (selectedSessionId && composerDrafts[selectedSessionId]?.sendFailed) {
+      const next = {
+        ...composerDrafts,
+        [selectedSessionId]: { ...composerDrafts[selectedSessionId], sendFailed: false },
+      };
+      composerDrafts = next;
+      writePersistedComposerDrafts(next);
+    }
     const match = value.match(/(?:^|\s)@([^\s]*)$/);
     const workspaceId = selectedSession?.workspaceId ?? selectedWorkspaceId;
     if (!desktop || !workspaceId || !selectedSession || selectedSession.archived || !match) {
@@ -1029,9 +1146,13 @@
               id: id ?? sessionModelOverride,
               description: null,
               isDefault: false,
+              defaultReasoningEffort: null,
+              reasoningEfforts: [],
             },
           };
         }
+        executionProfile = await getSessionExecutionProfile(session.id);
+        await loadSessionModels();
         notice = sessionModelOverride ? `Pi 模型已切换为 ${sessionModelOverride}。` : '已读取 Pi 当前模型。';
       } else {
         const current = executionProfile?.requested;
@@ -1043,7 +1164,19 @@
           notice = model ? `Codex 当前已使用 ${model}。` : 'Codex 当前已使用默认模型。';
           return;
         }
-        const updatedProfile = await updateSessionExecutionProfile(session.id, { ...current, model });
+        const selected = model
+          ? sessionModelCatalog?.models.find((option) => option.reference === model)
+          : sessionModelCatalog?.models.find((option) => option.isDefault);
+        const supportedReasoning = selected?.reasoningEfforts ?? [];
+        const reasoningEffort = supportedReasoning.length > 0 &&
+          (!current.reasoningEffort || !supportedReasoning.some((option) => option.id === current.reasoningEffort))
+          ? selected?.defaultReasoningEffort ?? supportedReasoning[0]?.id ?? null
+          : current.reasoningEffort;
+        const updatedProfile = await updateSessionExecutionProfile(session.id, {
+          ...current,
+          model,
+          reasoningEffort,
+        });
         markSessionIdle(session);
         if (selectedSessionId !== session.id) return;
         executionProfile = updatedProfile;
@@ -1061,11 +1194,74 @@
                   id: model,
                   description: null,
                   isDefault: false,
+                  defaultReasoningEffort: null,
+                  reasoningEfforts: [],
                 }
               : null),
+            currentReasoningEffort: updatedProfile.enforced.reasoningEffort
+              ?? selected?.defaultReasoningEffort
+              ?? null,
           };
         }
         notice = model ? `Codex 模型已切换为 ${model}。` : 'Codex 将使用默认模型。';
+      }
+    } catch (error) {
+      errorMessage = toErrorMessage(error);
+    } finally {
+      busy = false;
+    }
+  }
+
+  async function applySessionReasoningEffort(reasoningEffort: string | null): Promise<void> {
+    const session = selectedSession;
+    if (!session) return;
+    if (!desktop) {
+      errorMessage = '当前是 Web 预览；请在 Tauri 桌面模式中调整推理强度。';
+      return;
+    }
+    if (sessionRunning || selectedSessionArchiving) {
+      errorMessage = '会话运行中不能切换推理强度，请等待当前回合结束。';
+      return;
+    }
+    busy = true;
+    errorMessage = null;
+    ++sessionModelRequestGeneration;
+    try {
+      if (session.agent === 'pi') {
+        const result = await setPiThinkingLevel(session.id, reasoningEffort ?? undefined);
+        if (selectedSessionId !== session.id) return;
+        executionProfile = await getSessionExecutionProfile(session.id);
+        const level = typeof result.level === 'string' ? result.level : reasoningEffort;
+        sessionModelCatalog = sessionModelCatalog
+          ? { ...sessionModelCatalog, currentReasoningEffort: level ?? null }
+          : sessionModelCatalog;
+        notice = level ? `Pi 推理强度已切换为 ${level}。` : '已读取 Pi 当前推理强度。';
+      } else {
+        const current = executionProfile?.requested;
+        if (!current) {
+          errorMessage = '当前会话配置尚未加载，请稍候重试。';
+          return;
+        }
+        if ((current.reasoningEffort ?? null) === reasoningEffort) {
+          notice = reasoningEffort ? `Codex 当前已使用 ${reasoningEffort} 推理强度。` : 'Codex 将使用模型默认推理强度。';
+          return;
+        }
+        const updatedProfile = await updateSessionExecutionProfile(session.id, {
+          ...current,
+          reasoningEffort,
+        });
+        markSessionIdle(session);
+        if (selectedSessionId !== session.id) return;
+        executionProfile = updatedProfile;
+        sessionModelCatalog = sessionModelCatalog
+          ? {
+              ...sessionModelCatalog,
+              currentReasoningEffort: updatedProfile.enforced.reasoningEffort ?? null,
+            }
+          : sessionModelCatalog;
+        notice = updatedProfile.enforced.reasoningEffort
+          ? `Codex 推理强度已切换为 ${updatedProfile.enforced.reasoningEffort}。`
+          : 'Codex 将使用模型默认推理强度。';
       }
     } catch (error) {
       errorMessage = toErrorMessage(error);
@@ -1188,13 +1384,14 @@
       case 'thinking':
         await run(async () => {
           const result = await setPiThinkingLevel(session.id, command.args || undefined);
+          executionProfile = await getSessionExecutionProfile(session.id);
           const level = typeof result.level === 'string' ? result.level : null;
           const available = Array.isArray(result.availableLevels)
             ? result.availableLevels.filter((item): item is string => typeof item === 'string')
             : [];
           notice = command.args
-            ? `思考级别已设置为 ${level ?? command.args}。`
-            : `当前思考级别：${level ?? '未知'}${available.length > 0 ? `（可选：${available.join('、')}）` : ''}`;
+            ? `推理强度已设置为 ${level ?? command.args}。`
+            : `当前推理强度：${level ?? '未知'}${available.length > 0 ? `（可选：${available.join('、')}）` : ''}`;
         });
         return true;
       case 'model':
@@ -1218,6 +1415,7 @@
             sessionModelOverride = currentLabel === '未选择' ? null : currentLabel;
             notice = `当前模型：${currentLabel}${models.length > 0 ? ` · 可用 ${models.length} 个` : ''}`;
           }
+          executionProfile = await getSessionExecutionProfile(session.id);
           // Keep the composer model button in sync with a model changed through
           // the slash command, so opening it immediately still shows the
           // session's actual model and the latest catalog.
@@ -1362,6 +1560,76 @@
         requestArchiveSession(session.id);
         composerText = '';
         return true;
+      case 'model':
+        if (command.args) {
+          await applySessionModel(command.args);
+        } else {
+          await loadSessionModels();
+          if (!errorMessage) {
+            notice = '模型列表已刷新，请从输入框右侧选择模型。';
+          }
+        }
+        composerText = '';
+        return true;
+      case 'thinking':
+        if (command.args) {
+          await applySessionReasoningEffort(command.args);
+        } else {
+          await loadSessionModels();
+          if (!errorMessage) {
+            notice = `当前推理强度：${sessionModelCatalog?.currentReasoningEffort ?? '模型默认'}${sessionModelCatalog?.reasoningEfforts.length ? `（可选：${sessionModelCatalog.reasoningEfforts.map((item) => item.id).join('、')}）` : ''}`;
+          }
+        }
+        composerText = '';
+        return true;
+      case 'plan':
+        if (command.args) {
+          errorMessage = '/plan 不接受参数。';
+          return true;
+        }
+        await applySessionAccess('plan');
+        if (!errorMessage) {
+          notice = 'Codex 已切换到只读计划模式。';
+        }
+        composerText = '';
+        return true;
+      case 'goal':
+        await run(async () => {
+          if (command.args.toLocaleLowerCase() === 'clear') {
+            await clearCodexGoal(session.id);
+            codexGoal = null;
+            notice = 'Codex 当前目标已清除。';
+            return;
+          }
+          if (!command.args) {
+            const result = await getCodexGoal(session.id);
+            const goal = normalizeCodexGoal(result);
+            notice = goal?.objective
+              ? `当前目标：${goal.objective}${goal.status ? ` · ${goal.status}` : ''}`
+              : '当前会话没有目标。';
+            return;
+          }
+          const result = await setCodexGoal(session.id, command.args);
+          codexGoal = normalizeCodexGoal(result) ?? {
+            objective: command.args,
+            status: 'active',
+            tokenBudget: null,
+            tokensUsed: null,
+            updatedAt: null,
+          };
+          notice = `Codex 目标已设置：${command.args}`;
+        });
+        return true;
+      case 'skills':
+        if (command.args) {
+          errorMessage = '/skills 不接受参数。';
+          return true;
+        }
+        await run(async () => {
+          agentCommands = await listCodexSkills(session.id);
+          notice = `已刷新 Codex Skills（${agentCommands.length} 项）。`;
+        });
+        return true;
       default:
         return false;
     }
@@ -1379,6 +1647,29 @@
 
   async function abortPrompt() {
     await messageController.abortPrompt();
+  }
+
+  async function compactCurrentSession(): Promise<void> {
+    const session = selectedSession;
+    if (!session || session.agent !== 'pi' || session.archived) return;
+    if (sessionRunning || busy) {
+      errorMessage = '会话运行中不能手动压缩，请等待当前回合结束。';
+      return;
+    }
+    busy = true;
+    errorMessage = null;
+    setAgentActivity(session.id, true, 'Pi 正在压缩上下文…');
+    try {
+      await compactPiSession(session.id);
+      if (selectedSessionId === session.id) timeline = await getTimeline(session.id);
+      setAgentActivity(session.id, false);
+      notice = 'Pi 上下文压缩已完成。';
+    } catch (error) {
+      errorMessage = toErrorMessage(error);
+      setAgentActivity(session.id, false);
+    } finally {
+      busy = false;
+    }
   }
 
   async function queuePiPrompt(mode: 'steer' | 'followUp') {
@@ -1736,6 +2027,16 @@
     getSessionRunning: () => sessionRunning,
     getComposerText: () => composerText,
     setComposerText: (value) => (composerText = value),
+    setComposerDraftStatus: (sessionId, sendFailed) => {
+      const draft = composerDrafts[sessionId];
+      if (!draft) return;
+      const next = {
+        ...composerDrafts,
+        [sessionId]: { ...draft, sendFailed, updatedAt: new Date().toISOString() },
+      };
+      composerDrafts = next;
+      writePersistedComposerDrafts(next);
+    },
     getAttachments: () => attachments,
     setAttachments: (value) => (attachments = value),
     getRetryPrompt: () => retryPrompt,
@@ -1856,6 +2157,8 @@
     <TimelinePanel
       workspace={selectedWorkspace}
       session={selectedSession}
+      selectedSessionId={selectedSessionId}
+      {codexGoal}
       codexThreadSnapshot={codexThreadSnapshot}
       timeline={timeline}
       timelineVisibleCount={timelineVisibleCount}
@@ -1865,6 +2168,7 @@
       approvals={selectedApprovals}
       queueSnapshot={queueSnapshot}
       agentActivityLabel={agentActivityLabel}
+      contextCompacting={contextCompacting}
       sessionRunning={sessionRunning}
       selectedSessionArchiving={selectedSessionArchiving}
       busy={busy}
@@ -1876,6 +2180,7 @@
       workspacePathSuggestions={workspacePathSuggestions}
       agentCommands={visibleAgentCommands}
       agentCommandsLoading={agentCommandsLoading}
+      composerDraftFailed={composerDraftFailed}
       bind:composerText
       onComposerInput={handleComposerInput}
       onSelectWorkspacePath={selectComposerWorkspacePath}
@@ -1896,6 +2201,8 @@
       onSelectAccess={(mode) => void applySessionAccess(mode)}
       onLoadModels={() => void loadSessionModels()}
       onSelectModel={(model) => void applySessionModel(model)}
+      onSelectReasoning={(reasoningEffort) => void applySessionReasoningEffort(reasoningEffort)}
+      onCompact={() => void compactCurrentSession()}
     />
     <Inspector
       workspace={selectedWorkspace}

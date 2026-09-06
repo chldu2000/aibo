@@ -20,6 +20,7 @@ export type MessageControllerContext = {
   getSessionRunning: () => boolean;
   getComposerText: () => string;
   setComposerText: (value: string) => void;
+  setComposerDraftStatus?: (sessionId: string, sendFailed: boolean) => void;
   getAttachments: () => ContextAttachment[];
   setAttachments: (value: ContextAttachment[]) => void;
   getRetryPrompt: () => string | null;
@@ -73,6 +74,7 @@ export function createMessageController(context: MessageControllerContext) {
       return;
     }
     const selectedSession = context.getSelectedSession();
+    const draftSessionId = selectedSession?.id ?? null;
     if (selectedSession?.archived) {
       context.setErrorMessage('已归档的会话不能继续发送消息，请先取消归档或创建分支。');
       return;
@@ -116,10 +118,12 @@ export function createMessageController(context: MessageControllerContext) {
       else await context.api.sendCodexPrompt(session.id, requestInput);
       await Promise.all([context.refreshTimeline(session.id), context.refreshAttachments(session.id)]);
       context.setComposerText('');
+      if (session) context.setComposerDraftStatus?.(session.id, false);
       context.updateWorkspaceSessions(session.workspaceId, (items) =>
         items.map((item) => (item.id === session?.id ? { ...item, state: 'running' } : item)),
       );
     } catch (error) {
+      if (draftSessionId) context.setComposerDraftStatus?.(draftSessionId, true);
       context.setErrorMessage(toErrorMessage(error));
     } finally {
       context.setPromptInFlight(false);

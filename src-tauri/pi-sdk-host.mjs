@@ -20,10 +20,10 @@ const pendingCoreToolRequests = new Map();
 // /share, /login and /quit) are deliberately not advertised here: showing a
 // command that cannot be completed inside Aibo is worse than leaving it out.
 const EMBEDDED_BUILTIN_COMMANDS = [
-  { name: "compact", description: "压缩当前会话上下文", source: "builtin" },
-  { name: "model", description: "查看或切换当前模型", source: "builtin" },
-  { name: "thinking", description: "查看或设置思考级别", source: "builtin" },
-  { name: "reload", description: "重新加载会话资源", source: "builtin" },
+  { name: "compact", description: "压缩当前会话上下文", source: "builtin", category: "agent", execution: "adapter" },
+  { name: "model", description: "查看或切换当前模型", source: "builtin", category: "agent", execution: "adapter" },
+  { name: "thinking", description: "查看或设置推理强度", source: "builtin", category: "agent", execution: "adapter" },
+  { name: "reload", description: "重新加载会话资源", source: "builtin", category: "agent", execution: "adapter" },
 ];
 
 function registeredCommands() {
@@ -33,16 +33,22 @@ function registeredCommands() {
       name: command.invocationName,
       description: command.description ?? null,
       source: "extension",
+      category: "extension",
+      execution: "prompt",
     })),
     ...session.promptTemplates.map((template) => ({
       name: template.name,
       description: template.description ?? null,
       source: "prompt",
+      category: "extension",
+      execution: "prompt",
     })),
     ...session.resourceLoader.getSkills().skills.map((skill) => ({
       name: `skill:${skill.name}`,
       description: skill.description ?? null,
       source: "skill",
+      category: "skill",
+      execution: "prompt",
     })),
   ];
 }
@@ -305,7 +311,25 @@ async function start(params) {
     tools: ["read", "grep", "find", "ls"],
     customTools: customTools.length > 0 ? customTools : undefined,
   });
-  session = created.session;
+  const createdSession = created.session;
+  const configuredModel = String(enforcedProfile.model ?? "").trim();
+  try {
+    if (configuredModel) {
+      const separator = configuredModel.indexOf("/");
+      const configured = separator > 0
+        ? modelRuntime.getModel(configuredModel.slice(0, separator), configuredModel.slice(separator + 1))
+        : modelRuntime.getAvailableSnapshot().find((candidate) => candidate.id === configuredModel);
+      if (!configured) throw new Error(`Model not found: ${configuredModel}`);
+      await createdSession.setModel(configured);
+    }
+    const configuredThinking = String(enforcedProfile.reasoningEffort ?? "").trim();
+    if (configuredThinking) createdSession.setThinkingLevel(configuredThinking);
+  } catch (error) {
+    createdSession.dispose();
+    manager = null;
+    throw error;
+  }
+  session = createdSession;
   unsubscribe = session.subscribe(emitEvent);
   return {
     protocol: HOST_PROTOCOL,

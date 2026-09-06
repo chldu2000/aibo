@@ -8,7 +8,7 @@ use super::execution_profile::ResolvedExecutionProfile;
 use super::{
     bind_pending_attachments_to_turn, clone_cached_runtime, find_executable, mark_turn_interrupted,
     now_iso, remove_cached_runtime, session_by_id, session_execution_profile, workspace_by_id,
-    SessionModelCatalog, SessionModelOption,
+    SessionModelCatalog, SessionModelOption, SessionReasoningOption,
 };
 use serde::Serialize;
 use serde_json::{json, Value};
@@ -135,6 +135,12 @@ fn codex_turn_start_params(
     }
     if let Some(effort) = profile.enforced.reasoning_effort.as_deref() {
         params["effort"] = json!(effort);
+    }
+    if profile.enforced.interaction_mode == "plan" {
+        params["collaborationMode"] = json!({
+            "mode": "plan",
+            "settings": { "developer_instructions": null }
+        });
     }
     params
 }
@@ -478,6 +484,38 @@ fn codex_model_option(value: &Value) -> Option<SessionModelOption> {
         .filter(|label| !label.trim().is_empty())
         .unwrap_or(&reference)
         .to_owned();
+    let reasoning_efforts = value
+        .get("supportedReasoningEfforts")
+        .and_then(Value::as_array)
+        .map(|items| {
+            items
+                .iter()
+                .filter_map(|item| {
+                    let id = item
+                        .as_str()
+                        .or_else(|| item.get("reasoningEffort").and_then(Value::as_str))
+                        .or_else(|| item.get("id").and_then(Value::as_str))?
+                        .trim();
+                    if id.is_empty() {
+                        return None;
+                    }
+                    Some(SessionReasoningOption {
+                        id: id.to_owned(),
+                        label: item
+                            .get("label")
+                            .and_then(Value::as_str)
+                            .or_else(|| item.get("displayName").and_then(Value::as_str))
+                            .unwrap_or(id)
+                            .to_owned(),
+                        description: item
+                            .get("description")
+                            .and_then(Value::as_str)
+                            .map(ToOwned::to_owned),
+                    })
+                })
+                .collect::<Vec<_>>()
+        })
+        .unwrap_or_default();
     Some(SessionModelOption {
         reference,
         label,
@@ -491,6 +529,11 @@ fn codex_model_option(value: &Value) -> Option<SessionModelOption> {
             .get("isDefault")
             .and_then(Value::as_bool)
             .unwrap_or(false),
+        default_reasoning_effort: value
+            .get("defaultReasoningEffort")
+            .and_then(Value::as_str)
+            .map(ToOwned::to_owned),
+        reasoning_efforts,
     })
 }
 
@@ -2087,11 +2130,142 @@ impl CodexManager {
                         provider: None,
                         description: None,
                         is_default: false,
+                        default_reasoning_effort: None,
+                        reasoning_efforts: Vec::new(),
                     })
             });
-            Ok(SessionModelCatalog { current, models })
+            let current_reasoning_effort = profile
+                .profile
+                .enforced
+                .reasoning_effort
+                .clone()
+                .or_else(|| {
+                    current
+                        .as_ref()
+                        .and_then(|model| model.default_reasoning_effort.clone())
+                });
+            let reasoning_efforts = current
+                .as_ref()
+                .map(|model| model.reasoning_efforts.clone())
+                .unwrap_or_default();
+            Ok(SessionModelCatalog {
+                current,
+                models,
+                current_reasoning_effort,
+                reasoning_efforts,
+            })
         }
         .await;
+        client.close().await;
+        result
+    }
+
+    pub(crate) async fn list_skills(&self, session_id: &str) -> Result<Value, CodexError> {
+        let (session, _, client) = self.open_bound_client(session_id).await?;
+        let workspace = workspace_by_id(&self.db, &session.workspace_id)
+            .await
+            .map_err(|error| CodexError::Session(error.to_string()))?;
+        let result = async {
+            let response = client
+                .request(
+                    "skills/list",
+                    json!({ "cwds": [workspace.path], "forceReload": false }),
+                )
+                .await?;
+            let data = response
+                .pointer("/result/data")
+                .and_then(Value::as_array)
+                .ok_or_else(|| {
+                    CodexError::Protocol("skills/list did not return a data array".to_owned())
+                })?;
+            let commands = data
+                .iter()
+                .flat_map(|cwd| {
+                    cwd.get("skills")
+                        .and_then(Value::as_array)
+                        .into_iter()
+                        .flatten()
+                })
+                .filter_map(|skill| {
+                    let name = skill.get("name").and_then(Value::as_str)?.trim();
+                    if name.is_empty() {
+                        return None;
+                    }
+                    let interface = skill.get("interface").unwrap_or(skill);
+                    Some(json!({
+                        "id": format!("codex-skill:{name}"),
+                        // Keep the slash token equal to the provider's skill
+                        // name. The id remains namespaced so it cannot collide
+                        // with Aibo's built-in commands in the catalog.
+                        "name": name,
+                        "description": interface.get("shortDescription")
+                            .and_then(Value::as_str)
+                            .or_else(|| interface.get("description").and_then(Value::as_str)),
+                        "source": "skill",
+                        "category": "skill",
+                        "execution": "prompt",
+                        "agent": "codex",
+                        "enabled": skill.get("enabled").and_then(Value::as_bool).unwrap_or(true)
+                    }))
+                })
+                .collect::<Vec<_>>();
+            Ok(Value::Array(commands))
+        }
+        .await;
+        client.close().await;
+        result
+    }
+
+    pub(crate) async fn get_goal(&self, session_id: &str) -> Result<Value, CodexError> {
+        let (_, thread_id, client) = self.open_bound_client(session_id).await?;
+        let result = client
+            .request("thread/goal/get", json!({ "threadId": thread_id }))
+            .await
+            .map(|response| response.get("result").cloned().unwrap_or_else(|| json!({})));
+        client.close().await;
+        result
+    }
+
+    pub(crate) async fn set_goal(
+        &self,
+        session_id: &str,
+        objective: &str,
+        token_budget: Option<u64>,
+    ) -> Result<Value, CodexError> {
+        let objective = objective.trim();
+        if objective.is_empty() {
+            return Err(CodexError::Request(
+                "goal objective must not be empty".to_owned(),
+            ));
+        }
+        if objective.chars().count() > 4_000 {
+            return Err(CodexError::Request(
+                "goal objective exceeds 4000 characters".to_owned(),
+            ));
+        }
+        let (_, thread_id, client) = self.open_bound_client(session_id).await?;
+        let mut params = json!({
+            "threadId": thread_id,
+            "objective": objective,
+            "status": "active"
+        });
+        if let Some(token_budget) = token_budget {
+            params["tokenBudget"] = json!(token_budget);
+        }
+        let result = client
+            .request("thread/goal/set", params)
+            .await
+            .map(|response| response.get("result").cloned().unwrap_or_else(|| json!({})));
+        client.close().await;
+        result
+    }
+
+    pub(crate) async fn clear_goal(&self, session_id: &str) -> Result<Value, CodexError> {
+        let (_, thread_id, client) = self.open_bound_client(session_id).await?;
+        let result = client
+            .request("thread/goal/clear", json!({ "threadId": thread_id }))
+            .await
+            .map(|response| response.get("result").cloned().unwrap_or_else(|| json!({})));
         client.close().await;
         result
     }
@@ -2339,7 +2513,10 @@ impl CodexManager {
         let source_runtime = self.ensure_runtime(session_id).await?;
         {
             let state = source_runtime.state.lock().await;
-            if matches!(state.as_str(), "running" | "waiting_approval") {
+            if matches!(
+                state.as_str(),
+                "running" | "waiting_approval" | "waiting_user" | "compacting"
+            ) {
                 return Err(CodexError::Session(
                     "Codex session must be idle before it is forked".to_owned(),
                 ));
@@ -2569,7 +2746,10 @@ impl CodexManager {
         };
         {
             let state = session.state.lock().await;
-            if matches!(state.as_str(), "running" | "waiting_approval") {
+            if matches!(
+                state.as_str(),
+                "running" | "waiting_approval" | "waiting_user" | "compacting"
+            ) {
                 return Err(CodexError::Session(
                     "Codex session must be idle before it is archived".to_owned(),
                 ));
@@ -2676,7 +2856,10 @@ impl CodexManager {
         let session = self.ensure_runtime(session_id).await?;
         {
             let state = session.state.lock().await;
-            if matches!(state.as_str(), "running" | "waiting_approval") {
+            if matches!(
+                state.as_str(),
+                "running" | "waiting_approval" | "waiting_user" | "compacting"
+            ) {
                 return Err(CodexError::Session(
                     "Codex session already has an active turn".to_owned(),
                 ));
@@ -2941,7 +3124,12 @@ mod tests {
             "model": "gpt-5.6-luna",
             "displayName": "GPT-5.6-Luna",
             "description": "Fast model",
-            "isDefault": true
+            "isDefault": true,
+            "defaultReasoningEffort": "medium",
+            "supportedReasoningEfforts": [
+                { "reasoningEffort": "low", "description": "Fast" },
+                { "reasoningEffort": "medium", "description": "Balanced" }
+            ]
         }))
         .expect("model/list option");
         assert_eq!(option.reference, "gpt-5.6-luna");
@@ -2949,6 +3137,23 @@ mod tests {
         assert_eq!(option.label, "GPT-5.6-Luna");
         assert_eq!(option.description.as_deref(), Some("Fast model"));
         assert!(option.is_default);
+        assert_eq!(option.default_reasoning_effort.as_deref(), Some("medium"));
+        assert_eq!(option.reasoning_efforts.len(), 2);
+        assert_eq!(option.reasoning_efforts[0].id, "low");
+
+        let string_levels = codex_model_option(&json!({
+            "id": "string-levels",
+            "supportedReasoningEfforts": ["low", "high"]
+        }))
+        .expect("string reasoning options");
+        assert_eq!(
+            string_levels
+                .reasoning_efforts
+                .iter()
+                .map(|item| item.id.as_str())
+                .collect::<Vec<_>>(),
+            vec!["low", "high"]
+        );
 
         let fallback = codex_model_option(&json!({ "id": "custom-model" }))
             .expect("id-only model/list option");
@@ -3113,6 +3318,11 @@ mod tests {
         assert_eq!(turn["model"], "gpt-test");
         assert_eq!(turn["effort"], "high");
         assert_eq!(turn["threadId"], "thread-1");
+
+        let mut plan_profile = profile.clone();
+        plan_profile.enforced.interaction_mode = "plan".to_owned();
+        let plan_turn = codex_turn_start_params("thread-1", "plan", &plan_profile);
+        assert_eq!(plan_turn["collaborationMode"]["mode"], "plan");
     }
 
     #[test]

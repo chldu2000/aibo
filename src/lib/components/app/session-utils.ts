@@ -11,6 +11,10 @@ export function sessionStateLabel(session: SessionStateView): string {
   switch (session.state) {
     case 'waiting_approval':
       return '待审批';
+    case 'waiting_user':
+      return '待你输入';
+    case 'compacting':
+      return '压缩中';
     case 'running':
       return '运行中';
     case 'interrupted':
@@ -30,8 +34,8 @@ export function sessionStateLabel(session: SessionStateView): string {
 
 export function sessionStatusTone(session: SessionStateView): string {
   if (session.archived || session.state === 'closed') return 'muted';
-  if (session.state === 'running' || session.state === 'starting') return 'running';
-  if (session.state === 'waiting_approval') return 'attention';
+  if (session.state === 'running' || session.state === 'starting' || session.state === 'compacting') return 'running';
+  if (session.state === 'waiting_approval' || session.state === 'waiting_user') return 'attention';
   if (session.state === 'failed' || session.state === 'interrupted') return 'danger';
   return 'idle';
 }

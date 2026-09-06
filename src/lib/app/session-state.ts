@@ -6,5 +6,8 @@ export type SessionStateView = {
 };
 
 export function isSessionRunning(session: SessionStateView | null | undefined): boolean {
-  return session?.state === 'running' || session?.state === 'waiting_approval';
+  return session?.state === 'running'
+    || session?.state === 'waiting_approval'
+    || session?.state === 'waiting_user'
+    || session?.state === 'compacting';
 }

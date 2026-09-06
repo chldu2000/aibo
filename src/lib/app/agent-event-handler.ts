@@ -38,18 +38,39 @@ export function handleAgentEvent(event: AgentEvent, context: AgentEventHandlerCo
   // A turn can spend time between two streamed items (for example, after a
   // tool completes and before Pi starts its next response). Keep that phase
   // observable instead of deriving activity only from the last timeline row.
-  if (
-    event.type === 'turn.started' ||
-    event.type === 'message.delta' ||
-    event.type === 'tool.started' ||
-    event.type === 'tool.updated' ||
-    event.type === 'tool.completed' ||
-    event.type === 'approval.requested' ||
-    event.type === 'approval.resolved' ||
-    event.type === 'retry.started' ||
-    event.type === 'compaction.started'
-  ) {
-    context.setAgentActivity(event.sessionId, true);
+  if (event.type === 'turn.started') {
+    context.setAgentActivity(event.sessionId, true, agentLabel(event, '正在准备响应…'));
+  }
+  if (event.type === 'message.delta') {
+    context.setAgentActivity(event.sessionId, true, agentLabel(event, '正在生成回复…'));
+  }
+  if (event.type === 'tool.started' || event.type === 'tool.updated') {
+    const tool = payloadString(event.payload.itemType) ?? payloadString(event.payload.toolName) ?? '工具';
+    context.setAgentActivity(event.sessionId, true, agentLabel(event, `正在执行 ${tool}…`));
+  }
+  if (event.type === 'tool.completed') {
+    const tool = payloadString(event.payload.itemType) ?? payloadString(event.payload.toolName) ?? '工具';
+    context.setAgentActivity(event.sessionId, true, agentLabel(event, `${tool} 已完成，等待模型继续响应…`));
+  }
+  if (event.type === 'approval.requested') {
+    context.setAgentActivity(event.sessionId, true, agentLabel(event, '等待你的确认…'));
+  }
+  if (event.type === 'approval.resolved') {
+    context.setAgentActivity(event.sessionId, true, agentLabel(event, '确认已收到，继续执行…'));
+  }
+  if (event.type === 'retry.started' || event.type === 'compaction.started') {
+    context.setAgentActivity(event.sessionId, true, agentLabel(
+      event,
+      event.type === 'compaction.started' ? '正在压缩上下文…' : '正在重试请求…',
+    ));
+  }
+  if (event.type === 'compaction.completed') {
+    const failed = event.payload.aborted === true || typeof event.payload.errorMessage === 'string';
+    context.setAgentActivity(
+      event.sessionId,
+      event.turnId !== null,
+      agentLabel(event, failed ? '上下文压缩未完成，等待模型继续响应…' : '上下文压缩完成，等待模型继续响应…'),
+    );
   }
   if (
     event.type === 'turn.completed' ||
@@ -285,6 +306,10 @@ function queueFromEvent(event: AgentEvent): AgentQueueSnapshot {
     followUp: queueItems(event.payload.followUp),
     updatedAt: event.occurredAt,
   };
+}
+
+function agentLabel(event: AgentEvent, label: string): string {
+  return `${event.source.agent === 'pi' ? 'Pi' : 'Codex'} ${label}`;
 }
 
 function queueItems(value: unknown): string[] {

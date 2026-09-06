@@ -11,7 +11,7 @@ use super::{
     bind_pending_attachments_to_turn, clone_cached_runtime, find_executable, isolate_process_tree,
     mark_turn_interrupted, now_iso, read_process_output, remove_cached_runtime, session_by_id,
     session_execution_profile, terminate_process_tree, workspace_by_id, SessionModelCatalog,
-    SessionModelOption,
+    SessionModelOption, SessionReasoningOption,
 };
 use serde::Serialize;
 use serde_json::{json, Value};
@@ -1333,6 +1333,12 @@ impl PiSession {
                     None,
                 )
                 .await?;
+                let next_state = if self.current_turn_id.lock().await.is_some() {
+                    "running"
+                } else {
+                    "idle"
+                };
+                self.set_state(next_state).await?;
             }
             "auto_retry_start" => {
                 let attempt = event.get("attempt").and_then(Value::as_u64).unwrap_or(0);
@@ -2053,7 +2059,7 @@ impl PiManager {
         let session = self.ensure_runtime(session_id).await?;
         if matches!(
             session.state.lock().await.as_str(),
-            "running" | "waiting_approval"
+            "running" | "waiting_approval" | "waiting_user" | "compacting"
         ) {
             return Err(PiError::Session(
                 "Pi session already has an active turn".to_owned(),
@@ -2299,6 +2305,27 @@ impl PiManager {
         session_id: &str,
     ) -> Result<SessionModelCatalog, PiError> {
         let result = self.model(session_id, None).await?;
+        let thinking = self.thinking(session_id, None).await?;
+        let reasoning_efforts = thinking
+            .get("availableLevels")
+            .and_then(Value::as_array)
+            .map(|items| {
+                items
+                    .iter()
+                    .filter_map(Value::as_str)
+                    .filter(|level| !level.trim().is_empty())
+                    .map(|level| SessionReasoningOption {
+                        id: level.to_owned(),
+                        label: level.to_owned(),
+                        description: None,
+                    })
+                    .collect::<Vec<_>>()
+            })
+            .unwrap_or_default();
+        let current_reasoning_effort = thinking
+            .get("level")
+            .and_then(Value::as_str)
+            .map(ToOwned::to_owned);
         let models = result
             .get("models")
             .and_then(Value::as_array)
@@ -2315,12 +2342,14 @@ impl PiManager {
                             id: id.to_owned(),
                             description: None,
                             is_default: false,
+                            default_reasoning_effort: None,
+                            reasoning_efforts: Vec::new(),
                         })
                     })
                     .collect::<Vec<_>>()
             })
             .unwrap_or_default();
-        let current = result.get("current").and_then(|item| {
+        let mut current = result.get("current").and_then(|item| {
             let provider = item.get("provider").and_then(Value::as_str)?;
             let id = item.get("id").and_then(Value::as_str)?;
             Some(SessionModelOption {
@@ -2330,9 +2359,27 @@ impl PiManager {
                 id: id.to_owned(),
                 description: None,
                 is_default: false,
+                default_reasoning_effort: current_reasoning_effort.clone(),
+                reasoning_efforts: reasoning_efforts.clone(),
             })
         });
-        Ok(SessionModelCatalog { current, models })
+        if current.is_none() {
+            current = models
+                .iter()
+                .find(|model| model.is_default)
+                .cloned()
+                .map(|mut model| {
+                    model.reasoning_efforts = reasoning_efforts.clone();
+                    model.default_reasoning_effort = current_reasoning_effort.clone();
+                    model
+                });
+        }
+        Ok(SessionModelCatalog {
+            current,
+            models,
+            current_reasoning_effort,
+            reasoning_efforts,
+        })
     }
 
     pub(crate) async fn reload(&self, session_id: &str) -> Result<Value, PiError> {
@@ -2474,7 +2521,10 @@ impl PiManager {
         let cached_session = clone_cached_runtime(&self.sessions, session_id).await;
         if let Some(session) = cached_session {
             let current_state = session.state.lock().await.clone();
-            if matches!(current_state.as_str(), "running" | "waiting_approval") {
+            if matches!(
+                current_state.as_str(),
+                "running" | "waiting_approval" | "waiting_user" | "compacting"
+            ) {
                 return Err(PiError::Session(
                     "Pi session must be idle before it is archived".to_owned(),
                 ));
@@ -2482,7 +2532,10 @@ impl PiManager {
             session.deactivate();
             remove_cached_runtime(&self.sessions, session_id).await;
             session.client.close().await;
-        } else if matches!(existing.state.as_str(), "running" | "waiting_approval") {
+        } else if matches!(
+            existing.state.as_str(),
+            "running" | "waiting_approval" | "waiting_user" | "compacting"
+        ) {
             return Err(PiError::Session(
                 "Pi session must be idle before it is archived".to_owned(),
             ));

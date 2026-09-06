@@ -85,6 +85,26 @@ export const setPiModel = (
 export const getSessionModels = (sessionId: string): Promise<SessionModelCatalog> =>
   invoke<SessionModelCatalog>('get_session_models', { sessionId });
 
+export const listCodexSkills = (sessionId: string): Promise<AgentCommand[]> =>
+  invoke<AgentCommand[]>('list_codex_skills', { sessionId });
+
+export const getCodexGoal = (sessionId: string): Promise<Record<string, unknown>> =>
+  invoke<Record<string, unknown>>('get_codex_goal', { sessionId });
+
+export const setCodexGoal = (
+  sessionId: string,
+  objective: string,
+  tokenBudget?: number,
+): Promise<Record<string, unknown>> =>
+  invoke<Record<string, unknown>>('set_codex_goal', {
+    sessionId,
+    objective,
+    tokenBudget: tokenBudget ?? null,
+  });
+
+export const clearCodexGoal = (sessionId: string): Promise<Record<string, unknown>> =>
+  invoke<Record<string, unknown>>('clear_codex_goal', { sessionId });
+
 export const reloadPiSession = (sessionId: string): Promise<Record<string, unknown>> =>
   invoke<Record<string, unknown>>('reload_pi_session', { sessionId });
 

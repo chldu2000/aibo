@@ -140,6 +140,14 @@ pub struct Session {
 
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
+pub(crate) struct SessionReasoningOption {
+    pub(crate) id: String,
+    pub(crate) label: String,
+    pub(crate) description: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
 pub(crate) struct SessionModelOption {
     pub(crate) reference: String,
     pub(crate) label: String,
@@ -147,6 +155,8 @@ pub(crate) struct SessionModelOption {
     pub(crate) id: String,
     pub(crate) description: Option<String>,
     pub(crate) is_default: bool,
+    pub(crate) default_reasoning_effort: Option<String>,
+    pub(crate) reasoning_efforts: Vec<SessionReasoningOption>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -154,6 +164,8 @@ pub(crate) struct SessionModelOption {
 pub(crate) struct SessionModelCatalog {
     pub(crate) current: Option<SessionModelOption>,
     pub(crate) models: Vec<SessionModelOption>,
+    pub(crate) current_reasoning_effort: Option<String>,
+    pub(crate) reasoning_efforts: Vec<SessionReasoningOption>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -519,7 +531,7 @@ async fn recover_interrupted_sessions(db: &SqlitePool) -> Result<u64, sqlx::Erro
         "UPDATE process_runs SET state = 'crashed', ended_at = ?
          WHERE state IN ('starting', 'running', 'stopping') AND session_id IN (
            SELECT id FROM sessions WHERE archived = 0
-             AND state IN ('starting', 'running', 'waiting_approval')
+             AND state IN ('starting', 'running', 'waiting_approval', 'waiting_user', 'compacting')
          )",
     )
     .bind(&now)
@@ -529,7 +541,7 @@ async fn recover_interrupted_sessions(db: &SqlitePool) -> Result<u64, sqlx::Erro
         "UPDATE messages SET status = 'failed', updated_at = ?
          WHERE status IN ('streaming', 'queued') AND session_id IN (
            SELECT id FROM sessions WHERE archived = 0
-             AND state IN ('starting', 'running', 'waiting_approval')
+             AND state IN ('starting', 'running', 'waiting_approval', 'waiting_user', 'compacting')
          )",
     )
     .bind(&now)
@@ -539,7 +551,7 @@ async fn recover_interrupted_sessions(db: &SqlitePool) -> Result<u64, sqlx::Erro
         "UPDATE turns SET status = 'interrupted', completed_at = ?
          WHERE status = 'running' AND session_id IN (
            SELECT id FROM sessions WHERE archived = 0
-             AND state IN ('starting', 'running', 'waiting_approval')
+             AND state IN ('starting', 'running', 'waiting_approval', 'waiting_user', 'compacting')
          )",
     )
     .bind(&now)
@@ -547,7 +559,7 @@ async fn recover_interrupted_sessions(db: &SqlitePool) -> Result<u64, sqlx::Erro
     .await?;
     let result = sqlx::query(
         "UPDATE sessions SET state = 'interrupted', updated_at = ?
-         WHERE archived = 0 AND state IN ('starting', 'running', 'waiting_approval')",
+         WHERE archived = 0 AND state IN ('starting', 'running', 'waiting_approval', 'waiting_user', 'compacting')",
     )
     .bind(now)
     .execute(db)
@@ -1267,7 +1279,7 @@ async fn update_session_execution_profile(
     }
     if matches!(
         session.state.as_str(),
-        "starting" | "running" | "waiting_approval"
+        "starting" | "running" | "waiting_approval" | "waiting_user" | "compacting"
     ) {
         return Err(CoreError::SessionBusy);
     }
@@ -1318,6 +1330,8 @@ fn normalize_session_filter(raw: Option<&str>) -> Result<SessionListFilter, Core
         Some("idle") => Ok(SessionListFilter::State("idle")),
         Some("running") => Ok(SessionListFilter::State("running")),
         Some("waiting_approval") => Ok(SessionListFilter::State("waiting_approval")),
+        Some("waiting_user") => Ok(SessionListFilter::State("waiting_user")),
+        Some("compacting") => Ok(SessionListFilter::State("compacting")),
         Some("interrupted") => Ok(SessionListFilter::State("interrupted")),
         Some("failed") => Ok(SessionListFilter::State("failed")),
         Some("closed") => Ok(SessionListFilter::State("closed")),
@@ -3558,11 +3572,31 @@ async fn set_pi_thinking_level(
     level: Option<String>,
     state: State<'_, AppState>,
 ) -> Result<serde_json::Value, CoreError> {
-    state
+    let result = state
         .pi
         .thinking(&session_id, level.as_deref())
         .await
-        .map_err(Into::into)
+        .map_err(CoreError::from)?;
+    if level
+        .as_deref()
+        .is_some_and(|value| !value.trim().is_empty())
+    {
+        let current_level = result
+            .get("level")
+            .and_then(serde_json::Value::as_str)
+            .ok_or_else(|| {
+                CoreError::Initialization(
+                    "Pi did not return the selected thinking level".to_owned(),
+                )
+            })?;
+        let current = session_execution_profile(&state.db, &session_id).await?;
+        let mut requested = current.profile.requested;
+        requested.reasoning_effort = Some(current_level.to_owned());
+        let resolved = resolve_profile("pi", Some(requested), now_iso())
+            .map_err(CoreError::InvalidExecutionProfile)?;
+        save_session_profile(&state.db, &session_id, &resolved).await?;
+    }
+    Ok(result)
 }
 
 #[tauri::command]
@@ -3571,11 +3605,31 @@ async fn set_pi_model(
     reference: Option<String>,
     state: State<'_, AppState>,
 ) -> Result<serde_json::Value, CoreError> {
-    state
+    let result = state
         .pi
         .model(&session_id, reference.as_deref())
         .await
-        .map_err(Into::into)
+        .map_err(CoreError::from)?;
+    if reference
+        .as_deref()
+        .is_some_and(|value| !value.trim().is_empty())
+    {
+        let current = result
+            .get("provider")
+            .and_then(serde_json::Value::as_str)
+            .zip(result.get("id").and_then(serde_json::Value::as_str))
+            .map(|(provider, id)| format!("{provider}/{id}"))
+            .ok_or_else(|| {
+                CoreError::Initialization("Pi did not return the selected model".to_owned())
+            })?;
+        let profile = session_execution_profile(&state.db, &session_id).await?;
+        let mut requested = profile.profile.requested;
+        requested.model = Some(current);
+        let resolved = resolve_profile("pi", Some(requested), now_iso())
+            .map_err(CoreError::InvalidExecutionProfile)?;
+        save_session_profile(&state.db, &session_id, &resolved).await?;
+    }
+    Ok(result)
 }
 
 #[tauri::command]
@@ -3595,6 +3649,52 @@ async fn get_session_models(
             "unsupported session agent: {agent}"
         ))),
     }
+}
+
+#[tauri::command]
+async fn list_codex_skills(
+    session_id: String,
+    state: State<'_, AppState>,
+) -> Result<serde_json::Value, CoreError> {
+    state
+        .codex
+        .list_skills(&session_id)
+        .await
+        .map_err(Into::into)
+}
+
+#[tauri::command]
+async fn get_codex_goal(
+    session_id: String,
+    state: State<'_, AppState>,
+) -> Result<serde_json::Value, CoreError> {
+    state.codex.get_goal(&session_id).await.map_err(Into::into)
+}
+
+#[tauri::command]
+async fn set_codex_goal(
+    session_id: String,
+    objective: String,
+    token_budget: Option<u64>,
+    state: State<'_, AppState>,
+) -> Result<serde_json::Value, CoreError> {
+    state
+        .codex
+        .set_goal(&session_id, &objective, token_budget)
+        .await
+        .map_err(Into::into)
+}
+
+#[tauri::command]
+async fn clear_codex_goal(
+    session_id: String,
+    state: State<'_, AppState>,
+) -> Result<serde_json::Value, CoreError> {
+    state
+        .codex
+        .clear_goal(&session_id)
+        .await
+        .map_err(Into::into)
 }
 
 #[tauri::command]
@@ -4053,6 +4153,10 @@ pub fn run() {
             set_pi_thinking_level,
             set_pi_model,
             get_session_models,
+            list_codex_skills,
+            get_codex_goal,
+            set_codex_goal,
+            clear_codex_goal,
             reload_pi_session,
             get_pi_session_tree,
             navigate_pi_session_tree,

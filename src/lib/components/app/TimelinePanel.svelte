@@ -1,6 +1,7 @@
 <script lang="ts">
   import { Badge, Button, Card, CardContent, CardHeader, CardTitle, Separator } from '$lib/ui-kit';
-  import type { AgentCommand, AgentQueueSnapshot, ApprovalDecision, ContextAttachment, SessionAccessMode, SessionExecutionProfile, SessionModelCatalog, WorkspacePathSuggestion } from '$lib/types';
+  import type { AgentCommand, AgentGoal, AgentQueueSnapshot, ApprovalDecision, ContextAttachment, SessionAccessMode, SessionExecutionProfile, SessionModelCatalog, WorkspacePathSuggestion } from '$lib/types';
+  import type { UsageValues } from './view-models';
   import Composer from './Composer.svelte';
   import MarkdownContent from './MarkdownContent.svelte';
   import { sessionStateLabel } from './session-utils';
@@ -13,15 +14,11 @@
     WorkspaceListItem,
   } from './view-types';
 
-  type UsageValues = {
-    input: number | null;
-    output: number | null;
-    total: number | null;
-  };
-
   type TimelinePanelProps = {
     workspace: WorkspaceListItem | null;
     session: SessionPanelView | null;
+    selectedSessionId: string | null;
+    codexGoal: AgentGoal | null;
     codexThreadSnapshot: CodexThreadView | null;
     timeline: TimelineViewItem[];
     timelineVisibleCount: number;
@@ -31,6 +28,7 @@
     approvals: ApprovalView[];
     queueSnapshot: AgentQueueSnapshot | null;
     agentActivityLabel: string | null;
+    contextCompacting: boolean;
     sessionRunning: boolean;
     selectedSessionArchiving: boolean;
     busy: boolean;
@@ -43,6 +41,7 @@
     agentCommands: AgentCommand[];
     agentCommandsLoading: boolean;
     composerText?: string;
+    composerDraftFailed: boolean;
     onAddAttachments: () => void;
     onAddDirectory: () => void;
     onRemoveAttachment: (id: string) => void;
@@ -57,6 +56,8 @@
     onSelectAccess: (mode: SessionAccessMode) => void | Promise<void>;
     onLoadModels: () => void | Promise<void>;
     onSelectModel: (model: string | null) => void | Promise<void>;
+    onSelectReasoning: (reasoningEffort: string | null) => void | Promise<void>;
+    onCompact: () => void | Promise<void>;
     onComposerInput: (text: string) => void;
     onSelectWorkspacePath: (path: string) => void | Promise<void>;
   };
@@ -64,6 +65,8 @@
   let {
     workspace,
     session,
+    selectedSessionId,
+    codexGoal,
     codexThreadSnapshot,
     timeline,
     timelineVisibleCount,
@@ -73,6 +76,7 @@
     approvals,
     queueSnapshot,
     agentActivityLabel,
+    contextCompacting,
     sessionRunning,
     selectedSessionArchiving,
     busy,
@@ -85,6 +89,7 @@
     agentCommands,
     agentCommandsLoading,
     composerText = $bindable(''),
+    composerDraftFailed,
     onLoadOlderTimeline,
     onTimelineScroll,
     onRetry,
@@ -96,6 +101,8 @@
     onSelectAccess,
     onLoadModels,
     onSelectModel,
+    onSelectReasoning,
+    onCompact,
     onAddAttachments,
     onAddDirectory,
     onRemoveAttachment,
@@ -108,6 +115,10 @@
   );
   const hiddenTimelineCount = $derived(Math.max(0, timeline.length - visibleTimeline.length));
   const sessionArchived = $derived(session?.archived === true);
+  const contextPercent = $derived.by(() => {
+    if (!usageValues || usageValues.contextUsed === null || !usageValues.contextLimit || usageValues.contextLimit <= 0) return null;
+    return Math.min(100, Math.round((usageValues.contextUsed / usageValues.contextLimit) * 100));
+  });
 
   function statusLabel(status: TimelineViewItem['status']): string {
     return status === 'streaming'
@@ -128,6 +139,9 @@
   <CardHeader class="panel-heading timeline-heading">
     <CardTitle>{session?.label ?? workspace?.label ?? '选择工作区'}</CardTitle>
     <div class="timeline-heading-actions">
+      {#if codexGoal?.objective}
+        <Badge variant="outline" title={codexGoal.objective}>目标 · {codexGoal.status}</Badge>
+      {/if}
       {#if session}
         <Badge variant={sessionArchived ? 'secondary' : sessionRunning || selectedSessionArchiving ? 'warning' : 'outline'}>
           {selectedSessionArchiving ? '归档中' : sessionStateLabel(session)}
@@ -152,6 +166,16 @@
         {#if usageValues.input !== null}<span>输入 {usageValues.input}</span>{/if}
         {#if usageValues.output !== null}<span>输出 {usageValues.output}</span>{/if}
         {#if usageValues.total !== null}<span>总计 {usageValues.total}</span>{/if}
+        {#if usageValues.contextUsed !== null}
+          <span class:usage-estimated={usageValues.contextEstimated}>
+            上下文 {usageValues.contextLimit ? `${contextPercent ?? 0}%` : '已用'}{usageValues.contextEstimated ? ' · 估算' : ''}
+          </span>
+        {/if}
+        {#if session?.agent === 'pi' && !sessionRunning && !sessionArchived && usageValues.contextUsed !== null}
+          <Button class="usage-compact-button" variant="ghost" size="sm" type="button" onclick={onCompact} disabled={busy || contextCompacting}>
+            {contextCompacting ? '压缩中…' : '压缩上下文'}
+          </Button>
+        {/if}
       </div>
     {/if}
 
@@ -284,9 +308,13 @@
   {/if}
 
   {#key session?.id}
+  {#if composerDraftFailed}
+    <div class="composer-draft-status" role="status">上次发送未完成，草稿已保留，可修改后重试。</div>
+  {/if}
   <Composer
     selectedAgent={session?.agent ?? null}
     selectedSession={session !== null}
+    {selectedSessionId}
     sessionArchived={sessionArchived}
     sessionRunning={sessionRunning}
     selectedSessionArchiving={selectedSessionArchiving}
@@ -309,6 +337,7 @@
     onSelectAccess={onSelectAccess}
     onLoadModels={onLoadModels}
     onSelectModel={onSelectModel}
+    onSelectReasoning={onSelectReasoning}
     onComposerInput={onComposerInput}
     onSelectWorkspacePath={onSelectWorkspacePath}
   />
