@@ -1,6 +1,6 @@
 # Phase 4.6：Agent 工作台控制与交互补全
 
-> 状态：实施中（4.6A–4.6C 已接入，4.6D 状态/预算/草稿首批能力已接入）；实施顺序已冻结
+> 状态：实施中（4.6A–4.6C 已接入，4.6D 草稿/提问/状态首批能力已接入，4.6E 已完成 Codex macOS smoke）；Pi provider 真实 turn 与部分线程列表最终一致性仍待复测
 > 平台：macOS arm64 首发基线；Windows 在 macOS 验收后验证
 > 前置：[Phase 4.5 常规 Agent 工作台能力补全](phase-4.5-agent-workbench-completion.md) 的 G0–G4 自动化门禁，以及可用的 Codex/Pi macOS 认证会话
 > 后续：Phase 5 `@` 与 Handoff v1
