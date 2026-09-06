@@ -59,3 +59,20 @@ test('business modules do not depend on Svelte, UI, or API implementations', asy
     );
   }
 });
+
+test('TimelinePanel forwards every required Composer callback from App', async () => {
+  const [app, panel, composer] = await Promise.all([
+    readFile(path.join(root, 'src/App.svelte'), 'utf8'),
+    readFile(path.join(root, 'src/lib/components/app/TimelinePanel.svelte'), 'utf8'),
+    readFile(path.join(root, 'src/lib/components/app/Composer.svelte'), 'utf8'),
+  ]);
+  const props = composer.match(/type ComposerProps = \{([\s\S]*?)\n  \};/)[1];
+  const panelBindings = panel.match(/let \{([\s\S]*?)\}: TimelinePanelProps = \$props\(\)/)[1];
+  const composerElement = panel.slice(panel.indexOf('<Composer'));
+  const panelElement = app.slice(app.indexOf('<TimelinePanel'));
+  for (const [, callback] of props.matchAll(/\b(on\w+):/g)) {
+    assert.match(panelBindings, new RegExp(`\\b${callback}\\b`), `${callback} must be received by TimelinePanel`);
+    assert.match(composerElement, new RegExp(`${callback}=\\{${callback}\\}`), `${callback} must reach Composer`);
+    assert.match(panelElement, new RegExp(`${callback}=\\{`), `${callback} must be supplied by App`);
+  }
+});

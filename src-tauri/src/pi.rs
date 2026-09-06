@@ -2342,8 +2342,14 @@ impl PiManager {
                             id: id.to_owned(),
                             description: None,
                             is_default: false,
-                            default_reasoning_effort: None,
-                            reasoning_efforts: Vec::new(),
+                            // Pi exposes a session-wide thinking-level list
+                            // rather than a per-model capability matrix. The
+                            // shared workbench contract needs model-local
+                            // entries, so project those supported levels onto
+                            // every model instead of making their matrix cells
+                            // appear unavailable.
+                            default_reasoning_effort: current_reasoning_effort.clone(),
+                            reasoning_efforts: reasoning_efforts.clone(),
                         })
                     })
                     .collect::<Vec<_>>()

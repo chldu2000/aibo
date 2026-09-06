@@ -31,6 +31,7 @@
     onLoadModels: () => void | Promise<void>;
     onSelectModel: (model: string | null) => void | Promise<void>;
     onSelectReasoning: (reasoningEffort: string | null) => void | Promise<void>;
+    onSelectModelConfiguration: (model: string, reasoningEffort: string | null) => void | Promise<void>;
     onComposerInput: (text: string) => void;
     onSelectWorkspacePath: (path: string) => void | Promise<void>;
   };
@@ -62,6 +63,7 @@
     onLoadModels,
     onSelectModel,
     onSelectReasoning,
+    onSelectModelConfiguration,
     onComposerInput,
     onSelectWorkspacePath,
   }: ComposerProps = $props();
@@ -191,6 +193,25 @@
       ? modelCatalog.current.reasoningEfforts
       : modelCatalog?.reasoningEfforts ?? [],
   );
+  const matrixReasoningOptions = $derived.by(() => {
+    const options = [
+      ...(modelCatalog?.reasoningEfforts ?? []),
+      ...(modelCatalog?.models.flatMap((model) => model.reasoningEfforts) ?? []),
+    ];
+    return [...new Map(options.map((option) => [option.id, option])).values()];
+  });
+  const matrixDefaultLabel = $derived(selectedAgent === 'codex' ? '默认' : '保留');
+
+  function supportsReasoningEffort(model: { reasoningEfforts: Array<{ id: string }> }, reasoningEffort: string | null): boolean {
+    return reasoningEffort === null || model.reasoningEfforts.some((option) => option.id === reasoningEffort);
+  }
+
+  function modelConfigurationIsActive(model: { reference: string }, reasoningEffort: string | null): boolean {
+    return model.reference === modelCatalog?.current?.reference
+      && (reasoningEffort === null
+        ? selectedAgent === 'codex' && selectedReasoningEffort === null
+        : reasoningEffort === selectedReasoningEffort);
+  }
 
   function attachmentName(path: string): string {
     return path.split(/[\\/]/).filter(Boolean).at(-1) ?? path;
@@ -500,69 +521,55 @@
               {#if modelCatalogLoading}
                 <div class="composer-suggestions-empty">正在读取可用模型…</div>
               {:else if modelCatalog && modelCatalog.models.length > 0}
-                <div class="composer-model-options" role="group" aria-label="可用模型">
-                  {#each modelCatalog.models as option (option.reference)}
-                    <button
-                      type="button"
-                      role="menuitemradio"
-                      aria-checked={option.reference === modelCatalog.current?.reference}
-                      class:active={option.reference === modelCatalog.current?.reference}
-                      disabled={busy || sessionArchived || selectedSessionArchiving || sessionRunning}
-                      onclick={() => {
-                        modelDraft = option.reference;
-                        modelMenuOpen = false;
-                        void onSelectModel(option.reference);
-                      }}
-                    >
-                      <span class="composer-model-option-copy">
-                        <strong>{option.label}</strong>
-                        <small>{option.reference}{option.isDefault ? ' · 默认' : ''}</small>
-                      </span>
-                      {#if option.reference === modelCatalog.current?.reference}<Icon name="check" size={14} />{/if}
-                    </button>
-                  {/each}
+                <div class="composer-model-matrix-wrap">
+                  <table class="composer-model-matrix" aria-label="模型与推理强度">
+                    <thead>
+                      <tr>
+                        <th scope="col">模型</th>
+                        <th scope="col" title={selectedAgent === 'codex' ? '使用该模型的默认推理强度' : '切换模型，保留当前推理强度'}>{matrixDefaultLabel}</th>
+                        {#each matrixReasoningOptions as effort (effort.id)}
+                          <th scope="col" title={effort.description ?? effort.label}>{effort.label}</th>
+                        {/each}
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {#each modelCatalog.models as option (option.reference)}
+                        <tr class:active-row={option.reference === modelCatalog.current?.reference}>
+                          <th scope="row" title={`${option.label} · ${option.reference}`}>
+                            <span>{option.label}</span>
+                            {#if option.isDefault}<small>默认</small>{/if}
+                          </th>
+                          <td>
+                            <button
+                              type="button"
+                              class:active={modelConfigurationIsActive(option, null)}
+                              aria-label={`${option.label}，${matrixDefaultLabel}`}
+                              aria-pressed={modelConfigurationIsActive(option, null)}
+                              disabled={busy || sessionArchived || selectedSessionArchiving || sessionRunning}
+                              onclick={() => { modelDraft = option.reference; modelMenuOpen = false; void onSelectModelConfiguration(option.reference, null); }}
+                            >{#if modelConfigurationIsActive(option, null)}<Icon name="check" size={13} />{:else}<span aria-hidden="true">—</span>{/if}</button>
+                          </td>
+                          {#each matrixReasoningOptions as effort (effort.id)}
+                            {@const available = supportsReasoningEffort(option, effort.id)}
+                            <td>
+                              <button
+                                type="button"
+                                class:active={modelConfigurationIsActive(option, effort.id)}
+                                aria-label={`${option.label}，${effort.label}`}
+                                aria-pressed={modelConfigurationIsActive(option, effort.id)}
+                                disabled={!available || busy || sessionArchived || selectedSessionArchiving || sessionRunning}
+                                title={available ? `${option.label} · ${effort.label}` : `${option.label} 不支持 ${effort.label}`}
+                                onclick={() => { modelDraft = option.reference; modelMenuOpen = false; void onSelectModelConfiguration(option.reference, effort.id); }}
+                              >{#if modelConfigurationIsActive(option, effort.id)}<Icon name="check" size={13} />{:else}<span aria-hidden="true">{available ? '○' : '—'}</span>{/if}</button>
+                            </td>
+                          {/each}
+                        </tr>
+                      {/each}
+                    </tbody>
+                  </table>
                 </div>
               {:else}
                 <div class="composer-suggestions-empty">未获取到可用模型，可手动输入模型标识。</div>
-              {/if}
-              <div class="composer-menu-section-heading">推理强度</div>
-              {#if reasoningOptions.length > 0}
-                <div class="composer-model-options composer-reasoning-options" role="group" aria-label="可用推理强度">
-                  {#if selectedAgent === 'codex'}
-                    <button
-                      type="button"
-                      role="menuitemradio"
-                      aria-checked={selectedReasoningEffort === null}
-                      class:active={selectedReasoningEffort === null}
-                      disabled={busy || sessionArchived || selectedSessionArchiving || sessionRunning}
-                      onclick={() => { modelMenuOpen = false; void onSelectReasoning(null); }}
-                    >
-                      <span class="composer-model-option-copy">
-                        <strong>模型默认</strong>
-                        <small>由当前模型决定</small>
-                      </span>
-                      {#if selectedReasoningEffort === null}<Icon name="check" size={14} />{/if}
-                    </button>
-                  {/if}
-                  {#each reasoningOptions as option (option.id)}
-                    <button
-                      type="button"
-                      role="menuitemradio"
-                      aria-checked={option.id === selectedReasoningEffort}
-                      class:active={option.id === selectedReasoningEffort}
-                      disabled={busy || sessionArchived || selectedSessionArchiving || sessionRunning}
-                      onclick={() => { modelMenuOpen = false; void onSelectReasoning(option.id); }}
-                    >
-                      <span class="composer-model-option-copy">
-                        <strong>{option.label}</strong>
-                        {#if option.description}<small>{option.description}</small>{/if}
-                      </span>
-                      {#if option.id === selectedReasoningEffort}<Icon name="check" size={14} />{/if}
-                    </button>
-                  {/each}
-                </div>
-              {:else}
-                <div class="composer-suggestions-empty">当前模型未提供可选推理强度。</div>
               {/if}
               <Input bind:value={modelDraft} class="composer-model-input" placeholder={selectedAgent === 'pi' ? 'provider/model' : 'provider/model，留空使用默认'} aria-label="模型标识" />
               <Button

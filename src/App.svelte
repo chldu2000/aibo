@@ -1405,6 +1405,67 @@
     }
   }
 
+  async function applySessionModelConfiguration(model: string, reasoningEffort: string | null): Promise<void> {
+    const session = selectedSession;
+    if (!session) return;
+    if (!desktop) {
+      errorMessage = '当前是 Web 预览；请在 Tauri 桌面模式中调整会话模型。';
+      return;
+    }
+    if (sessionRunning || selectedSessionArchiving) {
+      errorMessage = '会话运行中不能切换模型或推理强度，请等待当前回合结束。';
+      return;
+    }
+    busy = true;
+    errorMessage = null;
+    ++sessionModelRequestGeneration;
+    sessionModelCatalogLoading = false;
+    try {
+      if (session.agent === 'pi') {
+        const result = await setPiModel(session.id, model);
+        if (selectedSessionId !== session.id) return;
+        const current = result.current && typeof result.current === 'object'
+          ? result.current as { provider?: unknown; id?: unknown }
+          : result;
+        const provider = typeof current.provider === 'string' ? current.provider : '';
+        const id = typeof current.id === 'string' ? current.id : null;
+        sessionModelOverride = id ? `${provider ? `${provider}/` : ''}${id}` : model;
+        if (reasoningEffort !== null) await setPiThinkingLevel(session.id, reasoningEffort);
+        if (selectedSessionId !== session.id) return;
+        executionProfile = await getSessionExecutionProfile(session.id);
+        await loadSessionModels();
+        notice = reasoningEffort ? `Pi 已切换为 ${sessionModelOverride} · ${reasoningEffort}。` : `Pi 模型已切换为 ${sessionModelOverride}。`;
+      } else {
+        const current = executionProfile?.requested;
+        if (!current) {
+          errorMessage = '当前会话配置尚未加载，请稍候重试。';
+          return;
+        }
+        const updatedProfile = await updateSessionExecutionProfile(session.id, {
+          ...current,
+          model,
+          reasoningEffort,
+        });
+        markSessionIdle(session);
+        if (selectedSessionId !== session.id) return;
+        executionProfile = updatedProfile;
+        if (sessionModelCatalog) {
+          const selected = sessionModelCatalog.models.find((option) => option.reference === model);
+          sessionModelCatalog = {
+            ...sessionModelCatalog,
+            current: selected ?? sessionModelCatalog.current,
+            currentReasoningEffort: updatedProfile.enforced.reasoningEffort ?? null,
+          };
+        }
+        notice = `Codex 已切换为 ${model} · ${updatedProfile.enforced.reasoningEffort ?? '模型默认'}。`;
+      }
+    } catch (error) {
+      errorMessage = toErrorMessage(error);
+    } finally {
+      busy = false;
+    }
+  }
+
   async function executePiBuiltinCommand(input: string): Promise<boolean> {
     const command = parseAgentCommand(input);
     if (!command || selectedSession?.agent !== 'pi') return false;
@@ -2363,6 +2424,7 @@
       onLoadModels={() => void loadSessionModels()}
       onSelectModel={(model) => void applySessionModel(model)}
       onSelectReasoning={(reasoningEffort) => void applySessionReasoningEffort(reasoningEffort)}
+      onSelectModelConfiguration={(model, reasoningEffort) => void applySessionModelConfiguration(model, reasoningEffort)}
       onCompact={() => void compactCurrentSession()}
     />
     <Inspector

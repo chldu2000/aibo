@@ -60,6 +60,7 @@
     onLoadModels: () => void | Promise<void>;
     onSelectModel: (model: string | null) => void | Promise<void>;
     onSelectReasoning: (reasoningEffort: string | null) => void | Promise<void>;
+    onSelectModelConfiguration: (model: string, reasoningEffort: string | null) => void | Promise<void>;
     onCompact: () => void | Promise<void>;
     onComposerInput: (text: string) => void;
     onSelectWorkspacePath: (path: string) => void | Promise<void>;
@@ -108,6 +109,7 @@
     onLoadModels,
     onSelectModel,
     onSelectReasoning,
+    onSelectModelConfiguration,
     onCompact,
     onAddAttachments,
     onAddDirectory,
@@ -421,6 +423,7 @@
     onLoadModels={onLoadModels}
     onSelectModel={onSelectModel}
     onSelectReasoning={onSelectReasoning}
+    onSelectModelConfiguration={onSelectModelConfiguration}
     onComposerInput={onComposerInput}
     onSelectWorkspacePath={onSelectWorkspacePath}
   />
