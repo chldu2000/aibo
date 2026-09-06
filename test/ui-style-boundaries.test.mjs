@@ -68,3 +68,12 @@ test('new app-layer changes do not add skin-owned CSS', () => {
     visualDeclaration.test(line) || skinIdentifier.test(line) || skinToken.test(line));
   assert.deepEqual(violations, [], 'new app-layer visual declarations must be implemented by a skin');
 });
+
+test('app stylesheet keeps visual declarations inside the UI kit layer', async () => {
+  const source = await readFile(path.join(root, 'src/app.css'), 'utf8');
+  assert.doesNotMatch(
+    source,
+    visualDeclaration,
+    'src/app.css must remain an entrypoint/layout stylesheet; visual CSS belongs to ui-kit skins',
+  );
+});

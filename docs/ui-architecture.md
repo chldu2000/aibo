@@ -7,6 +7,10 @@
 3. `src/lib/ui-kit/` 是基础组件 adapter 门面。
 4. `src/lib/components/ui/` 提供当前默认的 shadcn-svelte 风格实现。
 
+应用的视觉 CSS 也属于 UI kit 边界：`src/lib/ui-kit/kits/base.css` 提供跨皮肤
+共享的语义样式与动效，`material3.css` 和 `shadcn.css` 负责各自皮肤的覆盖；
+`src/app.css` 只作为样式入口，不承载颜色、边框、圆角、阴影、字体或状态反馈。
+
 页面组件不应直接导入 `src/lib/components/ui/`，统一从 `$lib/ui-kit` 引入基础组件。这样替换视觉实现时，不需要修改会话状态或 Agent API。
 
 ## 添加另一套 UI Kit
@@ -63,9 +67,9 @@ adapter 内归一化，不能把覆盖补丁散落到业务组件。
 - `.github/workflows/verify.yml` 已将该门禁接入 push 和 pull request；PR 会把
   base commit 传给样式边界检查，只阻止新增违规，不会反复阻断历史基线。
 
-已有 `src/app.css` 的视觉声明属于迁移前遗留基线；边界测试只阻止新增违规，
-不会把历史迁移工作伪装成一次规则切换。迁移某个页面时，应把视觉声明移动到
-`src/lib/ui-kit/kits/<skin>/`，再移除对应基线例外。
+历史遗留的 `src/app.css` 视觉声明已迁移到 `src/lib/ui-kit/kits/base.css`，
+并由两套皮肤 CSS 按需覆盖。边界测试会阻止应用层继续新增视觉声明；新增的
+共享表现规则应放入 `base.css`，只属于某个皮肤的规则放入对应的 skin 文件。
 
 ## 当前拆分边界
 
