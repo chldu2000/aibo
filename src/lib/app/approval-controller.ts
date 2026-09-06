@@ -15,6 +15,7 @@ export type ApprovalControllerContext = {
     ) => Promise<void>;
   };
   getDesktop: () => boolean;
+  getSessionAgent: (sessionId: string) => 'codex' | 'pi' | null;
   getPendingApprovals: () => ApprovalRequest[];
   setPendingApprovals: (value: ApprovalRequest[]) => void;
   setBusy: (value: boolean) => void;
@@ -37,7 +38,13 @@ export function createApprovalController(context: ApprovalControllerContext) {
     context.setBusy(true);
     context.setErrorMessage(null);
     try {
-      const resolve = approval.kind === 'pi_tool'
+      // The approval kind comes from adapter payload data and may be absent
+      // on an event restored from an older stream. The session agent is the
+      // authoritative boundary, so never send a Pi approval to Codex merely
+      // because its kind was normalized to the generic fallback.
+      const isPiApproval =
+        context.getSessionAgent(approval.sessionId) === 'pi' || approval.kind === 'pi_tool';
+      const resolve = isPiApproval
         ? context.api.resolvePiApproval
         : context.api.resolveCodexApproval;
       await resolve(approval.sessionId, approval.requestId, decision);

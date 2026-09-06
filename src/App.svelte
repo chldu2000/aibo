@@ -2450,6 +2450,7 @@
   const approvalController = createApprovalController({
     api: { resolveCodexApproval, resolvePiApproval },
     getDesktop: () => desktop,
+    getSessionAgent: (sessionId) => findSession(sessionId)?.agent ?? null,
     getPendingApprovals: () => pendingApprovals,
     setPendingApprovals: (value) => (pendingApprovals = value),
     setBusy: (value) => (busy = value),

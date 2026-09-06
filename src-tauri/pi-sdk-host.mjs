@@ -316,6 +316,18 @@ async function start(params) {
       },
     },
   }));
+  // `tools` is both Pi's initial active-tool list and its allowlist. Keep the
+  // built-in read-only tools, but include the mediated custom tools as well;
+  // otherwise AgentSession silently filters `write`/`bash` out before the
+  // model ever sees their definitions.
+  const activeToolNames = [
+    "read",
+    "grep",
+    "find",
+    "ls",
+    ...(workspaceWriteEnabled ? ["write"] : []),
+    ...(commandEnabled ? ["bash"] : []),
+  ];
   const created = await createAgentSession({
     cwd,
     sessionManager: manager,
@@ -326,7 +338,7 @@ async function start(params) {
     // Pi has no native sandbox. Aibo only exposes custom write/command tools
     // after Core resolves the profile; both operations stay on the JSONL
     // gateway so the host never mutates the workspace directly.
-    tools: ["read", "grep", "find", "ls"],
+    tools: activeToolNames,
     customTools: customTools.length > 0 ? customTools : undefined,
   });
   const createdSession = created.session;
