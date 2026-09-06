@@ -148,6 +148,8 @@ pub(crate) fn resolve(
                     "skills.discovery".to_owned(),
                     "plan.native".to_owned(),
                     "goals.native".to_owned(),
+                    "user-input-requests".to_owned(),
+                    "context-usage".to_owned(),
                 ],
                 true,
             )
@@ -174,6 +176,7 @@ pub(crate) fn resolve(
                     "model.selection".to_owned(),
                     "reasoning-effort.selection".to_owned(),
                     "skills.discovery".to_owned(),
+                    "context-usage".to_owned(),
                 ],
                 false,
             )

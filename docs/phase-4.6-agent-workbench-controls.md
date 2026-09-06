@@ -235,9 +235,11 @@ Codex 使用 `thread/goal/set/get/clear`，目标变更写入时间线并在会�
 当前实现进度：
 
 - 已接入统一的运行状态文案：准备响应、生成回复、执行工具、等待审批、重试、压缩上下文和压缩后等待；压缩状态通过事件活动投影展示，不改变现有数据库状态约束。
+- 已接入最近活动计时：连续 15 秒没有新的 Agent 事件时，在当前活动文案后显示已等待时长；计时只反映前一条真实事件，不发送或伪造心跳。
 - 已接入会话级草稿恢复、发送失败标记和本地上限清理；附件仍复用 Phase 4.5 的会话附件存储。
 - 已接入上下文用量只读投影；provider 只报告累计输入用量时明确标注“估算”，Pi 空闲时提供压缩入口。
-- 用户输入请求卡片和 SQLite 草稿表仍待 provider 请求/应答协议稳定后接入，当前不伪造可提交的回答。
+- Codex `item/tool/requestUserInput` 已接入真实双向应答：支持最多 3 个问题、选项/补充文本；“取消”通过停止当前 turn 实现，并依靠 `serverRequest/resolved` 清理请求；Pi 没有等价 capability 时不显示该入口。
+- SQLite `composer_drafts` 已接入桌面端，并限制保留最近编辑的 200 个会话；localStorage 继续作为 Web 预览和数据库异常时的 fallback。
 
 - 统一 `working / using-tool / waiting-approval / waiting-user / compacting / completed / failed / interrupted` 状态。
 - 新增用户输入请求卡片，支持选项、补充文本、取消和超时；回答绑定原 turn。

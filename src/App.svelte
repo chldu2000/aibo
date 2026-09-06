@@ -77,6 +77,8 @@
     listCodexThreads,
     listWorkspaces,
     searchWorkspacePaths,
+    getComposerDraft,
+    saveComposerDraft,
     listPiCommands,
     compactPiSession,
     setPiThinkingLevel,
@@ -98,6 +100,7 @@
     removeWorkspace,
     openWorkspaceLocation as openWorkspaceLocationApi,
     resolveCodexApproval,
+    resolveCodexUserInput,
     resolvePiApproval,
     sendCodexPrompt,
     sendPiPrompt,
@@ -115,6 +118,7 @@
     AgentEvent,
     ApprovalDecision,
     ApprovalRequest,
+    UserInputRequest,
     ContextAttachment,
     ExecutionProfile,
     CheckpointFile,
@@ -229,6 +233,7 @@
   let workspaceSessionMap = $state<Record<string, Session[]>>({});
   let timeline = $state<TimelineItem[]>([]);
   let pendingApprovals = $state<ApprovalRequest[]>([]);
+  let pendingUserInputs = $state<UserInputRequest[]>([]);
   let queueSnapshot = $state<AgentQueueSnapshot | null>(null);
   let codexThreads = $state<CodexThreadSummary[]>([]);
   let codexThreadSnapshot = $state<CodexThreadSnapshot | null>(null);
@@ -253,6 +258,9 @@
   let selectedSessionId = $state<string | null>(null);
   let persistedSelection = $state<PersistedSelection | null>(null);
   let composerDrafts = $state<ComposerDrafts>({});
+  let draftHydratingSessionId = $state<string | null>(null);
+  let draftHydrationGeneration = 0;
+  let draftWriteQueue: Promise<void> = Promise.resolve();
   let restoringSelection = $state(false);
   let sessionsLoadingWorkspaceIds = $state<string[]>([]);
   let sessionLoadGenerations = $state<Record<string, number>>({});
@@ -305,6 +313,8 @@
   let promptInFlight = $state(false);
   let activeAgentSessionIds = $state<string[]>([]);
   let agentActivityOverrides = $state<Record<string, string | undefined>>({});
+  let agentActivityUpdatedAt = $state<Record<string, number | undefined>>({});
+  let activityNow = $state(Date.now());
   let noticeTimer: ReturnType<typeof setTimeout> | undefined;
   let errorTimer: ReturnType<typeof setTimeout> | undefined;
 
@@ -387,29 +397,62 @@
     const id = selectedSessionId;
     const enabled = desktop;
     const draft = id ? untrack(() => composerDrafts[id]?.text ?? '') : '';
+    const generation = ++draftHydrationGeneration;
+    draftHydratingSessionId = enabled && id ? id : null;
     untrack(() => {
       composerText = draft;
       if (enabled && id && draft) notice = '已恢复当前会话草稿。';
     });
+    if (!enabled || !id) return;
+    void getComposerDraft(id)
+      .then((remoteDraft) => {
+        if (generation !== draftHydrationGeneration || selectedSessionId !== id) return;
+        if (!remoteDraft) return;
+        const next = {
+          ...composerDrafts,
+          [id]: {
+            ...composerDrafts[id],
+            ...remoteDraft,
+            sendFailed: remoteDraft.sendFailed === true,
+          },
+        };
+        composerDrafts = next;
+        composerText = remoteDraft.text;
+        if (remoteDraft.sendFailed) notice = '上次发送未完成，已恢复草稿。';
+      })
+      .catch(() => {
+        // localStorage remains the offline/preview fallback; a stale desktop
+        // draft must not prevent the user from continuing to edit.
+      })
+      .finally(() => {
+        if (generation === draftHydrationGeneration && selectedSessionId === id) {
+          draftHydratingSessionId = null;
+        }
+      });
   });
 
   $effect(() => {
     const id = selectedSessionId;
     const text = composerText;
     if (!desktop || !id) return;
+    const sendFailed = composerDrafts[id]?.sendFailed === true;
+    if (draftHydratingSessionId === id) return;
     untrack(() => {
       const next = { ...composerDrafts };
       if (text.trim()) {
         next[id] = {
           text,
           updatedAt: new Date().toISOString(),
-          sendFailed: next[id]?.sendFailed,
+          sendFailed,
         };
       } else {
         delete next[id];
       }
       composerDrafts = next;
       writePersistedComposerDrafts(next);
+      draftWriteQueue = draftWriteQueue
+        .then(() => saveComposerDraft(id, text, sendFailed).then(() => undefined))
+        .catch(() => undefined);
     });
   });
 
@@ -419,6 +462,9 @@
   );
   const selectedApprovals = $derived(
     pendingApprovals.filter((approval) => approval.sessionId === selectedSessionId),
+  );
+  const selectedUserInputRequests = $derived(
+    pendingUserInputs.filter((request) => request.sessionId === selectedSessionId),
   );
   const streamingTimelineItem = $derived.by(() => {
     for (let index = timeline.length - 1; index >= 0; index -= 1) {
@@ -430,6 +476,20 @@
   const activeAgentSession = $derived(
     selectedSession ? activeAgentSessionIds.includes(selectedSession.id) : false,
   );
+  const selectedActivityAgeSeconds = $derived.by(() => {
+    if (!selectedSession || !activeAgentSession) return null;
+    const updatedAt = agentActivityUpdatedAt[selectedSession.id];
+    if (!updatedAt) return null;
+    return Math.max(0, Math.floor((activityNow - updatedAt) / 1000));
+  });
+  function withActivityAge(label: string): string {
+    const age = selectedActivityAgeSeconds;
+    if (age === null || age < 15) return label;
+    if (age < 60) return `${label} · 已等待 ${age} 秒（最近活动）`;
+    const minutes = Math.floor(age / 60);
+    const seconds = age % 60;
+    return `${label} · 已等待 ${minutes} 分 ${seconds} 秒（最近活动）`;
+  }
   const agentActivityLabel = $derived.by(() => {
     if (!selectedSession) return null;
     if (selectedSessionArchiving) return '正在归档会话…';
@@ -449,30 +509,32 @@
       !streamingTimelineItem
     ) return null;
     if (selectedSession.state === 'waiting_approval' || selectedApprovals.length > 0) {
-      return '等待你的确认…';
+      return withActivityAge('等待你的确认…');
     }
-    if (selectedSession.state === 'waiting_user') return '等待你的输入…';
-    if (selectedSession.state === 'compacting') return '正在压缩上下文…';
+    if (selectedSession.state === 'waiting_user' || selectedUserInputRequests.length > 0) {
+      return withActivityAge('等待你的输入…');
+    }
+    if (selectedSession.state === 'compacting') return withActivityAge('正在压缩上下文…');
     const agentLabel = selectedSession.agent === 'pi' ? 'Pi' : 'Codex';
     const activityOverride = agentActivityOverrides[selectedSession.id];
-    if (activityOverride) return activityOverride;
+    if (activityOverride) return withActivityAge(activityOverride);
     if (streamingTimelineItem?.role === 'tool') {
-      return `${agentLabel} 正在执行 ${toolLabel(streamingTimelineItem)}…`;
+      return withActivityAge(`${agentLabel} 正在执行 ${toolLabel(streamingTimelineItem)}…`);
     }
     if (streamingTimelineItem?.role === 'assistant') {
-      return `${agentLabel} 正在生成回复…`;
+      return withActivityAge(`${agentLabel} 正在生成回复…`);
     }
     const latest = timeline.at(-1);
     if (latest?.role === 'tool' && latest.status === 'failed') {
-      return `${agentLabel} 正在处理工具错误…`;
+      return withActivityAge(`${agentLabel} 正在处理工具错误…`);
     }
     if (latest?.role === 'tool' && latest.status === 'completed') {
-      return `${agentLabel} 工具执行完成，等待模型继续响应…`;
+      return withActivityAge(`${agentLabel} 工具执行完成，等待模型继续响应…`);
     }
     if (promptInFlight && !sessionRunning && !activeAgentSession) {
-      return `${agentLabel} 正在启动请求…`;
+      return withActivityAge(`${agentLabel} 正在启动请求…`);
     }
-    return `${agentLabel} 等待模型响应（可能正在思考）…`;
+    return withActivityAge(`${agentLabel} 等待模型响应（可能正在思考）…`);
   });
   const contextCompacting = $derived(agentActivityLabel?.includes('压缩上下文') ?? false);
 
@@ -616,6 +678,16 @@
     return () => clearTimeout(timer);
   });
 
+  // Re-evaluate the activity copy while a provider is quiet. This is not a
+  // heartbeat and does not change session state; it only makes a long gap
+  // explainable instead of looking like a frozen or idle composer.
+  $effect(() => {
+    const timer = setInterval(() => {
+      activityNow = Date.now();
+    }, 1000);
+    return () => clearInterval(timer);
+  });
+
   onMount(() => {
     composerDrafts = readPersistedComposerDrafts();
     let stopListening: (() => void) | undefined;
@@ -681,12 +753,16 @@
   function setAgentActivity(sessionId: string, active: boolean, label?: string): void {
     agentActivityOverrides = { ...agentActivityOverrides, [sessionId]: active ? label : undefined };
     if (active) {
+      agentActivityUpdatedAt = { ...agentActivityUpdatedAt, [sessionId]: Date.now() };
       if (!activeAgentSessionIds.includes(sessionId)) {
         activeAgentSessionIds = [...activeAgentSessionIds, sessionId];
       }
       return;
     }
     activeAgentSessionIds = activeAgentSessionIds.filter((id) => id !== sessionId);
+    const nextActivityTimes = { ...agentActivityUpdatedAt };
+    delete nextActivityTimes[sessionId];
+    agentActivityUpdatedAt = nextActivityTimes;
   }
 
   function markSessionIdle(session: Session): void {
@@ -705,6 +781,7 @@
 
   function clearSelectedSessionContext() {
     selectedSessionId = null;
+    pendingUserInputs = [];
     queueSnapshot = null;
     timeline = [];
     codexThreadSnapshot = null;
@@ -962,10 +1039,12 @@
       selectedAgent: selectedSession?.agent ?? null,
       timeline,
       pendingApprovals,
+      pendingUserInputs,
       lastSubmittedPrompt,
       setAgentActivity,
       updateWorkspaceSessions,
       setPendingApprovals: (approvals) => (pendingApprovals = approvals),
+      setPendingUserInputs: (requests) => (pendingUserInputs = requests),
       setUsageSnapshot: (usage) => (usageSnapshot = usage),
       setQueueSnapshot: (queue) => (queueSnapshot = queue),
       setTimeline: (nextTimeline) => (timeline = nextTimeline),
@@ -1647,6 +1726,9 @@
 
   async function abortPrompt() {
     await messageController.abortPrompt();
+    if (!errorMessage && selectedSessionId) {
+      pendingUserInputs = pendingUserInputs.filter((request) => request.sessionId !== selectedSessionId);
+    }
   }
 
   async function compactCurrentSession(): Promise<void> {
@@ -1699,6 +1781,24 @@
 
   async function resolveApproval(approval: ApprovalRequest, decision: ApprovalDecision) {
     await approvalController.resolveApproval(approval, decision);
+  }
+
+  async function resolveUserInput(request: UserInputRequest, answers: Record<string, string[]>): Promise<void> {
+    if (!desktop || request.sessionId !== selectedSessionId) return;
+    busy = true;
+    errorMessage = null;
+    try {
+      await resolveCodexUserInput(request.sessionId, request.requestId, answers);
+      pendingUserInputs = pendingUserInputs.filter(
+        (item) => item.sessionId !== request.sessionId || item.requestId !== request.requestId,
+      );
+      notice = '已提交你的回答，Agent 将继续执行。';
+    } catch (error) {
+      errorMessage = toErrorMessage(error);
+      throw error;
+    } finally {
+      busy = false;
+    }
   }
 
   function beginRenameSession(sessionId = selectedSessionId) {
@@ -2166,6 +2266,7 @@
       retryPrompt={retryPrompt}
       retryReason={retryReason}
       approvals={selectedApprovals}
+      userInputRequests={selectedUserInputRequests}
       queueSnapshot={queueSnapshot}
       agentActivityLabel={agentActivityLabel}
       contextCompacting={contextCompacting}
@@ -2193,6 +2294,10 @@
       onResolveApproval={(requestId, decision) => {
         const approval = selectedApprovals.find((item) => item.requestId === requestId);
         if (approval) void resolveApproval(approval, decision);
+      }}
+      onResolveUserInput={(request, answers) => resolveUserInput(request, answers)}
+      onCancelUserInput={(request) => {
+        if (request.sessionId === selectedSessionId) void abortPrompt();
       }}
       onSend={() => void sendPrompt()}
       onQueue={(mode) => void queuePiPrompt(mode)}

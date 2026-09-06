@@ -38,6 +38,7 @@ import type {
   Workspace,
   WorkspacePathSuggestion,
   AgentCommand,
+  ComposerDraft,
 } from './types';
 
 export const isTauri = (): boolean =>
@@ -51,6 +52,16 @@ export const searchWorkspacePaths = (
   query: string,
 ): Promise<WorkspacePathSuggestion[]> =>
   invoke<WorkspacePathSuggestion[]>('search_workspace_paths', { workspaceId, query });
+
+export const getComposerDraft = (sessionId: string): Promise<ComposerDraft | null> =>
+  invoke<ComposerDraft | null>('get_composer_draft', { sessionId });
+
+export const saveComposerDraft = (
+  sessionId: string,
+  text: string,
+  sendFailed = false,
+): Promise<ComposerDraft | null> =>
+  invoke<ComposerDraft | null>('save_composer_draft', { sessionId, text, sendFailed });
 
 export const listPiCommands = (sessionId: string): Promise<AgentCommand[]> =>
   invoke<AgentCommand[]>('list_pi_commands', { sessionId });
@@ -104,6 +115,12 @@ export const setCodexGoal = (
 
 export const clearCodexGoal = (sessionId: string): Promise<Record<string, unknown>> =>
   invoke<Record<string, unknown>>('clear_codex_goal', { sessionId });
+
+export const resolveCodexUserInput = (
+  sessionId: string,
+  requestId: string,
+  answers: Record<string, string[]>,
+): Promise<void> => invoke('resolve_codex_user_input', { sessionId, requestId, answers });
 
 export const reloadPiSession = (sessionId: string): Promise<Record<string, unknown>> =>
   invoke<Record<string, unknown>>('reload_pi_session', { sessionId });

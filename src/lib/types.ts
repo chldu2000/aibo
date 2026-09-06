@@ -447,6 +447,27 @@ export interface ApprovalRequest {
   availableDecisions: ApprovalDecision[];
 }
 
+export interface UserInputOption {
+  label: string;
+  description: string | null;
+}
+
+export interface UserInputQuestion {
+  id: string;
+  header: string | null;
+  question: string;
+  options: UserInputOption[];
+  isOther: boolean;
+}
+
+export interface UserInputRequest {
+  requestId: string;
+  sessionId: string;
+  turnId: string | null;
+  questions: UserInputQuestion[];
+  isBlocking: boolean;
+}
+
 /** Adapter-neutral view of work queued while an Agent is busy. */
 export interface AgentQueueSnapshot {
   sessionId: string;
@@ -461,6 +482,14 @@ export interface ContextUsage {
   used: number | null;
   limit: number | null;
   estimated: boolean;
+}
+
+export interface ComposerDraft {
+  schemaVersion?: string;
+  sessionId?: string;
+  text: string;
+  updatedAt: string;
+  sendFailed?: boolean;
 }
 
 export interface AgentEvent {

@@ -5,6 +5,7 @@ import type {
   ApprovalRequest,
   Session,
   TimelineItem,
+  UserInputRequest,
 } from '$lib/types';
 
 export type AgentEventHandlerContext = {
@@ -12,6 +13,7 @@ export type AgentEventHandlerContext = {
   selectedAgent: Session['agent'] | null;
   timeline: TimelineItem[];
   pendingApprovals: ApprovalRequest[];
+  pendingUserInputs: UserInputRequest[];
   lastSubmittedPrompt: string | null;
   setAgentActivity: (sessionId: string, active: boolean, label?: string) => void;
   updateWorkspaceSessions: (
@@ -19,6 +21,7 @@ export type AgentEventHandlerContext = {
     updater: (items: Session[]) => Session[],
   ) => void;
   setPendingApprovals: (approvals: ApprovalRequest[]) => void;
+  setPendingUserInputs: (requests: UserInputRequest[]) => void;
   setUsageSnapshot: (usage: Record<string, unknown> | null) => void;
   setQueueSnapshot: (queue: AgentQueueSnapshot | null) => void;
   setTimeline: (timeline: TimelineItem[]) => void;
@@ -57,6 +60,35 @@ export function handleAgentEvent(event: AgentEvent, context: AgentEventHandlerCo
   }
   if (event.type === 'approval.resolved') {
     context.setAgentActivity(event.sessionId, true, agentLabel(event, '确认已收到，继续执行…'));
+  }
+  if (event.type === 'user_input.requested') {
+    context.setAgentActivity(event.sessionId, true, agentLabel(event, '等待你的输入…'));
+  }
+  if (event.type === 'user_input.resolved') {
+    context.setAgentActivity(event.sessionId, true, agentLabel(event, '回答已收到，继续执行…'));
+  }
+
+  if (event.type === 'user_input.requested') {
+    const request = userInputFromEvent(event);
+    if (request) {
+      context.setPendingUserInputs([
+        ...context.pendingUserInputs.filter(
+          (item) => item.sessionId !== request.sessionId || item.requestId !== request.requestId,
+        ),
+        request,
+      ]);
+    }
+  }
+
+  if (event.type === 'user_input.resolved') {
+    const requestId = payloadString(event.payload.requestId);
+    if (requestId) {
+      context.setPendingUserInputs(
+        context.pendingUserInputs.filter(
+          (request) => request.sessionId !== event.sessionId || request.requestId !== requestId,
+        ),
+      );
+    }
   }
   if (event.type === 'retry.started' || event.type === 'compaction.started') {
     context.setAgentActivity(event.sessionId, true, agentLabel(
@@ -152,6 +184,9 @@ export function handleAgentEvent(event: AgentEvent, context: AgentEventHandlerCo
   if (event.type === 'adapter.crashed' || event.type === 'turn.completed' || event.type === 'turn.failed') {
     context.setPendingApprovals(
       context.pendingApprovals.filter((approval) => approval.sessionId !== event.sessionId),
+    );
+    context.setPendingUserInputs(
+      context.pendingUserInputs.filter((request) => request.sessionId !== event.sessionId),
     );
     if (event.sessionId === selectedSessionId) context.setQueueSnapshot(null);
   }
@@ -343,6 +378,46 @@ export function approvalFromEvent(event: AgentEvent): ApprovalRequest | null {
     command: payloadString(event.payload.command),
     cwd: payloadString(event.payload.cwd),
     availableDecisions: availableDecisions.length > 0 ? availableDecisions : ['accept', 'cancel'],
+  };
+}
+
+function userInputFromEvent(event: AgentEvent): UserInputRequest | null {
+  const requestId = payloadString(event.payload.requestId);
+  const rawQuestions = Array.isArray(event.payload.questions) ? event.payload.questions : [];
+  if (!requestId || rawQuestions.length === 0) return null;
+  const questions = rawQuestions
+    .slice(0, 3)
+    .flatMap((value, index) => {
+      if (!value || typeof value !== 'object') return [];
+      const record = value as Record<string, unknown>;
+      const question = stringPayload(record.question)?.trim();
+      if (!question) return [];
+      const rawOptions = Array.isArray(record.options) ? record.options : [];
+      const options = rawOptions.flatMap((option) => {
+        if (!option || typeof option !== 'object') return [];
+        const item = option as Record<string, unknown>;
+        const label = stringPayload(item.label)?.trim();
+        if (!label) return [];
+        return [{
+          label,
+          description: stringPayload(item.description),
+        }];
+      });
+      return [{
+        id: stringPayload(record.id)?.trim() || `question-${index + 1}`,
+        header: stringPayload(record.header),
+        question,
+        options,
+        isOther: record.isOther === true,
+      }];
+    });
+  if (questions.length === 0) return null;
+  return {
+    requestId,
+    sessionId: event.sessionId,
+    turnId: event.turnId,
+    questions,
+    isBlocking: event.payload.isBlocking !== false,
   };
 }
 

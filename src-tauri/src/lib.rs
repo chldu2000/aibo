@@ -140,6 +140,16 @@ pub struct Session {
 
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
+pub(crate) struct ComposerDraft {
+    pub(crate) schema_version: String,
+    pub(crate) session_id: String,
+    pub(crate) text: String,
+    pub(crate) send_failed: bool,
+    pub(crate) updated_at: String,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
 pub(crate) struct SessionReasoningOption {
     pub(crate) id: String,
     pub(crate) label: String,
@@ -810,6 +820,90 @@ fn attachment_media_type(path: &Path, is_dir: bool) -> String {
         Some("ts" | "tsx" | "js" | "jsx" | "svelte") => "text/javascript".to_owned(),
         _ => "application/octet-stream".to_owned(),
     }
+}
+
+#[tauri::command]
+async fn get_composer_draft(
+    session_id: String,
+    state: State<'_, AppState>,
+) -> Result<Option<ComposerDraft>, CoreError> {
+    session_by_id(&state.db, &session_id).await?;
+    let row = sqlx::query(
+        "SELECT schema_version, session_id, text, send_failed, updated_at
+         FROM composer_drafts WHERE session_id = ?",
+    )
+    .bind(&session_id)
+    .fetch_optional(&state.db)
+    .await
+    .map_err(|error| CoreError::Database(error.to_string()))?;
+    Ok(row.map(|row| ComposerDraft {
+        schema_version: row.get("schema_version"),
+        session_id: row.get("session_id"),
+        text: row.get("text"),
+        send_failed: row.get::<i64, _>("send_failed") != 0,
+        updated_at: row.get("updated_at"),
+    }))
+}
+
+#[tauri::command]
+async fn save_composer_draft(
+    session_id: String,
+    text: String,
+    send_failed: bool,
+    state: State<'_, AppState>,
+) -> Result<Option<ComposerDraft>, CoreError> {
+    session_by_id(&state.db, &session_id).await?;
+    if text.chars().count() > 100_000 {
+        return Err(CoreError::Database(
+            "composer draft exceeds 100000 characters".to_owned(),
+        ));
+    }
+    if text.trim().is_empty() {
+        sqlx::query("DELETE FROM composer_drafts WHERE session_id = ?")
+            .bind(&session_id)
+            .execute(&state.db)
+            .await
+            .map_err(|error| CoreError::Database(error.to_string()))?;
+        return Ok(None);
+    }
+    let updated_at = now_iso();
+    sqlx::query(
+        "INSERT INTO composer_drafts
+           (session_id, schema_version, text, send_failed, updated_at)
+         VALUES (?, 'aibo.composer-draft/v1', ?, ?, ?)
+         ON CONFLICT(session_id) DO UPDATE SET
+           schema_version = excluded.schema_version,
+           text = excluded.text,
+           send_failed = excluded.send_failed,
+           updated_at = excluded.updated_at",
+    )
+    .bind(&session_id)
+    .bind(&text)
+    .bind(if send_failed { 1_i64 } else { 0_i64 })
+    .bind(&updated_at)
+    .execute(&state.db)
+    .await
+    .map_err(|error| CoreError::Database(error.to_string()))?;
+    // Drafts are recovery hints, not an unbounded archive. Keep the most
+    // recently edited 200 sessions in the desktop store; the active row is
+    // always retained because it was just upserted above.
+    sqlx::query(
+        "DELETE FROM composer_drafts
+         WHERE session_id NOT IN (
+           SELECT session_id FROM composer_drafts
+           ORDER BY updated_at DESC LIMIT 200
+         )",
+    )
+    .execute(&state.db)
+    .await
+    .map_err(|error| CoreError::Database(error.to_string()))?;
+    Ok(Some(ComposerDraft {
+        schema_version: "aibo.composer-draft/v1".to_owned(),
+        session_id,
+        text,
+        send_failed,
+        updated_at,
+    }))
 }
 
 async fn open_database(path: &Path) -> Result<SqlitePool, CoreError> {
@@ -3451,6 +3545,20 @@ async fn resolve_codex_approval(
 }
 
 #[tauri::command]
+async fn resolve_codex_user_input(
+    session_id: String,
+    request_id: String,
+    answers: serde_json::Value,
+    state: State<'_, AppState>,
+) -> Result<(), CoreError> {
+    state
+        .codex
+        .resolve_user_input(&session_id, &request_id, answers)
+        .await
+        .map_err(Into::into)
+}
+
+#[tauri::command]
 async fn close_codex_session(
     session_id: String,
     state: State<'_, AppState>,
@@ -4120,6 +4228,8 @@ pub fn run() {
             list_session_attachments,
             remove_session_attachment,
             validate_session_attachments,
+            get_composer_draft,
+            save_composer_draft,
             list_turn_artifacts,
             read_artifact,
             list_project_actions,
@@ -4139,6 +4249,7 @@ pub fn run() {
             send_codex_prompt,
             abort_codex_turn,
             resolve_codex_approval,
+            resolve_codex_user_input,
             close_codex_session,
             create_pi_session,
             send_pi_prompt,
@@ -4765,6 +4876,7 @@ mod tests {
             "project_action_runs",
             "checkpoints",
             "restore_operations",
+            "composer_drafts",
         ] {
             let present: i64 = tauri::async_runtime::block_on(
                 sqlx::query_scalar(
@@ -4800,6 +4912,10 @@ mod tests {
             ("checkpoints", "baseline_head"),
             ("checkpoints", "baseline_dirty"),
             ("restore_operations", "status"),
+            ("composer_drafts", "schema_version"),
+            ("composer_drafts", "text"),
+            ("composer_drafts", "send_failed"),
+            ("composer_drafts", "updated_at"),
         ] {
             let present: i64 = tauri::async_runtime::block_on(
                 sqlx::query_scalar("SELECT COUNT(*) FROM pragma_table_info(?) WHERE name = ?")

@@ -252,6 +252,15 @@ h2 { font-size: 16px; letter-spacing: -0.02em; }
 .composer-menu button { display: flex; min-width: 0; align-items: center; gap: 8px; border: 0; border-radius: 6px; padding: 8px; color: var(--aibo-muted); background: transparent; text-align: left; font-size: 11px; }
 .composer-menu button:hover, .composer-menu button:focus-visible { color: var(--aibo-text); background: var(--aibo-surface-hover); outline: none; }
 .approval-list { display: grid; gap: 8px; margin: 0 16px 12px; }
+.user-input-list { display: grid; gap: 8px; margin: 0 16px 12px; }
+.user-input-card { border-color: var(--aibo-focus); background: color-mix(in srgb, var(--aibo-surface) 90%, var(--aibo-focus)); }
+.user-input-card-heading { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.user-input-card-content { display: grid; gap: 12px; }
+.user-input-question { display: grid; gap: 6px; min-width: 0; border: 0; padding: 0; }
+.user-input-question legend { color: var(--aibo-text); font-size: 11px; font-weight: 600; }
+.user-input-question p { margin: 0; color: var(--aibo-muted); font-size: 12px; line-height: 1.45; }
+.user-input-options { display: flex; flex-wrap: wrap; gap: 6px; }
+.user-input-actions { display: flex; justify-content: flex-end; }
 .approval-card { border-color: var(--aibo-warning-border); background: var(--aibo-warning-surface); }
 .approval-card-heading { flex-direction: row; justify-content: space-between; gap: 8px; padding: 12px 13px 8px; }
 .approval-card-heading > :not(:first-child) { margin-top: 0; }

@@ -428,6 +428,69 @@ fn optional_string(value: &Value, keys: &[&str]) -> Option<String> {
     })
 }
 
+fn user_input_projection(params: &Value) -> Value {
+    let questions = params
+        .get("questions")
+        .and_then(Value::as_array)
+        .map(|items| {
+            items
+                .iter()
+                .take(3)
+                .enumerate()
+                .filter_map(|(index, item)| {
+                    let id = item
+                        .get("id")
+                        .and_then(Value::as_str)
+                        .filter(|value| !value.trim().is_empty())
+                        .map(ToOwned::to_owned)
+                        .unwrap_or_else(|| format!("question-{}", index + 1));
+                    let question = item
+                        .get("question")
+                        .and_then(Value::as_str)
+                        .map(|value| sanitize_content("codex.user-input.question", value))?;
+                    let header = item
+                        .get("header")
+                        .and_then(Value::as_str)
+                        .map(|value| sanitize_content("codex.user-input.header", value));
+                    let options = item.get("options").and_then(Value::as_array).map(|values| {
+                        values
+                            .iter()
+                            .take(12)
+                            .filter_map(|option| {
+                                let label =
+                                    option.get("label").and_then(Value::as_str).map(|value| {
+                                        sanitize_content("codex.user-input.option", value)
+                                    })?;
+                                let description = option
+                                    .get("description")
+                                    .and_then(Value::as_str)
+                                    .map(|value| {
+                                        sanitize_content(
+                                            "codex.user-input.option-description",
+                                            value,
+                                        )
+                                    });
+                                Some(json!({ "label": label, "description": description }))
+                            })
+                            .collect::<Vec<_>>()
+                    });
+                    Some(json!({
+                        "id": id,
+                        "header": header,
+                        "question": question,
+                        "options": options,
+                        "isOther": item.get("isOther").and_then(Value::as_bool).unwrap_or(false)
+                    }))
+                })
+                .collect::<Vec<_>>()
+        })
+        .unwrap_or_default();
+    json!({
+        "questions": questions,
+        "isBlocking": params.get("isBlocking").and_then(Value::as_bool).unwrap_or(true)
+    })
+}
+
 fn thread_status(value: &Value) -> Option<String> {
     let status = value.get("status")?;
     status.as_str().map(ToOwned::to_owned).or_else(|| {
@@ -858,6 +921,7 @@ struct CodexSession {
     thread_id: Mutex<Option<String>>,
     current_turn_id: Mutex<Option<String>>,
     pending_approvals: Mutex<HashMap<String, Value>>,
+    pending_user_inputs: Mutex<HashMap<String, Value>>,
     state: Mutex<String>,
     sequence: AtomicU64,
     active: AtomicBool,
@@ -895,6 +959,7 @@ impl CodexSession {
             thread_id: Mutex::new(None),
             current_turn_id: Mutex::new(None),
             pending_approvals: Mutex::new(HashMap::new()),
+            pending_user_inputs: Mutex::new(HashMap::new()),
             state: Mutex::new("starting".to_owned()),
             sequence: AtomicU64::new(0),
             active: AtomicBool::new(true),
@@ -1248,6 +1313,7 @@ impl CodexSession {
                     }
                     *self.current_turn_id.lock().await = None;
                     self.pending_approvals.lock().await.clear();
+                    self.pending_user_inputs.lock().await.clear();
                     if mapped_status == "completed" {
                         self.set_state("idle").await?;
                     } else if mapped_status == "interrupted" {
@@ -1308,6 +1374,7 @@ impl CodexSession {
                 }
                 *self.current_turn_id.lock().await = None;
                 self.pending_approvals.lock().await.clear();
+                self.pending_user_inputs.lock().await.clear();
                 self.set_state(terminal_status).await?;
                 self.emit_event(
                     "turn.failed",
@@ -1357,18 +1424,68 @@ impl CodexSession {
                 )
                 .await?;
             }
+            "item/tool/requestUserInput" | "tool/requestUserInput" => {
+                let Some(request_id) = message.get("id").and_then(value_id) else {
+                    return Err(CodexError::Protocol(
+                        "user input request did not include a request id".to_owned(),
+                    ));
+                };
+                self.pending_user_inputs.lock().await.insert(
+                    request_id.clone(),
+                    message.get("id").cloned().unwrap_or(Value::Null),
+                );
+                // Keep the durable session in the existing running state. The
+                // request itself is the authoritative waiting-user marker and
+                // avoids widening the legacy SQLite state CHECK constraint.
+                self.set_state("running").await?;
+                self.emit_event(
+                    "user_input.requested",
+                    params
+                        .get("turnId")
+                        .and_then(Value::as_str)
+                        .map(ToOwned::to_owned),
+                    {
+                        let mut payload = user_input_projection(&params);
+                        payload["requestId"] = json!(request_id);
+                        payload
+                    },
+                    None,
+                )
+                .await?;
+            }
             "serverRequest/resolved" => {
                 let request_id = params.get("requestId").and_then(value_id);
                 if let Some(request_id) = request_id {
-                    self.pending_approvals.lock().await.remove(&request_id);
+                    let was_user_input = self
+                        .pending_user_inputs
+                        .lock()
+                        .await
+                        .remove(&request_id)
+                        .is_some();
+                    let was_approval = self
+                        .pending_approvals
+                        .lock()
+                        .await
+                        .remove(&request_id)
+                        .is_some();
                     self.set_state("running").await?;
-                    self.emit_event(
-                        "approval.resolved",
-                        None,
-                        json!({ "requestId": request_id }),
-                        None,
-                    )
-                    .await?;
+                    if was_user_input {
+                        self.emit_event(
+                            "user_input.resolved",
+                            None,
+                            json!({ "requestId": request_id }),
+                            None,
+                        )
+                        .await?;
+                    } else if was_approval {
+                        self.emit_event(
+                            "approval.resolved",
+                            None,
+                            json!({ "requestId": request_id }),
+                            None,
+                        )
+                        .await?;
+                    }
                 }
             }
             "aibo/process-exited" => {
@@ -1400,6 +1517,8 @@ impl CodexSession {
                 *self.current_turn_id.lock().await = None;
                 let discarded_approvals = self.pending_approvals.lock().await.len();
                 self.pending_approvals.lock().await.clear();
+                let discarded_user_inputs = self.pending_user_inputs.lock().await.len();
+                self.pending_user_inputs.lock().await.clear();
                 self.set_state("interrupted").await?;
                 self.emit_event(
                     "adapter.crashed",
@@ -1407,7 +1526,9 @@ impl CodexSession {
                     json!({
                         "reason": params.get("reason").cloned().unwrap_or(Value::Null),
                         "pendingApprovalCount": discarded_approvals,
-                        "approvalsDiscarded": discarded_approvals > 0
+                        "approvalsDiscarded": discarded_approvals > 0,
+                        "pendingUserInputCount": discarded_user_inputs,
+                        "userInputsDiscarded": discarded_user_inputs > 0
                     }),
                     None,
                 )
@@ -2964,6 +3085,72 @@ impl CodexManager {
             .await
     }
 
+    pub(crate) async fn resolve_user_input(
+        &self,
+        session_id: &str,
+        request_id: &str,
+        answers: Value,
+    ) -> Result<(), CodexError> {
+        let session = self.ensure_runtime(session_id).await?;
+        let raw_request_id = session
+            .pending_user_inputs
+            .lock()
+            .await
+            .get(request_id)
+            .cloned()
+            .ok_or_else(|| {
+                CodexError::Session("user input request is no longer pending".to_owned())
+            })?;
+        let answer_map = answers.as_object().ok_or_else(|| {
+            CodexError::Request("user input answers must be an object".to_owned())
+        })?;
+        let mut normalized = serde_json::Map::new();
+        for (question_id, value) in answer_map {
+            let values = if let Some(values) = value.as_array() {
+                values
+                    .iter()
+                    .filter_map(Value::as_str)
+                    .map(|value| value.chars().take(4_000).collect::<String>())
+                    .filter(|value| !value.trim().is_empty())
+                    .take(8)
+                    .map(Value::String)
+                    .collect::<Vec<_>>()
+            } else if let Some(value) = value.as_str() {
+                vec![Value::String(value.chars().take(4_000).collect())]
+            } else {
+                return Err(CodexError::Request(format!(
+                    "answers for {question_id} must be text values"
+                )));
+            };
+            if values.is_empty() {
+                return Err(CodexError::Request(format!(
+                    "answer for {question_id} must not be empty"
+                )));
+            }
+            normalized.insert(question_id.clone(), json!({ "answers": values }));
+        }
+        if normalized.is_empty() {
+            return Err(CodexError::Request(
+                "at least one user input answer is required".to_owned(),
+            ));
+        }
+        session
+            .client
+            .respond(raw_request_id, json!({ "answers": normalized }))
+            .await?;
+        session.pending_user_inputs.lock().await.remove(request_id);
+        session.set_state("running").await?;
+        let turn_id = session.current_turn_id.lock().await.clone();
+        session
+            .emit_event(
+                "user_input.resolved",
+                turn_id,
+                json!({ "requestId": request_id }),
+                None,
+            )
+            .await
+    }
+
     pub(crate) async fn abort(&self, session_id: &str) -> Result<(), CodexError> {
         let session = self.ensure_runtime(session_id).await?;
         let thread_id = session
@@ -3043,7 +3230,7 @@ mod tests {
         codex_turn_start_params, event_thread_id, final_turn_text, generation_matches,
         is_missing_rollout_error, map_tool_status, map_turn_status, matching_thread_id,
         parse_forked_thread, parse_thread_list, parse_thread_snapshot, tool_projection,
-        usage_projection, validate_codex_thread_start_response, value_id,
+        usage_projection, user_input_projection, validate_codex_thread_start_response, value_id,
     };
     use crate::execution_profile::{
         ExecutionProfile, ResolvedExecutionProfile, EXECUTION_PROFILE_SCHEMA,
@@ -3092,6 +3279,38 @@ mod tests {
         assert_eq!(value_id(&json!("request-1")), Some("request-1".to_owned()));
         assert_eq!(value_id(&json!(7)), Some("7".to_owned()));
         assert_eq!(value_id(&json!(null)), None);
+    }
+
+    #[test]
+    fn projects_user_input_requests_without_provider_extras() {
+        let projected = user_input_projection(&json!({
+            "isBlocking": true,
+            "questions": [
+                {
+                    "id": "scope",
+                    "header": "Scope",
+                    "question": "Which files should be changed?",
+                    "options": [
+                        { "label": "src", "description": "Source files" },
+                        { "label": "tests", "description": "Test files" }
+                    ],
+                    "isOther": true,
+                    "secret": "must not leak"
+                }
+            ],
+            "extra": "must not leak"
+        }));
+        assert_eq!(projected["isBlocking"], json!(true));
+        assert_eq!(projected["questions"][0]["id"], json!("scope"));
+        assert_eq!(
+            projected["questions"][0]["options"]
+                .as_array()
+                .unwrap()
+                .len(),
+            2
+        );
+        assert!(projected["questions"][0].get("secret").is_none());
+        assert!(projected.get("extra").is_none());
     }
 
     #[test]

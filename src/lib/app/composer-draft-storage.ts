@@ -1,10 +1,6 @@
-export const composerDraftsStorageKey = 'aibo.composer-drafts.v1';
+import type { ComposerDraft } from '$lib/types';
 
-export type ComposerDraft = {
-  text: string;
-  updatedAt: string;
-  sendFailed?: boolean;
-};
+export const composerDraftsStorageKey = 'aibo.composer-drafts.v1';
 
 export type ComposerDrafts = Record<string, ComposerDraft>;
 
