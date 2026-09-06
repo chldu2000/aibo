@@ -10,5 +10,6 @@ export { default as CardTitle } from './runtime/CardTitle.svelte';
 export { default as Icon } from './runtime/Icon.svelte';
 export { default as Input } from './runtime/Input.svelte';
 export { default as Label } from './runtime/Label.svelte';
+export { default as ModelMatrix } from './runtime/ModelMatrix.svelte';
 export { default as Separator } from './runtime/Separator.svelte';
 export { default as Textarea } from './runtime/Textarea.svelte';

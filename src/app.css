@@ -243,21 +243,6 @@ h2 { font-size: 16px; letter-spacing: -0.02em; }
 .composer-model-input { width: 100%; height: 31px !important; min-height: 0; font-size: 10px !important; }
 .composer-model-apply { width: 100%; justify-content: center; }
 .composer-model-options { display: grid; max-height: 184px; overflow-y: auto; gap: 2px; overscroll-behavior: contain; }
-.composer-model-matrix-wrap { max-height: 250px; overflow: auto; overscroll-behavior: contain; border: 1px solid var(--aibo-border); border-radius: 7px; }
-.composer-model-matrix { width: 100%; min-width: max-content; border-collapse: separate; border-spacing: 0; font-size: 10px; }
-.composer-model-matrix th, .composer-model-matrix td { height: 32px; border-bottom: 1px solid var(--aibo-border); }
-.composer-model-matrix tr:last-child th, .composer-model-matrix tr:last-child td { border-bottom: 0; }
-.composer-model-matrix thead th { position: sticky; z-index: 1; top: 0; min-width: 52px; padding: 0 7px; color: var(--aibo-subtle); background: var(--aibo-surface); font-size: 9px; font-weight: 500; text-align: center; white-space: nowrap; }
-.composer-model-matrix thead th:first-child { z-index: 2; left: 0; min-width: 136px; text-align: left; }
-.composer-model-matrix tbody th { position: sticky; z-index: 1; left: 0; max-width: 156px; padding: 0 8px; overflow: hidden; color: var(--aibo-muted); background: var(--aibo-surface); font-weight: 500; text-align: left; text-overflow: ellipsis; white-space: nowrap; }
-.composer-model-matrix tbody th span { overflow: hidden; text-overflow: ellipsis; }
-.composer-model-matrix tbody th small { margin-left: 4px; color: var(--aibo-subtle); font-size: 8px; }
-.composer-model-matrix tr.active-row th { color: var(--aibo-text); background: var(--aibo-accent-soft); }
-.composer-model-matrix td { width: 52px; padding: 2px; text-align: center; }
-.composer-model-matrix td button { display: inline-flex; width: 100%; height: 26px; align-items: center; justify-content: center; border-radius: 5px; padding: 0; color: var(--aibo-subtle); font-size: 13px; text-align: center; }
-.composer-model-matrix td button:hover:not(:disabled), .composer-model-matrix td button:focus-visible { color: var(--aibo-text); background: var(--aibo-surface-hover); }
-.composer-model-matrix td button.active { color: var(--aibo-accent-foreground); background: var(--aibo-accent); }
-.composer-model-matrix td button:disabled { cursor: not-allowed; opacity: .35; }
 .composer-menu-section-heading { padding: 8px 8px 3px; color: var(--aibo-subtle); font-size: 10px; font-weight: 600; }
 .composer-reasoning-options { max-height: 148px; }
 .composer-model-options button { align-items: center; }

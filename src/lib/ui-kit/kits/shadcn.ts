@@ -13,6 +13,7 @@ import { Label as LabelComponent } from '$lib/components/ui/label';
 import { Separator as SeparatorComponent } from '$lib/components/ui/separator';
 import { Textarea as TextareaComponent } from '$lib/components/ui/textarea';
 import IconComponent from './shadcn/Icon.svelte';
+import ModelMatrixComponent from './shadcn/ModelMatrix.svelte';
 import type { UiKitAdapter, UiKitRegistration, UiThemeRegistration } from '../contract';
 import { lightStatusThemeTokens, statusThemeTokens } from '../theme-tokens';
 
@@ -28,6 +29,7 @@ export const shadcnUiKit: UiKitAdapter = {
   Icon: IconComponent,
   Input: InputComponent,
   Label: LabelComponent,
+  ModelMatrix: ModelMatrixComponent,
   Separator: SeparatorComponent,
   Textarea: TextareaComponent,
 };

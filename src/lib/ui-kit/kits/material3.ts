@@ -11,6 +11,7 @@ import Input from './material3/Input.svelte';
 import Label from './material3/Label.svelte';
 import Separator from './material3/Separator.svelte';
 import Textarea from './material3/Textarea.svelte';
+import ModelMatrix from './material3/ModelMatrix.svelte';
 import type { UiKitAdapter, UiKitRegistration, UiThemeRegistration } from '../contract';
 import { lightStatusThemeTokens, statusThemeTokens } from '../theme-tokens';
 
@@ -31,6 +32,7 @@ export const material3UiKit: UiKitAdapter = {
   Icon,
   Input,
   Label,
+  ModelMatrix,
   Separator,
   Textarea,
 };

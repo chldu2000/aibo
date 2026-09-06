@@ -42,6 +42,34 @@ export type UiButtonVariant =
   | 'abort'
   | 'send';
 
+export type UiModelMatrixCell = {
+  id: string;
+  label: string;
+  description: string | null;
+  available: boolean;
+  active: boolean;
+};
+
+export type UiModelMatrixColumn = Pick<UiModelMatrixCell, 'id' | 'label' | 'description'>;
+
+export type UiModelMatrixRow = {
+  reference: string;
+  label: string;
+  isDefault: boolean;
+  active: boolean;
+  defaultActive: boolean;
+  cells: readonly UiModelMatrixCell[];
+};
+
+export type UiModelMatrixProps = {
+  columns: readonly UiModelMatrixColumn[];
+  rows: readonly UiModelMatrixRow[];
+  defaultLabel: string;
+  defaultTitle: string;
+  disabled: boolean;
+  onSelect: (model: string, reasoningEffort: string | null) => void | Promise<void>;
+};
+
 /**
  * The minimum visual surface consumed by Aibo's app-level components.
  * Concrete kits may wrap shadcn-svelte, another Svelte library, or local
@@ -61,6 +89,7 @@ export type UiKitAdapter = {
   Icon: Component;
   Input: Component;
   Label: Component;
+  ModelMatrix: Component<UiModelMatrixProps>;
   Separator: Component;
   Textarea: Component;
 };

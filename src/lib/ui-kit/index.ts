@@ -14,6 +14,10 @@ export type {
   UiKitAdapter,
   UiKitOption,
   UiKitRegistration,
+  UiModelMatrixCell,
+  UiModelMatrixColumn,
+  UiModelMatrixProps,
+  UiModelMatrixRow,
   UiThemeRegistration,
 } from './contract';
 export {

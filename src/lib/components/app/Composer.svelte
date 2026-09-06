@@ -1,5 +1,6 @@
 <script lang="ts">
-  import { Button, Card, Icon, Input, Textarea } from '$lib/ui-kit';
+  import { Button, Card, Icon, Input, ModelMatrix, Textarea } from '$lib/ui-kit';
+  import type { UiModelMatrixRow } from '$lib/ui-kit';
   import type { AgentCommand, AgentCommandCategory, ContextAttachment, SessionAccessMode, SessionExecutionProfile, SessionModelCatalog, WorkspacePathSuggestion } from '$lib/types';
 
   type SlashCategory = 'all' | AgentCommandCategory;
@@ -201,6 +202,23 @@
     return [...new Map(options.map((option) => [option.id, option])).values()];
   });
   const matrixDefaultLabel = $derived(selectedAgent === 'codex' ? '默认' : '保留');
+  const matrixRows = $derived.by((): UiModelMatrixRow[] =>
+    (modelCatalog?.models ?? []).map((option) => ({
+      reference: option.reference,
+      label: option.label,
+      isDefault: option.isDefault,
+      active: option.reference === modelCatalog?.current?.reference,
+      defaultActive: modelConfigurationIsActive(option, null),
+      cells: matrixReasoningOptions.map((effort) => ({
+        id: effort.id,
+        label: effort.label,
+        description: effort.description,
+        available: supportsReasoningEffort(option, effort.id),
+        active: modelConfigurationIsActive(option, effort.id),
+      })),
+    })),
+  );
+  const matrixDisabled = $derived(busy || sessionArchived || selectedSessionArchiving || sessionRunning);
 
   function supportsReasoningEffort(model: { reasoningEfforts: Array<{ id: string }> }, reasoningEffort: string | null): boolean {
     return reasoningEffort === null || model.reasoningEfforts.some((option) => option.id === reasoningEffort);
@@ -521,53 +539,18 @@
               {#if modelCatalogLoading}
                 <div class="composer-suggestions-empty">正在读取可用模型…</div>
               {:else if modelCatalog && modelCatalog.models.length > 0}
-                <div class="composer-model-matrix-wrap">
-                  <table class="composer-model-matrix" aria-label="模型与推理强度">
-                    <thead>
-                      <tr>
-                        <th scope="col">模型</th>
-                        <th scope="col" title={selectedAgent === 'codex' ? '使用该模型的默认推理强度' : '切换模型，保留当前推理强度'}>{matrixDefaultLabel}</th>
-                        {#each matrixReasoningOptions as effort (effort.id)}
-                          <th scope="col" title={effort.description ?? effort.label}>{effort.label}</th>
-                        {/each}
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {#each modelCatalog.models as option (option.reference)}
-                        <tr class:active-row={option.reference === modelCatalog.current?.reference}>
-                          <th scope="row" title={`${option.label} · ${option.reference}`}>
-                            <span>{option.label}</span>
-                            {#if option.isDefault}<small>默认</small>{/if}
-                          </th>
-                          <td>
-                            <button
-                              type="button"
-                              class:active={modelConfigurationIsActive(option, null)}
-                              aria-label={`${option.label}，${matrixDefaultLabel}`}
-                              aria-pressed={modelConfigurationIsActive(option, null)}
-                              disabled={busy || sessionArchived || selectedSessionArchiving || sessionRunning}
-                              onclick={() => { modelDraft = option.reference; modelMenuOpen = false; void onSelectModelConfiguration(option.reference, null); }}
-                            >{#if modelConfigurationIsActive(option, null)}<Icon name="check" size={13} />{:else}<span aria-hidden="true">—</span>{/if}</button>
-                          </td>
-                          {#each matrixReasoningOptions as effort (effort.id)}
-                            {@const available = supportsReasoningEffort(option, effort.id)}
-                            <td>
-                              <button
-                                type="button"
-                                class:active={modelConfigurationIsActive(option, effort.id)}
-                                aria-label={`${option.label}，${effort.label}`}
-                                aria-pressed={modelConfigurationIsActive(option, effort.id)}
-                                disabled={!available || busy || sessionArchived || selectedSessionArchiving || sessionRunning}
-                                title={available ? `${option.label} · ${effort.label}` : `${option.label} 不支持 ${effort.label}`}
-                                onclick={() => { modelDraft = option.reference; modelMenuOpen = false; void onSelectModelConfiguration(option.reference, effort.id); }}
-                              >{#if modelConfigurationIsActive(option, effort.id)}<Icon name="check" size={13} />{:else}<span aria-hidden="true">{available ? '○' : '—'}</span>{/if}</button>
-                            </td>
-                          {/each}
-                        </tr>
-                      {/each}
-                    </tbody>
-                  </table>
-                </div>
+                <ModelMatrix
+                  columns={matrixReasoningOptions}
+                  rows={matrixRows}
+                  defaultLabel={matrixDefaultLabel}
+                  defaultTitle={selectedAgent === 'codex' ? '使用该模型的默认推理强度' : '切换模型，保留当前推理强度'}
+                  disabled={matrixDisabled}
+                  onSelect={(model, reasoningEffort) => {
+                    modelDraft = model;
+                    modelMenuOpen = false;
+                    void onSelectModelConfiguration(model, reasoningEffort);
+                  }}
+                />
               {:else}
                 <div class="composer-suggestions-empty">未获取到可用模型，可手动输入模型标识。</div>
               {/if}
