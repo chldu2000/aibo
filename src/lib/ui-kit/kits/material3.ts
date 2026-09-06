@@ -12,6 +12,7 @@ import Label from './material3/Label.svelte';
 import Separator from './material3/Separator.svelte';
 import Textarea from './material3/Textarea.svelte';
 import ModelMatrix from './material3/ModelMatrix.svelte';
+import ColumnSplitter from './material3/ColumnSplitter.svelte';
 import type { UiKitAdapter, UiKitRegistration, UiThemeRegistration } from '../contract';
 import { lightStatusThemeTokens, statusThemeTokens } from '../theme-tokens';
 
@@ -29,6 +30,7 @@ export const material3UiKit: UiKitAdapter = {
   CardFooter,
   CardHeader,
   CardTitle,
+  ColumnSplitter,
   Icon,
   Input,
   Label,

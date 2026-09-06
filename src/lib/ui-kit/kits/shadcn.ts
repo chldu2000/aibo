@@ -14,6 +14,7 @@ import { Separator as SeparatorComponent } from '$lib/components/ui/separator';
 import { Textarea as TextareaComponent } from '$lib/components/ui/textarea';
 import IconComponent from './shadcn/Icon.svelte';
 import ModelMatrixComponent from './shadcn/ModelMatrix.svelte';
+import ColumnSplitterComponent from './shadcn/ColumnSplitter.svelte';
 import type { UiKitAdapter, UiKitRegistration, UiThemeRegistration } from '../contract';
 import { lightStatusThemeTokens, statusThemeTokens } from '../theme-tokens';
 
@@ -26,6 +27,7 @@ export const shadcnUiKit: UiKitAdapter = {
   CardFooter: CardFooterComponent,
   CardHeader: CardHeaderComponent,
   CardTitle: CardTitleComponent,
+  ColumnSplitter: ColumnSplitterComponent,
   Icon: IconComponent,
   Input: InputComponent,
   Label: LabelComponent,

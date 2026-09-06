@@ -72,6 +72,13 @@ export type UiModelMatrixProps = {
   onSelect: (model: string, reasoningEffort: string | null) => void | Promise<void>;
 };
 
+export type UiColumnSplitterProps = {
+  label: string;
+  width: number;
+  onPointerDown: (event: PointerEvent) => void;
+  onKeyDown: (event: KeyboardEvent) => void;
+};
+
 /**
  * The minimum visual surface consumed by Aibo's app-level components.
  * Concrete kits may wrap shadcn-svelte, another Svelte library, or local
@@ -88,6 +95,7 @@ export type UiKitAdapter = {
   CardFooter: Component;
   CardHeader: Component;
   CardTitle: Component;
+  ColumnSplitter: Component<UiColumnSplitterProps>;
   Icon: Component;
   Input: Component;
   Label: Component;

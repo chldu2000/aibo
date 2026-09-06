@@ -334,6 +334,24 @@
   height: 100%;
 }
 
+:where(.app-shell[data-ui-kit='material3']) .workspace-splitter {
+  cursor: col-resize;
+  appearance: none;
+  border: 0;
+  padding: 0;
+  color: inherit;
+  background: transparent;
+}
+
+:where(.app-shell[data-ui-kit='material3']) .workspace-splitter-line {
+  background: var(--m3c-outline-variant);
+}
+
+:where(.app-shell[data-ui-kit='material3']) .workspace-splitter:focus-visible {
+  outline: 2px solid var(--m3c-primary);
+  outline-offset: -2px;
+}
+
 .m3-aibo-alert-overlay {
   position: fixed;
   z-index: 50;

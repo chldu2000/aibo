@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { onMount, untrack } from 'svelte';
+  import { onDestroy, onMount, untrack } from 'svelte';
   import { open } from '@tauri-apps/plugin-dialog';
   import {
     AppOverlays,
@@ -157,6 +157,7 @@
     activeThemeStyle,
     activeUiKitName,
     availableUiKits,
+    ColumnSplitter,
     setUiKit,
     setUiTheme,
   } from '$lib/ui-kit';
@@ -327,6 +328,20 @@
   let sidePanelOpen = $state(true);
   let sidePanelView = $state<SidePanelView>('context');
   const inspectorOpen = $derived(sidePanelOpen);
+  let workspaceSidebarWidth = $state(260);
+  let inspectorWidth = $state(320);
+  let workspaceGridElement = $state<HTMLElement | null>(null);
+  type ColumnResizeTarget = 'workspace' | 'inspector';
+  type ColumnResizeState = {
+    target: ColumnResizeTarget;
+    startX: number;
+    startWidth: number;
+  };
+  let columnResizeState: ColumnResizeState | null = null;
+  const workspaceColumnMin = 180;
+  const timelineColumnMin = 320;
+  const inspectorColumnMin = 220;
+  const splitterTrackWidth = 14;
   let commandPaletteOpen = $state(false);
   let promptInFlight = $state(false);
   let activeAgentSessionIds = $state<string[]>([]);
@@ -350,6 +365,64 @@
     void startWindowDragging().catch((error) => {
       console.warn('unable to start window dragging', error);
     });
+  }
+
+  function clampColumnWidth(value: number, min: number, max: number): number {
+    return Math.min(Math.max(value, min), Math.max(min, max));
+  }
+
+  function maxColumnWidth(target: ColumnResizeTarget): number {
+    const totalWidth = workspaceGridElement?.clientWidth ?? 0;
+    const splitterWidth = splitterTrackWidth * (sidePanelOpen ? 2 : 1);
+    const otherColumnWidth = target === 'workspace' ? inspectorWidth : workspaceSidebarWidth;
+    return totalWidth - splitterWidth - otherColumnWidth - timelineColumnMin;
+  }
+
+  function setColumnWidth(target: ColumnResizeTarget, value: number): void {
+    if (target === 'workspace') {
+      workspaceSidebarWidth = clampColumnWidth(value, workspaceColumnMin, maxColumnWidth(target));
+    } else {
+      inspectorWidth = clampColumnWidth(value, inspectorColumnMin, maxColumnWidth(target));
+    }
+  }
+
+  function beginColumnResize(target: ColumnResizeTarget, event: PointerEvent): void {
+    if (event.button !== 0 || !workspaceGridElement) return;
+    event.preventDefault();
+    columnResizeState = {
+      target,
+      startX: event.clientX,
+      startWidth: target === 'workspace' ? workspaceSidebarWidth : inspectorWidth,
+    };
+    window.addEventListener('pointermove', handleColumnResize);
+    window.addEventListener('pointerup', endColumnResize);
+    window.addEventListener('pointercancel', endColumnResize);
+  }
+
+  function handleColumnResize(event: PointerEvent): void {
+    const state = columnResizeState;
+    if (!state) return;
+    const delta = event.clientX - state.startX;
+    const width = state.target === 'workspace'
+      ? state.startWidth + delta
+      : state.startWidth - delta;
+    setColumnWidth(state.target, width);
+  }
+
+  function endColumnResize(): void {
+    columnResizeState = null;
+    window.removeEventListener('pointermove', handleColumnResize);
+    window.removeEventListener('pointerup', endColumnResize);
+    window.removeEventListener('pointercancel', endColumnResize);
+  }
+
+  function handleSplitterKeydown(target: ColumnResizeTarget, event: KeyboardEvent): void {
+    if (event.key !== 'ArrowLeft' && event.key !== 'ArrowRight') return;
+    event.preventDefault();
+    const direction = event.key === 'ArrowRight' ? 1 : -1;
+    const delta = target === 'workspace' ? direction : -direction;
+    const currentWidth = target === 'workspace' ? workspaceSidebarWidth : inspectorWidth;
+    setColumnWidth(target, currentWidth + delta * 16);
   }
 
   const selectedWorkspace = $derived(
@@ -813,6 +886,8 @@
       stopListening?.();
     };
   });
+
+  onDestroy(endColumnResize);
 
   async function refresh() {
     await refreshController.refresh();
@@ -2421,7 +2496,12 @@
     onStartDragging={dragWindow}
   />
 
-  <main class:inspector-hidden={!inspectorOpen} class="workspace-grid">
+  <main
+    bind:this={workspaceGridElement}
+    class:inspector-hidden={!inspectorOpen}
+    class="workspace-grid"
+    style={`--workspace-sidebar-width: ${workspaceSidebarWidth}px; --workspace-inspector-width: ${inspectorWidth}px`}
+  >
     <WorkspaceSidebar
       workspaces={workspaceItems}
       sessionsByWorkspace={sessionItemsByWorkspace}
@@ -2474,6 +2554,12 @@
       onBeginRenameSession={beginRenameSession}
       onSaveSessionRename={() => void saveSessionRename()}
       onCancelRenameSession={cancelRenameSession}
+    />
+    <ColumnSplitter
+      label="调整工作区与会话宽度"
+      width={workspaceSidebarWidth}
+      onPointerDown={(event) => beginColumnResize('workspace', event)}
+      onKeyDown={(event) => handleSplitterKeydown('workspace', event)}
     />
     <TimelinePanel
       workspace={selectedWorkspace}
@@ -2532,6 +2618,12 @@
       onCompact={() => void compactCurrentSession()}
     />
     {#if sidePanelOpen}
+      <ColumnSplitter
+        label="调整会话与侧边栏宽度"
+        width={inspectorWidth}
+        onPointerDown={(event) => beginColumnResize('inspector', event)}
+        onKeyDown={(event) => handleSplitterKeydown('inspector', event)}
+      />
       {#if sidePanelView === 'context'}
       <Inspector
       visible={true}

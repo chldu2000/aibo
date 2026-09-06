@@ -7,6 +7,7 @@ export { default as CardContent } from './runtime/CardContent.svelte';
 export { default as CardFooter } from './runtime/CardFooter.svelte';
 export { default as CardHeader } from './runtime/CardHeader.svelte';
 export { default as CardTitle } from './runtime/CardTitle.svelte';
+export { default as ColumnSplitter } from './runtime/ColumnSplitter.svelte';
 export { default as Icon } from './runtime/Icon.svelte';
 export { default as Input } from './runtime/Input.svelte';
 export { default as Label } from './runtime/Label.svelte';

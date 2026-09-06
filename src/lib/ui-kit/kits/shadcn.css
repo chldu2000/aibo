@@ -3,3 +3,21 @@
   color: var(--aibo-text);
   background: var(--aibo-surface-hover);
 }
+
+.app-shell[data-ui-kit='shadcn'] .workspace-splitter {
+  cursor: col-resize;
+  appearance: none;
+  border: 0;
+  padding: 0;
+  color: inherit;
+  background: transparent;
+}
+
+.app-shell[data-ui-kit='shadcn'] .workspace-splitter-line {
+  background: var(--aibo-border);
+}
+
+.app-shell[data-ui-kit='shadcn'] .workspace-splitter:focus-visible {
+  outline: 2px solid var(--aibo-focus);
+  outline-offset: -2px;
+}

@@ -10,6 +10,7 @@ export * from './primitives';
 export type {
   AppearanceSelection,
   UiButtonVariant,
+  UiColumnSplitterProps,
   UiIconName,
   UiKitAdapter,
   UiKitOption,
