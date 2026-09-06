@@ -4,6 +4,13 @@
   letter-spacing: 0;
 }
 
+.app-shell[data-ui-kit='shadcn'] .git-change-group,
+.app-shell[data-ui-kit='shadcn'] .git-summary-card {
+  border-color: var(--border);
+  background: transparent;
+  box-shadow: none;
+}
+
 .app-shell[data-ui-kit='shadcn'] .window-actions [data-slot='button'].active {
   color: var(--foreground);
   background: var(--accent);

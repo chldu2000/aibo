@@ -37,7 +37,7 @@
     AIBO_PI_COMMANDS,
     parseAgentCommand,
   } from '$lib/app/agent-commands';
-  import { workspaceIdsForRefresh } from '$lib/app/session-transitions';
+  import { upsertSession, workspaceIdsForRefresh } from '$lib/app/session-transitions';
   import type { PersistedSelection } from '$lib/app/selection-storage';
   import {
     readComposerDrafts,
@@ -59,7 +59,20 @@
     listRestoreOperations,
     listTurnCheckpoints,
     getWorkspaceChanges,
+    getWorkspaceFileDiff,
     applyWorkspaceGitFileAction,
+    applyWorkspaceGitAction as applyWorkspaceGitActionApi,
+    commitWorkspaceChanges,
+    listWorkspaceGitBranches,
+    checkoutWorkspaceGitBranch,
+    createWorkspaceGitBranch,
+    listWorkspaceGitHistory,
+    getWorkspaceGitCommitDiff,
+    getWorkspaceGitRemoteStatus,
+    syncWorkspaceGit,
+    listWorkspaceGitStashes,
+    applyWorkspaceGitStash,
+    stashWorkspaceGit,
     getTurnFileDiff,
     applyGitFileAction,
     applyGitHunkAction,
@@ -141,6 +154,14 @@
     TurnChangeSet,
     RestoreOperation,
     WorkspaceChanges,
+    WorkspaceFileDiff,
+    GitWorkspaceAction,
+    GitBranch,
+    GitCommit,
+    GitCommitDiff,
+    GitRemoteStatus,
+    GitSyncAction,
+    GitStashEntry,
     GitFileAction,
     TurnFileDiff,
     SessionFilter,
@@ -259,6 +280,23 @@
   let workspaceChangesError = $state<string | null>(null);
   let workspaceGitBusyPath = $state<string | null>(null);
   let workspaceChangesRequestGeneration = 0;
+  let workspaceFileDiff = $state<WorkspaceFileDiff | null>(null);
+  let workspaceFileDiffLoading = $state(false);
+  let workspaceFileDiffError = $state<string | null>(null);
+  let workspaceFileDiffRequestGeneration = 0;
+  let workspaceGitCommitBusy = $state(false);
+  let workspaceGitBranches = $state<GitBranch[]>([]);
+  let workspaceGitHistory = $state<GitCommit[]>([]);
+  let workspaceGitMetadataLoading = $state(false);
+  let workspaceGitMetadataError = $state<string | null>(null);
+  let workspaceGitMetadataRequestGeneration = 0;
+  let workspaceGitCommitDiff = $state<GitCommitDiff | null>(null);
+  let workspaceGitCommitDiffLoading = $state(false);
+  let workspaceGitCommitDiffRequestGeneration = 0;
+  let workspaceGitRemoteStatus = $state<GitRemoteStatus | null>(null);
+  let workspaceGitStashes = $state<GitStashEntry[]>([]);
+  let workspaceGitSyncBusy = $state(false);
+  let workspaceGitReviewBusy = $state(false);
   let turnFileDiff = $state<TurnFileDiff | null>(null);
   let attachments = $state<ContextAttachment[]>([]);
   let artifacts = $state<Artifact[]>([]);
@@ -286,6 +324,38 @@
   let agentCommandsLoading = $state(false);
   let pathSearchGeneration = 0;
   let pathSearchTimer: ReturnType<typeof setTimeout> | undefined;
+
+  const workspaceGitOperationBusy = $derived(
+    workspaceGitBusyPath !== null || workspaceGitCommitBusy || workspaceGitSyncBusy,
+  );
+
+  function resetWorkspaceGitView(): void {
+    ++workspaceChangesRequestGeneration;
+    workspaceChanges = null;
+    workspaceChangesLoading = false;
+    workspaceChangesError = null;
+    closeWorkspaceFileDiff();
+    ++workspaceGitMetadataRequestGeneration;
+    workspaceGitBranches = [];
+    workspaceGitHistory = [];
+    workspaceGitRemoteStatus = null;
+    workspaceGitStashes = [];
+    workspaceGitMetadataLoading = false;
+    workspaceGitMetadataError = null;
+    closeWorkspaceCommitDiff();
+  }
+
+  function setSelectedWorkspace(value: string | null): void {
+    if (value === selectedWorkspaceId) return;
+    resetWorkspaceGitView();
+    selectedWorkspaceId = value;
+    if (value && desktop) {
+      void refreshWorkspaceChanges(value);
+      if (sidePanelOpen && sidePanelView === 'git') {
+        void refreshWorkspaceGitMetadata(value);
+      }
+    }
+  }
 
   const visibleAgentCommands = $derived.by(() => {
     if (!selectedSession) return [];
@@ -865,7 +935,7 @@
       if (!runningDesktop) {
         workspaces = previewWorkspaces;
         diagnostics = previewDiagnostics;
-        selectedWorkspaceId = previewWorkspaces[0]?.id ?? null;
+        setSelectedWorkspace(previewWorkspaces[0]?.id ?? null);
         expandedWorkspaceIds = selectedWorkspaceId ? [selectedWorkspaceId] : [];
         return;
       }
@@ -1090,6 +1160,249 @@
     }
   }
 
+  async function openWorkspaceFileDiff(
+    workspaceId: string,
+    path: string,
+    staged: boolean,
+  ): Promise<void> {
+    const generation = ++workspaceFileDiffRequestGeneration;
+    workspaceFileDiffLoading = true;
+    workspaceFileDiffError = null;
+    try {
+      const diff = await getWorkspaceFileDiff(workspaceId, path, staged);
+      if (generation === workspaceFileDiffRequestGeneration && workspaceId === selectedWorkspaceId) {
+        workspaceFileDiff = diff;
+      }
+    } catch (error) {
+      if (generation === workspaceFileDiffRequestGeneration && workspaceId === selectedWorkspaceId) {
+        workspaceFileDiff = null;
+        workspaceFileDiffError = toErrorMessage(error);
+      }
+    } finally {
+      if (generation === workspaceFileDiffRequestGeneration) workspaceFileDiffLoading = false;
+    }
+  }
+
+  function closeWorkspaceFileDiff(): void {
+    ++workspaceFileDiffRequestGeneration;
+    workspaceFileDiff = null;
+    workspaceFileDiffError = null;
+    workspaceFileDiffLoading = false;
+  }
+
+  async function refreshWorkspaceGitMetadata(workspaceId: string): Promise<void> {
+    const generation = ++workspaceGitMetadataRequestGeneration;
+    workspaceGitMetadataLoading = true;
+    workspaceGitMetadataError = null;
+    try {
+      const [branches, history, remoteStatus, stashes] = await Promise.all([
+        listWorkspaceGitBranches(workspaceId),
+        listWorkspaceGitHistory(workspaceId),
+        getWorkspaceGitRemoteStatus(workspaceId),
+        listWorkspaceGitStashes(workspaceId),
+      ]);
+      if (generation === workspaceGitMetadataRequestGeneration && workspaceId === selectedWorkspaceId) {
+        workspaceGitBranches = branches;
+        workspaceGitHistory = history;
+        workspaceGitRemoteStatus = remoteStatus;
+        workspaceGitStashes = stashes;
+      }
+    } catch (error) {
+      if (generation === workspaceGitMetadataRequestGeneration && workspaceId === selectedWorkspaceId) {
+        workspaceGitMetadataError = toErrorMessage(error);
+      }
+    } finally {
+      if (generation === workspaceGitMetadataRequestGeneration) workspaceGitMetadataLoading = false;
+    }
+  }
+
+  async function checkoutWorkspaceBranch(workspaceId: string, branch: string): Promise<void> {
+    if (workspaceGitOperationBusy) return;
+    workspaceGitBusyPath = '*';
+    errorMessage = null;
+    try {
+      const result = await checkoutWorkspaceGitBranch(workspaceId, branch);
+      if (!result.applied) {
+        errorMessage = result.message;
+        return;
+      }
+      notice = `已切换到 ${branch}。`;
+      await Promise.all([refreshWorkspaceChanges(workspaceId), refreshWorkspaceGitMetadata(workspaceId)]);
+      closeWorkspaceFileDiff();
+    } catch (error) {
+      errorMessage = toErrorMessage(error);
+    } finally {
+      workspaceGitBusyPath = null;
+    }
+  }
+
+  async function createWorkspaceBranch(workspaceId: string, branch: string): Promise<void> {
+    if (workspaceGitOperationBusy) return;
+    workspaceGitBusyPath = '*';
+    errorMessage = null;
+    try {
+      const result = await createWorkspaceGitBranch(workspaceId, branch);
+      if (!result.applied) {
+        errorMessage = result.message;
+        return;
+      }
+      notice = `已创建并切换到 ${branch}。`;
+      await Promise.all([refreshWorkspaceChanges(workspaceId), refreshWorkspaceGitMetadata(workspaceId)]);
+      closeWorkspaceFileDiff();
+    } catch (error) {
+      errorMessage = toErrorMessage(error);
+    } finally {
+      workspaceGitBusyPath = null;
+    }
+  }
+
+  async function syncWorkspaceBranch(workspaceId: string, action: GitSyncAction): Promise<void> {
+    if (workspaceGitOperationBusy) return;
+    workspaceGitSyncBusy = true;
+    errorMessage = null;
+    try {
+      const result = await syncWorkspaceGit(workspaceId, action);
+      if (!result.applied) {
+        errorMessage = result.message;
+        return;
+      }
+      notice = action === 'fetch' ? '已刷新远端状态。' : action === 'pull' ? '已拉取远端更改。' : '已推送本地更改。';
+      await Promise.all([refreshWorkspaceChanges(workspaceId), refreshWorkspaceGitMetadata(workspaceId)]);
+    } catch (error) {
+      errorMessage = toErrorMessage(error);
+    } finally {
+      workspaceGitSyncBusy = false;
+    }
+  }
+
+  async function saveWorkspaceStash(workspaceId: string): Promise<void> {
+    if (workspaceGitOperationBusy) return;
+    workspaceGitSyncBusy = true;
+    errorMessage = null;
+    try {
+      const result = await stashWorkspaceGit(workspaceId);
+      if (!result.applied) {
+        errorMessage = result.message;
+        return;
+      }
+      notice = '已保存当前更改到暂存栈。';
+      await Promise.all([refreshWorkspaceChanges(workspaceId), refreshWorkspaceGitMetadata(workspaceId)]);
+    } catch (error) {
+      errorMessage = toErrorMessage(error);
+    } finally {
+      workspaceGitSyncBusy = false;
+    }
+  }
+
+  async function applyWorkspaceStash(workspaceId: string, reference: string): Promise<void> {
+    if (workspaceGitOperationBusy) return;
+    workspaceGitSyncBusy = true;
+    errorMessage = null;
+    try {
+      const result = await applyWorkspaceGitStash(workspaceId, reference);
+      if (!result.applied) {
+        errorMessage = result.message;
+        return;
+      }
+      notice = `已应用 ${reference}。`;
+      await Promise.all([refreshWorkspaceChanges(workspaceId), refreshWorkspaceGitMetadata(workspaceId)]);
+    } catch (error) {
+      errorMessage = toErrorMessage(error);
+    } finally {
+      workspaceGitSyncBusy = false;
+    }
+  }
+
+  async function requestWorkspaceAgentReview(workspaceId: string): Promise<void> {
+    const session = selectedSession;
+    if (!session || session.workspaceId !== workspaceId || session.archived) {
+      errorMessage = '请先选择当前工作区中的可用 Agent 会话。';
+      return;
+    }
+    if (sessionRunning || workspaceGitReviewBusy) return;
+    workspaceGitReviewBusy = true;
+    errorMessage = null;
+    const reviewProfile: ExecutionProfile = {
+      schema: 'aibo.execution-profile/v1',
+      interactionMode: 'ask',
+      approvalPolicy: 'never',
+      filesystemPolicy: 'read-only',
+      commandPolicy: 'disabled',
+      networkPolicy: 'disabled',
+      model: executionProfile?.requested.model ?? null,
+      reasoningEffort: executionProfile?.requested.reasoningEffort ?? null,
+    };
+    const changedFiles = workspaceChanges?.workspaceId === workspaceId ? workspaceChanges.files : [];
+    const diffSections: string[] = [];
+    let diffLength = 0;
+    const maxReviewDiffLength = 120_000;
+    for (const file of changedFiles) {
+      for (const staged of file.staged ? [true, ...(file.unstaged ? [false] : [])] : [false]) {
+        if (diffLength >= maxReviewDiffLength) break;
+        try {
+          const result = await getWorkspaceFileDiff(workspaceId, file.path, staged);
+          if (!result.available || !result.diff) continue;
+          const section = `\n\n### ${staged ? '暂存区' : '工作区'}：${file.path}\n${result.diff}`;
+          const remaining = maxReviewDiffLength - diffLength;
+          diffSections.push(section.slice(0, remaining));
+          diffLength += Math.min(section.length, remaining);
+        } catch {
+          // A single unreadable file should not prevent reviewing the remaining changes.
+        }
+      }
+    }
+    const prompt = [
+      '请审查当前工作区的 Git 变更。',
+      '重点关注正确性、潜在回归、安全风险和缺失的测试；按优先级列出具体文件与行号，并在没有问题时明确说明。',
+      '这是一个受执行策略约束的只读审查会话。请仅根据下方 diff 审查，不要尝试修改文件或执行命令。',
+      diffSections.length > 0 ? diffSections.join('') : '当前没有可供审查的文本 diff。',
+      diffLength >= maxReviewDiffLength ? '\n\n部分 diff 因长度限制已截断。' : '',
+    ].join('\n');
+    try {
+      let reviewSession = session.agent === 'codex'
+        ? await createCodexSession(workspaceId, reviewProfile)
+        : await createPiSession(workspaceId, reviewProfile);
+      workspaceSessionMap = upsertSession(workspaceSessionMap, reviewSession);
+      clearSelectedSessionContext();
+      selectedSessionId = reviewSession.id;
+      reviewSession = session.agent === 'codex'
+        ? await sendCodexPrompt(reviewSession.id, prompt)
+        : await sendPiPrompt(reviewSession.id, prompt);
+      workspaceSessionMap = upsertSession(workspaceSessionMap, reviewSession);
+      void refreshTimeline(reviewSession.id);
+      void refreshExecutionProfile(reviewSession.id);
+      notice = '已在独立的只读会话中请求 Agent 审查 Git 变更。';
+    } catch (error) {
+      errorMessage = toErrorMessage(error);
+    } finally {
+      workspaceGitReviewBusy = false;
+    }
+  }
+
+  async function openWorkspaceCommitDiff(workspaceId: string, commit: string): Promise<void> {
+    const generation = ++workspaceGitCommitDiffRequestGeneration;
+    workspaceGitCommitDiffLoading = true;
+    workspaceGitCommitDiff = null;
+    try {
+      const diff = await getWorkspaceGitCommitDiff(workspaceId, commit);
+      if (generation === workspaceGitCommitDiffRequestGeneration && workspaceId === selectedWorkspaceId) {
+        workspaceGitCommitDiff = diff;
+      }
+    } catch (error) {
+      if (generation === workspaceGitCommitDiffRequestGeneration && workspaceId === selectedWorkspaceId) {
+        workspaceGitMetadataError = toErrorMessage(error);
+      }
+    } finally {
+      if (generation === workspaceGitCommitDiffRequestGeneration) workspaceGitCommitDiffLoading = false;
+    }
+  }
+
+  function closeWorkspaceCommitDiff(): void {
+    ++workspaceGitCommitDiffRequestGeneration;
+    workspaceGitCommitDiff = null;
+    workspaceGitCommitDiffLoading = false;
+  }
+
   function toggleSidePanel(): void {
     sidePanelOpen = !sidePanelOpen;
   }
@@ -1097,8 +1410,10 @@
   function selectSidePanelView(view: SidePanelView): void {
     sidePanelView = view;
     sidePanelOpen = true;
+    if (view !== 'git') closeWorkspaceFileDiff();
     if (view === 'git' && selectedWorkspaceId) {
       void refreshWorkspaceChanges(selectedWorkspaceId);
+      void refreshWorkspaceGitMetadata(selectedWorkspaceId);
     }
   }
 
@@ -1107,7 +1422,7 @@
     path: string,
     action: 'stage' | 'unstage',
   ): Promise<void> {
-    if (workspaceGitBusyPath) return;
+    if (workspaceGitOperationBusy) return;
     workspaceGitBusyPath = path;
     errorMessage = null;
     try {
@@ -1122,6 +1437,51 @@
       errorMessage = toErrorMessage(error);
     } finally {
       workspaceGitBusyPath = null;
+    }
+  }
+
+  async function applyWorkspaceGitWorkspaceAction(
+    workspaceId: string,
+    action: GitWorkspaceAction,
+  ): Promise<void> {
+    if (workspaceGitOperationBusy) return;
+    workspaceGitBusyPath = '*';
+    errorMessage = null;
+    try {
+      const result = await applyWorkspaceGitActionApi(workspaceId, action);
+      if (!result.applied) {
+        errorMessage = result.message;
+        return;
+      }
+      notice = action === 'stage_all' ? '已暂存全部更改。' : '已取消全部暂存。';
+      await refreshWorkspaceChanges(workspaceId);
+    } catch (error) {
+      errorMessage = toErrorMessage(error);
+    } finally {
+      workspaceGitBusyPath = null;
+    }
+  }
+
+  async function commitWorkspaceGitChanges(workspaceId: string, message: string): Promise<boolean> {
+    if (workspaceGitOperationBusy) return false;
+    workspaceGitCommitBusy = true;
+    errorMessage = null;
+    try {
+      const result = await commitWorkspaceChanges(workspaceId, message);
+      if (!result.committed) {
+        errorMessage = result.message;
+        return false;
+      }
+      notice = result.hash ? `已创建提交 ${result.hash.slice(0, 8)}。` : '已创建提交。';
+      await refreshWorkspaceChanges(workspaceId);
+      await refreshWorkspaceGitMetadata(workspaceId);
+      closeWorkspaceFileDiff();
+      return true;
+    } catch (error) {
+      errorMessage = toErrorMessage(error);
+      return false;
+    } finally {
+      workspaceGitCommitBusy = false;
     }
   }
 
@@ -2144,12 +2504,20 @@
   }
 
   function activateWorkspace(id: string) {
-    if (id !== selectedWorkspaceId) projectActionRuns = [];
+    if (id !== selectedWorkspaceId) {
+      projectActionRuns = [];
+      closeWorkspaceFileDiff();
+      closeWorkspaceCommitDiff();
+    }
     navigationController.activateWorkspace(id);
   }
 
   function selectWorkspace(id: string) {
-    if (id !== selectedWorkspaceId) projectActionRuns = [];
+    if (id !== selectedWorkspaceId) {
+      projectActionRuns = [];
+      closeWorkspaceFileDiff();
+      closeWorkspaceCommitDiff();
+    }
     navigationController.selectWorkspace(id);
   }
 
@@ -2204,7 +2572,7 @@
     getCreateSessionWorkspaceId: () => createSessionWorkspaceId,
     getArchivingSessionId: () => archivingSessionId,
     findSession,
-    setSelectedWorkspaceId: (value) => (selectedWorkspaceId = value),
+    setSelectedWorkspaceId: setSelectedWorkspace,
     setSelectedSessionId: (value) => (selectedSessionId = value),
     setExpandedWorkspaceIds: (value) => (expandedWorkspaceIds = value),
     setCreateSessionWorkspaceId: (value) => (createSessionWorkspaceId = value),
@@ -2332,7 +2700,7 @@
     getExpandedWorkspaceIds: () => expandedWorkspaceIds,
     setWorkspaceSessionMap: (value) => (workspaceSessionMap = value),
     setExpandedWorkspaceIds: (value) => (expandedWorkspaceIds = value),
-    setSelectedWorkspaceId: (value) => (selectedWorkspaceId = value),
+    setSelectedWorkspaceId: setSelectedWorkspace,
     setCodexThreads: (value) => (codexThreads = value),
     setCodexThreadSnapshot: (value) => (codexThreadSnapshot = value),
     setPiTree: (value) => (piTree = value),
@@ -2371,7 +2739,7 @@
     getSessionsLoadingWorkspaceIds: () => sessionsLoadingWorkspaceIds,
     setWorkspaces: (value) => (workspaces = value),
     setDiagnostics: (value) => (diagnostics = value),
-    setSelectedWorkspaceId: (value) => (selectedWorkspaceId = value),
+    setSelectedWorkspaceId: setSelectedWorkspace,
     setSelectedSessionId: (value) => (selectedSessionId = value),
     setExpandedWorkspaceIds: (value) => (expandedWorkspaceIds = value),
     setWorkspaceSessionMap: (value) => (workspaceSessionMap = value),
@@ -2700,18 +3068,46 @@
       onSelectView={selectSidePanelView}
       />
       {:else if sidePanelView === 'git'}
+        {#key selectedWorkspaceId}
         <WorkspaceGitPanel
           workspace={selectedWorkspace}
           desktop={desktop}
           changes={workspaceChanges}
           loading={workspaceChangesLoading}
           error={workspaceChangesError}
-          busyPath={workspaceGitBusyPath}
+          fileDiff={workspaceFileDiff}
+          fileDiffLoading={workspaceFileDiffLoading}
+          fileDiffError={workspaceFileDiffError}
+          branches={workspaceGitBranches}
+          history={workspaceGitHistory}
+          gitMetadataLoading={workspaceGitMetadataLoading}
+          gitMetadataError={workspaceGitMetadataError}
+          commitDiff={workspaceGitCommitDiff}
+          commitDiffLoading={workspaceGitCommitDiffLoading}
+          remoteStatus={workspaceGitRemoteStatus}
+          stashes={workspaceGitStashes}
+          operationBusy={workspaceGitOperationBusy}
+          reviewBusy={workspaceGitReviewBusy}
+          canRequestReview={selectedSession !== null && selectedSession.workspaceId === selectedWorkspaceId && !selectedSession.archived && !sessionRunning}
           activeView={sidePanelView}
           onRefresh={() => selectedWorkspaceId && void refreshWorkspaceChanges(selectedWorkspaceId)}
           onApplyFileAction={(workspaceId, path, action) => void applyWorkspaceGitAction(workspaceId, path, action)}
+          onApplyWorkspaceAction={(workspaceId, action) => void applyWorkspaceGitWorkspaceAction(workspaceId, action)}
+          onCommit={(workspaceId, message) => commitWorkspaceGitChanges(workspaceId, message)}
+          onOpenDiff={(workspaceId, path, staged) => void openWorkspaceFileDiff(workspaceId, path, staged)}
+          onCloseDiff={closeWorkspaceFileDiff}
+          onRefreshGitMetadata={(workspaceId) => void refreshWorkspaceGitMetadata(workspaceId)}
+          onCheckoutBranch={(workspaceId, branch) => void checkoutWorkspaceBranch(workspaceId, branch)}
+          onCreateBranch={(workspaceId, branch) => void createWorkspaceBranch(workspaceId, branch)}
+          onOpenCommitDiff={(workspaceId, commit) => void openWorkspaceCommitDiff(workspaceId, commit)}
+          onCloseCommitDiff={closeWorkspaceCommitDiff}
+          onSync={(workspaceId, action) => void syncWorkspaceBranch(workspaceId, action)}
+          onSaveStash={(workspaceId) => void saveWorkspaceStash(workspaceId)}
+          onApplyStash={(workspaceId, reference) => void applyWorkspaceStash(workspaceId, reference)}
+          onRequestReview={(workspaceId) => void requestWorkspaceAgentReview(workspaceId)}
           onSelectView={selectSidePanelView}
         />
+        {/key}
       {/if}
     {/if}
   </main>

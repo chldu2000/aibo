@@ -335,6 +335,15 @@ export interface WorkspaceChanges {
   captureError: string | null;
 }
 
+export interface WorkspaceFileDiff {
+  path: string;
+  staged: boolean;
+  available: boolean;
+  diff: string;
+  hunks: TurnDiffHunk[];
+  reason: string | null;
+}
+
 export interface TurnFileDiff {
   path: string;
   available: boolean;
@@ -437,6 +446,62 @@ export interface GitFileActionResult {
   path: string;
   action: GitFileAction;
   applied: boolean;
+  message: string;
+}
+
+export type GitWorkspaceAction = 'stage_all' | 'unstage_all';
+export type GitWorkspaceResultAction =
+  | GitWorkspaceAction
+  | GitSyncAction
+  | 'checkout'
+  | 'create_branch'
+  | 'stash_apply'
+  | 'stash_push';
+
+export interface GitWorkspaceActionResult {
+  action: GitWorkspaceResultAction;
+  applied: boolean;
+  message: string;
+}
+
+export interface GitCommitResult {
+  committed: boolean;
+  hash: string | null;
+  message: string;
+}
+
+export interface GitBranch {
+  name: string;
+  current: boolean;
+  commit: string | null;
+}
+
+export interface GitCommit {
+  hash: string;
+  shortHash: string;
+  subject: string;
+  author: string;
+  authoredAt: string;
+}
+
+export interface GitCommitDiff {
+  commit: string;
+  available: boolean;
+  diff: string;
+  reason: string | null;
+}
+
+export type GitSyncAction = 'fetch' | 'pull' | 'push';
+
+export interface GitRemoteStatus {
+  branch: string | null;
+  upstream: string | null;
+  ahead: number;
+  behind: number;
+}
+
+export interface GitStashEntry {
+  reference: string;
   message: string;
 }
 

@@ -24,9 +24,19 @@ import type {
   RestoreTurnChangeSetResult,
   RestoreOperation,
   WorkspaceChanges,
+  WorkspaceFileDiff,
   TurnFileDiff,
   GitFileAction,
   GitFileActionResult,
+  GitWorkspaceAction,
+  GitWorkspaceActionResult,
+  GitCommitResult,
+  GitBranch,
+  GitCommit,
+  GitCommitDiff,
+  GitRemoteStatus,
+  GitSyncAction,
+  GitStashEntry,
   GitHunkActionResult,
   ContextAttachment,
   ContextAttachmentValidation,
@@ -239,12 +249,82 @@ export const listRestoreOperations = (
 export const getWorkspaceChanges = (workspaceId: string): Promise<WorkspaceChanges> =>
   invoke<WorkspaceChanges>('get_workspace_changes', { workspaceId });
 
+export const getWorkspaceFileDiff = (
+  workspaceId: string,
+  path: string,
+  staged = false,
+): Promise<WorkspaceFileDiff> =>
+  invoke<WorkspaceFileDiff>('get_workspace_file_diff', { workspaceId, path, staged });
+
 export const applyWorkspaceGitFileAction = (
   workspaceId: string,
   path: string,
   action: Extract<GitFileAction, 'stage' | 'unstage'>,
 ): Promise<GitFileActionResult> =>
   invoke<GitFileActionResult>('apply_workspace_git_file_action', { workspaceId, path, action });
+
+export const applyWorkspaceGitAction = (
+  workspaceId: string,
+  action: GitWorkspaceAction,
+): Promise<GitWorkspaceActionResult> =>
+  invoke<GitWorkspaceActionResult>('apply_workspace_git_action', { workspaceId, action });
+
+export const commitWorkspaceChanges = (
+  workspaceId: string,
+  message: string,
+): Promise<GitCommitResult> =>
+  invoke<GitCommitResult>('commit_workspace_changes', { workspaceId, message });
+
+export const listWorkspaceGitBranches = (workspaceId: string): Promise<GitBranch[]> =>
+  invoke<GitBranch[]>('list_workspace_git_branches', { workspaceId });
+
+export const checkoutWorkspaceGitBranch = (
+  workspaceId: string,
+  branch: string,
+): Promise<GitWorkspaceActionResult> =>
+  invoke<GitWorkspaceActionResult>('checkout_workspace_git_branch', { workspaceId, branch });
+
+export const createWorkspaceGitBranch = (
+  workspaceId: string,
+  branch: string,
+): Promise<GitWorkspaceActionResult> =>
+  invoke<GitWorkspaceActionResult>('create_workspace_git_branch', { workspaceId, branch });
+
+export const listWorkspaceGitHistory = (
+  workspaceId: string,
+  limit = 30,
+): Promise<GitCommit[]> =>
+  invoke<GitCommit[]>('list_workspace_git_history', { workspaceId, limit });
+
+export const getWorkspaceGitCommitDiff = (
+  workspaceId: string,
+  commit: string,
+): Promise<GitCommitDiff> =>
+  invoke<GitCommitDiff>('get_workspace_git_commit_diff', { workspaceId, commit });
+
+export const getWorkspaceGitRemoteStatus = (workspaceId: string): Promise<GitRemoteStatus> =>
+  invoke<GitRemoteStatus>('get_workspace_git_remote_status', { workspaceId });
+
+export const syncWorkspaceGit = (
+  workspaceId: string,
+  action: GitSyncAction,
+): Promise<GitWorkspaceActionResult> =>
+  invoke<GitWorkspaceActionResult>('sync_workspace_git', { workspaceId, action });
+
+export const listWorkspaceGitStashes = (workspaceId: string): Promise<GitStashEntry[]> =>
+  invoke<GitStashEntry[]>('list_workspace_git_stashes', { workspaceId });
+
+export const applyWorkspaceGitStash = (
+  workspaceId: string,
+  reference: string,
+): Promise<GitWorkspaceActionResult> =>
+  invoke<GitWorkspaceActionResult>('apply_workspace_git_stash', { workspaceId, reference });
+
+export const stashWorkspaceGit = (
+  workspaceId: string,
+  message?: string,
+): Promise<GitWorkspaceActionResult> =>
+  invoke<GitWorkspaceActionResult>('stash_workspace_git', { workspaceId, message: message ?? null });
 
 export const getTurnFileDiff = (
   sessionId: string,
