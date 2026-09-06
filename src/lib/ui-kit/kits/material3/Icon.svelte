@@ -14,6 +14,7 @@
   import folder from '@ktibow/iconset-material-symbols/folder-outline-rounded';
   import folderAdd from '@ktibow/iconset-material-symbols/create-new-folder-outline-rounded';
   import refresh from '@ktibow/iconset-material-symbols/refresh-rounded';
+  import review from '@ktibow/iconset-material-symbols/fact-check-outline-rounded';
   import search from '@ktibow/iconset-material-symbols/search-rounded';
   import panelRight from '@ktibow/iconset-material-symbols/right-panel-open-rounded';
   import send from '@ktibow/iconset-material-symbols/send-rounded';
@@ -50,6 +51,7 @@
     folder,
     'folder-add': folderAdd,
     refresh,
+    review,
     search,
     'panel-right': panelRight,
     send,

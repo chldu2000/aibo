@@ -326,9 +326,10 @@ h2 { font-size: 16px; letter-spacing: -0.02em; }
 .git-summary-card .thread-card-heading { padding: 8px; }
 .git-summary-actions { display: flex; align-items: center; gap: 2px; }
 .git-summary-actions [data-slot='button'] { padding: 3px; }
-.git-section-tabs { display: flex; gap: 2px; margin: 0 8px 6px; }
-.git-section-tabs [data-slot='button'] { min-width: 0; flex: 1; padding: 4px 7px; font-size: 9px; }
-.git-section-tabs .git-review-button { flex: 1.4; }
+.git-section-toolbar { display: flex; align-items: center; gap: 6px; margin: 0 8px 6px; }
+.git-section-tabs { display: flex; min-width: 0; flex: 1; gap: 2px; }
+.git-section-tabs [data-slot='button'] { min-width: 0; flex: 1; }
+.git-review-button { flex: none; }
 .git-branch-summary { min-width: 0; }
 .git-branch-trigger { min-width: 0; max-width: 100%; justify-content: flex-start; gap: 4px; padding: 2px 4px; }
 .git-branch-label { min-width: 0; overflow: hidden; color: var(--aibo-muted); font-size: 11px; font-weight: 600; text-overflow: ellipsis; white-space: nowrap; }

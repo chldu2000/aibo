@@ -11,6 +11,33 @@
   box-shadow: none;
 }
 
+.app-shell[data-ui-kit='shadcn'] .git-section-tabs {
+  border: 1px solid var(--border);
+  border-radius: calc(var(--radius) - 2px);
+  padding: 2px;
+  background: var(--muted);
+}
+
+.app-shell[data-ui-kit='shadcn'] .git-section-tabs [data-slot='button'] {
+  height: 26px;
+  padding: 0 8px;
+  font-size: 11px;
+  box-shadow: none;
+}
+
+.app-shell[data-ui-kit='shadcn'] .git-section-tabs [data-slot='button'][aria-selected='true'] {
+  color: var(--foreground);
+  background: var(--background);
+  box-shadow: 0 1px 2px color-mix(in srgb, var(--foreground) 8%, transparent);
+}
+
+.app-shell[data-ui-kit='shadcn'] .git-review-button {
+  height: 30px;
+  gap: 5px;
+  padding: 0 9px;
+  font-size: 11px;
+}
+
 .app-shell[data-ui-kit='shadcn'] .window-actions [data-slot='button'].active {
   color: var(--foreground);
   background: var(--accent);

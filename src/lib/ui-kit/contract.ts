@@ -17,6 +17,7 @@ export type UiIconName =
   | 'folder-add'
   | 'panel-right'
   | 'refresh'
+  | 'review'
   | 'search'
   | 'send'
   | 'settings'

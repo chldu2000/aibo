@@ -14,6 +14,7 @@
   import FolderIcon from '@lucide/svelte/icons/folder';
   import FolderAddIcon from '@lucide/svelte/icons/folder-plus';
   import RefreshIcon from '@lucide/svelte/icons/refresh-cw';
+  import ReviewIcon from '@lucide/svelte/icons/file-search';
   import SearchIcon from '@lucide/svelte/icons/search';
   import PanelRightIcon from '@lucide/svelte/icons/panel-right';
   import SendIcon from '@lucide/svelte/icons/send';
@@ -49,6 +50,7 @@
     folder: FolderIcon,
     'folder-add': FolderAddIcon,
     refresh: RefreshIcon,
+    review: ReviewIcon,
     search: SearchIcon,
     'panel-right': PanelRightIcon,
     send: SendIcon,

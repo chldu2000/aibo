@@ -30,6 +30,7 @@
   --m3c-outline-variant: #44474f;
   --m3c-shadow: #000000;
   --m3c-scrim: #000000;
+  --m3-shape-none: 0;
   --m3-shape-extra-small: 4px;
   --m3-shape-small: 8px;
   --m3-shape-medium: 12px;
@@ -298,6 +299,44 @@
   border-color: var(--m3c-outline-variant);
   background: transparent;
   box-shadow: none;
+}
+
+:where(.app-shell[data-ui-kit='material3']) .git-section-tabs {
+  min-height: 32px;
+  border-bottom: 1px solid var(--m3c-outline-variant);
+}
+
+:where(.app-shell[data-ui-kit='material3']) .git-section-tabs [data-slot='button'] {
+  position: relative;
+  min-height: 32px;
+  border-radius: var(--m3-shape-none);
+  padding: 0 10px;
+  color: var(--m3c-on-surface-variant);
+  font-size: var(--m3-label-medium-size);
+  font-weight: var(--m3-label-medium-weight);
+}
+
+:where(.app-shell[data-ui-kit='material3']) .git-section-tabs [data-slot='button'][aria-selected='true'] {
+  color: var(--m3c-primary);
+  background: transparent;
+}
+
+:where(.app-shell[data-ui-kit='material3']) .git-section-tabs [data-slot='button'][aria-selected='true']::after {
+  position: absolute;
+  right: 8px;
+  bottom: -1px;
+  left: 8px;
+  height: 2px;
+  border-radius: var(--m3-shape-full) var(--m3-shape-full) 0 0;
+  background: var(--m3c-primary);
+  content: '';
+}
+
+:where(.app-shell[data-ui-kit='material3']) .git-review-button {
+  min-height: 32px;
+  padding: 0 12px;
+  gap: 6px;
+  font-size: var(--m3-label-medium-size);
 }
 
 /* Approval cards use the outlined-card treatment so the pending action stays

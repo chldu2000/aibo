@@ -207,35 +207,49 @@
   </CardHeader>
   <SidePanelTabs {activeView} onSelect={onSelectView} />
   <Separator />
-  <div class="git-section-tabs" role="tablist" aria-label="Git 视图">
+  <div class="git-section-toolbar">
+    <div class="git-section-tabs" role="tablist" aria-label="Git 视图">
+      <Button
+        id="git-changes-tab"
+        variant="ghost"
+        size="sm"
+        type="button"
+        role="tab"
+        aria-controls="git-view-content"
+        aria-selected={gitSection === 'changes'}
+        onclick={() => selectGitSection('changes')}
+      >变更</Button>
+      <Button
+        id="git-history-tab"
+        variant="ghost"
+        size="sm"
+        type="button"
+        role="tab"
+        aria-controls="git-view-content"
+        aria-selected={gitSection === 'history'}
+        onclick={() => selectGitSection('history')}
+      >历史</Button>
+    </div>
     <Button
-      variant={gitSection === 'changes' ? 'secondary' : 'ghost'}
-      size="sm"
-      type="button"
-      role="tab"
-      aria-selected={gitSection === 'changes'}
-      onclick={() => selectGitSection('changes')}
-    >变更</Button>
-    <Button
-      variant={gitSection === 'history' ? 'secondary' : 'ghost'}
-      size="sm"
-      type="button"
-      role="tab"
-      aria-selected={gitSection === 'history'}
-      onclick={() => selectGitSection('history')}
-    >历史</Button>
-    <Button
-      variant="ghost"
+      variant="outline"
       size="sm"
       type="button"
       class="git-review-button"
       disabled={!canRequestReview || reviewBusy}
       title="创建独立只读会话审查 Git 变更"
       onclick={() => workspace && onRequestReview(workspace.id)}
-    >{reviewBusy ? '审查中…' : 'Agent 审查'}</Button>
+    >
+      <Icon name="review" size={12} data-icon="inline-start" aria-hidden="true" />
+      {reviewBusy ? '审查中…' : 'Agent 审查'}
+    </Button>
   </div>
 
-  <div aria-live="polite">
+  <div
+    id="git-view-content"
+    role="tabpanel"
+    aria-labelledby={gitSection === 'changes' ? 'git-changes-tab' : 'git-history-tab'}
+    aria-live="polite"
+  >
     {#if !workspace}
       <div class="inspector-empty">选择一个工作区查看 Git 状态。</div>
     {:else if !desktop}
