@@ -9,6 +9,8 @@ import type {
   WorkspaceTrust,
 } from '$lib/types';
 
+export type SidePanelView = 'context' | 'git';
+
 /**
  * Data exposed to the workspace sidebar. Keeping this smaller than the domain
  * models prevents the visual component from depending on adapter-only fields.

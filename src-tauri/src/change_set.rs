@@ -59,11 +59,16 @@ pub(crate) struct WorkspaceFileChange {
     pub(crate) path: String,
     pub(crate) kind: &'static str,
     pub(crate) previous_path: Option<String>,
+    pub(crate) staged: bool,
+    pub(crate) unstaged: bool,
+    pub(crate) untracked: bool,
+    pub(crate) conflicted: bool,
 }
 
 #[derive(Debug, Clone)]
 pub(crate) struct WorkspaceChanges {
     pub(crate) head: Option<String>,
+    pub(crate) branch: Option<String>,
     pub(crate) dirty: bool,
     pub(crate) captured_at: String,
     pub(crate) files: Vec<WorkspaceFileChange>,
@@ -372,6 +377,7 @@ fn workspace_changes_sync(root: &Path) -> Result<WorkspaceChanges, String> {
     let Ok(probe) = probe else {
         return Ok(WorkspaceChanges {
             head: None,
+            branch: None,
             dirty: false,
             captured_at: crate::now_iso(),
             files: Vec::new(),
@@ -382,6 +388,7 @@ fn workspace_changes_sync(root: &Path) -> Result<WorkspaceChanges, String> {
     if !probe.status.success() || String::from_utf8_lossy(&probe.stdout).trim() != "true" {
         return Ok(WorkspaceChanges {
             head: None,
+            branch: None,
             dirty: false,
             captured_at: crate::now_iso(),
             files: Vec::new(),
@@ -397,6 +404,20 @@ fn workspace_changes_sync(root: &Path) -> Result<WorkspaceChanges, String> {
         .status
         .success()
         .then(|| String::from_utf8_lossy(&head.stdout).trim().to_owned());
+    let branch = Command::new("git")
+        .args([
+            "-C",
+            &root.to_string_lossy(),
+            "symbolic-ref",
+            "--quiet",
+            "--short",
+            "HEAD",
+        ])
+        .output()
+        .ok()
+        .filter(|output| output.status.success())
+        .map(|output| String::from_utf8_lossy(&output.stdout).trim().to_owned())
+        .filter(|branch| !branch.is_empty());
     let status = Command::new("git")
         .args([
             "-C",
@@ -412,18 +433,38 @@ fn workspace_changes_sync(root: &Path) -> Result<WorkspaceChanges, String> {
     if !status.status.success() {
         return Err(format!("git status exited with {}", status.status));
     }
+    let files = parse_workspace_git_status(&status.stdout);
+    Ok(WorkspaceChanges {
+        head,
+        branch,
+        dirty: !files.is_empty(),
+        captured_at: crate::now_iso(),
+        files,
+        capture_status: "captured",
+        capture_error: None,
+    })
+}
+
+fn parse_workspace_git_status(status: &[u8]) -> Vec<WorkspaceFileChange> {
     let mut files = Vec::new();
     let mut records = status
-        .stdout
         .split(|byte| *byte == 0)
         .filter(|record| !record.is_empty());
     while let Some(record) = records.next() {
         if record.len() < 4 {
             continue;
         }
-        let code = String::from_utf8_lossy(&record[..2]);
+        let index_status = record[0];
+        let worktree_status = record[1];
+        let untracked = index_status == b'?' && worktree_status == b'?';
+        let conflicted = index_status == b'U'
+            || worktree_status == b'U'
+            || matches!((index_status, worktree_status), (b'A', b'A') | (b'D', b'D'));
+        let staged = !untracked && index_status != b' ';
+        let unstaged = !untracked && worktree_status != b' ';
         let path = String::from_utf8_lossy(&record[3..]).to_string();
-        let kind = if code.contains('R') || code.contains('C') {
+        let kind = if matches!(index_status, b'R' | b'C') || matches!(worktree_status, b'R' | b'C')
+        {
             let source_path = records
                 .next()
                 .map(|value| String::from_utf8_lossy(value).to_string());
@@ -432,18 +473,26 @@ fn workspace_changes_sync(root: &Path) -> Result<WorkspaceChanges, String> {
                     path,
                     kind: "renamed",
                     previous_path: Some(source_path),
+                    staged,
+                    unstaged,
+                    untracked,
+                    conflicted,
                 });
             } else {
                 files.push(WorkspaceFileChange {
                     path,
                     kind: "modified",
                     previous_path: None,
+                    staged,
+                    unstaged,
+                    untracked,
+                    conflicted,
                 });
             }
             continue;
-        } else if code.contains('A') || code == "??" {
+        } else if index_status == b'A' || worktree_status == b'A' || untracked {
             "added"
-        } else if code.contains('D') {
+        } else if index_status == b'D' || worktree_status == b'D' {
             "deleted"
         } else {
             "modified"
@@ -452,16 +501,13 @@ fn workspace_changes_sync(root: &Path) -> Result<WorkspaceChanges, String> {
             path,
             kind,
             previous_path: None,
+            staged,
+            unstaged,
+            untracked,
+            conflicted,
         });
     }
-    Ok(WorkspaceChanges {
-        head,
-        dirty: !files.is_empty(),
-        captured_at: crate::now_iso(),
-        files,
-        capture_status: "captured",
-        capture_error: None,
-    })
+    files
 }
 
 fn walk_files(root: &Path, current: &Path, files: &mut Vec<FileState>) -> Result<(), String> {
@@ -1208,6 +1254,42 @@ mod tests {
         assert_eq!(changes.files[0].previous_path.as_deref(), Some("old.txt"));
         assert_eq!(changes.files[0].kind, "renamed");
         fs::remove_dir_all(root).expect("cleanup");
+    }
+
+    #[test]
+    fn parses_git_index_and_worktree_status_for_sidebar_groups() {
+        let files = super::parse_workspace_git_status(
+            b"M  staged.rs\0 M changed.rs\0MM both.rs\0?? new.rs\0UU conflict.rs\0R  new-name.rs\0old-name.rs\0",
+        );
+        assert_eq!(files.len(), 6);
+
+        let staged = files.iter().find(|file| file.path == "staged.rs").unwrap();
+        assert!(staged.staged);
+        assert!(!staged.unstaged);
+
+        let changed = files.iter().find(|file| file.path == "changed.rs").unwrap();
+        assert!(!changed.staged);
+        assert!(changed.unstaged);
+
+        let both = files.iter().find(|file| file.path == "both.rs").unwrap();
+        assert!(both.staged && both.unstaged);
+
+        let untracked = files.iter().find(|file| file.path == "new.rs").unwrap();
+        assert!(untracked.untracked);
+        assert!(!untracked.staged && !untracked.unstaged);
+
+        let conflict = files
+            .iter()
+            .find(|file| file.path == "conflict.rs")
+            .unwrap();
+        assert!(conflict.conflicted);
+
+        let renamed = files
+            .iter()
+            .find(|file| file.path == "new-name.rs")
+            .unwrap();
+        assert_eq!(renamed.kind, "renamed");
+        assert_eq!(renamed.previous_path.as_deref(), Some("old-name.rs"));
     }
 
     #[test]

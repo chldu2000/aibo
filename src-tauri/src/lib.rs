@@ -305,6 +305,10 @@ pub struct WorkspaceFileChange {
     pub(crate) path: String,
     pub(crate) previous_path: Option<String>,
     pub(crate) kind: String,
+    pub(crate) staged: bool,
+    pub(crate) unstaged: bool,
+    pub(crate) untracked: bool,
+    pub(crate) conflicted: bool,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -312,6 +316,7 @@ pub struct WorkspaceFileChange {
 pub struct WorkspaceChanges {
     pub(crate) workspace_id: String,
     pub(crate) head: Option<String>,
+    pub(crate) branch: Option<String>,
     pub(crate) dirty: bool,
     pub(crate) captured_at: String,
     pub(crate) files: Vec<WorkspaceFileChange>,
@@ -1987,6 +1992,7 @@ async fn get_workspace_changes(
     Ok(WorkspaceChanges {
         workspace_id,
         head: changes.head,
+        branch: changes.branch,
         dirty: changes.dirty,
         captured_at: changes.captured_at,
         files: changes
@@ -1996,6 +2002,10 @@ async fn get_workspace_changes(
                 path: file.path,
                 previous_path: file.previous_path,
                 kind: file.kind.to_owned(),
+                staged: file.staged,
+                unstaged: file.unstaged,
+                untracked: file.untracked,
+                conflicted: file.conflicted,
             })
             .collect(),
         capture_status: changes.capture_status.to_owned(),
@@ -2652,6 +2662,73 @@ async fn restore_git_file_baseline(
     })
 }
 
+fn apply_git_index_action(
+    workspace_path: &str,
+    path: &str,
+    action: &str,
+) -> Result<GitFileActionResult, CoreError> {
+    crate::workspace_guard::canonicalize_target(Path::new(workspace_path), Path::new(path))
+        .map_err(CoreError::InvalidWorkspacePath)?;
+    if !matches!(action, "stage" | "unstage") {
+        return Err(CoreError::InvalidWorkspacePath(
+            "unsupported Git index action".to_owned(),
+        ));
+    }
+    let mut command = Command::new("git");
+    command.args(["-C", workspace_path]);
+    if action == "stage" {
+        command.args(["add", "--", path]);
+    } else {
+        let has_head = Command::new("git")
+            .args(["-C", workspace_path, "rev-parse", "--verify", "HEAD"])
+            .output()
+            .is_ok_and(|output| output.status.success());
+        if has_head {
+            command.args(["restore", "--staged", "--", path]);
+        } else {
+            command.args(["rm", "--cached", "--ignore-unmatch", "--", path]);
+        }
+    }
+    let output = command
+        .output()
+        .map_err(|error| CoreError::Database(format!("run Git file action: {error}")))?;
+    let message = String::from_utf8_lossy(if output.status.success() {
+        &output.stdout
+    } else {
+        &output.stderr
+    })
+    .trim()
+    .to_owned();
+    Ok(GitFileActionResult {
+        path: path.to_owned(),
+        action: action.to_owned(),
+        applied: output.status.success(),
+        message: if message.is_empty() {
+            if output.status.success() {
+                "Git 操作已完成".to_owned()
+            } else {
+                format!("git exited with {}", output.status)
+            }
+        } else {
+            message
+        },
+    })
+}
+
+#[tauri::command]
+async fn apply_workspace_git_file_action(
+    workspace_id: String,
+    path: String,
+    action: String,
+    state: State<'_, AppState>,
+) -> Result<GitFileActionResult, CoreError> {
+    let workspace = workspace_by_id(&state.db, &workspace_id).await?;
+    if workspace.trust != "trusted" {
+        return Err(CoreError::WorkspaceTrustRequired);
+    }
+    apply_git_index_action(&workspace.path, &path, &action)
+}
+
 #[tauri::command]
 async fn apply_git_file_action(
     session_id: String,
@@ -2741,45 +2818,7 @@ async fn apply_git_file_action(
             message: "已恢复到本轮开始前的文件内容".to_owned(),
         });
     }
-    let args: Vec<&str> = match action.as_str() {
-        "stage" => vec!["-C", &workspace.path, "add", "--", &path],
-        "unstage" => vec!["-C", &workspace.path, "restore", "--staged", "--", &path],
-        "revert" => unreachable!(),
-        _ => unreachable!(),
-    };
-    let output = Command::new("git")
-        .args(args)
-        .output()
-        .map_err(|error| CoreError::Database(format!("run Git file action: {error}")))?;
-    let message = String::from_utf8_lossy(if output.status.success() {
-        &output.stdout
-    } else {
-        &output.stderr
-    })
-    .trim()
-    .to_owned();
-    if !output.status.success() {
-        return Ok(GitFileActionResult {
-            path,
-            action,
-            applied: false,
-            message: if message.is_empty() {
-                format!("git exited with {}", output.status)
-            } else {
-                message
-            },
-        });
-    }
-    Ok(GitFileActionResult {
-        path,
-        action,
-        applied: true,
-        message: if message.is_empty() {
-            "Git 操作已完成".to_owned()
-        } else {
-            message
-        },
-    })
+    apply_git_index_action(&workspace.path, &path, &action)
 }
 
 #[tauri::command]
@@ -4300,6 +4339,7 @@ pub fn run() {
             list_restore_operations,
             restore_turn_change_set,
             get_workspace_changes,
+            apply_workspace_git_file_action,
             get_turn_file_diff,
             apply_git_hunk_action,
             apply_git_file_action,
@@ -4560,6 +4600,62 @@ mod tests {
         assert!(hunks[0].content.contains("+  new();"));
         let patch = super::select_unified_hunk(&diff, 0).expect("select hunk patch");
         assert!(patch.starts_with("--- a/src/main.rs\n+++ b/src/main.rs\n@@ "));
+    }
+
+    #[test]
+    fn workspace_git_index_actions_stage_and_unstage_files() {
+        let root = test_directory();
+        let root_path = root.to_str().unwrap();
+        fs::write(root.join("tracked.txt"), "baseline").expect("tracked file");
+        assert!(std::process::Command::new("git")
+            .args(["-C", root_path, "init", "-q"])
+            .status()
+            .unwrap()
+            .success());
+        assert!(std::process::Command::new("git")
+            .args(["-C", root_path, "add", "tracked.txt"])
+            .status()
+            .unwrap()
+            .success());
+        assert!(std::process::Command::new("git")
+            .args([
+                "-C",
+                root_path,
+                "-c",
+                "user.name=Aibo",
+                "-c",
+                "user.email=aibo@example.invalid",
+                "commit",
+                "-qm",
+                "initial",
+            ])
+            .status()
+            .unwrap()
+            .success());
+        fs::write(root.join("tracked.txt"), "changed").expect("modified file");
+
+        assert!(
+            super::apply_git_index_action(root_path, "tracked.txt", "stage")
+                .expect("stage")
+                .applied
+        );
+        let staged = std::process::Command::new("git")
+            .args(["-C", root_path, "status", "--porcelain=v1", "tracked.txt"])
+            .output()
+            .expect("staged status");
+        assert!(String::from_utf8_lossy(&staged.stdout).starts_with("M "));
+
+        assert!(
+            super::apply_git_index_action(root_path, "tracked.txt", "unstage")
+                .expect("unstage")
+                .applied
+        );
+        let unstaged = std::process::Command::new("git")
+            .args(["-C", root_path, "status", "--porcelain=v1", "tracked.txt"])
+            .output()
+            .expect("unstaged status");
+        assert!(String::from_utf8_lossy(&unstaged.stdout).starts_with(" M"));
+        fs::remove_dir_all(root).expect("cleanup");
     }
 
     #[test]

@@ -9,12 +9,14 @@
     SettingsPanel,
     TimelinePanel,
     WindowTitlebar,
+    WorkspaceGitPanel,
     WorkspaceSidebar,
     toSessionListItemsByWorkspace,
     toUsageValues,
     toWorkspaceListItems,
     toolLabel,
   } from '$lib/components/app';
+  import type { SidePanelView } from '$lib/components/app';
   import {
     readPersistedSelection as readSelectionFromStorage,
     writePersistedSelection as writeSelectionToStorage,
@@ -57,6 +59,7 @@
     listRestoreOperations,
     listTurnCheckpoints,
     getWorkspaceChanges,
+    applyWorkspaceGitFileAction,
     getTurnFileDiff,
     applyGitFileAction,
     applyGitHunkAction,
@@ -250,6 +253,10 @@
   let checkpoints = $state<CheckpointFile[]>([]);
   let restoreOperations = $state<RestoreOperation[]>([]);
   let workspaceChanges = $state<WorkspaceChanges | null>(null);
+  let workspaceChangesLoading = $state(false);
+  let workspaceChangesError = $state<string | null>(null);
+  let workspaceGitBusyPath = $state<string | null>(null);
+  let workspaceChangesRequestGeneration = 0;
   let turnFileDiff = $state<TurnFileDiff | null>(null);
   let attachments = $state<ContextAttachment[]>([]);
   let artifacts = $state<Artifact[]>([]);
@@ -317,7 +324,8 @@
   let lastSubmittedPrompt = $state<string | null>(null);
   let settingsOpen = $state(false);
   let diagnosticsOpen = $state(false);
-  let inspectorOpen = $state(true);
+  let sidePanelView = $state<SidePanelView | null>('context');
+  const inspectorOpen = $derived(sidePanelView !== null);
   let commandPaletteOpen = $state(false);
   let promptInFlight = $state(false);
   let activeAgentSessionIds = $state<string[]>([]);
@@ -872,7 +880,6 @@
     turnChangeSet = null;
     checkpoints = [];
     restoreOperations = [];
-    workspaceChanges = null;
     turnFileDiff = null;
     attachments = [];
     artifacts = [];
@@ -968,16 +975,65 @@
   }
 
   async function refreshWorkspaceChanges(workspaceId: string) {
+    const generation = ++workspaceChangesRequestGeneration;
     if (!desktop) {
-      if (workspaceId === selectedWorkspaceId) workspaceChanges = null;
+      if (workspaceId === selectedWorkspaceId) {
+        workspaceChanges = null;
+        workspaceChangesError = null;
+        workspaceChangesLoading = false;
+      }
       return;
+    }
+    if (workspaceId === selectedWorkspaceId) {
+      if (workspaceChanges?.workspaceId !== workspaceId) workspaceChanges = null;
+      workspaceChangesLoading = true;
+      workspaceChangesError = null;
     }
     try {
       const changes = await getWorkspaceChanges(workspaceId);
-      if (workspaceId === selectedWorkspaceId) workspaceChanges = changes;
+      if (generation === workspaceChangesRequestGeneration && workspaceId === selectedWorkspaceId) {
+        workspaceChanges = changes;
+      }
     } catch (error) {
-      if (workspaceId === selectedWorkspaceId) workspaceChanges = null;
+      if (generation === workspaceChangesRequestGeneration && workspaceId === selectedWorkspaceId) {
+        workspaceChanges = null;
+        workspaceChangesError = toErrorMessage(error);
+      }
       console.warn('unable to read workspace changes', error);
+    } finally {
+      if (generation === workspaceChangesRequestGeneration && workspaceId === selectedWorkspaceId) {
+        workspaceChangesLoading = false;
+      }
+    }
+  }
+
+  function toggleSidePanel(view: SidePanelView): void {
+    sidePanelView = sidePanelView === view ? null : view;
+    if (sidePanelView === 'git' && selectedWorkspaceId) {
+      void refreshWorkspaceChanges(selectedWorkspaceId);
+    }
+  }
+
+  async function applyWorkspaceGitAction(
+    workspaceId: string,
+    path: string,
+    action: 'stage' | 'unstage',
+  ): Promise<void> {
+    if (workspaceGitBusyPath) return;
+    workspaceGitBusyPath = path;
+    errorMessage = null;
+    try {
+      const result = await applyWorkspaceGitFileAction(workspaceId, path, action);
+      if (!result.applied) {
+        errorMessage = result.message;
+        return;
+      }
+      notice = action === 'stage' ? `已暂存 ${path}` : `已取消暂存 ${path}`;
+      await refreshWorkspaceChanges(workspaceId);
+    } catch (error) {
+      errorMessage = toErrorMessage(error);
+    } finally {
+      workspaceGitBusyPath = null;
     }
   }
 
@@ -2354,8 +2410,8 @@
   <WindowTitlebar
     onOpenSettings={openSettingsPanel}
     onOpenDiagnostics={openDiagnosticsPanel}
-    {inspectorOpen}
-    onToggleInspector={() => (inspectorOpen = !inspectorOpen)}
+    {sidePanelView}
+    onToggleSidePanel={toggleSidePanel}
     onStartDragging={dragWindow}
   />
 
@@ -2469,8 +2525,9 @@
       onSelectModelConfiguration={(model, reasoningEffort) => void applySessionModelConfiguration(model, reasoningEffort)}
       onCompact={() => void compactCurrentSession()}
     />
+    {#if sidePanelView === 'context'}
     <Inspector
-      visible={inspectorOpen}
+      visible={true}
       workspace={selectedWorkspace}
       session={selectedSession}
       desktop={desktop}
@@ -2533,6 +2590,18 @@
       }}
       onRefresh={() => void refresh()}
     />
+    {:else if sidePanelView === 'git'}
+      <WorkspaceGitPanel
+        workspace={selectedWorkspace}
+        desktop={desktop}
+        changes={workspaceChanges}
+        loading={workspaceChangesLoading}
+        error={workspaceChangesError}
+        busyPath={workspaceGitBusyPath}
+        onRefresh={() => selectedWorkspaceId && void refreshWorkspaceChanges(selectedWorkspaceId)}
+        onApplyFileAction={(workspaceId, path, action) => void applyWorkspaceGitAction(workspaceId, path, action)}
+      />
+    {/if}
   </main>
 
   <SettingsPanel

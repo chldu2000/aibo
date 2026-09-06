@@ -318,11 +318,16 @@ export interface WorkspaceFileChange {
   path: string;
   previousPath: string | null;
   kind: 'added' | 'modified' | 'deleted' | 'renamed';
+  staged: boolean;
+  unstaged: boolean;
+  untracked: boolean;
+  conflicted: boolean;
 }
 
 export interface WorkspaceChanges {
   workspaceId: string;
   head: string | null;
+  branch: string | null;
   dirty: boolean;
   capturedAt: string;
   files: WorkspaceFileChange[];

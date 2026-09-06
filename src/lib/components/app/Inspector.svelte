@@ -516,35 +516,6 @@
         </CardContent>
       </Card>
     {/if}
-    {#if workspaceChanges}
-      <Card class="changeset-card workspace-changes-card">
-        <CardHeader class="thread-card-heading">
-          <CardTitle>整个工作区</CardTitle>
-          <Badge variant={workspaceChanges.captureStatus === 'captured' && workspaceChanges.dirty ? 'warning' : 'secondary'}>
-            {workspaceChanges.captureStatus === 'captured' ? `${workspaceChanges.files.length} 项` : '不可用'}
-          </Badge>
-        </CardHeader>
-        <CardContent class="thread-card-content">
-          {#if workspaceChanges.captureError}
-            <p class="thread-empty">{workspaceChanges.captureError}</p>
-          {:else if workspaceChanges.files.length > 0}
-            <div class="thread-list" aria-label="整个工作区文件变更">
-              {#each workspaceChanges.files.slice(0, 8) as file (file.path)}
-                <div class="thread-item changeset-file">
-                  <span class={`change-kind change-kind-${file.kind}`}>{file.kind === 'added' ? '+' : file.kind === 'deleted' ? '−' : file.kind === 'renamed' ? '↪' : '~'}</span>
-                  <code title={file.previousPath ? `${file.previousPath} → ${file.path}` : file.path}>
-                    {file.previousPath ? `${file.previousPath} → ${file.path}` : file.path}
-                  </code>
-                </div>
-              {/each}
-            </div>
-            {#if workspaceChanges.files.length > 8}<small class="thread-more">还有 {workspaceChanges.files.length - 8} 项</small>{/if}
-          {:else}
-            <p class="thread-empty">工作区干净</p>
-          {/if}
-        </CardContent>
-      </Card>
-    {/if}
   {:else}
     <div class="inspector-empty">从左侧选择一个会话查看上下文。</div>
   {/if}

@@ -237,6 +237,13 @@ export const listRestoreOperations = (
 export const getWorkspaceChanges = (workspaceId: string): Promise<WorkspaceChanges> =>
   invoke<WorkspaceChanges>('get_workspace_changes', { workspaceId });
 
+export const applyWorkspaceGitFileAction = (
+  workspaceId: string,
+  path: string,
+  action: Extract<GitFileAction, 'stage' | 'unstage'>,
+): Promise<GitFileActionResult> =>
+  invoke<GitFileActionResult>('apply_workspace_git_file_action', { workspaceId, path, action });
+
 export const getTurnFileDiff = (
   sessionId: string,
   turnId: string,
