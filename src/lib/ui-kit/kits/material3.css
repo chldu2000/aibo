@@ -260,6 +260,18 @@
   min-height: 0;
 }
 
+/* The window chrome is a compact layout, so do not let the regular 40px
+ * Material icon-button token make its active container taller than the
+ * titlebar. Keep the full-size icon button for content controls below. */
+:where(.app-shell[data-ui-kit='material3']) .window-actions [data-slot='button'] {
+  width: 32px;
+  height: 32px;
+  min-width: 32px;
+  min-height: 32px;
+  border-radius: var(--m3-shape-small);
+  padding: 0;
+}
+
 /* List-row actions are compact affordances, not full-size icon buttons. */
 :where(.app-shell[data-ui-kit='material3']) .workspace-item-actions [data-slot='button'],
 :where(.app-shell[data-ui-kit='material3']) .session-item-actions [data-slot='button'] {
