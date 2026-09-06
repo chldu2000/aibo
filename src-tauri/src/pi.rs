@@ -875,6 +875,50 @@ impl PiSession {
         self.execute_tool_request(pending).await
     }
 
+    async fn cancel_pending_tool_requests(&self, reason: &str) {
+        let pending = self
+            .pending_tool_requests
+            .lock()
+            .await
+            .drain()
+            .collect::<Vec<_>>();
+        for (approval_id, request) in pending {
+            let tool = request.tool.clone();
+            if let Err(error) = self
+                .client
+                .reply(&request.host_request_id, Err(reason.to_owned()))
+                .await
+            {
+                warn!(
+                    session_id = %self.session_id,
+                    request_id = %approval_id,
+                    error = %error,
+                    "unable to reject cancelled Pi tool request"
+                );
+            }
+            if let Err(error) = self
+                .emit_event(
+                    "approval.resolved",
+                    request.turn_id,
+                    json!({
+                        "requestId": approval_id,
+                        "decision": "cancel",
+                        "tool": tool
+                    }),
+                    None,
+                )
+                .await
+            {
+                warn!(
+                    session_id = %self.session_id,
+                    request_id = %approval_id,
+                    error = %error,
+                    "unable to emit cancelled Pi approval"
+                );
+            }
+        }
+    }
+
     async fn handle_command_request(
         &self,
         host_request_id: &str,
@@ -2515,6 +2559,9 @@ impl PiManager {
         if session.current_turn_id.lock().await.is_none() {
             return Err(PiError::Session("Pi session has no active turn".to_owned()));
         }
+        session
+            .cancel_pending_tool_requests("用户中止了当前回合")
+            .await;
         session.client.request("abort", json!({})).await?;
         // The SDK emits the authoritative aborted `turn_end`; the event loop
         // will persist it and transition the session without a duplicate turn.

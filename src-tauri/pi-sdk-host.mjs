@@ -96,6 +96,13 @@ function consumeCoreToolResponse(message) {
   return true;
 }
 
+function cancelPendingCoreToolRequests(reason) {
+  for (const [id, pending] of pendingCoreToolRequests) {
+    pendingCoreToolRequests.delete(id);
+    pending.reject(new Error(reason));
+  }
+}
+
 function textContent(message) {
   return (message?.content ?? [])
     .filter((item) => item?.type === "text")
@@ -439,11 +446,16 @@ async function handle(message) {
       return;
     }
     if (method === "abort") {
+      // Aibo may interrupt while a mediated write/command is waiting for an
+      // approval response. Reject that bridge promise first so the SDK can
+      // finish aborting instead of waiting forever for a tool result.
+      cancelPendingCoreToolRequests("用户中止了当前回合");
       await session.abort();
       respond(id, { aborted: true });
       return;
     }
     if (method === "dispose") {
+      cancelPendingCoreToolRequests("Pi 会话已关闭");
       unsubscribe?.();
       unsubscribe = null;
       session.dispose();
