@@ -42,6 +42,21 @@ test('app-level components use the UI kit seam', async () => {
   }
 });
 
+test('root composition does not bind concrete visual implementations', async () => {
+  const source = await readFile(path.join(root, 'src/App.svelte'), 'utf8');
+  assert.doesNotMatch(
+    source,
+    /from ['"]\$lib\/components\/ui(?:\/|['"])/,
+    'App.svelte must not bind to a concrete UI implementation',
+  );
+  assert.doesNotMatch(
+    source,
+    /from ['"](?:@lucide\/svelte|@ktibow\/iconset-material-symbols)/,
+    'App.svelte must source visual icons through the kit seam',
+  );
+  assert.match(source, /from ['"]\$lib\/ui-kit['"]/, 'App.svelte must consume the UI kit seam');
+});
+
 test('business modules do not depend on Svelte, UI, or API implementations', async () => {
   const files = await sourceFiles('src/lib/app', '.ts');
   assert.ok(files.length > 0);

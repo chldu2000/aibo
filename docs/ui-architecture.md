@@ -48,6 +48,25 @@ adapter 内归一化，不能把覆盖补丁散落到业务组件。
 
 `test/architecture-boundaries.test.mjs` 会在 `pnpm test` 中检查：页面组件不得直接导入具体 UI 实现或 API，业务模块不得反向依赖 Svelte、UI 或 API 实现。新增模块若违反边界会在 CI 中失败。
 
+## Agent 与 CI 硬约束
+
+仓库根目录和各层目录的 `AGENTS.md` 提供给 Agent 的工作规则，但真正的
+门禁由测试执行：
+
+- `pnpm run check:architecture` 检查页面组件的 UI kit 导入边界、业务模块
+  的框架依赖，以及应用层新增的皮肤视觉 CSS。
+- `pnpm run check:types` 检查 `UiKitAdapter` 和各皮肤注册的 TypeScript 契约，
+  防止新增复合控件只接入一套皮肤。
+- `pnpm run build` 通过 Svelte/Vite 编译检查所有注册皮肤的实现，包括复合
+  控件如 `ModelMatrix`。
+- `pnpm run verify` 是 UI 改动的统一验收命令。CI 应以该命令作为合并门禁。
+- `.github/workflows/verify.yml` 已将该门禁接入 push 和 pull request；PR 会把
+  base commit 传给样式边界检查，只阻止新增违规，不会反复阻断历史基线。
+
+已有 `src/app.css` 的视觉声明属于迁移前遗留基线；边界测试只阻止新增违规，
+不会把历史迁移工作伪装成一次规则切换。迁移某个页面时，应把视觉声明移动到
+`src/lib/ui-kit/kits/<skin>/`，再移除对应基线例外。
+
 ## 当前拆分边界
 
 - `App.svelte` 保留 API 装配、Agent 事件入口、跨面板状态和页面生命周期；控制器通过依赖注入承载可测试的业务动作。
