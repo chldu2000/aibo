@@ -40,8 +40,8 @@ button, input, textarea { font: inherit; }
 button { cursor: pointer; }
 button:disabled { cursor: default; }
 
-.app-shell { height: 100%; min-height: 0; display: flex; flex-direction: column; overflow: hidden; padding: 0 18px 18px; color: var(--aibo-text); background: var(--aibo-bg); color-scheme: var(--aibo-color-scheme); }
-.window-titlebar { height: var(--aibo-titlebar-height); flex: none; display: flex; align-items: center; justify-content: space-between; margin: 0 -18px; padding: 0 14px 0 88px; background: transparent; }
+.app-shell { height: 100%; min-height: 0; display: flex; flex-direction: column; overflow: hidden; padding: 0 12px 12px; color: var(--aibo-text); background: var(--aibo-bg); color-scheme: var(--aibo-color-scheme); }
+.window-titlebar { height: var(--aibo-titlebar-height); flex: none; display: flex; align-items: center; justify-content: space-between; margin: 0 -12px; padding: 0 14px 0 88px; background: transparent; }
 .window-title { color: var(--aibo-text); font-size: 12px; font-weight: 600; letter-spacing: -0.01em; }
 .window-actions [data-slot='button'] { width: 28px; height: 28px; }
 .window-actions, .agent-identity, .agent-card-head, .panel-heading, .workspace-toolbar, .trust-card-heading { display: flex; align-items: center; }
@@ -438,8 +438,8 @@ dd { max-width: 68%; overflow: hidden; margin: 0; color: var(--aibo-muted); font
 
 @media (max-width: 1100px) {
   body { min-width: 0; }
-  .app-shell { padding: 0 14px 14px; }
-  .window-titlebar { margin: 0 -14px; padding-left: 82px; }
+  .app-shell { padding: 0 10px 10px; }
+  .window-titlebar { margin: 0 -10px; padding-left: 82px; }
 }
 
 @media (max-width: 680px) {
