@@ -12,6 +12,7 @@
   import type { Artifact, ArtifactContent, CheckpointFile, ContextAttachment, GitFileAction, PiSessionTreeSnapshot, ProjectAction, ProjectActionKind, ProjectActionRun, RestoreOperation, SessionExecutionProfile, TurnChangeSet, TurnFileDiff, WorkspaceCapabilityInventory, WorkspaceChanges } from '$lib/types';
 
   type InspectorProps = {
+    visible: boolean;
     workspace: WorkspaceListItem | null;
     session: SessionPanelView | null;
     desktop: boolean;
@@ -48,6 +49,7 @@
   };
 
   let {
+    visible,
     workspace,
     session,
     desktop,
@@ -135,7 +137,7 @@
   }
 </script>
 
-<Card as="aside" class="inspector" data-ui-component="inspector" aria-label="会话上下文">
+<Card as="aside" class="inspector" hidden={!visible} data-ui-component="inspector" aria-label="会话上下文">
   <CardHeader class="panel-heading">
     <CardTitle>上下文</CardTitle>
     {#if session}

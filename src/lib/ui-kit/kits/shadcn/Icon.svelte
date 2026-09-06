@@ -7,6 +7,7 @@
   import ChevronDownIcon from '@lucide/svelte/icons/chevron-down';
   import CloseIcon from '@lucide/svelte/icons/x';
   import DeleteIcon from '@lucide/svelte/icons/trash-2';
+  import DiagnosticsIcon from '@lucide/svelte/icons/activity';
   import EditIcon from '@lucide/svelte/icons/pencil';
   import FilterIcon from '@lucide/svelte/icons/list-filter';
   import FileIcon from '@lucide/svelte/icons/file';
@@ -14,6 +15,7 @@
   import FolderAddIcon from '@lucide/svelte/icons/folder-plus';
   import RefreshIcon from '@lucide/svelte/icons/refresh-cw';
   import SearchIcon from '@lucide/svelte/icons/search';
+  import PanelRightIcon from '@lucide/svelte/icons/panel-right';
   import SendIcon from '@lucide/svelte/icons/send';
   import SettingsIcon from '@lucide/svelte/icons/settings-2';
   import StopIcon from '@lucide/svelte/icons/square';
@@ -40,6 +42,7 @@
     'chevron-down': ChevronDownIcon,
     close: CloseIcon,
     delete: DeleteIcon,
+    diagnostics: DiagnosticsIcon,
     edit: EditIcon,
     filter: FilterIcon,
     file: FileIcon,
@@ -47,6 +50,7 @@
     'folder-add': FolderAddIcon,
     refresh: RefreshIcon,
     search: SearchIcon,
+    'panel-right': PanelRightIcon,
     send: SendIcon,
     settings: SettingsIcon,
     stop: StopIcon,

@@ -1,5 +1,6 @@
 @import "tailwindcss";
 @import "./lib/ui-kit/kits/material3.css";
+@import "./lib/ui-kit/kits/shadcn.css";
 
 :root {
   /* shadcn-style dark tokens: neutral zinc surfaces, semantic accents only. */
@@ -48,12 +49,14 @@ button:disabled { cursor: default; opacity: 0.55; }
 .window-title { color: var(--aibo-text); font-size: 12px; font-weight: 600; letter-spacing: -0.01em; }
 .window-actions [data-slot='button'] { width: 28px; height: 28px; }
 .window-actions, .agent-identity, .agent-card-head, .panel-heading, .workspace-toolbar, .trust-card-heading { display: flex; align-items: center; }
+.window-actions { gap: 2px; }
 h1, h2, h3, p { margin: 0; }
 h2 { font-size: 16px; letter-spacing: -0.02em; }
 .timeline-empty h3 { margin-top: 18px; font-size: 17px; }
 .count-pill { min-width: 24px; justify-content: center; }
 .workspace-grid { display: grid; grid-template-columns: minmax(0, 0.78fr) minmax(0, 1.85fr) minmax(0, 0.95fr); flex: 1; min-height: 0; gap: 14px; padding-top: 6px; }
 .workspace-grid > * { min-width: 0; min-height: 0; }
+.workspace-grid.inspector-hidden { grid-template-columns: minmax(0, 0.78fr) minmax(0, 1fr); }
 .sidebar, .inspector { display: flex; min-height: 0; flex-direction: column; overflow: hidden; }
 .sidebar { border-color: transparent; border-radius: 0; background: transparent; box-shadow: none; }
 .panel-heading { flex-direction: row; justify-content: space-between; padding: 14px 12px 10px; }
@@ -379,10 +382,6 @@ dd { max-width: 68%; overflow: hidden; margin: 0; color: var(--aibo-muted); font
 .settings-header { flex-direction: row; align-items: center; justify-content: space-between; gap: 16px; padding: 16px 20px 12px; }
 .settings-header > :not(:first-child) { margin-top: 0; }
 .settings-header p, .settings-section-heading p { margin-top: 5px; color: var(--aibo-subtle); font-size: 10px; line-height: 1.5; }
-.settings-tabs { display: flex; flex: none; gap: 4px; padding: 0 16px 10px; }
-.settings-tab { position: relative; min-width: 64px; border: 0; border-radius: 6px; padding: 7px 12px; color: var(--aibo-muted); background: transparent; font-size: 11px; font-weight: 600; }
-.settings-tab:hover { color: var(--aibo-text); background: var(--aibo-surface-hover); }
-.settings-tab.active { color: var(--aibo-accent-text); background: var(--aibo-accent-soft); }
 .settings-tab:focus-visible, .appearance-kit-option:focus-visible, .appearance-theme-option:focus-visible { outline: 2px solid var(--aibo-focus); outline-offset: 2px; }
 .settings-content { flex: 1; overflow-y: auto; overscroll-behavior: contain; padding: 18px 0; }
 .settings-tab-panel { display: grid; gap: 18px; }

@@ -3,6 +3,7 @@ export { default as Composer } from './Composer.svelte';
 export { default as TimelinePanel } from './TimelinePanel.svelte';
 export { default as Inspector } from './Inspector.svelte';
 export { default as SettingsPanel } from './SettingsPanel.svelte';
+export { default as DiagnosticsPanel } from './DiagnosticsPanel.svelte';
 export { default as WindowTitlebar } from './WindowTitlebar.svelte';
 export { default as AppOverlays } from './AppOverlays.svelte';
 export { default as CommandPalette } from './CommandPalette.svelte';

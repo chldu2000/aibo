@@ -1,0 +1,5 @@
+/* Skin-owned styling for semantic controls rendered by app-level components. */
+.app-shell[data-ui-kit='shadcn'] .window-actions [data-slot='button'].active {
+  color: var(--aibo-text);
+  background: var(--aibo-surface-hover);
+}

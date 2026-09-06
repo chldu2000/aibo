@@ -7,6 +7,7 @@
   import chevronDown from '@ktibow/iconset-material-symbols/keyboard-arrow-down-rounded';
   import close from '@ktibow/iconset-material-symbols/close-rounded';
   import remove from '@ktibow/iconset-material-symbols/delete-outline-rounded';
+  import diagnostics from '@ktibow/iconset-material-symbols/analytics-outline-rounded';
   import edit from '@ktibow/iconset-material-symbols/edit-outline-rounded';
   import filter from '@ktibow/iconset-material-symbols/filter-list-rounded';
   import file from '@ktibow/iconset-material-symbols/article-outline-rounded';
@@ -14,6 +15,7 @@
   import folderAdd from '@ktibow/iconset-material-symbols/create-new-folder-outline-rounded';
   import refresh from '@ktibow/iconset-material-symbols/refresh-rounded';
   import search from '@ktibow/iconset-material-symbols/search-rounded';
+  import panelRight from '@ktibow/iconset-material-symbols/right-panel-open-rounded';
   import send from '@ktibow/iconset-material-symbols/send-rounded';
   import settings from '@ktibow/iconset-material-symbols/tune-rounded';
   import stop from '@ktibow/iconset-material-symbols/stop-rounded';
@@ -41,6 +43,7 @@
     'chevron-down': chevronDown,
     close,
     delete: remove,
+    diagnostics,
     edit,
     filter,
     file,
@@ -48,6 +51,7 @@
     'folder-add': folderAdd,
     refresh,
     search,
+    'panel-right': panelRight,
     send,
     settings,
     stop,

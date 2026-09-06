@@ -4,6 +4,7 @@
   import {
     AppOverlays,
     CommandPalette,
+    DiagnosticsPanel,
     Inspector,
     SettingsPanel,
     TimelinePanel,
@@ -314,6 +315,8 @@
   let retryReason = $state<string | null>(null);
   let lastSubmittedPrompt = $state<string | null>(null);
   let settingsOpen = $state(false);
+  let diagnosticsOpen = $state(false);
+  let inspectorOpen = $state(true);
   let commandPaletteOpen = $state(false);
   let promptInFlight = $state(false);
   let activeAgentSessionIds = $state<string[]>([]);
@@ -322,6 +325,16 @@
   let activityNow = $state(Date.now());
   let noticeTimer: ReturnType<typeof setTimeout> | undefined;
   let errorTimer: ReturnType<typeof setTimeout> | undefined;
+
+  function openSettingsPanel(): void {
+    diagnosticsOpen = false;
+    settingsOpen = true;
+  }
+
+  function openDiagnosticsPanel(): void {
+    settingsOpen = false;
+    diagnosticsOpen = true;
+  }
 
   const selectedWorkspace = $derived(
     workspaces.find((workspace) => workspace.id === selectedWorkspaceId) ?? null,
@@ -640,9 +653,15 @@
     {
       id: 'settings',
       label: '打开设置',
-      description: '外观与 Agent 诊断',
+      description: '外观与主题设置',
       shortcut: '⌘,',
-      run: () => (settingsOpen = true),
+      run: openSettingsPanel,
+    },
+    {
+      id: 'diagnostics',
+      label: '打开 Agent 诊断',
+      description: '查看 Agent 连接与运行环境',
+      run: openDiagnosticsPanel,
     },
     {
       id: 'archive-session',
@@ -688,12 +707,20 @@
     }
     if (modifier && event.key === ',') {
       event.preventDefault();
-      settingsOpen = true;
+      openSettingsPanel();
       return;
     }
-    if (event.key === 'Escape' && commandPaletteOpen) {
-      event.preventDefault();
-      commandPaletteOpen = false;
+    if (event.key === 'Escape') {
+      if (commandPaletteOpen) {
+        event.preventDefault();
+        commandPaletteOpen = false;
+      } else if (settingsOpen) {
+        event.preventDefault();
+        settingsOpen = false;
+      } else if (diagnosticsOpen) {
+        event.preventDefault();
+        diagnosticsOpen = false;
+      }
     }
   }
 
@@ -1493,7 +1520,7 @@
           errorMessage = '/settings 不接受参数。';
           return true;
         }
-        settingsOpen = true;
+        openSettingsPanel();
         composerText = '';
         return true;
       case 'new':
@@ -1663,7 +1690,7 @@
           errorMessage = '/settings 不接受参数。';
           return true;
         }
-        settingsOpen = true;
+        openSettingsPanel();
         composerText = '';
         return true;
       case 'new':
@@ -2317,9 +2344,14 @@
   data-color-scheme={$activeTheme.colorScheme}
   style={$activeThemeStyle}
 >
-  <WindowTitlebar onOpenSettings={() => (settingsOpen = true)} />
+  <WindowTitlebar
+    onOpenSettings={openSettingsPanel}
+    onOpenDiagnostics={openDiagnosticsPanel}
+    {inspectorOpen}
+    onToggleInspector={() => (inspectorOpen = !inspectorOpen)}
+  />
 
-  <main class="workspace-grid">
+  <main class:inspector-hidden={!inspectorOpen} class="workspace-grid">
     <WorkspaceSidebar
       workspaces={workspaceItems}
       sessionsByWorkspace={sessionItemsByWorkspace}
@@ -2430,6 +2462,7 @@
       onCompact={() => void compactCurrentSession()}
     />
     <Inspector
+      visible={inspectorOpen}
       workspace={selectedWorkspace}
       session={selectedSession}
       desktop={desktop}
@@ -2496,18 +2529,22 @@
 
   <SettingsPanel
     open={settingsOpen}
-    diagnostics={diagnostics}
-    desktop={desktop}
-    workspaceCount={workspaces.length}
-    sessionCount={sessions.length}
-    busy={busy}
     uiKits={availableUiKits}
     activeUiKitName={$activeUiKitName}
     activeThemeId={$activeTheme.id}
     onSelectUiKit={setUiKit}
     onSelectTheme={setUiTheme}
-    onRefresh={() => void refresh()}
     onClose={() => (settingsOpen = false)}
+  />
+  <DiagnosticsPanel
+    open={diagnosticsOpen}
+    diagnostics={diagnostics}
+    desktop={desktop}
+    workspaceCount={workspaces.length}
+    sessionCount={sessions.length}
+    busy={busy}
+    onRefresh={() => void refresh()}
+    onClose={() => (diagnosticsOpen = false)}
   />
   <CommandPalette
     open={commandPaletteOpen}
