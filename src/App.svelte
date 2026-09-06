@@ -2379,6 +2379,7 @@
     refreshCodexThread,
     refreshPiTree,
     refreshExecutionProfile,
+    refreshTurnChangeSet,
     refreshAttachments: (sessionId) => sessionContextController.refreshAttachments(sessionId),
     refreshArtifacts: (sessionId) => sessionContextController.refreshArtifacts(sessionId),
     refreshProjectActions: (workspaceId) => sessionContextController.refreshProjectActions(workspaceId),
