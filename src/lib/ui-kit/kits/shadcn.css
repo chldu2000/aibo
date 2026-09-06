@@ -4,7 +4,6 @@
   letter-spacing: 0;
 }
 
-.app-shell[data-ui-kit='shadcn'] .git-change-group,
 .app-shell[data-ui-kit='shadcn'] .git-summary-card {
   border-color: var(--border);
   background: transparent;
@@ -36,6 +35,74 @@
   gap: 5px;
   padding: 0 9px;
   font-size: 11px;
+}
+
+.app-shell[data-ui-kit='shadcn'] .git-change-group + .git-change-group {
+  border-top: 1px solid var(--border);
+}
+
+.app-shell[data-ui-kit='shadcn'] .git-change-group-heading {
+  color: var(--muted-foreground);
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.app-shell[data-ui-kit='shadcn'] .git-change-group-heading [data-slot='badge'] {
+  min-width: 18px;
+  height: 18px;
+  padding: 0 5px;
+  font-size: 10px;
+}
+
+.app-shell[data-ui-kit='shadcn'] .git-change-list .changeset-file-row {
+  border-radius: calc(var(--radius) - 3px);
+  transition: background-color 150ms ease;
+}
+
+.app-shell[data-ui-kit='shadcn'] .git-change-list .changeset-file-row:hover,
+.app-shell[data-ui-kit='shadcn'] .git-change-list .changeset-file-row:focus-within {
+  background: var(--accent);
+}
+
+.app-shell[data-ui-kit='shadcn'] .git-change-list .changeset-file-button {
+  height: 26px;
+  min-height: 26px;
+  justify-content: flex-start;
+  padding: 0 4px;
+}
+
+.app-shell[data-ui-kit='shadcn'] .git-change-list .changeset-actions [data-slot='button'] {
+  width: 24px;
+  height: 24px;
+  min-height: 24px;
+  padding: 0;
+}
+
+.app-shell[data-ui-kit='shadcn'] .changeset-file-name {
+  color: var(--foreground);
+  font-family: var(--aibo-mono);
+  font-size: 11px;
+  font-weight: 500;
+}
+
+.app-shell[data-ui-kit='shadcn'] .changeset-file-location {
+  color: var(--muted-foreground);
+  font-family: var(--aibo-mono);
+  font-size: 9px;
+}
+
+.app-shell[data-ui-kit='shadcn'] .git-history-item {
+  width: 100%;
+  height: auto;
+  min-height: 38px;
+  justify-content: flex-start;
+  text-align: left;
+}
+
+.app-shell[data-ui-kit='shadcn'] .git-history-copy {
+  width: 100%;
+  justify-items: start;
+  text-align: left;
 }
 
 .app-shell[data-ui-kit='shadcn'] .window-actions [data-slot='button'].active {

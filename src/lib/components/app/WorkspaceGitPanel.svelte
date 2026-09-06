@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { Badge, Button, Card, CardContent, CardHeader, CardTitle, Icon, Input, Separator } from '$lib/ui-kit';
+  import { Badge, Button, Card, CardHeader, CardTitle, Icon, Input, Separator } from '$lib/ui-kit';
   import SidePanelTabs from './SidePanelTabs.svelte';
   import type {
     GitBranch,
@@ -117,6 +117,50 @@
     return 'M';
   }
 
+  function changeLabel(file: WorkspaceFileChange): string {
+    if (file.conflicted) return '合并冲突';
+    if (file.kind === 'added') return '新增';
+    if (file.kind === 'deleted') return '删除';
+    if (file.kind === 'renamed') return '重命名';
+    return '修改';
+  }
+
+  function pathName(path: string): string {
+    return path.split('/').at(-1) ?? path;
+  }
+
+  function pathParent(path: string): string {
+    const segments = path.split('/');
+    segments.pop();
+    return segments.join('/');
+  }
+
+  function fileName(file: WorkspaceFileChange): string {
+    return file.previousPath
+      ? `${pathName(file.previousPath)} → ${pathName(file.path)}`
+      : pathName(file.path);
+  }
+
+  function fileLocation(file: WorkspaceFileChange): string {
+    const currentParent = pathParent(file.path);
+    if (!file.previousPath) return currentParent;
+    const previousParent = pathParent(file.previousPath);
+    return previousParent !== currentParent
+      ? `${previousParent || '.'} → ${currentParent || '.'}`
+      : currentParent;
+  }
+
+  function commitTime(value: string): string {
+    const timestamp = new Date(value);
+    if (Number.isNaN(timestamp.getTime())) return value;
+    return new Intl.DateTimeFormat('zh-CN', {
+      month: 'numeric',
+      day: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit',
+    }).format(timestamp);
+  }
+
   async function submitCommit(): Promise<void> {
     if (!workspace || workspace.trust !== 'trusted' || operationBusy || !commitMessage.trim()) return;
     const committed = await onCommit(workspace.id, commitMessage.trim());
@@ -140,26 +184,33 @@
 
 {#snippet fileGroup(title: string, files: WorkspaceFileChange[], action: 'stage' | 'unstage')}
   {#if files.length > 0}
-    <Card class="changeset-card git-change-group">
-      <CardHeader class="thread-card-heading">
-        <CardTitle>{title}</CardTitle>
+    <section class="git-change-group" aria-label={title}>
+      <header class="git-change-group-heading">
+        <span class="git-change-group-title">{title}</span>
         <Badge variant="secondary">{files.length}</Badge>
-      </CardHeader>
-      <CardContent class="thread-card-content">
-        <div class="thread-list" aria-label={title}>
+      </header>
+      <div class="git-change-list" role="list">
           {#each files as file (`${title}:${file.path}`)}
-            <div class="thread-item changeset-file changeset-file-row">
-              <span class={`change-kind change-kind-${file.kind}`}>{changeMarker(file)}</span>
+            {@const location = fileLocation(file)}
+            <div class="changeset-file changeset-file-row" role="listitem">
+              <span
+                class={`change-kind change-kind-${file.conflicted ? 'conflicted' : file.kind}`}
+                aria-hidden="true"
+                title={changeLabel(file)}
+              >{changeMarker(file)}</span>
               <Button
                 variant="ghost"
                 size="sm"
                 type="button"
                 class="changeset-file-button"
-                aria-label={`查看 ${file.path} 的差异`}
+                aria-label={`查看${changeLabel(file)}文件 ${file.path} 的差异`}
                 title="查看文件差异"
                 onclick={() => workspace && onOpenDiff(workspace.id, file.path, action === 'unstage')}
               >
-                <span class="thread-copy"><code title={displayPath(file)}>{displayPath(file)}</code></span>
+                <span class="changeset-file-copy" title={displayPath(file)}>
+                  <code class:changeset-file-name-only={!location} class="changeset-file-name">{fileName(file)}</code>
+                  {#if location}<small class="changeset-file-location">{location}</small>{/if}
+                </span>
               </Button>
               <div class="changeset-actions">
                 <Button
@@ -176,9 +227,8 @@
               </div>
             </div>
           {/each}
-        </div>
-      </CardContent>
-    </Card>
+      </div>
+    </section>
   {/if}
 {/snippet}
 
@@ -285,7 +335,7 @@
             <Badge variant={workspace.trust === 'trusted' ? 'outline' : 'warning'}>
               {workspace.trust === 'trusted' ? '可操作' : '只读'}
             </Badge>
-            {#if changes.files.some((file) => file.unstaged || file.untracked)}
+            {#if gitSection === 'changes' && changes.files.some((file) => file.unstaged || file.untracked)}
               <Button
                 variant="ghost"
                 size="icon"
@@ -298,7 +348,7 @@
                 <Icon name="add" size={13} />
               </Button>
             {/if}
-            {#if stagedCount > 0}
+            {#if gitSection === 'changes' && stagedCount > 0}
               <Button
                 variant="ghost"
                 size="icon"
@@ -357,40 +407,42 @@
         </div>
       {/if}
 
-      <section class="git-stash-section">
-        <Button variant="ghost" size="sm" type="button" class="git-stash-trigger" onclick={() => (stashMenuOpen = !stashMenuOpen)}>
-          <span>暂存栈</span><Badge variant="secondary">{stashes.length}</Badge>
-        </Button>
-        {#if stashMenuOpen}
-          <div class="git-stash-menu">
-            {#if stashes.length === 0}<div class="git-diff-message">没有暂存栈。</div>{/if}
-            {#each stashes as stash (stash.reference)}
-              <Button variant="ghost" size="sm" type="button" class="git-stash-item" disabled={operationBusy || workspace.trust !== 'trusted'} onclick={() => onApplyStash(workspace.id, stash.reference)}>
-                <span><strong>{stash.reference}</strong> {stash.message}</span><small>应用</small>
-              </Button>
-            {/each}
-            <Button variant="ghost" size="sm" type="button" disabled={operationBusy || workspace.trust !== 'trusted'} onclick={() => onSaveStash(workspace.id)}>保存当前更改</Button>
-          </div>
-        {/if}
-      </section>
-
-      {#if stagedCount > 0}
-        <form class="git-commit-form" onsubmit={(event) => { event.preventDefault(); void submitCommit(); }}>
-          <Input
-            bind:value={commitMessage}
-            aria-label="提交信息"
-            placeholder={`提交 ${stagedCount} 项更改…`}
-            disabled={workspace.trust !== 'trusted' || operationBusy}
-          />
-          <Button
-            variant="default"
-            size="sm"
-            type="submit"
-            disabled={workspace.trust !== 'trusted' || operationBusy || !commitMessage.trim()}
-          >
-            提交
+      {#if gitSection === 'changes'}
+        <section class="git-stash-section">
+          <Button variant="ghost" size="sm" type="button" class="git-stash-trigger" onclick={() => (stashMenuOpen = !stashMenuOpen)}>
+            <span>暂存栈</span><Badge variant="secondary">{stashes.length}</Badge>
           </Button>
-        </form>
+          {#if stashMenuOpen}
+            <div class="git-stash-menu">
+              {#if stashes.length === 0}<div class="git-diff-message">没有暂存栈。</div>{/if}
+              {#each stashes as stash (stash.reference)}
+                <Button variant="ghost" size="sm" type="button" class="git-stash-item" disabled={operationBusy || workspace.trust !== 'trusted'} onclick={() => onApplyStash(workspace.id, stash.reference)}>
+                  <span><strong>{stash.reference}</strong> {stash.message}</span><small>应用</small>
+                </Button>
+              {/each}
+              <Button variant="ghost" size="sm" type="button" disabled={operationBusy || workspace.trust !== 'trusted'} onclick={() => onSaveStash(workspace.id)}>保存当前更改</Button>
+            </div>
+          {/if}
+        </section>
+
+        {#if stagedCount > 0}
+          <form class="git-commit-form" onsubmit={(event) => { event.preventDefault(); void submitCommit(); }}>
+            <Input
+              bind:value={commitMessage}
+              aria-label="提交信息"
+              placeholder={`提交 ${stagedCount} 项更改…`}
+              disabled={workspace.trust !== 'trusted' || operationBusy}
+            />
+            <Button
+              variant="default"
+              size="sm"
+              type="submit"
+              disabled={workspace.trust !== 'trusted' || operationBusy || !commitMessage.trim()}
+            >
+              提交
+            </Button>
+          </form>
+        {/if}
       {/if}
 
       {#if gitSection === 'changes' && (fileDiff || fileDiffLoading || fileDiffError)}
@@ -430,24 +482,6 @@
           <div class="inspector-empty">信任工作区后可暂存或取消暂存文件。</div>
         {/if}
       {:else}
-        {#if gitMetadataError}
-          <div class="inspector-empty">{gitMetadataError}</div>
-        {:else if gitMetadataLoading && history.length === 0}
-          <div class="inspector-empty">正在读取提交历史…</div>
-        {:else if history.length === 0}
-          <div class="inspector-empty">当前仓库还没有提交历史。</div>
-        {:else}
-          <section class="git-history" aria-label="提交历史">
-            {#each history as commit (commit.hash)}
-              <Button variant="ghost" size="sm" type="button" class="git-history-item" onclick={() => onOpenCommitDiff(workspace.id, commit.hash)}>
-                <span class="git-history-copy">
-                  <strong>{commit.subject}</strong>
-                  <small>{commit.shortHash} · {commit.author}</small>
-                </span>
-              </Button>
-            {/each}
-          </section>
-        {/if}
         {#if commitDiff || commitDiffLoading}
           <section class="git-diff-view" aria-label="提交差异">
             <header class="git-diff-header">
@@ -461,6 +495,36 @@
             {#if commitDiffLoading}<div class="git-diff-message">正在读取差异…</div>
             {:else if commitDiff?.available}<pre>{commitDiff.diff}</pre>
             {:else}<div class="git-diff-message">{commitDiff?.reason ?? '该提交没有可展示的差异。'}</div>{/if}
+          </section>
+        {/if}
+        {#if gitMetadataError}
+          <div class="inspector-empty">{gitMetadataError}</div>
+        {:else if gitMetadataLoading && history.length === 0}
+          <div class="inspector-empty">正在读取提交历史…</div>
+        {:else if history.length === 0}
+          <div class="inspector-empty">当前仓库还没有提交历史。</div>
+        {:else}
+          <section class="git-history" aria-label="提交历史">
+            {#each history as commit (commit.hash)}
+              <Button
+                variant="ghost"
+                size="sm"
+                type="button"
+                class="git-history-item"
+                aria-label={`查看提交 ${commit.shortHash}：${commit.subject}`}
+                title={commit.subject}
+                onclick={() => onOpenCommitDiff(workspace.id, commit.hash)}
+              >
+                <span class="git-history-copy">
+                  <strong>{commit.subject}</strong>
+                  <small class="git-history-meta">
+                    <code>{commit.shortHash}</code>
+                    <span>{commit.author}</span>
+                    <time datetime={commit.authoredAt}>{commitTime(commit.authoredAt)}</time>
+                  </small>
+                </span>
+              </Button>
+            {/each}
           </section>
         {/if}
       {/if}

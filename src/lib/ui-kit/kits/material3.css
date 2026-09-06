@@ -291,10 +291,8 @@
   box-shadow: none;
 }
 
-/* Git lists are dense inspector rows, not elevated content cards. Keep the
- * surrounding MD3 surface visible while retaining a quiet outline for group
- * boundaries. */
-:where(.app-shell[data-ui-kit='material3']) .git-change-group,
+/* Keep repository metadata on the surrounding MD3 surface instead of
+ * presenting it as another elevated content card. */
 :where(.app-shell[data-ui-kit='material3']) .git-summary-card {
   border-color: var(--m3c-outline-variant);
   background: transparent;
@@ -337,6 +335,91 @@
   padding: 0 12px;
   gap: 6px;
   font-size: var(--m3-label-medium-size);
+}
+
+:where(.app-shell[data-ui-kit='material3']) .git-change-group + .git-change-group {
+  border-top: 1px solid var(--m3c-outline-variant);
+}
+
+:where(.app-shell[data-ui-kit='material3']) .git-change-group-heading {
+  color: var(--m3c-on-surface-variant);
+  font-size: var(--m3-label-small-size);
+  font-weight: var(--m3-label-small-weight);
+  letter-spacing: var(--m3-label-small-tracking);
+}
+
+:where(.app-shell[data-ui-kit='material3']) .git-change-group-heading [data-slot='badge'] {
+  min-width: 20px;
+  min-height: 20px;
+  padding: 0 6px;
+  font-size: var(--m3-label-small-size);
+}
+
+:where(.app-shell[data-ui-kit='material3']) .git-change-list .changeset-file-row {
+  border-radius: var(--m3-shape-small);
+  transition: background-color var(--m3-easing-fast);
+}
+
+:where(.app-shell[data-ui-kit='material3']) .git-change-list .changeset-file-row:hover,
+:where(.app-shell[data-ui-kit='material3']) .git-change-list .changeset-file-row:focus-within {
+  background: var(--m3c-surface-container-high);
+}
+
+:where(.app-shell[data-ui-kit='material3']) .m3-aibo-button.changeset-file-button {
+  height: 26px;
+  min-height: 26px;
+  justify-content: flex-start;
+  padding: 0 4px;
+}
+
+:where(.app-shell[data-ui-kit='material3']) .git-change-list .m3-aibo-icon-button.m3-aibo-icon-button {
+  width: 24px;
+  height: 24px;
+  min-height: 24px;
+  padding: 0;
+}
+
+:where(.app-shell[data-ui-kit='material3']) .changeset-file-name {
+  color: var(--m3c-on-surface);
+  font-family: var(--m3-font-mono);
+  font-size: var(--m3-label-medium-size);
+  font-weight: var(--m3-label-medium-weight);
+}
+
+:where(.app-shell[data-ui-kit='material3']) .changeset-file-location {
+  color: var(--m3c-on-surface-variant);
+  font-family: var(--m3-font-mono);
+  font-size: var(--m3-label-small-size);
+}
+
+:where(.app-shell[data-ui-kit='material3']) .m3-aibo-button.git-history-item {
+  width: 100%;
+  height: auto;
+  min-height: 40px;
+  justify-content: flex-start;
+  border-radius: var(--m3-shape-small);
+  padding: 6px 8px;
+  text-align: left;
+}
+
+:where(.app-shell[data-ui-kit='material3']) .git-history-copy {
+  width: 100%;
+  justify-items: start;
+  text-align: left;
+}
+
+:where(.app-shell[data-ui-kit='material3']) .git-history-copy strong {
+  width: 100%;
+  color: var(--m3c-on-surface);
+  font-size: var(--m3-label-medium-size);
+  font-weight: var(--m3-label-medium-weight);
+  text-align: left;
+}
+
+:where(.app-shell[data-ui-kit='material3']) .git-history-meta {
+  color: var(--m3c-on-surface-variant);
+  font-size: var(--m3-label-small-size);
+  text-align: left;
 }
 
 /* Approval cards use the outlined-card treatment so the pending action stays
