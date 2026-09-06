@@ -1,12 +1,9 @@
 import type {
   CodexThreadSummary,
-  ContextAttachment,
-  Artifact,
   ProjectAction,
   ProjectActionRun,
   Session,
-  SessionExecutionProfile,
-  TurnFileDiff,
+  WorkspaceCapabilityInventory,
 } from '$lib/types';
 import {
   ensureWorkspaceExpanded,
@@ -24,21 +21,11 @@ export type NavigationControllerContext = {
   setSelectedSessionId: (value: string | null) => void;
   setExpandedWorkspaceIds: (value: string[]) => void;
   setCreateSessionWorkspaceId: (value: string | null) => void;
-  setUsageSnapshot: (value: Record<string, unknown> | null) => void;
-  setQueueSnapshot: (value: import('$lib/types').AgentQueueSnapshot | null) => void;
-  setRetry: (prompt: string | null, reason: string | null) => void;
-  setLastSubmittedPrompt: (value: string | null) => void;
-  setExecutionProfile: (value: SessionExecutionProfile | null) => void;
-  setCheckpoints: (value: import('$lib/types').CheckpointFile[]) => void;
-  setRestoreOperations: (value: import('$lib/types').RestoreOperation[]) => void;
-  setTurnFileDiff: (value: TurnFileDiff | null) => void;
-  setAttachments: (value: ContextAttachment[]) => void;
-  setArtifacts: (value: Artifact[]) => void;
-  setProjectActions: (value: ProjectAction[]) => void;
-  setProjectActionRuns: (value: ProjectActionRun[]) => void;
-  setWorkspaceCapabilities: (value: import('$lib/types').WorkspaceCapabilityInventory | null) => void;
   setTimelineVisibleCount: (value: number) => void;
   setCodexThreads: (value: CodexThreadSummary[]) => void;
+  setProjectActions: (value: ProjectAction[]) => void;
+  setProjectActionRuns: (value: ProjectActionRun[]) => void;
+  setWorkspaceCapabilities: (value: WorkspaceCapabilityInventory | null) => void;
   setNotice: (value: string | null) => void;
   clearSelectedSessionContext: () => void;
   refreshSessions: (workspaceId: string) => Promise<void> | void;
@@ -112,17 +99,11 @@ export function createNavigationController(context: NavigationControllerContext)
     const session = context.findSession(sessionId);
     if (!session || session.id === context.getArchivingSessionId()) return;
     activateWorkspace(session.workspaceId);
+    // Reset all selected-session state, including the model catalog. Without
+    // this, opening another session can briefly show the previous session's
+    // model as current and skip loading its own catalog.
+    context.clearSelectedSessionContext();
     context.setSelectedSessionId(session.id);
-    context.setQueueSnapshot(null);
-    context.setUsageSnapshot(null);
-    context.setRetry(null, null);
-    context.setLastSubmittedPrompt(null);
-    context.setExecutionProfile(null);
-    context.setCheckpoints([]);
-    context.setRestoreOperations([]);
-    context.setTurnFileDiff(null);
-    context.setAttachments([]);
-    context.setArtifacts([]);
     context.setTimelineVisibleCount(80);
     if (context.getDesktop()) {
       void context.refreshTimeline(session.id);

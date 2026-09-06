@@ -118,6 +118,20 @@ export interface Session {
   updatedAt: string;
 }
 
+export interface SessionModelOption {
+  reference: string;
+  label: string;
+  provider: string | null;
+  id: string;
+  description: string | null;
+  isDefault: boolean;
+}
+
+export interface SessionModelCatalog {
+  current: SessionModelOption | null;
+  models: SessionModelOption[];
+}
+
 export interface PiSessionTreeNode {
   id: string;
   parentId: string | null;

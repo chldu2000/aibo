@@ -17,6 +17,7 @@ import type {
   ResolvedExecutionProfile,
   SessionExecutionProfile,
   Session,
+  SessionModelCatalog,
   TimelineItem,
   TurnChangeSet,
   RestoreTurnChangeSetResult,
@@ -80,6 +81,9 @@ export const setPiModel = (
     sessionId,
     reference: reference?.trim() || null,
   });
+
+export const getSessionModels = (sessionId: string): Promise<SessionModelCatalog> =>
+  invoke<SessionModelCatalog>('get_session_models', { sessionId });
 
 export const reloadPiSession = (sessionId: string): Promise<Record<string, unknown>> =>
   invoke<Record<string, unknown>>('reload_pi_session', { sessionId });

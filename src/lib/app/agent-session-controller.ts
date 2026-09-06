@@ -26,6 +26,7 @@ export type AgentSessionControllerContext = {
   setBusy: (value: boolean) => void;
   setErrorMessage: (value: string | null) => void;
   setNotice: (value: string) => void;
+  clearSelectedSessionContext: () => void;
   refreshCodexThreads: (workspaceId: string) => Promise<void> | void;
   refreshPiTree: (sessionId: string) => Promise<void> | void;
   refreshExecutionProfile: (sessionId: string) => Promise<void> | void;
@@ -47,18 +48,6 @@ export function createAgentSessionController(context: AgentSessionControllerCont
     };
   }
 
-  function resetSessionContext(): void {
-    context.setTimeline([]);
-    context.setUsageSnapshot(null);
-    context.setQueueSnapshot(null);
-    context.setCheckpoints([]);
-    context.setRetry(null, null);
-    context.setLastSubmittedPrompt(null);
-    context.setPiTree(null);
-    context.setAttachments([]);
-    context.setPiNavigationEntryId(null);
-  }
-
   async function createCodex(workspace: Workspace | null): Promise<void> {
     if (!workspace) {
       context.setErrorMessage('请先选择一个工作区。');
@@ -74,8 +63,8 @@ export function createAgentSessionController(context: AgentSessionControllerCont
     try {
       const session = await context.api.createCodexSession(workspace.id, requestedProfile('codex'));
       context.setWorkspaceSessionMap(upsertSession(context.getWorkspaceSessionMap(), session));
+      context.clearSelectedSessionContext();
       context.setSelectedSessionId(session.id);
-      resetSessionContext();
       context.setCreateSessionWorkspaceId(null);
       void context.refreshCodexThreads(workspace.id);
       void context.refreshExecutionProfile(session.id);
@@ -102,8 +91,8 @@ export function createAgentSessionController(context: AgentSessionControllerCont
     try {
       const session = await context.api.createPiSession(workspace.id, requestedProfile('pi'));
       context.setWorkspaceSessionMap(upsertSession(context.getWorkspaceSessionMap(), session));
+      context.clearSelectedSessionContext();
       context.setSelectedSessionId(session.id);
-      resetSessionContext();
       context.setCreateSessionWorkspaceId(null);
       void context.refreshPiTree(session.id);
       void context.refreshExecutionProfile(session.id);

@@ -1,6 +1,6 @@
 <script lang="ts">
   import { Badge, Button, Card, CardContent, CardHeader, CardTitle, Separator } from '$lib/ui-kit';
-  import type { AgentCommand, AgentQueueSnapshot, ApprovalDecision, ContextAttachment, SessionAccessMode, SessionExecutionProfile, WorkspacePathSuggestion } from '$lib/types';
+  import type { AgentCommand, AgentQueueSnapshot, ApprovalDecision, ContextAttachment, SessionAccessMode, SessionExecutionProfile, SessionModelCatalog, WorkspacePathSuggestion } from '$lib/types';
   import Composer from './Composer.svelte';
   import MarkdownContent from './MarkdownContent.svelte';
   import { sessionStateLabel } from './session-utils';
@@ -36,6 +36,8 @@
     busy: boolean;
     attachments: ContextAttachment[];
     executionProfile: SessionExecutionProfile | null;
+    modelCatalog: SessionModelCatalog | null;
+    modelCatalogLoading: boolean;
     modelOverride?: string | null;
     workspacePathSuggestions: WorkspacePathSuggestion[];
     agentCommands: AgentCommand[];
@@ -53,6 +55,7 @@
     onClearQueue: () => void;
     onAbort: () => void;
     onSelectAccess: (mode: SessionAccessMode) => void | Promise<void>;
+    onLoadModels: () => void | Promise<void>;
     onSelectModel: (model: string | null) => void | Promise<void>;
     onComposerInput: (text: string) => void;
     onSelectWorkspacePath: (path: string) => void | Promise<void>;
@@ -75,6 +78,8 @@
     busy,
     attachments,
     executionProfile,
+    modelCatalog,
+    modelCatalogLoading,
     modelOverride = null,
     workspacePathSuggestions,
     agentCommands,
@@ -89,6 +94,7 @@
     onClearQueue,
     onAbort,
     onSelectAccess,
+    onLoadModels,
     onSelectModel,
     onAddAttachments,
     onAddDirectory,
@@ -277,6 +283,7 @@
     </div>
   {/if}
 
+  {#key session?.id}
   <Composer
     selectedAgent={session?.agent ?? null}
     selectedSession={session !== null}
@@ -286,6 +293,8 @@
     busy={busy}
     attachments={attachments}
     executionProfile={executionProfile}
+    modelCatalog={modelCatalog}
+    modelCatalogLoading={modelCatalogLoading}
     {modelOverride}
     workspacePathSuggestions={workspacePathSuggestions}
     agentCommands={agentCommands}
@@ -298,8 +307,10 @@
     onQueue={onQueue}
     onAbort={onAbort}
     onSelectAccess={onSelectAccess}
+    onLoadModels={onLoadModels}
     onSelectModel={onSelectModel}
     onComposerInput={onComposerInput}
     onSelectWorkspacePath={onSelectWorkspacePath}
   />
+  {/key}
 </Card>

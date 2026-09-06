@@ -1,6 +1,6 @@
 <script lang="ts">
-  import { Button, Card, Icon, Textarea } from '$lib/ui-kit';
-  import type { AgentCommand, ContextAttachment, SessionAccessMode, SessionExecutionProfile, WorkspacePathSuggestion } from '$lib/types';
+  import { Button, Card, Icon, Input, Textarea } from '$lib/ui-kit';
+  import type { AgentCommand, ContextAttachment, SessionAccessMode, SessionExecutionProfile, SessionModelCatalog, WorkspacePathSuggestion } from '$lib/types';
 
   type ComposerProps = {
     selectedAgent: 'codex' | 'pi' | null;
@@ -11,6 +11,8 @@
     busy: boolean;
     attachments: ContextAttachment[];
     executionProfile: SessionExecutionProfile | null;
+    modelCatalog: SessionModelCatalog | null;
+    modelCatalogLoading: boolean;
     modelOverride?: string | null;
     workspacePathSuggestions: WorkspacePathSuggestion[];
     agentCommands: AgentCommand[];
@@ -23,6 +25,7 @@
     onQueue: (mode: 'steer' | 'followUp') => void;
     onAbort: () => void;
     onSelectAccess: (mode: SessionAccessMode) => void | Promise<void>;
+    onLoadModels: () => void | Promise<void>;
     onSelectModel: (model: string | null) => void | Promise<void>;
     onComposerInput: (text: string) => void;
     onSelectWorkspacePath: (path: string) => void | Promise<void>;
@@ -37,6 +40,8 @@
     busy,
     attachments,
     executionProfile,
+    modelCatalog,
+    modelCatalogLoading,
     modelOverride = null,
     workspacePathSuggestions,
     agentCommands,
@@ -49,6 +54,7 @@
     onQueue,
     onAbort,
     onSelectAccess,
+    onLoadModels,
     onSelectModel,
     onComposerInput,
     onSelectWorkspacePath,
@@ -114,7 +120,7 @@
         : 'read-only',
   );
   const modelLabel = $derived(
-    modelOverride || activeProfile?.model || (selectedAgent === 'codex' ? 'Codex 默认模型' : selectedAgent === 'pi' ? 'Pi 默认模型' : '模型'),
+    modelOverride || modelCatalog?.current?.label || activeProfile?.model || (modelCatalogLoading ? '正在读取模型…' : '模型未读取'),
   );
   const reasoningLabel = $derived(activeProfile?.reasoningEffort ? ` · ${activeProfile.reasoningEffort}` : '');
 
@@ -159,10 +165,12 @@
   }
 
   function openModelMenu(): void {
-    modelDraft = modelOverride || activeProfile?.model || '';
-    modelMenuOpen = !modelMenuOpen;
+    const nextOpen = !modelMenuOpen;
+    modelDraft = modelOverride || modelCatalog?.current?.reference || activeProfile?.model || '';
+    modelMenuOpen = nextOpen;
     attachmentMenuOpen = false;
     sessionMenuOpen = false;
+    if (nextOpen && !modelCatalog && !modelCatalogLoading) void onLoadModels();
   }
 </script>
 
@@ -386,7 +394,7 @@
             variant="toolbar"
             type="button"
             class="composer-toolbar-control composer-model-control"
-            onclick={openModelMenu}
+            onclick={(event) => { event.stopPropagation(); openModelMenu(); }}
             aria-haspopup="menu"
             aria-expanded={modelMenuOpen}
             title={`${modelLabel}${reasoningLabel}`}
@@ -398,13 +406,41 @@
             <div class="composer-menu composer-model-menu" role="menu" aria-label="模型设置">
               <div class="composer-menu-heading">模型与推理</div>
               <div class="composer-menu-detail">当前：{modelLabel}{reasoningLabel}</div>
+              {#if modelCatalogLoading}
+                <div class="composer-suggestions-empty">正在读取可用模型…</div>
+              {:else if modelCatalog && modelCatalog.models.length > 0}
+                <div class="composer-model-options" role="group" aria-label="可用模型">
+                  {#each modelCatalog.models as option (option.reference)}
+                    <button
+                      type="button"
+                      role="menuitemradio"
+                      aria-checked={option.reference === modelCatalog.current?.reference}
+                      class:active={option.reference === modelCatalog.current?.reference}
+                      disabled={busy || sessionArchived || selectedSessionArchiving || sessionRunning}
+                      onclick={() => {
+                        modelDraft = option.reference;
+                        modelMenuOpen = false;
+                        void onSelectModel(option.reference);
+                      }}
+                    >
+                      <span class="composer-model-option-copy">
+                        <strong>{option.label}</strong>
+                        <small>{option.reference}{option.isDefault ? ' · 默认' : ''}</small>
+                      </span>
+                      {#if option.reference === modelCatalog.current?.reference}<Icon name="check" size={14} />{/if}
+                    </button>
+                  {/each}
+                </div>
+              {:else}
+                <div class="composer-suggestions-empty">未获取到可用模型，可手动输入模型标识。</div>
+              {/if}
               <Input bind:value={modelDraft} class="composer-model-input" placeholder={selectedAgent === 'pi' ? 'provider/model' : 'provider/model，留空使用默认'} aria-label="模型标识" />
               <Button
                 size="sm"
                 type="button"
                 class="composer-model-apply"
                 onclick={() => { modelMenuOpen = false; void onSelectModel(modelDraft.trim() || null); }}
-                disabled={busy || selectedSessionArchiving || sessionRunning || (selectedAgent === 'pi' && !modelDraft.trim())}
+                disabled={modelCatalogLoading || busy || sessionArchived || selectedSessionArchiving || sessionRunning || (selectedAgent === 'pi' && !modelDraft.trim())}
               >应用模型</Button>
             </div>
           {/if}

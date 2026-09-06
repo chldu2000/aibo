@@ -8,6 +8,7 @@ use super::execution_profile::ResolvedExecutionProfile;
 use super::{
     bind_pending_attachments_to_turn, clone_cached_runtime, find_executable, mark_turn_interrupted,
     now_iso, remove_cached_runtime, session_by_id, session_execution_profile, workspace_by_id,
+    SessionModelCatalog, SessionModelOption,
 };
 use serde::Serialize;
 use serde_json::{json, Value};
@@ -458,6 +459,39 @@ fn parse_thread_list(value: &Value) -> Result<Vec<CodexThreadSummary>, CodexErro
             CodexError::Protocol("thread/list did not return a data array".to_owned())
         })?;
     threads.iter().map(parse_thread_summary).collect()
+}
+
+fn codex_model_option(value: &Value) -> Option<SessionModelOption> {
+    let reference = value
+        .get("model")
+        .and_then(Value::as_str)
+        .or_else(|| value.get("id").and_then(Value::as_str))?
+        .to_owned();
+    let id = value
+        .get("id")
+        .and_then(Value::as_str)
+        .unwrap_or(&reference)
+        .to_owned();
+    let label = value
+        .get("displayName")
+        .and_then(Value::as_str)
+        .filter(|label| !label.trim().is_empty())
+        .unwrap_or(&reference)
+        .to_owned();
+    Some(SessionModelOption {
+        reference,
+        label,
+        provider: None,
+        id,
+        description: value
+            .get("description")
+            .and_then(Value::as_str)
+            .map(ToOwned::to_owned),
+        is_default: value
+            .get("isDefault")
+            .and_then(Value::as_bool)
+            .unwrap_or(false),
+    })
 }
 
 fn parse_thread_snapshot(value: &Value) -> Result<CodexThreadSnapshot, CodexError> {
@@ -2010,6 +2044,58 @@ impl CodexManager {
         result
     }
 
+    pub(crate) async fn list_models(
+        &self,
+        session_id: &str,
+    ) -> Result<SessionModelCatalog, CodexError> {
+        let (_, _, client) = self.open_bound_client(session_id).await?;
+        let result = async {
+            let response = client
+                .request(
+                    "model/list",
+                    json!({ "limit": 100, "includeHidden": false }),
+                )
+                .await?;
+            let data = response
+                .pointer("/result/data")
+                .and_then(Value::as_array)
+                .ok_or_else(|| {
+                    CodexError::Protocol("model/list did not return a data array".to_owned())
+                })?;
+            let models = data
+                .iter()
+                .filter_map(codex_model_option)
+                .collect::<Vec<_>>();
+            let profile = session_execution_profile(&self.db, session_id)
+                .await
+                .map_err(|error| CodexError::Session(error.to_string()))?;
+            let current_reference = profile.profile.enforced.model.clone().or_else(|| {
+                models
+                    .iter()
+                    .find(|model| model.is_default)
+                    .map(|model| model.reference.clone())
+            });
+            let current = current_reference.map(|reference| {
+                models
+                    .iter()
+                    .find(|model| model.reference == reference || model.id == reference)
+                    .cloned()
+                    .unwrap_or_else(|| SessionModelOption {
+                        label: reference.clone(),
+                        id: reference.clone(),
+                        reference,
+                        provider: None,
+                        description: None,
+                        is_default: false,
+                    })
+            });
+            Ok(SessionModelCatalog { current, models })
+        }
+        .await;
+        client.close().await;
+        result
+    }
+
     async fn ensure_runtime(&self, session_id: &str) -> Result<Arc<CodexSession>, CodexError> {
         self.ensure_runtime_with_recovery(session_id, true).await
     }
@@ -2770,11 +2856,11 @@ impl CodexManager {
 #[cfg(test)]
 mod tests {
     use super::{
-        agent_message_items, codex_thread_start_params, codex_turn_start_params, event_thread_id,
-        final_turn_text, generation_matches, is_missing_rollout_error, map_tool_status,
-        map_turn_status, matching_thread_id, parse_forked_thread, parse_thread_list,
-        parse_thread_snapshot, tool_projection, usage_projection,
-        validate_codex_thread_start_response, value_id,
+        agent_message_items, codex_model_option, codex_thread_start_params,
+        codex_turn_start_params, event_thread_id, final_turn_text, generation_matches,
+        is_missing_rollout_error, map_tool_status, map_turn_status, matching_thread_id,
+        parse_forked_thread, parse_thread_list, parse_thread_snapshot, tool_projection,
+        usage_projection, validate_codex_thread_start_response, value_id,
     };
     use crate::execution_profile::{
         ExecutionProfile, ResolvedExecutionProfile, EXECUTION_PROFILE_SCHEMA,
@@ -2846,6 +2932,28 @@ mod tests {
         assert_eq!(threads[0].title.as_deref(), Some("Investigate issue"));
         assert_eq!(threads[0].cwd.as_deref(), Some("/tmp/project"));
         assert_eq!(threads[0].status.as_deref(), Some("idle"));
+    }
+
+    #[test]
+    fn parses_model_list_options_and_preserves_the_model_reference() {
+        let option = codex_model_option(&json!({
+            "id": "gpt-5.6-luna",
+            "model": "gpt-5.6-luna",
+            "displayName": "GPT-5.6-Luna",
+            "description": "Fast model",
+            "isDefault": true
+        }))
+        .expect("model/list option");
+        assert_eq!(option.reference, "gpt-5.6-luna");
+        assert_eq!(option.id, "gpt-5.6-luna");
+        assert_eq!(option.label, "GPT-5.6-Luna");
+        assert_eq!(option.description.as_deref(), Some("Fast model"));
+        assert!(option.is_default);
+
+        let fallback = codex_model_option(&json!({ "id": "custom-model" }))
+            .expect("id-only model/list option");
+        assert_eq!(fallback.reference, "custom-model");
+        assert_eq!(fallback.label, "custom-model");
     }
 
     #[test]

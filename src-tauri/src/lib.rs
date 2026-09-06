@@ -140,6 +140,24 @@ pub struct Session {
 
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
+pub(crate) struct SessionModelOption {
+    pub(crate) reference: String,
+    pub(crate) label: String,
+    pub(crate) provider: Option<String>,
+    pub(crate) id: String,
+    pub(crate) description: Option<String>,
+    pub(crate) is_default: bool,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct SessionModelCatalog {
+    pub(crate) current: Option<SessionModelOption>,
+    pub(crate) models: Vec<SessionModelOption>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct TimelineItem {
     pub(crate) id: String,
     pub(crate) session_id: String,
@@ -3561,6 +3579,25 @@ async fn set_pi_model(
 }
 
 #[tauri::command]
+async fn get_session_models(
+    session_id: String,
+    state: State<'_, AppState>,
+) -> Result<SessionModelCatalog, CoreError> {
+    let session = session_by_id(&state.db, &session_id).await?;
+    match session.agent.as_str() {
+        "codex" => state
+            .codex
+            .list_models(&session_id)
+            .await
+            .map_err(Into::into),
+        "pi" => state.pi.list_models(&session_id).await.map_err(Into::into),
+        agent => Err(CoreError::Initialization(format!(
+            "unsupported session agent: {agent}"
+        ))),
+    }
+}
+
+#[tauri::command]
 async fn reload_pi_session(
     session_id: String,
     state: State<'_, AppState>,
@@ -4015,6 +4052,7 @@ pub fn run() {
             compact_pi_session,
             set_pi_thinking_level,
             set_pi_model,
+            get_session_models,
             reload_pi_session,
             get_pi_session_tree,
             navigate_pi_session_tree,

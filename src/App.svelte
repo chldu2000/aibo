@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { onMount } from 'svelte';
+  import { onMount, untrack } from 'svelte';
   import { open } from '@tauri-apps/plugin-dialog';
   import {
     AppOverlays,
@@ -76,6 +76,7 @@
     compactPiSession,
     setPiThinkingLevel,
     setPiModel,
+    getSessionModels,
     updateSessionExecutionProfile,
     reloadPiSession,
     listSessions,
@@ -114,6 +115,7 @@
     CodexThreadSnapshot,
     CodexThreadSummary,
     Session,
+    SessionModelCatalog,
     SessionAccessMode,
     SessionExecutionProfile,
     TurnChangeSet,
@@ -205,6 +207,9 @@
   let piTree = $state<PiSessionTreeSnapshot | null>(null);
   let executionProfile = $state<SessionExecutionProfile | null>(null);
   let sessionModelOverride = $state<string | null>(null);
+  let sessionModelCatalog = $state<SessionModelCatalog | null>(null);
+  let sessionModelCatalogLoading = $state(false);
+  let sessionModelRequestGeneration = 0;
   let turnChangeSet = $state<TurnChangeSet | null>(null);
   let checkpoints = $state<CheckpointFile[]>([]);
   let restoreOperations = $state<RestoreOperation[]>([]);
@@ -597,6 +602,9 @@
     piTree = null;
     executionProfile = null;
     sessionModelOverride = null;
+    sessionModelCatalog = null;
+    sessionModelCatalogLoading = false;
+    ++sessionModelRequestGeneration;
     turnChangeSet = null;
     checkpoints = [];
     restoreOperations = [];
@@ -949,6 +957,39 @@
     }
   }
 
+  $effect(() => {
+    const id = selectedSessionId;
+    const enabled = desktop;
+    untrack(() => {
+      ++sessionModelRequestGeneration;
+      sessionModelCatalog = null;
+      sessionModelOverride = null;
+      sessionModelCatalogLoading = false;
+      if (enabled && id) void loadSessionModels();
+    });
+  });
+
+  async function loadSessionModels(): Promise<void> {
+    const session = selectedSession;
+    if (!desktop || !session || session.archived) return;
+    const generation = ++sessionModelRequestGeneration;
+    sessionModelCatalogLoading = true;
+    errorMessage = null;
+    try {
+      const catalog = await getSessionModels(session.id);
+      if (generation === sessionModelRequestGeneration && selectedSessionId === session.id) {
+        sessionModelCatalog = catalog;
+        sessionModelOverride = null;
+      }
+    } catch (error) {
+      if (generation === sessionModelRequestGeneration && selectedSessionId === session.id) {
+        errorMessage = toErrorMessage(error);
+      }
+    } finally {
+      if (generation === sessionModelRequestGeneration) sessionModelCatalogLoading = false;
+    }
+  }
+
   async function applySessionModel(model: string | null): Promise<void> {
     const session = selectedSession;
     if (!session) return;
@@ -962,15 +1003,35 @@
     }
     busy = true;
     errorMessage = null;
+    // An earlier catalog read must not overwrite the result of a switch.
+    ++sessionModelRequestGeneration;
+    sessionModelCatalogLoading = false;
     try {
       if (session.agent === 'pi') {
         const result = await setPiModel(session.id, model ?? undefined);
+        if (selectedSessionId !== session.id) return;
         const current = result.current && typeof result.current === 'object'
           ? result.current as { provider?: unknown; id?: unknown }
           : result;
         const provider = typeof current.provider === 'string' ? current.provider : '';
         const id = typeof current.id === 'string' ? current.id : null;
         sessionModelOverride = id ? `${provider ? `${provider}/` : ''}${id}` : model;
+        if (sessionModelCatalog && sessionModelOverride) {
+          const selected = sessionModelCatalog.models.find(
+            (option) => option.reference === sessionModelOverride,
+          );
+          sessionModelCatalog = {
+            ...sessionModelCatalog,
+            current: selected ?? {
+              reference: sessionModelOverride,
+              label: sessionModelOverride,
+              provider: provider || null,
+              id: id ?? sessionModelOverride,
+              description: null,
+              isDefault: false,
+            },
+          };
+        }
         notice = sessionModelOverride ? `Pi 模型已切换为 ${sessionModelOverride}。` : '已读取 Pi 当前模型。';
       } else {
         const current = executionProfile?.requested;
@@ -982,8 +1043,28 @@
           notice = model ? `Codex 当前已使用 ${model}。` : 'Codex 当前已使用默认模型。';
           return;
         }
-        executionProfile = await updateSessionExecutionProfile(session.id, { ...current, model });
+        const updatedProfile = await updateSessionExecutionProfile(session.id, { ...current, model });
         markSessionIdle(session);
+        if (selectedSessionId !== session.id) return;
+        executionProfile = updatedProfile;
+        if (sessionModelCatalog) {
+          const selected = model
+            ? sessionModelCatalog.models.find((option) => option.reference === model)
+            : sessionModelCatalog.models.find((option) => option.isDefault);
+          sessionModelCatalog = {
+            ...sessionModelCatalog,
+            current: selected ?? (model
+              ? {
+                  reference: model,
+                  label: model,
+                  provider: null,
+                  id: model,
+                  description: null,
+                  isDefault: false,
+                }
+              : null),
+          };
+        }
         notice = model ? `Codex 模型已切换为 ${model}。` : 'Codex 将使用默认模型。';
       }
     } catch (error) {
@@ -1122,6 +1203,7 @@
           if (command.args) {
             const provider = typeof result.provider === 'string' ? result.provider : '';
             const id = typeof result.id === 'string' ? result.id : command.args;
+            sessionModelOverride = `${provider ? `${provider}/` : ''}${id}`;
             notice = `当前模型已切换为 ${provider ? `${provider}/` : ''}${id}。`;
           } else {
             const current = result.current && typeof result.current === 'object'
@@ -1133,8 +1215,13 @@
             const currentLabel = current && typeof current.provider === 'string' && typeof current.id === 'string'
               ? `${current.provider}/${current.id}`
               : '未选择';
+            sessionModelOverride = currentLabel === '未选择' ? null : currentLabel;
             notice = `当前模型：${currentLabel}${models.length > 0 ? ` · 可用 ${models.length} 个` : ''}`;
           }
+          // Keep the composer model button in sync with a model changed through
+          // the slash command, so opening it immediately still shows the
+          // session's actual model and the latest catalog.
+          await loadSessionModels();
         });
         return true;
       case 'reload':
@@ -1356,6 +1443,7 @@
   }
 
   function selectSession(id: string) {
+    if (id === selectedSessionId) return;
     navigationController.selectSession(id);
   }
 
@@ -1432,24 +1520,11 @@
     setSelectedSessionId: (value) => (selectedSessionId = value),
     setExpandedWorkspaceIds: (value) => (expandedWorkspaceIds = value),
     setCreateSessionWorkspaceId: (value) => (createSessionWorkspaceId = value),
-    setUsageSnapshot: (value) => (usageSnapshot = value),
-    setQueueSnapshot: (value) => (queueSnapshot = value),
-    setRetry: (prompt, reason) => {
-      retryPrompt = prompt;
-      retryReason = reason;
-    },
-    setLastSubmittedPrompt: (value) => (lastSubmittedPrompt = value),
-    setExecutionProfile: (value) => (executionProfile = value),
-    setCheckpoints: (value) => (checkpoints = value),
-    setRestoreOperations: (value) => (restoreOperations = value),
-    setTurnFileDiff: (value) => (turnFileDiff = value),
-    setAttachments: (value) => (attachments = value),
-    setArtifacts: (value) => (artifacts = value),
+    setTimelineVisibleCount: (value) => (timelineVisibleCount = value),
+    setCodexThreads: (value) => (codexThreads = value),
     setProjectActions: (value) => (projectActions = value),
     setProjectActionRuns: (value) => (projectActionRuns = value),
     setWorkspaceCapabilities: (value) => (workspaceCapabilities = value),
-    setTimelineVisibleCount: (value) => (timelineVisibleCount = value),
-    setCodexThreads: (value) => (codexThreads = value),
     setNotice: (value) => (notice = value),
     clearSelectedSessionContext,
     refreshSessions,
@@ -1535,6 +1610,7 @@
     setBusy: (value) => (busy = value),
     setErrorMessage: (value) => (errorMessage = value),
     setNotice: (value) => (notice = value),
+    clearSelectedSessionContext,
     refreshCodexThreads,
     refreshPiTree,
     refreshTurnChangeSet,
@@ -1794,6 +1870,8 @@
       busy={busy}
       attachments={attachments}
       executionProfile={executionProfile}
+      modelCatalog={sessionModelCatalog}
+      modelCatalogLoading={sessionModelCatalogLoading}
       modelOverride={sessionModelOverride}
       workspacePathSuggestions={workspacePathSuggestions}
       agentCommands={visibleAgentCommands}
@@ -1816,6 +1894,7 @@
       onClearQueue={() => void clearPiPromptQueue()}
       onAbort={() => void abortPrompt()}
       onSelectAccess={(mode) => void applySessionAccess(mode)}
+      onLoadModels={() => void loadSessionModels()}
       onSelectModel={(model) => void applySessionModel(model)}
     />
     <Inspector

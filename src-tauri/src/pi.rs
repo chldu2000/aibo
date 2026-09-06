@@ -10,7 +10,8 @@ use super::workspace_guard::canonicalize_target;
 use super::{
     bind_pending_attachments_to_turn, clone_cached_runtime, find_executable, isolate_process_tree,
     mark_turn_interrupted, now_iso, read_process_output, remove_cached_runtime, session_by_id,
-    session_execution_profile, terminate_process_tree, workspace_by_id,
+    session_execution_profile, terminate_process_tree, workspace_by_id, SessionModelCatalog,
+    SessionModelOption,
 };
 use serde::Serialize;
 use serde_json::{json, Value};
@@ -30,7 +31,7 @@ use thiserror::Error;
 use tokio::{
     io::{AsyncBufReadExt, AsyncWriteExt, BufReader},
     process::{Child, ChildStdin, Command},
-    sync::{broadcast, oneshot, Mutex},
+    sync::{broadcast, oneshot, Mutex, OwnedMutexGuard},
     time,
 };
 use tracing::{debug, warn};
@@ -1826,8 +1827,25 @@ pub(crate) struct PiManager {
     app: AppHandle,
     db: SqlitePool,
     sessions: Arc<Mutex<HashMap<String, Arc<PiSession>>>>,
+    lifecycle_locks: Arc<SessionLifecycleLocks>,
     session_root: PathBuf,
     checkpoint_root: PathBuf,
+}
+
+#[derive(Default)]
+struct SessionLifecycleLocks {
+    locks: Mutex<HashMap<String, Arc<Mutex<()>>>>,
+}
+
+impl SessionLifecycleLocks {
+    async fn lock(&self, session_id: &str) -> OwnedMutexGuard<()> {
+        let lock = {
+            let mut locks = self.locks.lock().await;
+            locks.entry(session_id.to_owned()).or_default().clone()
+        };
+        // Never hold the registry mutex while waiting for a host to start.
+        lock.lock_owned().await
+    }
 }
 
 impl PiManager {
@@ -1836,6 +1854,7 @@ impl PiManager {
             app,
             db,
             sessions: Arc::new(Mutex::new(HashMap::new())),
+            lifecycle_locks: Arc::new(SessionLifecycleLocks::default()),
             session_root: data_dir.join("pi-sessions"),
             checkpoint_root: data_dir.join("checkpoints"),
         }
@@ -1881,10 +1900,6 @@ impl PiManager {
             profile.clone(),
             self.checkpoint_root.clone(),
         );
-        self.sessions
-            .lock()
-            .await
-            .insert(session_id.to_owned(), runtime.clone());
         runtime.start_event_loop();
         let started = match runtime
             .initialize(workspace_path, &session_dir, external_id, profile)
@@ -1937,7 +1952,17 @@ impl PiManager {
             client.close().await;
             return Err(error);
         }
-        runtime.set_state("idle").await?;
+        if let Err(error) = runtime.set_state("idle").await {
+            runtime.deactivate();
+            client.close().await;
+            return Err(error);
+        }
+        // Publish only after start, binding persistence, and state initialization
+        // have completed. Callers hold this session's lifecycle lock throughout.
+        self.sessions
+            .lock()
+            .await
+            .insert(session_id.to_owned(), runtime.clone());
         Ok(runtime)
     }
 
@@ -1950,6 +1975,7 @@ impl PiManager {
             .await
             .map_err(|error| PiError::Session(error.to_string()))?;
         let session_id = Ulid::new().to_string();
+        let _lifecycle = self.lifecycle_locks.lock(&session_id).await;
         let generation_id = Ulid::new().to_string();
         let now = now_iso();
         sqlx::query("INSERT INTO sessions (id, workspace_id, agent, label, state, created_at, updated_at) VALUES (?, ?, 'pi', ?, 'starting', ?, ?)")
@@ -1974,6 +2000,9 @@ impl PiManager {
     }
 
     async fn ensure_runtime(&self, session_id: &str) -> Result<Arc<PiSession>, PiError> {
+        // Model, command and tree reads may arrive together when opening a
+        // conversation. One initializer owns the host; all others await it.
+        let _lifecycle = self.lifecycle_locks.lock(session_id).await;
         let cached_session = clone_cached_runtime(&self.sessions, session_id).await;
         if let Some(session) = cached_session {
             if !session.client.closed.load(Ordering::SeqCst) {
@@ -2265,6 +2294,47 @@ impl PiManager {
         Ok(response.get("result").cloned().unwrap_or_else(|| json!({})))
     }
 
+    pub(crate) async fn list_models(
+        &self,
+        session_id: &str,
+    ) -> Result<SessionModelCatalog, PiError> {
+        let result = self.model(session_id, None).await?;
+        let models = result
+            .get("models")
+            .and_then(Value::as_array)
+            .map(|items| {
+                items
+                    .iter()
+                    .filter_map(|item| {
+                        let provider = item.get("provider").and_then(Value::as_str)?;
+                        let id = item.get("id").and_then(Value::as_str)?;
+                        Some(SessionModelOption {
+                            reference: format!("{provider}/{id}"),
+                            label: format!("{provider}/{id}"),
+                            provider: Some(provider.to_owned()),
+                            id: id.to_owned(),
+                            description: None,
+                            is_default: false,
+                        })
+                    })
+                    .collect::<Vec<_>>()
+            })
+            .unwrap_or_default();
+        let current = result.get("current").and_then(|item| {
+            let provider = item.get("provider").and_then(Value::as_str)?;
+            let id = item.get("id").and_then(Value::as_str)?;
+            Some(SessionModelOption {
+                reference: format!("{provider}/{id}"),
+                label: format!("{provider}/{id}"),
+                provider: Some(provider.to_owned()),
+                id: id.to_owned(),
+                description: None,
+                is_default: false,
+            })
+        });
+        Ok(SessionModelCatalog { current, models })
+    }
+
     pub(crate) async fn reload(&self, session_id: &str) -> Result<Value, PiError> {
         let session = self.ensure_runtime(session_id).await?;
         let workspace = workspace_by_id(&self.db, &session.workspace_id)
@@ -2379,6 +2449,7 @@ impl PiManager {
     }
 
     pub(crate) async fn close(&self, session_id: &str) -> Result<(), PiError> {
+        let _lifecycle = self.lifecycle_locks.lock(session_id).await;
         let session = remove_cached_runtime(&self.sessions, session_id).await;
         if let Some(session) = session {
             session.deactivate();
@@ -2389,6 +2460,7 @@ impl PiManager {
     }
 
     pub(crate) async fn archive(&self, session_id: &str) -> Result<super::Session, PiError> {
+        let _lifecycle = self.lifecycle_locks.lock(session_id).await;
         let existing = super::session_by_id(&self.db, session_id)
             .await
             .map_err(|error| PiError::Session(error.to_string()))?;
@@ -2429,6 +2501,7 @@ impl PiManager {
     }
 
     pub(crate) async fn unarchive(&self, session_id: &str) -> Result<super::Session, PiError> {
+        let _lifecycle = self.lifecycle_locks.lock(session_id).await;
         let existing = super::session_by_id(&self.db, session_id)
             .await
             .map_err(|error| PiError::Session(error.to_string()))?;
@@ -2476,6 +2549,37 @@ mod tests {
     use std::{fs, path::PathBuf};
     use tokio::time::{sleep, Duration};
     use ulid::Ulid;
+
+    #[tokio::test]
+    async fn concurrent_session_reads_wait_for_initialization_without_blocking_other_sessions() {
+        let locks = super::SessionLifecycleLocks::default();
+        let initializing = locks.lock("pi-a").await;
+        let mut model_read = Box::pin(locks.lock("pi-a"));
+        let mut commands_read = Box::pin(locks.lock("pi-a"));
+        let mut tree_read = Box::pin(locks.lock("pi-a"));
+        for read in [&mut model_read, &mut commands_read, &mut tree_read] {
+            assert!(tokio::time::timeout(Duration::from_millis(10), read)
+                .await
+                .is_err());
+        }
+        let other_session = tokio::time::timeout(Duration::from_secs(1), locks.lock("pi-b"))
+            .await
+            .expect("a different session must not wait for pi-a initialization");
+        drop(other_session);
+        // Both successful initialization and a failed attempt release the guard.
+        // Queued reads can then re-check the cache or retry initialization.
+        drop(initializing);
+        for read in [model_read, commands_read, tree_read] {
+            let ready = tokio::time::timeout(Duration::from_secs(1), read)
+                .await
+                .expect("queued read must proceed after initialization releases the lock");
+            drop(ready);
+        }
+        let retry = tokio::time::timeout(Duration::from_secs(1), locks.lock("pi-a"))
+            .await
+            .expect("initialization lock must remain reusable");
+        drop(retry);
+    }
 
     #[test]
     fn pi_tool_cycles_and_retries_do_not_finish_the_request() {
