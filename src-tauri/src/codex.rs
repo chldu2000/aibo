@@ -6,9 +6,10 @@ use super::change_set::{
 };
 use super::execution_profile::ResolvedExecutionProfile;
 use super::{
-    bind_pending_attachments_to_turn, clone_cached_runtime, find_executable, mark_turn_interrupted,
-    now_iso, remove_cached_runtime, session_by_id, session_execution_profile, workspace_by_id,
-    SessionModelCatalog, SessionModelOption, SessionReasoningOption,
+    auto_name_session_from_first_message, bind_pending_attachments_to_turn, clone_cached_runtime,
+    find_executable, mark_turn_interrupted, now_iso, remove_cached_runtime, session_by_id,
+    session_execution_profile, workspace_by_id, SessionModelCatalog, SessionModelOption,
+    SessionReasoningOption,
 };
 use serde::Serialize;
 use serde_json::{json, Value};
@@ -3016,6 +3017,12 @@ impl CodexManager {
         .bind(&now)
         .execute(&self.db)
         .await?;
+        if let Err(error) =
+            auto_name_session_from_first_message(&self.db, session_id, &user_message_id, input)
+                .await
+        {
+            warn!(session_id = %session_id, error = %error, "unable to auto-name Codex session");
+        }
         session.set_state("running").await?;
         // Capture before turn/start is sent: the provider can begin tool
         // execution before either the response or turn/started event arrives.

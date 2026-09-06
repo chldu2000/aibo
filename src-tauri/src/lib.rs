@@ -40,6 +40,8 @@ use tracing::{info, warn};
 use ulid::Ulid;
 
 const PI_SDK_VERSION: &str = "0.84.4";
+const SESSION_AUTO_LABEL_MAX_CHARS: usize = 40;
+const CONTEXT_ATTACHMENTS_MARKER: &str = "\n\n[AIBO_CONTEXT_ATTACHMENTS]";
 
 async fn clone_cached_runtime<T>(
     runtimes: &Mutex<HashMap<String, Arc<T>>>,
@@ -530,6 +532,81 @@ fn now_iso() -> String {
     OffsetDateTime::now_utc()
         .format(&Rfc3339)
         .unwrap_or_else(|_| "1970-01-01T00:00:00Z".to_owned())
+}
+
+fn session_label_from_first_message(input: &str) -> Option<String> {
+    let visible_input = input
+        .split_once(CONTEXT_ATTACHMENTS_MARKER)
+        .map(|(message, _)| message)
+        .unwrap_or(input);
+    let normalized = visible_input
+        .split_whitespace()
+        .collect::<Vec<_>>()
+        .join(" ");
+    if normalized.is_empty() {
+        return None;
+    }
+    if normalized.chars().count() <= SESSION_AUTO_LABEL_MAX_CHARS {
+        return Some(normalized);
+    }
+    let mut truncated = normalized
+        .chars()
+        .take(SESSION_AUTO_LABEL_MAX_CHARS - 1)
+        .collect::<String>();
+    truncated.push('…');
+    Some(truncated)
+}
+
+pub(crate) async fn auto_name_session_from_first_message(
+    db: &SqlitePool,
+    session_id: &str,
+    user_message_id: &str,
+    input: &str,
+) -> Result<bool, sqlx::Error> {
+    let Some(label) = session_label_from_first_message(input) else {
+        return Ok(false);
+    };
+    let Some(row) = sqlx::query(
+        "SELECT s.agent, s.label, w.label AS workspace_label
+         FROM sessions s
+         JOIN workspaces w ON w.id = s.workspace_id
+         WHERE s.id = ?",
+    )
+    .bind(session_id)
+    .fetch_optional(db)
+    .await?
+    else {
+        return Ok(false);
+    };
+    let agent: String = row.try_get("agent")?;
+    let current_label: String = row.try_get("label")?;
+    let workspace_label: String = row.try_get("workspace_label")?;
+    let default_label = match agent.as_str() {
+        "codex" => format!("Codex · {workspace_label}"),
+        "pi" => format!("Pi · {workspace_label}"),
+        _ => return Ok(false),
+    };
+    if current_label != default_label {
+        return Ok(false);
+    }
+
+    let updated = sqlx::query(
+        "UPDATE sessions SET label = ?, updated_at = ?
+         WHERE id = ? AND label = ?
+           AND NOT EXISTS (
+             SELECT 1 FROM messages
+             WHERE session_id = ? AND role = 'user' AND id <> ?
+           )",
+    )
+    .bind(&label)
+    .bind(now_iso())
+    .bind(session_id)
+    .bind(default_label)
+    .bind(session_id)
+    .bind(user_message_id)
+    .execute(db)
+    .await?;
+    Ok(updated.rows_affected() == 1)
 }
 
 /// A process-local runtime cannot survive an application restart. Normalize
@@ -3517,12 +3594,13 @@ async fn send_codex_prompt(
     session_id: String,
     input: String,
     state: State<'_, AppState>,
-) -> Result<(), CoreError> {
+) -> Result<Session, CoreError> {
     state
         .codex
         .send_prompt(&session_id, &input)
         .await
-        .map_err(Into::into)
+        .map_err(CoreError::from)?;
+    session_by_id(&state.db, &session_id).await
 }
 
 #[tauri::command]
@@ -3590,12 +3668,13 @@ async fn send_pi_prompt(
     session_id: String,
     input: String,
     state: State<'_, AppState>,
-) -> Result<(), CoreError> {
+) -> Result<Session, CoreError> {
     state
         .pi
         .send_prompt(&session_id, &input)
         .await
-        .map_err(Into::into)
+        .map_err(CoreError::from)?;
+    session_by_id(&state.db, &session_id).await
 }
 
 #[tauri::command]
@@ -4280,12 +4359,13 @@ pub fn run() {
 #[cfg(test)]
 mod tests {
     use super::{
-        bind_pending_attachments_to_turn, canonical_workspace_path, clone_cached_runtime,
-        collect_workspace_capabilities, find_executable, mark_turn_interrupted,
-        normalize_session_filter, now_iso, open_database, persist_restore_operation,
-        recover_interrupted_sessions, recover_interrupted_turn_changes, remove_cached_runtime,
-        require_trusted_workspace, restore_git_file_baseline, session_execution_profile,
-        workspace_label, CoreError, SessionListFilter, TurnDiffSources, Workspace,
+        auto_name_session_from_first_message, bind_pending_attachments_to_turn,
+        canonical_workspace_path, clone_cached_runtime, collect_workspace_capabilities,
+        find_executable, mark_turn_interrupted, normalize_session_filter, now_iso, open_database,
+        persist_restore_operation, recover_interrupted_sessions, recover_interrupted_turn_changes,
+        remove_cached_runtime, require_trusted_workspace, restore_git_file_baseline,
+        session_execution_profile, session_label_from_first_message, workspace_label, CoreError,
+        SessionListFilter, TurnDiffSources, Workspace,
     };
     use crate::change_set::{
         capture as capture_workspace, persist_baseline_checkpoint, persist_checkpoint_metadata,
@@ -4321,6 +4401,123 @@ mod tests {
         let path = std::env::temp_dir().join(format!("aibo-missing-{}", Ulid::new()));
         let error = canonical_workspace_path(path.to_str().unwrap()).expect_err("missing path");
         assert!(error.to_string().contains("not accessible"));
+    }
+
+    #[test]
+    fn first_message_session_label_is_compact_and_bounded() {
+        assert_eq!(
+            session_label_from_first_message("  分析一下\n这个项目  ").as_deref(),
+            Some("分析一下 这个项目")
+        );
+        assert_eq!(
+            session_label_from_first_message(
+                "解释项目\n\n[AIBO_CONTEXT_ATTACHMENTS]\n- src/lib.rs"
+            )
+            .as_deref(),
+            Some("解释项目")
+        );
+        let label = session_label_from_first_message(&"会".repeat(45)).expect("label");
+        assert_eq!(label.chars().count(), 40);
+        assert!(label.ends_with('…'));
+    }
+
+    #[test]
+    fn auto_name_only_replaces_default_label_for_first_user_message() {
+        tauri::async_runtime::block_on(async {
+            let directory = test_directory();
+            let database_path = directory.join("aibo.sqlite3");
+            let pool = open_database(&database_path).await.expect("database");
+            let now = now_iso();
+            let directory_path = directory.to_string_lossy().to_string();
+            sqlx::query(
+                "INSERT INTO workspaces (id, path, label, trusted, created_at, updated_at)
+                 VALUES ('workspace', ?, 'demo', 1, ?, ?)",
+            )
+            .bind(&directory_path)
+            .bind(&now)
+            .bind(&now)
+            .execute(&pool)
+            .await
+            .expect("workspace");
+            for (id, label) in [
+                ("default", "Codex · demo"),
+                ("manual", "我的会话"),
+                ("existing", "Pi · demo"),
+            ] {
+                let agent = if id == "existing" { "pi" } else { "codex" };
+                sqlx::query(
+                    "INSERT INTO sessions
+                       (id, workspace_id, agent, label, state, created_at, updated_at)
+                     VALUES (?, 'workspace', ?, ?, 'idle', ?, ?)",
+                )
+                .bind(id)
+                .bind(agent)
+                .bind(label)
+                .bind(&now)
+                .bind(&now)
+                .execute(&pool)
+                .await
+                .expect("session");
+            }
+            for (id, session_id, content) in [
+                ("first", "default", "首条消息"),
+                ("manual-first", "manual", "不会覆盖"),
+                ("existing-first", "existing", "已有消息"),
+                ("existing-second", "existing", "第二条消息"),
+            ] {
+                sqlx::query(
+                    "INSERT INTO messages
+                       (id, session_id, role, content, status, created_at, updated_at)
+                     VALUES (?, ?, 'user', ?, 'completed', ?, ?)",
+                )
+                .bind(id)
+                .bind(session_id)
+                .bind(content)
+                .bind(&now)
+                .bind(&now)
+                .execute(&pool)
+                .await
+                .expect("message");
+            }
+
+            assert!(
+                auto_name_session_from_first_message(&pool, "default", "first", "首条消息")
+                    .await
+                    .expect("auto name")
+            );
+            assert!(!auto_name_session_from_first_message(
+                &pool,
+                "manual",
+                "manual-first",
+                "不会覆盖"
+            )
+            .await
+            .expect("manual name"));
+            assert!(!auto_name_session_from_first_message(
+                &pool,
+                "existing",
+                "existing-second",
+                "第二条消息"
+            )
+            .await
+            .expect("existing messages"));
+
+            let labels = sqlx::query("SELECT id, label FROM sessions ORDER BY id")
+                .fetch_all(&pool)
+                .await
+                .expect("labels")
+                .into_iter()
+                .map(|row| (row.get::<String, _>("id"), row.get::<String, _>("label")))
+                .collect::<HashMap<_, _>>();
+            assert_eq!(labels.get("default").map(String::as_str), Some("首条消息"));
+            assert_eq!(labels.get("manual").map(String::as_str), Some("我的会话"));
+            assert_eq!(
+                labels.get("existing").map(String::as_str),
+                Some("Pi · demo")
+            );
+            pool.close().await;
+            fs::remove_dir_all(directory).expect("remove test directory");
+        });
     }
 
     #[test]

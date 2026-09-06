@@ -368,8 +368,8 @@ export const createCodexSession = (
     requestedProfile: requestedProfile ?? null,
   });
 
-export const sendCodexPrompt = (sessionId: string, input: string): Promise<void> =>
-  invoke('send_codex_prompt', { sessionId, input });
+export const sendCodexPrompt = (sessionId: string, input: string): Promise<Session> =>
+  invoke<Session>('send_codex_prompt', { sessionId, input });
 
 export const abortCodexTurn = (sessionId: string): Promise<void> =>
   invoke('abort_codex_turn', { sessionId });
@@ -398,8 +398,8 @@ export const createPiSession = (
     requestedProfile: requestedProfile ?? null,
   });
 
-export const sendPiPrompt = (sessionId: string, input: string): Promise<void> =>
-  invoke('send_pi_prompt', { sessionId, input });
+export const sendPiPrompt = (sessionId: string, input: string): Promise<Session> =>
+  invoke<Session>('send_pi_prompt', { sessionId, input });
 
 export const abortPiTurn = (sessionId: string): Promise<void> =>
   invoke('abort_pi_turn', { sessionId });

@@ -8,10 +8,10 @@ use super::change_set::{
 use super::execution_profile::ResolvedExecutionProfile;
 use super::workspace_guard::canonicalize_target;
 use super::{
-    bind_pending_attachments_to_turn, clone_cached_runtime, find_executable, isolate_process_tree,
-    mark_turn_interrupted, now_iso, read_process_output, remove_cached_runtime, session_by_id,
-    session_execution_profile, terminate_process_tree, workspace_by_id, SessionModelCatalog,
-    SessionModelOption, SessionReasoningOption,
+    auto_name_session_from_first_message, bind_pending_attachments_to_turn, clone_cached_runtime,
+    find_executable, isolate_process_tree, mark_turn_interrupted, now_iso, read_process_output,
+    remove_cached_runtime, session_by_id, session_execution_profile, terminate_process_tree,
+    workspace_by_id, SessionModelCatalog, SessionModelOption, SessionReasoningOption,
 };
 use serde::Serialize;
 use serde_json::{json, Value};
@@ -2124,6 +2124,12 @@ impl PiManager {
         let now = now_iso();
         sqlx::query("INSERT INTO messages (id, session_id, turn_id, external_message_id, role, content, status, sequence, created_at, updated_at) VALUES (?, ?, NULL, ?, 'user', ?, 'completed', ?, ?, ?)")
             .bind(&user_message_id).bind(session_id).bind(format!("user:{user_message_id}")).bind(input).bind(session.sequence.load(Ordering::Relaxed) as i64).bind(&now).bind(&now).execute(&self.db).await?;
+        if let Err(error) =
+            auto_name_session_from_first_message(&self.db, session_id, &user_message_id, input)
+                .await
+        {
+            warn!(session_id = %session_id, error = %error, "unable to auto-name Pi session");
+        }
         let internal_turn = session.ensure_turn(&turn_id, input).await?;
         sqlx::query("UPDATE messages SET turn_id = ?, updated_at = ? WHERE id = ?")
             .bind(&internal_turn)

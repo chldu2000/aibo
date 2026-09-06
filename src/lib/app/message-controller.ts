@@ -5,8 +5,8 @@ import { upsertSession } from './session-transitions';
 export type MessageControllerContext = {
   api: {
     createCodexSession: (workspaceId: string) => Promise<Session>;
-    sendCodexPrompt: (sessionId: string, input: string) => Promise<void>;
-    sendPiPrompt: (sessionId: string, input: string) => Promise<void>;
+    sendCodexPrompt: (sessionId: string, input: string) => Promise<Session>;
+    sendPiPrompt: (sessionId: string, input: string) => Promise<Session>;
     abortCodexTurn: (sessionId: string) => Promise<void>;
     abortPiTurn: (sessionId: string) => Promise<void>;
     steerPiPrompt: (sessionId: string, input: string) => Promise<void>;
@@ -114,8 +114,10 @@ export function createMessageController(context: MessageControllerContext) {
         context.setWorkspaceSessionMap(upsertSession(context.getWorkspaceSessionMap(), session));
         context.setSelectedSessionId(session.id);
       }
-      if (session.agent === 'pi') await context.api.sendPiPrompt(session.id, requestInput);
-      else await context.api.sendCodexPrompt(session.id, requestInput);
+      session = session.agent === 'pi'
+        ? await context.api.sendPiPrompt(session.id, requestInput)
+        : await context.api.sendCodexPrompt(session.id, requestInput);
+      context.setWorkspaceSessionMap(upsertSession(context.getWorkspaceSessionMap(), session));
       await Promise.all([context.refreshTimeline(session.id), context.refreshAttachments(session.id)]);
       context.setComposerText('');
       if (session) context.setComposerDraftStatus?.(session.id, false);
