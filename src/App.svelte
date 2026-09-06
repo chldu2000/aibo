@@ -114,6 +114,7 @@
     clearPiQueue,
     setWorkspaceTrust,
     startWindowDragging,
+    toggleWindowMaximize,
     unarchiveSession as unarchiveSessionApi,
   } from './lib/api';
   import type {
@@ -364,6 +365,12 @@
   function dragWindow(): void {
     void startWindowDragging().catch((error) => {
       console.warn('unable to start window dragging', error);
+    });
+  }
+
+  function toggleMaximizeWindow(): void {
+    void toggleWindowMaximize().catch((error) => {
+      console.warn('unable to toggle window maximize', error);
     });
   }
 
@@ -2496,6 +2503,7 @@
     sidePanelOpen={sidePanelOpen}
     onToggleSidePanel={toggleSidePanel}
     onStartDragging={dragWindow}
+    onToggleMaximize={toggleMaximizeWindow}
   />
 
   <main

@@ -47,6 +47,8 @@ export const isTauri = (): boolean =>
 
 export const startWindowDragging = (): Promise<void> => getCurrentWindow().startDragging();
 
+export const toggleWindowMaximize = (): Promise<void> => getCurrentWindow().toggleMaximize();
+
 export const listWorkspaces = (): Promise<Workspace[]> =>
   invoke<Workspace[]>('list_workspaces');
 
