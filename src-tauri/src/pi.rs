@@ -1158,7 +1158,12 @@ impl PiSession {
         if decision == "accept" {
             let turn_id = request.turn_id.clone();
             let tool = request.tool.clone();
-            self.execute_tool_request(request).await?;
+            // Resolving the approval is a user-facing state transition, not
+            // the completion of the tool itself. Publish it before awaiting a
+            // potentially long-running command so the UI can remove the
+            // approval card and show normal running activity while Pi waits
+            // for the tool result.
+            self.set_state("running").await?;
             self.emit_event(
                 "approval.resolved",
                 turn_id,
@@ -1166,6 +1171,7 @@ impl PiSession {
                 None,
             )
             .await?;
+            self.execute_tool_request(request).await?;
         } else {
             self.client
                 .reply(

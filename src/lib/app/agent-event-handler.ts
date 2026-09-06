@@ -59,7 +59,14 @@ export function handleAgentEvent(event: AgentEvent, context: AgentEventHandlerCo
     context.setAgentActivity(event.sessionId, true, agentLabel(event, '等待你的确认…'));
   }
   if (event.type === 'approval.resolved') {
-    context.setAgentActivity(event.sessionId, true, agentLabel(event, '确认已收到，继续执行…'));
+    const decision = payloadString(event.payload.decision);
+    const tool = payloadString(event.payload.tool);
+    const label = decision === 'accept'
+      ? tool
+        ? `已允许，正在执行 ${tool}…`
+        : '已允许，正在执行工具…'
+      : '已拒绝，等待模型继续响应…';
+    context.setAgentActivity(event.sessionId, true, agentLabel(event, label));
   }
   if (event.type === 'user_input.requested') {
     context.setAgentActivity(event.sessionId, true, agentLabel(event, '等待你的输入…'));
