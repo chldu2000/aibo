@@ -42,6 +42,7 @@ const PI_HOST_PROTOCOL: &str = "aibo-pi-sdk-host.v1";
 const REQUEST_TIMEOUT: Duration = Duration::from_secs(30);
 const MAX_WRITE_BYTES: usize = 10 * 1024 * 1024;
 const MAX_COMMAND_OUTPUT_BYTES: usize = 1024 * 1024;
+const PI_THINKING_LEVELS: [&str; 7] = ["off", "minimal", "low", "medium", "high", "xhigh", "max"];
 
 fn truncate_command_output(output: &str) -> String {
     let redacted = output
@@ -57,6 +58,59 @@ fn truncate_command_output(output: &str) -> String {
         MAX_COMMAND_OUTPUT_BYTES,
         "\n[… command output truncated …]",
     )
+}
+
+fn pi_model_reasoning_efforts(model: &Value) -> Vec<SessionReasoningOption> {
+    let reasoning = model
+        .get("reasoning")
+        .and_then(Value::as_bool)
+        .unwrap_or(false);
+    let thinking_level_map = model.get("thinkingLevelMap");
+    PI_THINKING_LEVELS
+        .iter()
+        .filter(|level| {
+            if !reasoning {
+                return **level == "off";
+            }
+            let mapped = thinking_level_map.and_then(|map| map.get(*level));
+            if mapped.is_some_and(Value::is_null) {
+                return false;
+            }
+            if **level == "xhigh" || **level == "max" {
+                return mapped.is_some();
+            }
+            true
+        })
+        .map(|level| SessionReasoningOption {
+            id: (*level).to_owned(),
+            label: (*level).to_owned(),
+            description: None,
+        })
+        .collect()
+}
+
+fn pi_model_option(
+    item: &Value,
+    current_reasoning_effort: Option<&str>,
+) -> Option<SessionModelOption> {
+    let provider = item.get("provider").and_then(Value::as_str)?;
+    let id = item.get("id").and_then(Value::as_str)?;
+    let reasoning_efforts = pi_model_reasoning_efforts(item);
+    Some(SessionModelOption {
+        reference: format!("{provider}/{id}"),
+        label: item
+            .get("name")
+            .and_then(Value::as_str)
+            .filter(|name| !name.trim().is_empty())
+            .unwrap_or(&format!("{provider}/{id}"))
+            .to_owned(),
+        provider: Some(provider.to_owned()),
+        id: id.to_owned(),
+        description: None,
+        is_default: false,
+        default_reasoning_effort: current_reasoning_effort.map(ToOwned::to_owned),
+        reasoning_efforts,
+    })
 }
 
 fn redact_command_line(line: &str) -> String {
@@ -2332,43 +2386,13 @@ impl PiManager {
             .map(|items| {
                 items
                     .iter()
-                    .filter_map(|item| {
-                        let provider = item.get("provider").and_then(Value::as_str)?;
-                        let id = item.get("id").and_then(Value::as_str)?;
-                        Some(SessionModelOption {
-                            reference: format!("{provider}/{id}"),
-                            label: format!("{provider}/{id}"),
-                            provider: Some(provider.to_owned()),
-                            id: id.to_owned(),
-                            description: None,
-                            is_default: false,
-                            // Pi exposes a session-wide thinking-level list
-                            // rather than a per-model capability matrix. The
-                            // shared workbench contract needs model-local
-                            // entries, so project those supported levels onto
-                            // every model instead of making their matrix cells
-                            // appear unavailable.
-                            default_reasoning_effort: current_reasoning_effort.clone(),
-                            reasoning_efforts: reasoning_efforts.clone(),
-                        })
-                    })
+                    .filter_map(|item| pi_model_option(item, None))
                     .collect::<Vec<_>>()
             })
             .unwrap_or_default();
-        let mut current = result.get("current").and_then(|item| {
-            let provider = item.get("provider").and_then(Value::as_str)?;
-            let id = item.get("id").and_then(Value::as_str)?;
-            Some(SessionModelOption {
-                reference: format!("{provider}/{id}"),
-                label: format!("{provider}/{id}"),
-                provider: Some(provider.to_owned()),
-                id: id.to_owned(),
-                description: None,
-                is_default: false,
-                default_reasoning_effort: current_reasoning_effort.clone(),
-                reasoning_efforts: reasoning_efforts.clone(),
-            })
-        });
+        let mut current = result
+            .get("current")
+            .and_then(|item| pi_model_option(item, current_reasoning_effort.as_deref()));
         if current.is_none() {
             current = models
                 .iter()
@@ -2601,8 +2625,9 @@ impl PiManager {
 #[cfg(test)]
 mod tests {
     use super::{
-        final_agent_message, generation_matches, redact_command_line, run_shell_command,
-        text_from_message, truncate_command_output, PI_ADAPTER_VERSION, PI_HOST_PROTOCOL,
+        final_agent_message, generation_matches, pi_model_option, pi_model_reasoning_efforts,
+        redact_command_line, run_shell_command, text_from_message, truncate_command_output,
+        PI_ADAPTER_VERSION, PI_HOST_PROTOCOL,
     };
     use serde_json::json;
     use std::{fs, path::PathBuf};
@@ -2669,6 +2694,39 @@ mod tests {
         assert_eq!(
             text_from_message(&json!({ "text": "compact hello" })),
             "compact hello"
+        );
+    }
+
+    #[test]
+    fn projects_pi_model_specific_thinking_capabilities() {
+        let codex_model = json!({
+            "provider": "openai-codex",
+            "id": "gpt-5.4",
+            "name": "GPT-5.4",
+            "reasoning": true,
+            "thinkingLevelMap": { "minimal": "low", "xhigh": "xhigh" }
+        });
+        let levels = pi_model_reasoning_efforts(&codex_model)
+            .into_iter()
+            .map(|option| option.id)
+            .collect::<Vec<_>>();
+        assert_eq!(levels, ["off", "minimal", "low", "medium", "high", "xhigh"]);
+        let option = pi_model_option(&codex_model, Some("high")).expect("model option");
+        assert_eq!(option.reference, "openai-codex/gpt-5.4");
+        assert_eq!(option.default_reasoning_effort.as_deref(), Some("high"));
+
+        let no_reasoning = json!({
+            "provider": "openai-codex",
+            "id": "gpt-4o",
+            "reasoning": false,
+            "thinkingLevelMap": null
+        });
+        assert_eq!(
+            pi_model_reasoning_efforts(&no_reasoning)
+                .into_iter()
+                .map(|option| option.id)
+                .collect::<Vec<_>>(),
+            ["off"]
         );
     }
 

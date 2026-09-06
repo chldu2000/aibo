@@ -113,6 +113,19 @@ function compactMessage(message) {
   };
 }
 
+// Keep the provider/model capability metadata at the SDK boundary.  The
+// session-level `thinking` response only describes the currently selected
+// model, so callers cannot derive a model matrix from it alone.
+function modelDescriptor(model) {
+  return {
+    provider: model.provider,
+    id: model.id,
+    name: model.name ?? null,
+    reasoning: model.reasoning === true,
+    thinkingLevelMap: model.thinkingLevelMap ?? null,
+  };
+}
+
 function compactTreeNode(node) {
   const entry = node?.entry ?? {};
   const message = entry.message;
@@ -473,11 +486,8 @@ async function handle(message) {
       if (!reference) {
         const current = session.model;
         respond(id, {
-          current: current ? { provider: current.provider, id: current.id } : null,
-          models: modelRuntime.getAvailableSnapshot().map((model) => ({
-            provider: model.provider,
-            id: model.id,
-          })),
+          current: current ? modelDescriptor(current) : null,
+          models: modelRuntime.getAvailableSnapshot().map(modelDescriptor),
         });
         return;
       }

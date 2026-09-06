@@ -1267,18 +1267,19 @@
           : result;
         const provider = typeof current.provider === 'string' ? current.provider : '';
         const id = typeof current.id === 'string' ? current.id : null;
-        sessionModelOverride = id ? `${provider ? `${provider}/` : ''}${id}` : model;
-        if (sessionModelCatalog && sessionModelOverride) {
+        const selectedModelLabel = id ? `${provider ? `${provider}/` : ''}${id}` : model;
+        sessionModelOverride = selectedModelLabel;
+        if (sessionModelCatalog && selectedModelLabel) {
           const selected = sessionModelCatalog.models.find(
-            (option) => option.reference === sessionModelOverride,
+            (option) => option.reference === selectedModelLabel,
           );
           sessionModelCatalog = {
             ...sessionModelCatalog,
             current: selected ?? {
-              reference: sessionModelOverride,
-              label: sessionModelOverride,
+              reference: selectedModelLabel,
+              label: selectedModelLabel,
               provider: provider || null,
-              id: id ?? sessionModelOverride,
+              id: id ?? selectedModelLabel,
               description: null,
               isDefault: false,
               defaultReasoningEffort: null,
@@ -1288,7 +1289,7 @@
         }
         executionProfile = await getSessionExecutionProfile(session.id);
         await loadSessionModels();
-        notice = sessionModelOverride ? `Pi 模型已切换为 ${sessionModelOverride}。` : '已读取 Pi 当前模型。';
+        notice = selectedModelLabel ? `Pi 模型已切换为 ${selectedModelLabel}。` : '已读取 Pi 当前模型。';
       } else {
         const current = executionProfile?.requested;
         if (!current) {
@@ -1429,12 +1430,13 @@
           : result;
         const provider = typeof current.provider === 'string' ? current.provider : '';
         const id = typeof current.id === 'string' ? current.id : null;
-        sessionModelOverride = id ? `${provider ? `${provider}/` : ''}${id}` : model;
+        const selectedModelLabel = id ? `${provider ? `${provider}/` : ''}${id}` : model;
+        sessionModelOverride = selectedModelLabel;
         if (reasoningEffort !== null) await setPiThinkingLevel(session.id, reasoningEffort);
         if (selectedSessionId !== session.id) return;
         executionProfile = await getSessionExecutionProfile(session.id);
         await loadSessionModels();
-        notice = reasoningEffort ? `Pi 已切换为 ${sessionModelOverride} · ${reasoningEffort}。` : `Pi 模型已切换为 ${sessionModelOverride}。`;
+        notice = reasoningEffort ? `Pi 已切换为 ${selectedModelLabel} · ${reasoningEffort}。` : `Pi 模型已切换为 ${selectedModelLabel}。`;
       } else {
         const current = executionProfile?.requested;
         if (!current) {
