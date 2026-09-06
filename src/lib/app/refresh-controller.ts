@@ -78,6 +78,30 @@ export type RefreshControllerContext = {
 };
 
 export function createRefreshController(context: RefreshControllerContext) {
+  function finishSessionListLoading(workspaceId: string, generation: number): void {
+    if (context.getSessionLoadGenerations()[workspaceId] !== generation) return;
+    context.setSessionsLoadingWorkspaceIds(
+      context.getSessionsLoadingWorkspaceIds().filter((id) => id !== workspaceId),
+    );
+  }
+
+  async function refreshSelectedSessionContext(sessionId: string): Promise<void> {
+    try {
+      await context.refreshTimeline(sessionId);
+      await context.refreshExecutionProfile(sessionId);
+      await context.refreshTurnChangeSet(sessionId);
+      await context.refreshAttachments(sessionId);
+      await context.refreshArtifacts(sessionId);
+      void context.refreshCodexThread(sessionId);
+      void context.refreshPiTree(sessionId);
+    } catch (error) {
+      // Session list rendering must not be held hostage by a slow or failed
+      // context request. The individual context panels keep their own
+      // fallbacks; surface a timeline failure without re-entering loading.
+      context.setErrorMessage(toErrorMessage(error));
+    }
+  }
+
   async function refreshSessions(workspaceId: string): Promise<void> {
     const currentGeneration = context.getSessionLoadGenerations()[workspaceId] ?? 0;
     const generation = currentGeneration + 1;
@@ -106,6 +130,9 @@ export function createRefreshController(context: RefreshControllerContext) {
         ...context.getWorkspaceSessionMap(),
         [workspaceId]: loadedSessions,
       });
+      // The list is ready now. Do not keep the sidebar on “加载会话…” while
+      // the selected session's timeline/profile/context is hydrated below.
+      finishSessionListLoading(workspaceId, generation);
       if (workspaceId !== context.getSelectedWorkspaceId()) return;
 
       const rememberedSessionId =
@@ -128,22 +155,17 @@ export function createRefreshController(context: RefreshControllerContext) {
       }
       const nextSelectedSessionId = context.getSelectedSessionId();
       if (nextSelectedSessionId) {
-        await context.refreshTimeline(nextSelectedSessionId);
-        await context.refreshExecutionProfile(nextSelectedSessionId);
-        await context.refreshTurnChangeSet(nextSelectedSessionId);
-        await context.refreshAttachments(nextSelectedSessionId);
-        await context.refreshArtifacts(nextSelectedSessionId);
-        void context.refreshCodexThread(nextSelectedSessionId);
-        void context.refreshPiTree(nextSelectedSessionId);
+        // Hydrate the selected pane independently. A slow adapter/DB request
+        // must not block the already-loaded workspace session list or the
+        // completion of the global refresh operation.
+        void refreshSelectedSessionContext(nextSelectedSessionId);
       } else {
         context.clearSelectedSessionContext();
       }
     } finally {
-      if (context.getSessionLoadGenerations()[workspaceId] === generation) {
-        context.setSessionsLoadingWorkspaceIds(
-          context.getSessionsLoadingWorkspaceIds().filter((id) => id !== workspaceId),
-        );
-      }
+      // Covers list_sessions failures and early returns before the list is
+      // committed. For the successful path this is intentionally idempotent.
+      finishSessionListLoading(workspaceId, generation);
     }
   }
 

@@ -478,7 +478,9 @@
     const id = selectedSessionId;
     const text = composerText;
     if (!desktop || !id) return;
-    const sendFailed = composerDrafts[id]?.sendFailed === true;
+    // Depend on the boolean projection, not the map replaced by this effect.
+    // Replacing the map must not schedule another identical draft write.
+    const sendFailed = composerDraftFailed;
     if (draftHydratingSessionId === id) return;
     untrack(() => {
       const next = { ...composerDrafts };

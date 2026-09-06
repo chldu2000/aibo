@@ -5,9 +5,14 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta name="theme-color" content="#09090b" />
     <title>Aibo</title>
+    <style>
+      html, body { margin: 0; background: #09090b; color: #fafafa; }
+      #boot-status { position: fixed; inset: 0; display: grid; place-items: center; font: 14px system-ui; color: #a1a1aa; }
+    </style>
   </head>
   <body>
     <div id="app"></div>
+    <div id="boot-status" role="status">正在打开 Aibo…</div>
     <script type="module" src="/src/main.ts"></script>
   </body>
 </html>

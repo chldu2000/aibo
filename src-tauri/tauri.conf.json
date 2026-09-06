@@ -13,6 +13,7 @@
     "windows": [
       {
         "title": "Aibo",
+        "backgroundColor": "#09090b",
         "width": 1440,
         "height": 900,
         "minWidth": 960,
