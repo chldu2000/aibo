@@ -324,8 +324,9 @@
   let lastSubmittedPrompt = $state<string | null>(null);
   let settingsOpen = $state(false);
   let diagnosticsOpen = $state(false);
-  let sidePanelView = $state<SidePanelView | null>('context');
-  const inspectorOpen = $derived(sidePanelView !== null);
+  let sidePanelOpen = $state(true);
+  let sidePanelView = $state<SidePanelView>('context');
+  const inspectorOpen = $derived(sidePanelOpen);
   let commandPaletteOpen = $state(false);
   let promptInFlight = $state(false);
   let activeAgentSessionIds = $state<string[]>([]);
@@ -1007,9 +1008,14 @@
     }
   }
 
-  function toggleSidePanel(view: SidePanelView): void {
-    sidePanelView = sidePanelView === view ? null : view;
-    if (sidePanelView === 'git' && selectedWorkspaceId) {
+  function toggleSidePanel(): void {
+    sidePanelOpen = !sidePanelOpen;
+  }
+
+  function selectSidePanelView(view: SidePanelView): void {
+    sidePanelView = view;
+    sidePanelOpen = true;
+    if (view === 'git' && selectedWorkspaceId) {
       void refreshWorkspaceChanges(selectedWorkspaceId);
     }
   }
@@ -2410,7 +2416,7 @@
   <WindowTitlebar
     onOpenSettings={openSettingsPanel}
     onOpenDiagnostics={openDiagnosticsPanel}
-    {sidePanelView}
+    sidePanelOpen={sidePanelOpen}
     onToggleSidePanel={toggleSidePanel}
     onStartDragging={dragWindow}
   />
@@ -2531,6 +2537,7 @@
       workspace={selectedWorkspace}
       session={selectedSession}
       desktop={desktop}
+      activeView={sidePanelView}
       {diagnostics}
       workspaceCapabilities={workspaceCapabilities}
       codexThreads={codexThreads}
@@ -2589,6 +2596,7 @@
         }
       }}
       onRefresh={() => void refresh()}
+      onSelectView={selectSidePanelView}
     />
     {:else if sidePanelView === 'git'}
       <WorkspaceGitPanel
@@ -2598,8 +2606,10 @@
         loading={workspaceChangesLoading}
         error={workspaceChangesError}
         busyPath={workspaceGitBusyPath}
+        activeView={sidePanelView}
         onRefresh={() => selectedWorkspaceId && void refreshWorkspaceChanges(selectedWorkspaceId)}
         onApplyFileAction={(workspaceId, path, action) => void applyWorkspaceGitAction(workspaceId, path, action)}
+        onSelectView={selectSidePanelView}
       />
     {/if}
   </main>

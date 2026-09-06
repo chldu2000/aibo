@@ -1,5 +1,6 @@
 <script lang="ts">
   import { Badge, Button, Card, CardContent, CardHeader, CardTitle, Icon, Separator } from '$lib/ui-kit';
+  import SidePanelTabs from './SidePanelTabs.svelte';
   import type { WorkspaceChanges, WorkspaceFileChange } from '$lib/types';
   import type { WorkspaceListItem } from './view-types';
 
@@ -10,8 +11,10 @@
     loading: boolean;
     error: string | null;
     busyPath: string | null;
+    activeView: 'context' | 'git';
     onRefresh: () => void;
     onApplyFileAction: (workspaceId: string, path: string, action: 'stage' | 'unstage') => void;
+    onSelectView: (view: 'context' | 'git') => void;
   };
 
   let {
@@ -21,8 +24,10 @@
     loading,
     error,
     busyPath,
+    activeView,
     onRefresh,
     onApplyFileAction,
+    onSelectView,
   }: WorkspaceGitPanelProps = $props();
 
   const conflictedFiles = $derived(changes?.files.filter((file) => file.conflicted) ?? []);
@@ -103,6 +108,7 @@
       </Button>
     </div>
   </CardHeader>
+  <SidePanelTabs {activeView} onSelect={onSelectView} />
   <Separator />
 
   <div aria-live="polite">

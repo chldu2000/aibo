@@ -1,19 +1,18 @@
 <script lang="ts">
   import { Button, Icon } from '$lib/ui-kit';
-  import type { SidePanelView } from './view-types';
 
   type WindowTitlebarProps = {
     onOpenSettings: () => void;
     onOpenDiagnostics: () => void;
-    sidePanelView: SidePanelView | null;
-    onToggleSidePanel: (view: SidePanelView) => void;
+    sidePanelOpen: boolean;
+    onToggleSidePanel: () => void;
     onStartDragging: () => void;
   };
 
   let {
     onOpenSettings,
     onOpenDiagnostics,
-    sidePanelView,
+    sidePanelOpen,
     onToggleSidePanel,
     onStartDragging,
   }: WindowTitlebarProps = $props();
@@ -43,26 +42,15 @@
       <Icon name="diagnostics" size={15} />
     </Button>
     <Button
-      variant={sidePanelView === 'context' ? 'secondary' : 'ghost'}
+      variant={sidePanelOpen ? 'secondary' : 'ghost'}
       size="icon"
       type="button"
-      aria-label={sidePanelView === 'context' ? '隐藏上下文面板' : '显示上下文面板'}
-      title="上下文"
-      aria-pressed={sidePanelView === 'context'}
-      onclick={() => onToggleSidePanel('context')}
+      aria-label={sidePanelOpen ? '隐藏侧边栏' : '显示侧边栏'}
+      title="侧边栏"
+      aria-pressed={sidePanelOpen}
+      onclick={onToggleSidePanel}
     >
       <Icon name="panel-right" size={15} />
-    </Button>
-    <Button
-      variant={sidePanelView === 'git' ? 'secondary' : 'ghost'}
-      size="icon"
-      type="button"
-      aria-label={sidePanelView === 'git' ? '隐藏 Git 面板' : '显示 Git 面板'}
-      title="源代码管理"
-      aria-pressed={sidePanelView === 'git'}
-      onclick={() => onToggleSidePanel('git')}
-    >
-      <Icon name="branch" size={15} />
     </Button>
   </div>
 </header>

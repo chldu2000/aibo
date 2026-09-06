@@ -1,6 +1,7 @@
 <script lang="ts">
   import { Badge, Button, Card, CardContent, CardHeader, CardTitle, Icon, Separator } from '$lib/ui-kit';
   import ProjectActionsPanel from './ProjectActionsPanel.svelte';
+  import SidePanelTabs from './SidePanelTabs.svelte';
   import { sessionStateLabel } from './session-utils';
   import { flattenPiTree } from './inspector-utils';
   import type {
@@ -29,6 +30,7 @@
     checkpoints: CheckpointFile[];
     restoreOperations: RestoreOperation[];
     workspaceChanges: WorkspaceChanges | null;
+    activeView: 'context' | 'git';
     turnFileDiff: TurnFileDiff | null;
     threadBusy: boolean;
     busy: boolean;
@@ -46,6 +48,7 @@
     onDeleteProjectAction: (actionId: string) => Promise<void>;
     onRunProjectAction: (actionId: string) => Promise<void>;
     onRefresh: () => void;
+    onSelectView: (view: 'context' | 'git') => void;
   };
 
   let {
@@ -66,6 +69,7 @@
     checkpoints,
     restoreOperations,
     workspaceChanges,
+    activeView,
     turnFileDiff,
     threadBusy,
     busy,
@@ -83,6 +87,7 @@
     onDeleteProjectAction,
     onRunProjectAction,
     onRefresh,
+    onSelectView,
   }: InspectorProps = $props();
 
   let expandedArtifactId = $state<string | null>(null);
@@ -148,6 +153,7 @@
       <Badge variant="secondary">未选择</Badge>
     {/if}
   </CardHeader>
+  <SidePanelTabs {activeView} onSelect={onSelectView} />
   <Separator />
 
   <ProjectActionsPanel

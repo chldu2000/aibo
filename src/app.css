@@ -63,6 +63,8 @@ h2 { font-size: 16px; letter-spacing: -0.02em; }
 .sidebar .panel-heading { padding: 10px 8px 8px; }
 .sidebar .panel-heading [data-slot='card-title'] { color: var(--aibo-muted); font-size: 16px; font-weight: 500; }
 .panel-heading > :not(:first-child), .agent-card-head > :not(:first-child) { margin-top: 0; }
+.side-panel-tabs { display: flex; min-width: 0; gap: 3px; padding: 0 12px 8px; }
+.side-panel-tabs [data-slot='button'] { min-width: 0; flex: 1; }
 .workspace-toolbar { gap: 1px; }
 .workspace-toolbar [data-slot='button'] { width: 30px; height: 30px; }
 .workspace-toolbar [data-slot='button'].active { color: var(--aibo-text); background: var(--aibo-surface-hover); }
