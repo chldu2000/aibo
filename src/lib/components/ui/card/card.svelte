@@ -16,7 +16,7 @@
   this={as}
   data-slot="card"
   class={cn(
-    'rounded-xl border border-[var(--aibo-border)] bg-[var(--aibo-surface)] text-[var(--aibo-text)] shadow-sm',
+    'rounded-[var(--radius)] border border-[var(--border)] bg-[var(--card)] text-[var(--card-foreground)] shadow-sm',
     className,
   )}
   {...restProps}

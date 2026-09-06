@@ -28,6 +28,21 @@ runtime proxy 会订阅当前 adapter，因此切换皮肤时页面已使用的 
 当前 shadcn-svelte 提供 Zinc、Blue、Emerald 和 Light，Material 3 提供 Ocean、
 Sage、Violet 和 Daylight。
 
+皮肤的 token 也遵循各自的语义角色，而不是让页面组件依赖具体色值。shadcn
+皮肤注册 `background`、`foreground`、`card`、`popover`、`primary`、
+`secondary`、`muted`、`accent`、`destructive`、`border`、`input` 和 `ring`
+等角色；组件只引用这些角色来表达层级、交互和焦点状态。Material 3 皮肤
+注册 `primary/on-primary`、`surface`、`surface-container`、`on-surface`、
+`outline`、`error`、`scrim` 等角色，并通过 shape、elevation 和 easing token
+保持状态层与形状的一致性。新增控件应优先复用对应角色，不能把某个主题的
+十六进制颜色或阴影复制进组件。
+
+参考规范：
+
+- [shadcn-svelte Theming](https://svelte-4.shadcn-svelte.com/docs/theming)
+- [Material 3 theming](https://developer.android.com/develop/ui/compose/designsystems/material3)
+- [Material 3 interaction states](https://m3.material.io/foundations/interaction/states/overview)
+
 当前的第一个外挂样式示例是 `material3`：它使用
 [`m3-svelte`](https://github.com/KTibow/m3-svelte) 的 Material 3 交互按钮，
 并用兼容包装补齐 Aibo 所需的卡片与其他基础原语。卡片保持 Aibo 自己的

@@ -9,7 +9,7 @@
   data-slot="textarea"
   bind:value
   class={cn(
-    'flex min-h-20 w-full rounded-md border border-[var(--aibo-border-strong)] bg-transparent px-3 py-2 text-xs text-[var(--aibo-text)] shadow-sm outline-none transition-colors placeholder:text-[var(--aibo-subtle)] focus-visible:border-[var(--aibo-focus)] focus-visible:ring-2 focus-visible:ring-[var(--aibo-focus)]/20 disabled:cursor-not-allowed disabled:opacity-50',
+    'flex min-h-20 min-w-0 w-full rounded-[var(--radius)] border border-[var(--input)] bg-[var(--background)] px-3 py-2 text-sm text-[var(--foreground)] shadow-sm outline-none transition-colors placeholder:text-[var(--muted-foreground)] focus-visible:border-[var(--ring)] focus-visible:ring-[3px] focus-visible:ring-[var(--ring)]/50 aria-invalid:border-[var(--destructive)] aria-invalid:ring-[3px] aria-invalid:ring-[var(--destructive)]/20 disabled:cursor-not-allowed disabled:opacity-50',
     className,
   )}
   {...restProps}

@@ -1,7 +1,12 @@
 /* Skin-owned styling for semantic controls rendered by app-level components. */
+.app-shell[data-ui-kit='shadcn'] {
+  font-family: Inter, ui-sans-serif, system-ui, sans-serif;
+  letter-spacing: 0;
+}
+
 .app-shell[data-ui-kit='shadcn'] .window-actions [data-slot='button'].active {
-  color: var(--aibo-text);
-  background: var(--aibo-surface-hover);
+  color: var(--foreground);
+  background: var(--accent);
 }
 
 .app-shell[data-ui-kit='shadcn'] .workspace-splitter {
@@ -14,10 +19,14 @@
 }
 
 .app-shell[data-ui-kit='shadcn'] .workspace-splitter-line {
-  background: var(--aibo-border);
+  background: var(--border);
 }
 
 .app-shell[data-ui-kit='shadcn'] .workspace-splitter:focus-visible {
-  outline: 2px solid var(--aibo-focus);
+  outline: 2px solid var(--ring);
   outline-offset: -2px;
+}
+
+.app-shell[data-ui-kit='shadcn'] :where([data-slot='button'], [data-slot='input'], [data-slot='textarea']):focus-visible {
+  outline-color: var(--ring);
 }

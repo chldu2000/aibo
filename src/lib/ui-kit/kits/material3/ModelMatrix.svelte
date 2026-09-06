@@ -38,7 +38,7 @@
               aria-pressed={row.defaultActive}
               disabled={disabled}
               onclick={() => onSelect(row.reference, null)}
-            >{#if row.defaultActive}<Icon name="check" size={14} />{:else}<span aria-hidden="true">—</span>{/if}</button>
+            >{#if row.defaultActive}<Icon name="check" size={12} />{:else}<span aria-hidden="true">—</span>{/if}</button>
           </td>
           {#each row.cells as cell (cell.id)}
             <td>
@@ -50,7 +50,7 @@
                 disabled={!cell.available || disabled}
                 title={cell.available ? `${row.label} · ${cell.label}` : `${row.label} 不支持 ${cell.label}`}
                 onclick={() => onSelect(row.reference, cell.id)}
-              >{#if cell.active}<Icon name="check" size={14} />{:else}<span aria-hidden="true">{cell.available ? '○' : '—'}</span>{/if}</button>
+              >{#if cell.active}<Icon name="check" size={12} />{:else}<span aria-hidden="true">{cell.available ? '○' : '—'}</span>{/if}</button>
             </td>
           {/each}
         </tr>
@@ -61,7 +61,7 @@
 
 <style>
   .m3-model-matrix-wrap {
-    max-height: 250px;
+    max-height: 224px;
     overflow: auto;
     overscroll-behavior: contain;
     border: 1px solid var(--m3c-outline-variant);
@@ -75,12 +75,14 @@
     border-collapse: separate;
     border-spacing: 0;
     color: var(--m3c-on-surface-variant);
-    font-size: 11px;
+    font-size: var(--m3-body-small-size);
+    line-height: var(--m3-body-small-line-height);
+    letter-spacing: var(--m3-body-small-tracking);
   }
 
   .m3-model-matrix th,
   .m3-model-matrix td {
-    height: 36px;
+    height: 40px;
     border-bottom: 1px solid var(--m3c-outline-variant);
   }
 
@@ -93,12 +95,14 @@
     position: sticky;
     z-index: 1;
     top: 0;
-    min-width: 56px;
-    padding: 0 8px;
+    min-width: 52px;
+    padding: 0 6px;
     color: var(--m3c-on-surface-variant);
     background: var(--m3c-surface-container);
-    font-size: 10px;
-    font-weight: 500;
+    font-size: var(--m3-label-small-size);
+    font-weight: var(--m3-label-small-weight);
+    line-height: var(--m3-label-small-line-height);
+    letter-spacing: var(--m3-label-small-tracking);
     text-align: center;
     white-space: nowrap;
   }
@@ -106,7 +110,7 @@
   .m3-model-matrix thead th:first-child {
     z-index: 2;
     left: 0;
-    min-width: 144px;
+    min-width: 132px;
     text-align: left;
   }
 
@@ -114,8 +118,8 @@
     position: sticky;
     z-index: 1;
     left: 0;
-    max-width: 164px;
-    padding: 0 10px;
+    max-width: 152px;
+    padding: 0 8px;
     overflow: hidden;
     color: var(--m3c-on-surface-variant);
     background: var(--m3c-surface-container-low);
@@ -133,7 +137,7 @@
   .m3-model-matrix tbody th small {
     margin-left: 5px;
     color: var(--m3c-on-surface-variant);
-    font-size: 9px;
+    font-size: var(--m3-label-small-size);
   }
 
   .m3-model-matrix tr.active-row th {
@@ -142,15 +146,15 @@
   }
 
   .m3-model-matrix td {
-    width: 56px;
-    padding: 3px;
+    width: 52px;
+    padding: 2px;
     text-align: center;
   }
 
   .m3-model-matrix td button {
     display: inline-flex;
     width: 100%;
-    height: 30px;
+    height: 32px;
     align-items: center;
     justify-content: center;
     border: 0;
@@ -158,9 +162,10 @@
     padding: 0;
     color: var(--m3c-on-surface-variant);
     background: transparent;
-    font-size: 14px;
+    font-size: var(--m3-body-medium-size);
+    line-height: var(--m3-body-medium-line-height);
     text-align: center;
-    transition: background-color 150ms ease, color 150ms ease;
+    transition: background-color var(--m3-easing-fast), color var(--m3-easing-fast);
   }
 
   .m3-model-matrix td button:hover:not(:disabled),

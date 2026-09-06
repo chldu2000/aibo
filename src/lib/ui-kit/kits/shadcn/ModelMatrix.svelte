@@ -64,8 +64,8 @@
     max-height: 250px;
     overflow: auto;
     overscroll-behavior: contain;
-    border: 1px solid var(--aibo-border);
-    border-radius: 7px;
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
   }
 
   .shadcn-model-matrix {
@@ -73,14 +73,14 @@
     min-width: max-content;
     border-collapse: separate;
     border-spacing: 0;
-    color: var(--aibo-muted);
+    color: var(--muted-foreground);
     font-size: 10px;
   }
 
   .shadcn-model-matrix th,
   .shadcn-model-matrix td {
     height: 32px;
-    border-bottom: 1px solid var(--aibo-border);
+    border-bottom: 1px solid var(--border);
   }
 
   .shadcn-model-matrix tr:last-child th,
@@ -94,8 +94,8 @@
     top: 0;
     min-width: 52px;
     padding: 0 7px;
-    color: var(--aibo-subtle);
-    background: var(--aibo-surface);
+    color: var(--muted-foreground);
+    background: var(--card);
     font-size: 9px;
     font-weight: 500;
     text-align: center;
@@ -116,8 +116,8 @@
     max-width: 156px;
     padding: 0 8px;
     overflow: hidden;
-    color: var(--aibo-muted);
-    background: var(--aibo-surface);
+    color: var(--muted-foreground);
+    background: var(--card);
     font-weight: 500;
     text-align: left;
     text-overflow: ellipsis;
@@ -131,13 +131,13 @@
 
   .shadcn-model-matrix tbody th small {
     margin-left: 4px;
-    color: var(--aibo-subtle);
+    color: var(--muted-foreground);
     font-size: 8px;
   }
 
   .shadcn-model-matrix tr.active-row th {
-    color: var(--aibo-text);
-    background: var(--aibo-accent-soft);
+    color: var(--foreground);
+    background: var(--accent);
   }
 
   .shadcn-model-matrix td {
@@ -153,9 +153,9 @@
     align-items: center;
     justify-content: center;
     border: 0;
-    border-radius: 5px;
+    border-radius: calc(var(--radius) - 2px);
     padding: 0;
-    color: var(--aibo-subtle);
+    color: var(--muted-foreground);
     background: transparent;
     font-size: 13px;
     text-align: center;
@@ -163,14 +163,15 @@
 
   .shadcn-model-matrix td button:hover:not(:disabled),
   .shadcn-model-matrix td button:focus-visible {
-    color: var(--aibo-text);
-    background: var(--aibo-surface-hover);
-    outline: none;
+    color: var(--foreground);
+    background: var(--accent);
+    outline: 2px solid var(--ring);
+    outline-offset: -2px;
   }
 
   .shadcn-model-matrix td button.active {
-    color: var(--aibo-accent-foreground, var(--aibo-accent-text));
-    background: var(--aibo-accent);
+    color: var(--primary-foreground);
+    background: var(--primary);
   }
 
   .shadcn-model-matrix td button:disabled {

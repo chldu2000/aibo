@@ -11,8 +11,14 @@
   --m3c-on-secondary: #283044;
   --m3c-secondary-container: #3e475e;
   --m3c-on-secondary-container: #dae2f9;
+  --m3c-tertiary: #d8b9e8;
+  --m3c-on-tertiary: #3f2848;
   --m3c-tertiary-container: #5a3f5d;
   --m3c-on-tertiary-container: #ffd7fa;
+  --m3c-error: #ffb4ab;
+  --m3c-on-error: #690005;
+  --m3c-error-container: #93000a;
+  --m3c-on-error-container: #ffdad6;
   --m3c-surface: #101318;
   --m3c-surface-container: #1c1b20;
   --m3c-surface-container-low: #191a1f;
@@ -23,13 +29,43 @@
   --m3c-outline: #8e9099;
   --m3c-outline-variant: #44474f;
   --m3c-shadow: #000000;
+  --m3c-scrim: #000000;
   --m3-shape-extra-small: 4px;
   --m3-shape-small: 8px;
   --m3-shape-medium: 12px;
   --m3-shape-large: 16px;
+  --m3-shape-full: 9999px;
   --m3-card-shape: 12px;
   --m3-font: 'Google Sans Flex', 'Google Sans', Inter, ui-sans-serif, system-ui, sans-serif;
   --m3-font-mono: 'Google Sans Code', ui-monospace, SFMono-Regular, Menlo, monospace;
+  --m3-label-large-size: 14px;
+  --m3-label-large-weight: 500;
+  --m3-label-large-line-height: 20px;
+  --m3-label-large-tracking: 0.1px;
+  --m3-label-medium-size: 12px;
+  --m3-label-medium-weight: 500;
+  --m3-label-medium-line-height: 16px;
+  --m3-label-medium-tracking: 0.5px;
+  --m3-label-small-size: 11px;
+  --m3-label-small-weight: 500;
+  --m3-label-small-line-height: 16px;
+  --m3-label-small-tracking: 0.5px;
+  --m3-title-medium-size: 16px;
+  --m3-title-medium-weight: 500;
+  --m3-title-medium-line-height: 24px;
+  --m3-title-medium-tracking: 0.15px;
+  --m3-body-large-size: 16px;
+  --m3-body-large-weight: 400;
+  --m3-body-large-line-height: 24px;
+  --m3-body-large-tracking: 0.5px;
+  --m3-body-medium-size: 14px;
+  --m3-body-medium-weight: 400;
+  --m3-body-medium-line-height: 20px;
+  --m3-body-medium-tracking: 0.25px;
+  --m3-body-small-size: 12px;
+  --m3-body-small-weight: 400;
+  --m3-body-small-line-height: 16px;
+  --m3-body-small-tracking: 0.4px;
   --m3-elevation-1: 0 1px 2px rgb(0 0 0 / 0.3), 0 1px 3px 1px rgb(0 0 0 / 0.15);
   --m3-elevation-2: 0 1px 2px rgb(0 0 0 / 0.3), 0 2px 6px 2px rgb(0 0 0 / 0.15);
   --m3-easing-fast: 150ms ease;
@@ -37,13 +73,13 @@
   --aibo-bg: var(--m3c-surface);
   --aibo-text: var(--m3c-on-surface);
   --aibo-muted: var(--m3c-on-surface-variant);
-  --aibo-subtle: #92939c;
+  --aibo-subtle: var(--m3c-on-surface-variant);
   --aibo-border: var(--m3c-outline-variant);
   --aibo-border-strong: var(--m3c-outline);
   --aibo-surface: var(--m3c-surface-container);
   --aibo-surface-hover: var(--m3c-surface-container-high);
   --aibo-accent: var(--m3c-primary);
-  --aibo-accent-hover: #c0d7ff;
+  --aibo-accent-hover: var(--m3c-on-primary-container);
   --aibo-accent-border: var(--m3c-primary);
   --aibo-accent-soft: var(--m3c-primary-container);
   --aibo-accent-text: var(--m3c-on-primary-container);
@@ -55,17 +91,32 @@
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  min-height: 32px;
+  min-height: 40px;
   border: 0;
-  border-radius: 10px;
-  padding: 0 12px;
-  gap: 6px;
-  font-size: 12px;
-  font-weight: 600;
-  letter-spacing: 0.01em;
-  line-height: 1;
+  border-radius: var(--m3-shape-full);
+  padding: 0 24px;
+  gap: 8px;
+  font-size: var(--m3-label-large-size);
+  font-weight: var(--m3-label-large-weight);
+  letter-spacing: var(--m3-label-large-tracking);
+  line-height: var(--m3-label-large-line-height);
   white-space: nowrap;
-  transition: box-shadow 150ms ease, background-color 150ms ease, color 150ms ease;
+  transition: box-shadow var(--m3-easing-fast), background-color var(--m3-easing-fast), color var(--m3-easing-fast);
+}
+
+:where(.app-shell[data-ui-kit='material3']) .m3-aibo-button.m3-aibo-button-size-sm {
+  min-height: 32px;
+  padding: 0 16px;
+  gap: 8px;
+  font-size: var(--m3-label-medium-size);
+  font-weight: var(--m3-label-medium-weight);
+  letter-spacing: var(--m3-label-medium-tracking);
+  line-height: var(--m3-label-medium-line-height);
+}
+
+:where(.app-shell[data-ui-kit='material3']) .m3-aibo-button.m3-aibo-button-size-lg {
+  min-height: 56px;
+  padding: 0 32px;
 }
 
 .app-shell[data-ui-kit='material3'] .m3-aibo-button.m3-aibo-button-default {
@@ -79,27 +130,27 @@
 }
 
 .app-shell[data-ui-kit='material3'] .m3-aibo-button.m3-aibo-button-destructive {
-  background: #ffb4ab;
-  color: #690005;
+  background: var(--m3c-error);
+  color: var(--m3c-on-error);
 }
 
 .app-shell[data-ui-kit='material3'] .m3-aibo-button.m3-aibo-button-toolbar {
-  border-radius: var(--m3-shape-small);
+  border-radius: var(--m3-shape-full);
   background: transparent;
   color: var(--m3c-on-surface-variant);
   box-shadow: none;
 }
 
 .app-shell[data-ui-kit='material3'] .m3-aibo-button.m3-aibo-button-queue {
-  border-radius: var(--m3-shape-medium);
+  border-radius: var(--m3-shape-full);
   background: transparent;
   color: var(--m3c-on-surface-variant);
 }
 
 .app-shell[data-ui-kit='material3'] .m3-aibo-button.m3-aibo-button-abort {
-  border-radius: var(--m3-shape-medium);
-  background: #ffb4ab;
-  color: #690005;
+  border-radius: var(--m3-shape-full);
+  background: var(--m3c-error);
+  color: var(--m3c-on-error);
 }
 
 .app-shell[data-ui-kit='material3'] .m3-aibo-button.m3-aibo-button-outline {
@@ -120,10 +171,6 @@
   box-shadow: none;
 }
 
-.app-shell[data-ui-kit='material3'] .m3-aibo-button:hover:not(:disabled) {
-  filter: brightness(1.06);
-}
-
 .app-shell[data-ui-kit='material3'] .window-actions [data-slot='button'].active {
   color: var(--m3c-on-surface);
   background: var(--m3c-surface-container-high);
@@ -132,13 +179,12 @@
 .app-shell[data-ui-kit='material3'] .m3-aibo-button-ghost:hover:not(:disabled) {
   background: var(--m3c-surface-container-high);
   color: var(--m3c-on-surface);
-  box-shadow: none;
 }
 
 .app-shell[data-ui-kit='material3'] .m3-aibo-button.workspace-item,
 .app-shell[data-ui-kit='material3'] .m3-aibo-button.session-item {
   height: auto;
-  border-radius: 999px;
+  border-radius: var(--m3-shape-full);
   box-shadow: none;
   outline: none;
 }
@@ -157,7 +203,7 @@
 
 .app-shell[data-ui-kit='material3'] .composer.m3-aibo-card {
   border-color: var(--m3c-outline-variant);
-  border-radius: 16px;
+  border-radius: var(--m3-shape-large);
   background: var(--m3c-surface-container);
 }
 
@@ -176,7 +222,7 @@
   padding: 5px 3px;
   background: transparent;
   box-shadow: none;
-  font-size: 14px;
+  font-size: var(--m3-body-medium-size);
   line-height: 1.5;
 }
 
@@ -188,18 +234,20 @@
 .app-shell[data-ui-kit='material3'] .m3-aibo-button:disabled {
   background: color-mix(in srgb, var(--m3c-on-surface) 12%, transparent);
   color: color-mix(in srgb, var(--m3c-on-surface) 38%, transparent);
+  opacity: 1;
   box-shadow: none;
 }
 
 :where(.app-shell[data-ui-kit='material3']) .m3-aibo-icon-button.m3-aibo-icon-button {
-  width: 32px;
-  height: 32px;
-  min-height: 32px;
+  width: 40px;
+  height: 40px;
+  min-height: 40px;
+  border-radius: var(--m3-shape-full);
   padding: 0;
 }
 
 .app-shell[data-ui-kit='material3'] .m3-aibo-button-send {
-  border-radius: 999px;
+  border-radius: var(--m3-shape-full);
   background: var(--m3c-primary);
   color: var(--m3c-on-primary);
 }
@@ -212,6 +260,16 @@
   min-height: 0;
 }
 
+/* List-row actions are compact affordances, not full-size icon buttons. */
+:where(.app-shell[data-ui-kit='material3']) .workspace-item-actions [data-slot='button'],
+:where(.app-shell[data-ui-kit='material3']) .session-item-actions [data-slot='button'] {
+  width: 28px;
+  height: 28px;
+  min-height: 28px;
+  border-radius: var(--m3-shape-full);
+  padding: 0;
+}
+
 :where(.app-shell[data-ui-kit='material3']) .m3-aibo-card {
   border: 1px solid transparent;
   border-radius: var(--m3-shape-medium);
@@ -222,9 +280,57 @@
 
 :where(.app-shell[data-ui-kit='material3']) .m3-aibo-card-header {
   display: flex;
-  flex-direction: column;
-  gap: 4px;
+  flex-direction: row;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  min-width: 0;
   padding: 16px;
+}
+
+:where(.app-shell[data-ui-kit='material3']) .m3-aibo-card-header > :first-child {
+  min-width: 0;
+}
+
+:where(.app-shell[data-ui-kit='material3']) .m3-aibo-card-header > :not(:first-child) {
+  flex: 0 0 auto;
+  margin-top: 0;
+  white-space: nowrap;
+}
+
+/* Panel headers are a title/action bar, not a stacked card heading. Keep
+ * badges and tool buttons on the same row while allowing long titles to
+ * truncate inside the available space. */
+:where(.app-shell[data-ui-kit='material3']) .panel-heading {
+  flex-direction: row;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  min-width: 0;
+}
+
+:where(.app-shell[data-ui-kit='material3']) .panel-heading > :first-child {
+  min-width: 0;
+  flex: 1 1 auto;
+}
+
+:where(.app-shell[data-ui-kit='material3']) .panel-heading > [data-slot='card-title'] {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+:where(.app-shell[data-ui-kit='material3']) .panel-heading > :not(:first-child) {
+  flex: 0 0 auto;
+  margin-top: 0;
+  white-space: nowrap;
+}
+
+:where(.app-shell[data-ui-kit='material3']) .panel-heading-actions,
+:where(.app-shell[data-ui-kit='material3']) .timeline-heading-actions,
+:where(.app-shell[data-ui-kit='material3']) .project-action-heading-actions,
+:where(.app-shell[data-ui-kit='material3']) .workspace-toolbar {
+  flex-wrap: nowrap;
 }
 
 :where(.app-shell[data-ui-kit='material3']) .m3-aibo-card-content {
@@ -239,21 +345,32 @@
 
 :where(.app-shell[data-ui-kit='material3']) .m3-aibo-card-title {
   color: var(--m3c-on-surface);
-  font-size: 15px;
-  font-weight: 600;
-  line-height: 1.3;
+  font-size: var(--m3-title-medium-size);
+  font-weight: var(--m3-title-medium-weight);
+  line-height: var(--m3-title-medium-line-height);
+  letter-spacing: var(--m3-title-medium-tracking);
 }
 
 :where(.app-shell[data-ui-kit='material3']) .m3-aibo-badge {
   display: inline-flex;
   align-items: center;
-  min-height: 20px;
-  border-radius: 7px;
-  padding: 1px 8px;
+  min-height: 24px;
+  gap: 4px;
+  border: 1px solid transparent;
+  border-radius: var(--m3-shape-full);
+  padding: 2px 12px;
   background: var(--m3c-secondary-container);
   color: var(--m3c-on-secondary-container);
-  font-size: 11px;
-  font-weight: 600;
+  font-size: var(--m3-label-small-size);
+  font-weight: var(--m3-label-small-weight);
+  line-height: var(--m3-label-small-line-height);
+  letter-spacing: var(--m3-label-small-tracking);
+}
+
+:where(.app-shell[data-ui-kit='material3']) .m3-aibo-badge > svg {
+  width: 16px;
+  height: 16px;
+  flex: none;
 }
 
 :where(.app-shell[data-ui-kit='material3']) .m3-aibo-badge-outline {
@@ -285,20 +402,24 @@
   width: 100%;
   border: 0;
   border-bottom: 1px solid var(--m3c-outline);
-  border-radius: 4px 4px 0 0;
-  padding: 12px 16px;
+  border-radius: var(--m3-shape-extra-small) var(--m3-shape-extra-small) 0 0;
+  padding: 8px 16px;
   background: var(--m3c-surface-container-highest);
   color: var(--m3c-on-surface);
   outline: none;
-  transition: background-color 150ms ease, border-color 150ms ease;
+  font-size: var(--m3-body-large-size);
+  font-weight: var(--m3-body-large-weight);
+  line-height: var(--m3-body-large-line-height);
+  letter-spacing: var(--m3-body-large-tracking);
+  transition: background-color var(--m3-easing-fast), border-color var(--m3-easing-fast);
 }
 
 :where(.app-shell[data-ui-kit='material3']) .m3-aibo-input {
-  min-height: 44px;
+  min-height: 56px;
 }
 
 :where(.app-shell[data-ui-kit='material3']) .m3-aibo-textarea {
-  min-height: 84px;
+  min-height: 96px;
   resize: vertical;
 }
 
@@ -315,8 +436,10 @@
 
 :where(.app-shell[data-ui-kit='material3']) .m3-aibo-label {
   color: var(--m3c-on-surface-variant);
-  font-size: 12px;
-  font-weight: 600;
+  font-size: var(--m3-label-medium-size);
+  font-weight: var(--m3-label-medium-weight);
+  line-height: var(--m3-label-medium-line-height);
+  letter-spacing: var(--m3-label-medium-tracking);
 }
 
 :where(.app-shell[data-ui-kit='material3']) .m3-aibo-separator {
@@ -359,7 +482,7 @@
   display: grid;
   place-items: center;
   padding: 24px;
-  background: rgb(0 0 0 / 0.52);
+  background: color-mix(in srgb, var(--m3c-scrim) 52%, transparent);
 }
 
 .app-shell[data-ui-kit='material3'] .m3-aibo-alert-dialog {
@@ -403,4 +526,43 @@
 .app-shell[data-ui-kit='material3'] .appearance-theme-option.active {
   border-color: var(--m3c-primary);
   background: var(--m3c-primary-container);
+}
+
+/* MD3 snackbar/toast roles: pair each container with its matching on-color so
+ * the message type is recognizable without relying on text alone. */
+:where(.app-shell[data-ui-kit='material3']) .toast {
+  border: 1px solid var(--m3c-outline-variant);
+  border-radius: var(--m3-shape-extra-small);
+  padding: 12px 16px;
+  color: var(--m3c-on-surface);
+  background: var(--m3c-surface-container-high);
+  box-shadow: var(--m3-elevation-2);
+  font-size: var(--m3-body-medium-size);
+  line-height: var(--m3-body-medium-line-height);
+  letter-spacing: var(--m3-body-medium-tracking);
+}
+
+:where(.app-shell[data-ui-kit='material3']) .notice-toast,
+:where(.app-shell[data-ui-kit='material3']) .info-toast {
+  border-color: var(--m3c-primary);
+  color: var(--m3c-on-primary-container);
+  background: var(--m3c-primary-container);
+}
+
+:where(.app-shell[data-ui-kit='material3']) .success-toast {
+  border-color: var(--m3c-secondary);
+  color: var(--m3c-on-secondary-container);
+  background: var(--m3c-secondary-container);
+}
+
+:where(.app-shell[data-ui-kit='material3']) .warning-toast {
+  border-color: var(--m3c-tertiary);
+  color: var(--m3c-on-tertiary-container);
+  background: var(--m3c-tertiary-container);
+}
+
+:where(.app-shell[data-ui-kit='material3']) .error-toast {
+  border-color: var(--m3c-error);
+  color: var(--m3c-on-error-container);
+  background: var(--m3c-error-container);
 }

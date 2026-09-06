@@ -18,6 +18,61 @@ import ColumnSplitterComponent from './shadcn/ColumnSplitter.svelte';
 import type { UiKitAdapter, UiKitRegistration, UiThemeRegistration } from '../contract';
 import { lightStatusThemeTokens, statusThemeTokens } from '../theme-tokens';
 
+type ShadcnColorTokens = {
+  background: string;
+  foreground: string;
+  card: string;
+  cardForeground: string;
+  popover: string;
+  popoverForeground: string;
+  primary: string;
+  primaryForeground: string;
+  primaryHover: string;
+  secondary: string;
+  secondaryForeground: string;
+  secondaryHover: string;
+  muted: string;
+  mutedForeground: string;
+  accent: string;
+  accentForeground: string;
+  destructive: string;
+  destructiveForeground: string;
+  destructiveSurface: string;
+  destructiveHover: string;
+  border: string;
+  input: string;
+  ring: string;
+};
+
+function semanticTokens(colors: ShadcnColorTokens): Record<`--${string}`, string> {
+  return {
+    '--background': colors.background,
+    '--foreground': colors.foreground,
+    '--card': colors.card,
+    '--card-foreground': colors.cardForeground,
+    '--popover': colors.popover,
+    '--popover-foreground': colors.popoverForeground,
+    '--primary': colors.primary,
+    '--primary-foreground': colors.primaryForeground,
+    '--primary-hover': colors.primaryHover,
+    '--secondary': colors.secondary,
+    '--secondary-foreground': colors.secondaryForeground,
+    '--secondary-hover': colors.secondaryHover,
+    '--muted': colors.muted,
+    '--muted-foreground': colors.mutedForeground,
+    '--accent': colors.accent,
+    '--accent-foreground': colors.accentForeground,
+    '--destructive': colors.destructive,
+    '--destructive-foreground': colors.destructiveForeground,
+    '--destructive-surface': colors.destructiveSurface,
+    '--destructive-hover': colors.destructiveHover,
+    '--border': colors.border,
+    '--input': colors.input,
+    '--ring': colors.ring,
+    '--radius': '0.5rem',
+  };
+}
+
 export const shadcnUiKit: UiKitAdapter = {
   AlertDialog: AlertDialogComponent,
   Badge: BadgeComponent,
@@ -44,6 +99,7 @@ function theme(
   accentHover: string,
   accentSoft: string,
   accentText: string,
+  primaryForeground: string,
 ): UiThemeRegistration {
   return {
     id,
@@ -52,6 +108,31 @@ function theme(
     colorScheme: 'dark',
     swatches: ['#09090b', '#18181b', accent],
     tokens: {
+      ...semanticTokens({
+        background: '#09090b',
+        foreground: '#fafafa',
+        card: '#18181b',
+        cardForeground: '#fafafa',
+        popover: '#18181b',
+        popoverForeground: '#fafafa',
+        primary: accent,
+        primaryForeground,
+        primaryHover: accentHover,
+        secondary: '#27272a',
+        secondaryForeground: '#fafafa',
+        secondaryHover: '#3f3f46',
+        muted: '#18181b',
+        mutedForeground: '#a1a1aa',
+        accent: accentSoft,
+        accentForeground: accentText,
+        destructive: '#ef4444',
+        destructiveForeground: '#fff1f2',
+        destructiveSurface: '#451a1a',
+        destructiveHover: '#dc2626',
+        border: '#27272a',
+        input: '#3f3f46',
+        ring: accent,
+      }),
       '--aibo-color-scheme': 'dark',
       '--aibo-bg': '#09090b',
       '--aibo-text': '#fafafa',
@@ -75,13 +156,13 @@ function theme(
 export const shadcnUiKitRegistration: UiKitRegistration = {
   id: 'shadcn',
   label: 'shadcn-svelte',
-  description: '紧凑、中性，适合高密度桌面工作流。',
+  description: '中性、清晰，遵循 shadcn-svelte 的默认组件密度。',
   adapter: shadcnUiKit,
   defaultThemeId: 'zinc',
   themes: [
-    theme('zinc', 'Zinc', '中性灰', '#fafafa', '#e4e4e7', '#27272a', '#fafafa'),
-    theme('blue', 'Blue', '沉静蓝', '#60a5fa', '#93c5fd', '#172554', '#dbeafe'),
-    theme('emerald', 'Emerald', '清晰绿', '#34d399', '#6ee7b7', '#052e16', '#d1fae5'),
+    theme('zinc', 'Zinc', '中性灰', '#fafafa', '#e4e4e7', '#27272a', '#fafafa', '#18181b'),
+    theme('blue', 'Blue', '沉静蓝', '#60a5fa', '#93c5fd', '#172554', '#dbeafe', '#172554'),
+    theme('emerald', 'Emerald', '清晰绿', '#34d399', '#6ee7b7', '#052e16', '#d1fae5', '#052e16'),
     {
       id: 'light',
       label: 'Light',
@@ -89,6 +170,31 @@ export const shadcnUiKitRegistration: UiKitRegistration = {
       colorScheme: 'light',
       swatches: ['#fafafa', '#ffffff', '#18181b'],
       tokens: {
+        ...semanticTokens({
+          background: '#fafafa',
+          foreground: '#09090b',
+          card: '#ffffff',
+          cardForeground: '#09090b',
+          popover: '#ffffff',
+          popoverForeground: '#09090b',
+          primary: '#18181b',
+          primaryForeground: '#fafafa',
+          primaryHover: '#27272a',
+          secondary: '#f4f4f5',
+          secondaryForeground: '#18181b',
+          secondaryHover: '#e4e4e7',
+          muted: '#f4f4f5',
+          mutedForeground: '#52525b',
+          accent: '#f4f4f5',
+          accentForeground: '#18181b',
+          destructive: '#dc2626',
+          destructiveForeground: '#fff7ed',
+          destructiveSurface: '#fef2f2',
+          destructiveHover: '#b91c1c',
+          border: '#e4e4e7',
+          input: '#d4d4d8',
+          ring: '#52525b',
+        }),
         '--aibo-color-scheme': 'light',
         '--aibo-bg': '#fafafa',
         '--aibo-text': '#09090b',

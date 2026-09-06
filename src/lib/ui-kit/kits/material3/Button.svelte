@@ -35,7 +35,7 @@
     link: 'text',
   };
   const sizeMap: Record<ButtonSize, 'xs' | 's' | 'm'> = {
-    icon: 'xs',
+    icon: 's',
     sm: 'xs',
     default: 's',
     lg: 'm',
