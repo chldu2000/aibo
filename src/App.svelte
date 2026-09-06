@@ -260,7 +260,12 @@
   let composerDrafts = $state<ComposerDrafts>({});
   let draftHydratingSessionId = $state<string | null>(null);
   let draftHydrationGeneration = 0;
+  // This is intentionally not Svelte state: changing it marks a user edit
+  // during an in-flight desktop draft read without restarting hydration.
+  let draftHydrationEditGeneration = 0;
   let draftWriteQueue: Promise<void> = Promise.resolve();
+  const pendingDraftWrites = new Map<string, { text: string; sendFailed: boolean }>();
+  const draftWriteTimers = new Map<string, ReturnType<typeof setTimeout>>();
   let restoringSelection = $state(false);
   let sessionsLoadingWorkspaceIds = $state<string[]>([]);
   let sessionLoadGenerations = $state<Record<string, number>>({});
@@ -398,6 +403,7 @@
     const enabled = desktop;
     const draft = id ? untrack(() => composerDrafts[id]?.text ?? '') : '';
     const generation = ++draftHydrationGeneration;
+    const editGeneration = draftHydrationEditGeneration;
     draftHydratingSessionId = enabled && id ? id : null;
     untrack(() => {
       composerText = draft;
@@ -408,6 +414,11 @@
       .then((remoteDraft) => {
         if (generation !== draftHydrationGeneration || selectedSessionId !== id) return;
         if (!remoteDraft) return;
+        // The user may start editing while SQLite is loading. Never let an
+        // older remote value replace that newer input.
+        if (draftHydrationEditGeneration !== editGeneration) return;
+        const localDraft = composerDrafts[id];
+        if (localDraft?.updatedAt && localDraft.updatedAt > remoteDraft.updatedAt) return;
         const next = {
           ...composerDrafts,
           [id]: {
@@ -431,6 +442,38 @@
       });
   });
 
+  function flushComposerDraftWrite(sessionId: string): void {
+    const timer = draftWriteTimers.get(sessionId);
+    if (timer) clearTimeout(timer);
+    draftWriteTimers.delete(sessionId);
+    const pending = pendingDraftWrites.get(sessionId);
+    if (!pending) return;
+    pendingDraftWrites.delete(sessionId);
+    draftWriteQueue = draftWriteQueue
+      .then(() => saveComposerDraft(sessionId, pending.text, pending.sendFailed).then(() => undefined))
+      .catch(() => undefined);
+  }
+
+  function scheduleComposerDraftWrite(
+    sessionId: string,
+    text: string,
+    sendFailed: boolean,
+    immediate = false,
+  ): void {
+    pendingDraftWrites.set(sessionId, { text, sendFailed });
+    const previous = draftWriteTimers.get(sessionId);
+    if (previous) clearTimeout(previous);
+    if (immediate) {
+      flushComposerDraftWrite(sessionId);
+      return;
+    }
+    const timer = setTimeout(() => {
+      draftWriteTimers.delete(sessionId);
+      flushComposerDraftWrite(sessionId);
+    }, 250);
+    draftWriteTimers.set(sessionId, timer);
+  }
+
   $effect(() => {
     const id = selectedSessionId;
     const text = composerText;
@@ -450,9 +493,9 @@
       }
       composerDrafts = next;
       writePersistedComposerDrafts(next);
-      draftWriteQueue = draftWriteQueue
-        .then(() => saveComposerDraft(id, text, sendFailed).then(() => undefined))
-        .catch(() => undefined);
+      // Empty text means a successful send cleared the draft; persist that
+      // deletion immediately so a quick app restart cannot resurrect it.
+      scheduleComposerDraftWrite(id, text, sendFailed, !text.trim());
     });
   });
 
@@ -781,7 +824,6 @@
 
   function clearSelectedSessionContext() {
     selectedSessionId = null;
-    pendingUserInputs = [];
     queueSnapshot = null;
     timeline = [];
     codexThreadSnapshot = null;
@@ -809,6 +851,7 @@
   }
 
   function handleComposerInput(value: string): void {
+    draftHydrationEditGeneration += 1;
     if (selectedSessionId && composerDrafts[selectedSessionId]?.sendFailed) {
       const next = {
         ...composerDrafts,

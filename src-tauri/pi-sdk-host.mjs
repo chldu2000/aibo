@@ -14,6 +14,11 @@ let unsubscribe = null;
 let resumedSession = false;
 let nextCoreToolRequestId = 1;
 const pendingCoreToolRequests = new Map();
+// Prompt and configuration requests are dispatched concurrently by the JSONL
+// reader. Keep a small host-side guard so a model/thinking change cannot race
+// a newly started turn between the isStreaming check and the SDK call.
+let turnInFlight = false;
+let configurationMutationInFlight = false;
 
 // These are the Pi built-ins that have a direct, non-interactive SDK
 // equivalent in the embedded Aibo host.  TUI-only commands (for example
@@ -376,7 +381,10 @@ async function handle(message) {
     }
     if (!session) throw new Error("Pi SDK session has not been started");
     if (method === "prompt") {
-      if (session.isStreaming) throw new Error("Pi session already has an active turn");
+      if (session.isStreaming || turnInFlight || configurationMutationInFlight) {
+        throw new Error("Pi session already has an active turn or configuration change");
+      }
+      turnInFlight = true;
       activeTurnId = String(params.turnId ?? "");
       // Return an acknowledgement immediately; stream events continue on the
       // same JSONL channel and the Rust adapter persists them as they arrive.
@@ -384,6 +392,7 @@ async function handle(message) {
         emitEvent({ type: "agent_error", error: error instanceof Error ? error.message : String(error) });
       }).finally(() => {
         activeTurnId = null;
+        turnInFlight = false;
       });
       respond(id, { accepted: true, turnId: activeTurnId });
       return;
@@ -427,7 +436,9 @@ async function handle(message) {
       return;
     }
     if (method === "compact") {
-      if (session.isStreaming) throw new Error("Pi compact requires an idle session");
+      if (session.isStreaming || turnInFlight || configurationMutationInFlight) {
+        throw new Error("Pi compact requires an idle session");
+      }
       const instructions = String(params.instructions ?? "").trim();
       const result = await session.compact(instructions || undefined);
       respond(id, { accepted: true, result });
@@ -442,7 +453,15 @@ async function handle(message) {
         });
         return;
       }
-      session.setThinkingLevel(requested);
+      if (session.isStreaming || turnInFlight || configurationMutationInFlight) {
+        throw new Error("Pi thinking level can only change while the session is idle");
+      }
+      configurationMutationInFlight = true;
+      try {
+        session.setThinkingLevel(requested);
+      } finally {
+        configurationMutationInFlight = false;
+      }
       respond(id, {
         level: session.thinkingLevel,
         availableLevels: session.getAvailableThinkingLevels(),
@@ -470,7 +489,15 @@ async function handle(message) {
         model = modelRuntime.getAvailableSnapshot().find((candidate) => candidate.id === reference);
       }
       if (!model) throw new Error(`Model not found: ${reference}`);
-      await session.setModel(model);
+      if (session.isStreaming || turnInFlight || configurationMutationInFlight) {
+        throw new Error("Pi model can only change while the session is idle");
+      }
+      configurationMutationInFlight = true;
+      try {
+        await session.setModel(model);
+      } finally {
+        configurationMutationInFlight = false;
+      }
       respond(id, {
         provider: model.provider,
         id: model.id,
