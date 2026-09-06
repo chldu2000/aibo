@@ -88,6 +88,49 @@
   font-family: var(--m3-font);
 }
 
+:where(.app-shell[data-ui-kit='material3']) .side-panel-tabs-shell {
+  background: var(--m3c-surface-container);
+}
+
+:where(.app-shell[data-ui-kit='material3']) .side-panel-tabs {
+  gap: 0;
+  border-bottom: 1px solid var(--m3c-outline-variant);
+}
+
+.app-shell[data-ui-kit='material3'] .side-panel-tabs .m3-aibo-button.m3-aibo-button-ghost {
+  position: relative;
+  height: 40px;
+  min-height: 40px;
+  border-radius: var(--m3-shape-none);
+  padding: 0 12px;
+  color: var(--m3c-on-surface-variant);
+  background: transparent;
+  font-size: var(--m3-label-medium-size);
+  font-weight: var(--m3-label-medium-weight);
+  letter-spacing: var(--m3-label-medium-tracking);
+  box-shadow: none;
+}
+
+.app-shell[data-ui-kit='material3'] .side-panel-tabs .m3-aibo-button.m3-aibo-button-ghost:hover:not(:disabled) {
+  color: var(--m3c-on-surface);
+  background: color-mix(in srgb, var(--m3c-on-surface) 8%, transparent);
+}
+
+.app-shell[data-ui-kit='material3'] .side-panel-tabs .m3-aibo-button.m3-aibo-button-ghost[aria-selected='true'] {
+  color: var(--m3c-primary);
+}
+
+.app-shell[data-ui-kit='material3'] .side-panel-tabs .m3-aibo-button.m3-aibo-button-ghost[aria-selected='true']::after {
+  position: absolute;
+  right: 22%;
+  bottom: -1px;
+  left: 22%;
+  height: 3px;
+  border-radius: var(--m3-shape-full) var(--m3-shape-full) 0 0;
+  background: var(--m3c-primary);
+  content: '';
+}
+
 :where(.app-shell[data-ui-kit='material3']) .m3-aibo-button {
   display: inline-flex;
   align-items: center;

@@ -4,6 +4,35 @@
   letter-spacing: 0;
 }
 
+.app-shell[data-ui-kit='shadcn'] .side-panel-tabs-shell {
+  background: var(--card);
+}
+
+.app-shell[data-ui-kit='shadcn'] .side-panel-tabs {
+  border-radius: calc(var(--radius) - 2px);
+  padding: 2px;
+  background: var(--muted);
+}
+
+.app-shell[data-ui-kit='shadcn'] .side-panel-tabs [data-slot='button'] {
+  height: 28px;
+  min-height: 28px;
+  border-radius: calc(var(--radius) - 4px);
+  padding: 0 8px;
+  color: var(--muted-foreground);
+  background: transparent;
+  font-size: 11px;
+  font-weight: 500;
+  box-shadow: none;
+  transition: color 150ms ease, background-color 150ms ease, box-shadow 150ms ease;
+}
+
+.app-shell[data-ui-kit='shadcn'] .side-panel-tabs [data-slot='button'][aria-selected='true'] {
+  color: var(--foreground);
+  background: var(--background);
+  box-shadow: 0 1px 2px color-mix(in srgb, var(--foreground) 8%, transparent);
+}
+
 .app-shell[data-ui-kit='shadcn'] .git-summary-card {
   border-color: var(--border);
   background: transparent;

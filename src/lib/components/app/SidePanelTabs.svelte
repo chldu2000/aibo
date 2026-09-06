@@ -9,45 +9,57 @@
 
   let { activeView, onSelect }: SidePanelTabsProps = $props();
 
+  const views: readonly SidePanelView[] = ['git', 'context'];
+
+  function focusView(view: SidePanelView): void {
+    requestAnimationFrame(() => document.getElementById(`side-panel-tab-${view}`)?.focus());
+  }
+
   function moveTab(event: KeyboardEvent): void {
+    const currentIndex = views.indexOf(activeView);
+    let nextView: SidePanelView | undefined;
+    if (event.key === 'ArrowLeft') nextView = views[(currentIndex - 1 + views.length) % views.length];
+    if (event.key === 'ArrowRight') nextView = views[(currentIndex + 1) % views.length];
+    if (event.key === 'Home') nextView = views[0];
+    if (event.key === 'End') nextView = views[views.length - 1];
+    if (!nextView) return;
     event.preventDefault();
-    const nextView: SidePanelView = activeView === 'context' ? 'git' : 'context';
     onSelect(nextView);
-    requestAnimationFrame(() => document.getElementById(`side-panel-tab-${nextView}`)?.focus());
+    focusView(nextView);
   }
 </script>
 
-<div class="side-panel-tabs" aria-label="侧边栏视图" role="tablist">
-  <Button
-    variant={activeView === 'context' ? 'secondary' : 'ghost'}
-    size="sm"
-    type="button"
-    role="tab"
-    id="side-panel-tab-context"
-    aria-selected={activeView === 'context'}
-    tabindex={activeView === 'context' ? 0 : -1}
-    onkeydown={(event) => {
-      if (event.key === 'ArrowLeft' || event.key === 'ArrowRight') moveTab(event);
-    }}
-    onclick={() => onSelect('context')}
-  >
-    <Icon name="file" size={13} />
-    上下文
-  </Button>
-  <Button
-    variant={activeView === 'git' ? 'secondary' : 'ghost'}
-    size="sm"
-    type="button"
-    role="tab"
-    id="side-panel-tab-git"
-    aria-selected={activeView === 'git'}
-    tabindex={activeView === 'git' ? 0 : -1}
-    onkeydown={(event) => {
-      if (event.key === 'ArrowLeft' || event.key === 'ArrowRight') moveTab(event);
-    }}
-    onclick={() => onSelect('git')}
-  >
-    <Icon name="branch" size={13} />
-    Git
-  </Button>
+<div class="side-panel-tabs-shell">
+  <div class="side-panel-tabs" aria-label="侧边栏视图" role="tablist">
+    <Button
+      variant="ghost"
+      size="sm"
+      type="button"
+      role="tab"
+      id="side-panel-tab-git"
+      aria-controls="side-panel-content-git"
+      aria-selected={activeView === 'git'}
+      tabindex={activeView === 'git' ? 0 : -1}
+      onkeydown={moveTab}
+      onclick={() => onSelect('git')}
+    >
+      <Icon name="branch" size={13} data-icon="inline-start" />
+      Git
+    </Button>
+    <Button
+      variant="ghost"
+      size="sm"
+      type="button"
+      role="tab"
+      id="side-panel-tab-context"
+      aria-controls="side-panel-content-context"
+      aria-selected={activeView === 'context'}
+      tabindex={activeView === 'context' ? 0 : -1}
+      onkeydown={moveTab}
+      onclick={() => onSelect('context')}
+    >
+      <Icon name="file" size={13} data-icon="inline-start" />
+      上下文
+    </Button>
+  </div>
 </div>

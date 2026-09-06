@@ -397,7 +397,7 @@
   let settingsOpen = $state(false);
   let diagnosticsOpen = $state(false);
   let sidePanelOpen = $state(true);
-  let sidePanelView = $state<SidePanelView>('context');
+  let sidePanelView = $state<SidePanelView>('git');
   const inspectorOpen = $derived(sidePanelOpen);
   let workspaceSidebarWidth = $state(260);
   let inspectorWidth = $state(320);

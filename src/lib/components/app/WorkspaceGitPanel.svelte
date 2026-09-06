@@ -233,6 +233,8 @@
 {/snippet}
 
 <Card as="aside" class="inspector" data-ui-component="workspace-git-panel" aria-label="Git 源代码管理">
+  <SidePanelTabs {activeView} onSelect={onSelectView} />
+  <div id="side-panel-content-git" class="side-panel-view" role="tabpanel" aria-labelledby="side-panel-tab-git">
   <CardHeader class="panel-heading">
     <div>
       <CardTitle>源代码管理</CardTitle>
@@ -255,7 +257,6 @@
       </Button>
     </div>
   </CardHeader>
-  <SidePanelTabs {activeView} onSelect={onSelectView} />
   <Separator />
   <div class="git-section-toolbar">
     <div class="git-section-tabs" role="tablist" aria-label="Git 视图">
@@ -529,5 +530,6 @@
         {/if}
       {/if}
     {/if}
+  </div>
   </div>
 </Card>

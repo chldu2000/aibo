@@ -143,6 +143,8 @@
 </script>
 
 <Card as="aside" class="inspector" hidden={!visible} data-ui-component="inspector" aria-label="会话上下文">
+  <SidePanelTabs {activeView} onSelect={onSelectView} />
+  <div id="side-panel-content-context" class="side-panel-view" role="tabpanel" aria-labelledby="side-panel-tab-context">
   <CardHeader class="panel-heading">
     <CardTitle>上下文</CardTitle>
     {#if session}
@@ -153,7 +155,6 @@
       <Badge variant="secondary">未选择</Badge>
     {/if}
   </CardHeader>
-  <SidePanelTabs {activeView} onSelect={onSelectView} />
   <Separator />
 
   <ProjectActionsPanel
@@ -599,5 +600,6 @@
     <Button variant="ghost" size="sm" type="button" onclick={onRefresh} disabled={busy}>
       <Icon name="refresh" size={13} /> 刷新数据
     </Button>
+  </div>
   </div>
 </Card>
