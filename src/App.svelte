@@ -2531,8 +2531,9 @@
       onSelectModelConfiguration={(model, reasoningEffort) => void applySessionModelConfiguration(model, reasoningEffort)}
       onCompact={() => void compactCurrentSession()}
     />
-    {#if sidePanelView === 'context'}
-    <Inspector
+    {#if sidePanelOpen}
+      {#if sidePanelView === 'context'}
+      <Inspector
       visible={true}
       workspace={selectedWorkspace}
       session={selectedSession}
@@ -2597,20 +2598,21 @@
       }}
       onRefresh={() => void refresh()}
       onSelectView={selectSidePanelView}
-    />
-    {:else if sidePanelView === 'git'}
-      <WorkspaceGitPanel
-        workspace={selectedWorkspace}
-        desktop={desktop}
-        changes={workspaceChanges}
-        loading={workspaceChangesLoading}
-        error={workspaceChangesError}
-        busyPath={workspaceGitBusyPath}
-        activeView={sidePanelView}
-        onRefresh={() => selectedWorkspaceId && void refreshWorkspaceChanges(selectedWorkspaceId)}
-        onApplyFileAction={(workspaceId, path, action) => void applyWorkspaceGitAction(workspaceId, path, action)}
-        onSelectView={selectSidePanelView}
       />
+      {:else if sidePanelView === 'git'}
+        <WorkspaceGitPanel
+          workspace={selectedWorkspace}
+          desktop={desktop}
+          changes={workspaceChanges}
+          loading={workspaceChangesLoading}
+          error={workspaceChangesError}
+          busyPath={workspaceGitBusyPath}
+          activeView={sidePanelView}
+          onRefresh={() => selectedWorkspaceId && void refreshWorkspaceChanges(selectedWorkspaceId)}
+          onApplyFileAction={(workspaceId, path, action) => void applyWorkspaceGitAction(workspaceId, path, action)}
+          onSelectView={selectSidePanelView}
+        />
+      {/if}
     {/if}
   </main>
 
