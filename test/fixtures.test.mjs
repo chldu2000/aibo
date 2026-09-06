@@ -145,6 +145,7 @@ for (const fixture of [
   ["codex", "events.macos.redacted.jsonl"],
   ["codex", "events.tools.redacted.jsonl"],
   ["codex", "events.recovery.redacted.jsonl"],
+  ["codex", "events.user-input.redacted.jsonl"],
   ["codex", "lifecycle.redacted.jsonl"],
   ["pi", "events.redacted.jsonl"],
   ["pi", "events.macos.redacted.jsonl"],

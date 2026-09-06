@@ -1,0 +1,5 @@
+{"payload":{"method":"thread/started","params":{"thread":{"id":"thread-user-input"}}}}
+{"payload":{"method":"turn/started","params":{"turn":{"id":"turn-user-input"}}}}
+{"payload":{"method":"item/tool/requestUserInput","id":91,"params":{"turnId":"turn-user-input","isBlocking":true,"questions":[{"id":"scope","header":"Scope","question":"Which area should be reviewed?","options":[{"label":"Source","description":"Review source files"},{"label":"Tests","description":"Review test files"}],"isOther":true}]}}}
+{"payload":{"method":"serverRequest/resolved","params":{"requestId":91}}}
+{"payload":{"method":"turn/completed","params":{"turn":{"id":"turn-user-input","status":"completed"}}}}

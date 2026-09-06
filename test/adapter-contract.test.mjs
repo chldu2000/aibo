@@ -19,6 +19,7 @@ function codexFixtureEvents(records, {
 } = {}) {
   let sequence = 0;
   let externalSessionId = initialExternalSessionId;
+  const pendingUserInputIds = new Set();
   return records.flatMap((record) => {
     const payload = record.payload ?? record;
     const params = payload.params ?? {};
@@ -68,8 +69,22 @@ function codexFixtureEvents(records, {
         eventPayload = { kind: params.kind, availableDecisions: params.availableDecisions };
         correlation = { requestId: payload.id, itemId: params.itemId };
         break;
+      case "item/tool/requestUserInput":
+      case "tool/requestUserInput":
+        type = "user_input.requested";
+        pendingUserInputIds.add(String(payload.id));
+        eventPayload = {
+          requestId: payload.id,
+          questions: params.questions,
+          isBlocking: params.isBlocking,
+        };
+        correlation = { requestId: payload.id };
+        break;
       case "serverRequest/resolved":
-        type = "approval.resolved";
+        type = pendingUserInputIds.has(String(params.requestId))
+          ? "user_input.resolved"
+          : "approval.resolved";
+        pendingUserInputIds.delete(String(params.requestId));
         eventPayload = { requestId: params.requestId };
         correlation = { requestId: params.requestId };
         break;
@@ -211,6 +226,32 @@ test("Codex fixture replay preserves tool lifecycle and settles the session", as
     "usage.updated",
     "turn.completed",
   ]);
+  assert.equal(snapshot.state, "idle");
+  assert.equal(snapshot.rejectedCount, 0);
+});
+
+test("Codex user-input fixture replays request, response, and turn completion", async () => {
+  const records = await fixtureRecords("codex", "events.user-input.redacted.jsonl");
+  const events = codexFixtureEvents(records, {
+    sessionId: "fixture-user-input-session",
+    externalSessionId: "thread-user-input",
+  });
+  const replay = new AgentEventReplay({
+    agent: "codex",
+    workspaceId: "fixture-workspace",
+    sessionId: "fixture-user-input-session",
+    externalSessionId: "thread-user-input",
+    generationId: "fixture-codex-generation",
+  });
+  const snapshot = replay.replay(events);
+  assert.deepEqual(snapshot.acceptedTypes, [
+    "session.started",
+    "turn.started",
+    "user_input.requested",
+    "user_input.resolved",
+    "turn.completed",
+  ]);
+  assert.equal(snapshot.pendingUserInputCount, 0);
   assert.equal(snapshot.state, "idle");
   assert.equal(snapshot.rejectedCount, 0);
 });

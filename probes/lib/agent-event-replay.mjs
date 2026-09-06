@@ -11,6 +11,8 @@ const EVENT_TYPES = new Set([
   "tool.completed",
   "approval.requested",
   "approval.resolved",
+  "user_input.requested",
+  "user_input.resolved",
   "usage.updated",
   "queue.updated",
   "compaction.started",
@@ -29,6 +31,7 @@ const SESSION_STATES = new Set([
   "idle",
   "running",
   "waiting_approval",
+  "waiting_user",
   "interrupted",
   "failed",
   "closed",
@@ -42,6 +45,8 @@ const IDEMPOTENT_EVENT_TYPES = new Set([
   "tool.completed",
   "approval.requested",
   "approval.resolved",
+  "user_input.requested",
+  "user_input.resolved",
   "turn.completed",
   "turn.failed",
   "adapter.crashed",
@@ -76,6 +81,7 @@ export class AgentEventReplay {
     this.eventIds = new Set();
     this.fingerprints = new Set();
     this.pendingApprovals = new Set();
+    this.pendingUserInputs = new Set();
   }
 
   restart(generationId) {
@@ -87,6 +93,8 @@ export class AgentEventReplay {
     this.state = "starting";
     this.eventIds.clear();
     this.fingerprints.clear();
+    this.pendingApprovals.clear();
+    this.pendingUserInputs.clear();
   }
 
   accept(event) {
@@ -137,6 +145,7 @@ export class AgentEventReplay {
       ignoredCount: this.ignored.length,
       rejectedCount: this.rejected.length,
       pendingApprovalCount: this.pendingApprovals.size,
+      pendingUserInputCount: this.pendingUserInputs.size,
       acceptedTypes: this.accepted.map((event) => event.type),
     };
   }
@@ -182,8 +191,19 @@ export class AgentEventReplay {
       this.state = "running";
       return;
     }
+    if (event.type === "user_input.requested") {
+      this.pendingUserInputs.add(String(event.correlation?.requestId ?? event.payload.requestId ?? event.eventId));
+      this.state = "waiting_user";
+      return;
+    }
+    if (event.type === "user_input.resolved") {
+      this.pendingUserInputs.delete(String(event.correlation?.requestId ?? event.payload.requestId ?? ""));
+      this.state = "running";
+      return;
+    }
     if (event.type === "adapter.crashed") {
       this.pendingApprovals.clear();
+      this.pendingUserInputs.clear();
       this.state = "interrupted";
       return;
     }
