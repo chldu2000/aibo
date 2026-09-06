@@ -255,6 +255,13 @@ Codex 使用 `thread/goal/set/get/clear`，目标变更写入时间线并在会�
 - 记录 Agent 版本、模型、推理强度、profile、Skill、Goal、turn 和恢复结果。
 - 复跑自动化门禁与真实 provider smoke；Windows 只做后续兼容性验证。
 
+本轮 macOS 验证记录（2026-09-06）：
+
+- Codex transport：通过 `initialize`、`thread/list`。
+- Codex smoke：通过真实 turn、usage 事件和 `thread/resume`；审批 smoke 也收到并解析了请求/完成事件。
+- Codex fork/archive/unarchive：fork、archive 通过；unarchive 后的 `thread/list` 未及时返回子线程，保留为 provider 兼容性待复测项，不视为 Aibo UI 已通过。
+- Pi SDK host：协议初始化、命令发现和 session tree 检查通过；真实 turn 因当前选中 provider 没有 API key 被 host 明确拒绝，待完成 `/login` 或配置对应凭据后复测。
+
 ## 7. 持久化与事件要求
 
 新增或扩展的数据必须带 schema/version、workspace/session/turn 归属、时间戳和清理策略：

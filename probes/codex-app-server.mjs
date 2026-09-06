@@ -62,6 +62,24 @@ function startClient() {
   return client;
 }
 
+async function waitForThreadListing(client, threadId, expectedPresent, timeoutMs = 20_000) {
+  const startedAt = Date.now();
+  let lastData = [];
+  while (Date.now() - startedAt < timeoutMs) {
+    const listed = await client.rpcRequest("thread/list", {
+      limit: 100,
+      cwd,
+      sortKey: "updated_at",
+      sortDirection: "desc",
+    });
+    lastData = Array.isArray(listed.result?.data) ? listed.result.data : [];
+    const present = lastData.some((item) => item.id === threadId);
+    if (present === expectedPresent) return lastData;
+    await new Promise((resolve) => setTimeout(resolve, 250));
+  }
+  return lastData;
+}
+
 async function initialize(client) {
   const response = await client.rpcRequest("initialize", {
     clientInfo: {
@@ -169,15 +187,9 @@ try {
         threadId: forkedThreadId,
       });
       await archivedEvent;
-      const listedAfterArchive = await lifecycleClient.rpcRequest("thread/list", {
-        limit: 100,
-        cwd,
-        sortKey: "updated_at",
-        sortDirection: "desc",
-      });
+      const listedAfterArchive = await waitForThreadListing(lifecycleClient, forkedThreadId, false);
       archivePassed =
-        archived.result !== undefined &&
-        !listedAfterArchive.result?.data?.some((item) => item.id === forkedThreadId);
+        archived.result !== undefined && !listedAfterArchive.some((item) => item.id === forkedThreadId);
       assertProbe(archivePassed, "thread/archive did not remove the child from active listings");
       const unarchivedEvent = lifecycleClient.waitFor(
         (message) =>
@@ -189,15 +201,10 @@ try {
         threadId: forkedThreadId,
       });
       await unarchivedEvent;
-      const listedAfterUnarchive = await lifecycleClient.rpcRequest("thread/list", {
-        limit: 100,
-        cwd,
-        sortKey: "updated_at",
-        sortDirection: "desc",
-      });
+      const listedAfterUnarchive = await waitForThreadListing(lifecycleClient, forkedThreadId, true);
       unarchivePassed =
         unarchived.result?.thread?.id === forkedThreadId &&
-        listedAfterUnarchive.result?.data?.some((item) => item.id === forkedThreadId);
+        listedAfterUnarchive.some((item) => item.id === forkedThreadId);
       assertProbe(unarchivePassed, "thread/unarchive did not restore the child to active listings");
       await lifecycleClient.close();
       lifecycleClient = undefined;
