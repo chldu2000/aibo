@@ -2612,8 +2612,6 @@
       onAbort={() => void abortPrompt()}
       onSelectAccess={(mode) => void applySessionAccess(mode)}
       onLoadModels={() => void loadSessionModels()}
-      onSelectModel={(model) => void applySessionModel(model)}
-      onSelectReasoning={(reasoningEffort) => void applySessionReasoningEffort(reasoningEffort)}
       onSelectModelConfiguration={(model, reasoningEffort) => void applySessionModelConfiguration(model, reasoningEffort)}
       onCompact={() => void compactCurrentSession()}
     />

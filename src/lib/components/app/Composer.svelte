@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { Button, Card, Icon, Input, ModelMatrix, Textarea } from '$lib/ui-kit';
+  import { Button, Card, Icon, ModelMatrix, Textarea } from '$lib/ui-kit';
   import type { UiModelMatrixRow } from '$lib/ui-kit';
   import type { AgentCommand, AgentCommandCategory, ContextAttachment, SessionAccessMode, SessionExecutionProfile, SessionModelCatalog, WorkspacePathSuggestion } from '$lib/types';
 
@@ -30,8 +30,6 @@
     onAbort: () => void;
     onSelectAccess: (mode: SessionAccessMode) => void | Promise<void>;
     onLoadModels: () => void | Promise<void>;
-    onSelectModel: (model: string | null) => void | Promise<void>;
-    onSelectReasoning: (reasoningEffort: string | null) => void | Promise<void>;
     onSelectModelConfiguration: (model: string, reasoningEffort: string | null) => void | Promise<void>;
     onComposerInput: (text: string) => void;
     onSelectWorkspacePath: (path: string) => void | Promise<void>;
@@ -62,8 +60,6 @@
     onAbort,
     onSelectAccess,
     onLoadModels,
-    onSelectModel,
-    onSelectReasoning,
     onSelectModelConfiguration,
     onComposerInput,
     onSelectWorkspacePath,
@@ -80,7 +76,6 @@
   let attachmentMenuOpen = $state(false);
   let sessionMenuOpen = $state(false);
   let modelMenuOpen = $state(false);
-  let modelDraft = $state('');
 
   $effect(() => {
     // The category is a view preference for the current command list. A new
@@ -273,7 +268,6 @@
 
   function openModelMenu(): void {
     const nextOpen = !modelMenuOpen;
-    modelDraft = modelOverride || modelCatalog?.current?.reference || activeProfile?.model || '';
     modelMenuOpen = nextOpen;
     attachmentMenuOpen = false;
     sessionMenuOpen = false;
@@ -546,22 +540,13 @@
                   defaultTitle={selectedAgent === 'codex' ? '使用该模型的默认推理强度' : '切换模型，保留当前推理强度'}
                   disabled={matrixDisabled}
                   onSelect={(model, reasoningEffort) => {
-                    modelDraft = model;
                     modelMenuOpen = false;
                     void onSelectModelConfiguration(model, reasoningEffort);
                   }}
                 />
               {:else}
-                <div class="composer-suggestions-empty">未获取到可用模型，可手动输入模型标识。</div>
+                <div class="composer-suggestions-empty">未获取到可用模型，请稍后重试。</div>
               {/if}
-              <Input bind:value={modelDraft} class="composer-model-input" placeholder={selectedAgent === 'pi' ? 'provider/model' : 'provider/model，留空使用默认'} aria-label="模型标识" />
-              <Button
-                size="sm"
-                type="button"
-                class="composer-model-apply"
-                onclick={() => { modelMenuOpen = false; void onSelectModel(modelDraft.trim() || null); }}
-                disabled={modelCatalogLoading || busy || sessionArchived || selectedSessionArchiving || sessionRunning || (selectedAgent === 'pi' && !modelDraft.trim())}
-              >应用模型</Button>
             </div>
           {/if}
         </div>

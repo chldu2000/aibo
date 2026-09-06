@@ -58,8 +58,6 @@
     onAbort: () => void;
     onSelectAccess: (mode: SessionAccessMode) => void | Promise<void>;
     onLoadModels: () => void | Promise<void>;
-    onSelectModel: (model: string | null) => void | Promise<void>;
-    onSelectReasoning: (reasoningEffort: string | null) => void | Promise<void>;
     onSelectModelConfiguration: (model: string, reasoningEffort: string | null) => void | Promise<void>;
     onCompact: () => void | Promise<void>;
     onComposerInput: (text: string) => void;
@@ -107,8 +105,6 @@
     onAbort,
     onSelectAccess,
     onLoadModels,
-    onSelectModel,
-    onSelectReasoning,
     onSelectModelConfiguration,
     onCompact,
     onAddAttachments,
@@ -421,8 +417,6 @@
     onAbort={onAbort}
     onSelectAccess={onSelectAccess}
     onLoadModels={onLoadModels}
-    onSelectModel={onSelectModel}
-    onSelectReasoning={onSelectReasoning}
     onSelectModelConfiguration={onSelectModelConfiguration}
     onComposerInput={onComposerInput}
     onSelectWorkspacePath={onSelectWorkspacePath}
