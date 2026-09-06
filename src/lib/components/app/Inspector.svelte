@@ -305,23 +305,33 @@
     {#if executionProfile}
       <Card class="profile-card">
         <CardHeader class="thread-card-heading">
-          <CardTitle>执行配置</CardTitle>
+          <CardTitle>{session?.agent === 'codex' ? 'Codex 原生权限' : '执行配置'}</CardTitle>
           <Badge variant={executionProfile.nativeSandbox ? 'success' : 'warning'}>
-            {executionProfile.nativeSandbox ? '原生沙箱' : '无原生沙箱'}
+            {session?.agent === 'codex' ? 'Codex 原生控制' : executionProfile.nativeSandbox ? '原生沙箱' : '无原生沙箱'}
           </Badge>
         </CardHeader>
         <CardContent class="profile-card-content">
-          <dl>
-            <div><dt>模式</dt><dd>{profileValue(modeLabel, executionProfile.requested.interactionMode, executionProfile.enforced.interactionMode)}</dd></div>
-            <div><dt>文件</dt><dd>{profileValue(filesystemLabel, executionProfile.requested.filesystemPolicy, executionProfile.enforced.filesystemPolicy)}</dd></div>
-            <div><dt>命令</dt><dd>{profileValue(commandLabel, executionProfile.requested.commandPolicy, executionProfile.enforced.commandPolicy)}</dd></div>
-            <div><dt>审批</dt><dd>{profileValue((value) => value, executionProfile.requested.approvalPolicy, executionProfile.enforced.approvalPolicy)}</dd></div>
-            <div><dt>网络</dt><dd>{profileValue(networkLabel, executionProfile.requested.networkPolicy, executionProfile.enforced.networkPolicy)}</dd></div>
-            {#if executionProfile.requested.model || executionProfile.enforced.model}<div><dt>模型</dt><dd>{optionalProfileValue(executionProfile.requested.model, executionProfile.enforced.model)}</dd></div>{/if}
-            {#if executionProfile.requested.reasoningEffort || executionProfile.enforced.reasoningEffort}<div><dt>推理</dt><dd>{optionalProfileValue(executionProfile.requested.reasoningEffort, executionProfile.enforced.reasoningEffort)}</dd></div>{/if}
-          </dl>
-          {#if executionProfile.unsupported.length > 0}
-            <p class="profile-warning">未启用：{executionProfile.unsupported.join('、')}</p>
+          {#if session?.agent === 'codex'}
+            <dl>
+              <div><dt>审批</dt><dd>{executionProfile.enforced.approvalPolicy}</dd></div>
+              <div><dt>沙箱</dt><dd>{executionProfile.enforced.filesystemPolicy}</dd></div>
+              {#if executionProfile.enforced.model}<div><dt>模型</dt><dd>{executionProfile.enforced.model}</dd></div>{/if}
+              {#if executionProfile.enforced.reasoningEffort}<div><dt>推理</dt><dd>{executionProfile.enforced.reasoningEffort}</dd></div>{/if}
+            </dl>
+            <p class="thread-empty">权限由 Codex App Server 执行；Aibo 仅提供当前会话的投影和切换入口。</p>
+          {:else}
+            <dl>
+              <div><dt>模式</dt><dd>{profileValue(modeLabel, executionProfile.requested.interactionMode, executionProfile.enforced.interactionMode)}</dd></div>
+              <div><dt>文件</dt><dd>{profileValue(filesystemLabel, executionProfile.requested.filesystemPolicy, executionProfile.enforced.filesystemPolicy)}</dd></div>
+              <div><dt>命令</dt><dd>{profileValue(commandLabel, executionProfile.requested.commandPolicy, executionProfile.enforced.commandPolicy)}</dd></div>
+              <div><dt>审批</dt><dd>{profileValue((value) => value, executionProfile.requested.approvalPolicy, executionProfile.enforced.approvalPolicy)}</dd></div>
+              <div><dt>网络</dt><dd>{profileValue(networkLabel, executionProfile.requested.networkPolicy, executionProfile.enforced.networkPolicy)}</dd></div>
+              {#if executionProfile.requested.model || executionProfile.enforced.model}<div><dt>模型</dt><dd>{optionalProfileValue(executionProfile.requested.model, executionProfile.enforced.model)}</dd></div>{/if}
+              {#if executionProfile.requested.reasoningEffort || executionProfile.enforced.reasoningEffort}<div><dt>推理</dt><dd>{optionalProfileValue(executionProfile.requested.reasoningEffort, executionProfile.enforced.reasoningEffort)}</dd></div>{/if}
+            </dl>
+            {#if executionProfile.unsupported.length > 0}
+              <p class="profile-warning">未启用：{executionProfile.unsupported.join('、')}</p>
+            {/if}
           {/if}
         </CardContent>
       </Card>

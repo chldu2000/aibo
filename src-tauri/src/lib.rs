@@ -1379,8 +1379,10 @@ async fn update_session_execution_profile(
     }
     let resolved = resolve_profile(&session.agent, Some(requested), now_iso())
         .map_err(CoreError::InvalidExecutionProfile)?;
-    let workspace = workspace_by_id(&state.db, &session.workspace_id).await?;
-    require_trusted_workspace(&workspace, &resolved)?;
+    if session.agent == "pi" {
+        let workspace = workspace_by_id(&state.db, &session.workspace_id).await?;
+        require_trusted_workspace(&workspace, &resolved)?;
+    }
 
     // A runtime captures the resolved profile when it is created. Close an
     // idle runtime so the next prompt reopens it with the updated profile.
@@ -3501,8 +3503,6 @@ async fn create_codex_session(
 ) -> Result<Session, CoreError> {
     let profile = resolve_profile("codex", requested_profile, now_iso())
         .map_err(CoreError::InvalidExecutionProfile)?;
-    let workspace = workspace_by_id(&state.db, &workspace_id).await?;
-    require_trusted_workspace(&workspace, &profile)?;
     let session = state
         .codex
         .create_session(&workspace_id, &profile)

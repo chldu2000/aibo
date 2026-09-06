@@ -46,10 +46,18 @@ fn default_profile(agent: &str) -> ExecutionProfile {
         approval_policy: if agent == "pi" {
             "never".to_owned()
         } else {
-            "on-request".to_owned()
+            "untrusted".to_owned()
         },
-        filesystem_policy: "read-only".to_owned(),
-        command_policy: "disabled".to_owned(),
+        filesystem_policy: if agent == "pi" {
+            "read-only".to_owned()
+        } else {
+            "workspace-write".to_owned()
+        },
+        command_policy: if agent == "pi" {
+            "disabled".to_owned()
+        } else {
+            "approved".to_owned()
+        },
         network_policy: "disabled".to_owned(),
         model: None,
         reasoning_effort: None,
@@ -86,12 +94,12 @@ fn validate_profile(profile: &ExecutionProfile) -> Result<(), String> {
     validate_choice(
         "approvalPolicy",
         &profile.approval_policy,
-        &["never", "on-request", "trusted"],
+        &["never", "untrusted", "on-request", "trusted"],
     )?;
     validate_choice(
         "filesystemPolicy",
         &profile.filesystem_policy,
-        &["read-only", "workspace-write"],
+        &["read-only", "workspace-write", "danger-full-access"],
     )?;
     validate_choice(
         "commandPolicy",
@@ -118,7 +126,10 @@ pub(crate) fn resolve(
 
     let mut enforced = requested.clone();
     let mut unsupported = Vec::new();
-    if requested.interaction_mode == "plan" {
+    // Codex owns these settings natively. Aibo persists the requested and
+    // provider-confirmed values as a projection, while Pi remains mediated
+    // through the Aibo execution gateway below.
+    if agent == "pi" && requested.interaction_mode == "plan" {
         if requested.filesystem_policy != "read-only" {
             unsupported.push("plan.filesystem-write".to_owned());
             enforced.filesystem_policy = "read-only".to_owned();
@@ -129,31 +140,26 @@ pub(crate) fn resolve(
         }
     }
     let (adapter_capabilities, native_sandbox) = match agent {
-        "codex" => {
-            if requested.network_policy != "disabled" {
-                unsupported.push("network.agent-managed".to_owned());
-                enforced.network_policy = "disabled".to_owned();
-            }
-            (
-                vec![
-                    "history.read".to_owned(),
-                    "session.resume".to_owned(),
-                    "session.fork".to_owned(),
-                    "events.streaming".to_owned(),
-                    "approval.command".to_owned(),
-                    "permissions.nativeSandbox".to_owned(),
-                    "filesystem.workspace-write".to_owned(),
-                    "model.selection".to_owned(),
-                    "reasoning-effort.selection".to_owned(),
-                    "skills.discovery".to_owned(),
-                    "plan.native".to_owned(),
-                    "goals.native".to_owned(),
-                    "user-input-requests".to_owned(),
-                    "context-usage".to_owned(),
-                ],
-                true,
-            )
-        }
+        "codex" => (
+            vec![
+                "history.read".to_owned(),
+                "session.resume".to_owned(),
+                "session.fork".to_owned(),
+                "events.streaming".to_owned(),
+                "approval.command".to_owned(),
+                "permissions.nativeSandbox".to_owned(),
+                "permissions.nativeControls".to_owned(),
+                "filesystem.workspace-write".to_owned(),
+                "model.selection".to_owned(),
+                "reasoning-effort.selection".to_owned(),
+                "skills.discovery".to_owned(),
+                "plan.native".to_owned(),
+                "goals.native".to_owned(),
+                "user-input-requests".to_owned(),
+                "context-usage".to_owned(),
+            ],
+            true,
+        ),
         "pi" => {
             // Pi has no native sandbox, but its SDK custom-tool boundary lets
             // Aibo Core mediate workspace writes. The profile therefore keeps
@@ -319,10 +325,14 @@ mod tests {
     }
 
     #[test]
-    fn defaults_match_the_current_read_only_adapters() {
+    fn defaults_keep_codex_native_permissions_and_pi_mediated() {
         let codex = resolve("codex", None, "now".to_owned()).expect("codex default");
         assert_eq!(codex.requested, default_requested_profile("codex").unwrap());
-        assert_eq!(codex.enforced.filesystem_policy, "read-only");
+        assert_eq!(codex.enforced.approval_policy, "untrusted");
+        assert_eq!(codex.enforced.filesystem_policy, "workspace-write");
+        assert!(codex
+            .adapter_capabilities
+            .contains(&"permissions.nativeControls".to_owned()));
         let pi = resolve("pi", None, "now".to_owned()).expect("Pi default");
         assert_eq!(pi.requested, default_requested_profile("pi").unwrap());
         assert_eq!(pi.enforced.approval_policy, "never");
@@ -343,10 +353,14 @@ mod tests {
     }
 
     #[test]
-    fn plan_mode_cannot_resolve_to_a_writable_profile() {
+    fn only_pi_plan_mode_is_constrained_by_aibo_gateway() {
         let mut profile = editable_profile();
         profile.interaction_mode = "plan".to_owned();
-        let resolved = resolve("codex", Some(profile), "now".to_owned()).expect("plan profile");
+        let codex = resolve("codex", Some(profile.clone()), "now".to_owned())
+            .expect("Codex native plan profile");
+        assert_eq!(codex.enforced.filesystem_policy, "workspace-write");
+        assert!(codex.unsupported.is_empty());
+        let resolved = resolve("pi", Some(profile), "now".to_owned()).expect("Pi plan profile");
         assert_eq!(resolved.enforced.filesystem_policy, "read-only");
         assert_eq!(resolved.enforced.command_policy, "disabled");
         assert!(resolved

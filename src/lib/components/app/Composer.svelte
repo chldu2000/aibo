@@ -125,9 +125,20 @@
   );
 
   const activeProfile = $derived(executionProfile?.enforced ?? executionProfile?.requested ?? null);
+  const codexPermissionMode = $derived<'ask-for-approval' | 'approve-for-me' | 'full-access' | null>(
+    activeProfile?.filesystemPolicy === 'danger-full-access'
+      ? 'full-access'
+      : activeProfile?.filesystemPolicy === 'workspace-write' && activeProfile?.approvalPolicy === 'never'
+        ? 'approve-for-me'
+        : activeProfile?.filesystemPolicy === 'workspace-write' && activeProfile?.approvalPolicy === 'untrusted'
+          ? 'ask-for-approval'
+          : null,
+  );
   const accessLabel = $derived(
     !selectedSession
       ? '会话设置'
+      : selectedAgent === 'codex'
+        ? codexPermissionMode === 'full-access' ? 'Full Access' : codexPermissionMode === 'approve-for-me' ? 'Approve for me' : codexPermissionMode === 'ask-for-approval' ? 'Ask for approval' : '配置 Codex 权限'
       : activeProfile?.filesystemPolicy === 'workspace-write'
         ? '工作区写入'
         : activeProfile?.interactionMode === 'plan'
@@ -135,17 +146,27 @@
           : '只读',
   );
   const accessDetail = $derived(
-    activeProfile
+    selectedAgent === 'codex'
+      ? codexPermissionMode === 'full-access' ? '由 Codex 原生控制 · 完整主机访问' : codexPermissionMode === 'approve-for-me' ? '由 Codex 原生控制 · 自动批准沙箱内操作' : codexPermissionMode === 'ask-for-approval' ? '由 Codex 原生控制 · 操作前请求批准' : '该会话使用历史权限配置；请选择一个 Codex 原生模式'
+      : activeProfile
       ? `${activeProfile.filesystemPolicy === 'workspace-write' ? '可修改工作区' : '仅查看'} · ${activeProfile.commandPolicy === 'disabled' ? '命令关闭' : activeProfile.approvalPolicy === 'on-request' ? '命令需审批' : '命令受信任'}`
       : '选择会话后可查看当前执行配置',
   );
-  const accessOptions: Array<{ mode: SessionAccessMode; label: string; detail: string }> = [
+  const piAccessOptions: Array<{ mode: SessionAccessMode; label: string; detail: string }> = [
     { mode: 'read-only', label: '只读', detail: '查看文件，不修改工作区' },
     { mode: 'plan', label: '计划', detail: '分析并制定方案，不执行修改' },
     { mode: 'workspace-write', label: '工作区写入', detail: '允许修改工作区，命令需要审批' },
   ];
-  const activeAccessMode = $derived<SessionAccessMode>(
-    activeProfile?.filesystemPolicy === 'workspace-write'
+  const codexAccessOptions: Array<{ mode: SessionAccessMode; label: string; detail: string }> = [
+    { mode: 'ask-for-approval', label: 'Ask for approval', detail: '由 Codex 在执行操作前请求你的批准' },
+    { mode: 'approve-for-me', label: 'Approve for me', detail: '由 Codex 自动批准沙箱内的操作' },
+    { mode: 'full-access', label: 'Full Access', detail: '由 Codex 以完整主机访问执行操作' },
+  ];
+  const accessOptions = $derived(selectedAgent === 'codex' ? codexAccessOptions : piAccessOptions);
+  const activeAccessMode = $derived<SessionAccessMode | null>(
+    selectedAgent === 'codex'
+      ? codexPermissionMode
+      : activeProfile?.filesystemPolicy === 'workspace-write'
       ? 'workspace-write'
       : activeProfile?.interactionMode === 'plan'
         ? 'plan'
@@ -419,7 +440,7 @@
             aria-expanded={sessionMenuOpen}
             title={accessDetail}
           >
-            <Icon name={activeProfile?.filesystemPolicy === 'workspace-write' ? 'trust' : 'untrust'} size={16} />
+            <Icon name={activeProfile?.filesystemPolicy === 'danger-full-access' || activeProfile?.filesystemPolicy === 'workspace-write' ? 'trust' : 'untrust'} size={16} />
             <span>{accessLabel}</span>
           </Button>
           {#if sessionMenuOpen}
@@ -439,7 +460,7 @@
                     }}
                     disabled={busy || selectedSessionArchiving || sessionRunning}
                   >
-                    <Icon name={option.mode === 'workspace-write' ? 'trust' : option.mode === 'plan' ? 'file' : 'untrust'} size={15} />
+                    <Icon name={option.mode === 'full-access' || option.mode === 'approve-for-me' || option.mode === 'workspace-write' ? 'trust' : option.mode === 'plan' ? 'file' : 'untrust'} size={15} />
                     <span class="composer-access-option-copy">
                       <strong>{option.label}</strong>
                       <small>{option.detail}</small>

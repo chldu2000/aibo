@@ -40,11 +40,7 @@ const REQUEST_TIMEOUT: Duration = Duration::from_secs(30);
 fn codex_thread_start_params(cwd: &str, profile: &ResolvedExecutionProfile) -> Value {
     let mut params = json!({
         "cwd": cwd,
-        "approvalPolicy": if profile.enforced.approval_policy == "trusted" {
-            "never"
-        } else {
-            profile.enforced.approval_policy.as_str()
-        },
+        "approvalPolicy": profile.enforced.approval_policy.as_str(),
         "sandbox": profile.enforced.filesystem_policy,
         "serviceName": "aibo_phase4_5"
     });
@@ -57,6 +53,18 @@ fn codex_thread_start_params(cwd: &str, profile: &ResolvedExecutionProfile) -> V
     params
 }
 
+fn codex_thread_resume_params(thread_id: &str, profile: &ResolvedExecutionProfile) -> Value {
+    let mut params = json!({
+        "threadId": thread_id,
+        "approvalPolicy": profile.enforced.approval_policy.as_str(),
+        "sandbox": profile.enforced.filesystem_policy,
+    });
+    if let Some(model) = profile.enforced.model.as_deref() {
+        params["model"] = json!(model);
+    }
+    params
+}
+
 fn validate_codex_thread_start_response(
     response: &Value,
     profile: &ResolvedExecutionProfile,
@@ -64,11 +72,7 @@ fn validate_codex_thread_start_response(
     let result = response
         .get("result")
         .ok_or_else(|| CodexError::Protocol("thread/start response has no result".to_owned()))?;
-    let expected_approval = if profile.enforced.approval_policy == "trusted" {
-        "never"
-    } else {
-        profile.enforced.approval_policy.as_str()
-    };
+    let expected_approval = profile.enforced.approval_policy.as_str();
     let actual_approval = result
         .get("approvalPolicy")
         .and_then(Value::as_str)
@@ -86,6 +90,7 @@ fn validate_codex_thread_start_response(
     let expected_sandbox = match profile.enforced.filesystem_policy.as_str() {
         "read-only" => "readOnly",
         "workspace-write" => "workspaceWrite",
+        "danger-full-access" => "dangerFullAccess",
         other => {
             return Err(CodexError::Protocol(format!(
                 "unsupported enforced filesystem policy {other:?}"
@@ -2464,7 +2469,10 @@ impl CodexManager {
         }
         let mut rebound_from = None;
         if let Err(error) = client
-            .request("thread/resume", json!({ "threadId": thread_id }))
+            .request(
+                "thread/resume",
+                codex_thread_resume_params(&thread_id, &runtime.execution_profile),
+            )
             .await
         {
             if recover_missing_rollout && is_missing_rollout_error(&error) {
@@ -3226,11 +3234,12 @@ impl CodexManager {
 #[cfg(test)]
 mod tests {
     use super::{
-        agent_message_items, codex_model_option, codex_thread_start_params,
-        codex_turn_start_params, event_thread_id, final_turn_text, generation_matches,
-        is_missing_rollout_error, map_tool_status, map_turn_status, matching_thread_id,
-        parse_forked_thread, parse_thread_list, parse_thread_snapshot, tool_projection,
-        usage_projection, user_input_projection, validate_codex_thread_start_response, value_id,
+        agent_message_items, codex_model_option, codex_thread_resume_params,
+        codex_thread_start_params, codex_turn_start_params, event_thread_id, final_turn_text,
+        generation_matches, is_missing_rollout_error, map_tool_status, map_turn_status,
+        matching_thread_id, parse_forked_thread, parse_thread_list, parse_thread_snapshot,
+        tool_projection, usage_projection, user_input_projection,
+        validate_codex_thread_start_response, value_id,
     };
     use crate::execution_profile::{
         ExecutionProfile, ResolvedExecutionProfile, EXECUTION_PROFILE_SCHEMA,
@@ -3533,6 +3542,16 @@ mod tests {
         assert_eq!(thread["model"], "gpt-test");
         assert_eq!(thread["allowProviderModelFallback"], false);
         assert_eq!(thread["sandbox"], "workspace-write");
+        let mut full_access_profile = profile.clone();
+        full_access_profile.enforced.approval_policy = "never".to_owned();
+        full_access_profile.enforced.filesystem_policy = "danger-full-access".to_owned();
+        let full_access_thread = codex_thread_start_params("/tmp/workspace", &full_access_profile);
+        assert_eq!(full_access_thread["approvalPolicy"], "never");
+        assert_eq!(full_access_thread["sandbox"], "danger-full-access");
+        let resumed = codex_thread_resume_params("thread-1", &full_access_profile);
+        assert_eq!(resumed["threadId"], "thread-1");
+        assert_eq!(resumed["approvalPolicy"], "never");
+        assert_eq!(resumed["sandbox"], "danger-full-access");
         let turn = codex_turn_start_params("thread-1", "hello", &profile);
         assert_eq!(turn["model"], "gpt-test");
         assert_eq!(turn["effort"], "high");

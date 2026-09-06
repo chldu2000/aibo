@@ -1143,6 +1143,15 @@
       model: null,
       reasoningEffort: null,
     };
+    if (session?.agent === 'codex') {
+      if (mode === 'full-access') {
+        return { ...current, interactionMode: 'edit', approvalPolicy: 'never', filesystemPolicy: 'danger-full-access', commandPolicy: 'trusted', networkPolicy: 'agent-managed' };
+      }
+      if (mode === 'approve-for-me') {
+        return { ...current, interactionMode: 'edit', approvalPolicy: 'never', filesystemPolicy: 'workspace-write', commandPolicy: 'trusted', networkPolicy: 'disabled' };
+      }
+      return { ...current, interactionMode: 'ask', approvalPolicy: 'untrusted', filesystemPolicy: 'workspace-write', commandPolicy: 'approved', networkPolicy: 'disabled' };
+    }
     if (mode === 'workspace-write') {
       return {
         ...current,
@@ -1190,7 +1199,9 @@
       // every session in the workspace (which also reloads unrelated list and
       // conversation context on this path).
       markSessionIdle(session);
-      notice = mode === 'workspace-write' ? '会话权限已切换为工作区写入。' : mode === 'plan' ? '会话已切换为计划模式。' : '会话权限已切换为只读。';
+      notice = session.agent === 'codex'
+        ? mode === 'full-access' ? 'Codex 已切换为 Full Access。' : mode === 'approve-for-me' ? 'Codex 已切换为 Approve for me。' : 'Codex 已切换为 Ask for approval。'
+        : mode === 'workspace-write' ? '会话权限已切换为工作区写入。' : mode === 'plan' ? '会话已切换为计划模式。' : '会话权限已切换为只读。';
     } catch (error) {
       errorMessage = toErrorMessage(error);
     } finally {

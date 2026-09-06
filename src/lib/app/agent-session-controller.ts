@@ -36,10 +36,22 @@ export function createAgentSessionController(context: AgentSessionControllerCont
   function requestedProfile(agent: AgentName): ExecutionProfile {
     const mode = context.getCreateProfileMode();
     const editable = mode === 'edit';
+    if (agent === 'codex') {
+      return {
+        schema: 'aibo.execution-profile/v1',
+        interactionMode: 'ask',
+        approvalPolicy: 'untrusted',
+        filesystemPolicy: 'workspace-write',
+        commandPolicy: 'approved',
+        networkPolicy: 'disabled',
+        model: null,
+        reasoningEffort: null,
+      };
+    }
     return {
       schema: 'aibo.execution-profile/v1',
       interactionMode: mode,
-      approvalPolicy: editable ? 'on-request' : agent === 'codex' ? 'on-request' : 'never',
+      approvalPolicy: editable ? 'on-request' : 'never',
       filesystemPolicy: editable ? 'workspace-write' : 'read-only',
       commandPolicy: editable ? 'approved' : 'disabled',
       networkPolicy: 'disabled',
