@@ -3,7 +3,7 @@
 > 状态：实施中；4.5A–4.5F 的核心链路已落地，当前进行自动化回归与 macOS 真实 Provider 验收（G5）
 > 平台：macOS arm64 首发基线；Windows 延后验证
 > 前置：Phase 4 统一会话体验的 macOS 实现与离线门禁完成
-> 后续：Phase 5 `@` 与 Handoff v1
+> 后续：Phase 4.6 工作台控制与交互补全；完成后进入 Phase 5 `@` 与 Handoff v1
 
 ## 1. 阶段定位
 
@@ -478,16 +478,16 @@ Codex 和 Pi 分别执行同一组任务：
 - [ ] 使用工作区外 symlink 验收，没有越界读取或写入。
 - [ ] 真实 smoke 的 Agent 版本、模型、profile、HEAD、结果和时间被记录。
 
-## 11. Phase 5 准入条件
+## 11. Phase 4.5 完成与 Phase 4.6 准入条件
 
-只有同时满足以下条件，才把 Phase 4.5 标记为完成并进入 Handoff 实现：
+只有同时满足以下条件，才把 Phase 4.5 标记为完成并进入 Phase 4.6 实施：
 
 1. G0–G4 自动化与本机门禁全部通过。
 2. G5 中 Codex 和 Pi 的真实端到端各至少通过一次；外部服务故障必须明确记录，不能用 fixture 替代。
 3. Aibo 能为最后一个已完成 turn 提供稳定的 resolved profile、change set、verification、checkpoint 与 artifact 引用。
 4. dirty workspace、混合归属、checkpoint conflict 和缺失 artifact 均有机器可读状态。
 5. 没有已知路径越界、静默权限降级、用户修改丢失或跨会话串线问题。
-6. Phase 5 的 `SessionSnapshot v1` 能直接引用上述事实，不需要解析自然语言消息来重建工作区状态。
+6. 进入 Phase 5 前，Phase 4.6 的模型、命令、Skills、Plan、Goal、状态和草稿契约必须能直接引用上述事实，不需要解析自然语言消息来重建工作区状态。
 
 若某项 capability 在特定 Agent 上无法实现，可以标记为 `unsupported`，但不能把 Phase 4.5 标记完成，除非它不影响该 Agent 完成“编辑—验证—审阅—恢复”主链路，并已在 UI、契约和验收报告中明确记录。
 

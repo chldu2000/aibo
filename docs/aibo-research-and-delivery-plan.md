@@ -466,6 +466,16 @@ V1 后为 Pi 增加可选 container/VM/平台 sandbox runner；统一权限 prof
 
 退出条件：Codex 与 Pi 均能在 macOS 可丢弃工作区完成“结构化上下文 → 受控编辑 → 测试 → 变更审阅 → 安全恢复 → 重启恢复”；requested/enforced/unsupported 权限明确，dirty workspace 不丢失用户修改，路径越界和静默降级均被阻止。详细计划、当前进度和验收矩阵见 [Phase 4.5 记录](phase-4.5-agent-workbench-completion.md)。
 
+### Phase 4.6：Agent 工作台控制与交互补全（13–21 天，规格已冻结）
+
+- 模型与会话级推理强度选择，展示 requested/enforced/unsupported，并确保下一条 turn 的实际配置可追溯。
+- `/` 命令统一注册表，按“全部、Agent、Skills、Extension”分类、搜索和键盘导航。
+- Codex Skills、原生 Plan、Goal 的 capability 驱动发现与执行；Pi 对不支持能力明确标记。
+- Agent 等待状态、用户输入请求、会话草稿、发送失败恢复、上下文预算与压缩入口。
+- macOS 真实 Codex/Pi 回归，记录模型、推理强度、Skill、Goal、profile 和恢复证据。
+
+退出条件：用户可以在统一工作台内发现并控制模型、推理强度、命令、Skills、Plan 和 Goal；任务运行状态不会因工具调用间隔或重启变成不可解释的空闲；草稿、配置和结构化事件可供 Phase 5 `SessionSnapshot v1` 直接引用。详细规格见 [Phase 4.6 记录](phase-4.6-agent-workbench-controls.md)。
+
 ### Phase 5：`@` 与 Handoff v1（6–10 天）
 
 - mention picker 与结构化 token。
