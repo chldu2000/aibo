@@ -9,6 +9,7 @@
     SettingsPanel,
     TimelinePanel,
     WindowTitlebar,
+    WorkspaceFileDiffPreview,
     WorkspaceGitPanel,
     WorkspaceSidebar,
     toSessionListItemsByWorkspace,
@@ -284,6 +285,8 @@
   let workspaceFileDiff = $state<WorkspaceFileDiff | null>(null);
   let workspaceFileDiffLoading = $state(false);
   let workspaceFileDiffError = $state<string | null>(null);
+  let workspaceFileDiffPath = $state<string | null>(null);
+  let workspaceFileDiffStaged = $state(false);
   let workspaceFileDiffRequestGeneration = 0;
   let workspaceGitCommitBusy = $state(false);
   let workspaceGitBranches = $state<GitBranch[]>([]);
@@ -1173,6 +1176,9 @@
     staged: boolean,
   ): Promise<void> {
     const generation = ++workspaceFileDiffRequestGeneration;
+    workspaceFileDiffPath = path;
+    workspaceFileDiffStaged = staged;
+    workspaceFileDiff = null;
     workspaceFileDiffLoading = true;
     workspaceFileDiffError = null;
     try {
@@ -1193,6 +1199,8 @@
   function closeWorkspaceFileDiff(): void {
     ++workspaceFileDiffRequestGeneration;
     workspaceFileDiff = null;
+    workspaceFileDiffPath = null;
+    workspaceFileDiffStaged = false;
     workspaceFileDiffError = null;
     workspaceFileDiffLoading = false;
   }
@@ -2947,6 +2955,16 @@
       onPointerDown={(event) => beginColumnResize('workspace', event)}
       onKeyDown={(event) => handleSplitterKeydown('workspace', event)}
     />
+    {#if workspaceFileDiffPath !== null || workspaceFileDiff || workspaceFileDiffLoading || workspaceFileDiffError}
+    <WorkspaceFileDiffPreview
+      fileDiff={workspaceFileDiff}
+      fileDiffLoading={workspaceFileDiffLoading}
+      fileDiffError={workspaceFileDiffError}
+      selectedPath={workspaceFileDiffPath}
+      selectedStaged={workspaceFileDiffStaged}
+      onClose={closeWorkspaceFileDiff}
+    />
+    {:else}
     <TimelinePanel
       workspace={selectedWorkspace}
       session={selectedSession}
@@ -3001,6 +3019,7 @@
       onSelectModelConfiguration={(model, reasoningEffort) => void applySessionModelConfiguration(model, reasoningEffort)}
       onCompact={() => void compactCurrentSession()}
     />
+    {/if}
     {#if sidePanelOpen}
       <ColumnSplitter
         label="调整会话与侧边栏宽度"
@@ -3083,9 +3102,8 @@
           changes={workspaceChanges}
           loading={workspaceChangesLoading}
           error={workspaceChangesError}
-          fileDiff={workspaceFileDiff}
-          fileDiffLoading={workspaceFileDiffLoading}
-          fileDiffError={workspaceFileDiffError}
+          selectedFilePath={workspaceFileDiffPath}
+          selectedFileStaged={workspaceFileDiffStaged}
           branches={workspaceGitBranches}
           history={workspaceGitHistory}
           gitMetadataLoading={workspaceGitMetadataLoading}
@@ -3103,7 +3121,6 @@
           onApplyWorkspaceAction={(workspaceId, action) => void applyWorkspaceGitWorkspaceAction(workspaceId, action)}
           onCommit={(workspaceId, message) => commitWorkspaceGitChanges(workspaceId, message)}
           onOpenDiff={(workspaceId, path, staged) => void openWorkspaceFileDiff(workspaceId, path, staged)}
-          onCloseDiff={closeWorkspaceFileDiff}
           onRefreshGitMetadata={(workspaceId) => void refreshWorkspaceGitMetadata(workspaceId)}
           onCheckoutBranch={(workspaceId, branch) => void checkoutWorkspaceBranch(workspaceId, branch)}
           onCreateBranch={(workspaceId, branch) => void createWorkspaceBranch(workspaceId, branch)}

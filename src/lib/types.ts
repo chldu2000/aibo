@@ -339,6 +339,7 @@ export interface WorkspaceFileDiff {
   path: string;
   staged: boolean;
   available: boolean;
+  truncated: boolean;
   diff: string;
   hunks: TurnDiffHunk[];
   reason: string | null;

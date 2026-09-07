@@ -11,7 +11,6 @@
     GitWorkspaceAction,
     WorkspaceChanges,
     WorkspaceFileChange,
-    WorkspaceFileDiff,
   } from '$lib/types';
   import type { WorkspaceListItem } from './view-types';
 
@@ -21,9 +20,8 @@
     changes: WorkspaceChanges | null;
     loading: boolean;
     error: string | null;
-    fileDiff: WorkspaceFileDiff | null;
-    fileDiffLoading: boolean;
-    fileDiffError: string | null;
+    selectedFilePath: string | null;
+    selectedFileStaged: boolean;
     branches: GitBranch[];
     history: GitCommit[];
     gitMetadataLoading: boolean;
@@ -41,7 +39,6 @@
     onApplyWorkspaceAction: (workspaceId: string, action: GitWorkspaceAction) => void;
     onCommit: (workspaceId: string, message: string) => void | Promise<boolean>;
     onOpenDiff: (workspaceId: string, path: string, staged: boolean) => void;
-    onCloseDiff: () => void;
     onRefreshGitMetadata: (workspaceId: string) => void;
     onCheckoutBranch: (workspaceId: string, branch: string) => void;
     onCreateBranch: (workspaceId: string, branch: string) => void;
@@ -60,9 +57,8 @@
     changes,
     loading,
     error,
-    fileDiff,
-    fileDiffLoading,
-    fileDiffError,
+    selectedFilePath,
+    selectedFileStaged,
     branches,
     history,
     gitMetadataLoading,
@@ -80,7 +76,6 @@
     onApplyWorkspaceAction,
     onCommit,
     onOpenDiff,
-    onCloseDiff,
     onRefreshGitMetadata,
     onCheckoutBranch,
     onCreateBranch,
@@ -192,7 +187,12 @@
       <div class="git-change-list" role="list">
           {#each files as file (`${title}:${file.path}`)}
             {@const location = fileLocation(file)}
-            <div class="changeset-file changeset-file-row" role="listitem">
+            <div
+              class="changeset-file changeset-file-row"
+              class:changeset-file-selected={selectedFilePath === file.path && selectedFileStaged === (action === 'unstage')}
+              role="listitem"
+              aria-current={selectedFilePath === file.path && selectedFileStaged === (action === 'unstage') ? 'true' : undefined}
+            >
               <span
                 class={`change-kind change-kind-${file.conflicted ? 'conflicted' : file.kind}`}
                 aria-hidden="true"
@@ -444,31 +444,6 @@
             </Button>
           </form>
         {/if}
-      {/if}
-
-      {#if gitSection === 'changes' && (fileDiff || fileDiffLoading || fileDiffError)}
-        <section class="git-diff-view" aria-label="文件差异">
-          <header class="git-diff-header">
-            <div class="git-diff-title">
-              <Button variant="ghost" size="icon" type="button" aria-label="关闭文件差异" title="关闭" onclick={onCloseDiff}>
-                <Icon name="close" size={13} />
-              </Button>
-              <div>
-                <strong>{fileDiff?.path ?? '正在读取文件差异…'}</strong>
-                {#if fileDiff}<small>{fileDiff.staged ? '暂存区' : '工作区'}</small>{/if}
-              </div>
-            </div>
-          </header>
-          {#if fileDiffLoading}
-            <div class="git-diff-message">正在读取差异…</div>
-          {:else if fileDiffError}
-            <div class="git-diff-message" role="alert">{fileDiffError}</div>
-          {:else if fileDiff?.available}
-            <pre>{fileDiff.diff}</pre>
-          {:else}
-            <div class="git-diff-message">{fileDiff?.reason ?? '当前文件没有可展示的差异。'}</div>
-          {/if}
-        </section>
       {/if}
 
       {#if gitSection === 'changes'}

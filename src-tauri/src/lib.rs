@@ -332,6 +332,7 @@ pub struct WorkspaceFileDiff {
     pub(crate) path: String,
     pub(crate) staged: bool,
     pub(crate) available: bool,
+    pub(crate) truncated: bool,
     pub(crate) diff: String,
     pub(crate) hunks: Vec<TurnDiffHunk>,
     pub(crate) reason: Option<String>,
@@ -2099,6 +2100,9 @@ async fn get_workspace_file_diff(
         .map_err(|error| CoreError::Database(format!("workspace diff task failed: {error}")))?
 }
 
+const WORKSPACE_DIFF_MAX_BYTES: usize = 200_000;
+const DIFF_TRUNCATION_SUFFIX: &str = "\n… diff 已截断";
+
 fn workspace_file_diff(
     workspace_path: &str,
     path: &str,
@@ -2120,7 +2124,7 @@ fn workspace_file_diff(
     if staged {
         command.arg("--cached");
     }
-    let output = command_output_bounded(command.args(["--", path]), 200_001)
+    let output = command_output_bounded(command.args(["--", path]), WORKSPACE_DIFF_MAX_BYTES + 1)
         .map_err(|error| CoreError::Database(format!("read Git diff: {error}")))?;
     if !output.status.success() {
         return Err(CoreError::Database(format!(
@@ -2131,6 +2135,7 @@ fn workspace_file_diff(
     }
 
     let mut diff = String::from_utf8_lossy(&output.stdout).to_string();
+    let mut diff_truncated = output.stdout_truncated;
     if diff.is_empty() && !staged {
         let target = crate::workspace_guard::canonicalize_target(root, Path::new(path))
             .map_err(CoreError::InvalidWorkspacePath)?;
@@ -2150,11 +2155,12 @@ fn workspace_file_diff(
             let metadata = target.metadata().map_err(|error| {
                 CoreError::Database(format!("read untracked file metadata: {error}"))
             })?;
-            if metadata.len() > 200_000 {
+            if metadata.len() > WORKSPACE_DIFF_MAX_BYTES as u64 {
                 return Ok(WorkspaceFileDiff {
                     path: path.to_owned(),
                     staged,
                     available: false,
+                    truncated: false,
                     diff: String::new(),
                     hunks: Vec::new(),
                     reason: Some("未跟踪文件过大，暂不生成文本 diff".to_owned()),
@@ -2167,12 +2173,17 @@ fn workspace_file_diff(
                     path: path.to_owned(),
                     staged,
                     available: false,
+                    truncated: false,
                     diff: String::new(),
                     hunks: Vec::new(),
                     reason: Some("二进制文件暂不提供文本 diff".to_owned()),
                 });
             }
-            diff = run_unified_text_diff(path, &[], &content).map_err(CoreError::Database)?;
+            let generated =
+                run_unified_text_diff_bounded(path, &[], &content, WORKSPACE_DIFF_MAX_BYTES)
+                    .map_err(CoreError::Database)?;
+            diff = generated.0;
+            diff_truncated = generated.1;
         }
     }
 
@@ -2181,18 +2192,21 @@ fn workspace_file_diff(
             path: path.to_owned(),
             staged,
             available: false,
+            truncated: false,
             diff,
             hunks: Vec::new(),
             reason: Some("当前状态没有可展示的文件变更".to_owned()),
         });
     }
-    if diff.len() > 200_000 {
-        diff = crate::artifact::truncate_utf8(&diff, 200_000, "\n… diff 已截断");
+    if diff_truncated || diff.len() > WORKSPACE_DIFF_MAX_BYTES {
+        diff = truncate_diff_with_marker(&diff, WORKSPACE_DIFF_MAX_BYTES);
+        diff_truncated = true;
     }
     Ok(WorkspaceFileDiff {
         path: path.to_owned(),
         staged,
         available: true,
+        truncated: diff_truncated,
         hunks: parse_unified_hunks(&diff),
         diff,
         reason: None,
@@ -2202,6 +2216,7 @@ fn workspace_file_diff(
 struct BoundedCommandOutput {
     status: ExitStatus,
     stdout: Vec<u8>,
+    stdout_truncated: bool,
     stderr: Vec<u8>,
 }
 
@@ -2244,7 +2259,7 @@ fn command_output_bounded(
     let stdout_task = thread::spawn(move || read_bounded(stdout, stdout_limit));
     let stderr_task = thread::spawn(move || read_bounded(stderr, 64 * 1024));
     let status = child.wait()?;
-    let (stdout, _) = stdout_task
+    let (stdout, stdout_truncated) = stdout_task
         .join()
         .map_err(|_| io::Error::other("Git stdout reader panicked"))??;
     let (stderr, _) = stderr_task
@@ -2253,6 +2268,7 @@ fn command_output_bounded(
     Ok(BoundedCommandOutput {
         status,
         stdout,
+        stdout_truncated,
         stderr,
     })
 }
@@ -2595,6 +2611,15 @@ async fn load_turn_diff_sources(
 /// baseline. This preserves the distinction between pre-existing dirty files
 /// and changes made by the selected turn, and also works in non-Git folders.
 fn run_unified_text_diff(path: &str, baseline: &[u8], result: &[u8]) -> Result<String, String> {
+    run_unified_text_diff_bounded(path, baseline, result, usize::MAX).map(|(diff, _)| diff)
+}
+
+fn run_unified_text_diff_bounded(
+    path: &str,
+    baseline: &[u8],
+    result: &[u8],
+    max_output_bytes: usize,
+) -> Result<(String, bool), String> {
     let id = Ulid::new();
     let directory = env::temp_dir();
     let baseline_path = directory.join(format!("aibo-diff-{id}-baseline"));
@@ -2605,35 +2630,94 @@ fn run_unified_text_diff(path: &str, baseline: &[u8], result: &[u8]) -> Result<S
     // Git's patch machinery when hunk-level actions are added.
     let baseline_label = format!("a/{path}");
     let result_label = format!("b/{path}");
-    let output = Command::new("diff")
-        .args(["-u", "-L", &baseline_label, "-L", &result_label])
-        .arg(&baseline_path)
-        .arg(&result_path)
-        .output();
-    let output = match output {
-        Ok(output) if output.status.success() || output.status.code() == Some(1) => output,
-        _ => Command::new("git")
+    let mut command = Command::new("git");
+    let output = command_output_bounded(
+        command
             .args([
                 "diff",
                 "--no-index",
                 "--no-ext-diff",
+                "--no-color",
                 "--unified=3",
-                "--label",
-                &baseline_label,
-                "--label",
-                &result_label,
+                "--no-prefix",
             ])
             .arg(&baseline_path)
-            .arg(&result_path)
-            .output()
-            .map_err(|error| format!("run unified diff: {error}"))?,
+            .arg(&result_path),
+        max_output_bytes.saturating_add(1),
+    );
+    let output = match output {
+        Ok(output) => output,
+        Err(error) => {
+            let _ = fs::remove_file(&baseline_path);
+            let _ = fs::remove_file(&result_path);
+            return Err(format!("run unified diff: {error}"));
+        }
     };
     let _ = fs::remove_file(&baseline_path);
     let _ = fs::remove_file(&result_path);
     if !output.status.success() && output.status.code() != Some(1) {
-        return Err(format!("diff exited with {}", output.status));
+        return Err(format!(
+            "git diff --no-index exited with {}: {}",
+            output.status,
+            String::from_utf8_lossy(&output.stderr).trim()
+        ));
     }
-    Ok(String::from_utf8_lossy(&output.stdout).to_string())
+    let raw_diff = String::from_utf8_lossy(&output.stdout);
+    let normalized = normalize_unified_diff_headers(&raw_diff, &baseline_label, &result_label);
+    let truncated = output.stdout_truncated || normalized.len() > max_output_bytes;
+    let diff = if truncated {
+        truncate_diff_with_marker(&normalized, max_output_bytes)
+    } else {
+        normalized
+    };
+    Ok((diff, truncated))
+}
+
+fn truncate_diff_with_marker(content: &str, max_bytes: usize) -> String {
+    if max_bytes == 0 {
+        return String::new();
+    }
+    if DIFF_TRUNCATION_SUFFIX.len() >= max_bytes {
+        return crate::artifact::truncate_utf8(DIFF_TRUNCATION_SUFFIX, max_bytes, "");
+    }
+    let content_limit = max_bytes - DIFF_TRUNCATION_SUFFIX.len();
+    let mut truncated = crate::artifact::truncate_utf8(content, content_limit, "");
+    truncated.push_str(DIFF_TRUNCATION_SUFFIX);
+    truncated
+}
+
+fn normalize_unified_diff_headers(diff: &str, baseline_label: &str, result_label: &str) -> String {
+    let mut normalized = String::with_capacity(diff.len());
+    let mut file_header = true;
+    let mut replaced_old_header = false;
+    let mut replaced_new_header = false;
+    let mut lines = diff.split('\n').peekable();
+    while let Some(line) = lines.next() {
+        let line = line.strip_suffix('\r').unwrap_or(line);
+        if file_header && line.starts_with("diff --git ") {
+            normalized.push_str("diff --git ");
+            normalized.push_str(baseline_label);
+            normalized.push(' ');
+            normalized.push_str(result_label);
+        } else if file_header && !replaced_old_header && line.starts_with("--- ") {
+            normalized.push_str("--- ");
+            normalized.push_str(baseline_label);
+            replaced_old_header = true;
+        } else if file_header && !replaced_new_header && line.starts_with("+++ ") {
+            normalized.push_str("+++ ");
+            normalized.push_str(result_label);
+            replaced_new_header = true;
+        } else {
+            normalized.push_str(line);
+        }
+        if line.starts_with("@@ ") {
+            file_header = false;
+        }
+        if lines.peek().is_some() {
+            normalized.push('\n');
+        }
+    }
+    normalized
 }
 
 fn parse_unified_hunks(diff: &str) -> Vec<TurnDiffHunk> {
@@ -5463,6 +5547,26 @@ mod tests {
         assert!(hunks[0].content.contains("+  new();"));
         let patch = super::select_unified_hunk(&diff, 0).expect("select hunk patch");
         assert!(patch.starts_with("--- a/src/main.rs\n+++ b/src/main.rs\n@@ "));
+    }
+
+    #[test]
+    fn unified_diff_supports_an_empty_baseline_for_untracked_files() {
+        let diff = super::run_unified_text_diff("new.txt", b"", b"new line\n")
+            .expect("untracked file diff");
+        assert!(diff.contains("--- a/new.txt"));
+        assert!(diff.contains("+++ b/new.txt"));
+        assert!(diff.contains("+new line"));
+    }
+
+    #[test]
+    fn bounded_unified_diff_limits_large_output() {
+        let result = vec![b'x'; 10_000];
+        let (diff, truncated) =
+            super::run_unified_text_diff_bounded("large.txt", b"", &result, 1_000)
+                .expect("bounded diff");
+        assert!(truncated);
+        assert!(diff.len() <= 1_000);
+        assert!(diff.ends_with("diff 已截断"));
     }
 
     #[test]

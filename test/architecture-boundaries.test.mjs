@@ -97,6 +97,29 @@ test('custom titlebar has permission for every native window action', async () =
   );
 });
 
+test('workspace Git file diffs render in the center preview', async () => {
+  const [app, panel, preview] = await Promise.all([
+    readFile(path.join(root, 'src/App.svelte'), 'utf8'),
+    readFile(path.join(root, 'src/lib/components/app/WorkspaceGitPanel.svelte'), 'utf8'),
+    readFile(path.join(root, 'src/lib/components/app/WorkspaceFileDiffPreview.svelte'), 'utf8'),
+  ]);
+  assert.match(app, /<WorkspaceFileDiffPreview/, 'App must render the file diff in the center column');
+  assert.match(app, /workspaceFileDiffPath !== null/, 'the center preview must open for the selected file');
+  assert.match(app, /selectedFilePath=\{workspaceFileDiffPath\}/, 'the Git panel must receive the selected file');
+  assert.doesNotMatch(panel, /fileDiff(?:Loading|Error)?/, 'the Git panel must not render the file diff body');
+  assert.match(preview, /workspace-file-diff-lines/, 'the center preview must render structured diff lines');
+});
+
+test('the diff preview monospace token is defined in the UI kit', async () => {
+  const source = await readFile(path.join(root, 'src/lib/ui-kit/kits/base.css'), 'utf8');
+  assert.match(source, /--aibo-mono\s*:/, 'the shared UI kit must define the diff monospace token');
+  assert.match(
+    source,
+    /\.workspace-file-diff-line\s*\{[^}]*var\(--aibo-mono\)/s,
+    'diff lines must use the shared monospace token',
+  );
+});
+
 test('business modules do not depend on Svelte, UI, or API implementations', async () => {
   const files = await sourceFiles('src/lib/app', '.ts');
   assert.ok(files.length > 0);

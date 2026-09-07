@@ -26,6 +26,7 @@
   --aibo-danger-hover: #7f1d1d;
   --aibo-danger-text: #fecaca;
   --aibo-titlebar-height: 36px;
+  --aibo-mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
   font-family: Inter, ui-sans-serif, -apple-system, BlinkMacSystemFont, "SF Pro Display", "Segoe UI", sans-serif;
   color: var(--aibo-text);
   background: var(--aibo-bg);
@@ -319,6 +320,7 @@ h2 { font-size: 16px; letter-spacing: -0.02em; }
 .changeset-file-location { flex: 1; }
 .changeset-file-row { min-width: 0; align-items: center; }
 .changeset-file-row .changeset-file-button { flex: 1; }
+.changeset-file-selected { background: var(--aibo-accent-soft); }
 .changeset-actions { display: flex; flex: none; gap: 2px; opacity: 0; transition: opacity 120ms ease; }
 .changeset-file-row:hover .changeset-actions, .changeset-file-row:focus-within .changeset-actions { opacity: 1; }
 .changeset-actions button { padding: 2px 4px; color: var(--aibo-subtle); font-size: 8px; }
@@ -369,6 +371,26 @@ h2 { font-size: 16px; letter-spacing: -0.02em; }
 .git-diff-title small { color: var(--aibo-subtle); font-size: 8px; }
 .git-diff-view pre { max-height: 260px; margin: 0; overflow: auto; padding: 7px 8px 8px; color: var(--aibo-muted); font: 9px/1.45 ui-monospace, SFMono-Regular, Menlo, monospace; white-space: pre; }
 .git-diff-message { padding: 10px; color: var(--aibo-subtle); font-size: 9px; line-height: 1.45; }
+.workspace-file-diff-preview { display: flex; min-width: 0; min-height: 0; flex-direction: column; overflow: hidden; border-color: var(--aibo-border); background: var(--aibo-surface); }
+.workspace-file-diff-preview-header { display: flex; flex: none; flex-direction: row; align-items: center; justify-content: space-between; gap: 10px; padding: 10px 12px; }
+.workspace-file-diff-preview-header > :not(:first-child) { margin-top: 0; }
+.workspace-file-diff-preview-heading, .workspace-file-diff-preview-title-copy { display: grid; min-width: 0; gap: 2px; }
+.workspace-file-diff-preview-title-copy [data-slot='card-title'] { overflow: hidden; color: var(--aibo-text); font-family: var(--aibo-mono); font-size: 12px; font-weight: 600; text-overflow: ellipsis; white-space: nowrap; }
+.workspace-file-diff-preview-title-copy small { color: var(--aibo-subtle); font-size: 9px; }
+.workspace-file-diff-preview-content { min-width: 0; min-height: 0; flex: 1; overflow: auto; overscroll-behavior: contain; }
+.workspace-file-diff-message { padding: 24px; color: var(--aibo-subtle); font-size: 11px; line-height: 1.5; text-align: center; }
+.workspace-file-diff-lines { display: grid; min-width: max-content; padding: 10px 0 20px; }
+.workspace-file-diff-line { display: grid; grid-template-columns: 48px 48px 24px auto; min-width: max-content; min-height: 21px; align-items: baseline; padding-right: 18px; font: 11px/1.45 var(--aibo-mono); }
+.workspace-file-diff-line-number { padding: 2px 8px 2px 0; color: var(--aibo-subtle); font-size: 10px; text-align: right; user-select: none; }
+.workspace-file-diff-line-marker { padding: 2px 5px; color: var(--aibo-subtle); text-align: center; user-select: none; }
+.workspace-file-diff-line code { min-width: max-content; padding: 2px 0; color: var(--aibo-muted); font: inherit; white-space: pre; }
+.workspace-file-diff-line-added { background: var(--aibo-success-surface); }
+.workspace-file-diff-line-added code, .workspace-file-diff-line-added .workspace-file-diff-line-marker { color: var(--aibo-success-text); }
+.workspace-file-diff-line-removed { background: var(--aibo-danger-surface); }
+.workspace-file-diff-line-removed code, .workspace-file-diff-line-removed .workspace-file-diff-line-marker { color: var(--aibo-danger-text); }
+.workspace-file-diff-line-hunk { background: var(--aibo-accent-soft); }
+.workspace-file-diff-line-hunk code { color: var(--aibo-accent-text); }
+.workspace-file-diff-line-meta code { color: var(--aibo-subtle); }
 .git-history { display: grid; min-width: 0; gap: 1px; margin: 0 8px 8px; }
 .git-history-item { width: 100%; min-width: 0; justify-content: flex-start; padding: 6px 7px; text-align: left; }
 .git-history-copy { display: grid; width: 100%; min-width: 0; flex: 1; gap: 2px; justify-items: start; text-align: left; }
