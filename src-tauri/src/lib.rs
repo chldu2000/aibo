@@ -191,6 +191,7 @@ pub struct TimelineItem {
     pub(crate) external_message_id: Option<String>,
     pub(crate) role: String,
     pub(crate) tool_name: Option<String>,
+    pub(crate) entry_type: Option<String>,
     pub(crate) content: String,
     pub(crate) status: String,
     pub(crate) created_at: String,
@@ -1425,6 +1426,7 @@ fn row_to_timeline_item(row: &sqlx::sqlite::SqliteRow) -> Result<TimelineItem, C
         external_message_id: row.try_get("external_message_id")?,
         role: row.try_get("role")?,
         tool_name: row.try_get("tool_name")?,
+        entry_type: None,
         content: row.try_get("content")?,
         status: row.try_get("status")?,
         created_at: row.try_get("created_at")?,
@@ -1489,6 +1491,7 @@ fn pi_snapshot_timeline(snapshot: &serde_json::Value, session_id: &str) -> Vec<T
                     .get("toolName")
                     .and_then(serde_json::Value::as_str)
                     .map(ToOwned::to_owned),
+                entry_type: Some(entry_type.to_owned()),
                 content,
                 status: status.to_owned(),
                 created_at: timestamp.clone(),
@@ -6468,6 +6471,7 @@ mod tests {
                 { "id": "user-root", "type": "message", "timestamp": "2026-09-07T00:00:00Z", "role": "user", "summary": "root" },
                 { "id": "assistant-tool-call", "type": "message", "timestamp": "2026-09-07T00:00:00Z", "role": "assistant", "summary": "" },
                 { "id": "model", "type": "model_change", "timestamp": "2026-09-07T00:00:01Z", "summary": "模型已切换" },
+                { "id": "summary", "type": "branch_summary", "timestamp": "2026-09-07T00:00:01Z", "summary": "分支总结" },
                 { "id": "assistant-selected", "type": "message", "timestamp": "2026-09-07T00:00:02Z", "role": "assistant", "summary": "selected branch" }
             ],
             "tree": [
@@ -6479,10 +6483,12 @@ mod tests {
         });
 
         let timeline = pi_snapshot_timeline(&snapshot, "pi-session");
-        assert_eq!(timeline.len(), 3);
+        assert_eq!(timeline.len(), 4);
         assert_eq!(timeline[0].id, "user-root");
         assert_eq!(timeline[1].role, "system");
-        assert_eq!(timeline[2].content, "selected branch");
+        assert_eq!(timeline[1].entry_type.as_deref(), Some("model_change"));
+        assert_eq!(timeline[2].entry_type.as_deref(), Some("branch_summary"));
+        assert_eq!(timeline[3].content, "selected branch");
         assert!(timeline.iter().all(|item| item.id != "assistant-tool-call"));
         assert!(timeline.iter().all(|item| item.id != "assistant-other"));
     }

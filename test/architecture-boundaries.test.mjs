@@ -169,6 +169,16 @@ test('Pi tree navigation exposes all native summary modes', async () => {
   assert.match(host, /customInstructions: customInstructions \|\| undefined/, 'custom summary instructions must reach Pi');
 });
 
+test('Pi timeline groups ordinary system nodes without folding summaries', async () => {
+  const utilities = await readFile(path.join(root, 'src/lib/components/app/timeline-utils.ts'), 'utf8');
+  const panel = await readFile(path.join(root, 'src/lib/components/app/TimelinePanel.svelte'), 'utf8');
+  assert.match(utilities, /kind: 'system-group'/, 'consecutive system entries must have a grouped render form');
+  assert.match(utilities, /entryType !== 'branch_summary'/, 'branch summaries must remain standalone');
+  assert.match(utilities, /entryType !== 'compaction'/, 'compaction summaries must remain standalone');
+  assert.match(panel, /groupTimelineItems\(visibleTimeline, session\?\.agent === 'pi'\)/, 'system grouping must only apply to Pi sessions');
+  assert.match(panel, /系统消息 · \{renderItem\.items\.length\} 项/, 'the timeline must render a collapsible system group');
+});
+
 test('the diff preview monospace token is defined in the UI kit', async () => {
   const source = await readFile(path.join(root, 'src/lib/ui-kit/kits/base.css'), 'utf8');
   assert.match(source, /--aibo-mono\s*:/, 'the shared UI kit must define the diff monospace token');

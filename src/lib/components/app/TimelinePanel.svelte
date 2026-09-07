@@ -248,7 +248,7 @@
             加载更早的 {Math.min(hiddenTimelineCount, 80)} 条消息
           </Button>
         {/if}
-        {#each groupTimelineItems(visibleTimeline) as renderItem (renderItem.id)}
+        {#each groupTimelineItems(visibleTimeline, session?.agent === 'pi') as renderItem (renderItem.id)}
           {#if renderItem.kind === 'tool-group'}
             <Card as="article" class="timeline-entry tool-entry tool-group-entry">
               <details class="tool-group">
@@ -267,6 +267,28 @@
                         <span class="tool-output-action">{isDiffContent(tool.content) ? '查看 diff' : '查看工具输出'}</span>
                       </summary>
                       <pre class:diff-content={isDiffContent(tool.content)}>{tool.content || '…'}</pre>
+                    </details>
+                  {/each}
+                </div>
+              </details>
+            </Card>
+          {:else if renderItem.kind === 'system-group'}
+            <Card as="article" class="timeline-entry system-entry tool-group-entry">
+              <details class="tool-group">
+                <summary>
+                  <span class="tool-group-title">
+                    <Badge variant="outline">SYSTEM</Badge>
+                    <span>系统消息 · {renderItem.items.length} 项</span>
+                  </span>
+                </summary>
+                <div class="tool-group-items">
+                  {#each renderItem.items as systemItem (systemItem.id)}
+                    <details class="tool-output">
+                      <summary>
+                        <span class="tool-output-name">{systemItem.content.split('\n')[0] || '系统消息'}</span>
+                        <span class="tool-output-action">查看详情</span>
+                      </summary>
+                      <div class="entry-content"><MarkdownContent content={systemItem.content} /></div>
                     </details>
                   {/each}
                 </div>

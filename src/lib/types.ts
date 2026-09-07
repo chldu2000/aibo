@@ -230,6 +230,7 @@ export interface TimelineItem {
   externalMessageId: string | null;
   role: 'user' | 'assistant' | 'system' | 'tool';
   toolName: string | null;
+  entryType: string | null;
   content: string;
   status: 'streaming' | 'completed' | 'failed' | 'queued' | 'interrupted';
   createdAt: string;
