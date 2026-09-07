@@ -19,6 +19,12 @@ export default defineConfig({
     host: '127.0.0.1',
     port: 1420,
     strictPort: true,
+    watch: {
+      // Tauri compiles Rust into this directory while Vite is running. On
+      // Windows, trying to watch a compiler output file that is still locked
+      // can make Node's filesystem watcher fail with EBUSY.
+      ignored: ['**/node_modules/**', '**/.git/**', '**/src-tauri/target/**'],
+    },
   },
   envPrefix: ['VITE_', 'TAURI_'],
 });
