@@ -48,6 +48,7 @@
     onRemoveAttachment: (id: string) => void;
     onLoadOlderTimeline: () => void;
     onForkSession: (throughTurnId?: string) => void;
+    onOpenPiTree: () => void;
     onTimelineScroll: (event: Event) => void;
     onRetry: () => void;
     onResolveApproval: (requestId: string, decision: ApprovalDecision) => void;
@@ -96,6 +97,7 @@
     composerDraftFailed,
     onLoadOlderTimeline,
     onForkSession,
+    onOpenPiTree,
     onTimelineScroll,
     onRetry,
     onResolveApproval,
@@ -190,6 +192,10 @@
         {#if session.agent === 'codex' && !sessionArchived}
           <Button variant="ghost" size="sm" type="button" onclick={() => onForkSession()} disabled={busy || sessionRunning || selectedSessionArchiving} title="从最新完成的回复创建分支">
             <Icon name="branch" size={13} /> 分支
+          </Button>
+        {:else if session.agent === 'pi'}
+          <Button variant="ghost" size="sm" type="button" onclick={onOpenPiTree} disabled={selectedSessionArchiving} title="打开 Pi 会话树">
+            <Icon name="branch" size={13} /> 会话树
           </Button>
         {/if}
         <Badge variant={sessionArchived ? 'secondary' : sessionRunning || selectedSessionArchiving ? 'warning' : 'outline'}>

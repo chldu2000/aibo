@@ -6,6 +6,7 @@
     CommandPalette,
     DiagnosticsPanel,
     Inspector,
+    PiSessionTreeOverlay,
     SettingsPanel,
     TimelinePanel,
     WindowTitlebar,
@@ -385,6 +386,7 @@
   let archivingSessionId = $state<string | null>(null);
   let archivingWorkspaceId = $state<string | null>(null);
   let piNavigationEntryId = $state<string | null>(null);
+  let piTreeOpen = $state(false);
   let sessionSearch = $state('');
   let sessionFilter = $state<SessionFilter>('active');
   let sessionSearchOpen = $state(false);
@@ -2447,6 +2449,12 @@
     piTreeController.requestNavigation(entryId);
   }
 
+  function openPiTree(): void {
+    if (!selectedSession || selectedSession.agent !== 'pi') return;
+    piTreeOpen = true;
+    void refreshPiTree(selectedSession.id);
+  }
+
   async function confirmPiTreeNavigation() {
     await piTreeController.confirmNavigation();
   }
@@ -2995,6 +3003,7 @@
       onRemoveAttachment={(attachmentId) => void removeAttachment(attachmentId)}
       onLoadOlderTimeline={loadOlderTimeline}
       onForkSession={(throughTurnId) => void forkSession(selectedSessionId, throughTurnId)}
+      onOpenPiTree={openPiTree}
       onTimelineScroll={handleTimelineScroll}
       onRetry={() => void retryLastPrompt()}
       onResolveApproval={(requestId, decision) => {
@@ -3032,7 +3041,6 @@
       {diagnostics}
       workspaceCapabilities={workspaceCapabilities}
       codexThreads={codexThreads}
-      piTree={piTree}
       executionProfile={executionProfile}
       attachments={attachments}
       artifacts={artifacts}
@@ -3048,8 +3056,6 @@
       sessionRunning={sessionRunning}
       selectedSessionArchiving={selectedSessionArchiving}
       onSyncCodexThreads={() => void syncCodexThreads()}
-      onRequestPiTreeNavigation={requestPiTreeNavigation}
-      onRefreshPiTree={(sessionId) => void refreshPiTree(sessionId)}
       onRestoreTurnChangeSet={restoreTurnChangeSet}
       onShowTurnFileDiff={showTurnFileDiff}
       onApplyGitFileAction={applyGitFileActionFromInspector}
@@ -3155,6 +3161,17 @@
     open={commandPaletteOpen}
     commands={commandPaletteCommands}
     onClose={() => (commandPaletteOpen = false)}
+  />
+  <PiSessionTreeOverlay
+    open={piTreeOpen && selectedSession?.agent === 'pi'}
+    session={selectedSession}
+    tree={piTree?.sessionId === selectedSessionId ? piTree : null}
+    {busy}
+    {sessionRunning}
+    {selectedSessionArchiving}
+    onClose={() => (piTreeOpen = false)}
+    onRefresh={(sessionId) => void refreshPiTree(sessionId)}
+    onSelectNode={requestPiTreeNavigation}
   />
   <AppOverlays
     {errorMessage}

@@ -192,6 +192,9 @@ export interface PiSessionSnapshotEntry {
   type: string;
   timestamp: string;
   role?: string;
+  toolName?: string;
+  stopReason?: string;
+  isError?: boolean;
   customType?: string;
   summary?: string;
   data?: unknown;

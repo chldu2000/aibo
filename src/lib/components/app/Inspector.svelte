@@ -3,14 +3,13 @@
   import ProjectActionsPanel from './ProjectActionsPanel.svelte';
   import SidePanelTabs from './SidePanelTabs.svelte';
   import { sessionStateLabel } from './session-utils';
-  import { flattenPiTree } from './inspector-utils';
   import type {
     AgentDiagnostic,
     CodexThreadListItem,
     SessionPanelView,
     WorkspaceListItem,
   } from './view-types';
-  import type { Artifact, ArtifactContent, CheckpointFile, ContextAttachment, GitFileAction, PiSessionTreeSnapshot, ProjectAction, ProjectActionKind, ProjectActionRun, RestoreOperation, SessionExecutionProfile, TurnChangeSet, TurnFileDiff, WorkspaceCapabilityInventory, WorkspaceChanges } from '$lib/types';
+  import type { Artifact, ArtifactContent, CheckpointFile, ContextAttachment, GitFileAction, ProjectAction, ProjectActionKind, ProjectActionRun, RestoreOperation, SessionExecutionProfile, TurnChangeSet, TurnFileDiff, WorkspaceCapabilityInventory, WorkspaceChanges } from '$lib/types';
 
   type InspectorProps = {
     visible: boolean;
@@ -20,7 +19,6 @@
     diagnostics: AgentDiagnostic[];
     workspaceCapabilities: WorkspaceCapabilityInventory | null;
     codexThreads: CodexThreadListItem[];
-    piTree: PiSessionTreeSnapshot | null;
     executionProfile: SessionExecutionProfile | null;
     attachments: ContextAttachment[];
     artifacts: Artifact[];
@@ -37,8 +35,6 @@
     sessionRunning: boolean;
     selectedSessionArchiving: boolean;
     onSyncCodexThreads: () => void;
-    onRequestPiTreeNavigation: (entryId: string) => void;
-    onRefreshPiTree: (sessionId: string) => void;
     onRestoreTurnChangeSet: (sessionId: string, turnId: string) => void;
     onShowTurnFileDiff: (sessionId: string, turnId: string, path: string) => void;
     onApplyGitFileAction: (sessionId: string, turnId: string, path: string, action: GitFileAction) => void;
@@ -59,7 +55,6 @@
     diagnostics,
     workspaceCapabilities,
     codexThreads,
-    piTree,
     executionProfile,
     attachments,
     artifacts,
@@ -76,8 +71,6 @@
     sessionRunning,
     selectedSessionArchiving,
     onSyncCodexThreads,
-    onRequestPiTreeNavigation,
-    onRefreshPiTree,
     onRestoreTurnChangeSet,
     onShowTurnFileDiff,
     onApplyGitFileAction,
@@ -552,37 +545,6 @@
         {/if}
         <Button variant="ghost" size="sm" type="button" onclick={onSyncCodexThreads} disabled={threadBusy || busy}>
           <Icon name="refresh" size={13} /> 刷新线程
-        </Button>
-      </CardContent>
-    </Card>
-  {/if}
-
-  {#if session?.agent === 'pi' && desktop && piTree}
-    <Card class="thread-card">
-      <CardHeader class="thread-card-heading">
-        <CardTitle>Pi 会话树</CardTitle>
-        <Badge variant="secondary" class="count-pill">{flattenPiTree(piTree.tree).length}</Badge>
-      </CardHeader>
-      <CardContent class="thread-card-content">
-        {#if piTree.tree.length === 0}
-          <p class="thread-empty">首条消息后生成会话树</p>
-        {:else}
-          <div class="thread-list" aria-label="Pi 会话树">
-            {#each flattenPiTree(piTree.tree) as entry (entry.node.id)}
-              <div class="thread-item" style={`padding-left: ${entry.depth * 14}px`}>
-                <div class="thread-copy">
-                  <strong>{entry.node.label ?? entry.node.summary ?? entry.node.type}</strong>
-                  <small>{entry.node.role ?? entry.node.type}{entry.node.id === piTree.leafId ? ' · 当前分支' : ''}</small>
-                </div>
-                {#if entry.node.id !== piTree.leafId}
-                  <Button variant="ghost" size="sm" type="button" onclick={() => onRequestPiTreeNavigation(entry.node.id)} disabled={busy || sessionRunning || selectedSessionArchiving}>切换</Button>
-                {/if}
-              </div>
-            {/each}
-          </div>
-        {/if}
-        <Button variant="ghost" size="sm" type="button" onclick={() => onRefreshPiTree(session.id)} disabled={busy || selectedSessionArchiving}>
-          <Icon name="refresh" size={13} /> 刷新会话树
         </Button>
       </CardContent>
     </Card>

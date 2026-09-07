@@ -141,6 +141,19 @@ test('Codex forks are exposed in the timeline header and completed replies', asy
   assert.match(views, /'turnId'/, 'timeline view items must retain their turn boundary');
 });
 
+test('Pi session tree opens as a graph overlay from the timeline heading', async () => {
+  const [app, panel, overlay] = await Promise.all([
+    readFile(path.join(root, 'src/App.svelte'), 'utf8'),
+    readFile(path.join(root, 'src/lib/components/app/TimelinePanel.svelte'), 'utf8'),
+    readFile(path.join(root, 'src/lib/components/app/PiSessionTreeOverlay.svelte'), 'utf8'),
+  ]);
+  assert.match(panel, /onOpenPiTree/, 'Pi sessions must expose the tree entry in the timeline heading');
+  assert.match(app, /<PiSessionTreeOverlay/, 'the Pi tree must render as an app overlay');
+  assert.doesNotMatch(app, /sidePanelView\s*=\s*['"]pi-tree['"]/, 'the Pi tree must not add a side-panel view');
+  assert.match(overlay, /class="pi-tree-edges"/, 'the tree overlay must render graph edges');
+  assert.match(overlay, /onSelectNode\(entry\.node\.id\)/, 'graph nodes must initiate navigation when clicked');
+});
+
 test('the diff preview monospace token is defined in the UI kit', async () => {
   const source = await readFile(path.join(root, 'src/lib/ui-kit/kits/base.css'), 'utf8');
   assert.match(source, /--aibo-mono\s*:/, 'the shared UI kit must define the diff monospace token');

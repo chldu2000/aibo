@@ -160,18 +160,31 @@ function compactTreeNode(node) {
 function compactSessionEntry(entry) {
   if (!entry || typeof entry !== "object") return undefined;
   const message = entry.message;
-  const summary = entry.type === "message"
+  const content = entry.type === "message"
     ? textContent(message)
-    : typeof entry.summary === "string" ? entry.summary : undefined;
+    : entry.type === "model_change"
+      ? `模型已切换为 ${entry.provider ?? ""}/${entry.modelId ?? ""}`
+      : entry.type === "thinking_level_change"
+        ? `推理强度已切换为 ${entry.thinkingLevel ?? "unknown"}`
+        : entry.type === "session_info"
+          ? `会话名称已更新为 ${entry.name ?? ""}`
+          : typeof entry.summary === "string"
+            ? entry.summary
+            : typeof entry.content === "string"
+              ? entry.content
+              : undefined;
   return {
     id: entry.id,
     parentId: entry.parentId ?? null,
     type: entry.type,
     timestamp: entry.timestamp,
     role: message?.role,
+    toolName: message?.toolName,
+    stopReason: message?.stopReason,
+    isError: message?.isError,
     customType: entry.customType,
     display: entry.display,
-    summary: summary?.slice(0, 500),
+    summary: content,
     data: entry.data,
   };
 }

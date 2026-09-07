@@ -1432,6 +1432,72 @@ fn row_to_timeline_item(row: &sqlx::sqlite::SqliteRow) -> Result<TimelineItem, C
     })
 }
 
+fn pi_snapshot_timeline(snapshot: &serde_json::Value, session_id: &str) -> Vec<TimelineItem> {
+    snapshot
+        .get("branch")
+        .and_then(serde_json::Value::as_array)
+        .into_iter()
+        .flatten()
+        .filter_map(|entry| {
+            let id = entry.get("id")?.as_str()?.to_owned();
+            let entry_type = entry
+                .get("type")
+                .and_then(serde_json::Value::as_str)
+                .unwrap_or("system");
+            let source_role = entry.get("role").and_then(serde_json::Value::as_str);
+            let role = match source_role {
+                Some("user") => "user",
+                Some("assistant") => "assistant",
+                Some("toolResult") | Some("tool") => "tool",
+                _ => "system",
+            };
+            let content = entry
+                .get("summary")
+                .and_then(serde_json::Value::as_str)
+                .unwrap_or_default()
+                .to_owned();
+            if role == "assistant" && content.trim().is_empty() {
+                return None;
+            }
+            if content.is_empty() && entry_type != "message" {
+                return None;
+            }
+            let stop_reason = entry.get("stopReason").and_then(serde_json::Value::as_str);
+            let is_error = entry
+                .get("isError")
+                .and_then(serde_json::Value::as_bool)
+                .unwrap_or(false);
+            let status = if is_error || matches!(stop_reason, Some("error")) {
+                "failed"
+            } else if matches!(stop_reason, Some("aborted" | "cancelled" | "canceled")) {
+                "interrupted"
+            } else {
+                "completed"
+            };
+            let timestamp = entry
+                .get("timestamp")
+                .and_then(serde_json::Value::as_str)
+                .unwrap_or_default()
+                .to_owned();
+            Some(TimelineItem {
+                id: id.clone(),
+                session_id: session_id.to_owned(),
+                turn_id: None,
+                external_message_id: Some(id),
+                role: role.to_owned(),
+                tool_name: entry
+                    .get("toolName")
+                    .and_then(serde_json::Value::as_str)
+                    .map(ToOwned::to_owned),
+                content,
+                status: status.to_owned(),
+                created_at: timestamp.clone(),
+                updated_at: timestamp,
+            })
+        })
+        .collect()
+}
+
 async fn session_by_id(db: &SqlitePool, id: &str) -> Result<Session, CoreError> {
     let row = sqlx::query(
         "SELECT s.id, s.workspace_id, s.agent, s.label, s.state, s.archived,
@@ -1671,7 +1737,15 @@ async fn get_timeline(
     session_id: String,
     state: State<'_, AppState>,
 ) -> Result<Vec<TimelineItem>, CoreError> {
-    session_by_id(&state.db, &session_id).await?;
+    let session = session_by_id(&state.db, &session_id).await?;
+    if session.agent == "pi" {
+        match state.pi.snapshot(&session_id).await {
+            Ok(snapshot) => return Ok(pi_snapshot_timeline(&snapshot, &session_id)),
+            Err(error) => {
+                warn!(session_id = %session_id, error = %error, "unable to read active Pi branch; using cached timeline");
+            }
+        }
+    }
     let rows = sqlx::query(
         "SELECT id, session_id, turn_id, external_message_id, role, tool_name, content,
                 status, created_at, updated_at
@@ -5349,10 +5423,10 @@ mod tests {
         auto_name_session_from_first_message, bind_pending_attachments_to_turn,
         canonical_workspace_path, clone_cached_runtime, collect_workspace_capabilities,
         find_executable, mark_turn_interrupted, normalize_session_filter, now_iso, open_database,
-        persist_restore_operation, recover_interrupted_sessions, recover_interrupted_turn_changes,
-        remove_cached_runtime, require_trusted_workspace, restore_git_file_baseline,
-        session_execution_profile, session_label_from_first_message, workspace_label, CoreError,
-        SessionListFilter, TurnDiffSources, Workspace,
+        persist_restore_operation, pi_snapshot_timeline, recover_interrupted_sessions,
+        recover_interrupted_turn_changes, remove_cached_runtime, require_trusted_workspace,
+        restore_git_file_baseline, session_execution_profile, session_label_from_first_message,
+        workspace_label, CoreError, SessionListFilter, TurnDiffSources, Workspace,
     };
     use crate::change_set::{
         capture as capture_workspace, persist_baseline_checkpoint, persist_checkpoint_metadata,
@@ -6376,5 +6450,31 @@ mod tests {
                 ]
             );
         });
+    }
+
+    #[test]
+    fn pi_snapshot_timeline_projects_only_the_active_branch() {
+        let snapshot = serde_json::json!({
+            "branch": [
+                { "id": "user-root", "type": "message", "timestamp": "2026-09-07T00:00:00Z", "role": "user", "summary": "root" },
+                { "id": "assistant-tool-call", "type": "message", "timestamp": "2026-09-07T00:00:00Z", "role": "assistant", "summary": "" },
+                { "id": "model", "type": "model_change", "timestamp": "2026-09-07T00:00:01Z", "summary": "模型已切换" },
+                { "id": "assistant-selected", "type": "message", "timestamp": "2026-09-07T00:00:02Z", "role": "assistant", "summary": "selected branch" }
+            ],
+            "tree": [
+                { "id": "user-root", "children": [
+                    { "id": "assistant-selected", "children": [] },
+                    { "id": "assistant-other", "children": [] }
+                ]}
+            ]
+        });
+
+        let timeline = pi_snapshot_timeline(&snapshot, "pi-session");
+        assert_eq!(timeline.len(), 3);
+        assert_eq!(timeline[0].id, "user-root");
+        assert_eq!(timeline[1].role, "system");
+        assert_eq!(timeline[2].content, "selected branch");
+        assert!(timeline.iter().all(|item| item.id != "assistant-tool-call"));
+        assert!(timeline.iter().all(|item| item.id != "assistant-other"));
     }
 }

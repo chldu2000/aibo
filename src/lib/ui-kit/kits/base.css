@@ -520,6 +520,26 @@ dd { max-width: 68%; overflow: hidden; margin: 0; color: var(--aibo-muted); font
 .alert-dialog-header { padding: 18px 18px 8px; }
 .alert-dialog-content { padding: 0 18px; color: var(--aibo-muted); font-size: 12px; line-height: 1.6; }
 .alert-dialog-actions { display: flex; justify-content: flex-end; gap: 8px; padding: 18px; }
+.pi-tree-overlay { position: fixed; z-index: 15; inset: 0; display: grid; place-items: center; padding: calc(var(--aibo-titlebar-height) + 24px) 32px 32px; background: #00000080; }
+.pi-tree-dialog { display: flex; width: min(1040px, 100%); height: min(720px, 100%); min-height: 360px; flex-direction: column; overflow: hidden; border-color: var(--aibo-border-strong); background: var(--aibo-surface); box-shadow: 0 24px 80px #00000080; }
+.pi-tree-dialog-header { flex-direction: row; align-items: center; justify-content: space-between; gap: 16px; padding: 14px 16px; }
+.pi-tree-dialog-header > :not(:first-child) { margin-top: 0; }
+.pi-tree-dialog-title { display: grid; min-width: 0; gap: 3px; }
+.pi-tree-dialog-title small { overflow: hidden; color: var(--aibo-subtle); font-size: 9px; text-overflow: ellipsis; white-space: nowrap; }
+.pi-tree-dialog-actions { display: flex; flex: none; align-items: center; gap: 5px; }
+.pi-tree-dialog-content { min-width: 0; min-height: 0; flex: 1; padding: 0; border-top: 1px solid var(--aibo-border); }
+.pi-tree-viewport { width: 100%; height: 100%; overflow: auto; padding: 28px; background: var(--aibo-bg); }
+.pi-tree-canvas { position: relative; min-width: 100%; margin: 0 auto; }
+.pi-tree-edges { position: absolute; inset: 0; overflow: visible; pointer-events: none; }
+.pi-tree-edges path { fill: none; stroke: var(--aibo-border-strong); stroke-width: 1.5; }
+.pi-tree-node { position: absolute; display: flex; min-width: 0; align-items: center; justify-content: flex-start; gap: 9px; padding: 8px 10px; text-align: left; }
+.pi-tree-node-marker { width: 9px; height: 9px; flex: 0 0 9px; border: 2px solid var(--aibo-subtle); border-radius: 999px; background: var(--aibo-surface); }
+.pi-tree-node.current .pi-tree-node-marker { border-color: var(--aibo-accent); background: var(--aibo-accent); box-shadow: 0 0 0 3px var(--aibo-accent-soft); }
+.pi-tree-node-copy { display: grid; min-width: 0; gap: 3px; }
+.pi-tree-node-copy strong, .pi-tree-node-copy small { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pi-tree-node-copy strong { color: var(--aibo-text); font-size: 10px; font-weight: 600; }
+.pi-tree-node-copy small { color: var(--aibo-subtle); font-size: 8px; }
+.pi-tree-empty { display: grid; height: 100%; min-height: 260px; place-items: center; padding: 24px; color: var(--aibo-subtle); font-size: 11px; text-align: center; }
 
 @media (max-width: 1100px) {
   body { min-width: 0; }
