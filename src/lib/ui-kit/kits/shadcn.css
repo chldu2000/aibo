@@ -139,6 +139,12 @@
   background: var(--accent);
 }
 
+.app-shell[data-ui-kit='shadcn'] .window-system-actions [data-window-action='close']:hover:not(:disabled),
+.app-shell[data-ui-kit='shadcn'] .window-system-actions [data-window-action='close']:focus-visible {
+  color: var(--destructive-foreground);
+  background: var(--destructive);
+}
+
 .app-shell[data-ui-kit='shadcn'] .workspace-splitter {
   cursor: col-resize;
   appearance: none;

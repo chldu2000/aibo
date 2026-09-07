@@ -25,7 +25,9 @@ export type UiIconName =
   | 'terminal'
   | 'trust'
   | 'undo'
-  | 'untrust';
+  | 'untrust'
+  | 'window-maximize'
+  | 'window-minimize';
 
 /**
  * Semantic button intents exposed to page components.

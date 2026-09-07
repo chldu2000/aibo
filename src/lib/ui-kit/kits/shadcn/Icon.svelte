@@ -24,6 +24,8 @@
   import TrustIcon from '@lucide/svelte/icons/shield-check';
   import UndoIcon from '@lucide/svelte/icons/undo-2';
   import UntrustIcon from '@lucide/svelte/icons/shield-off';
+  import WindowMaximizeIcon from '@lucide/svelte/icons/maximize';
+  import WindowMinimizeIcon from '@lucide/svelte/icons/minus';
   import type { SVGAttributes } from 'svelte/elements';
   import type { UiIconName } from '../../contract';
 
@@ -60,6 +62,8 @@
     trust: TrustIcon,
     undo: UndoIcon,
     untrust: UntrustIcon,
+    'window-maximize': WindowMaximizeIcon,
+    'window-minimize': WindowMinimizeIcon,
   };
 
   const IconComponent = $derived(icons[name]);

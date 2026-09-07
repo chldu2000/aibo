@@ -8,6 +8,8 @@
     onToggleSidePanel: () => void;
     onStartDragging: () => void;
     onToggleMaximize: () => void;
+    onMinimize: () => void;
+    onClose: () => void;
   };
 
   let {
@@ -17,6 +19,8 @@
     onToggleSidePanel,
     onStartDragging,
     onToggleMaximize,
+    onMinimize,
+    onClose,
   }: WindowTitlebarProps = $props();
 
   function isInteractiveTarget(event: MouseEvent): boolean {
@@ -65,5 +69,16 @@
     >
       <Icon name="panel-right" size={15} />
     </Button>
+    <div class="window-system-actions" aria-label="窗口控制">
+      <Button variant="ghost" size="icon" type="button" aria-label="最小化窗口" title="最小化" onclick={onMinimize}>
+        <Icon name="window-minimize" size={14} />
+      </Button>
+      <Button variant="ghost" size="icon" type="button" aria-label="最大化或还原窗口" title="最大化或还原" onclick={onToggleMaximize}>
+        <Icon name="window-maximize" size={14} />
+      </Button>
+      <Button variant="ghost" size="icon" type="button" data-window-action="close" aria-label="关闭窗口" title="关闭" onclick={onClose}>
+        <Icon name="close" size={14} />
+      </Button>
+    </div>
   </div>
 </header>

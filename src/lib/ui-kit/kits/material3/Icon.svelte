@@ -24,6 +24,8 @@
   import trust from '@ktibow/iconset-material-symbols/verified-user-outline-rounded';
   import undo from '@ktibow/iconset-material-symbols/undo-rounded';
   import untrust from '@ktibow/iconset-material-symbols/gpp-bad-outline-rounded';
+  import windowMaximize from '@ktibow/iconset-material-symbols/chrome-maximize';
+  import windowMinimize from '@ktibow/iconset-material-symbols/chrome-minimize-rounded';
   import { Icon as MaterialIcon } from 'm3-svelte';
   import type { SVGAttributes } from 'svelte/elements';
   import type { UiIconName } from '../../contract';
@@ -61,6 +63,8 @@
     trust,
     undo,
     untrust,
+    'window-maximize': windowMaximize,
+    'window-minimize': windowMinimize,
   };
 </script>
 

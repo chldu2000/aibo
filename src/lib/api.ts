@@ -59,6 +59,10 @@ export const startWindowDragging = (): Promise<void> => getCurrentWindow().start
 
 export const toggleWindowMaximize = (): Promise<void> => getCurrentWindow().toggleMaximize();
 
+export const minimizeWindow = (): Promise<void> => getCurrentWindow().minimize();
+
+export const closeWindow = (): Promise<void> => getCurrentWindow().close();
+
 export const listWorkspaces = (): Promise<Workspace[]> =>
   invoke<Workspace[]>('list_workspaces');
 

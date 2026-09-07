@@ -128,6 +128,8 @@
     setWorkspaceTrust,
     startWindowDragging,
     toggleWindowMaximize,
+    minimizeWindow,
+    closeWindow,
     unarchiveSession as unarchiveSessionApi,
   } from './lib/api';
   import type {
@@ -441,6 +443,18 @@
   function toggleMaximizeWindow(): void {
     void toggleWindowMaximize().catch((error) => {
       console.warn('unable to toggle window maximize', error);
+    });
+  }
+
+  function minimizeAppWindow(): void {
+    void minimizeWindow().catch((error) => {
+      console.warn('unable to minimize window', error);
+    });
+  }
+
+  function closeAppWindow(): void {
+    void closeWindow().catch((error) => {
+      console.warn('unable to close window', error);
     });
   }
 
@@ -2872,6 +2886,8 @@
     onToggleSidePanel={toggleSidePanel}
     onStartDragging={dragWindow}
     onToggleMaximize={toggleMaximizeWindow}
+    onMinimize={minimizeAppWindow}
+    onClose={closeAppWindow}
   />
 
   <main

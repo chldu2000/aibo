@@ -57,6 +57,19 @@ test('root composition does not bind concrete visual implementations', async () 
   assert.match(source, /from ['"]\$lib\/ui-kit['"]/, 'App.svelte must consume the UI kit seam');
 });
 
+test('desktop windows use Aibo-owned titlebar controls', async () => {
+  const config = JSON.parse(await readFile(path.join(root, 'src-tauri', 'tauri.conf.json'), 'utf8'));
+  assert.ok(config.app?.windows?.length > 0, 'Tauri must define at least one desktop window');
+  assert.ok(
+    config.app.windows.every((window) => window.decorations === false),
+    'native window decorations must be disabled for the custom Aibo titlebar',
+  );
+  const titlebar = await readFile(path.join(root, 'src/lib/components/app/WindowTitlebar.svelte'), 'utf8');
+  for (const callback of ['onMinimize', 'onToggleMaximize', 'onClose']) {
+    assert.match(titlebar, new RegExp(`\\b${callback}\\b`), `${callback} must be wired in the custom titlebar`);
+  }
+});
+
 test('business modules do not depend on Svelte, UI, or API implementations', async () => {
   const files = await sourceFiles('src/lib/app', '.ts');
   assert.ok(files.length > 0);
