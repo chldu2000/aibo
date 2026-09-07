@@ -118,6 +118,16 @@ test('workspace Git file diffs render in the center preview', async () => {
   assert.match(preview, /workspace-file-diff-lines/, 'the center preview must render structured diff lines');
 });
 
+test('workspace and session rows expose only supported item actions', async () => {
+  const sidebar = await readFile(path.join(root, 'src/lib/components/app/WorkspaceSidebar.svelte'), 'utf8');
+  assert.doesNotMatch(sidebar, /在终端中打开|在编辑器中打开/, 'workspace rows must not expose terminal or editor actions');
+  assert.doesNotMatch(sidebar, /关闭会话|onCloseSession/, 'session rows must not expose the close action');
+  for (const platformLabel of ['Finder', '文件资源管理器', '文件管理器']) {
+    assert.match(sidebar, new RegExp(`['"]${platformLabel}['"]`), `workspace location action must support ${platformLabel}`);
+  }
+  assert.match(sidebar, /workspaceLocationLabel/, 'workspace location action must use its platform label');
+});
+
 test('the diff preview monospace token is defined in the UI kit', async () => {
   const source = await readFile(path.join(root, 'src/lib/ui-kit/kits/base.css'), 'utf8');
   assert.match(source, /--aibo-mono\s*:/, 'the shared UI kit must define the diff monospace token');

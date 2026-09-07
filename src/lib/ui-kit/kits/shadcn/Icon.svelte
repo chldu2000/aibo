@@ -20,7 +20,6 @@
   import SendIcon from '@lucide/svelte/icons/send';
   import SettingsIcon from '@lucide/svelte/icons/settings-2';
   import StopIcon from '@lucide/svelte/icons/square';
-  import TerminalIcon from '@lucide/svelte/icons/terminal';
   import TrustIcon from '@lucide/svelte/icons/shield-check';
   import UndoIcon from '@lucide/svelte/icons/undo-2';
   import UntrustIcon from '@lucide/svelte/icons/shield-off';
@@ -58,7 +57,6 @@
     send: SendIcon,
     settings: SettingsIcon,
     stop: StopIcon,
-    terminal: TerminalIcon,
     trust: TrustIcon,
     undo: UndoIcon,
     untrust: UntrustIcon,

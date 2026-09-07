@@ -32,14 +32,13 @@
     onSetCreateProfileMode: (mode: InteractionMode) => void;
     onToggleTrust: (workspaceId: string) => void;
     onDeleteWorkspace: (workspaceId: string) => void;
-    onOpenWorkspaceLocation: (workspaceId: string, target: 'finder' | 'terminal' | 'editor') => void;
+    onOpenWorkspaceLocation: (workspaceId: string) => void;
     onCreateCodex: (workspaceId: string) => void;
     onCreatePi: (workspaceId: string) => void;
     onSelectSession: (sessionId: string) => void;
     onUnarchiveSession: (sessionId: string) => void;
     onForkSession: (sessionId: string) => void;
     onRequestArchiveSession: (sessionId: string) => void;
-    onCloseSession: (sessionId: string) => void;
     onSyncCodexThread: (sessionId: string) => void;
     onBeginRenameSession: (sessionId: string) => void;
     onSaveSessionRename: () => void;
@@ -81,12 +80,16 @@
     onUnarchiveSession,
     onForkSession,
     onRequestArchiveSession,
-    onCloseSession,
     onSyncCodexThread,
     onBeginRenameSession,
     onSaveSessionRename,
     onCancelRenameSession,
   }: WorkspaceSidebarProps = $props();
+  const workspaceLocationLabel = navigator.platform.startsWith('Mac')
+    ? 'Finder'
+    : navigator.platform.startsWith('Win')
+      ? '文件资源管理器'
+      : '文件管理器';
 
 </script>
 
@@ -224,34 +227,12 @@
                 variant="ghost"
                 size="icon"
                 type="button"
-                aria-label="在 Finder 中打开工作区"
-                title="在 Finder 中打开"
-                onclick={(event) => { event.stopPropagation(); onOpenWorkspaceLocation(workspace.id, 'finder'); }}
+                aria-label={`在${workspaceLocationLabel}中打开工作区`}
+                title={`在${workspaceLocationLabel}中打开`}
+                onclick={(event) => { event.stopPropagation(); onOpenWorkspaceLocation(workspace.id); }}
                 disabled={busy}
               >
                 <Icon name="folder" size={14} />
-              </Button>
-              <Button
-                variant="ghost"
-                size="icon"
-                type="button"
-                aria-label="在终端中打开工作区"
-                title="在终端中打开"
-                onclick={(event) => { event.stopPropagation(); onOpenWorkspaceLocation(workspace.id, 'terminal'); }}
-                disabled={busy}
-              >
-                <Icon name="terminal" size={14} />
-              </Button>
-              <Button
-                variant="ghost"
-                size="icon"
-                type="button"
-                aria-label="在编辑器中打开工作区"
-                title="在编辑器中打开（需配置 AIBO_EDITOR）"
-                onclick={(event) => { event.stopPropagation(); onOpenWorkspaceLocation(workspace.id, 'editor'); }}
-                disabled={busy}
-              >
-                <Icon name="edit" size={14} />
               </Button>
               <Button
                 variant="ghost"
@@ -343,18 +324,12 @@
                             <Button variant="ghost" size="icon" type="button" aria-label="归档会话" title="归档" onclick={() => onRequestArchiveSession(session.id)} disabled={busy || isSessionRunning(session) || archivingSessionId !== null}>
                               <Icon name="archive" size={13} />
                             </Button>
-                            <Button variant="ghost" size="icon" type="button" aria-label="关闭会话" title="关闭" onclick={() => onCloseSession(session.id)} disabled={busy || isSessionRunning(session) || archivingSessionId === session.id}>
-                              <Icon name="close" size={13} />
-                            </Button>
                             <Button variant="ghost" size="icon" type="button" aria-label="读取线程" title="读取线程" onclick={() => onSyncCodexThread(session.id)} disabled={threadBusy || busy || archivingSessionId === session.id}>
                               <Icon name="refresh" size={13} />
                             </Button>
                           {:else}
                             <Button variant="ghost" size="icon" type="button" aria-label="归档会话" title="归档" onclick={() => onRequestArchiveSession(session.id)} disabled={busy || isSessionRunning(session) || archivingSessionId !== null}>
                               <Icon name="archive" size={13} />
-                            </Button>
-                            <Button variant="ghost" size="icon" type="button" aria-label="关闭会话" title="关闭" onclick={() => onCloseSession(session.id)} disabled={busy || isSessionRunning(session) || archivingSessionId === session.id}>
-                              <Icon name="close" size={13} />
                             </Button>
                           {/if}
                           <Button variant="ghost" size="icon" type="button" aria-label="改名" title="改名" onclick={() => onBeginRenameSession(session.id)} disabled={busy || archivingSessionId === session.id}>

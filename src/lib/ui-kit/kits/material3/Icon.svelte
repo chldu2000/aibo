@@ -20,7 +20,6 @@
   import send from '@ktibow/iconset-material-symbols/send-rounded';
   import settings from '@ktibow/iconset-material-symbols/tune-rounded';
   import stop from '@ktibow/iconset-material-symbols/stop-rounded';
-  import terminal from '@ktibow/iconset-material-symbols/terminal-rounded';
   import trust from '@ktibow/iconset-material-symbols/verified-user-outline-rounded';
   import undo from '@ktibow/iconset-material-symbols/undo-rounded';
   import untrust from '@ktibow/iconset-material-symbols/gpp-bad-outline-rounded';
@@ -59,7 +58,6 @@
     send,
     settings,
     stop,
-    terminal,
     trust,
     undo,
     untrust,

@@ -22,7 +22,6 @@ export type UiIconName =
   | 'send'
   | 'settings'
   | 'stop'
-  | 'terminal'
   | 'trust'
   | 'undo'
   | 'untrust'

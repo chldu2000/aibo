@@ -1667,10 +1667,10 @@
     await workspaceController.chooseWorkspaceDirectory();
   }
 
-  async function openWorkspaceLocation(workspaceId: string, target: 'finder' | 'terminal' | 'editor') {
+  async function openWorkspaceLocation(workspaceId: string) {
     if (!desktop) return;
     try {
-      await openWorkspaceLocationApi(workspaceId, target);
+      await openWorkspaceLocationApi(workspaceId, 'finder');
     } catch (error) {
       errorMessage = toErrorMessage(error);
     }
@@ -2485,10 +2485,6 @@
     await sessionLifecycle.saveSessionRename();
   }
 
-  async function closeSession(sessionId = selectedSessionId) {
-    await sessionLifecycle.closeSession(sessionId);
-  }
-
   async function forkSession(sessionId = selectedSessionId) {
     await sessionLifecycle.forkSession(sessionId);
   }
@@ -2930,7 +2926,7 @@
         const workspace = workspaces.find((item) => item.id === workspaceId);
         if (workspace) void deleteWorkspace(workspace);
       }}
-      onOpenWorkspaceLocation={(workspaceId, target) => void openWorkspaceLocation(workspaceId, target)}
+      onOpenWorkspaceLocation={(workspaceId) => void openWorkspaceLocation(workspaceId)}
       onCreateCodex={(workspaceId) => {
         if (workspaceId !== selectedWorkspaceId) activateWorkspace(workspaceId);
         void createCodex();
@@ -2943,7 +2939,6 @@
       onUnarchiveSession={(sessionId) => void unarchiveSession(sessionId)}
       onForkSession={(sessionId) => void forkSession(sessionId)}
       onRequestArchiveSession={requestArchiveSession}
-      onCloseSession={(sessionId) => void closeSession(sessionId)}
       onSyncCodexThread={(sessionId) => void syncCodexThread(sessionId)}
       onBeginRenameSession={beginRenameSession}
       onSaveSessionRename={() => void saveSessionRename()}
