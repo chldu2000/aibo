@@ -70,6 +70,33 @@ test('desktop windows use Aibo-owned titlebar controls', async () => {
   }
 });
 
+test('custom titlebar has permission for every native window action', async () => {
+  const capability = JSON.parse(
+    await readFile(path.join(root, 'src-tauri', 'capabilities', 'default.json'), 'utf8'),
+  );
+  const permissions = capability.permissions ?? [];
+  for (const permission of [
+    'core:window:allow-start-dragging',
+    'core:window:allow-toggle-maximize',
+    'core:window:allow-minimize',
+    'core:window:allow-close',
+  ]) {
+    assert.ok(permissions.includes(permission), `${permission} must be granted to the titlebar`);
+  }
+
+  const titlebar = await readFile(path.join(root, 'src/lib/components/app/WindowTitlebar.svelte'), 'utf8');
+  assert.match(
+    titlebar,
+    /data-tauri-drag-region/,
+    'the titlebar must use Tauri drag-region handling for drag and double-click behavior',
+  );
+  assert.doesNotMatch(
+    titlebar,
+    /onmousedown=\{handleTitlebarMouseDown\}|ondblclick=\{handleTitlebarDoubleClick\}/,
+    'the titlebar must not compete with Tauri drag-region event handling',
+  );
+});
+
 test('business modules do not depend on Svelte, UI, or API implementations', async () => {
   const files = await sourceFiles('src/lib/app', '.ts');
   assert.ok(files.length > 0);

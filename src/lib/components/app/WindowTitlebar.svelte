@@ -6,7 +6,6 @@
     onOpenDiagnostics: () => void;
     sidePanelOpen: boolean;
     onToggleSidePanel: () => void;
-    onStartDragging: () => void;
     onToggleMaximize: () => void;
     onMinimize: () => void;
     onClose: () => void;
@@ -17,38 +16,20 @@
     onOpenDiagnostics,
     sidePanelOpen,
     onToggleSidePanel,
-    onStartDragging,
     onToggleMaximize,
     onMinimize,
     onClose,
   }: WindowTitlebarProps = $props();
 
-  function isInteractiveTarget(event: MouseEvent): boolean {
-    const target = event.target instanceof Element ? event.target : null;
-    return Boolean(target?.closest('button, input, textarea, select, a, [role="button"]'));
-  }
-
-  function handleTitlebarMouseDown(event: MouseEvent): void {
-    if (event.button !== 0) return;
-    if (isInteractiveTarget(event)) return;
-    onStartDragging();
-  }
-
-  function handleTitlebarDoubleClick(event: MouseEvent): void {
-    if (event.button !== 0 || isInteractiveTarget(event)) return;
-    event.preventDefault();
-    onToggleMaximize();
-  }
 </script>
 
 <header
   class="window-titlebar"
   data-ui-component="window-titlebar"
+  data-tauri-drag-region="deep"
   role="toolbar"
   aria-label="窗口标题栏"
   tabindex="-1"
-  onmousedown={handleTitlebarMouseDown}
-  ondblclick={handleTitlebarDoubleClick}
 >
   <span class="window-title">Aibo</span>
   <div class="window-actions">

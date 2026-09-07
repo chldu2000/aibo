@@ -126,7 +126,6 @@
     abortPiTurn,
     clearPiQueue,
     setWorkspaceTrust,
-    startWindowDragging,
     toggleWindowMaximize,
     minimizeWindow,
     closeWindow,
@@ -432,12 +431,6 @@
   function openDiagnosticsPanel(): void {
     settingsOpen = false;
     diagnosticsOpen = true;
-  }
-
-  function dragWindow(): void {
-    void startWindowDragging().catch((error) => {
-      console.warn('unable to start window dragging', error);
-    });
   }
 
   function toggleMaximizeWindow(): void {
@@ -2884,7 +2877,6 @@
     onOpenDiagnostics={openDiagnosticsPanel}
     sidePanelOpen={sidePanelOpen}
     onToggleSidePanel={toggleSidePanel}
-    onStartDragging={dragWindow}
     onToggleMaximize={toggleMaximizeWindow}
     onMinimize={minimizeAppWindow}
     onClose={closeAppWindow}

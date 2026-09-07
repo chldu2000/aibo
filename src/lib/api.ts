@@ -55,8 +55,6 @@ import type {
 export const isTauri = (): boolean =>
   typeof window !== 'undefined' && '__TAURI_INTERNALS__' in window;
 
-export const startWindowDragging = (): Promise<void> => getCurrentWindow().startDragging();
-
 export const toggleWindowMaximize = (): Promise<void> => getCurrentWindow().toggleMaximize();
 
 export const minimizeWindow = (): Promise<void> => getCurrentWindow().minimize();
