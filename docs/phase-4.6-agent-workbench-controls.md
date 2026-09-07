@@ -3,7 +3,7 @@
 > 状态：已完成（2026-09-08）；4.6A–4.6E 已接入，Pi provider 真实 turn 与部分线程列表最终一致性作为非阻塞兼容性复测保留
 > 平台：macOS arm64 首发基线；Windows 在 macOS 验收后验证
 > 前置：[Phase 4.5 常规 Agent 工作台能力补全](phase-4.5-agent-workbench-completion.md) 的 G0–G4 自动化门禁，以及可用的 Codex/Pi macOS 认证会话
-> 后续：Phase 5 `@` 与 Handoff v1
+> 后续：Phase 4.7 [Agent 支持插件化](phase-4.7-agent-plugins.md)，随后进入 Phase 5 `@` 与 Handoff v1
 
 ## 1. 阶段定位
 
@@ -332,4 +332,4 @@ Phase 4.6 已于 2026-09-08 标记为完成：Aibo 能让用户在同一个工�
 4. Codex/Pi 会话切换、应用重启、adapter 重启和 provider 错误不会造成配置、草稿或状态串线。
 5. 4.6D 的 P1 功能至少完成草稿恢复、等待状态和发送失败恢复；上下文预算和压缩可在能力不足时明确显示估算/unsupported。
 
-上述准入条件已按 Phase 4.6 范围满足，Phase 5 可以开始实现跨 Agent Handoff。后续 Provider 兼容性复测继续保留，不通过增加自然语言提示来掩盖状态、能力或配置问题。
+上述准入条件已按 Phase 4.6 范围满足。2026-09-08 交付计划新增 Phase 4.7 Agent 支持插件化，完成后 Phase 5 基于统一插件契约实现跨 Agent Handoff。后续 Provider 兼容性复测继续保留，不通过增加自然语言提示来掩盖状态、能力或配置问题。

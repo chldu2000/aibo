@@ -1,6 +1,6 @@
 # Aibo 多 Agent 工作台：调研、架构建议与实施计划
 
-> 状态：架构已冻结（macOS 首发）；Phase 0–4.6 已完成，当前进入 Phase 5 `@` 与 Handoff v1，真实 Provider 兼容性复测与 Windows 验证后续进行
+> 状态：Phase 0–4.6 已完成；新增 Phase 4.7 Agent 支持插件化（待实施），完成后进入 Phase 5 `@` 与 Handoff v1；macOS 首发，真实 Provider 兼容性复测与 Windows 验证后续进行
 > 调研日期：2026-09-02  
 > 首批目标：Codex、Pi；首发平台：macOS（当前基线为 arm64）
 > 技术栈：Svelte 5 + Tauri 2
@@ -12,7 +12,7 @@ Aibo 应定位为“本地 Agent 客户端与上下文交换层”，而不是�
 推荐采用四层结构：
 
 1. **Aibo Core**：工作区、统一会话目录、进程生命周期、权限与本地持久化。
-2. **Agent Adapter**：把 Codex App Server、Pi RPC/SDK 的不同协议映射成统一事件与命令。
+2. **Agent 插件层**：把不同 Agent 协议映射成统一事件与命令；Phase 4.7 将现有 Codex/Pi adapter 迁为内置插件，与外部插件共用契约及加载流程。
 3. **Context Exchange**：实现稳定的 `@会话` 引用、版本化 handoff 工件、预算控制与审计。
 4. **Aibo UI**：唯一输入输出界面；不嵌入、不转发 Agent 原生 TUI/GUI。
 
@@ -476,6 +476,18 @@ V1 后为 Pi 增加可选 container/VM/平台 sandbox runner；统一权限 prof
 
 退出条件：用户可以在统一工作台内发现并控制模型、推理强度、命令、Skills、Plan 和 Goal；任务运行状态不会因工具调用间隔或重启变成不可解释的空闲；草稿、配置和结构化事件可供 Phase 5 `SessionSnapshot v1` 直接引用。详细规格见 [Phase 4.6 记录](phase-4.6-agent-workbench-controls.md)。
 
+### Phase 4.7：Agent 支持插件化（待实施，工期待首个闭环后估算）
+
+- 建立版本化插件清单、Agent Runtime Protocol、Plugin View Protocol，以及动态 Agent 注册表和统一会话 API。
+- Core 保留权限、状态机、持久化、事件校验、变更快照和进程监管；Codex/Pi 厂商协议逻辑迁为进程外内置插件，与第三方插件走同一加载流程。
+- 支持本地插件包安装、依赖诊断、启停、版本并存、升级与卸载；新增 Agent 无需修改 Aibo 源码或重新编译。
+- 以能力驱动模型、命令、审批、会话树、Goal 等入口，消除业务层对 Codex/Pi 的硬编码分派。
+- 插件通过声明式视图和 View SDK 表达不同布局，由 `$lib/ui-kit` 与当前皮肤统一渲染；约束语义属性、图标和交互状态，不允许插件注入任意样式或脚本。
+- 迁移 Agent 枚举、数据库约束和事件契约，保留历史会话、权限语义与版本化恢复数据。
+- 用仓库外测试 Agent 插件完成安装、会话、恢复和差异化视图闭环，并回归两个内置插件与两套皮肤。
+
+退出条件：用户安装第三种 Agent 插件后，无需修改或重编译 Aibo 即可发现 Agent、创建会话、流式交互、中止和恢复；Codex/Pi 现有能力不退化；插件视图遵守当前皮肤，切换皮肤保留交互状态；非法事件、崩溃、旧 generation、协议不兼容、权限能力不足和卸载后历史读取均有验证。详细分期与验收见 [Phase 4.7 计划](phase-4.7-agent-plugins.md)。本阶段完成后，Phase 5 基于统一插件能力与会话契约实现 Handoff。
+
 ### Phase 5：`@` 与 Handoff v1（6–10 天）
 
 - mention picker 与结构化 token。
@@ -499,12 +511,16 @@ V1 后为 Pi 增加可选 container/VM/平台 sandbox runner；统一权限 prof
 
 加入 Phase 4.5 后的历史粗略总工期为 **51–82 个工程日**。Phase 0–4 已实施部分不再据此反推实际成本；Phase 4.5 应在完成 Pi 受控工具边界和 Git fixture 首个切片后重新估算剩余工作。
 
+上述为历史估算，不包含 Phase 4.6/4.7 的新增范围；Phase 4.7 在第三方测试插件最小闭环完成后重新估算，不据此承诺新的总工期。
+
 ## 10. MVP 范围
 
 MVP 必须有：
 
 - 本地工作区管理。
 - Codex/Pi 安装探测和诊断。
+- Agent 插件本地安装与生命周期管理；Codex/Pi 作为内置插件，第三方插件可动态接入。
+- 能力驱动的 Agent 交互和遵守当前皮肤的声明式插件视图。
 - 创建、恢复、改名、归档会话。
 - 统一流式消息、工具事件、停止按钮。
 - Codex 原生审批 UI 接管。
@@ -519,7 +535,7 @@ MVP 必须有：
 MVP 不做：
 
 - 云端同步、多人协作、移动端。
-- 任意第三方 adapter 动态安装。
+- 任意插件脚本或样式注入主 WebView；无限制的自定义 UI 扩展。
 - 把多个 Agent 伪装成一个共享原生会话。
 - 自动提交、自动 push 或自动合并代码。
 - 对 Pi 声称强沙箱。
@@ -574,6 +590,8 @@ macOS 本机 Phase 0 已通过，架构评审结果已经冻结在 [docs/archite
 2. Codex 使用 App Server；Pi 使用项目锁版 SDK host，RPC 仅作兼容/诊断。
 3. `AgentEvent v1`、session state machine、`SessionSnapshot v1` 和 `Handoff Envelope v1` 的边界已确定。
 4. Pi 首版接受宿主机当前用户权限，但必须通过 workspace trust 明示风险；不提前引入容器/VM。
-5. Phase 1–4.6 已完成应用骨架、Codex/Pi adapter、统一会话体验与 Agent 工作台能力；当前进入 Phase 5 Handoff v1。
+5. Phase 1–4.6 已完成应用骨架、Codex/Pi adapter、统一会话体验与 Agent 工作台能力；下一阶段为 Phase 4.7 Agent 支持插件化，随后进入 Phase 5 Handoff v1。
 
 Phase 4.5A–F 与 Phase 4.6A–E 已完成：执行 profile、安全写入与命令网关、变更审阅、checkpoint/恢复（含 `aibo.restore-operation/v1` 结构化审计）、结构化上下文、artifact、队列、project actions、能力检查器，以及模型、推理强度、命令、Skills、Plan、Goal、状态和草稿控制均已落地。真实 Codex/Pi Provider 场景受认证条件限制的项目作为非阻塞兼容性复测保留，不以离线 fixture 冒充通过。详细记录见 [Phase 4.5 计划与验收](phase-4.5-agent-workbench-completion.md)与 [Phase 4.6 计划与验收](phase-4.6-agent-workbench-controls.md)。
+
+2026-09-08 新增 [Phase 4.7 Agent 支持插件化](phase-4.7-agent-plugins.md)。实施从契约与 ADR 开始，显式更新原冻结架构中 adapter 的进程边界；冻结契约的破坏性变化必须升级版本并提供旧数据兼容读取。本计划不表示插件运行时或视图协议已经实现。
