@@ -186,6 +186,13 @@ export interface PiSessionTreeNavigation extends PiSessionTreeSnapshot {
   editorText: string | null;
 }
 
+export type PiTreeNavigationMode = 'none' | 'summary' | 'custom';
+
+export interface PiTreeNavigationOptions {
+  mode: PiTreeNavigationMode;
+  customInstructions?: string;
+}
+
 export interface PiSessionSnapshotEntry {
   id: string;
   parentId: string | null;

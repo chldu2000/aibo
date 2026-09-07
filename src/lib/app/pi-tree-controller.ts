@@ -1,5 +1,6 @@
 import type {
   PiSessionTreeNavigation,
+  PiTreeNavigationOptions,
   PiSessionTreeSnapshot,
   Session,
   TimelineItem,
@@ -11,6 +12,7 @@ export type PiTreeControllerContext = {
     navigatePiSessionTree: (
       sessionId: string,
       entryId: string,
+      options: PiTreeNavigationOptions,
     ) => Promise<PiSessionTreeNavigation>;
     getTimeline: (sessionId: string) => Promise<TimelineItem[]>;
   };
@@ -44,31 +46,34 @@ export function createPiTreeController(context: PiTreeControllerContext) {
     context.setPendingEntryId(entryId);
   }
 
-  async function confirmNavigation(): Promise<void> {
+  async function confirmNavigation(options: PiTreeNavigationOptions): Promise<boolean> {
     const entryId = context.getPendingEntryId();
     const sessionId = context.getSelectedSessionId();
     context.setPendingEntryId(null);
     const session = context.getSelectedSession();
-    if (!entryId || !sessionId || !session || session.agent !== 'pi') return;
+    if (!entryId || !sessionId || !session || session.agent !== 'pi') return false;
     if (!context.getDesktop()) {
       context.setNotice('当前是 Web 预览；Pi 分支切换需要在 Tauri 桌面模式中执行。');
-      return;
+      return false;
     }
 
     context.setBusy(true);
     context.setErrorMessage(null);
     try {
-      const navigation = await context.api.navigatePiSessionTree(sessionId, entryId);
+      const navigation = await context.api.navigatePiSessionTree(sessionId, entryId, options);
       if (navigation.cancelled) {
         context.setNotice('Pi 分支切换已取消。');
+        return false;
       } else {
         context.setPiTree(navigation);
         context.setTimeline(await context.api.getTimeline(sessionId));
         if (navigation.editorText !== null) context.setComposerText(navigation.editorText);
         context.setNotice('Pi 会话已切换到选定分支；原分支仍保留在会话树中。');
+        return true;
       }
     } catch (error) {
       context.setErrorMessage(toErrorMessage(error));
+      return false;
     } finally {
       context.setBusy(false);
     }

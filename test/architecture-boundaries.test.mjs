@@ -152,6 +152,21 @@ test('Pi session tree opens as a graph overlay from the timeline heading', async
   assert.doesNotMatch(app, /sidePanelView\s*=\s*['"]pi-tree['"]/, 'the Pi tree must not add a side-panel view');
   assert.match(overlay, /class="pi-tree-edges"/, 'the tree overlay must render graph edges');
   assert.match(overlay, /onSelectNode\(entry\.node\.id\)/, 'graph nodes must initiate navigation when clicked');
+  assert.match(overlay, /pi-tree-navigation-status/, 'the tree graph must show navigation progress');
+  assert.match(app, /if \(switched\) piTreeOpen = false/, 'a successful node switch must close the tree graph');
+});
+
+test('Pi tree navigation exposes all native summary modes', async () => {
+  const [overlays, api, host] = await Promise.all([
+    readFile(path.join(root, 'src/lib/components/app/AppOverlays.svelte'), 'utf8'),
+    readFile(path.join(root, 'src/lib/api.ts'), 'utf8'),
+    readFile(path.join(root, 'src-tauri/pi-sdk-host.mjs'), 'utf8'),
+  ]);
+  for (const label of ['No Summary', 'Summarize', 'Summarize with custom prompt']) {
+    assert.match(overlays, new RegExp(label), `Pi navigation must expose ${label}`);
+  }
+  assert.match(api, /summarize: options\.mode !== 'none'/, 'summary selection must reach the native command');
+  assert.match(host, /customInstructions: customInstructions \|\| undefined/, 'custom summary instructions must reach Pi');
 });
 
 test('the diff preview monospace token is defined in the UI kit', async () => {

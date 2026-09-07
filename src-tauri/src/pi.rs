@@ -2504,6 +2504,9 @@ impl PiManager {
         &self,
         session_id: &str,
         entry_id: &str,
+        summarize: bool,
+        custom_instructions: Option<&str>,
+        replace_instructions: bool,
     ) -> Result<Value, PiError> {
         let entry_id = entry_id.trim();
         if entry_id.is_empty() {
@@ -2521,7 +2524,15 @@ impl PiManager {
         }
         let response = session
             .client
-            .request("navigateTree", json!({ "entryId": entry_id }))
+            .request(
+                "navigateTree",
+                json!({
+                    "entryId": entry_id,
+                    "summarize": summarize,
+                    "customInstructions": custom_instructions,
+                    "replaceInstructions": replace_instructions,
+                }),
+            )
             .await?;
         let navigation = response.get("result").cloned().unwrap_or_else(|| json!({}));
         let snapshot = self.tree(session_id).await?;

@@ -4951,11 +4951,20 @@ async fn get_pi_session_tree(
 async fn navigate_pi_session_tree(
     session_id: String,
     entry_id: String,
+    summarize: bool,
+    custom_instructions: Option<String>,
+    replace_instructions: bool,
     state: State<'_, AppState>,
 ) -> Result<serde_json::Value, CoreError> {
     state
         .pi
-        .navigate_tree(&session_id, &entry_id)
+        .navigate_tree(
+            &session_id,
+            &entry_id,
+            summarize,
+            custom_instructions.as_deref(),
+            replace_instructions,
+        )
         .await
         .map_err(Into::into)
 }

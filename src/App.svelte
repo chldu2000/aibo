@@ -170,6 +170,8 @@
     SessionFilter,
     InteractionMode,
     PiSessionTreeSnapshot,
+    PiTreeNavigationMode,
+    PiTreeNavigationOptions,
     TimelineItem,
     Workspace,
     WorkspaceCapabilityInventory,
@@ -386,7 +388,10 @@
   let archivingSessionId = $state<string | null>(null);
   let archivingWorkspaceId = $state<string | null>(null);
   let piNavigationEntryId = $state<string | null>(null);
+  let piNavigationMode = $state<PiTreeNavigationMode>('none');
+  let piNavigationCustomInstructions = $state('');
   let piTreeOpen = $state(false);
+  let piNavigationStatus = $state<string | null>(null);
   let sessionSearch = $state('');
   let sessionFilter = $state<SessionFilter>('active');
   let sessionSearchOpen = $state(false);
@@ -2446,6 +2451,8 @@
   }
 
   function requestPiTreeNavigation(entryId: string) {
+    piNavigationMode = 'none';
+    piNavigationCustomInstructions = '';
     piTreeController.requestNavigation(entryId);
   }
 
@@ -2455,8 +2462,16 @@
     void refreshPiTree(selectedSession.id);
   }
 
-  async function confirmPiTreeNavigation() {
-    await piTreeController.confirmNavigation();
+  async function confirmPiTreeNavigation(options: PiTreeNavigationOptions) {
+    piNavigationStatus = options.mode === 'none'
+      ? '正在切换会话树节点…'
+      : '正在生成分支总结并切换节点…';
+    try {
+      const switched = await piTreeController.confirmNavigation(options);
+      if (switched) piTreeOpen = false;
+    } finally {
+      piNavigationStatus = null;
+    }
   }
 
   async function resolveApproval(approval: ApprovalRequest, decision: ApprovalDecision) {
@@ -3169,7 +3184,10 @@
     {busy}
     {sessionRunning}
     {selectedSessionArchiving}
-    onClose={() => (piTreeOpen = false)}
+    navigationStatus={piNavigationStatus}
+    onClose={() => {
+      if (!piNavigationStatus) piTreeOpen = false;
+    }}
     onRefresh={(sessionId) => void refreshPiTree(sessionId)}
     onSelectNode={requestPiTreeNavigation}
   />
@@ -3178,9 +3196,13 @@
     {notice}
     archiveConfirmationOpen={archiveConfirmationSessionId !== null}
     piNavigationOpen={piNavigationEntryId !== null}
+    {piNavigationMode}
+    {piNavigationCustomInstructions}
     onConfirmArchive={() => void confirmArchiveSession()}
     onCancelArchive={() => (archiveConfirmationSessionId = null)}
-    onConfirmPiNavigation={() => void confirmPiTreeNavigation()}
+    onSetPiNavigationMode={(mode) => (piNavigationMode = mode)}
+    onSetPiNavigationCustomInstructions={(value) => (piNavigationCustomInstructions = value)}
+    onConfirmPiNavigation={(options) => void confirmPiTreeNavigation(options)}
     onCancelPiNavigation={() => (piNavigationEntryId = null)}
   />
 </div>

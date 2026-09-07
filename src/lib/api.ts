@@ -11,6 +11,7 @@ import type {
   CodexThreadSnapshot,
   CodexThreadSummary,
   PiSessionTreeNavigation,
+  PiTreeNavigationOptions,
   PiSessionSnapshot,
   PiSessionTreeSnapshot,
   SessionListOptions,
@@ -513,8 +514,15 @@ export const getPiSessionTree = (sessionId: string): Promise<PiSessionTreeSnapsh
 export const navigatePiSessionTree = (
   sessionId: string,
   entryId: string,
+  options: PiTreeNavigationOptions,
 ): Promise<PiSessionTreeNavigation> =>
-  invoke<PiSessionTreeNavigation>('navigate_pi_session_tree', { sessionId, entryId });
+  invoke<PiSessionTreeNavigation>('navigate_pi_session_tree', {
+    sessionId,
+    entryId,
+    summarize: options.mode !== 'none',
+    customInstructions: options.mode === 'custom' ? options.customInstructions?.trim() || null : null,
+    replaceInstructions: false,
+  });
 
 export const getPiSessionSnapshot = (sessionId: string): Promise<PiSessionSnapshot> =>
   invoke<PiSessionSnapshot>('get_pi_session_snapshot', { sessionId });

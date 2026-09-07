@@ -13,6 +13,7 @@
     busy: boolean;
     sessionRunning: boolean;
     selectedSessionArchiving: boolean;
+    navigationStatus: string | null;
     onClose: () => void;
     onRefresh: (sessionId: string) => void;
     onSelectNode: (entryId: string) => void;
@@ -25,6 +26,7 @@
     busy,
     sessionRunning,
     selectedSessionArchiving,
+    navigationStatus,
     onClose,
     onRefresh,
     onSelectNode,
@@ -71,14 +73,18 @@
   });
 
   function handleWindowKeydown(event: KeyboardEvent): void {
-    if (open && event.key === 'Escape') onClose();
+    if (open && !navigationStatus && event.key === 'Escape') onClose();
+  }
+
+  function requestClose(): void {
+    if (!navigationStatus) onClose();
   }
 </script>
 
 <svelte:window onkeydown={handleWindowKeydown} />
 
 {#if open && session?.agent === 'pi'}
-  <div class="pi-tree-overlay" role="presentation" onclick={onClose}>
+  <div class="pi-tree-overlay" role="presentation" onclick={requestClose}>
     <Card class="pi-tree-dialog" role="dialog" aria-modal="true" aria-labelledby="pi-tree-title" onclick={(event) => event.stopPropagation()}>
       <CardHeader class="pi-tree-dialog-header">
         <div class="pi-tree-dialog-title">
@@ -90,12 +96,19 @@
           <Button variant="ghost" size="sm" type="button" onclick={() => onRefresh(session.id)} disabled={busy || selectedSessionArchiving}>
             <Icon name="refresh" size={13} /> 刷新
           </Button>
-          <Button variant="ghost" size="icon" type="button" aria-label="关闭会话树" title="关闭" onclick={onClose}>
+          <Button variant="ghost" size="icon" type="button" aria-label="关闭会话树" title="关闭" onclick={requestClose} disabled={Boolean(navigationStatus)}>
             <Icon name="close" size={14} />
           </Button>
         </div>
       </CardHeader>
       <CardContent class="pi-tree-dialog-content">
+        {#if navigationStatus}
+          <div class="pi-tree-navigation-status" role="status" aria-live="assertive">
+            <span class="activity-dots" aria-hidden="true"><span></span><span></span><span></span></span>
+            <strong>{navigationStatus}</strong>
+            <small>总结耗时取决于当前分支长度，请稍候。</small>
+          </div>
+        {/if}
         {#if !tree}
           <div class="pi-tree-empty">正在读取会话树…</div>
         {:else if graph.nodes.length === 0}
@@ -118,7 +131,7 @@
                   aria-label={`${entry.node.label ?? entry.node.summary ?? entry.node.type}${current ? '，当前节点' : '，切换到此节点'}`}
                   aria-current={current ? 'true' : undefined}
                   onclick={() => !current && onSelectNode(entry.node.id)}
-                  disabled={current || busy || sessionRunning || selectedSessionArchiving}
+                  disabled={current || busy || sessionRunning || selectedSessionArchiving || Boolean(navigationStatus)}
                 >
                   <span class="pi-tree-node-marker" aria-hidden="true"></span>
                   <span class="pi-tree-node-copy">

@@ -571,7 +571,14 @@ async function handle(message) {
       if (session.isStreaming) throw new Error("Pi session tree navigation requires an idle session");
       const entryId = String(params.entryId ?? "").trim();
       if (!entryId) throw new Error("Pi tree entryId must not be empty");
-      const navigation = await session.navigateTree(entryId, { summarize: false });
+      const customInstructions = typeof params.customInstructions === "string"
+        ? params.customInstructions.trim()
+        : undefined;
+      const navigation = await session.navigateTree(entryId, {
+        summarize: params.summarize === true,
+        customInstructions: customInstructions || undefined,
+        replaceInstructions: params.replaceInstructions === true,
+      });
       respond(id, {
         ...navigation,
         sessionId: session.sessionId,
