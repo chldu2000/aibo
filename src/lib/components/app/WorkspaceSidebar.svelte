@@ -84,6 +84,62 @@
     : navigator.platform.startsWith('Win')
       ? '文件资源管理器'
       : '文件管理器';
+  const agentChoices = [
+    { id: 'codex', label: 'Codex', detail: '只读' },
+    { id: 'pi', label: 'Pi', detail: '最低权限' },
+  ] as const;
+  const AGENTS_PER_RING = 6;
+  const FIRST_RING_RADIUS = 30;
+  const RING_GAP = 34;
+  const agentRingCount = Math.ceil(agentChoices.length / AGENTS_PER_RING);
+  const agentWheelBackdropSize = (FIRST_RING_RADIUS + (agentRingCount - 1) * RING_GAP + 18) * 2;
+  const agentLaunchers = new Map<string, HTMLElement>();
+  let agentWheelPosition = $state<{ left: number; top: number } | null>(null);
+
+  function registerAgentLauncher(node: HTMLElement, workspaceId: string) {
+    agentLaunchers.set(workspaceId, node);
+    return {
+      destroy: () => agentLaunchers.delete(workspaceId),
+    };
+  }
+
+  function updateAgentWheelPosition(): void {
+    if (!createSessionWorkspaceId) {
+      agentWheelPosition = null;
+      return;
+    }
+    const launcher = agentLaunchers.get(createSessionWorkspaceId);
+    if (!launcher) return;
+    const bounds = launcher.getBoundingClientRect();
+    agentWheelPosition = {
+      left: bounds.left + bounds.width / 2,
+      top: bounds.top + bounds.height / 2,
+    };
+  }
+
+  $effect(() => {
+    createSessionWorkspaceId;
+    requestAnimationFrame(updateAgentWheelPosition);
+    window.addEventListener('resize', updateAgentWheelPosition);
+    document.addEventListener('scroll', updateAgentWheelPosition, true);
+    return () => {
+      window.removeEventListener('resize', updateAgentWheelPosition);
+      document.removeEventListener('scroll', updateAgentWheelPosition, true);
+    };
+  });
+
+  function agentWheelStyle(index: number): string {
+    const ring = Math.floor(index / AGENTS_PER_RING);
+    const ringStart = ring * AGENTS_PER_RING;
+    const ringCount = Math.min(AGENTS_PER_RING, agentChoices.length - ringStart);
+    const angle = ((index - ringStart) * 360) / ringCount - 90;
+    return `--agent-angle: ${angle}deg; --agent-radius: ${FIRST_RING_RADIUS + ring * RING_GAP}px`;
+  }
+
+  function createAgentSession(agent: (typeof agentChoices)[number]['id'], workspaceId: string): void {
+    if (agent === 'codex') onCreateCodex(workspaceId);
+    else onCreatePi(workspaceId);
+  }
 
 </script>
 
@@ -173,7 +229,11 @@
         {@const workspaceExpanded = expandedWorkspaceIds.includes(workspace.id)}
         {@const workspaceSessions = sessionsByWorkspace[workspace.id] ?? []}
         <div class:expanded={workspaceExpanded} class="workspace-group">
-          <div class:selected={workspace.id === selectedWorkspaceId} class="workspace-item-row">
+          <div
+            class:selected={workspace.id === selectedWorkspaceId}
+            class:session-creator-open={createSessionWorkspaceId === workspace.id}
+            class="workspace-item-row"
+          >
             <Button
               variant={workspace.id === selectedWorkspaceId ? 'secondary' : 'ghost'}
               class="workspace-item"
@@ -195,17 +255,22 @@
               <span class:trusted={workspace.trust === 'trusted'} class="trust-dot workspace-trust-dot" title={workspace.trust === 'trusted' ? '可信' : '待确认'}></span>
             </Button>
             <div class="workspace-item-actions" aria-label={`${workspace.label} 管理操作`}>
-              <Button
-                variant="ghost"
-                size="icon"
-                type="button"
-                aria-label="新建 Agent 会话"
-                title="新建会话"
-                onclick={(event) => { event.stopPropagation(); onToggleSessionCreator(workspace.id); }}
-                disabled={busy}
-              >
-                <Icon name="add" size={15} />
-              </Button>
+              <div class="session-agent-launcher" use:registerAgentLauncher={workspace.id}>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  type="button"
+                  class="session-agent-trigger"
+                  aria-label="新建 Agent 会话"
+                  title="新建会话"
+                  aria-expanded={createSessionWorkspaceId === workspace.id}
+                  aria-controls={createSessionWorkspaceId === workspace.id ? `session-agent-wheel-${workspace.id}` : undefined}
+                  onclick={(event) => { event.stopPropagation(); onToggleSessionCreator(workspace.id); }}
+                  disabled={busy}
+                >
+                  <Icon name="add" size={15} />
+                </Button>
+              </div>
               <Button
                 variant="ghost"
                 size="icon"
@@ -244,19 +309,6 @@
 
           {#if workspaceExpanded}
             <section id={`workspace-sessions-${workspace.id}`} class="workspace-session-group" aria-label={`${workspace.label} 的会话`}>
-              {#if createSessionWorkspaceId === workspace.id}
-                <div class="session-agent-picker" aria-label="选择 Agent 创建只读会话">
-                  <small>选择 Agent · 最低权限</small>
-                  <div class="session-agent-wheel" role="group" aria-label="可用 Agent">
-                    <Button class="session-agent-option" variant="ghost" size="icon" type="button" aria-label="使用 Codex 创建只读会话" title="Codex · 只读" onclick={() => onCreateCodex(workspace.id)} disabled={busy}>
-                      <AgentStatusMark agent="codex" tone="idle" label="Codex" />
-                    </Button>
-                    <Button class="session-agent-option" variant="ghost" size="icon" type="button" aria-label="使用 Pi 创建只读会话" title="Pi · 最低权限" onclick={() => onCreatePi(workspace.id)} disabled={busy}>
-                      <AgentStatusMark agent="pi" tone="idle" label="Pi" />
-                    </Button>
-                  </div>
-                </div>
-              {/if}
               {#if sessionsLoadingWorkspaceIds.includes(workspace.id)}
                 <span class="session-filter-empty">加载会话…</span>
               {:else if workspaceSessions.length > 0}
@@ -339,4 +391,35 @@
       {/each}
     {/if}
   </div>
+  {#if createSessionWorkspaceId && agentWheelPosition}
+    <div
+      id={`session-agent-wheel-${createSessionWorkspaceId}`}
+      class="session-agent-wheel"
+      role="group"
+      aria-label="选择 Agent 创建最低权限会话"
+      style={`--agent-wheel-left: ${agentWheelPosition.left}px; --agent-wheel-top: ${agentWheelPosition.top}px; --agent-wheel-backdrop-size: ${agentWheelBackdropSize}px`}
+    >
+      {#each agentChoices as agent, index (agent.id)}
+        <Button
+          class="session-agent-option"
+          variant="ghost"
+          size="icon"
+          type="button"
+          style={agentWheelStyle(index)}
+          aria-label={`使用 ${agent.label} 创建${agent.detail}会话`}
+          title={`${agent.label} · ${agent.detail}`}
+          onclick={() => createAgentSession(agent.id, createSessionWorkspaceId!)}
+          onkeydown={(event) => {
+            if (event.key === 'Escape') {
+              event.preventDefault();
+              onToggleSessionCreator(createSessionWorkspaceId!);
+            }
+          }}
+          disabled={busy}
+        >
+          <AgentStatusMark agent={agent.id} tone="idle" label={agent.label} />
+        </Button>
+      {/each}
+    </div>
+  {/if}
 </Card>
