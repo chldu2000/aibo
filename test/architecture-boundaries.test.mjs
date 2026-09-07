@@ -88,12 +88,22 @@ test('custom titlebar has permission for every native window action', async () =
   assert.match(
     titlebar,
     /data-tauri-drag-region/,
-    'the titlebar must use Tauri drag-region handling for drag and double-click behavior',
+    'the titlebar must use Tauri drag-region handling for native window dragging',
   );
   assert.doesNotMatch(
     titlebar,
-    /onmousedown=\{handleTitlebarMouseDown\}|ondblclick=\{handleTitlebarDoubleClick\}/,
-    'the titlebar must not compete with Tauri drag-region event handling',
+    /onmousedown=\{handleTitlebarMouseDown\}/,
+    'the titlebar must not compete with Tauri drag-region mouse-down handling',
+  );
+  assert.match(
+    titlebar,
+    /ondblclick=\{handleMacTitlebarDoubleClick\}/,
+    'the titlebar must restore double-click maximize on macOS',
+  );
+  assert.match(
+    titlebar,
+    /navigator\.platform\.startsWith\(['"]Mac['"]\)/,
+    'the explicit double-click fallback must be limited to macOS so Windows keeps native behavior',
   );
 });
 

@@ -65,6 +65,11 @@ adapter 内归一化，不能把覆盖补丁散落到业务组件。
 
 第三方组件库应作为 npm 依赖打包进 Tauri，不应在运行时从网络加载。组件库自带的全局 CSS 需要通过作用域或 CSS layer 接入，避免覆盖 Tauri 窗口和应用布局。
 
+自定义标题栏统一使用 Tauri drag region 处理窗口拖动。Windows 的标题栏双击沿用
+drag region 的原生行为；macOS 额外在非交互区域显式调用最大化/还原，以兼容
+WebView 中 drag region 不转发双击的情况。这个回退必须保持 macOS 平台限定，避免
+Windows 同一次双击同时触发原生和显式切换。
+
 `test/architecture-boundaries.test.mjs` 会在 `pnpm test` 中检查：页面组件不得直接导入具体 UI 实现或 API，业务模块不得反向依赖 Svelte、UI 或 API 实现。新增模块若违反边界会在 CI 中失败。
 
 ## Agent 与 CI 硬约束

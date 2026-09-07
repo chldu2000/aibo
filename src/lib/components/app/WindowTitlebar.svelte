@@ -21,6 +21,16 @@
     onClose,
   }: WindowTitlebarProps = $props();
 
+  function isInteractiveTarget(event: MouseEvent): boolean {
+    const target = event.target instanceof Element ? event.target : null;
+    return Boolean(target?.closest('button, input, textarea, select, a, [role="button"]'));
+  }
+
+  function handleMacTitlebarDoubleClick(event: MouseEvent): void {
+    if (event.button !== 0 || !navigator.platform.startsWith('Mac') || isInteractiveTarget(event)) return;
+    event.preventDefault();
+    onToggleMaximize();
+  }
 </script>
 
 <header
@@ -30,6 +40,7 @@
   role="toolbar"
   aria-label="窗口标题栏"
   tabindex="-1"
+  ondblclick={handleMacTitlebarDoubleClick}
 >
   <span class="window-title">Aibo</span>
   <div class="window-actions">
