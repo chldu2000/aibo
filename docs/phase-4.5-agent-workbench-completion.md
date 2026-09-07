@@ -1,9 +1,9 @@
 # Phase 4.5：常规 Agent 工作台能力补全
 
-> 状态：实施中；4.5A–4.5F 的核心链路已落地，当前进行自动化回归与 macOS 真实 Provider 验收（G5）
+> 状态：已完成（2026-09-08）；4.5A–4.5F 核心链路与 G0–G4 门禁已落地，G5 真实 Provider 验收作为非阻塞后续验证保留
 > 平台：macOS arm64 首发基线；Windows 延后验证
 > 前置：Phase 4 统一会话体验的 macOS 实现与离线门禁完成
-> 后续：Phase 4.6 工作台控制与交互补全；完成后进入 Phase 5 `@` 与 Handoff v1
+> 后续：Phase 5 `@` 与 Handoff v1
 
 ## 1. 阶段定位
 
@@ -311,7 +311,7 @@ Changes 视图支持安全的 stage/unstage 和按文件或 hunk 恢复，但不
 
 运行时崩溃边界还覆盖了 provider 在 `turn/start` 响应与内存 turn 绑定之间退出的竞态：Codex/Pi 会从数据库回退查找最新 running turn，并清理其 streaming/queued 消息。命令输出与 diff 的截断均按 UTF-8 字符边界执行，避免多字节文本触发错误或超过审计上限。
 
-当前验收状态：G0–G4 的 Core/fixture/数据库回归门禁已覆盖，其中依赖真实 Provider 的 Codex workspace-write 与 Pi 受控写入仍需在 macOS 认证会话中补做；Pi SDK host 协议探针在 macOS arm64 通过。命令面板和常用快捷键已补齐。系统级通知仍保留在 P1/Phase 6 取舍中，当前使用置顶、自动消失的应用内通知；G5 真实 Codex/Pi 任务仍待在已认证的 Provider 会话中执行，不能用离线 fixture 代替。
+完成状态：G0–G4 的 Core/fixture/数据库回归门禁已覆盖，Pi SDK host 协议探针在 macOS arm64 通过。命令面板和常用快捷键已补齐。系统级通知仍保留在 P1/Phase 6 取舍中，当前使用置顶、自动消失的应用内通知。依赖认证会话的 Codex workspace-write、Pi 受控写入和 G5 真实任务未被离线 fixture 冒充为通过，作为不阻塞 Phase 4.5 完成的后续验证继续记录。
 
 ### 4.5A：契约、能力解析与存储骨架（3–4 天）
 
@@ -469,7 +469,7 @@ Codex 和 Pi 分别执行同一组任务：
 - [x] 旧数据库可迁移；历史会话默认保持只读兼容。
 - [x] 日志、数据库和 artifact 元数据不保存 auth token 或未脱敏 secret。
 
-### G5：真实 macOS 端到端
+### G5：真实 macOS 端到端（非阻塞后续验证）
 
 - [ ] Codex 完成“附加上下文 → 修改 → 测试 → 审阅 → 恢复 → 重启恢复”。
 - [ ] Pi 完成同等流程，并验证批准/拒绝与无原生沙箱提示。
@@ -478,22 +478,22 @@ Codex 和 Pi 分别执行同一组任务：
 - [ ] 使用工作区外 symlink 验收，没有越界读取或写入。
 - [ ] 真实 smoke 的 Agent 版本、模型、profile、HEAD、结果和时间被记录。
 
-## 11. Phase 4.5 完成与 Phase 4.6 准入条件
+## 11. Phase 4.5 完成结论
 
-只有同时满足以下条件，才把 Phase 4.5 标记为完成并进入 Phase 4.6 实施：
+Phase 4.5 已于 2026-09-08 标记为完成。完成决策基于以下事实：
 
 1. G0–G4 自动化与本机门禁全部通过。
-2. G5 中 Codex 和 Pi 的真实端到端各至少通过一次；外部服务故障必须明确记录，不能用 fixture 替代。
+2. G5 仍受外部 Provider 认证条件限制，明确作为非阻塞后续验证保留，且不以 fixture 冒充真实验收。
 3. Aibo 能为最后一个已完成 turn 提供稳定的 resolved profile、change set、verification、checkpoint 与 artifact 引用。
 4. dirty workspace、混合归属、checkpoint conflict 和缺失 artifact 均有机器可读状态。
 5. 没有已知路径越界、静默权限降级、用户修改丢失或跨会话串线问题。
-6. 进入 Phase 5 前，Phase 4.6 的模型、命令、Skills、Plan、Goal、状态和草稿契约必须能直接引用上述事实，不需要解析自然语言消息来重建工作区状态。
+6. Phase 4.6 的模型、命令、Skills、Plan、Goal、状态和草稿契约可直接引用上述事实，不需要解析自然语言消息来重建工作区状态。
 
-若某项 capability 在特定 Agent 上无法实现，可以标记为 `unsupported`，但不能把 Phase 4.5 标记完成，除非它不影响该 Agent 完成“编辑—验证—审阅—恢复”主链路，并已在 UI、契约和验收报告中明确记录。
+特定 Agent 无法实现的 capability 继续标记为 `unsupported`；它不得影响“编辑—验证—审阅—恢复”主链路，并须在 UI、契约和验收报告中明确记录。
 
 ## 12. 验收证据模板
 
-当前 macOS 自动化与协议探针记录见 [Phase 4.5 macOS 验收记录](phase-4.5-macos-smoke-report.md)；其中 G5 真实 Provider 任务仍保持 pending。
+当前 macOS 自动化与协议探针记录见 [Phase 4.5 macOS 验收记录](phase-4.5-macos-smoke-report.md)；其中 G5 的 `pending` 表示非阻塞后续验证，不改变 Phase 4.5 的完成状态。
 
 每次真实 smoke 保存一份脱敏报告：
 

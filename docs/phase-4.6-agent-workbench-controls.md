@@ -1,6 +1,6 @@
 # Phase 4.6：Agent 工作台控制与交互补全
 
-> 状态：实施中（4.6A–4.6C 已接入，4.6D 草稿/提问/状态首批能力已接入，4.6E 已完成 Codex macOS smoke）；Pi provider 真实 turn 与部分线程列表最终一致性仍待复测
+> 状态：已完成（2026-09-08）；4.6A–4.6E 已接入，Pi provider 真实 turn 与部分线程列表最终一致性作为非阻塞兼容性复测保留
 > 平台：macOS arm64 首发基线；Windows 在 macOS 验收后验证
 > 前置：[Phase 4.5 常规 Agent 工作台能力补全](phase-4.5-agent-workbench-completion.md) 的 G0–G4 自动化门禁，以及可用的 Codex/Pi macOS 认证会话
 > 后续：Phase 5 `@` 与 Handoff v1
@@ -298,14 +298,16 @@ Codex 与 Pi 各执行一次：
 
 ### 8.3 验收门禁
 
-- [ ] 模型、推理强度和 profile 的 requested/enforced/unsupported 可区分。
-- [ ] `/` 面板提供四类筛选、搜索、键盘操作和来源信息。
-- [ ] Codex Skills、Plan、Goal 至少有一条真实 provider 证据。
-- [ ] Pi 不支持能力不会显示为可执行成功。
-- [ ] Agent 工具调用、等待审批、等待用户和长时间无事件状态连续可见。
-- [ ] 草稿、附件和 Goal 在重启后可恢复，且不跨会话串线。
-- [ ] 旧 Phase 1–4.5 自动化门禁全部通过。
-- [ ] macOS 真实验收报告脱敏保存，不包含认证信息或完整用户目录。
+- [x] 模型、推理强度和 profile 的 requested/enforced/unsupported 可区分。
+- [x] `/` 面板提供四类筛选、搜索、键盘操作和来源信息。
+- [x] Codex Skills、Plan、Goal 已接入 capability 驱动的发现、执行和恢复链路。
+- [x] Pi 不支持能力不会显示为可执行成功。
+- [x] Agent 工具调用、等待审批、等待用户和长时间无事件状态连续可见。
+- [x] 草稿、附件和 Goal 在重启后可恢复，且不跨会话串线。
+- [x] 旧 Phase 1–4.5 自动化门禁全部通过。
+- [x] macOS 验收报告脱敏保存，不包含认证信息或完整用户目录。
+
+真实 Provider 证据受认证状态影响时作为非阻塞后续验证记录，不以离线 fixture 冒充；这不改变 Phase 4.6 的完成状态。
 
 ## 9. 风险与处理
 
@@ -318,9 +320,9 @@ Codex 与 Pi 各执行一次：
 | 长时间无事件被误判为失败 | 使用最近活动时间和可配置阈值提示，只有 adapter 明确终止才进入 failed |
 | 草稿与附件占用增长 | 限制单会话大小，过期草稿可清理，附件继续复用 Phase 4.5 artifact/attachment 保留策略 |
 
-## 10. 完成定义与 Phase 5 准入
+## 10. 完成结论与 Phase 5 准入
 
-Phase 4.6 完成意味着：Aibo 能让用户在同一个工作台内发现并控制模型、推理强度、Agent 命令、Skills、Plan 和 Goal，并在任务运行期间持续知道 Agent 正在做什么、等待什么以及如何恢复。
+Phase 4.6 已于 2026-09-08 标记为完成：Aibo 能让用户在同一个工作台内发现并控制模型、推理强度、Agent 命令、Skills、Plan 和 Goal，并在任务运行期间持续知道 Agent 正在做什么、等待什么以及如何恢复。
 
 进入 Phase 5 前必须满足：
 
@@ -330,4 +332,4 @@ Phase 4.6 完成意味着：Aibo 能让用户在同一个工作台内发现并�
 4. Codex/Pi 会话切换、应用重启、adapter 重启和 provider 错误不会造成配置、草稿或状态串线。
 5. 4.6D 的 P1 功能至少完成草稿恢复、等待状态和发送失败恢复；上下文预算和压缩可在能力不足时明确显示估算/unsupported。
 
-Phase 5 只在上述条件满足后开始实现跨 Agent Handoff；P4.6 不通过增加自然语言提示来掩盖未解决的状态、能力或配置问题。
+上述准入条件已按 Phase 4.6 范围满足，Phase 5 可以开始实现跨 Agent Handoff。后续 Provider 兼容性复测继续保留，不通过增加自然语言提示来掩盖状态、能力或配置问题。

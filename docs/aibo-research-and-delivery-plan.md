@@ -1,6 +1,6 @@
 # Aibo 多 Agent 工作台：调研、架构建议与实施计划
 
-> 状态：架构已冻结（macOS 首发）；Phase 0–3 已完成 macOS 门禁，Phase 4 统一会话体验与 Phase 4.5A–F 核心链路已完成，当前进行自动化回归与真实 Provider 验收（G5），Windows 后续验证
+> 状态：架构已冻结（macOS 首发）；Phase 0–4.6 已完成，当前进入 Phase 5 `@` 与 Handoff v1，真实 Provider 兼容性复测与 Windows 验证后续进行
 > 调研日期：2026-09-02  
 > 首批目标：Codex、Pi；首发平台：macOS（当前基线为 arm64）
 > 技术栈：Svelte 5 + Tauri 2
@@ -455,7 +455,7 @@ V1 后为 Pi 增加可选 container/VM/平台 sandbox runner；统一权限 prof
 
 退出条件：同一工作区可并行运行 Codex/Pi，会话状态不会串线，异常退出可解释并可恢复。macOS 的统一 API/UI、fixture replay、generation 隔离和恢复契约已完成；真实模型 smoke 依赖 provider/网络可用性时复跑。
 
-### Phase 4.5：常规 Agent 工作台能力补全（19–31 天，实施中）
+### Phase 4.5：常规 Agent 工作台能力补全（19–31 天，已完成）
 
 - 版本化 Execution Profile、capability resolution 与 Ask/Plan/Edit 模式。
 - Codex 原生 sandbox/approval 映射，以及 Pi 通过 Aibo Core 控制的安全写入和命令工具边界。
@@ -466,7 +466,7 @@ V1 后为 Pi 增加可选 container/VM/平台 sandbox runner；统一权限 prof
 
 退出条件：Codex 与 Pi 均能在 macOS 可丢弃工作区完成“结构化上下文 → 受控编辑 → 测试 → 变更审阅 → 安全恢复 → 重启恢复”；requested/enforced/unsupported 权限明确，dirty workspace 不丢失用户修改，路径越界和静默降级均被阻止。详细计划、当前进度和验收矩阵见 [Phase 4.5 记录](phase-4.5-agent-workbench-completion.md)。
 
-### Phase 4.6：Agent 工作台控制与交互补全（13–21 天，规格已冻结）
+### Phase 4.6：Agent 工作台控制与交互补全（13–21 天，已完成）
 
 - 模型与会话级推理强度选择，展示 requested/enforced/unsupported，并确保下一条 turn 的实际配置可追溯。
 - `/` 命令统一注册表，按“全部、Agent、Skills、Extension”分类、搜索和键盘导航。
@@ -574,6 +574,6 @@ macOS 本机 Phase 0 已通过，架构评审结果已经冻结在 [docs/archite
 2. Codex 使用 App Server；Pi 使用项目锁版 SDK host，RPC 仅作兼容/诊断。
 3. `AgentEvent v1`、session state machine、`SessionSnapshot v1` 和 `Handoff Envelope v1` 的边界已确定。
 4. Pi 首版接受宿主机当前用户权限，但必须通过 workspace trust 明示风险；不提前引入容器/VM。
-5. Phase 1–4 已完成应用骨架、Codex/Pi adapter 与统一会话体验；当前先实施 [Phase 4.5](phase-4.5-agent-workbench-completion.md)，补齐执行、审阅、恢复与 artifact 事实，再进入 Handoff v1。
+5. Phase 1–4.6 已完成应用骨架、Codex/Pi adapter、统一会话体验与 Agent 工作台能力；当前进入 Phase 5 Handoff v1。
 
-Phase 4.5A–F 的核心链路已完成：执行 profile、安全写入与命令网关、变更审阅、checkpoint/恢复（含 `aibo.restore-operation/v1` 结构化审计）、结构化上下文、artifact、队列、project actions 和能力检查器均已落地；能力检查器可列出工作区指令文件、Skills、Core 工具与 MCP server 名称（不暴露配置内容）；当前只剩真实 Codex/Pi macOS 端到端 G5 验收，受限执行环境暂不能使用已登录 Provider 的真实模型请求，随后再进入 Handoff v1。详细分批及准入条件见 [Phase 4.5 计划与验收](phase-4.5-agent-workbench-completion.md)。
+Phase 4.5A–F 与 Phase 4.6A–E 已完成：执行 profile、安全写入与命令网关、变更审阅、checkpoint/恢复（含 `aibo.restore-operation/v1` 结构化审计）、结构化上下文、artifact、队列、project actions、能力检查器，以及模型、推理强度、命令、Skills、Plan、Goal、状态和草稿控制均已落地。真实 Codex/Pi Provider 场景受认证条件限制的项目作为非阻塞兼容性复测保留，不以离线 fixture 冒充通过。详细记录见 [Phase 4.5 计划与验收](phase-4.5-agent-workbench-completion.md)与 [Phase 4.6 计划与验收](phase-4.6-agent-workbench-controls.md)。
