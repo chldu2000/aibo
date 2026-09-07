@@ -1,6 +1,6 @@
 <script lang="ts">
   import { AgentStatusMark, Button, Card, CardHeader, CardTitle, Icon, Input } from '$lib/ui-kit';
-  import type { InteractionMode, SessionFilter } from '$lib/types';
+  import type { SessionFilter } from '$lib/types';
   import { relativeTimeLabel, sessionStateLabel, sessionStatusTone, isSessionRunning } from './session-utils';
   import type { SessionListItem, WorkspaceListItem } from './view-types';
 
@@ -20,7 +20,6 @@
     sessionSearch?: string;
     sessionFilter?: SessionFilter;
     createSessionWorkspaceId: string | null;
-    createProfileMode: InteractionMode;
     renamingSessionId: string | null;
     sessionLabelDraft?: string;
     onToggleSearch: () => void;
@@ -29,7 +28,6 @@
     onChooseWorkspaceDirectory: () => void;
     onSelectWorkspace: (workspaceId: string) => void;
     onToggleSessionCreator: (workspaceId: string) => void;
-    onSetCreateProfileMode: (mode: InteractionMode) => void;
     onToggleTrust: (workspaceId: string) => void;
     onDeleteWorkspace: (workspaceId: string) => void;
     onOpenWorkspaceLocation: (workspaceId: string) => void;
@@ -60,7 +58,6 @@
     sessionSearch = $bindable(''),
     sessionFilter = $bindable<SessionFilter>('active'),
     createSessionWorkspaceId,
-    createProfileMode,
     renamingSessionId,
     sessionLabelDraft = $bindable(''),
     onToggleSearch,
@@ -69,7 +66,6 @@
     onChooseWorkspaceDirectory,
     onSelectWorkspace,
     onToggleSessionCreator,
-    onSetCreateProfileMode,
     onToggleTrust,
     onDeleteWorkspace,
     onOpenWorkspaceLocation,
@@ -249,21 +245,16 @@
           {#if workspaceExpanded}
             <section id={`workspace-sessions-${workspace.id}`} class="workspace-session-group" aria-label={`${workspace.label} 的会话`}>
               {#if createSessionWorkspaceId === workspace.id}
-                <div class="session-create-actions" aria-label="选择 Agent">
-                  <label class="session-profile-choice">
-                    <span>模式</span>
-                    <select
-                      value={createProfileMode}
-                      aria-label="新会话模式"
-                      onchange={(event) => onSetCreateProfileMode((event.currentTarget as HTMLSelectElement).value as InteractionMode)}
-                    >
-                      <option value="ask">问答（只读）</option>
-                      <option value="plan">计划（只读）</option>
-                      <option value="edit">编辑（需审批）</option>
-                    </select>
-                  </label>
-                  <Button size="sm" type="button" onclick={() => onCreateCodex(workspace.id)} disabled={busy}>Codex</Button>
-                  <Button variant="outline" size="sm" type="button" onclick={() => onCreatePi(workspace.id)} disabled={busy}>Pi</Button>
+                <div class="session-agent-picker" aria-label="选择 Agent 创建只读会话">
+                  <small>选择 Agent · 最低权限</small>
+                  <div class="session-agent-wheel" role="group" aria-label="可用 Agent">
+                    <Button class="session-agent-option" variant="ghost" size="icon" type="button" aria-label="使用 Codex 创建只读会话" title="Codex · 只读" onclick={() => onCreateCodex(workspace.id)} disabled={busy}>
+                      <AgentStatusMark agent="codex" tone="idle" label="Codex" />
+                    </Button>
+                    <Button class="session-agent-option" variant="ghost" size="icon" type="button" aria-label="使用 Pi 创建只读会话" title="Pi · 最低权限" onclick={() => onCreatePi(workspace.id)} disabled={busy}>
+                      <AgentStatusMark agent="pi" tone="idle" label="Pi" />
+                    </Button>
+                  </div>
                 </div>
               {/if}
               {#if sessionsLoadingWorkspaceIds.includes(workspace.id)}

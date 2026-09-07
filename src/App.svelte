@@ -401,7 +401,6 @@
   let sessionSearchOpen = $state(false);
   let sessionFilterOpen = $state(false);
   let createSessionWorkspaceId = $state<string | null>(null);
-  let createProfileMode = $state<InteractionMode>('ask');
   let renamingSessionId = $state<string | null>(null);
   let sessionLabelDraft = $state('');
   let timelineVisibleCount = $state(80);
@@ -2758,8 +2757,6 @@
     setAttachments: (value) => (attachments = value),
     setPiNavigationEntryId: (value) => (piNavigationEntryId = value),
     setCreateSessionWorkspaceId: (value) => (createSessionWorkspaceId = value),
-    getCreateProfileMode: () => createProfileMode,
-    setCreateProfileMode: (value) => (createProfileMode = value),
     setBusy: (value) => (busy = value),
     setErrorMessage: (value) => (errorMessage = value),
     setNotice: (value) => (notice = value),
@@ -2994,7 +2991,6 @@
       bind:sessionSearch
       bind:sessionFilter
       createSessionWorkspaceId={createSessionWorkspaceId}
-      createProfileMode={createProfileMode}
       renamingSessionId={renamingSessionId}
       bind:sessionLabelDraft
       onToggleSearch={() => (sessionSearchOpen = !sessionSearchOpen)}
@@ -3003,7 +2999,6 @@
       onChooseWorkspaceDirectory={() => void chooseWorkspaceDirectory()}
       onSelectWorkspace={selectWorkspace}
       onToggleSessionCreator={toggleSessionCreator}
-      onSetCreateProfileMode={(mode) => (createProfileMode = mode)}
       onToggleTrust={(workspaceId) => {
         const workspace = workspaces.find((item) => item.id === workspaceId);
         if (workspace) void toggleTrust(workspace);

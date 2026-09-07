@@ -93,10 +93,13 @@ h2 { font-size: 16px; letter-spacing: -0.02em; }
 .workspace-trust-dot { align-self: center; margin-top: 0; }
 .empty-list { padding: 26px 12px; color: var(--aibo-muted); text-align: center; font-size: 12px; }
 .workspace-session-group { display: flex; min-width: 0; min-height: 0; flex-direction: column; gap: 2px; margin: 0 0 4px; padding: 2px 0 4px 24px; }
-.session-create-actions { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 5px; padding: 3px 6px 5px; }
-.session-create-actions [data-slot='button'] { min-width: 0; }
-.session-profile-choice { grid-column: 1 / -1; display: flex; align-items: center; justify-content: space-between; gap: 8px; min-width: 0; color: var(--muted-foreground); font-size: 0.72rem; }
-.session-profile-choice select { min-width: 0; flex: 1; border: 1px solid var(--border); border-radius: 6px; background: var(--background); color: var(--foreground); padding: 4px 6px; font: inherit; }
+.session-agent-picker { display: grid; justify-items: center; gap: 5px; padding: 7px 6px 9px; }
+.session-agent-picker > small { color: var(--aibo-subtle); font-size: 9px; }
+.session-agent-wheel { display: flex; align-items: center; justify-content: center; gap: 8px; }
+.session-agent-wheel [data-slot='button'] { width: 40px; height: 40px; min-height: 40px; padding: 0; }
+.session-agent-option .agent-status-mark { width: 26px; height: 26px; }
+.session-agent-option .agent-status-logo { width: 16px; height: 16px; }
+.session-agent-option .agent-status-orbit { display: none; }
 .timeline { display: flex; min-width: 0; min-height: 0; flex-direction: column; overflow: visible; }
 .timeline-heading { border-bottom: 0; }
 .timeline-heading-actions { display: flex; align-items: center; gap: 7px; }

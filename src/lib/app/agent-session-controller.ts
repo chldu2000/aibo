@@ -1,4 +1,4 @@
-import type { AgentName, AgentQueueSnapshot, CheckpointFile, ContextAttachment, ExecutionProfile, InteractionMode, Session, TimelineItem, Workspace } from '$lib/types';
+import type { AgentName, AgentQueueSnapshot, CheckpointFile, ContextAttachment, ExecutionProfile, Session, TimelineItem, Workspace } from '$lib/types';
 import { toErrorMessage } from './error-utils';
 import { upsertSession } from './session-transitions';
 
@@ -21,8 +21,6 @@ export type AgentSessionControllerContext = {
   setAttachments: (value: ContextAttachment[]) => void;
   setPiNavigationEntryId: (value: string | null) => void;
   setCreateSessionWorkspaceId: (value: string | null) => void;
-  getCreateProfileMode: () => InteractionMode;
-  setCreateProfileMode: (value: InteractionMode) => void;
   setBusy: (value: boolean) => void;
   setErrorMessage: (value: string | null) => void;
   setNotice: (value: string) => void;
@@ -34,14 +32,12 @@ export type AgentSessionControllerContext = {
 
 export function createAgentSessionController(context: AgentSessionControllerContext) {
   function requestedProfile(agent: AgentName): ExecutionProfile {
-    const mode = context.getCreateProfileMode();
-    const editable = mode === 'edit';
     if (agent === 'codex') {
       return {
         schema: 'aibo.execution-profile/v1',
         interactionMode: 'ask',
         approvalPolicy: 'untrusted',
-        filesystemPolicy: 'workspace-write',
+        filesystemPolicy: 'read-only',
         commandPolicy: 'approved',
         networkPolicy: 'disabled',
         model: null,
@@ -50,10 +46,10 @@ export function createAgentSessionController(context: AgentSessionControllerCont
     }
     return {
       schema: 'aibo.execution-profile/v1',
-      interactionMode: mode,
-      approvalPolicy: editable ? 'on-request' : 'never',
-      filesystemPolicy: editable ? 'workspace-write' : 'read-only',
-      commandPolicy: editable ? 'approved' : 'disabled',
+      interactionMode: 'ask',
+      approvalPolicy: 'never',
+      filesystemPolicy: 'read-only',
+      commandPolicy: 'disabled',
       networkPolicy: 'disabled',
       model: null,
       reasoningEffort: null,

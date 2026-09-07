@@ -48,11 +48,7 @@ fn default_profile(agent: &str) -> ExecutionProfile {
         } else {
             "untrusted".to_owned()
         },
-        filesystem_policy: if agent == "pi" {
-            "read-only".to_owned()
-        } else {
-            "workspace-write".to_owned()
-        },
+        filesystem_policy: "read-only".to_owned(),
         command_policy: if agent == "pi" {
             "disabled".to_owned()
         } else {
@@ -329,7 +325,7 @@ mod tests {
         let codex = resolve("codex", None, "now".to_owned()).expect("codex default");
         assert_eq!(codex.requested, default_requested_profile("codex").unwrap());
         assert_eq!(codex.enforced.approval_policy, "untrusted");
-        assert_eq!(codex.enforced.filesystem_policy, "workspace-write");
+        assert_eq!(codex.enforced.filesystem_policy, "read-only");
         assert!(codex
             .adapter_capabilities
             .contains(&"permissions.nativeControls".to_owned()));
