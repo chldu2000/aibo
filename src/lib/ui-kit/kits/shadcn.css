@@ -139,6 +139,18 @@
   background: var(--accent);
 }
 
+.app-shell[data-ui-kit='shadcn'] :where(.workspace-item-row, .session-item-row).selected > :where(.workspace-item, .session-item) {
+  color: var(--secondary-foreground);
+  background: var(--secondary);
+}
+
+.app-shell[data-ui-kit='shadcn'] :where(.workspace-item-row, .session-item-row).selected:hover > :where(.workspace-item, .session-item),
+.app-shell[data-ui-kit='shadcn'] :where(.workspace-item-row, .session-item-row).selected:focus-within > :where(.workspace-item, .session-item),
+.app-shell[data-ui-kit='shadcn'] :where(.workspace-item-row, .session-item-row).selected:hover > :where(.workspace-item-actions, .session-item-actions),
+.app-shell[data-ui-kit='shadcn'] :where(.workspace-item-row, .session-item-row).selected:focus-within > :where(.workspace-item-actions, .session-item-actions) {
+  background: var(--secondary-hover);
+}
+
 .app-shell[data-ui-kit='shadcn'] .window-system-actions [data-window-action='close']:hover:not(:disabled),
 .app-shell[data-ui-kit='shadcn'] .window-system-actions [data-window-action='close']:focus-visible {
   color: var(--destructive-foreground);
