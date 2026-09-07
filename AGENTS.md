@@ -35,3 +35,12 @@ pnpm run verify
 If a rule is intentionally changed, update the UI contract, architecture
 tests, and `docs/ui-architecture.md` in the same change. Do not weaken a test
 to make an implementation pass.
+
+## Git commit guidance
+
+When creating a Git commit, add the agent that made the change as a co-author
+using a standard trailer with the agent's own name and email address:
+
+```text
+Co-authored-by: <agent name> <agent email>
+```
