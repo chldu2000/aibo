@@ -285,6 +285,7 @@
   let workspaceChangesError = $state<string | null>(null);
   let workspaceGitBusyPath = $state<string | null>(null);
   let workspaceChangesRequestGeneration = 0;
+  let workspaceChangesBackgroundRefreshing = false;
   let workspaceFileDiff = $state<WorkspaceFileDiff | null>(null);
   let workspaceFileDiffLoading = $state(false);
   let workspaceFileDiffError = $state<string | null>(null);
@@ -297,6 +298,7 @@
   let workspaceGitMetadataLoading = $state(false);
   let workspaceGitMetadataError = $state<string | null>(null);
   let workspaceGitMetadataRequestGeneration = 0;
+  let workspaceGitMetadataBackgroundRefreshing = false;
   let workspaceGitCommitDiff = $state<GitCommitDiff | null>(null);
   let workspaceGitCommitDiffLoading = $state(false);
   let workspaceGitCommitDiffRequestGeneration = 0;
@@ -947,6 +949,32 @@
     composerDrafts = readPersistedComposerDrafts();
     let stopListening: (() => void) | undefined;
     let disposed = false;
+    let lastGitMetadataPollAt = 0;
+
+    const refreshVisibleGitPanel = (forceMetadata = false): void => {
+      if (
+        !desktop
+        || !sidePanelOpen
+        || sidePanelView !== 'git'
+        || !selectedWorkspaceId
+        || document.visibilityState !== 'visible'
+      ) return;
+      const workspaceId = selectedWorkspaceId;
+      void refreshWorkspaceChanges(workspaceId, true);
+      const now = Date.now();
+      if (forceMetadata || now - lastGitMetadataPollAt >= 5000) {
+        lastGitMetadataPollAt = now;
+        void refreshWorkspaceGitMetadata(workspaceId, true);
+      }
+    };
+    const handleWindowFocus = () => refreshVisibleGitPanel(true);
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'visible') refreshVisibleGitPanel(true);
+    };
+    const gitPollingTimer = window.setInterval(() => refreshVisibleGitPanel(), 1250);
+    window.addEventListener('focus', handleWindowFocus);
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+
     void (async () => {
       const runningDesktop = isTauri();
       if (!runningDesktop) {
@@ -978,6 +1006,9 @@
     return () => {
       disposed = true;
       stopListening?.();
+      window.clearInterval(gitPollingTimer);
+      window.removeEventListener('focus', handleWindowFocus);
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
     };
   });
 
@@ -1144,7 +1175,8 @@
     await sessionContextController.refreshArtifacts(sessionId);
   }
 
-  async function refreshWorkspaceChanges(workspaceId: string) {
+  async function refreshWorkspaceChanges(workspaceId: string, background = false) {
+    if (background && (workspaceChangesLoading || workspaceChangesBackgroundRefreshing)) return;
     const generation = ++workspaceChangesRequestGeneration;
     if (!desktop) {
       if (workspaceId === selectedWorkspaceId) {
@@ -1154,9 +1186,10 @@
       }
       return;
     }
+    if (background) workspaceChangesBackgroundRefreshing = true;
     if (workspaceId === selectedWorkspaceId) {
       if (workspaceChanges?.workspaceId !== workspaceId) workspaceChanges = null;
-      workspaceChangesLoading = true;
+      if (!background) workspaceChangesLoading = true;
       workspaceChangesError = null;
     }
     try {
@@ -1166,14 +1199,15 @@
       }
     } catch (error) {
       if (generation === workspaceChangesRequestGeneration && workspaceId === selectedWorkspaceId) {
-        workspaceChanges = null;
-        workspaceChangesError = toErrorMessage(error);
+        if (!background) workspaceChanges = null;
+        if (!background) workspaceChangesError = toErrorMessage(error);
       }
       console.warn('unable to read workspace changes', error);
     } finally {
       if (generation === workspaceChangesRequestGeneration && workspaceId === selectedWorkspaceId) {
-        workspaceChangesLoading = false;
+        if (!background) workspaceChangesLoading = false;
       }
+      if (background) workspaceChangesBackgroundRefreshing = false;
     }
   }
 
@@ -1212,9 +1246,11 @@
     workspaceFileDiffLoading = false;
   }
 
-  async function refreshWorkspaceGitMetadata(workspaceId: string): Promise<void> {
+  async function refreshWorkspaceGitMetadata(workspaceId: string, background = false): Promise<void> {
+    if (background && (workspaceGitMetadataLoading || workspaceGitMetadataBackgroundRefreshing)) return;
+    if (background) workspaceGitMetadataBackgroundRefreshing = true;
     const generation = ++workspaceGitMetadataRequestGeneration;
-    workspaceGitMetadataLoading = true;
+    if (!background) workspaceGitMetadataLoading = true;
     workspaceGitMetadataError = null;
     try {
       const [branches, history, remoteStatus, stashes] = await Promise.all([
@@ -1231,10 +1267,11 @@
       }
     } catch (error) {
       if (generation === workspaceGitMetadataRequestGeneration && workspaceId === selectedWorkspaceId) {
-        workspaceGitMetadataError = toErrorMessage(error);
+        if (!background) workspaceGitMetadataError = toErrorMessage(error);
       }
     } finally {
-      if (generation === workspaceGitMetadataRequestGeneration) workspaceGitMetadataLoading = false;
+      if (generation === workspaceGitMetadataRequestGeneration && !background) workspaceGitMetadataLoading = false;
+      if (background) workspaceGitMetadataBackgroundRefreshing = false;
     }
   }
 

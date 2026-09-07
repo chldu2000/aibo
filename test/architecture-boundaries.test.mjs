@@ -179,6 +179,15 @@ test('Pi timeline groups ordinary system nodes without folding summaries', async
   assert.match(panel, /系统消息 · \{renderItem\.items\.length\} 项/, 'the timeline must render a collapsible system group');
 });
 
+test('visible Git panel refreshes external repository changes promptly', async () => {
+  const app = await readFile(path.join(root, 'src/App.svelte'), 'utf8');
+  assert.match(app, /setInterval\(\(\) => refreshVisibleGitPanel\(\), 1250\)/, 'visible Git changes must refresh frequently');
+  assert.match(app, /now - lastGitMetadataPollAt >= 5000/, 'Git metadata must refresh without running every status poll');
+  assert.match(app, /window\.addEventListener\('focus', handleWindowFocus\)/, 'window focus must trigger an immediate Git refresh');
+  assert.match(app, /document\.visibilityState !== 'visible'/, 'hidden windows must not keep polling Git');
+  assert.match(app, /sidePanelView !== 'git'/, 'hidden Git panels must not keep polling');
+});
+
 test('the diff preview monospace token is defined in the UI kit', async () => {
   const source = await readFile(path.join(root, 'src/lib/ui-kit/kits/base.css'), 'utf8');
   assert.match(source, /--aibo-mono\s*:/, 'the shared UI kit must define the diff monospace token');
