@@ -59,15 +59,23 @@ test('root composition does not bind concrete visual implementations', async () 
 
 test('desktop windows use Aibo-owned titlebar controls', async () => {
   const config = JSON.parse(await readFile(path.join(root, 'src-tauri', 'tauri.conf.json'), 'utf8'));
+  const windowsConfig = JSON.parse(
+    await readFile(path.join(root, 'src-tauri', 'tauri.windows.conf.json'), 'utf8'),
+  );
   assert.ok(config.app?.windows?.length > 0, 'Tauri must define at least one desktop window');
   assert.ok(
-    config.app.windows.every((window) => window.decorations === false),
-    'native window decorations must be disabled for the custom Aibo titlebar',
+    config.app.windows.every((window) => window.decorations === true),
+    'macOS must retain native window decorations for the traffic-light controls',
+  );
+  assert.ok(
+    windowsConfig.app?.windows?.every((window) => window.decorations === false),
+    'Windows must disable native decorations for the custom Aibo titlebar controls',
   );
   const titlebar = await readFile(path.join(root, 'src/lib/components/app/WindowTitlebar.svelte'), 'utf8');
   for (const callback of ['onMinimize', 'onToggleMaximize', 'onClose']) {
     assert.match(titlebar, new RegExp(`\\b${callback}\\b`), `${callback} must be wired in the custom titlebar`);
   }
+  assert.match(titlebar, /\{#if !isMacOS\}/, 'custom window controls must not be rendered on macOS');
 });
 
 test('custom titlebar has permission for every native window action', async () => {
@@ -92,18 +100,8 @@ test('custom titlebar has permission for every native window action', async () =
   );
   assert.doesNotMatch(
     titlebar,
-    /onmousedown=\{handleTitlebarMouseDown\}/,
-    'the titlebar must not compete with Tauri drag-region mouse-down handling',
-  );
-  assert.match(
-    titlebar,
-    /ondblclick=\{handleMacTitlebarDoubleClick\}/,
-    'the titlebar must restore double-click maximize on macOS',
-  );
-  assert.match(
-    titlebar,
-    /navigator\.platform\.startsWith\(['"]Mac['"]\)/,
-    'the explicit double-click fallback must be limited to macOS so Windows keeps native behavior',
+    /onmousedown=\{handleTitlebarMouseDown\}|ondblclick=/,
+    'the titlebar must not compete with native drag or double-click handling',
   );
 });
 
