@@ -37,7 +37,6 @@
     onCreatePi: (workspaceId: string) => void;
     onSelectSession: (sessionId: string) => void;
     onUnarchiveSession: (sessionId: string) => void;
-    onForkSession: (sessionId: string) => void;
     onRequestArchiveSession: (sessionId: string) => void;
     onSyncCodexThread: (sessionId: string) => void;
     onBeginRenameSession: (sessionId: string) => void;
@@ -78,7 +77,6 @@
     onCreatePi,
     onSelectSession,
     onUnarchiveSession,
-    onForkSession,
     onRequestArchiveSession,
     onSyncCodexThread,
     onBeginRenameSession,
@@ -318,9 +316,6 @@
                               <Icon name="archive-restore" size={13} />
                             </Button>
                           {:else if session.agent === 'codex'}
-                            <Button variant="ghost" size="icon" type="button" aria-label="创建分支" title="分支" onclick={() => onForkSession(session.id)} disabled={busy || isSessionRunning(session) || archivingSessionId === session.id}>
-                              <Icon name="branch" size={13} />
-                            </Button>
                             <Button variant="ghost" size="icon" type="button" aria-label="归档会话" title="归档" onclick={() => onRequestArchiveSession(session.id)} disabled={busy || isSessionRunning(session) || archivingSessionId !== null}>
                               <Icon name="archive" size={13} />
                             </Button>

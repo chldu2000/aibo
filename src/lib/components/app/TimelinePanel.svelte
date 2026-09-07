@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { Badge, Button, Card, CardContent, CardHeader, CardTitle, Input, Separator } from '$lib/ui-kit';
+  import { Badge, Button, Card, CardContent, CardHeader, CardTitle, Icon, Input, Separator } from '$lib/ui-kit';
   import type { AgentCommand, AgentGoal, AgentQueueSnapshot, ApprovalDecision, ContextAttachment, SessionAccessMode, SessionExecutionProfile, SessionModelCatalog, UserInputRequest, WorkspacePathSuggestion } from '$lib/types';
   import type { UsageValues } from './view-models';
   import Composer from './Composer.svelte';
@@ -47,6 +47,7 @@
     onAddDirectory: () => void;
     onRemoveAttachment: (id: string) => void;
     onLoadOlderTimeline: () => void;
+    onForkSession: (throughTurnId?: string) => void;
     onTimelineScroll: (event: Event) => void;
     onRetry: () => void;
     onResolveApproval: (requestId: string, decision: ApprovalDecision) => void;
@@ -94,6 +95,7 @@
     composerText = $bindable(''),
     composerDraftFailed,
     onLoadOlderTimeline,
+    onForkSession,
     onTimelineScroll,
     onRetry,
     onResolveApproval,
@@ -119,6 +121,15 @@
   );
   const hiddenTimelineCount = $derived(Math.max(0, timeline.length - visibleTimeline.length));
   const sessionArchived = $derived(session?.archived === true);
+  const forkBoundaryMessageIds = $derived.by(() => {
+    const lastCompletedAssistantByTurn = new Map<string, string>();
+    for (const item of timeline) {
+      if (item.role === 'assistant' && item.status === 'completed' && item.turnId) {
+        lastCompletedAssistantByTurn.set(item.turnId, item.id);
+      }
+    }
+    return new Set(lastCompletedAssistantByTurn.values());
+  });
   const contextPercent = $derived.by(() => {
     if (!usageValues || usageValues.contextUsed === null || !usageValues.contextLimit || usageValues.contextLimit <= 0) return null;
     return Math.min(100, Math.round((usageValues.contextUsed / usageValues.contextLimit) * 100));
@@ -176,6 +187,11 @@
         <Badge variant="outline" title={codexGoal.objective}>目标 · {codexGoal.status}</Badge>
       {/if}
       {#if session}
+        {#if session.agent === 'codex' && !sessionArchived}
+          <Button variant="ghost" size="sm" type="button" onclick={() => onForkSession()} disabled={busy || sessionRunning || selectedSessionArchiving} title="从最新完成的回复创建分支">
+            <Icon name="branch" size={13} /> 分支
+          </Button>
+        {/if}
         <Badge variant={sessionArchived ? 'secondary' : sessionRunning || selectedSessionArchiving ? 'warning' : 'outline'}>
           {selectedSessionArchiving ? '归档中' : sessionStateLabel(session)}
         </Badge>
@@ -258,7 +274,14 @@
             >
               <div class="entry-meta">
                 <Badge variant={item.role === 'assistant' ? 'secondary' : 'outline'}>{item.role === 'assistant' ? (session?.agent === 'pi' ? 'PI' : 'CODEX') : item.role.toUpperCase()}</Badge>
-                <Badge variant={item.status === 'failed' ? 'destructive' : item.status === 'queued' ? 'secondary' : 'outline'}>{statusLabel(item.status)}</Badge>
+                <div class="entry-meta-actions">
+                  <Badge variant={item.status === 'failed' ? 'destructive' : item.status === 'queued' ? 'secondary' : 'outline'}>{statusLabel(item.status)}</Badge>
+                  {#if session?.agent === 'codex' && !sessionArchived && item.turnId && forkBoundaryMessageIds.has(item.id)}
+                    <Button variant="ghost" size="icon" type="button" aria-label="从此回复创建会话分支" title="从此回复创建分支" onclick={() => onForkSession(item.turnId!)} disabled={busy || sessionRunning || selectedSessionArchiving}>
+                      <Icon name="branch" size={13} />
+                    </Button>
+                  {/if}
+                </div>
               </div>
               {#if item.role === 'tool'}
                 <details class="tool-output">

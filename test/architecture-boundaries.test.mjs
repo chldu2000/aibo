@@ -122,10 +122,23 @@ test('workspace and session rows expose only supported item actions', async () =
   const sidebar = await readFile(path.join(root, 'src/lib/components/app/WorkspaceSidebar.svelte'), 'utf8');
   assert.doesNotMatch(sidebar, /在终端中打开|在编辑器中打开/, 'workspace rows must not expose terminal or editor actions');
   assert.doesNotMatch(sidebar, /关闭会话|onCloseSession/, 'session rows must not expose the close action');
+  assert.doesNotMatch(sidebar, /onForkSession|创建分支/, 'session rows must not expose the Codex fork action');
   for (const platformLabel of ['Finder', '文件资源管理器', '文件管理器']) {
     assert.match(sidebar, new RegExp(`['"]${platformLabel}['"]`), `workspace location action must support ${platformLabel}`);
   }
   assert.match(sidebar, /workspaceLocationLabel/, 'workspace location action must use its platform label');
+});
+
+test('Codex forks are exposed in the timeline header and completed replies', async () => {
+  const [panel, views] = await Promise.all([
+    readFile(path.join(root, 'src/lib/components/app/TimelinePanel.svelte'), 'utf8'),
+    readFile(path.join(root, 'src/lib/components/app/view-types.ts'), 'utf8'),
+  ]);
+  assert.match(panel, /从最新完成的回复创建分支/, 'the timeline header must expose the latest-turn fork action');
+  assert.match(panel, /从此回复创建会话分支/, 'completed Codex replies must expose a fork action');
+  assert.match(panel, /lastCompletedAssistantByTurn\.set\(item\.turnId, item\.id\)/, 'each turn must select only its last completed Codex reply');
+  assert.match(panel, /forkBoundaryMessageIds\.has\(item\.id\)/, 'reply forks must render only at the selected turn boundary');
+  assert.match(views, /'turnId'/, 'timeline view items must retain their turn boundary');
 });
 
 test('the diff preview monospace token is defined in the UI kit', async () => {

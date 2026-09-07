@@ -15,7 +15,7 @@ export type SessionLifecycleControllerContext = {
     renameSession: (sessionId: string, label: string) => Promise<Session>;
     closeCodexSession: (sessionId: string) => Promise<void>;
     closePiSession: (sessionId: string) => Promise<void>;
-    forkCodexThread: (sessionId: string) => Promise<Session>;
+    forkCodexThread: (sessionId: string, throughTurnId?: string | null) => Promise<Session>;
     archiveSession: (sessionId: string) => Promise<Session>;
     unarchiveSession: (sessionId: string) => Promise<Session>;
     getTimeline: (sessionId: string) => Promise<TimelineItem[]>;
@@ -113,7 +113,7 @@ export function createSessionLifecycleController(
     }
   }
 
-  async function forkSession(sessionId: string | null): Promise<void> {
+  async function forkSession(sessionId: string | null, throughTurnId?: string): Promise<void> {
     const target = sessionId ? context.findSession(sessionId) : null;
     if (!target || !context.getDesktop() || target.archived || target.id === context.getArchivingSessionId()) return;
     if (running(target)) {
@@ -123,7 +123,7 @@ export function createSessionLifecycleController(
     context.setBusy(true);
     context.setErrorMessage(null);
     try {
-      const forked = await context.api.forkCodexThread(target.id);
+      const forked = await context.api.forkCodexThread(target.id, throughTurnId);
       context.setWorkspaceSessionMap(upsertSession(context.getWorkspaceSessionMap(), forked));
       context.activateWorkspace(forked.workspaceId);
       context.setSelectedSessionId(forked.id);
@@ -131,7 +131,9 @@ export function createSessionLifecycleController(
       context.setCodexThreadSnapshot(null);
       void context.refreshCodexThread(forked.id);
       void context.refreshCodexThreads(context.getSelectedWorkspaceId() ?? forked.workspaceId);
-      context.setNotice('Codex 分支已创建，已复制最近一条已完成 turn。');
+      context.setNotice(throughTurnId
+        ? 'Codex 分支已创建，已复制到选定回复。'
+        : 'Codex 分支已创建，已复制最近一条已完成 turn。');
     } catch (error) {
       context.setErrorMessage(toErrorMessage(error));
     } finally {

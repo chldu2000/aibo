@@ -2485,8 +2485,8 @@
     await sessionLifecycle.saveSessionRename();
   }
 
-  async function forkSession(sessionId = selectedSessionId) {
-    await sessionLifecycle.forkSession(sessionId);
+  async function forkSession(sessionId = selectedSessionId, throughTurnId?: string) {
+    await sessionLifecycle.forkSession(sessionId, throughTurnId);
   }
 
   function requestArchiveSession(sessionId = selectedSessionId) {
@@ -2937,7 +2937,6 @@
       }}
       onSelectSession={selectSession}
       onUnarchiveSession={(sessionId) => void unarchiveSession(sessionId)}
-      onForkSession={(sessionId) => void forkSession(sessionId)}
       onRequestArchiveSession={requestArchiveSession}
       onSyncCodexThread={(sessionId) => void syncCodexThread(sessionId)}
       onBeginRenameSession={beginRenameSession}
@@ -2995,6 +2994,7 @@
       onAddDirectory={() => void chooseSessionAttachmentDirectory()}
       onRemoveAttachment={(attachmentId) => void removeAttachment(attachmentId)}
       onLoadOlderTimeline={loadOlderTimeline}
+      onForkSession={(throughTurnId) => void forkSession(selectedSessionId, throughTurnId)}
       onTimelineScroll={handleTimelineScroll}
       onRetry={() => void retryLastPrompt()}
       onResolveApproval={(requestId, decision) => {

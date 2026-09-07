@@ -2660,20 +2660,20 @@ impl CodexManager {
             .ok_or_else(|| CodexError::Session("Codex session has no thread id".to_owned()))?;
 
         let requested_last_turn = if let Some(turn_id) = through_turn_id {
-            let exists: Option<String> = sqlx::query_scalar(
+            let external_turn_id: Option<String> = sqlx::query_scalar(
                 "SELECT external_turn_id FROM turns
-                 WHERE session_id = ? AND external_turn_id = ? AND status = 'completed'",
+                 WHERE session_id = ? AND id = ? AND status = 'completed'",
             )
             .bind(session_id)
             .bind(turn_id)
             .fetch_optional(&self.db)
             .await?;
-            if exists.is_none() {
+            let Some(external_turn_id) = external_turn_id else {
                 return Err(CodexError::Session(
                     "fork boundary must reference a completed turn".to_owned(),
                 ));
-            }
-            Some(turn_id.to_owned())
+            };
+            Some(external_turn_id)
         } else {
             sqlx::query_scalar(
                 "SELECT external_turn_id FROM turns
