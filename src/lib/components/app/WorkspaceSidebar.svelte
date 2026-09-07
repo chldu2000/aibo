@@ -118,13 +118,20 @@
   }
 
   $effect(() => {
-    createSessionWorkspaceId;
+    const openWorkspaceId = createSessionWorkspaceId;
     requestAnimationFrame(updateAgentWheelPosition);
     window.addEventListener('resize', updateAgentWheelPosition);
     document.addEventListener('scroll', updateAgentWheelPosition, true);
+    const closeOnOutsidePointer = (event: PointerEvent) => {
+      if (!openWorkspaceId || !(event.target instanceof Element)) return;
+      if (event.target.closest('.session-agent-wheel, .session-agent-launcher')) return;
+      onToggleSessionCreator(openWorkspaceId);
+    };
+    if (openWorkspaceId) document.addEventListener('pointerdown', closeOnOutsidePointer, true);
     return () => {
       window.removeEventListener('resize', updateAgentWheelPosition);
       document.removeEventListener('scroll', updateAgentWheelPosition, true);
+      document.removeEventListener('pointerdown', closeOnOutsidePointer, true);
     };
   });
 
@@ -399,6 +406,17 @@
       aria-label="选择 Agent 创建最低权限会话"
       style={`--agent-wheel-left: ${agentWheelPosition.left}px; --agent-wheel-top: ${agentWheelPosition.top}px; --agent-wheel-backdrop-size: ${agentWheelBackdropSize}px`}
     >
+      <Button
+        class="session-agent-wheel-trigger"
+        variant="ghost"
+        size="icon"
+        type="button"
+        aria-label="关闭 Agent 选择"
+        title="关闭 Agent 选择"
+        onclick={() => onToggleSessionCreator(createSessionWorkspaceId!)}
+      >
+        <Icon name="add" size={15} />
+      </Button>
       {#each agentChoices as agent, index (agent.id)}
         <Button
           class="session-agent-option"
