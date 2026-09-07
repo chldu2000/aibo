@@ -34,7 +34,7 @@ import type {
   GitCommitResult,
   GitBranch,
   GitCommit,
-  GitCommitDiff,
+  GitCommitFileList,
   GitRemoteStatus,
   GitSyncAction,
   GitStashEntry,
@@ -299,11 +299,20 @@ export const listWorkspaceGitHistory = (
 ): Promise<GitCommit[]> =>
   invoke<GitCommit[]>('list_workspace_git_history', { workspaceId, limit });
 
-export const getWorkspaceGitCommitDiff = (
+export const listWorkspaceGitCommitFiles = (
   workspaceId: string,
   commit: string,
-): Promise<GitCommitDiff> =>
-  invoke<GitCommitDiff>('get_workspace_git_commit_diff', { workspaceId, commit });
+  offset = 0,
+  limit = 10,
+): Promise<GitCommitFileList> =>
+  invoke<GitCommitFileList>('list_workspace_git_commit_files', { workspaceId, commit, offset, limit });
+
+export const getWorkspaceGitCommitFileDiff = (
+  workspaceId: string,
+  commit: string,
+  path: string,
+): Promise<WorkspaceFileDiff> =>
+  invoke<WorkspaceFileDiff>('get_workspace_git_commit_file_diff', { workspaceId, commit, path });
 
 export const getWorkspaceGitRemoteStatus = (workspaceId: string): Promise<GitRemoteStatus> =>
   invoke<GitRemoteStatus>('get_workspace_git_remote_status', { workspaceId });

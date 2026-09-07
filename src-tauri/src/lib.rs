@@ -359,11 +359,18 @@ pub struct GitCommit {
 
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
-pub struct GitCommitDiff {
+pub struct GitCommitFile {
+    pub(crate) path: String,
+    pub(crate) previous_path: Option<String>,
+    pub(crate) kind: String,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct GitCommitFileList {
     pub(crate) commit: String,
-    pub(crate) available: bool,
-    pub(crate) diff: String,
-    pub(crate) reason: Option<String>,
+    pub(crate) files: Vec<GitCommitFile>,
+    pub(crate) total: usize,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -3452,32 +3459,107 @@ async fn list_workspace_git_history(
     list_git_history(&workspace.path, limit.unwrap_or(30))
 }
 
-#[tauri::command]
-async fn get_workspace_git_commit_diff(
-    workspace_id: String,
-    commit: String,
-    state: State<'_, AppState>,
-) -> Result<GitCommitDiff, CoreError> {
-    validate_git_ref_name(&commit)?;
-    let workspace = workspace_by_id(&state.db, &workspace_id).await?;
-    let exists = Command::new("git")
+fn git_commit_files(workspace_path: &str, commit: &str) -> Result<Vec<GitCommitFile>, CoreError> {
+    let output = Command::new("git")
         .args([
             "-C",
-            &workspace.path,
-            "cat-file",
-            "-e",
-            &format!("{commit}^{{commit}}"),
+            workspace_path,
+            "diff-tree",
+            "--root",
+            "--no-commit-id",
+            "--name-status",
+            "-r",
+            "-z",
+            "-M",
+            commit,
         ])
         .output()
-        .map_err(|error| CoreError::Database(format!("check Git commit: {error}")))?;
-    if !exists.status.success() {
-        return Ok(GitCommitDiff {
-            commit,
-            available: false,
-            diff: String::new(),
-            reason: Some("找不到该提交，可能已被重写".to_owned()),
+        .map_err(|error| CoreError::Database(format!("read Git commit files: {error}")))?;
+    if !output.status.success() {
+        return Err(CoreError::Database(
+            String::from_utf8_lossy(&output.stderr).trim().to_owned(),
+        ));
+    }
+
+    let fields = output
+        .stdout
+        .split(|byte| *byte == 0)
+        .filter(|field| !field.is_empty())
+        .collect::<Vec<_>>();
+    let mut files = Vec::new();
+    let mut index = 0;
+    while index < fields.len() {
+        let status = String::from_utf8_lossy(fields[index]);
+        index += 1;
+        let Some(path) = fields.get(index) else { break };
+        index += 1;
+        let code = status.chars().next().unwrap_or('M');
+        let (previous_path, path) = if matches!(code, 'R' | 'C') {
+            let Some(new_path) = fields.get(index) else {
+                break;
+            };
+            index += 1;
+            (
+                Some(String::from_utf8_lossy(path).into_owned()),
+                String::from_utf8_lossy(new_path).into_owned(),
+            )
+        } else {
+            (None, String::from_utf8_lossy(path).into_owned())
+        };
+        files.push(GitCommitFile {
+            path,
+            previous_path,
+            kind: match code {
+                'A' => "added",
+                'D' => "deleted",
+                'R' | 'C' => "renamed",
+                _ => "modified",
+            }
+            .to_owned(),
         });
     }
+    Ok(files)
+}
+
+#[tauri::command]
+async fn list_workspace_git_commit_files(
+    workspace_id: String,
+    commit: String,
+    offset: Option<usize>,
+    limit: Option<usize>,
+    state: State<'_, AppState>,
+) -> Result<GitCommitFileList, CoreError> {
+    validate_git_ref_name(&commit)?;
+    let workspace = workspace_by_id(&state.db, &workspace_id).await?;
+    let files = git_commit_files(&workspace.path, &commit)?;
+    let total = files.len();
+    let offset = offset.unwrap_or(0).min(total);
+    let limit = limit.unwrap_or(10).clamp(1, 100);
+    Ok(GitCommitFileList {
+        commit,
+        files: files.into_iter().skip(offset).take(limit).collect(),
+        total,
+    })
+}
+
+#[tauri::command]
+async fn get_workspace_git_commit_file_diff(
+    workspace_id: String,
+    commit: String,
+    path: String,
+    state: State<'_, AppState>,
+) -> Result<WorkspaceFileDiff, CoreError> {
+    validate_git_ref_name(&commit)?;
+    if Path::new(&path).is_absolute()
+        || Path::new(&path)
+            .components()
+            .any(|part| matches!(part, std::path::Component::ParentDir))
+    {
+        return Err(CoreError::InvalidWorkspacePath(
+            "无效的提交文件路径".to_owned(),
+        ));
+    }
+    let workspace = workspace_by_id(&state.db, &workspace_id).await?;
     let mut command = Command::new("git");
     let output = command_output_bounded(
         command.args([
@@ -3489,8 +3571,10 @@ async fn get_workspace_git_commit_diff(
             "--format=",
             "--unified=3",
             &commit,
+            "--",
+            &path,
         ]),
-        400_001,
+        WORKSPACE_DIFF_MAX_BYTES + 1,
     )
     .map_err(|error| CoreError::Database(format!("read Git commit diff: {error}")))?;
     if !output.status.success() {
@@ -3498,16 +3582,24 @@ async fn get_workspace_git_commit_diff(
             String::from_utf8_lossy(&output.stderr).trim().to_owned(),
         ));
     }
-    let diff = crate::artifact::truncate_utf8(
-        &String::from_utf8_lossy(&output.stdout),
-        400_000,
-        "\n… diff 已截断",
-    );
-    Ok(GitCommitDiff {
-        commit,
+    let truncated = output.stdout_truncated;
+    let diff = if truncated {
+        truncate_diff_with_marker(
+            &String::from_utf8_lossy(&output.stdout),
+            WORKSPACE_DIFF_MAX_BYTES,
+        )
+    } else {
+        String::from_utf8_lossy(&output.stdout).into_owned()
+    };
+    Ok(WorkspaceFileDiff {
+        path,
+        staged: false,
         available: !diff.is_empty(),
+        truncated,
+        hunks: parse_unified_hunks(&diff),
         diff,
-        reason: None,
+        reason: Some("该提交中的文件没有可展示的文本差异".to_owned())
+            .filter(|_| output.stdout.is_empty()),
     })
 }
 
@@ -5367,7 +5459,8 @@ pub fn run() {
             checkout_workspace_git_branch,
             create_workspace_git_branch,
             list_workspace_git_history,
-            get_workspace_git_commit_diff,
+            list_workspace_git_commit_files,
+            get_workspace_git_commit_file_diff,
             get_workspace_git_remote_status,
             sync_workspace_git,
             list_workspace_git_stashes,

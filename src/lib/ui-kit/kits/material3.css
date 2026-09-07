@@ -471,6 +471,18 @@
   text-align: left;
 }
 
+/* Commit file paths are scan-oriented content, so they stay leading-aligned
+ * instead of inheriting the centered label alignment of MD3 action buttons. */
+:where(.app-shell[data-ui-kit='material3']) .m3-aibo-button.git-commit-file,
+:where(.app-shell[data-ui-kit='material3']) .m3-aibo-button.git-commit-files-more {
+  justify-content: flex-start;
+  text-align: left;
+}
+
+:where(.app-shell[data-ui-kit='material3']) .m3-aibo-button.git-commit-file > span:last-child {
+  text-align: left;
+}
+
 /* Approval cards use the outlined-card treatment so the pending action stays
  * legible against the surrounding surface. Keep the status colors inside the
  * card (badge and command preview) while using MD3's outline role for the

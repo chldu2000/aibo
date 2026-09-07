@@ -496,11 +496,16 @@ export interface GitCommit {
   authoredAt: string;
 }
 
-export interface GitCommitDiff {
+export interface GitCommitFile {
+  path: string;
+  previousPath: string | null;
+  kind: 'added' | 'modified' | 'deleted' | 'renamed';
+}
+
+export interface GitCommitFileList {
   commit: string;
-  available: boolean;
-  diff: string;
-  reason: string | null;
+  files: GitCommitFile[];
+  total: number;
 }
 
 export type GitSyncAction = 'fetch' | 'pull' | 'push';

@@ -69,7 +69,8 @@
     checkoutWorkspaceGitBranch,
     createWorkspaceGitBranch,
     listWorkspaceGitHistory,
-    getWorkspaceGitCommitDiff,
+    listWorkspaceGitCommitFiles,
+    getWorkspaceGitCommitFileDiff,
     getWorkspaceGitRemoteStatus,
     syncWorkspaceGit,
     listWorkspaceGitStashes,
@@ -161,7 +162,7 @@
     GitWorkspaceAction,
     GitBranch,
     GitCommit,
-    GitCommitDiff,
+    GitCommitFileList,
     GitRemoteStatus,
     GitSyncAction,
     GitStashEntry,
@@ -291,6 +292,7 @@
   let workspaceFileDiffError = $state<string | null>(null);
   let workspaceFileDiffPath = $state<string | null>(null);
   let workspaceFileDiffStaged = $state(false);
+  let workspaceFileDiffContextLabel = $state<string | null>(null);
   let workspaceFileDiffRequestGeneration = 0;
   let workspaceGitCommitBusy = $state(false);
   let workspaceGitBranches = $state<GitBranch[]>([]);
@@ -299,9 +301,9 @@
   let workspaceGitMetadataError = $state<string | null>(null);
   let workspaceGitMetadataRequestGeneration = 0;
   let workspaceGitMetadataBackgroundRefreshing = false;
-  let workspaceGitCommitDiff = $state<GitCommitDiff | null>(null);
-  let workspaceGitCommitDiffLoading = $state(false);
-  let workspaceGitCommitDiffRequestGeneration = 0;
+  let workspaceGitCommitFiles = $state<GitCommitFileList | null>(null);
+  let workspaceGitCommitFilesLoading = $state(false);
+  let workspaceGitCommitFilesRequestGeneration = 0;
   let workspaceGitRemoteStatus = $state<GitRemoteStatus | null>(null);
   let workspaceGitStashes = $state<GitStashEntry[]>([]);
   let workspaceGitSyncBusy = $state(false);
@@ -351,7 +353,7 @@
     workspaceGitStashes = [];
     workspaceGitMetadataLoading = false;
     workspaceGitMetadataError = null;
-    closeWorkspaceCommitDiff();
+    closeWorkspaceCommitFiles();
   }
 
   function setSelectedWorkspace(value: string | null): void {
@@ -1219,6 +1221,7 @@
     const generation = ++workspaceFileDiffRequestGeneration;
     workspaceFileDiffPath = path;
     workspaceFileDiffStaged = staged;
+    workspaceFileDiffContextLabel = null;
     workspaceFileDiff = null;
     workspaceFileDiffLoading = true;
     workspaceFileDiffError = null;
@@ -1242,6 +1245,7 @@
     workspaceFileDiff = null;
     workspaceFileDiffPath = null;
     workspaceFileDiffStaged = false;
+    workspaceFileDiffContextLabel = null;
     workspaceFileDiffError = null;
     workspaceFileDiffLoading = false;
   }
@@ -1438,28 +1442,50 @@
     }
   }
 
-  async function openWorkspaceCommitDiff(workspaceId: string, commit: string): Promise<void> {
-    const generation = ++workspaceGitCommitDiffRequestGeneration;
-    workspaceGitCommitDiffLoading = true;
-    workspaceGitCommitDiff = null;
+  async function loadWorkspaceCommitFiles(workspaceId: string, commit: string, append = false): Promise<void> {
+    const generation = ++workspaceGitCommitFilesRequestGeneration;
+    workspaceGitCommitFilesLoading = true;
+    workspaceGitMetadataError = null;
+    const offset = append && workspaceGitCommitFiles?.commit === commit ? workspaceGitCommitFiles.files.length : 0;
+    if (!append) workspaceGitCommitFiles = null;
     try {
-      const diff = await getWorkspaceGitCommitDiff(workspaceId, commit);
-      if (generation === workspaceGitCommitDiffRequestGeneration && workspaceId === selectedWorkspaceId) {
-        workspaceGitCommitDiff = diff;
+      const result = await listWorkspaceGitCommitFiles(workspaceId, commit, offset);
+      if (generation === workspaceGitCommitFilesRequestGeneration && workspaceId === selectedWorkspaceId) {
+        workspaceGitCommitFiles = append && workspaceGitCommitFiles?.commit === commit
+          ? { ...result, files: [...workspaceGitCommitFiles.files, ...result.files] }
+          : result;
       }
     } catch (error) {
-      if (generation === workspaceGitCommitDiffRequestGeneration && workspaceId === selectedWorkspaceId) {
+      if (generation === workspaceGitCommitFilesRequestGeneration && workspaceId === selectedWorkspaceId) {
         workspaceGitMetadataError = toErrorMessage(error);
       }
     } finally {
-      if (generation === workspaceGitCommitDiffRequestGeneration) workspaceGitCommitDiffLoading = false;
+      if (generation === workspaceGitCommitFilesRequestGeneration) workspaceGitCommitFilesLoading = false;
     }
   }
 
-  function closeWorkspaceCommitDiff(): void {
-    ++workspaceGitCommitDiffRequestGeneration;
-    workspaceGitCommitDiff = null;
-    workspaceGitCommitDiffLoading = false;
+  function closeWorkspaceCommitFiles(): void {
+    ++workspaceGitCommitFilesRequestGeneration;
+    workspaceGitCommitFiles = null;
+    workspaceGitCommitFilesLoading = false;
+  }
+
+  async function openWorkspaceCommitFileDiff(workspaceId: string, commit: string, path: string): Promise<void> {
+    const generation = ++workspaceFileDiffRequestGeneration;
+    workspaceFileDiffPath = path;
+    workspaceFileDiffStaged = false;
+    workspaceFileDiffContextLabel = `提交 ${commit.slice(0, 8)}`;
+    workspaceFileDiff = null;
+    workspaceFileDiffLoading = true;
+    workspaceFileDiffError = null;
+    try {
+      const diff = await getWorkspaceGitCommitFileDiff(workspaceId, commit, path);
+      if (generation === workspaceFileDiffRequestGeneration && workspaceId === selectedWorkspaceId) workspaceFileDiff = diff;
+    } catch (error) {
+      if (generation === workspaceFileDiffRequestGeneration && workspaceId === selectedWorkspaceId) workspaceFileDiffError = toErrorMessage(error);
+    } finally {
+      if (generation === workspaceFileDiffRequestGeneration) workspaceFileDiffLoading = false;
+    }
   }
 
   function toggleSidePanel(): void {
@@ -2578,7 +2604,7 @@
     if (id !== selectedWorkspaceId) {
       projectActionRuns = [];
       closeWorkspaceFileDiff();
-      closeWorkspaceCommitDiff();
+      closeWorkspaceCommitFiles();
     }
     navigationController.activateWorkspace(id);
   }
@@ -2587,7 +2613,7 @@
     if (id !== selectedWorkspaceId) {
       projectActionRuns = [];
       closeWorkspaceFileDiff();
-      closeWorkspaceCommitDiff();
+      closeWorkspaceCommitFiles();
     }
     navigationController.selectWorkspace(id);
   }
@@ -3016,6 +3042,7 @@
       fileDiffError={workspaceFileDiffError}
       selectedPath={workspaceFileDiffPath}
       selectedStaged={workspaceFileDiffStaged}
+      contextLabel={workspaceFileDiffContextLabel}
       onClose={closeWorkspaceFileDiff}
     />
     {:else}
@@ -3161,8 +3188,8 @@
           history={workspaceGitHistory}
           gitMetadataLoading={workspaceGitMetadataLoading}
           gitMetadataError={workspaceGitMetadataError}
-          commitDiff={workspaceGitCommitDiff}
-          commitDiffLoading={workspaceGitCommitDiffLoading}
+          commitFiles={workspaceGitCommitFiles}
+          commitFilesLoading={workspaceGitCommitFilesLoading}
           remoteStatus={workspaceGitRemoteStatus}
           stashes={workspaceGitStashes}
           operationBusy={workspaceGitOperationBusy}
@@ -3177,8 +3204,9 @@
           onRefreshGitMetadata={(workspaceId) => void refreshWorkspaceGitMetadata(workspaceId)}
           onCheckoutBranch={(workspaceId, branch) => void checkoutWorkspaceBranch(workspaceId, branch)}
           onCreateBranch={(workspaceId, branch) => void createWorkspaceBranch(workspaceId, branch)}
-          onOpenCommitDiff={(workspaceId, commit) => void openWorkspaceCommitDiff(workspaceId, commit)}
-          onCloseCommitDiff={closeWorkspaceCommitDiff}
+          onSelectCommit={(workspaceId, commit) => void loadWorkspaceCommitFiles(workspaceId, commit)}
+          onLoadMoreCommitFiles={(workspaceId, commit) => void loadWorkspaceCommitFiles(workspaceId, commit, true)}
+          onOpenCommitFileDiff={(workspaceId, commit, path) => void openWorkspaceCommitFileDiff(workspaceId, commit, path)}
           onSync={(workspaceId, action) => void syncWorkspaceBranch(workspaceId, action)}
           onSaveStash={(workspaceId) => void saveWorkspaceStash(workspaceId)}
           onApplyStash={(workspaceId, reference) => void applyWorkspaceStash(workspaceId, reference)}

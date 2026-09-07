@@ -409,6 +409,7 @@ h2 { font-size: 16px; letter-spacing: -0.02em; }
 .workspace-file-diff-line-hunk code { color: var(--aibo-accent-text); }
 .workspace-file-diff-line-meta code { color: var(--aibo-subtle); }
 .git-history { display: grid; min-width: 0; gap: 1px; margin: 0 8px 8px; }
+.git-history-entry { display: grid; min-width: 0; }
 .git-history-item { width: 100%; min-width: 0; justify-content: flex-start; padding: 6px 7px; text-align: left; }
 .git-history-copy { display: grid; width: 100%; min-width: 0; flex: 1; gap: 2px; justify-items: start; text-align: left; }
 .git-history-copy strong { overflow: hidden; color: var(--aibo-muted); font-size: 10px; font-weight: 500; text-overflow: ellipsis; white-space: nowrap; }
@@ -416,6 +417,10 @@ h2 { font-size: 16px; letter-spacing: -0.02em; }
 .git-history-meta code { flex: none; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
 .git-history-meta span { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
 .git-history-meta time { flex: none; margin-left: auto; }
+.git-commit-files { display: grid; min-width: 0; gap: 1px; margin: 1px 0 4px 14px; border-left: 1px solid var(--aibo-border); padding-left: 4px; }
+.git-commit-file { width: 100%; min-width: 0; justify-content: flex-start; gap: 6px; padding: 4px 6px; text-align: left; }
+.git-commit-file > span:last-child { min-width: 0; overflow: hidden; color: var(--aibo-muted); font-family: var(--aibo-mono); font-size: 9px; text-overflow: ellipsis; white-space: nowrap; }
+.git-commit-files-more { justify-content: flex-start; padding: 4px 6px; color: var(--aibo-subtle); font-size: 9px; }
 .turn-file-diff { display: grid; gap: 5px; margin-top: 4px; }
 .turn-file-diff > small { overflow: hidden; color: var(--aibo-subtle); font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 9px; text-overflow: ellipsis; white-space: nowrap; }
 .turn-file-diff pre { max-height: 240px; overflow: auto; border: 1px solid var(--aibo-border); border-radius: 6px; padding: 8px; color: var(--aibo-muted); background: var(--aibo-surface); font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 9px; line-height: 1.45; white-space: pre-wrap; }

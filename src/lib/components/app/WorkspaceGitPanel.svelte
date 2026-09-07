@@ -4,7 +4,8 @@
   import type {
     GitBranch,
     GitCommit,
-    GitCommitDiff,
+    GitCommitFile,
+    GitCommitFileList,
     GitRemoteStatus,
     GitStashEntry,
     GitSyncAction,
@@ -26,8 +27,8 @@
     history: GitCommit[];
     gitMetadataLoading: boolean;
     gitMetadataError: string | null;
-    commitDiff: GitCommitDiff | null;
-    commitDiffLoading: boolean;
+    commitFiles: GitCommitFileList | null;
+    commitFilesLoading: boolean;
     remoteStatus: GitRemoteStatus | null;
     stashes: GitStashEntry[];
     operationBusy: boolean;
@@ -42,8 +43,9 @@
     onRefreshGitMetadata: (workspaceId: string) => void;
     onCheckoutBranch: (workspaceId: string, branch: string) => void;
     onCreateBranch: (workspaceId: string, branch: string) => void;
-    onOpenCommitDiff: (workspaceId: string, commit: string) => void;
-    onCloseCommitDiff: () => void;
+    onSelectCommit: (workspaceId: string, commit: string) => void;
+    onLoadMoreCommitFiles: (workspaceId: string, commit: string) => void;
+    onOpenCommitFileDiff: (workspaceId: string, commit: string, path: string) => void;
     onSync: (workspaceId: string, action: GitSyncAction) => void;
     onSaveStash: (workspaceId: string) => void;
     onApplyStash: (workspaceId: string, reference: string) => void;
@@ -63,8 +65,8 @@
     history,
     gitMetadataLoading,
     gitMetadataError,
-    commitDiff,
-    commitDiffLoading,
+    commitFiles,
+    commitFilesLoading,
     remoteStatus,
     stashes,
     operationBusy,
@@ -79,8 +81,9 @@
     onRefreshGitMetadata,
     onCheckoutBranch,
     onCreateBranch,
-    onOpenCommitDiff,
-    onCloseCommitDiff,
+    onSelectCommit,
+    onLoadMoreCommitFiles,
+    onOpenCommitFileDiff,
     onSync,
     onSaveStash,
     onApplyStash,
@@ -99,6 +102,7 @@
   let branchMenuOpen = $state(false);
   let branchDraft = $state('');
   let stashMenuOpen = $state(false);
+  let selectedCommit = $state<string | null>(null);
 
   function displayPath(file: WorkspaceFileChange): string {
     return file.previousPath ? `${file.previousPath} → ${file.path}` : file.path;
@@ -143,6 +147,18 @@
     return previousParent !== currentParent
       ? `${previousParent || '.'} → ${currentParent || '.'}`
       : currentParent;
+  }
+
+  function commitFileMarker(file: GitCommitFile): string {
+    if (file.kind === 'added') return 'A';
+    if (file.kind === 'deleted') return 'D';
+    if (file.kind === 'renamed') return 'R';
+    return 'M';
+  }
+
+  function selectCommit(commit: string): void {
+    selectedCommit = commit;
+    onSelectCommit(workspace!.id, commit);
   }
 
   function commitTime(value: string): string {
@@ -458,21 +474,6 @@
           <div class="inspector-empty">信任工作区后可暂存或取消暂存文件。</div>
         {/if}
       {:else}
-        {#if commitDiff || commitDiffLoading}
-          <section class="git-diff-view" aria-label="提交差异">
-            <header class="git-diff-header">
-              <div class="git-diff-title">
-                <Button variant="ghost" size="icon" type="button" aria-label="关闭提交差异" title="关闭" onclick={onCloseCommitDiff}>
-                  <Icon name="close" size={13} />
-                </Button>
-                <div><strong>{commitDiff?.commit.slice(0, 8) ?? '正在读取提交差异…'}</strong><small>提交差异</small></div>
-              </div>
-            </header>
-            {#if commitDiffLoading}<div class="git-diff-message">正在读取差异…</div>
-            {:else if commitDiff?.available}<pre>{commitDiff.diff}</pre>
-            {:else}<div class="git-diff-message">{commitDiff?.reason ?? '该提交没有可展示的差异。'}</div>{/if}
-          </section>
-        {/if}
         {#if gitMetadataError}
           <div class="inspector-empty">{gitMetadataError}</div>
         {:else if gitMetadataLoading && history.length === 0}
@@ -482,24 +483,48 @@
         {:else}
           <section class="git-history" aria-label="提交历史">
             {#each history as commit (commit.hash)}
-              <Button
-                variant="ghost"
-                size="sm"
-                type="button"
-                class="git-history-item"
-                aria-label={`查看提交 ${commit.shortHash}：${commit.subject}`}
-                title={commit.subject}
-                onclick={() => onOpenCommitDiff(workspace.id, commit.hash)}
-              >
-                <span class="git-history-copy">
-                  <strong>{commit.subject}</strong>
-                  <small class="git-history-meta">
-                    <code>{commit.shortHash}</code>
-                    <span>{commit.author}</span>
-                    <time datetime={commit.authoredAt}>{commitTime(commit.authoredAt)}</time>
-                  </small>
-                </span>
-              </Button>
+              <div class="git-history-entry">
+                <Button
+                  variant={selectedCommit === commit.hash ? 'secondary' : 'ghost'}
+                  size="sm"
+                  type="button"
+                  class="git-history-item"
+                  aria-expanded={selectedCommit === commit.hash}
+                  aria-label={`查看提交 ${commit.shortHash} 的文件：${commit.subject}`}
+                  title={commit.subject}
+                  onclick={() => selectCommit(commit.hash)}
+                >
+                  <span class="git-history-copy">
+                    <strong>{commit.subject}</strong>
+                    <small class="git-history-meta">
+                      <code>{commit.shortHash}</code>
+                      <span>{commit.author}</span>
+                      <time datetime={commit.authoredAt}>{commitTime(commit.authoredAt)}</time>
+                    </small>
+                  </span>
+                </Button>
+                {#if selectedCommit === commit.hash}
+                  <div class="git-commit-files" aria-label={`提交 ${commit.shortHash} 更改的文件`}>
+                    {#if commitFilesLoading && commitFiles?.commit !== commit.hash}
+                      <div class="git-diff-message">正在读取文件列表…</div>
+                    {:else if commitFiles?.commit === commit.hash && commitFiles.total === 0}
+                      <div class="git-diff-message">该提交没有更改文件。</div>
+                    {:else if commitFiles?.commit === commit.hash}
+                      {#each commitFiles.files as file (file.path)}
+                        <Button variant="ghost" size="sm" type="button" class="git-commit-file" title={file.path} onclick={() => onOpenCommitFileDiff(workspace.id, commit.hash, file.path)}>
+                          <span class={`change-kind change-kind-${file.kind}`} aria-hidden="true">{commitFileMarker(file)}</span>
+                          <span>{file.previousPath ? `${file.previousPath} → ${file.path}` : file.path}</span>
+                        </Button>
+                      {/each}
+                      {#if commitFiles.files.length < commitFiles.total}
+                        <Button variant="ghost" size="sm" type="button" class="git-commit-files-more" disabled={commitFilesLoading} onclick={() => onLoadMoreCommitFiles(workspace.id, commit.hash)}>
+                          {commitFilesLoading ? '正在加载…' : `加载更多（${commitFiles.files.length}/${commitFiles.total}）`}
+                        </Button>
+                      {/if}
+                    {/if}
+                  </div>
+                {/if}
+              </div>
             {/each}
           </section>
         {/if}

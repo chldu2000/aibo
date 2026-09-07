@@ -18,6 +18,7 @@
     fileDiffError: string | null;
     selectedPath: string | null;
     selectedStaged: boolean;
+    contextLabel?: string | null;
     onClose: () => void;
   };
 
@@ -27,6 +28,7 @@
     fileDiffError,
     selectedPath,
     selectedStaged,
+    contextLabel = null,
     onClose,
   }: WorkspaceFileDiffPreviewProps = $props();
 
@@ -98,9 +100,9 @@
   const visibleDiffLines = $derived(parsedDiffLines.slice(0, visibleLineCount));
   const hasMoreLines = $derived(visibleDiffLines.length < parsedDiffLines.length);
   const title = $derived(fileDiff?.path ?? selectedPath ?? '正在读取文件差异…');
-  const stateLabel = $derived(
-    fileDiff ? (fileDiff.staged ? '暂存区' : '工作区') : selectedStaged ? '暂存区' : '工作区',
-  );
+  const stateLabel = $derived(contextLabel ?? (
+    fileDiff ? (fileDiff.staged ? '暂存区' : '工作区') : selectedStaged ? '暂存区' : '工作区'
+  ));
 </script>
 
 <Card
