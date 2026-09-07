@@ -103,6 +103,17 @@
   let branchDraft = $state('');
   let stashMenuOpen = $state(false);
   let selectedCommit = $state<string | null>(null);
+  type ChangeGroupKey = 'conflicted' | 'staged' | 'changed' | 'untracked';
+  let expandedChangeGroups = $state<Record<ChangeGroupKey, boolean>>({
+    conflicted: true,
+    staged: true,
+    changed: true,
+    untracked: true,
+  });
+
+  function toggleChangeGroup(group: ChangeGroupKey): void {
+    expandedChangeGroups = { ...expandedChangeGroups, [group]: !expandedChangeGroups[group] };
+  }
 
   function displayPath(file: WorkspaceFileChange): string {
     return file.previousPath ? `${file.previousPath} → ${file.path}` : file.path;
@@ -193,14 +204,31 @@
   }
 </script>
 
-{#snippet fileGroup(title: string, files: WorkspaceFileChange[], action: 'stage' | 'unstage')}
+{#snippet fileGroup(group: ChangeGroupKey, title: string, files: WorkspaceFileChange[], action: 'stage' | 'unstage')}
   {#if files.length > 0}
     <section class="git-change-group" aria-label={title}>
       <header class="git-change-group-heading">
-        <span class="git-change-group-title">{title}</span>
-        <Badge variant="secondary">{files.length}</Badge>
+        <Button
+          variant="ghost"
+          size="sm"
+          type="button"
+          class="git-change-group-trigger"
+          aria-expanded={expandedChangeGroups[group]}
+          aria-controls={`git-change-list-${group}`}
+          onclick={() => toggleChangeGroup(group)}
+        >
+          <Icon
+            name="chevron-down"
+            size={12}
+            data-collapsed={!expandedChangeGroups[group] ? 'true' : undefined}
+            aria-hidden="true"
+          />
+          <span class="git-change-group-title">{title}</span>
+          <Badge variant="secondary">{files.length}</Badge>
+        </Button>
       </header>
-      <div class="git-change-list" role="list">
+      {#if expandedChangeGroups[group]}
+      <div id={`git-change-list-${group}`} class="git-change-list" role="list">
           {#each files as file (`${title}:${file.path}`)}
             {@const location = fileLocation(file)}
             <div
@@ -244,6 +272,7 @@
             </div>
           {/each}
       </div>
+      {/if}
     </section>
   {/if}
 {/snippet}
@@ -463,10 +492,10 @@
       {/if}
 
       {#if gitSection === 'changes'}
-        {@render fileGroup('合并冲突', conflictedFiles, 'stage')}
-        {@render fileGroup('已暂存的更改', stagedFiles, 'unstage')}
-        {@render fileGroup('更改', changedFiles, 'stage')}
-        {@render fileGroup('未跟踪的文件', untrackedFiles, 'stage')}
+        {@render fileGroup('conflicted', '合并冲突', conflictedFiles, 'stage')}
+        {@render fileGroup('staged', '已暂存的更改', stagedFiles, 'unstage')}
+        {@render fileGroup('changed', '更改', changedFiles, 'stage')}
+        {@render fileGroup('untracked', '未跟踪的文件', untrackedFiles, 'stage')}
 
         {#if changes.files.length === 0}
           <div class="inspector-empty">工作区干净，没有待处理的更改。</div>

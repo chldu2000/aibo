@@ -397,6 +397,14 @@
   letter-spacing: var(--m3-label-small-tracking);
 }
 
+:where(.app-shell[data-ui-kit='material3']) .m3-aibo-button.git-change-group-trigger {
+  min-height: 28px;
+  justify-content: flex-start;
+  border-radius: var(--m3-shape-small);
+  padding: 2px 4px;
+  text-align: left;
+}
+
 :where(.app-shell[data-ui-kit='material3']) .git-change-group-heading [data-slot='badge'] {
   min-width: 20px;
   min-height: 20px;

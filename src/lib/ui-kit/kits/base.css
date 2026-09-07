@@ -342,8 +342,12 @@ h2 { font-size: 16px; letter-spacing: -0.02em; }
 .changeset-file-row:hover .changeset-actions, .changeset-file-row:focus-within .changeset-actions { opacity: 1; }
 .changeset-actions button { padding: 2px 4px; color: var(--aibo-subtle); font-size: 8px; }
 .git-change-group { min-width: 0; margin: 0 8px 3px; }
-.git-change-group-heading { display: flex; min-width: 0; min-height: 22px; align-items: center; justify-content: space-between; gap: 6px; padding: 2px 4px; }
+.git-change-group-heading { min-width: 0; min-height: 22px; }
+.git-change-group-trigger { width: 100%; min-width: 0; justify-content: flex-start; gap: 5px; padding: 2px 4px; text-align: left; }
 .git-change-group-title { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.git-change-group-trigger [data-slot='badge'] { flex: none; margin-left: auto; }
+.git-change-group-trigger svg { flex: none; transition: transform 120ms ease; }
+.git-change-group-trigger svg[data-collapsed='true'] { transform: rotate(-90deg); }
 .git-change-list { display: grid; min-width: 0; gap: 0; }
 .git-change-list .changeset-file-row { min-height: 26px; }
 .git-change-list .changeset-file-button { height: 26px; padding: 0 4px; }
