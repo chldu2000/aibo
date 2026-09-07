@@ -188,6 +188,24 @@ test('visible Git panel refreshes external repository changes promptly', async (
   assert.match(app, /sidePanelView !== 'git'/, 'hidden Git panels must not keep polling');
 });
 
+test('session status uses agent-specific marks through the UI kit', async () => {
+  const [sidebar, contract, shadcn, material, styles] = await Promise.all([
+    readFile(path.join(root, 'src/lib/components/app/WorkspaceSidebar.svelte'), 'utf8'),
+    readFile(path.join(root, 'src/lib/ui-kit/contract.ts'), 'utf8'),
+    readFile(path.join(root, 'src/lib/ui-kit/kits/shadcn.ts'), 'utf8'),
+    readFile(path.join(root, 'src/lib/ui-kit/kits/material3.ts'), 'utf8'),
+    readFile(path.join(root, 'src/lib/ui-kit/kits/base.css'), 'utf8'),
+  ]);
+  assert.match(sidebar, /<AgentStatusMark/, 'session rows must use the semantic agent status mark');
+  assert.match(contract, /AgentStatusMark: Component<UiAgentStatusMarkProps>/, 'the mark must be part of the UI kit contract');
+  assert.match(shadcn, /AgentStatusMark:/, 'the shadcn skin must implement the mark');
+  assert.match(material, /AgentStatusMark,/, 'the Material skin must implement the mark');
+  assert.match(styles, /prefers-reduced-motion: reduce/, 'running animation must respect reduced-motion preferences');
+  const shadcnStyles = await readFile(path.join(root, 'src/lib/ui-kit/kits/shadcn.css'), 'utf8');
+  assert.match(shadcnStyles, /stroke-dashoffset/, 'the shadcn running mark must animate along its stationary border');
+  assert.match(shadcnStyles, /tone-running \.shadcn-agent-status-track \{ animation: none; \}/, 'the rounded-square track itself must not rotate');
+});
+
 test('the diff preview monospace token is defined in the UI kit', async () => {
   const source = await readFile(path.join(root, 'src/lib/ui-kit/kits/base.css'), 'utf8');
   assert.match(source, /--aibo-mono\s*:/, 'the shared UI kit must define the diff monospace token');

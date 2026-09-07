@@ -768,3 +768,5 @@
   color: var(--m3c-on-error-container);
   background: var(--m3c-error-container);
 }
+.m3-agent-status-mark .agent-status-orbit { border-radius: 50%; }
+.m3-agent-status-mark .agent-status-signal { border-radius: 50%; }

@@ -166,3 +166,13 @@
 .app-shell[data-ui-kit='shadcn'] :where([data-slot='button'], [data-slot='input'], [data-slot='textarea']):focus-visible {
   outline-color: var(--ring);
 }
+.shadcn-agent-status-mark .agent-status-orbit { border: 0; }
+.shadcn-agent-status-track { width: 20px; height: 20px; overflow: visible; fill: none; }
+.shadcn-agent-status-track rect { stroke: currentColor; stroke-width: 1.5; opacity: 0.28; }
+.shadcn-agent-status-mark.tone-running .shadcn-agent-status-track { animation: none; }
+.shadcn-agent-status-mark.tone-running .shadcn-agent-status-track rect { opacity: 1; stroke-dasharray: 16 9; animation: shadcn-agent-status-march 850ms linear infinite; }
+.shadcn-agent-status-mark .agent-status-signal { border-radius: 1px; }
+@keyframes shadcn-agent-status-march { to { stroke-dashoffset: -25; } }
+@media (prefers-reduced-motion: reduce) {
+  .shadcn-agent-status-mark.tone-running .shadcn-agent-status-track rect { animation: none; }
+}

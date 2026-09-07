@@ -113,11 +113,26 @@ h2 { font-size: 16px; letter-spacing: -0.02em; }
 .session-rename-inline [data-slot='input'] { min-width: 0; flex: 1; }
 .session-agent { width: 20px; flex: none; border: 1px solid var(--aibo-border-strong); border-radius: 4px; padding: 2px 0; color: var(--aibo-muted); font-size: 8px; font-weight: 600; line-height: 1; text-align: center; }
 .session-agent-pi { border-color: var(--aibo-accent-border); color: var(--aibo-text); }
-.session-state-dot { width: 6px; height: 6px; flex: none; border-radius: 50%; background: var(--aibo-muted); }
-.session-state-dot.running { background: var(--aibo-success-text); }
-.session-state-dot.attention { background: var(--aibo-warning-text); }
-.session-state-dot.danger { background: var(--aibo-danger-text); }
-.session-state-dot.muted { background: var(--aibo-subtle); }
+.agent-status-mark { position: relative; display: grid; width: 20px; height: 20px; flex: none; place-items: center; color: var(--aibo-subtle); }
+.agent-status-logo { position: relative; z-index: 1; width: 13px; height: 13px; background: currentColor; mask: center / contain no-repeat; }
+.agent-status-mark.agent-codex .agent-status-logo { mask-image: url('../assets/openai.svg'); }
+.agent-status-mark.agent-pi .agent-status-logo { mask-image: url('../assets/pi.svg'); }
+.agent-status-orbit { position: absolute; inset: 0; border: 1.5px solid color-mix(in srgb, currentColor 28%, transparent); }
+.agent-status-signal { position: absolute; z-index: 2; right: -1px; bottom: -1px; display: none; width: 6px; height: 6px; border: 1.5px solid var(--aibo-surface); background: currentColor; }
+.agent-status-mark.tone-running { color: var(--aibo-success-text); }
+.agent-status-mark.tone-running .agent-status-orbit { border-right-color: transparent; border-bottom-color: transparent; animation: agent-status-spin 900ms linear infinite; }
+.agent-status-mark.tone-attention { color: var(--aibo-warning-text); }
+.agent-status-mark.tone-attention .agent-status-signal { display: block; transform: rotate(45deg); }
+.agent-status-mark.tone-danger { color: var(--aibo-danger-text); }
+.agent-status-mark.tone-danger .agent-status-signal { display: block; border-radius: 50%; background: var(--aibo-danger-text); }
+.agent-status-mark.tone-danger .agent-status-signal::before,
+.agent-status-mark.tone-danger .agent-status-signal::after { position: absolute; top: 1px; left: 2px; width: 1px; height: 3px; background: var(--aibo-surface); content: ''; transform: rotate(45deg); }
+.agent-status-mark.tone-danger .agent-status-signal::after { transform: rotate(-45deg); }
+.agent-status-mark.tone-muted { color: var(--aibo-subtle); opacity: 0.52; }
+@keyframes agent-status-spin { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) {
+  .agent-status-mark.tone-running .agent-status-orbit { border-style: dashed; animation: none; }
+}
 .session-item-label { min-width: 0; flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .session-updated { flex: none; margin-left: auto; color: var(--aibo-subtle); font-size: 9px; font-variant-numeric: tabular-nums; transition: opacity 100ms ease; }
 .session-item-row:hover .session-updated, .session-item-row:focus-within .session-updated { opacity: 0; }

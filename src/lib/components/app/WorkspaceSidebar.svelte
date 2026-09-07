@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { Button, Card, CardHeader, CardTitle, Icon, Input } from '$lib/ui-kit';
+  import { AgentStatusMark, Button, Card, CardHeader, CardTitle, Icon, Input } from '$lib/ui-kit';
   import type { InteractionMode, SessionFilter } from '$lib/types';
   import { relativeTimeLabel, sessionStateLabel, sessionStatusTone, isSessionRunning } from './session-utils';
   import type { SessionListItem, WorkspaceListItem } from './view-types';
@@ -304,7 +304,11 @@
                           onclick={() => onSelectSession(session.id)}
                           disabled={archivingSessionId === session.id}
                         >
-                          <span class={`session-state-dot ${sessionStatusTone(session)}`} aria-hidden="true"></span>
+                          <AgentStatusMark
+                            agent={session.agent}
+                            tone={sessionStatusTone(session)}
+                            label={`${session.agent === 'pi' ? 'Pi' : 'Codex'}，${sessionStateLabel(session)}`}
+                          />
                           <span class="session-item-label">{session.label}</span>
                           <time class="session-updated" datetime={session.updatedAt}>
                             {archivingSessionId === session.id ? '归档中' : relativeTimeLabel(session.updatedAt)}

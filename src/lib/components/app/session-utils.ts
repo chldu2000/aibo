@@ -32,7 +32,7 @@ export function sessionStateLabel(session: SessionStateView): string {
   }
 }
 
-export function sessionStatusTone(session: SessionStateView): string {
+export function sessionStatusTone(session: SessionStateView): 'idle' | 'running' | 'attention' | 'danger' | 'muted' {
   if (session.archived || session.state === 'closed') return 'muted';
   if (session.state === 'running' || session.state === 'starting' || session.state === 'compacting') return 'running';
   if (session.state === 'waiting_approval' || session.state === 'waiting_user') return 'attention';

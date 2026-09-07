@@ -15,6 +15,7 @@ import { Textarea as TextareaComponent } from '$lib/components/ui/textarea';
 import IconComponent from './shadcn/Icon.svelte';
 import ModelMatrixComponent from './shadcn/ModelMatrix.svelte';
 import ColumnSplitterComponent from './shadcn/ColumnSplitter.svelte';
+import AgentStatusMarkComponent from './shadcn/AgentStatusMark.svelte';
 import type { UiKitAdapter, UiKitRegistration, UiThemeRegistration } from '../contract';
 import { lightStatusThemeTokens, statusThemeTokens } from '../theme-tokens';
 
@@ -74,6 +75,7 @@ function semanticTokens(colors: ShadcnColorTokens): Record<`--${string}`, string
 }
 
 export const shadcnUiKit: UiKitAdapter = {
+  AgentStatusMark: AgentStatusMarkComponent,
   AlertDialog: AlertDialogComponent,
   Badge: BadgeComponent,
   Button: ButtonComponent,

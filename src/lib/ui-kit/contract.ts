@@ -81,6 +81,12 @@ export type UiColumnSplitterProps = {
   onKeyDown: (event: KeyboardEvent) => void;
 };
 
+export type UiAgentStatusMarkProps = {
+  agent: 'codex' | 'pi';
+  tone: 'idle' | 'running' | 'attention' | 'danger' | 'muted';
+  label: string;
+};
+
 /**
  * The minimum visual surface consumed by Aibo's app-level components.
  * Concrete kits may wrap shadcn-svelte, another Svelte library, or local
@@ -89,6 +95,7 @@ export type UiColumnSplitterProps = {
  * cancelText, onConfirm and onCancel.
  */
 export type UiKitAdapter = {
+  AgentStatusMark: Component<UiAgentStatusMarkProps>;
   AlertDialog: Component;
   Badge: Component;
   Button: Component;
