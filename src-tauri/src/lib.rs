@@ -1758,7 +1758,7 @@ async fn get_timeline(
 ) -> Result<Vec<TimelineItem>, CoreError> {
     let session = session_by_id(&state.db, &session_id).await?;
     if session.agent == "pi" {
-        match state.pi.snapshot(&session_id).await {
+        match state.pi.branch(&session_id).await {
             Ok(snapshot) => return Ok(pi_snapshot_timeline(&snapshot, &session_id)),
             Err(error) => {
                 warn!(session_id = %session_id, error = %error, "unable to read active Pi branch; using cached timeline");

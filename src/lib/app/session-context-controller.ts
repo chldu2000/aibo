@@ -228,7 +228,9 @@ export function createSessionContextController(context: SessionContextController
       const snapshot = await context.api.getPiSessionTree(sessionId);
       if (sessionId === context.getSelectedSessionId()) context.setPiTree(snapshot);
     } catch (error) {
-      if (sessionId === context.getSelectedSessionId()) context.setPiTree(null);
+      if (sessionId === context.getSelectedSessionId()) {
+        context.setNotice('Pi 会话树暂时无法读取，请稍后点击“刷新”重试。');
+      }
       console.warn('unable to read Pi session tree', error);
     }
   }

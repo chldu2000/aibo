@@ -2,6 +2,7 @@ import { mkdir } from "node:fs/promises";
 import readline from "node:readline";
 import process from "node:process";
 import { createAgentSession, createBashToolDefinition, createWriteToolDefinition, ModelRuntime, SessionManager } from "@earendil-works/pi-coding-agent";
+import { compactActiveBranch, compactSafeTree, compactSessionEntry, textContent } from "./pi-session-serialization.mjs";
 
 // The host is intentionally a small, versioned JSONL boundary. Rust owns the
 // durable Aibo session; this process owns only one Pi AgentSession at a time.
@@ -103,13 +104,6 @@ function cancelPendingCoreToolRequests(reason) {
   }
 }
 
-function textContent(message) {
-  return (message?.content ?? [])
-    .filter((item) => item?.type === "text")
-    .map((item) => item.text ?? "")
-    .join("");
-}
-
 function compactMessage(message) {
   if (!message || typeof message !== "object") return undefined;
   return {
@@ -130,62 +124,6 @@ function modelDescriptor(model) {
     name: model.name ?? null,
     reasoning: model.reasoning === true,
     thinkingLevelMap: model.thinkingLevelMap ?? null,
-  };
-}
-
-function compactTreeNode(node) {
-  const entry = node?.entry ?? {};
-  const message = entry.message;
-  const summary = entry.type === "message"
-    ? textContent(message)
-    : entry.type === "compaction" || entry.type === "branch_summary"
-      ? entry.summary
-      : entry.type === "model_change"
-        ? `${entry.provider ?? ""}/${entry.modelId ?? ""}`
-        : entry.type === "session_info"
-          ? entry.name
-          : undefined;
-  return {
-    id: entry.id,
-    parentId: entry.parentId ?? null,
-    type: entry.type,
-    timestamp: entry.timestamp,
-    role: message?.role,
-    summary: summary?.slice(0, 500),
-    label: node.label,
-    children: Array.isArray(node.children) ? node.children.map(compactTreeNode) : [],
-  };
-}
-
-function compactSessionEntry(entry) {
-  if (!entry || typeof entry !== "object") return undefined;
-  const message = entry.message;
-  const content = entry.type === "message"
-    ? textContent(message)
-    : entry.type === "model_change"
-      ? `模型已切换为 ${entry.provider ?? ""}/${entry.modelId ?? ""}`
-      : entry.type === "thinking_level_change"
-        ? `推理强度已切换为 ${entry.thinkingLevel ?? "unknown"}`
-        : entry.type === "session_info"
-          ? `会话名称已更新为 ${entry.name ?? ""}`
-          : typeof entry.summary === "string"
-            ? entry.summary
-            : typeof entry.content === "string"
-              ? entry.content
-              : undefined;
-  return {
-    id: entry.id,
-    parentId: entry.parentId ?? null,
-    type: entry.type,
-    timestamp: entry.timestamp,
-    role: message?.role,
-    toolName: message?.toolName,
-    stopReason: message?.stopReason,
-    isError: message?.isError,
-    customType: entry.customType,
-    display: entry.display,
-    summary: content,
-    data: entry.data,
   };
 }
 
@@ -563,7 +501,7 @@ async function handle(message) {
       respond(id, {
         sessionId: session.sessionId,
         leafId: session.sessionManager.getLeafId(),
-        tree: session.sessionManager.getTree().map(compactTreeNode),
+        tree: compactSafeTree(session.sessionManager),
       });
       return;
     }
@@ -590,8 +528,16 @@ async function handle(message) {
       respond(id, {
         sessionId: session.sessionId,
         leafId: session.sessionManager.getLeafId(),
-        branch: session.sessionManager.getBranch().map(compactSessionEntry),
-        tree: session.sessionManager.getTree().map(compactTreeNode),
+        branch: compactActiveBranch(session.sessionManager),
+        tree: compactSafeTree(session.sessionManager),
+      });
+      return;
+    }
+    if (method === "branch") {
+      respond(id, {
+        sessionId: session.sessionId,
+        leafId: session.sessionManager.getLeafId(),
+        branch: compactActiveBranch(session.sessionManager),
       });
       return;
     }

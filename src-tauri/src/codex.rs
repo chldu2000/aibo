@@ -38,6 +38,10 @@ use ulid::Ulid;
 const CODEX_ADAPTER_VERSION: &str = "phase2-codex-0.1.0";
 const REQUEST_TIMEOUT: Duration = Duration::from_secs(30);
 
+fn non_empty_agent_delta(value: Option<&str>) -> Option<&str> {
+    value.filter(|delta| !delta.is_empty())
+}
+
 fn codex_thread_start_params(cwd: &str, profile: &ResolvedExecutionProfile) -> Value {
     let mut params = json!({
         "cwd": cwd,
@@ -1234,10 +1238,11 @@ impl CodexSession {
                     .pointer("/itemId")
                     .and_then(Value::as_str)
                     .map(ToOwned::to_owned);
-                let delta = params
-                    .pointer("/delta")
-                    .and_then(Value::as_str)
-                    .unwrap_or_default();
+                let Some(delta) = non_empty_agent_delta(
+                    params.pointer("/delta").and_then(Value::as_str),
+                ) else {
+                    return Ok(());
+                };
                 if let (Some(turn_id), Some(item_id)) = (turn_id.as_deref(), item_id.as_deref()) {
                     let internal_turn_id = self.ensure_turn(turn_id, "").await?;
                     self.upsert_assistant_delta(item_id, &internal_turn_id, delta)
@@ -3245,7 +3250,7 @@ mod tests {
         codex_thread_start_params, codex_turn_start_params, event_thread_id, final_turn_text,
         generation_matches, is_missing_rollout_error, map_tool_status, map_turn_status,
         matching_thread_id, parse_forked_thread, parse_thread_list, parse_thread_snapshot,
-        tool_projection, usage_projection, user_input_projection,
+        non_empty_agent_delta, tool_projection, usage_projection, user_input_projection,
         validate_codex_thread_start_response, value_id,
     };
     use crate::execution_profile::{
@@ -3259,6 +3264,14 @@ mod tests {
         assert_eq!(map_turn_status("interrupted"), "interrupted");
         assert_eq!(map_turn_status("aborted"), "interrupted");
         assert_eq!(map_turn_status("inProgress"), "failed");
+    }
+
+    #[test]
+    fn filters_empty_agent_message_deltas() {
+        assert_eq!(non_empty_agent_delta(None), None);
+        assert_eq!(non_empty_agent_delta(Some("")), None);
+        assert_eq!(non_empty_agent_delta(Some("text")), Some("text"));
+        assert_eq!(non_empty_agent_delta(Some(" ")), Some(" "));
     }
 
     #[test]

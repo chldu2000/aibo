@@ -2571,6 +2571,24 @@ impl PiManager {
         }))
     }
 
+    pub(crate) async fn branch(&self, session_id: &str) -> Result<Value, PiError> {
+        let session = self.ensure_runtime(session_id).await?;
+        let response = session.client.request("branch", json!({})).await?;
+        let result = response.get("result").cloned().unwrap_or_else(|| json!({}));
+        let branch = result
+            .get("branch")
+            .and_then(Value::as_array)
+            .ok_or_else(|| {
+                PiError::Protocol("Pi host branch did not return a branch array".to_owned())
+            })?;
+        Ok(json!({
+            "sessionId": session.session_id,
+            "externalSessionId": session.external_session_id.lock().await.clone(),
+            "leafId": result.get("leafId").cloned().unwrap_or(Value::Null),
+            "branch": branch,
+        }))
+    }
+
     pub(crate) async fn abort(&self, session_id: &str) -> Result<(), PiError> {
         let session = self.ensure_runtime(session_id).await?;
         if session.current_turn_id.lock().await.is_none() {
