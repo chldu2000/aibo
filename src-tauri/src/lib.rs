@@ -1086,6 +1086,7 @@ async fn open_database(path: &Path) -> Result<SqlitePool, CoreError> {
         .filename(path)
         .create_if_missing(true)
         .journal_mode(SqliteJournalMode::Wal)
+        .busy_timeout(Duration::from_secs(5))
         .foreign_keys(true);
     // Keep migrations embedded at build time so a fresh app and an upgraded
     // local database share the same durable schema.

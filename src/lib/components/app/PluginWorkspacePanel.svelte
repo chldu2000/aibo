@@ -34,6 +34,7 @@
   let { installations, sessions, selectedSession, workspaceLabel, packagePath, prompt, timeline, views, busy, error, desktop, onPackagePathChange, onPromptChange, onInstall, onEnabledChange, onCreateSession, onSelectSession, onSend, onCancel, onResume, onCloseSession, onViewAction, onClose }: Props = $props();
   const promptId = $props.id();
   const running = $derived(selectedSession?.state === 'running' || selectedSession?.state === 'starting');
+  const resumable = $derived(selectedSession?.state === 'interrupted' || selectedSession?.state === 'failed');
 </script>
 
 <section class="plugin-workspace" aria-label="插件工作台">
@@ -57,7 +58,7 @@
       <CardContent>
         <div class="plugin-session-content">
           <div class="plugin-toolbar">
-            <Button variant="outline" disabled={busy || running} onclick={onResume}>恢复会话</Button>
+            <Button variant="outline" disabled={busy || !resumable} onclick={onResume}>恢复会话</Button>
             <Button variant="outline" disabled={busy || !running} onclick={onCancel}>停止</Button>
             <Button variant="outline" disabled={busy} onclick={onCloseSession}>关闭会话</Button>
           </div>

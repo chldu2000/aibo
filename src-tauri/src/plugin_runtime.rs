@@ -1,6 +1,11 @@
 //! Process transport for Agent Runtime v1. Policy and persistence remain in Core.
 use serde_json::{json, Value};
-use std::{collections::HashMap, path::Path, sync::Arc, time::Duration};
+use std::{
+    collections::HashMap,
+    path::Path,
+    sync::{atomic::{AtomicBool, Ordering}, Arc},
+    time::Duration,
+};
 use tokio::{
     io::{AsyncReadExt, AsyncWriteExt},
     process::Command,
@@ -21,6 +26,7 @@ pub(crate) struct PluginRuntime {
     commands: mpsc::Sender<CommandMessage>,
     pub generation_id: String,
     pub notifications: Arc<Mutex<mpsc::Receiver<Value>>>,
+    stop_requested: Arc<AtomicBool>,
 }
 
 impl PluginRuntime {
@@ -43,6 +49,7 @@ impl PluginRuntime {
         let (commands, mut command_rx) = mpsc::channel::<CommandMessage>(MAX_PENDING);
         let (notification_tx, notifications) = mpsc::channel(256);
         let generation_id = ulid::Ulid::new().to_string();
+        let stop_requested = Arc::new(AtomicBool::new(false));
         // Drain without retaining or broadcasting untrusted diagnostics or credentials.
         let stderr_task = tokio::spawn(async move {
             let mut bytes = [0u8; 4096];
@@ -119,7 +126,7 @@ impl PluginRuntime {
             stderr_task.abort();
             for (_, reply) in pending { let _ = reply.send(Err(reason.into())); }
         });
-        Ok(Self { commands, generation_id, notifications: Arc::new(Mutex::new(notifications)) })
+        Ok(Self { commands, generation_id, notifications: Arc::new(Mutex::new(notifications)), stop_requested })
     }
 
     pub async fn request(&self, method: &str, params: Value, timeout: Duration) -> Result<Value, String> {
@@ -130,13 +137,19 @@ impl PluginRuntime {
             Ok(Ok(result)) => result,
             Ok(Err(_)) => Err("internal: plugin exited".into()),
             Err(_) => {
+                self.stop_requested.store(true, Ordering::Release);
                 let _ = self.commands.send(CommandMessage::Stop).await;
                 Err("timeout: plugin request expired".into())
             }
         }
     }
 
-    pub async fn stop(&self) { let _ = self.commands.send(CommandMessage::Stop).await; }
+    pub fn was_stopped(&self) -> bool { self.stop_requested.load(Ordering::Acquire) }
+
+    pub async fn stop(&self) {
+        self.stop_requested.store(true, Ordering::Release);
+        let _ = self.commands.send(CommandMessage::Stop).await;
+    }
 }
 
 #[cfg(test)]

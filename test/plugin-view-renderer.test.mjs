@@ -36,3 +36,36 @@ test('external sessions stay outside legacy provider controllers during the B tr
   assert.match(app, /if \(disposed\) return;/, 'disposed polling scopes must ignore late responses');
   assert.match(app, /Promise\.allSettled/, 'unavailable views must not prevent loading stored timeline history');
 });
+
+test('App plugin controls forward every lifecycle callback and surface recoverable failures', async () => {
+  const app = await readFile(new URL('../src/App.svelte', import.meta.url), 'utf8');
+  const panel = await readFile(new URL('../src/lib/components/app/PluginWorkspacePanel.svelte', import.meta.url), 'utf8');
+  const manager = await readFile(new URL('../src/lib/components/app/PluginManagerPanel.svelte', import.meta.url), 'utf8');
+
+  for (const callback of [
+    'installAgentPlugin',
+    'setAgentPluginEnabled',
+    'createAgentSession',
+    'sendAgentPrompt',
+    'cancelAgentTurn',
+    'resumeAgentSession',
+    'closeAgentSession',
+    'getPluginViews',
+  ]) {
+    assert.match(app, new RegExp(`\\b${callback}\\b`), `${callback} must be wired through App`);
+  }
+  assert.match(app, /onOpenPlugins=\{openPluginPanel\}/);
+  assert.match(app, /catch \(error\) \{ pluginError = toErrorMessage\(error\); \}/);
+  assert.match(app, /finally \{ pluginBusy = false; \}/);
+  assert.match(app, /onCancel=\{\(\) => pluginSessionOperation\(cancelAgentTurn\)\}/);
+  assert.match(app, /onResume=\{\(\) => pluginSessionOperation\(resumeAgentSession\)\}/);
+  assert.match(app, /onCloseSession=\{\(\) => pluginSessionOperation\(closeAgentSession\)\}/);
+
+  assert.match(panel, /role="alert"/, 'plugin errors must be announced');
+  assert.match(panel, /aria-label="插件消息"/, 'plugin timeline must remain readable');
+  assert.match(panel, /const resumable = \$derived\(selectedSession\?\.state === 'interrupted' \|\| selectedSession\?\.state === 'failed'\)/);
+  assert.match(panel, /disabled=\{busy \|\| !resumable\}/, 'closed or idle sessions must not offer resume');
+  assert.match(panel, /views as view \(view\.viewId\)/);
+  assert.match(manager, /disabled=\{busy \|\| !installation\.enabled\}/, 'disabled plugins cannot create sessions');
+  assert.match(manager, /aria-busy=\{busy\}/);
+});

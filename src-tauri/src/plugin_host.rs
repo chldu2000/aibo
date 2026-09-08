@@ -10,10 +10,11 @@ pub(crate) struct PluginHost {
     db: SqlitePool,
     runtimes: Arc<Mutex<HashMap<String, PluginRuntime>>>,
     lifecycle: Arc<Mutex<()>>,
+    database_writes: Arc<Mutex<()>>,
 }
 
 impl PluginHost {
-    pub fn new(db: SqlitePool) -> Self { Self { db, runtimes: Arc::default(), lifecycle: Arc::default() } }
+    pub fn new(db: SqlitePool) -> Self { Self { db, runtimes: Arc::default(), lifecycle: Arc::default(), database_writes: Arc::default() } }
 
     pub async fn create(&self, workspace_id: &str, installation_id: &str, agent_id: &str) -> Result<Session, String> {
         let _guard = self.lifecycle.lock().await;
@@ -33,6 +34,9 @@ impl PluginHost {
     pub async fn resume(&self, session_id: &str) -> Result<(), String> {
         let _guard = self.lifecycle.lock().await;
         if self.runtimes.lock().await.contains_key(session_id) { return Ok(()); }
+        let state: Option<String> = sqlx::query_scalar("SELECT state FROM sessions WHERE id=?")
+            .bind(session_id).fetch_optional(&self.db).await.map_err(|e| e.to_string())?;
+        if state.as_deref() == Some("closed") { return Err("invalid_session: session is closed".into()); }
         self.start(session_id, true).await
     }
 
@@ -106,13 +110,15 @@ impl PluginHost {
                 if host.project(&session_id, &workspace_id, &runtime.generation_id, &binding, sequence, message).await.is_err() { runtime.stop().await; break; }
                 sequence += 1;
             }
+            let process_state = if runtime.was_stopped() { "exited" } else { "crashed" };
+            let _write_guard = host.database_writes.lock().await;
             let mut runtimes = host.runtimes.lock().await;
             if runtimes.get(&session_id).is_some_and(|current|current.generation_id == runtime.generation_id) {
                 runtimes.remove(&session_id);
-                let _ = sqlx::query("UPDATE sessions SET state='interrupted',updated_at=? WHERE id=? AND state<>'closed'").bind(crate::now_iso()).bind(&session_id).execute(&host.db).await;
+                let _ = sqlx::query("UPDATE sessions SET state='interrupted',updated_at=? WHERE id=? AND state NOT IN ('closed','failed')").bind(crate::now_iso()).bind(&session_id).execute(&host.db).await;
                 let _ = sqlx::query("UPDATE turns SET status='interrupted',completed_at=? WHERE session_id=? AND status='running'").bind(crate::now_iso()).bind(&session_id).execute(&host.db).await;
             }
-            let _ = sqlx::query("UPDATE process_runs SET state='exited',ended_at=? WHERE generation_id=?").bind(crate::now_iso()).bind(&runtime.generation_id).execute(&host.db).await;
+            let _ = sqlx::query("UPDATE process_runs SET state=?,ended_at=? WHERE generation_id=?").bind(process_state).bind(crate::now_iso()).bind(&runtime.generation_id).execute(&host.db).await;
         });
         Ok(())
     }
@@ -126,16 +132,20 @@ impl PluginHost {
         if workspace.trust != "trusted" { return Err("permission_denied: workspace trust was revoked".into()); }
         let turn = ulid::Ulid::new().to_string();
         let now = crate::now_iso();
-        let mut tx = self.db.begin().await.map_err(|e|e.to_string())?;
-        let changed = sqlx::query("UPDATE sessions SET state='running',updated_at=? WHERE id=? AND state IN ('idle','interrupted')").bind(&now).bind(session_id).execute(&mut *tx).await.map_err(|e|e.to_string())?;
-        if changed.rows_affected() != 1 { return Err("busy: session has an active turn".into()); }
-        sqlx::query("INSERT INTO turns(id,session_id,external_turn_id,status,input_text,started_at) VALUES(?,?,?,'running',?,?)").bind(&turn).bind(session_id).bind(&turn).bind(text).bind(&now).execute(&mut *tx).await.map_err(|e|e.to_string())?;
-        sqlx::query("INSERT INTO messages(id,session_id,turn_id,role,content,status,created_at,updated_at) VALUES(?,?,?,'user',?,'completed',?,?)")
-            .bind(ulid::Ulid::new().to_string()).bind(session_id).bind(&turn).bind(text).bind(&now).bind(&now).execute(&mut *tx).await.map_err(|e|e.to_string())?;
-        tx.commit().await.map_err(|e|e.to_string())?;
+        {
+            let _write_guard = self.database_writes.lock().await;
+            let mut tx = self.db.begin().await.map_err(|e|e.to_string())?;
+            let changed = sqlx::query("UPDATE sessions SET state='running',updated_at=? WHERE id=? AND state IN ('idle','interrupted')").bind(&now).bind(session_id).execute(&mut *tx).await.map_err(|e|e.to_string())?;
+            if changed.rows_affected() != 1 { return Err("busy: session has an active turn".into()); }
+            sqlx::query("INSERT INTO turns(id,session_id,external_turn_id,status,input_text,started_at) VALUES(?,?,?,'running',?,?)").bind(&turn).bind(session_id).bind(&turn).bind(text).bind(&now).execute(&mut *tx).await.map_err(|e|e.to_string())?;
+            sqlx::query("INSERT INTO messages(id,session_id,turn_id,role,content,status,created_at,updated_at) VALUES(?,?,?,'user',?,'completed',?,?)")
+                .bind(ulid::Ulid::new().to_string()).bind(session_id).bind(&turn).bind(text).bind(&now).bind(&now).execute(&mut *tx).await.map_err(|e|e.to_string())?;
+            tx.commit().await.map_err(|e|e.to_string())?;
+        }
         let result = runtime.request("turn.send", json!({"agentId":session.agent,"sessionId":session_id,"turnId":turn,"input":{"text":text,"attachments":[]}}), TIMEOUT).await;
         if let Err(error) = result {
             runtime.stop().await;
+            let _write_guard = self.database_writes.lock().await;
             sqlx::query("UPDATE turns SET status='failed',completed_at=? WHERE id=? AND status='running'").bind(crate::now_iso()).bind(&turn).execute(&self.db).await.map_err(|e|e.to_string())?;
             return Err(error);
         }
@@ -155,6 +165,7 @@ impl PluginHost {
     pub async fn close(&self, session_id: &str) -> Result<(), String> {
         let _guard = self.lifecycle.lock().await;
         if let Some(runtime) = self.runtimes.lock().await.remove(session_id) { runtime.stop().await; }
+        let _write_guard = self.database_writes.lock().await;
         sqlx::query("UPDATE session_bindings SET generation_id=NULL WHERE session_id=?").bind(session_id).execute(&self.db).await.map_err(|e|e.to_string())?;
         sqlx::query("UPDATE turns SET status='interrupted',completed_at=? WHERE session_id=? AND status='running'").bind(crate::now_iso()).bind(session_id).execute(&self.db).await.map_err(|e|e.to_string())?;
         sqlx::query("UPDATE sessions SET state='closed',updated_at=? WHERE id=?").bind(crate::now_iso()).bind(session_id).execute(&self.db).await.map_err(|e|e.to_string())?;
@@ -165,6 +176,7 @@ impl PluginHost {
         if !contracts().runtime.is_valid(&message) { return Err("invalid_request: notification schema".into()); }
         let p = &message["params"];
         if p["sessionId"] != session_id || p["agentId"] != binding["agentId"] { return Err("invalid_session: notification identity".into()); }
+        let _write_guard = self.database_writes.lock().await;
         let mut tx = self.db.begin().await.map_err(|e|e.to_string())?;
         let active: Option<String> = sqlx::query_scalar("SELECT generation_id FROM session_bindings WHERE session_id=?").bind(session_id).fetch_one(&mut *tx).await.map_err(|e|e.to_string())?;
         if active.as_deref() != Some(generation) { return Err("invalid_session: old generation".into()); }
@@ -229,7 +241,13 @@ impl PluginHost {
                     let status = if kind == "turn.failed" { "failed" } else { p["payload"]["status"].as_str().ok_or("invalid_request: terminal status")? };
                     if !["completed","interrupted","failed"].contains(&status) { return Err("invalid_request: terminal status".into()); }
                     sqlx::query("UPDATE turns SET status=?,completed_at=? WHERE id=? AND status='running'").bind(status).bind(&now).bind(turn).execute(&mut *tx).await.map_err(|e|e.to_string())?;
-                    sqlx::query("UPDATE sessions SET state='idle',updated_at=? WHERE id=?").bind(&now).bind(session_id).execute(&mut *tx).await.map_err(|e|e.to_string())?;
+                    let session_state = match status {
+                        "completed" => "idle",
+                        "interrupted" => "interrupted",
+                        "failed" => "failed",
+                        _ => return Err("invalid_request: terminal status".into()),
+                    };
+                    sqlx::query("UPDATE sessions SET state=?,updated_at=? WHERE id=?").bind(session_state).bind(&now).bind(session_id).execute(&mut *tx).await.map_err(|e|e.to_string())?;
                 }
             }
             sqlx::query("INSERT INTO agent_events(event_id,session_id,generation_id,sequence,occurred_at,event_type,turn_id,payload_json,schema_version) VALUES(?,?,?,?,?,?,?,?,'2.0')")
@@ -254,6 +272,17 @@ mod tests {
                 tokio::time::sleep(Duration::from_millis(10)).await;
             }
         }).await.expect("turn must reach expected terminal state");
+    }
+
+    async fn wait_session_state(db: &SqlitePool, session: &str, state: &str) {
+        tokio::time::timeout(Duration::from_secs(10), async {
+            loop {
+                let actual: Option<String> = sqlx::query_scalar("SELECT state FROM sessions WHERE id=?")
+                    .bind(session).fetch_optional(db).await.unwrap();
+                if actual.as_deref() == Some(state) { break; }
+                tokio::time::sleep(Duration::from_millis(10)).await;
+            }
+        }).await.expect("session must reach expected state");
     }
 
     #[tokio::test]
@@ -286,6 +315,8 @@ mod tests {
         let session = host.create("test", &installation.id, "dev.aibo.echo.agent").await.unwrap();
         host.send(&session.id, "hello 你好 🌍\u{2028}plugin").await.unwrap();
         wait_turn(&db, &session.id, "completed").await;
+        let state: String = sqlx::query_scalar("SELECT state FROM sessions WHERE id=?").bind(&session.id).fetch_one(&db).await.unwrap();
+        assert_eq!(state, "idle");
         let text: String = sqlx::query_scalar("SELECT content FROM messages WHERE session_id=? AND role='assistant'").bind(&session.id).fetch_one(&db).await.unwrap();
         assert_eq!(text, "hello 你好 🌍\u{2028}plugin");
         let views: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM plugin_views WHERE session_id=?").bind(&session.id).fetch_one(&db).await.unwrap();
@@ -295,14 +326,75 @@ mod tests {
         host.send(&session.id, &"cancel me ".repeat(100)).await.unwrap();
         host.cancel(&session.id).await.unwrap();
         wait_turn(&db, &session.id, "interrupted").await;
-        host.close(&session.id).await.unwrap();
+        wait_session_state(&db, &session.id, "interrupted").await;
+
+        // App restart drops the runtime without closing the Aibo session. The
+        // next host must resume the pinned binding and preserve history.
+        let runtime = host.runtimes.lock().await.remove(&session.id).expect("active runtime");
+        runtime.stop().await;
+        let process_state: String = tokio::time::timeout(Duration::from_secs(10), async {
+            loop {
+                let state: Option<String> = sqlx::query_scalar("SELECT state FROM process_runs WHERE generation_id=?")
+                    .bind(&runtime.generation_id).fetch_optional(&db).await.unwrap();
+                if state.as_deref() == Some("exited") || state.as_deref() == Some("crashed") { break state.unwrap(); }
+                tokio::time::sleep(Duration::from_millis(10)).await;
+            }
+        }).await.unwrap();
+        assert_eq!(process_state, "exited");
         let restarted = PluginHost::new(db.clone());
         restarted.resume(&session.id).await.unwrap();
         restarted.send(&session.id, "after restart").await.unwrap();
         wait_turn(&db, &session.id, "completed").await;
+        wait_session_state(&db, &session.id, "idle").await;
         restarted.close(&session.id).await.unwrap();
+        assert!(restarted.resume(&session.id).await.unwrap_err().contains("session is closed"));
         tokio::time::sleep(Duration::from_millis(100)).await;
         db.close().await;
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[tokio::test]
+    async fn crashed_plugin_marks_generation_crashed_and_session_interrupted() {
+        let root = std::env::temp_dir().join(format!("aibo-plugin-crash-{}", ulid::Ulid::new()));
+        fs::create_dir(&root).unwrap();
+        let package = root.join("external-package");
+        fs::create_dir(&package).unwrap();
+        let mut manifest: Value = serde_json::from_str(include_str!("../../fixtures/plugins/echo-agent/plugin.json")).unwrap();
+        let executable = if cfg!(windows) { "node.exe" } else { "node" };
+        fs::copy(crate::find_executable("node").expect("Node test prerequisite"), package.join(executable)).unwrap();
+        fs::write(package.join("crash-agent.mjs"), include_str!("../../fixtures/plugins/echo-agent/crash-agent.mjs")).unwrap();
+        manifest["entrypoint"] = json!({"executable":executable,"args":["crash-agent.mjs"]});
+        manifest["platforms"] = json!([plugin_registry::platform()]);
+        manifest["dependencies"] = json!([]);
+        manifest["resources"] = json!([]);
+        manifest["agents"][0]["requestedPermissions"] = json!([]);
+        fs::write(package.join("plugin.json"), manifest.to_string()).unwrap();
+
+        let data = root.join("data");
+        let db = crate::open_database(&data.join("aibo.sqlite3")).await.unwrap();
+        sqlx::query("INSERT INTO workspaces(id,path,label,trusted,created_at,updated_at) VALUES('test',?,'test',1,?,?)")
+            .bind(root.to_string_lossy().as_ref()).bind(crate::now_iso()).bind(crate::now_iso()).execute(&db).await.unwrap();
+        let installation = plugin_registry::install(&db, &data, &package).await.unwrap();
+        plugin_registry::enable(&db, &installation.id, true).await.unwrap();
+        let host = PluginHost::new(db.clone());
+        let session = host.create("test", &installation.id, "dev.aibo.echo.agent").await.unwrap();
+        host.send(&session.id, "crash now").await.unwrap();
+        wait_session_state(&db, &session.id, "interrupted").await;
+        let process_state: String = tokio::time::timeout(Duration::from_secs(10), async {
+            loop {
+                let state: Option<String> = sqlx::query_scalar("SELECT state FROM process_runs WHERE session_id=? ORDER BY started_at DESC LIMIT 1")
+                    .bind(&session.id).fetch_optional(&db).await.unwrap();
+                if state.as_deref() == Some("crashed") { break state.unwrap(); }
+                tokio::time::sleep(Duration::from_millis(10)).await;
+            }
+        }).await.unwrap();
+        assert_eq!(process_state, "crashed");
+        let turn_state: String = sqlx::query_scalar("SELECT status FROM turns WHERE session_id=? ORDER BY started_at DESC LIMIT 1")
+            .bind(&session.id).fetch_one(&db).await.unwrap();
+        assert_eq!(turn_state, "interrupted");
+        host.close(&session.id).await.unwrap();
+        db.close().await;
+        tokio::time::sleep(Duration::from_millis(100)).await;
         fs::remove_dir_all(root).unwrap();
     }
 }
