@@ -1,4 +1,6 @@
 import type { Component } from 'svelte';
+import type { UiPluginViewProps } from './plugin-view';
+export type { UiPluginViewDocument, UiPluginViewProps } from './plugin-view';
 
 export type UiIconName =
   | 'add'
@@ -95,6 +97,7 @@ export type UiAgentStatusMarkProps = {
  * cancelText, onConfirm and onCancel.
  */
 export type UiKitAdapter = {
+  PluginView: Component<UiPluginViewProps>;
   AgentStatusMark: Component<UiAgentStatusMarkProps>;
   AlertDialog: Component;
   Badge: Component;

@@ -119,3 +119,30 @@ Renderer 的交互状态以 `(sessionId, viewId, nodeId)` 为稳定键。文档 
 - `src/lib/app/pi-tree-controller.ts` 负责 Pi 分支切换确认、时间线重载和编辑器文本恢复；Inspector 不直接调用 Pi API。
 - `src/lib/app/session-context-controller.ts` 负责时间线、Codex 线程和 Pi 会话树读取，以及刷新状态提示；页面只消费已选上下文的投影。
 - `src/lib/app/navigation-controller.ts` 负责工作区展开/切换、会话选择和创建入口状态；展开列表不会隐式改变当前会话。
+
+### P4.7B PluginView renderer
+
+`PluginView` is a required `UiKitAdapter` composite, exported through `$lib/ui-kit` with
+`UiPluginViewDocument` and `UiPluginViewProps`. The application supplies a host-validated
+v1 document, `sessionId`, `disabled`, and `onAction(actionId, input)`; actions return the
+current form fields indexed by `fieldId`. Core must validate and authorize each action,
+including its confirmation policy, before dispatch. The renderer performs no API calls.
+
+The runtime proxy owns form drafts and expansion state keyed by session/view/node IDs,
+so replacing a skin preserves these values. Child lists are keyed by stable node IDs.
+Both registered skins implement the control and own shape and semantic color tokens;
+shared skin markup only renders explicit supported semantics and never spreads plugin
+properties into DOM attributes. JSON Pointer bindings only read own properties.
+Unknown components show a host fallback. The minimum renderer displays Markdown as
+escaped plain text and code/diff as scrollable source, without HTML, scripts, external
+resources or arbitrary CSS. Rich Markdown, selection/focus restoration and full visual
+acceptance remain P4.7D work.
+
+The B transition exposes a titlebar plugin workbench alongside existing built-in sessions.
+The App composition filters external session rows before passing data to legacy Codex/Pi
+controllers; external rows keep their actual agent IDs in a separate presentation model.
+Both surfaces read the same persisted sessions. The plugin workbench polls sessions,
+timeline and validated views with cancellation of stale selection scopes. A view failure
+does not prevent reading saved timeline history. Install, enable, create, send, cancel,
+resume and close callbacks use the host's unified API. Generic view actions remain
+explicitly unavailable until host capability/confirmation dispatch is wired.

@@ -1,4 +1,5 @@
 export { default as WorkspaceSidebar } from './WorkspaceSidebar.svelte';
+export { default as PluginWorkspacePanel } from './PluginWorkspacePanel.svelte';
 export { default as Composer } from './Composer.svelte';
 export { default as TimelinePanel } from './TimelinePanel.svelte';
 export { default as PiSessionTreeOverlay } from './PiSessionTreeOverlay.svelte';

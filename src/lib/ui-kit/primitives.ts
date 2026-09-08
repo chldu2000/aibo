@@ -1,4 +1,5 @@
 /** Runtime primitive proxies. Their implementations follow the active kit. */
+export { default as PluginView } from './runtime/PluginView.svelte';
 export { default as AgentStatusMark } from './runtime/AgentStatusMark.svelte';
 export { default as AlertDialog } from './runtime/AlertDialog.svelte';
 export { default as Badge } from './runtime/Badge.svelte';

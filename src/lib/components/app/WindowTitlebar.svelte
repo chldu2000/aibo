@@ -4,6 +4,7 @@
   type WindowTitlebarProps = {
     onOpenSettings: () => void;
     onOpenDiagnostics: () => void;
+    onOpenPlugins: () => void;
     sidePanelOpen: boolean;
     onToggleSidePanel: () => void;
     onToggleMaximize: () => void;
@@ -14,6 +15,7 @@
   let {
     onOpenSettings,
     onOpenDiagnostics,
+    onOpenPlugins,
     sidePanelOpen,
     onToggleSidePanel,
     onToggleMaximize,
@@ -35,6 +37,7 @@
 >
   <span class="window-title">Aibo</span>
   <div class="window-actions">
+    <Button variant="ghost" type="button" onclick={onOpenPlugins}>插件</Button>
     <Button variant="ghost" size="icon" type="button" aria-label="打开设置" title="设置" onclick={onOpenSettings}>
       <Icon name="settings" size={15} />
     </Button>

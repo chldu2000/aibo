@@ -13,6 +13,7 @@
     WorkspaceFileDiffPreview,
     WorkspaceGitPanel,
     WorkspaceSidebar,
+    PluginWorkspacePanel,
     toSessionListItemsByWorkspace,
     toUsageValues,
     toWorkspaceListItems,
@@ -110,7 +111,16 @@
     clearCodexGoal,
     updateSessionExecutionProfile,
     reloadPiSession,
-    listSessions,
+    listSessions as listAllSessions,
+    listPluginInstallations,
+    installAgentPlugin,
+    setAgentPluginEnabled,
+    createAgentSession,
+    sendAgentPrompt,
+    cancelAgentTurn,
+    resumeAgentSession,
+    closeAgentSession,
+    getPluginViews,
     listenToAgentEvents,
     navigatePiSessionTree,
     probeAgents,
@@ -134,6 +144,8 @@
     closeWindow,
     unarchiveSession as unarchiveSessionApi,
   } from './lib/api';
+  import type { PluginInstallation } from './lib/api';
+  import type { UiPluginViewDocument } from '$lib/ui-kit';
   import type {
     AgentQueueSnapshot,
     AgentCommand,
@@ -409,6 +421,114 @@
   let retryReason = $state<string | null>(null);
   let lastSubmittedPrompt = $state<string | null>(null);
   let settingsOpen = $state(false);
+  // P4.7B keeps external sessions out of the legacy Codex/Pi controllers.
+  type PluginSession = Omit<Session, 'agent'> & { agent: string };
+  const listSessions: typeof listAllSessions = async (...args) =>
+    (await listAllSessions(...args)).filter((session) => session.agent === 'codex' || session.agent === 'pi');
+  let pluginsOpen = $state(false);
+  let pluginInstallations = $state<PluginInstallation[]>([]);
+  let pluginSessions = $state<PluginSession[]>([]);
+  let pluginSelection = $state<Record<string, string>>({});
+  let pluginDrafts = $state<Record<string, string>>({});
+  let pluginTimeline = $state<TimelineItem[]>([]);
+  let pluginViews = $state<UiPluginViewDocument[]>([]);
+  let pluginViewSessionId = $state<string | null>(null);
+  let pluginPackagePath = $state('');
+  let pluginBusy = $state(false);
+  let pluginError = $state('');
+  const pluginSessionId = $derived(pluginSelection[selectedWorkspaceId ?? ''] ?? null);
+  const pluginSession = $derived(pluginSessions.find((session) => session.id === pluginSessionId) ?? null);
+
+  async function pluginOperation(operation: () => Promise<void>): Promise<void> {
+    if (pluginBusy || !desktop) return;
+    pluginBusy = true;
+    pluginError = '';
+    try { await operation(); }
+    catch (error) { pluginError = toErrorMessage(error); }
+    finally { pluginBusy = false; }
+  }
+
+  function openPluginPanel(): void {
+    settingsOpen = false;
+    diagnosticsOpen = false;
+    commandPaletteOpen = false;
+    pluginsOpen = true;
+    void pluginOperation(async () => { pluginInstallations = await listPluginInstallations(); });
+  }
+
+  async function installPlugin(): Promise<void> {
+    await pluginOperation(async () => {
+      await installAgentPlugin(pluginPackagePath.trim());
+      pluginInstallations = await listPluginInstallations();
+      pluginPackagePath = '';
+    });
+  }
+
+  async function enablePlugin(id: string, enabled: boolean): Promise<void> {
+    await pluginOperation(async () => {
+      await setAgentPluginEnabled(id, enabled);
+      pluginInstallations = await listPluginInstallations();
+    });
+  }
+
+  async function createPluginSession(installationId: string, agentId: string): Promise<void> {
+    const workspaceId = selectedWorkspaceId;
+    if (!workspaceId) { pluginError = '请先选择工作区。'; return; }
+    await pluginOperation(async () => {
+      const session = await createAgentSession(workspaceId, agentId, installationId);
+      if (selectedWorkspaceId !== workspaceId) return;
+      pluginSessions = [...pluginSessions.filter((item) => item.id !== session.id), session];
+      pluginSelection[workspaceId] = session.id;
+    });
+  }
+
+  async function sendPluginPrompt(): Promise<void> {
+    const id = pluginSessionId;
+    if (!id) return;
+    const input = pluginDrafts[id] ?? '';
+    if (!input.trim()) return;
+    await pluginOperation(async () => {
+      const session = await sendAgentPrompt(id, input);
+      pluginSessions = pluginSessions.map((item) => item.id === id ? session : item);
+      if (pluginDrafts[id] === input) pluginDrafts[id] = '';
+    });
+  }
+
+  function pluginSessionOperation(operation: (sessionId: string) => Promise<void>): void {
+    const id = pluginSessionId;
+    if (id) void pluginOperation(() => operation(id));
+  }
+
+  $effect(() => {
+    const workspaceId = selectedWorkspaceId;
+    const sessionId = pluginSessionId;
+    if (!pluginsOpen || !desktop || !workspaceId) return;
+    let disposed = false;
+    let polling = false;
+    async function poll(): Promise<void> {
+      if (polling || disposed) return;
+      polling = true;
+      try {
+        const [allSessions, items, views] = await Promise.allSettled([
+          listAllSessions(workspaceId!),
+          sessionId ? getTimeline(sessionId) : Promise.resolve([]),
+          sessionId ? getPluginViews(sessionId) : Promise.resolve([]),
+        ]);
+        if (disposed) return;
+        if (allSessions.status === 'fulfilled') pluginSessions = allSessions.value.filter((session) => session.agent !== 'codex' && session.agent !== 'pi');
+        if (items.status === 'fulfilled') pluginTimeline = items.value;
+        pluginViews = views.status === 'fulfilled' ? views.value : [];
+        pluginViewSessionId = sessionId;
+        const failed = [allSessions, items, views].find((result) => result.status === 'rejected');
+        if (failed?.status === 'rejected') pluginError = toErrorMessage(failed.reason);
+      } catch (error) {
+        if (!disposed) pluginError = toErrorMessage(error);
+      } finally { polling = false; }
+    }
+    untrack(() => { void poll(); });
+    const timer = setInterval(() => { void poll(); }, 750);
+    return () => { disposed = true; clearInterval(timer); };
+  });
   let diagnosticsOpen = $state(false);
   let sidePanelOpen = $state(true);
   let sidePanelView = $state<SidePanelView>('git');
@@ -871,6 +991,10 @@
   function handleGlobalKeydown(event: KeyboardEvent): void {
     const key = event.key.toLocaleLowerCase();
     const modifier = event.metaKey || event.ctrlKey;
+    if (pluginsOpen && !settingsOpen && !diagnosticsOpen) {
+      if (key === 'escape') { event.preventDefault(); pluginsOpen = false; }
+      return;
+    }
     if (modifier && key === 'k') {
       event.preventDefault();
       commandPaletteOpen = !commandPaletteOpen;
@@ -2960,6 +3084,7 @@
   style={$activeThemeStyle}
 >
   <WindowTitlebar
+    onOpenPlugins={openPluginPanel}
     onOpenSettings={openSettingsPanel}
     onOpenDiagnostics={openDiagnosticsPanel}
     sidePanelOpen={sidePanelOpen}
@@ -3016,7 +3141,7 @@
         if (workspaceId !== selectedWorkspaceId) activateWorkspace(workspaceId);
         void createPi();
       }}
-      onSelectSession={selectSession}
+      onSelectSession={(id) => { pluginsOpen = false; selectSession(id); }}
       onUnarchiveSession={(sessionId) => void unarchiveSession(sessionId)}
       onRequestArchiveSession={requestArchiveSession}
       onSyncCodexThread={(sessionId) => void syncCodexThread(sessionId)}
@@ -3030,7 +3155,33 @@
       onPointerDown={(event) => beginColumnResize('workspace', event)}
       onKeyDown={(event) => handleSplitterKeydown('workspace', event)}
     />
-    {#if workspaceFileDiffPath !== null || workspaceFileDiff || workspaceFileDiffLoading || workspaceFileDiffError}
+    {#if pluginsOpen}
+    <PluginWorkspacePanel
+      installations={pluginInstallations}
+      sessions={pluginSessions.filter((session) => session.workspaceId === selectedWorkspaceId)}
+      selectedSession={pluginSession?.workspaceId === selectedWorkspaceId ? pluginSession : null}
+      workspaceLabel={selectedWorkspace?.label ?? null}
+      packagePath={pluginPackagePath}
+      prompt={pluginDrafts[pluginSessionId ?? ''] ?? ''}
+      timeline={pluginTimeline.filter((item) => item.sessionId === pluginSessionId)}
+      views={pluginViewSessionId === pluginSessionId ? pluginViews : []}
+      busy={pluginBusy}
+      error={pluginError}
+      {desktop}
+      onPackagePathChange={(value) => { pluginPackagePath = value; }}
+      onPromptChange={(value) => { if (pluginSessionId) pluginDrafts[pluginSessionId] = value; }}
+      onInstall={() => void installPlugin()}
+      onEnabledChange={(id, enabled) => void enablePlugin(id, enabled)}
+      onCreateSession={(installationId, agentId) => void createPluginSession(installationId, agentId)}
+      onSelectSession={(id) => { if (selectedWorkspaceId) pluginSelection[selectedWorkspaceId] = id; }}
+      onSend={() => void sendPluginPrompt()}
+      onCancel={() => pluginSessionOperation(cancelAgentTurn)}
+      onResume={() => pluginSessionOperation(resumeAgentSession)}
+      onCloseSession={() => pluginSessionOperation(closeAgentSession)}
+      onViewAction={() => { pluginError = '当前宿主尚未支持此视图动作。'; }}
+      onClose={() => { pluginsOpen = false; }}
+    />
+    {:else if workspaceFileDiffPath !== null || workspaceFileDiff || workspaceFileDiffLoading || workspaceFileDiffError}
     <WorkspaceFileDiffPreview
       fileDiff={workspaceFileDiff}
       fileDiffLoading={workspaceFileDiffLoading}

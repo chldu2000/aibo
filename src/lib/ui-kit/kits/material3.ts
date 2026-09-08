@@ -14,6 +14,7 @@ import Textarea from './material3/Textarea.svelte';
 import ModelMatrix from './material3/ModelMatrix.svelte';
 import ColumnSplitter from './material3/ColumnSplitter.svelte';
 import AgentStatusMark from './material3/AgentStatusMark.svelte';
+import PluginView from './material3/PluginView.svelte';
 import type { UiKitAdapter, UiKitRegistration, UiThemeRegistration } from '../contract';
 import { lightStatusThemeTokens, statusThemeTokens } from '../theme-tokens';
 
@@ -23,6 +24,7 @@ import { lightStatusThemeTokens, statusThemeTokens } from '../theme-tokens';
  * unaware of the selected visual system.
  */
 export const material3UiKit: UiKitAdapter = {
+  PluginView,
   AgentStatusMark,
   AlertDialog,
   Badge,

@@ -3,6 +3,10 @@ mod change_set;
 mod codex;
 mod execution_profile;
 mod pi;
+mod plugin_runtime;
+mod plugin_contract;
+mod plugin_registry;
+mod plugin_host;
 mod workspace_guard;
 
 use change_set::{
@@ -20,7 +24,7 @@ use serde::Serialize;
 use sha2::{Digest, Sha256};
 use sqlx::{
     sqlite::{SqliteConnectOptions, SqliteJournalMode, SqlitePoolOptions},
-    Row, SqlitePool,
+    Connection, Row, SqlitePool,
 };
 use std::{
     collections::{BTreeSet, HashMap},
@@ -65,6 +69,7 @@ pub struct AppState {
     db: SqlitePool,
     codex: CodexManager,
     pi: PiManager,
+    plugins: plugin_host::PluginHost,
     data_dir: PathBuf,
 }
 
@@ -1082,13 +1087,16 @@ async fn open_database(path: &Path) -> Result<SqlitePool, CoreError> {
         .create_if_missing(true)
         .journal_mode(SqliteJournalMode::Wal)
         .foreign_keys(true);
-    let pool = SqlitePoolOptions::new()
-        .max_connections(5)
-        .connect_with(options)
-        .await?;
     // Keep migrations embedded at build time so a fresh app and an upgraded
     // local database share the same durable schema.
-    sqlx::migrate!("./migrations").run(&pool).await?;
+    // SQLite table rebuilds must not cascade-delete history. This connection is
+    // never exposed to application queries; each migration remains transactional.
+    let mut migration_connection = sqlx::SqliteConnection::connect_with(&options.clone().foreign_keys(false)).await?;
+    sqlx::migrate!("./migrations").run(&mut migration_connection).await?;
+    let violations = sqlx::query("PRAGMA foreign_key_check").fetch_all(&mut migration_connection).await?;
+    if !violations.is_empty() { return Err(CoreError::Database("migration foreign key check failed".into())); }
+    migration_connection.close().await?;
+    let pool = SqlitePoolOptions::new().max_connections(5).connect_with(options).await?;
     Ok(pool)
 }
 
@@ -4715,6 +4723,72 @@ async fn unarchive_session(
 }
 
 #[tauri::command]
+async fn list_plugin_installations(state: State<'_, AppState>) -> Result<Vec<plugin_registry::PluginInstallation>, String> {
+    plugin_registry::list(&state.db).await
+}
+
+#[tauri::command]
+async fn install_agent_plugin(path: String, state: State<'_, AppState>) -> Result<plugin_registry::PluginInstallation, String> {
+    plugin_registry::install(&state.db, &state.data_dir, Path::new(&path)).await
+}
+
+#[tauri::command]
+async fn set_agent_plugin_enabled(id: String, enabled: bool, state: State<'_, AppState>) -> Result<(), String> {
+    plugin_registry::enable(&state.db, &id, enabled).await
+}
+
+#[tauri::command]
+async fn create_agent_session(workspace_id: String, agent_id: String, installation_id: Option<String>, state: State<'_, AppState>) -> Result<Session, String> {
+    if let Some(installation_id) = installation_id {
+        return state.plugins.create(&workspace_id, &installation_id, &agent_id).await;
+    }
+    // Temporary P4.7B compatibility seam. C replaces these managers with Plugin Releases.
+    match agent_id.as_str() {
+        "codex" => create_codex_session(workspace_id, None, state).await.map_err(|e|e.to_string()),
+        "pi" => create_pi_session(workspace_id, None, state).await.map_err(|e|e.to_string()),
+        _ => Err("invalid_request: installation ID required".into()),
+    }
+}
+
+#[tauri::command]
+async fn send_agent_prompt(session_id: String, input: String, state: State<'_, AppState>) -> Result<Session, String> {
+    match session_agent(&state.db, &session_id).await.map_err(|e|e.to_string())?.as_str() {
+        "codex" => send_codex_prompt(session_id, input, state).await.map_err(|e|e.to_string()),
+        "pi" => send_pi_prompt(session_id, input, state).await.map_err(|e|e.to_string()),
+        _ => { state.plugins.send(&session_id, &input).await?; session_by_id(&state.db,&session_id).await.map_err(|e|e.to_string()) }
+    }
+}
+
+#[tauri::command]
+async fn cancel_agent_turn(session_id: String, state: State<'_, AppState>) -> Result<(), String> {
+    match session_agent(&state.db, &session_id).await.map_err(|e|e.to_string())?.as_str() {
+        "codex" => abort_codex_turn(session_id, state).await.map_err(|e|e.to_string()),
+        "pi" => abort_pi_turn(session_id, state).await.map_err(|e|e.to_string()),
+        _ => state.plugins.cancel(&session_id).await,
+    }
+}
+
+#[tauri::command]
+async fn resume_agent_session(session_id: String, state: State<'_, AppState>) -> Result<(), String> {
+    state.plugins.resume(&session_id).await
+}
+
+#[tauri::command]
+async fn close_agent_session(session_id: String, state: State<'_, AppState>) -> Result<(), String> {
+    match session_agent(&state.db, &session_id).await.map_err(|e|e.to_string())?.as_str() {
+        "codex" => close_codex_session(session_id, state).await.map_err(|e|e.to_string()),
+        "pi" => close_pi_session(session_id, state).await.map_err(|e|e.to_string()),
+        _ => state.plugins.close(&session_id).await,
+    }
+}
+
+#[tauri::command]
+async fn get_plugin_views(session_id: String, state: State<'_, AppState>) -> Result<Vec<serde_json::Value>, String> {
+    let documents: Vec<String> = sqlx::query_scalar("SELECT document_json FROM plugin_views WHERE session_id=? ORDER BY view_id").bind(session_id).fetch_all(&state.db).await.map_err(|e|e.to_string())?;
+    documents.iter().map(|document| serde_json::from_str(document).map_err(|_|"invalid_request: stored view".into())).collect()
+}
+
+#[tauri::command]
 async fn create_codex_session(
     workspace_id: String,
     requested_profile: Option<ExecutionProfile>,
@@ -5424,6 +5498,7 @@ pub fn run() {
             let codex = CodexManager::new(app.handle().clone(), db.clone(), data_dir.clone());
             let pi = PiManager::new(app.handle().clone(), db.clone(), data_dir.clone());
             app.manage(AppState {
+                plugins: plugin_host::PluginHost::new(db.clone()),
                 db,
                 codex,
                 pi,
@@ -5432,6 +5507,15 @@ pub fn run() {
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
+            list_plugin_installations,
+            install_agent_plugin,
+            set_agent_plugin_enabled,
+            create_agent_session,
+            send_agent_prompt,
+            cancel_agent_turn,
+            resume_agent_session,
+            close_agent_session,
+            get_plugin_views,
             list_workspaces,
             search_workspace_paths,
             add_workspace,
