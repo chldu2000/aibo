@@ -1,6 +1,6 @@
 # Aibo 多 Agent 工作台：调研、架构建议与实施计划
 
-> 状态：Phase 0–4.6 已完成；Phase 4.7 Agent 支持插件化实施中（P4.7A 已完成，P4.7B 自动化检查通过、人工 smoke 待执行），完成后进入 Phase 5 `@` 与 Handoff v1；macOS 首发，真实 Provider 兼容性复测与 Windows 验证后续进行
+> 状态：Phase 0–4.6 已完成；Phase 4.7 Agent 支持插件化实施中（P4.7A、P4.7B 已完成），继续推进 P4.7C–E 后进入 Phase 5 `@` 与 Handoff v1；macOS 首发，真实 Provider 兼容性复测与 Windows 验证后续进行
 > 调研日期：2026-09-02  
 > 首批目标：Codex、Pi；首发平台：macOS（当前基线为 arm64）
 > 技术栈：Svelte 5 + Tauri 2
@@ -476,7 +476,7 @@ V1 后为 Pi 增加可选 container/VM/平台 sandbox runner；统一权限 prof
 
 退出条件：用户可以在统一工作台内发现并控制模型、推理强度、命令、Skills、Plan 和 Goal；任务运行状态不会因工具调用间隔或重启变成不可解释的空闲；草稿、配置和结构化事件可供 Phase 5 `SessionSnapshot v1` 直接引用。详细规格见 [Phase 4.6 记录](phase-4.6-agent-workbench-controls.md)。
 
-### Phase 4.7：Agent 支持插件化（实施中，P4.7A 已完成，P4.7B 自动化检查通过，工期待首个闭环后估算）
+### Phase 4.7：Agent 支持插件化（实施中，P4.7A、P4.7B 已完成，继续推进 P4.7C–E）
 
 - 建立版本化插件清单、Agent Runtime Protocol、Plugin View Protocol，以及动态 Agent 注册表和统一会话 API。
 - Core 保留权限、状态机、持久化、事件校验、变更快照和进程监管；Codex/Pi 厂商协议逻辑迁为进程外内置插件，与第三方插件走同一加载流程。
@@ -490,7 +490,7 @@ V1 后为 Pi 增加可选 container/VM/平台 sandbox runner；统一权限 prof
 
 P4.7A 已交付进程边界 ADR、Plugin Manifest、Agent Runtime、Plugin View、AgentEvent v2 与 Session Binding 契约、能力/错误/权限模型、数据库迁移设计，以及覆盖创建、流式交互、取消、重启恢复和标准视图的 Echo Agent 回放样例。证据见 [Phase 4.7A 契约与迁移设计](phase-4.7a-plugin-contracts.md)。
 
-P4.7B 已完成外部包 Registry、Supervisor、统一会话 API、最小 Plugin View Renderer 及 App 接线；宿主集成、迁移、崩溃分类、session 终态和 App 错误恢复检查均已自动化通过。Tauri 窗口人工 smoke 尚待执行，检查记录见 [Phase 4.7B 宿主接线与异常场景](phase-4.7b-host-wiring-check.md)。
+P4.7B 已完成外部包 Registry、Supervisor、统一会话 API、最小 Plugin View Renderer 及 App 接线；宿主集成、迁移、崩溃分类、session 终态、App 错误恢复检查和 Tauri 窗口人工 smoke 均已通过，检查记录见 [Phase 4.7B 宿主接线与异常场景](phase-4.7b-host-wiring-check.md)。
 
 ### Phase 5：`@` 与 Handoff v1（6–10 天）
 
@@ -594,8 +594,8 @@ macOS 本机 Phase 0 已通过，架构评审结果已经冻结在 [docs/archite
 2. Codex 使用 App Server；Pi 使用项目锁版 SDK host，RPC 仅作兼容/诊断。
 3. `AgentEvent v1`、session state machine、`SessionSnapshot v1` 和 `Handoff Envelope v1` 的边界已确定。
 4. Pi 首版接受宿主机当前用户权限，但必须通过 workspace trust 明示风险；不提前引入容器/VM。
-5. Phase 1–4.6 已完成应用骨架、Codex/Pi adapter、统一会话体验与 Agent 工作台能力；Phase 4.7 已完成 P4.7A 契约与设计，下一切片为 P4.7B 最小外部插件闭环，随后进入 Phase 5 Handoff v1。
+5. Phase 1–4.6 已完成应用骨架、Codex/Pi adapter、统一会话体验与 Agent 工作台能力；Phase 4.7 已完成 P4.7A 契约与设计及 P4.7B 最小外部插件闭环，下一切片为 P4.7C 内置插件迁移，随后完成 P4.7D–E 再进入 Phase 5 Handoff v1。
 
 Phase 4.5A–F 与 Phase 4.6A–E 已完成：执行 profile、安全写入与命令网关、变更审阅、checkpoint/恢复（含 `aibo.restore-operation/v1` 结构化审计）、结构化上下文、artifact、队列、project actions、能力检查器，以及模型、推理强度、命令、Skills、Plan、Goal、状态和草稿控制均已落地。真实 Codex/Pi Provider 场景受认证条件限制的项目作为非阻塞兼容性复测保留，不以离线 fixture 冒充通过。详细记录见 [Phase 4.5 计划与验收](phase-4.5-agent-workbench-completion.md)与 [Phase 4.6 计划与验收](phase-4.6-agent-workbench-controls.md)。
 
-2026-09-08 新增 [Phase 4.7 Agent 支持插件化](phase-4.7-agent-plugins.md)。P4.7A 已通过 [ADR-0001](adr/0001-process-isolated-agent-plugins.md) 显式更新原冻结架构中 adapter 的进程边界，并交付版本化 Runtime/View/Event/Binding 契约和回放样例；冻结的 AgentEvent v1 保持不变并要求兼容读取。当前尚未实现 P4.7B 的插件运行时、安装器或 Renderer。
+2026-09-08 新增 [Phase 4.7 Agent 支持插件化](phase-4.7-agent-plugins.md)。P4.7A 已通过 [ADR-0001](adr/0001-process-isolated-agent-plugins.md) 显式更新原冻结架构中 adapter 的进程边界，并交付版本化 Runtime/View/Event/Binding 契约和回放样例；冻结的 AgentEvent v1 保持不变并要求兼容读取。P4.7B 的插件运行时、安装器、Renderer、宿主接线和人工 smoke 已完成。
