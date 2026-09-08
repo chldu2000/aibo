@@ -1,0 +1,254 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://aibo.local/contracts/plugin-manifest.v1.schema.json",
+  "title": "Aibo Agent Plugin Manifest v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema",
+    "pluginId",
+    "version",
+    "displayName",
+    "protocols",
+    "platforms",
+    "entrypoint",
+    "agents"
+  ],
+  "properties": {
+    "schema": { "const": "aibo.plugin-manifest/v1" },
+    "pluginId": { "$ref": "#/$defs/namespacedId" },
+    "version": { "$ref": "#/$defs/semver" },
+    "displayName": { "type": "string", "minLength": 1, "maxLength": 80 },
+    "description": { "type": "string", "maxLength": 500 },
+    "publisher": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name"],
+      "properties": {
+        "name": { "type": "string", "minLength": 1, "maxLength": 120 },
+        "url": { "type": "string", "format": "uri" }
+      }
+    },
+    "protocols": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["runtime"],
+      "properties": {
+        "runtime": { "$ref": "#/$defs/protocolRange" },
+        "view": { "$ref": "#/$defs/protocolRange" }
+      }
+    },
+    "platforms": {
+      "type": "array",
+      "minItems": 1,
+      "uniqueItems": true,
+      "items": {
+        "enum": ["darwin-arm64", "darwin-x64", "windows-x64", "linux-x64", "linux-arm64"]
+      }
+    },
+    "entrypoint": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["executable"],
+      "properties": {
+        "executable": { "$ref": "#/$defs/packagePath" },
+        "args": {
+          "type": "array",
+          "maxItems": 32,
+          "items": { "type": "string", "maxLength": 1024 }
+        }
+      }
+    },
+    "dependencies": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/dependency" }
+    },
+    "resources": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/resource" }
+    },
+    "agents": {
+      "type": "array",
+      "minItems": 1,
+      "items": { "$ref": "#/$defs/agentContribution" }
+    }
+  },
+  "$defs": {
+    "namespacedId": {
+      "type": "string",
+      "minLength": 3,
+      "maxLength": 160,
+      "pattern": "^[a-z0-9](?:[a-z0-9-]*[a-z0-9])?(?:\\.[a-z0-9](?:[a-z0-9-]*[a-z0-9])?)+$"
+    },
+    "semver": {
+      "type": "string",
+      "pattern": "^(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)(?:-[0-9A-Za-z.-]+)?(?:\\+[0-9A-Za-z.-]+)?$"
+    },
+    "protocolVersion": {
+      "type": "string",
+      "pattern": "^[1-9][0-9]*\\.[0-9]+$"
+    },
+    "protocolRange": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["min", "max"],
+      "properties": {
+        "min": { "$ref": "#/$defs/protocolVersion" },
+        "max": { "$ref": "#/$defs/protocolVersion" }
+      }
+    },
+    "packagePath": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 512,
+      "pattern": "^(?![A-Za-z]:)(?![/\\\\])(?!.*(?:^|[/\\\\])\\.\\.(?:[/\\\\]|$)).+$"
+    },
+    "capabilityId": {
+      "oneOf": [
+        {
+          "enum": [
+            "session.create",
+            "session.resume",
+            "session.close",
+            "turn.send",
+            "turn.cancel",
+            "stream.text",
+            "model.select",
+            "model.reasoning",
+            "command.list",
+            "command.execute",
+            "approval.respond",
+            "user-input.respond",
+            "queue.manage",
+            "compaction.run",
+            "skill.list",
+            "skill.invoke",
+            "plan.native",
+            "goal.manage",
+            "session.tree",
+            "view.standard"
+          ]
+        },
+        {
+          "type": "string",
+          "pattern": "^ext\\.[a-z0-9][a-z0-9.-]*\\.[a-z0-9][a-z0-9.-]*$"
+        }
+      ]
+    },
+    "permissionRequest": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "required", "reason"],
+      "properties": {
+        "id": {
+          "enum": [
+            "workspace.read",
+            "workspace.write",
+            "commands.execute",
+            "network.access",
+            "credentials.delegate"
+          ]
+        },
+        "required": { "type": "boolean" },
+        "reason": { "type": "string", "minLength": 1, "maxLength": 300 }
+      }
+    },
+    "operation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "capability", "inputSchema", "outputSchema"],
+      "properties": {
+        "id": {
+          "type": "string",
+          "pattern": "^ext\\.[a-z0-9][a-z0-9.-]*\\.[a-z0-9][a-z0-9.-]*$"
+        },
+        "capability": { "$ref": "#/$defs/capabilityId" },
+        "inputSchema": { "type": "object" },
+        "outputSchema": { "type": "object" }
+      }
+    },
+    "viewContribution": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["viewId", "title", "requiredComponents"],
+      "properties": {
+        "viewId": { "$ref": "#/$defs/namespacedId" },
+        "title": { "type": "string", "minLength": 1, "maxLength": 80 },
+        "requiredComponents": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {
+            "enum": [
+              "stack",
+              "row",
+              "grid",
+              "panel",
+              "toolbar",
+              "text",
+              "markdown",
+              "badge",
+              "list",
+              "item",
+              "tree",
+              "timeline",
+              "code",
+              "diff",
+              "form-field",
+              "button",
+              "empty-state"
+            ]
+          }
+        }
+      }
+    },
+    "agentContribution": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["agentId", "displayName", "capabilities", "requestedPermissions", "views"],
+      "properties": {
+        "agentId": { "$ref": "#/$defs/namespacedId" },
+        "displayName": { "type": "string", "minLength": 1, "maxLength": 80 },
+        "description": { "type": "string", "maxLength": 500 },
+        "capabilities": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": { "$ref": "#/$defs/capabilityId" }
+        },
+        "requestedPermissions": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/permissionRequest" }
+        },
+        "operations": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/operation" }
+        },
+        "views": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/viewContribution" }
+        }
+      }
+    },
+    "dependency": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind", "name", "required"],
+      "properties": {
+        "kind": { "enum": ["executable", "runtime"] },
+        "name": { "type": "string", "minLength": 1, "maxLength": 120 },
+        "versionRange": { "type": "string", "maxLength": 120 },
+        "required": { "type": "boolean" }
+      }
+    },
+    "resource": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "path", "mediaType", "sha256"],
+      "properties": {
+        "id": { "$ref": "#/$defs/namespacedId" },
+        "path": { "$ref": "#/$defs/packagePath" },
+        "mediaType": { "enum": ["image/png", "image/jpeg", "image/webp", "image/svg+xml"] },
+        "sha256": { "type": "string", "pattern": "^[a-f0-9]{64}$" }
+      }
+    }
+  }
+}

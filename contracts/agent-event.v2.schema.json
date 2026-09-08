@@ -1,0 +1,119 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://aibo.local/contracts/agent-event.v2.schema.json",
+  "title": "Aibo AgentEvent v2",
+  "description": "The Core-authoritative durable event envelope for plugin-originated Agent events.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "eventId",
+    "generationId",
+    "sequence",
+    "occurredAt",
+    "source",
+    "workspaceId",
+    "sessionId",
+    "nativeSessionId",
+    "turnId",
+    "type",
+    "correlation",
+    "payload",
+    "rawRef"
+  ],
+  "properties": {
+    "schemaVersion": { "const": "2.0" },
+    "eventId": { "type": "string", "minLength": 1 },
+    "generationId": { "type": "string", "minLength": 1 },
+    "sequence": { "type": "integer", "minimum": 0 },
+    "occurredAt": { "type": "string", "format": "date-time" },
+    "source": { "$ref": "#/$defs/source" },
+    "workspaceId": { "type": "string", "minLength": 1 },
+    "sessionId": { "type": "string", "minLength": 1 },
+    "nativeSessionId": { "type": ["string", "null"] },
+    "turnId": { "type": ["string", "null"] },
+    "type": { "$ref": "#/$defs/eventType" },
+    "correlation": {
+      "oneOf": [
+        { "type": "null" },
+        { "$ref": "#/$defs/correlation" }
+      ]
+    },
+    "payload": { "type": "object" },
+    "rawRef": { "type": ["string", "null"] }
+  },
+  "$defs": {
+    "namespacedId": {
+      "type": "string",
+      "pattern": "^[a-z0-9](?:[a-z0-9-]*[a-z0-9])?(?:\\.[a-z0-9](?:[a-z0-9-]*[a-z0-9])?)+$"
+    },
+    "source": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["pluginId", "pluginVersion", "agentId", "runtimeProtocolVersion"],
+      "properties": {
+        "pluginId": { "$ref": "#/$defs/namespacedId" },
+        "pluginVersion": { "$ref": "#/$defs/semver" },
+        "agentId": { "$ref": "#/$defs/namespacedId" },
+        "runtimeProtocolVersion": { "type": "string", "pattern": "^[1-9][0-9]*\\.[0-9]+$" },
+        "agentVersion": { "type": ["string", "null"] }
+      }
+    },
+    "correlation": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "requestId": { "type": ["string", "integer", "null"] },
+        "itemId": { "type": ["string", "null"] },
+        "toolCallId": { "type": ["string", "null"] },
+        "approvalId": { "type": ["string", "integer", "null"] }
+      }
+    },
+    "eventType": {
+      "enum": [
+        "session.started",
+        "session.state_changed",
+        "turn.started",
+        "turn.completed",
+        "turn.failed",
+        "message.delta",
+        "message.completed",
+        "tool.started",
+        "tool.updated",
+        "tool.completed",
+        "approval.requested",
+        "approval.resolved",
+        "user_input.requested",
+        "user_input.resolved",
+        "usage.updated",
+        "queue.updated",
+        "compaction.started",
+        "compaction.completed",
+        "retry.started",
+        "retry.completed",
+        "extension.updated",
+        "session.info_changed",
+        "adapter.warning",
+        "adapter.crashed"
+      ]
+    },
+    "sessionState": {
+      "enum": [
+        "created",
+        "starting",
+        "idle",
+        "running",
+        "waiting_approval",
+        "waiting_user",
+        "compacting",
+        "interrupted",
+        "failed",
+        "closed"
+      ]
+    },
+    "semver": {
+      "type": "string",
+      "pattern": "^(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)(?:-[0-9A-Za-z.-]+)?(?:\\+[0-9A-Za-z.-]+)?$"
+    }
+  }
+}

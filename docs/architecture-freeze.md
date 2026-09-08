@@ -3,6 +3,7 @@
 > 日期：2026-09-02
 > 状态：已冻结（首发平台为 macOS）；Phase 1 Codex 真实会话垂直链路开发中
 > 范围：本地桌面 MVP、Codex、Pi、Phase 1 应用骨架
+> 后续变更：Phase 4.7 的进程外插件边界由 [ADR-0001](adr/0001-process-isolated-agent-plugins.md) 接替；本文件继续记录 Phase 1 的历史决策
 
 ## 1. 评审结论
 

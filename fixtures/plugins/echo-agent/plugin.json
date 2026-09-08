@@ -1,0 +1,66 @@
+{
+  "schema": "aibo.plugin-manifest/v1",
+  "pluginId": "dev.aibo.echo",
+  "version": "1.0.0",
+  "displayName": "Echo Agent",
+  "description": "A deterministic third-party fixture Agent for the P4.7 plugin contract.",
+  "publisher": {
+    "name": "Aibo contract fixtures"
+  },
+  "protocols": {
+    "runtime": { "min": "1.0", "max": "1.0" },
+    "view": { "min": "1.0", "max": "1.0" }
+  },
+  "platforms": ["darwin-arm64", "windows-x64"],
+  "entrypoint": {
+    "executable": "bin/echo-agent",
+    "args": ["--stdio"]
+  },
+  "dependencies": [
+    {
+      "kind": "runtime",
+      "name": "fixture-runtime",
+      "versionRange": ">=1",
+      "required": true
+    }
+  ],
+  "resources": [
+    {
+      "id": "dev.aibo.echo.logo",
+      "path": "resources/logo.svg",
+      "mediaType": "image/svg+xml",
+      "sha256": "0000000000000000000000000000000000000000000000000000000000000000"
+    }
+  ],
+  "agents": [
+    {
+      "agentId": "dev.aibo.echo.agent",
+      "displayName": "Echo Agent",
+      "description": "Streams input back and exposes a small task view.",
+      "capabilities": [
+        "session.create",
+        "session.resume",
+        "session.close",
+        "turn.send",
+        "turn.cancel",
+        "stream.text",
+        "view.standard"
+      ],
+      "requestedPermissions": [
+        {
+          "id": "workspace.read",
+          "required": false,
+          "reason": "Shows the workspace label in diagnostics."
+        }
+      ],
+      "operations": [],
+      "views": [
+        {
+          "viewId": "dev.aibo.echo.tasks",
+          "title": "Echo tasks",
+          "requiredComponents": ["stack", "panel", "text", "badge", "button"]
+        }
+      ]
+    }
+  ]
+}

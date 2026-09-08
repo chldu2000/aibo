@@ -1,0 +1,162 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://aibo.local/contracts/plugin-view-protocol.v1.schema.json",
+  "title": "Aibo Plugin View Protocol v1 document",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema", "viewId", "revision", "title", "data", "bindings", "actions", "resources", "root"],
+  "properties": {
+    "schema": { "const": "aibo.plugin-view/v1" },
+    "viewId": { "$ref": "#/$defs/namespacedId" },
+    "revision": { "type": "integer", "minimum": 0 },
+    "title": { "type": "string", "minLength": 1, "maxLength": 100 },
+    "data": { "type": "object" },
+    "bindings": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/binding" }
+    },
+    "actions": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/action" }
+    },
+    "resources": {
+      "type": "array",
+      "uniqueItems": true,
+      "items": { "$ref": "#/$defs/namespacedId" }
+    },
+    "root": { "$ref": "#/$defs/node" }
+  },
+  "$defs": {
+    "namespacedId": {
+      "type": "string",
+      "minLength": 3,
+      "maxLength": 160,
+      "pattern": "^[a-z0-9](?:[a-z0-9-]*[a-z0-9])?(?:\\.[a-z0-9](?:[a-z0-9-]*[a-z0-9])?)+$"
+    },
+    "nodeId": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 120,
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$"
+    },
+    "node": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "type", "props", "children"],
+      "properties": {
+        "id": { "$ref": "#/$defs/nodeId" },
+        "type": {
+          "enum": [
+            "stack",
+            "row",
+            "grid",
+            "panel",
+            "toolbar",
+            "text",
+            "markdown",
+            "badge",
+            "list",
+            "item",
+            "tree",
+            "timeline",
+            "code",
+            "diff",
+            "form-field",
+            "button",
+            "empty-state"
+          ]
+        },
+        "props": { "$ref": "#/$defs/semanticProps" },
+        "children": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/node" }
+        }
+      }
+    },
+    "semanticProps": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "direction": { "enum": ["horizontal", "vertical"] },
+        "columns": { "type": "integer", "minimum": 1, "maximum": 4 },
+        "gap": { "enum": ["none", "xs", "sm", "md", "lg"] },
+        "align": { "enum": ["start", "center", "end", "stretch"] },
+        "justify": { "enum": ["start", "center", "end", "between"] },
+        "title": { "type": "string", "maxLength": 160 },
+        "text": { "type": "string", "maxLength": 20000 },
+        "markdown": { "type": "string", "maxLength": 200000 },
+        "label": { "type": "string", "maxLength": 160 },
+        "tone": { "enum": ["neutral", "info", "success", "warning", "danger"] },
+        "emphasis": { "enum": ["normal", "muted", "strong"] },
+        "density": { "enum": ["compact", "comfortable"] },
+        "icon": { "type": "string", "pattern": "^[a-z][a-z0-9-]*$", "maxLength": 80 },
+        "language": { "type": ["string", "null"], "maxLength": 80 },
+        "content": { "type": "string", "maxLength": 500000 },
+        "path": { "type": ["string", "null"], "maxLength": 1024 },
+        "unifiedDiff": { "type": "string", "maxLength": 500000 },
+        "fieldId": { "type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$" },
+        "control": { "enum": ["text", "textarea", "select", "toggle"] },
+        "value": { "type": ["string", "number", "boolean", "null"] },
+        "options": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["value", "label"],
+            "properties": {
+              "value": { "type": "string" },
+              "label": { "type": "string", "minLength": 1, "maxLength": 120 }
+            }
+          }
+        },
+        "actionId": { "type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$" },
+        "disabled": { "type": "boolean" },
+        "required": { "type": "boolean" },
+        "placeholder": { "type": "string", "maxLength": 300 },
+        "selectedId": { "type": ["string", "null"] },
+        "emptyText": { "type": "string", "maxLength": 300 },
+        "collapsible": { "type": "boolean" },
+        "expanded": { "type": "boolean" }
+      }
+    },
+    "binding": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["nodeId", "property", "dataPath"],
+      "properties": {
+        "nodeId": { "$ref": "#/$defs/nodeId" },
+        "property": {
+          "enum": ["text", "markdown", "label", "tone", "content", "value", "disabled", "selectedId"]
+        },
+        "dataPath": {
+          "type": "string",
+          "pattern": "^(?:/(?:[^~/]|~0|~1)*)+$",
+          "maxLength": 1024
+        }
+      }
+    },
+    "action": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "capability", "inputSchema", "confirmation"],
+      "properties": {
+        "id": { "type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$" },
+        "capability": {
+          "type": "string",
+          "pattern": "^(?:session|turn|stream|model|command|approval|user-input|queue|compaction|skill|plan|goal|view|ext)\\.[a-z0-9][a-z0-9.-]*$"
+        },
+        "operationId": {
+          "type": "string",
+          "pattern": "^ext\\.[a-z0-9][a-z0-9.-]*\\.[a-z0-9][a-z0-9.-]*$"
+        },
+        "inputSchema": { "type": "object" },
+        "confirmation": { "enum": ["never", "when-sensitive", "always"] }
+      },
+      "if": {
+        "properties": { "capability": { "pattern": "^ext\\." } },
+        "required": ["capability"]
+      },
+      "then": { "required": ["operationId"] }
+    }
+  }
+}

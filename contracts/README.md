@@ -16,6 +16,14 @@
 
 `restore-operation.v1.schema.json` records every turn-change-set restore attempt, including restored paths and machine-readable conflict/unsupported reasons. It is the durable audit counterpart to the human-readable system timeline message.
 
+Phase 4.7 introduces five plugin-host contracts:
+
+- `plugin-manifest.v1.schema.json` describes an immutable installable release, its protocol range, safe package-relative entrypoint/resources, Agent Contributions, requested permissions, capabilities, extension operations, and view requirements.
+- `agent-runtime-protocol.v1.schema.json` describes each LF-delimited JSON-RPC request, response, error, and notification exchanged over plugin stdio.
+- `plugin-view-protocol.v1.schema.json` restricts plugin views to declarative semantic nodes, JSON Pointer bindings, declared actions, and validated resources. It intentionally has no class, style, color, skin, HTML, or script escape hatch.
+- `plugin-session-binding.v1.schema.json` pins an Aibo Session to an immutable Plugin Release and versions the plugin-owned recovery data.
+- `agent-event.v2.schema.json` is the durable, Core-authoritative projection of validated plugin events. `agent-event.v1.schema.json` remains frozen and readable.
+
 Contract invariants:
 
 - `sessionId` is Aibo-owned; native IDs stay in `externalSessionId`.
@@ -26,3 +34,6 @@ Contract invariants:
 - requested execution policy is never treated as enforced policy; capability resolution must remain visible to the UI and durable session record.
 - workspace trust is not an OS sandbox. `nativeSandbox` describes the adapter-enforced isolation only.
 - a change set is scoped to one Aibo session and turn; partial or failed capture remains visible through `captureStatus` and `captureError`.
+- a plugin declaration is not a permission grant; Core records `granted`, `denied`, or `unsupported` and the actual enforcement layer.
+- plugin stdout contains protocol messages only. Core assigns durable event IDs, sequences, generation association, and timestamps after validation.
+- active sessions remain pinned to a Plugin Release; plugin upgrades do not silently reinterpret recovery data.

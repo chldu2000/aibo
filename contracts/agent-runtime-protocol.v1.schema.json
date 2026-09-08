@@ -1,0 +1,604 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://aibo.local/contracts/agent-runtime-protocol.v1.schema.json",
+  "title": "Aibo Agent Runtime Protocol v1 JSONL message",
+  "description": "One LF-delimited JSON-RPC message exchanged between Aibo Core and an Agent Plugin.",
+  "anyOf": [
+    { "$ref": "#/$defs/initializeRequest" },
+    { "$ref": "#/$defs/diagnoseRequest" },
+    { "$ref": "#/$defs/sessionCreateRequest" },
+    { "$ref": "#/$defs/sessionResumeRequest" },
+    { "$ref": "#/$defs/sessionCloseRequest" },
+    { "$ref": "#/$defs/turnSendRequest" },
+    { "$ref": "#/$defs/turnCancelRequest" },
+    { "$ref": "#/$defs/operationInvokeRequest" },
+    { "$ref": "#/$defs/shutdownRequest" },
+    { "$ref": "#/$defs/initializedResponse" },
+    { "$ref": "#/$defs/diagnosticResponse" },
+    { "$ref": "#/$defs/sessionResponse" },
+    { "$ref": "#/$defs/acceptedResponse" },
+    { "$ref": "#/$defs/operationResponse" },
+    { "$ref": "#/$defs/shutdownResponse" },
+    { "$ref": "#/$defs/errorResponse" },
+    { "$ref": "#/$defs/agentEventNotification" },
+    { "$ref": "#/$defs/viewRenderNotification" }
+  ],
+  "$defs": {
+    "id": { "type": ["string", "integer"] },
+    "namespacedId": {
+      "type": "string",
+      "pattern": "^[a-z0-9](?:[a-z0-9-]*[a-z0-9])?(?:\\.[a-z0-9](?:[a-z0-9-]*[a-z0-9])?)+$"
+    },
+    "semver": {
+      "type": "string",
+      "pattern": "^(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)(?:-[0-9A-Za-z.-]+)?(?:\\+[0-9A-Za-z.-]+)?$"
+    },
+    "protocolVersion": { "type": "string", "pattern": "^[1-9][0-9]*\\.[0-9]+$" },
+    "capabilityId": {
+      "type": "string",
+      "pattern": "^(?:session|turn|stream|model|command|approval|user-input|queue|compaction|skill|plan|goal|view|ext)\\.[a-z0-9][a-z0-9.-]*$"
+    },
+    "requestBaseProperties": {
+      "jsonrpc": { "const": "2.0" },
+      "id": { "$ref": "#/$defs/id" }
+    },
+    "workspace": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["workspaceId", "trusted"],
+      "properties": {
+        "workspaceId": { "type": "string", "minLength": 1 },
+        "trusted": { "type": "boolean" },
+        "path": { "type": "string", "minLength": 1 }
+      }
+    },
+    "permissionGrant": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "decision", "enforcement", "constraints"],
+      "properties": {
+        "id": {
+          "enum": [
+            "workspace.read",
+            "workspace.write",
+            "commands.execute",
+            "network.access",
+            "credentials.delegate"
+          ]
+        },
+        "decision": { "enum": ["granted", "denied", "unsupported"] },
+        "enforcement": { "enum": ["core-proxy", "os-sandbox", "agent-native"] },
+        "constraints": { "type": "object" }
+      }
+    },
+    "initializeRequest": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["jsonrpc", "id", "method", "params"],
+      "properties": {
+        "jsonrpc": { "const": "2.0" },
+        "id": { "$ref": "#/$defs/id" },
+        "method": { "const": "aibo.initialize" },
+        "params": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["runtimeInstanceId", "generationId", "host", "expectedPlugin", "permissionGrants"],
+          "properties": {
+            "runtimeInstanceId": { "type": "string", "minLength": 1 },
+            "generationId": { "type": "string", "minLength": 1 },
+            "host": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["appVersion", "platform", "runtimeProtocolVersions", "viewProtocolVersions"],
+              "properties": {
+                "appVersion": { "$ref": "#/$defs/semver" },
+                "platform": { "type": "string", "minLength": 1 },
+                "runtimeProtocolVersions": {
+                  "type": "array",
+                  "minItems": 1,
+                  "uniqueItems": true,
+                  "items": { "$ref": "#/$defs/protocolVersion" }
+                },
+                "viewProtocolVersions": {
+                  "type": "array",
+                  "uniqueItems": true,
+                  "items": { "$ref": "#/$defs/protocolVersion" }
+                }
+              }
+            },
+            "expectedPlugin": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["pluginId", "pluginVersion"],
+              "properties": {
+                "pluginId": { "$ref": "#/$defs/namespacedId" },
+                "pluginVersion": { "$ref": "#/$defs/semver" }
+              }
+            },
+            "permissionGrants": {
+              "type": "array",
+              "items": { "$ref": "#/$defs/permissionGrant" }
+            }
+          }
+        }
+      }
+    },
+    "diagnoseRequest": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["jsonrpc", "id", "method", "params"],
+      "properties": {
+        "jsonrpc": { "const": "2.0" },
+        "id": { "$ref": "#/$defs/id" },
+        "method": { "const": "aibo.diagnose" },
+        "params": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["agentId", "workspace"],
+          "properties": {
+            "agentId": { "$ref": "#/$defs/namespacedId" },
+            "workspace": { "$ref": "#/$defs/workspace" }
+          }
+        }
+      }
+    },
+    "sessionCreateRequest": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["jsonrpc", "id", "method", "params"],
+      "properties": {
+        "jsonrpc": { "const": "2.0" },
+        "id": { "$ref": "#/$defs/id" },
+        "method": { "const": "session.create" },
+        "params": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["agentId", "sessionId", "workspace", "executionProfile"],
+          "properties": {
+            "agentId": { "$ref": "#/$defs/namespacedId" },
+            "sessionId": { "type": "string", "minLength": 1 },
+            "workspace": { "$ref": "#/$defs/workspace" },
+            "executionProfile": { "type": "object" }
+          }
+        }
+      }
+    },
+    "sessionResumeRequest": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["jsonrpc", "id", "method", "params"],
+      "properties": {
+        "jsonrpc": { "const": "2.0" },
+        "id": { "$ref": "#/$defs/id" },
+        "method": { "const": "session.resume" },
+        "params": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["agentId", "sessionId", "workspace", "binding", "executionProfile"],
+          "properties": {
+            "agentId": { "$ref": "#/$defs/namespacedId" },
+            "sessionId": { "type": "string", "minLength": 1 },
+            "workspace": { "$ref": "#/$defs/workspace" },
+            "binding": { "$ref": "plugin-session-binding.v1.schema.json" },
+            "executionProfile": { "type": "object" }
+          }
+        }
+      }
+    },
+    "sessionCloseRequest": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["jsonrpc", "id", "method", "params"],
+      "properties": {
+        "jsonrpc": { "const": "2.0" },
+        "id": { "$ref": "#/$defs/id" },
+        "method": { "const": "session.close" },
+        "params": { "$ref": "#/$defs/sessionParams" }
+      }
+    },
+    "turnSendRequest": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["jsonrpc", "id", "method", "params"],
+      "properties": {
+        "jsonrpc": { "const": "2.0" },
+        "id": { "$ref": "#/$defs/id" },
+        "method": { "const": "turn.send" },
+        "params": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["agentId", "sessionId", "turnId", "input"],
+          "properties": {
+            "agentId": { "$ref": "#/$defs/namespacedId" },
+            "sessionId": { "type": "string", "minLength": 1 },
+            "turnId": { "type": "string", "minLength": 1 },
+            "input": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["text", "attachments"],
+              "properties": {
+                "text": { "type": "string" },
+                "attachments": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "required": ["attachmentId"],
+                    "properties": {
+                      "attachmentId": { "type": "string", "minLength": 1 }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "turnCancelRequest": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["jsonrpc", "id", "method", "params"],
+      "properties": {
+        "jsonrpc": { "const": "2.0" },
+        "id": { "$ref": "#/$defs/id" },
+        "method": { "const": "turn.cancel" },
+        "params": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["agentId", "sessionId", "turnId", "reason"],
+          "properties": {
+            "agentId": { "$ref": "#/$defs/namespacedId" },
+            "sessionId": { "type": "string", "minLength": 1 },
+            "turnId": { "type": "string", "minLength": 1 },
+            "reason": { "enum": ["user", "shutdown", "timeout", "superseded"] }
+          }
+        }
+      }
+    },
+    "operationInvokeRequest": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["jsonrpc", "id", "method", "params"],
+      "properties": {
+        "jsonrpc": { "const": "2.0" },
+        "id": { "$ref": "#/$defs/id" },
+        "method": { "const": "operation.invoke" },
+        "params": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["agentId", "sessionId", "operationId", "input"],
+          "properties": {
+            "agentId": { "$ref": "#/$defs/namespacedId" },
+            "sessionId": { "type": "string", "minLength": 1 },
+            "operationId": {
+              "type": "string",
+              "pattern": "^ext\\.[a-z0-9][a-z0-9.-]*\\.[a-z0-9][a-z0-9.-]*$"
+            },
+            "input": { "type": "object" }
+          }
+        }
+      }
+    },
+    "shutdownRequest": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["jsonrpc", "id", "method", "params"],
+      "properties": {
+        "jsonrpc": { "const": "2.0" },
+        "id": { "$ref": "#/$defs/id" },
+        "method": { "const": "aibo.shutdown" },
+        "params": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["reason"],
+          "properties": {
+            "reason": { "enum": ["app-exit", "idle", "upgrade", "disable", "restart"] }
+          }
+        }
+      }
+    },
+    "sessionParams": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["agentId", "sessionId"],
+      "properties": {
+        "agentId": { "$ref": "#/$defs/namespacedId" },
+        "sessionId": { "type": "string", "minLength": 1 }
+      }
+    },
+    "responseBaseProperties": {
+      "jsonrpc": { "const": "2.0" },
+      "id": { "$ref": "#/$defs/id" }
+    },
+    "initializedResponse": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["jsonrpc", "id", "result"],
+      "properties": {
+        "jsonrpc": { "const": "2.0" },
+        "id": { "$ref": "#/$defs/id" },
+        "result": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["kind", "pluginId", "pluginVersion", "runtimeProtocolVersion", "viewProtocolVersion", "agents"],
+          "properties": {
+            "kind": { "const": "initialized" },
+            "pluginId": { "$ref": "#/$defs/namespacedId" },
+            "pluginVersion": { "$ref": "#/$defs/semver" },
+            "runtimeProtocolVersion": { "$ref": "#/$defs/protocolVersion" },
+            "viewProtocolVersion": { "type": ["string", "null"] },
+            "agents": {
+              "type": "array",
+              "minItems": 1,
+              "items": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": ["agentId", "capabilities"],
+                "properties": {
+                  "agentId": { "$ref": "#/$defs/namespacedId" },
+                  "agentVersion": { "type": ["string", "null"] },
+                  "capabilities": {
+                    "type": "array",
+                    "uniqueItems": true,
+                    "items": { "$ref": "#/$defs/capabilityId" }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "diagnosticResponse": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["jsonrpc", "id", "result"],
+      "properties": {
+        "jsonrpc": { "const": "2.0" },
+        "id": { "$ref": "#/$defs/id" },
+        "result": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["kind", "status", "dependencies", "message"],
+          "properties": {
+            "kind": { "const": "diagnostic" },
+            "status": { "enum": ["ready", "missing", "error"] },
+            "dependencies": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": ["name", "status", "version"],
+                "properties": {
+                  "name": { "type": "string", "minLength": 1 },
+                  "status": { "enum": ["ready", "missing", "incompatible", "error"] },
+                  "version": { "type": ["string", "null"] }
+                }
+              }
+            },
+            "message": { "type": ["string", "null"] }
+          }
+        }
+      }
+    },
+    "sessionResponse": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["jsonrpc", "id", "result"],
+      "properties": {
+        "jsonrpc": { "const": "2.0" },
+        "id": { "$ref": "#/$defs/id" },
+        "result": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["kind", "agentId", "sessionId", "nativeSessionId", "recovery"],
+          "properties": {
+            "kind": { "const": "session" },
+            "agentId": { "$ref": "#/$defs/namespacedId" },
+            "sessionId": { "type": "string", "minLength": 1 },
+            "nativeSessionId": { "type": ["string", "null"] },
+            "recovery": {
+              "oneOf": [
+                { "type": "null" },
+                {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "required": ["schema", "version", "data"],
+                  "properties": {
+                    "schema": { "$ref": "#/$defs/namespacedId" },
+                    "version": { "type": "integer", "minimum": 1 },
+                    "data": { "type": "object" }
+                  }
+                }
+              ]
+            }
+          }
+        }
+      }
+    },
+    "acceptedResponse": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["jsonrpc", "id", "result"],
+      "properties": {
+        "jsonrpc": { "const": "2.0" },
+        "id": { "$ref": "#/$defs/id" },
+        "result": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["kind", "accepted"],
+          "properties": {
+            "kind": { "const": "accepted" },
+            "accepted": { "type": "boolean" }
+          }
+        }
+      }
+    },
+    "operationResponse": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["jsonrpc", "id", "result"],
+      "properties": {
+        "jsonrpc": { "const": "2.0" },
+        "id": { "$ref": "#/$defs/id" },
+        "result": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["kind", "operationId", "output"],
+          "properties": {
+            "kind": { "const": "operation" },
+            "operationId": {
+              "type": "string",
+              "pattern": "^ext\\.[a-z0-9][a-z0-9.-]*\\.[a-z0-9][a-z0-9.-]*$"
+            },
+            "output": { "type": "object" }
+          }
+        }
+      }
+    },
+    "shutdownResponse": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["jsonrpc", "id", "result"],
+      "properties": {
+        "jsonrpc": { "const": "2.0" },
+        "id": { "$ref": "#/$defs/id" },
+        "result": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["kind"],
+          "properties": { "kind": { "const": "shutdown" } }
+        }
+      }
+    },
+    "errorResponse": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["jsonrpc", "id", "error"],
+      "properties": {
+        "jsonrpc": { "const": "2.0" },
+        "id": { "type": ["string", "integer", "null"] },
+        "error": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["code", "message", "data"],
+          "properties": {
+            "code": { "type": "integer" },
+            "message": { "type": "string", "minLength": 1, "maxLength": 500 },
+            "data": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["kind", "retryable"],
+              "properties": {
+                "kind": {
+                  "enum": [
+                    "protocol_incompatible",
+                    "manifest_mismatch",
+                    "not_initialized",
+                    "capability_unsupported",
+                    "permission_denied",
+                    "invalid_request",
+                    "invalid_session",
+                    "invalid_recovery_data",
+                    "dependency_missing",
+                    "timeout",
+                    "busy",
+                    "cancelled",
+                    "internal"
+                  ]
+                },
+                "retryable": { "type": "boolean" },
+                "details": { "type": "object" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "agentEventNotification": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["jsonrpc", "method", "params"],
+      "properties": {
+        "jsonrpc": { "const": "2.0" },
+        "method": { "const": "agent/event" },
+        "params": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["agentId", "sessionId", "nativeSessionId", "turnId", "type", "correlation", "payload"],
+          "properties": {
+            "agentId": { "$ref": "#/$defs/namespacedId" },
+            "sessionId": { "type": "string", "minLength": 1 },
+            "nativeSessionId": { "type": ["string", "null"] },
+            "turnId": { "type": ["string", "null"] },
+            "type": { "$ref": "#/$defs/eventType" },
+            "correlation": {
+              "oneOf": [
+                { "type": "null" },
+                {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "properties": {
+                    "requestId": { "type": ["string", "integer", "null"] },
+                    "itemId": { "type": ["string", "null"] },
+                    "toolCallId": { "type": ["string", "null"] },
+                    "approvalId": { "type": ["string", "integer", "null"] }
+                  }
+                }
+              ]
+            },
+            "payload": { "type": "object" }
+          }
+        }
+      }
+    },
+    "viewRenderNotification": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["jsonrpc", "method", "params"],
+      "properties": {
+        "jsonrpc": { "const": "2.0" },
+        "method": { "const": "view/render" },
+        "params": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["agentId", "sessionId", "document"],
+          "properties": {
+            "agentId": { "$ref": "#/$defs/namespacedId" },
+            "sessionId": { "type": "string", "minLength": 1 },
+            "document": { "$ref": "plugin-view-protocol.v1.schema.json" }
+          }
+        }
+      }
+    },
+    "eventType": {
+      "enum": [
+        "session.started",
+        "session.state_changed",
+        "turn.started",
+        "turn.completed",
+        "turn.failed",
+        "message.delta",
+        "message.completed",
+        "tool.started",
+        "tool.updated",
+        "tool.completed",
+        "approval.requested",
+        "approval.resolved",
+        "user_input.requested",
+        "user_input.resolved",
+        "usage.updated",
+        "queue.updated",
+        "compaction.started",
+        "compaction.completed",
+        "retry.started",
+        "retry.completed",
+        "extension.updated",
+        "session.info_changed",
+        "adapter.warning",
+        "adapter.crashed"
+      ]
+    }
+  }
+}
