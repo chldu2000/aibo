@@ -115,6 +115,7 @@
     listPluginInstallations,
     installAgentPlugin,
     setAgentPluginEnabled,
+    uninstallAgentPlugin,
     createAgentSession,
     sendAgentPrompt,
     cancelAgentTurn,
@@ -468,6 +469,14 @@
     await pluginOperation(async () => {
       await setAgentPluginEnabled(id, enabled);
       pluginInstallations = await listPluginInstallations();
+    });
+  }
+
+  async function uninstallPlugin(id: string): Promise<void> {
+    await pluginOperation(async () => {
+      await uninstallAgentPlugin(id);
+      pluginInstallations = await listPluginInstallations();
+      pluginSessions = (await listAllSessions()).filter((session) => session.agent !== 'codex' && session.agent !== 'pi');
     });
   }
 
@@ -3172,6 +3181,7 @@
       onPromptChange={(value) => { if (pluginSessionId) pluginDrafts[pluginSessionId] = value; }}
       onInstall={() => void installPlugin()}
       onEnabledChange={(id, enabled) => void enablePlugin(id, enabled)}
+      onUninstall={(id) => void uninstallPlugin(id)}
       onCreateSession={(installationId, agentId) => void createPluginSession(installationId, agentId)}
       onSelectSession={(id) => { if (selectedWorkspaceId) pluginSelection[selectedWorkspaceId] = id; }}
       onSend={() => void sendPluginPrompt()}

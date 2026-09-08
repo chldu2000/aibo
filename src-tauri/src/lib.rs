@@ -4739,6 +4739,11 @@ async fn set_agent_plugin_enabled(id: String, enabled: bool, state: State<'_, Ap
 }
 
 #[tauri::command]
+async fn uninstall_agent_plugin(id: String, state: State<'_, AppState>) -> Result<(), String> {
+    state.plugins.uninstall(&state.data_dir, &id).await
+}
+
+#[tauri::command]
 async fn create_agent_session(workspace_id: String, agent_id: String, installation_id: Option<String>, state: State<'_, AppState>) -> Result<Session, String> {
     if let Some(installation_id) = installation_id {
         return state.plugins.create(&workspace_id, &installation_id, &agent_id).await;
@@ -5511,6 +5516,7 @@ pub fn run() {
             list_plugin_installations,
             install_agent_plugin,
             set_agent_plugin_enabled,
+            uninstall_agent_plugin,
             create_agent_session,
             send_agent_prompt,
             cancel_agent_turn,

@@ -63,11 +63,13 @@ export interface PluginInstallation {
   pluginVersion: string;
   packageDigest: string;
   enabled: boolean;
+  installed: boolean;
   manifest: { displayName: string; agents: { agentId: string; displayName: string }[]; [key: string]: unknown };
 }
 export const listPluginInstallations = (): Promise<PluginInstallation[]> => invoke('list_plugin_installations');
 export const installAgentPlugin = (path: string): Promise<PluginInstallation> => invoke('install_agent_plugin', { path });
 export const setAgentPluginEnabled = (id: string, enabled: boolean): Promise<void> => invoke('set_agent_plugin_enabled', { id, enabled });
+export const uninstallAgentPlugin = (id: string): Promise<void> => invoke('uninstall_agent_plugin', { id });
 export const createAgentSession = (workspaceId: string, agentId: string, installationId?: string): Promise<Session> => invoke('create_agent_session', { workspaceId, agentId, installationId });
 export const sendAgentPrompt = (sessionId: string, input: string): Promise<Session> => invoke('send_agent_prompt', { sessionId, input });
 export const cancelAgentTurn = (sessionId: string): Promise<void> => invoke('cancel_agent_turn', { sessionId });

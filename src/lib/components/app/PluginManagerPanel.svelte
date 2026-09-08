@@ -6,6 +6,7 @@
     pluginId: string;
     pluginVersion: string;
     enabled: boolean;
+    installed: boolean;
     manifest: { displayName: string; agents: { agentId: string; displayName: string }[] };
   };
 
@@ -16,10 +17,11 @@
     busy: boolean;
     onInstall: () => void;
     onEnabledChange: (id: string, enabled: boolean) => void;
+    onUninstall: (id: string) => void;
     onCreateSession: (installationId: string, agentId: string) => void;
   };
 
-  let { installations, packagePath, onPackagePathChange, busy, onInstall, onEnabledChange, onCreateSession }: Props = $props();
+  let { installations, packagePath, onPackagePathChange, busy, onInstall, onEnabledChange, onUninstall, onCreateSession }: Props = $props();
   const fieldId = $props.id();
 </script>
 
@@ -43,16 +45,19 @@
               <CardHeader>
                 <div class="plugin-heading">
                   <CardTitle>{installation.manifest.displayName}</CardTitle>
-                  <Badge>{installation.enabled ? '已启用' : '已禁用'}</Badge>
+                  <Badge>{!installation.installed ? '已卸载' : installation.enabled ? '已启用' : '已禁用'}</Badge>
                 </div>
               </CardHeader>
               <CardContent>
                 <div class="plugin-details">
                   <p>{installation.pluginId} · {installation.pluginVersion}</p>
                   <div class="plugin-actions">
-                    <Button type="button" variant="outline" disabled={busy} onclick={() => onEnabledChange(installation.id, !installation.enabled)}>{installation.enabled ? '禁用插件' : '启用插件'}</Button>
+                    {#if installation.installed}
+                      <Button type="button" variant="outline" disabled={busy} onclick={() => onEnabledChange(installation.id, !installation.enabled)}>{installation.enabled ? '禁用插件' : '启用插件'}</Button>
+                      <Button type="button" variant="outline" disabled={busy} onclick={() => onUninstall(installation.id)}>卸载插件</Button>
+                    {/if}
                     {#each installation.manifest.agents as agent (agent.agentId)}
-                      <Button type="button" disabled={busy || !installation.enabled} onclick={() => onCreateSession(installation.id, agent.agentId)}>新建 {agent.displayName} 会话</Button>
+                      <Button type="button" disabled={busy || !installation.installed || !installation.enabled} onclick={() => onCreateSession(installation.id, agent.agentId)}>新建 {agent.displayName} 会话</Button>
                     {/each}
                   </div>
                 </div>

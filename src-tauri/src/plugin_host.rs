@@ -172,6 +172,13 @@ impl PluginHost {
         Ok(())
     }
 
+    pub async fn uninstall(&self, data_dir: &std::path::Path, installation_id: &str) -> Result<(), String> {
+        let sessions: Vec<String> = sqlx::query_scalar("SELECT id FROM sessions WHERE plugin_installation_id=? AND state NOT IN ('closed','failed')")
+            .bind(installation_id).fetch_all(&self.db).await.map_err(|e|e.to_string())?;
+        for session_id in sessions { self.close(&session_id).await?; }
+        plugin_registry::uninstall(&self.db, data_dir, installation_id).await
+    }
+
     async fn project(&self, session_id: &str, workspace_id: &str, generation: &str, binding: &Value, sequence: i64, message: Value) -> Result<(), String> {
         if !contracts().runtime.is_valid(&message) { return Err("invalid_request: notification schema".into()); }
         let p = &message["params"];
@@ -348,6 +355,18 @@ mod tests {
         wait_session_state(&db, &session.id, "idle").await;
         restarted.close(&session.id).await.unwrap();
         assert!(restarted.resume(&session.id).await.unwrap_err().contains("session is closed"));
+        restarted.uninstall(&data, &installation.id).await.unwrap();
+        let removed = plugin_registry::list(&db).await.unwrap();
+        assert_eq!(removed.len(), 1);
+        assert!(!removed[0].installed);
+        assert!(!removed[0].enabled);
+        let historical_messages: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM messages WHERE session_id=?")
+            .bind(&session.id).fetch_one(&db).await.unwrap();
+        assert!(historical_messages >= 3, "uninstall must preserve projected history");
+        let reinstalled = plugin_registry::install(&db, &data, &package).await.unwrap();
+        assert_eq!(reinstalled.id, installation.id, "reinstalling the same release revives its stable record");
+        assert!(reinstalled.installed);
+        assert!(!reinstalled.enabled);
         tokio::time::sleep(Duration::from_millis(100)).await;
         db.close().await;
         fs::remove_dir_all(root).unwrap();

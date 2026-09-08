@@ -45,6 +45,7 @@ test('App plugin controls forward every lifecycle callback and surface recoverab
   for (const callback of [
     'installAgentPlugin',
     'setAgentPluginEnabled',
+    'uninstallAgentPlugin',
     'createAgentSession',
     'sendAgentPrompt',
     'cancelAgentTurn',
@@ -66,6 +67,7 @@ test('App plugin controls forward every lifecycle callback and surface recoverab
   assert.match(panel, /const resumable = \$derived\(selectedSession\?\.state === 'interrupted' \|\| selectedSession\?\.state === 'failed'\)/);
   assert.match(panel, /disabled=\{busy \|\| !resumable\}/, 'closed or idle sessions must not offer resume');
   assert.match(panel, /views as view \(view\.viewId\)/);
-  assert.match(manager, /disabled=\{busy \|\| !installation\.enabled\}/, 'disabled plugins cannot create sessions');
+  assert.match(manager, /!installation\.installed \|\| !installation\.enabled/, 'uninstalled plugins cannot create sessions');
+  assert.match(manager, /onclick=\{\(\) => onUninstall\(installation\.id\)\}/, 'installed plugins can be uninstalled');
   assert.match(manager, /aria-busy=\{busy\}/);
 });

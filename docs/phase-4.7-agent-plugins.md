@@ -73,6 +73,8 @@ P4.7A 的契约、迁移设计和回放证据见 [Phase 4.7A 记录](phase-4.7a-
 
 P4.7B 的宿主接线和异常场景检查见 [Phase 4.7B 检查记录](phase-4.7b-host-wiring-check.md)。自动化门禁与 Tauri 窗口人工 smoke 均已通过，本切片完成。
 
+P4.7D 已开始实施生命周期补全：插件安装记录现在保留已卸载墓碑；卸载先关闭该 Plugin Release 的活跃会话和进程，再移除包文件，同时保留 session、timeline、event、view 与固定 release 关联。相同 release 可按原 installation ID 重装，且重装后默认禁用。依赖诊断、动态视图动作和完整升级验收仍待后续切片完成。
+
 ## 6. 验收门禁
 
 1. **安装即接入**：在独立目录构建第三种测试 Agent 插件，安装到既有 Aibo 构建；发现、新建、流式消息、中止、重启恢复和差异化视图不需要修改宿主源码或重新编译。

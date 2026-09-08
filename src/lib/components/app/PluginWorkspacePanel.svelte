@@ -4,7 +4,7 @@
   import PluginManagerPanel from './PluginManagerPanel.svelte';
   import type { Session, TimelineItem } from '$lib/types';
 
-  type Installation = { id: string; pluginId: string; pluginVersion: string; enabled: boolean; manifest: { displayName: string; agents: { agentId: string; displayName: string }[] } };
+  type Installation = { id: string; pluginId: string; pluginVersion: string; enabled: boolean; installed: boolean; manifest: { displayName: string; agents: { agentId: string; displayName: string }[] } };
   type PluginSession = Omit<Session, 'agent'> & { agent: string };
   type Props = {
     installations: Installation[];
@@ -22,6 +22,7 @@
     onPromptChange: (value: string) => void;
     onInstall: () => void;
     onEnabledChange: (id: string, enabled: boolean) => void;
+    onUninstall: (id: string) => void;
     onCreateSession: (installationId: string, agentId: string) => void;
     onSelectSession: (id: string) => void;
     onSend: () => void;
@@ -31,7 +32,7 @@
     onViewAction: (viewId: string, actionId: string, input: Record<string, unknown>) => void;
     onClose: () => void;
   };
-  let { installations, sessions, selectedSession, workspaceLabel, packagePath, prompt, timeline, views, busy, error, desktop, onPackagePathChange, onPromptChange, onInstall, onEnabledChange, onCreateSession, onSelectSession, onSend, onCancel, onResume, onCloseSession, onViewAction, onClose }: Props = $props();
+  let { installations, sessions, selectedSession, workspaceLabel, packagePath, prompt, timeline, views, busy, error, desktop, onPackagePathChange, onPromptChange, onInstall, onEnabledChange, onUninstall, onCreateSession, onSelectSession, onSend, onCancel, onResume, onCloseSession, onViewAction, onClose }: Props = $props();
   const promptId = $props.id();
   const running = $derived(selectedSession?.state === 'running' || selectedSession?.state === 'starting');
   const resumable = $derived(selectedSession?.state === 'interrupted' || selectedSession?.state === 'failed');
@@ -41,7 +42,7 @@
   <div class="plugin-toolbar"><h2>插件工作台 · {workspaceLabel ?? '请选择工作区'}</h2><Button variant="ghost" onclick={onClose}>返回会话</Button></div>
   {#if !desktop}<p role="status">插件需要在 Aibo 桌面应用中运行。</p>{/if}
   {#if error}<p role="alert">{error}</p>{/if}
-  <PluginManagerPanel {installations} {packagePath} {onPackagePathChange} busy={busy || !desktop} {onInstall} {onEnabledChange} {onCreateSession} />
+  <PluginManagerPanel {installations} {packagePath} {onPackagePathChange} busy={busy || !desktop} {onInstall} {onEnabledChange} {onUninstall} {onCreateSession} />
   <Card>
     <CardHeader><CardTitle>当前工作区的插件会话</CardTitle></CardHeader>
     <CardContent>

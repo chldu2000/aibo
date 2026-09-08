@@ -17,6 +17,7 @@ pub(crate) struct PluginInstallation {
     pub plugin_version: String,
     pub package_digest: String,
     pub enabled: bool,
+    pub installed: bool,
     pub manifest: Value,
 }
 
@@ -110,10 +111,11 @@ pub(crate) fn inspect(root: &Path) -> Result<(Value, Vec<PathBuf>, String), Stri
 }
 
 pub(crate) async fn list(db: &SqlitePool) -> Result<Vec<PluginInstallation>, String> {
-    let rows = sqlx::query("SELECT id, plugin_id, plugin_version, package_digest, enabled, manifest_json FROM plugin_installations ORDER BY created_at, id")
+    let rows = sqlx::query("SELECT id, plugin_id, plugin_version, package_digest, enabled, installed, manifest_json FROM plugin_installations ORDER BY created_at, id")
         .fetch_all(db).await.map_err(|e| e.to_string())?;
     rows.into_iter().map(|row| Ok(PluginInstallation { id: row.get("id"), plugin_id: row.get("plugin_id"), plugin_version: row.get("plugin_version"),
         package_digest: row.get("package_digest"), enabled: row.get::<i64, _>("enabled") != 0,
+        installed: row.get::<i64, _>("installed") != 0,
         manifest: serde_json::from_str(row.get::<&str, _>("manifest_json")).map_err(io_error)? })).collect()
 }
 
@@ -125,7 +127,10 @@ pub(crate) async fn install(db: &SqlitePool, data_dir: &Path, source: &Path) -> 
     let registry = registry.canonicalize().map_err(io_error)?;
     if source.starts_with(&registry) || registry.starts_with(&source) { return Err("invalid_request: package and registry must be separate".into()); }
     let (manifest, entries, expected_digest) = inspect(&source)?;
-    let id = ulid::Ulid::new().to_string();
+    let existing: Option<String> = sqlx::query_scalar("SELECT id FROM plugin_installations WHERE plugin_id=? AND plugin_version=? AND package_digest=? AND installed=0")
+        .bind(manifest["pluginId"].as_str().unwrap()).bind(manifest["version"].as_str().unwrap()).bind(&expected_digest)
+        .fetch_optional(db).await.map_err(io_error)?;
+    let id = existing.unwrap_or_else(|| ulid::Ulid::new().to_string());
     let staging = registry.join(format!(".staging-{id}"));
     let destination = registry.join(&id);
     fs::create_dir(&staging).map_err(io_error)?;
@@ -147,13 +152,18 @@ pub(crate) async fn install(db: &SqlitePool, data_dir: &Path, source: &Path) -> 
                 .bind(agent["agentId"].as_str().unwrap()).bind(manifest["pluginId"].as_str().unwrap()).fetch_one(&mut *transaction).await.map_err(io_error)?;
             if conflict != 0 { return Err("manifest_mismatch: Agent ID belongs to another plugin".into()); }
         }
-        sqlx::query("INSERT INTO plugin_installations (id, plugin_id, plugin_version, package_digest, source, install_path, manifest_json, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)")
-            .bind(&id).bind(manifest["pluginId"].as_str().unwrap()).bind(manifest["version"].as_str().unwrap()).bind(&expected_digest)
-            .bind(source.to_string_lossy().as_ref()).bind(destination.to_string_lossy().as_ref()).bind(manifest.to_string()).bind(crate::now_iso())
-            .execute(&mut *transaction).await.map_err(io_error)?;
-        for agent in manifest["agents"].as_array().unwrap() {
-            sqlx::query("INSERT INTO agent_contributions (installation_id, agent_id, metadata_json) VALUES (?, ?, ?)")
-                .bind(&id).bind(agent["agentId"].as_str().unwrap()).bind(agent.to_string()).execute(&mut *transaction).await.map_err(io_error)?;
+        let restored = sqlx::query("UPDATE plugin_installations SET source=?,install_path=?,manifest_json=?,installed=1,enabled=0,enabled_at=NULL,removed_at=NULL WHERE id=? AND installed=0")
+            .bind(source.to_string_lossy().as_ref()).bind(destination.to_string_lossy().as_ref()).bind(manifest.to_string()).bind(&id)
+            .execute(&mut *transaction).await.map_err(io_error)?.rows_affected() == 1;
+        if !restored {
+            sqlx::query("INSERT INTO plugin_installations (id, plugin_id, plugin_version, package_digest, source, install_path, manifest_json, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)")
+                .bind(&id).bind(manifest["pluginId"].as_str().unwrap()).bind(manifest["version"].as_str().unwrap()).bind(&expected_digest)
+                .bind(source.to_string_lossy().as_ref()).bind(destination.to_string_lossy().as_ref()).bind(manifest.to_string()).bind(crate::now_iso())
+                .execute(&mut *transaction).await.map_err(io_error)?;
+            for agent in manifest["agents"].as_array().unwrap() {
+                sqlx::query("INSERT INTO agent_contributions (installation_id, agent_id, metadata_json) VALUES (?, ?, ?)")
+                    .bind(&id).bind(agent["agentId"].as_str().unwrap()).bind(agent.to_string()).execute(&mut *transaction).await.map_err(io_error)?;
+            }
         }
         fs::rename(&staging, &destination).map_err(io_error)?;
         transaction.commit().await.map_err(io_error)?;
@@ -161,14 +171,42 @@ pub(crate) async fn install(db: &SqlitePool, data_dir: &Path, source: &Path) -> 
     }.await;
     if let Err(error) = persist { let _ = fs::remove_dir_all(&staging); let _ = fs::remove_dir_all(&destination); return Err(error); }
     Ok(PluginInstallation { id, plugin_id: manifest["pluginId"].as_str().unwrap().into(), plugin_version: manifest["version"].as_str().unwrap().into(),
-        package_digest: expected_digest, enabled: false, manifest })
+        package_digest: expected_digest, enabled: false, installed: true, manifest })
 }
 
 pub(crate) async fn enable(db: &SqlitePool, id: &str, enabled: bool) -> Result<(), String> {
-    let changed = sqlx::query("UPDATE plugin_installations SET enabled = ?, enabled_at = ? WHERE id = ?")
+    let changed = sqlx::query("UPDATE plugin_installations SET enabled = ?, enabled_at = ? WHERE id = ? AND installed=1")
         .bind(enabled).bind(if enabled { Some(crate::now_iso()) } else { None }).bind(id).execute(db).await.map_err(io_error)?;
     if changed.rows_affected() != 1 { return Err("invalid_request: installation not found".into()); }
     Ok(())
+}
+
+pub(crate) async fn uninstall(db: &SqlitePool, data_dir: &Path, id: &str) -> Result<(), String> {
+    let _lock = INSTALL_LOCK.lock().await;
+    let row = sqlx::query("SELECT install_path, installed FROM plugin_installations WHERE id=?")
+        .bind(id).fetch_optional(db).await.map_err(io_error)?
+        .ok_or("invalid_request: installation not found")?;
+    if row.get::<i64, _>("installed") == 0 { return Err("invalid_request: plugin is already uninstalled".into()); }
+    let path = PathBuf::from(row.get::<String, _>("install_path"));
+    let registry = data_dir.join("plugins").canonicalize().map_err(io_error)?;
+    let parent = path.parent().ok_or("invalid_request: invalid installation path")?;
+    if parent != registry || path.file_name().and_then(|name|name.to_str()) != Some(id) {
+        return Err("invalid_request: installation path escapes registry".into());
+    }
+    let trash = parent.join(format!(".removing-{id}"));
+    if path.exists() { fs::rename(&path, &trash).map_err(io_error)?; }
+    let result = sqlx::query("UPDATE plugin_installations SET installed=0,enabled=0,enabled_at=NULL,removed_at=? WHERE id=? AND installed=1")
+        .bind(crate::now_iso()).bind(id).execute(db).await.map_err(io_error);
+    match result {
+        Ok(changed) if changed.rows_affected() == 1 => {
+            if trash.exists() { fs::remove_dir_all(trash).map_err(io_error)?; }
+            Ok(())
+        }
+        _ => {
+            if trash.exists() { let _ = fs::rename(&trash, &path); }
+            Err("invalid_request: plugin uninstall failed".into())
+        }
+    }
 }
 
 #[cfg(test)]
