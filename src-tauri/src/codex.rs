@@ -629,6 +629,21 @@ fn parse_thread_snapshot(value: &Value) -> Result<CodexThreadSnapshot, CodexErro
     })
 }
 
+fn parse_thread_turn_ids(value: &Value) -> Result<Vec<String>, CodexError> {
+    value
+        .pointer("/result/thread/turns")
+        .and_then(Value::as_array)
+        .ok_or_else(|| CodexError::Protocol("Codex thread response omitted turns".to_owned()))?
+        .iter()
+        .map(|turn| {
+            turn.get("id")
+                .and_then(Value::as_str)
+                .map(ToOwned::to_owned)
+                .ok_or_else(|| CodexError::Protocol("Codex thread response omitted a turn id".to_owned()))
+        })
+        .collect()
+}
+
 fn parse_forked_thread(value: &Value) -> Result<(String, Option<String>), CodexError> {
     let thread = value
         .pointer("/result/thread")
@@ -2698,8 +2713,37 @@ impl CodexManager {
         let fork_result = async {
             initialize_client(&fork_client).await?;
             let mut params = json!({ "threadId": source_thread_id });
-            if let Some(last_turn_id) = requested_last_turn.as_deref() {
-                params["lastTurnId"] = json!(last_turn_id);
+            if let Some(local_last_turn_id) = requested_last_turn.as_deref() {
+                // Plugin turns use an Aibo-owned ULID as their durable turn
+                // key. Resolve that key against the provider's ordered
+                // thread/read turns before sending thread/fork; passing the
+                // local ULID directly makes Codex return "turn not found".
+                let thread = fork_client
+                    .request(
+                        "thread/read",
+                        json!({ "threadId": source_thread_id, "includeTurns": true }),
+                    )
+                    .await?;
+                let provider_turn_ids = parse_thread_turn_ids(&thread)?;
+                let local_turn_ids: Vec<String> = sqlx::query_scalar(
+                    "SELECT external_turn_id FROM turns
+                     WHERE session_id = ? ORDER BY started_at ASC, id ASC",
+                )
+                .bind(session_id)
+                .fetch_all(&self.db)
+                .await?;
+                let local_index = local_turn_ids
+                    .iter()
+                    .position(|turn_id| turn_id == local_last_turn_id)
+                    .ok_or_else(|| {
+                        CodexError::Session("fork boundary turn is no longer available".to_owned())
+                    })?;
+                let provider_last_turn_id = provider_turn_ids.get(local_index).ok_or_else(|| {
+                    CodexError::Session(
+                        "Codex thread history does not contain the fork boundary".to_owned(),
+                    )
+                })?;
+                params["lastTurnId"] = json!(provider_last_turn_id);
             }
             let response = fork_client.request("thread/fork", params).await?;
             parse_forked_thread(&response)
@@ -3500,8 +3544,9 @@ mod tests {
         agent_message_items, codex_model_option, codex_thread_resume_params,
         codex_thread_start_params, codex_turn_start_params, event_thread_id, final_turn_text,
         generation_matches, is_missing_rollout_error, map_tool_status, map_turn_status,
-        matching_thread_id, parse_forked_thread, parse_thread_list, parse_thread_snapshot,
-        non_empty_agent_delta, tool_projection, usage_projection, user_input_projection,
+        matching_thread_id, non_empty_agent_delta, parse_forked_thread, parse_thread_list,
+        parse_thread_snapshot, parse_thread_turn_ids, tool_projection, usage_projection,
+        user_input_projection,
         validate_codex_thread_start_response, value_id,
     };
     use crate::execution_profile::{
@@ -3694,6 +3739,22 @@ mod tests {
         let (thread_id, parent_id) = parse_forked_thread(&response).expect("thread/fork response");
         assert_eq!(thread_id, "thread-child");
         assert_eq!(parent_id.as_deref(), Some("thread-parent"));
+    }
+
+    #[test]
+    fn parses_provider_turn_ids_for_plugin_fork_boundaries() {
+        let response = json!({
+            "result": {
+                "thread": {
+                    "id": "thread-1",
+                    "turns": [{ "id": "native-turn-1" }, { "id": "native-turn-2" }]
+                }
+            }
+        });
+        assert_eq!(
+            parse_thread_turn_ids(&response).expect("provider turn ids"),
+            vec!["native-turn-1", "native-turn-2"]
+        );
     }
 
     #[test]
