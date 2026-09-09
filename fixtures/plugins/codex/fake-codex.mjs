@@ -2,6 +2,7 @@
 import readline from 'node:readline';
 const write = (message) => process.stdout.write(`${JSON.stringify({ jsonrpc: '2.0', ...message })}\n`);
 const input = readline.createInterface({ input: process.stdin, crlfDelay: Infinity });
+let goal = null;
 input.on('line', (line) => {
   const request = JSON.parse(line);
   if (request.id === undefined) return;
@@ -16,4 +17,12 @@ input.on('line', (line) => {
     write({ method: 'item/completed', params: { threadId: params.threadId, turnId: 'native-turn', item: { id: 'message', type: 'agentMessage', text: params.input[0].text } } });
     write({ method: 'turn/completed', params: { threadId: params.threadId, turn: { id: 'native-turn', status: 'completed', items: [] } } });
   } else if (method === 'turn/interrupt') write({ id, result: {} });
+  else if (method === 'thread/goal/get') write({ id, result: { goal } });
+  else if (method === 'thread/goal/set') {
+    goal = { objective: params.objective, tokenBudget: params.tokenBudget, status: 'active' };
+    write({ id, result: { goal } });
+  } else if (method === 'thread/goal/clear') {
+    goal = null;
+    write({ id, result: { goal } });
+  }
 });

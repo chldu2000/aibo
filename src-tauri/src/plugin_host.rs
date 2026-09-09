@@ -222,6 +222,44 @@ impl PluginHost {
         Ok(result["output"].clone())
     }
 
+    pub async fn invoke_capability(&self, session_id: &str, capability: &str, input: Value) -> Result<Value, String> {
+        if !input.is_object() { return Err("invalid_request: operation input must be an object".into()); }
+        self.resume(session_id).await?;
+        let runtime = self.runtimes.lock().await.get(session_id).cloned().ok_or("invalid_session: runtime unavailable")?;
+        let row = sqlx::query("SELECT s.agent,s.state,b.generation_id,b.plugin_capabilities_json,p.manifest_json FROM sessions s JOIN session_bindings b ON b.session_id=s.id JOIN plugin_installations p ON p.id=s.plugin_installation_id WHERE s.id=?")
+            .bind(session_id).fetch_optional(&self.db).await.map_err(|e|e.to_string())?
+            .ok_or("invalid_request: plugin session not found")?;
+        if row.get::<String,_>("generation_id") != runtime.generation_id {
+            return Err("invalid_session: stale runtime generation".into());
+        }
+        if row.get::<String,_>("state") == "running" { return Err("busy: session has an active turn".into()); }
+        let manifest: Value = serde_json::from_str(row.get::<&str,_>("manifest_json")).map_err(|_|"manifest_mismatch")?;
+        let agent_id: String = row.get("agent");
+        let agent = manifest["agents"].as_array().and_then(|agents|agents.iter().find(|agent|agent["agentId"] == agent_id))
+            .ok_or("manifest_mismatch: Agent contribution missing")?;
+        let operations: Vec<&Value> = agent["operations"].as_array().into_iter().flatten()
+            .filter(|operation| operation["capability"] == capability).collect();
+        let operation = match operations.as_slice() {
+            [operation] => *operation,
+            [] => return Err("capability_unsupported: no operation implements the requested capability".into()),
+            _ => return Err("manifest_mismatch: capability must map to exactly one operation".into()),
+        };
+        let operation_id = operation["id"].as_str().ok_or("manifest_mismatch: operation id")?;
+        let capabilities: Value = serde_json::from_str(row.get::<&str,_>("plugin_capabilities_json")).map_err(|_|"manifest_mismatch: negotiated capabilities missing")?;
+        if !capabilities.as_array().is_some_and(|items|items.contains(&json!(capability))) {
+            return Err("capability_unsupported: operation capability was not negotiated".into());
+        }
+        let input_validator = jsonschema::options().should_validate_formats(true).build(&operation["inputSchema"])
+            .map_err(|_|"manifest_mismatch: operation input schema")?;
+        if !input_validator.is_valid(&input) { return Err("invalid_request: operation input schema validation failed".into()); }
+        let result = runtime.request("operation.invoke", json!({"agentId":agent_id,"sessionId":session_id,"operationId":operation_id,"input":input}), TIMEOUT).await?;
+        if result["kind"] != "operation" || result["operationId"] != operation_id { runtime.stop().await; return Err("manifest_mismatch: operation response identity".into()); }
+        let output_validator = jsonschema::options().should_validate_formats(true).build(&operation["outputSchema"])
+            .map_err(|_|"manifest_mismatch: operation output schema")?;
+        if !output_validator.is_valid(&result["output"]) { runtime.stop().await; return Err("invalid_request: operation output schema validation failed".into()); }
+        Ok(result["output"].clone())
+    }
+
     pub async fn close(&self, session_id: &str) -> Result<(), String> {
         let _guard = self.lifecycle.lock().await;
         let mut close_error = None;
@@ -405,6 +443,9 @@ mod tests {
         assert_eq!(views, 1);
         let invoked = host.invoke(&session.id, "dev.aibo.echo.tasks", "refresh", json!({"label":"manual"})).await.unwrap();
         assert_eq!(invoked, json!({"cursor":1}));
+        let invoked = host.invoke_capability(&session.id, "ext.dev.aibo.echo.refresh", json!({"label":"semantic"})).await.unwrap();
+        assert_eq!(invoked, json!({"cursor":1}));
+        assert!(host.invoke_capability(&session.id, "goal.manage", json!({})).await.unwrap_err().contains("no operation"));
         assert!(host.invoke(&session.id, "dev.aibo.echo.tasks", "refresh", json!({})).await.unwrap_err().contains("input schema"));
         assert!(host.invoke(&session.id, "dev.aibo.echo.tasks", "missing", json!({})).await.unwrap_err().contains("undeclared view action"));
         let version: String = sqlx::query_scalar("SELECT schema_version FROM agent_events WHERE session_id=? LIMIT 1").bind(&session.id).fetch_one(&db).await.unwrap();

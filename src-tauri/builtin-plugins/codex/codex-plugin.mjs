@@ -4,7 +4,7 @@ import readline from 'node:readline';
 const pluginId = 'dev.aibo.codex';
 const pluginVersion = '1.0.0';
 const agentId = 'dev.aibo.codex.agent';
-const capabilities = ['session.create', 'session.resume', 'session.close', 'turn.send', 'turn.cancel', 'stream.text', 'view.standard'];
+const capabilities = ['session.create', 'session.resume', 'session.close', 'turn.send', 'turn.cancel', 'stream.text', 'view.standard', 'goal.manage'];
 let initialized = false;
 let workspaceReadGranted = false;
 let workspaceRoots = [];
@@ -129,6 +129,17 @@ async function handle({ id, method, params: p }) {
   if (method === 'turn.cancel') {
     if (session.turn && session.turn.id === p.turnId && session.turn.nativeId) await rpc('turn/interrupt', { threadId: session.threadId, turnId: session.turn.nativeId });
     respond(id, { kind: 'accepted', accepted: true }); return;
+  }
+  if (method === 'operation.invoke' && p.operationId === 'ext.dev.aibo.codex.goal') {
+    let goal;
+    if (p.input?.action === 'get') goal = await rpc('thread/goal/get', { threadId: session.threadId });
+    else if (p.input?.action === 'clear') goal = await rpc('thread/goal/clear', { threadId: session.threadId });
+    else if (p.input?.action === 'set') {
+      if (typeof p.input.objective !== 'string' || !p.input.objective.trim()) fail('invalid_request', 'objective is required when setting a goal');
+      goal = await rpc('thread/goal/set', { threadId: session.threadId, objective: p.input.objective, tokenBudget: p.input.tokenBudget ?? null });
+    } else fail('invalid_request', 'unknown goal action');
+    const normalized = goal && Object.prototype.hasOwnProperty.call(goal, 'goal') ? goal.goal : goal ?? null;
+    respond(id, { kind: 'operation', operationId: p.operationId, output: { goal: normalized } }); return;
   }
   if (method === 'session.close') { await stopCodex(); session = null; respond(id, { kind: 'accepted', accepted: true }); return; }
   fail('capability_unsupported');

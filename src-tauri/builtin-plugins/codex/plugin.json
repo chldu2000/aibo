@@ -17,9 +17,28 @@
     "agentId": "dev.aibo.codex.agent",
     "displayName": "Codex",
     "description": "Codex app-server through the Aibo Agent Runtime Protocol.",
-    "capabilities": ["session.create", "session.resume", "session.close", "turn.send", "turn.cancel", "stream.text", "view.standard"],
+    "capabilities": ["session.create", "session.resume", "session.close", "turn.send", "turn.cancel", "stream.text", "view.standard", "goal.manage"],
     "requestedPermissions": [{ "id": "workspace.read", "required": true, "reason": "Starts Codex in the selected trusted workspace." }],
-    "operations": [],
+    "operations": [{
+      "id": "ext.dev.aibo.codex.goal",
+      "capability": "goal.manage",
+      "inputSchema": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["action"],
+        "properties": {
+          "action": { "enum": ["get", "set", "clear"] },
+          "objective": { "type": "string", "minLength": 1 },
+          "tokenBudget": { "type": "integer", "minimum": 1 }
+        }
+      },
+      "outputSchema": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["goal"],
+        "properties": { "goal": { "type": ["object", "null"] } }
+      }
+    }],
     "views": [{ "viewId": "dev.aibo.codex.status", "title": "Codex status", "requiredComponents": ["panel", "badge", "text"] }]
   }]
 }

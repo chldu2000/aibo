@@ -31,4 +31,12 @@ test('bundled Codex plugin translates app-server lifecycle into Agent Runtime v1
   assert.equal((await completed).params.payload.status, 'completed');
   assert.equal(messages.filter((message) => message.params?.type === 'message.delta').map((message) => message.params.payload.delta).join(''), 'hello plugin');
   assert.ok(messages.some((message) => message.method === 'view/render' && message.params.document.viewId === 'dev.aibo.codex.status'));
+  const selected = await request('operation.invoke', { agentId: scope.agentId, sessionId: scope.sessionId,
+    operationId: 'ext.dev.aibo.codex.goal', input: { action: 'set', objective: 'Finish P4.7', tokenBudget: 2048 } });
+  assert.deepEqual(selected, { kind: 'operation', operationId: 'ext.dev.aibo.codex.goal', output: {
+    goal: { objective: 'Finish P4.7', tokenBudget: 2048, status: 'active' },
+  } });
+  const cleared = await request('operation.invoke', { agentId: scope.agentId, sessionId: scope.sessionId,
+    operationId: 'ext.dev.aibo.codex.goal', input: { action: 'clear' } });
+  assert.equal(cleared.output.goal, null);
 });

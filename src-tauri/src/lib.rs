@@ -4800,6 +4800,11 @@ async fn invoke_plugin_view_action(session_id: String, view_id: String, action_i
 }
 
 #[tauri::command]
+async fn invoke_agent_capability(session_id: String, capability: String, input: serde_json::Value, state: State<'_, AppState>) -> Result<serde_json::Value, String> {
+    state.plugins.invoke_capability(&session_id, &capability, input).await
+}
+
+#[tauri::command]
 async fn create_codex_session(
     workspace_id: String,
     requested_profile: Option<ExecutionProfile>,
@@ -5531,6 +5536,7 @@ pub fn run() {
             close_agent_session,
             get_plugin_views,
             invoke_plugin_view_action,
+            invoke_agent_capability,
             list_workspaces,
             search_workspace_paths,
             add_workspace,
