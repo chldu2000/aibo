@@ -11,6 +11,10 @@ input.on('line', (line) => {
   else if (method === 'thread/start') write({ id, result: { thread: { id: 'native-thread' }, approvalPolicy: 'never', sandbox: { type: 'readOnly' } } });
   else if (method === 'thread/resume') write({ id, result: { thread: { id: params.threadId } } });
   else if (method === 'turn/start') {
+    if (params.input?.[0]?.text === 'selected config' && (params.model !== 'gpt-fake' || params.reasoningEffort !== 'high')) {
+      write({ id, error: { code: -32000, message: 'selected model or reasoning effort missing' } });
+      return;
+    }
     write({ id, result: { turn: { id: 'native-turn' } } });
     write({ method: 'turn/started', params: { threadId: params.threadId, turn: { id: 'native-turn', status: 'inProgress' } } });
     write({ method: 'item/agentMessage/delta', params: { threadId: params.threadId, turnId: 'native-turn', itemId: 'message', delta: params.input[0].text } });
@@ -24,5 +28,6 @@ input.on('line', (line) => {
   } else if (method === 'thread/goal/clear') {
     goal = null;
     write({ id, result: { goal } });
-  }
+  } else if (method === 'model/list') write({ id, result: { data: [{ id: 'gpt-fake', model: 'gpt-fake', displayName: 'GPT Fake', isDefault: true, supportedReasoningEfforts: [{ reasoningEffort: 'low' }, { reasoningEffort: 'high' }] }] } });
+  else if (method === 'skills/list') write({ id, result: { data: [{ cwd: params.cwds[0], skills: [{ name: 'review', interface: { shortDescription: 'Review code' } }] }] } });
 });

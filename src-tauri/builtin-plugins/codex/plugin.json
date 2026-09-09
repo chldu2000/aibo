@@ -17,7 +17,7 @@
     "agentId": "dev.aibo.codex.agent",
     "displayName": "Codex",
     "description": "Codex app-server through the Aibo Agent Runtime Protocol.",
-    "capabilities": ["session.create", "session.resume", "session.close", "turn.send", "turn.cancel", "stream.text", "view.standard", "goal.manage"],
+    "capabilities": ["session.create", "session.resume", "session.close", "turn.send", "turn.cancel", "stream.text", "view.standard", "goal.manage", "model.select", "model.reasoning", "skill.list"],
     "requestedPermissions": [{ "id": "workspace.read", "required": true, "reason": "Starts Codex in the selected trusted workspace." }],
     "operations": [{
       "id": "ext.dev.aibo.codex.goal",
@@ -38,6 +38,21 @@
         "required": ["goal"],
         "properties": { "goal": { "type": ["object", "null"] } }
       }
+    }, {
+      "id": "ext.dev.aibo.codex.model",
+      "capability": "model.select",
+      "inputSchema": { "type": "object", "additionalProperties": false, "required": ["action"], "properties": { "action": { "enum": ["list", "set"] }, "reference": { "type": "string", "minLength": 1 } } },
+      "outputSchema": { "type": "object" }
+    }, {
+      "id": "ext.dev.aibo.codex.reasoning",
+      "capability": "model.reasoning",
+      "inputSchema": { "type": "object", "additionalProperties": false, "required": ["action"], "properties": { "action": { "enum": ["list", "set"] }, "level": { "type": "string", "minLength": 1 } } },
+      "outputSchema": { "type": "object" }
+    }, {
+      "id": "ext.dev.aibo.codex.skills",
+      "capability": "skill.list",
+      "inputSchema": { "type": "object", "additionalProperties": false },
+      "outputSchema": { "type": "object", "required": ["skills"], "properties": { "skills": { "type": "array" } } }
     }],
     "views": [{ "viewId": "dev.aibo.codex.status", "title": "Codex status", "requiredComponents": ["panel", "badge", "text"] }]
   }]

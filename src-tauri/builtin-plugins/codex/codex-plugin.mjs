@@ -4,7 +4,7 @@ import readline from 'node:readline';
 const pluginId = 'dev.aibo.codex';
 const pluginVersion = '1.0.0';
 const agentId = 'dev.aibo.codex.agent';
-const capabilities = ['session.create', 'session.resume', 'session.close', 'turn.send', 'turn.cancel', 'stream.text', 'view.standard', 'goal.manage'];
+const capabilities = ['session.create', 'session.resume', 'session.close', 'turn.send', 'turn.cancel', 'stream.text', 'view.standard', 'goal.manage', 'model.select', 'model.reasoning', 'skill.list'];
 let initialized = false;
 let workspaceReadGranted = false;
 let workspaceRoots = [];
@@ -113,7 +113,7 @@ async function handle({ id, method, params: p }) {
       threadId = result?.thread?.id;
     }
     if (!threadId) fail('invalid_session', 'Codex did not return a thread id');
-    session = { id: p.sessionId, threadId, revision: 0, turn: null };
+    session = { id: p.sessionId, threadId, cwd: p.workspace.path, model: null, reasoningEffort: null, revision: 0, turn: null };
     respond(id, { kind: 'session', agentId, sessionId: session.id, nativeSessionId: threadId, recovery: { schema: 'dev.aibo.codex.recovery', version: 1, data: { threadId } } });
     emit('session.started', { state: 'idle' }); render(); return;
   }
@@ -122,7 +122,10 @@ async function handle({ id, method, params: p }) {
     if (session.turn) fail('busy');
     const turn = { id: p.turnId, requestId: id, nativeId: null, text: '', finalText: '' };
     session.turn = turn;
-    const result = await rpc('turn/start', { threadId: session.threadId, input: [{ type: 'text', text: p.input.text }] });
+    const turnParams = { threadId: session.threadId, input: [{ type: 'text', text: p.input.text }] };
+    if (session.model) turnParams.model = session.model;
+    if (session.reasoningEffort) turnParams.reasoningEffort = session.reasoningEffort;
+    const result = await rpc('turn/start', turnParams);
     if (session.turn === turn) turn.nativeId = result?.turn?.id ?? turn.nativeId;
     respond(id, { kind: 'accepted', accepted: true }); return;
   }
@@ -140,6 +143,28 @@ async function handle({ id, method, params: p }) {
     } else fail('invalid_request', 'unknown goal action');
     const normalized = goal && Object.prototype.hasOwnProperty.call(goal, 'goal') ? goal.goal : goal ?? null;
     respond(id, { kind: 'operation', operationId: p.operationId, output: { goal: normalized } }); return;
+  }
+  if (method === 'operation.invoke' && p.operationId === 'ext.dev.aibo.codex.model') {
+    if (p.input?.action === 'set') {
+      if (typeof p.input.reference !== 'string' || !p.input.reference.trim()) fail('invalid_request', 'reference is required when selecting a model');
+      session.model = p.input.reference;
+    } else if (p.input?.action !== 'list') fail('invalid_request', 'unknown model action');
+    const result = await rpc('model/list', { limit: 100, includeHidden: false });
+    respond(id, { kind: 'operation', operationId: p.operationId, output: { current: session.model, models: result?.data ?? [] } }); return;
+  }
+  if (method === 'operation.invoke' && p.operationId === 'ext.dev.aibo.codex.reasoning') {
+    if (p.input?.action === 'set') {
+      if (typeof p.input.level !== 'string' || !p.input.level.trim()) fail('invalid_request', 'level is required when selecting reasoning effort');
+      session.reasoningEffort = p.input.level;
+    } else if (p.input?.action !== 'list') fail('invalid_request', 'unknown reasoning action');
+    const result = await rpc('model/list', { limit: 100, includeHidden: false });
+    const model = (result?.data ?? []).find((item) => item.model === session.model || item.id === session.model) ?? (result?.data ?? []).find((item) => item.isDefault) ?? null;
+    respond(id, { kind: 'operation', operationId: p.operationId, output: { current: session.reasoningEffort, levels: model?.supportedReasoningEfforts ?? [] } }); return;
+  }
+  if (method === 'operation.invoke' && p.operationId === 'ext.dev.aibo.codex.skills') {
+    const result = await rpc('skills/list', { cwds: [session.cwd], forceReload: false });
+    const skills = (result?.data ?? []).flatMap((item) => item?.skills ?? []);
+    respond(id, { kind: 'operation', operationId: p.operationId, output: { skills } }); return;
   }
   if (method === 'session.close') { await stopCodex(); session = null; respond(id, { kind: 'accepted', accepted: true }); return; }
   fail('capability_unsupported');
