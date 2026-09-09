@@ -4757,6 +4757,13 @@ async fn create_agent_session(workspace_id: String, agent_id: String, installati
     if let Some(installation_id) = installation_id {
         return state.plugins.create(&workspace_id, &installation_id, &agent_id).await;
     }
+    let contributed_installation: Option<String> = sqlx::query_scalar(
+        "SELECT p.id FROM agent_contributions a JOIN plugin_installations p ON p.id=a.installation_id
+         WHERE a.agent_id=? AND p.installed=1 AND p.enabled=1 ORDER BY p.enabled_at DESC, p.created_at DESC LIMIT 1",
+    ).bind(&agent_id).fetch_optional(&state.db).await.map_err(|error|error.to_string())?;
+    if let Some(installation_id) = contributed_installation {
+        return state.plugins.create(&workspace_id, &installation_id, &agent_id).await;
+    }
     // Temporary P4.7B compatibility seam. C replaces these managers with Plugin Releases.
     match agent_id.as_str() {
         "codex" => create_codex_session(workspace_id, None, state).await.map_err(|e|e.to_string()),

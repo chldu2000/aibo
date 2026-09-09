@@ -487,12 +487,9 @@ export const unarchiveCodexThread = (sessionId: string): Promise<Session> =>
 
 export const createCodexSession = (
   workspaceId: string,
-  requestedProfile?: ExecutionProfile | null,
+  _requestedProfile?: ExecutionProfile | null,
 ): Promise<Session> =>
-  invoke<Session>('create_codex_session', {
-    workspaceId,
-    requestedProfile: requestedProfile ?? null,
-  });
+  createAgentSession(workspaceId, 'dev.aibo.codex.agent');
 
 export const sendCodexPrompt = (sessionId: string, input: string): Promise<Session> =>
   invoke<Session>('send_codex_prompt', { sessionId, input });
@@ -517,12 +514,9 @@ export const closeCodexSession = (sessionId: string): Promise<void> =>
 
 export const createPiSession = (
   workspaceId: string,
-  requestedProfile?: ExecutionProfile | null,
+  _requestedProfile?: ExecutionProfile | null,
 ): Promise<Session> =>
-  invoke<Session>('create_pi_session', {
-    workspaceId,
-    requestedProfile: requestedProfile ?? null,
-  });
+  createAgentSession(workspaceId, 'dev.aibo.pi.agent');
 
 export const sendPiPrompt = (sessionId: string, input: string): Promise<Session> =>
   invoke<Session>('send_pi_prompt', { sessionId, input });
