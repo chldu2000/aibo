@@ -203,6 +203,28 @@ pub(crate) async fn install(db: &SqlitePool, data_dir: &Path, source: &Path) -> 
         package_digest: expected_digest, enabled: false, installed: true, runnable, dependencies, manifest })
 }
 
+pub(crate) async fn install_builtins(db: &SqlitePool, data_dir: &Path) -> Result<(), String> {
+    let source = data_dir.join("bundled-plugin-sources").join("codex-1.0.0");
+    fs::create_dir_all(&source).map_err(io_error)?;
+    let source = source.canonicalize().map_err(io_error)?;
+    for (name, contents) in [
+        ("plugin.json", include_bytes!("../builtin-plugins/codex/plugin.json").as_slice()),
+        ("codex-plugin.mjs", include_bytes!("../builtin-plugins/codex/codex-plugin.mjs").as_slice()),
+    ] {
+        let target = source.join(name);
+        if target.exists() && fs::symlink_metadata(&target).map_err(io_error)?.file_type().is_symlink() {
+            return Err("invalid_request: bundled plugin source contains a link".into());
+        }
+        fs::write(target, contents).map_err(io_error)?;
+    }
+    let (manifest, _, digest) = inspect(&source)?;
+    let existing: Option<String> = sqlx::query_scalar("SELECT id FROM plugin_installations WHERE plugin_id=? AND plugin_version=? AND package_digest=? AND installed=1")
+        .bind(manifest["pluginId"].as_str().unwrap()).bind(manifest["version"].as_str().unwrap()).bind(digest)
+        .fetch_optional(db).await.map_err(io_error)?;
+    let id = match existing { Some(id) => id, None => install(db, data_dir, &source).await?.id };
+    enable(db, &id, true).await
+}
+
 pub(crate) async fn enable(db: &SqlitePool, id: &str, enabled: bool) -> Result<(), String> {
     let changed = sqlx::query("UPDATE plugin_installations SET enabled = ?, enabled_at = ? WHERE id = ? AND installed=1")
         .bind(enabled).bind(if enabled { Some(crate::now_iso()) } else { None }).bind(id).execute(db).await.map_err(io_error)?;
@@ -295,5 +317,20 @@ mod tests {
         assert_eq!(event,("{\"historical\":true}".into(),"1.0".into()));
         sqlx::query("INSERT INTO sessions(id,workspace_id,agent,label,state,created_at,updated_at) VALUES('external','w','dev.example.agent','external','idle','2026','2026')").execute(&mut connection).await.unwrap();
         assert!(sqlx::query("INSERT INTO sessions(id,workspace_id,agent,label,state,created_at,updated_at) VALUES('bad','missing','dev.example.agent','bad','idle','2026','2026')").execute(&mut connection).await.is_err());
+    }
+
+    #[tokio::test]
+    async fn bundled_codex_release_is_installed_enabled_and_idempotent() {
+        let root = std::env::temp_dir().join(format!("aibo-builtin-plugin-{}", ulid::Ulid::new()));
+        let db = crate::open_database(&root.join("aibo.sqlite3")).await.unwrap();
+        install_builtins(&db, &root).await.unwrap();
+        install_builtins(&db, &root).await.unwrap();
+        let installed = list(&db).await.unwrap();
+        assert_eq!(installed.len(), 1);
+        assert_eq!(installed[0].plugin_id, "dev.aibo.codex");
+        assert!(installed[0].enabled);
+        assert!(installed[0].installed);
+        db.close().await;
+        fs::remove_dir_all(root).unwrap();
     }
 }

@@ -1,0 +1,25 @@
+{
+  "schema": "aibo.plugin-manifest/v1",
+  "pluginId": "dev.aibo.codex",
+  "version": "1.0.0",
+  "displayName": "Codex (built-in plugin)",
+  "description": "Aibo's bundled Codex app-server adapter.",
+  "publisher": { "name": "Aibo" },
+  "protocols": { "runtime": { "min": "1.0", "max": "1.0" }, "view": { "min": "1.0", "max": "1.0" } },
+  "platforms": ["darwin-arm64", "darwin-x64", "windows-x64", "linux-x64", "linux-arm64"],
+  "entrypoint": { "executable": "codex-plugin.mjs" },
+  "dependencies": [
+    { "kind": "runtime", "name": "node", "versionRange": ">=22", "required": true },
+    { "kind": "executable", "name": "codex", "required": true }
+  ],
+  "resources": [],
+  "agents": [{
+    "agentId": "dev.aibo.codex.agent",
+    "displayName": "Codex",
+    "description": "Codex app-server through the Aibo Agent Runtime Protocol.",
+    "capabilities": ["session.create", "session.resume", "session.close", "turn.send", "turn.cancel", "stream.text", "view.standard"],
+    "requestedPermissions": [{ "id": "workspace.read", "required": true, "reason": "Starts Codex in the selected trusted workspace." }],
+    "operations": [],
+    "views": [{ "viewId": "dev.aibo.codex.status", "title": "Codex status", "requiredComponents": ["panel", "badge", "text"] }]
+  }]
+}

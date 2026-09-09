@@ -54,8 +54,9 @@ impl PluginHost {
         let agent = manifest["agents"].as_array().unwrap().iter().find(|agent| agent["agentId"] == agent_id).ok_or("invalid_session: Agent contribution missing")?;
         // v1 minimal host grants no workspace/command/network/credential proxies.
         // Process execution is explicitly enabled by the user, never advertised as a sandbox.
-        if agent["requestedPermissions"].as_array().unwrap().iter().any(|p|p["required"] == true) {
-            return Err("capability_unsupported: required permission enforcement is unavailable".into());
+        let requested_permissions = agent["requestedPermissions"].as_array().unwrap();
+        if let Some(permission) = requested_permissions.iter().find(|permission|permission["required"] == true && permission["id"] != "workspace.read") {
+            return Err(format!("capability_unsupported: required permission '{}' cannot be enforced", permission["id"].as_str().unwrap()));
         }
         let diagnostics = plugin_registry::dependency_diagnostics(&manifest);
         if let Some(missing) = diagnostics.iter().find(|dependency|dependency.required && !dependency.available) {
@@ -68,7 +69,13 @@ impl PluginHost {
         let executable = if let Some(command) = command { args.insert(0, entrypoint.to_string_lossy().into_owned()); command } else { entrypoint };
         let runtime = PluginRuntime::spawn(&executable, &args, &directory)?;
         let start_result = async {
-            let grants: Vec<Value> = agent["requestedPermissions"].as_array().unwrap().iter().map(|p|json!({"id":p["id"],"decision":"denied","enforcement":"core-proxy","constraints":{}})).collect();
+            let grants: Vec<Value> = requested_permissions.iter().map(|permission| {
+                if permission["id"] == "workspace.read" && permission["required"] == true {
+                    json!({"id":"workspace.read","decision":"granted","enforcement":"agent-native","constraints":{"roots":[workspace.path]}})
+                } else {
+                    json!({"id":permission["id"],"decision":"denied","enforcement":"core-proxy","constraints":{}})
+                }
+            }).collect();
             let initialized = runtime.request("aibo.initialize", json!({"runtimeInstanceId":ulid::Ulid::new().to_string(),"generationId":runtime.generation_id,
                 "host":{"appVersion":"0.1.0","platform":plugin_registry::platform(),"runtimeProtocolVersions":["1.0"],"viewProtocolVersions":["1.0"]},
                 "expectedPlugin":{"pluginId":manifest["pluginId"],"pluginVersion":manifest["version"]},"permissionGrants":grants}), TIMEOUT).await?;
@@ -81,7 +88,10 @@ impl PluginHost {
             if actual_caps.iter().any(|c| !declared.contains(c)) || ["session.create","session.resume","session.close","turn.send","turn.cancel","stream.text","view.standard"].iter().any(|required|!actual_caps.contains(&json!(required))) {
                 return Err("capability_unsupported: minimal lifecycle capabilities required".into());
             }
-            let mut params = json!({"agentId":agent_id,"sessionId":session_id,"workspace":{"workspaceId":workspace_id,"trusted":true},"executionProfile":{}});
+            let workspace_scope = if requested_permissions.iter().any(|permission|permission["id"] == "workspace.read" && permission["required"] == true) {
+                json!({"workspaceId":workspace_id,"trusted":true,"path":workspace.path})
+            } else { json!({"workspaceId":workspace_id,"trusted":true}) };
+            let mut params = json!({"agentId":agent_id,"sessionId":session_id,"workspace":workspace_scope,"executionProfile":{"approvalPolicy":"never","filesystemPolicy":"read-only"}});
             let previous: Option<String> = row.get("plugin_binding_json");
             if resume {
                 let binding: Value = serde_json::from_str(previous.as_deref().ok_or("invalid_recovery_data: binding missing")?).map_err(|_|"invalid_recovery_data")?;
@@ -209,12 +219,19 @@ impl PluginHost {
 
     pub async fn close(&self, session_id: &str) -> Result<(), String> {
         let _guard = self.lifecycle.lock().await;
-        if let Some(runtime) = self.runtimes.lock().await.remove(session_id) { runtime.stop().await; }
+        let mut close_error = None;
+        if let Some(runtime) = self.runtimes.lock().await.remove(session_id) {
+            let agent: Option<String> = sqlx::query_scalar("SELECT agent FROM sessions WHERE id=?").bind(session_id).fetch_optional(&self.db).await.map_err(|e|e.to_string())?;
+            if let Some(agent) = agent {
+                if let Err(error) = runtime.request("session.close", json!({"agentId":agent,"sessionId":session_id}), TIMEOUT).await { close_error = Some(error); }
+            }
+            runtime.stop().await;
+        }
         let _write_guard = self.database_writes.lock().await;
         sqlx::query("UPDATE session_bindings SET generation_id=NULL WHERE session_id=?").bind(session_id).execute(&self.db).await.map_err(|e|e.to_string())?;
         sqlx::query("UPDATE turns SET status='interrupted',completed_at=? WHERE session_id=? AND status='running'").bind(crate::now_iso()).bind(session_id).execute(&self.db).await.map_err(|e|e.to_string())?;
         sqlx::query("UPDATE sessions SET state='closed',updated_at=? WHERE id=?").bind(crate::now_iso()).bind(session_id).execute(&self.db).await.map_err(|e|e.to_string())?;
-        Ok(())
+        match close_error { Some(error) => Err(error), None => Ok(()) }
     }
 
     pub async fn uninstall(&self, data_dir: &std::path::Path, installation_id: &str) -> Result<(), String> {
