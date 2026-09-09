@@ -230,7 +230,11 @@ impl PluginHost {
             let mut sequence = 0i64;
             let mut notifications = runtime.notifications.lock().await;
             while let Some(message) = notifications.recv().await {
-                if host.project(&session_id, &workspace_id, &runtime.generation_id, &binding, sequence, message).await.is_err() { runtime.stop().await; break; }
+                if let Err(error) = host.project(&session_id, &workspace_id, &runtime.generation_id, &binding, sequence, message).await {
+                    tracing::error!(session_id = %session_id, generation_id = %runtime.generation_id, error = %error, "plugin notification projection failed");
+                    runtime.stop().await;
+                    break;
+                }
                 sequence += 1;
             }
             let process_state = if runtime.was_stopped() { "exited" } else { "crashed" };
@@ -313,11 +317,23 @@ impl PluginHost {
     }
 
     pub async fn cancel(&self, session_id: &str) -> Result<(), String> {
-        let runtime = self.runtimes.lock().await.get(session_id).cloned().ok_or("invalid_session: runtime unavailable")?;
+        let runtime = self.runtimes.lock().await.get(session_id).cloned();
         let turn: Option<String> = sqlx::query_scalar("SELECT id FROM turns WHERE session_id=? AND status='running' ORDER BY started_at DESC LIMIT 1").bind(session_id).fetch_optional(&self.db).await.map_err(|e|e.to_string())?;
-        if let Some(turn) = turn {
+        if let (Some(runtime), Some(turn)) = (runtime.as_ref(), turn.as_deref()) {
             let session = crate::session_by_id(&self.db, session_id).await.map_err(|e|e.to_string())?;
             runtime.request("turn.cancel", json!({"agentId":session.agent,"sessionId":session_id,"turnId":turn,"reason":"user"}), TIMEOUT).await?;
+        } else if runtime.is_none() {
+            // Runtime teardown already interrupts its active turn. A cancel
+            // click can race that cleanup, so cancellation must be idempotent
+            // instead of replacing the useful failure with "runtime unavailable".
+            let now = crate::now_iso();
+            let _write_guard = self.database_writes.lock().await;
+            let mut tx = self.db.begin().await.map_err(|e|e.to_string())?;
+            sqlx::query("UPDATE turns SET status='interrupted',completed_at=? WHERE session_id=? AND status='running'")
+                .bind(&now).bind(session_id).execute(&mut *tx).await.map_err(|e|e.to_string())?;
+            sqlx::query("UPDATE sessions SET state='interrupted',updated_at=? WHERE id=? AND state IN ('running','waiting_approval','waiting_user')")
+                .bind(&now).bind(session_id).execute(&mut *tx).await.map_err(|e|e.to_string())?;
+            tx.commit().await.map_err(|e|e.to_string())?;
         }
         Ok(())
     }
@@ -821,6 +837,7 @@ mod tests {
         let turn_state: String = sqlx::query_scalar("SELECT status FROM turns WHERE session_id=? ORDER BY started_at DESC LIMIT 1")
             .bind(&session.id).fetch_one(&db).await.unwrap();
         assert_eq!(turn_state, "interrupted");
+        host.cancel(&session.id).await.expect("cancel remains idempotent after runtime teardown");
         host.close(&session.id).await.unwrap();
         db.close().await;
         tokio::time::sleep(Duration::from_millis(100)).await;
