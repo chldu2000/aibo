@@ -1,7 +1,7 @@
-use crate::{plugin_contract::contracts, plugin_registry, plugin_runtime::PluginRuntime, Session};
+use crate::{change_set::{capture as capture_workspace, persist as persist_change_set, WorkspaceSnapshot}, plugin_contract::contracts, plugin_registry, plugin_runtime::PluginRuntime, Session};
 use serde_json::{json, Value};
 use sqlx::{Row, SqlitePool};
-use std::{collections::HashMap, path::PathBuf, sync::Arc, time::Duration};
+use std::{collections::HashMap, path::{Path, PathBuf}, sync::Arc, time::Duration};
 use tokio::sync::Mutex;
 
 const TIMEOUT: Duration = Duration::from_secs(15);
@@ -20,10 +20,11 @@ pub(crate) struct PluginHost {
     runtimes: Arc<Mutex<HashMap<String, PluginRuntime>>>,
     lifecycle: Arc<Mutex<()>>,
     database_writes: Arc<Mutex<()>>,
+    turn_baselines: Arc<Mutex<HashMap<String, Option<WorkspaceSnapshot>>>>,
 }
 
 impl PluginHost {
-    pub fn new(db: SqlitePool) -> Self { Self { db, runtimes: Arc::default(), lifecycle: Arc::default(), database_writes: Arc::default() } }
+    pub fn new(db: SqlitePool) -> Self { Self { db, runtimes: Arc::default(), lifecycle: Arc::default(), database_writes: Arc::default(), turn_baselines: Arc::default() } }
 
     pub async fn create(&self, workspace_id: &str, installation_id: &str, agent_id: &str) -> Result<Session, String> {
         let _guard = self.lifecycle.lock().await;
@@ -159,6 +160,7 @@ impl PluginHost {
         let session = crate::session_by_id(&self.db, session_id).await.map_err(|e|e.to_string())?;
         let workspace = crate::workspace_by_id(&self.db, &session.workspace_id).await.map_err(|e|e.to_string())?;
         if workspace.trust != "trusted" { return Err("permission_denied: workspace trust was revoked".into()); }
+        let baseline = capture_workspace(Path::new(&workspace.path)).await.ok();
         let attachments: Vec<String> = sqlx::query_scalar(
             "SELECT id FROM attachments WHERE session_id=? AND turn_id IS NULL ORDER BY created_at ASC",
         )
@@ -167,6 +169,7 @@ impl PluginHost {
         .await
         .map_err(|e| e.to_string())?;
         let turn = ulid::Ulid::new().to_string();
+        self.turn_baselines.lock().await.insert(turn.clone(), baseline);
         let now = crate::now_iso();
         {
             let _write_guard = self.database_writes.lock().await;
@@ -187,6 +190,7 @@ impl PluginHost {
             runtime.stop().await;
             let _write_guard = self.database_writes.lock().await;
             sqlx::query("UPDATE turns SET status='failed',completed_at=? WHERE id=? AND status='running'").bind(crate::now_iso()).bind(&turn).execute(&self.db).await.map_err(|e|e.to_string())?;
+            self.turn_baselines.lock().await.remove(&turn);
             return Err(error);
         }
         let _write_guard = self.database_writes.lock().await;
@@ -325,6 +329,19 @@ impl PluginHost {
         plugin_registry::uninstall(&self.db, data_dir, installation_id).await
     }
 
+    async fn finalize_turn_changes(&self, workspace_id: &str, session_id: &str, turn_id: &str) -> Result<(), String> {
+        let baseline = self.turn_baselines.lock().await.remove(turn_id).flatten();
+        let workspace = crate::workspace_by_id(&self.db, workspace_id).await.map_err(|error| error.to_string())?;
+        let (result, capture_error) = match capture_workspace(Path::new(&workspace.path)).await {
+            Ok(snapshot) => (Some(snapshot), None),
+            Err(error) => (None, Some(error)),
+        };
+        persist_change_set(&self.db, workspace_id, session_id, turn_id, baseline.as_ref(), result.as_ref(), capture_error.as_deref())
+            .await
+            .map_err(|error| error.to_string())?;
+        Ok(())
+    }
+
     async fn project(&self, session_id: &str, workspace_id: &str, generation: &str, binding: &Value, sequence: i64, message: Value) -> Result<(), String> {
         if !contracts().runtime.is_valid(&message) { return Err("invalid_request: notification schema".into()); }
         let p = &message["params"];
@@ -430,6 +447,11 @@ impl PluginHost {
                 .bind(event_id).bind(session_id).bind(generation).bind(sequence).bind(now).bind(kind).bind(turn_id).bind(event.to_string()).execute(&mut *tx).await.map_err(|e|e.to_string())?;
         }
         tx.commit().await.map_err(|e|e.to_string())?;
+        if matches!(p["type"].as_str(), Some("turn.completed" | "turn.failed")) {
+            if let Some(turn_id) = p["turnId"].as_str() {
+                self.finalize_turn_changes(workspace_id, session_id, turn_id).await?;
+            }
+        }
         Ok(())
     }
 }
@@ -504,6 +526,15 @@ mod tests {
             .unwrap();
         host.send(&session.id, "hello 你好 🌍\u{2028}plugin").await.unwrap();
         wait_turn(&db, &session.id, "completed").await;
+        let change_sets: i64 = tokio::time::timeout(Duration::from_secs(5), async {
+            loop {
+                let count: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM turn_change_sets WHERE session_id=?")
+                    .bind(&session.id).fetch_one(&db).await.unwrap();
+                if count > 0 { break count; }
+                tokio::time::sleep(Duration::from_millis(10)).await;
+            }
+        }).await.unwrap();
+        assert_eq!(change_sets, 1, "plugin turns receive Core change-set projection");
         let attachment_turn: Option<String> = sqlx::query_scalar("SELECT turn_id FROM attachments WHERE id='attachment-1'")
             .fetch_one(&db)
             .await
