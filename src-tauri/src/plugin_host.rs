@@ -206,11 +206,20 @@ impl PluginHost {
         let action = document["actions"].as_array().and_then(|actions|actions.iter().find(|action|action["id"] == action_id))
             .ok_or("invalid_request: undeclared view action")?;
         if action["confirmation"] != "never" { return Err("capability_unsupported: action confirmation is not implemented".into()); }
-        let operation_id = action["operationId"].as_str().ok_or("capability_unsupported: standard actions are not implemented")?;
         let manifest: Value = serde_json::from_str(row.get::<&str,_>("manifest_json")).map_err(|_|"manifest_mismatch")?;
         let agent_id: String = row.get("agent");
         let agent = manifest["agents"].as_array().and_then(|agents|agents.iter().find(|agent|agent["agentId"] == agent_id))
             .ok_or("manifest_mismatch: Agent contribution missing")?;
+        if action["operationId"].is_null() {
+            let capability = action["capability"].as_str().ok_or("manifest_mismatch: standard action capability")?;
+            let declared = agent["capabilities"].as_array().is_some_and(|items|items.contains(&json!(capability)));
+            if !declared { return Err("manifest_mismatch: standard action capability is undeclared".into()); }
+            let input_validator = jsonschema::options().should_validate_formats(true).build(&action["inputSchema"])
+                .map_err(|_|"manifest_mismatch: standard action input schema")?;
+            if !input_validator.is_valid(&input) { return Err("invalid_request: standard action input schema validation failed".into()); }
+            return self.invoke_capability(session_id, capability, input).await;
+        }
+        let operation_id = action["operationId"].as_str().ok_or("manifest_mismatch: operation id")?;
         let operation = agent["operations"].as_array().and_then(|operations|operations.iter().find(|operation|operation["id"] == operation_id))
             .ok_or("invalid_request: undeclared operation")?;
         if action["capability"] != operation["capability"] || action["inputSchema"] != operation["inputSchema"] {
@@ -322,11 +331,15 @@ impl PluginHost {
             let revision = document["revision"].as_i64().ok_or("invalid_request: revision")?;
             if previous.is_some_and(|(previous_generation, previous_revision)|previous_generation == generation && revision <= previous_revision) { return Err("invalid_request: stale view revision".into()); }
             for action in document["actions"].as_array().unwrap() {
-                let operation_id = action["operationId"].as_str().ok_or("capability_unsupported: standard view actions")?;
-                let declared = manifest["agents"].as_array().unwrap().iter().find(|agent|agent["agentId"] == binding["agentId"])
-                    .and_then(|agent|agent["operations"].as_array()).and_then(|operations|operations.iter().find(|operation|operation["id"] == operation_id))
-                    .ok_or("invalid_request: view action references undeclared operation")?;
-                if action["capability"] != declared["capability"] || action["inputSchema"] != declared["inputSchema"] { return Err("manifest_mismatch: view action contract".into()); }
+                let agent = manifest["agents"].as_array().unwrap().iter().find(|agent|agent["agentId"] == binding["agentId"])
+                    .ok_or("manifest_mismatch: Agent contribution missing")?;
+                if let Some(operation_id) = action["operationId"].as_str() {
+                    let declared = agent["operations"].as_array().and_then(|operations|operations.iter().find(|operation|operation["id"] == operation_id))
+                        .ok_or("invalid_request: view action references undeclared operation")?;
+                    if action["capability"] != declared["capability"] || action["inputSchema"] != declared["inputSchema"] { return Err("manifest_mismatch: view action contract".into()); }
+                } else if !agent["capabilities"].as_array().is_some_and(|items|items.contains(&action["capability"])) {
+                    return Err("manifest_mismatch: standard view action capability".into());
+                }
             }
             if !document["resources"].as_array().unwrap().is_empty() { return Err("capability_unsupported: dynamic view resources".into()); }
             sqlx::query("INSERT INTO plugin_views(session_id,view_id,generation_id,revision,document_json) VALUES(?,?,?,?,?) ON CONFLICT(session_id,view_id) DO UPDATE SET generation_id=excluded.generation_id,revision=excluded.revision,document_json=excluded.document_json")
@@ -470,6 +483,8 @@ mod tests {
         assert_eq!(views, 1);
         let invoked = host.invoke(&session.id, "dev.aibo.echo.tasks", "refresh", json!({"label":"manual"})).await.unwrap();
         assert_eq!(invoked, json!({"cursor":1}));
+        let commands = host.invoke(&session.id, "dev.aibo.echo.tasks", "commands", json!({})).await.unwrap();
+        assert_eq!(commands, json!({"commands":[]}));
         let invoked = host.invoke_capability(&session.id, "ext.dev.aibo.echo.refresh", json!({"label":"semantic"})).await.unwrap();
         assert_eq!(invoked, json!({"cursor":1}));
         assert!(host.invoke_capability(&session.id, "goal.manage", json!({})).await.unwrap_err().contains("no operation"));

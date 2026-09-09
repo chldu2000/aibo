@@ -45,6 +45,7 @@
         "turn.cancel",
         "stream.text",
         "view.standard",
+        "command.list",
         "ext.dev.aibo.echo.refresh"
       ],
       "requestedPermissions": [
@@ -55,6 +56,17 @@
         }
       ],
       "operations": [
+        {
+          "id": "ext.dev.aibo.echo.commands",
+          "capability": "command.list",
+          "inputSchema": { "type": "object", "additionalProperties": false },
+          "outputSchema": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["commands"],
+            "properties": { "commands": { "type": "array" } }
+          }
+        },
         {
           "id": "ext.dev.aibo.echo.refresh",
           "capability": "ext.dev.aibo.echo.refresh",
