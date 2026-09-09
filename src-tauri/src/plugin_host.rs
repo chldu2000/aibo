@@ -235,6 +235,7 @@ impl PluginHost {
         .await
         .map_err(|e| e.to_string())?;
         let turn = ulid::Ulid::new().to_string();
+        let user_message_id = ulid::Ulid::new().to_string();
         self.turn_baselines.lock().await.insert(turn.clone(), baseline);
         let now = crate::now_iso();
         {
@@ -244,8 +245,18 @@ impl PluginHost {
             if changed.rows_affected() != 1 { return Err("busy: session has an active turn".into()); }
             sqlx::query("INSERT INTO turns(id,session_id,external_turn_id,status,input_text,started_at) VALUES(?,?,?,'running',?,?)").bind(&turn).bind(session_id).bind(&turn).bind(text).bind(&now).execute(&mut *tx).await.map_err(|e|e.to_string())?;
             sqlx::query("INSERT INTO messages(id,session_id,turn_id,role,content,status,created_at,updated_at) VALUES(?,?,?,'user',?,'completed',?,?)")
-                .bind(ulid::Ulid::new().to_string()).bind(session_id).bind(&turn).bind(text).bind(&now).bind(&now).execute(&mut *tx).await.map_err(|e|e.to_string())?;
+                .bind(&user_message_id).bind(session_id).bind(&turn).bind(text).bind(&now).bind(&now).execute(&mut *tx).await.map_err(|e|e.to_string())?;
             tx.commit().await.map_err(|e|e.to_string())?;
+        }
+        if let Err(error) = crate::auto_name_session_from_first_message(
+            &self.db,
+            session_id,
+            &user_message_id,
+            text,
+        )
+        .await
+        {
+            tracing::warn!(session_id = %session_id, error = %error, "unable to auto-name plugin session");
         }
         let attachment_references: Vec<Value> = attachments
             .iter()
@@ -609,6 +620,12 @@ mod tests {
             .unwrap();
         host.send(&session.id, "hello 你好 🌍\u{2028}plugin").await.unwrap();
         wait_turn(&db, &session.id, "completed").await;
+        let label: String = sqlx::query_scalar("SELECT label FROM sessions WHERE id=?")
+            .bind(&session.id)
+            .fetch_one(&db)
+            .await
+            .unwrap();
+        assert_eq!(label, "hello 你好 🌍 plugin");
         let change_sets: i64 = tokio::time::timeout(Duration::from_secs(5), async {
             loop {
                 let count: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM turn_change_sets WHERE session_id=?")

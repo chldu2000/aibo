@@ -660,7 +660,7 @@ pub(crate) async fn auto_name_session_from_first_message(
         return Ok(false);
     };
     let Some(row) = sqlx::query(
-        "SELECT s.agent, s.label, w.label AS workspace_label
+        "SELECT s.agent, s.label, s.plugin_installation_id, w.label AS workspace_label
          FROM sessions s
          JOIN workspaces w ON w.id = s.workspace_id
          WHERE s.id = ?",
@@ -673,10 +673,12 @@ pub(crate) async fn auto_name_session_from_first_message(
     };
     let agent: String = row.try_get("agent")?;
     let current_label: String = row.try_get("label")?;
+    let plugin_installation_id: Option<String> = row.try_get("plugin_installation_id")?;
     let workspace_label: String = row.try_get("workspace_label")?;
     let default_label = match agent.as_str() {
         "codex" => format!("Codex · {workspace_label}"),
         "pi" => format!("Pi · {workspace_label}"),
+        _ if plugin_installation_id.is_some() => "Plugin session".to_owned(),
         _ => return Ok(false),
     };
     if current_label != default_label {
