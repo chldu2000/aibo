@@ -29,7 +29,12 @@ input.on('line', (line) => {
     }
     write({ id, result: { turn: { id: 'native-turn' } } });
     write({ method: 'turn/started', params: { threadId: params.threadId, turn: { id: 'native-turn', status: 'inProgress' } } });
-    if (params.input[0].text === 'approval please') {
+    if (params.input[0].text === 'tool please') {
+      write({ method: 'item/started', params: { threadId: params.threadId, turnId: 'native-turn', item: { id: 'command-1', type: 'commandExecution', status: 'inProgress', command: 'printf test', cwd: '/tmp' } } });
+      write({ method: 'item/commandExecution/outputDelta', params: { threadId: params.threadId, turnId: 'native-turn', itemId: 'command-1', delta: 'tool output\n' } });
+      write({ method: 'item/completed', params: { threadId: params.threadId, turnId: 'native-turn', item: { id: 'command-1', type: 'commandExecution', status: 'completed', command: 'printf test', cwd: '/tmp', aggregatedOutput: 'tool output\n', exitCode: 0 } } });
+      completeTurn(params);
+    } else if (params.input[0].text === 'approval please') {
       interactiveTurn = { kind: 'approval', requestId: 'provider-approval', params };
       write({ id: interactiveTurn.requestId, method: 'item/commandExecution/requestApproval', params: { threadId: params.threadId, turnId: 'native-turn', itemId: 'tool-1', command: 'test', cwd: '/tmp' } });
     } else if (params.input[0].text === 'input please') {

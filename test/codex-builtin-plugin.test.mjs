@@ -52,6 +52,13 @@ test('bundled Codex plugin translates app-server lifecycle into Agent Runtime v1
   const configured = client.waitFor((message) => message.params?.type === 'turn.completed' && message.params.turnId === 'configured-turn');
   await request('turn.send', { agentId: scope.agentId, sessionId: scope.sessionId, turnId: 'configured-turn', input: { text: 'selected config', attachments: [] } });
   assert.equal((await configured).params.payload.status, 'completed');
+  const toolDone = client.waitFor((message) => message.params?.type === 'turn.completed' && message.params.turnId === 'tool-turn');
+  await request('turn.send', { agentId: scope.agentId, sessionId: scope.sessionId, turnId: 'tool-turn', input: { text: 'tool please', attachments: [] } });
+  await toolDone;
+  const toolEvents = messages.filter((message) => message.params?.turnId === 'tool-turn' && message.params?.type?.startsWith('tool.'));
+  assert.deepEqual(toolEvents.map((message) => message.params.type), ['tool.started', 'tool.updated', 'tool.completed']);
+  assert.equal(toolEvents.at(-1).params.payload.itemId, 'command-1');
+  assert.equal(toolEvents.at(-1).params.payload.output, 'tool output\n');
   const approval = client.waitFor((message) => message.params?.type === 'approval.requested');
   const approvalDone = client.waitFor((message) => message.params?.type === 'turn.completed' && message.params.turnId === 'approval-turn');
   await request('turn.send', { agentId: scope.agentId, sessionId: scope.sessionId, turnId: 'approval-turn', input: { text: 'approval please', attachments: [] } });

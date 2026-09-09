@@ -29,6 +29,33 @@ function recovery() {
   } };
 }
 function publishRecovery() { emit('session.info_changed', { recovery: recovery() }); }
+const boundedText = (value, max = 4_000) => {
+  if (typeof value !== 'string') return null;
+  const chars = Array.from(value);
+  return chars.length > max ? `${chars.slice(0, max).join('')}…` : value;
+};
+function toolEventType(method) {
+  if (method === 'item/started') return 'tool.started';
+  if (['item/updated', 'item/commandExecution/outputDelta', 'item/fileChange/outputDelta', 'item/mcpToolCall/progress'].includes(method)) return 'tool.updated';
+  if (method === 'item/completed') return 'tool.completed';
+  return null;
+}
+function toolProjection(method, params) {
+  const type = toolEventType(method);
+  if (!type) return null;
+  const item = params.item ?? params;
+  const itemId = params.itemId ?? item.id;
+  const itemType = item.type ?? params.kind ?? method.split('/')[1] ?? 'tool';
+  if (typeof itemId !== 'string' || !itemId || !/(command|file|tool|shell|search|computer|patch|diff|edit)/i.test(itemType)) return null;
+  const command = boundedText(item.command ?? params.command);
+  const cwd = boundedText(item.cwd ?? params.cwd);
+  const output = boundedText(item.aggregatedOutput ?? item.output ?? item.stdout ?? item.stderr, 12_000);
+  const delta = boundedText(params.delta);
+  const primary = item.command ?? item.path ?? item.filePath ?? item.toolName ?? item.name ?? item.description ?? item.text;
+  const summary = boundedText([primary, output].filter((value) => typeof value === 'string' && value).join('\n'), 12_000) ?? itemType;
+  return { type, payload: { itemId, itemType, status: item.status ?? (type === 'tool.completed' ? 'completed' : 'inProgress'),
+    summary, delta, output, command, cwd, exitCode: item.exitCode ?? item.exit_code ?? item.returnCode ?? params.exitCode ?? null } };
+}
 function render() {
   write({ method: 'view/render', params: { agentId, sessionId: session.id, document: {
     schema: 'aibo.plugin-view/v1', viewId: 'dev.aibo.codex.status', revision: ++session.revision,
@@ -91,6 +118,9 @@ function onCodex(message) {
     const delta = typeof p.delta === 'string' ? p.delta : '';
     if (p.itemId) turn.itemId = p.itemId;
     if (delta) { turn.text += delta; emit('message.delta', { delta }, turn.id, { requestId: turn.requestId, itemId: turn.itemId }); }
+  } else if (turn && toolProjection(message.method, p)) {
+    const tool = toolProjection(message.method, p);
+    emit(tool.type, tool.payload, turn.id, { requestId: turn.requestId, itemId: tool.payload.itemId });
   } else if (message.method === 'item/completed' && turn && p.item?.type === 'agentMessage') {
     if (p.item?.id) turn.itemId = p.item.id;
     if (typeof p.item.text === 'string') turn.finalText = p.item.text;
