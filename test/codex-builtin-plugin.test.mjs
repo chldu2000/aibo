@@ -23,6 +23,8 @@ test('bundled Codex plugin translates app-server lifecycle into Agent Runtime v1
     expectedPlugin: { pluginId: 'dev.aibo.codex', pluginVersion: '1.0.0' },
     permissionGrants: [{ id: 'workspace.read', decision: 'granted', enforcement: 'agent-native', constraints: { roots: [directory] } }] });
   assert.equal(initialized.pluginId, 'dev.aibo.codex');
+  assert.ok(initialized.agents[0].capabilities.includes('approval.respond'));
+  assert.ok(initialized.agents[0].capabilities.includes('user-input.respond'));
   const scope = { agentId: 'dev.aibo.codex.agent', sessionId: 'session', workspace: { workspaceId: 'workspace', trusted: true, path: directory }, executionProfile: {} };
   const session = await request('session.create', scope);
   assert.equal(session.nativeSessionId, 'native-thread');

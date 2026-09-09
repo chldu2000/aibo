@@ -15,6 +15,28 @@ fn event_capability(kind: &str) -> Option<&'static str> {
         _ => None,
     }
 }
+
+fn negotiated_capabilities(
+    plugin_id: &str,
+    agent_id: &str,
+    declared: &[Value],
+    actual: &[Value],
+) -> Vec<Value> {
+    let mut negotiated = actual.to_vec();
+    // Bundled Codex 1.0.0 releases shipped the approval and user-input
+    // handlers and declared both capabilities in their manifest, but omitted
+    // them from the runtime handshake. Keep already-pinned sessions usable
+    // while newer releases report the capabilities correctly.
+    if plugin_id == "dev.aibo.codex" && agent_id == "dev.aibo.codex.agent" {
+        for capability in ["approval.respond", "user-input.respond"] {
+            let capability = json!(capability);
+            if declared.contains(&capability) && !negotiated.contains(&capability) {
+                negotiated.push(capability);
+            }
+        }
+    }
+    negotiated
+}
 #[derive(Clone)]
 pub(crate) struct PluginHost {
     db: SqlitePool,
@@ -140,7 +162,13 @@ impl PluginHost {
             if actual_caps.iter().any(|c| !declared.contains(c)) || ["session.create","session.resume","session.close","turn.send","turn.cancel","stream.text","view.standard"].iter().any(|required|!actual_caps.contains(&json!(required))) {
                 return Err("capability_unsupported: minimal lifecycle capabilities required".into());
             }
-            let actual_capabilities = actual_caps
+            let negotiated_caps = negotiated_capabilities(
+                manifest["pluginId"].as_str().unwrap(),
+                &agent_id,
+                declared,
+                actual_caps,
+            );
+            let actual_capabilities = negotiated_caps
                 .iter()
                 .filter_map(Value::as_str)
                 .map(ToOwned::to_owned)
@@ -188,7 +216,7 @@ impl PluginHost {
             if !contracts().binding.is_valid(&binding) { return Err("invalid_recovery_data: invalid session response".into()); }
             let mut tx = self.db.begin().await.map_err(|e|e.to_string())?;
             sqlx::query("INSERT INTO session_bindings(session_id,external_session_id,generation_id,adapter_version,bound_at,plugin_binding_json,plugin_capabilities_json) VALUES(?,?,?,'1.0',?,?,?) ON CONFLICT(session_id) DO UPDATE SET external_session_id=excluded.external_session_id,generation_id=excluded.generation_id,plugin_binding_json=excluded.plugin_binding_json,plugin_capabilities_json=excluded.plugin_capabilities_json,bound_at=excluded.bound_at")
-                .bind(session_id).bind(result["nativeSessionId"].as_str()).bind(&runtime.generation_id).bind(&now).bind(binding.to_string()).bind(Value::Array(actual_caps.clone()).to_string()).execute(&mut *tx).await.map_err(|e|e.to_string())?;
+                .bind(session_id).bind(result["nativeSessionId"].as_str()).bind(&runtime.generation_id).bind(&now).bind(binding.to_string()).bind(Value::Array(negotiated_caps).to_string()).execute(&mut *tx).await.map_err(|e|e.to_string())?;
             sqlx::query("UPDATE sessions SET state='idle',updated_at=? WHERE id=?").bind(&now).bind(session_id).execute(&mut *tx).await.map_err(|e|e.to_string())?;
             sqlx::query("INSERT INTO process_runs(id,session_id,agent,generation_id,state,started_at,plugin_installation_id,runtime_protocol_version) VALUES(?,?,?,?,'running',?,?,'1.0')")
                 .bind(ulid::Ulid::new().to_string()).bind(session_id).bind(&agent_id).bind(&runtime.generation_id).bind(&now).bind(row.get::<String,_>("plugin_installation_id")).execute(&mut *tx).await.map_err(|e|e.to_string())?;
@@ -552,6 +580,24 @@ mod tests {
         assert_eq!(event_capability("approval.requested"), Some("approval.respond"));
         assert_eq!(event_capability("user_input.resolved"), Some("user-input.respond"));
         assert_eq!(event_capability("message.delta"), None);
+    }
+
+    #[test]
+    fn restores_interactive_capabilities_for_pinned_bundled_codex_releases() {
+        let declared = vec![json!("turn.send"), json!("approval.respond"), json!("user-input.respond")];
+        let actual = vec![json!("turn.send")];
+        let bundled = negotiated_capabilities(
+            "dev.aibo.codex",
+            "dev.aibo.codex.agent",
+            &declared,
+            &actual,
+        );
+        assert!(bundled.contains(&json!("approval.respond")));
+        assert!(bundled.contains(&json!("user-input.respond")));
+        assert_eq!(
+            negotiated_capabilities("dev.example.plugin", "dev.example.agent", &declared, &actual),
+            actual,
+        );
     }
 
     #[test]

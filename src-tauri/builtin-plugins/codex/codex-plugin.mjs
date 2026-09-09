@@ -4,7 +4,7 @@ import readline from 'node:readline';
 const pluginId = 'dev.aibo.codex';
 const pluginVersion = '1.0.0';
 const agentId = 'dev.aibo.codex.agent';
-const capabilities = ['session.create', 'session.resume', 'session.close', 'turn.send', 'turn.cancel', 'stream.text', 'view.standard', 'goal.manage', 'model.select', 'model.reasoning', 'skill.list'];
+const capabilities = ['session.create', 'session.resume', 'session.close', 'turn.send', 'turn.cancel', 'stream.text', 'view.standard', 'goal.manage', 'model.select', 'model.reasoning', 'skill.list', 'approval.respond', 'user-input.respond'];
 let initialized = false;
 let workspaceReadGranted = false;
 let workspaceRoots = [];

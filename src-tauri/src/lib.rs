@@ -4931,6 +4931,19 @@ async fn resolve_codex_approval(
     decision: String,
     state: State<'_, AppState>,
 ) -> Result<(), CoreError> {
+    let session = session_by_id(&state.db, &session_id).await?;
+    if session.plugin_installation_id.is_some() {
+        state
+            .plugins
+            .invoke_capability(
+                &session_id,
+                "approval.respond",
+                serde_json::json!({ "requestId": request_id, "decision": decision }),
+            )
+            .await
+            .map_err(CoreError::Initialization)?;
+        return Ok(());
+    }
     state
         .codex
         .resolve_approval(&session_id, &request_id, &decision)
@@ -4945,6 +4958,19 @@ async fn resolve_codex_user_input(
     answers: serde_json::Value,
     state: State<'_, AppState>,
 ) -> Result<(), CoreError> {
+    let session = session_by_id(&state.db, &session_id).await?;
+    if session.plugin_installation_id.is_some() {
+        state
+            .plugins
+            .invoke_capability(
+                &session_id,
+                "user-input.respond",
+                serde_json::json!({ "requestId": request_id, "answers": answers }),
+            )
+            .await
+            .map_err(CoreError::Initialization)?;
+        return Ok(());
+    }
     state
         .codex
         .resolve_user_input(&session_id, &request_id, answers)
