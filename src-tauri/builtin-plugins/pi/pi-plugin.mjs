@@ -39,12 +39,20 @@ function visibleText(message) {
   if (!message || message.role !== 'assistant' || !Array.isArray(message.content)) return '';
   return message.content.filter((part) => part?.type === 'text').map((part) => part.text ?? '').join('');
 }
+function recovery() {
+  return { schema: 'dev.aibo.pi.recovery', version: 1, data: {
+    nativeSessionId: session.nativeId,
+    sessionFile: session.sessionFile,
+    model: session.model,
+    thinkingLevel: session.thinkingLevel,
+  } };
+}
 async function updateRecovery() {
   if (!session || !child) return;
   try {
     const state = await rpc('get_state');
     session.sessionFile = state.data?.sessionFile ?? session.sessionFile;
-    emit('session.info_changed', { recovery: { schema: 'dev.aibo.pi.recovery', version: 1, data: { nativeSessionId: session.nativeId, sessionFile: session.sessionFile } } });
+    emit('session.info_changed', { recovery: recovery() });
   } catch {}
 }
 function onPi(message) {
@@ -111,8 +119,14 @@ async function handle({ id, method, params: p }) {
     const state = await startPi(p.workspace.path, p.executionProfile.runtimeDataPath, previous?.data?.sessionFile ?? null);
     const nativeId = state.data?.sessionId;
     if (!nativeId) fail('invalid_session', 'Pi did not return a session id');
-    session = { id: p.sessionId, nativeId, sessionFile: state.data?.sessionFile ?? null, revision: 0, turn: null };
-    respond(id, { kind: 'session', agentId, sessionId: session.id, nativeSessionId: nativeId, recovery: { schema: 'dev.aibo.pi.recovery', version: 1, data: { nativeSessionId: nativeId, sessionFile: session.sessionFile } } });
+    const model = previous?.data?.model;
+    session = { id: p.sessionId, nativeId, sessionFile: state.data?.sessionFile ?? null,
+      model: model && typeof model.provider === 'string' && typeof model.modelId === 'string' ? model : null,
+      thinkingLevel: typeof previous?.data?.thinkingLevel === 'string' ? previous.data.thinkingLevel : null,
+      revision: 0, turn: null };
+    if (session.model) await rpc('set_model', session.model);
+    if (session.thinkingLevel) await rpc('set_thinking_level', { level: session.thinkingLevel });
+    respond(id, { kind: 'session', agentId, sessionId: session.id, nativeSessionId: nativeId, recovery: recovery() });
     emit('session.started', { state: 'idle' }); render(); return;
   }
   if (!session || p.sessionId !== session.id) fail('invalid_session');
@@ -126,11 +140,17 @@ async function handle({ id, method, params: p }) {
     let result;
     if (p.operationId === 'ext.dev.aibo.pi.model') {
       if (p.input?.action === 'list') result = await rpc('get_available_models');
-      else if (p.input?.action === 'set' && p.input.provider && p.input.modelId) result = await rpc('set_model', { provider: p.input.provider, modelId: p.input.modelId });
+      else if (p.input?.action === 'set' && p.input.provider && p.input.modelId) {
+        session.model = { provider: p.input.provider, modelId: p.input.modelId };
+        result = await rpc('set_model', session.model); await updateRecovery();
+      }
       else fail('invalid_request', 'provider and modelId are required when selecting a model');
     } else if (p.operationId === 'ext.dev.aibo.pi.reasoning') {
       if (p.input?.action === 'list') result = await rpc('get_available_thinking_levels');
-      else if (p.input?.action === 'set' && p.input.level) result = await rpc('set_thinking_level', { level: p.input.level });
+      else if (p.input?.action === 'set' && p.input.level) {
+        session.thinkingLevel = p.input.level;
+        result = await rpc('set_thinking_level', { level: p.input.level }); await updateRecovery();
+      }
       else fail('invalid_request', 'level is required when selecting reasoning effort');
     } else if (p.operationId === 'ext.dev.aibo.pi.commands') result = await rpc('get_commands');
     else if (p.operationId === 'ext.dev.aibo.pi.queue') {

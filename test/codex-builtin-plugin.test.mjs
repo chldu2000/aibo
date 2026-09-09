@@ -42,6 +42,10 @@ test('bundled Codex plugin translates app-server lifecycle into Agent Runtime v1
   const operation = (operationId, input = {}) => request('operation.invoke', { agentId: scope.agentId, sessionId: scope.sessionId, operationId, input });
   assert.equal((await operation('ext.dev.aibo.codex.model', { action: 'set', reference: 'gpt-fake' })).output.current, 'gpt-fake');
   assert.equal((await operation('ext.dev.aibo.codex.reasoning', { action: 'set', level: 'high' })).output.current, 'high');
+  const recovery = messages.filter((message) => message.params?.type === 'session.info_changed').at(-1);
+  assert.deepEqual(recovery.params.payload.recovery.data, {
+    threadId: 'native-thread', model: 'gpt-fake', reasoningEffort: 'high',
+  });
   assert.equal((await operation('ext.dev.aibo.codex.skills')).output.skills[0].name, 'review');
   const configured = client.waitFor((message) => message.params?.type === 'turn.completed' && message.params.turnId === 'configured-turn');
   await request('turn.send', { agentId: scope.agentId, sessionId: scope.sessionId, turnId: 'configured-turn', input: { text: 'selected config', attachments: [] } });

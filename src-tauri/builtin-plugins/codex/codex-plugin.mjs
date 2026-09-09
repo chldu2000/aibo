@@ -21,6 +21,14 @@ const fail = (kind, message = kind) => { throw Object.assign(new Error(message),
 const emit = (type, payload, turnId = null, correlation = null) => write({ method: 'agent/event', params: {
   agentId, sessionId: session.id, nativeSessionId: session.threadId, turnId, type, correlation, payload,
 } });
+function recovery() {
+  return { schema: 'dev.aibo.codex.recovery', version: 1, data: {
+    threadId: session.threadId,
+    model: session.model,
+    reasoningEffort: session.reasoningEffort,
+  } };
+}
+function publishRecovery() { emit('session.info_changed', { recovery: recovery() }); }
 function render() {
   write({ method: 'view/render', params: { agentId, sessionId: session.id, document: {
     schema: 'aibo.plugin-view/v1', viewId: 'dev.aibo.codex.status', revision: ++session.revision,
@@ -122,8 +130,11 @@ async function handle({ id, method, params: p }) {
       threadId = result?.thread?.id;
     }
     if (!threadId) fail('invalid_session', 'Codex did not return a thread id');
-    session = { id: p.sessionId, threadId, cwd: p.workspace.path, model: null, reasoningEffort: null, revision: 0, turn: null };
-    respond(id, { kind: 'session', agentId, sessionId: session.id, nativeSessionId: threadId, recovery: { schema: 'dev.aibo.codex.recovery', version: 1, data: { threadId } } });
+    session = { id: p.sessionId, threadId, cwd: p.workspace.path,
+      model: typeof p.binding?.recovery?.data?.model === 'string' ? p.binding.recovery.data.model : null,
+      reasoningEffort: typeof p.binding?.recovery?.data?.reasoningEffort === 'string' ? p.binding.recovery.data.reasoningEffort : null,
+      revision: 0, turn: null };
+    respond(id, { kind: 'session', agentId, sessionId: session.id, nativeSessionId: threadId, recovery: recovery() });
     emit('session.started', { state: 'idle' }); render(); return;
   }
   if (!session || p.sessionId !== session.id) fail('invalid_session');
@@ -157,6 +168,7 @@ async function handle({ id, method, params: p }) {
     if (p.input?.action === 'set') {
       if (typeof p.input.reference !== 'string' || !p.input.reference.trim()) fail('invalid_request', 'reference is required when selecting a model');
       session.model = p.input.reference;
+      publishRecovery();
     } else if (p.input?.action !== 'list') fail('invalid_request', 'unknown model action');
     const result = await rpc('model/list', { limit: 100, includeHidden: false });
     respond(id, { kind: 'operation', operationId: p.operationId, output: { current: session.model, models: result?.data ?? [] } }); return;
@@ -165,6 +177,7 @@ async function handle({ id, method, params: p }) {
     if (p.input?.action === 'set') {
       if (typeof p.input.level !== 'string' || !p.input.level.trim()) fail('invalid_request', 'level is required when selecting reasoning effort');
       session.reasoningEffort = p.input.level;
+      publishRecovery();
     } else if (p.input?.action !== 'list') fail('invalid_request', 'unknown reasoning action');
     const result = await rpc('model/list', { limit: 100, includeHidden: false });
     const model = (result?.data ?? []).find((item) => item.model === session.model || item.id === session.model) ?? (result?.data ?? []).find((item) => item.isDefault) ?? null;

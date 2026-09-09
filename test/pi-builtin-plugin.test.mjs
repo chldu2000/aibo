@@ -31,6 +31,11 @@ test('bundled Pi plugin translates RPC lifecycle into Agent Runtime v1', async (
   const operation = (operationId, input = {}) => request('operation.invoke', { agentId: scope.agentId, sessionId: scope.sessionId, operationId, input });
   assert.equal((await operation('ext.dev.aibo.pi.model', { action: 'list' })).output.models[0].id, 'model-1');
   assert.deepEqual((await operation('ext.dev.aibo.pi.reasoning', { action: 'list' })).output.levels, ['off', 'high']);
+  await operation('ext.dev.aibo.pi.model', { action: 'set', provider: 'fake', modelId: 'model-1' });
+  await operation('ext.dev.aibo.pi.reasoning', { action: 'set', level: 'high' });
+  const recovery = messages.filter((message) => message.params?.type === 'session.info_changed').at(-1);
+  assert.deepEqual(recovery.params.payload.recovery.data.model, { provider: 'fake', modelId: 'model-1' });
+  assert.equal(recovery.params.payload.recovery.data.thinkingLevel, 'high');
   assert.equal((await operation('ext.dev.aibo.pi.commands')).output.commands[0].name, 'review');
   assert.equal((await operation('ext.dev.aibo.pi.queue', { action: 'steer', message: 'change direction' })).output.queued, 'change direction');
   assert.equal((await operation('ext.dev.aibo.pi.compact', { instructions: 'keep decisions' })).output.summary, 'keep decisions');
