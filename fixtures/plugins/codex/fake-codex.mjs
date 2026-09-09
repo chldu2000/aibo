@@ -19,7 +19,8 @@ input.on('line', (line) => {
   }
   const { id, method, params = {} } = request;
   if (method === 'initialize') write({ id, result: { userAgent: 'fake-codex/1.0.0' } });
-  else if (method === 'thread/start') write({ id, result: { thread: { id: 'native-thread' }, approvalPolicy: 'never', sandbox: { type: 'readOnly' } } });
+  else if (method === 'thread/start') write({ id, result: { thread: { id: process.env.CODEX_FAKE_THREAD_ID ?? 'native-thread' }, approvalPolicy: 'never', sandbox: { type: 'readOnly' } } });
+  else if (method === 'thread/resume' && process.env.CODEX_FAKE_MISSING_ROLLOUT === '1') write({ id, error: { code: -32600, message: `no rollout found for thread id ${params.threadId}` } });
   else if (method === 'thread/resume') write({ id, result: { thread: { id: params.threadId } } });
   else if (method === 'turn/start') {
     if (params.input?.[0]?.text === 'selected config' && (params.model !== 'gpt-fake' || params.reasoningEffort !== 'high')) {

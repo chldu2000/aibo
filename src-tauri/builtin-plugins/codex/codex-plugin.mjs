@@ -46,6 +46,24 @@ function rpc(method, params) {
   return new Promise((resolve, reject) => pending.set(id, { resolve, reject }));
 }
 function notify(method, params) { child.stdin.write(`${JSON.stringify({ jsonrpc: '2.0', method, params })}\n`); }
+function isMissingRolloutError(error) {
+  const message = error instanceof Error ? error.message : String(error);
+  const normalized = message.toLowerCase();
+  return normalized.includes('no rollout found')
+    || normalized.includes('thread not loaded')
+    || normalized.includes('thread not found');
+}
+async function startThread(cwd, approvalPolicy, sandbox) {
+  const result = await rpc('thread/start', {
+    cwd,
+    approvalPolicy,
+    sandbox,
+    serviceName: 'aibo_codex_plugin',
+  });
+  const threadId = result?.thread?.id;
+  if (!threadId) fail('invalid_session', 'Codex did not return a thread id');
+  return threadId;
+}
 function onCodex(message) {
   if (message.id !== undefined && pending.has(String(message.id))) {
     const request = pending.get(String(message.id)); pending.delete(String(message.id));
@@ -87,8 +105,16 @@ function onCodex(message) {
 }
 async function startCodex(cwd) {
   child = spawn('codex', ['app-server', '--stdio'], { cwd, stdio: ['pipe', 'pipe', 'pipe'] });
+  const startedChild = child;
   child.stderr.on('data', (chunk) => process.stderr.write(chunk));
-  child.on('exit', () => { for (const request of pending.values()) request.reject(new Error('Codex exited')); pending.clear(); });
+  child.on('exit', () => {
+    // A close followed immediately by resume can leave the old child exit
+    // notification queued after the replacement child has started. Only the
+    // current provider process may reject the current request set.
+    if (child !== startedChild) return;
+    for (const request of pending.values()) request.reject(new Error('Codex exited'));
+    pending.clear();
+  });
   childLines = readline.createInterface({ input: child.stdout, crlfDelay: Infinity });
   childLines.on('line', (line) => { try { onCodex(JSON.parse(line)); } catch (error) { process.stderr.write(`Invalid Codex frame: ${error}\n`); } });
   await rpc('initialize', { clientInfo: { name: 'aibo_codex_plugin', title: 'Aibo Codex Plugin', version: pluginVersion }, capabilities: { experimentalApi: true } });
@@ -131,13 +157,22 @@ async function handle({ id, method, params: p }) {
       const recovery = p.binding?.recovery;
       if (p.binding?.pluginId !== pluginId || recovery?.schema !== 'dev.aibo.codex.recovery' || recovery?.version !== 1 || typeof recovery.data?.threadId !== 'string') fail('invalid_recovery_data');
       threadId = recovery.data.threadId;
-      const result = await rpc('thread/resume', { threadId, approvalPolicy, sandbox });
-      threadId = result?.thread?.id ?? threadId;
+      try {
+        const result = await rpc('thread/resume', { threadId, approvalPolicy, sandbox });
+        threadId = result?.thread?.id ?? threadId;
+      } catch (error) {
+        // Codex creates the thread record before its first rollout. If Aibo
+        // restarts before the first turn, thread/resume cannot load that
+        // record and returns "no rollout found". Recreate the logical thread
+        // with the current profile; the host persists the new binding from
+        // this session response, while the selected model/reasoning values
+        // remain in the recovery payload below.
+        if (!isMissingRolloutError(error)) throw error;
+        threadId = await startThread(p.workspace.path, approvalPolicy, sandbox);
+      }
     } else {
-      const result = await rpc('thread/start', { cwd: p.workspace.path, approvalPolicy, sandbox, serviceName: 'aibo_codex_plugin' });
-      threadId = result?.thread?.id;
+      threadId = await startThread(p.workspace.path, approvalPolicy, sandbox);
     }
-    if (!threadId) fail('invalid_session', 'Codex did not return a thread id');
     session = { id: p.sessionId, threadId, cwd: p.workspace.path,
       model: typeof p.binding?.recovery?.data?.model === 'string' ? p.binding.recovery.data.model : null,
       reasoningEffort: typeof p.binding?.recovery?.data?.reasoningEffort === 'string' ? p.binding.recovery.data.reasoningEffort : null,

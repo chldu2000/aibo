@@ -63,3 +63,62 @@ test('bundled Codex plugin translates app-server lifecycle into Agent Runtime v1
   assert.equal((await operation('ext.dev.aibo.codex.user-input', { requestId: 'provider-input', answers: { choice: ['yes'] } })).output.resolved, true);
   await inputDone;
 });
+
+test('bundled Codex plugin recreates a thread whose first rollout was never materialized', async (t) => {
+  if (process.platform === 'win32') return t.skip('Windows command shim coverage is tracked separately');
+  const directory = await mkdtemp(path.join(tmpdir(), 'aibo-codex-plugin-recovery-'));
+  const fake = path.join(directory, 'codex');
+  await copyFile('fixtures/plugins/codex/fake-codex.mjs', fake);
+  await chmod(fake, 0o755);
+  const client = new JsonlProcess(process.execPath, ['src-tauri/builtin-plugins/codex/codex-plugin.mjs'], {
+    cwd: process.cwd(),
+    env: {
+      ...process.env,
+      PATH: `${directory}${path.delimiter}${process.env.PATH}`,
+      CODEX_FAKE_MISSING_ROLLOUT: '1',
+      CODEX_FAKE_THREAD_ID: 'replacement-thread',
+    },
+  }).start();
+  t.after(async () => { await client.close(); await rm(directory, { recursive: true, force: true }); });
+  const request = async (method, params) => (await client.requestMessage({ jsonrpc: '2.0', method, params })).result;
+  await request('aibo.initialize', {
+    runtimeInstanceId: 'runtime',
+    generationId: 'generation',
+    host: { appVersion: '0.1.0', platform: 'darwin-arm64', runtimeProtocolVersions: ['1.0'], viewProtocolVersions: ['1.0'] },
+    expectedPlugin: { pluginId: 'dev.aibo.codex', pluginVersion: '1.0.0' },
+    permissionGrants: [{ id: 'workspace.read', decision: 'granted', enforcement: 'agent-native', constraints: { roots: [directory] } }],
+  });
+  const scope = {
+    agentId: 'dev.aibo.codex.agent',
+    sessionId: 'recovery-session',
+    workspace: { workspaceId: 'workspace', trusted: true, path: directory },
+    executionProfile: { approvalPolicy: 'never', filesystemPolicy: 'danger-full-access' },
+  };
+  const created = await request('session.create', scope);
+  assert.equal(created.nativeSessionId, 'replacement-thread');
+  await request('session.close', { agentId: scope.agentId, sessionId: scope.sessionId });
+  const resumed = await request('session.resume', {
+    ...scope,
+    binding: {
+      pluginId: 'dev.aibo.codex',
+      recovery: {
+        schema: 'dev.aibo.codex.recovery',
+        version: 1,
+        data: { threadId: created.nativeSessionId, model: 'gpt-fake', reasoningEffort: 'high' },
+      },
+    },
+  });
+  assert.equal(resumed.nativeSessionId, 'replacement-thread');
+  assert.deepEqual(resumed.recovery.data, {
+    threadId: 'replacement-thread',
+    model: 'gpt-fake',
+    reasoningEffort: 'high',
+  });
+  const catalog = await request('operation.invoke', {
+    agentId: scope.agentId,
+    sessionId: scope.sessionId,
+    operationId: 'ext.dev.aibo.codex.model',
+    input: { action: 'list' },
+  });
+  assert.equal(catalog.output.models[0].id, 'gpt-fake');
+});
