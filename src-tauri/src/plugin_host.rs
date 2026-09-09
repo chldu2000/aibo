@@ -555,7 +555,7 @@ impl PluginHost {
                     let append = kind == "reasoning.updated";
                     let status = if kind == "reasoning.completed" { "completed" } else { "streaming" };
                     let message_id = format!("{turn}:reasoning:{item_id}");
-                    sqlx::query("INSERT INTO messages(id,session_id,turn_id,external_message_id,role,tool_name,content,status,sequence,created_at,updated_at) VALUES(?,?,?,?,'system','reasoning',?,?,?,?,?,?) ON CONFLICT(id) DO UPDATE SET content=CASE WHEN ?=1 THEN messages.content || excluded.content WHEN excluded.content='' THEN messages.content ELSE excluded.content END,status=excluded.status,updated_at=excluded.updated_at")
+                    sqlx::query("INSERT INTO messages(id,session_id,turn_id,external_message_id,role,tool_name,content,status,sequence,created_at,updated_at) VALUES(?,?,?,?,'system','reasoning',?,?,?,?,?) ON CONFLICT(id) DO UPDATE SET content=CASE WHEN ?=1 THEN messages.content || excluded.content WHEN excluded.content='' THEN messages.content ELSE excluded.content END,status=excluded.status,updated_at=excluded.updated_at")
                         .bind(message_id).bind(session_id).bind(turn).bind(item_id).bind(content).bind(status).bind(sequence).bind(&now).bind(&now).bind(if append { 1_i64 } else { 0_i64 })
                         .execute(&mut *tx).await.map_err(|e|e.to_string())?;
                 } else if kind.starts_with("tool.") {
@@ -755,6 +755,11 @@ mod tests {
         assert!(host.invoke_capability(&session.id, "goal.manage", json!({})).await.unwrap_err().contains("no operation"));
         assert!(host.invoke(&session.id, "dev.aibo.echo.tasks", "refresh", json!({})).await.unwrap_err().contains("input schema"));
         assert!(host.invoke(&session.id, "dev.aibo.echo.tasks", "missing", json!({})).await.unwrap_err().contains("undeclared view action"));
+        host.send(&session.id, "reasoning fixture").await.unwrap();
+        wait_turn(&db, &session.id, "completed").await;
+        let reasoning: (String, String) = sqlx::query_as("SELECT content,status FROM messages WHERE session_id=? AND role='system' AND tool_name='reasoning'")
+            .bind(&session.id).fetch_one(&db).await.unwrap();
+        assert_eq!(reasoning, ("Checking the fixture.".into(), "completed".into()));
         let version: String = sqlx::query_scalar("SELECT schema_version FROM agent_events WHERE session_id=? LIMIT 1").bind(&session.id).fetch_one(&db).await.unwrap();
         assert_eq!(version, "2.0");
         host.send(&session.id, &"cancel me ".repeat(100)).await.unwrap();

@@ -92,6 +92,10 @@ function handle({ id, method, params: p }) {
     const turn = { id: p.turnId, requestId: id, timer: null };
     session.turn = turn;
     respond({ kind: 'accepted', accepted: true }); event(session, 'turn.started', {}, turn); view(session);
+    if (p.input.text === 'reasoning fixture') {
+      event(session, 'reasoning.updated', { itemId: 'reasoning-fixture', delta: 'Checking the fixture.' }, turn);
+      event(session, 'reasoning.completed', { itemId: 'reasoning-fixture', summary: 'Checking the fixture.' }, turn);
+    }
     const chunks = Array.from(p.input.text);
     let offset = 0;
     const tick = () => {
