@@ -2713,37 +2713,8 @@ impl CodexManager {
         let fork_result = async {
             initialize_client(&fork_client).await?;
             let mut params = json!({ "threadId": source_thread_id });
-            if let Some(local_last_turn_id) = requested_last_turn.as_deref() {
-                // Plugin turns use an Aibo-owned ULID as their durable turn
-                // key. Resolve that key against the provider's ordered
-                // thread/read turns before sending thread/fork; passing the
-                // local ULID directly makes Codex return "turn not found".
-                let thread = fork_client
-                    .request(
-                        "thread/read",
-                        json!({ "threadId": source_thread_id, "includeTurns": true }),
-                    )
-                    .await?;
-                let provider_turn_ids = parse_thread_turn_ids(&thread)?;
-                let local_turn_ids: Vec<String> = sqlx::query_scalar(
-                    "SELECT external_turn_id FROM turns
-                     WHERE session_id = ? ORDER BY started_at ASC, id ASC",
-                )
-                .bind(session_id)
-                .fetch_all(&self.db)
-                .await?;
-                let local_index = local_turn_ids
-                    .iter()
-                    .position(|turn_id| turn_id == local_last_turn_id)
-                    .ok_or_else(|| {
-                        CodexError::Session("fork boundary turn is no longer available".to_owned())
-                    })?;
-                let provider_last_turn_id = provider_turn_ids.get(local_index).ok_or_else(|| {
-                    CodexError::Session(
-                        "Codex thread history does not contain the fork boundary".to_owned(),
-                    )
-                })?;
-                params["lastTurnId"] = json!(provider_last_turn_id);
+            if let Some(last_turn_id) = requested_last_turn.as_deref() {
+                params["lastTurnId"] = json!(last_turn_id);
             }
             let response = fork_client.request("thread/fork", params).await?;
             parse_forked_thread(&response)
@@ -2981,8 +2952,37 @@ impl CodexManager {
         let fork_result = async {
             initialize_client(&fork_client).await?;
             let mut params = json!({ "threadId": source_thread_id });
-            if let Some(last_turn_id) = requested_last_turn.as_deref() {
-                params["lastTurnId"] = json!(last_turn_id);
+            if let Some(local_last_turn_id) = requested_last_turn.as_deref() {
+                // Plugin turns use an Aibo-owned ULID as their durable turn
+                // key. Resolve that key against the provider's ordered
+                // thread/read turns before sending thread/fork; passing the
+                // local ULID directly makes Codex return "turn not found".
+                let thread = fork_client
+                    .request(
+                        "thread/read",
+                        json!({ "threadId": source_thread_id, "includeTurns": true }),
+                    )
+                    .await?;
+                let provider_turn_ids = parse_thread_turn_ids(&thread)?;
+                let local_turn_ids: Vec<String> = sqlx::query_scalar(
+                    "SELECT external_turn_id FROM turns
+                     WHERE session_id = ? ORDER BY started_at ASC, id ASC",
+                )
+                .bind(session_id)
+                .fetch_all(&self.db)
+                .await?;
+                let local_index = local_turn_ids
+                    .iter()
+                    .position(|turn_id| turn_id == local_last_turn_id)
+                    .ok_or_else(|| {
+                        CodexError::Session("fork boundary turn is no longer available".to_owned())
+                    })?;
+                let provider_last_turn_id = provider_turn_ids.get(local_index).ok_or_else(|| {
+                    CodexError::Session(
+                        "Codex thread history does not contain the fork boundary".to_owned(),
+                    )
+                })?;
+                params["lastTurnId"] = json!(provider_last_turn_id);
             }
             let response = fork_client.request("thread/fork", params).await?;
             parse_forked_thread(&response)
