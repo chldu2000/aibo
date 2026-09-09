@@ -11,6 +11,17 @@ const MAX_PACKAGE_BYTES: u64 = 256 * 1024 * 1024;
 
 #[derive(Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
+pub(crate) struct PluginDependencyDiagnostic {
+    pub kind: String,
+    pub name: String,
+    pub required: bool,
+    pub available: bool,
+    pub executable: Option<String>,
+    pub version_range: Option<String>,
+}
+
+#[derive(Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
 pub(crate) struct PluginInstallation {
     pub id: String,
     pub plugin_id: String,
@@ -18,7 +29,19 @@ pub(crate) struct PluginInstallation {
     pub package_digest: String,
     pub enabled: bool,
     pub installed: bool,
+    pub runnable: bool,
+    pub dependencies: Vec<PluginDependencyDiagnostic>,
     pub manifest: Value,
+}
+
+pub(crate) fn dependency_diagnostics(manifest: &Value) -> Vec<PluginDependencyDiagnostic> {
+    manifest["dependencies"].as_array().into_iter().flatten().map(|dependency| {
+        let name = dependency["name"].as_str().unwrap().to_owned();
+        let executable = crate::find_executable(&name).map(|path|path.to_string_lossy().into_owned());
+        PluginDependencyDiagnostic { kind: dependency["kind"].as_str().unwrap().to_owned(), name,
+            required: dependency["required"].as_bool().unwrap(), available: executable.is_some(), executable,
+            version_range: dependency["versionRange"].as_str().map(ToOwned::to_owned) }
+    }).collect()
 }
 
 pub(crate) fn platform() -> String {
@@ -113,10 +136,14 @@ pub(crate) fn inspect(root: &Path) -> Result<(Value, Vec<PathBuf>, String), Stri
 pub(crate) async fn list(db: &SqlitePool) -> Result<Vec<PluginInstallation>, String> {
     let rows = sqlx::query("SELECT id, plugin_id, plugin_version, package_digest, enabled, installed, manifest_json FROM plugin_installations ORDER BY created_at, id")
         .fetch_all(db).await.map_err(|e| e.to_string())?;
-    rows.into_iter().map(|row| Ok(PluginInstallation { id: row.get("id"), plugin_id: row.get("plugin_id"), plugin_version: row.get("plugin_version"),
-        package_digest: row.get("package_digest"), enabled: row.get::<i64, _>("enabled") != 0,
-        installed: row.get::<i64, _>("installed") != 0,
-        manifest: serde_json::from_str(row.get::<&str, _>("manifest_json")).map_err(io_error)? })).collect()
+    rows.into_iter().map(|row| {
+        let manifest: Value = serde_json::from_str(row.get::<&str, _>("manifest_json")).map_err(io_error)?;
+        let dependencies = dependency_diagnostics(&manifest);
+        let installed = row.get::<i64, _>("installed") != 0;
+        Ok(PluginInstallation { id: row.get("id"), plugin_id: row.get("plugin_id"), plugin_version: row.get("plugin_version"),
+            package_digest: row.get("package_digest"), enabled: row.get::<i64, _>("enabled") != 0, installed,
+            runnable: installed && dependencies.iter().all(|dependency|!dependency.required || dependency.available), dependencies, manifest })
+    }).collect()
 }
 
 pub(crate) async fn install(db: &SqlitePool, data_dir: &Path, source: &Path) -> Result<PluginInstallation, String> {
@@ -170,8 +197,10 @@ pub(crate) async fn install(db: &SqlitePool, data_dir: &Path, source: &Path) -> 
         Ok::<(), String>(())
     }.await;
     if let Err(error) = persist { let _ = fs::remove_dir_all(&staging); let _ = fs::remove_dir_all(&destination); return Err(error); }
+    let dependencies = dependency_diagnostics(&manifest);
+    let runnable = dependencies.iter().all(|dependency|!dependency.required || dependency.available);
     Ok(PluginInstallation { id, plugin_id: manifest["pluginId"].as_str().unwrap().into(), plugin_version: manifest["version"].as_str().unwrap().into(),
-        package_digest: expected_digest, enabled: false, installed: true, manifest })
+        package_digest: expected_digest, enabled: false, installed: true, runnable, dependencies, manifest })
 }
 
 pub(crate) async fn enable(db: &SqlitePool, id: &str, enabled: bool) -> Result<(), String> {
@@ -220,6 +249,20 @@ mod tests {
         for raw in ["../secret", "/etc/passwd", "C:/secret", "dir\\file", "a/../b", "./plugin.json", "a//b", "file:stream", "trailing."] {
             assert!(package_path(&root, raw).is_err(), "{raw}");
         }
+    }
+
+    #[test]
+    fn reports_required_and_optional_runtime_dependencies_without_executing_them() {
+        let manifest = serde_json::json!({"dependencies":[
+            {"kind":"runtime","name":"node","versionRange":">=22","required":true},
+            {"kind":"executable","name":"aibo-definitely-missing-agent-binary","required":false}
+        ]});
+        let diagnostics = dependency_diagnostics(&manifest);
+        assert_eq!(diagnostics.len(), 2);
+        assert!(diagnostics[0].required);
+        assert!(diagnostics[0].available, "Node is a test prerequisite");
+        assert!(!diagnostics[1].required);
+        assert!(!diagnostics[1].available);
     }
 
     #[tokio::test]

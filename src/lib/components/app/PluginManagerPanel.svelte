@@ -7,6 +7,8 @@
     pluginVersion: string;
     enabled: boolean;
     installed: boolean;
+    runnable: boolean;
+    dependencies: { kind: string; name: string; required: boolean; available: boolean; versionRange: string | null }[];
     manifest: { displayName: string; agents: { agentId: string; displayName: string }[] };
   };
 
@@ -51,13 +53,18 @@
               <CardContent>
                 <div class="plugin-details">
                   <p>{installation.pluginId} · {installation.pluginVersion}</p>
+                  {#each installation.dependencies as dependency (`${dependency.kind}:${dependency.name}`)}
+                    <p role={dependency.required && !dependency.available ? 'alert' : undefined}>
+                      {dependency.kind} · {dependency.name}{dependency.versionRange ? ` ${dependency.versionRange}` : ''} · {dependency.available ? '可用' : dependency.required ? '缺失（必需）' : '缺失（可选）'}
+                    </p>
+                  {/each}
                   <div class="plugin-actions">
                     {#if installation.installed}
                       <Button type="button" variant="outline" disabled={busy} onclick={() => onEnabledChange(installation.id, !installation.enabled)}>{installation.enabled ? '禁用插件' : '启用插件'}</Button>
                       <Button type="button" variant="outline" disabled={busy} onclick={() => onUninstall(installation.id)}>卸载插件</Button>
                     {/if}
                     {#each installation.manifest.agents as agent (agent.agentId)}
-                      <Button type="button" disabled={busy || !installation.installed || !installation.enabled} onclick={() => onCreateSession(installation.id, agent.agentId)}>新建 {agent.displayName} 会话</Button>
+                      <Button type="button" disabled={busy || !installation.installed || !installation.enabled || !installation.runnable} onclick={() => onCreateSession(installation.id, agent.agentId)}>新建 {agent.displayName} 会话</Button>
                     {/each}
                   </div>
                 </div>

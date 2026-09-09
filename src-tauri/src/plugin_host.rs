@@ -57,11 +57,16 @@ impl PluginHost {
         if agent["requestedPermissions"].as_array().unwrap().iter().any(|p|p["required"] == true) {
             return Err("capability_unsupported: required permission enforcement is unavailable".into());
         }
-        if manifest["dependencies"].as_array().is_some_and(|deps|deps.iter().any(|d|d["required"] == true)) {
-            return Err("dependency_missing: this host requires a self-contained plugin package".into());
+        let diagnostics = plugin_registry::dependency_diagnostics(&manifest);
+        if let Some(missing) = diagnostics.iter().find(|dependency|dependency.required && !dependency.available) {
+            return Err(format!("dependency_missing: required {} '{}' was not found", missing.kind, missing.name));
         }
-        let args: Vec<String> = manifest["entrypoint"]["args"].as_array().map(|args|args.iter().map(|a|a.as_str().unwrap().to_string()).collect()).unwrap_or_default();
-        let runtime = PluginRuntime::spawn(&directory.join(manifest["entrypoint"]["executable"].as_str().unwrap()), &args, &directory)?;
+        let mut args: Vec<String> = manifest["entrypoint"]["args"].as_array().map(|args|args.iter().map(|a|a.as_str().unwrap().to_string()).collect()).unwrap_or_default();
+        let entrypoint = directory.join(manifest["entrypoint"]["executable"].as_str().unwrap());
+        let command = diagnostics.iter().find(|dependency|dependency.kind == "runtime" && dependency.available)
+            .and_then(|dependency|dependency.executable.as_ref()).map(PathBuf::from);
+        let executable = if let Some(command) = command { args.insert(0, entrypoint.to_string_lossy().into_owned()); command } else { entrypoint };
+        let runtime = PluginRuntime::spawn(&executable, &args, &directory)?;
         let start_result = async {
             let grants: Vec<Value> = agent["requestedPermissions"].as_array().unwrap().iter().map(|p|json!({"id":p["id"],"decision":"denied","enforcement":"core-proxy","constraints":{}})).collect();
             let initialized = runtime.request("aibo.initialize", json!({"runtimeInstanceId":ulid::Ulid::new().to_string(),"generationId":runtime.generation_id,
@@ -347,12 +352,10 @@ mod tests {
         let package = root.join("external-package");
         fs::create_dir(&package).unwrap();
         let mut manifest: Value = serde_json::from_str(include_str!("../../fixtures/plugins/echo-agent/plugin.json")).unwrap();
-        let executable = if cfg!(windows) { "node.exe" } else { "node" };
-        fs::copy(crate::find_executable("node").expect("Node test prerequisite"), package.join(executable)).unwrap();
         fs::write(package.join("echo-agent.mjs"), include_str!("../../fixtures/plugins/echo-agent/echo-agent.mjs")).unwrap();
-        manifest["entrypoint"] = json!({"executable":executable,"args":["echo-agent.mjs"]});
+        manifest["entrypoint"] = json!({"executable":"echo-agent.mjs"});
         manifest["platforms"] = json!([plugin_registry::platform()]);
-        manifest["dependencies"] = json!([]);
+        manifest["dependencies"] = json!([{"kind":"runtime","name":"node","versionRange":">=22","required":true}]);
         manifest["resources"] = json!([]);
         manifest["agents"][0]["requestedPermissions"] = json!([]);
         fs::write(package.join("plugin.json"), manifest.to_string()).unwrap();
@@ -362,6 +365,8 @@ mod tests {
             .bind(root.to_string_lossy().as_ref()).bind(crate::now_iso()).bind(crate::now_iso()).execute(&db).await.unwrap();
         let installation = plugin_registry::install(&db, &data, &package).await.unwrap();
         assert!(!installation.enabled);
+        assert!(installation.runnable);
+        assert!(installation.dependencies[0].available);
         assert!(plugin_registry::install(&db, &data, &package).await.is_err(), "duplicate install must roll back");
         assert_eq!(plugin_registry::list(&db).await.unwrap().len(), 1);
         let host = PluginHost::new(db.clone());
