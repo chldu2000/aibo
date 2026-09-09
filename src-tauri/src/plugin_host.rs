@@ -537,13 +537,14 @@ impl PluginHost {
                 if state.as_deref() != Some("running") { return Err("invalid_session: event for inactive turn".into()); }
                 if kind == "message.delta" || kind == "message.completed" {
                     let text = p["payload"][if kind == "message.delta" {"delta"} else {"text"}].as_str().ok_or("invalid_request: message text")?;
-                    let id = format!("{turn}:assistant");
+                    let item_id = p["payload"]["itemId"].as_str().or_else(||p["correlation"]["itemId"].as_str()).filter(|value|!value.is_empty()).unwrap_or("assistant");
+                    let id = format!("{turn}:assistant:{item_id}");
                     if kind == "message.delta" {
-                        sqlx::query("INSERT INTO messages(id,session_id,turn_id,role,content,status,created_at,updated_at) VALUES(?,?,?,'assistant',?,'streaming',?,?) ON CONFLICT(id) DO UPDATE SET content=content || excluded.content,updated_at=excluded.updated_at")
-                            .bind(id).bind(session_id).bind(turn).bind(text).bind(&now).bind(&now).execute(&mut *tx).await.map_err(|e|e.to_string())?;
+                        sqlx::query("INSERT INTO messages(id,session_id,turn_id,external_message_id,role,content,status,sequence,created_at,updated_at) VALUES(?,?,?,?,'assistant',?,'streaming',?,?,?) ON CONFLICT(id) DO UPDATE SET content=content || excluded.content,updated_at=excluded.updated_at")
+                            .bind(id).bind(session_id).bind(turn).bind(item_id).bind(text).bind(sequence).bind(&now).bind(&now).execute(&mut *tx).await.map_err(|e|e.to_string())?;
                     } else {
-                        sqlx::query("INSERT INTO messages(id,session_id,turn_id,role,content,status,created_at,updated_at) VALUES(?,?,?,'assistant',?,'completed',?,?) ON CONFLICT(id) DO UPDATE SET content=excluded.content,status='completed',updated_at=excluded.updated_at")
-                            .bind(id).bind(session_id).bind(turn).bind(text).bind(&now).bind(&now).execute(&mut *tx).await.map_err(|e|e.to_string())?;
+                        sqlx::query("INSERT INTO messages(id,session_id,turn_id,external_message_id,role,content,status,sequence,created_at,updated_at) VALUES(?,?,?,?,'assistant',?,'completed',?,?,?) ON CONFLICT(id) DO UPDATE SET content=excluded.content,status='completed',updated_at=excluded.updated_at")
+                            .bind(id).bind(session_id).bind(turn).bind(item_id).bind(text).bind(sequence).bind(&now).bind(&now).execute(&mut *tx).await.map_err(|e|e.to_string())?;
                     }
                 } else if kind.starts_with("reasoning.") {
                     let item_id = p["payload"]["itemId"].as_str().filter(|value| !value.is_empty()).ok_or("invalid_request: reasoning item id")?;

@@ -117,7 +117,11 @@ function onCodex(message) {
   } else if (message.method === 'item/agentMessage/delta' && turn) {
     const delta = typeof p.delta === 'string' ? p.delta : '';
     if (p.itemId) turn.itemId = p.itemId;
-    if (delta) { turn.text += delta; emit('message.delta', { delta }, turn.id, { requestId: turn.requestId, itemId: turn.itemId }); }
+    if (delta) {
+      turn.text += delta;
+      if (turn.itemId) turn.itemTexts.set(turn.itemId, `${turn.itemTexts.get(turn.itemId) ?? ''}${delta}`);
+      emit('message.delta', { itemId: turn.itemId, delta }, turn.id, { requestId: turn.requestId, itemId: turn.itemId });
+    }
   } else if (message.method === 'item/reasoning/summaryTextDelta' && turn && typeof p.itemId === 'string' && typeof p.delta === 'string' && p.delta) {
     turn.reasoningItems.add(p.itemId);
     emit('reasoning.updated', { itemId: p.itemId, delta: boundedText(p.delta) }, turn.id, { requestId: turn.requestId, itemId: p.itemId });
@@ -131,12 +135,24 @@ function onCodex(message) {
     emit(tool.type, tool.payload, turn.id, { requestId: turn.requestId, itemId: tool.payload.itemId });
   } else if (message.method === 'item/completed' && turn && p.item?.type === 'agentMessage') {
     if (p.item?.id) turn.itemId = p.item.id;
-    if (typeof p.item.text === 'string') turn.finalText = p.item.text;
+    const text = typeof p.item.text === 'string' ? p.item.text : turn.itemTexts.get(p.item?.id) ?? '';
+    if (p.item?.id && text) {
+      turn.completedMessages.add(p.item.id);
+      emit('message.completed', { itemId: p.item.id, text }, turn.id, { requestId: turn.requestId, itemId: p.item.id });
+    }
   } else if (message.method === 'turn/completed' && turn) {
     const nativeStatus = p.turn?.status;
     const status = nativeStatus === 'completed' ? 'completed' : nativeStatus === 'interrupted' ? 'interrupted' : 'failed';
-    const text = turn.finalText || p.turn?.items?.filter((item) => item?.type === 'agentMessage').at(-1)?.text || turn.text;
-    if (text) emit('message.completed', { text }, turn.id, { requestId: turn.requestId, itemId: turn.itemId });
+    for (const item of p.turn?.items?.filter((candidate) => candidate?.type === 'agentMessage') ?? []) {
+      if (item.id && typeof item.text === 'string' && item.text && !turn.completedMessages.has(item.id)) {
+        turn.completedMessages.add(item.id);
+        emit('message.completed', { itemId: item.id, text: item.text }, turn.id, { requestId: turn.requestId, itemId: item.id });
+      }
+    }
+    if (turn.completedMessages.size === 0 && turn.text) {
+      const itemId = turn.itemId ?? `assistant-${turn.id}`;
+      emit('message.completed', { itemId, text: turn.text }, turn.id, { requestId: turn.requestId, itemId });
+    }
     emit(status === 'failed' ? 'turn.failed' : 'turn.completed', status === 'failed' ? { message: 'Codex turn failed' } : { status }, turn.id, { requestId: turn.requestId, itemId: null });
     session.turn = null; render();
   }
@@ -221,7 +237,7 @@ async function handle({ id, method, params: p }) {
   if (!session || p.sessionId !== session.id) fail('invalid_session');
   if (method === 'turn.send') {
     if (session.turn) fail('busy');
-    const turn = { id: p.turnId, requestId: id, nativeId: null, itemId: null, text: '', finalText: '', reasoningItems: new Set() };
+    const turn = { id: p.turnId, requestId: id, nativeId: null, itemId: null, text: '', reasoningItems: new Set(), itemTexts: new Map(), completedMessages: new Set() };
     session.turn = turn;
     const turnParams = { threadId: session.threadId, input: [{ type: 'text', text: p.input.text }], summary: 'auto' };
     if (session.model) turnParams.model = session.model;

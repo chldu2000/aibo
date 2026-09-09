@@ -34,6 +34,8 @@ input.on('line', (line) => {
     write({ id, result: { turn: { id: 'native-turn' } } });
     write({ method: 'turn/started', params: { threadId: params.threadId, turn: { id: 'native-turn', status: 'inProgress' } } });
     if (params.input[0].text === 'tool please') {
+      write({ method: 'item/agentMessage/delta', params: { threadId: params.threadId, turnId: 'native-turn', itemId: 'commentary-1', delta: 'I will inspect first.' } });
+      write({ method: 'item/completed', params: { threadId: params.threadId, turnId: 'native-turn', item: { id: 'commentary-1', type: 'agentMessage', text: 'I will inspect first.' } } });
       write({ method: 'item/started', params: { threadId: params.threadId, turnId: 'native-turn', item: { id: 'reasoning-1', type: 'reasoning', summary: [], status: 'inProgress' } } });
       write({ method: 'item/reasoning/summaryTextDelta', params: { threadId: params.threadId, turnId: 'native-turn', itemId: 'reasoning-1', summaryIndex: 0, delta: 'Checking the workspace.' } });
       write({ method: 'item/completed', params: { threadId: params.threadId, turnId: 'native-turn', item: { id: 'reasoning-1', type: 'reasoning', summary: ['Checking the workspace.'], status: 'completed' } } });
