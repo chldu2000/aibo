@@ -79,7 +79,7 @@ P4.7D 已开始实施生命周期与视图补全：插件安装记录现在保�
 
 P4.7C 已开始迁移内置 Agent：Codex 与 Pi 的首个随应用嵌入 Plugin Release 会在启动时幂等安装并启用，经统一 Registry、Supervisor 和 Runtime v1 路径分别启动 Codex app-server 与 Pi RPC，基础创建、流式文本、取消、关闭与 recovery binding 已由独立进程适配。Core 为每个固定 release/session 分配包外的持久 runtime data 目录，Pi session 文件不写入不可变插件包或 workspace。Codex 恢复遇到仅创建 thread、尚未产生 rollout 的会话时，会按当前执行 profile 创建 replacement thread 并更新 binding，避免重启或权限切换后模型目录不可读。Codex Goal、模型、推理强度、Skills、审批及用户输入已迁入 `goal.manage`、`model.select`、`model.reasoning`、`skill.list`、`approval.respond` 与 `user-input.respond`；模型和推理选择会写回版本化 recovery data 并传入后续 turn，交互请求则保留 Provider request ID 并经 Core 等待状态投影后响应。Pi 模型、推理强度、命令、队列、压缩和树读取已分别迁入 `model.select`、`model.reasoning`、`command.list`、`queue.manage`、`compaction.run` 与 `session.tree`，并由各自 Provider fixture 验证。统一 Session DTO 现携带 installation 与协商 capability，TypeScript 不再把 Agent 封闭为 Codex/Pi 联合类型；生产会话列表、发送、取消及队列入口已改为统一 API，第三方会话可进入主工作台。待发送附件会以仅含 `attachmentId` 的受控 Runtime 引用交给插件，并在 turn 被接受后固定到该 turn；第三方 Runtime 不会得到未授权路径或文件句柄。“新建 Codex / Pi”会选择已启用的内置 Agent contribution 并通过 `PluginHost` 创建。旧 Manager 仅保留历史兼容端点与尚未迁移的高级能力，需继续迁移树导航及变更投影后移除专用分派。
 
-Codex 插件集中修复后的 Pi 同类问题审计见 [Phase 4.7C Pi 插件审计](phase-4.7c-pi-plugin-fix-audit.md)。当前确认 Pi provider child 存在旧进程迟到退出污染新请求的代际竞态；多 assistant message 的身份和时间线顺序仍需以真实 Pi RPC 流验证并补齐 fixture。两项均纳入 P4.7C 完成前门禁。
+Codex 插件集中修复后的 Pi 同类问题审计见 [Phase 4.7C Pi 插件审计](phase-4.7c-pi-plugin-fix-audit.md)。P4.7C 明确要求插件版 Pi 与旧 SDK adapter 在用户可观察能力、安全 enforcement 和恢复语义上等价；当前 CLI RPC 插件以 `--no-tools --no-extensions --no-context-files --no-approve` 运行造成的工具、审批、事件、扩展和 snapshot 缺口均属于迁移未完成项。已确认的 provider child 代际竞态、多 assistant message 身份与时间线顺序也必须在 P4.7C 完成前关闭。
 
 ## 6. 验收门禁
 
