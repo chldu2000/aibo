@@ -4776,6 +4776,9 @@ async fn archive_session(
     state: State<'_, AppState>,
 ) -> Result<Session, CoreError> {
     let session = session_by_id(&state.db, &session_id).await?;
+    if session.plugin_installation_id.is_some() {
+        return state.plugins.archive(&session_id).await.map_err(CoreError::Initialization);
+    }
     match session.agent.as_str() {
         "codex" => state.codex.archive(&session_id).await.map_err(Into::into),
         "pi" => state.pi.archive(&session_id).await.map_err(Into::into),
@@ -4791,6 +4794,9 @@ async fn unarchive_session(
     state: State<'_, AppState>,
 ) -> Result<Session, CoreError> {
     let session = session_by_id(&state.db, &session_id).await?;
+    if session.plugin_installation_id.is_some() {
+        return state.plugins.unarchive(&session_id).await.map_err(CoreError::Initialization);
+    }
     match session.agent.as_str() {
         "codex" => state.codex.unarchive(&session_id).await.map_err(Into::into),
         "pi" => state.pi.unarchive(&session_id).await.map_err(Into::into),

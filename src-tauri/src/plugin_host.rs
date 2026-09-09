@@ -442,6 +442,30 @@ impl PluginHost {
         match close_error { Some(error) => Err(error), None => Ok(()) }
     }
 
+    pub async fn archive(&self, session_id: &str) -> Result<Session, String> {
+        let existing = crate::session_by_id(&self.db, session_id).await.map_err(|error|error.to_string())?;
+        if existing.plugin_installation_id.is_none() { return Err("invalid_session: session is not plugin-backed".into()); }
+        if existing.archived { return Ok(existing); }
+        if matches!(existing.state.as_str(), "starting" | "running" | "waiting_approval" | "waiting_user" | "compacting") {
+            return Err("busy: plugin session must be idle before it is archived".into());
+        }
+        self.close(session_id).await?;
+        sqlx::query("UPDATE sessions SET archived=1,state='closed',updated_at=? WHERE id=?")
+            .bind(crate::now_iso()).bind(session_id).execute(&self.db).await.map_err(|error|error.to_string())?;
+        crate::session_by_id(&self.db, session_id).await.map_err(|error|error.to_string())
+    }
+
+    pub async fn unarchive(&self, session_id: &str) -> Result<Session, String> {
+        let existing = crate::session_by_id(&self.db, session_id).await.map_err(|error|error.to_string())?;
+        if existing.plugin_installation_id.is_none() { return Err("invalid_session: session is not plugin-backed".into()); }
+        if !existing.archived { return Ok(existing); }
+        // Leave the runtime lazy. The next prompt resumes the pinned plugin
+        // binding, while the restored session is immediately selectable.
+        sqlx::query("UPDATE sessions SET archived=0,state='interrupted',updated_at=? WHERE id=?")
+            .bind(crate::now_iso()).bind(session_id).execute(&self.db).await.map_err(|error|error.to_string())?;
+        crate::session_by_id(&self.db, session_id).await.map_err(|error|error.to_string())
+    }
+
     pub async fn uninstall(&self, data_dir: &std::path::Path, installation_id: &str) -> Result<(), String> {
         let sessions: Vec<String> = sqlx::query_scalar("SELECT id FROM sessions WHERE plugin_installation_id=? AND state NOT IN ('closed','failed')")
             .bind(installation_id).fetch_all(&self.db).await.map_err(|e|e.to_string())?;
@@ -785,8 +809,15 @@ mod tests {
         restarted.send(&session.id, "after restart").await.unwrap();
         wait_turn(&db, &session.id, "completed").await;
         wait_session_state(&db, &session.id, "idle").await;
-        restarted.close(&session.id).await.unwrap();
+        let archived = restarted.archive(&session.id).await.unwrap();
+        assert!(archived.archived);
+        assert_eq!(archived.state, "closed");
         assert!(restarted.resume(&session.id).await.unwrap_err().contains("session is closed"));
+        let restored = restarted.unarchive(&session.id).await.unwrap();
+        assert!(!restored.archived);
+        assert_eq!(restored.state, "interrupted");
+        restarted.resume(&session.id).await.unwrap();
+        restarted.close(&session.id).await.unwrap();
         restarted.uninstall(&data, &installation.id).await.unwrap();
         let removed = plugin_registry::list(&db).await.unwrap();
         assert_eq!(removed.len(), 1);
