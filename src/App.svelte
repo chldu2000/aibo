@@ -1985,6 +1985,17 @@
   $effect(() => {
     const session = selectedSession;
     const enabled = desktop;
+    if (enabled && session && !session.archived && isSessionRunning(session)) {
+      // A plugin rejects model/skill operations while a turn is active. Keep
+      // the last catalog visible and invalidate any request that started
+      // before the turn state reached the UI instead of surfacing a busy
+      // error from that expected transition.
+      untrack(() => {
+        ++sessionModelRequestGeneration;
+        sessionModelCatalogLoading = false;
+      });
+      return;
+    }
     untrack(() => {
       ++sessionModelRequestGeneration;
       sessionModelCatalog = null;
@@ -1996,7 +2007,7 @@
 
   async function loadSessionModels(): Promise<void> {
     const session = selectedSession;
-    if (!desktop || !session || session.archived) return;
+    if (!desktop || !session || session.archived || isSessionRunning(session)) return;
     const generation = ++sessionModelRequestGeneration;
     sessionModelCatalogLoading = true;
     errorMessage = null;
