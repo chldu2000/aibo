@@ -123,6 +123,7 @@
     closeAgentSession,
     getPluginViews,
     invokePluginViewAction,
+    invokeAgentCapability,
     listenToAgentEvents,
     navigatePiSessionTree,
     probeAgents,
@@ -423,10 +424,8 @@
   let retryReason = $state<string | null>(null);
   let lastSubmittedPrompt = $state<string | null>(null);
   let settingsOpen = $state(false);
-  // P4.7B keeps external sessions out of the legacy Codex/Pi controllers.
-  type PluginSession = Omit<Session, 'agent'> & { agent: string };
-  const listSessions: typeof listAllSessions = async (...args) =>
-    (await listAllSessions(...args)).filter((session) => session.agent === 'codex' || session.agent === 'pi');
+  type PluginSession = Session;
+  const listSessions: typeof listAllSessions = listAllSessions;
   let pluginsOpen = $state(false);
   let pluginInstallations = $state<PluginInstallation[]>([]);
   let pluginSessions = $state<PluginSession[]>([]);
@@ -3015,12 +3014,9 @@
   const messageController = createMessageController({
     api: {
       createCodexSession,
-      sendCodexPrompt,
-      sendPiPrompt,
-      abortCodexTurn,
-      abortPiTurn,
-      steerPiPrompt,
-      followUpPiPrompt,
+      sendAgentPrompt,
+      cancelAgentTurn,
+      invokeAgentCapability,
       validateSessionAttachments,
     },
     getDesktop: () => desktop,

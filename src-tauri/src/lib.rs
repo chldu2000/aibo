@@ -143,6 +143,8 @@ pub struct Session {
     pub(crate) state: String,
     pub(crate) archived: bool,
     pub(crate) external_session_id: Option<String>,
+    pub(crate) plugin_installation_id: Option<String>,
+    pub(crate) capabilities: Vec<String>,
     pub(crate) created_at: String,
     pub(crate) updated_at: String,
 }
@@ -1421,6 +1423,9 @@ async fn open_workspace_location(
 }
 
 fn row_to_session(row: &sqlx::sqlite::SqliteRow) -> Result<Session, CoreError> {
+    let capabilities = row.try_get::<Option<String>, _>("plugin_capabilities_json")?
+        .and_then(|value| serde_json::from_str::<Vec<String>>(&value).ok())
+        .unwrap_or_default();
     Ok(Session {
         id: row.try_get("id")?,
         workspace_id: row.try_get("workspace_id")?,
@@ -1429,6 +1434,8 @@ fn row_to_session(row: &sqlx::sqlite::SqliteRow) -> Result<Session, CoreError> {
         state: row.try_get("state")?,
         archived: row.try_get::<i64, _>("archived")? != 0,
         external_session_id: row.try_get("external_session_id")?,
+        plugin_installation_id: row.try_get("plugin_installation_id")?,
+        capabilities,
         created_at: row.try_get("created_at")?,
         updated_at: row.try_get("updated_at")?,
     })
@@ -1520,7 +1527,8 @@ fn pi_snapshot_timeline(snapshot: &serde_json::Value, session_id: &str) -> Vec<T
 async fn session_by_id(db: &SqlitePool, id: &str) -> Result<Session, CoreError> {
     let row = sqlx::query(
         "SELECT s.id, s.workspace_id, s.agent, s.label, s.state, s.archived,
-                b.external_session_id, s.created_at, s.updated_at
+                b.external_session_id, s.plugin_installation_id, b.plugin_capabilities_json,
+                s.created_at, s.updated_at
          FROM sessions s
          LEFT JOIN session_bindings b ON b.session_id = s.id
          WHERE s.id = ?",
@@ -1690,7 +1698,8 @@ async fn list_sessions(
         .map(|value| format!("%{}%", value.to_lowercase()));
     let mut query_text = String::from(
         "SELECT s.id, s.workspace_id, s.agent, s.label, s.state, s.archived,
-                b.external_session_id, s.created_at, s.updated_at
+                b.external_session_id, s.plugin_installation_id, b.plugin_capabilities_json,
+                s.created_at, s.updated_at
          FROM sessions s
          LEFT JOIN session_bindings b ON b.session_id = s.id
          WHERE s.workspace_id = ?",

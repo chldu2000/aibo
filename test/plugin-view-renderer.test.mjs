@@ -29,9 +29,13 @@ test('plugin renderer remains a complete skin seam with no executable content si
   assert.match(contract, /PluginView: Component<UiPluginViewProps>/);
 });
 
-test('external sessions stay outside legacy provider controllers during the B transition', async () => {
+test('external sessions use the unified production session controller after the C transition', async () => {
   const app = await readFile(new URL('../src/App.svelte', import.meta.url), 'utf8');
-  assert.match(app, /const listSessions: typeof listAllSessions[\s\S]*?filter\(\(session\) => session\.agent === 'codex' \|\| session\.agent === 'pi'\)/);
+  assert.match(app, /const listSessions: typeof listAllSessions = listAllSessions/);
+  const controller = await readFile(new URL('../src/lib/app/message-controller.ts', import.meta.url), 'utf8');
+  assert.match(controller, /sendAgentPrompt/);
+  assert.match(controller, /cancelAgentTurn/);
+  assert.doesNotMatch(controller, /session\.agent === 'pi'/);
   assert.match(app, /pluginViewSessionId === pluginSessionId \? pluginViews : \[\]/, 'stale views must not display under a different session');
   assert.match(app, /if \(disposed\) return;/, 'disposed polling scopes must ignore late responses');
   assert.match(app, /Promise\.allSettled/, 'unavailable views must not prevent loading stored timeline history');

@@ -68,7 +68,7 @@ export interface AgentCommand {
 export type AgentStatus = 'ready' | 'missing' | 'error';
 
 export interface AgentDiagnostic {
-  agent: 'codex' | 'pi';
+  agent: string;
   label: string;
   status: AgentStatus;
   executable: string | null;
@@ -127,6 +127,8 @@ export interface Session {
   state: SessionState;
   archived: boolean;
   externalSessionId: string | null;
+  pluginInstallationId: string | null;
+  capabilities: string[];
   createdAt: string;
   updatedAt: string;
 }

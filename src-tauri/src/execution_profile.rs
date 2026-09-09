@@ -43,16 +43,16 @@ fn default_profile(agent: &str) -> ExecutionProfile {
     ExecutionProfile {
         schema: EXECUTION_PROFILE_SCHEMA.to_owned(),
         interaction_mode: "ask".to_owned(),
-        approval_policy: if agent == "pi" {
-            "never".to_owned()
-        } else {
+        approval_policy: if agent == "codex" {
             "untrusted".to_owned()
+        } else {
+            "never".to_owned()
         },
         filesystem_policy: "read-only".to_owned(),
-        command_policy: if agent == "pi" {
-            "disabled".to_owned()
-        } else {
+        command_policy: if agent == "codex" {
             "approved".to_owned()
+        } else {
+            "disabled".to_owned()
         },
         network_policy: "disabled".to_owned(),
         model: None,
@@ -61,10 +61,7 @@ fn default_profile(agent: &str) -> ExecutionProfile {
 }
 
 pub(crate) fn default_requested_profile(agent: &str) -> Result<ExecutionProfile, String> {
-    match agent {
-        "codex" | "pi" => Ok(default_profile(agent)),
-        other => Err(format!("unsupported agent: {other}")),
-    }
+    Ok(default_profile(agent))
 }
 
 fn validate_choice(field: &str, value: &str, choices: &[&str]) -> Result<(), String> {
@@ -183,7 +180,19 @@ pub(crate) fn resolve(
                 false,
             )
         }
-        other => return Err(format!("unsupported agent: {other}")),
+        _ => {
+            if requested.interaction_mode != "ask" || requested.approval_policy != "never"
+                || requested.filesystem_policy != "read-only" || requested.command_policy != "disabled"
+                || requested.network_policy != "disabled" {
+                unsupported.push("plugin.execution-profile-unnegotiated".to_owned());
+            }
+            enforced.interaction_mode = "ask".to_owned();
+            enforced.approval_policy = "never".to_owned();
+            enforced.filesystem_policy = "read-only".to_owned();
+            enforced.command_policy = "disabled".to_owned();
+            enforced.network_policy = "disabled".to_owned();
+            (Vec::new(), false)
+        },
     };
 
     Ok(ResolvedExecutionProfile {
@@ -332,6 +341,20 @@ mod tests {
         let pi = resolve("pi", None, "now".to_owned()).expect("Pi default");
         assert_eq!(pi.requested, default_requested_profile("pi").unwrap());
         assert_eq!(pi.enforced.approval_policy, "never");
+    }
+
+    #[test]
+    fn external_agents_receive_a_safe_generic_default_profile() {
+        let resolved = resolve("dev.example.agent", None, "now".to_owned()).expect("generic default");
+        assert_eq!(resolved.enforced.approval_policy, "never");
+        assert_eq!(resolved.enforced.filesystem_policy, "read-only");
+        assert_eq!(resolved.enforced.command_policy, "disabled");
+        assert!(resolved.adapter_capabilities.is_empty());
+        assert!(!resolved.native_sandbox);
+        let constrained = resolve("dev.example.agent", Some(editable_profile()), "now".to_owned()).expect("generic constrained profile");
+        assert_eq!(constrained.enforced.filesystem_policy, "read-only");
+        assert_eq!(constrained.enforced.command_policy, "disabled");
+        assert_eq!(constrained.unsupported, vec!["plugin.execution-profile-unnegotiated"]);
     }
 
     #[test]

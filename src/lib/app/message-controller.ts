@@ -5,12 +5,9 @@ import { upsertSession } from './session-transitions';
 export type MessageControllerContext = {
   api: {
     createCodexSession: (workspaceId: string) => Promise<Session>;
-    sendCodexPrompt: (sessionId: string, input: string) => Promise<Session>;
-    sendPiPrompt: (sessionId: string, input: string) => Promise<Session>;
-    abortCodexTurn: (sessionId: string) => Promise<void>;
-    abortPiTurn: (sessionId: string) => Promise<void>;
-    steerPiPrompt: (sessionId: string, input: string) => Promise<void>;
-    followUpPiPrompt: (sessionId: string, input: string) => Promise<void>;
+    sendAgentPrompt: (sessionId: string, input: string) => Promise<Session>;
+    cancelAgentTurn: (sessionId: string) => Promise<void>;
+    invokeAgentCapability: (sessionId: string, capability: string, input: Record<string, unknown>) => Promise<Record<string, unknown>>;
     validateSessionAttachments: (sessionId: string) => Promise<ContextAttachmentValidation[]>;
   };
   getDesktop: () => boolean;
@@ -114,9 +111,7 @@ export function createMessageController(context: MessageControllerContext) {
         context.setWorkspaceSessionMap(upsertSession(context.getWorkspaceSessionMap(), session));
         context.setSelectedSessionId(session.id);
       }
-      session = session.agent === 'pi'
-        ? await context.api.sendPiPrompt(session.id, requestInput)
-        : await context.api.sendCodexPrompt(session.id, requestInput);
+      session = await context.api.sendAgentPrompt(session.id, requestInput);
       context.setWorkspaceSessionMap(upsertSession(context.getWorkspaceSessionMap(), session));
       await Promise.all([context.refreshTimeline(session.id), context.refreshAttachments(session.id)]);
       context.setComposerText('');
@@ -148,8 +143,7 @@ export function createMessageController(context: MessageControllerContext) {
     context.setBusy(true);
     context.setErrorMessage(null);
     try {
-      if (session.agent === 'pi') await context.api.abortPiTurn(session.id);
-      else await context.api.abortCodexTurn(session.id);
+      await context.api.cancelAgentTurn(session.id);
       context.setPendingApprovals(
         context.getPendingApprovals().filter((approval) => approval.sessionId !== session.id),
       );
@@ -168,7 +162,7 @@ export function createMessageController(context: MessageControllerContext) {
   async function queuePiPrompt(mode: 'steer' | 'followUp'): Promise<void> {
     const input = context.getComposerText().trim();
     const session = context.getSelectedSession();
-    if (!input || !session || session.agent !== 'pi' || !context.getDesktop()) return;
+    if (!input || !session || !session.capabilities.includes('queue.manage') || !context.getDesktop()) return;
     const unsupported = unsupportedAttachmentPaths();
     if (unsupported.length > 0) {
       context.setErrorMessage(`当前 Agent 不支持图片上下文：${unsupported.join('、')}`);
@@ -184,8 +178,7 @@ export function createMessageController(context: MessageControllerContext) {
     context.setErrorMessage(null);
     const requestInput = withAttachmentContext(input);
     try {
-      if (mode === 'steer') await context.api.steerPiPrompt(session.id, requestInput);
-      else await context.api.followUpPiPrompt(session.id, requestInput);
+      await context.api.invokeAgentCapability(session.id, 'queue.manage', { action: mode, message: requestInput });
       await Promise.all([context.refreshTimeline(session.id), context.refreshAttachments(session.id)]);
       context.setComposerText('');
     } catch (error) {
