@@ -27,6 +27,8 @@ manifest 必须限定 Runtime/View 协议到 `1.0`，声明支持的平台、依
 4. Host 发送 `turn.send` / `turn.cancel`；插件以 `agent/event` 推送状态和流式输出。
 5. 关闭时 Host 发送 `session.close`，随后有界停止进程。Aibo 历史不会因关闭、卸载或缺失包被删除。
 
+`turn.send.input.attachments` 是本次 turn 中受控附件引用的数组。每项只包含 `attachmentId`；插件不得将它解释为主机路径、URL 或任意文件句柄。Host 只会在插件接受该 turn 后将这些引用固定到 turn，发送失败时它们仍保持待发送状态。需要文件内容时，请通过后续版本化的受控资源 capability 请求，不要把附件 ID 转换成未授权的本地文件访问。
+
 每条通知必须带当前 Aibo session ID、Agent ID、native session ID 和 turn ID（适用时）。旧 generation、跨会话消息、无效 schema、重复/倒退 view revision 与未协商 capability 会被拒绝，并会停止该 generation。
 
 恢复 data 必须是自描述、可版本化的 JSON。不要把 session 数据写进插件包；Host 通过 `executionProfile.runtimeDataPath` 提供 package 外的持久目录。升级影响后续会话；活动会话固定在原 release。卸载后历史仍可读取，恢复会提示安装兼容 release。

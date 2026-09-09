@@ -88,7 +88,7 @@ function handle({ id, method, params: p }) {
   if (method === 'turn.send') {
     if (session.turn) fail('busy');
     if (typeof p.turnId !== 'string' || !p.turnId || typeof p.input?.text !== 'string') fail('invalid_request');
-    if (p.input.attachments?.length) fail('capability_unsupported');
+    if (!Array.isArray(p.input.attachments) || p.input.attachments.some((attachment) => typeof attachment?.attachmentId !== 'string' || !attachment.attachmentId)) fail('invalid_request');
     const turn = { id: p.turnId, requestId: id, timer: null };
     session.turn = turn;
     respond({ kind: 'accepted', accepted: true }); event(session, 'turn.started', {}, turn); view(session);

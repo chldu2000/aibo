@@ -63,5 +63,5 @@ test('Echo rejects uninitialized calls, wrong releases, unsupported recovery and
   await assert.rejects(request('session.resume', { ...scope, binding: {} }), /invalid_recovery_data/);
   await request('session.create', scope);
   await assert.rejects(request('turn.cancel', { agentId, sessionId: 'another-session', turnId: 'one' }), /invalid_session/);
-  await assert.rejects(request('turn.send', { agentId, sessionId: scope.sessionId, turnId: 'one', input: { text: 'x', attachments: [{}] } }), /capability_unsupported/);
+  await assert.rejects(request('turn.send', { agentId, sessionId: scope.sessionId, turnId: 'one', input: { text: 'x', attachments: [{}] } }), /invalid_request/);
 });

@@ -159,6 +159,13 @@ impl PluginHost {
         let session = crate::session_by_id(&self.db, session_id).await.map_err(|e|e.to_string())?;
         let workspace = crate::workspace_by_id(&self.db, &session.workspace_id).await.map_err(|e|e.to_string())?;
         if workspace.trust != "trusted" { return Err("permission_denied: workspace trust was revoked".into()); }
+        let attachments: Vec<String> = sqlx::query_scalar(
+            "SELECT id FROM attachments WHERE session_id=? AND turn_id IS NULL ORDER BY created_at ASC",
+        )
+        .bind(session_id)
+        .fetch_all(&self.db)
+        .await
+        .map_err(|e| e.to_string())?;
         let turn = ulid::Ulid::new().to_string();
         let now = crate::now_iso();
         {
@@ -171,13 +178,29 @@ impl PluginHost {
                 .bind(ulid::Ulid::new().to_string()).bind(session_id).bind(&turn).bind(text).bind(&now).bind(&now).execute(&mut *tx).await.map_err(|e|e.to_string())?;
             tx.commit().await.map_err(|e|e.to_string())?;
         }
-        let result = runtime.request("turn.send", json!({"agentId":session.agent,"sessionId":session_id,"turnId":turn,"input":{"text":text,"attachments":[]}}), TIMEOUT).await;
+        let attachment_references: Vec<Value> = attachments
+            .iter()
+            .map(|attachment_id| json!({"attachmentId": attachment_id}))
+            .collect();
+        let result = runtime.request("turn.send", json!({"agentId":session.agent,"sessionId":session_id,"turnId":turn,"input":{"text":text,"attachments":attachment_references}}), TIMEOUT).await;
         if let Err(error) = result {
             runtime.stop().await;
             let _write_guard = self.database_writes.lock().await;
             sqlx::query("UPDATE turns SET status='failed',completed_at=? WHERE id=? AND status='running'").bind(crate::now_iso()).bind(&turn).execute(&self.db).await.map_err(|e|e.to_string())?;
             return Err(error);
         }
+        let _write_guard = self.database_writes.lock().await;
+        let mut transaction = self.db.begin().await.map_err(|e| e.to_string())?;
+        for attachment_id in attachments {
+            sqlx::query("UPDATE attachments SET turn_id=? WHERE id=? AND session_id=? AND turn_id IS NULL")
+                .bind(&turn)
+                .bind(attachment_id)
+                .bind(session_id)
+                .execute(&mut *transaction)
+                .await
+                .map_err(|e| e.to_string())?;
+        }
+        transaction.commit().await.map_err(|e| e.to_string())?;
         Ok(())
     }
 
@@ -431,7 +454,7 @@ mod tests {
                 if actual.as_deref() == Some(status) { break; }
                 tokio::time::sleep(Duration::from_millis(10)).await;
             }
-        }).await.expect("turn must reach expected terminal state");
+        }).await.unwrap_or_else(|_| panic!("turn must reach expected terminal state"));
     }
 
     async fn wait_session_state(db: &SqlitePool, session: &str, state: &str) {
@@ -473,8 +496,19 @@ mod tests {
         assert!(host.create("test", &installation.id, "dev.aibo.echo.agent").await.unwrap_err().contains("disabled"));
         plugin_registry::enable(&db, &installation.id, true).await.unwrap();
         let session = host.create("test", &installation.id, "dev.aibo.echo.agent").await.unwrap();
+        sqlx::query("INSERT INTO attachments(id,workspace_id,session_id,turn_id,path,content_hash,size,media_type,source,send_strategy,created_at) VALUES('attachment-1','test',?,NULL,'notes.md',NULL,5,'text/markdown','manual','reference',?)")
+            .bind(&session.id)
+            .bind(crate::now_iso())
+            .execute(&db)
+            .await
+            .unwrap();
         host.send(&session.id, "hello 你好 🌍\u{2028}plugin").await.unwrap();
         wait_turn(&db, &session.id, "completed").await;
+        let attachment_turn: Option<String> = sqlx::query_scalar("SELECT turn_id FROM attachments WHERE id='attachment-1'")
+            .fetch_one(&db)
+            .await
+            .unwrap();
+        assert!(attachment_turn.is_some(), "accepted plugin turns bind their attachment references");
         let state: String = sqlx::query_scalar("SELECT state FROM sessions WHERE id=?").bind(&session.id).fetch_one(&db).await.unwrap();
         assert_eq!(state, "idle");
         let text: String = sqlx::query_scalar("SELECT content FROM messages WHERE session_id=? AND role='assistant'").bind(&session.id).fetch_one(&db).await.unwrap();
