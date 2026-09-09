@@ -53,7 +53,38 @@ impl PluginHost {
         let state: Option<String> = sqlx::query_scalar("SELECT state FROM sessions WHERE id=?")
             .bind(session_id).fetch_optional(&self.db).await.map_err(|e| e.to_string())?;
         if state.as_deref() == Some("closed") { return Err("invalid_session: session is closed".into()); }
-        self.start(session_id, true).await
+        let can_recreate = self.can_recreate_empty_codex_session(session_id).await;
+        match self.start(session_id, true).await {
+            Ok(()) => Ok(()),
+            Err(_error) if can_recreate => {
+                // Older bundled Codex releases cannot recover a thread that
+                // was created before its first rollout. An empty session has
+                // no conversation history to lose, so retry it as a fresh
+                // logical thread. Sessions with any turn remain pinned to
+                // their binding and surface the real recovery failure.
+                self.start(session_id, false).await
+            }
+            Err(error) => Err(error),
+        }
+    }
+
+    async fn can_recreate_empty_codex_session(&self, session_id: &str) -> bool {
+        let row = sqlx::query(
+            "SELECT s.agent, p.plugin_id,
+                    EXISTS(SELECT 1 FROM turns t WHERE t.session_id=s.id) AS has_turns
+             FROM sessions s
+             JOIN plugin_installations p ON p.id=s.plugin_installation_id
+             WHERE s.id=?",
+        )
+        .bind(session_id)
+        .fetch_optional(&self.db)
+        .await;
+        let Ok(Some(row)) = row else { return false; };
+        empty_codex_session_recovery_allowed(
+            row.get::<String, _>("plugin_id").as_str(),
+            row.get::<String, _>("agent").as_str(),
+            row.get::<i64, _>("has_turns") != 0,
+        )
     }
 
     async fn start(&self, session_id: &str, resume: bool) -> Result<(), String> {
@@ -496,6 +527,10 @@ impl PluginHost {
     }
 }
 
+fn empty_codex_session_recovery_allowed(plugin_id: &str, agent_id: &str, has_turns: bool) -> bool {
+    plugin_id == "dev.aibo.codex" && agent_id == "dev.aibo.codex.agent" && !has_turns
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -506,6 +541,14 @@ mod tests {
         assert_eq!(event_capability("approval.requested"), Some("approval.respond"));
         assert_eq!(event_capability("user_input.resolved"), Some("user-input.respond"));
         assert_eq!(event_capability("message.delta"), None);
+    }
+
+    #[test]
+    fn only_empty_bundled_codex_sessions_can_be_recreated() {
+        assert!(empty_codex_session_recovery_allowed("dev.aibo.codex", "dev.aibo.codex.agent", false));
+        assert!(!empty_codex_session_recovery_allowed("dev.aibo.codex", "dev.aibo.codex.agent", true));
+        assert!(!empty_codex_session_recovery_allowed("dev.aibo.other", "dev.aibo.codex.agent", false));
+        assert!(!empty_codex_session_recovery_allowed("dev.aibo.codex", "dev.aibo.other.agent", false));
     }
 
     async fn wait_turn(db: &SqlitePool, session: &str, status: &str) {
