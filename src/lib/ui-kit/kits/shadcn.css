@@ -38,7 +38,7 @@
 }
 
 .app-shell[data-ui-kit='shadcn'] .timeline-entry.assistant-entry {
-  border: 1px solid transparent;
+  border-color: var(--border);
   background: transparent;
 }
 
