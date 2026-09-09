@@ -1956,6 +1956,13 @@
       errorMessage = '会话运行中不能切换权限，请等待当前回合结束。';
       return;
     }
+    // Changing a profile closes the plugin runtime. Any model catalog request
+    // started while the old runtime was open is expected to lose that race;
+    // invalidate it before closing so its rejection cannot surface as a user
+    // error after the profile update succeeds.
+    ++sessionModelRequestGeneration;
+    sessionModelCatalogLoading = false;
+    ++commandSearchGeneration;
     busy = true;
     errorMessage = null;
     try {
