@@ -4728,6 +4728,20 @@ async fn fork_codex_thread(
     through_turn_id: Option<String>,
     state: State<'_, AppState>,
 ) -> Result<Session, CoreError> {
+    let source = session_by_id(&state.db, &session_id).await?;
+    if source.plugin_installation_id.is_some() {
+        let forked = state
+            .codex
+            .fork_plugin_codex_session(&session_id, through_turn_id.as_deref())
+            .await
+            .map_err(CoreError::from)?;
+        state
+            .plugins
+            .resume(&forked.id)
+            .await
+            .map_err(CoreError::Initialization)?;
+        return session_by_id(&state.db, &forked.id).await;
+    }
     let source_profile = session_execution_profile(&state.db, &session_id).await?;
     let forked = state
         .codex

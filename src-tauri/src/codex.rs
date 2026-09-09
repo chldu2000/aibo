@@ -2838,6 +2838,257 @@ impl CodexManager {
             .map_err(|error| CodexError::Session(error.to_string()))
     }
 
+    /// Fork a Codex thread that is owned by the bundled Plugin Runtime.
+    ///
+    /// The provider operation is still the native `thread/fork` call, but the
+    /// resulting Aibo session must retain the plugin agent, installation and
+    /// recovery binding so that subsequent turns are routed through
+    /// `PluginHost` rather than the legacy Rust adapter.
+    pub(crate) async fn fork_plugin_codex_session(
+        &self,
+        session_id: &str,
+        through_turn_id: Option<&str>,
+    ) -> Result<super::Session, CodexError> {
+        let source = super::session_by_id(&self.db, session_id)
+            .await
+            .map_err(|error| CodexError::Session(error.to_string()))?;
+        if source.agent != "dev.aibo.codex.agent" {
+            return Err(CodexError::Session(
+                "session is not a bundled Codex plugin session".to_owned(),
+            ));
+        }
+        let plugin_id: String = sqlx::query_scalar(
+            "SELECT plugin_id FROM plugin_installations WHERE id = ?",
+        )
+        .bind(source.plugin_installation_id.as_deref())
+        .fetch_optional(&self.db)
+        .await?
+        .ok_or_else(|| CodexError::Session("Codex plugin installation is missing".to_owned()))?;
+        if plugin_id != "dev.aibo.codex" {
+            return Err(CodexError::Session(
+                "session is not a bundled Codex plugin session".to_owned(),
+            ));
+        }
+        if source.archived {
+            return Err(CodexError::Session(
+                "archived Codex sessions cannot be forked".to_owned(),
+            ));
+        }
+        if matches!(
+            source.state.as_str(),
+            "running" | "waiting_approval" | "waiting_user" | "compacting"
+        ) {
+            return Err(CodexError::Session(
+                "Codex session must be idle before it is forked".to_owned(),
+            ));
+        }
+
+        let binding_row = sqlx::query(
+            "SELECT external_session_id, adapter_version, plugin_binding_json,
+                    plugin_capabilities_json
+             FROM session_bindings WHERE session_id = ?",
+        )
+        .bind(session_id)
+        .fetch_optional(&self.db)
+        .await?
+        .ok_or_else(|| CodexError::Session("Codex session binding is missing".to_owned()))?;
+        let source_thread_id: String = binding_row
+            .try_get::<Option<String>, _>("external_session_id")?
+            .ok_or_else(|| CodexError::Session("Codex session has no thread id".to_owned()))?;
+        let source_plugin_binding: Value = serde_json::from_str(
+            binding_row
+                .try_get::<Option<String>, _>("plugin_binding_json")?
+                .as_deref()
+                .ok_or_else(|| CodexError::Session("Codex plugin recovery binding is missing".to_owned()))?,
+        )
+        .map_err(|_| CodexError::Session("Codex plugin recovery binding is invalid".to_owned()))?;
+
+        let requested_last_turn = if let Some(turn_id) = through_turn_id {
+            let external_turn_id: Option<String> = sqlx::query_scalar(
+                "SELECT external_turn_id FROM turns
+                 WHERE session_id = ? AND id = ? AND status = 'completed'",
+            )
+            .bind(session_id)
+            .bind(turn_id)
+            .fetch_optional(&self.db)
+            .await?;
+            let Some(external_turn_id) = external_turn_id else {
+                return Err(CodexError::Session(
+                    "fork boundary must reference a completed turn".to_owned(),
+                ));
+            };
+            Some(external_turn_id)
+        } else {
+            sqlx::query_scalar(
+                "SELECT external_turn_id FROM turns
+                 WHERE session_id = ? AND status = 'completed'
+                 ORDER BY started_at DESC, id DESC LIMIT 1",
+            )
+            .bind(session_id)
+            .fetch_optional(&self.db)
+            .await?
+        };
+
+        let workspace = workspace_by_id(&self.db, &source.workspace_id)
+            .await
+            .map_err(|error| CodexError::Session(error.to_string()))?;
+        let codex_path = find_executable("codex").ok_or(CodexError::MissingExecutable)?;
+        let fork_client = CodexClient::spawn(codex_path, Path::new(&workspace.path)).await?;
+        let fork_result = async {
+            initialize_client(&fork_client).await?;
+            let mut params = json!({ "threadId": source_thread_id });
+            if let Some(last_turn_id) = requested_last_turn.as_deref() {
+                params["lastTurnId"] = json!(last_turn_id);
+            }
+            let response = fork_client.request("thread/fork", params).await?;
+            parse_forked_thread(&response)
+        }
+        .await;
+        fork_client.close().await;
+        let (forked_thread_id, parent_thread_id) = fork_result?;
+        if forked_thread_id == source_thread_id {
+            return Err(CodexError::Protocol(
+                "thread/fork returned the source thread id".to_owned(),
+            ));
+        }
+        if let Some(parent_thread_id) = parent_thread_id.as_deref() {
+            matching_thread_id(&source_thread_id, parent_thread_id)?;
+        }
+
+        let new_session_id = Ulid::new().to_string();
+        let now = now_iso();
+        let label = format!("{} · 分支", source.label);
+        let parent_thread_id = parent_thread_id.unwrap_or_else(|| source_thread_id.clone());
+        let mut plugin_binding = source_plugin_binding;
+        plugin_binding["sessionId"] = json!(new_session_id);
+        plugin_binding["nativeSessionId"] = json!(forked_thread_id);
+        plugin_binding["createdAt"] = json!(now);
+        plugin_binding["updatedAt"] = json!(now);
+        plugin_binding["recovery"]["data"]["threadId"] = json!(forked_thread_id);
+        if !crate::plugin_contract::contracts().binding.is_valid(&plugin_binding) {
+            return Err(CodexError::Session(
+                "Codex plugin recovery binding is invalid".to_owned(),
+            ));
+        }
+
+        let mut transaction = self.db.begin().await?;
+        sqlx::query(
+            "INSERT INTO sessions
+             (id, workspace_id, agent, label, state, archived, created_at, updated_at,
+              plugin_installation_id)
+             VALUES (?, ?, ?, ?, 'starting', 0, ?, ?, ?)",
+        )
+        .bind(&new_session_id)
+        .bind(&source.workspace_id)
+        .bind(&source.agent)
+        .bind(&label)
+        .bind(&now)
+        .bind(&now)
+        .bind(source.plugin_installation_id.as_deref())
+        .execute(&mut *transaction)
+        .await?;
+        sqlx::query(
+            "INSERT INTO session_bindings
+             (session_id, external_session_id, generation_id, adapter_version,
+              parent_external_session_id, bound_at, plugin_binding_json,
+              plugin_capabilities_json)
+             VALUES (?, ?, NULL, ?, ?, ?, ?, ?)",
+        )
+        .bind(&new_session_id)
+        .bind(&forked_thread_id)
+        .bind(
+            binding_row
+                .try_get::<Option<String>, _>("adapter_version")?
+                .as_deref()
+                .unwrap_or("1.0"),
+        )
+        .bind(&parent_thread_id)
+        .bind(&now)
+        .bind(plugin_binding.to_string())
+        .bind(binding_row.try_get::<Option<String>, _>("plugin_capabilities_json")?)
+        .execute(&mut *transaction)
+        .await?;
+
+        let source_turns = sqlx::query(
+            "SELECT id, external_turn_id, status, input_text, output_text,
+                    started_at, completed_at
+             FROM turns WHERE session_id = ? ORDER BY started_at ASC, id ASC",
+        )
+        .bind(session_id)
+        .fetch_all(&mut *transaction)
+        .await?;
+        let mut turn_ids = HashMap::new();
+        for row in source_turns {
+            let old_id: String = row.try_get("id")?;
+            let external_turn_id: String = row.try_get("external_turn_id")?;
+            let new_id = Ulid::new().to_string();
+            turn_ids.insert(old_id, new_id.clone());
+            sqlx::query(
+                "INSERT INTO turns
+                 (id, session_id, external_turn_id, status, input_text, output_text,
+                  started_at, completed_at)
+                 VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+            )
+            .bind(&new_id)
+            .bind(&new_session_id)
+            .bind(&external_turn_id)
+            .bind(row.try_get::<String, _>("status")?)
+            .bind(row.try_get::<String, _>("input_text")?)
+            .bind(row.try_get::<String, _>("output_text")?)
+            .bind(row.try_get::<String, _>("started_at")?)
+            .bind(row.try_get::<Option<String>, _>("completed_at")?)
+            .execute(&mut *transaction)
+            .await?;
+            if requested_last_turn.as_deref() == Some(external_turn_id.as_str()) {
+                break;
+            }
+        }
+
+        let source_messages = sqlx::query(
+            "SELECT turn_id, external_message_id, role, tool_name, content, status,
+                    sequence, created_at, updated_at
+             FROM messages WHERE session_id = ?
+             ORDER BY created_at ASC, sequence ASC, id ASC",
+        )
+        .bind(session_id)
+        .fetch_all(&mut *transaction)
+        .await?;
+        for row in source_messages {
+            let old_turn_id = row.try_get::<Option<String>, _>("turn_id")?;
+            let new_turn_id = old_turn_id
+                .as_ref()
+                .and_then(|id| turn_ids.get(id))
+                .cloned();
+            if old_turn_id.is_some() && new_turn_id.is_none() {
+                continue;
+            }
+            sqlx::query(
+                "INSERT INTO messages
+                 (id, session_id, turn_id, external_message_id, role, tool_name, content,
+                  status, sequence, created_at, updated_at)
+                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            )
+            .bind(Ulid::new().to_string())
+            .bind(&new_session_id)
+            .bind(new_turn_id)
+            .bind(row.try_get::<Option<String>, _>("external_message_id")?)
+            .bind(row.try_get::<String, _>("role")?)
+            .bind(row.try_get::<Option<String>, _>("tool_name")?)
+            .bind(row.try_get::<String, _>("content")?)
+            .bind(row.try_get::<String, _>("status")?)
+            .bind(row.try_get::<i64, _>("sequence")?)
+            .bind(row.try_get::<String, _>("created_at")?)
+            .bind(row.try_get::<String, _>("updated_at")?)
+            .execute(&mut *transaction)
+            .await?;
+        }
+        transaction.commit().await?;
+
+        super::session_by_id(&self.db, &new_session_id)
+            .await
+            .map_err(|error| CodexError::Session(error.to_string()))
+    }
+
     async fn archive_without_remote_rollout(
         &self,
         session_id: &str,
