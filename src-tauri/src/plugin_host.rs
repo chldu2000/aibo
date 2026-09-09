@@ -91,8 +91,8 @@ impl PluginHost {
                 "runtimeProtocolVersion":"1.0","recovery":result["recovery"],"createdAt":now,"updatedAt":now});
             if !contracts().binding.is_valid(&binding) { return Err("invalid_recovery_data: invalid session response".into()); }
             let mut tx = self.db.begin().await.map_err(|e|e.to_string())?;
-            sqlx::query("INSERT INTO session_bindings(session_id,external_session_id,generation_id,adapter_version,bound_at,plugin_binding_json) VALUES(?,?,?,'1.0',?,?) ON CONFLICT(session_id) DO UPDATE SET external_session_id=excluded.external_session_id,generation_id=excluded.generation_id,plugin_binding_json=excluded.plugin_binding_json,bound_at=excluded.bound_at")
-                .bind(session_id).bind(result["nativeSessionId"].as_str()).bind(&runtime.generation_id).bind(&now).bind(binding.to_string()).execute(&mut *tx).await.map_err(|e|e.to_string())?;
+            sqlx::query("INSERT INTO session_bindings(session_id,external_session_id,generation_id,adapter_version,bound_at,plugin_binding_json,plugin_capabilities_json) VALUES(?,?,?,'1.0',?,?,?) ON CONFLICT(session_id) DO UPDATE SET external_session_id=excluded.external_session_id,generation_id=excluded.generation_id,plugin_binding_json=excluded.plugin_binding_json,plugin_capabilities_json=excluded.plugin_capabilities_json,bound_at=excluded.bound_at")
+                .bind(session_id).bind(result["nativeSessionId"].as_str()).bind(&runtime.generation_id).bind(&now).bind(binding.to_string()).bind(Value::Array(actual_caps.clone()).to_string()).execute(&mut *tx).await.map_err(|e|e.to_string())?;
             sqlx::query("UPDATE sessions SET state='idle',updated_at=? WHERE id=?").bind(&now).bind(session_id).execute(&mut *tx).await.map_err(|e|e.to_string())?;
             sqlx::query("INSERT INTO process_runs(id,session_id,agent,generation_id,state,started_at,plugin_installation_id,runtime_protocol_version) VALUES(?,?,?,?,'running',?,?,'1.0')")
                 .bind(ulid::Ulid::new().to_string()).bind(session_id).bind(&agent_id).bind(&runtime.generation_id).bind(&now).bind(row.get::<String,_>("plugin_installation_id")).execute(&mut *tx).await.map_err(|e|e.to_string())?;
@@ -162,6 +162,46 @@ impl PluginHost {
         Ok(())
     }
 
+    pub async fn invoke(&self, session_id: &str, view_id: &str, action_id: &str, input: Value) -> Result<Value, String> {
+        if !input.is_object() { return Err("invalid_request: operation input must be an object".into()); }
+        self.resume(session_id).await?;
+        let runtime = self.runtimes.lock().await.get(session_id).cloned().ok_or("invalid_session: runtime unavailable")?;
+        let row = sqlx::query("SELECT s.agent,s.state,b.generation_id,b.plugin_capabilities_json,p.manifest_json,v.generation_id AS view_generation,v.document_json FROM sessions s JOIN session_bindings b ON b.session_id=s.id JOIN plugin_installations p ON p.id=s.plugin_installation_id JOIN plugin_views v ON v.session_id=s.id WHERE s.id=? AND v.view_id=?")
+            .bind(session_id).bind(view_id).fetch_optional(&self.db).await.map_err(|e|e.to_string())?
+            .ok_or("invalid_request: view or plugin session not found")?;
+        if row.get::<String,_>("generation_id") != runtime.generation_id || row.get::<String,_>("view_generation") != runtime.generation_id {
+            return Err("invalid_session: stale view generation".into());
+        }
+        if row.get::<String,_>("state") == "running" { return Err("busy: session has an active turn".into()); }
+        let document: Value = serde_json::from_str(row.get::<&str,_>("document_json")).map_err(|_|"invalid_request: stored view")?;
+        let action = document["actions"].as_array().and_then(|actions|actions.iter().find(|action|action["id"] == action_id))
+            .ok_or("invalid_request: undeclared view action")?;
+        if action["confirmation"] != "never" { return Err("capability_unsupported: action confirmation is not implemented".into()); }
+        let operation_id = action["operationId"].as_str().ok_or("capability_unsupported: standard actions are not implemented")?;
+        let manifest: Value = serde_json::from_str(row.get::<&str,_>("manifest_json")).map_err(|_|"manifest_mismatch")?;
+        let agent_id: String = row.get("agent");
+        let agent = manifest["agents"].as_array().and_then(|agents|agents.iter().find(|agent|agent["agentId"] == agent_id))
+            .ok_or("manifest_mismatch: Agent contribution missing")?;
+        let operation = agent["operations"].as_array().and_then(|operations|operations.iter().find(|operation|operation["id"] == operation_id))
+            .ok_or("invalid_request: undeclared operation")?;
+        if action["capability"] != operation["capability"] || action["inputSchema"] != operation["inputSchema"] {
+            return Err("manifest_mismatch: view action contract differs from operation".into());
+        }
+        let capabilities: Value = serde_json::from_str(row.get::<&str,_>("plugin_capabilities_json")).map_err(|_|"manifest_mismatch: negotiated capabilities missing")?;
+        if !capabilities.as_array().is_some_and(|items|items.contains(&operation["capability"])) {
+            return Err("capability_unsupported: operation capability was not negotiated".into());
+        }
+        let input_validator = jsonschema::options().should_validate_formats(true).build(&operation["inputSchema"])
+            .map_err(|_|"manifest_mismatch: operation input schema")?;
+        if !input_validator.is_valid(&input) { return Err("invalid_request: operation input schema validation failed".into()); }
+        let result = runtime.request("operation.invoke", json!({"agentId":agent_id,"sessionId":session_id,"operationId":operation_id,"input":input}), TIMEOUT).await?;
+        if result["kind"] != "operation" || result["operationId"] != operation_id { runtime.stop().await; return Err("manifest_mismatch: operation response identity".into()); }
+        let output_validator = jsonschema::options().should_validate_formats(true).build(&operation["outputSchema"])
+            .map_err(|_|"manifest_mismatch: operation output schema")?;
+        if !output_validator.is_valid(&result["output"]) { runtime.stop().await; return Err("invalid_request: operation output schema validation failed".into()); }
+        Ok(result["output"].clone())
+    }
+
     pub async fn close(&self, session_id: &str) -> Result<(), String> {
         let _guard = self.lifecycle.lock().await;
         if let Some(runtime) = self.runtimes.lock().await.remove(session_id) { runtime.stop().await; }
@@ -199,14 +239,22 @@ impl PluginHost {
             let mut nodes = vec![&document["root"]];
             while let Some(node) = nodes.pop() {
                 if !ids.insert(node["id"].as_str().unwrap()) || ids.len() > 4096 { return Err("invalid_request: duplicate or excessive view nodes".into()); }
-                if node["props"].get("actionId").is_some() { return Err("capability_unsupported: interactive view actions".into()); }
+                if let Some(action_id) = node["props"].get("actionId") {
+                    if !document["actions"].as_array().unwrap().iter().any(|action|action["id"] == *action_id) { return Err("invalid_request: undeclared node action".into()); }
+                }
                 nodes.extend(node["children"].as_array().unwrap());
             }
             let previous: Option<(String, i64)> = sqlx::query_as("SELECT generation_id,revision FROM plugin_views WHERE session_id=? AND view_id=?").bind(session_id).bind(document["viewId"].as_str()).fetch_optional(&mut *tx).await.map_err(|e|e.to_string())?;
             let revision = document["revision"].as_i64().ok_or("invalid_request: revision")?;
             if previous.is_some_and(|(previous_generation, previous_revision)|previous_generation == generation && revision <= previous_revision) { return Err("invalid_request: stale view revision".into()); }
-            // B supports static semantic views. Bindings/actions need capability routing before activation.
-            if !document["actions"].as_array().unwrap().is_empty() || !document["bindings"].as_array().unwrap().is_empty() || !document["resources"].as_array().unwrap().is_empty() { return Err("capability_unsupported: dynamic view features".into()); }
+            for action in document["actions"].as_array().unwrap() {
+                let operation_id = action["operationId"].as_str().ok_or("capability_unsupported: standard view actions")?;
+                let declared = manifest["agents"].as_array().unwrap().iter().find(|agent|agent["agentId"] == binding["agentId"])
+                    .and_then(|agent|agent["operations"].as_array()).and_then(|operations|operations.iter().find(|operation|operation["id"] == operation_id))
+                    .ok_or("invalid_request: view action references undeclared operation")?;
+                if action["capability"] != declared["capability"] || action["inputSchema"] != declared["inputSchema"] { return Err("manifest_mismatch: view action contract".into()); }
+            }
+            if !document["resources"].as_array().unwrap().is_empty() { return Err("capability_unsupported: dynamic view resources".into()); }
             sqlx::query("INSERT INTO plugin_views(session_id,view_id,generation_id,revision,document_json) VALUES(?,?,?,?,?) ON CONFLICT(session_id,view_id) DO UPDATE SET generation_id=excluded.generation_id,revision=excluded.revision,document_json=excluded.document_json")
                 .bind(session_id).bind(document["viewId"].as_str()).bind(generation).bind(revision).bind(document.to_string()).execute(&mut *tx).await.map_err(|e|e.to_string())?;
         } else {
@@ -328,6 +376,10 @@ mod tests {
         assert_eq!(text, "hello 你好 🌍\u{2028}plugin");
         let views: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM plugin_views WHERE session_id=?").bind(&session.id).fetch_one(&db).await.unwrap();
         assert_eq!(views, 1);
+        let invoked = host.invoke(&session.id, "dev.aibo.echo.tasks", "refresh", json!({"label":"manual"})).await.unwrap();
+        assert_eq!(invoked, json!({"cursor":1}));
+        assert!(host.invoke(&session.id, "dev.aibo.echo.tasks", "refresh", json!({})).await.unwrap_err().contains("input schema"));
+        assert!(host.invoke(&session.id, "dev.aibo.echo.tasks", "missing", json!({})).await.unwrap_err().contains("undeclared view action"));
         let version: String = sqlx::query_scalar("SELECT schema_version FROM agent_events WHERE session_id=? LIMIT 1").bind(&session.id).fetch_one(&db).await.unwrap();
         assert_eq!(version, "2.0");
         host.send(&session.id, &"cancel me ".repeat(100)).await.unwrap();

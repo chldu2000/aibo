@@ -33,6 +33,7 @@ test('external Echo process creates, streams Unicode, renders, cancels and resum
   assert.equal((await completed).params.payload.status, 'completed');
   assert.equal(first.messages.filter((m) => m.params?.type === 'message.delta').map((m) => m.params.payload.delta).join(''), text);
   assert.ok(first.messages.some((m) => m.method === 'view/render' && m.params.document.root.type === 'panel'));
+  assert.deepEqual(await first.request('operation.invoke', { agentId, sessionId: scope.sessionId, operationId: 'ext.dev.aibo.echo.refresh', input: { label: 'manual' } }), { kind: 'operation', operationId: 'ext.dev.aibo.echo.refresh', output: { cursor: 1 } });
   const cancelled = first.client.waitFor((m) => m.params?.type === 'turn.completed' && m.params.turnId === 'two');
   await first.request('turn.send', { agentId, sessionId: scope.sessionId, turnId: 'two', input: { text: 'long '.repeat(100), attachments: [] } });
   await first.request('turn.cancel', { agentId, sessionId: scope.sessionId, turnId: 'two', reason: 'user' });

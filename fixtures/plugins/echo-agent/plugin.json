@@ -44,7 +44,8 @@
         "turn.send",
         "turn.cancel",
         "stream.text",
-        "view.standard"
+        "view.standard",
+        "ext.dev.aibo.echo.refresh"
       ],
       "requestedPermissions": [
         {
@@ -53,7 +54,24 @@
           "reason": "Shows the workspace label in diagnostics."
         }
       ],
-      "operations": [],
+      "operations": [
+        {
+          "id": "ext.dev.aibo.echo.refresh",
+          "capability": "ext.dev.aibo.echo.refresh",
+          "inputSchema": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["label"],
+            "properties": { "label": { "type": "string", "minLength": 1, "maxLength": 80 } }
+          },
+          "outputSchema": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["cursor"],
+            "properties": { "cursor": { "type": "integer", "minimum": 0 } }
+          }
+        }
+      ],
       "views": [
         {
           "viewId": "dev.aibo.echo.tasks",

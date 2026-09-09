@@ -122,6 +122,7 @@
     resumeAgentSession,
     closeAgentSession,
     getPluginViews,
+    invokePluginViewAction,
     listenToAgentEvents,
     navigatePiSessionTree,
     probeAgents,
@@ -506,6 +507,15 @@
   function pluginSessionOperation(operation: (sessionId: string) => Promise<void>): void {
     const id = pluginSessionId;
     if (id) void pluginOperation(() => operation(id));
+  }
+
+  async function invokePluginAction(viewId: string, actionId: string, input: Record<string, unknown>): Promise<void> {
+    const sessionId = pluginSessionId;
+    if (!sessionId) return;
+    await pluginOperation(async () => {
+      await invokePluginViewAction(sessionId, viewId, actionId, input);
+      if (pluginSessionId === sessionId) pluginViews = await getPluginViews(sessionId);
+    });
   }
 
   $effect(() => {
@@ -3188,7 +3198,7 @@
       onCancel={() => pluginSessionOperation(cancelAgentTurn)}
       onResume={() => pluginSessionOperation(resumeAgentSession)}
       onCloseSession={() => pluginSessionOperation(closeAgentSession)}
-      onViewAction={() => { pluginError = '当前宿主尚未支持此视图动作。'; }}
+      onViewAction={(viewId, actionId, input) => void invokePluginAction(viewId, actionId, input)}
       onClose={() => { pluginsOpen = false; }}
     />
     {:else if workspaceFileDiffPath !== null || workspaceFileDiff || workspaceFileDiffLoading || workspaceFileDiffError}

@@ -76,6 +76,7 @@ export const cancelAgentTurn = (sessionId: string): Promise<void> => invoke('can
 export const resumeAgentSession = (sessionId: string): Promise<void> => invoke('resume_agent_session', { sessionId });
 export const closeAgentSession = (sessionId: string): Promise<void> => invoke('close_agent_session', { sessionId });
 export const getPluginViews = (sessionId: string): Promise<UiPluginViewDocument[]> => invoke('get_plugin_views', { sessionId });
+export const invokePluginViewAction = (sessionId: string, viewId: string, actionId: string, input: Record<string, unknown>): Promise<Record<string, unknown>> => invoke('invoke_plugin_view_action', { sessionId, viewId, actionId, input });
 
 export const toggleWindowMaximize = (): Promise<void> => getCurrentWindow().toggleMaximize();
 

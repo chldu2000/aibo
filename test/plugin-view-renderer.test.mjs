@@ -52,6 +52,7 @@ test('App plugin controls forward every lifecycle callback and surface recoverab
     'resumeAgentSession',
     'closeAgentSession',
     'getPluginViews',
+    'invokePluginViewAction',
   ]) {
     assert.match(app, new RegExp(`\\b${callback}\\b`), `${callback} must be wired through App`);
   }
@@ -61,6 +62,7 @@ test('App plugin controls forward every lifecycle callback and surface recoverab
   assert.match(app, /onCancel=\{\(\) => pluginSessionOperation\(cancelAgentTurn\)\}/);
   assert.match(app, /onResume=\{\(\) => pluginSessionOperation\(resumeAgentSession\)\}/);
   assert.match(app, /onCloseSession=\{\(\) => pluginSessionOperation\(closeAgentSession\)\}/);
+  assert.match(app, /onViewAction=\{\(viewId, actionId, input\) => void invokePluginAction\(viewId, actionId, input\)\}/);
 
   assert.match(panel, /role="alert"/, 'plugin errors must be announced');
   assert.match(panel, /aria-label="插件消息"/, 'plugin timeline must remain readable');

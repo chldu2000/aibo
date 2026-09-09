@@ -1,7 +1,7 @@
 // Standalone protocol fixture: no Aibo imports, database, workspace or network access.
 const pluginId = 'dev.aibo.echo';
 const agentId = `${pluginId}.agent`;
-const capabilities = ['session.create', 'session.resume', 'session.close', 'turn.send', 'turn.cancel', 'stream.text', 'view.standard'];
+const capabilities = ['session.create', 'session.resume', 'session.close', 'turn.send', 'turn.cancel', 'stream.text', 'view.standard', 'ext.dev.aibo.echo.refresh'];
 const sessions = new Map();
 let initialized = false;
 const write = (message) => process.stdout.write(`${JSON.stringify({ jsonrpc: '2.0', ...message })}\n`);
@@ -14,10 +14,15 @@ function event(session, type, payload, turn = null) {
 function view(session) {
   write({ method: 'view/render', params: { agentId, sessionId: session.id, document: {
     schema: 'aibo.plugin-view/v1', viewId: 'dev.aibo.echo.tasks', revision: ++session.revision,
-    title: 'Echo tasks', data: {}, bindings: [], actions: [], resources: [],
+    title: 'Echo tasks', data: { cursor: `Completed turns: ${session.cursor}` },
+    bindings: [{ nodeId: 'cursor', property: 'text', dataPath: '/cursor' }],
+    actions: [{ id: 'refresh', capability: 'ext.dev.aibo.echo.refresh', operationId: 'ext.dev.aibo.echo.refresh',
+      inputSchema: { type: 'object', additionalProperties: false, required: ['label'], properties: { label: { type: 'string', minLength: 1, maxLength: 80 } } }, confirmation: 'never' }], resources: [],
     root: { id: 'tasks', type: 'panel', props: { title: 'Echo tasks' }, children: [
       { id: 'status', type: 'badge', props: { text: session.turn ? 'Running' : 'Ready', tone: 'info' }, children: [] },
       { id: 'cursor', type: 'text', props: { text: `Completed turns: ${session.cursor}` }, children: [] },
+      { id: 'label', type: 'form-field', props: { fieldId: 'label', label: 'Refresh label', value: 'manual' }, children: [] },
+      { id: 'refresh', type: 'button', props: { actionId: 'refresh', label: 'Refresh view' }, children: [] },
     ] },
   } } });
 }
@@ -98,6 +103,10 @@ function handle({ id, method, params: p }) {
       }
     };
     turn.timer = setTimeout(tick, 10); return;
+  }
+  if (method === 'operation.invoke') {
+    if (p.operationId !== 'ext.dev.aibo.echo.refresh' || typeof p.input?.label !== 'string' || !p.input.label) fail('invalid_request');
+    respond({ kind: 'operation', operationId: p.operationId, output: { cursor: session.cursor } }); view(session); return;
   }
   fail('capability_unsupported');
 }
