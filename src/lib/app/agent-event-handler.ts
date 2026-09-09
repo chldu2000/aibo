@@ -47,6 +47,9 @@ export function handleAgentEvent(event: AgentEvent, context: AgentEventHandlerCo
   if (event.type === 'message.delta') {
     context.setAgentActivity(event.sessionId, true, agentLabel(event, '正在生成回复…'));
   }
+  if (event.type === 'reasoning.updated') {
+    context.setAgentActivity(event.sessionId, true, agentLabel(event, '正在思考…'));
+  }
   if (event.type === 'tool.started' || event.type === 'tool.updated') {
     const tool = payloadString(event.payload.itemType) ?? payloadString(event.payload.toolName) ?? '工具';
     context.setAgentActivity(event.sessionId, true, agentLabel(event, `正在执行 ${tool}…`));
@@ -322,6 +325,28 @@ export function handleAgentEvent(event: AgentEvent, context: AgentEventHandlerCo
           updatedAt: event.occurredAt,
         },
       ]);
+    }
+  }
+
+  if (event.sessionId === selectedSessionId && (event.type === 'reasoning.updated' || event.type === 'reasoning.completed')) {
+    const externalMessageId = stringPayload(event.payload.itemId) ?? `reasoning:${event.eventId}`;
+    const delta = event.type === 'reasoning.updated' ? stringPayload(event.payload.delta) ?? '' : null;
+    const summary = event.type === 'reasoning.completed' ? stringPayload(event.payload.summary) : null;
+    const existing = context.timeline.find((item) => item.externalMessageId === externalMessageId);
+    if (existing) {
+      context.setTimeline(context.timeline.map((item) => item.id === existing.id ? {
+        ...item,
+        content: summary || (delta ? item.content + delta : item.content),
+        status: event.type === 'reasoning.completed' ? 'completed' : 'streaming',
+        updatedAt: event.occurredAt,
+      } : item));
+    } else if (delta || summary) {
+      context.setTimeline([...context.timeline, {
+        id: `live:${event.eventId}`, sessionId: event.sessionId, turnId: event.turnId,
+        externalMessageId, role: 'system', toolName: 'reasoning', entryType: null,
+        content: summary ?? delta ?? '', status: event.type === 'reasoning.completed' ? 'completed' : 'streaming',
+        createdAt: event.occurredAt, updatedAt: event.occurredAt,
+      }]);
     }
   }
 

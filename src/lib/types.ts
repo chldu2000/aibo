@@ -611,6 +611,8 @@ export interface AgentEvent {
     | 'turn.failed'
     | 'message.delta'
     | 'message.completed'
+    | 'reasoning.updated'
+    | 'reasoning.completed'
     | 'tool.started'
     | 'tool.updated'
     | 'tool.completed'

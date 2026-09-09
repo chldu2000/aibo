@@ -59,6 +59,9 @@ test('bundled Codex plugin translates app-server lifecycle into Agent Runtime v1
   assert.deepEqual(toolEvents.map((message) => message.params.type), ['tool.started', 'tool.updated', 'tool.completed']);
   assert.equal(toolEvents.at(-1).params.payload.itemId, 'command-1');
   assert.equal(toolEvents.at(-1).params.payload.output, 'tool output\n');
+  const reasoningEvents = messages.filter((message) => message.params?.turnId === 'tool-turn' && message.params?.type?.startsWith('reasoning.'));
+  assert.deepEqual(reasoningEvents.map((message) => message.params.type), ['reasoning.updated', 'reasoning.completed']);
+  assert.equal(reasoningEvents.at(-1).params.payload.summary, 'Checking the workspace.');
   const approval = client.waitFor((message) => message.params?.type === 'approval.requested');
   const approvalDone = client.waitFor((message) => message.params?.type === 'turn.completed' && message.params.turnId === 'approval-turn');
   await request('turn.send', { agentId: scope.agentId, sessionId: scope.sessionId, turnId: 'approval-turn', input: { text: 'approval please', attachments: [] } });

@@ -498,7 +498,7 @@ impl PluginHost {
                 "workspaceId":workspace_id,"sessionId":session_id,"nativeSessionId":p["nativeSessionId"],"turnId":p["turnId"],"type":p["type"],"correlation":p["correlation"],"payload":p["payload"],"rawRef":null});
             emitted_event = Some(event.clone());
             let kind = p["type"].as_str().unwrap();
-            if !["session.started","session.info_changed","turn.started","message.delta","message.completed","tool.started","tool.updated","tool.completed","turn.completed","turn.failed","approval.requested","approval.resolved","user_input.requested","user_input.resolved"].contains(&kind) {
+            if !["session.started","session.info_changed","turn.started","message.delta","message.completed","reasoning.updated","reasoning.completed","tool.started","tool.updated","tool.completed","turn.completed","turn.failed","approval.requested","approval.resolved","user_input.requested","user_input.resolved"].contains(&kind) {
                 return Err("capability_unsupported: event outside minimal lifecycle".into());
             }
             let negotiated: Value = serde_json::from_str(&active.1).map_err(|_|"manifest_mismatch: negotiated capabilities missing")?;
@@ -506,7 +506,7 @@ impl PluginHost {
                 return Err("capability_unsupported: event capability was not negotiated".into());
             }
             let turn_id = p["turnId"].as_str();
-            if (kind.starts_with("turn.") || kind.starts_with("message.") || kind.starts_with("tool.")) && turn_id.is_none() { return Err("invalid_session: turn identity required".into()); }
+            if (kind.starts_with("turn.") || kind.starts_with("message.") || kind.starts_with("reasoning.") || kind.starts_with("tool.")) && turn_id.is_none() { return Err("invalid_session: turn identity required".into()); }
             if kind == "session.info_changed" {
                 if turn_id.is_some() { return Err("invalid_session: recovery update cannot belong to a turn".into()); }
                 let previous: String = sqlx::query_scalar("SELECT plugin_binding_json FROM session_bindings WHERE session_id=?").bind(session_id).fetch_one(&mut *tx).await.map_err(|e|e.to_string())?;
@@ -529,6 +529,18 @@ impl PluginHost {
                         sqlx::query("INSERT INTO messages(id,session_id,turn_id,role,content,status,created_at,updated_at) VALUES(?,?,?,'assistant',?,'completed',?,?) ON CONFLICT(id) DO UPDATE SET content=excluded.content,status='completed',updated_at=excluded.updated_at")
                             .bind(id).bind(session_id).bind(turn).bind(text).bind(&now).bind(&now).execute(&mut *tx).await.map_err(|e|e.to_string())?;
                     }
+                } else if kind.starts_with("reasoning.") {
+                    let item_id = p["payload"]["itemId"].as_str().filter(|value| !value.is_empty()).ok_or("invalid_request: reasoning item id")?;
+                    let value = p["payload"][if kind == "reasoning.updated" { "delta" } else { "summary" }].as_str();
+                    let mut chars = value.unwrap_or_default().chars();
+                    let mut content: String = chars.by_ref().take(12_000).collect();
+                    if chars.next().is_some() { content.push('…'); }
+                    let append = kind == "reasoning.updated";
+                    let status = if kind == "reasoning.completed" { "completed" } else { "streaming" };
+                    let message_id = format!("{turn}:reasoning:{item_id}");
+                    sqlx::query("INSERT INTO messages(id,session_id,turn_id,external_message_id,role,tool_name,content,status,sequence,created_at,updated_at) VALUES(?,?,?,?,'system','reasoning',?,?,?,?,?,?) ON CONFLICT(id) DO UPDATE SET content=CASE WHEN ?=1 THEN messages.content || excluded.content WHEN excluded.content='' THEN messages.content ELSE excluded.content END,status=excluded.status,updated_at=excluded.updated_at")
+                        .bind(message_id).bind(session_id).bind(turn).bind(item_id).bind(content).bind(status).bind(sequence).bind(&now).bind(&now).bind(if append { 1_i64 } else { 0_i64 })
+                        .execute(&mut *tx).await.map_err(|e|e.to_string())?;
                 } else if kind.starts_with("tool.") {
                     let payload = &p["payload"];
                     let item_id = payload["itemId"].as_str().filter(|value| !value.is_empty()).ok_or("invalid_request: tool item id")?;
@@ -552,7 +564,7 @@ impl PluginHost {
                     let content = output.as_deref().or(delta.as_deref()).unwrap_or(&summary);
                     let append = kind == "tool.updated" && delta.is_some() && output.is_none();
                     let message_id = format!("{turn}:tool:{item_id}");
-                    sqlx::query("INSERT INTO messages(id,session_id,turn_id,external_message_id,role,tool_name,tool_command,tool_cwd,tool_exit_code,content,status,sequence,created_at,updated_at) VALUES(?,?,?,?,'tool',?,?,?,?,?,?,?,?,?) ON CONFLICT(id) DO UPDATE SET content=CASE WHEN ?=1 THEN messages.content || excluded.content ELSE excluded.content END,tool_name=excluded.tool_name,tool_command=COALESCE(excluded.tool_command,messages.tool_command),tool_cwd=COALESCE(excluded.tool_cwd,messages.tool_cwd),tool_exit_code=COALESCE(excluded.tool_exit_code,messages.tool_exit_code),status=excluded.status,sequence=excluded.sequence,updated_at=excluded.updated_at")
+                    sqlx::query("INSERT INTO messages(id,session_id,turn_id,external_message_id,role,tool_name,tool_command,tool_cwd,tool_exit_code,content,status,sequence,created_at,updated_at) VALUES(?,?,?,?,'tool',?,?,?,?,?,?,?,?,?) ON CONFLICT(id) DO UPDATE SET content=CASE WHEN ?=1 THEN messages.content || excluded.content ELSE excluded.content END,tool_name=excluded.tool_name,tool_command=COALESCE(excluded.tool_command,messages.tool_command),tool_cwd=COALESCE(excluded.tool_cwd,messages.tool_cwd),tool_exit_code=COALESCE(excluded.tool_exit_code,messages.tool_exit_code),status=excluded.status,updated_at=excluded.updated_at")
                         .bind(message_id).bind(session_id).bind(turn).bind(item_id).bind(item_type).bind(command).bind(cwd).bind(exit_code).bind(content).bind(status).bind(sequence).bind(&now).bind(&now).bind(if append { 1_i64 } else { 0_i64 })
                         .execute(&mut *tx).await.map_err(|e|e.to_string())?;
                 } else if kind == "approval.requested" || kind == "user_input.requested" {

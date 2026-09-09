@@ -303,7 +303,7 @@
               class={`timeline-entry ${item.role === 'assistant' ? 'assistant-entry' : item.role === 'user' ? 'user-entry' : item.role === 'tool' ? 'tool-entry' : item.role === 'system' ? 'system-entry' : ''}`}
             >
               <div class="entry-meta">
-                <Badge variant={item.role === 'assistant' ? 'secondary' : 'outline'}>{item.role === 'assistant' ? (sessionKind === 'pi' ? 'PI' : sessionKind === 'codex' ? 'CODEX' : 'AGENT') : item.role.toUpperCase()}</Badge>
+                <Badge variant={item.role === 'assistant' ? 'secondary' : 'outline'}>{item.role === 'assistant' ? (sessionKind === 'pi' ? 'PI' : sessionKind === 'codex' ? 'CODEX' : 'AGENT') : item.role === 'system' && item.toolName === 'reasoning' ? 'THINKING' : item.role.toUpperCase()}</Badge>
                 <div class="entry-meta-actions">
                   <Badge variant={item.status === 'failed' ? 'destructive' : item.status === 'queued' ? 'secondary' : 'outline'}>{statusLabel(item.status)}</Badge>
                   {#if sessionKind === 'codex' && !sessionArchived && item.turnId && forkBoundaryMessageIds.has(item.id)}

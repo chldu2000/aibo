@@ -23,6 +23,10 @@ input.on('line', (line) => {
   else if (method === 'thread/resume' && process.env.CODEX_FAKE_MISSING_ROLLOUT === '1') write({ id, error: { code: -32600, message: `no rollout found for thread id ${params.threadId}` } });
   else if (method === 'thread/resume') write({ id, result: { thread: { id: params.threadId } } });
   else if (method === 'turn/start') {
+    if (params.summary !== 'auto') {
+      write({ id, error: { code: -32000, message: 'reasoning summary was not requested' } });
+      return;
+    }
     if (params.input?.[0]?.text === 'selected config' && (params.model !== 'gpt-fake' || params.reasoningEffort !== 'high')) {
       write({ id, error: { code: -32000, message: 'selected model or reasoning effort missing' } });
       return;
@@ -30,6 +34,9 @@ input.on('line', (line) => {
     write({ id, result: { turn: { id: 'native-turn' } } });
     write({ method: 'turn/started', params: { threadId: params.threadId, turn: { id: 'native-turn', status: 'inProgress' } } });
     if (params.input[0].text === 'tool please') {
+      write({ method: 'item/started', params: { threadId: params.threadId, turnId: 'native-turn', item: { id: 'reasoning-1', type: 'reasoning', summary: [], status: 'inProgress' } } });
+      write({ method: 'item/reasoning/summaryTextDelta', params: { threadId: params.threadId, turnId: 'native-turn', itemId: 'reasoning-1', summaryIndex: 0, delta: 'Checking the workspace.' } });
+      write({ method: 'item/completed', params: { threadId: params.threadId, turnId: 'native-turn', item: { id: 'reasoning-1', type: 'reasoning', summary: ['Checking the workspace.'], status: 'completed' } } });
       write({ method: 'item/started', params: { threadId: params.threadId, turnId: 'native-turn', item: { id: 'command-1', type: 'commandExecution', status: 'inProgress', command: 'printf test', cwd: '/tmp' } } });
       write({ method: 'item/commandExecution/outputDelta', params: { threadId: params.threadId, turnId: 'native-turn', itemId: 'command-1', delta: 'tool output\n' } });
       write({ method: 'item/completed', params: { threadId: params.threadId, turnId: 'native-turn', item: { id: 'command-1', type: 'commandExecution', status: 'completed', command: 'printf test', cwd: '/tmp', aggregatedOutput: 'tool output\n', exitCode: 0 } } });

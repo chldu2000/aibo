@@ -118,6 +118,14 @@ function onCodex(message) {
     const delta = typeof p.delta === 'string' ? p.delta : '';
     if (p.itemId) turn.itemId = p.itemId;
     if (delta) { turn.text += delta; emit('message.delta', { delta }, turn.id, { requestId: turn.requestId, itemId: turn.itemId }); }
+  } else if (message.method === 'item/reasoning/summaryTextDelta' && turn && typeof p.itemId === 'string' && typeof p.delta === 'string' && p.delta) {
+    turn.reasoningItems.add(p.itemId);
+    emit('reasoning.updated', { itemId: p.itemId, delta: boundedText(p.delta) }, turn.id, { requestId: turn.requestId, itemId: p.itemId });
+  } else if (message.method === 'item/completed' && turn && p.item?.type === 'reasoning') {
+    const summary = Array.isArray(p.item.summary) ? boundedText(p.item.summary.filter((part) => typeof part === 'string').join('\n'), 12_000) : null;
+    if (summary || turn.reasoningItems.has(p.item.id)) {
+      emit('reasoning.completed', { itemId: p.item.id, summary }, turn.id, { requestId: turn.requestId, itemId: p.item.id });
+    }
   } else if (turn && toolProjection(message.method, p)) {
     const tool = toolProjection(message.method, p);
     emit(tool.type, tool.payload, turn.id, { requestId: turn.requestId, itemId: tool.payload.itemId });
@@ -213,9 +221,9 @@ async function handle({ id, method, params: p }) {
   if (!session || p.sessionId !== session.id) fail('invalid_session');
   if (method === 'turn.send') {
     if (session.turn) fail('busy');
-    const turn = { id: p.turnId, requestId: id, nativeId: null, itemId: null, text: '', finalText: '' };
+    const turn = { id: p.turnId, requestId: id, nativeId: null, itemId: null, text: '', finalText: '', reasoningItems: new Set() };
     session.turn = turn;
-    const turnParams = { threadId: session.threadId, input: [{ type: 'text', text: p.input.text }] };
+    const turnParams = { threadId: session.threadId, input: [{ type: 'text', text: p.input.text }], summary: 'auto' };
     if (session.model) turnParams.model = session.model;
     if (session.reasoningEffort) turnParams.reasoningEffort = session.reasoningEffort;
     const result = await rpc('turn/start', turnParams);
