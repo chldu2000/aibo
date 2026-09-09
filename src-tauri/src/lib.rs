@@ -5073,6 +5073,15 @@ async fn get_session_models(
     state: State<'_, AppState>,
 ) -> Result<SessionModelCatalog, CoreError> {
     let session = session_by_id(&state.db, &session_id).await?;
+    if session.plugin_installation_id.is_some() {
+        let models = state.plugins.invoke_capability(&session_id, "model.select", serde_json::json!({"action":"list"})).await
+            .map_err(CoreError::Initialization)?;
+        let reasoning = if session.capabilities.iter().any(|capability|capability == "model.reasoning") {
+            Some(state.plugins.invoke_capability(&session_id, "model.reasoning", serde_json::json!({"action":"list"})).await
+                .map_err(CoreError::Initialization)?)
+        } else { None };
+        return plugin_model_catalog(&models, reasoning.as_ref());
+    }
     match session.agent.as_str() {
         "codex" => state
             .codex
@@ -5084,6 +5093,35 @@ async fn get_session_models(
             "unsupported session agent: {agent}"
         ))),
     }
+}
+
+fn plugin_model_catalog(result: &serde_json::Value, reasoning: Option<&serde_json::Value>) -> Result<SessionModelCatalog, CoreError> {
+    let raw_models = result.get("models").and_then(serde_json::Value::as_array)
+        .ok_or_else(|| CoreError::Initialization("plugin model catalog did not return models".to_owned()))?;
+    let models = raw_models.iter().filter_map(|item| {
+        let provider = item.get("provider").and_then(serde_json::Value::as_str).map(ToOwned::to_owned);
+        let id = item.get("id").and_then(serde_json::Value::as_str)
+            .or_else(|| item.get("modelId").and_then(serde_json::Value::as_str))
+            .or_else(|| item.get("model").and_then(serde_json::Value::as_str))?.to_owned();
+        let reference = item.get("reference").and_then(serde_json::Value::as_str).map(ToOwned::to_owned)
+            .unwrap_or_else(|| provider.as_ref().map(|provider|format!("{provider}/{id}")).unwrap_or_else(||id.clone()));
+        let reasoning_efforts = item.get("supportedReasoningEfforts").or_else(||item.get("reasoningEfforts"))
+            .and_then(serde_json::Value::as_array).into_iter().flatten().filter_map(|effort| {
+                let id = effort.as_str().or_else(||effort.get("reasoningEffort").and_then(serde_json::Value::as_str)).or_else(||effort.get("id").and_then(serde_json::Value::as_str))?.to_owned();
+                Some(SessionReasoningOption { label: effort.get("label").and_then(serde_json::Value::as_str).unwrap_or(&id).to_owned(), description: effort.get("description").and_then(serde_json::Value::as_str).map(ToOwned::to_owned), id })
+            }).collect();
+        Some(SessionModelOption { label: item.get("displayName").or_else(||item.get("name")).and_then(serde_json::Value::as_str).unwrap_or(&reference).to_owned(),
+            description: item.get("description").and_then(serde_json::Value::as_str).map(ToOwned::to_owned), is_default: item.get("isDefault").and_then(serde_json::Value::as_bool).unwrap_or(false),
+            default_reasoning_effort: item.get("defaultReasoningEffort").and_then(serde_json::Value::as_str).map(ToOwned::to_owned), reference, provider, id, reasoning_efforts })
+    }).collect::<Vec<_>>();
+    let current_reference = result.get("current").and_then(serde_json::Value::as_str);
+    let current = current_reference.and_then(|reference|models.iter().find(|model|model.reference == reference || model.id == reference).cloned());
+    let current_reasoning_effort = reasoning.and_then(|value|value.get("current")).and_then(serde_json::Value::as_str).map(ToOwned::to_owned);
+    let reasoning_efforts = reasoning.and_then(|value|value.get("levels")).and_then(serde_json::Value::as_array).into_iter().flatten().filter_map(|level| {
+        let id = level.as_str().or_else(||level.get("id").and_then(serde_json::Value::as_str)).or_else(||level.get("reasoningEffort").and_then(serde_json::Value::as_str))?.to_owned();
+        Some(SessionReasoningOption { label: level.get("label").and_then(serde_json::Value::as_str).unwrap_or(&id).to_owned(), description: level.get("description").and_then(serde_json::Value::as_str).map(ToOwned::to_owned), id })
+    }).collect::<Vec<_>>();
+    Ok(SessionModelCatalog { current, models, current_reasoning_effort, reasoning_efforts })
 }
 
 #[tauri::command]
@@ -5649,7 +5687,7 @@ mod tests {
         auto_name_session_from_first_message, bind_pending_attachments_to_turn,
         canonical_workspace_path, clone_cached_runtime, collect_workspace_capabilities,
         find_executable, mark_turn_interrupted, normalize_session_filter, now_iso, open_database,
-        persist_restore_operation, pi_snapshot_timeline, recover_interrupted_sessions,
+        persist_restore_operation, pi_snapshot_timeline, plugin_model_catalog, recover_interrupted_sessions,
         recover_interrupted_turn_changes, remove_cached_runtime, require_trusted_workspace,
         restore_git_file_baseline, session_execution_profile, session_label_from_first_message,
         workspace_label, CoreError, SessionListFilter, TurnDiffSources, Workspace,
@@ -6705,5 +6743,28 @@ mod tests {
         assert_eq!(timeline[3].content, "selected branch");
         assert!(timeline.iter().all(|item| item.id != "assistant-tool-call"));
         assert!(timeline.iter().all(|item| item.id != "assistant-other"));
+    }
+
+    #[test]
+    fn plugin_model_catalog_normalizes_provider_and_reasoning_shapes() {
+        let catalog = plugin_model_catalog(
+            &serde_json::json!({
+                "current": "openai/gpt-5",
+                "models": [{
+                    "provider": "openai",
+                    "id": "gpt-5",
+                    "displayName": "GPT-5",
+                    "isDefault": true,
+                    "supportedReasoningEfforts": ["low", {"id": "high", "label": "High"}]
+                }]
+            }),
+            Some(&serde_json::json!({"current": "high", "levels": ["low", "high"]})),
+        )
+        .expect("normalize plugin model catalog");
+
+        assert_eq!(catalog.current.as_ref().map(|model| model.reference.as_str()), Some("openai/gpt-5"));
+        assert_eq!(catalog.models[0].reasoning_efforts[1].label, "High");
+        assert_eq!(catalog.current_reasoning_effort.as_deref(), Some("high"));
+        assert_eq!(catalog.reasoning_efforts.len(), 2);
     }
 }
