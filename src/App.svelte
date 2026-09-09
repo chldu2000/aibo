@@ -2707,7 +2707,7 @@
   }
 
   function openPiTree(): void {
-    if (!selectedSession || selectedSession.agent !== 'pi') return;
+    if (!selectedSession || (selectedSession.agent !== 'pi' && !selectedSession.capabilities.includes('session.tree'))) return;
     piTreeOpen = true;
     void refreshPiTree(selectedSession.id);
   }
@@ -2815,6 +2815,7 @@
       readCodexThread,
       getTimeline,
       getPiSessionTree,
+      invokeAgentCapability,
       getSessionExecutionProfile,
       getTurnChangeSet,
       listRestoreOperations,
@@ -3113,7 +3114,7 @@
   });
 
   const piTreeController = createPiTreeController({
-    api: { navigatePiSessionTree, getTimeline },
+    api: { navigatePiSessionTree, invokeAgentCapability, getTimeline },
     getDesktop: () => desktop,
     getSelectedSession: () => selectedSession,
     getSelectedSessionId: () => selectedSessionId,
@@ -3451,7 +3452,7 @@
     onClose={() => (commandPaletteOpen = false)}
   />
   <PiSessionTreeOverlay
-    open={piTreeOpen && selectedSession?.agent === 'pi'}
+    open={piTreeOpen && (selectedSession?.agent === 'pi' || selectedSession?.capabilities.includes('session.tree'))}
     session={selectedSession}
     tree={piTree?.sessionId === selectedSessionId ? piTree : null}
     {busy}

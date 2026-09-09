@@ -21,4 +21,5 @@ input.on('line', (line) => {
   else if (request.type === 'clear_queue') write({ id: request.id, type: 'response', command: request.type, success: true, data: { steering: [], followUp: [] } });
   else if (request.type === 'compact') write({ id: request.id, type: 'response', command: request.type, success: true, data: { summary: request.customInstructions ?? 'compact' } });
   else if (request.type === 'get_tree') write({ id: request.id, type: 'response', command: request.type, success: true, data: { tree: [], leafId: null } });
+  else if (request.type === 'navigate_tree') write({ id: request.id, type: 'response', command: request.type, success: true, data: { cancelled: false, editorText: null, tree: [], leafId: request.entryId } });
 });

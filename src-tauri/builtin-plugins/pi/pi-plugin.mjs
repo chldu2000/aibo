@@ -159,7 +159,14 @@ async function handle({ id, method, params: p }) {
       else if (p.input?.action === 'followUp' && p.input.message) result = await rpc('follow_up', { message: p.input.message });
       else fail('invalid_request', 'message is required when adding to the queue');
     } else if (p.operationId === 'ext.dev.aibo.pi.compact') result = await rpc('compact', { customInstructions: p.input?.instructions || undefined });
-    else if (p.operationId === 'ext.dev.aibo.pi.tree') result = await rpc('get_tree');
+    else if (p.operationId === 'ext.dev.aibo.pi.tree') {
+      if (p.input?.action === 'get') result = await rpc('get_tree');
+      else if (p.input?.action === 'navigate' && p.input.entryId) result = await rpc('navigate_tree', {
+        entryId: p.input.entryId, summarize: p.input.summarize === true,
+        customInstructions: p.input.customInstructions ?? null, replaceInstructions: false,
+      });
+      else fail('invalid_request', 'tree action and entryId are required');
+    }
     else fail('capability_unsupported');
     respond(id, { kind: 'operation', operationId: p.operationId, output: result?.data ?? {} }); return;
   }

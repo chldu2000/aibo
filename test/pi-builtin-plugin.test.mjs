@@ -39,5 +39,6 @@ test('bundled Pi plugin translates RPC lifecycle into Agent Runtime v1', async (
   assert.equal((await operation('ext.dev.aibo.pi.commands')).output.commands[0].name, 'review');
   assert.equal((await operation('ext.dev.aibo.pi.queue', { action: 'steer', message: 'change direction' })).output.queued, 'change direction');
   assert.equal((await operation('ext.dev.aibo.pi.compact', { instructions: 'keep decisions' })).output.summary, 'keep decisions');
-  assert.deepEqual((await operation('ext.dev.aibo.pi.tree')).output.tree, []);
+  assert.deepEqual((await operation('ext.dev.aibo.pi.tree', { action: 'get' })).output.tree, []);
+  assert.equal((await operation('ext.dev.aibo.pi.tree', { action: 'navigate', entryId: 'branch-1', summarize: true, customInstructions: null })).output.leafId, 'branch-1');
 });

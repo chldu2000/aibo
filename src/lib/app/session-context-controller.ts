@@ -22,6 +22,7 @@ export type SessionContextControllerContext = {
     readCodexThread: (sessionId: string) => Promise<CodexThreadSnapshot>;
     getTimeline: (sessionId: string) => Promise<TimelineItem[]>;
     getPiSessionTree: (sessionId: string) => Promise<PiSessionTreeSnapshot>;
+    invokeAgentCapability: (sessionId: string, capability: string, input: Record<string, unknown>) => Promise<Record<string, unknown>>;
     getSessionExecutionProfile: (sessionId: string) => Promise<SessionExecutionProfile>;
     getTurnChangeSet: (sessionId: string, turnId?: string | null) => Promise<TurnChangeSet | null>;
     listTurnCheckpoints: (sessionId: string, turnId?: string | null) => Promise<CheckpointFile[]>;
@@ -220,12 +221,20 @@ export function createSessionContextController(context: SessionContextController
   async function refreshPiTree(sessionId: string): Promise<void> {
     if (sessionId === context.getArchivingSessionId()) return;
     const session = context.findSession(sessionId);
-    if (!context.getDesktop() || !session || session.agent !== 'pi') {
+    if (!context.getDesktop() || !session || (session.agent !== 'pi' && !session.capabilities.includes('session.tree'))) {
       if (sessionId === context.getSelectedSessionId()) context.setPiTree(null);
       return;
     }
     try {
-      const snapshot = await context.api.getPiSessionTree(sessionId);
+      const result = session.pluginInstallationId
+        ? await context.api.invokeAgentCapability(sessionId, 'session.tree', { action: 'get' })
+        : await context.api.getPiSessionTree(sessionId);
+      const snapshot: PiSessionTreeSnapshot = session.pluginInstallationId ? {
+        sessionId,
+        externalSessionId: typeof result.externalSessionId === 'string' ? result.externalSessionId : null,
+        leafId: typeof result.leafId === 'string' ? result.leafId : null,
+        tree: Array.isArray(result.tree) ? result.tree as PiSessionTreeSnapshot['tree'] : [],
+      } : result as PiSessionTreeSnapshot;
       if (sessionId === context.getSelectedSessionId()) context.setPiTree(snapshot);
     } catch (error) {
       if (sessionId === context.getSelectedSessionId()) {
