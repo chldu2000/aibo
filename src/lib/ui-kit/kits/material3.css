@@ -255,6 +255,16 @@
   border-color: var(--m3c-outline-variant);
   border-radius: var(--m3-shape-large);
   background: var(--m3c-surface-container);
+  box-shadow: var(--m3-elevation-1);
+}
+
+.app-shell[data-ui-kit='material3'] .settings-panel.m3-aibo-card,
+.app-shell[data-ui-kit='material3'] .command-palette.m3-aibo-card,
+.app-shell[data-ui-kit='material3'] .pi-navigation-dialog.m3-aibo-card,
+.app-shell[data-ui-kit='material3'] .pi-tree-dialog.m3-aibo-card {
+  border-color: var(--m3c-outline-variant);
+  background: var(--m3c-surface-container-high);
+  box-shadow: var(--m3-elevation-2);
 }
 
 .app-shell[data-ui-kit='material3'] .composer.m3-aibo-card:focus-within {

@@ -8,6 +8,75 @@
   background: var(--card);
 }
 
+.app-shell[data-ui-kit='shadcn'] .composer {
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--card);
+  box-shadow: 0 1px 2px 0 rgb(0 0 0 / 5%);
+}
+
+.app-shell[data-ui-kit='shadcn'] .composer:focus-within {
+  border-color: var(--ring);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--ring) 20%, transparent);
+}
+
+.app-shell[data-ui-kit='shadcn'] .composer-suggestions,
+.app-shell[data-ui-kit='shadcn'] .composer-menu {
+  border: 1px solid var(--border);
+  border-radius: calc(var(--radius) - 2px);
+  background: var(--popover);
+  box-shadow: 0 10px 15px -3px rgb(0 0 0 / 10%), 0 4px 6px -4px rgb(0 0 0 / 10%);
+}
+
+.app-shell[data-ui-kit='shadcn'] .timeline-entry {
+  border-radius: calc(var(--radius) - 2px);
+}
+
+.app-shell[data-ui-kit='shadcn'] .timeline-entry.user-entry {
+  border: 1px solid var(--border);
+  background: var(--secondary);
+}
+
+.app-shell[data-ui-kit='shadcn'] .timeline-entry.assistant-entry {
+  border: 1px solid transparent;
+  background: transparent;
+}
+
+.app-shell[data-ui-kit='shadcn'] .timeline-entry.tool-entry,
+.app-shell[data-ui-kit='shadcn'] .timeline-entry.system-entry {
+  border-color: var(--border);
+  background: var(--muted);
+}
+
+.app-shell[data-ui-kit='shadcn'] .alert-dialog,
+.app-shell[data-ui-kit='shadcn'] .settings-panel,
+.app-shell[data-ui-kit='shadcn'] .command-palette,
+.app-shell[data-ui-kit='shadcn'] .pi-navigation-dialog,
+.app-shell[data-ui-kit='shadcn'] .pi-tree-dialog {
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--popover);
+  box-shadow: 0 10px 15px -3px rgb(0 0 0 / 10%), 0 4px 6px -4px rgb(0 0 0 / 10%);
+}
+
+.app-shell[data-ui-kit='shadcn'] .toast {
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--popover);
+  color: var(--popover-foreground);
+  box-shadow: 0 10px 15px -3px rgb(0 0 0 / 10%), 0 4px 6px -4px rgb(0 0 0 / 10%);
+}
+
+.app-shell[data-ui-kit='shadcn'] .toast.error-toast {
+  border-color: var(--destructive);
+  background: var(--destructive-surface);
+}
+
+.app-shell[data-ui-kit='shadcn'] .toast.notice-toast {
+  border-color: var(--border);
+  background: var(--popover);
+}
+
 .app-shell[data-ui-kit='shadcn'] .side-panel-tabs {
   border-radius: calc(var(--radius) - 2px);
   padding: 2px;

@@ -11,6 +11,20 @@
 共享的语义样式与动效，`material3.css` 和 `shadcn.css` 负责各自皮肤的覆盖；
 `src/app.css` 只作为样式入口，不承载颜色、边框、圆角、阴影、字体或状态反馈。
 
+`base.css` 里的 `--aibo-radius`、`--aibo-radius-sm`、`--aibo-elevation-1`、
+`--aibo-elevation-2` 是结构性表面（composer、dialog、panel、toast、菜单）专用
+的形状/阴影桥接 token：`:root` 提供与 shadcn 默认外观一致的取值，`shadcn.ts`
+和 `material3.ts` 的 `semanticTokens()`/主题对象再各自覆盖为皮肤专属值——
+shadcn 复用自身 `--radius` 与柔和阴影，material3 直接引用已验证的
+`--m3-shape-large`/`--m3-shape-medium`/`--m3-elevation-1`/`--m3-elevation-2`。
+新增结构性表面时，`base.css` 只应引用这组桥接 token（不要新写字面量圆角/阴影），
+两套皮肤 CSS 需要保持覆盖清单一致：composer、timeline-entry、alert-dialog、
+toast、settings-panel（含 diagnostics-panel）、command-palette、
+pi-navigation-dialog、pi-tree-dialog 这些表面即使不属于 `UiKitAdapter` 契约
+（它们只是可通过 class 定制样式的 app 级结构，不是可替换组件），也必须在
+`shadcn.css` 和 `material3.css` 里各有一份对等的圆角/边框/阴影覆盖，避免某一
+皮肤下的表面退回 `base.css` 默认值而与该皮肤的官方视觉质感脱节。
+
 页面组件不应直接导入 `src/lib/components/ui/`，统一从 `$lib/ui-kit` 引入基础组件。这样替换视觉实现时，不需要修改会话状态或 Agent API。
 
 ## 添加另一套 UI Kit
