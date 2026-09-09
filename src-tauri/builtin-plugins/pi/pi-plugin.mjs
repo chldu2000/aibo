@@ -4,7 +4,7 @@ import readline from 'node:readline';
 const pluginId = 'dev.aibo.pi';
 const pluginVersion = '1.0.0';
 const agentId = 'dev.aibo.pi.agent';
-const capabilities = ['session.create', 'session.resume', 'session.close', 'turn.send', 'turn.cancel', 'stream.text', 'view.standard'];
+const capabilities = ['session.create', 'session.resume', 'session.close', 'turn.send', 'turn.cancel', 'stream.text', 'view.standard', 'model.select', 'model.reasoning', 'command.list', 'queue.manage', 'compaction.run', 'session.tree'];
 let initialized = false;
 let workspaceRoots = [];
 let child = null;
@@ -122,6 +122,27 @@ async function handle({ id, method, params: p }) {
     await rpc('prompt', { message: p.input.text }); respond(id, { kind: 'accepted', accepted: true }); return;
   }
   if (method === 'turn.cancel') { if (session.turn?.id === p.turnId) await rpc('abort'); respond(id, { kind: 'accepted', accepted: true }); return; }
+  if (method === 'operation.invoke') {
+    let result;
+    if (p.operationId === 'ext.dev.aibo.pi.model') {
+      if (p.input?.action === 'list') result = await rpc('get_available_models');
+      else if (p.input?.action === 'set' && p.input.provider && p.input.modelId) result = await rpc('set_model', { provider: p.input.provider, modelId: p.input.modelId });
+      else fail('invalid_request', 'provider and modelId are required when selecting a model');
+    } else if (p.operationId === 'ext.dev.aibo.pi.reasoning') {
+      if (p.input?.action === 'list') result = await rpc('get_available_thinking_levels');
+      else if (p.input?.action === 'set' && p.input.level) result = await rpc('set_thinking_level', { level: p.input.level });
+      else fail('invalid_request', 'level is required when selecting reasoning effort');
+    } else if (p.operationId === 'ext.dev.aibo.pi.commands') result = await rpc('get_commands');
+    else if (p.operationId === 'ext.dev.aibo.pi.queue') {
+      if (p.input?.action === 'clear') result = await rpc('clear_queue');
+      else if (p.input?.action === 'steer' && p.input.message) result = await rpc('steer', { message: p.input.message });
+      else if (p.input?.action === 'followUp' && p.input.message) result = await rpc('follow_up', { message: p.input.message });
+      else fail('invalid_request', 'message is required when adding to the queue');
+    } else if (p.operationId === 'ext.dev.aibo.pi.compact') result = await rpc('compact', { customInstructions: p.input?.instructions || undefined });
+    else if (p.operationId === 'ext.dev.aibo.pi.tree') result = await rpc('get_tree');
+    else fail('capability_unsupported');
+    respond(id, { kind: 'operation', operationId: p.operationId, output: result?.data ?? {} }); return;
+  }
   if (method === 'session.close') { await stopPi(); session = null; respond(id, { kind: 'accepted', accepted: true }); return; }
   fail('capability_unsupported');
 }

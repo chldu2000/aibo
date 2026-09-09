@@ -17,9 +17,46 @@
     "agentId": "dev.aibo.pi.agent",
     "displayName": "Pi",
     "description": "Pi RPC through the Aibo Agent Runtime Protocol.",
-    "capabilities": ["session.create", "session.resume", "session.close", "turn.send", "turn.cancel", "stream.text", "view.standard"],
+    "capabilities": ["session.create", "session.resume", "session.close", "turn.send", "turn.cancel", "stream.text", "view.standard", "model.select", "model.reasoning", "command.list", "queue.manage", "compaction.run", "session.tree"],
     "requestedPermissions": [{ "id": "workspace.read", "required": true, "reason": "Starts Pi in the selected trusted workspace." }],
-    "operations": [],
+    "operations": [
+      {
+        "id": "ext.dev.aibo.pi.model",
+        "capability": "model.select",
+        "inputSchema": { "type": "object", "additionalProperties": false, "required": ["action"], "properties": { "action": { "enum": ["list", "set"] }, "provider": { "type": "string", "minLength": 1 }, "modelId": { "type": "string", "minLength": 1 } } },
+        "outputSchema": { "type": "object" }
+      },
+      {
+        "id": "ext.dev.aibo.pi.reasoning",
+        "capability": "model.reasoning",
+        "inputSchema": { "type": "object", "additionalProperties": false, "required": ["action"], "properties": { "action": { "enum": ["list", "set"] }, "level": { "type": "string", "minLength": 1 } } },
+        "outputSchema": { "type": "object" }
+      },
+      {
+        "id": "ext.dev.aibo.pi.commands",
+        "capability": "command.list",
+        "inputSchema": { "type": "object", "additionalProperties": false },
+        "outputSchema": { "type": "object" }
+      },
+      {
+        "id": "ext.dev.aibo.pi.queue",
+        "capability": "queue.manage",
+        "inputSchema": { "type": "object", "additionalProperties": false, "required": ["action"], "properties": { "action": { "enum": ["steer", "followUp", "clear"] }, "message": { "type": "string", "minLength": 1 } } },
+        "outputSchema": { "type": "object" }
+      },
+      {
+        "id": "ext.dev.aibo.pi.compact",
+        "capability": "compaction.run",
+        "inputSchema": { "type": "object", "additionalProperties": false, "properties": { "instructions": { "type": "string" } } },
+        "outputSchema": { "type": "object" }
+      },
+      {
+        "id": "ext.dev.aibo.pi.tree",
+        "capability": "session.tree",
+        "inputSchema": { "type": "object", "additionalProperties": false },
+        "outputSchema": { "type": "object" }
+      }
+    ],
     "views": [{ "viewId": "dev.aibo.pi.status", "title": "Pi status", "requiredComponents": ["panel", "badge", "text"] }]
   }]
 }

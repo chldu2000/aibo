@@ -75,7 +75,7 @@ P4.7B 的宿主接线和异常场景检查见 [Phase 4.7B 检查记录](phase-4.
 
 P4.7D 已开始实施生命周期与视图补全：插件安装记录现在保留已卸载墓碑；卸载先关闭该 Plugin Release 的活跃会话和进程，再移除包文件，同时保留 session、timeline、event、view 与固定 release 关联。相同 release 可按原 installation ID 重装，且重装后默认禁用。声明式 binding 与无需二次确认的扩展 action 已接通 `operation.invoke`：宿主核对固定 release、当前 generation、manifest、握手能力及输入/输出 schema，拒绝任意方法转发。Core 另提供按标准 capability 调用的统一入口，并要求每项 capability 在固定 release 中唯一映射到一个 namespaced operation；内置 Codex 的 Goal get/set/clear 已通过 `goal.manage` 端到端接入。宿主现在解析 manifest 的 executable/runtime 依赖，明确展示缺失的必需/可选依赖，缺失必需依赖时禁止创建会话；脚本插件可由声明的本机 runtime 启动，无需把 runtime 复制进包。业务层对旧 Goal API 的切换，以及依赖版本与认证探测、标准 action、受控资源和完整升级验收仍待后续切片完成。
 
-P4.7C 已开始迁移内置 Agent：Codex 与 Pi 的首个随应用嵌入 Plugin Release 会在启动时幂等安装并启用，经统一 Registry、Supervisor 和 Runtime v1 路径分别启动 Codex app-server 与 Pi RPC，基础创建、流式文本、取消、关闭与 recovery binding 已由独立进程适配。Core 为每个固定 release/session 分配包外的持久 runtime data 目录，Pi session 文件不写入不可变插件包或 workspace。旧 Manager 和生产工作台仍保留，需在模型、审批、用户输入、Skills、Goal、树/队列/压缩、附件及变更投影迁入统一能力契约后移除专用分派。
+P4.7C 已开始迁移内置 Agent：Codex 与 Pi 的首个随应用嵌入 Plugin Release 会在启动时幂等安装并启用，经统一 Registry、Supervisor 和 Runtime v1 路径分别启动 Codex app-server 与 Pi RPC，基础创建、流式文本、取消、关闭与 recovery binding 已由独立进程适配。Core 为每个固定 release/session 分配包外的持久 runtime data 目录，Pi session 文件不写入不可变插件包或 workspace。Codex Goal 已迁入 `goal.manage`；Pi 模型、推理强度、命令、队列、压缩和树读取已分别迁入 `model.select`、`model.reasoning`、`command.list`、`queue.manage`、`compaction.run` 与 `session.tree`，并由 Pi RPC fixture 验证。旧 Manager 和生产工作台仍保留，需继续迁移审批、用户输入、Skills、树导航、附件及变更投影，并将业务调用切至统一 capability 后移除专用分派。
 
 ## 6. 验收门禁
 

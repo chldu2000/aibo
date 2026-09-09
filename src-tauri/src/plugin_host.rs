@@ -232,7 +232,7 @@ impl PluginHost {
         if row.get::<String,_>("generation_id") != runtime.generation_id {
             return Err("invalid_session: stale runtime generation".into());
         }
-        if row.get::<String,_>("state") == "running" { return Err("busy: session has an active turn".into()); }
+        if row.get::<String,_>("state") == "running" && capability != "queue.manage" { return Err("busy: session has an active turn".into()); }
         let manifest: Value = serde_json::from_str(row.get::<&str,_>("manifest_json")).map_err(|_|"manifest_mismatch")?;
         let agent_id: String = row.get("agent");
         let agent = manifest["agents"].as_array().and_then(|agents|agents.iter().find(|agent|agent["agentId"] == agent_id))

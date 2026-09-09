@@ -28,4 +28,11 @@ test('bundled Pi plugin translates RPC lifecycle into Agent Runtime v1', async (
   assert.equal((await completed).params.payload.status, 'completed');
   assert.equal(messages.filter((message) => message.params?.type === 'message.delta').map((message) => message.params.payload.delta).join(''), 'hello pi plugin');
   assert.ok(messages.some((message) => message.method === 'view/render' && message.params.document.viewId === 'dev.aibo.pi.status'));
+  const operation = (operationId, input = {}) => request('operation.invoke', { agentId: scope.agentId, sessionId: scope.sessionId, operationId, input });
+  assert.equal((await operation('ext.dev.aibo.pi.model', { action: 'list' })).output.models[0].id, 'model-1');
+  assert.deepEqual((await operation('ext.dev.aibo.pi.reasoning', { action: 'list' })).output.levels, ['off', 'high']);
+  assert.equal((await operation('ext.dev.aibo.pi.commands')).output.commands[0].name, 'review');
+  assert.equal((await operation('ext.dev.aibo.pi.queue', { action: 'steer', message: 'change direction' })).output.queued, 'change direction');
+  assert.equal((await operation('ext.dev.aibo.pi.compact', { instructions: 'keep decisions' })).output.summary, 'keep decisions');
+  assert.deepEqual((await operation('ext.dev.aibo.pi.tree')).output.tree, []);
 });
