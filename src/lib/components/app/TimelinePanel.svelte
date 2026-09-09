@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { sessionAgentKind } from '$lib/app/agent-kind';
   import { Badge, Button, Card, CardContent, CardHeader, CardTitle, Icon, Input, Separator } from '$lib/ui-kit';
   import type { AgentCommand, AgentGoal, AgentQueueSnapshot, ApprovalDecision, ContextAttachment, SessionAccessMode, SessionExecutionProfile, SessionModelCatalog, UserInputRequest, WorkspacePathSuggestion } from '$lib/types';
   import type { UsageValues } from './view-models';
@@ -117,6 +118,7 @@
     onComposerInput,
     onSelectWorkspacePath,
   }: TimelinePanelProps = $props();
+  const sessionKind = $derived(sessionAgentKind(session));
 
   const visibleTimeline = $derived(
     timeline.slice(Math.max(0, timeline.length - timelineVisibleCount)),
@@ -189,11 +191,11 @@
         <Badge variant="outline" title={codexGoal.objective}>目标 · {codexGoal.status}</Badge>
       {/if}
       {#if session}
-        {#if session.agent === 'codex' && !sessionArchived}
+        {#if sessionKind === 'codex' && !sessionArchived}
           <Button variant="ghost" size="sm" type="button" onclick={() => onForkSession()} disabled={busy || sessionRunning || selectedSessionArchiving} title="从最新完成的回复创建分支">
             <Icon name="branch" size={13} /> 分支
           </Button>
-        {:else if session.agent === 'pi'}
+        {:else if sessionKind === 'pi'}
           <Button variant="ghost" size="sm" type="button" onclick={onOpenPiTree} disabled={selectedSessionArchiving} title="打开 Pi 会话树">
             <Icon name="branch" size={13} /> 会话树
           </Button>
@@ -226,7 +228,7 @@
             上下文 {usageValues.contextLimit ? `${contextPercent ?? 0}%` : '已用'}{usageValues.contextEstimated ? ' · 估算' : ''}
           </span>
         {/if}
-        {#if session?.agent === 'pi' && !sessionRunning && !sessionArchived && usageValues.contextUsed !== null}
+        {#if sessionKind === 'pi' && !sessionRunning && !sessionArchived && usageValues.contextUsed !== null}
           <Button class="usage-compact-button" variant="ghost" size="sm" type="button" onclick={onCompact} disabled={busy || contextCompacting}>
             {contextCompacting ? '压缩中…' : '压缩上下文'}
           </Button>
@@ -248,7 +250,7 @@
             加载更早的 {Math.min(hiddenTimelineCount, 80)} 条消息
           </Button>
         {/if}
-        {#each groupTimelineItems(visibleTimeline, session?.agent === 'pi') as renderItem (renderItem.id)}
+        {#each groupTimelineItems(visibleTimeline, sessionKind === 'pi') as renderItem (renderItem.id)}
           {#if renderItem.kind === 'tool-group'}
             <Card as="article" class="timeline-entry tool-entry tool-group-entry">
               <details class="tool-group">
@@ -301,10 +303,10 @@
               class={`timeline-entry ${item.role === 'assistant' ? 'assistant-entry' : item.role === 'user' ? 'user-entry' : item.role === 'tool' ? 'tool-entry' : item.role === 'system' ? 'system-entry' : ''}`}
             >
               <div class="entry-meta">
-                <Badge variant={item.role === 'assistant' ? 'secondary' : 'outline'}>{item.role === 'assistant' ? (session?.agent === 'pi' ? 'PI' : 'CODEX') : item.role.toUpperCase()}</Badge>
+                <Badge variant={item.role === 'assistant' ? 'secondary' : 'outline'}>{item.role === 'assistant' ? (sessionKind === 'pi' ? 'PI' : sessionKind === 'codex' ? 'CODEX' : 'AGENT') : item.role.toUpperCase()}</Badge>
                 <div class="entry-meta-actions">
                   <Badge variant={item.status === 'failed' ? 'destructive' : item.status === 'queued' ? 'secondary' : 'outline'}>{statusLabel(item.status)}</Badge>
-                  {#if session?.agent === 'codex' && !sessionArchived && item.turnId && forkBoundaryMessageIds.has(item.id)}
+                  {#if sessionKind === 'codex' && !sessionArchived && item.turnId && forkBoundaryMessageIds.has(item.id)}
                     <Button variant="ghost" size="icon" type="button" aria-label="从此回复创建会话分支" title="从此回复创建分支" onclick={() => onForkSession(item.turnId!)} disabled={busy || sessionRunning || selectedSessionArchiving}>
                       <Icon name="branch" size={13} />
                     </Button>
@@ -444,7 +446,7 @@
     <div class="composer-draft-status" role="status">上次发送未完成，草稿已保留，可修改后重试。</div>
   {/if}
   <Composer
-    selectedAgent={session?.agent ?? null}
+    selectedAgent={sessionKind === 'plugin' ? null : sessionKind}
     selectedSession={session !== null}
     {selectedSessionId}
     sessionArchived={sessionArchived}

@@ -71,14 +71,16 @@ function onCodex(message) {
     emit('turn.started', {}, turn.id, { requestId: turn.requestId, itemId: null }); render();
   } else if (message.method === 'item/agentMessage/delta' && turn) {
     const delta = typeof p.delta === 'string' ? p.delta : '';
-    if (delta) { turn.text += delta; emit('message.delta', { delta }, turn.id, { requestId: turn.requestId, itemId: p.itemId ?? null }); }
+    if (p.itemId) turn.itemId = p.itemId;
+    if (delta) { turn.text += delta; emit('message.delta', { delta }, turn.id, { requestId: turn.requestId, itemId: turn.itemId }); }
   } else if (message.method === 'item/completed' && turn && p.item?.type === 'agentMessage') {
+    if (p.item?.id) turn.itemId = p.item.id;
     if (typeof p.item.text === 'string') turn.finalText = p.item.text;
   } else if (message.method === 'turn/completed' && turn) {
     const nativeStatus = p.turn?.status;
     const status = nativeStatus === 'completed' ? 'completed' : nativeStatus === 'interrupted' ? 'interrupted' : 'failed';
     const text = turn.finalText || p.turn?.items?.filter((item) => item?.type === 'agentMessage').at(-1)?.text || turn.text;
-    if (text) emit('message.completed', { text }, turn.id, { requestId: turn.requestId, itemId: null });
+    if (text) emit('message.completed', { text }, turn.id, { requestId: turn.requestId, itemId: turn.itemId });
     emit(status === 'failed' ? 'turn.failed' : 'turn.completed', status === 'failed' ? { message: 'Codex turn failed' } : { status }, turn.id, { requestId: turn.requestId, itemId: null });
     session.turn = null; render();
   }
@@ -118,15 +120,21 @@ async function handle({ id, method, params: p }) {
   if (method === 'session.create' || method === 'session.resume') {
     if (session || !workspaceReadGranted || !p.workspace?.path || !workspaceRoots.includes(p.workspace.path)) fail('permission_denied');
     await startCodex(p.workspace.path);
+    const approvalPolicy = typeof p.executionProfile?.approvalPolicy === 'string'
+      ? p.executionProfile.approvalPolicy
+      : 'untrusted';
+    const sandbox = typeof p.executionProfile?.filesystemPolicy === 'string'
+      ? p.executionProfile.filesystemPolicy
+      : 'read-only';
     let threadId;
     if (method === 'session.resume') {
       const recovery = p.binding?.recovery;
       if (p.binding?.pluginId !== pluginId || recovery?.schema !== 'dev.aibo.codex.recovery' || recovery?.version !== 1 || typeof recovery.data?.threadId !== 'string') fail('invalid_recovery_data');
       threadId = recovery.data.threadId;
-      const result = await rpc('thread/resume', { threadId, approvalPolicy: 'never', sandbox: 'read-only' });
+      const result = await rpc('thread/resume', { threadId, approvalPolicy, sandbox });
       threadId = result?.thread?.id ?? threadId;
     } else {
-      const result = await rpc('thread/start', { cwd: p.workspace.path, approvalPolicy: 'never', sandbox: 'read-only', serviceName: 'aibo_codex_plugin' });
+      const result = await rpc('thread/start', { cwd: p.workspace.path, approvalPolicy, sandbox, serviceName: 'aibo_codex_plugin' });
       threadId = result?.thread?.id;
     }
     if (!threadId) fail('invalid_session', 'Codex did not return a thread id');
@@ -140,7 +148,7 @@ async function handle({ id, method, params: p }) {
   if (!session || p.sessionId !== session.id) fail('invalid_session');
   if (method === 'turn.send') {
     if (session.turn) fail('busy');
-    const turn = { id: p.turnId, requestId: id, nativeId: null, text: '', finalText: '' };
+    const turn = { id: p.turnId, requestId: id, nativeId: null, itemId: null, text: '', finalText: '' };
     session.turn = turn;
     const turnParams = { threadId: session.threadId, input: [{ type: 'text', text: p.input.text }] };
     if (session.model) turnParams.model = session.model;

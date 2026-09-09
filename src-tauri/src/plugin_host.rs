@@ -1,7 +1,8 @@
-use crate::{change_set::{capture as capture_workspace, persist as persist_change_set, WorkspaceSnapshot}, plugin_contract::contracts, plugin_registry, plugin_runtime::PluginRuntime, Session};
+use crate::{change_set::{capture as capture_workspace, persist as persist_change_set, WorkspaceSnapshot}, execution_profile, plugin_contract::contracts, plugin_registry, plugin_runtime::PluginRuntime, Session};
 use serde_json::{json, Value};
 use sqlx::{Row, SqlitePool};
 use std::{collections::HashMap, path::{Path, PathBuf}, sync::Arc, time::Duration};
+use tauri::Emitter;
 use tokio::sync::Mutex;
 
 const TIMEOUT: Duration = Duration::from_secs(15);
@@ -21,10 +22,15 @@ pub(crate) struct PluginHost {
     lifecycle: Arc<Mutex<()>>,
     database_writes: Arc<Mutex<()>>,
     turn_baselines: Arc<Mutex<HashMap<String, Option<WorkspaceSnapshot>>>>,
+    app: Option<tauri::AppHandle>,
 }
 
 impl PluginHost {
-    pub fn new(db: SqlitePool) -> Self { Self { db, runtimes: Arc::default(), lifecycle: Arc::default(), database_writes: Arc::default(), turn_baselines: Arc::default() } }
+    pub fn new(db: SqlitePool) -> Self { Self { db, runtimes: Arc::default(), lifecycle: Arc::default(), database_writes: Arc::default(), turn_baselines: Arc::default(), app: None } }
+
+    pub fn with_app(db: SqlitePool, app: tauri::AppHandle) -> Self {
+        Self { app: Some(app), ..Self::new(db) }
+    }
 
     pub async fn create(&self, workspace_id: &str, installation_id: &str, agent_id: &str) -> Result<Session, String> {
         let _guard = self.lifecycle.lock().await;
@@ -103,10 +109,39 @@ impl PluginHost {
             if actual_caps.iter().any(|c| !declared.contains(c)) || ["session.create","session.resume","session.close","turn.send","turn.cancel","stream.text","view.standard"].iter().any(|required|!actual_caps.contains(&json!(required))) {
                 return Err("capability_unsupported: minimal lifecycle capabilities required".into());
             }
+            let actual_capabilities = actual_caps
+                .iter()
+                .filter_map(Value::as_str)
+                .map(ToOwned::to_owned)
+                .collect::<Vec<String>>();
+            let profile_agent = crate::execution_profile_agent(&agent_id, &actual_capabilities);
+            let stored_profile: i64 = sqlx::query_scalar(
+                "SELECT EXISTS(SELECT 1 FROM session_execution_profiles WHERE session_id=?)",
+            )
+            .bind(session_id)
+            .fetch_one(&self.db)
+            .await
+            .map_err(|error| error.to_string())?;
+            let mut execution_profile = if stored_profile == 1 {
+                crate::session_execution_profile(&self.db, session_id)
+                    .await
+                    .map_err(|error| error.to_string())?
+                    .profile
+            } else {
+                execution_profile::resolve(&profile_agent, None, crate::now_iso())?
+            };
+            execution_profile.adapter_capabilities = actual_capabilities;
+            execution_profile.native_sandbox = profile_agent == "codex";
+            execution_profile::save_for_session(&self.db, session_id, &execution_profile)
+                .await
+                .map_err(|error| error.to_string())?;
             let workspace_scope = if requested_permissions.iter().any(|permission|permission["id"] == "workspace.read" && permission["required"] == true) {
                 json!({"workspaceId":workspace_id,"trusted":true,"path":workspace.path})
             } else { json!({"workspaceId":workspace_id,"trusted":true}) };
-            let mut params = json!({"agentId":agent_id,"sessionId":session_id,"workspace":workspace_scope,"executionProfile":{"approvalPolicy":"never","filesystemPolicy":"read-only","runtimeDataPath":runtime_data}});
+            let mut runtime_profile = serde_json::to_value(&execution_profile.enforced)
+                .map_err(|error| error.to_string())?;
+            runtime_profile["runtimeDataPath"] = json!(runtime_data);
+            let mut params = json!({"agentId":agent_id,"sessionId":session_id,"workspace":workspace_scope,"executionProfile":runtime_profile});
             let previous: Option<String> = row.get("plugin_binding_json");
             if resume {
                 let binding: Value = serde_json::from_str(previous.as_deref().ok_or("invalid_recovery_data: binding missing")?).map_err(|_|"invalid_recovery_data")?;
@@ -346,6 +381,7 @@ impl PluginHost {
         if !contracts().runtime.is_valid(&message) { return Err("invalid_request: notification schema".into()); }
         let p = &message["params"];
         if p["sessionId"] != session_id || p["agentId"] != binding["agentId"] { return Err("invalid_session: notification identity".into()); }
+        let mut emitted_event = None;
         let _write_guard = self.database_writes.lock().await;
         let mut tx = self.db.begin().await.map_err(|e|e.to_string())?;
         let active: (String, String) = sqlx::query_as("SELECT generation_id,plugin_capabilities_json FROM session_bindings WHERE session_id=?").bind(session_id).fetch_one(&mut *tx).await.map_err(|e|e.to_string())?;
@@ -391,6 +427,7 @@ impl PluginHost {
             let event = json!({"schemaVersion":"2.0","eventId":event_id,"generationId":generation,"sequence":sequence,"occurredAt":now,
                 "source":{"pluginId":binding["pluginId"],"pluginVersion":binding["pluginVersion"],"agentId":binding["agentId"],"runtimeProtocolVersion":"1.0"},
                 "workspaceId":workspace_id,"sessionId":session_id,"nativeSessionId":p["nativeSessionId"],"turnId":p["turnId"],"type":p["type"],"correlation":p["correlation"],"payload":p["payload"],"rawRef":null});
+            emitted_event = Some(event.clone());
             let kind = p["type"].as_str().unwrap();
             if !["session.started","session.info_changed","turn.started","message.delta","message.completed","turn.completed","turn.failed","approval.requested","approval.resolved","user_input.requested","user_input.resolved"].contains(&kind) {
                 return Err("capability_unsupported: event outside minimal lifecycle".into());
@@ -447,6 +484,9 @@ impl PluginHost {
                 .bind(event_id).bind(session_id).bind(generation).bind(sequence).bind(now).bind(kind).bind(turn_id).bind(event.to_string()).execute(&mut *tx).await.map_err(|e|e.to_string())?;
         }
         tx.commit().await.map_err(|e|e.to_string())?;
+        if let (Some(app), Some(event)) = (&self.app, emitted_event) {
+            let _ = app.emit("agent-event", event);
+        }
         if matches!(p["type"].as_str(), Some("turn.completed" | "turn.failed")) {
             if let Some(turn_id) = p["turnId"].as_str() {
                 self.finalize_turn_changes(workspace_id, session_id, turn_id).await?;

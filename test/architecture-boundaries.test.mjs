@@ -175,7 +175,7 @@ test('Pi timeline groups ordinary system nodes without folding summaries', async
   assert.match(utilities, /kind: 'system-group'/, 'consecutive system entries must have a grouped render form');
   assert.match(utilities, /entryType !== 'branch_summary'/, 'branch summaries must remain standalone');
   assert.match(utilities, /entryType !== 'compaction'/, 'compaction summaries must remain standalone');
-  assert.match(panel, /groupTimelineItems\(visibleTimeline, session\?\.agent === 'pi'\)/, 'system grouping must only apply to Pi sessions');
+  assert.match(panel, /groupTimelineItems\(visibleTimeline, sessionKind === 'pi'\)/, 'system grouping must only apply to semantic Pi sessions');
   assert.match(panel, /系统消息 · \{renderItem\.items\.length\} 项/, 'the timeline must render a collapsible system group');
 });
 

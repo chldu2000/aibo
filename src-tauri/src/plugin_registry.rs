@@ -178,7 +178,30 @@ pub(crate) fn inspect(root: &Path) -> Result<(Value, Vec<PathBuf>, String), Stri
 }
 
 pub(crate) async fn list(db: &SqlitePool) -> Result<Vec<PluginInstallation>, String> {
-    let rows = sqlx::query("SELECT id, plugin_id, plugin_version, package_digest, enabled, installed, manifest_json FROM plugin_installations ORDER BY created_at, id")
+    // The registry keeps immutable releases so active sessions can remain
+    // pinned to an older package. The manager, however, should present only
+    // the current bundled release instead of showing every development digest
+    // produced from the same built-in plugin version. External tombstones stay
+    // visible so the user can see that a package was removed and reinstall the
+    // same release; bundled tombstones remain internal recovery records.
+    let rows = sqlx::query(
+        "SELECT id, plugin_id, plugin_version, package_digest, enabled, installed, manifest_json
+         FROM plugin_installations p
+         WHERE p.source NOT LIKE '%bundled-plugin-sources%'
+            OR (
+             p.installed=1
+             AND p.id = (
+               SELECT current.id
+               FROM plugin_installations current
+               WHERE current.plugin_id=p.plugin_id
+                 AND current.installed=1
+                 AND current.source LIKE '%bundled-plugin-sources%'
+               ORDER BY current.enabled_at DESC, current.created_at DESC, current.id DESC
+               LIMIT 1
+             )
+           )
+         ORDER BY p.created_at, p.id",
+    )
         .fetch_all(db).await.map_err(|e| e.to_string())?;
     rows.into_iter().map(|row| {
         let manifest: Value = serde_json::from_str(row.get::<&str, _>("manifest_json")).map_err(io_error)?;
@@ -385,6 +408,39 @@ mod tests {
         assert_eq!(installed.len(), 2);
         assert_eq!(installed.iter().map(|plugin|plugin.plugin_id.as_str()).collect::<std::collections::HashSet<_>>(), std::collections::HashSet::from(["dev.aibo.codex", "dev.aibo.pi"]));
         assert!(installed.iter().all(|plugin|plugin.enabled && plugin.installed));
+        db.close().await;
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[tokio::test]
+    async fn list_hides_stale_bundled_digests_but_keeps_external_releases() {
+        let root = std::env::temp_dir().join(format!("aibo-bundled-list-{}", ulid::Ulid::new()));
+        let db = crate::open_database(&root.join("aibo.sqlite3")).await.unwrap();
+        install_builtins(&db, &root).await.unwrap();
+        sqlx::query(
+            "INSERT INTO plugin_installations
+             (id,plugin_id,plugin_version,package_digest,source,install_path,manifest_json,enabled,created_at,enabled_at,installed)
+             SELECT 'stale-codex','dev.aibo.codex',plugin_version,'stale-digest',
+                    '/tmp/bundled-plugin-sources/codex-old','/tmp/stale-codex',manifest_json,1,'2020','2020',1
+             FROM plugin_installations WHERE plugin_id='dev.aibo.codex' LIMIT 1",
+        )
+        .execute(&db)
+        .await
+        .unwrap();
+        sqlx::query(
+            "INSERT INTO plugin_installations
+             (id,plugin_id,plugin_version,package_digest,source,install_path,manifest_json,enabled,created_at,enabled_at,installed)
+             SELECT 'external-copy','dev.example.agent','1.0.0','external-digest',
+                    '/tmp/external','/tmp/external-copy',manifest_json,1,'2020','2020',1
+             FROM plugin_installations WHERE plugin_id='dev.aibo.codex' LIMIT 1",
+        )
+        .execute(&db)
+        .await
+        .unwrap();
+
+        let visible = list(&db).await.unwrap();
+        assert_eq!(visible.iter().filter(|plugin| plugin.plugin_id == "dev.aibo.codex").count(), 1);
+        assert!(visible.iter().any(|plugin| plugin.plugin_id == "dev.example.agent"));
         db.close().await;
         fs::remove_dir_all(root).unwrap();
     }

@@ -1,5 +1,6 @@
 import type { Session, Workspace } from '$lib/types';
 import type { SessionListItem, WorkspaceListItem } from './view-types';
+import { sessionAgentKind } from '$lib/app/agent-kind';
 
 export type UsageSnapshot = Record<string, unknown>;
 
@@ -27,7 +28,8 @@ export function toWorkspaceListItems(workspaces: Workspace[]): WorkspaceListItem
 }
 
 export function toSessionListItem(session: Session): SessionListItem {
-  const { id, workspaceId, agent, label, state, archived, updatedAt } = session;
+  const { id, workspaceId, label, state, archived, updatedAt } = session;
+  const agent = sessionAgentKind(session);
   return { id, workspaceId, agent, label, state, archived, updatedAt };
 }
 

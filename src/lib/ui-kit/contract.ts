@@ -84,7 +84,7 @@ export type UiColumnSplitterProps = {
 };
 
 export type UiAgentStatusMarkProps = {
-  agent: 'codex' | 'pi';
+  agent: 'codex' | 'pi' | 'plugin';
   tone: 'idle' | 'running' | 'attention' | 'danger' | 'muted';
   label: string;
 };

@@ -25,7 +25,7 @@ export interface WorkspaceListItem {
 export interface SessionListItem {
   id: string;
   workspaceId: string;
-  agent: 'codex' | 'pi';
+  agent: 'codex' | 'pi' | 'plugin';
   label: string;
   state: SessionState;
   archived: boolean;
@@ -34,7 +34,7 @@ export interface SessionListItem {
 
 export type SessionPanelView = Pick<
   Session,
-  'id' | 'workspaceId' | 'agent' | 'label' | 'state' | 'archived' | 'externalSessionId' | 'updatedAt'
+  'id' | 'workspaceId' | 'agent' | 'label' | 'state' | 'archived' | 'externalSessionId' | 'pluginInstallationId' | 'capabilities' | 'updatedAt'
 >;
 
 export type TimelineViewItem = Pick<TimelineItem, 'id' | 'turnId' | 'role' | 'toolName' | 'entryType' | 'content' | 'status'>;

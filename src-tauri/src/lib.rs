@@ -1548,6 +1548,26 @@ async fn session_agent(db: &SqlitePool, session_id: &str) -> Result<String, Core
         .ok_or_else(|| CoreError::SessionNotFound(session_id.to_owned()))
 }
 
+fn execution_profile_agent(agent: &str, capabilities: &[String]) -> String {
+    if agent == "codex"
+        || agent == "dev.aibo.codex.agent"
+        || capabilities
+            .iter()
+            .any(|capability| capability == "permissions.nativeSandbox")
+    {
+        "codex".to_owned()
+    } else if agent == "pi"
+        || agent == "dev.aibo.pi.agent"
+        || capabilities
+            .iter()
+            .any(|capability| capability == "session.tree" || capability == "queue.manage")
+    {
+        "pi".to_owned()
+    } else {
+        agent.to_owned()
+    }
+}
+
 fn require_trusted_workspace(
     workspace: &Workspace,
     profile: &ResolvedExecutionProfile,
@@ -1573,14 +1593,35 @@ async fn session_execution_profile(
     .bind(session_id)
     .fetch_optional(db)
     .await?;
+    let session = session_by_id(db, session_id).await?;
+    let profile_agent = execution_profile_agent(&session.agent, &session.capabilities);
     if let Some(row) = row {
-        return profile_from_row(&row, session_id.to_owned())
-            .map_err(CoreError::InvalidExecutionProfile);
+        let mut stored = profile_from_row(&row, session_id.to_owned())
+            .map_err(CoreError::InvalidExecutionProfile)?;
+        if session.plugin_installation_id.is_some() {
+            let mut resolved = resolve_profile(
+                &profile_agent,
+                Some(stored.profile.requested.clone()),
+                stored.profile.resolved_at.clone(),
+            )
+            .map_err(CoreError::InvalidExecutionProfile)?;
+            resolved.adapter_capabilities = session.capabilities;
+            resolved.native_sandbox = profile_agent == "codex";
+            stored.profile = resolved;
+        }
+        return Ok(stored);
     }
 
-    let agent = session_agent(db, session_id).await?;
-    let mut resolved = resolve_profile(&agent, default_requested_profile(&agent).ok(), now_iso())
-        .map_err(CoreError::InvalidExecutionProfile)?;
+    let mut resolved = resolve_profile(
+        &profile_agent,
+        default_requested_profile(&profile_agent).ok(),
+        now_iso(),
+    )
+    .map_err(CoreError::InvalidExecutionProfile)?;
+    if session.plugin_installation_id.is_some() {
+        resolved.adapter_capabilities = session.capabilities;
+        resolved.native_sandbox = profile_agent == "codex";
+    }
     resolved
         .unsupported
         .push("legacy_session_profile_missing".to_owned());
@@ -1625,16 +1666,26 @@ async fn update_session_execution_profile(
     ) {
         return Err(CoreError::SessionBusy);
     }
-    let resolved = resolve_profile(&session.agent, Some(requested), now_iso())
+    let profile_agent = execution_profile_agent(&session.agent, &session.capabilities);
+    let mut resolved = resolve_profile(&profile_agent, Some(requested), now_iso())
         .map_err(CoreError::InvalidExecutionProfile)?;
-    if session.agent == "pi" {
-        let workspace = workspace_by_id(&state.db, &session.workspace_id).await?;
-        require_trusted_workspace(&workspace, &resolved)?;
+    if session.plugin_installation_id.is_some() {
+        resolved.adapter_capabilities = session.capabilities.clone();
+        resolved.native_sandbox = profile_agent == "codex";
     }
+    let workspace = workspace_by_id(&state.db, &session.workspace_id).await?;
+    require_trusted_workspace(&workspace, &resolved)?;
 
     // A runtime captures the resolved profile when it is created. Close an
     // idle runtime so the next prompt reopens it with the updated profile.
-    match session.agent.as_str() {
+    if session.plugin_installation_id.is_some() {
+        state
+            .plugins
+            .close(&session_id)
+            .await
+            .map_err(CoreError::Initialization)?;
+    } else {
+        match session.agent.as_str() {
         "codex" => state
             .codex
             .close(&session_id)
@@ -1646,6 +1697,7 @@ async fn update_session_execution_profile(
                 "unsupported session agent: {agent}"
             )))
         }
+    }
     }
     save_session_profile(&state.db, &session_id, &resolved).await?;
     sqlx::query("UPDATE sessions SET state = 'idle', updated_at = ? WHERE id = ?")
@@ -5115,7 +5167,9 @@ fn plugin_model_catalog(result: &serde_json::Value, reasoning: Option<&serde_jso
             default_reasoning_effort: item.get("defaultReasoningEffort").and_then(serde_json::Value::as_str).map(ToOwned::to_owned), reference, provider, id, reasoning_efforts })
     }).collect::<Vec<_>>();
     let current_reference = result.get("current").and_then(serde_json::Value::as_str);
-    let current = current_reference.and_then(|reference|models.iter().find(|model|model.reference == reference || model.id == reference).cloned());
+    let current = current_reference
+        .and_then(|reference|models.iter().find(|model|model.reference == reference || model.id == reference).cloned())
+        .or_else(|| models.iter().find(|model| model.is_default).cloned());
     let current_reasoning_effort = reasoning.and_then(|value|value.get("current")).and_then(serde_json::Value::as_str).map(ToOwned::to_owned);
     let reasoning_efforts = reasoning.and_then(|value|value.get("levels")).and_then(serde_json::Value::as_array).into_iter().flatten().filter_map(|level| {
         let id = level.as_str().or_else(||level.get("id").and_then(serde_json::Value::as_str)).or_else(||level.get("reasoningEffort").and_then(serde_json::Value::as_str))?.to_owned();
@@ -5570,7 +5624,7 @@ pub fn run() {
             let codex = CodexManager::new(app.handle().clone(), db.clone(), data_dir.clone());
             let pi = PiManager::new(app.handle().clone(), db.clone(), data_dir.clone());
             app.manage(AppState {
-                plugins: plugin_host::PluginHost::new(db.clone()),
+                plugins: plugin_host::PluginHost::with_app(db.clone(), app.handle().clone()),
                 db,
                 codex,
                 pi,
@@ -5686,7 +5740,7 @@ mod tests {
     use super::{
         auto_name_session_from_first_message, bind_pending_attachments_to_turn,
         canonical_workspace_path, clone_cached_runtime, collect_workspace_capabilities,
-        find_executable, mark_turn_interrupted, normalize_session_filter, now_iso, open_database,
+        execution_profile_agent, find_executable, mark_turn_interrupted, normalize_session_filter, now_iso, open_database,
         persist_restore_operation, pi_snapshot_timeline, plugin_model_catalog, recover_interrupted_sessions,
         recover_interrupted_turn_changes, remove_cached_runtime, require_trusted_workspace,
         restore_git_file_baseline, session_execution_profile, session_label_from_first_message,
@@ -6594,6 +6648,19 @@ mod tests {
     }
 
     #[test]
+    fn bundled_plugin_agents_keep_their_semantic_execution_profile() {
+        assert_eq!(
+            execution_profile_agent("dev.aibo.codex.agent", &[]),
+            "codex"
+        );
+        assert_eq!(execution_profile_agent("dev.aibo.pi.agent", &[]), "pi");
+        assert_eq!(
+            execution_profile_agent("dev.example.agent", &["queue.manage".to_owned()]),
+            "pi"
+        );
+    }
+
+    #[test]
     fn writable_execution_requires_workspace_trust() {
         let profile = execution_profile::resolve(
             "codex",
@@ -6749,7 +6816,6 @@ mod tests {
     fn plugin_model_catalog_normalizes_provider_and_reasoning_shapes() {
         let catalog = plugin_model_catalog(
             &serde_json::json!({
-                "current": "openai/gpt-5",
                 "models": [{
                     "provider": "openai",
                     "id": "gpt-5",

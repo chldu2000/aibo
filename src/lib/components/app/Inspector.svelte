@@ -3,6 +3,7 @@
   import ProjectActionsPanel from './ProjectActionsPanel.svelte';
   import SidePanelTabs from './SidePanelTabs.svelte';
   import { sessionStateLabel } from './session-utils';
+  import { sessionAgentKind } from '$lib/app/agent-kind';
   import type {
     AgentDiagnostic,
     CodexThreadListItem,
@@ -86,6 +87,7 @@
   let expandedArtifactId = $state<string | null>(null);
   let artifactContent = $state<ArtifactContent | null>(null);
   let artifactLoading = $state(false);
+  const sessionKind = $derived(sessionAgentKind(session));
   const turnFileIsRename = $derived(
     Boolean(turnChangeSet && turnFileDiff && turnChangeSet.files.find((file) => file.path === turnFileDiff.path)?.kind === 'renamed'),
   );
@@ -256,10 +258,10 @@
     <Card class="session-context-card">
       <CardHeader class="session-context-heading">
         <div class="session-context-title">
-          <span class={`session-agent session-agent-${session.agent}`}>{session.agent === 'pi' ? 'PI' : 'CX'}</span>
+          <span class={`session-agent session-agent-${sessionKind}`}>{sessionKind === 'pi' ? 'PI' : sessionKind === 'codex' ? 'CX' : 'AG'}</span>
           <div>
             <CardTitle>{session.label}</CardTitle>
-            <small>{session.agent === 'pi' ? 'Pi SDK host' : 'Codex app-server'}</small>
+            <small>{sessionKind === 'pi' ? 'Pi SDK host' : sessionKind === 'codex' ? 'Codex app-server' : session.agent}</small>
           </div>
         </div>
       </CardHeader>
@@ -307,13 +309,13 @@
     {#if executionProfile}
       <Card class="profile-card">
         <CardHeader class="thread-card-heading">
-          <CardTitle>{session?.agent === 'codex' ? 'Codex 原生权限' : '执行配置'}</CardTitle>
+          <CardTitle>{sessionKind === 'codex' ? 'Codex 原生权限' : '执行配置'}</CardTitle>
           <Badge variant={executionProfile.nativeSandbox ? 'success' : 'warning'}>
-            {session?.agent === 'codex' ? 'Codex 原生控制' : executionProfile.nativeSandbox ? '原生沙箱' : '无原生沙箱'}
+            {sessionKind === 'codex' ? 'Codex 原生控制' : executionProfile.nativeSandbox ? '原生沙箱' : '无原生沙箱'}
           </Badge>
         </CardHeader>
         <CardContent class="profile-card-content">
-          {#if session?.agent === 'codex'}
+          {#if sessionKind === 'codex'}
             <dl>
               <div><dt>审批</dt><dd>{executionProfile.enforced.approvalPolicy}</dd></div>
               <div><dt>沙箱</dt><dd>{executionProfile.enforced.filesystemPolicy}</dd></div>

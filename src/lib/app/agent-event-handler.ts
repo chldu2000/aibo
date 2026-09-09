@@ -131,7 +131,7 @@ export function handleAgentEvent(event: AgentEvent, context: AgentEventHandlerCo
   }
 
   if (event.type === 'retry.started') {
-    const agent = event.source.agent === 'pi' ? 'Pi' : 'Codex';
+    const agent = eventAgentLabel(event);
     const attempt = event.payload.attempt;
     context.setAgentActivity(event.sessionId, true,
       `${agent} 请求暂未成功，等待重试${typeof attempt === 'number' ? `（第 ${attempt} 次）` : ''}…`);
@@ -141,18 +141,19 @@ export function handleAgentEvent(event: AgentEvent, context: AgentEventHandlerCo
   }
 
   if (event.type === 'message.completed' && event.sessionId === selectedSessionId) {
-    const itemId = stringPayload(event.payload.itemId);
+    const itemId = stringPayload(event.payload.itemId) ?? correlationString(event, 'itemId');
     if (itemId) context.setTimeline(context.timeline.map((item) =>
       item.externalMessageId === itemId
         ? { ...item, content: stringPayload(event.payload.text) ?? item.content, status: 'completed' }
         : item));
+    void context.refreshTimeline?.(event.sessionId);
   }
 
   if (event.type === 'adapter.warning' && event.payload.kind === 'session.binding_recovered') {
     context.updateWorkspaceSessions(event.workspaceId, (items) =>
       items.map((session) =>
         session.id === event.sessionId
-          ? { ...session, externalSessionId: event.externalSessionId ?? session.externalSessionId, state: 'idle' }
+          ? { ...session, externalSessionId: event.externalSessionId ?? event.nativeSessionId ?? session.externalSessionId, state: 'idle' }
           : session,
       ),
     );
@@ -236,7 +237,9 @@ export function handleAgentEvent(event: AgentEvent, context: AgentEventHandlerCo
   }
 
   if (event.sessionId === selectedSessionId && event.type === 'message.delta') {
-    const externalMessageId = stringPayload(event.payload.itemId) ?? `delta:${event.eventId}`;
+    const externalMessageId = stringPayload(event.payload.itemId)
+      ?? correlationString(event, 'itemId')
+      ?? `turn:${event.turnId ?? event.eventId}:assistant`;
     const delta = stringPayload(event.payload.delta) ?? '';
     const existing = context.timeline.find((item) => item.externalMessageId === externalMessageId);
     if (existing) {
@@ -338,7 +341,10 @@ export function handleAgentEvent(event: AgentEvent, context: AgentEventHandlerCo
       context.setRetry(null, null);
     }
     void context.refreshSessions(event.workspaceId);
-    if (event.sessionId === selectedSessionId) void context.refreshTurnChangeSet?.(event.sessionId);
+    if (event.sessionId === selectedSessionId) {
+      if (event.type !== 'message.completed') void context.refreshTimeline?.(event.sessionId);
+      void context.refreshTurnChangeSet?.(event.sessionId);
+    }
     void context.refreshWorkspaceChanges?.(event.workspaceId);
   }
 }
@@ -353,7 +359,14 @@ function queueFromEvent(event: AgentEvent): AgentQueueSnapshot {
 }
 
 function agentLabel(event: AgentEvent, label: string): string {
-  return `${event.source.agent === 'pi' ? 'Pi' : 'Codex'} ${label}`;
+  return `${eventAgentLabel(event)} ${label}`;
+}
+
+function eventAgentLabel(event: AgentEvent): string {
+  const agent = event.source.agent ?? event.source.agentId;
+  if (agent === 'pi' || agent === 'dev.aibo.pi.agent') return 'Pi';
+  if (agent === 'codex' || agent === 'dev.aibo.codex.agent') return 'Codex';
+  return 'Agent';
 }
 
 function queueItems(value: unknown): string[] {
@@ -432,6 +445,10 @@ function userInputFromEvent(event: AgentEvent): UserInputRequest | null {
 
 function stringPayload(value: unknown): string | null {
   return typeof value === 'string' ? value : null;
+}
+
+function correlationString(event: AgentEvent, key: string): string | null {
+  return event.correlation ? stringPayload(event.correlation[key]) : null;
 }
 
 function payloadString(value: unknown): string | null {

@@ -122,7 +122,7 @@ export interface SessionListOptions {
 export interface Session {
   id: string;
   workspaceId: string;
-  agent: 'codex' | 'pi';
+  agent: string;
   label: string;
   state: SessionState;
   archived: boolean;
@@ -582,21 +582,26 @@ export interface ComposerDraft {
 }
 
 export interface AgentEvent {
-  schemaVersion: '1.0';
+  schemaVersion: '1.0' | '2.0';
   eventId: string;
   generationId: string;
   sequence: number;
   occurredAt: string;
   source: {
-    agent: 'codex' | 'pi';
-    transport: 'app-server' | 'pi-sdk' | 'pi-rpc' | 'replay';
-    adapterVersion: string;
-    agentVersion: string | null;
-    protocolVersion: string | null;
+    agent?: string;
+    transport?: 'app-server' | 'pi-sdk' | 'pi-rpc' | 'replay';
+    adapterVersion?: string;
+    agentVersion?: string | null;
+    protocolVersion?: string | null;
+    pluginId?: string;
+    pluginVersion?: string;
+    agentId?: string;
+    runtimeProtocolVersion?: string;
   };
   workspaceId: string;
   sessionId: string;
-  externalSessionId: string | null;
+  externalSessionId?: string | null;
+  nativeSessionId?: string | null;
   turnId: string | null;
   type:
     | 'session.started'

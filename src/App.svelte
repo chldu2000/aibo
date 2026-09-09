@@ -48,6 +48,7 @@
   } from '$lib/app/composer-draft-storage';
   import type { ComposerDrafts } from '$lib/app/composer-draft-storage';
   import { isSessionRunning } from '$lib/app/session-state';
+  import { sessionAgentKind } from '$lib/app/agent-kind';
   import {
     addWorkspace,
     abortCodexTurn,
@@ -1897,17 +1898,18 @@
 
   function profileForAccess(mode: SessionAccessMode): ExecutionProfile {
     const session = selectedSession;
+    const agentKind = sessionAgentKind(session);
     const current = executionProfile?.requested ?? {
       schema: 'aibo.execution-profile/v1' as const,
       interactionMode: 'ask' as const,
-      approvalPolicy: session?.agent === 'pi' ? 'never' as const : 'on-request' as const,
+      approvalPolicy: agentKind === 'pi' ? 'never' as const : 'on-request' as const,
       filesystemPolicy: 'read-only' as const,
       commandPolicy: 'disabled' as const,
       networkPolicy: 'disabled' as const,
       model: null,
       reasoningEffort: null,
     };
-    if (session?.agent === 'codex') {
+    if (agentKind === 'codex') {
       if (mode === 'full-access') {
         return { ...current, interactionMode: 'edit', approvalPolicy: 'never', filesystemPolicy: 'danger-full-access', commandPolicy: 'trusted', networkPolicy: 'agent-managed' };
       }
@@ -1963,7 +1965,7 @@
       // every session in the workspace (which also reloads unrelated list and
       // conversation context on this path).
       markSessionIdle(session);
-      notice = session.agent === 'codex'
+      notice = sessionAgentKind(session) === 'codex'
         ? mode === 'full-access' ? 'Codex 已切换为 Full Access。' : mode === 'approve-for-me' ? 'Codex 已切换为 Approve for me。' : 'Codex 已切换为 Ask for approval。'
         : mode === 'workspace-write' ? '会话权限已切换为工作区写入。' : mode === 'plan' ? '会话已切换为计划模式。' : '会话权限已切换为只读。';
     } catch (error) {
@@ -1974,14 +1976,14 @@
   }
 
   $effect(() => {
-    const id = selectedSessionId;
+    const session = selectedSession;
     const enabled = desktop;
     untrack(() => {
       ++sessionModelRequestGeneration;
       sessionModelCatalog = null;
       sessionModelOverride = null;
       sessionModelCatalogLoading = false;
-      if (enabled && id) void loadSessionModels();
+      if (enabled && session && !session.archived) void loadSessionModels();
     });
   });
 
