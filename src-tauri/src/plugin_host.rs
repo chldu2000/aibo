@@ -68,6 +68,11 @@ impl PluginHost {
             .and_then(|dependency|dependency.executable.as_ref()).map(PathBuf::from);
         let executable = if let Some(command) = command { args.insert(0, entrypoint.to_string_lossy().into_owned()); command } else { entrypoint };
         let runtime = PluginRuntime::spawn(&executable, &args, &directory)?;
+        let installation_id: String = row.get("plugin_installation_id");
+        let data_root = directory.parent().and_then(|plugins|plugins.parent()).ok_or("invalid_request: invalid plugin registry path")?;
+        let runtime_data = data_root.join("plugin-state").join(&installation_id).join(session_id);
+        std::fs::create_dir_all(&runtime_data).map_err(|_|"invalid_request: plugin runtime data directory")?;
+        let runtime_data = runtime_data.canonicalize().map_err(|_|"invalid_request: plugin runtime data directory")?;
         let start_result = async {
             let grants: Vec<Value> = requested_permissions.iter().map(|permission| {
                 if permission["id"] == "workspace.read" && permission["required"] == true {
@@ -91,7 +96,7 @@ impl PluginHost {
             let workspace_scope = if requested_permissions.iter().any(|permission|permission["id"] == "workspace.read" && permission["required"] == true) {
                 json!({"workspaceId":workspace_id,"trusted":true,"path":workspace.path})
             } else { json!({"workspaceId":workspace_id,"trusted":true}) };
-            let mut params = json!({"agentId":agent_id,"sessionId":session_id,"workspace":workspace_scope,"executionProfile":{"approvalPolicy":"never","filesystemPolicy":"read-only"}});
+            let mut params = json!({"agentId":agent_id,"sessionId":session_id,"workspace":workspace_scope,"executionProfile":{"approvalPolicy":"never","filesystemPolicy":"read-only","runtimeDataPath":runtime_data}});
             let previous: Option<String> = row.get("plugin_binding_json");
             if resume {
                 let binding: Value = serde_json::from_str(previous.as_deref().ok_or("invalid_recovery_data: binding missing")?).map_err(|_|"invalid_recovery_data")?;

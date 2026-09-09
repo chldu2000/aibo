@@ -204,25 +204,26 @@ pub(crate) async fn install(db: &SqlitePool, data_dir: &Path, source: &Path) -> 
 }
 
 pub(crate) async fn install_builtins(db: &SqlitePool, data_dir: &Path) -> Result<(), String> {
-    let source = data_dir.join("bundled-plugin-sources").join("codex-1.0.0");
-    fs::create_dir_all(&source).map_err(io_error)?;
-    let source = source.canonicalize().map_err(io_error)?;
-    for (name, contents) in [
-        ("plugin.json", include_bytes!("../builtin-plugins/codex/plugin.json").as_slice()),
-        ("codex-plugin.mjs", include_bytes!("../builtin-plugins/codex/codex-plugin.mjs").as_slice()),
+    for (directory, files) in [
+        ("codex-1.0.0", vec![("plugin.json", include_bytes!("../builtin-plugins/codex/plugin.json").as_slice()), ("codex-plugin.mjs", include_bytes!("../builtin-plugins/codex/codex-plugin.mjs").as_slice())]),
+        ("pi-1.0.0", vec![("plugin.json", include_bytes!("../builtin-plugins/pi/plugin.json").as_slice()), ("pi-plugin.mjs", include_bytes!("../builtin-plugins/pi/pi-plugin.mjs").as_slice())]),
     ] {
-        let target = source.join(name);
-        if target.exists() && fs::symlink_metadata(&target).map_err(io_error)?.file_type().is_symlink() {
-            return Err("invalid_request: bundled plugin source contains a link".into());
+        let source = data_dir.join("bundled-plugin-sources").join(directory);
+        fs::create_dir_all(&source).map_err(io_error)?;
+        let source = source.canonicalize().map_err(io_error)?;
+        for (name, contents) in files {
+            let target = source.join(name);
+            if target.exists() && fs::symlink_metadata(&target).map_err(io_error)?.file_type().is_symlink() { return Err("invalid_request: bundled plugin source contains a link".into()); }
+            fs::write(target, contents).map_err(io_error)?;
         }
-        fs::write(target, contents).map_err(io_error)?;
+        let (manifest, _, digest) = inspect(&source)?;
+        let existing: Option<String> = sqlx::query_scalar("SELECT id FROM plugin_installations WHERE plugin_id=? AND plugin_version=? AND package_digest=? AND installed=1")
+            .bind(manifest["pluginId"].as_str().unwrap()).bind(manifest["version"].as_str().unwrap()).bind(digest)
+            .fetch_optional(db).await.map_err(io_error)?;
+        let id = match existing { Some(id) => id, None => install(db, data_dir, &source).await?.id };
+        enable(db, &id, true).await?;
     }
-    let (manifest, _, digest) = inspect(&source)?;
-    let existing: Option<String> = sqlx::query_scalar("SELECT id FROM plugin_installations WHERE plugin_id=? AND plugin_version=? AND package_digest=? AND installed=1")
-        .bind(manifest["pluginId"].as_str().unwrap()).bind(manifest["version"].as_str().unwrap()).bind(digest)
-        .fetch_optional(db).await.map_err(io_error)?;
-    let id = match existing { Some(id) => id, None => install(db, data_dir, &source).await?.id };
-    enable(db, &id, true).await
+    Ok(())
 }
 
 pub(crate) async fn enable(db: &SqlitePool, id: &str, enabled: bool) -> Result<(), String> {
@@ -326,10 +327,9 @@ mod tests {
         install_builtins(&db, &root).await.unwrap();
         install_builtins(&db, &root).await.unwrap();
         let installed = list(&db).await.unwrap();
-        assert_eq!(installed.len(), 1);
-        assert_eq!(installed[0].plugin_id, "dev.aibo.codex");
-        assert!(installed[0].enabled);
-        assert!(installed[0].installed);
+        assert_eq!(installed.len(), 2);
+        assert_eq!(installed.iter().map(|plugin|plugin.plugin_id.as_str()).collect::<std::collections::HashSet<_>>(), std::collections::HashSet::from(["dev.aibo.codex", "dev.aibo.pi"]));
+        assert!(installed.iter().all(|plugin|plugin.enabled && plugin.installed));
         db.close().await;
         fs::remove_dir_all(root).unwrap();
     }

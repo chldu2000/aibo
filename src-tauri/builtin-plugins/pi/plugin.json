@@ -1,0 +1,25 @@
+{
+  "schema": "aibo.plugin-manifest/v1",
+  "pluginId": "dev.aibo.pi",
+  "version": "1.0.0",
+  "displayName": "Pi (built-in plugin)",
+  "description": "Aibo's bundled Pi RPC adapter.",
+  "publisher": { "name": "Aibo" },
+  "protocols": { "runtime": { "min": "1.0", "max": "1.0" }, "view": { "min": "1.0", "max": "1.0" } },
+  "platforms": ["darwin-arm64", "darwin-x64", "windows-x64", "linux-x64", "linux-arm64"],
+  "entrypoint": { "executable": "pi-plugin.mjs" },
+  "dependencies": [
+    { "kind": "runtime", "name": "node", "versionRange": ">=22", "required": true },
+    { "kind": "executable", "name": "pi", "versionRange": ">=0.84.4", "required": true }
+  ],
+  "resources": [],
+  "agents": [{
+    "agentId": "dev.aibo.pi.agent",
+    "displayName": "Pi",
+    "description": "Pi RPC through the Aibo Agent Runtime Protocol.",
+    "capabilities": ["session.create", "session.resume", "session.close", "turn.send", "turn.cancel", "stream.text", "view.standard"],
+    "requestedPermissions": [{ "id": "workspace.read", "required": true, "reason": "Starts Pi in the selected trusted workspace." }],
+    "operations": [],
+    "views": [{ "viewId": "dev.aibo.pi.status", "title": "Pi status", "requiredComponents": ["panel", "badge", "text"] }]
+  }]
+}
