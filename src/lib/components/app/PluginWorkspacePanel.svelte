@@ -4,7 +4,7 @@
   import PluginManagerPanel from './PluginManagerPanel.svelte';
   import type { Session, TimelineItem } from '$lib/types';
 
-  type Installation = { id: string; pluginId: string; pluginVersion: string; enabled: boolean; installed: boolean; runnable: boolean; dependencies: { kind: string; name: string; required: boolean; available: boolean; versionRange: string | null }[]; manifest: { displayName: string; agents: { agentId: string; displayName: string }[] } };
+  type Installation = { id: string; pluginId: string; pluginVersion: string; enabled: boolean; installed: boolean; runnable: boolean; dependencies: { kind: string; name: string; required: boolean; available: boolean; versionRange: string | null; detectedVersion?: string | null; issue?: string | null }[]; manifest: { displayName: string; agents: { agentId: string; displayName: string }[] } };
   type PluginSession = Omit<Session, 'agent'> & { agent: string };
   type Props = {
     installations: Installation[];

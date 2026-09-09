@@ -69,7 +69,7 @@ impl PluginHost {
         }
         let diagnostics = plugin_registry::dependency_diagnostics(&manifest);
         if let Some(missing) = diagnostics.iter().find(|dependency|dependency.required && !dependency.available) {
-            return Err(format!("dependency_missing: required {} '{}' was not found", missing.kind, missing.name));
+            return Err(format!("dependency_missing: required {} '{}' is unavailable: {}", missing.kind, missing.name, missing.issue.as_deref().unwrap_or("dependency check failed")));
         }
         let mut args: Vec<String> = manifest["entrypoint"]["args"].as_array().map(|args|args.iter().map(|a|a.as_str().unwrap().to_string()).collect()).unwrap_or_default();
         let entrypoint = directory.join(manifest["entrypoint"]["executable"].as_str().unwrap());

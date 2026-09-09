@@ -8,7 +8,7 @@
     enabled: boolean;
     installed: boolean;
     runnable: boolean;
-    dependencies: { kind: string; name: string; required: boolean; available: boolean; versionRange: string | null }[];
+    dependencies: { kind: string; name: string; required: boolean; available: boolean; versionRange: string | null; detectedVersion?: string | null; issue?: string | null }[];
     manifest: { displayName: string; agents: { agentId: string; displayName: string }[] };
   };
 
@@ -55,7 +55,7 @@
                   <p>{installation.pluginId} · {installation.pluginVersion}</p>
                   {#each installation.dependencies as dependency (`${dependency.kind}:${dependency.name}`)}
                     <p role={dependency.required && !dependency.available ? 'alert' : undefined}>
-                      {dependency.kind} · {dependency.name}{dependency.versionRange ? ` ${dependency.versionRange}` : ''} · {dependency.available ? '可用' : dependency.required ? '缺失（必需）' : '缺失（可选）'}
+                      {dependency.kind} · {dependency.name}{dependency.versionRange ? ` ${dependency.versionRange}` : ''}{dependency.detectedVersion ? `（检测到 ${dependency.detectedVersion}）` : ''} · {dependency.available ? '可用' : dependency.required ? `不可用（必需${dependency.issue ? `：${dependency.issue}` : ''}）` : `不可用（可选${dependency.issue ? `：${dependency.issue}` : ''}）`}
                     </p>
                   {/each}
                   <div class="plugin-actions">

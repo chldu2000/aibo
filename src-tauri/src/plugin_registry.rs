@@ -3,7 +3,7 @@ use serde::Serialize;
 use serde_json::Value;
 use sha2::{Digest, Sha256};
 use sqlx::{Row, SqlitePool};
-use std::{collections::HashSet, fs, io::Read, path::{Component, Path, PathBuf}};
+use std::{collections::HashSet, fs, io::Read, path::{Component, Path, PathBuf}, process::Stdio, thread, time::{Duration, Instant}};
 use tokio::sync::Mutex;
 
 static INSTALL_LOCK: Mutex<()> = Mutex::const_new(());
@@ -18,6 +18,8 @@ pub(crate) struct PluginDependencyDiagnostic {
     pub available: bool,
     pub executable: Option<String>,
     pub version_range: Option<String>,
+    pub detected_version: Option<String>,
+    pub issue: Option<String>,
 }
 
 #[derive(Clone, Serialize)]
@@ -34,13 +36,55 @@ pub(crate) struct PluginInstallation {
     pub manifest: Value,
 }
 
+fn parse_dependency_version(output: &str) -> Option<semver::Version> {
+    output.split_whitespace().find_map(|token| {
+        let token = token.trim_matches(|character: char| !character.is_ascii_alphanumeric() && !matches!(character, '.' | '-' | '+')).trim_start_matches('v');
+        if !token.chars().next().is_some_and(|character|character.is_ascii_digit()) { return None; }
+        let normalized = match token.matches('.').count() { 0 => format!("{token}.0.0"), 1 => format!("{token}.0"), _ => token.to_owned() };
+        semver::Version::parse(&normalized).ok()
+    })
+}
+
+fn executable_version(path: &Path) -> Result<semver::Version, &'static str> {
+    let mut command = std::process::Command::new(path);
+    command.arg("--version").env_clear().stdout(Stdio::piped()).stderr(Stdio::piped());
+    for name in ["SystemRoot", "WINDIR", "PATH", "LANG", "LC_ALL"] {
+        if let Some(value) = std::env::var_os(name) { command.env(name, value); }
+    }
+    let mut child = command.spawn().map_err(|_|"version probe failed")?;
+    let stdout = child.stdout.take().ok_or("version probe failed")?;
+    let stderr = child.stderr.take().ok_or("version probe failed")?;
+    let stdout = thread::spawn(move || { let mut bytes = Vec::new(); let _ = stdout.take(8192).read_to_end(&mut bytes); bytes });
+    let stderr = thread::spawn(move || { let mut bytes = Vec::new(); let _ = stderr.take(8192).read_to_end(&mut bytes); bytes });
+    let deadline = Instant::now() + Duration::from_secs(2);
+    let status = loop {
+        if let Some(status) = child.try_wait().map_err(|_|"version probe failed")? { break status; }
+        if Instant::now() >= deadline { let _ = child.kill(); let _ = child.wait(); return Err("version probe timed out"); }
+        thread::sleep(Duration::from_millis(10));
+    };
+    let mut bytes = stdout.join().map_err(|_|"version probe failed")?;
+    bytes.extend(stderr.join().map_err(|_|"version probe failed")?);
+    if !status.success() { return Err("version probe failed"); }
+    parse_dependency_version(&String::from_utf8_lossy(&bytes)).ok_or("version was not reported")
+}
+
 pub(crate) fn dependency_diagnostics(manifest: &Value) -> Vec<PluginDependencyDiagnostic> {
     manifest["dependencies"].as_array().into_iter().flatten().map(|dependency| {
         let name = dependency["name"].as_str().unwrap().to_owned();
         let executable = crate::find_executable(&name).map(|path|path.to_string_lossy().into_owned());
+        let version_range = dependency["versionRange"].as_str().map(ToOwned::to_owned);
+        let (available, detected_version, issue) = match (executable.as_deref(), version_range.as_deref()) {
+            (None, _) => (false, None, Some("executable was not found".to_owned())),
+            (Some(_), None) => (true, None, None),
+            (Some(path), Some(range)) => match (executable_version(Path::new(path)), semver::VersionReq::parse(range)) {
+                (Ok(version), Ok(requirement)) if requirement.matches(&version) => (true, Some(version.to_string()), None),
+                (Ok(version), Ok(_)) => (false, Some(version.to_string()), Some(format!("version does not satisfy {range}"))),
+                (Err(error), _) => (false, None, Some(error.to_owned())),
+                (_, Err(_)) => (false, None, Some("manifest version range is invalid".to_owned())),
+            },
+        };
         PluginDependencyDiagnostic { kind: dependency["kind"].as_str().unwrap().to_owned(), name,
-            required: dependency["required"].as_bool().unwrap(), available: executable.is_some(), executable,
-            version_range: dependency["versionRange"].as_str().map(ToOwned::to_owned) }
+            required: dependency["required"].as_bool().unwrap(), available, executable, version_range, detected_version, issue }
     }).collect()
 }
 
@@ -275,17 +319,28 @@ mod tests {
     }
 
     #[test]
-    fn reports_required_and_optional_runtime_dependencies_without_executing_them() {
+    fn reports_dependency_versions_and_incompatibility() {
         let manifest = serde_json::json!({"dependencies":[
             {"kind":"runtime","name":"node","versionRange":">=22","required":true},
+            {"kind":"runtime","name":"node","versionRange":">=999","required":false},
             {"kind":"executable","name":"aibo-definitely-missing-agent-binary","required":false}
         ]});
         let diagnostics = dependency_diagnostics(&manifest);
-        assert_eq!(diagnostics.len(), 2);
+        assert_eq!(diagnostics.len(), 3);
         assert!(diagnostics[0].required);
         assert!(diagnostics[0].available, "Node is a test prerequisite");
-        assert!(!diagnostics[1].required);
+        assert!(diagnostics[0].detected_version.is_some());
         assert!(!diagnostics[1].available);
+        assert!(diagnostics[1].issue.as_deref().unwrap().contains("does not satisfy"));
+        assert!(!diagnostics[2].required);
+        assert!(!diagnostics[2].available);
+        assert_eq!(diagnostics[2].issue.as_deref(), Some("executable was not found"));
+    }
+
+    #[test]
+    fn parses_common_dependency_version_output() {
+        assert_eq!(parse_dependency_version("node v22.15.0").unwrap(), semver::Version::new(22, 15, 0));
+        assert_eq!(parse_dependency_version("codex-cli 0.104.2").unwrap(), semver::Version::new(0, 104, 2));
     }
 
     #[tokio::test]

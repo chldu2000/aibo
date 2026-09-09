@@ -65,7 +65,7 @@ export interface PluginInstallation {
   enabled: boolean;
   installed: boolean;
   runnable: boolean;
-  dependencies: { kind: string; name: string; required: boolean; available: boolean; executable: string | null; versionRange: string | null }[];
+  dependencies: { kind: string; name: string; required: boolean; available: boolean; executable: string | null; versionRange: string | null; detectedVersion: string | null; issue: string | null }[];
   manifest: { displayName: string; agents: { agentId: string; displayName: string }[]; [key: string]: unknown };
 }
 export const listPluginInstallations = (): Promise<PluginInstallation[]> => invoke('list_plugin_installations');

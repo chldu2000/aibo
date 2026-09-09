@@ -17,6 +17,7 @@ tauri-build = { version = "2.6.3", features = [] }
 jsonschema = { version = "0.33", default-features = false }
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
+semver = "1.0"
 sha2 = "0.10"
 sqlx = { version = "0.8", default-features = false, features = ["runtime-tokio-rustls", "sqlite", "migrate", "macros"] }
 tauri = { version = "2.11.5", features = [] }
