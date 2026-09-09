@@ -69,9 +69,11 @@ Plugin View Protocol 与 Agent Runtime Protocol 独立版本化。插件贡献�
 | P4.7D 视图与生命周期补全 | 待实施 | 差异化视图、两套皮肤、依赖诊断、版本并存、升级/卸载、历史兼容 | 皮肤切换保留状态，异常包与不兼容版本可解释，卸载后历史可读 |
 | P4.7E 验收与开发者交付 | 待实施 | 插件开发文档、样例包、协议测试 harness、迁移与恢复证据 | 完成下述门禁，Phase 5 可仅依赖统一会话和能力契约 |
 
-P4.7A 的契约、迁移设计和回放证据见 [Phase 4.7A 记录](phase-4.7a-plugin-contracts.md)。内部适配层仅为迁移手段，不能作为内置插件迁移的最终验收结果。
+P4.7A 的契约、迁移设计和回放证据见 [Phase 4.7A 记录](phase-4.7a-plugin-contracts.md)。插件作者可参照 [Agent Plugin 开发指南](plugin-development.md) 与 Echo 测试包完成独立开发和验证。内部适配层仅为迁移手段，不能作为内置插件迁移的最终验收结果。
 
 P4.7B 的宿主接线和异常场景检查见 [Phase 4.7B 检查记录](phase-4.7b-host-wiring-check.md)。自动化门禁与 Tauri 窗口人工 smoke 均已通过，本切片完成。
+
+P4.7E 已开始交付开发者材料：[Agent Plugin 开发指南](plugin-development.md) 说明 manifest、依赖版本诊断、生命周期、能力路由、互动请求、权限、view、安全恢复和仓库外 Echo harness。最终仍需补齐真实 Provider 的版本/认证验收记录、完整升级/缺失包恢复证据，以及两套 skin 的人工视觉记录。
 
 P4.7D 已开始实施生命周期与视图补全：插件安装记录现在保留已卸载墓碑；卸载先关闭该 Plugin Release 的活跃会话和进程，再移除包文件，同时保留 session、timeline、event、view 与固定 release 关联。相同 release 可按原 installation ID 重装，且重装后默认禁用。声明式 binding 与无需二次确认的扩展 action 已接通 `operation.invoke`：宿主核对固定 release、当前 generation、manifest、握手能力及输入/输出 schema，拒绝任意方法转发。Core 另提供按标准 capability 调用的统一入口，并要求每项 capability 在固定 release 中唯一映射到一个 namespaced operation；内置 Codex 的 Goal get/set/clear 已通过 `goal.manage` 端到端接入。宿主现在解析 manifest 的 executable/runtime 依赖，以清空环境、无 shell、两秒超时和有界输出来探测版本并校验 semver 范围；UI 区分缺失、探测失败及版本不兼容，缺失或不兼容的必需依赖会禁止创建会话。脚本插件可由声明的本机 runtime 启动，无需把 runtime 复制进包。业务层对旧 API 的切换，以及认证探测、标准 action、受控资源和完整升级验收仍待后续切片完成。
 
