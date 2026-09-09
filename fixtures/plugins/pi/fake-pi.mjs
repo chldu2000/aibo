@@ -1,16 +1,49 @@
 #!/usr/bin/env node
+import { appendFileSync, readFileSync, watch } from 'node:fs';
 import readline from 'node:readline';
 const write = (message) => process.stdout.write(`${JSON.stringify(message)}\n`);
+const controlPath = process.env.AIBO_FAKE_PI_CONTROL_FILE;
+const control = () => controlPath ? readFileSync(controlPath, 'utf8') : '';
+const log = (event) => { if (controlPath) appendFileSync(controlPath, `${event}\n`); };
+const startIndex = controlPath ? control().split('\n').filter((line) => line.startsWith('start:')).length + 1 : 0;
+let delayedExit = false;
+let deferredState = null;
+let exitReleased = false;
+const checkControl = () => {
+  const current = control();
+  if (delayedExit && !exitReleased && current.includes('release-old')) {
+    exitReleased = true;
+    log(`exit:${startIndex}`);
+    process.exit(0);
+  }
+  if (deferredState && current.includes('release-new')) {
+    const request = deferredState;
+    deferredState = null;
+    write({ id: request.id, type: 'response', command: request.type, success: true, data: { sessionId: 'native-pi-session', sessionFile: '/tmp/fake-pi-session.jsonl' } });
+  }
+};
+if (controlPath) {
+  log(`start:${startIndex}:${process.pid}`);
+  watch(controlPath, checkControl);
+}
+process.on('SIGTERM', () => { delayedExit = Boolean(controlPath); log(`sigterm:${startIndex}`); checkControl(); if (!controlPath) process.exit(0); });
 const input = readline.createInterface({ input: process.stdin, crlfDelay: Infinity });
 input.on('line', (line) => {
   const request = JSON.parse(line);
-  if (request.type === 'get_state') write({ id: request.id, type: 'response', command: request.type, success: true, data: { sessionId: 'native-pi-session', sessionFile: '/tmp/fake-pi-session.jsonl' } });
+  if (request.type === 'get_state') {
+    log(`get_state:${startIndex}`);
+    if (controlPath && startIndex > 1 && !control().includes('release-new')) deferredState = request;
+    else write({ id: request.id, type: 'response', command: request.type, success: true, data: { sessionId: 'native-pi-session', sessionFile: '/tmp/fake-pi-session.jsonl' } });
+  }
   else if (request.type === 'prompt') {
-    write({ id: request.id, type: 'response', command: request.type, success: true });
-    write({ type: 'message_update', assistantMessageEvent: { type: 'text_delta', delta: request.message } });
-    write({ type: 'message_end', message: { role: 'assistant', content: [{ type: 'text', text: request.message }] } });
-    write({ type: 'agent_end', messages: [{ role: 'assistant', content: [{ type: 'text', text: request.message }], stopReason: 'stop' }], willRetry: false });
-    write({ type: 'agent_settled' });
+    if (request.message === 'fail prompt') write({ id: request.id, type: 'response', command: request.type, success: false, error: 'fake prompt rejection' });
+    else {
+      write({ id: request.id, type: 'response', command: request.type, success: true });
+      write({ type: 'message_update', assistantMessageEvent: { type: 'text_delta', delta: request.message } });
+      write({ type: 'message_end', message: { role: 'assistant', content: [{ type: 'text', text: request.message }] } });
+      write({ type: 'agent_end', messages: [{ role: 'assistant', content: [{ type: 'text', text: request.message }], stopReason: 'stop' }], willRetry: false });
+      write({ type: 'agent_settled' });
+    }
   } else if (request.type === 'abort') write({ id: request.id, type: 'response', command: request.type, success: true });
   else if (request.type === 'get_available_models') write({ id: request.id, type: 'response', command: request.type, success: true, data: { models: [{ provider: 'fake', id: 'model-1', name: 'Fake Model' }] } });
   else if (request.type === 'set_model') write({ id: request.id, type: 'response', command: request.type, success: true, data: { provider: request.provider, id: request.modelId } });

@@ -7,11 +7,9 @@ const agentId = 'dev.aibo.pi.agent';
 const capabilities = ['session.create', 'session.resume', 'session.close', 'turn.send', 'turn.cancel', 'stream.text', 'view.standard', 'model.select', 'model.reasoning', 'command.list', 'queue.manage', 'compaction.run', 'session.tree'];
 let initialized = false;
 let workspaceRoots = [];
-let child = null;
-let lines = null;
+let provider = null;
 let nextId = 1;
 let session = null;
-const pending = new Map();
 
 const write = (message) => process.stdout.write(`${JSON.stringify({ jsonrpc: '2.0', ...message })}\n`);
 const respond = (id, result) => write({ id, result });
@@ -31,9 +29,18 @@ function render() {
   } } });
 }
 function rpc(type, fields = {}) {
+  const startedProvider = provider;
+  if (!startedProvider) return Promise.reject(new Error('Pi unavailable'));
   const id = `pi-${nextId++}`;
-  child.stdin.write(`${JSON.stringify({ id, type, ...fields })}\n`);
-  return new Promise((resolve, reject) => pending.set(id, { resolve, reject }));
+  return new Promise((resolve, reject) => {
+    startedProvider.pending.set(id, { resolve, reject });
+    try {
+      startedProvider.child.stdin.write(`${JSON.stringify({ id, type, ...fields })}\n`);
+    } catch (error) {
+      startedProvider.pending.delete(id);
+      reject(error);
+    }
+  });
 }
 function visibleText(message) {
   if (!message || message.role !== 'assistant' || !Array.isArray(message.content)) return '';
@@ -48,16 +55,17 @@ function recovery() {
   } };
 }
 async function updateRecovery() {
-  if (!session || !child) return;
+  if (!session || !provider) return;
   try {
     const state = await rpc('get_state');
     session.sessionFile = state.data?.sessionFile ?? session.sessionFile;
     emit('session.info_changed', { recovery: recovery() });
   } catch {}
 }
-function onPi(message) {
-  if (message.id !== undefined && pending.has(String(message.id))) {
-    const request = pending.get(String(message.id)); pending.delete(String(message.id));
+function onPi(message, startedProvider) {
+  if (provider !== startedProvider) return;
+  if (message.id !== undefined && startedProvider.pending.has(String(message.id))) {
+    const request = startedProvider.pending.get(String(message.id)); startedProvider.pending.delete(String(message.id));
     message.success === false ? request.reject(new Error(message.error ?? 'Pi request failed')) : request.resolve(message);
     return;
   }
@@ -84,17 +92,36 @@ function onPi(message) {
 async function startPi(cwd, runtimeDataPath, sessionFile) {
   const args = ['--mode', 'rpc', '--session-dir', runtimeDataPath, '--name', 'aibo-pi-plugin', '--no-tools', '--no-extensions', '--no-prompt-templates', '--no-context-files', '--no-approve'];
   if (sessionFile) args.push('--session', sessionFile);
-  child = spawn('pi', args, { cwd, stdio: ['pipe', 'pipe', 'pipe'] });
-  child.stderr.on('data', (chunk) => process.stderr.write(chunk));
-  child.on('exit', () => { for (const request of pending.values()) request.reject(new Error('Pi exited')); pending.clear(); });
-  lines = readline.createInterface({ input: child.stdout, crlfDelay: Infinity });
-  lines.on('line', (line) => { try { onPi(JSON.parse(line)); } catch (error) { process.stderr.write(`Invalid Pi frame: ${error}\n`); } });
+  const startedChild = spawn('pi', args, { cwd, stdio: ['pipe', 'pipe', 'pipe'] });
+  const startedProvider = { child: startedChild, lines: null, pending: new Map() };
+  provider = startedProvider;
+  startedChild.stderr.on('data', (chunk) => process.stderr.write(chunk));
+  startedChild.on('exit', () => {
+    // A close followed immediately by resume can leave the old child exit
+    // notification queued after the replacement child has started. Only the
+    // current provider process may reject requests or finish its turn.
+    if (provider !== startedProvider) return;
+    provider = null;
+    for (const request of startedProvider.pending.values()) request.reject(new Error('Pi exited'));
+    startedProvider.pending.clear();
+    const turn = session?.turn;
+    if (turn) {
+      emit('turn.failed', { message: 'Pi exited' }, turn.id, { requestId: turn.requestId, itemId: null });
+      session.turn = null;
+      render();
+    }
+  });
+  startedProvider.lines = readline.createInterface({ input: startedChild.stdout, crlfDelay: Infinity });
+  startedProvider.lines.on('line', (line) => { try { onPi(JSON.parse(line), startedProvider); } catch (error) { process.stderr.write(`Invalid Pi frame: ${error}\n`); } });
   return rpc('get_state');
 }
 async function stopPi() {
-  if (!child) return;
-  lines?.close(); child.kill(); child = null;
-  for (const request of pending.values()) request.reject(new Error('Pi stopped')); pending.clear();
+  const stoppedProvider = provider;
+  if (!stoppedProvider) return;
+  provider = null;
+  stoppedProvider.lines?.close(); stoppedProvider.child.kill();
+  for (const request of stoppedProvider.pending.values()) request.reject(new Error('Pi stopped'));
+  stoppedProvider.pending.clear();
 }
 async function handle({ id, method, params: p }) {
   if (method === 'aibo.initialize') {
@@ -132,8 +159,15 @@ async function handle({ id, method, params: p }) {
   if (!session || p.sessionId !== session.id) fail('invalid_session');
   if (method === 'turn.send') {
     if (session.turn) fail('busy');
-    session.turn = { id: p.turnId, requestId: id, text: '', finalText: '', aborted: false, failed: false };
-    await rpc('prompt', { message: p.input.text }); respond(id, { kind: 'accepted', accepted: true }); return;
+    const turn = { id: p.turnId, requestId: id, text: '', finalText: '', aborted: false, failed: false };
+    session.turn = turn;
+    try {
+      await rpc('prompt', { message: p.input.text });
+    } catch (error) {
+      if (session.turn === turn) { session.turn = null; render(); }
+      throw error;
+    }
+    respond(id, { kind: 'accepted', accepted: true }); return;
   }
   if (method === 'turn.cancel') { if (session.turn?.id === p.turnId) await rpc('abort'); respond(id, { kind: 'accepted', accepted: true }); return; }
   if (method === 'operation.invoke') {
