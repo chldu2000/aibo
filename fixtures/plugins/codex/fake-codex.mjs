@@ -3,9 +3,20 @@ import readline from 'node:readline';
 const write = (message) => process.stdout.write(`${JSON.stringify({ jsonrpc: '2.0', ...message })}\n`);
 const input = readline.createInterface({ input: process.stdin, crlfDelay: Infinity });
 let goal = null;
+let interactiveTurn = null;
+function completeTurn(params) {
+  write({ method: 'item/agentMessage/delta', params: { threadId: params.threadId, turnId: 'native-turn', itemId: 'message', delta: params.input[0].text } });
+  write({ method: 'item/completed', params: { threadId: params.threadId, turnId: 'native-turn', item: { id: 'message', type: 'agentMessage', text: params.input[0].text } } });
+  write({ method: 'turn/completed', params: { threadId: params.threadId, turn: { id: 'native-turn', status: 'completed', items: [] } } });
+}
 input.on('line', (line) => {
   const request = JSON.parse(line);
   if (request.id === undefined) return;
+  if (request.method === undefined && interactiveTurn && String(request.id) === interactiveTurn.requestId) {
+    if (interactiveTurn.kind === 'approval' && !['accept', 'cancel'].includes(request.result?.decision)) throw new Error('invalid approval response');
+    if (interactiveTurn.kind === 'user-input' && typeof request.result?.answers !== 'object') throw new Error('invalid user input response');
+    completeTurn(interactiveTurn.params); interactiveTurn = null; return;
+  }
   const { id, method, params = {} } = request;
   if (method === 'initialize') write({ id, result: { userAgent: 'fake-codex/1.0.0' } });
   else if (method === 'thread/start') write({ id, result: { thread: { id: 'native-thread' }, approvalPolicy: 'never', sandbox: { type: 'readOnly' } } });
@@ -17,9 +28,13 @@ input.on('line', (line) => {
     }
     write({ id, result: { turn: { id: 'native-turn' } } });
     write({ method: 'turn/started', params: { threadId: params.threadId, turn: { id: 'native-turn', status: 'inProgress' } } });
-    write({ method: 'item/agentMessage/delta', params: { threadId: params.threadId, turnId: 'native-turn', itemId: 'message', delta: params.input[0].text } });
-    write({ method: 'item/completed', params: { threadId: params.threadId, turnId: 'native-turn', item: { id: 'message', type: 'agentMessage', text: params.input[0].text } } });
-    write({ method: 'turn/completed', params: { threadId: params.threadId, turn: { id: 'native-turn', status: 'completed', items: [] } } });
+    if (params.input[0].text === 'approval please') {
+      interactiveTurn = { kind: 'approval', requestId: 'provider-approval', params };
+      write({ id: interactiveTurn.requestId, method: 'item/commandExecution/requestApproval', params: { threadId: params.threadId, turnId: 'native-turn', itemId: 'tool-1', command: 'test', cwd: '/tmp' } });
+    } else if (params.input[0].text === 'input please') {
+      interactiveTurn = { kind: 'user-input', requestId: 'provider-input', params };
+      write({ id: interactiveTurn.requestId, method: 'item/tool/requestUserInput', params: { threadId: params.threadId, turnId: 'native-turn', itemId: 'tool-2', questions: [{ id: 'choice', header: 'Choice', question: 'Continue?', options: [] }] } });
+    } else completeTurn(params);
   } else if (method === 'turn/interrupt') write({ id, result: {} });
   else if (method === 'thread/goal/get') write({ id, result: { goal } });
   else if (method === 'thread/goal/set') {

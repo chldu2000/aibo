@@ -13,6 +13,7 @@ let childLines = null;
 let nextId = 1;
 let session = null;
 const pending = new Map();
+const providerRequests = new Map();
 
 const write = (message) => process.stdout.write(`${JSON.stringify({ jsonrpc: '2.0', ...message })}\n`);
 const respond = (id, result) => write({ id, result });
@@ -44,7 +45,15 @@ function onCodex(message) {
     return;
   }
   if (message.id !== undefined && message.method?.endsWith('/requestApproval')) {
-    child.stdin.write(`${JSON.stringify({ jsonrpc: '2.0', id: message.id, result: { decision: 'decline' } })}\n`); return;
+    const requestId = String(message.id); providerRequests.set(requestId, { rawId: message.id, kind: 'approval' });
+    emit('approval.requested', { requestId, kind: message.params?.kind ?? null, command: message.params?.command ?? null,
+      cwd: message.params?.cwd ?? null, availableDecisions: ['accept', 'cancel'] }, session?.turn?.id ?? null,
+      { requestId, itemId: message.params?.itemId ?? null, approvalId: message.id }); return;
+  }
+  if (message.id !== undefined && (message.method === 'item/tool/requestUserInput' || message.method === 'tool/requestUserInput')) {
+    const requestId = String(message.id); providerRequests.set(requestId, { rawId: message.id, kind: 'user-input' });
+    emit('user_input.requested', { requestId, questions: message.params?.questions ?? [] }, session?.turn?.id ?? null,
+      { requestId, itemId: message.params?.itemId ?? null }); return;
   }
   if (!session || !message.method) return;
   const p = message.params ?? {};
@@ -165,6 +174,18 @@ async function handle({ id, method, params: p }) {
     const result = await rpc('skills/list', { cwds: [session.cwd], forceReload: false });
     const skills = (result?.data ?? []).flatMap((item) => item?.skills ?? []);
     respond(id, { kind: 'operation', operationId: p.operationId, output: { skills } }); return;
+  }
+  if (method === 'operation.invoke' && (p.operationId === 'ext.dev.aibo.codex.approval' || p.operationId === 'ext.dev.aibo.codex.user-input')) {
+    const request = providerRequests.get(p.input?.requestId);
+    const expected = p.operationId.endsWith('.approval') ? 'approval' : 'user-input';
+    if (!request || request.kind !== expected) fail('invalid_request', 'request is no longer pending');
+    const result = expected === 'approval'
+      ? { decision: p.input.decision }
+      : { answers: Object.fromEntries(Object.entries(p.input.answers).map(([key, values]) => [key, { answers: Array.isArray(values) ? values : [values] }])) };
+    child.stdin.write(`${JSON.stringify({ jsonrpc: '2.0', id: request.rawId, result })}\n`);
+    providerRequests.delete(p.input.requestId);
+    emit(expected === 'approval' ? 'approval.resolved' : 'user_input.resolved', { requestId: p.input.requestId }, session.turn?.id ?? null, { requestId: p.input.requestId });
+    respond(id, { kind: 'operation', operationId: p.operationId, output: { resolved: true } }); return;
   }
   if (method === 'session.close') { await stopCodex(); session = null; respond(id, { kind: 'accepted', accepted: true }); return; }
   fail('capability_unsupported');

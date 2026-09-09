@@ -5,6 +5,15 @@ use std::{collections::HashMap, path::PathBuf, sync::Arc, time::Duration};
 use tokio::sync::Mutex;
 
 const TIMEOUT: Duration = Duration::from_secs(15);
+fn event_capability(kind: &str) -> Option<&'static str> {
+    match kind {
+        "approval.requested" | "approval.resolved" => Some("approval.respond"),
+        "user_input.requested" | "user_input.resolved" => Some("user-input.respond"),
+        "queue.updated" => Some("queue.manage"),
+        "compaction.started" | "compaction.completed" => Some("compaction.run"),
+        _ => None,
+    }
+}
 #[derive(Clone)]
 pub(crate) struct PluginHost {
     db: SqlitePool,
@@ -290,8 +299,8 @@ impl PluginHost {
         if p["sessionId"] != session_id || p["agentId"] != binding["agentId"] { return Err("invalid_session: notification identity".into()); }
         let _write_guard = self.database_writes.lock().await;
         let mut tx = self.db.begin().await.map_err(|e|e.to_string())?;
-        let active: Option<String> = sqlx::query_scalar("SELECT generation_id FROM session_bindings WHERE session_id=?").bind(session_id).fetch_one(&mut *tx).await.map_err(|e|e.to_string())?;
-        if active.as_deref() != Some(generation) { return Err("invalid_session: old generation".into()); }
+        let active: (String, String) = sqlx::query_as("SELECT generation_id,plugin_capabilities_json FROM session_bindings WHERE session_id=?").bind(session_id).fetch_one(&mut *tx).await.map_err(|e|e.to_string())?;
+        if active.0 != generation { return Err("invalid_session: old generation".into()); }
         if message["method"] == "view/render" {
             let document = &p["document"];
             if !contracts().view.is_valid(document) { return Err("invalid_request: view schema".into()); }
@@ -330,8 +339,12 @@ impl PluginHost {
                 "source":{"pluginId":binding["pluginId"],"pluginVersion":binding["pluginVersion"],"agentId":binding["agentId"],"runtimeProtocolVersion":"1.0"},
                 "workspaceId":workspace_id,"sessionId":session_id,"nativeSessionId":p["nativeSessionId"],"turnId":p["turnId"],"type":p["type"],"correlation":p["correlation"],"payload":p["payload"],"rawRef":null});
             let kind = p["type"].as_str().unwrap();
-            if !["session.started","session.info_changed","turn.started","message.delta","message.completed","turn.completed","turn.failed"].contains(&kind) {
+            if !["session.started","session.info_changed","turn.started","message.delta","message.completed","turn.completed","turn.failed","approval.requested","approval.resolved","user_input.requested","user_input.resolved"].contains(&kind) {
                 return Err("capability_unsupported: event outside minimal lifecycle".into());
+            }
+            let negotiated: Value = serde_json::from_str(&active.1).map_err(|_|"manifest_mismatch: negotiated capabilities missing")?;
+            if event_capability(kind).is_some_and(|capability|!negotiated.as_array().is_some_and(|items|items.contains(&json!(capability)))) {
+                return Err("capability_unsupported: event capability was not negotiated".into());
             }
             let turn_id = p["turnId"].as_str();
             if (kind.starts_with("turn.") || kind.starts_with("message.")) && turn_id.is_none() { return Err("invalid_session: turn identity required".into()); }
@@ -357,6 +370,13 @@ impl PluginHost {
                         sqlx::query("INSERT INTO messages(id,session_id,turn_id,role,content,status,created_at,updated_at) VALUES(?,?,?,'assistant',?,'completed',?,?) ON CONFLICT(id) DO UPDATE SET content=excluded.content,status='completed',updated_at=excluded.updated_at")
                             .bind(id).bind(session_id).bind(turn).bind(text).bind(&now).bind(&now).execute(&mut *tx).await.map_err(|e|e.to_string())?;
                     }
+                } else if kind == "approval.requested" || kind == "user_input.requested" {
+                    let request_id = p["payload"]["requestId"].as_str().ok_or("invalid_request: request id")?;
+                    if request_id.is_empty() { return Err("invalid_request: request id".into()); }
+                    let waiting = if kind == "approval.requested" { "waiting_approval" } else { "waiting_user" };
+                    sqlx::query("UPDATE sessions SET state=?,updated_at=? WHERE id=?").bind(waiting).bind(&now).bind(session_id).execute(&mut *tx).await.map_err(|e|e.to_string())?;
+                } else if kind == "approval.resolved" || kind == "user_input.resolved" {
+                    sqlx::query("UPDATE sessions SET state='running',updated_at=? WHERE id=?").bind(&now).bind(session_id).execute(&mut *tx).await.map_err(|e|e.to_string())?;
                 } else if kind == "turn.completed" || kind == "turn.failed" {
                     let status = if kind == "turn.failed" { "failed" } else { p["payload"]["status"].as_str().ok_or("invalid_request: terminal status")? };
                     if !["completed","interrupted","failed"].contains(&status) { return Err("invalid_request: terminal status".into()); }
@@ -382,6 +402,13 @@ impl PluginHost {
 mod tests {
     use super::*;
     use std::fs;
+
+    #[test]
+    fn maps_interactive_events_to_negotiated_capabilities() {
+        assert_eq!(event_capability("approval.requested"), Some("approval.respond"));
+        assert_eq!(event_capability("user_input.resolved"), Some("user-input.respond"));
+        assert_eq!(event_capability("message.delta"), None);
+    }
 
     async fn wait_turn(db: &SqlitePool, session: &str, status: &str) {
         tokio::time::timeout(Duration::from_secs(10), async {

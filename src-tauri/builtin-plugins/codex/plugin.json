@@ -17,7 +17,7 @@
     "agentId": "dev.aibo.codex.agent",
     "displayName": "Codex",
     "description": "Codex app-server through the Aibo Agent Runtime Protocol.",
-    "capabilities": ["session.create", "session.resume", "session.close", "turn.send", "turn.cancel", "stream.text", "view.standard", "goal.manage", "model.select", "model.reasoning", "skill.list"],
+    "capabilities": ["session.create", "session.resume", "session.close", "turn.send", "turn.cancel", "stream.text", "view.standard", "goal.manage", "model.select", "model.reasoning", "skill.list", "approval.respond", "user-input.respond"],
     "requestedPermissions": [{ "id": "workspace.read", "required": true, "reason": "Starts Codex in the selected trusted workspace." }],
     "operations": [{
       "id": "ext.dev.aibo.codex.goal",
@@ -53,6 +53,16 @@
       "capability": "skill.list",
       "inputSchema": { "type": "object", "additionalProperties": false },
       "outputSchema": { "type": "object", "required": ["skills"], "properties": { "skills": { "type": "array" } } }
+    }, {
+      "id": "ext.dev.aibo.codex.approval",
+      "capability": "approval.respond",
+      "inputSchema": { "type": "object", "additionalProperties": false, "required": ["requestId", "decision"], "properties": { "requestId": { "type": "string", "minLength": 1 }, "decision": { "enum": ["accept", "cancel"] } } },
+      "outputSchema": { "type": "object", "additionalProperties": false, "required": ["resolved"], "properties": { "resolved": { "const": true } } }
+    }, {
+      "id": "ext.dev.aibo.codex.user-input",
+      "capability": "user-input.respond",
+      "inputSchema": { "type": "object", "additionalProperties": false, "required": ["requestId", "answers"], "properties": { "requestId": { "type": "string", "minLength": 1 }, "answers": { "type": "object" } } },
+      "outputSchema": { "type": "object", "additionalProperties": false, "required": ["resolved"], "properties": { "resolved": { "const": true } } }
     }],
     "views": [{ "viewId": "dev.aibo.codex.status", "title": "Codex status", "requiredComponents": ["panel", "badge", "text"] }]
   }]
