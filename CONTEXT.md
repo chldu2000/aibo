@@ -43,3 +43,21 @@ _Avoid_: Native history, recovery data
 **Plugin View**:
 A validated declarative view document rendered by Aibo through the active UI kit. It contains no executable WebView code or visual skin instructions.
 _Avoid_: Plugin UI, embedded app
+
+## Plugin Platform Evolution
+
+**能力插件（Capability Plugin）**：提供领域行为、业务数据和可选语义贡献的插件。Agent 插件是能力插件的一种。
+
+**能力契约（Capability Contract）**：对一种业务能力的身份、输入、输出和行为语义的版本化约定。它不代表调用者已经获得执行权限。
+
+**语义贡献（Semantic Contribution）**：插件声明的业务入口、信息结构与动作含义，不指定物理布局或具体组件。
+_Avoid_：用“UI 插件”指代只声明页面内容的包。
+
+**Presentation Plugin（表现插件）**：负责工作台布局、语义渲染与视觉风格的表现实现，可组合 Shell、renderer 和 skin 角色。
+_Avoid_：用“皮肤”泛指整个 Presentation Plugin。
+
+**语义动作（Semantic Action）**：表达用户意图的动作，按责任分为本地交互、宿主导航和能力调用。
+
+**宿主导航（Host Navigation）**：以业务目标描述的当前位置、详情目标与返回关系，不指定侧栏、中央面板等物理位置。
+
+**能力作用域（Capability Scope）**：能力调用所关联的身份与资源边界，包括 application、workspace 和 session。作用域不等于运行实例或进程。

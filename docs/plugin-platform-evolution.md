@@ -4,6 +4,20 @@
 >
 > 输入：[讨论原文](./discuss-with-gpt.md)的三轮讨论，以及当前仓库代码。本次修订将重点从“通用能力插件与可插拔面板”调整为“业务语义与整个表现层解耦”；框架无关是目标性质，当前实现仍是 Svelte。
 
+### 已确认的实施决策（2026-09-10）
+
+第二轮已确认状态恢复、动作执行、异步结果、过期动作、交互一致性及大数据呈现原则，详见[语义交互与状态规则](./plugin-platform-interaction-decisions.md)与 [ADR-0006](./adr/0006-presentation-state-and-result-ownership.md)。这些是后续实施约束，尚未改变现行运行行为。
+
+下列决定已确认，但尚待实施，不改变现行 schema 或 UI 规则。其余设计草案仍需按阶段细化；执行入口见[实施 checklist](./plugin-platform-implementation-checklist.md)，术语见[领域词汇表](../CONTEXT.md)。
+
+| 决策 | 结论与原因 | 记录 |
+| --- | --- | --- |
+| 首次交付边界 | P3 是首次平台交付门：承诺能力包与声明式贡献可安装。P1 验证语义边界，P4 验收完整 Presentation Plugin；分别验收可替换性与独立安装，避免扩大首版承诺 | [实施约定](./plugin-platform-implementation-checklist.md#执行约定) |
+| 契约治理 | 插件可定义自身命名空间能力契约，核心语义视图由宿主治理；兼顾业务扩展与 renderer 可替换性 | [ADR-0002](./adr/0002-capability-and-semantic-contract-governance.md) |
+| 动作责任 | 分为本地交互、宿主导航和能力调用；使业务意图与物理布局解耦，同时保留导航恢复能力 | [ADR-0003](./adr/0003-semantic-action-responsibilities.md) |
+| 运行隔离 | scope 不等于进程拓扑；首版 workspace 能力默认按工作区隔离实例，以资源开销换取故障/取消边界清晰 | [ADR-0004](./adr/0004-workspace-capability-runtime-isolation.md) |
+| 兼容政策 | P1 语义协议实验性，P3 发布前冻结稳定版；演进期间保留 v1，退出执行兼容单独决策，避免内部重构破坏外部插件 | [ADR-0005](./adr/0005-plugin-protocol-stability-and-compatibility.md) |
+
 ## 1. 建议与目标
 
 Aibo 应沿用现有进程外插件路线，逐步成为**带有默认 Agent 工作台的插件宿主**：宿主管理身份、授权、运行、数据，以及 UI 语义与交互合同；能力插件提供行为、数据和语义视图；UI 插件实现布局、组件与渲染。现有 Codex、Pi、工作区工具和工作台成为首批实现与验证对象。
