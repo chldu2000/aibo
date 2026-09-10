@@ -316,10 +316,13 @@
           </div>
 
           {#if workspaceExpanded}
-            <section id={`workspace-sessions-${workspace.id}`} class="workspace-session-group" aria-label={`${workspace.label} 的会话`}>
-              {#if sessionsLoadingWorkspaceIds.includes(workspace.id)}
-                <span class="session-filter-empty">加载会话…</span>
-              {:else if workspaceSessions.length > 0}
+            <section
+              id={`workspace-sessions-${workspace.id}`}
+              class="workspace-session-group"
+              aria-label={`${workspace.label} 的会话`}
+              aria-busy={sessionsLoadingWorkspaceIds.includes(workspace.id)}
+            >
+              {#if workspaceSessions.length > 0}
                 <div class="session-list" aria-label="Agent 会话列表">
                   {#each workspaceSessions as session (session.id)}
                     <div class:selected={session.id === selectedSessionId} class:is-renaming={renamingSessionId === session.id} class="session-item-row">
@@ -390,6 +393,8 @@
                     </div>
                   {/each}
                 </div>
+              {:else if sessionsLoadingWorkspaceIds.includes(workspace.id)}
+                <span class="session-filter-empty">加载会话…</span>
               {:else}
                 <span class="session-filter-empty">{sessionSearch || sessionFilter !== 'active' ? '没有匹配的会话' : '暂无会话'}</span>
               {/if}

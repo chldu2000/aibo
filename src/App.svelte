@@ -2975,6 +2975,7 @@
     refreshPiTree,
     refreshTurnChangeSet,
     refreshExecutionProfile,
+    refreshSessions,
   });
 
   const workspaceController = createWorkspaceController({

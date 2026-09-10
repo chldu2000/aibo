@@ -16,8 +16,11 @@ import type {
   RestoreOperation,
 } from '$lib/types';
 import type { PersistedSelection } from './selection-storage';
+import { withTimeout } from './async-timeout';
 import { ensureWorkspaceExpanded, workspaceIdsForRefresh } from './session-transitions';
 import { toErrorMessage } from './error-utils';
+
+const SESSION_LIST_TIMEOUT_MS = 10_000;
 
 export type RefreshControllerContext = {
   api: {
@@ -121,10 +124,14 @@ export function createRefreshController(context: RefreshControllerContext) {
       const selectedSessionWasInWorkspace = Boolean(
         selectedSessionId && previousSessions.some(({ id }) => id === selectedSessionId),
       );
-      const loadedSessions = await context.api.listSessions(workspaceId, {
-        search: context.getSessionSearch(),
-        statusFilter: context.getSessionFilter(),
-      });
+      const loadedSessions = await withTimeout(
+        context.api.listSessions(workspaceId, {
+          search: context.getSessionSearch(),
+          statusFilter: context.getSessionFilter(),
+        }),
+        SESSION_LIST_TIMEOUT_MS,
+        '加载会话超时；已保留当前会话列表，请稍后重试。',
+      );
       if (context.getSessionLoadGenerations()[workspaceId] !== generation) return;
       context.setWorkspaceSessionMap({
         ...context.getWorkspaceSessionMap(),
@@ -161,6 +168,10 @@ export function createRefreshController(context: RefreshControllerContext) {
         void refreshSelectedSessionContext(nextSelectedSessionId);
       } else {
         context.clearSelectedSessionContext();
+      }
+    } catch (error) {
+      if (context.getSessionLoadGenerations()[workspaceId] === generation) {
+        context.setErrorMessage(toErrorMessage(error));
       }
     } finally {
       // Covers list_sessions failures and early returns before the list is

@@ -1,6 +1,10 @@
 import type { AgentName, AgentQueueSnapshot, CheckpointFile, ContextAttachment, ExecutionProfile, Session, TimelineItem, Workspace } from '$lib/types';
+import { sessionAgentKind } from './agent-kind';
+import { withTimeout } from './async-timeout';
 import { toErrorMessage } from './error-utils';
 import { upsertSession } from './session-transitions';
+
+const SESSION_CREATE_TIMEOUT_MS = 20_000;
 
 export type AgentSessionControllerContext = {
   api: {
@@ -28,6 +32,7 @@ export type AgentSessionControllerContext = {
   refreshCodexThreads: (workspaceId: string) => Promise<void> | void;
   refreshPiTree: (sessionId: string) => Promise<void> | void;
   refreshExecutionProfile: (sessionId: string) => Promise<void> | void;
+  refreshSessions: (workspaceId: string) => Promise<void>;
 };
 
 export function createAgentSessionController(context: AgentSessionControllerContext) {
@@ -96,8 +101,15 @@ export function createAgentSessionController(context: AgentSessionControllerCont
 
     context.setBusy(true);
     context.setErrorMessage(null);
+    const previousSessionIds = new Set(
+      context.getWorkspaceSessionMap()[workspace.id]?.map(({ id }) => id) ?? [],
+    );
     try {
-      const session = await context.api.createPiSession(workspace.id, requestedProfile('pi'));
+      const session = await withTimeout(
+        context.api.createPiSession(workspace.id, requestedProfile('pi')),
+        SESSION_CREATE_TIMEOUT_MS,
+        '创建 Pi 会话超时。',
+      );
       context.setWorkspaceSessionMap(upsertSession(context.getWorkspaceSessionMap(), session));
       context.clearSelectedSessionContext();
       context.setSelectedSessionId(session.id);
@@ -106,7 +118,31 @@ export function createAgentSessionController(context: AgentSessionControllerCont
       void context.refreshExecutionProfile(session.id);
       context.setNotice('Pi SDK 会话已启动；工具权限由 Aibo Core profile 控制，Pi 本身不提供原生沙箱。');
     } catch (error) {
-      context.setErrorMessage(toErrorMessage(error));
+      // The native command can finish after its IPC response is lost. Reload
+      // the workspace and recover a newly-created idle Pi session instead of
+      // leaving it invisible and encouraging a duplicate retry.
+      try {
+        await context.refreshSessions(workspace.id);
+      } catch {
+        // Preserve the original creation error if a custom controller context
+        // still exposes a rejecting refresh implementation.
+      }
+      const recovered = context.getWorkspaceSessionMap()[workspace.id]?.find(
+        (session) =>
+          !previousSessionIds.has(session.id) &&
+          sessionAgentKind(session) === 'pi' &&
+          session.state === 'idle',
+      );
+      if (recovered) {
+        context.clearSelectedSessionContext();
+        context.setSelectedSessionId(recovered.id);
+        context.setCreateSessionWorkspaceId(null);
+        void context.refreshPiTree(recovered.id);
+        void context.refreshExecutionProfile(recovered.id);
+        context.setNotice('Pi 会话已创建；界面响应中断后已从本地会话记录恢复。');
+      } else {
+        context.setErrorMessage(toErrorMessage(error));
+      }
     } finally {
       context.setBusy(false);
     }
