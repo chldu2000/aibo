@@ -266,7 +266,7 @@
                     <details class="tool-output">
                       <summary>
                         <span class="tool-output-name">{toolLabel(tool)}</span>
-                        <span class="tool-output-action">{isDiffContent(tool.content) ? '查看 diff' : '查看工具输出'}</span>
+                        <span class="tool-output-action">{tool.entryType === 'tool_call' ? '查看调用参数' : isDiffContent(tool.content) ? '查看 diff' : '查看工具输出'}</span>
                       </summary>
                       <pre class:diff-content={isDiffContent(tool.content)}>{tool.content || '…'}</pre>
                     </details>
@@ -313,11 +313,16 @@
                   {/if}
                 </div>
               </div>
-              {#if item.role === 'tool'}
+              {#if item.toolName === 'reasoning' && item.role === 'system'}
+                <details class="tool-output">
+                  <summary>思考 · 查看详情</summary>
+                  <div class="entry-content"><MarkdownContent content={item.content} /></div>
+                </details>
+              {:else if item.role === 'tool'}
                 <details class="tool-output">
                   <summary>
                     <span class="tool-output-name">{toolLabel(item)}</span>
-                    <span class="tool-output-action">{isDiffContent(item.content) ? '查看 diff' : '查看工具输出'}</span>
+                    <span class="tool-output-action">{item.entryType === 'tool_call' ? '查看调用参数' : isDiffContent(item.content) ? '查看 diff' : '查看工具输出'}</span>
                   </summary>
                   <pre class:diff-content={isDiffContent(item.content)}>{item.content || '…'}</pre>
                 </details>

@@ -337,5 +337,16 @@ test('bundled Pi SDK abort closes the active turn and permits the next turn', { 
   // Navigating back must restore the original branch without deleting it.
   await operation('ext.dev.aibo.pi.tree', { action: 'navigate', entryId: previousLeaf, summarize: false });
   assert.deepEqual((await operation('ext.dev.aibo.pi.snapshot')).output.branch, before.branch);
+  const structuredCompleted = client.waitFor((message) => message.params?.type === 'turn.completed' && message.params.turnId === 'structured-turn');
+  await request('turn.send', { ...scope, turnId: 'structured-turn', input: { text: 'structured assistant fixture', attachments: [] } });
+  await structuredCompleted;
+  const structured = (await operation('ext.dev.aibo.pi.snapshot')).output.branch.at(-1);
+  assert.deepEqual(structured.parts.map(({ role, type }) => [role, type]), [
+    ['system', 'reasoning'], ['tool', 'tool_call'], ['assistant', 'message'],
+  ]);
+  assert.equal(structured.parts[1].toolName, 'read');
+  assert.deepEqual(JSON.parse(structured.parts[1].summary), { path: 'README.md' });
+  assert.equal(structured.parts[2].summary, '我先查看文件，然后给你解释。');
+  assert.ok(!JSON.stringify(structured).includes('private fixture reasoning'));
   await request('session.close', { agentId: scope.agentId, sessionId: scope.sessionId });
 });

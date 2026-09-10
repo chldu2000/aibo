@@ -136,9 +136,29 @@ function sdkEntry(entry) {
   return { id: entry.id, parentId: entry.parentId ?? null, type: entry.type, timestamp: entry.timestamp,
     role: entry.message?.role, toolName: entry.message?.toolName, stopReason: entry.message?.stopReason,
     // Branch snapshots feed the timeline; only tree node labels are truncated.
-    isError: entry.message?.isError, summary: entry.type === 'message'
+    isError: entry.message?.isError,
+    parts: entry.message?.role === 'assistant' ? sdkAssistantParts(entry.message) : undefined,
+    summary: entry.type === 'message'
       ? sdkMessageSummary(entry.message)
       : typeof entry.summary === 'string' ? entry.summary : sdkTreeSummary(entry) };
+}
+function sdkAssistantParts(message) {
+  return (Array.isArray(message?.content) ? message.content : []).flatMap((part, index) => {
+    const type = String(part?.type ?? '').toLowerCase();
+    if (type === 'text') {
+      const text = sdkMessageText({ content: [part] });
+      return text.trim() ? [{ index, role: 'assistant', type: 'message', summary: text }] : [];
+    }
+    if (['thinking', 'reasoning', 'redacted_thinking'].includes(type)) {
+      return [{ index, role: 'system', type: 'reasoning', toolName: 'reasoning',
+        summary: 'Agent 思考内容（正文未显示）' }];
+    }
+    if (['toolcall', 'tool_call', 'tooluse', 'tool_use'].includes(type)) {
+      return [{ index, role: 'tool', type: 'tool_call', toolName: part.name ?? part.toolName ?? part.tool_name ?? 'tool',
+        summary: JSON.stringify(sdkSafeValue(part.arguments ?? part.args ?? part.input ?? {}), null, 2) }];
+    }
+    return [];
+  });
 }
 function sdkExtensionEntry(entry) {
   if (!entry || typeof entry !== 'object') return undefined;
@@ -494,6 +514,13 @@ function onPi(message, startedProvider) {
     }
   } else if (message.type === 'message_end') {
     const item = itemForMessage(turn, message.message);
+    if (message.message?.role === 'assistant' && !item.reasoningCompleted) {
+      item.reasoningCompleted = true;
+      for (const part of sdkAssistantParts(message.message).filter((part) => part.type === 'reasoning')) {
+        const itemId = `${item.itemId}:reasoning:${part.index}`;
+        emit('reasoning.completed', { itemId, summary: part.summary }, turn.id, { requestId: turn.requestId, itemId });
+      }
+    }
     const text = visibleText(message.message);
     if (text) turn.finalText = text;
     completeTurnItem(turn, item, text);

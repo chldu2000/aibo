@@ -1461,6 +1461,19 @@ fn pi_snapshot_timeline(snapshot: &serde_json::Value, session_id: &str) -> Vec<T
         .and_then(serde_json::Value::as_array)
         .into_iter()
         .flatten()
+        .flat_map(|entry| {
+            if let Some(parts) = entry.get("parts").and_then(serde_json::Value::as_array) {
+                return parts.iter().enumerate().map(|(index, part)| {
+                    let mut projected = entry.clone();
+                    if let Some(fields) = part.as_object() {
+                        for (key, value) in fields { projected[key] = value.clone(); }
+                    }
+                    projected["id"] = serde_json::json!(format!("{}:part:{index}", entry["id"].as_str().unwrap_or_default()));
+                    projected
+                }).collect::<Vec<_>>();
+            }
+            vec![entry.clone()]
+        })
         .filter_map(|entry| {
             let id = entry.get("id")?.as_str()?.to_owned();
             let entry_type = entry
@@ -6961,6 +6974,32 @@ mod tests {
         assert_eq!(timeline[3].content, "selected branch");
         assert!(timeline.iter().all(|item| item.id != "assistant-tool-call"));
         assert!(timeline.iter().all(|item| item.id != "assistant-other"));
+    }
+
+    #[test]
+    fn pi_snapshot_timeline_preserves_structured_assistant_parts() {
+        let snapshot = serde_json::json!({"branch": [{
+            "id": "mixed", "type": "message", "role": "assistant",
+            "timestamp": "2026-09-10T00:00:00Z", "summary": "flattened fallback",
+            "parts": [
+                {"role": "system", "type": "reasoning", "toolName": "reasoning", "summary": "思考内容未显示"},
+                {"role": "tool", "type": "tool_call", "toolName": "read", "summary": "{\"path\":\"README.md\"}"},
+                {"role": "assistant", "type": "message", "summary": "我先查看文件。"}
+            ]
+        }]});
+        let timeline = pi_snapshot_timeline(&snapshot, "session");
+        assert_eq!(timeline.len(), 3);
+        assert_eq!(timeline[0].role, "system");
+        assert_eq!(timeline[0].tool_name.as_deref(), Some("reasoning"));
+        assert_eq!(timeline[1].role, "tool");
+        assert_eq!(timeline[1].entry_type.as_deref(), Some("tool_call"));
+        assert_eq!(timeline[1].tool_name.as_deref(), Some("read"));
+        assert_eq!(timeline[2].role, "assistant");
+        assert_eq!(timeline[2].content, "我先查看文件。");
+        assert_eq!(timeline[2].tool_name, None);
+        assert_ne!(timeline[0].id, timeline[1].id);
+        assert_ne!(timeline[1].id, timeline[2].id);
+        assert!(timeline.iter().all(|item| item.created_at == "2026-09-10T00:00:00Z"));
     }
 
     #[test]

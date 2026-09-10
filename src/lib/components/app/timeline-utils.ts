@@ -48,6 +48,7 @@ export function groupTimelineItems(items: TimelineViewItem[], groupSystemItems =
 
 function isGroupableSystemItem(item: TimelineViewItem): boolean {
   return item.role === 'system'
+    && item.toolName !== 'reasoning'
     && item.entryType !== null
     && item.entryType !== 'branch_summary'
     && item.entryType !== 'compaction';

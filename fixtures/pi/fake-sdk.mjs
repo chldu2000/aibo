@@ -87,6 +87,13 @@ class FakeSessionManager {
     const assistantId = `assistant-${this.entries.length + 2}`;
     this.entries.push(entry(userId, this.leafId, 'user', text, now));
     this.entries.push(entry(assistantId, userId, 'assistant', text, new Date(Date.parse(now) + 1).toISOString()));
+    if (text === 'structured assistant fixture') {
+      this.entries.at(-1).message.content = [
+        { type: 'thinking', thinking: 'private fixture reasoning' },
+        { type: 'toolCall', id: 'read-1', name: 'read', arguments: { path: 'README.md' } },
+        { type: 'text', text: '我先查看文件，然后给你解释。' },
+      ];
+    }
     this.leafId = assistantId;
     this.persist();
   }
