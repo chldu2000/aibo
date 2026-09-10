@@ -146,3 +146,15 @@ timeline and validated views with cancellation of stale selection scopes. A view
 does not prevent reading saved timeline history. Install, enable, create, send, cancel,
 resume and close callbacks use the host's unified API. Generic view actions remain
 explicitly unavailable until host capability/confirmation dispatch is wired.
+
+## P1 语义工作区视图
++
++`src/lib/presentation/contract.ts` 是实验性纯 JSON 数据合同；`git.ts` 只把窄数据端口的结果投影为 collection/detail，不导入 Svelte、DOM、具体 API 或 kit。controller 的函数端口是本地宿主装配接口，不是公共 wire protocol。
++
++`src/lib/workbench/` 属于可信表现装配层：Svelte 组件只通过 `$lib/ui-kit` 使用视觉控件，CSS 仍仅表达布局，不调用具体 API、不按皮肤或 Provider ID 分支。`test/presentation-boundaries.test.mjs` 已纳入 `check:architecture`，同时检查数据模块传递依赖、公共类型无回调，以及移除 DOM lib 后的类型检查。
++
++`SemanticView` 是 `UiKitAdapter` 的新增必需成员，由 runtime proxy 转交当前皮肤；两套皮肤均实现，视觉/焦点/disabled 样式留在 kit 内部，未引入 optional 豁免。`PresentationProps` 中的 layout 和 onAction 是可信本地 renderer 参数，不属于能力数据合同。
++
++Svelte 与最小 DOM adapter 均提供 mount/update/dispose 并消费相同 fixture。默认产品入口使用可信 Svelte 工作区组件，adapter 验证入口位于 `probes/semantic-ui.html`；最小 DOM renderer 不作为产品工作台发布，也不加载第三方脚本。JSON schema 验证器在开发阶段生成，运行时不调用 eval/Function，保持现行桌面 CSP。
++
++具体协议和验收见 [P1 实施记录](./plugin-platform-p1-semantic-slice.md)。

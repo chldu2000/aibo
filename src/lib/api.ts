@@ -558,3 +558,8 @@ export const getPiSessionSnapshot = (sessionId: string): Promise<PiSessionSnapsh
 export const listenToAgentEvents = (
   handler: (event: AgentEvent) => void,
 ): Promise<UnlistenFn> => listen<AgentEvent>('agent-event', (event) => handler(event.payload));
+
+// Trusted P1 Git read port. No session is created for workspace inspection.
+export const openSemanticGit = (workspaceId: string): Promise<import('./presentation/git').GitPage> => invoke('open_semantic_git', { workspaceId });
+export const actSemanticGit = (action: import('./presentation/contract').ActionMessage): Promise<import('./presentation/git').GitPage> => invoke('act_semantic_git', { action });
+export const releaseSemanticGit = (generation: string): Promise<void> => invoke('release_semantic_git', { generation });

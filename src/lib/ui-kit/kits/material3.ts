@@ -1,3 +1,4 @@
+import SemanticView from './material3/SemanticView.svelte';
 import AlertDialog from './material3/AlertDialog.svelte';
 import Badge from './material3/Badge.svelte';
 import Button from './material3/Button.svelte';
@@ -24,6 +25,7 @@ import { lightStatusThemeTokens, statusThemeTokens } from '../theme-tokens';
  * unaware of the selected visual system.
  */
 export const material3UiKit: UiKitAdapter = {
+  SemanticView,
   PluginView,
   AgentStatusMark,
   AlertDialog,

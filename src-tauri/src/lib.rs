@@ -8,6 +8,7 @@ mod plugin_contract;
 mod plugin_registry;
 mod plugin_host;
 mod workspace_guard;
+mod semantic_git;
 
 use change_set::{
     capture as capture_workspace, checkpoint_file_path, persist as persist_change_set,
@@ -68,6 +69,7 @@ pub struct AppState {
     db: SqlitePool,
     codex: CodexManager,
     plugins: plugin_host::PluginHost,
+    semantic_git: semantic_git::GitPresentation,
     data_dir: PathBuf,
 }
 
@@ -5789,6 +5791,7 @@ pub fn run() {
             info!(path = %db_path.display(), "aibo core initialized");
             let codex = CodexManager::new(app.handle().clone(), db.clone(), data_dir.clone());
             app.manage(AppState {
+                semantic_git: semantic_git::GitPresentation::default(),
                 plugins: plugin_host::PluginHost::with_app(db.clone(), app.handle().clone()),
                 db,
                 codex,
@@ -5797,6 +5800,9 @@ pub fn run() {
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
+            semantic_git::open_semantic_git,
+            semantic_git::act_semantic_git,
+            semantic_git::release_semantic_git,
             list_plugin_installations,
             install_agent_plugin,
             set_agent_plugin_enabled,

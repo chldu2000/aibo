@@ -16,3 +16,5 @@ export { default as Label } from './runtime/Label.svelte';
 export { default as ModelMatrix } from './runtime/ModelMatrix.svelte';
 export { default as Separator } from './runtime/Separator.svelte';
 export { default as Textarea } from './runtime/Textarea.svelte';
+
+export { default as SemanticView } from './runtime/SemanticView.svelte';

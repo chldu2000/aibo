@@ -23,11 +23,14 @@
     "probe:pi:plugin:smoke": "node probes/pi-plugin-smoke.mjs",
     "probe:pi:plugin:diff": "node probes/pi-plugin-diff.mjs",
     "probe": "node probes/run-all.mjs",
-    "check:architecture": "node --test test/architecture-boundaries.test.mjs test/ui-style-boundaries.test.mjs",
+    "check:architecture": "node --test test/architecture-boundaries.test.mjs test/ui-style-boundaries.test.mjs test/presentation-boundaries.test.mjs",
     "check:types": "tsc --noEmit",
     "verify": "pnpm run check:architecture && pnpm run check:types && pnpm test && pnpm run build",
     "test:contracts": "node --test test/adapter-contract.test.mjs",
-    "test": "node --test"
+    "test": "node --test",
+    "generate:semantic-validator": "node scripts/build-semantic-validator.mjs",
+    "probe:semantic-ui": "node probes/semantic-ui-browser.mjs",
+    "probe:semantic-desktop": "node probes/semantic-desktop.mjs"
   },
   "engines": {
     "node": ">=22"
@@ -46,6 +49,8 @@
     "@sveltejs/vite-plugin-svelte": "^6.2.1",
     "@tailwindcss/vite": "^4.3.3",
     "@tauri-apps/cli": "^2.8.4",
+    "ajv": "^8.20.0",
+    "playwright": "^1.63.0",
     "shadcn-svelte": "^1.6.0",
     "svelte": "^5.38.7",
     "tailwind-variants": "^3.3.1",

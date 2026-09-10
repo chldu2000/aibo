@@ -1,4 +1,8 @@
 <script lang="ts">
+  const loadGitWorkbench = () => import('$lib/workbench/GitWorkbench.svelte');
+  import { openSemanticGit, actSemanticGit, releaseSemanticGit } from '$lib/api';
+  const semanticGitPort = { open: openSemanticGit, act: actSemanticGit, release: releaseSemanticGit };
+  let semanticGitOpen = $state(false);
   import { onDestroy, onMount, untrack } from 'svelte';
   import { open } from '@tauri-apps/plugin-dialog';
   import {
@@ -454,6 +458,7 @@
     settingsOpen = false;
     diagnosticsOpen = false;
     commandPaletteOpen = false;
+    semanticGitOpen = false;
     pluginsOpen = true;
     void pluginOperation(async () => { pluginInstallations = await listPluginInstallations(); });
   }
@@ -947,6 +952,8 @@
   });
 
   const commandPaletteCommands = $derived.by((): CommandPaletteCommand[] => [
+    { id: 'workspace-semantic-git', label: '工作区变更（只读）', description: '查看变更列表和文件差异', disabled: !desktop || !selectedWorkspaceId,
+      run: () => { semanticGitOpen = true; pluginsOpen = false; commandPaletteOpen = false; } },
     {
       id: 'new-session',
       label: '新建会话',
@@ -3217,7 +3224,7 @@
         if (workspaceId !== selectedWorkspaceId) activateWorkspace(workspaceId);
         void createPi();
       }}
-      onSelectSession={(id) => { pluginsOpen = false; selectSession(id); }}
+      onSelectSession={(id) => { semanticGitOpen = false; pluginsOpen = false; selectSession(id); }}
       onUnarchiveSession={(sessionId) => void unarchiveSession(sessionId)}
       onRequestArchiveSession={requestArchiveSession}
       onSyncCodexThread={(sessionId) => void syncCodexThread(sessionId)}
@@ -3231,7 +3238,11 @@
       onPointerDown={(event) => beginColumnResize('workspace', event)}
       onKeyDown={(event) => handleSplitterKeydown('workspace', event)}
     />
-    {#if pluginsOpen}
+    {#if semanticGitOpen && selectedWorkspaceId}
+      {#await loadGitWorkbench() then workbench}
+        <workbench.default workspaceId={selectedWorkspaceId} port={semanticGitPort} onClose={() => semanticGitOpen = false} />
+      {/await}
+    {:else if pluginsOpen}
     <PluginWorkspacePanel
       installations={pluginInstallations}
       sessions={pluginSessions.filter((session) => session.workspaceId === selectedWorkspaceId)}

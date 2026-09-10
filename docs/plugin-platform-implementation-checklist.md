@@ -1,6 +1,6 @@
 # 插件平台演进实施 Checklist
 
-> 日期：2026-09-10 · 状态：P0 已按用户确认完成（保留验收例外）；P1–P5 待实施。
+> 日期：2026-09-10 · 状态：P0 已按用户确认完成（保留验收例外）；P1 已实施并通过自动/原生 WebView 脚本验收；P2–P5 待实施。
 > 依据：[插件平台架构演进提案](./plugin-platform-evolution.md)。本文将提案转为执行清单，不替代现行契约或授权放宽架构检查。
 
 原提案已给出职责、协议方向、分阶段路线与验收标准，因此采用 checklist，不再重复架构论证。所有复选框表示本次演进的待办；仓库已有基础不等于这些验收项已经通过。
@@ -39,37 +39,39 @@
 
 ## P1：Git 只读语义 UI 垂直切片
 
-**前置：** P0 基线完成。**交付物：** collection/detail 合同与 fixture、Git 语义投影、Svelte adapter、第二个最小 renderer、交互验收记录。
+**前置：** P0 基线已按用户确认收尾。**交付物：** collection/detail 合同与 fixture、Git 语义投影、Svelte adapter、第二个最小 renderer、交互验收记录。
 
 ### P1.1 合同与 fixture
 
-- [ ] 新建版本化语义视图 schema，先实现 `collection`、`detail`；定义字段类型、枚举、稳定 item key、必需信息、选择、校验与 action 输入输出。
-- [ ] 将 P1 新语义合同标记为实验性；区分本地交互、宿主导航和能力调用，明确 `open-diff` 的语义目标，不编码面板位置。
-- [ ] 冻结消息与请求关联、revision 失效粒度；测试 A/B 逆序响应、取消失败和工作区切换，确保只读结果仅更新当前有效上下文，旧动作不静默换目标。
-- [ ] 定义 `workspace.tool` 的上下文、排序意图、适用条件、空态、卸载及无常驻位置时的通用访问入口；不暴露 sidebar 等物理位置为公共依赖。
-- [ ] 定义 Git status → 文件选择 → open-diff → detail 的数据关系与受控 operation 映射；renderer 不可传任意 IPC method。
-- [ ] 冻结数据量/资源限额、分页，以及 loading/empty/error/selection/validation 标准结构；为非法数据和超限数据建立拒绝样本。
-- [ ] 提供同一组正常、空、失败、分页和过期 action fixture；禁止 DOM、CSS、px、class、row/grid 布局、脚本与任意表达式。
-- [ ] 将 Tab/Enter/Space、焦点语义目标、disabled/loading、错误关联、可访问名称和 reduced-motion 写成可验证的交互合同。
-- [ ] 按表格/列表等控件标准模式定义选择、激活、返回和重试行为，统一业务含义而非强制相同按键路径；验证分页和部分 diff 的可见状态，依据样本冻结限额。
+- [x] 新建版本化语义视图 schema，先实现 `collection`、`detail`；定义字段类型、枚举、稳定 item key、必需信息、选择、校验与 action 输入输出。
+- [x] 将 P1 新语义合同标记为实验性；区分本地交互、宿主导航和能力调用，明确 `open-diff` 的语义目标，不编码面板位置。
+- [x] 冻结消息与请求关联、revision 失效粒度；测试 A/B 逆序响应、取消失败和工作区切换，确保只读结果仅更新当前有效上下文，旧动作不静默换目标。
+- [x] 定义 `workspace.tool` 的上下文、排序意图、适用条件、空态、卸载及无常驻位置时的通用访问入口；不暴露 sidebar 等物理位置为公共依赖。
+- [x] 定义 Git status → 文件选择 → open-diff → detail 的数据关系与受控 operation 映射；renderer 不可传任意 IPC method。
+- [x] 冻结数据量/资源限额、分页，以及 loading/empty/error/selection/validation 标准结构；为非法数据和超限数据建立拒绝样本。
+- [x] 提供同一组正常、空、失败、分页和过期 action fixture；禁止 DOM、CSS、px、class、row/grid 布局、脚本与任意表达式。
+- [x] 将 Tab/Enter/Space、焦点语义目标、disabled/loading、错误关联、可访问名称和 reduced-motion 写成可验证的交互合同。
+- [x] 按表格/列表等控件标准模式定义选择、激活、返回和重试行为，统一业务含义而非强制相同按键路径；验证分页和部分 diff 的可见状态，依据样本冻结限额。
 
 ### P1.2 只读投影与 Svelte 接入
 
-- [ ] 提取仅依赖窄数据端口的 Git 语义投影，通过组合根注入现有受控 Git API；查询不要求 Agent session。
-- [ ] 在宿主 action 边界重新验证 workspace 上下文、revision、generation 与权限；UI 校验不能代替宿主校验。
-- [ ] 建立纯数据依赖/类型检查，禁止从 `ui-kit/contract.ts` 等传递泄漏 Svelte `Component`。
-- [ ] 实现 `SveltePresentationAdapter`，内部通过 `$lib/ui-kit` 渲染；新建装配目录时同步扩展架构检查范围。
-- [ ] 实现侧栏列表与中央集合页两种布局；新增复合控件按现行 `UiKitAdapter` 规则在两套皮肤中完整实现。
-- [ ] 两种布局使用同一贡献与动作合同，验证加载、空态、错误、文件选择和 diff 查看。
+- [x] 提取仅依赖窄数据端口的 Git 语义投影，通过组合根注入现有受控 Git API；查询不要求 Agent session。
+- [x] 在宿主 action 边界重新验证 workspace 上下文、revision、generation 与权限；UI 校验不能代替宿主校验。
+- [x] 建立纯数据依赖/类型检查，禁止从 `ui-kit/contract.ts` 等传递泄漏 Svelte `Component`。
+- [x] 实现 `SveltePresentationAdapter`，内部通过 `$lib/ui-kit` 渲染；新建装配目录时同步扩展架构检查范围。
+- [x] 实现侧栏列表与中央集合页两种布局；新增复合控件按现行 `UiKitAdapter` 规则在两套皮肤中完整实现。
+- [x] 两种布局使用同一贡献与动作合同，验证加载、空态、错误、文件选择和 diff 查看。
 
 ### P1.3 框架边界与验收
 
-- [ ] 提供第二个最小 renderer（例如无框架 DOM 实现）消费相同 fixture，输出相同 action ID、上下文与 payload；DOM 只存在于本地 renderer 层。
-- [ ] 完成「侧栏/中央 × shadcn/Material 3」四种组合的数据、动作、状态、键盘和截图验收，核对宿主 chrome 与可访问性。
-- [ ] 验证贡献缺少常驻布局位置时仍可访问，提供者不可用时给出可解释状态。
-- [ ] 记录 P1 的能力边界：主 UI 仍随应用构建，第二 renderer 是合同验证样例，Git 尚未迁为进程外能力包。
+- [x] 提供第二个最小 renderer（例如无框架 DOM 实现）消费相同 fixture，输出相同 action ID、上下文与 payload；DOM 只存在于本地 renderer 层。
+- [x] 完成「侧栏/中央 × shadcn/Material 3」四种组合的数据、动作、状态、键盘和截图验收，核对宿主 chrome 与可访问性。
+- [x] 验证贡献缺少常驻布局位置时仍可访问，提供者不可用时给出可解释状态。
+- [x] 记录 P1 的能力边界：主 UI 仍随应用构建，第二 renderer 是合同验证样例，Git 尚未迁为进程外能力包。
 
 **退出条件：** 同一无框架/布局字段的语义 fixture 在四种组合中保留相同业务信息与动作，第二 renderer 合同测试通过，全部必需检查通过。
+
+**验收记录（2026-09-11）：** [P1 实施记录](./plugin-platform-p1-semantic-slice.md)。纯数据/schema/Host/控制器检查、两种布局 × 两套皮肤的浏览器截图与键盘焦点、第二 DOM renderer 动作等价、原生 WebView 到真实 Git 的脚本链路均已验证；不宣称已进行人工屏幕阅读器朗读或 P2 整窗 renderer 切换。
 
 ## P2：统一 Agent 路径与 UI 状态
 

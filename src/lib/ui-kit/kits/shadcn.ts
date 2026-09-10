@@ -1,3 +1,4 @@
+import SemanticView from './shadcn/SemanticView.svelte';
 import AlertDialogComponent from '$lib/components/ui/alert-dialog/alert-dialog.svelte';
 import { Badge as BadgeComponent } from '$lib/components/ui/badge';
 import { Button as ButtonComponent } from '$lib/components/ui/button';
@@ -76,6 +77,7 @@ function semanticTokens(colors: ShadcnColorTokens): Record<`--${string}`, string
 }
 
 export const shadcnUiKit: UiKitAdapter = {
+  SemanticView,
   PluginView: PluginViewComponent,
   AgentStatusMark: AgentStatusMarkComponent,
   AlertDialog: AlertDialogComponent,

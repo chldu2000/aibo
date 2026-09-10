@@ -37,3 +37,9 @@ Contract invariants:
 - a plugin declaration is not a permission grant; Core records `granted`, `denied`, or `unsupported` and the actual enforcement layer.
 - plugin stdout contains protocol messages only. Core assigns durable event IDs, sequences, generation association, and timestamps after validation.
 - active sessions remain pinned to a Plugin Release; plugin upgrades do not silently reinterpret recovery data.
+
+## Experimental semantic views (P1)
++
++`semantic-view.experimental-v1.schema.json` and `semantic-action.experimental-v1.schema.json` define the bounded collection/detail workspace-tool slice. They coexist with PluginView v1; they are not Manifest v2 or an installable third-party UI ABI. See [P1 behavior and limits](../docs/plugin-platform-p1-semantic-slice.md).
++
++After editing the view schema, run `pnpm run generate:semantic-validator`. The generated browser validator is checked against its source schema in tests and requires no runtime code compilation under the desktop CSP. Fixtures include collection/detail, loading/empty/error/unavailable, partial content and a syntactically valid stale action that the host must reject.

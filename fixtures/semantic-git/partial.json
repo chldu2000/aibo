@@ -1,0 +1,126 @@
+{
+  "schema": "aibo.semantic-view/experimental-v1",
+  "context": {
+    "workspaceId": "fixture-workspace",
+    "contributionId": "dev.aibo.git.changes",
+    "generation": "fixture-generation",
+    "revision": 1
+  },
+  "contribution": {
+    "id": "dev.aibo.git.changes",
+    "extensionPoint": "workspace.tool",
+    "title": "工作区变更"
+  },
+  "state": {
+    "status": "ready",
+    "message": ""
+  },
+  "view": {
+    "kind": "collection",
+    "properties": [
+      {
+        "key": "path",
+        "label": "文件",
+        "type": "text",
+        "values": []
+      },
+      {
+        "key": "status",
+        "label": "状态",
+        "type": "enum",
+        "values": [
+          "added",
+          "modified",
+          "deleted",
+          "renamed",
+          "conflicted",
+          "untracked"
+        ]
+      },
+      {
+        "key": "scope",
+        "label": "范围",
+        "type": "enum",
+        "values": [
+          "暂存区",
+          "工作区"
+        ]
+      }
+    ],
+    "items": [
+      {
+        "id": "worktree:src/App.svelte",
+        "values": {
+          "path": "src/App.svelte",
+          "status": "modified",
+          "scope": "工作区"
+        }
+      },
+      {
+        "id": "index:docs/README.md",
+        "values": {
+          "path": "README.md → docs/README.md",
+          "status": "renamed",
+          "scope": "暂存区"
+        }
+      },
+      {
+        "id": "worktree:new.txt",
+        "values": {
+          "path": "new.txt",
+          "status": "untracked",
+          "scope": "工作区"
+        }
+      },
+      {
+        "id": "worktree:deleted.txt",
+        "values": {
+          "path": "deleted.txt",
+          "status": "deleted",
+          "scope": "工作区"
+        }
+      },
+      {
+        "id": "worktree:conflict.txt",
+        "values": {
+          "path": "conflict.txt",
+          "status": "conflicted",
+          "scope": "工作区"
+        }
+      }
+    ],
+    "selection": null,
+    "page": {
+      "offset": 0,
+      "size": 50,
+      "total": 101,
+      "truncated": true
+    }
+  },
+  "actions": [
+    {
+      "id": "refresh",
+      "label": "刷新",
+      "intent": "refresh",
+      "enabled": true
+    },
+    {
+      "id": "open-diff",
+      "label": "查看差异",
+      "intent": "inspect",
+      "enabled": true
+    },
+    {
+      "id": "previous",
+      "label": "上一页",
+      "intent": "navigate",
+      "enabled": false
+    },
+    {
+      "id": "next",
+      "label": "下一页",
+      "intent": "navigate",
+      "enabled": true
+    }
+  ]
+}
