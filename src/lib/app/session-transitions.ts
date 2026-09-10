@@ -46,6 +46,34 @@ export function removeWorkspace(
   return remaining;
 }
 
+/**
+ * Apply a server refresh without undoing optimistic mutations that completed
+ * after the request started. Objects retained by reference from `baseline`
+ * are unchanged; new, removed, or replaced objects came from a local action.
+ */
+export function reconcileSessionRefresh(
+  baseline: Session[],
+  current: Session[],
+  loaded: Session[],
+): Session[] {
+  const baselineById = new Map(baseline.map((session) => [session.id, session]));
+  const currentById = new Map(current.map((session) => [session.id, session]));
+  const locallyRemoved = new Set(
+    baseline.filter((session) => !currentById.has(session.id)).map((session) => session.id),
+  );
+  const locallyChanged = current.filter(
+    (session) => baselineById.get(session.id) !== session,
+  );
+  const locallyChangedIds = new Set(locallyChanged.map((session) => session.id));
+
+  return [
+    ...locallyChanged,
+    ...loaded.filter(
+      (session) => !locallyRemoved.has(session.id) && !locallyChangedIds.has(session.id),
+    ),
+  ];
+}
+
 export function ensureWorkspaceExpanded(expandedWorkspaceIds: string[], workspaceId: string): string[] {
   return expandedWorkspaceIds.includes(workspaceId)
     ? expandedWorkspaceIds

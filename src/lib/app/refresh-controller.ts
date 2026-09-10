@@ -17,7 +17,7 @@ import type {
 } from '$lib/types';
 import type { PersistedSelection } from './selection-storage';
 import { withTimeout } from './async-timeout';
-import { ensureWorkspaceExpanded, workspaceIdsForRefresh } from './session-transitions';
+import { ensureWorkspaceExpanded, reconcileSessionRefresh, workspaceIdsForRefresh } from './session-transitions';
 import { toErrorMessage } from './error-utils';
 
 const SESSION_LIST_TIMEOUT_MS = 10_000;
@@ -133,9 +133,14 @@ export function createRefreshController(context: RefreshControllerContext) {
         '加载会话超时；已保留当前会话列表，请稍后重试。',
       );
       if (context.getSessionLoadGenerations()[workspaceId] !== generation) return;
+      const reconciledSessions = reconcileSessionRefresh(
+        previousSessions,
+        context.getWorkspaceSessions(workspaceId),
+        loadedSessions,
+      );
       context.setWorkspaceSessionMap({
         ...context.getWorkspaceSessionMap(),
-        [workspaceId]: loadedSessions,
+        [workspaceId]: reconciledSessions,
       });
       // The list is ready now. Do not keep the sidebar on “加载会话…” while
       // the selected session's timeline/profile/context is hydrated below.
@@ -147,10 +152,10 @@ export function createRefreshController(context: RefreshControllerContext) {
           ? context.getPersistedSelection()?.sessionId ?? null
           : null;
       const selectedSessionIsVisible = Boolean(
-        selectedSessionId && loadedSessions.some(({ id }) => id === selectedSessionId),
+        selectedSessionId && reconciledSessions.some(({ id }) => id === selectedSessionId),
       );
       const restoredSessionIsVisible = Boolean(
-        rememberedSessionId && loadedSessions.some(({ id }) => id === rememberedSessionId),
+        rememberedSessionId && reconciledSessions.some(({ id }) => id === rememberedSessionId),
       );
       if (!selectedSessionIsVisible && restoredSessionIsVisible) {
         context.setSelectedSessionId(rememberedSessionId);
