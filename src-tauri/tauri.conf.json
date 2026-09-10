@@ -29,8 +29,11 @@
     }
   },
   "bundle": {
-    "active": false,
-    "resources": ["pi-sdk-host.mjs"],
+    "active": true,
+    "resources": {
+      "pi-sdk-host.mjs": "pi-sdk-host.mjs",
+      "../node_modules/@earendil-works/pi-coding-agent/dist/bundle/": "pi-sdk-bundle/"
+    },
     "icon": ["icons/icon.png"]
   }
 }

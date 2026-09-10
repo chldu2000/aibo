@@ -1,8 +1,9 @@
 // Standalone protocol fixture: no Aibo imports, database, workspace or network access.
 const pluginId = 'dev.aibo.echo';
 const agentId = `${pluginId}.agent`;
-const capabilities = ['session.create', 'session.resume', 'session.close', 'turn.send', 'turn.cancel', 'stream.text', 'view.standard', 'command.list', 'ext.dev.aibo.echo.refresh'];
+const capabilities = ['session.create', 'session.resume', 'session.close', 'turn.send', 'turn.cancel', 'stream.text', 'view.standard', 'command.list', 'approval.respond', 'queue.manage', 'ext.dev.aibo.echo.refresh'];
 const sessions = new Map();
+const pendingCoreTools = new Map();
 let initialized = false;
 const write = (message) => process.stdout.write(`${JSON.stringify({ jsonrpc: '2.0', ...message })}\n`);
 const fail = (kind) => { throw Object.assign(new Error(kind), { kind }); };
@@ -40,6 +41,8 @@ function finish(session, status) {
 function stop() {
   for (const session of sessions.values()) clearTimeout(session.turn?.timer);
   sessions.clear();
+  for (const pending of pendingCoreTools.values()) pending.reject(new Error('fixture stopped'));
+  pendingCoreTools.clear();
 }
 function handle({ id, method, params: p }) {
   const respond = (result) => write({ id, result });
@@ -96,6 +99,23 @@ function handle({ id, method, params: p }) {
       event(session, 'reasoning.updated', { itemId: 'reasoning-fixture', delta: 'Checking the fixture.' }, turn);
       event(session, 'reasoning.completed', { itemId: 'reasoning-fixture', summary: 'Checking the fixture.' }, turn);
     }
+    if (p.input.text === 'core tool fixture') {
+      const toolRequestId = `echo-tool-${id}`;
+      const toolResult = new Promise((resolve, reject) => pendingCoreTools.set(toolRequestId, { resolve, reject }));
+      write({ id: toolRequestId, method: 'aibo/tool-request', params: {
+        agentId, sessionId: session.id, nativeSessionId: session.nativeId, turnId: turn.id,
+        tool: 'write_file', input: { path: 'core-tool.txt', content: 'Core mediated Pi write' },
+      } });
+      toolResult.then(() => {
+        if (session.turn !== turn) return;
+        event(session, 'message.completed', { text: 'Core mediated Pi write', itemId: 'core-tool-result' }, turn);
+        finish(session, 'completed');
+      }).catch(() => {
+        if (session.turn !== turn) return;
+        finish(session, 'failed');
+      });
+      return;
+    }
     const chunks = Array.from(p.input.text);
     let offset = 0;
     const tick = () => {
@@ -122,7 +142,15 @@ function onLine(line) {
   let request;
   try {
     request = JSON.parse(line);
-    if (!request || request.jsonrpc !== '2.0' || !['string', 'number'].includes(typeof request.id) || !request.params || typeof request.params !== 'object') fail('invalid_request');
+    if (!request || request.jsonrpc !== '2.0' || !['string', 'number'].includes(typeof request.id)) fail('invalid_request');
+    if (request.method === undefined && (request.result !== undefined || request.error !== undefined)) {
+      const pending = pendingCoreTools.get(String(request.id));
+      if (!pending) fail('invalid_request');
+      pendingCoreTools.delete(String(request.id));
+      request.error ? pending.reject(new Error('Core tool request rejected')) : pending.resolve(request.result);
+      return;
+    }
+    if (!request.params || typeof request.params !== 'object') fail('invalid_request');
     handle(request);
   } catch (error) {
     if (request && ['string', 'number'].includes(typeof request.id)) {

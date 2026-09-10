@@ -5017,6 +5017,14 @@ async fn send_pi_prompt(
     input: String,
     state: State<'_, AppState>,
 ) -> Result<Session, CoreError> {
+    if session_by_id(&state.db, &session_id).await?.plugin_installation_id.is_some() {
+        state
+            .plugins
+            .send(&session_id, &input)
+            .await
+            .map_err(CoreError::Initialization)?;
+        return session_by_id(&state.db, &session_id).await;
+    }
     state
         .pi
         .send_prompt(&session_id, &input)
@@ -5027,6 +5035,9 @@ async fn send_pi_prompt(
 
 #[tauri::command]
 async fn abort_pi_turn(session_id: String, state: State<'_, AppState>) -> Result<(), CoreError> {
+    if session_by_id(&state.db, &session_id).await?.plugin_installation_id.is_some() {
+        return state.plugins.cancel(&session_id).await.map_err(CoreError::Initialization);
+    }
     state.pi.abort(&session_id).await.map_err(Into::into)
 }
 
@@ -5037,6 +5048,15 @@ async fn resolve_pi_approval(
     decision: String,
     state: State<'_, AppState>,
 ) -> Result<(), CoreError> {
+    let session = session_by_id(&state.db, &session_id).await?;
+    if session.plugin_installation_id.is_some() {
+        state
+            .plugins
+            .resolve_pi_approval(&session_id, &request_id, &decision)
+            .await
+            .map_err(CoreError::Initialization)?;
+        return Ok(());
+    }
     state
         .pi
         .resolve_approval(&session_id, &request_id, &decision)
@@ -5046,6 +5066,9 @@ async fn resolve_pi_approval(
 
 #[tauri::command]
 async fn close_pi_session(session_id: String, state: State<'_, AppState>) -> Result<(), CoreError> {
+    if session_by_id(&state.db, &session_id).await?.plugin_installation_id.is_some() {
+        return state.plugins.close(&session_id).await.map_err(CoreError::Initialization);
+    }
     state.pi.close(&session_id).await.map_err(Into::into)
 }
 
@@ -5055,6 +5078,14 @@ async fn steer_pi_prompt(
     input: String,
     state: State<'_, AppState>,
 ) -> Result<(), CoreError> {
+    if session_by_id(&state.db, &session_id).await?.plugin_installation_id.is_some() {
+        state
+            .plugins
+            .invoke_capability(&session_id, "queue.manage", serde_json::json!({"action":"steer","message":input}))
+            .await
+            .map_err(CoreError::Initialization)?;
+        return Ok(());
+    }
     state
         .pi
         .steer(&session_id, &input)
@@ -5068,6 +5099,14 @@ async fn follow_up_pi_prompt(
     input: String,
     state: State<'_, AppState>,
 ) -> Result<(), CoreError> {
+    if session_by_id(&state.db, &session_id).await?.plugin_installation_id.is_some() {
+        state
+            .plugins
+            .invoke_capability(&session_id, "queue.manage", serde_json::json!({"action":"followUp","message":input}))
+            .await
+            .map_err(CoreError::Initialization)?;
+        return Ok(());
+    }
     state
         .pi
         .follow_up(&session_id, &input)
@@ -5077,6 +5116,14 @@ async fn follow_up_pi_prompt(
 
 #[tauri::command]
 async fn clear_pi_queue(session_id: String, state: State<'_, AppState>) -> Result<(), CoreError> {
+    if session_by_id(&state.db, &session_id).await?.plugin_installation_id.is_some() {
+        state
+            .plugins
+            .invoke_capability(&session_id, "queue.manage", serde_json::json!({"action":"clear"}))
+            .await
+            .map_err(CoreError::Initialization)?;
+        return Ok(());
+    }
     state.pi.clear_queue(&session_id).await.map_err(Into::into)
 }
 
@@ -5085,6 +5132,13 @@ async fn list_pi_commands(
     session_id: String,
     state: State<'_, AppState>,
 ) -> Result<serde_json::Value, CoreError> {
+    if session_by_id(&state.db, &session_id).await?.plugin_installation_id.is_some() {
+        return state
+            .plugins
+            .invoke_capability(&session_id, "command.list", serde_json::json!({"action":"get"}))
+            .await
+            .map_err(CoreError::Initialization);
+    }
     state.pi.commands(&session_id).await.map_err(Into::into)
 }
 
@@ -5094,6 +5148,13 @@ async fn compact_pi_session(
     instructions: Option<String>,
     state: State<'_, AppState>,
 ) -> Result<serde_json::Value, CoreError> {
+    if session_by_id(&state.db, &session_id).await?.plugin_installation_id.is_some() {
+        return state
+            .plugins
+            .invoke_capability(&session_id, "compaction.run", serde_json::json!({"instructions":instructions}))
+            .await
+            .map_err(CoreError::Initialization);
+    }
     state
         .pi
         .compact(&session_id, instructions.as_deref())
@@ -5107,6 +5168,26 @@ async fn set_pi_thinking_level(
     level: Option<String>,
     state: State<'_, AppState>,
 ) -> Result<serde_json::Value, CoreError> {
+    if session_by_id(&state.db, &session_id).await?.plugin_installation_id.is_some() {
+        let result = state
+            .plugins
+            .invoke_capability(
+                &session_id,
+                "model.reasoning",
+                serde_json::json!({"action":"set","level":level.clone().unwrap_or_default()}),
+            )
+            .await
+            .map_err(CoreError::Initialization)?;
+        if let Some(current_level) = result.get("level").and_then(serde_json::Value::as_str) {
+            let current = session_execution_profile(&state.db, &session_id).await?;
+            let mut requested = current.profile.requested;
+            requested.reasoning_effort = Some(current_level.to_owned());
+            let resolved = resolve_profile("pi", Some(requested), now_iso())
+                .map_err(CoreError::InvalidExecutionProfile)?;
+            save_session_profile(&state.db, &session_id, &resolved).await?;
+        }
+        return Ok(result);
+    }
     let result = state
         .pi
         .thinking(&session_id, level.as_deref())
@@ -5140,6 +5221,34 @@ async fn set_pi_model(
     reference: Option<String>,
     state: State<'_, AppState>,
 ) -> Result<serde_json::Value, CoreError> {
+    if session_by_id(&state.db, &session_id).await?.plugin_installation_id.is_some() {
+        let (provider, model_id) = reference
+            .as_deref()
+            .and_then(|value| value.split_once('/'))
+            .map(|(provider, model_id)| (provider.to_owned(), model_id.to_owned()))
+            .ok_or_else(|| CoreError::Initialization("Pi model reference must be provider/model".to_owned()))?;
+        let result = state
+            .plugins
+            .invoke_capability(
+                &session_id,
+                "model.select",
+                serde_json::json!({"action":"set","provider":provider,"modelId":model_id}),
+            )
+            .await
+            .map_err(CoreError::Initialization)?;
+        if let (Some(provider), Some(model_id)) = (
+            result.get("provider").and_then(serde_json::Value::as_str),
+            result.get("id").and_then(serde_json::Value::as_str),
+        ) {
+            let current = session_execution_profile(&state.db, &session_id).await?;
+            let mut requested = current.profile.requested;
+            requested.model = Some(format!("{provider}/{model_id}"));
+            let resolved = resolve_profile("pi", Some(requested), now_iso())
+                .map_err(CoreError::InvalidExecutionProfile)?;
+            save_session_profile(&state.db, &session_id, &resolved).await?;
+        }
+        return Ok(result);
+    }
     let result = state
         .pi
         .model(&session_id, reference.as_deref())
@@ -5277,6 +5386,13 @@ async fn reload_pi_session(
     session_id: String,
     state: State<'_, AppState>,
 ) -> Result<serde_json::Value, CoreError> {
+    if session_by_id(&state.db, &session_id).await?.plugin_installation_id.is_some() {
+        return state
+            .plugins
+            .invoke_capability(&session_id, "session.reload", serde_json::json!({}))
+            .await
+            .map_err(CoreError::Initialization);
+    }
     state.pi.reload(&session_id).await.map_err(Into::into)
 }
 
@@ -5285,6 +5401,13 @@ async fn get_pi_session_tree(
     session_id: String,
     state: State<'_, AppState>,
 ) -> Result<serde_json::Value, CoreError> {
+    if session_by_id(&state.db, &session_id).await?.plugin_installation_id.is_some() {
+        return state
+            .plugins
+            .invoke_capability(&session_id, "session.tree", serde_json::json!({"action":"get"}))
+            .await
+            .map_err(CoreError::Initialization);
+    }
     state.pi.tree(&session_id).await.map_err(Into::into)
 }
 
@@ -5297,6 +5420,17 @@ async fn navigate_pi_session_tree(
     replace_instructions: bool,
     state: State<'_, AppState>,
 ) -> Result<serde_json::Value, CoreError> {
+    if session_by_id(&state.db, &session_id).await?.plugin_installation_id.is_some() {
+        return state
+            .plugins
+            .invoke_capability(
+                &session_id,
+                "session.tree",
+                serde_json::json!({"action":"navigate","entryId":entry_id,"summarize":summarize,"customInstructions":custom_instructions,"replaceInstructions":replace_instructions}),
+            )
+            .await
+            .map_err(CoreError::Initialization);
+    }
     state
         .pi
         .navigate_tree(
@@ -5315,6 +5449,13 @@ async fn get_pi_session_snapshot(
     session_id: String,
     state: State<'_, AppState>,
 ) -> Result<serde_json::Value, CoreError> {
+    if session_by_id(&state.db, &session_id).await?.plugin_installation_id.is_some() {
+        return state
+            .plugins
+            .invoke_capability(&session_id, "session.snapshot", serde_json::json!({}))
+            .await
+            .map_err(CoreError::Initialization);
+    }
     state.pi.snapshot(&session_id).await.map_err(Into::into)
 }
 

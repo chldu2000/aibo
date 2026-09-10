@@ -46,6 +46,8 @@
         "stream.text",
         "view.standard",
         "command.list",
+        "approval.respond",
+        "queue.manage",
         "ext.dev.aibo.echo.refresh"
       ],
       "requestedPermissions": [

@@ -40,11 +40,11 @@ use ulid::Ulid;
 const PI_ADAPTER_VERSION: &str = "phase3-pi-sdk-0.1.0";
 const PI_HOST_PROTOCOL: &str = "aibo-pi-sdk-host.v1";
 const REQUEST_TIMEOUT: Duration = Duration::from_secs(30);
-const MAX_WRITE_BYTES: usize = 10 * 1024 * 1024;
-const MAX_COMMAND_OUTPUT_BYTES: usize = 1024 * 1024;
+pub(crate) const MAX_WRITE_BYTES: usize = 10 * 1024 * 1024;
+pub(crate) const MAX_COMMAND_OUTPUT_BYTES: usize = 1024 * 1024;
 const PI_THINKING_LEVELS: [&str; 7] = ["off", "minimal", "low", "medium", "high", "xhigh", "max"];
 
-fn truncate_command_output(output: &str) -> String {
+pub(crate) fn truncate_command_output(output: &str) -> String {
     let redacted = output
         .lines()
         .map(redact_command_line)
@@ -136,7 +136,7 @@ fn redact_command_line(line: &str) -> String {
     format!("{}[REDACTED]{}", &line[..secret_start], &line[value_end..])
 }
 
-async fn run_shell_command(
+pub(crate) async fn run_shell_command(
     command: &str,
     cwd: &Path,
     timeout_seconds: f64,

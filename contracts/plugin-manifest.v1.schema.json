@@ -110,6 +110,7 @@
             "session.create",
             "session.resume",
             "session.close",
+            "session.reload",
             "turn.send",
             "turn.cancel",
             "stream.text",
@@ -126,6 +127,7 @@
             "plan.native",
             "goal.manage",
             "session.tree",
+            "session.snapshot",
             "view.standard"
           ]
         },

@@ -18,6 +18,7 @@ type Reply = oneshot::Sender<Result<Value, String>>;
 
 enum CommandMessage {
     Request { id: String, method: String, params: Value, reply: Reply },
+    Reply { id: Value, result: Result<Value, String> },
     Stop,
 }
 
@@ -30,11 +31,14 @@ pub(crate) struct PluginRuntime {
 }
 
 impl PluginRuntime {
-    pub fn spawn(executable: &Path, args: &[String], directory: &Path) -> Result<Self, String> {
+    pub fn spawn(executable: &Path, args: &[String], directory: &Path, sdk_module: Option<&Path>) -> Result<Self, String> {
         let mut command = Command::new(executable);
         command.env_clear();
         for name in ["SystemRoot", "WINDIR", "TEMP", "TMP", "PATH", "LANG", "LC_ALL"] {
             if let Some(value) = std::env::var_os(name) { command.env(name, value); }
+        }
+        if let Some(sdk_module) = sdk_module {
+            command.env("AIBO_PI_SDK_MODULE", sdk_module);
         }
         command.args(args).current_dir(directory).kill_on_drop(true)
             .stdin(std::process::Stdio::piped())
@@ -79,6 +83,19 @@ impl PluginRuntime {
                                 _ => break "timeout: plugin input stalled",
                             }
                         }
+                        Some(CommandMessage::Reply { id, result }) => {
+                            let message = match result {
+                                Ok(result) => json!({"jsonrpc":"2.0","id":id,"result":result}),
+                                Err(error) => json!({"jsonrpc":"2.0","id":id,"error":{"code":-32000,"message":error}}),
+                            };
+                            let mut encoded = serde_json::to_vec(&message).unwrap();
+                            if encoded.len() > MAX_MESSAGE { break "invalid_request: message exceeds limit"; }
+                            encoded.push(b'\n');
+                            match tokio::time::timeout(Duration::from_secs(5), stdin.write_all(&encoded)).await {
+                                Ok(Ok(())) => {},
+                                _ => break "timeout: plugin input stalled",
+                            }
+                        }
                         Some(CommandMessage::Stop) | None => break "cancelled: plugin stopped",
                     },
                     result = stdout.read(&mut bytes) => {
@@ -100,6 +117,13 @@ impl PluginRuntime {
                             frame.clear();
                             if message["jsonrpc"] != "2.0" { break 'runtime "protocol_incompatible: JSON-RPC version"; }
                             if !crate::plugin_contract::contracts().runtime.is_valid(&message) { break 'runtime "invalid_request: plugin response schema"; }
+                            if message["method"] == "aibo/tool-request" {
+                                if !matches!(message.get("id"), Some(Value::String(_) | Value::Number(_))) || !message["params"].is_object() {
+                                    break 'runtime "invalid_request: malformed Core tool request";
+                                }
+                                if notification_tx.try_send(message).is_err() { break 'runtime "busy: plugin notification backpressure"; }
+                                continue;
+                            }
                             if let Some(id) = message.get("id").and_then(Value::as_str) {
                                 if message.get("method").is_some() || message.get("result").is_some() == message.get("error").is_some() {
                                     break 'runtime "invalid_request: malformed plugin response";
@@ -144,6 +168,13 @@ impl PluginRuntime {
         }
     }
 
+    pub async fn reply(&self, id: Value, result: Result<Value, String>) -> Result<(), String> {
+        self.commands
+            .send(CommandMessage::Reply { id: id.to_owned(), result })
+            .await
+            .map_err(|_| "internal: plugin unavailable".to_owned())
+    }
+
     pub fn was_stopped(&self) -> bool { self.stop_requested.load(Ordering::Acquire) }
 
     pub async fn stop(&self) {
@@ -161,8 +192,8 @@ mod tests {
         let root = Path::new(env!("CARGO_MANIFEST_DIR")).parent().unwrap();
         let script = root.join("fixtures/plugins/echo-agent/echo-agent.mjs");
         let args = vec![script.to_string_lossy().into_owned()];
-        let first = PluginRuntime::spawn(Path::new("node"), &args, root).unwrap();
-        let second = PluginRuntime::spawn(Path::new("node"), &args, root).unwrap();
+        let first = PluginRuntime::spawn(Path::new("node"), &args, root, None).unwrap();
+        let second = PluginRuntime::spawn(Path::new("node"), &args, root, None).unwrap();
         assert_ne!(first.generation_id, second.generation_id);
         let result = first.request("aibo.initialize", json!({
             "runtimeInstanceId":"test", "generationId":first.generation_id,
@@ -185,7 +216,7 @@ mod tests {
             "process.stdin.once('data',()=>process.stdout.write('x'.repeat(1048577)));",
             "process.stdin.once('data',()=>process.stdout.write(JSON.stringify({jsonrpc:'2.0',id:'unknown',result:{kind:'accepted',accepted:true}})+'\\n'));",
         ] {
-            let runtime = PluginRuntime::spawn(Path::new("node"), &["-e".into(), script.into()], Path::new(env!("CARGO_MANIFEST_DIR"))).unwrap();
+            let runtime = PluginRuntime::spawn(Path::new("node"), &["-e".into(), script.into()], Path::new(env!("CARGO_MANIFEST_DIR")), None).unwrap();
             let result = runtime.request("aibo.initialize", json!({}), Duration::from_secs(5)).await;
             assert!(result.unwrap_err().contains("invalid_request"));
             runtime.stop().await;
@@ -194,7 +225,7 @@ mod tests {
 
     #[tokio::test]
     async fn request_timeout_terminates_stalled_generation() {
-        let runtime = PluginRuntime::spawn(Path::new("node"), &["-e".into(), "process.stdin.resume();".into()], Path::new(env!("CARGO_MANIFEST_DIR"))).unwrap();
+        let runtime = PluginRuntime::spawn(Path::new("node"), &["-e".into(), "process.stdin.resume();".into()], Path::new(env!("CARGO_MANIFEST_DIR")), None).unwrap();
         assert!(runtime.request("aibo.initialize", json!({}), Duration::from_millis(50)).await.unwrap_err().starts_with("timeout:"));
         let closed = tokio::time::timeout(Duration::from_secs(5), async { runtime.notifications.lock().await.recv().await }).await.unwrap();
         assert!(closed.is_none());

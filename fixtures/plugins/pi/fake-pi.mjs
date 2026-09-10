@@ -39,9 +39,16 @@ input.on('line', (line) => {
     if (request.message === 'fail prompt') write({ id: request.id, type: 'response', command: request.type, success: false, error: 'fake prompt rejection' });
     else {
       write({ id: request.id, type: 'response', command: request.type, success: true });
-      write({ type: 'message_update', assistantMessageEvent: { type: 'text_delta', delta: request.message } });
-      write({ type: 'message_end', message: { role: 'assistant', content: [{ type: 'text', text: request.message }] } });
-      write({ type: 'agent_end', messages: [{ role: 'assistant', content: [{ type: 'text', text: request.message }], stopReason: 'stop' }], willRetry: false });
+      const messages = request.message === 'two messages'
+        ? [{ id: 'assistant-message-1', role: 'assistant', content: [{ type: 'text', text: 'first message' }], stopReason: 'stop' },
+          { id: 'assistant-message-2', role: 'assistant', content: [{ type: 'text', text: 'second message' }], stopReason: 'stop' }]
+        : [{ role: 'assistant', content: [{ type: 'text', text: request.message }], stopReason: 'stop' }];
+      for (const message of messages) {
+        write({ type: 'message_start', message });
+        write({ type: 'message_update', message, assistantMessageEvent: { type: 'text_delta', delta: message.content[0].text } });
+        write({ type: 'message_end', message });
+      }
+      write({ type: 'agent_end', messages, willRetry: false });
       write({ type: 'agent_settled' });
     }
   } else if (request.type === 'abort') write({ id: request.id, type: 'response', command: request.type, success: true });
@@ -53,6 +60,6 @@ input.on('line', (line) => {
   else if (request.type === 'steer' || request.type === 'follow_up') write({ id: request.id, type: 'response', command: request.type, success: true, data: { queued: request.message } });
   else if (request.type === 'clear_queue') write({ id: request.id, type: 'response', command: request.type, success: true, data: { steering: [], followUp: [] } });
   else if (request.type === 'compact') write({ id: request.id, type: 'response', command: request.type, success: true, data: { summary: request.customInstructions ?? 'compact' } });
-  else if (request.type === 'get_tree') write({ id: request.id, type: 'response', command: request.type, success: true, data: { tree: [], leafId: null } });
+  else if (request.type === 'get_tree') write({ id: request.id, type: 'response', command: request.type, success: true, data: { tree: [], leafId: null, branch: [] } });
   else if (request.type === 'navigate_tree') write({ id: request.id, type: 'response', command: request.type, success: true, data: { cancelled: false, editorText: null, tree: [], leafId: request.entryId } });
 });

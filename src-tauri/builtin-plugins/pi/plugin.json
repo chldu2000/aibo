@@ -3,22 +3,21 @@
   "pluginId": "dev.aibo.pi",
   "version": "1.0.0",
   "displayName": "Pi (built-in plugin)",
-  "description": "Aibo's bundled Pi RPC adapter.",
+  "description": "Aibo's bundled Pi SDK adapter.",
   "publisher": { "name": "Aibo" },
   "protocols": { "runtime": { "min": "1.0", "max": "1.0" }, "view": { "min": "1.0", "max": "1.0" } },
   "platforms": ["darwin-arm64", "darwin-x64", "windows-x64", "linux-x64", "linux-arm64"],
   "entrypoint": { "executable": "pi-plugin.mjs" },
   "dependencies": [
-    { "kind": "runtime", "name": "node", "versionRange": ">=22", "required": true },
-    { "kind": "executable", "name": "pi", "versionRange": ">=0.84.4", "required": true }
+    { "kind": "runtime", "name": "node", "versionRange": ">=22", "required": true }
   ],
   "resources": [],
   "agents": [{
     "agentId": "dev.aibo.pi.agent",
     "displayName": "Pi",
-    "description": "Pi RPC through the Aibo Agent Runtime Protocol.",
-    "capabilities": ["session.create", "session.resume", "session.close", "turn.send", "turn.cancel", "stream.text", "view.standard", "model.select", "model.reasoning", "command.list", "queue.manage", "compaction.run", "session.tree"],
-    "requestedPermissions": [{ "id": "workspace.read", "required": true, "reason": "Starts Pi in the selected trusted workspace." }],
+    "description": "Pi SDK through the Aibo Agent Runtime Protocol.",
+    "capabilities": ["session.create", "session.resume", "session.close", "session.reload", "turn.send", "turn.cancel", "stream.text", "view.standard", "model.select", "model.reasoning", "command.list", "approval.respond", "queue.manage", "compaction.run", "session.tree", "session.snapshot", "ext.dev.aibo.pi.usage", "ext.dev.aibo.pi.retry", "ext.dev.aibo.pi.extension"],
+    "requestedPermissions": [{ "id": "workspace.read", "required": true, "reason": "Starts Pi in the selected trusted workspace." }, { "id": "workspace.write", "required": false, "reason": "Core mediates Pi workspace writes after execution-profile approval." }, { "id": "commands.execute", "required": false, "reason": "Core mediates Pi commands after execution-profile approval." }],
     "operations": [
       {
         "id": "ext.dev.aibo.pi.model",
@@ -53,6 +52,18 @@
       {
         "id": "ext.dev.aibo.pi.tree",
         "capability": "session.tree",
+        "inputSchema": { "type": "object", "additionalProperties": false },
+        "outputSchema": { "type": "object" }
+      },
+      {
+        "id": "ext.dev.aibo.pi.snapshot",
+        "capability": "session.snapshot",
+        "inputSchema": { "type": "object", "additionalProperties": false },
+        "outputSchema": { "type": "object" }
+      },
+      {
+        "id": "ext.dev.aibo.pi.reload",
+        "capability": "session.reload",
         "inputSchema": { "type": "object", "additionalProperties": false },
         "outputSchema": { "type": "object" }
       }

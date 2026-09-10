@@ -1,17 +1,21 @@
-use crate::{change_set::{capture as capture_workspace, persist as persist_change_set, WorkspaceSnapshot}, execution_profile, plugin_contract::contracts, plugin_registry, plugin_runtime::PluginRuntime, Session};
+use crate::{artifact::sanitize_content, change_set::{capture as capture_workspace, persist as persist_change_set, WorkspaceSnapshot}, execution_profile, plugin_contract::contracts, plugin_registry, plugin_runtime::PluginRuntime, workspace_guard::canonicalize_target, Session};
 use serde_json::{json, Value};
 use sqlx::{Row, SqlitePool};
 use std::{collections::HashMap, path::{Path, PathBuf}, sync::Arc, time::Duration};
-use tauri::Emitter;
+use tauri::{Emitter, Manager};
 use tokio::sync::Mutex;
 
 const TIMEOUT: Duration = Duration::from_secs(15);
+const MAX_COMMAND_BYTES: usize = 16 * 1024;
 fn event_capability(kind: &str) -> Option<&'static str> {
     match kind {
         "approval.requested" | "approval.resolved" => Some("approval.respond"),
         "user_input.requested" | "user_input.resolved" => Some("user-input.respond"),
         "queue.updated" => Some("queue.manage"),
         "compaction.started" | "compaction.completed" => Some("compaction.run"),
+        "usage.updated" => Some("ext.dev.aibo.pi.usage"),
+        "retry.started" | "retry.completed" => Some("ext.dev.aibo.pi.retry"),
+        "extension.updated" => Some("ext.dev.aibo.pi.extension"),
         _ => None,
     }
 }
@@ -43,11 +47,24 @@ pub(crate) struct PluginHost {
     lifecycle: Arc<Mutex<()>>,
     database_writes: Arc<Mutex<()>>,
     turn_baselines: Arc<Mutex<HashMap<String, Option<WorkspaceSnapshot>>>>,
+    event_sequences: Arc<Mutex<HashMap<String, i64>>>,
+    pending_tools: Arc<Mutex<HashMap<String, PendingPluginTool>>>,
     app: Option<tauri::AppHandle>,
 }
 
+struct PendingPluginTool {
+    runtime: PluginRuntime,
+    request_id: Value,
+    session_id: String,
+    workspace_id: String,
+    generation_id: String,
+    turn_id: Option<String>,
+    tool: String,
+    input: Value,
+}
+
 impl PluginHost {
-    pub fn new(db: SqlitePool) -> Self { Self { db, runtimes: Arc::default(), lifecycle: Arc::default(), database_writes: Arc::default(), turn_baselines: Arc::default(), app: None } }
+    pub fn new(db: SqlitePool) -> Self { Self { db, runtimes: Arc::default(), lifecycle: Arc::default(), database_writes: Arc::default(), turn_baselines: Arc::default(), event_sequences: Arc::default(), pending_tools: Arc::default(), app: None } }
 
     pub fn with_app(db: SqlitePool, app: tauri::AppHandle) -> Self {
         Self { app: Some(app), ..Self::new(db) }
@@ -135,7 +152,12 @@ impl PluginHost {
         let command = diagnostics.iter().find(|dependency|dependency.kind == "runtime" && dependency.available)
             .and_then(|dependency|dependency.executable.as_ref()).map(PathBuf::from);
         let executable = if let Some(command) = command { args.insert(0, entrypoint.to_string_lossy().into_owned()); command } else { entrypoint };
-        let runtime = PluginRuntime::spawn(&executable, &args, &directory)?;
+        let sdk_module = if manifest["pluginId"] == "dev.aibo.pi" {
+            self.pi_sdk_module_path()
+        } else {
+            None
+        };
+        let runtime = PluginRuntime::spawn(&executable, &args, &directory, sdk_module.as_deref())?;
         let installation_id: String = row.get("plugin_installation_id");
         let data_root = directory.parent().and_then(|plugins|plugins.parent()).ok_or("invalid_request: invalid plugin registry path")?;
         let runtime_data = data_root.join("plugin-state").join(&installation_id).join(session_id);
@@ -224,19 +246,35 @@ impl PluginHost {
         }.await;
         let binding = match start_result { Ok(binding) => binding, Err(error) => { runtime.stop().await; return Err(error); } };
         self.runtimes.lock().await.insert(session_id.into(), runtime.clone());
+        let initial_sequence: i64 = sqlx::query_scalar("SELECT COALESCE(MAX(sequence), -1) + 1 FROM agent_events WHERE session_id=? AND generation_id=?")
+            .bind(session_id)
+            .bind(&runtime.generation_id)
+            .fetch_one(&self.db)
+            .await
+            .map_err(|error| error.to_string())?;
+        self.event_sequences.lock().await.insert(Self::sequence_key(session_id, &runtime.generation_id), initial_sequence);
         let host = self.clone();
         let session_id = session_id.to_string();
         tokio::spawn(async move {
-            let mut sequence = 0i64;
             let mut notifications = runtime.notifications.lock().await;
             while let Some(message) = notifications.recv().await {
+                let sequence = host.next_sequence(&session_id, &runtime.generation_id).await;
+                if message["method"] == "aibo/tool-request" {
+                    if let Err(error) = host.handle_tool_request(&session_id, &workspace_id, &runtime, &binding, sequence, message).await {
+                        tracing::error!(session_id = %session_id, generation_id = %runtime.generation_id, error = %error, "plugin Core tool request failed");
+                        runtime.stop().await;
+                        break;
+                    }
+                    continue;
+                }
                 if let Err(error) = host.project(&session_id, &workspace_id, &runtime.generation_id, &binding, sequence, message).await {
                     tracing::error!(session_id = %session_id, generation_id = %runtime.generation_id, error = %error, "plugin notification projection failed");
                     runtime.stop().await;
                     break;
                 }
-                sequence += 1;
             }
+            host.pending_tools.lock().await.retain(|_, request| request.generation_id != runtime.generation_id);
+            host.event_sequences.lock().await.remove(&Self::sequence_key(&session_id, &runtime.generation_id));
             let process_state = if runtime.was_stopped() { "exited" } else { "crashed" };
             let _write_guard = host.database_writes.lock().await;
             let mut runtimes = host.runtimes.lock().await;
@@ -248,6 +286,447 @@ impl PluginHost {
             let _ = sqlx::query("UPDATE process_runs SET state=?,ended_at=? WHERE generation_id=?").bind(process_state).bind(crate::now_iso()).bind(&runtime.generation_id).execute(&host.db).await;
         });
         Ok(())
+    }
+
+    fn sequence_key(session_id: &str, generation_id: &str) -> String {
+        format!("{session_id}:{generation_id}")
+    }
+
+    fn pi_sdk_module_path(&self) -> Option<PathBuf> {
+        let bundled = self
+            .app
+            .as_ref()
+            .and_then(|app| app.path().resource_dir().ok())
+            .map(|directory| directory.join("pi-sdk-bundle/index.js"));
+        let source = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .join("../node_modules/@earendil-works/pi-coding-agent/dist/bundle/index.js");
+        [bundled, Some(source)]
+            .into_iter()
+            .flatten()
+            .find(|path| path.is_file())
+    }
+
+    async fn next_sequence(&self, session_id: &str, generation_id: &str) -> i64 {
+        let mut sequences = self.event_sequences.lock().await;
+        let key = Self::sequence_key(session_id, generation_id);
+        let sequence = sequences.entry(key).or_insert(0);
+        let current = *sequence;
+        *sequence += 1;
+        current
+    }
+
+    async fn reply_tool_error(
+        runtime: &PluginRuntime,
+        request_id: Value,
+        error: impl Into<String>,
+    ) -> Result<(), String> {
+        runtime.reply(request_id, Err(error.into())).await
+    }
+
+    async fn handle_tool_request(
+        &self,
+        session_id: &str,
+        workspace_id: &str,
+        runtime: &PluginRuntime,
+        binding: &Value,
+        sequence: i64,
+        message: Value,
+    ) -> Result<(), String> {
+        let request_id = message["id"].clone();
+        let params = &message["params"];
+        if params["agentId"] != binding["agentId"]
+            || params["sessionId"] != session_id
+            || params["nativeSessionId"] != binding["nativeSessionId"]
+        {
+            return Self::reply_tool_error(
+                runtime,
+                request_id,
+                "invalid_session: Core tool identity mismatch",
+            )
+            .await;
+        }
+        let Some(tool) = params["tool"].as_str() else {
+            return Self::reply_tool_error(runtime, request_id, "invalid_request: Core tool name")
+                .await;
+        };
+        let Some(input) = params["input"].as_object() else {
+            return Self::reply_tool_error(runtime, request_id, "invalid_request: Core tool input")
+                .await;
+        };
+        let Some(turn_id) = params["turnId"].as_str() else {
+            return Self::reply_tool_error(
+                runtime,
+                request_id,
+                "invalid_session: Core tool turn identity missing",
+            )
+            .await;
+        };
+        let active_turn: Option<String> =
+            sqlx::query_scalar("SELECT id FROM turns WHERE id=? AND session_id=? AND status='running'")
+                .bind(turn_id)
+                .bind(session_id)
+                .fetch_optional(&self.db)
+                .await
+                .map_err(|error| error.to_string())?;
+        if active_turn.is_none() {
+            return Self::reply_tool_error(
+                runtime,
+                request_id,
+                "invalid_session: Core tool turn is not active",
+            )
+            .await;
+        }
+        let profile = crate::session_execution_profile(&self.db, session_id)
+            .await
+            .map_err(|error| error.to_string())?
+            .profile
+            .enforced;
+        let workspace = crate::workspace_by_id(&self.db, workspace_id)
+            .await
+            .map_err(|error| error.to_string())?;
+        if workspace.trust != "trusted" {
+            return Self::reply_tool_error(
+                runtime,
+                request_id,
+                "permission_denied: workspace trust was revoked",
+            )
+            .await;
+        }
+
+        let (normalized_input, mut approval_payload, requires_approval) = match tool {
+            "write_file" => {
+                if profile.interaction_mode != "edit"
+                    || profile.filesystem_policy != "workspace-write"
+                {
+                    return Self::reply_tool_error(
+                        runtime,
+                        request_id,
+                        "permission_denied: Pi workspace writes are disabled",
+                    )
+                    .await;
+                }
+                let Some(path) = input
+                    .get("path")
+                    .and_then(Value::as_str)
+                    .filter(|path| !path.trim().is_empty())
+                else {
+                    return Self::reply_tool_error(
+                        runtime,
+                        request_id,
+                        "invalid_request: Pi write path is missing",
+                    )
+                    .await;
+                };
+                let Some(content) = input.get("content").and_then(Value::as_str) else {
+                    return Self::reply_tool_error(
+                        runtime,
+                        request_id,
+                        "invalid_request: Pi write content is missing",
+                    )
+                    .await;
+                };
+                if content.len() > crate::pi::MAX_WRITE_BYTES {
+                    return Self::reply_tool_error(
+                        runtime,
+                        request_id,
+                        "invalid_request: Pi write content is too large",
+                    )
+                    .await;
+                }
+                let resolved =
+                    match canonicalize_target(Path::new(&workspace.path), Path::new(path)) {
+                        Ok(path) => path,
+                        Err(error) => return Self::reply_tool_error(runtime, request_id, error).await,
+                    };
+                let relative = resolved
+                    .strip_prefix(&workspace.path)
+                    .map(|path| path.display().to_string())
+                    .unwrap_or_else(|_| resolved.display().to_string());
+                (
+                    json!({"path":resolved.to_string_lossy(),"content":content}),
+                    json!({"requestId":"","kind":"pi_tool","command":format!("write {relative}"),"cwd":workspace.path,"availableDecisions":["accept","cancel"]}),
+                    profile.approval_policy == "on-request",
+                )
+            }
+            "run_command" => {
+                if profile.interaction_mode != "edit" || profile.command_policy == "disabled" {
+                    return Self::reply_tool_error(
+                        runtime,
+                        request_id,
+                        "permission_denied: Pi command execution is disabled",
+                    )
+                    .await;
+                }
+                let Some(command) = input
+                    .get("command")
+                    .and_then(Value::as_str)
+                    .map(str::trim)
+                    .filter(|command| !command.is_empty())
+                else {
+                    return Self::reply_tool_error(
+                        runtime,
+                        request_id,
+                        "invalid_request: Pi command is missing",
+                    )
+                    .await;
+                };
+                if command.len() > MAX_COMMAND_BYTES {
+                    return Self::reply_tool_error(
+                        runtime,
+                        request_id,
+                        "invalid_request: Pi command is too long",
+                    )
+                    .await;
+                }
+                let raw_cwd = input
+                    .get("cwd")
+                    .and_then(Value::as_str)
+                    .unwrap_or(&workspace.path);
+                let cwd = match canonicalize_target(
+                    Path::new(&workspace.path),
+                    Path::new(raw_cwd),
+                ) {
+                    Ok(path) if path.is_dir() => path,
+                    Ok(_) => {
+                        return Self::reply_tool_error(
+                            runtime,
+                            request_id,
+                            "invalid_request: Pi command cwd is not a directory",
+                        )
+                        .await;
+                    }
+                    Err(error) => return Self::reply_tool_error(runtime, request_id, error).await,
+                };
+                let timeout = input.get("timeout").cloned().unwrap_or(Value::Null);
+                (
+                    json!({"command":command,"cwd":cwd.to_string_lossy(),"timeout":timeout}),
+                    json!({"requestId":"","kind":"pi_command","command":sanitize_content("pi.command", command),"cwd":cwd,"availableDecisions":["accept","cancel"]}),
+                    profile.approval_policy == "on-request" || profile.command_policy == "approved",
+                )
+            }
+            _ => {
+                return Self::reply_tool_error(
+                    runtime,
+                    request_id,
+                    "unsupported: Core tool is not available",
+                )
+                .await;
+            }
+        };
+
+        if !requires_approval {
+            let result = self
+                .execute_plugin_tool(session_id, workspace_id, tool, &normalized_input)
+                .await;
+            return runtime.reply(request_id, result).await;
+        }
+
+        let request_key = request_id
+            .as_str()
+            .map(ToOwned::to_owned)
+            .unwrap_or_else(|| request_id.to_string());
+        let approval_id = format!("pi-tool:{request_key}");
+        approval_payload["requestId"] = json!(approval_id);
+        let pending = PendingPluginTool {
+            runtime: runtime.clone(),
+            request_id: request_id.clone(),
+            session_id: session_id.to_owned(),
+            workspace_id: workspace_id.to_owned(),
+            generation_id: runtime.generation_id.clone(),
+            turn_id: Some(turn_id.to_owned()),
+            tool: tool.to_owned(),
+            input: normalized_input,
+        };
+        if self
+            .pending_tools
+            .lock()
+            .await
+            .insert(approval_id.clone(), pending)
+            .is_some()
+        {
+            return Self::reply_tool_error(runtime, request_id, "busy: duplicate Core tool request")
+                .await;
+        }
+        let event = json!({"jsonrpc":"2.0","method":"agent/event","params":{
+            "agentId":binding["agentId"],"sessionId":session_id,"nativeSessionId":binding["nativeSessionId"],"turnId":turn_id,
+            "type":"approval.requested","correlation":{"requestId":approval_id},"payload":approval_payload
+        }});
+        if let Err(error) = self
+            .project(
+                session_id,
+                workspace_id,
+                &runtime.generation_id,
+                binding,
+                sequence,
+                event,
+            )
+            .await
+        {
+            self.pending_tools.lock().await.remove(&approval_id);
+            let _ = Self::reply_tool_error(runtime, request_id, error.clone()).await;
+            return Err(error);
+        }
+        Ok(())
+    }
+
+    async fn execute_plugin_tool(
+        &self,
+        session_id: &str,
+        workspace_id: &str,
+        tool: &str,
+        input: &Value,
+    ) -> Result<Value, String> {
+        let workspace = crate::workspace_by_id(&self.db, workspace_id)
+            .await
+            .map_err(|error| error.to_string())?;
+        if workspace.trust != "trusted" {
+            return Err("permission_denied: workspace trust was revoked".into());
+        }
+        let profile = crate::session_execution_profile(&self.db, session_id)
+            .await
+            .map_err(|error| error.to_string())?
+            .profile
+            .enforced;
+        match tool {
+            "write_file" => {
+                if profile.interaction_mode != "edit"
+                    || profile.filesystem_policy != "workspace-write"
+                {
+                    return Err("permission_denied: Pi workspace writes are disabled".into());
+                }
+                let path = input["path"]
+                    .as_str()
+                    .ok_or("invalid_request: resolved Pi write path")?;
+                let content = input["content"]
+                    .as_str()
+                    .ok_or("invalid_request: resolved Pi write content")?;
+                if content.len() > crate::pi::MAX_WRITE_BYTES {
+                    return Err("invalid_request: Pi write content is too large".into());
+                }
+                let resolved =
+                    canonicalize_target(Path::new(&workspace.path), Path::new(path))?;
+                if let Some(parent) = resolved.parent() {
+                    tokio::fs::create_dir_all(parent)
+                        .await
+                        .map_err(|error| format!("create write directory: {error}"))?;
+                }
+                tokio::fs::write(&resolved, content)
+                    .await
+                    .map_err(|error| format!("write workspace file: {error}"))?;
+                Ok(json!({"path":resolved,"bytes":content.len(),"tool":tool}))
+            }
+            "run_command" => {
+                if profile.interaction_mode != "edit" || profile.command_policy == "disabled" {
+                    return Err("permission_denied: Pi command execution is disabled".into());
+                }
+                let command = input["command"]
+                    .as_str()
+                    .ok_or("invalid_request: resolved Pi command")?;
+                let cwd = input["cwd"]
+                    .as_str()
+                    .ok_or("invalid_request: resolved Pi command cwd")?;
+                let cwd = canonicalize_target(Path::new(&workspace.path), Path::new(cwd))?;
+                if !cwd.is_dir() {
+                    return Err("invalid_request: Pi command cwd is not a directory".into());
+                }
+                let timeout = input["timeout"]
+                    .as_f64()
+                    .filter(|value| value.is_finite() && *value > 0.0)
+                    .unwrap_or(120.0)
+                    .min(300.0);
+                let output = crate::pi::run_shell_command(command, &cwd, timeout)
+                    .await
+                    .map_err(|error| error.to_string())?;
+                let stdout =
+                    crate::pi::truncate_command_output(String::from_utf8_lossy(&output.stdout).as_ref());
+                let stderr =
+                    crate::pi::truncate_command_output(String::from_utf8_lossy(&output.stderr).as_ref());
+                let combined = if stderr.is_empty() {
+                    stdout.clone()
+                } else if stdout.is_empty() {
+                    stderr.clone()
+                } else {
+                    format!("{stdout}\n{stderr}")
+                };
+                Ok(json!({"command":sanitize_content("pi.command", command),"cwd":cwd,"exitCode":output.status.code(),"stdout":stdout,"stderr":stderr,"output":crate::pi::truncate_command_output(&combined)}))
+            }
+            _ => Err("unsupported: Core tool is not available".into()),
+        }
+    }
+
+    pub async fn resolve_pi_approval(
+        &self,
+        session_id: &str,
+        request_id: &str,
+        decision: &str,
+    ) -> Result<(), String> {
+        if !matches!(decision, "accept" | "cancel") {
+            return Err("invalid_request: approval decision must be accept or cancel".into());
+        }
+        let pending = self
+            .pending_tools
+            .lock()
+            .await
+            .remove(request_id)
+            .ok_or_else(|| "invalid_request: Pi tool approval is no longer pending".to_owned())?;
+        if pending.session_id != session_id {
+            let _ = pending
+                .runtime
+                .reply(
+                    pending.request_id,
+                    Err("invalid_session: approval session mismatch".into()),
+                )
+                .await;
+            return Err("invalid_session: approval session mismatch".into());
+        }
+        let binding_json: String =
+            sqlx::query_scalar("SELECT plugin_binding_json FROM session_bindings WHERE session_id=?")
+                .bind(session_id)
+                .fetch_one(&self.db)
+                .await
+                .map_err(|error| error.to_string())?;
+        let binding: Value = serde_json::from_str(&binding_json)
+            .map_err(|_| "invalid_recovery_data: invalid plugin binding".to_owned())?;
+        let sequence = self.next_sequence(session_id, &pending.generation_id).await;
+        let event = json!({"jsonrpc":"2.0","method":"agent/event","params":{
+            "agentId":binding["agentId"],"sessionId":session_id,"nativeSessionId":binding["nativeSessionId"],"turnId":pending.turn_id,
+            "type":"approval.resolved","correlation":{"requestId":request_id},"payload":{"requestId":request_id,"decision":decision,"tool":pending.tool}
+        }});
+        if let Err(error) = self
+            .project(
+                session_id,
+                &pending.workspace_id,
+                &pending.generation_id,
+                &binding,
+                sequence,
+                event,
+            )
+            .await
+        {
+            let _ = pending.runtime.reply(pending.request_id, Err(error.clone())).await;
+            return Err(error);
+        }
+        let result = if decision == "accept" {
+            self.execute_plugin_tool(&pending.session_id, &pending.workspace_id, &pending.tool, &pending.input)
+                .await
+        } else {
+            Err("permission_denied: Pi tool request was rejected".into())
+        };
+        pending.runtime.reply(pending.request_id, result).await
+    }
+
+    async fn cancel_pending_tools(&self, session_id: &str) {
+        let ids = self
+            .pending_tools
+            .lock()
+            .await
+            .iter()
+            .filter(|(_, request)| request.session_id == session_id)
+            .map(|(id, _)| id.clone())
+            .collect::<Vec<_>>();
+        for id in ids {
+            let _ = self.resolve_pi_approval(session_id, &id, "cancel").await;
+        }
     }
 
     pub async fn send(&self, session_id: &str, text: &str) -> Result<(), String> {
@@ -317,6 +796,7 @@ impl PluginHost {
     }
 
     pub async fn cancel(&self, session_id: &str) -> Result<(), String> {
+        self.cancel_pending_tools(session_id).await;
         let runtime = self.runtimes.lock().await.get(session_id).cloned();
         let turn: Option<String> = sqlx::query_scalar("SELECT id FROM turns WHERE session_id=? AND status='running' ORDER BY started_at DESC LIMIT 1").bind(session_id).fetch_optional(&self.db).await.map_err(|e|e.to_string())?;
         if let (Some(runtime), Some(turn)) = (runtime.as_ref(), turn.as_deref()) {
@@ -427,6 +907,7 @@ impl PluginHost {
 
     pub async fn close(&self, session_id: &str) -> Result<(), String> {
         let _guard = self.lifecycle.lock().await;
+        self.cancel_pending_tools(session_id).await;
         let mut close_error = None;
         if let Some(runtime) = self.runtimes.lock().await.remove(session_id) {
             let agent: Option<String> = sqlx::query_scalar("SELECT agent FROM sessions WHERE id=?").bind(session_id).fetch_optional(&self.db).await.map_err(|e|e.to_string())?;
@@ -538,7 +1019,7 @@ impl PluginHost {
                 "workspaceId":workspace_id,"sessionId":session_id,"nativeSessionId":p["nativeSessionId"],"turnId":p["turnId"],"type":p["type"],"correlation":p["correlation"],"payload":p["payload"],"rawRef":null});
             emitted_event = Some(event.clone());
             let kind = p["type"].as_str().unwrap();
-            if !["session.started","session.info_changed","turn.started","message.delta","message.completed","reasoning.updated","reasoning.completed","tool.started","tool.updated","tool.completed","turn.completed","turn.failed","approval.requested","approval.resolved","user_input.requested","user_input.resolved"].contains(&kind) {
+            if !["session.started","session.info_changed","turn.started","message.delta","message.completed","reasoning.updated","reasoning.completed","tool.started","tool.updated","tool.completed","turn.completed","turn.failed","approval.requested","approval.resolved","user_input.requested","user_input.resolved","usage.updated","queue.updated","compaction.started","compaction.completed","retry.started","retry.completed","extension.updated"].contains(&kind) {
                 return Err("capability_unsupported: event outside minimal lifecycle".into());
             }
             let negotiated: Value = serde_json::from_str(&active.1).map_err(|_|"manifest_mismatch: negotiated capabilities missing")?;
@@ -615,6 +1096,13 @@ impl PluginHost {
                     sqlx::query("UPDATE sessions SET state=?,updated_at=? WHERE id=?").bind(waiting).bind(&now).bind(session_id).execute(&mut *tx).await.map_err(|e|e.to_string())?;
                 } else if kind == "approval.resolved" || kind == "user_input.resolved" {
                     sqlx::query("UPDATE sessions SET state='running',updated_at=? WHERE id=?").bind(&now).bind(session_id).execute(&mut *tx).await.map_err(|e|e.to_string())?;
+                } else if kind == "compaction.started" {
+                    sqlx::query("UPDATE sessions SET state='compacting',updated_at=? WHERE id=?").bind(&now).bind(session_id).execute(&mut *tx).await.map_err(|e|e.to_string())?;
+                } else if kind == "compaction.completed" {
+                    let running: i64 = sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM turns WHERE session_id=? AND status='running')")
+                        .bind(session_id).fetch_one(&mut *tx).await.map_err(|e|e.to_string())?;
+                    sqlx::query("UPDATE sessions SET state=?,updated_at=? WHERE id=?")
+                        .bind(if running != 0 { "running" } else { "idle" }).bind(&now).bind(session_id).execute(&mut *tx).await.map_err(|e|e.to_string())?;
                 } else if kind == "turn.completed" || kind == "turn.failed" {
                     let status = if kind == "turn.failed" { "failed" } else { p["payload"]["status"].as_str().ok_or("invalid_request: terminal status")? };
                     if !["completed","interrupted","failed"].contains(&status) { return Err("invalid_request: terminal status".into()); }
@@ -770,12 +1258,37 @@ mod tests {
         assert_eq!(text, "hello 你好 🌍\u{2028}plugin");
         let views: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM plugin_views WHERE session_id=?").bind(&session.id).fetch_one(&db).await.unwrap();
         assert_eq!(views, 1);
+        let requested_profile = execution_profile::ExecutionProfile {
+            schema: execution_profile::EXECUTION_PROFILE_SCHEMA.to_owned(),
+            interaction_mode: "edit".to_owned(),
+            approval_policy: "on-request".to_owned(),
+            filesystem_policy: "workspace-write".to_owned(),
+            command_policy: "approved".to_owned(),
+            network_policy: "disabled".to_owned(),
+            model: None,
+            reasoning_effort: None,
+        };
+        let resolved_profile = execution_profile::resolve("pi", Some(requested_profile), crate::now_iso()).unwrap();
+        execution_profile::save_for_session(&db, &session.id, &resolved_profile).await.unwrap();
+        host.send(&session.id, "core tool fixture").await.unwrap();
+        wait_session_state(&db, &session.id, "waiting_approval").await;
+        let approval_id: String = sqlx::query_scalar(
+            "SELECT json_extract(payload_json, '$.payload.requestId') FROM agent_events WHERE session_id=? AND event_type='approval.requested' ORDER BY sequence DESC LIMIT 1",
+        )
+        .bind(&session.id)
+        .fetch_one(&db)
+        .await
+        .unwrap();
+        assert!(approval_id.starts_with("pi-tool:"));
+        host.resolve_pi_approval(&session.id, &approval_id, "accept").await.unwrap();
+        wait_turn(&db, &session.id, "completed").await;
+        assert_eq!(fs::read_to_string(root.join("core-tool.txt")).unwrap(), "Core mediated Pi write");
         let invoked = host.invoke(&session.id, "dev.aibo.echo.tasks", "refresh", json!({"label":"manual"})).await.unwrap();
-        assert_eq!(invoked, json!({"cursor":1}));
+        assert_eq!(invoked, json!({"cursor":2}));
         let commands = host.invoke(&session.id, "dev.aibo.echo.tasks", "commands", json!({})).await.unwrap();
         assert_eq!(commands, json!({"commands":[]}));
         let invoked = host.invoke_capability(&session.id, "ext.dev.aibo.echo.refresh", json!({"label":"semantic"})).await.unwrap();
-        assert_eq!(invoked, json!({"cursor":1}));
+        assert_eq!(invoked, json!({"cursor":2}));
         assert!(host.invoke_capability(&session.id, "goal.manage", json!({})).await.unwrap_err().contains("no operation"));
         assert!(host.invoke(&session.id, "dev.aibo.echo.tasks", "refresh", json!({})).await.unwrap_err().contains("input schema"));
         assert!(host.invoke(&session.id, "dev.aibo.echo.tasks", "missing", json!({})).await.unwrap_err().contains("undeclared view action"));

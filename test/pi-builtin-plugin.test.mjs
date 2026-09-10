@@ -6,13 +6,13 @@ import path from 'node:path';
 import test from 'node:test';
 import { JsonlProcess } from '../probes/lib/jsonl-process.mjs';
 
-test('bundled Pi plugin translates RPC lifecycle into Agent Runtime v1', async (t) => {
+test('bundled Pi plugin translates RPC lifecycle into Agent Runtime v1', { concurrency: false }, async (t) => {
   if (process.platform === 'win32') return t.skip('Windows command shim coverage is tracked separately');
   const directory = await mkdtemp(path.join(tmpdir(), 'aibo-pi-plugin-'));
   const fake = path.join(directory, 'pi');
   await copyFile('fixtures/plugins/pi/fake-pi.mjs', fake); await chmod(fake, 0o755);
   const client = new JsonlProcess(process.execPath, ['src-tauri/builtin-plugins/pi/pi-plugin.mjs'], {
-    cwd: process.cwd(), env: { ...process.env, PATH: `${directory}${path.delimiter}${process.env.PATH}` },
+    cwd: process.cwd(), env: { ...process.env, PATH: `${directory}${path.delimiter}${process.env.PATH}`, AIBO_PI_PLUGIN_PROVIDER: 'rpc' },
   }).start();
   t.after(async () => { await client.close(); await rm(directory, { recursive: true, force: true }); });
   const messages = []; client.on('message', (message) => messages.push(message));
@@ -46,27 +46,46 @@ test('bundled Pi plugin translates RPC lifecycle into Agent Runtime v1', async (
   assert.equal((await operation('ext.dev.aibo.pi.compact', { instructions: 'keep decisions' })).output.summary, 'keep decisions');
   assert.deepEqual((await operation('ext.dev.aibo.pi.tree', { action: 'get' })).output.tree, []);
   assert.equal((await operation('ext.dev.aibo.pi.tree', { action: 'navigate', entryId: 'branch-1', summarize: true, customInstructions: null })).output.leafId, 'branch-1');
+  assert.deepEqual((await operation('ext.dev.aibo.pi.snapshot')).output, { tree: [], leafId: null, branch: [] });
+  const multiMessageCompleted = client.waitFor((message) => message.params?.type === 'turn.completed' && message.params.turnId === 'multi-message-turn');
+  await request('turn.send', { agentId: scope.agentId, sessionId: scope.sessionId, turnId: 'multi-message-turn', input: { text: 'two messages', attachments: [] } });
+  await multiMessageCompleted;
+  const multiMessages = messages.filter((message) => message.params?.type === 'message.completed' && message.params.turnId === 'multi-message-turn');
+  assert.deepEqual(multiMessages.map((message) => [message.params.payload.itemId, message.params.payload.text]), [
+    ['assistant-message-1', 'first message'], ['assistant-message-2', 'second message'],
+  ]);
 });
 
-test('bundled Pi plugin isolates delayed old provider exit from replacement requests', async (t) => {
+test('bundled Pi plugin isolates delayed old provider exit from replacement requests', { concurrency: false }, async (t) => {
   if (process.platform === 'win32') return t.skip('Windows command shim coverage is tracked separately');
   const directory = await mkdtemp(path.join(tmpdir(), 'aibo-pi-plugin-generation-'));
   const fake = path.join(directory, 'pi');
   const control = path.join(directory, 'provider-control.log');
   await copyFile('fixtures/plugins/pi/fake-pi.mjs', fake); await chmod(fake, 0o755); await writeFile(control, '');
   const client = new JsonlProcess(process.execPath, ['src-tauri/builtin-plugins/pi/pi-plugin.mjs'], {
-    cwd: process.cwd(), env: { ...process.env, PATH: `${directory}${path.delimiter}${process.env.PATH}`, AIBO_FAKE_PI_CONTROL_FILE: control },
+    cwd: process.cwd(), env: { ...process.env, PATH: `${directory}${path.delimiter}${process.env.PATH}`, AIBO_FAKE_PI_PROVIDER: 'rpc', AIBO_PI_PLUGIN_PROVIDER: 'rpc', AIBO_FAKE_PI_CONTROL_FILE: control },
   }).start();
   t.after(async () => { await appendFile(control, 'release-old\nrelease-new\n').catch(() => {}); await client.close(); await rm(directory, { recursive: true, force: true }); });
   const request = async (method, params) => (await client.requestMessage({ jsonrpc: '2.0', method, params })).result;
   const waitForControl = async (marker) => {
     if ((await readFile(control, 'utf8')).includes(marker)) return;
     await new Promise((resolve, reject) => {
-      const timer = setTimeout(() => { watcher.close(); reject(new Error(`Timed out waiting for provider marker ${marker}`)); }, 5_000);
-      const watcher = watch(control, async () => {
+      let settled = false;
+      const finish = (error) => {
+        if (settled) return;
+        settled = true;
+        clearTimeout(timer);
+        clearInterval(poll);
+        watcher.close();
+        if (error) reject(error); else resolve();
+      };
+      const check = async () => {
         if (!(await readFile(control, 'utf8')).includes(marker)) return;
-        clearTimeout(timer); watcher.close(); resolve();
-      });
+        finish();
+      };
+      const timer = setTimeout(() => finish(new Error(`Timed out waiting for provider marker ${marker}`)), 5_000);
+      const poll = setInterval(() => { void check(); }, 25);
+      const watcher = watch(control, () => { void check(); });
     });
   };
   await request('aibo.initialize', { runtimeInstanceId: 'runtime', generationId: 'generation',
@@ -84,4 +103,25 @@ test('bundled Pi plugin isolates delayed old provider exit from replacement requ
   await waitForControl('exit:1');
   await appendFile(control, 'release-new\n');
   assert.equal((await replacement).result.nativeSessionId, 'native-pi-session');
+});
+
+test('bundled Pi plugin production path uses the locked SDK provider', { concurrency: false }, async (t) => {
+  const directory = await mkdtemp(path.join(tmpdir(), 'aibo-pi-plugin-sdk-'));
+  const client = new JsonlProcess(process.execPath, ['src-tauri/builtin-plugins/pi/pi-plugin.mjs'], {
+    cwd: process.cwd(), env: { ...process.env },
+  }).start();
+  t.after(async () => { await client.close(); await rm(directory, { recursive: true, force: true }); });
+  const request = async (method, params) => (await client.requestMessage({ jsonrpc: '2.0', method, params })).result;
+  await request('aibo.initialize', { runtimeInstanceId: 'runtime', generationId: 'generation',
+    host: { appVersion: '0.1.0', platform: 'darwin-arm64', runtimeProtocolVersions: ['1.0'], viewProtocolVersions: ['1.0'] },
+    expectedPlugin: { pluginId: 'dev.aibo.pi', pluginVersion: '1.0.0' },
+    permissionGrants: [{ id: 'workspace.read', decision: 'granted', enforcement: 'agent-native', constraints: { roots: [directory] } }] });
+  const scope = { agentId: 'dev.aibo.pi.agent', sessionId: 'sdk-session', workspace: { workspaceId: 'workspace', trusted: true, path: directory }, executionProfile: { runtimeDataPath: directory } };
+  const session = await request('session.create', scope);
+  assert.ok(session.nativeSessionId);
+  const commands = await request('operation.invoke', { agentId: scope.agentId, sessionId: scope.sessionId, operationId: 'ext.dev.aibo.pi.commands', input: {} });
+  assert.ok(commands.output.commands.some((command) => command.name === 'compact'));
+  const snapshot = await request('operation.invoke', { agentId: scope.agentId, sessionId: scope.sessionId, operationId: 'ext.dev.aibo.pi.snapshot', input: {} });
+  assert.ok(Array.isArray(snapshot.output.tree));
+  await request('session.close', { agentId: scope.agentId, sessionId: scope.sessionId });
 });

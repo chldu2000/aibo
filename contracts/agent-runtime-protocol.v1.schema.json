@@ -20,6 +20,8 @@
     { "$ref": "#/$defs/operationResponse" },
     { "$ref": "#/$defs/shutdownResponse" },
     { "$ref": "#/$defs/errorResponse" },
+    { "$ref": "#/$defs/coreToolRequest" },
+    { "$ref": "#/$defs/coreToolResponse" },
     { "$ref": "#/$defs/agentEventNotification" },
     { "$ref": "#/$defs/viewRenderNotification" }
   ],
@@ -515,6 +517,44 @@
           }
         }
       }
+    },
+    "coreToolRequest": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["jsonrpc", "id", "method", "params"],
+      "properties": {
+        "jsonrpc": { "const": "2.0" },
+        "id": { "$ref": "#/$defs/id" },
+        "method": { "const": "aibo/tool-request" },
+        "params": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["agentId", "sessionId", "nativeSessionId", "turnId", "tool", "input"],
+          "properties": {
+            "agentId": { "$ref": "#/$defs/namespacedId" },
+            "sessionId": { "type": "string", "minLength": 1 },
+            "nativeSessionId": { "type": ["string", "null"] },
+            "turnId": { "type": ["string", "null"] },
+            "tool": { "enum": ["write_file", "run_command"] },
+            "input": { "type": "object" }
+          }
+        }
+      }
+    },
+    "coreToolResponse": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["jsonrpc", "id"],
+      "properties": {
+        "jsonrpc": { "const": "2.0" },
+        "id": { "$ref": "#/$defs/id" },
+        "result": { "type": "object" },
+        "error": { "type": "object" }
+      },
+      "oneOf": [
+        { "required": ["result"] },
+        { "required": ["error"] }
+      ]
     },
     "agentEventNotification": {
       "type": "object",
