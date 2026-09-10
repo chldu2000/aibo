@@ -48,7 +48,7 @@
   } from '$lib/app/composer-draft-storage';
   import type { ComposerDrafts } from '$lib/app/composer-draft-storage';
   import { isSessionRunning } from '$lib/app/session-state';
-  import { sessionAgentKind } from '$lib/app/agent-kind';
+  import { sessionAgentKind, sessionModelBackend } from '$lib/app/agent-kind';
   import {
     addWorkspace,
     abortCodexTurn,
@@ -2043,7 +2043,7 @@
     ++sessionModelRequestGeneration;
     sessionModelCatalogLoading = false;
     try {
-      if (session.pluginInstallationId) {
+      if (sessionModelBackend(session) === 'plugin') {
         if (!session.capabilities.includes('model.select')) {
           errorMessage = '此插件未声明模型选择能力。';
           return;
@@ -2059,7 +2059,7 @@
         if (selectedSessionId !== session.id) return;
         await loadSessionModels();
         notice = `模型已切换为 ${selected?.label ?? model}。`;
-      } else if (sessionAgentKind(session) === 'pi') {
+      } else if (sessionModelBackend(session) === 'pi') {
         const result = await setPiModel(session.id, model ?? undefined);
         if (selectedSessionId !== session.id) return;
         const current = result.current && typeof result.current === 'object'
@@ -2163,7 +2163,7 @@
     errorMessage = null;
     ++sessionModelRequestGeneration;
     try {
-      if (session.pluginInstallationId) {
+      if (sessionModelBackend(session) === 'plugin') {
         if (!session.capabilities.includes('model.reasoning')) {
           errorMessage = '此插件未声明推理强度能力。';
           return;
@@ -2176,7 +2176,7 @@
         if (selectedSessionId !== session.id) return;
         await loadSessionModels();
         notice = `推理强度已切换为 ${reasoningEffort}。`;
-      } else if (sessionAgentKind(session) === 'pi') {
+      } else if (sessionModelBackend(session) === 'pi') {
         const result = await setPiThinkingLevel(session.id, reasoningEffort ?? undefined);
         if (selectedSessionId !== session.id) return;
         executionProfile = await getSessionExecutionProfile(session.id);
@@ -2235,7 +2235,7 @@
     ++sessionModelRequestGeneration;
     sessionModelCatalogLoading = false;
     try {
-      if (session.pluginInstallationId) {
+      if (sessionModelBackend(session) === 'plugin') {
         if (!session.capabilities.includes('model.select')) {
           errorMessage = '此插件未声明模型选择能力。';
           return;
@@ -2252,7 +2252,7 @@
         notice = reasoningEffort
           ? `模型已切换为 ${selected?.label ?? model} · ${reasoningEffort}。`
           : `模型已切换为 ${selected?.label ?? model}。`;
-      } else if (sessionAgentKind(session) === 'pi') {
+      } else if (sessionModelBackend(session) === 'pi') {
         const result = await setPiModel(session.id, model);
         if (selectedSessionId !== session.id) return;
         const current = result.current && typeof result.current === 'object'

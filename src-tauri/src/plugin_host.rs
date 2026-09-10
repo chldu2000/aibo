@@ -310,6 +310,14 @@ impl PluginHost {
             if resume {
                 let binding: Value = serde_json::from_str(previous.as_deref().ok_or("invalid_recovery_data: binding missing")?).map_err(|_|"invalid_recovery_data")?;
                 if !contracts().binding.is_valid(&binding) { return Err("invalid_recovery_data: invalid binding".into()); }
+                if manifest["pluginId"] == "dev.aibo.pi" && apply_pi_recovery_profile(&mut execution_profile, &binding) {
+                    execution_profile::save_for_session(&self.db, session_id, &execution_profile)
+                        .await.map_err(|error| error.to_string())?;
+                    let mut recovered_runtime_profile = serde_json::to_value(&execution_profile.enforced)
+                        .map_err(|error| error.to_string())?;
+                    recovered_runtime_profile["runtimeDataPath"] = json!(runtime_data);
+                    params["executionProfile"] = recovered_runtime_profile;
+                }
                 params["binding"] = binding;
             }
             let result = runtime.request(if resume {"session.resume"} else {"session.create"}, params, TIMEOUT).await?;
@@ -1427,6 +1435,24 @@ fn scoped_external_item_id(turn_id: &str, item_id: &str) -> String {
     format!("{turn_id}:{item_id}")
 }
 
+fn apply_pi_recovery_profile(profile: &mut execution_profile::ResolvedExecutionProfile, binding: &Value) -> bool {
+    let data = &binding["recovery"]["data"];
+    let model = data["model"]["provider"].as_str().zip(data["model"]["modelId"].as_str())
+        .map(|(provider, model_id)| format!("{provider}/{model_id}"));
+    let reasoning_effort = data["thinkingLevel"].as_str().map(ToOwned::to_owned);
+    if model.is_none() && reasoning_effort.is_none() { return false; }
+    if let Some(model) = model {
+        profile.requested.model = Some(model.clone());
+        profile.enforced.model = Some(model);
+    }
+    if let Some(reasoning_effort) = reasoning_effort {
+        profile.requested.reasoning_effort = Some(reasoning_effort.clone());
+        profile.enforced.reasoning_effort = Some(reasoning_effort);
+    }
+    profile.resolved_at = crate::now_iso();
+    true
+}
+
 fn empty_codex_session_recovery_allowed(plugin_id: &str, agent_id: &str, has_turns: bool) -> bool {
     plugin_id == "dev.aibo.codex" && agent_id == "dev.aibo.codex.agent" && !has_turns
 }
@@ -1441,6 +1467,21 @@ mod tests {
         assert_eq!(scoped_external_item_id("turn-a", "assistant-1"), "turn-a:assistant-1");
         assert_eq!(scoped_external_item_id("turn-b", "assistant-1"), "turn-b:assistant-1");
         assert_ne!(scoped_external_item_id("turn-a", "tool-1"), scoped_external_item_id("turn-b", "tool-1"));
+    }
+
+    #[test]
+    fn restores_pi_model_and_reasoning_into_the_execution_profile() {
+        let mut profile = execution_profile::resolve("pi", None, "before".into()).unwrap();
+        let binding = json!({"recovery":{"data":{
+            "model":{"provider":"openai-codex","modelId":"gpt-5.6-luna"},
+            "thinkingLevel":"medium"
+        }}});
+        assert!(apply_pi_recovery_profile(&mut profile, &binding));
+        assert_eq!(profile.requested.model.as_deref(), Some("openai-codex/gpt-5.6-luna"));
+        assert_eq!(profile.enforced.model, profile.requested.model);
+        assert_eq!(profile.requested.reasoning_effort.as_deref(), Some("medium"));
+        assert_eq!(profile.enforced.reasoning_effort, profile.requested.reasoning_effort);
+        assert_ne!(profile.resolved_at, "before");
     }
 
     #[test]
