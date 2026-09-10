@@ -1331,13 +1331,14 @@ impl PluginHost {
                 if kind == "message.delta" || kind == "message.completed" {
                     let text = p["payload"][if kind == "message.delta" {"delta"} else {"text"}].as_str().ok_or("invalid_request: message text")?;
                     let item_id = p["payload"]["itemId"].as_str().or_else(||p["correlation"]["itemId"].as_str()).filter(|value|!value.is_empty()).unwrap_or("assistant");
+                    let external_item_id = scoped_external_item_id(turn, item_id);
                     let id = format!("{turn}:assistant:{item_id}");
                     if kind == "message.delta" {
                         sqlx::query("INSERT INTO messages(id,session_id,turn_id,external_message_id,role,content,status,sequence,created_at,updated_at) VALUES(?,?,?,?,'assistant',?,'streaming',?,?,?) ON CONFLICT(id) DO UPDATE SET content=content || excluded.content,updated_at=excluded.updated_at")
-                            .bind(id).bind(session_id).bind(turn).bind(item_id).bind(text).bind(sequence).bind(&now).bind(&now).execute(&mut *tx).await.map_err(|e|e.to_string())?;
+                            .bind(id).bind(session_id).bind(turn).bind(&external_item_id).bind(text).bind(sequence).bind(&now).bind(&now).execute(&mut *tx).await.map_err(|e|e.to_string())?;
                     } else {
                         sqlx::query("INSERT INTO messages(id,session_id,turn_id,external_message_id,role,content,status,sequence,created_at,updated_at) VALUES(?,?,?,?,'assistant',?,'completed',?,?,?) ON CONFLICT(id) DO UPDATE SET content=excluded.content,status='completed',updated_at=excluded.updated_at")
-                            .bind(id).bind(session_id).bind(turn).bind(item_id).bind(text).bind(sequence).bind(&now).bind(&now).execute(&mut *tx).await.map_err(|e|e.to_string())?;
+                            .bind(id).bind(session_id).bind(turn).bind(&external_item_id).bind(text).bind(sequence).bind(&now).bind(&now).execute(&mut *tx).await.map_err(|e|e.to_string())?;
                     }
                 } else if kind.starts_with("reasoning.") {
                     let item_id = p["payload"]["itemId"].as_str().filter(|value| !value.is_empty()).ok_or("invalid_request: reasoning item id")?;
@@ -1348,8 +1349,9 @@ impl PluginHost {
                     let append = kind == "reasoning.updated";
                     let status = if kind == "reasoning.completed" { "completed" } else { "streaming" };
                     let message_id = format!("{turn}:reasoning:{item_id}");
+                    let external_item_id = scoped_external_item_id(turn, item_id);
                     sqlx::query("INSERT INTO messages(id,session_id,turn_id,external_message_id,role,tool_name,content,status,sequence,created_at,updated_at) VALUES(?,?,?,?,'system','reasoning',?,?,?,?,?) ON CONFLICT(id) DO UPDATE SET content=CASE WHEN ?=1 THEN messages.content || excluded.content WHEN excluded.content='' THEN messages.content ELSE excluded.content END,status=excluded.status,updated_at=excluded.updated_at")
-                        .bind(message_id).bind(session_id).bind(turn).bind(item_id).bind(content).bind(status).bind(sequence).bind(&now).bind(&now).bind(if append { 1_i64 } else { 0_i64 })
+                        .bind(message_id).bind(session_id).bind(turn).bind(external_item_id).bind(content).bind(status).bind(sequence).bind(&now).bind(&now).bind(if append { 1_i64 } else { 0_i64 })
                         .execute(&mut *tx).await.map_err(|e|e.to_string())?;
                 } else if kind.starts_with("tool.") {
                     let payload = &p["payload"];
@@ -1374,8 +1376,9 @@ impl PluginHost {
                     let content = output.as_deref().or(delta.as_deref()).unwrap_or(&summary);
                     let append = kind == "tool.updated" && delta.is_some() && output.is_none();
                     let message_id = format!("{turn}:tool:{item_id}");
+                    let external_item_id = scoped_external_item_id(turn, item_id);
                     sqlx::query("INSERT INTO messages(id,session_id,turn_id,external_message_id,role,tool_name,tool_command,tool_cwd,tool_exit_code,content,status,sequence,created_at,updated_at) VALUES(?,?,?,?,'tool',?,?,?,?,?,?,?,?,?) ON CONFLICT(id) DO UPDATE SET content=CASE WHEN ?=1 THEN messages.content || excluded.content ELSE excluded.content END,tool_name=excluded.tool_name,tool_command=COALESCE(excluded.tool_command,messages.tool_command),tool_cwd=COALESCE(excluded.tool_cwd,messages.tool_cwd),tool_exit_code=COALESCE(excluded.tool_exit_code,messages.tool_exit_code),status=excluded.status,updated_at=excluded.updated_at")
-                        .bind(message_id).bind(session_id).bind(turn).bind(item_id).bind(item_type).bind(command).bind(cwd).bind(exit_code).bind(content).bind(status).bind(sequence).bind(&now).bind(&now).bind(if append { 1_i64 } else { 0_i64 })
+                        .bind(message_id).bind(session_id).bind(turn).bind(external_item_id).bind(item_type).bind(command).bind(cwd).bind(exit_code).bind(content).bind(status).bind(sequence).bind(&now).bind(&now).bind(if append { 1_i64 } else { 0_i64 })
                         .execute(&mut *tx).await.map_err(|e|e.to_string())?;
                 } else if kind == "approval.requested" || kind == "user_input.requested" {
                     let request_id = p["payload"]["requestId"].as_str().ok_or("invalid_request: request id")?;
@@ -1420,6 +1423,10 @@ impl PluginHost {
     }
 }
 
+fn scoped_external_item_id(turn_id: &str, item_id: &str) -> String {
+    format!("{turn_id}:{item_id}")
+}
+
 fn empty_codex_session_recovery_allowed(plugin_id: &str, agent_id: &str, has_turns: bool) -> bool {
     plugin_id == "dev.aibo.codex" && agent_id == "dev.aibo.codex.agent" && !has_turns
 }
@@ -1428,6 +1435,13 @@ fn empty_codex_session_recovery_allowed(plugin_id: &str, agent_id: &str, has_tur
 mod tests {
     use super::*;
     use std::fs;
+
+    #[test]
+    fn scopes_reused_plugin_item_ids_to_their_turn() {
+        assert_eq!(scoped_external_item_id("turn-a", "assistant-1"), "turn-a:assistant-1");
+        assert_eq!(scoped_external_item_id("turn-b", "assistant-1"), "turn-b:assistant-1");
+        assert_ne!(scoped_external_item_id("turn-a", "tool-1"), scoped_external_item_id("turn-b", "tool-1"));
+    }
 
     #[test]
     fn maps_interactive_events_to_negotiated_capabilities() {
@@ -1538,13 +1552,13 @@ mod tests {
         fs::write(root.join("read-tool.txt"), "Core mediated read").unwrap();
         host.send(&session.id, "core read fixture").await.unwrap();
         wait_turn(&db, &session.id, "completed").await;
-        let read_content: String = sqlx::query_scalar("SELECT content FROM messages WHERE session_id=? AND external_message_id='core-read-result'")
+        let read_content: String = sqlx::query_scalar("SELECT content FROM messages WHERE session_id=? AND external_message_id LIKE '%:core-read-result'")
             .bind(&session.id).fetch_one(&db).await.unwrap();
         assert_eq!(read_content, "Core mediated read");
         fs::write(root.join("read-tool.png"), [137, 80, 78, 71, 13, 10, 26, 10, 0, 0, 0, 13, b'I', b'H', b'D', b'R']).unwrap();
         host.send(&session.id, "core image fixture").await.unwrap();
         wait_turn(&db, &session.id, "completed").await;
-        let image_content: String = sqlx::query_scalar("SELECT content FROM messages WHERE session_id=? AND external_message_id='core-image-result'")
+        let image_content: String = sqlx::query_scalar("SELECT content FROM messages WHERE session_id=? AND external_message_id LIKE '%:core-image-result'")
             .bind(&session.id).fetch_one(&db).await.unwrap();
         assert!(image_content.contains("\"encoding\":\"base64\""));
         assert!(image_content.contains("\"mimeType\":\"image/png\""));
@@ -1618,7 +1632,7 @@ mod tests {
         assert!(command_approval_id.starts_with("pi-tool:"));
         host.resolve_pi_approval(&session.id, &command_approval_id, "accept").await.unwrap();
         wait_turn(&db, &session.id, "completed").await;
-        let command_output: String = sqlx::query_scalar("SELECT content FROM messages WHERE session_id=? AND external_message_id='core-command-result'")
+        let command_output: String = sqlx::query_scalar("SELECT content FROM messages WHERE session_id=? AND external_message_id LIKE '%:core-command-result'")
             .bind(&session.id).fetch_one(&db).await.unwrap();
         assert_eq!(command_output, "AIBO_CORE_COMMAND_OK");
         let invoked = host.invoke(&session.id, "dev.aibo.echo.tasks", "refresh", json!({"label":"manual"})).await.unwrap();

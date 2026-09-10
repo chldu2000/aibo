@@ -34,6 +34,11 @@ export type AgentEventHandlerContext = {
   refreshWorkspaceChanges?: (workspaceId: string) => void | Promise<void>;
 };
 
+export function eventTimelineItemId(event: Pick<AgentEvent, 'turnId'>, itemId: string | null): string | null {
+  if (!itemId) return null;
+  return event.turnId ? `${event.turnId}:${itemId}` : itemId;
+}
+
 export function handleAgentEvent(event: AgentEvent, context: AgentEventHandlerContext): void {
   const selectedSessionId = context.selectedSessionId;
   const state = event.type === 'session.state_changed' ? event.payload.state : undefined;
@@ -144,7 +149,7 @@ export function handleAgentEvent(event: AgentEvent, context: AgentEventHandlerCo
   }
 
   if (event.type === 'message.completed' && event.sessionId === selectedSessionId) {
-    const itemId = stringPayload(event.payload.itemId) ?? correlationString(event, 'itemId');
+    const itemId = eventTimelineItemId(event, stringPayload(event.payload.itemId) ?? correlationString(event, 'itemId'));
     if (itemId) context.setTimeline(context.timeline.map((item) =>
       item.externalMessageId === itemId
         ? { ...item, content: stringPayload(event.payload.text) ?? item.content, status: 'completed' }
@@ -240,9 +245,10 @@ export function handleAgentEvent(event: AgentEvent, context: AgentEventHandlerCo
   }
 
   if (event.sessionId === selectedSessionId && event.type === 'message.delta') {
-    const externalMessageId = stringPayload(event.payload.itemId)
-      ?? correlationString(event, 'itemId')
-      ?? `turn:${event.turnId ?? event.eventId}:assistant`;
+    const externalMessageId = eventTimelineItemId(
+      event,
+      stringPayload(event.payload.itemId) ?? correlationString(event, 'itemId') ?? 'assistant',
+    )!;
     const delta = stringPayload(event.payload.delta) ?? '';
     const existing = context.timeline.find((item) => item.externalMessageId === externalMessageId);
     if (existing) {
@@ -277,7 +283,7 @@ export function handleAgentEvent(event: AgentEvent, context: AgentEventHandlerCo
     event.sessionId === selectedSessionId &&
     (event.type === 'tool.started' || event.type === 'tool.updated' || event.type === 'tool.completed')
   ) {
-    const externalMessageId = stringPayload(event.payload.itemId) ?? `tool:${event.eventId}`;
+    const externalMessageId = eventTimelineItemId(event, stringPayload(event.payload.itemId) ?? `tool:${event.eventId}`)!;
     const toolName = stringPayload(event.payload.itemType);
     const delta = event.type === 'tool.updated' ? stringPayload(event.payload.delta) : null;
     const summary = stringPayload(event.payload.summary) ?? delta ?? '工具操作';
@@ -329,7 +335,7 @@ export function handleAgentEvent(event: AgentEvent, context: AgentEventHandlerCo
   }
 
   if (event.sessionId === selectedSessionId && (event.type === 'reasoning.updated' || event.type === 'reasoning.completed')) {
-    const externalMessageId = stringPayload(event.payload.itemId) ?? `reasoning:${event.eventId}`;
+    const externalMessageId = eventTimelineItemId(event, stringPayload(event.payload.itemId) ?? `reasoning:${event.eventId}`)!;
     const delta = event.type === 'reasoning.updated' ? stringPayload(event.payload.delta) ?? '' : null;
     const summary = event.type === 'reasoning.completed' ? stringPayload(event.payload.summary) : null;
     const existing = context.timeline.find((item) => item.externalMessageId === externalMessageId);
