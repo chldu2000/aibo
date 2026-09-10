@@ -116,6 +116,23 @@ function handle({ id, method, params: p }) {
       });
       return;
     }
+    if (p.input.text === 'core read fixture') {
+      const toolRequestId = `echo-read-${id}`;
+      const toolResult = new Promise((resolve, reject) => pendingCoreTools.set(toolRequestId, { resolve, reject }));
+      write({ id: toolRequestId, method: 'aibo/tool-request', params: {
+        agentId, sessionId: session.id, nativeSessionId: session.nativeId, turnId: turn.id,
+        tool: 'read_file', input: { path: 'read-tool.txt', action: 'read' },
+      } });
+      toolResult.then((result) => {
+        if (session.turn !== turn) return;
+        event(session, 'message.completed', { text: result.content ?? '', itemId: 'core-read-result' }, turn);
+        finish(session, 'completed');
+      }).catch(() => {
+        if (session.turn !== turn) return;
+        finish(session, 'failed');
+      });
+      return;
+    }
     const chunks = Array.from(p.input.text);
     let offset = 0;
     const tick = () => {

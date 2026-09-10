@@ -16,7 +16,7 @@
     "agentId": "dev.aibo.pi.agent",
     "displayName": "Pi",
     "description": "Pi SDK through the Aibo Agent Runtime Protocol.",
-    "capabilities": ["session.create", "session.resume", "session.close", "session.reload", "turn.send", "turn.cancel", "stream.text", "view.standard", "model.select", "model.reasoning", "command.list", "approval.respond", "queue.manage", "compaction.run", "session.tree", "session.snapshot", "ext.dev.aibo.pi.usage", "ext.dev.aibo.pi.retry", "ext.dev.aibo.pi.extension"],
+    "capabilities": ["session.create", "session.resume", "session.close", "session.reload", "turn.send", "turn.cancel", "stream.text", "view.standard", "model.select", "model.reasoning", "command.list", "skill.list", "approval.respond", "queue.manage", "compaction.run", "session.tree", "session.snapshot", "ext.dev.aibo.pi.usage", "ext.dev.aibo.pi.retry", "ext.dev.aibo.pi.extension"],
     "requestedPermissions": [{ "id": "workspace.read", "required": true, "reason": "Starts Pi in the selected trusted workspace." }, { "id": "workspace.write", "required": false, "reason": "Core mediates Pi workspace writes after execution-profile approval." }, { "id": "commands.execute", "required": false, "reason": "Core mediates Pi commands after execution-profile approval." }],
     "operations": [
       {
@@ -34,7 +34,13 @@
       {
         "id": "ext.dev.aibo.pi.commands",
         "capability": "command.list",
-        "inputSchema": { "type": "object", "additionalProperties": false, "required": ["action"], "properties": { "action": { "enum": ["get", "navigate"] }, "entryId": { "type": "string", "minLength": 1 }, "summarize": { "type": "boolean" }, "customInstructions": { "type": ["string", "null"] } } },
+        "inputSchema": { "type": "object", "additionalProperties": false, "properties": { "action": { "const": "get" } } },
+        "outputSchema": { "type": "object" }
+      },
+      {
+        "id": "ext.dev.aibo.pi.skills",
+        "capability": "skill.list",
+        "inputSchema": { "type": "object", "additionalProperties": false },
         "outputSchema": { "type": "object" }
       },
       {
@@ -52,7 +58,7 @@
       {
         "id": "ext.dev.aibo.pi.tree",
         "capability": "session.tree",
-        "inputSchema": { "type": "object", "additionalProperties": false },
+        "inputSchema": { "type": "object", "additionalProperties": false, "properties": { "action": { "enum": ["get", "navigate"] }, "entryId": { "type": "string", "minLength": 1 }, "summarize": { "type": "boolean" }, "customInstructions": { "type": ["string", "null"] } } },
         "outputSchema": { "type": "object" }
       },
       {

@@ -535,7 +535,7 @@
             "sessionId": { "type": "string", "minLength": 1 },
             "nativeSessionId": { "type": ["string", "null"] },
             "turnId": { "type": ["string", "null"] },
-            "tool": { "enum": ["write_file", "run_command"] },
+            "tool": { "enum": ["read_file", "write_file", "run_command"] },
             "input": { "type": "object" }
           }
         }

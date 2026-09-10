@@ -19,7 +19,6 @@ use execution_profile::{
     save_for_session as save_session_profile, ExecutionProfile, ResolvedExecutionProfile,
     SessionExecutionProfile,
 };
-use pi::PiManager;
 use serde::Serialize;
 use sha2::{Digest, Sha256};
 use sqlx::{
@@ -68,7 +67,6 @@ async fn remove_cached_runtime<T>(
 pub struct AppState {
     db: SqlitePool,
     codex: CodexManager,
-    pi: PiManager,
     plugins: plugin_host::PluginHost,
     data_dir: PathBuf,
 }
@@ -612,12 +610,6 @@ impl From<sqlx::migrate::MigrateError> for CoreError {
 impl From<codex::CodexError> for CoreError {
     fn from(error: codex::CodexError) -> Self {
         Self::Codex(error.to_string())
-    }
-}
-
-impl From<pi::PiError> for CoreError {
-    fn from(error: pi::PiError) -> Self {
-        Self::Pi(error.to_string())
     }
 }
 
@@ -1328,7 +1320,11 @@ async fn remove_workspace(
     state: State<'_, AppState>,
 ) -> Result<(), CoreError> {
     state.codex.close_workspace(&workspace_id).await?;
-    state.pi.close_workspace(&workspace_id).await?;
+    state
+        .plugins
+        .close_workspace(&workspace_id)
+        .await
+        .map_err(CoreError::Initialization)?;
     let result = sqlx::query("DELETE FROM workspaces WHERE id = ?")
         .bind(&workspace_id)
         .execute(&state.db)
@@ -1693,7 +1689,7 @@ async fn update_session_execution_profile(
             .close(&session_id)
             .await
             .map_err(CoreError::from)?,
-        "pi" => state.pi.close(&session_id).await.map_err(CoreError::from)?,
+        "pi" => return Err(CoreError::Initialization("legacy Pi session is history-only; create a new Pi SDK plugin session before changing its execution profile".to_owned())),
         agent => {
             return Err(CoreError::Initialization(format!(
                 "unsupported session agent: {agent}"
@@ -1819,15 +1815,6 @@ async fn get_timeline(
     session_id: String,
     state: State<'_, AppState>,
 ) -> Result<Vec<TimelineItem>, CoreError> {
-    let session = session_by_id(&state.db, &session_id).await?;
-    if session.agent == "pi" {
-        match state.pi.branch(&session_id).await {
-            Ok(snapshot) => return Ok(pi_snapshot_timeline(&snapshot, &session_id)),
-            Err(error) => {
-                warn!(session_id = %session_id, error = %error, "unable to read active Pi branch; using cached timeline");
-            }
-        }
-    }
     let rows = sqlx::query(
         "SELECT id, session_id, turn_id, external_message_id, role, tool_name, content,
                 status, created_at, updated_at
@@ -4781,7 +4768,14 @@ async fn archive_session(
     }
     match session.agent.as_str() {
         "codex" => state.codex.archive(&session_id).await.map_err(Into::into),
-        "pi" => state.pi.archive(&session_id).await.map_err(Into::into),
+        "pi" => {
+            if matches!(session.state.as_str(), "starting" | "running" | "waiting_approval" | "waiting_user" | "compacting") {
+                return Err(CoreError::SessionBusy);
+            }
+            sqlx::query("UPDATE sessions SET archived=1,state='closed',updated_at=? WHERE id=?")
+                .bind(now_iso()).bind(&session_id).execute(&state.db).await?;
+            session_by_id(&state.db, &session_id).await
+        },
         agent => Err(CoreError::Initialization(format!(
             "unsupported session agent: {agent}"
         ))),
@@ -4799,7 +4793,11 @@ async fn unarchive_session(
     }
     match session.agent.as_str() {
         "codex" => state.codex.unarchive(&session_id).await.map_err(Into::into),
-        "pi" => state.pi.unarchive(&session_id).await.map_err(Into::into),
+        "pi" => {
+            sqlx::query("UPDATE sessions SET archived=0,state='interrupted',updated_at=? WHERE id=?")
+                .bind(now_iso()).bind(&session_id).execute(&state.db).await?;
+            session_by_id(&state.db, &session_id).await
+        },
         agent => Err(CoreError::Initialization(format!(
             "unsupported session agent: {agent}"
         ))),
@@ -4866,7 +4864,14 @@ async fn cancel_agent_turn(session_id: String, state: State<'_, AppState>) -> Re
 
 #[tauri::command]
 async fn resume_agent_session(session_id: String, state: State<'_, AppState>) -> Result<(), String> {
-    state.plugins.resume(&session_id).await
+    let session = session_by_id(&state.db, &session_id).await.map_err(|error| error.to_string())?;
+    if session.plugin_installation_id.is_some() {
+        state.plugins.resume(&session_id).await
+    } else if session.agent == "pi" {
+        Err("dependency_missing: this legacy Pi session is history-only; create a new Pi SDK plugin session to resume it".to_owned())
+    } else {
+        Err("invalid_request: session is not plugin-backed".to_owned())
+    }
 }
 
 #[tauri::command]
@@ -5002,12 +5007,19 @@ async fn create_pi_session(
         .map_err(CoreError::InvalidExecutionProfile)?;
     let workspace = workspace_by_id(&state.db, &workspace_id).await?;
     require_trusted_workspace(&workspace, &profile)?;
+    let installation_id: String = sqlx::query_scalar(
+        "SELECT id FROM plugin_installations WHERE plugin_id='dev.aibo.pi' AND installed=1 AND enabled=1 ORDER BY enabled_at DESC, created_at DESC LIMIT 1",
+    )
+    .fetch_optional(&state.db)
+    .await?
+    .ok_or_else(|| CoreError::Initialization(
+        "dependency_missing: the built-in Pi SDK plugin is not installed or enabled".to_owned(),
+    ))?;
     let session = state
-        .pi
-        .create_session(&workspace_id, &profile)
+        .plugins
+        .create_with_profile(&workspace_id, &installation_id, "dev.aibo.pi.agent", Some(profile.clone()))
         .await
-        .map_err(CoreError::from)?;
-    save_session_profile(&state.db, &session.id, &profile).await?;
+        .map_err(CoreError::Initialization)?;
     Ok(session)
 }
 
@@ -5025,12 +5037,7 @@ async fn send_pi_prompt(
             .map_err(CoreError::Initialization)?;
         return session_by_id(&state.db, &session_id).await;
     }
-    state
-        .pi
-        .send_prompt(&session_id, &input)
-        .await
-        .map_err(CoreError::from)?;
-    session_by_id(&state.db, &session_id).await
+    Err(CoreError::Initialization("legacy Pi session is history-only; create a new Pi SDK plugin session before sending messages".to_owned()))
 }
 
 #[tauri::command]
@@ -5038,7 +5045,7 @@ async fn abort_pi_turn(session_id: String, state: State<'_, AppState>) -> Result
     if session_by_id(&state.db, &session_id).await?.plugin_installation_id.is_some() {
         return state.plugins.cancel(&session_id).await.map_err(CoreError::Initialization);
     }
-    state.pi.abort(&session_id).await.map_err(Into::into)
+    Err(CoreError::Initialization("legacy Pi session is history-only and has no active SDK runtime; create a new Pi SDK plugin session".to_owned()))
 }
 
 #[tauri::command]
@@ -5057,11 +5064,7 @@ async fn resolve_pi_approval(
             .map_err(CoreError::Initialization)?;
         return Ok(());
     }
-    state
-        .pi
-        .resolve_approval(&session_id, &request_id, &decision)
-        .await
-        .map_err(Into::into)
+    Err(CoreError::Initialization("legacy Pi session is history-only; approval requests require a new Pi SDK plugin session".to_owned()))
 }
 
 #[tauri::command]
@@ -5069,7 +5072,10 @@ async fn close_pi_session(session_id: String, state: State<'_, AppState>) -> Res
     if session_by_id(&state.db, &session_id).await?.plugin_installation_id.is_some() {
         return state.plugins.close(&session_id).await.map_err(CoreError::Initialization);
     }
-    state.pi.close(&session_id).await.map_err(Into::into)
+    let updated = sqlx::query("UPDATE sessions SET state='closed',updated_at=? WHERE id=?")
+        .bind(now_iso()).bind(&session_id).execute(&state.db).await?;
+    if updated.rows_affected() == 0 { return Err(CoreError::SessionNotFound(session_id)); }
+    Ok(())
 }
 
 #[tauri::command]
@@ -5086,11 +5092,7 @@ async fn steer_pi_prompt(
             .map_err(CoreError::Initialization)?;
         return Ok(());
     }
-    state
-        .pi
-        .steer(&session_id, &input)
-        .await
-        .map_err(Into::into)
+    Err(CoreError::Initialization("legacy Pi session is history-only; queue operations require a new Pi SDK plugin session".to_owned()))
 }
 
 #[tauri::command]
@@ -5107,11 +5109,7 @@ async fn follow_up_pi_prompt(
             .map_err(CoreError::Initialization)?;
         return Ok(());
     }
-    state
-        .pi
-        .follow_up(&session_id, &input)
-        .await
-        .map_err(Into::into)
+    Err(CoreError::Initialization("legacy Pi session is history-only; queue operations require a new Pi SDK plugin session".to_owned()))
 }
 
 #[tauri::command]
@@ -5124,7 +5122,7 @@ async fn clear_pi_queue(session_id: String, state: State<'_, AppState>) -> Resul
             .map_err(CoreError::Initialization)?;
         return Ok(());
     }
-    state.pi.clear_queue(&session_id).await.map_err(Into::into)
+    Err(CoreError::Initialization("legacy Pi session is history-only; queue operations require a new Pi SDK plugin session".to_owned()))
 }
 
 #[tauri::command]
@@ -5139,7 +5137,7 @@ async fn list_pi_commands(
             .await
             .map_err(CoreError::Initialization);
     }
-    state.pi.commands(&session_id).await.map_err(Into::into)
+    Err(CoreError::Initialization("legacy Pi session is history-only; command discovery requires a new Pi SDK plugin session".to_owned()))
 }
 
 #[tauri::command]
@@ -5155,11 +5153,7 @@ async fn compact_pi_session(
             .await
             .map_err(CoreError::Initialization);
     }
-    state
-        .pi
-        .compact(&session_id, instructions.as_deref())
-        .await
-        .map_err(Into::into)
+    Err(CoreError::Initialization("legacy Pi session is history-only; compaction requires a new Pi SDK plugin session".to_owned()))
 }
 
 #[tauri::command]
@@ -5188,31 +5182,7 @@ async fn set_pi_thinking_level(
         }
         return Ok(result);
     }
-    let result = state
-        .pi
-        .thinking(&session_id, level.as_deref())
-        .await
-        .map_err(CoreError::from)?;
-    if level
-        .as_deref()
-        .is_some_and(|value| !value.trim().is_empty())
-    {
-        let current_level = result
-            .get("level")
-            .and_then(serde_json::Value::as_str)
-            .ok_or_else(|| {
-                CoreError::Initialization(
-                    "Pi did not return the selected thinking level".to_owned(),
-                )
-            })?;
-        let current = session_execution_profile(&state.db, &session_id).await?;
-        let mut requested = current.profile.requested;
-        requested.reasoning_effort = Some(current_level.to_owned());
-        let resolved = resolve_profile("pi", Some(requested), now_iso())
-            .map_err(CoreError::InvalidExecutionProfile)?;
-        save_session_profile(&state.db, &session_id, &resolved).await?;
-    }
-    Ok(result)
+    Err(CoreError::Initialization("legacy Pi session is history-only; reasoning configuration requires a new Pi SDK plugin session".to_owned()))
 }
 
 #[tauri::command]
@@ -5249,31 +5219,7 @@ async fn set_pi_model(
         }
         return Ok(result);
     }
-    let result = state
-        .pi
-        .model(&session_id, reference.as_deref())
-        .await
-        .map_err(CoreError::from)?;
-    if reference
-        .as_deref()
-        .is_some_and(|value| !value.trim().is_empty())
-    {
-        let current = result
-            .get("provider")
-            .and_then(serde_json::Value::as_str)
-            .zip(result.get("id").and_then(serde_json::Value::as_str))
-            .map(|(provider, id)| format!("{provider}/{id}"))
-            .ok_or_else(|| {
-                CoreError::Initialization("Pi did not return the selected model".to_owned())
-            })?;
-        let profile = session_execution_profile(&state.db, &session_id).await?;
-        let mut requested = profile.profile.requested;
-        requested.model = Some(current);
-        let resolved = resolve_profile("pi", Some(requested), now_iso())
-            .map_err(CoreError::InvalidExecutionProfile)?;
-        save_session_profile(&state.db, &session_id, &resolved).await?;
-    }
-    Ok(result)
+    Err(CoreError::Initialization("legacy Pi session is history-only; model configuration requires a new Pi SDK plugin session".to_owned()))
 }
 
 #[tauri::command]
@@ -5297,7 +5243,7 @@ async fn get_session_models(
             .list_models(&session_id)
             .await
             .map_err(Into::into),
-        "pi" => state.pi.list_models(&session_id).await.map_err(Into::into),
+        "pi" => Err(CoreError::Initialization("legacy Pi session is history-only; model discovery requires a new Pi SDK plugin session".to_owned())),
         agent => Err(CoreError::Initialization(format!(
             "unsupported session agent: {agent}"
         ))),
@@ -5323,8 +5269,14 @@ fn plugin_model_catalog(result: &serde_json::Value, reasoning: Option<&serde_jso
             description: item.get("description").and_then(serde_json::Value::as_str).map(ToOwned::to_owned), is_default: item.get("isDefault").and_then(serde_json::Value::as_bool).unwrap_or(false),
             default_reasoning_effort: item.get("defaultReasoningEffort").and_then(serde_json::Value::as_str).map(ToOwned::to_owned), reference, provider, id, reasoning_efforts })
     }).collect::<Vec<_>>();
-    let current_reference = result.get("current").and_then(serde_json::Value::as_str);
+    let current_reference = result.get("current").and_then(serde_json::Value::as_str).map(ToOwned::to_owned)
+        .or_else(|| result.get("current").and_then(|current| {
+            let provider = current.get("provider").and_then(serde_json::Value::as_str)?;
+            let id = current.get("id").and_then(serde_json::Value::as_str)?;
+            Some(format!("{provider}/{id}"))
+        }));
     let current = current_reference
+        .as_deref()
         .and_then(|reference|models.iter().find(|model|model.reference == reference || model.id == reference).cloned())
         .or_else(|| models.iter().find(|model| model.is_default).cloned());
     let current_reasoning_effort = reasoning.and_then(|value|value.get("current")).and_then(serde_json::Value::as_str).map(ToOwned::to_owned);
@@ -5393,7 +5345,7 @@ async fn reload_pi_session(
             .await
             .map_err(CoreError::Initialization);
     }
-    state.pi.reload(&session_id).await.map_err(Into::into)
+    Err(CoreError::Initialization("legacy Pi session is history-only; reload requires a new Pi SDK plugin session".to_owned()))
 }
 
 #[tauri::command]
@@ -5408,7 +5360,7 @@ async fn get_pi_session_tree(
             .await
             .map_err(CoreError::Initialization);
     }
-    state.pi.tree(&session_id).await.map_err(Into::into)
+    Err(CoreError::Initialization("legacy Pi session is history-only; the session tree requires a new Pi SDK plugin session".to_owned()))
 }
 
 #[tauri::command]
@@ -5431,17 +5383,7 @@ async fn navigate_pi_session_tree(
             .await
             .map_err(CoreError::Initialization);
     }
-    state
-        .pi
-        .navigate_tree(
-            &session_id,
-            &entry_id,
-            summarize,
-            custom_instructions.as_deref(),
-            replace_instructions,
-        )
-        .await
-        .map_err(Into::into)
+    Err(CoreError::Initialization("legacy Pi session is history-only; tree navigation requires a new Pi SDK plugin session".to_owned()))
 }
 
 #[tauri::command]
@@ -5456,7 +5398,7 @@ async fn get_pi_session_snapshot(
             .await
             .map_err(CoreError::Initialization);
     }
-    state.pi.snapshot(&session_id).await.map_err(Into::into)
+    Err(CoreError::Initialization("legacy Pi session is history-only; snapshots require a new Pi SDK plugin session".to_owned()))
 }
 
 fn find_executable(name: &str) -> Option<PathBuf> {
@@ -5811,12 +5753,10 @@ pub fn run() {
             })?;
             info!(path = %db_path.display(), "aibo core initialized");
             let codex = CodexManager::new(app.handle().clone(), db.clone(), data_dir.clone());
-            let pi = PiManager::new(app.handle().clone(), db.clone(), data_dir.clone());
             app.manage(AppState {
                 plugins: plugin_host::PluginHost::with_app(db.clone(), app.handle().clone()),
                 db,
                 codex,
-                pi,
                 data_dir,
             });
             Ok(())

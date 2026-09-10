@@ -1,6 +1,7 @@
 <script lang="ts">
   import { AgentStatusMark, Button, Card, CardHeader, CardTitle, Icon, Input } from '$lib/ui-kit';
   import type { SessionFilter } from '$lib/types';
+  import { sessionAgentKind } from '$lib/app/agent-kind';
   import { relativeTimeLabel, sessionStateLabel, sessionStatusTone, isSessionRunning } from './session-utils';
   import type { SessionListItem, WorkspaceListItem } from './view-types';
 
@@ -349,15 +350,15 @@
                           variant={session.id === selectedSessionId ? 'secondary' : 'ghost'}
                           type="button"
                           class="session-item"
-                          aria-label={`${session.label}，${session.agent === 'pi' ? 'Pi' : 'Codex'}，${sessionStateLabel(session)}`}
-                          title={`${session.agent === 'pi' ? 'Pi' : 'Codex'} · ${sessionStateLabel(session)}`}
+                          aria-label={`${session.label}，${sessionAgentKind(session) === 'pi' ? 'Pi' : 'Codex'}，${sessionStateLabel(session)}`}
+                          title={`${sessionAgentKind(session) === 'pi' ? 'Pi' : 'Codex'} · ${sessionStateLabel(session)}`}
                           onclick={() => onSelectSession(session.id)}
                           disabled={archivingSessionId === session.id}
                         >
                           <AgentStatusMark
-                            agent={session.agent}
+                            agent={sessionAgentKind(session)}
                             tone={sessionStatusTone(session)}
-                            label={`${session.agent === 'pi' ? 'Pi' : 'Codex'}，${sessionStateLabel(session)}`}
+                            label={`${sessionAgentKind(session) === 'pi' ? 'Pi' : 'Codex'}，${sessionStateLabel(session)}`}
                           />
                           <span class="session-item-label">{session.label}</span>
                           <time class="session-updated" datetime={session.updatedAt}>
@@ -369,7 +370,7 @@
                             <Button variant="ghost" size="icon" type="button" aria-label="取消归档" title="取消归档" onclick={() => onUnarchiveSession(session.id)} disabled={busy}>
                               <Icon name="archive-restore" size={13} />
                             </Button>
-                          {:else if session.agent === 'codex'}
+                          {:else if sessionAgentKind(session) === 'codex'}
                             <Button variant="ghost" size="icon" type="button" aria-label="归档会话" title="归档" onclick={() => onRequestArchiveSession(session.id)} disabled={busy || isSessionRunning(session) || archivingSessionId !== null}>
                               <Icon name="archive" size={13} />
                             </Button>

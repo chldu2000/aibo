@@ -4,12 +4,21 @@ import { pathToFileURL } from 'node:url';
 const sdkModule = await import(process.env.AIBO_PI_SDK_MODULE
   ? pathToFileURL(process.env.AIBO_PI_SDK_MODULE).href
   : '@earendil-works/pi-coding-agent');
-const { createAgentSession, createBashToolDefinition, createWriteToolDefinition, ModelRuntime, SessionManager } = sdkModule;
+const {
+  createAgentSession,
+  createBashToolDefinition,
+  createFindToolDefinition,
+  createLsToolDefinition,
+  createReadToolDefinition,
+  createWriteToolDefinition,
+  ModelRuntime,
+  SessionManager,
+} = sdkModule;
 
 const pluginId = 'dev.aibo.pi';
 const pluginVersion = '1.0.0';
 const agentId = 'dev.aibo.pi.agent';
-const capabilities = ['session.create', 'session.resume', 'session.close', 'session.reload', 'turn.send', 'turn.cancel', 'stream.text', 'view.standard', 'model.select', 'model.reasoning', 'command.list', 'approval.respond', 'queue.manage', 'compaction.run', 'session.tree', 'session.snapshot', 'ext.dev.aibo.pi.usage', 'ext.dev.aibo.pi.retry', 'ext.dev.aibo.pi.extension'];
+const capabilities = ['session.create', 'session.resume', 'session.close', 'session.reload', 'turn.send', 'turn.cancel', 'stream.text', 'view.standard', 'model.select', 'model.reasoning', 'command.list', 'skill.list', 'approval.respond', 'queue.manage', 'compaction.run', 'session.tree', 'session.snapshot', 'ext.dev.aibo.pi.usage', 'ext.dev.aibo.pi.retry', 'ext.dev.aibo.pi.extension'];
 let initialized = false;
 let workspaceRoots = [];
 let provider = null;
@@ -132,6 +141,66 @@ function sdkCommands(sdkSession) {
     ...(sdkSession.resourceLoader?.getSkills?.().skills ?? []).map((skill) => ({ name: `skill:${skill.name}`, description: skill.description ?? null, source: 'skill' })),
   ];
 }
+function sdkSkills(sdkSession) {
+  return (sdkSession.resourceLoader?.getSkills?.().skills ?? []).map((skill) => ({
+    name: skill.name,
+    description: skill.description ?? null,
+    source: skill.source ?? null,
+    filePath: skill.filePath ?? null,
+  }));
+}
+async function corePath(path, action = 'access') {
+  const result = await requestCoreTool('read_file', { path, action });
+  return result.path ?? path;
+}
+function coreReadOperations() {
+  return {
+    readFile: async (absolutePath) => {
+      const result = await requestCoreTool('read_file', { path: absolutePath, action: 'read' });
+      if (typeof result.content !== 'string') throw new Error('Core returned a non-text file');
+      return Buffer.from(result.content, 'utf8');
+    },
+    access: async (absolutePath) => { await corePath(absolutePath, 'access'); },
+  };
+}
+function createCoreGrepTool() {
+  return {
+    name: 'grep',
+    label: 'grep',
+    description: 'Search workspace file contents for a pattern. Results are mediated by Aibo Core.',
+    promptSnippet: 'Search file contents for patterns (respects .gitignore)',
+    parameters: { type: 'object', additionalProperties: false, required: ['pattern'], properties: {
+      pattern: { type: 'string' }, path: { type: 'string' }, glob: { type: 'string' },
+      ignoreCase: { type: 'boolean' }, literal: { type: 'boolean' }, context: { type: 'number' }, limit: { type: 'number' },
+    } },
+    async execute(_toolCallId, input) {
+      const result = await requestCoreTool('read_file', { action: 'grep', ...input, path: input.path ?? process.cwd() });
+      return { content: [{ type: 'text', text: typeof result.content === 'string' ? result.content : 'No matches found' }] };
+    },
+  };
+}
+function coreFindOperations() {
+  return {
+    exists: async (absolutePath) => Boolean((await requestCoreTool('read_file', { path: absolutePath, action: 'exists' })).exists),
+    glob: async (pattern, cwd, options) => {
+      const result = await requestCoreTool('read_file', { path: cwd, action: 'glob', pattern, limit: options.limit });
+      return Array.isArray(result.paths) ? result.paths : [];
+    },
+  };
+}
+function coreLsOperations() {
+  return {
+    exists: async (absolutePath) => Boolean((await requestCoreTool('read_file', { path: absolutePath, action: 'exists' })).exists),
+    stat: async (absolutePath) => {
+      const result = await requestCoreTool('read_file', { path: absolutePath, action: 'is_directory' });
+      return { isDirectory: () => Boolean(result.isDirectory) };
+    },
+    readdir: async (absolutePath) => {
+      const result = await requestCoreTool('read_file', { path: absolutePath, action: 'list' });
+      return Array.isArray(result.entries) ? result.entries : [];
+    },
+  };
+}
 function sdkModelDescriptor(model) {
   return { provider: model.provider, id: model.id, name: model.name ?? null, reasoning: model.reasoning === true,
     thinkingLevelMap: model.thinkingLevelMap ?? null };
@@ -154,7 +223,18 @@ function sdkEvent(message) {
 }
 async function sdkRequest(startedProvider, type, fields) {
   const sdkSession = startedProvider.sdkSession;
-  if (type === 'get_state') return { success: true, data: { sessionId: sdkSession.sessionId, sessionFile: sdkSession.sessionFile ?? startedProvider.manager.getSessionFile?.() ?? null } };
+  if (type === 'get_state') {
+    const currentModel = sdkSession.model
+      && startedProvider.modelRuntime.getModel(sdkSession.model.provider, sdkSession.model.id)
+      ? { provider: sdkSession.model.provider, modelId: sdkSession.model.id }
+      : null;
+    return { success: true, data: {
+      sessionId: sdkSession.sessionId,
+      sessionFile: sdkSession.sessionFile ?? startedProvider.manager.getSessionFile?.() ?? null,
+      model: currentModel,
+      thinkingLevel: sdkSession.thinkingLevel ?? null,
+    } };
+  }
   if (type === 'prompt') {
     void sdkSession.prompt(String(fields.message ?? '')).catch((error) => {
       onPi(sdkEvent({ type: 'agent_error', error: error.message }), startedProvider);
@@ -163,16 +243,23 @@ async function sdkRequest(startedProvider, type, fields) {
     return { success: true };
   }
   if (type === 'abort') return { success: true, data: await sdkSession.abort() };
-  if (type === 'get_available_models') return { success: true, data: { models: startedProvider.modelRuntime.getAvailableSnapshot().map(sdkModelDescriptor) } };
+  if (type === 'get_available_models') return { success: true, data: {
+    models: startedProvider.modelRuntime.getAvailableSnapshot().map(sdkModelDescriptor),
+    current: sdkSession.model ? sdkModelDescriptor(sdkSession.model) : null,
+  } };
   if (type === 'set_model') {
     const model = startedProvider.modelRuntime.getModel(fields.provider, fields.modelId);
     if (!model) throw new Error(`Model not found: ${fields.provider}/${fields.modelId}`);
     await sdkSession.setModel(model);
     return { success: true, data: sdkModelDescriptor(model) };
   }
-  if (type === 'get_available_thinking_levels') return { success: true, data: { levels: sdkSession.getAvailableThinkingLevels() } };
+  if (type === 'get_available_thinking_levels') return { success: true, data: {
+    levels: sdkSession.getAvailableThinkingLevels(),
+    current: sdkSession.thinkingLevel ?? null,
+  } };
   if (type === 'set_thinking_level') { sdkSession.setThinkingLevel(fields.level); return { success: true, data: { level: sdkSession.thinkingLevel } }; }
   if (type === 'get_commands') return { success: true, data: { commands: sdkCommands(sdkSession) } };
+  if (type === 'get_skills') return { success: true, data: { skills: sdkSkills(sdkSession) } };
   if (type === 'steer' || type === 'follow_up') { await sdkSession[type === 'steer' ? 'steer' : 'followUp'](fields.message); return { success: true, data: { queued: fields.message } }; }
   if (type === 'clear_queue') { const queue = sdkSession.clearQueue(); return { success: true, data: queue }; }
   if (type === 'compact') return { success: true, data: { ...(await sdkSession.compact(fields.customInstructions || undefined)) } };
@@ -223,6 +310,7 @@ function itemForMessage(turn, message = null) {
   const nativeId = nativeMessageId(message);
   if (nativeId && turn.items.has(nativeId)) return turn.items.get(nativeId);
   if (!nativeId && turn.currentItem && !turn.currentItem.completed) return turn.currentItem;
+  if (!nativeId && turn.currentItem?.completed && visibleText(message) === turn.currentItem.text) return turn.currentItem;
   return newTurnItem(turn, message);
 }
 function rememberAgentMessages(turn, messages) {
@@ -414,6 +502,10 @@ async function startSdkPi(cwd, runtimeDataPath, sessionFile, executionProfile = 
   const workspaceWriteEnabled = executionProfile.interactionMode === 'edit' && executionProfile.filesystemPolicy === 'workspace-write';
   const commandEnabled = executionProfile.interactionMode === 'edit' && executionProfile.commandPolicy !== 'disabled';
   const customTools = [];
+  customTools.push(createReadToolDefinition(cwd, { operations: coreReadOperations() }));
+  customTools.push(createCoreGrepTool());
+  customTools.push(createFindToolDefinition(cwd, { operations: coreFindOperations() }));
+  customTools.push(createLsToolDefinition(cwd, { operations: coreLsOperations() }));
   if (workspaceWriteEnabled) customTools.push(createWriteToolDefinition(cwd, {
     operations: {
       mkdir: async () => {},
@@ -433,6 +525,20 @@ async function startSdkPi(cwd, runtimeDataPath, sessionFile, executionProfile = 
   const created = await createAgentSession({ cwd, sessionManager: manager, modelRuntime, tools: activeToolNames,
     customTools: customTools.length > 0 ? customTools : undefined });
   const sdkSession = created.session;
+  const requestedModel = typeof executionProfile.model === 'string' ? executionProfile.model.trim() : '';
+  if (requestedModel) {
+    const separator = requestedModel.indexOf('/');
+    const requestedProvider = separator > 0 ? requestedModel.slice(0, separator) : null;
+    const requestedModelId = separator > 0 ? requestedModel.slice(separator + 1) : requestedModel;
+    const model = requestedProvider
+      ? modelRuntime.getModel(requestedProvider, requestedModelId)
+      : modelRuntime.getAvailableSnapshot().find((candidate) => candidate.id === requestedModelId);
+    if (model) await sdkSession.setModel(model);
+  }
+  if (typeof executionProfile.reasoningEffort === 'string' && executionProfile.reasoningEffort.trim()) {
+    const requestedLevel = executionProfile.reasoningEffort.trim();
+    if (sdkSession.getAvailableThinkingLevels().includes(requestedLevel)) sdkSession.setThinkingLevel(requestedLevel);
+  }
   const startedProvider = { kind: 'sdk', sdkSession, manager, modelRuntime, pending: new Map(), unsubscribe: null };
   provider = startedProvider;
   startedProvider.unsubscribe = sdkSession.subscribe((event) => {
@@ -484,15 +590,17 @@ async function handle({ id, method, params: p }) {
     const state = await startPi(p.workspace.path, p.executionProfile.runtimeDataPath, previous?.data?.sessionFile ?? null, p.executionProfile);
     const nativeId = state.data?.sessionId;
     if (!nativeId) fail('invalid_session', 'Pi did not return a session id');
-    const model = previous?.data?.model;
+    const model = previous?.data?.model ?? state.data?.model;
     session = { id: p.sessionId, nativeId, sessionFile: state.data?.sessionFile ?? null,
       model: model && typeof model.provider === 'string' && typeof model.modelId === 'string' ? model : null,
-      thinkingLevel: typeof previous?.data?.thinkingLevel === 'string' ? previous.data.thinkingLevel : null,
+      thinkingLevel: typeof (previous?.data?.thinkingLevel ?? state.data?.thinkingLevel) === 'string'
+        ? (previous?.data?.thinkingLevel ?? state.data?.thinkingLevel)
+        : null,
       revision: 0, turn: null };
     if (session.model) await rpc('set_model', session.model);
     if (session.thinkingLevel) await rpc('set_thinking_level', { level: session.thinkingLevel });
     respond(id, { kind: 'session', agentId, sessionId: session.id, nativeSessionId: nativeId, recovery: recovery() });
-    emit('session.started', { state: 'idle' }); render(); return;
+    emit('session.started', { state: 'idle', nativeSandbox: false }); render(); return;
   }
   if (!session || p.sessionId !== session.id) fail('invalid_session');
   if (method === 'turn.send') {
@@ -526,6 +634,7 @@ async function handle({ id, method, params: p }) {
       }
       else fail('invalid_request', 'level is required when selecting reasoning effort');
     } else if (p.operationId === 'ext.dev.aibo.pi.commands') result = await rpc('get_commands');
+    else if (p.operationId === 'ext.dev.aibo.pi.skills') result = await rpc('get_skills');
     else if (p.operationId === 'ext.dev.aibo.pi.reload') result = await rpc('reload');
     else if (p.operationId === 'ext.dev.aibo.pi.queue') {
       const providerKind = provider?.kind;

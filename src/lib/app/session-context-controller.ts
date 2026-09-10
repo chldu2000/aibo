@@ -15,6 +15,7 @@ import type {
   RestoreOperation,
 } from '$lib/types';
 import { toErrorMessage } from './error-utils';
+import { sessionAgentKind } from './agent-kind';
 
 export type SessionContextControllerContext = {
   api: {
@@ -84,7 +85,7 @@ export function createSessionContextController(context: SessionContextController
     if (
       !context.getDesktop() ||
       !session ||
-      session.agent !== 'codex' ||
+      sessionAgentKind(session) !== 'codex' ||
       session.archived ||
       !session.externalSessionId
     ) {
@@ -221,7 +222,7 @@ export function createSessionContextController(context: SessionContextController
   async function refreshPiTree(sessionId: string): Promise<void> {
     if (sessionId === context.getArchivingSessionId()) return;
     const session = context.findSession(sessionId);
-    if (!context.getDesktop() || !session || (session.agent !== 'pi' && !session.capabilities.includes('session.tree'))) {
+    if (!context.getDesktop() || !session || (sessionAgentKind(session) !== 'pi' && !session.capabilities.includes('session.tree'))) {
       if (sessionId === context.getSelectedSessionId()) context.setPiTree(null);
       return;
     }

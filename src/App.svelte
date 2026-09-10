@@ -386,12 +386,13 @@
 
   const visibleAgentCommands = $derived.by(() => {
     if (!selectedSession) return [];
-    const builtinCommands = selectedSession.agent === 'pi' ? AIBO_PI_COMMANDS : AIBO_CODEX_COMMANDS;
-    const commands = [...builtinCommands, ...(selectedSession.agent === 'pi' ? agentCommands : [])];
+    const selectedKind = sessionAgentKind(selectedSession);
+    const builtinCommands = selectedKind === 'pi' ? AIBO_PI_COMMANDS : AIBO_CODEX_COMMANDS;
+    const commands = [...builtinCommands, ...(selectedKind === 'pi' ? agentCommands : [])];
     const seen = new Set<string>();
     return commands.filter((command) => {
       if (command.enabled === false) return false;
-      if (command.agent && command.agent !== 'both' && command.agent !== selectedSession.agent) return false;
+      if (command.agent && command.agent !== 'both' && command.agent !== selectedKind) return false;
       const name = command.name.toLocaleLowerCase();
       if (seen.has(name)) return false;
       seen.add(name);
@@ -477,7 +478,7 @@
     await pluginOperation(async () => {
       await uninstallAgentPlugin(id);
       pluginInstallations = await listPluginInstallations();
-      pluginSessions = (await listAllSessions()).filter((session) => session.agent !== 'codex' && session.agent !== 'pi');
+    pluginSessions = (await listAllSessions()).filter((session) => sessionAgentKind(session) === 'plugin');
     });
   }
 
@@ -534,7 +535,7 @@
           sessionId ? getPluginViews(sessionId) : Promise.resolve([]),
         ]);
         if (disposed) return;
-        if (allSessions.status === 'fulfilled') pluginSessions = allSessions.value.filter((session) => session.agent !== 'codex' && session.agent !== 'pi');
+        if (allSessions.status === 'fulfilled') pluginSessions = allSessions.value.filter((session) => sessionAgentKind(session) === 'plugin');
         if (items.status === 'fulfilled') pluginTimeline = items.value;
         pluginViews = views.status === 'fulfilled' ? views.value : [];
         pluginViewSessionId = sessionId;
@@ -686,7 +687,7 @@
     }
     return null;
   });
-  const selectedSessionAgent = $derived(selectedSession?.agent ?? null);
+  const selectedSessionAgent = $derived(sessionAgentKind(selectedSession));
   const selectedSessionArchived = $derived(selectedSession?.archived ?? false);
 
   $effect(() => {
@@ -898,7 +899,7 @@
       return withActivityAge('等待你的输入…');
     }
     if (selectedSession.state === 'compacting') return withActivityAge('正在压缩上下文…');
-    const agentLabel = selectedSession.agent === 'pi' ? 'Pi' : 'Codex';
+    const agentLabel = sessionAgentKind(selectedSession) === 'pi' ? 'Pi' : 'Codex';
     const activityOverride = agentActivityOverrides[selectedSession.id];
     if (activityOverride) return withActivityAge(activityOverride);
     if (streamingTimelineItem?.role === 'tool') {
@@ -930,7 +931,7 @@
     }
     agentCommandsLoading = true;
     const generation = ++commandSearchGeneration;
-    const loadCommands = session.agent === 'pi' ? listPiCommands(session.id) : listCodexSkills(session.id);
+    const loadCommands = sessionAgentKind(session) === 'pi' ? listPiCommands(session.id) : listCodexSkills(session.id);
     void loadCommands
       .then((commands) => {
         if (generation === commandSearchGeneration && selectedSessionId === session.id) {
@@ -999,7 +1000,7 @@
       id: 'clear-pi-queue',
       label: '清空 Pi 队列',
       description: '移除当前 Pi 会话中尚未发送的消息',
-      disabled: selectedSession?.agent !== 'pi'
+      disabled: sessionAgentKind(selectedSession) !== 'pi'
         || queueSnapshot === null
         || (queueSnapshot.steering.length === 0 && queueSnapshot.followUp.length === 0)
         || busy,
@@ -1564,13 +1565,13 @@
       diffLength >= maxReviewDiffLength ? '\n\n部分 diff 因长度限制已截断。' : '',
     ].join('\n');
     try {
-      let reviewSession = session.agent === 'codex'
+      let reviewSession = sessionAgentKind(session) === 'codex'
         ? await createCodexSession(workspaceId, reviewProfile)
         : await createPiSession(workspaceId, reviewProfile);
       workspaceSessionMap = upsertSession(workspaceSessionMap, reviewSession);
       clearSelectedSessionContext();
       selectedSessionId = reviewSession.id;
-      reviewSession = session.agent === 'codex'
+      reviewSession = sessionAgentKind(session) === 'codex'
         ? await sendCodexPrompt(reviewSession.id, prompt)
         : await sendPiPrompt(reviewSession.id, prompt);
       workspaceSessionMap = upsertSession(workspaceSessionMap, reviewSession);
@@ -1846,7 +1847,7 @@
   function handleAgentEvent(event: AgentEvent) {
     processAgentEvent(event, {
       selectedSessionId,
-      selectedAgent: selectedSession?.agent ?? null,
+      selectedAgent: selectedSessionAgent,
       timeline,
       pendingApprovals,
       pendingUserInputs,
@@ -2059,7 +2060,7 @@
         if (selectedSessionId !== session.id) return;
         await loadSessionModels();
         notice = `模型已切换为 ${selected?.label ?? model}。`;
-      } else if (session.agent === 'pi') {
+      } else if (sessionAgentKind(session) === 'pi') {
         const result = await setPiModel(session.id, model ?? undefined);
         if (selectedSessionId !== session.id) return;
         const current = result.current && typeof result.current === 'object'
@@ -2176,7 +2177,7 @@
         if (selectedSessionId !== session.id) return;
         await loadSessionModels();
         notice = `推理强度已切换为 ${reasoningEffort}。`;
-      } else if (session.agent === 'pi') {
+      } else if (sessionAgentKind(session) === 'pi') {
         const result = await setPiThinkingLevel(session.id, reasoningEffort ?? undefined);
         if (selectedSessionId !== session.id) return;
         executionProfile = await getSessionExecutionProfile(session.id);
@@ -2252,7 +2253,7 @@
         notice = reasoningEffort
           ? `模型已切换为 ${selected?.label ?? model} · ${reasoningEffort}。`
           : `模型已切换为 ${selected?.label ?? model}。`;
-      } else if (session.agent === 'pi') {
+      } else if (sessionAgentKind(session) === 'pi') {
         const result = await setPiModel(session.id, model);
         if (selectedSessionId !== session.id) return;
         const current = result.current && typeof result.current === 'object'
@@ -2300,7 +2301,7 @@
 
   async function executePiBuiltinCommand(input: string): Promise<boolean> {
     const command = parseAgentCommand(input);
-    if (!command || selectedSession?.agent !== 'pi') return false;
+    if (!command || sessionAgentKind(selectedSession) !== 'pi') return false;
 
     const session = selectedSession;
     const workspace = selectedWorkspace;
@@ -2470,7 +2471,7 @@
 
   async function executeCodexBuiltinCommand(input: string): Promise<boolean> {
     const command = parseAgentCommand(input);
-    if (!command || selectedSession?.agent !== 'codex') return false;
+    if (!command || sessionAgentKind(selectedSession) !== 'codex') return false;
 
     const session = selectedSession;
     const workspace = selectedWorkspace;
@@ -2664,8 +2665,8 @@
   }
 
   async function sendPrompt() {
-    if (selectedSession?.agent === 'codex' && await executeCodexBuiltinCommand(composerText)) return;
-    if (selectedSession?.agent === 'pi' && await executePiBuiltinCommand(composerText)) return;
+    if (sessionAgentKind(selectedSession) === 'codex' && await executeCodexBuiltinCommand(composerText)) return;
+    if (sessionAgentKind(selectedSession) === 'pi' && await executePiBuiltinCommand(composerText)) return;
     await messageController.sendPrompt();
   }
 
@@ -2682,7 +2683,7 @@
 
   async function compactCurrentSession(): Promise<void> {
     const session = selectedSession;
-    if (!session || session.agent !== 'pi' || session.archived) return;
+    if (!session || sessionAgentKind(session) !== 'pi' || session.archived) return;
     if (sessionRunning || busy) {
       errorMessage = '会话运行中不能手动压缩，请等待当前回合结束。';
       return;
@@ -2704,12 +2705,12 @@
   }
 
   async function queuePiPrompt(mode: 'steer' | 'followUp') {
-    if (selectedSession?.agent === 'pi' && await executePiBuiltinCommand(composerText)) return;
+    if (sessionAgentKind(selectedSession) === 'pi' && await executePiBuiltinCommand(composerText)) return;
     await messageController.queuePiPrompt(mode);
   }
 
   async function clearPiPromptQueue() {
-    if (!selectedSession || selectedSession.agent !== 'pi') return;
+    if (!selectedSession || sessionAgentKind(selectedSession) !== 'pi') return;
     try {
       await clearPiQueue(selectedSession.id);
       queueSnapshot = null;
@@ -2727,7 +2728,7 @@
   }
 
   function openPiTree(): void {
-    if (!selectedSession || (selectedSession.agent !== 'pi' && !selectedSession.capabilities.includes('session.tree'))) return;
+    if (!selectedSession || (sessionAgentKind(selectedSession) !== 'pi' && !selectedSession.capabilities.includes('session.tree'))) return;
     piTreeOpen = true;
     void refreshPiTree(selectedSession.id);
   }
@@ -3472,7 +3473,7 @@
     onClose={() => (commandPaletteOpen = false)}
   />
   <PiSessionTreeOverlay
-    open={piTreeOpen && (selectedSession?.agent === 'pi' || selectedSession?.capabilities.includes('session.tree'))}
+    open={piTreeOpen && (sessionAgentKind(selectedSession) === 'pi' || selectedSession?.capabilities.includes('session.tree'))}
     session={selectedSession}
     tree={piTree?.sessionId === selectedSessionId ? piTree : null}
     {busy}

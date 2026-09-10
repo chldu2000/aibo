@@ -6,6 +6,7 @@ import type {
   TimelineItem,
 } from '$lib/types';
 import { toErrorMessage } from './error-utils';
+import { sessionAgentKind } from './agent-kind';
 
 export type PiTreeControllerContext = {
   api: {
@@ -38,7 +39,7 @@ export function createPiTreeController(context: PiTreeControllerContext) {
     const session = context.getSelectedSession();
     if (
       !session ||
-      (session.agent !== 'pi' && !session.capabilities.includes('session.tree')) ||
+      (sessionAgentKind(session) !== 'pi' && !session.capabilities.includes('session.tree')) ||
       context.getSessionRunning() ||
       entryId === context.getPiTree()?.leafId
     ) {
@@ -52,7 +53,7 @@ export function createPiTreeController(context: PiTreeControllerContext) {
     const sessionId = context.getSelectedSessionId();
     context.setPendingEntryId(null);
     const session = context.getSelectedSession();
-    if (!entryId || !sessionId || !session || (session.agent !== 'pi' && !session.capabilities.includes('session.tree'))) return false;
+    if (!entryId || !sessionId || !session || (sessionAgentKind(session) !== 'pi' && !session.capabilities.includes('session.tree'))) return false;
     if (!context.getDesktop()) {
       context.setNotice('当前是 Web 预览；Pi 分支切换需要在 Tauri 桌面模式中执行。');
       return false;

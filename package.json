@@ -20,6 +20,7 @@
     "probe:pi:sdk-host:reopen": "node probes/pi-sdk-host-reopen.mjs",
     "probe:pi:rpc": "node probes/pi-rpc.mjs",
     "probe:pi:smoke": "node probes/pi-sdk.mjs --smoke",
+    "probe:pi:plugin:smoke": "node probes/pi-plugin-smoke.mjs",
     "probe": "node probes/run-all.mjs",
     "check:architecture": "node --test test/architecture-boundaries.test.mjs test/ui-style-boundaries.test.mjs",
     "check:types": "tsc --noEmit",

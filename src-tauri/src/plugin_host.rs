@@ -1,4 +1,5 @@
 use crate::{artifact::sanitize_content, change_set::{capture as capture_workspace, persist as persist_change_set, WorkspaceSnapshot}, execution_profile, plugin_contract::contracts, plugin_registry, plugin_runtime::PluginRuntime, workspace_guard::canonicalize_target, Session};
+use regex::RegexBuilder;
 use serde_json::{json, Value};
 use sqlx::{Row, SqlitePool};
 use std::{collections::HashMap, path::{Path, PathBuf}, sync::Arc, time::Duration};
@@ -7,6 +8,63 @@ use tokio::sync::Mutex;
 
 const TIMEOUT: Duration = Duration::from_secs(15);
 const MAX_COMMAND_BYTES: usize = 16 * 1024;
+const MAX_READ_BYTES: u64 = 512 * 1024;
+
+fn wildcard_regex(pattern: &str, case_insensitive: bool) -> Result<regex::Regex, String> {
+    let mut expression = String::from("^");
+    let characters = pattern.chars().collect::<Vec<_>>();
+    let mut index = 0;
+    while index < characters.len() {
+        let character = characters[index];
+        if character == '*' && characters.get(index + 1) == Some(&'*') && characters.get(index + 2) == Some(&'/') {
+            expression.push_str("(?:.*/)?");
+            index += 3;
+            continue;
+        }
+        match character {
+            '*' => expression.push_str(".*"),
+            '?' => expression.push('.'),
+            _ => expression.push_str(&regex::escape(&character.to_string())),
+        }
+        index += 1;
+    }
+    expression.push('$');
+    RegexBuilder::new(&expression)
+        .case_insensitive(case_insensitive)
+        .build()
+        .map_err(|error| format!("invalid glob pattern: {error}"))
+}
+
+fn collect_workspace_files(root: &Path, current: &Path, output: &mut Vec<PathBuf>, visited: &mut std::collections::HashSet<PathBuf>) -> Result<(), String> {
+    let current = canonicalize_target(root, current)?;
+    if current.is_file() {
+        output.push(current);
+        return Ok(());
+    }
+    if !current.is_dir() { return Ok(()); }
+    if !visited.insert(current.clone()) || output.len() >= 10_000 { return Ok(()); }
+    let entries = std::fs::read_dir(&current).map_err(|error| format!("read workspace directory: {error}"))?;
+    for entry in entries {
+        let entry = entry.map_err(|error| format!("read workspace entry: {error}"))?;
+        let path = entry.path();
+        let Ok(path) = canonicalize_target(root, &path) else { continue; };
+        if path.is_dir() {
+            let name = path.file_name().and_then(|name| name.to_str()).unwrap_or_default();
+            if name == ".git" || name == "node_modules" { continue; }
+            collect_workspace_files(root, &path, output, visited)?;
+        } else if path.is_file() {
+            output.push(path);
+            if output.len() >= 10_000 { break; }
+        }
+    }
+    Ok(())
+}
+
+fn workspace_files(root: &Path, current: &Path) -> Result<Vec<PathBuf>, String> {
+    let mut output = Vec::new();
+    collect_workspace_files(root, current, &mut output, &mut std::collections::HashSet::new())?;
+    Ok(output)
+}
 fn event_capability(kind: &str) -> Option<&'static str> {
     match kind {
         "approval.requested" | "approval.resolved" => Some("approval.respond"),
@@ -71,6 +129,16 @@ impl PluginHost {
     }
 
     pub async fn create(&self, workspace_id: &str, installation_id: &str, agent_id: &str) -> Result<Session, String> {
+        self.create_with_profile(workspace_id, installation_id, agent_id, None).await
+    }
+
+    pub async fn create_with_profile(
+        &self,
+        workspace_id: &str,
+        installation_id: &str,
+        agent_id: &str,
+        profile: Option<execution_profile::ResolvedExecutionProfile>,
+    ) -> Result<Session, String> {
         let _guard = self.lifecycle.lock().await;
         let workspace = crate::workspace_by_id(&self.db, workspace_id).await.map_err(|e| e.to_string())?;
         if workspace.trust != "trusted" { return Err("permission_denied: workspace must be trusted".into()); }
@@ -78,6 +146,9 @@ impl PluginHost {
         let now = crate::now_iso();
         sqlx::query("INSERT INTO sessions(id,workspace_id,agent,label,state,created_at,updated_at,plugin_installation_id) VALUES(?,?,?,?,'starting',?,?,?)")
             .bind(&id).bind(workspace_id).bind(agent_id).bind("Plugin session").bind(&now).bind(&now).bind(installation_id).execute(&self.db).await.map_err(|e|e.to_string())?;
+        if let Some(profile) = profile {
+            execution_profile::save_for_session(&self.db, &id, &profile).await.map_err(|error| error.to_string())?;
+        }
         if let Err(error) = self.start(&id, false).await {
             let _ = sqlx::query("UPDATE sessions SET state='failed' WHERE id=?").bind(&id).execute(&self.db).await;
             return Err(error);
@@ -273,7 +344,28 @@ impl PluginHost {
                     break;
                 }
             }
-            host.pending_tools.lock().await.retain(|_, request| request.generation_id != runtime.generation_id);
+            let pending_count = host
+                .cancel_pending_tools_for_generation(
+                    &session_id,
+                    &workspace_id,
+                    &runtime,
+                    &binding,
+                )
+                .await;
+            let sequence = host.next_sequence(&session_id, &runtime.generation_id).await;
+            let event = json!({"jsonrpc":"2.0","method":"agent/event","params":{
+                "agentId":binding["agentId"],"sessionId":session_id,"nativeSessionId":binding["nativeSessionId"],
+                "turnId":null,"type":"adapter.crashed","correlation":null,
+                "payload":{"reason":if runtime.was_stopped() {"plugin stopped"} else {"plugin crashed"},"pendingApprovalCount":pending_count}
+            }});
+            let _ = host.project(
+                &session_id,
+                &workspace_id,
+                &runtime.generation_id,
+                &binding,
+                sequence,
+                event,
+            ).await;
             host.event_sequences.lock().await.remove(&Self::sequence_key(&session_id, &runtime.generation_id));
             let process_state = if runtime.was_stopped() { "exited" } else { "crashed" };
             let _write_guard = host.database_writes.lock().await;
@@ -290,6 +382,10 @@ impl PluginHost {
 
     fn sequence_key(session_id: &str, generation_id: &str) -> String {
         format!("{session_id}:{generation_id}")
+    }
+
+    fn turn_key(session_id: &str, turn_id: &str) -> String {
+        format!("{session_id}:{turn_id}")
     }
 
     fn pi_sdk_module_path(&self) -> Option<PathBuf> {
@@ -394,6 +490,24 @@ impl PluginHost {
         }
 
         let (normalized_input, mut approval_payload, requires_approval) = match tool {
+            "read_file" => {
+                let Some(path) = input
+                    .get("path")
+                    .and_then(Value::as_str)
+                    .filter(|path| !path.trim().is_empty())
+                else {
+                    return Self::reply_tool_error(runtime, request_id, "invalid_request: Pi read path is missing").await;
+                };
+                let action = input.get("action").and_then(Value::as_str).unwrap_or("read");
+                if !matches!(action, "read" | "access" | "exists" | "is_directory" | "list" | "glob" | "grep") {
+                    return Self::reply_tool_error(runtime, request_id, "invalid_request: unsupported Pi read action").await;
+                }
+                (
+                    json!({"path":path,"action":action,"pattern":input.get("pattern"),"glob":input.get("glob"),"ignoreCase":input.get("ignoreCase"),"literal":input.get("literal"),"context":input.get("context"),"limit":input.get("limit")}),
+                    Value::Null,
+                    false,
+                )
+            }
             "write_file" => {
                 if profile.interaction_mode != "edit"
                     || profile.filesystem_policy != "workspace-write"
@@ -588,6 +702,95 @@ impl PluginHost {
             .profile
             .enforced;
         match tool {
+            "read_file" => {
+                let path = input["path"]
+                    .as_str()
+                    .ok_or("invalid_request: resolved Pi read path")?;
+                let action = input["action"].as_str().unwrap_or("read");
+                let resolved = canonicalize_target(Path::new(&workspace.path), Path::new(path))?;
+                match action {
+                    "exists" => Ok(json!({"path":resolved,"exists":resolved.exists()})),
+                    "access" => {
+                        if !resolved.exists() { return Err("invalid_request: Pi read path does not exist".into()); }
+                        Ok(json!({"path":resolved,"exists":true}))
+                    }
+                    "is_directory" => Ok(json!({"path":resolved,"exists":resolved.exists(),"isDirectory":resolved.is_dir()})),
+                    "read" => {
+                        if !resolved.is_file() { return Err("invalid_request: Pi read target is not a file".into()); }
+                        let metadata = tokio::fs::metadata(&resolved).await.map_err(|error| format!("read workspace file metadata: {error}"))?;
+                        if metadata.len() > MAX_READ_BYTES { return Err("invalid_request: Pi read file exceeds the Core limit".into()); }
+                        let bytes = tokio::fs::read(&resolved).await.map_err(|error| format!("read workspace file: {error}"))?;
+                        let content = String::from_utf8(bytes).map_err(|_| "invalid_request: binary files are not readable through the text Core tool".to_owned())?;
+                        Ok(json!({"path":resolved,"content":content,"bytes":content.len()}))
+                    }
+                    "list" => {
+                        if !resolved.is_dir() { return Err("invalid_request: Pi list target is not a directory".into()); }
+                        let mut entries = std::fs::read_dir(&resolved)
+                            .map_err(|error| format!("read workspace directory: {error}"))?
+                            .filter_map(Result::ok)
+                            .filter_map(|entry| entry.file_name().into_string().ok())
+                            .collect::<Vec<_>>();
+                        entries.sort_by_key(|entry| entry.to_lowercase());
+                        Ok(json!({"path":resolved,"entries":entries}))
+                    }
+                    "glob" => {
+                        let pattern = input["pattern"].as_str().ok_or("invalid_request: Pi find pattern is missing")?;
+                        let matcher = wildcard_regex(pattern, false)?;
+                        let limit = input["limit"].as_u64().unwrap_or(1000).clamp(1, 10_000) as usize;
+                        let files = workspace_files(Path::new(&workspace.path), &resolved)?;
+                        let root = resolved.clone();
+                        let mut paths = files.into_iter().filter_map(|file| {
+                            let relative = file.strip_prefix(&root).ok()?.to_string_lossy().replace('\\', "/");
+                            let basename = file.file_name()?.to_string_lossy();
+                            if matcher.is_match(&relative) || matcher.is_match(&basename) { Some(file.to_string_lossy().into_owned()) } else { None }
+                        }).take(limit).collect::<Vec<_>>();
+                        paths.sort();
+                        Ok(json!({"path":resolved,"paths":paths}))
+                    }
+                    "grep" => {
+                        let pattern = input["pattern"].as_str().ok_or("invalid_request: Pi grep pattern is missing")?;
+                        let literal = input["literal"].as_bool().unwrap_or(false);
+                        let case_insensitive = input["ignoreCase"].as_bool().unwrap_or(false);
+                        let matcher = if literal {
+                            RegexBuilder::new(&format!(".*{}.*", regex::escape(pattern)))
+                                .case_insensitive(case_insensitive)
+                                .build()
+                                .map_err(|error| format!("invalid grep pattern: {error}"))?
+                        } else {
+                            RegexBuilder::new(pattern).case_insensitive(case_insensitive).build().map_err(|error| format!("invalid grep pattern: {error}"))?
+                        };
+                        let glob = input["glob"].as_str().map(|value| wildcard_regex(value, false)).transpose()?;
+                        let context = input["context"].as_u64().unwrap_or(0).min(20) as usize;
+                        let limit = input["limit"].as_u64().unwrap_or(100).clamp(1, 1000) as usize;
+                        let files = workspace_files(Path::new(&workspace.path), &resolved)?;
+                        let search_root = if resolved.is_dir() { resolved.clone() } else { resolved.parent().unwrap_or(&resolved).to_path_buf() };
+                        let mut matches = Vec::new();
+                        for file in files {
+                            if matches.len() >= limit { break; }
+                            let relative = file.strip_prefix(&search_root).unwrap_or(&file).to_string_lossy().replace('\\', "/");
+                            let basename = file.file_name().map(|name| name.to_string_lossy().into_owned()).unwrap_or_default();
+                            if glob.as_ref().is_some_and(|glob| !glob.is_match(&relative) && !glob.is_match(&basename)) { continue; }
+                            let Ok(content) = std::fs::read_to_string(&file) else { continue; };
+                            let lines = content.lines().collect::<Vec<_>>();
+                            for (index, line) in lines.iter().enumerate() {
+                                if matcher.is_match(line) {
+                                    let start = index.saturating_sub(context);
+                                    let end = (index + context + 1).min(lines.len());
+                                    for context_index in start..end {
+                                        let marker = if context_index == index { ':' } else { '-' };
+                                        matches.push(format!("{}{}{}{} {}", relative, marker, context_index + 1, marker, lines[context_index]));
+                                        if matches.len() >= limit { break; }
+                                    }
+                                }
+                                if matches.len() >= limit { break; }
+                            }
+                        }
+                        let content = if matches.is_empty() { "No matches found".to_owned() } else { matches.join("\n") };
+                        Ok(json!({"path":resolved,"content":content,"matchCount":matches.len()}))
+                    }
+                    _ => Err("invalid_request: unsupported Pi read action".into()),
+                }
+            }
             "write_file" => {
                 if profile.interaction_mode != "edit"
                     || profile.filesystem_policy != "workspace-write"
@@ -729,6 +932,53 @@ impl PluginHost {
         }
     }
 
+    async fn cancel_pending_tools_for_generation(
+        &self,
+        session_id: &str,
+        workspace_id: &str,
+        runtime: &PluginRuntime,
+        binding: &Value,
+    ) -> usize {
+        let pending = {
+            let mut requests = self.pending_tools.lock().await;
+            let ids = requests
+                .iter()
+                .filter(|(_, request)| {
+                    request.session_id == session_id
+                        && request.generation_id == runtime.generation_id
+                })
+                .map(|(id, _)| id.clone())
+                .collect::<Vec<_>>();
+            ids.into_iter()
+                .filter_map(|id| requests.remove(&id).map(|request| (id, request)))
+                .collect::<Vec<_>>()
+        };
+        for (request_id, request) in &pending {
+            let _ = request
+                .runtime
+                .reply(
+                    request.request_id.clone(),
+                    Err("cancelled: plugin generation exited before approval".to_owned()),
+                )
+                .await;
+            let sequence = self.next_sequence(session_id, &runtime.generation_id).await;
+            let event = json!({"jsonrpc":"2.0","method":"agent/event","params":{
+                "agentId":binding["agentId"],"sessionId":session_id,"nativeSessionId":binding["nativeSessionId"],
+                "turnId":request.turn_id,"type":"approval.resolved","correlation":{"requestId":request_id},
+                "payload":{"requestId":request_id,"decision":"cancel","tool":request.tool}
+            }});
+            let _ = self.project(
+                session_id,
+                workspace_id,
+                &runtime.generation_id,
+                binding,
+                sequence,
+                event,
+            ).await;
+        }
+        pending.len()
+    }
+
     pub async fn send(&self, session_id: &str, text: &str) -> Result<(), String> {
         if text.trim().is_empty() || text.len() > 200_000 { return Err("invalid_request: input length".into()); }
         self.resume(session_id).await?;
@@ -746,7 +996,7 @@ impl PluginHost {
         .map_err(|e| e.to_string())?;
         let turn = ulid::Ulid::new().to_string();
         let user_message_id = ulid::Ulid::new().to_string();
-        self.turn_baselines.lock().await.insert(turn.clone(), baseline);
+        self.turn_baselines.lock().await.insert(Self::turn_key(session_id, &turn), baseline);
         let now = crate::now_iso();
         {
             let _write_guard = self.database_writes.lock().await;
@@ -777,7 +1027,7 @@ impl PluginHost {
             runtime.stop().await;
             let _write_guard = self.database_writes.lock().await;
             sqlx::query("UPDATE turns SET status='failed',completed_at=? WHERE id=? AND status='running'").bind(crate::now_iso()).bind(&turn).execute(&self.db).await.map_err(|e|e.to_string())?;
-            self.turn_baselines.lock().await.remove(&turn);
+            self.turn_baselines.lock().await.remove(&Self::turn_key(session_id, &turn));
             return Err(error);
         }
         let _write_guard = self.database_writes.lock().await;
@@ -954,8 +1204,20 @@ impl PluginHost {
         plugin_registry::uninstall(&self.db, data_dir, installation_id).await
     }
 
+    pub async fn close_workspace(&self, workspace_id: &str) -> Result<(), String> {
+        let sessions: Vec<String> = sqlx::query_scalar(
+            "SELECT id FROM sessions WHERE workspace_id=? AND plugin_installation_id IS NOT NULL AND state NOT IN ('closed','failed')",
+        )
+        .bind(workspace_id)
+        .fetch_all(&self.db)
+        .await
+        .map_err(|error| error.to_string())?;
+        for session_id in sessions { self.close(&session_id).await?; }
+        Ok(())
+    }
+
     async fn finalize_turn_changes(&self, workspace_id: &str, session_id: &str, turn_id: &str) -> Result<(), String> {
-        let baseline = self.turn_baselines.lock().await.remove(turn_id).flatten();
+        let baseline = self.turn_baselines.lock().await.remove(&Self::turn_key(session_id, turn_id)).flatten();
         let workspace = crate::workspace_by_id(&self.db, workspace_id).await.map_err(|error| error.to_string())?;
         let (result, capture_error) = match capture_workspace(Path::new(&workspace.path)).await {
             Ok(snapshot) => (Some(snapshot), None),
@@ -1019,7 +1281,7 @@ impl PluginHost {
                 "workspaceId":workspace_id,"sessionId":session_id,"nativeSessionId":p["nativeSessionId"],"turnId":p["turnId"],"type":p["type"],"correlation":p["correlation"],"payload":p["payload"],"rawRef":null});
             emitted_event = Some(event.clone());
             let kind = p["type"].as_str().unwrap();
-            if !["session.started","session.info_changed","turn.started","message.delta","message.completed","reasoning.updated","reasoning.completed","tool.started","tool.updated","tool.completed","turn.completed","turn.failed","approval.requested","approval.resolved","user_input.requested","user_input.resolved","usage.updated","queue.updated","compaction.started","compaction.completed","retry.started","retry.completed","extension.updated"].contains(&kind) {
+            if !["session.started","session.info_changed","turn.started","message.delta","message.completed","reasoning.updated","reasoning.completed","tool.started","tool.updated","tool.completed","turn.completed","turn.failed","approval.requested","approval.resolved","user_input.requested","user_input.resolved","usage.updated","queue.updated","compaction.started","compaction.completed","retry.started","retry.completed","extension.updated","adapter.crashed"].contains(&kind) {
                 return Err("capability_unsupported: event outside minimal lifecycle".into());
             }
             let negotiated: Value = serde_json::from_str(&active.1).map_err(|_|"manifest_mismatch: negotiated capabilities missing")?;
@@ -1238,6 +1500,12 @@ mod tests {
             .await
             .unwrap();
         assert_eq!(label, "hello 你好 🌍 plugin");
+        fs::write(root.join("read-tool.txt"), "Core mediated read").unwrap();
+        host.send(&session.id, "core read fixture").await.unwrap();
+        wait_turn(&db, &session.id, "completed").await;
+        let read_content: String = sqlx::query_scalar("SELECT content FROM messages WHERE session_id=? AND external_message_id='core-read-result'")
+            .bind(&session.id).fetch_one(&db).await.unwrap();
+        assert_eq!(read_content, "Core mediated read");
         let change_sets: i64 = tokio::time::timeout(Duration::from_secs(5), async {
             loop {
                 let count: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM turn_change_sets WHERE session_id=?")
@@ -1284,11 +1552,11 @@ mod tests {
         wait_turn(&db, &session.id, "completed").await;
         assert_eq!(fs::read_to_string(root.join("core-tool.txt")).unwrap(), "Core mediated Pi write");
         let invoked = host.invoke(&session.id, "dev.aibo.echo.tasks", "refresh", json!({"label":"manual"})).await.unwrap();
-        assert_eq!(invoked, json!({"cursor":2}));
+        assert_eq!(invoked, json!({"cursor":3}));
         let commands = host.invoke(&session.id, "dev.aibo.echo.tasks", "commands", json!({})).await.unwrap();
         assert_eq!(commands, json!({"commands":[]}));
         let invoked = host.invoke_capability(&session.id, "ext.dev.aibo.echo.refresh", json!({"label":"semantic"})).await.unwrap();
-        assert_eq!(invoked, json!({"cursor":2}));
+        assert_eq!(invoked, json!({"cursor":3}));
         assert!(host.invoke_capability(&session.id, "goal.manage", json!({})).await.unwrap_err().contains("no operation"));
         assert!(host.invoke(&session.id, "dev.aibo.echo.tasks", "refresh", json!({})).await.unwrap_err().contains("input schema"));
         assert!(host.invoke(&session.id, "dev.aibo.echo.tasks", "missing", json!({})).await.unwrap_err().contains("undeclared view action"));
