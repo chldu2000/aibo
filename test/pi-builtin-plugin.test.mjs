@@ -34,13 +34,14 @@ test('bundled Pi plugin translates RPC lifecycle into Agent Runtime v1', { concu
   assert.equal(messages.filter((message) => message.params?.type === 'message.delta').map((message) => message.params.payload.delta).join(''), 'hello pi plugin');
   assert.ok(messages.some((message) => message.method === 'view/render' && message.params.document.viewId === 'dev.aibo.pi.status'));
   const operation = (operationId, input = {}) => request('operation.invoke', { agentId: scope.agentId, sessionId: scope.sessionId, operationId, input });
+  await new Promise((resolve) => setTimeout(resolve, 20));
+  const recoveryUpdatesBeforeModelChange = messages.filter((message) => message.params?.type === 'session.info_changed').length;
   assert.equal((await operation('ext.dev.aibo.pi.model', { action: 'list' })).output.models[0].id, 'model-1');
   assert.deepEqual((await operation('ext.dev.aibo.pi.reasoning', { action: 'list' })).output.levels, ['off', 'high']);
   await operation('ext.dev.aibo.pi.model', { action: 'set', provider: 'fake', modelId: 'model-1' });
   await operation('ext.dev.aibo.pi.reasoning', { action: 'set', level: 'high' });
-  const recovery = messages.filter((message) => message.params?.type === 'session.info_changed').at(-1);
-  assert.deepEqual(recovery.params.payload.recovery.data.model, { provider: 'fake', modelId: 'model-1' });
-  assert.equal(recovery.params.payload.recovery.data.thinkingLevel, 'high');
+  assert.equal(messages.filter((message) => message.params?.type === 'session.info_changed').length, recoveryUpdatesBeforeModelChange,
+    'Core-owned model changes must not race an asynchronous binding write');
   assert.equal((await operation('ext.dev.aibo.pi.commands')).output.commands[0].name, 'review');
   assert.equal((await operation('ext.dev.aibo.pi.queue', { action: 'steer', message: 'change direction' })).output.queued, 'change direction');
   assert.equal((await operation('ext.dev.aibo.pi.compact', { instructions: 'keep decisions' })).output.summary, 'keep decisions');
@@ -286,10 +287,25 @@ test('bundled Pi SDK session resume reopens the native session file after a plug
 
   const second = start();
   await initialize(second);
+  const recoveredProfile = {
+    ...scope.executionProfile,
+    model: 'fake/fake-alt',
+    reasoningEffort: 'high',
+  };
   const resumed = (await second.requestMessage({ jsonrpc: '2.0', method: 'session.resume', params: {
-    ...scope, binding: { recovery: firstSession.recovery },
+    ...scope, executionProfile: recoveredProfile, binding: { recovery: firstSession.recovery },
   } })).result;
   assert.equal(resumed.nativeSessionId, firstSession.nativeSessionId);
+  assert.deepEqual(resumed.recovery.data.model, { provider: 'fake', modelId: 'fake-alt' });
+  assert.equal(resumed.recovery.data.thinkingLevel, 'high', 'persisted profile overrides stale recovery');
+  const reasoning = (await second.requestMessage({ jsonrpc: '2.0', method: 'operation.invoke', params: {
+    agentId: scope.agentId, sessionId: scope.sessionId, operationId: 'ext.dev.aibo.pi.reasoning', input: { action: 'list' },
+  } })).result.output;
+  assert.equal(reasoning.current, 'high');
+  const models = (await second.requestMessage({ jsonrpc: '2.0', method: 'operation.invoke', params: {
+    agentId: scope.agentId, sessionId: scope.sessionId, operationId: 'ext.dev.aibo.pi.model', input: { action: 'list' },
+  } })).result.output;
+  assert.equal(models.current.id, 'fake-alt');
   const snapshot = (await second.requestMessage({ jsonrpc: '2.0', method: 'operation.invoke', params: {
     agentId: scope.agentId, sessionId: scope.sessionId, operationId: 'ext.dev.aibo.pi.snapshot', input: {},
   } })).result.output;

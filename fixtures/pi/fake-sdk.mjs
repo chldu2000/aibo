@@ -14,6 +14,13 @@ const MODELS = [{
   reasoning: true,
   input: [],
   thinkingLevelMap: { off: 'off', high: 'high' },
+}, {
+  provider: 'fake',
+  id: 'fake-alt',
+  name: 'Alternate parity model',
+  reasoning: true,
+  input: [],
+  thinkingLevelMap: { off: 'off', high: 'high' },
 }];
 
 function textMessage(role, text) {

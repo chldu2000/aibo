@@ -1440,14 +1440,23 @@ fn apply_pi_recovery_profile(profile: &mut execution_profile::ResolvedExecutionP
     let model = data["model"]["provider"].as_str().zip(data["model"]["modelId"].as_str())
         .map(|(provider, model_id)| format!("{provider}/{model_id}"));
     let reasoning_effort = data["thinkingLevel"].as_str().map(ToOwned::to_owned);
-    if model.is_none() && reasoning_effort.is_none() { return false; }
-    if let Some(model) = model {
-        profile.requested.model = Some(model.clone());
-        profile.enforced.model = Some(model);
+    let mut changed = false;
+    if profile.requested.model.is_none() {
+        if let Some(model) = model {
+            profile.requested.model = Some(model.clone());
+            profile.enforced.model = Some(model);
+            changed = true;
+        }
     }
-    if let Some(reasoning_effort) = reasoning_effort {
-        profile.requested.reasoning_effort = Some(reasoning_effort.clone());
-        profile.enforced.reasoning_effort = Some(reasoning_effort);
+    if profile.requested.reasoning_effort.is_none() {
+        if let Some(reasoning_effort) = reasoning_effort {
+            profile.requested.reasoning_effort = Some(reasoning_effort.clone());
+            profile.enforced.reasoning_effort = Some(reasoning_effort);
+            changed = true;
+        }
+    }
+    if !changed {
+        return false;
     }
     profile.resolved_at = crate::now_iso();
     true
@@ -1482,6 +1491,22 @@ mod tests {
         assert_eq!(profile.requested.reasoning_effort.as_deref(), Some("medium"));
         assert_eq!(profile.enforced.reasoning_effort, profile.requested.reasoning_effort);
         assert_ne!(profile.resolved_at, "before");
+    }
+
+    #[test]
+    fn pi_execution_profile_takes_precedence_over_stale_recovery() {
+        let mut requested = execution_profile::default_requested_profile("pi").unwrap();
+        requested.model = Some("openai-codex/gpt-5.6-luna".into());
+        requested.reasoning_effort = Some("low".into());
+        let mut profile = execution_profile::resolve("pi", Some(requested), "before".into()).unwrap();
+        let binding = json!({"recovery":{"data":{
+            "model":{"provider":"openai-codex","modelId":"gpt-5.6-luna"},
+            "thinkingLevel":"medium"
+        }}});
+        assert!(!apply_pi_recovery_profile(&mut profile, &binding));
+        assert_eq!(profile.requested.reasoning_effort.as_deref(), Some("low"));
+        assert_eq!(profile.enforced.reasoning_effort.as_deref(), Some("low"));
+        assert_eq!(profile.resolved_at, "before");
     }
 
     #[test]

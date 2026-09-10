@@ -460,11 +460,14 @@ function onPi(message, startedProvider) {
       turn ? { requestId: turn.requestId, itemId: null } : null);
     return;
   }
-  if (message.type === 'session_info_changed' || message.type === 'thinking_level_changed') {
-    if (message.type === 'thinking_level_changed' && typeof message.level === 'string') session.thinkingLevel = message.level;
-    void updateRecovery(message.type === 'session_info_changed'
-      ? { name: message.name ?? null }
-      : { thinkingLevel: message.level ?? null });
+  if (message.type === 'thinking_level_changed') {
+    if (typeof message.level === 'string') session.thinkingLevel = message.level;
+    return;
+  }
+  if (message.type === 'session_info_changed') {
+    // Model changes are persisted synchronously by Core in the execution
+    // profile. Only native session metadata changes need a binding update.
+    if (typeof message.name === 'string') void updateRecovery({ name: message.name });
     return;
   }
   if (message.type === 'extension_update') {
@@ -611,14 +614,16 @@ async function startSdkPi(cwd, runtimeDataPath, sessionFile, executionProfile = 
         ? modelRuntime.getModel(requestedProvider, requestedModelId)
         : modelRuntime.getAvailableSnapshot().find((candidate) => candidate.id === requestedModelId);
       if (!model) throw new Error(`Model not found: ${requestedModel}`);
-      await sdkSession.setModel(model);
+      if (sdkSession.model?.provider !== model.provider || sdkSession.model?.id !== model.id) {
+        await sdkSession.setModel(model);
+      }
     }
     if (typeof executionProfile.reasoningEffort === 'string' && executionProfile.reasoningEffort.trim()) {
       const requestedLevel = executionProfile.reasoningEffort.trim();
       if (!sdkSession.getAvailableThinkingLevels().includes(requestedLevel)) {
         throw new Error(`Thinking level not found: ${requestedLevel}`);
       }
-      sdkSession.setThinkingLevel(requestedLevel);
+      if (sdkSession.thinkingLevel !== requestedLevel) sdkSession.setThinkingLevel(requestedLevel);
     }
   } catch (error) {
     sdkSession.dispose();
@@ -675,16 +680,29 @@ async function handle({ id, method, params: p }) {
     const state = await startPi(p.workspace.path, p.executionProfile.runtimeDataPath, previous?.data?.sessionFile ?? null, p.executionProfile);
     const nativeId = state.data?.sessionId;
     if (!nativeId) fail('invalid_session', 'Pi did not return a session id');
-    const model = previous?.data?.model ?? state.data?.model;
+    const configuredReference = typeof p.executionProfile.model === 'string' ? p.executionProfile.model : '';
+    const separator = configuredReference.indexOf('/');
+    const configuredModel = separator > 0 ? {
+      provider: configuredReference.slice(0, separator), modelId: configuredReference.slice(separator + 1),
+    } : null;
+    const model = configuredModel ?? previous?.data?.model ?? state.data?.model;
+    const thinkingLevel = typeof p.executionProfile.reasoningEffort === 'string'
+      ? p.executionProfile.reasoningEffort
+      : previous?.data?.thinkingLevel ?? state.data?.thinkingLevel;
     session = { id: p.sessionId, nativeId, sessionFile: state.data?.sessionFile ?? null,
       model: model && typeof model.provider === 'string' && typeof model.modelId === 'string' ? model : null,
-      thinkingLevel: typeof (previous?.data?.thinkingLevel ?? state.data?.thinkingLevel) === 'string'
-        ? (previous?.data?.thinkingLevel ?? state.data?.thinkingLevel)
+      thinkingLevel: typeof thinkingLevel === 'string'
+        ? thinkingLevel
         : null,
       revision: 0, turn: null };
     try {
-      if (session.model) await rpc('set_model', session.model);
-      if (session.thinkingLevel) await rpc('set_thinking_level', { level: session.thinkingLevel });
+      const currentModel = state.data?.model;
+      if (session.model && (currentModel?.provider !== session.model.provider || currentModel?.modelId !== session.model.modelId)) {
+        await rpc('set_model', session.model);
+      }
+      if (session.thinkingLevel && state.data?.thinkingLevel !== session.thinkingLevel) {
+        await rpc('set_thinking_level', { level: session.thinkingLevel });
+      }
     } catch (error) {
       await stopPi();
       session = null;
@@ -732,7 +750,6 @@ async function handle({ id, method, params: p }) {
         const requestedModel = { provider: p.input.provider, modelId: p.input.modelId };
         result = await rpc('set_model', requestedModel);
         session.model = requestedModel;
-        await updateRecovery();
       }
       else fail('invalid_request', 'provider and modelId are required when selecting a model');
     } else if (p.operationId === 'ext.dev.aibo.pi.reasoning') {
@@ -740,7 +757,6 @@ async function handle({ id, method, params: p }) {
       else if (p.input?.action === 'set' && p.input.level) {
         result = await rpc('set_thinking_level', { level: p.input.level });
         session.thinkingLevel = result.data?.level ?? p.input.level;
-        await updateRecovery();
       }
       else fail('invalid_request', 'level is required when selecting reasoning effort');
     } else if (p.operationId === 'ext.dev.aibo.pi.commands') result = await rpc('get_commands');
