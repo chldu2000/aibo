@@ -35,6 +35,7 @@
   import { createAgentSessionController } from '$lib/app/agent-session-controller';
   import { createSessionContextController } from '$lib/app/session-context-controller';
   import { createRefreshController } from '$lib/app/refresh-controller';
+  import { createAgentFacade } from '$lib/app/agent-facade';
   import { createMessageController } from '$lib/app/message-controller';
   import { createNavigationController } from '$lib/app/navigation-controller';
   import { createPiTreeController } from '$lib/app/pi-tree-controller';
@@ -59,8 +60,6 @@
     archiveSession as archiveSessionApi,
     createCodexSession,
     createPiSession,
-    closeCodexSession,
-    closePiSession,
     forkCodexThread,
     getSessionExecutionProfile,
     getTurnChangeSet,
@@ -145,7 +144,6 @@
     steerPiPrompt,
     followUpPiPrompt,
     abortPiTurn,
-    clearPiQueue,
     setWorkspaceTrust,
     toggleWindowMaximize,
     minimizeWindow,
@@ -390,8 +388,8 @@
   const visibleAgentCommands = $derived.by(() => {
     if (!selectedSession) return [];
     const selectedKind = sessionAgentKind(selectedSession);
-    const builtinCommands = selectedKind === 'pi' ? AIBO_PI_COMMANDS : AIBO_CODEX_COMMANDS;
-    const commands = [...builtinCommands, ...(selectedKind === 'pi' ? agentCommands : [])];
+    const builtinCommands = selectedKind === 'pi' ? AIBO_PI_COMMANDS : selectedKind === 'codex' ? AIBO_CODEX_COMMANDS : [];
+    const commands = [...builtinCommands, ...(selectedKind !== 'codex' ? agentCommands : [])];
     const seen = new Set<string>();
     return commands.filter((command) => {
       if (command.enabled === false) return false;
@@ -935,7 +933,14 @@
     }
     agentCommandsLoading = true;
     const generation = ++commandSearchGeneration;
-    const loadCommands = sessionAgentKind(session) === 'pi' ? listPiCommands(session.id) : listCodexSkills(session.id);
+    const loadCommands = session.pluginInstallationId
+      ? (session.capabilities.includes('command.list')
+        ? agentFacade.invoke(session, 'command.list').then((result) => Array.isArray(result.commands) ? result.commands as AgentCommand[] : [])
+        : session.capabilities.includes('skill.list')
+          ? agentFacade.invoke(session, 'skill.list').then((result) => Array.isArray(result.skills) ? result.skills as AgentCommand[] : [])
+          : Promise.resolve([]))
+      : sessionAgentKind(session) === 'pi' ? listPiCommands(session.id)
+      : sessionAgentKind(session) === 'codex' ? listCodexSkills(session.id) : Promise.resolve([]);
     void loadCommands
       .then((commands) => {
         if (generation === commandSearchGeneration && selectedSessionId === session.id) {
@@ -1004,9 +1009,9 @@
     },
     {
       id: 'clear-pi-queue',
-      label: '清空 Pi 队列',
-      description: '移除当前 Pi 会话中尚未发送的消息',
-      disabled: sessionAgentKind(selectedSession) !== 'pi'
+      label: '清空待处理队列',
+      description: '移除当前会话中尚未发送的消息',
+      disabled: !selectedSession?.capabilities.includes('queue.manage')
         || queueSnapshot === null
         || (queueSnapshot.steering.length === 0 && queueSnapshot.followUp.length === 0)
         || busy,
@@ -2716,14 +2721,17 @@
   }
 
   async function clearPiPromptQueue() {
-    if (!selectedSession || sessionAgentKind(selectedSession) !== 'pi') return;
+    const session = selectedSession;
+    if (!session || !session.capabilities.includes('queue.manage')) return;
     try {
-      await clearPiQueue(selectedSession.id);
+      await agentFacade.invoke(session, 'queue.manage', { action: 'clear' });
+      const loadedTimeline = await getTimeline(session.id);
+      if (selectedSessionId !== session.id) return;
       queueSnapshot = null;
-      timeline = await getTimeline(selectedSession.id);
-      notice = '已清空 Pi 待处理消息。';
+      timeline = loadedTimeline;
+      notice = '已清空待处理消息。';
     } catch (error) {
-      errorMessage = toErrorMessage(error);
+      if (selectedSessionId === session.id) errorMessage = toErrorMessage(error);
     }
   }
 
@@ -2734,7 +2742,7 @@
   }
 
   function openPiTree(): void {
-    if (!selectedSession || (sessionAgentKind(selectedSession) !== 'pi' && !selectedSession.capabilities.includes('session.tree'))) return;
+    if (!selectedSession || !selectedSession.capabilities.includes('session.tree')) return;
     piTreeOpen = true;
     void refreshPiTree(selectedSession.id);
   }
@@ -2906,9 +2914,8 @@
 
   const sessionLifecycle = createSessionLifecycleController({
     api: {
+      closeAgentSession,
       renameSession: renameSessionApi,
-      closeCodexSession,
-      closePiSession,
       forkCodexThread,
       archiveSession: archiveSessionApi,
       unarchiveSession: unarchiveSessionApi,
@@ -3078,6 +3085,8 @@
     setRestoreOperations: (value) => (restoreOperations = value),
     setPiNavigationEntryId: (value) => (piNavigationEntryId = value),
   });
+
+  const agentFacade = createAgentFacade({ invokeAgentCapability });
 
   const messageController = createMessageController({
     api: {
@@ -3477,7 +3486,7 @@
     onClose={() => (commandPaletteOpen = false)}
   />
   <PiSessionTreeOverlay
-    open={piTreeOpen && (sessionAgentKind(selectedSession) === 'pi' || selectedSession?.capabilities.includes('session.tree'))}
+    open={piTreeOpen && selectedSession?.capabilities.includes('session.tree')}
     session={selectedSession}
     tree={piTree?.sessionId === selectedSessionId ? piTree : null}
     {busy}

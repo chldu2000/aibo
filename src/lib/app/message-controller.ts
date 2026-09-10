@@ -1,4 +1,5 @@
 import type { ApprovalRequest, ContextAttachment, ContextAttachmentValidation, Session, Workspace } from '$lib/types';
+import { createAgentFacade } from './agent-facade';
 import { toErrorMessage } from './error-utils';
 import { upsertSession } from './session-transitions';
 
@@ -41,6 +42,7 @@ export type MessageControllerContext = {
 };
 
 export function createMessageController(context: MessageControllerContext) {
+  const agent = createAgentFacade(context.api);
   function withAttachmentContext(input: string): string {
     const attachments = context.getAttachments().filter((attachment) => attachment.turnId === null);
     if (attachments.length === 0) return input;
@@ -178,7 +180,7 @@ export function createMessageController(context: MessageControllerContext) {
     context.setErrorMessage(null);
     const requestInput = withAttachmentContext(input);
     try {
-      await context.api.invokeAgentCapability(session.id, 'queue.manage', { action: mode, message: requestInput });
+      await agent.invoke(session, 'queue.manage', { action: mode, message: requestInput });
       await Promise.all([context.refreshTimeline(session.id), context.refreshAttachments(session.id)]);
       context.setComposerText('');
     } catch (error) {

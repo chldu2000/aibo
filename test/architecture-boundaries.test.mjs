@@ -7,6 +7,16 @@ import { fileURLToPath } from 'node:url';
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const directApiImport = /from ['"][^'"]*\/api(?:\.ts)?['"]/;
 
+test('Agent capability routing does not identify providers or choose provider APIs', async () => {
+  const facade = await readFile(path.join(root, 'src/lib/app/agent-facade.ts'), 'utf8');
+  assert.doesNotMatch(facade, /sessionAgentKind|dev\.aibo\.(pi|codex)|['"](?:pi|codex)['"]/);
+  assert.doesNotMatch(facade, directApiImport);
+  const kinds = await readFile(path.join(root, 'src/lib/app/agent-kind.ts'), 'utf8');
+  assert.doesNotMatch(kinds, /capabilities\.(?:includes|some|find)/);
+  const lifecycle = await readFile(path.join(root, 'src/lib/app/session-lifecycle-controller.ts'), 'utf8');
+  assert.doesNotMatch(lifecycle, /closePiSession|closeCodexSession/);
+});
+
 async function sourceFiles(directory, extension) {
   const entries = await readdir(path.join(root, directory), { withFileTypes: true });
   return entries

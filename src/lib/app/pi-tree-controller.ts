@@ -6,7 +6,8 @@ import type {
   TimelineItem,
 } from '$lib/types';
 import { toErrorMessage } from './error-utils';
-import { sessionAgentKind } from './agent-kind';
+import { createAgentFacade } from './agent-facade';
+import { legacyTreeCapability } from './compatibility/legacy-tree';
 
 export type PiTreeControllerContext = {
   api: {
@@ -35,11 +36,12 @@ export type PiTreeControllerContext = {
 
 /** Coordinates Pi branch selection and navigation without owning page state. */
 export function createPiTreeController(context: PiTreeControllerContext) {
+  const agent = createAgentFacade({ ...context.api, legacyCapability: legacyTreeCapability(context.api) });
   function requestNavigation(entryId: string): void {
     const session = context.getSelectedSession();
     if (
       !session ||
-      (sessionAgentKind(session) !== 'pi' && !session.capabilities.includes('session.tree')) ||
+      !session.capabilities.includes('session.tree') ||
       context.getSessionRunning() ||
       entryId === context.getPiTree()?.leafId
     ) {
@@ -53,7 +55,7 @@ export function createPiTreeController(context: PiTreeControllerContext) {
     const sessionId = context.getSelectedSessionId();
     context.setPendingEntryId(null);
     const session = context.getSelectedSession();
-    if (!entryId || !sessionId || !session || (sessionAgentKind(session) !== 'pi' && !session.capabilities.includes('session.tree'))) return false;
+    if (!entryId || !sessionId || !session || !session.capabilities.includes('session.tree')) return false;
     if (!context.getDesktop()) {
       context.setNotice('当前是 Web 预览；Pi 分支切换需要在 Tauri 桌面模式中执行。');
       return false;
@@ -62,20 +64,18 @@ export function createPiTreeController(context: PiTreeControllerContext) {
     context.setBusy(true);
     context.setErrorMessage(null);
     try {
-      const result = session.pluginInstallationId
-        ? await context.api.invokeAgentCapability(sessionId, 'session.tree', {
-          action: 'navigate', entryId, summarize: options.mode !== 'none',
-          customInstructions: options.mode === 'custom' ? options.customInstructions?.trim() || null : null,
-        })
-        : await context.api.navigatePiSessionTree(sessionId, entryId, options);
-      const navigation: PiSessionTreeNavigation = session.pluginInstallationId ? {
+      const result = await agent.invoke(session, 'session.tree', {
+        action: 'navigate', entryId, summarize: options.mode !== 'none',
+        customInstructions: options.mode === 'custom' ? options.customInstructions?.trim() || null : null,
+      });
+      const navigation: PiSessionTreeNavigation = {
         sessionId,
         externalSessionId: typeof result.externalSessionId === 'string' ? result.externalSessionId : null,
         leafId: typeof result.leafId === 'string' ? result.leafId : null,
         tree: Array.isArray(result.tree) ? result.tree as PiSessionTreeNavigation['tree'] : [],
         cancelled: result.cancelled === true,
         editorText: typeof result.editorText === 'string' ? result.editorText : null,
-      } : result as PiSessionTreeNavigation;
+      };
       if (navigation.cancelled) {
         context.setNotice('Pi 分支切换已取消。');
         return false;
