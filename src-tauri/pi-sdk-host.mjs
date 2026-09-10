@@ -1,8 +1,13 @@
 import { mkdir } from "node:fs/promises";
 import readline from "node:readline";
 import process from "node:process";
-import { createAgentSession, createBashToolDefinition, createWriteToolDefinition, ModelRuntime, SessionManager } from "@earendil-works/pi-coding-agent";
+import { pathToFileURL } from "node:url";
 import { compactActiveBranch, compactSafeTree, compactSessionEntry, textContent } from "./pi-session-serialization.mjs";
+
+const sdkModule = await import(process.env.AIBO_PI_SDK_MODULE
+  ? pathToFileURL(process.env.AIBO_PI_SDK_MODULE).href
+  : "@earendil-works/pi-coding-agent");
+const { createAgentSession, createBashToolDefinition, createWriteToolDefinition, ModelRuntime, SessionManager } = sdkModule;
 
 // The host is intentionally a small, versioned JSONL boundary. Rust owns the
 // durable Aibo session; this process owns only one Pi AgentSession at a time.

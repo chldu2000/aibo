@@ -75,8 +75,34 @@ function sdkMessageText(message) {
     .replace(/<think(?:ing)?(?:\s[^>]*)?>[\s\S]*?<\/think(?:ing)?>/gi, '')
     .replace(/<\|(?:thinking|reasoning)\|>[\s\S]*?<\|end_(?:thinking|reasoning)\|>/gi, '');
 }
+function sdkSafeValue(value, depth = 0, seen = new WeakSet()) {
+  if (value === null || typeof value === 'string' || typeof value === 'boolean' || typeof value === 'number') {
+    return typeof value === 'string' ? value.slice(0, 100_000) : value;
+  }
+  if (depth >= 8 || typeof value !== 'object') return undefined;
+  if (seen.has(value)) return '[Circular]';
+  seen.add(value);
+  if (Array.isArray(value)) return value.slice(0, 100).map((item) => sdkSafeValue(item, depth + 1, seen));
+  return Object.fromEntries(Object.entries(value).slice(0, 100).map(([key, item]) => [key.slice(0, 200), sdkSafeValue(item, depth + 1, seen)]));
+}
+function sdkMessageSummary(message) {
+  const text = sdkMessageText(message).trim();
+  if (text) return text;
+  const content = Array.isArray(message?.content) ? message.content : [];
+  const toolNames = content.filter((part) => ['toolcall', 'tool_call', 'tooluse', 'tool_use'].includes(String(part?.type ?? '').toLowerCase()))
+    .map((part) => part.name ?? part.toolName ?? part.tool_name)
+    .filter((name) => typeof name === 'string' && name.trim()).slice(0, 3);
+  if (toolNames.length > 0) return `调用工具：${toolNames.join('、')}`;
+  const hasThinking = content.some((part) => ['thinking', 'reasoning', 'redacted_thinking'].includes(String(part?.type ?? '').toLowerCase())
+    || typeof part?.thinking === 'string' || typeof part?.reasoning === 'string' || typeof part?.reasoningContent === 'string' || typeof part?.reasoning_content === 'string');
+  if (hasThinking) return 'Agent 思考内容（正文未显示）';
+  if (message?.role === 'assistant') return 'Agent 回复（无可显示正文）';
+  if (message?.role === 'user') return '用户消息（无可显示正文）';
+  if (message?.role === 'toolResult' || message?.role === 'tool') return '工具结果（无可显示正文）';
+  return '消息（无可显示正文）';
+}
 function sdkTreeSummary(entry) {
-  if (entry?.type === 'message') return sdkMessageText(entry.message);
+  if (entry?.type === 'message') return sdkMessageSummary(entry.message).slice(0, 500);
   if (typeof entry?.summary === 'string') return entry.summary.slice(0, 500);
   if (entry?.type === 'model_change') return `${entry.provider ?? ''}/${entry.modelId ?? ''}`;
   if (entry?.type === 'thinking_level_change') return `推理强度已切换为 ${entry.thinkingLevel ?? 'unknown'}`;
@@ -89,15 +115,16 @@ function sdkCompactionResult(result) {
     tokensBefore: result.tokensBefore ?? null, estimatedTokensAfter: result.estimatedTokensAfter ?? null,
     usage: result.usage ?? null, details: result.details ?? null };
 }
-function sdkTreeNode(node, ancestors = new Set()) {
+function sdkTreeNode(node, ancestors = new Set(), budget = { remaining: 4096 }) {
   const entry = node?.entry ?? {};
   const id = typeof entry.id === 'string' ? entry.id : null;
   const nextAncestors = new Set(ancestors);
   if (id) nextAncestors.add(id);
   const output = { id: entry.id, parentId: entry.parentId ?? null, type: entry.type, timestamp: entry.timestamp,
-    role: entry.message?.role, summary: sdkTreeSummary(entry), label: node?.label, children: [] };
-  if (!Array.isArray(node?.children) || !id || ancestors.has(id)) return output;
-  output.children = node.children.map((child) => sdkTreeNode(child, nextAncestors));
+    role: entry.message?.role, summary: sdkTreeSummary(entry), label: typeof node?.label === 'string' ? node.label : undefined, children: [] };
+  if (budget.remaining <= 0 || !Array.isArray(node?.children) || !id || ancestors.has(id)) return output;
+  budget.remaining -= 1;
+  output.children = node.children.map((child) => sdkTreeNode(child, nextAncestors, budget));
   return output;
 }
 function sdkTree(startedProvider) {
@@ -107,11 +134,12 @@ function sdkTree(startedProvider) {
 function sdkEntry(entry) {
   if (!entry || typeof entry !== 'object') return undefined;
   return { id: entry.id, parentId: entry.parentId ?? null, type: entry.type, timestamp: entry.timestamp,
-    role: entry.message?.role, summary: sdkTreeSummary(entry) };
+    role: entry.message?.role, toolName: entry.message?.toolName, stopReason: entry.message?.stopReason,
+    isError: entry.message?.isError, summary: sdkTreeSummary(entry) };
 }
 function sdkExtensionEntry(entry) {
   if (!entry || typeof entry !== 'object') return undefined;
-  return { ...sdkEntry(entry), customType: entry.customType, display: entry.display, data: entry.data };
+  return { ...sdkEntry(entry), customType: entry.customType, display: sdkSafeValue(entry.display), data: sdkSafeValue(entry.data) };
 }
 function sdkBranch(startedProvider) {
   const entries = startedProvider.manager.getEntries?.() ?? [];
@@ -119,7 +147,7 @@ function sdkBranch(startedProvider) {
   const branch = [];
   const seen = new Set();
   let currentId = startedProvider.manager.getLeafId?.() ?? null;
-  while (currentId && !seen.has(currentId)) {
+  while (currentId && !seen.has(currentId) && branch.length < 4096) {
     seen.add(currentId);
     const entry = byId.get(currentId);
     if (!entry) break;
@@ -130,15 +158,15 @@ function sdkBranch(startedProvider) {
 }
 function sdkCommands(sdkSession) {
   return [
-    { name: 'compact', description: '压缩当前会话上下文', source: 'builtin' },
-    { name: 'model', description: '查看或切换当前模型', source: 'builtin' },
-    { name: 'thinking', description: '查看或设置推理强度', source: 'builtin' },
-    { name: 'reload', description: '重新加载会话资源', source: 'builtin' },
+    { name: 'compact', description: '压缩当前会话上下文', source: 'builtin', category: 'agent', execution: 'adapter' },
+    { name: 'model', description: '查看或切换当前模型', source: 'builtin', category: 'agent', execution: 'adapter' },
+    { name: 'thinking', description: '查看或设置推理强度', source: 'builtin', category: 'agent', execution: 'adapter' },
+    { name: 'reload', description: '重新加载会话资源', source: 'builtin', category: 'agent', execution: 'adapter' },
     ...(sdkSession.extensionRunner?.getRegisteredCommands?.() ?? []).map((command) => ({
-      name: command.invocationName, description: command.description ?? null, source: 'extension',
+      name: command.invocationName, description: command.description ?? null, source: 'extension', category: 'extension', execution: 'prompt',
     })),
-    ...(sdkSession.promptTemplates ?? []).map((template) => ({ name: template.name, description: template.description ?? null, source: 'prompt' })),
-    ...(sdkSession.resourceLoader?.getSkills?.().skills ?? []).map((skill) => ({ name: `skill:${skill.name}`, description: skill.description ?? null, source: 'skill' })),
+    ...(sdkSession.promptTemplates ?? []).map((template) => ({ name: template.name, description: template.description ?? null, source: 'prompt', category: 'extension', execution: 'prompt' })),
+    ...(sdkSession.resourceLoader?.getSkills?.().skills ?? []).map((skill) => ({ name: `skill:${skill.name}`, description: skill.description ?? null, source: 'skill', category: 'skill', execution: 'prompt' })),
   ];
 }
 function sdkSkills(sdkSession) {
@@ -157,10 +185,15 @@ function coreReadOperations() {
   return {
     readFile: async (absolutePath) => {
       const result = await requestCoreTool('read_file', { path: absolutePath, action: 'read' });
-      if (typeof result.content !== 'string') throw new Error('Core returned a non-text file');
-      return Buffer.from(result.content, 'utf8');
+      if (result.encoding === 'base64' && typeof result.data === 'string') return Buffer.from(result.data, 'base64');
+      if (typeof result.content === 'string') return Buffer.from(result.content, 'utf8');
+      throw new Error('Core returned an unreadable file');
     },
     access: async (absolutePath) => { await corePath(absolutePath, 'access'); },
+    detectImageMimeType: async (absolutePath) => {
+      const result = await requestCoreTool('read_file', { path: absolutePath, action: 'image_mime' });
+      return typeof result.mimeType === 'string' ? result.mimeType : null;
+    },
   };
 }
 function createCoreGrepTool() {
@@ -304,13 +337,22 @@ function newTurnItem(turn, message = null) {
   turn.items.set(itemId, item);
   turn.itemOrder.push(item);
   turn.currentItem = item;
+  if (message && typeof message === 'object') turn.messageObjects.set(message, item);
+  if (nativeId) turn.nativeItems.set(nativeId, item);
   return item;
 }
 function itemForMessage(turn, message = null) {
+  if (message && typeof message === 'object') {
+    const objectItem = turn.messageObjects.get(message);
+    if (objectItem) return objectItem;
+  }
   const nativeId = nativeMessageId(message);
-  if (nativeId && turn.items.has(nativeId)) return turn.items.get(nativeId);
-  if (!nativeId && turn.currentItem && !turn.currentItem.completed) return turn.currentItem;
-  if (!nativeId && turn.currentItem?.completed && visibleText(message) === turn.currentItem.text) return turn.currentItem;
+  if (nativeId && turn.nativeItems.has(nativeId)) return turn.nativeItems.get(nativeId);
+  if (turn.currentItem && !turn.currentItem.completed) {
+    if (message && typeof message === 'object') turn.messageObjects.set(message, turn.currentItem);
+    if (nativeId) turn.nativeItems.set(nativeId, turn.currentItem);
+    return turn.currentItem;
+  }
   return newTurnItem(turn, message);
 }
 function rememberAgentMessages(turn, messages) {
@@ -320,10 +362,14 @@ function rememberAgentMessages(turn, messages) {
     const text = visibleText(message);
     if (!text) continue;
     const nativeId = nativeMessageId(message);
-    const item = nativeId && turn.items.get(nativeId)
-      ? turn.items.get(nativeId)
-      : turn.itemOrder[order] ?? newTurnItem(turn, message);
-    item.text = text;
+    const item = (message && typeof message === 'object' && turn.messageObjects.get(message))
+      ?? (nativeId && turn.nativeItems.get(nativeId))
+      ?? turn.itemOrder[order]
+      ?? newTurnItem(turn, message);
+    if (!item) continue;
+    if (message && typeof message === 'object') turn.messageObjects.set(message, item);
+    if (nativeId) turn.nativeItems.set(nativeId, item);
+    if (!item.completed || !item.text) item.text = text;
     order += 1;
   }
 }
@@ -409,7 +455,7 @@ function onPi(message, startedProvider) {
     return;
   }
   if (!turn) return;
-  if (message.type === 'message_start') {
+  if (message.type === 'message_start' && message.message?.role === 'assistant') {
     itemForMessage(turn, message.message);
   } else if (message.type === 'agent_start') {
     emit('turn.started', {}, turn.id, { requestId: turn.requestId, itemId: null });
@@ -525,19 +571,28 @@ async function startSdkPi(cwd, runtimeDataPath, sessionFile, executionProfile = 
   const created = await createAgentSession({ cwd, sessionManager: manager, modelRuntime, tools: activeToolNames,
     customTools: customTools.length > 0 ? customTools : undefined });
   const sdkSession = created.session;
-  const requestedModel = typeof executionProfile.model === 'string' ? executionProfile.model.trim() : '';
-  if (requestedModel) {
-    const separator = requestedModel.indexOf('/');
-    const requestedProvider = separator > 0 ? requestedModel.slice(0, separator) : null;
-    const requestedModelId = separator > 0 ? requestedModel.slice(separator + 1) : requestedModel;
-    const model = requestedProvider
-      ? modelRuntime.getModel(requestedProvider, requestedModelId)
-      : modelRuntime.getAvailableSnapshot().find((candidate) => candidate.id === requestedModelId);
-    if (model) await sdkSession.setModel(model);
-  }
-  if (typeof executionProfile.reasoningEffort === 'string' && executionProfile.reasoningEffort.trim()) {
-    const requestedLevel = executionProfile.reasoningEffort.trim();
-    if (sdkSession.getAvailableThinkingLevels().includes(requestedLevel)) sdkSession.setThinkingLevel(requestedLevel);
+  try {
+    const requestedModel = typeof executionProfile.model === 'string' ? executionProfile.model.trim() : '';
+    if (requestedModel) {
+      const separator = requestedModel.indexOf('/');
+      const requestedProvider = separator > 0 ? requestedModel.slice(0, separator) : null;
+      const requestedModelId = separator > 0 ? requestedModel.slice(separator + 1) : requestedModel;
+      const model = requestedProvider
+        ? modelRuntime.getModel(requestedProvider, requestedModelId)
+        : modelRuntime.getAvailableSnapshot().find((candidate) => candidate.id === requestedModelId);
+      if (!model) throw new Error(`Model not found: ${requestedModel}`);
+      await sdkSession.setModel(model);
+    }
+    if (typeof executionProfile.reasoningEffort === 'string' && executionProfile.reasoningEffort.trim()) {
+      const requestedLevel = executionProfile.reasoningEffort.trim();
+      if (!sdkSession.getAvailableThinkingLevels().includes(requestedLevel)) {
+        throw new Error(`Thinking level not found: ${requestedLevel}`);
+      }
+      sdkSession.setThinkingLevel(requestedLevel);
+    }
+  } catch (error) {
+    sdkSession.dispose();
+    throw error;
   }
   const startedProvider = { kind: 'sdk', sdkSession, manager, modelRuntime, pending: new Map(), unsubscribe: null };
   provider = startedProvider;
@@ -597,8 +652,14 @@ async function handle({ id, method, params: p }) {
         ? (previous?.data?.thinkingLevel ?? state.data?.thinkingLevel)
         : null,
       revision: 0, turn: null };
-    if (session.model) await rpc('set_model', session.model);
-    if (session.thinkingLevel) await rpc('set_thinking_level', { level: session.thinkingLevel });
+    try {
+      if (session.model) await rpc('set_model', session.model);
+      if (session.thinkingLevel) await rpc('set_thinking_level', { level: session.thinkingLevel });
+    } catch (error) {
+      await stopPi();
+      session = null;
+      throw error;
+    }
     respond(id, { kind: 'session', agentId, sessionId: session.id, nativeSessionId: nativeId, recovery: recovery() });
     emit('session.started', { state: 'idle', nativeSandbox: false }); render(); return;
   }
@@ -606,7 +667,8 @@ async function handle({ id, method, params: p }) {
   if (method === 'turn.send') {
     if (session.turn) fail('busy');
     const turn = { id: p.turnId, requestId: id, text: '', finalText: '', aborted: false, failed: false,
-      nextItemNumber: 1, items: new Map(), itemOrder: [], currentItem: null, agentMessages: [], toolItems: new Map() };
+      nextItemNumber: 1, items: new Map(), nativeItems: new Map(), messageObjects: new WeakMap(),
+      itemOrder: [], currentItem: null, agentMessages: [], toolItems: new Map() };
     session.turn = turn;
     try {
       await rpc('prompt', { message: p.input.text });
@@ -616,21 +678,39 @@ async function handle({ id, method, params: p }) {
     }
     respond(id, { kind: 'accepted', accepted: true }); return;
   }
-  if (method === 'turn.cancel') { if (session.turn?.id === p.turnId) { cancelPendingCoreToolRequests('Pi turn cancelled'); await rpc('abort'); } respond(id, { kind: 'accepted', accepted: true }); return; }
+  if (method === 'turn.cancel') {
+    if (session.turn?.id === p.turnId) {
+      cancelPendingCoreToolRequests('Pi turn cancelled');
+      try {
+        await rpc('abort');
+      } catch (error) {
+        if (session.turn?.id === p.turnId) {
+          emit('turn.failed', { message: error.message }, session.turn.id, { requestId: session.turn.requestId, itemId: null });
+          session.turn = null;
+          render();
+        }
+        throw error;
+      }
+    }
+    respond(id, { kind: 'accepted', accepted: true }); return;
+  }
   if (method === 'operation.invoke') {
     let result;
     if (p.operationId === 'ext.dev.aibo.pi.model') {
       if (p.input?.action === 'list') result = await rpc('get_available_models');
       else if (p.input?.action === 'set' && p.input.provider && p.input.modelId) {
-        session.model = { provider: p.input.provider, modelId: p.input.modelId };
-        result = await rpc('set_model', session.model); await updateRecovery();
+        const requestedModel = { provider: p.input.provider, modelId: p.input.modelId };
+        result = await rpc('set_model', requestedModel);
+        session.model = requestedModel;
+        await updateRecovery();
       }
       else fail('invalid_request', 'provider and modelId are required when selecting a model');
     } else if (p.operationId === 'ext.dev.aibo.pi.reasoning') {
       if (p.input?.action === 'list') result = await rpc('get_available_thinking_levels');
       else if (p.input?.action === 'set' && p.input.level) {
-        session.thinkingLevel = p.input.level;
-        result = await rpc('set_thinking_level', { level: p.input.level }); await updateRecovery();
+        result = await rpc('set_thinking_level', { level: p.input.level });
+        session.thinkingLevel = result.data?.level ?? p.input.level;
+        await updateRecovery();
       }
       else fail('invalid_request', 'level is required when selecting reasoning effort');
     } else if (p.operationId === 'ext.dev.aibo.pi.commands') result = await rpc('get_commands');

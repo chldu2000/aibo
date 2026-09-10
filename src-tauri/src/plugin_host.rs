@@ -1,4 +1,5 @@
 use crate::{artifact::sanitize_content, change_set::{capture as capture_workspace, persist as persist_change_set, WorkspaceSnapshot}, execution_profile, plugin_contract::contracts, plugin_registry, plugin_runtime::PluginRuntime, workspace_guard::canonicalize_target, Session};
+use base64::{engine::general_purpose::STANDARD as BASE64, Engine as _};
 use regex::RegexBuilder;
 use serde_json::{json, Value};
 use sqlx::{Row, SqlitePool};
@@ -63,7 +64,19 @@ fn collect_workspace_files(root: &Path, current: &Path, output: &mut Vec<PathBuf
 fn workspace_files(root: &Path, current: &Path) -> Result<Vec<PathBuf>, String> {
     let mut output = Vec::new();
     collect_workspace_files(root, current, &mut output, &mut std::collections::HashSet::new())?;
+    output.sort();
     Ok(output)
+}
+
+fn image_mime_type(bytes: &[u8]) -> Option<&'static str> {
+    if bytes.starts_with(&[0xff, 0xd8, 0xff]) { return Some("image/jpeg"); }
+    if bytes.starts_with(&[137, 80, 78, 71, 13, 10, 26, 10])
+        && bytes.get(12..16) == Some(b"IHDR")
+    { return Some("image/png"); }
+    if bytes.starts_with(b"GIF87a") || bytes.starts_with(b"GIF89a") { return Some("image/gif"); }
+    if bytes.starts_with(b"RIFF") && bytes.get(8..12) == Some(b"WEBP") { return Some("image/webp"); }
+    if bytes.starts_with(b"BM") { return Some("image/bmp"); }
+    None
 }
 fn event_capability(kind: &str) -> Option<&'static str> {
     match kind {
@@ -499,7 +512,7 @@ impl PluginHost {
                     return Self::reply_tool_error(runtime, request_id, "invalid_request: Pi read path is missing").await;
                 };
                 let action = input.get("action").and_then(Value::as_str).unwrap_or("read");
-                if !matches!(action, "read" | "access" | "exists" | "is_directory" | "list" | "glob" | "grep") {
+                if !matches!(action, "read" | "access" | "exists" | "is_directory" | "list" | "glob" | "grep" | "image_mime") {
                     return Self::reply_tool_error(runtime, request_id, "invalid_request: unsupported Pi read action").await;
                 }
                 (
@@ -720,8 +733,19 @@ impl PluginHost {
                         let metadata = tokio::fs::metadata(&resolved).await.map_err(|error| format!("read workspace file metadata: {error}"))?;
                         if metadata.len() > MAX_READ_BYTES { return Err("invalid_request: Pi read file exceeds the Core limit".into()); }
                         let bytes = tokio::fs::read(&resolved).await.map_err(|error| format!("read workspace file: {error}"))?;
-                        let content = String::from_utf8(bytes).map_err(|_| "invalid_request: binary files are not readable through the text Core tool".to_owned())?;
-                        Ok(json!({"path":resolved,"content":content,"bytes":content.len()}))
+                        if let Some(mime_type) = image_mime_type(&bytes) {
+                            Ok(json!({"path":resolved,"data":BASE64.encode(&bytes),"encoding":"base64","mimeType":mime_type,"bytes":bytes.len()}))
+                        } else {
+                            let content = String::from_utf8(bytes).map_err(|_| "invalid_request: binary files are not readable through the text Core tool".to_owned())?;
+                            Ok(json!({"path":resolved,"content":content,"bytes":content.len()}))
+                        }
+                    }
+                    "image_mime" => {
+                        if !resolved.is_file() { return Err("invalid_request: Pi image target is not a file".into()); }
+                        let metadata = tokio::fs::metadata(&resolved).await.map_err(|error| format!("read workspace image metadata: {error}"))?;
+                        if metadata.len() > MAX_READ_BYTES { return Err("invalid_request: Pi image exceeds the Core limit".into()); }
+                        let bytes = tokio::fs::read(&resolved).await.map_err(|error| format!("read workspace image: {error}"))?;
+                        Ok(json!({"path":resolved,"mimeType":image_mime_type(&bytes)}))
                     }
                     "list" => {
                         if !resolved.is_dir() { return Err("invalid_request: Pi list target is not a directory".into()); }
@@ -1411,6 +1435,15 @@ mod tests {
     }
 
     #[test]
+    fn recognizes_only_supported_image_signatures_for_core_reads() {
+        assert_eq!(image_mime_type(&[0xff, 0xd8, 0xff, 0xe0]), Some("image/jpeg"));
+        assert_eq!(image_mime_type(b"GIF89a"), Some("image/gif"));
+        assert_eq!(image_mime_type(b"RIFFxxxxWEBP"), Some("image/webp"));
+        assert_eq!(image_mime_type(b"BMfake-bitmap"), Some("image/bmp"));
+        assert_eq!(image_mime_type(b"not an image"), None);
+    }
+
+    #[test]
     fn restores_interactive_capabilities_for_pinned_bundled_codex_releases() {
         let declared = vec![json!("turn.send"), json!("approval.respond"), json!("user-input.respond")];
         let actual = vec![json!("turn.send")];
@@ -1506,6 +1539,26 @@ mod tests {
         let read_content: String = sqlx::query_scalar("SELECT content FROM messages WHERE session_id=? AND external_message_id='core-read-result'")
             .bind(&session.id).fetch_one(&db).await.unwrap();
         assert_eq!(read_content, "Core mediated read");
+        fs::write(root.join("read-tool.png"), [137, 80, 78, 71, 13, 10, 26, 10, 0, 0, 0, 13, b'I', b'H', b'D', b'R']).unwrap();
+        host.send(&session.id, "core image fixture").await.unwrap();
+        wait_turn(&db, &session.id, "completed").await;
+        let image_content: String = sqlx::query_scalar("SELECT content FROM messages WHERE session_id=? AND external_message_id='core-image-result'")
+            .bind(&session.id).fetch_one(&db).await.unwrap();
+        assert!(image_content.contains("\"encoding\":\"base64\""));
+        assert!(image_content.contains("\"mimeType\":\"image/png\""));
+        fs::write(root.parent().unwrap().join("outside-read.txt"), "must stay outside").unwrap();
+        host.send(&session.id, "core read boundary").await.unwrap();
+        wait_turn(&db, &session.id, "completed").await;
+        let leaked: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM messages WHERE session_id=? AND content LIKE '%must stay outside%'")
+            .bind(&session.id).fetch_one(&db).await.unwrap();
+        assert_eq!(leaked, 0, "Core read must reject paths outside the workspace");
+        let disabled_command_session = host.create("test", &installation.id, "dev.aibo.echo.agent").await.unwrap();
+        host.send(&disabled_command_session.id, "core command fixture").await.unwrap();
+        wait_turn(&db, &disabled_command_session.id, "failed").await;
+        let disabled_state: String = sqlx::query_scalar("SELECT state FROM sessions WHERE id=?")
+            .bind(&disabled_command_session.id).fetch_one(&db).await.unwrap();
+        assert_eq!(disabled_state, "failed", "disabled Core command requests must fail without execution-profile escalation");
+        host.close(&disabled_command_session.id).await.unwrap();
         let change_sets: i64 = tokio::time::timeout(Duration::from_secs(5), async {
             loop {
                 let count: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM turn_change_sets WHERE session_id=?")
@@ -1514,7 +1567,7 @@ mod tests {
                 tokio::time::sleep(Duration::from_millis(10)).await;
             }
         }).await.unwrap();
-        assert_eq!(change_sets, 1, "plugin turns receive Core change-set projection");
+        assert!(change_sets >= 1, "plugin turns receive Core change-set projection");
         let attachment_turn: Option<String> = sqlx::query_scalar("SELECT turn_id FROM attachments WHERE id='attachment-1'")
             .fetch_one(&db)
             .await
@@ -1551,12 +1604,27 @@ mod tests {
         host.resolve_pi_approval(&session.id, &approval_id, "accept").await.unwrap();
         wait_turn(&db, &session.id, "completed").await;
         assert_eq!(fs::read_to_string(root.join("core-tool.txt")).unwrap(), "Core mediated Pi write");
+        host.send(&session.id, "core command fixture").await.unwrap();
+        wait_session_state(&db, &session.id, "waiting_approval").await;
+        let command_approval_id: String = sqlx::query_scalar(
+            "SELECT json_extract(payload_json, '$.payload.requestId') FROM agent_events WHERE session_id=? AND event_type='approval.requested' ORDER BY sequence DESC LIMIT 1",
+        )
+        .bind(&session.id)
+        .fetch_one(&db)
+        .await
+        .unwrap();
+        assert!(command_approval_id.starts_with("pi-tool:"));
+        host.resolve_pi_approval(&session.id, &command_approval_id, "accept").await.unwrap();
+        wait_turn(&db, &session.id, "completed").await;
+        let command_output: String = sqlx::query_scalar("SELECT content FROM messages WHERE session_id=? AND external_message_id='core-command-result'")
+            .bind(&session.id).fetch_one(&db).await.unwrap();
+        assert_eq!(command_output, "AIBO_CORE_COMMAND_OK");
         let invoked = host.invoke(&session.id, "dev.aibo.echo.tasks", "refresh", json!({"label":"manual"})).await.unwrap();
-        assert_eq!(invoked, json!({"cursor":3}));
+        assert_eq!(invoked, json!({"cursor":6}));
         let commands = host.invoke(&session.id, "dev.aibo.echo.tasks", "commands", json!({})).await.unwrap();
         assert_eq!(commands, json!({"commands":[]}));
         let invoked = host.invoke_capability(&session.id, "ext.dev.aibo.echo.refresh", json!({"label":"semantic"})).await.unwrap();
-        assert_eq!(invoked, json!({"cursor":3}));
+        assert_eq!(invoked, json!({"cursor":6}));
         assert!(host.invoke_capability(&session.id, "goal.manage", json!({})).await.unwrap_err().contains("no operation"));
         assert!(host.invoke(&session.id, "dev.aibo.echo.tasks", "refresh", json!({})).await.unwrap_err().contains("input schema"));
         assert!(host.invoke(&session.id, "dev.aibo.echo.tasks", "missing", json!({})).await.unwrap_err().contains("undeclared view action"));

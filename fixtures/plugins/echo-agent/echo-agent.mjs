@@ -116,6 +116,23 @@ function handle({ id, method, params: p }) {
       });
       return;
     }
+    if (p.input.text === 'core command fixture') {
+      const toolRequestId = `echo-command-${id}`;
+      const toolResult = new Promise((resolve, reject) => pendingCoreTools.set(toolRequestId, { resolve, reject }));
+      write({ id: toolRequestId, method: 'aibo/tool-request', params: {
+        agentId, sessionId: session.id, nativeSessionId: session.nativeId, turnId: turn.id,
+        tool: 'run_command', input: { command: 'printf AIBO_CORE_COMMAND_OK', cwd: '.', timeout: 5 },
+      } });
+      toolResult.then((result) => {
+        if (session.turn !== turn) return;
+        event(session, 'message.completed', { text: result.output ?? '', itemId: 'core-command-result' }, turn);
+        finish(session, 'completed');
+      }).catch(() => {
+        if (session.turn !== turn) return;
+        finish(session, 'failed');
+      });
+      return;
+    }
     if (p.input.text === 'core read fixture') {
       const toolRequestId = `echo-read-${id}`;
       const toolResult = new Promise((resolve, reject) => pendingCoreTools.set(toolRequestId, { resolve, reject }));
@@ -130,6 +147,39 @@ function handle({ id, method, params: p }) {
       }).catch(() => {
         if (session.turn !== turn) return;
         finish(session, 'failed');
+      });
+      return;
+    }
+    if (p.input.text === 'core image fixture') {
+      const toolRequestId = `echo-image-${id}`;
+      const toolResult = new Promise((resolve, reject) => pendingCoreTools.set(toolRequestId, { resolve, reject }));
+      write({ id: toolRequestId, method: 'aibo/tool-request', params: {
+        agentId, sessionId: session.id, nativeSessionId: session.nativeId, turnId: turn.id,
+        tool: 'read_file', input: { path: 'read-tool.png', action: 'read' },
+      } });
+      toolResult.then((result) => {
+        if (session.turn !== turn) return;
+        event(session, 'message.completed', { text: JSON.stringify(result), itemId: 'core-image-result' }, turn);
+        finish(session, 'completed');
+      }).catch(() => {
+        if (session.turn !== turn) return;
+        finish(session, 'failed');
+      });
+      return;
+    }
+    if (p.input.text === 'core read boundary') {
+      const toolRequestId = `echo-boundary-${id}`;
+      const toolResult = new Promise((resolve, reject) => pendingCoreTools.set(toolRequestId, { resolve, reject }));
+      write({ id: toolRequestId, method: 'aibo/tool-request', params: {
+        agentId, sessionId: session.id, nativeSessionId: session.nativeId, turnId: turn.id,
+        tool: 'read_file', input: { path: '../outside-read.txt', action: 'read' },
+      } });
+      toolResult.then(() => {
+        if (session.turn !== turn) return;
+        finish(session, 'failed');
+      }).catch(() => {
+        if (session.turn !== turn) return;
+        finish(session, 'completed');
       });
       return;
     }
