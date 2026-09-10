@@ -5260,11 +5260,20 @@ fn plugin_model_catalog(result: &serde_json::Value, reasoning: Option<&serde_jso
             .or_else(|| item.get("model").and_then(serde_json::Value::as_str))?.to_owned();
         let reference = item.get("reference").and_then(serde_json::Value::as_str).map(ToOwned::to_owned)
             .unwrap_or_else(|| provider.as_ref().map(|provider|format!("{provider}/{id}")).unwrap_or_else(||id.clone()));
-        let reasoning_efforts = item.get("supportedReasoningEfforts").or_else(||item.get("reasoningEfforts"))
+        let mut reasoning_efforts = item.get("supportedReasoningEfforts").or_else(||item.get("reasoningEfforts"))
             .and_then(serde_json::Value::as_array).into_iter().flatten().filter_map(|effort| {
                 let id = effort.as_str().or_else(||effort.get("reasoningEffort").and_then(serde_json::Value::as_str)).or_else(||effort.get("id").and_then(serde_json::Value::as_str))?.to_owned();
                 Some(SessionReasoningOption { label: effort.get("label").and_then(serde_json::Value::as_str).unwrap_or(&id).to_owned(), description: effort.get("description").and_then(serde_json::Value::as_str).map(ToOwned::to_owned), id })
-            }).collect();
+            }).collect::<Vec<_>>();
+        // Pi SDK descriptors carry per-model capability metadata instead of
+        // the normalized effort array. The session-level list only describes
+        // the current model and cannot populate the other matrix rows.
+        if item.get("supportedReasoningEfforts").is_none()
+            && item.get("reasoningEfforts").is_none()
+            && item.get("reasoning").and_then(serde_json::Value::as_bool).is_some()
+        {
+            reasoning_efforts = pi::pi_model_reasoning_efforts(item);
+        }
         Some(SessionModelOption { label: item.get("displayName").or_else(||item.get("name")).and_then(serde_json::Value::as_str).unwrap_or(&reference).to_owned(),
             description: item.get("description").and_then(serde_json::Value::as_str).map(ToOwned::to_owned), is_default: item.get("isDefault").and_then(serde_json::Value::as_bool).unwrap_or(false),
             default_reasoning_effort: item.get("defaultReasoningEffort").and_then(serde_json::Value::as_str).map(ToOwned::to_owned), reference, provider, id, reasoning_efforts })
@@ -6961,5 +6970,32 @@ mod tests {
         assert_eq!(catalog.models[0].reasoning_efforts[1].label, "High");
         assert_eq!(catalog.current_reasoning_effort.as_deref(), Some("high"));
         assert_eq!(catalog.reasoning_efforts.len(), 2);
+    }
+
+    #[test]
+    fn plugin_model_catalog_preserves_pi_per_model_reasoning_matrix() {
+        let catalog = plugin_model_catalog(
+            &serde_json::json!({
+                "current": {"provider": "test", "id": "plain"},
+                "models": [
+                    {"provider": "test", "id": "plain", "reasoning": false},
+                    {"provider": "test", "id": "thinking", "reasoning": true},
+                    {"provider": "test", "id": "extended", "reasoning": true,
+                     "thinkingLevelMap": {"minimal": null, "xhigh": "xhigh", "max": "max"}},
+                    {"provider": "test", "id": "explicit", "reasoning": true,
+                     "reasoningEfforts": []}
+                ]
+            }),
+            Some(&serde_json::json!({"current": "off", "levels": ["off"]})),
+        ).expect("normalize Pi SDK model descriptors");
+        let efforts = |index: usize| catalog.models[index].reasoning_efforts.iter()
+            .map(|option| option.id.as_str()).collect::<Vec<_>>();
+        assert_eq!(efforts(0), vec!["off"]);
+        assert_eq!(efforts(1), vec!["off", "minimal", "low", "medium", "high"]);
+        assert_eq!(efforts(2), vec!["off", "low", "medium", "high", "xhigh", "max"]);
+        assert!(efforts(3).is_empty(), "explicit plugin effort lists take precedence");
+        assert_eq!(catalog.current.as_ref().unwrap().reference, "test/plain");
+        assert_eq!(catalog.current.as_ref().unwrap().reasoning_efforts[0].id, "off");
+        assert_eq!(catalog.current_reasoning_effort.as_deref(), Some("off"));
     }
 }

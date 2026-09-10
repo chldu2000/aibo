@@ -60,7 +60,7 @@ pub(crate) fn truncate_command_output(output: &str) -> String {
     )
 }
 
-fn pi_model_reasoning_efforts(model: &Value) -> Vec<SessionReasoningOption> {
+pub(crate) fn pi_model_reasoning_efforts(model: &Value) -> Vec<SessionReasoningOption> {
     let reasoning = model
         .get("reasoning")
         .and_then(Value::as_bool)
