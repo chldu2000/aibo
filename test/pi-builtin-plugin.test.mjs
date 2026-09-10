@@ -320,7 +320,22 @@ test('bundled Pi SDK abort closes the active turn and permits the next turn', { 
   await request('turn.cancel', { ...scope, turnId: 'abort-turn' });
   assert.equal((await interrupted).params.payload.status, 'interrupted');
   const completed = client.waitFor((message) => message.method === 'agent/event' && message.params.type === 'turn.completed' && message.params.turnId === 'after-abort');
-  await request('turn.send', { ...scope, turnId: 'after-abort', input: { text: 'after abort', attachments: [] } });
+  const longMessage = 'after abort '.repeat(100).trim();
+  await request('turn.send', { ...scope, turnId: 'after-abort', input: { text: longMessage, attachments: [] } });
   assert.equal((await completed).params.payload.status, 'completed');
+  const operation = (operationId, input = {}) => request('operation.invoke', { ...scope, operationId, input });
+  const before = (await operation('ext.dev.aibo.pi.snapshot')).output;
+  const previousLeaf = before.leafId;
+  const user = before.branch.findLast((entry) => entry.role === 'user');
+  assert.ok(user);
+  assert.equal(user.summary, longMessage, 'timeline snapshots must preserve text beyond the tree label limit');
+  const navigation = (await operation('ext.dev.aibo.pi.tree', { action: 'navigate', entryId: user.id, summarize: false })).output;
+  assert.equal(navigation.leafId, user.id);
+  const after = (await operation('ext.dev.aibo.pi.snapshot')).output;
+  assert.equal(after.branch.at(-1).id, user.id);
+  assert.ok(!after.branch.some((entry) => entry.id === previousLeaf));
+  // Navigating back must restore the original branch without deleting it.
+  await operation('ext.dev.aibo.pi.tree', { action: 'navigate', entryId: previousLeaf, summarize: false });
+  assert.deepEqual((await operation('ext.dev.aibo.pi.snapshot')).output.branch, before.branch);
   await request('session.close', { agentId: scope.agentId, sessionId: scope.sessionId });
 });

@@ -80,8 +80,11 @@ export function createPiTreeController(context: PiTreeControllerContext) {
         context.setNotice('Pi 分支切换已取消。');
         return false;
       } else {
+        if (context.getSelectedSessionId() !== sessionId) return false;
         context.setPiTree(navigation);
-        context.setTimeline(await context.api.getTimeline(sessionId));
+        const timeline = await context.api.getTimeline(sessionId);
+        if (context.getSelectedSessionId() !== sessionId) return false;
+        context.setTimeline(timeline);
         if (navigation.editorText !== null) context.setComposerText(navigation.editorText);
         context.setNotice('Pi 会话已切换到选定分支；原分支仍保留在会话树中。');
         return true;

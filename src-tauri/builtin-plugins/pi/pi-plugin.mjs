@@ -135,7 +135,10 @@ function sdkEntry(entry) {
   if (!entry || typeof entry !== 'object') return undefined;
   return { id: entry.id, parentId: entry.parentId ?? null, type: entry.type, timestamp: entry.timestamp,
     role: entry.message?.role, toolName: entry.message?.toolName, stopReason: entry.message?.stopReason,
-    isError: entry.message?.isError, summary: sdkTreeSummary(entry) };
+    // Branch snapshots feed the timeline; only tree node labels are truncated.
+    isError: entry.message?.isError, summary: entry.type === 'message'
+      ? sdkMessageSummary(entry.message)
+      : typeof entry.summary === 'string' ? entry.summary : sdkTreeSummary(entry) };
 }
 function sdkExtensionEntry(entry) {
   if (!entry || typeof entry !== 'object') return undefined;

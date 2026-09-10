@@ -1815,6 +1815,19 @@ async fn get_timeline(
     session_id: String,
     state: State<'_, AppState>,
 ) -> Result<Vec<TimelineItem>, CoreError> {
+    let session = session_by_id(&state.db, &session_id).await?;
+    if session.agent == "dev.aibo.pi.agent"
+        && session.plugin_installation_id.is_some()
+        && !session.archived
+    {
+        // Core messages are an append-only history across all Pi branches.
+        // Read the native active branch on every refresh, including after
+        // navigation and when returning to an already-open session.
+        let snapshot = state.plugins.invoke_capability(
+            &session_id, "session.snapshot", serde_json::json!({}),
+        ).await.map_err(CoreError::Initialization)?;
+        return Ok(pi_snapshot_timeline(&snapshot, &session_id));
+    }
     let rows = sqlx::query(
         "SELECT id, session_id, turn_id, external_message_id, role, tool_name, content,
                 status, created_at, updated_at
