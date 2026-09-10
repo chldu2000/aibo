@@ -344,7 +344,6 @@
   const draftWriteTimers = new Map<string, ReturnType<typeof setTimeout>>();
   let restoringSelection = $state(false);
   let sessionsLoadingWorkspaceIds = $state<string[]>([]);
-  let sessionLoadGenerations = $state<Record<string, number>>({});
   let composerText = $state('');
   let workspacePathSuggestions = $state<WorkspacePathSuggestion[]>([]);
   let agentCommands = $state<AgentCommand[]>([]);
@@ -3040,7 +3039,6 @@
     getSessionFilter: () => sessionFilter,
     getWorkspaceSessions,
     getWorkspaceSessionMap: () => workspaceSessionMap,
-    getSessionLoadGenerations: () => sessionLoadGenerations,
     getSessionsLoadingWorkspaceIds: () => sessionsLoadingWorkspaceIds,
     setWorkspaces: (value) => (workspaces = value),
     setDiagnostics: (value) => (diagnostics = value),
@@ -3048,7 +3046,6 @@
     setSelectedSessionId: (value) => (selectedSessionId = value),
     setExpandedWorkspaceIds: (value) => (expandedWorkspaceIds = value),
     setWorkspaceSessionMap: (value) => (workspaceSessionMap = value),
-    setSessionLoadGenerations: (value) => (sessionLoadGenerations = value),
     setSessionsLoadingWorkspaceIds: (value) => (sessionsLoadingWorkspaceIds = value),
     setBusy: (value) => (busy = value),
     setErrorMessage: (value) => (errorMessage = value),

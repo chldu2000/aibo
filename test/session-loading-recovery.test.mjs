@@ -3,6 +3,7 @@ import { readFile } from 'node:fs/promises';
 import test from 'node:test';
 
 import { withTimeout } from '../src/lib/app/async-timeout.ts';
+import { createLatestRequestTracker } from '../src/lib/app/latest-request-tracker.ts';
 import { reconcileSessionRefresh } from '../src/lib/app/session-transitions.ts';
 
 function session(id, state = 'idle') {
@@ -14,6 +15,16 @@ test('session request timeout rejects instead of leaving the UI pending forever'
     withTimeout(new Promise(() => {}), 5, 'session timeout'),
     /session timeout/,
   );
+});
+
+test('session request generations advance synchronously outside reactive UI state', () => {
+  const tracker = createLatestRequestTracker();
+  const first = tracker.begin('workspace');
+  const second = tracker.begin('workspace');
+
+  assert.equal(tracker.isLatest('workspace', first), false);
+  assert.equal(tracker.isLatest('workspace', second), true);
+  assert.equal(tracker.isLatest('other-workspace', second), false);
 });
 
 test('workspace sidebar preserves cached sessions while a refresh is pending', async () => {

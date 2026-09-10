@@ -19,6 +19,7 @@ import type { PersistedSelection } from './selection-storage';
 import { withTimeout } from './async-timeout';
 import { ensureWorkspaceExpanded, reconcileSessionRefresh, workspaceIdsForRefresh } from './session-transitions';
 import { toErrorMessage } from './error-utils';
+import { createLatestRequestTracker } from './latest-request-tracker';
 
 const SESSION_LIST_TIMEOUT_MS = 10_000;
 
@@ -40,7 +41,6 @@ export type RefreshControllerContext = {
   getSessionFilter: () => SessionFilter;
   getWorkspaceSessions: (workspaceId: string) => Session[];
   getWorkspaceSessionMap: () => Record<string, Session[]>;
-  getSessionLoadGenerations: () => Record<string, number>;
   getSessionsLoadingWorkspaceIds: () => string[];
   setWorkspaces: (value: Workspace[]) => void;
   setDiagnostics: (value: AgentDiagnostic[]) => void;
@@ -48,7 +48,6 @@ export type RefreshControllerContext = {
   setSelectedSessionId: (value: string | null) => void;
   setExpandedWorkspaceIds: (value: string[]) => void;
   setWorkspaceSessionMap: (value: Record<string, Session[]>) => void;
-  setSessionLoadGenerations: (value: Record<string, number>) => void;
   setSessionsLoadingWorkspaceIds: (value: string[]) => void;
   setBusy: (value: boolean) => void;
   setErrorMessage: (value: string | null) => void;
@@ -81,8 +80,10 @@ export type RefreshControllerContext = {
 };
 
 export function createRefreshController(context: RefreshControllerContext) {
+  const sessionRequests = createLatestRequestTracker();
+
   function finishSessionListLoading(workspaceId: string, generation: number): void {
-    if (context.getSessionLoadGenerations()[workspaceId] !== generation) return;
+    if (!sessionRequests.isLatest(workspaceId, generation)) return;
     context.setSessionsLoadingWorkspaceIds(
       context.getSessionsLoadingWorkspaceIds().filter((id) => id !== workspaceId),
     );
@@ -106,12 +107,7 @@ export function createRefreshController(context: RefreshControllerContext) {
   }
 
   async function refreshSessions(workspaceId: string): Promise<void> {
-    const currentGeneration = context.getSessionLoadGenerations()[workspaceId] ?? 0;
-    const generation = currentGeneration + 1;
-    context.setSessionLoadGenerations({
-      ...context.getSessionLoadGenerations(),
-      [workspaceId]: generation,
-    });
+    const generation = sessionRequests.begin(workspaceId);
     if (!context.getSessionsLoadingWorkspaceIds().includes(workspaceId)) {
       context.setSessionsLoadingWorkspaceIds([
         ...context.getSessionsLoadingWorkspaceIds(),
@@ -132,7 +128,7 @@ export function createRefreshController(context: RefreshControllerContext) {
         SESSION_LIST_TIMEOUT_MS,
         '加载会话超时；已保留当前会话列表，请稍后重试。',
       );
-      if (context.getSessionLoadGenerations()[workspaceId] !== generation) return;
+      if (!sessionRequests.isLatest(workspaceId, generation)) return;
       const reconciledSessions = reconcileSessionRefresh(
         previousSessions,
         context.getWorkspaceSessions(workspaceId),
@@ -175,7 +171,7 @@ export function createRefreshController(context: RefreshControllerContext) {
         context.clearSelectedSessionContext();
       }
     } catch (error) {
-      if (context.getSessionLoadGenerations()[workspaceId] === generation) {
+      if (sessionRequests.isLatest(workspaceId, generation)) {
         context.setErrorMessage(toErrorMessage(error));
       }
     } finally {
