@@ -237,12 +237,11 @@
         {@const workspaceSessions = sessionsByWorkspace[workspace.id] ?? []}
         <div class:expanded={workspaceExpanded} class="workspace-group">
           <div
-            class:selected={workspace.id === selectedWorkspaceId}
             class:session-creator-open={createSessionWorkspaceId === workspace.id}
             class="workspace-item-row"
           >
             <Button
-              variant={workspace.id === selectedWorkspaceId ? 'secondary' : 'ghost'}
+              variant="ghost"
               class="workspace-item"
               type="button"
               aria-expanded={workspaceExpanded}

@@ -58,7 +58,6 @@ export function createNavigationController(context: NavigationControllerContext)
       context.setProjectActionRuns([]);
       context.setWorkspaceCapabilities(null);
       if (context.getDesktop()) {
-        void context.refreshSessions(workspaceId);
         void context.refreshCodexThreads(workspaceId);
         void context.refreshWorkspaceChanges(workspaceId);
         void context.refreshProjectActions(workspaceId);
@@ -68,12 +67,6 @@ export function createNavigationController(context: NavigationControllerContext)
   }
 
   function selectWorkspace(workspaceId: string): void {
-    const isCurrentWorkspace = workspaceId === context.getSelectedWorkspaceId();
-    if (!isCurrentWorkspace) {
-      context.setProjectActions([]);
-      context.setProjectActionRuns([]);
-      context.setWorkspaceCapabilities(null);
-    }
     const isExpanded = context.getExpandedWorkspaceIds().includes(workspaceId);
     context.setExpandedWorkspaceIds(
       toggleWorkspaceExpanded(context.getExpandedWorkspaceIds(), workspaceId),
@@ -84,14 +77,8 @@ export function createNavigationController(context: NavigationControllerContext)
       }
     } else if (context.getDesktop()) {
       void context.refreshSessions(workspaceId);
-      void context.refreshCodexThreads(workspaceId);
-      void context.refreshWorkspaceChanges(workspaceId);
-      void context.refreshProjectActions(workspaceId);
-      void context.refreshWorkspaceCapabilities(workspaceId);
     }
-    // Expanding or collapsing a workspace only changes the list context. Keep the
-    // conversation currently open in the main pane until the user selects a session.
-    context.setSelectedWorkspaceId(workspaceId);
+    // Workspace rows only control disclosure, never the conversation context.
     context.setNotice(null);
   }
 
@@ -117,7 +104,9 @@ export function createNavigationController(context: NavigationControllerContext)
   }
 
   function toggleSessionCreator(workspaceId: string): void {
-    activateWorkspace(workspaceId);
+    context.setExpandedWorkspaceIds(
+      ensureWorkspaceExpanded(context.getExpandedWorkspaceIds(), workspaceId),
+    );
     context.setCreateSessionWorkspaceId(
       context.getCreateSessionWorkspaceId() === workspaceId ? null : workspaceId,
     );

@@ -142,6 +142,9 @@ export function createRefreshController(context: RefreshControllerContext) {
       // the selected session's timeline/profile/context is hydrated below.
       finishSessionListLoading(workspaceId, generation);
       if (workspaceId !== context.getSelectedWorkspaceId()) return;
+      // Navigation during the request owns the selected pane. A list response
+      // may update its cache but must not clear or hydrate a newer selection.
+      if (selectedSessionId !== context.getSelectedSessionId()) return;
 
       const rememberedSessionId =
         context.getRestoringSelection() && context.getPersistedSelection()?.workspaceId === workspaceId

@@ -2817,11 +2817,6 @@
   }
 
   function selectWorkspace(id: string) {
-    if (id !== selectedWorkspaceId) {
-      projectActionRuns = [];
-      closeWorkspaceFileDiff();
-      closeWorkspaceCommitFiles();
-    }
     navigationController.selectWorkspace(id);
   }
 
