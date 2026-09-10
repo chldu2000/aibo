@@ -30,6 +30,19 @@ test('workspace sidebar preserves cached sessions while a refresh is pending', a
   assert.match(source, /aria-busy=\{sessionsLoadingWorkspaceIds\.includes\(workspace\.id\)\}/);
 });
 
+test('nested session list cannot collapse into its own zero-height scroll container', async () => {
+  const source = await readFile(
+    new URL('../src/lib/ui-kit/kits/base.css', import.meta.url),
+    'utf8',
+  );
+  const rule = source.match(/\.session-list\s*\{([^}]*)\}/)?.[1] ?? '';
+
+  assert.ok(rule, 'the session-list layout rule must exist');
+  assert.doesNotMatch(rule, /overflow-y\s*:\s*auto/);
+  assert.doesNotMatch(rule, /min-height\s*:\s*0/);
+  assert.match(source, /\.workspace-list\s*\{[^}]*overflow-y\s*:\s*auto/);
+});
+
 test('Pi creation timeout reloads and recovers a newly persisted idle session', async () => {
   const source = await readFile(
     new URL('../src/lib/app/agent-session-controller.ts', import.meta.url),

@@ -117,7 +117,7 @@ h2 { font-size: 16px; letter-spacing: -0.02em; }
 .session-search-input { min-width: 0; flex: 1; }
 .session-filter-select { width: 88px; min-width: 0; height: 30px; border: 1px solid var(--aibo-border); border-radius: 6px; padding: 0 7px; color: var(--aibo-text); background: var(--aibo-surface); font-size: 10px; outline: none; }
 .session-filter-select:focus-visible { border-color: var(--aibo-focus); box-shadow: 0 0 0 3px color-mix(in srgb, var(--aibo-focus) 14%, transparent); }
-.session-list { display: grid; min-height: 0; min-width: 0; align-content: start; gap: 1px; overflow-y: auto; overscroll-behavior: contain; }
+.session-list { display: grid; min-width: 0; align-content: start; gap: 1px; }
 .session-item-row { position: relative; display: grid; min-width: 0; }
 .session-item { width: 100%; min-width: 0; max-width: none; height: auto; min-height: 38px; justify-content: flex-start; gap: 8px; border-radius: 8px; padding: 6px 9px; text-align: left; font-size: 12px; }
 .session-item-row.is-renaming .session-item { display: none; }
