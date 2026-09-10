@@ -1,7 +1,6 @@
 <script lang="ts">
   import { AgentStatusMark, Button, Card, CardHeader, CardTitle, Icon, Input } from '$lib/ui-kit';
   import type { SessionFilter } from '$lib/types';
-  import { sessionAgentKind } from '$lib/app/agent-kind';
   import { relativeTimeLabel, sessionStateLabel, sessionStatusTone, isSessionRunning } from './session-utils';
   import type { SessionListItem, WorkspaceListItem } from './view-types';
 
@@ -325,6 +324,7 @@
               {#if workspaceSessions.length > 0}
                 <div class="session-list" aria-label="Agent 会话列表">
                   {#each workspaceSessions as session (session.id)}
+                    {@const agentLabel = session.agent === 'pi' ? 'Pi' : session.agent === 'codex' ? 'Codex' : 'Plugin'}
                     <div class:selected={session.id === selectedSessionId} class:is-renaming={renamingSessionId === session.id} class="session-item-row">
                       {#if renamingSessionId === session.id}
                         <div class="session-rename-inline">
@@ -353,15 +353,15 @@
                           variant={session.id === selectedSessionId ? 'secondary' : 'ghost'}
                           type="button"
                           class="session-item"
-                          aria-label={`${session.label}，${sessionAgentKind(session) === 'pi' ? 'Pi' : 'Codex'}，${sessionStateLabel(session)}`}
-                          title={`${sessionAgentKind(session) === 'pi' ? 'Pi' : 'Codex'} · ${sessionStateLabel(session)}`}
+                          aria-label={`${session.label}，${agentLabel}，${sessionStateLabel(session)}`}
+                          title={`${agentLabel} · ${sessionStateLabel(session)}`}
                           onclick={() => onSelectSession(session.id)}
                           disabled={archivingSessionId === session.id}
                         >
                           <AgentStatusMark
-                            agent={sessionAgentKind(session)}
+                            agent={session.agent}
                             tone={sessionStatusTone(session)}
-                            label={`${sessionAgentKind(session) === 'pi' ? 'Pi' : 'Codex'}，${sessionStateLabel(session)}`}
+                            label={`${agentLabel}，${sessionStateLabel(session)}`}
                           />
                           <span class="session-item-label">{session.label}</span>
                           <time class="session-updated" datetime={session.updatedAt}>
@@ -373,7 +373,7 @@
                             <Button variant="ghost" size="icon" type="button" aria-label="取消归档" title="取消归档" onclick={() => onUnarchiveSession(session.id)} disabled={busy}>
                               <Icon name="archive-restore" size={13} />
                             </Button>
-                          {:else if sessionAgentKind(session) === 'codex'}
+                          {:else if session.agent === 'codex'}
                             <Button variant="ghost" size="icon" type="button" aria-label="归档会话" title="归档" onclick={() => onRequestArchiveSession(session.id)} disabled={busy || isSessionRunning(session) || archivingSessionId !== null}>
                               <Icon name="archive" size={13} />
                             </Button>
