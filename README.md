@@ -4,6 +4,8 @@ Aibo is a local multi-agent workbench. It owns workspace and session management,
 
 The first supported runtimes are Codex and Pi. The product architecture and phased delivery plan are documented in [docs/aibo-research-and-delivery-plan.md](docs/aibo-research-and-delivery-plan.md); the macOS-first freeze is recorded in [docs/architecture-freeze.md](docs/architecture-freeze.md).
 
+The proposed evolution toward a plugin host, capability plugins, and UI plugins is described in [docs/plugin-platform-evolution.md](docs/plugin-platform-evolution.md).
+
 ## Current status
 
 Phase 0 protocol probes are complete on the local macOS validation host, and the architecture is frozen for a macOS-first release. Codex App Server and both Pi paths (the locked SDK host and the RPC compatibility path) have passed the recorded protocol/history probes; real-model smoke still depends on native agent credentials. Windows is a follow-up compatibility gate after native Pi login. Phase 1 Codex real-session acceptance is complete on the local macOS host: the Svelte 5 + Tauri 2 shell, Rust Core, SQLite projection, stdio App Server adapter, streaming timeline, interruption, and restart resume passed the real UI gate. Phase 2 covers explicit approval, normalized tool/usage projection, binding checks, and typed Codex thread list/read/fork/archive/unarchive APIs. The macOS Phase 3 gate is now complete: Pi uses a SDK host with create/open, streaming, abort, steer/follow-up, session-tree inspection/navigation, lifecycle projection, crash/reopen recovery, and a handoff snapshot seam; it exposes read-only tools and explicitly does not claim a native sandbox. Windows compatibility remains the next platform gate before Phase 4.
