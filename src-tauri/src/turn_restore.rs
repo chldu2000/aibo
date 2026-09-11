@@ -51,8 +51,7 @@ async fn read_file(root: &Path, path: &str) -> Result<(Option<Vec<u8>>, Value), 
 }
 
 async fn git_read(root: &Path, args: &[&str], deadline: Instant) -> Result<Vec<u8>, CoreError> {
-    let mut command = tokio::process::Command::new("git");
-    command.arg("--literal-pathspecs").arg("-C").arg(root).args(args).env("GIT_OPTIONAL_LOCKS", "0").env("GIT_TERMINAL_PROMPT", "0");
+    let command = crate::workspace_git_approval::read_command(root.to_str().ok_or_else(|| invalid("Git root is not UTF-8"))?, args);
     let result = crate::controlled_process::execute(command, deadline.saturating_duration_since(Instant::now()).min(Duration::from_secs(15)), 10 * 1024 * 1024 + 1).await.map_err(|error| invalid(error.to_string()))?;
     if !result.success || result.timed_out || result.stdout.len() > 10 * 1024 * 1024 || result.stderr.len() > 10 * 1024 * 1024 { return Err(invalid("Git restore baseline unavailable or exceeds bounds")); }
     Ok(result.stdout)

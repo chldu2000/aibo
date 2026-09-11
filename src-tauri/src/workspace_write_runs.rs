@@ -218,7 +218,7 @@ async fn prepare_approval(db: &SqlitePool, workspace: &Workspace, input: &Value)
         Some(context.ok_or_else(|| CoreError::InvalidWorkspacePath("Git turn file context is no longer available".into()))?)
     } else { None };
     let fingerprint = crate::workspace_git_approval::fingerprint(&current.path).await?;
-    Ok(serde_json::json!({"root":root,"workspacePath":current.path,"workspaceTrust":current.trust,"workspaceUpdatedAt":current.updated_at,"session":session,"turn":turn,"repositoryFingerprint":fingerprint,"approvalDescription":"Git 操作可能执行仓库钩子、过滤器或修改远程引用。"}))
+    Ok(serde_json::json!({"root":root,"workspacePath":current.path,"workspaceTrust":current.trust,"workspaceUpdatedAt":current.updated_at,"session":session,"turn":turn,"repositoryFingerprint":fingerprint,"repositoryFingerprintSchema":"aibo.git-approval-fingerprint/v2","approvalDescription":"Git 操作可能执行仓库钩子、过滤器或修改远程引用。"}))
 }
 
 async fn await_approval(confirmation: impl Future<Output = Result<bool, String>>, cancellation: impl Future<Output = ()>, timeout: std::time::Duration) -> &'static str {

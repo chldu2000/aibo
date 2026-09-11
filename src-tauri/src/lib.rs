@@ -2654,13 +2654,7 @@ async fn load_turn_diff_sources(
                 "本轮前已有修改，且 baseline checkpoint 不可用".to_owned(),
             ));
         } else if let Some(head) = baseline_head.as_deref() {
-            let mut command = TokioCommand::new("git");
-            command.args([
-                    "-C",
-                    workspace_path,
-                    "show",
-                    &format!("{head}:{baseline_path}"),
-                ]);
+            let command = crate::workspace_git_approval::read_command(workspace_path, &["show", &format!("{head}:{baseline_path}")]);
             let output = crate::controlled_process::execute(command, std::time::Duration::from_secs(15), 10 * 1024 * 1024 + 1).await
                 .map_err(|error| {
                     TurnDiffSourceError::Failed(format!("read Git baseline: {error}"))

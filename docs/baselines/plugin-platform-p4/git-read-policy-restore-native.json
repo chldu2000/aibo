@@ -1,0 +1,18 @@
+{
+  "ok": true,
+  "mode": "turn-git",
+  "denial": true,
+  "replay": true,
+  "missingId": true,
+  "history": true,
+  "legacyAudit": true,
+  "renameRestored": true,
+  "readableAfterTrustRevocation": true,
+  "nativeClicks": [
+    "clicked isolated dialog: 取消",
+    "clicked isolated dialog: 允许本次执行"
+  ],
+  "platform": "darwin",
+  "worktreeVerified": true,
+  "indexAndWorktreeVerified": true
+}
