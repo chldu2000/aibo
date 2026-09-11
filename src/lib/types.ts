@@ -435,6 +435,8 @@ export interface ProjectAction {
 export interface WorkspaceWriteRun {
   schema: 'aibo.workspace-write-run/v1';
   id: string;
+  requestId?: string | null;
+  callerWindow?: string | null;
   workspaceId: string;
   operation: string;
   status: 'running' | 'completed' | 'failed' | 'outcome_unknown';

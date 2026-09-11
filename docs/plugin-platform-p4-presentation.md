@@ -472,3 +472,41 @@ Broker 写入仍待统一，P4 整体验收保持未完成。
 schema/输入/结果/时间及真实 Git index，同时复跑两套皮肤的任务批准与停止；
 证据见 [工作区写入历史验收](./baselines/plugin-platform-p4/workspace-write-history.json)。
 外层探针退出码 0；结束隔离 App 后的子 pnpm ELIFECYCLE 为主动清理产生。
+
+### Git 持久请求去重（第十九批）
+
+迁移 0034 为工作区写入记录增加 request_id、caller_window、request_json，并以
+(workspace_id, request_id) 建立唯一约束。旧记录保持空身份，仍可读取，不把旧 run
+ID 补造成客户端请求 ID。新历史响应增加可空 requestId/callerWindow 字段。
+
+工作区 Git 写 IPC 和 Core 整文件 stage/unstage 接收请求 ID；窗口身份由 Tauri
+注入，再由组合根构造内部 Request，不从前端 JSON 读取身份。请求 ID 限制为
+1–128 个 ASCII 字母、数字、连字符或下划线。内部生产服务要求显式 Request；
+不带身份的简写入口仅为 cfg(test) 的测试辅助方法。
+
+宿主短期串行接纳，先按工作区/请求 ID 查询，再获取写许可并原子保存意图；唯一
+约束兜底阻止相同 ID 重复接纳。同一 ID 换 operation、输入或窗口立即拒绝。
+原请求仍 running 时返回 workspace_write_busy，不取消或重复执行原请求；终态
+请求直接解码原类型结果，原错误也保留原 code/message。恢复为 outcome_unknown
+的请求仍返回该错误，不重放。返回解码不兼容时失败，不以重做写入修复历史。
+
+前端的窗口级写入控制器合并相同命令和完整输入的未结束提交，共用 Promise 和
+请求 ID；不同工作区、输入或显式请求 ID 分开处理。执行结束后明确再次操作生成
+新 ID，错误不会触发自动重试；需要重读某次请求时可显式传入原 ID。控制器存在于
+API 装配层，独立于 renderer 的挂载/卸载；宿主持久校验不依赖这层点击合并。
+
+测试覆盖并发同请求只执行一次、完成结果与失败错误重放、换操作/输入/窗口拒绝、
+非法 ID、重开数据库后结果仍可重读，以及中断 commit 恢复为未知后不增加提交。
+迁移测试验证旧结果、时间与无身份状态保留；前端测试验证连点合并、作用域区分、
+显式 ID 保留和无自动重试。原生探针重复提交同一暂存请求，核对只有一条历史及
+宿主 main 窗口身份，并拒绝同 ID 改输入和缺请求 ID 的调用。
+
+本批去重范围不包含 Core 的 revert、hunk 或 turn 基线恢复；这些旧路径仍待统一。
+Git 的审批、主动取消、通用 Broker 写入与独立宿主历史 UI 也仍未完成。当前窗口
+身份不是完整插件调用链身份，不据此开放第三方写能力或标记 P4 完成。
+
+第十九批验证：完整 Rust 测试 161 通过；`pnpm run verify` 的 23 项架构检查、
+147 项 Node 测试、类型及构建通过。macOS 原生探针验证同请求复用、输入冲突与
+缺请求 ID 拒绝、单条历史及 main 窗口身份，并核对真实 Git index 未被错误取消
+暂存；证据见 [工作区写入请求验收](./baselines/plugin-platform-p4/workspace-write-requests.json)。
+原生任务审批及两套皮肤停止验证也通过，外层探针退出码 0。

@@ -56,17 +56,18 @@ pub(crate) async fn apply_git_index_action(
     Ok(GitFileActionResult { path: path.into(), action: action.into(), applied: result.applied, message: result.message })
 }
 
-pub(crate) async fn apply_workspace_git_file_action(
+pub(crate) async fn apply_workspace_git_file_action_requested(
     db: &SqlitePool,
     workspace_id: String,
     path: String,
     action: String,
+    request: &crate::workspace_write_runs::Request,
 ) -> Result<GitFileActionResult, CoreError> {
     let workspace = workspace_by_id(db, &workspace_id).await?;
     if workspace.trust != "trusted" {
         return Err(CoreError::WorkspaceTrustRequired);
     }
-    crate::workspace_write_runs::execute(db, &workspace, "git.index", serde_json::json!({"path":path,"action":action}), || apply_git_index_action(&workspace.path, &path, &action)).await
+    crate::workspace_write_runs::execute_requested(db, &workspace, "git.index", serde_json::json!({"path":path,"action":action}), request, || apply_git_index_action(&workspace.path, &path, &action)).await
 }
 
 async fn run_git_workspace_action(workspace_path: &str, action: &str) -> Result<GitWorkspaceActionResult, CoreError> {
@@ -81,16 +82,17 @@ async fn run_git_workspace_action(workspace_path: &str, action: &str) -> Result<
     }
 }
 
-pub(crate) async fn apply_workspace_git_action(
+pub(crate) async fn apply_workspace_git_action_requested(
     db: &SqlitePool,
     workspace_id: String,
     action: String,
+    request: &crate::workspace_write_runs::Request,
 ) -> Result<GitWorkspaceActionResult, CoreError> {
     let workspace = workspace_by_id(db, &workspace_id).await?;
     if workspace.trust != "trusted" {
         return Err(CoreError::WorkspaceTrustRequired);
     }
-    crate::workspace_write_runs::execute(db, &workspace, "git.index-all", serde_json::json!({"action":action}), || run_git_workspace_action(&workspace.path, &action)).await
+    crate::workspace_write_runs::execute_requested(db, &workspace, "git.index-all", serde_json::json!({"action":action}), request, || run_git_workspace_action(&workspace.path, &action)).await
 }
 
 async fn commit_workspace(operation: &GitOperation<'_>, message: &str) -> Result<GitCommitResult, CoreError> {
@@ -112,16 +114,17 @@ async fn commit_workspace(operation: &GitOperation<'_>, message: &str) -> Result
     Ok(GitCommitResult { committed: true, hash, message: result.message })
 }
 
-pub(crate) async fn commit_workspace_changes(
+pub(crate) async fn commit_workspace_changes_requested(
     db: &SqlitePool,
     workspace_id: String,
     message: String,
+    request: &crate::workspace_write_runs::Request,
 ) -> Result<GitCommitResult, CoreError> {
     let workspace = workspace_by_id(db, &workspace_id).await?;
     if workspace.trust != "trusted" {
         return Err(CoreError::WorkspaceTrustRequired);
     }
-    crate::workspace_write_runs::execute(db, &workspace, "git.commit", serde_json::json!({"message":message}), || async { commit_workspace(&GitOperation::new(&workspace.path), &message).await }).await
+    crate::workspace_write_runs::execute_requested(db, &workspace, "git.commit", serde_json::json!({"message":message}), request, || async { commit_workspace(&GitOperation::new(&workspace.path), &message).await }).await
 }
 
 fn list_git_branches(workspace_path: &str) -> Result<Vec<GitBranch>, CoreError> {
@@ -190,30 +193,32 @@ fn validate_git_ref_name(name: &str) -> Result<(), CoreError> {
     Ok(())
 }
 
-pub(crate) async fn checkout_workspace_git_branch(
+pub(crate) async fn checkout_workspace_git_branch_requested(
     db: &SqlitePool,
     workspace_id: String,
     branch: String,
+    request: &crate::workspace_write_runs::Request,
 ) -> Result<GitWorkspaceActionResult, CoreError> {
     validate_git_ref_name(&branch)?;
     let workspace = workspace_by_id(db, &workspace_id).await?;
     if workspace.trust != "trusted" {
         return Err(CoreError::WorkspaceTrustRequired);
     }
-    crate::workspace_write_runs::execute(db, &workspace, "git.checkout", serde_json::json!({"branch":branch}), || async { GitOperation::new(&workspace.path).action(&["switch", "--", &branch], "checkout").await }).await
+    crate::workspace_write_runs::execute_requested(db, &workspace, "git.checkout", serde_json::json!({"branch":branch}), request, || async { GitOperation::new(&workspace.path).action(&["switch", "--", &branch], "checkout").await }).await
 }
 
-pub(crate) async fn create_workspace_git_branch(
+pub(crate) async fn create_workspace_git_branch_requested(
     db: &SqlitePool,
     workspace_id: String,
     branch: String,
+    request: &crate::workspace_write_runs::Request,
 ) -> Result<GitWorkspaceActionResult, CoreError> {
     validate_git_ref_name(&branch)?;
     let workspace = workspace_by_id(db, &workspace_id).await?;
     if workspace.trust != "trusted" {
         return Err(CoreError::WorkspaceTrustRequired);
     }
-    crate::workspace_write_runs::execute(db, &workspace, "git.create-branch", serde_json::json!({"branch":branch}), || async { GitOperation::new(&workspace.path).action(&["switch", "-c", &branch], "create_branch").await }).await
+    crate::workspace_write_runs::execute_requested(db, &workspace, "git.create-branch", serde_json::json!({"branch":branch}), request, || async { GitOperation::new(&workspace.path).action(&["switch", "-c", &branch], "create_branch").await }).await
 }
 
 fn list_git_history(workspace_path: &str, limit: u32) -> Result<Vec<GitCommit>, CoreError> {
@@ -478,17 +483,18 @@ pub(crate) async fn get_workspace_git_remote_status(
     git_remote_status(&workspace.path)
 }
 
-pub(crate) async fn sync_workspace_git(
+pub(crate) async fn sync_workspace_git_requested(
     db: &SqlitePool,
     workspace_id: String,
     action: String,
+    request: &crate::workspace_write_runs::Request,
 ) -> Result<GitWorkspaceActionResult, CoreError> {
     let workspace = workspace_by_id(db, &workspace_id).await?;
     if workspace.trust != "trusted" {
         return Err(CoreError::WorkspaceTrustRequired);
     }
     let command = git_sync_command(&workspace.path, &action)?;
-    crate::workspace_write_runs::execute(db, &workspace, "git.sync", serde_json::json!({"action":action}), || execute_git_action(command, action, Duration::from_secs(120))).await
+    crate::workspace_write_runs::execute_requested(db, &workspace, "git.sync", serde_json::json!({"action":action}), request, || execute_git_action(command, action, Duration::from_secs(120))).await
 }
 
 fn git_sync_command(workspace_path: &str, action: &str) -> Result<TokioCommand, CoreError> {
@@ -566,32 +572,107 @@ pub(crate) async fn list_workspace_git_stashes(
         .collect())
 }
 
-pub(crate) async fn apply_workspace_git_stash(
+pub(crate) async fn apply_workspace_git_stash_requested(
     db: &SqlitePool,
     workspace_id: String,
     reference: String,
+    request: &crate::workspace_write_runs::Request,
 ) -> Result<GitWorkspaceActionResult, CoreError> {
     validate_git_ref_name(&reference)?;
     let workspace = workspace_by_id(db, &workspace_id).await?;
     if workspace.trust != "trusted" {
         return Err(CoreError::WorkspaceTrustRequired);
     }
-    crate::workspace_write_runs::execute(db, &workspace, "git.stash-apply", serde_json::json!({"reference":reference}), || async { GitOperation::new(&workspace.path).action(&["stash", "apply", &reference], "stash_apply").await }).await
+    crate::workspace_write_runs::execute_requested(db, &workspace, "git.stash-apply", serde_json::json!({"reference":reference}), request, || async { GitOperation::new(&workspace.path).action(&["stash", "apply", &reference], "stash_apply").await }).await
 }
 
-pub(crate) async fn stash_workspace_git(
+pub(crate) async fn stash_workspace_git_requested(
     db: &SqlitePool,
     workspace_id: String,
     message: Option<String>,
+    request: &crate::workspace_write_runs::Request,
 ) -> Result<GitWorkspaceActionResult, CoreError> {
     let workspace = workspace_by_id(db, &workspace_id).await?;
     if workspace.trust != "trusted" {
         return Err(CoreError::WorkspaceTrustRequired);
     }
     let message = message.unwrap_or_else(|| "aibo workspace changes".to_owned());
-    crate::workspace_write_runs::execute(db, &workspace, "git.stash-push", serde_json::json!({"message":message}), || async { GitOperation::new(&workspace.path).action(&["stash", "push", "-u", "-m", &message], "stash_push").await }).await
+    crate::workspace_write_runs::execute_requested(db, &workspace, "git.stash-push", serde_json::json!({"message":message}), request, || async { GitOperation::new(&workspace.path).action(&["stash", "push", "-u", "-m", &message], "stash_push").await }).await
 }
 
+
+#[cfg(test)]
+pub(crate) async fn apply_workspace_git_file_action(
+    db: &SqlitePool,
+    workspace_id: String,
+    path: String,
+    action: String,
+) -> Result<GitFileActionResult, CoreError> {
+    apply_workspace_git_file_action_requested(db, workspace_id, path, action, &crate::workspace_write_runs::Request::test()).await
+}
+
+#[cfg(test)]
+pub(crate) async fn apply_workspace_git_action(
+    db: &SqlitePool,
+    workspace_id: String,
+    action: String,
+) -> Result<GitWorkspaceActionResult, CoreError> {
+    apply_workspace_git_action_requested(db, workspace_id, action, &crate::workspace_write_runs::Request::test()).await
+}
+
+#[cfg(test)]
+pub(crate) async fn commit_workspace_changes(
+    db: &SqlitePool,
+    workspace_id: String,
+    message: String,
+) -> Result<GitCommitResult, CoreError> {
+    commit_workspace_changes_requested(db, workspace_id, message, &crate::workspace_write_runs::Request::test()).await
+}
+
+#[cfg(test)]
+pub(crate) async fn checkout_workspace_git_branch(
+    db: &SqlitePool,
+    workspace_id: String,
+    branch: String,
+) -> Result<GitWorkspaceActionResult, CoreError> {
+    checkout_workspace_git_branch_requested(db, workspace_id, branch, &crate::workspace_write_runs::Request::test()).await
+}
+
+#[cfg(test)]
+pub(crate) async fn create_workspace_git_branch(
+    db: &SqlitePool,
+    workspace_id: String,
+    branch: String,
+) -> Result<GitWorkspaceActionResult, CoreError> {
+    create_workspace_git_branch_requested(db, workspace_id, branch, &crate::workspace_write_runs::Request::test()).await
+}
+
+#[cfg(test)]
+pub(crate) async fn sync_workspace_git(
+    db: &SqlitePool,
+    workspace_id: String,
+    action: String,
+) -> Result<GitWorkspaceActionResult, CoreError> {
+    sync_workspace_git_requested(db, workspace_id, action, &crate::workspace_write_runs::Request::test()).await
+}
+
+#[cfg(test)]
+pub(crate) async fn apply_workspace_git_stash(
+    db: &SqlitePool,
+    workspace_id: String,
+    reference: String,
+) -> Result<GitWorkspaceActionResult, CoreError> {
+    apply_workspace_git_stash_requested(db, workspace_id, reference, &crate::workspace_write_runs::Request::test()).await
+}
+
+#[cfg(test)]
+pub(crate) async fn stash_workspace_git(
+    db: &SqlitePool,
+    workspace_id: String,
+    message: Option<String>,
+) -> Result<GitWorkspaceActionResult, CoreError> {
+    stash_workspace_git_requested(db, workspace_id, message, &crate::workspace_write_runs::Request::test()).await
+}
 
 #[cfg(test)]
 mod tests {

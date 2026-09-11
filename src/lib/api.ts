@@ -1,3 +1,4 @@
+import { createWorkspaceWriteController } from './app/workspace-write-controller';
 import { invoke } from '@tauri-apps/api/core';
 import { listen, type UnlistenFn } from '@tauri-apps/api/event';
 import { getCurrentWindow } from '@tauri-apps/api/window';
@@ -53,6 +54,11 @@ import type {
   AgentCommand,
   ComposerDraft,
 } from './types';
+
+const workspaceWrites = createWorkspaceWriteController({
+  requestId: () => crypto.randomUUID(),
+  execute: <T>(command: import('./app/workspace-write-controller').WorkspaceWriteCommand, input: Record<string, unknown>, requestId: string) => invoke<T>(command, { ...input, requestId }),
+});
 
 export const isTauri = (): boolean =>
   typeof window !== 'undefined' && '__TAURI_INTERNALS__' in window;
@@ -312,20 +318,23 @@ export const applyWorkspaceGitFileAction = (
   workspaceId: string,
   path: string,
   action: Extract<GitFileAction, 'stage' | 'unstage'>,
+  requestId?: string,
 ): Promise<GitFileActionResult> =>
-  invoke<GitFileActionResult>('apply_workspace_git_file_action', { workspaceId, path, action });
+  workspaceWrites.invoke<GitFileActionResult>('apply_workspace_git_file_action', { workspaceId, path, action }, requestId);
 
 export const applyWorkspaceGitAction = (
   workspaceId: string,
   action: GitWorkspaceAction,
+  requestId?: string,
 ): Promise<GitWorkspaceActionResult> =>
-  invoke<GitWorkspaceActionResult>('apply_workspace_git_action', { workspaceId, action });
+  workspaceWrites.invoke<GitWorkspaceActionResult>('apply_workspace_git_action', { workspaceId, action }, requestId);
 
 export const commitWorkspaceChanges = (
   workspaceId: string,
   message: string,
+  requestId?: string,
 ): Promise<GitCommitResult> =>
-  invoke<GitCommitResult>('commit_workspace_changes', { workspaceId, message });
+  workspaceWrites.invoke<GitCommitResult>('commit_workspace_changes', { workspaceId, message }, requestId);
 
 export const listWorkspaceGitBranches = (workspaceId: string): Promise<GitBranch[]> =>
   invoke<GitBranch[]>('list_workspace_git_branches', { workspaceId });
@@ -333,14 +342,16 @@ export const listWorkspaceGitBranches = (workspaceId: string): Promise<GitBranch
 export const checkoutWorkspaceGitBranch = (
   workspaceId: string,
   branch: string,
+  requestId?: string,
 ): Promise<GitWorkspaceActionResult> =>
-  invoke<GitWorkspaceActionResult>('checkout_workspace_git_branch', { workspaceId, branch });
+  workspaceWrites.invoke<GitWorkspaceActionResult>('checkout_workspace_git_branch', { workspaceId, branch }, requestId);
 
 export const createWorkspaceGitBranch = (
   workspaceId: string,
   branch: string,
+  requestId?: string,
 ): Promise<GitWorkspaceActionResult> =>
-  invoke<GitWorkspaceActionResult>('create_workspace_git_branch', { workspaceId, branch });
+  workspaceWrites.invoke<GitWorkspaceActionResult>('create_workspace_git_branch', { workspaceId, branch }, requestId);
 
 export const listWorkspaceGitHistory = (
   workspaceId: string,
@@ -369,8 +380,9 @@ export const getWorkspaceGitRemoteStatus = (workspaceId: string): Promise<GitRem
 export const syncWorkspaceGit = (
   workspaceId: string,
   action: GitSyncAction,
+  requestId?: string,
 ): Promise<GitWorkspaceActionResult> =>
-  invoke<GitWorkspaceActionResult>('sync_workspace_git', { workspaceId, action });
+  workspaceWrites.invoke<GitWorkspaceActionResult>('sync_workspace_git', { workspaceId, action }, requestId);
 
 export const listWorkspaceGitStashes = (workspaceId: string): Promise<GitStashEntry[]> =>
   invoke<GitStashEntry[]>('list_workspace_git_stashes', { workspaceId });
@@ -378,14 +390,16 @@ export const listWorkspaceGitStashes = (workspaceId: string): Promise<GitStashEn
 export const applyWorkspaceGitStash = (
   workspaceId: string,
   reference: string,
+  requestId?: string,
 ): Promise<GitWorkspaceActionResult> =>
-  invoke<GitWorkspaceActionResult>('apply_workspace_git_stash', { workspaceId, reference });
+  workspaceWrites.invoke<GitWorkspaceActionResult>('apply_workspace_git_stash', { workspaceId, reference }, requestId);
 
 export const stashWorkspaceGit = (
   workspaceId: string,
   message?: string,
+  requestId?: string,
 ): Promise<GitWorkspaceActionResult> =>
-  invoke<GitWorkspaceActionResult>('stash_workspace_git', { workspaceId, message: message ?? null });
+  workspaceWrites.invoke<GitWorkspaceActionResult>('stash_workspace_git', { workspaceId, message: message ?? null }, requestId);
 
 export const getTurnFileDiff = (
   sessionId: string,
@@ -398,13 +412,14 @@ export const applyGitFileAction = (
   path: string,
   action: GitFileAction,
   turnId?: string | null,
+  requestId?: string,
 ): Promise<GitFileActionResult> =>
-  invoke<GitFileActionResult>('apply_git_file_action', {
+  workspaceWrites.invoke<GitFileActionResult>('apply_git_file_action', {
     sessionId,
     path,
     action,
     turnId: turnId ?? null,
-  });
+  }, requestId);
 
 export const applyGitHunkAction = (
   sessionId: string,

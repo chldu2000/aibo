@@ -33,7 +33,7 @@ use execution_profile::{
     save_for_session as save_session_profile, ExecutionProfile, ResolvedExecutionProfile,
     SessionExecutionProfile,
 };
-use serde::Serialize;
+use serde::{Serialize, Deserialize};
 use sha2::{Digest, Sha256};
 use sqlx::{
     sqlite::{SqliteConnectOptions, SqliteJournalMode, SqlitePoolOptions},
@@ -429,7 +429,7 @@ pub struct TurnDiffHunk {
     pub(crate) content: String,
 }
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct GitFileActionResult {
     pub(crate) path: String,
@@ -438,7 +438,7 @@ pub struct GitFileActionResult {
     pub(crate) message: String,
 }
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct GitWorkspaceActionResult {
     pub(crate) action: String,
@@ -446,7 +446,7 @@ pub struct GitWorkspaceActionResult {
     pub(crate) message: String,
 }
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct GitCommitResult {
     pub(crate) committed: bool,
@@ -561,6 +561,8 @@ pub enum CoreError {
     WorkspaceWriteBusy,
     #[error("写入结果未知，请核对实际更改后再操作：{0}")]
     WriteOutcomeUnknown(String),
+    #[error("{message}")]
+    WriteReplay { code: String, message: String },
     #[error("session not found: {0}")]
     SessionNotFound(String),
     #[error("session must be idle before its execution profile can change")]
@@ -590,7 +592,7 @@ impl Serialize for CoreError {
     {
         #[derive(Serialize)]
         struct ErrorPayload<'a> {
-            code: &'static str,
+            code: &'a str,
             message: &'a str,
         }
 
@@ -600,6 +602,7 @@ impl Serialize for CoreError {
             Self::WorkspaceTrustRequired => "workspace_trust_required",
             Self::WorkspaceWriteBusy => "workspace_write_busy",
             Self::WriteOutcomeUnknown(_) => "outcome_unknown",
+            Self::WriteReplay { code, .. } => code.as_str(),
             Self::SessionNotFound(_) => "session_not_found",
             Self::SessionBusy => "session_busy",
             Self::InvalidSessionLabel(_) => "invalid_session_label",
@@ -3169,27 +3172,36 @@ async fn apply_workspace_git_file_action(
     workspace_id: String,
     path: String,
     action: String,
+    request_id: String,
+    window: tauri::WebviewWindow,
     state: State<'_, AppState>,
 ) -> Result<GitFileActionResult, CoreError> {
-    workspace_git::apply_workspace_git_file_action(&state.db, workspace_id, path, action).await
+    let request = workspace_write_runs::Request::new(request_id, window.label().into());
+    workspace_git::apply_workspace_git_file_action_requested(&state.db, workspace_id, path, action, &request).await
 }
 
 #[tauri::command]
 async fn apply_workspace_git_action(
     workspace_id: String,
     action: String,
+    request_id: String,
+    window: tauri::WebviewWindow,
     state: State<'_, AppState>,
 ) -> Result<GitWorkspaceActionResult, CoreError> {
-    workspace_git::apply_workspace_git_action(&state.db, workspace_id, action).await
+    let request = workspace_write_runs::Request::new(request_id, window.label().into());
+    workspace_git::apply_workspace_git_action_requested(&state.db, workspace_id, action, &request).await
 }
 
 #[tauri::command]
 async fn commit_workspace_changes(
     workspace_id: String,
     message: String,
+    request_id: String,
+    window: tauri::WebviewWindow,
     state: State<'_, AppState>,
 ) -> Result<GitCommitResult, CoreError> {
-    workspace_git::commit_workspace_changes(&state.db, workspace_id, message).await
+    let request = workspace_write_runs::Request::new(request_id, window.label().into());
+    workspace_git::commit_workspace_changes_requested(&state.db, workspace_id, message, &request).await
 }
 
 #[tauri::command]
@@ -3204,18 +3216,24 @@ async fn list_workspace_git_branches(
 async fn checkout_workspace_git_branch(
     workspace_id: String,
     branch: String,
+    request_id: String,
+    window: tauri::WebviewWindow,
     state: State<'_, AppState>,
 ) -> Result<GitWorkspaceActionResult, CoreError> {
-    workspace_git::checkout_workspace_git_branch(&state.db, workspace_id, branch).await
+    let request = workspace_write_runs::Request::new(request_id, window.label().into());
+    workspace_git::checkout_workspace_git_branch_requested(&state.db, workspace_id, branch, &request).await
 }
 
 #[tauri::command]
 async fn create_workspace_git_branch(
     workspace_id: String,
     branch: String,
+    request_id: String,
+    window: tauri::WebviewWindow,
     state: State<'_, AppState>,
 ) -> Result<GitWorkspaceActionResult, CoreError> {
-    workspace_git::create_workspace_git_branch(&state.db, workspace_id, branch).await
+    let request = workspace_write_runs::Request::new(request_id, window.label().into());
+    workspace_git::create_workspace_git_branch_requested(&state.db, workspace_id, branch, &request).await
 }
 
 #[tauri::command]
@@ -3260,9 +3278,12 @@ async fn get_workspace_git_remote_status(
 async fn sync_workspace_git(
     workspace_id: String,
     action: String,
+    request_id: String,
+    window: tauri::WebviewWindow,
     state: State<'_, AppState>,
 ) -> Result<GitWorkspaceActionResult, CoreError> {
-    workspace_git::sync_workspace_git(&state.db, workspace_id, action).await
+    let request = workspace_write_runs::Request::new(request_id, window.label().into());
+    workspace_git::sync_workspace_git_requested(&state.db, workspace_id, action, &request).await
 }
 
 #[tauri::command]
@@ -3277,18 +3298,24 @@ async fn list_workspace_git_stashes(
 async fn apply_workspace_git_stash(
     workspace_id: String,
     reference: String,
+    request_id: String,
+    window: tauri::WebviewWindow,
     state: State<'_, AppState>,
 ) -> Result<GitWorkspaceActionResult, CoreError> {
-    workspace_git::apply_workspace_git_stash(&state.db, workspace_id, reference).await
+    let request = workspace_write_runs::Request::new(request_id, window.label().into());
+    workspace_git::apply_workspace_git_stash_requested(&state.db, workspace_id, reference, &request).await
 }
 
 #[tauri::command]
 async fn stash_workspace_git(
     workspace_id: String,
     message: Option<String>,
+    request_id: String,
+    window: tauri::WebviewWindow,
     state: State<'_, AppState>,
 ) -> Result<GitWorkspaceActionResult, CoreError> {
-    workspace_git::stash_workspace_git(&state.db, workspace_id, message).await
+    let request = workspace_write_runs::Request::new(request_id, window.label().into());
+    workspace_git::stash_workspace_git_requested(&state.db, workspace_id, message, &request).await
 }
 
 #[tauri::command]
@@ -3297,6 +3324,8 @@ async fn apply_git_file_action(
     path: String,
     action: String,
     turn_id: Option<String>,
+    request_id: String,
+    window: tauri::WebviewWindow,
     state: State<'_, AppState>,
 ) -> Result<GitFileActionResult, CoreError> {
     let session = session_by_id(&state.db, &session_id).await?;
@@ -3380,7 +3409,8 @@ async fn apply_git_file_action(
             message: "已恢复到本轮开始前的文件内容".to_owned(),
         });
     }
-    workspace_write_runs::execute(&state.db, &workspace, "git.index", serde_json::json!({"path":path,"action":action,"sessionId":session_id,"turnId":turn_id}),
+    let request = workspace_write_runs::Request::new(request_id, window.label().into());
+    workspace_write_runs::execute_requested(&state.db, &workspace, "git.index", serde_json::json!({"path":path,"action":action,"sessionId":session_id,"turnId":turn_id}), &request,
         || apply_git_index_action(&workspace.path, &path, &action)).await
 }
 

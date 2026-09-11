@@ -14,10 +14,18 @@ try {
   const { workspacePath } = await (await fetch('/__task_config')).json();
   const workspace = await invoke('add_workspace', { path: workspacePath });
   await invoke('set_workspace_trust', { workspaceId: workspace.id, trusted: true });
-  const staged = await invoke('apply_workspace_git_action', { workspaceId: workspace.id, action: 'stage_all' });
+  const staged = await invoke('apply_workspace_git_action', { workspaceId: workspace.id, action: 'stage_all', requestId: 'native-stage' });
   if (!staged.applied) throw Error('Native Git staging failed');
+  const stagedAgain = await invoke('apply_workspace_git_action', { workspaceId: workspace.id, action: 'stage_all', requestId: 'native-stage' });
+  if (JSON.stringify(stagedAgain) !== JSON.stringify(staged)) throw Error('Duplicate native request changed its result');
+  let changedInputRejected = false, missingIdRejected = false;
+  try { await invoke('apply_workspace_git_action', { workspaceId: workspace.id, action: 'unstage_all', requestId: 'native-stage' }); } catch { changedInputRejected = true; }
+  try { await invoke('apply_workspace_git_action', { workspaceId: workspace.id, action: 'stage_all' }); } catch { missingIdRejected = true; }
+  if (!changedInputRejected || !missingIdRejected) throw Error('Native write request identity was not enforced');
+
   const writeRuns = await invoke('list_workspace_write_runs', { workspaceId: workspace.id });
   const writeRun = writeRuns.find(run => run.operation === 'git.index-all');
+  if (writeRuns.length !== 1 || writeRun?.requestId !== 'native-stage' || writeRun?.callerWindow !== 'main') throw Error('Native duplicate created a new run or lost host caller identity');
   if (!writeRun || writeRun.schema !== 'aibo.workspace-write-run/v1' || writeRun.status !== 'completed' || writeRun.snapshot.input.action !== 'stage_all' || !writeRun.result?.output.applied || !writeRun.completedAt) throw Error('Native write history does not match the completed operation');
 
   const deniedAction = await invoke('save_project_action', { workspaceId: workspace.id, name: 'Deny task', kind: 'test', program: '/bin/sh', args: ['-c', 'touch denied-effect'], enabled: true });
@@ -56,5 +64,5 @@ try {
     await invoke('set_workspace_trust', { workspaceId: workspace.id, trusted: true });
   }
   await pause(2200);
-  await report({ ok: true, results, denialPreventedExecution: true, workspaceWriteHistory: true, writeRunId: writeRun.id });
+  await report({ ok: true, results, denialPreventedExecution: true, workspaceWriteHistory: true, duplicateWriteReused: true, writeRunId: writeRun.id });
 } catch (error) { await report({ ok: false, error: String(error) }); }
