@@ -772,9 +772,15 @@ mod tests {
     async fn parent_deadline_and_crash_stop_children_without_running_audit_leaks() {
         let fixture = Fixture::new().await;
         fixture.chain_package("leaf",None,true,5000).await;
-        let parent = fixture.chain_package("parent",Some("leaf"),true,700).await;
+        let parent = fixture.chain_package("parent",Some("leaf"),true,3000).await;
         fixture.chain_binding("parent",&parent,"a").await;
-        assert_eq!(fixture.broker.invoke("main",chain_request("a","parent","timeout",json!({"value":"slow","delayMs":5000}))).await.unwrap_err().code,"timeout");
+        let timed = { let broker = fixture.broker.clone(); tokio::spawn(async move {
+            broker.invoke("main",chain_request("a","parent","timeout",json!({"value":"slow","delayMs":5000}))).await
+        }) };
+        // The deadline includes cold activation. Prove that the child actually
+        // started before asserting propagation, rather than timing out the parent alone.
+        running(&fixture,2).await;
+        assert_eq!(timed.await.unwrap().unwrap_err().code,"timeout");
         assert_eq!(fixture.broker.invoke("main",chain_request("a","parent","crash",json!({"value":"slow","mode":"parent-crash","delayMs":5000}))).await.unwrap_err().code,"provider_unavailable");
         let running: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM capability_invocations WHERE status='running'").fetch_one(&fixture.db).await.unwrap();
         assert_eq!(running,0);
