@@ -34,15 +34,30 @@ try{
   await page.evaluate(() => window.lifecycleProbe.switch('standard'));
   await page.getByRole('complementary', {name:'槽位导航'}).waitFor();
   await page.getByRole('complementary', {name:'槽位辅助'}).waitFor();
+  await page.getByRole('button', {name:'导航', exact:true}).focus();
   await page.evaluate(() => window.lifecycleProbe.switch('focus'));
+  assert.equal(await page.evaluate(() => document.activeElement?.dataset.presentationFocus), 'draft', 'removed navigation focus must move to a usable control');
   assert.equal(await page.getByRole('complementary', {name:'槽位导航'}).count(), 0);
   assert.equal(await page.getByRole('complementary', {name:'槽位辅助'}).count(), 0);
   assert.equal(await page.getByRole('textbox', {name:'草稿', exact:true}).inputValue(), 'DRAFT_DURING_STREAM');
   await page.getByRole('button', {name:'浮层操作'}).click();
   await page.getByRole('button', {name:'恢复默认呈现', exact:true}).click();
   await page.getByRole('complementary', {name:'槽位导航'}).waitFor();
+  for (const unavailable of ['disabled', 'hidden']) {
+   await page.evaluate(() => window.lifecycleProbe.draftAvailability(false, false));
+   await page.getByRole('textbox', {name:'草稿', exact:true}).focus();
+   await page.evaluate(unavailable => window.lifecycleProbe.draftAvailability(unavailable === 'disabled', unavailable === 'hidden'), unavailable);
+   await page.evaluate(() => window.lifecycleProbe.switch('review'));
+   assert.equal(await page.evaluate(() => {
+    const active = document.activeElement;
+    return active instanceof HTMLButtonElement && !active.disabled && active.getClientRects().length > 0 && Boolean(active.closest('.workbench-presentation'));
+   }), true, `${unavailable} remembered control must not strand keyboard focus`);
+   await page.keyboard.press('Tab');
+   assert.equal(await page.evaluate(() => document.activeElement !== document.body), true);
+  }
+  await page.evaluate(() => window.lifecycleProbe.draftAvailability(false, false));
  }
  assert.deepEqual(errors,[]);
- const result={namedSlotsBothSkins:true,focusOmitsNavigationAndAuxiliary:true,overlaysReachable:true,pluginFormSurvivesRemount:true,pluginFormSessionIsolation:true,failedMountFallback:true,streamContinues:true,draft:true,semanticFocus:true,oldGenerationRejected:true,oldSessionRejected:true,currentActions:true};
+ const result={removedControlFocusRecovered:true,disabledControlSkipped:true,hiddenControlSkipped:true,tabContinues:true,namedSlotsBothSkins:true,focusOmitsNavigationAndAuxiliary:true,overlaysReachable:true,pluginFormSurvivesRemount:true,pluginFormSessionIsolation:true,failedMountFallback:true,streamContinues:true,draft:true,semanticFocus:true,oldGenerationRejected:true,oldSessionRejected:true,currentActions:true};
  await writeFile('/tmp/aibo-p2-workbench-lifecycle.json',JSON.stringify(result,null,2)+'\n');console.log(result);
 }finally{await browser.close();await server.close();}

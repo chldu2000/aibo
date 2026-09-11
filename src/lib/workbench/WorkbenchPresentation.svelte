@@ -33,15 +33,24 @@
   const storageKey = $derived(`aibo.workbench-presentation.v1.${encodeURIComponent(windowId)}`);
   let focus = $state<string | null>(null);
   let allowedActions = new Set<string>();
+  let hadWorkbenchFocus = false;
   function rememberFocus(event?: FocusEvent) {
     const element = (event?.target ?? target?.ownerDocument.activeElement) as HTMLElement | null;
-    if (element && target.contains(element)) focus = element.dataset.presentationFocus ?? element.getAttribute('aria-label') ?? element.id ?? null;
+    if (element && target.contains(element)) {
+      hadWorkbenchFocus = true;
+      focus = element.dataset.presentationFocus ?? element.getAttribute('aria-label') ?? (element.id || null);
+    }
   }
   function restoreFocus() {
-    if (!focus || suspended) return;
-    const element = [...target.querySelectorAll<HTMLElement>('[data-presentation-focus], [aria-label], [id]')]
-      .find(item => (item.dataset.presentationFocus ?? item.getAttribute('aria-label') ?? item.id) === focus);
-    (element ?? target.querySelector<HTMLElement>('textarea:not(:disabled),button:not(:disabled)'))?.focus();
+    if ((!focus && !hadWorkbenchFocus) || suspended) return;
+    const remembered = focus ? [...target.querySelectorAll<HTMLElement>('[data-presentation-focus], [aria-label], [id]')]
+      .find(item => (item.dataset.presentationFocus ?? item.getAttribute('aria-label') ?? item.id) === focus) : null;
+    const candidates = [remembered, ...target.querySelectorAll<HTMLElement>('textarea,button,input:not([type="hidden"]),select,a[href],[tabindex]')];
+    for (const element of candidates) {
+      if (!element || element.matches(':disabled,[aria-disabled="true"]') || element.closest('[hidden],[inert],[aria-hidden="true"]') || !element.getClientRects().length || getComputedStyle(element).visibility === 'hidden') continue;
+      element.focus();
+      if (target.ownerDocument.activeElement === element) return;
+    }
   }
   const recovery = () => ({ selection: snapshot.sessionId, detail: snapshot.navigation, focus });
   function renderer(layout: string, failMount = false): Renderer<WorkbenchSnapshot, WorkbenchAction> {
