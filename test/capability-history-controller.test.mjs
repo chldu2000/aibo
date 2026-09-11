@@ -30,3 +30,22 @@ test('audit scope failures remain recoverable without enabling or invoking a pro
   wrong=true;await controller.refresh();assert.match(state.error,/不匹配/);assert.equal(state.page.scope.id,'deleted');
  }finally{controller?.close();await server.close();}
 });
+
+test('legacy snapshots have an isolated source and reject late or mismatched event responses',async()=>{
+ const server=await createServer({server:{middlewareMode:true,ws:false,watch:null},appType:'custom'});let controller;
+ try{
+  const {createCapabilityHistoryController}=await server.ssrLoadModule('/src/lib/app/capability-history-controller.ts');
+  const pending=deferred();let state,wrong=false;const sources=[];
+  controller=createCapabilityHistoryController({
+   list:async(_before,source)=>({...catalog(['deleted']),source}),
+   read:async(_scope,_before,source)=>{sources.push(source);if(source==='events')return pending.promise;return {...page('deleted'),source:wrong?'events':'legacy',events:[{sequence:'1',payload:{type:'legacy_snapshot',status:'completed'}}]};},
+   publish:next=>state=next,
+  });
+  const opening=controller.open();await new Promise(resolve=>setTimeout(resolve,0));
+  await controller.selectSource('legacy');assert.equal(state.source,'legacy');assert.equal(state.page.events[0].payload.type,'legacy_snapshot');
+  pending.resolve(page('deleted'));await opening;assert.equal(state.page.source,'legacy');
+  wrong=true;await controller.refresh();assert.match(state.error,/不匹配/);assert.equal(state.page.source,'legacy');
+  wrong=false;await controller.open();assert.equal(state.source,'legacy');assert.equal(sources.at(-1),'legacy');
+  controller.close();await controller.open();assert.equal(state.source,'events');
+ }finally{controller?.close();await server.close();}
+});

@@ -3121,7 +3121,7 @@
   {/if}
   {#if capabilityHistoryOpen}
     <div class="host-capability-history-region" style="order:2;display:grid;flex:1;min-height:0;overflow:auto;">
-      <CapabilityHistoryPanel state={capabilityHistory} {desktop} onSelect={scope=>void capabilityHistoryController.select(scope)}
+      <CapabilityHistoryPanel state={capabilityHistory} {desktop} onSource={source=>void capabilityHistoryController.selectSource(source)} onSelect={scope=>void capabilityHistoryController.select(scope)}
         onReload={()=>void capabilityHistoryController.open()} onMoreScopes={()=>void capabilityHistoryController.moreScopes()}
         onRefresh={()=>void capabilityHistoryController.refresh()} onOlder={()=>void capabilityHistoryController.older()}
         onNewer={()=>void capabilityHistoryController.newer()} onLatest={()=>void capabilityHistoryController.latest()} onBack={backFromCapabilityHistory} />

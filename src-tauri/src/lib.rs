@@ -3635,12 +3635,12 @@ async fn invoke_capability(request: capability_broker::Request, window: tauri::W
     tokio::spawn(async move { broker.invoke_authorized(&caller, request, &approval).await }).await.map_err(|_| capability_broker::Failure { code: "provider_unavailable".into(), message: "Capability task stopped".into(), invocation_id: None })?
 }
 #[tauri::command]
-async fn list_capability_history_scopes(before: Option<String>, window: tauri::WebviewWindow, state: State<'_, AppState>) -> Result<capability_history::ScopePage, CoreError> {
-    capability_history::scopes(&state.db, window.label(), before).await
+async fn list_capability_history_scopes(before: Option<String>, legacy: Option<bool>, window: tauri::WebviewWindow, state: State<'_, AppState>) -> Result<capability_history::ScopePage, CoreError> {
+    capability_history::scopes_from(&state.db, window.label(), before, legacy.unwrap_or(false)).await
 }
 #[tauri::command]
-async fn read_capability_history(scope: capability_broker::Scope, before: Option<String>, window: tauri::WebviewWindow, state: State<'_, AppState>) -> Result<capability_history::EventPage, CoreError> {
-    capability_history::events(&state.db, window.label(), scope, before).await
+async fn read_capability_history(scope: capability_broker::Scope, before: Option<String>, legacy: Option<bool>, window: tauri::WebviewWindow, state: State<'_, AppState>) -> Result<capability_history::EventPage, CoreError> {
+    capability_history::events_from(&state.db, window.label(), scope, before, legacy.unwrap_or(false)).await
 }
 
 #[tauri::command]

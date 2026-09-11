@@ -668,12 +668,13 @@ export interface SessionHistoryPage {
   items: TimelineItem[]; nextBefore: SessionHistoryCursor | null;
 }
 
+export type CapabilityHistorySource = 'events' | 'legacy';
 export type CapabilityHistoryScope = {kind:'application'} | {kind:'workspace'|'session';id:string};
 export type CapabilityHistoryScopeItem = {scope:CapabilityHistoryScope;label:string|null};
 export interface CapabilityHistoryScopes {
-  schema:'aibo.capability-history-scopes/v1'; items:CapabilityHistoryScopeItem[]; nextBefore:string|null;
+  schema:'aibo.capability-history-scopes/v1'; source?:CapabilityHistorySource; items:CapabilityHistoryScopeItem[]; nextBefore:string|null;
 }
 export interface CapabilityHistoryEvents {
-  schema:'aibo.capability-history-events/v1'; scope:CapabilityHistoryScope;
+  schema:'aibo.capability-history-events/v1'; source?:CapabilityHistorySource; scope:CapabilityHistoryScope;
   events:{sequence:string;payload:Record<string,unknown>}[]; nextBefore:string|null;
 }

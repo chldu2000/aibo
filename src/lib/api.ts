@@ -640,7 +640,7 @@ export const cancelWorkspaceWrite = (workspaceId: string, runId: string): Promis
 export const readSessionHistory = (workspaceId: string, sessionId: string, before: import('./types').SessionHistoryCursor | null = null): Promise<import('./types').SessionHistoryPage> =>
   invoke('read_session_history', { workspaceId, sessionId, before });
 
-export const listCapabilityHistoryScopes = (before: string | null = null): Promise<import('./types').CapabilityHistoryScopes> =>
-  invoke('list_capability_history_scopes', {before});
-export const readCapabilityHistory = (scope: import('./types').CapabilityHistoryScope, before: string | null = null): Promise<import('./types').CapabilityHistoryEvents> =>
-  invoke('read_capability_history', {scope,before});
+export const listCapabilityHistoryScopes = (before: string | null = null, source: import('./types').CapabilityHistorySource = 'events'): Promise<import('./types').CapabilityHistoryScopes> =>
+  invoke('list_capability_history_scopes', {before,legacy:source === 'legacy'});
+export const readCapabilityHistory = (scope: import('./types').CapabilityHistoryScope, before: string | null = null, source: import('./types').CapabilityHistorySource = 'events'): Promise<import('./types').CapabilityHistoryEvents> =>
+  invoke('read_capability_history', {scope,before,legacy:source === 'legacy'});

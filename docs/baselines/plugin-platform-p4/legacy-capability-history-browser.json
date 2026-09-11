@@ -1,0 +1,18 @@
+{
+  "results": [
+    {
+      "kit": "shadcn",
+      "legacySource": true,
+      "explanation": true,
+      "pagination": true,
+      "returnToEvents": true
+    },
+    {
+      "kit": "material3",
+      "legacySource": true,
+      "explanation": true,
+      "pagination": true,
+      "returnToEvents": true
+    }
+  ]
+}
