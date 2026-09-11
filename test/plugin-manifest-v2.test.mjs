@@ -9,9 +9,12 @@ const validate = ajv.compile(await read('../contracts/plugin-manifest.v2.schema.
 const view = await read('../fixtures/plugins/platform-v2/declarative.json');
 const provider = await read('../fixtures/plugins/platform-v2/provider.json');
 const dependent = await read('../fixtures/plugins/platform-v2/dependent.json');
+const chain = await read('../fixtures/plugins/capability-chain/plugin.json');
+const git = await read('../fixtures/plugins/git-read/plugin.json');
+const gitView = await read('../fixtures/plugins/git-view/plugin.json');
 
 test('v2 structural schema admits declarative and executable contributions with distinct dependencies', () => {
-  for (const value of [view, provider, dependent]) assert.equal(validate(value), true, JSON.stringify(validate.errors));
+  for (const value of [view, provider, dependent, chain, git, gitView]) assert.equal(validate(value), true, JSON.stringify(validate.errors));
   assert.equal('entrypoint' in view, false);
   assert.equal('dependencies' in provider, false);
 });

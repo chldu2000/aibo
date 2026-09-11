@@ -1,6 +1,6 @@
 # P3 第一批：Manifest v2 与统一贡献目录
 
-> 2026-09-11，P3 实施中。第一批完成合同草案、v1 适配与 v2 安装登记；第二批已接通[只读 Broker 运行链](./plugin-platform-p3-broker.md)，尚未完成 Git 及语义贡献安装，不构成 P3 平台交付。
+> 2026-09-11，P3 实施中。第一批完成合同草案、v1 适配与 v2 安装登记；第二批已接通[只读 Broker 运行链](./plugin-platform-p3-broker.md)，第五批已接通 [Git 及语义贡献安装](./plugin-platform-p3-git.md)，P3 完整退出条件仍未完成。
 
 ## 已实现
 
@@ -8,7 +8,7 @@
 
 v2 包可以通过现有本地安装入口登记、列出、卸载及重新安装。纯声明式包不需要执行文件；包含 Agent 或 capabilityProvider 时必须提供实际存在的 entrypoint 和 runtime 协议范围。安装不创建 Agent session，不启动包进程。本地可执行依赖仍使用原有有界版本检查。
 
-第一批对全部 v2 拒绝激活；第二批已允许只读 capabilityProvider 通过实验协议 2.0 运行，第三批补齐[包依赖解析与固定](./plugin-platform-p3-dependencies.md)。尚未支持的 Agent、语义视图、presentation 或写入操作继续显示激活原因并禁用启用按钮。Agent Host 仍拒绝将任何 v2 包送入 v1 runtime；直接调用 IPC 也不能绕过此限制。
+第一批对全部 v2 拒绝激活；第二批已允许只读 capabilityProvider 通过实验协议 2.0 运行，第三批补齐[包依赖解析与固定](./plugin-platform-p3-dependencies.md)。第五批允许 workspace.tool 列表/详情视图；尚未支持的 Agent、其他语义类型、presentation 或写入操作继续显示激活原因并禁用启用按钮。Agent Host 仍拒绝将任何 v2 包送入 v1 runtime；直接调用 IPC 也不能绕过此限制。
 
 ## 字段和决定
 

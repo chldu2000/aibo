@@ -1,0 +1,245 @@
+{
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "state",
+    "view",
+    "actions"
+  ],
+  "properties": {
+    "state": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "status",
+        "message"
+      ],
+      "properties": {
+        "status": {
+          "enum": [
+            "ready",
+            "loading",
+            "empty",
+            "error",
+            "unavailable"
+          ]
+        },
+        "message": {
+          "type": "string",
+          "maxLength": 8192
+        }
+      }
+    },
+    "view": {
+      "oneOf": [
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "kind",
+            "properties",
+            "items",
+            "selection",
+            "page"
+          ],
+          "properties": {
+            "kind": {
+              "const": "collection"
+            },
+            "properties": {
+              "type": "array",
+              "maxItems": 16,
+              "items": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "key",
+                  "label",
+                  "type",
+                  "values"
+                ],
+                "properties": {
+                  "key": {
+                    "type": "string",
+                    "pattern": "^[a-z][a-zA-Z0-9]*$",
+                    "maxLength": 64
+                  },
+                  "label": {
+                    "type": "string",
+                    "maxLength": 8192
+                  },
+                  "type": {
+                    "enum": [
+                      "text",
+                      "enum"
+                    ]
+                  },
+                  "values": {
+                    "type": "array",
+                    "maxItems": 32,
+                    "items": {
+                      "type": "string",
+                      "maxLength": 8192
+                    }
+                  }
+                }
+              }
+            },
+            "items": {
+              "type": "array",
+              "maxItems": 50,
+              "items": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "id",
+                  "values"
+                ],
+                "properties": {
+                  "id": {
+                    "type": "string",
+                    "maxLength": 8192
+                  },
+                  "values": {
+                    "type": "object",
+                    "maxProperties": 16,
+                    "propertyNames": {
+                      "pattern": "^[a-z][a-zA-Z0-9]*$"
+                    },
+                    "additionalProperties": {
+                      "type": "string",
+                      "maxLength": 8192
+                    }
+                  }
+                }
+              }
+            },
+            "selection": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "maxLength": 8192
+            },
+            "page": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "offset",
+                "size",
+                "total",
+                "truncated"
+              ],
+              "properties": {
+                "offset": {
+                  "type": "integer",
+                  "minimum": 0,
+                  "maximum": 10000
+                },
+                "size": {
+                  "const": 50
+                },
+                "total": {
+                  "type": "integer",
+                  "minimum": 0,
+                  "maximum": 10000
+                },
+                "truncated": {
+                  "type": "boolean"
+                }
+              }
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "kind",
+            "itemId",
+            "properties",
+            "content",
+            "truncated"
+          ],
+          "properties": {
+            "kind": {
+              "const": "detail"
+            },
+            "itemId": {
+              "type": "string",
+              "maxLength": 8192
+            },
+            "properties": {
+              "type": "array",
+              "maxItems": 16,
+              "items": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "label",
+                  "value"
+                ],
+                "properties": {
+                  "label": {
+                    "type": "string",
+                    "maxLength": 8192
+                  },
+                  "value": {
+                    "type": "string",
+                    "maxLength": 8192
+                  }
+                }
+              }
+            },
+            "content": {
+              "type": "string",
+              "maxLength": 210000
+            },
+            "truncated": {
+              "type": "boolean"
+            }
+          }
+        }
+      ]
+    },
+    "actions": {
+      "type": "array",
+      "maxItems": 5,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "id",
+          "label",
+          "intent",
+          "enabled"
+        ],
+        "properties": {
+          "id": {
+            "enum": [
+              "refresh",
+              "open-diff",
+              "back",
+              "next",
+              "previous"
+            ]
+          },
+          "label": {
+            "type": "string",
+            "maxLength": 8192
+          },
+          "intent": {
+            "enum": [
+              "refresh",
+              "inspect",
+              "navigate"
+            ]
+          },
+          "enabled": {
+            "type": "boolean"
+          }
+        }
+      }
+    }
+  }
+}

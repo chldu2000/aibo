@@ -145,6 +145,13 @@ pub(crate) fn normalize(manifest: &Value) -> Result<ManifestModel, String> {
     Ok(ManifestModel { version, contributions, executable_dependencies: manifest["executableDependencies"].as_array().cloned().unwrap_or_default() })
 }
 
+pub(crate) fn semantic_supported(metadata: &Value, manifest: &Value) -> bool {
+    metadata["scope"] == "workspace" && metadata["extensionPoint"] == "workspace.tool"
+        && metadata["contractVersion"] == "1.0.0" && matches!(metadata["semanticType"].as_str(),Some("collection" | "detail"))
+        && metadata["visibility"] == "workspaceSelected"
+        && manifest["protocols"]["semanticView"]["min"] == "1.0" && manifest["protocols"]["semanticView"]["max"] == "1.0"
+}
+
 /// Installation is distinct from activation. Never launch v2 through the v1 runtime.
 /// These diagnostics are replaced by negotiated Broker/runtime checks in P3.2/P3.3.
 pub(crate) fn activation_issues(manifest: &Value) -> Result<Vec<String>, String> {
@@ -155,8 +162,8 @@ pub(crate) fn activation_issues(manifest: &Value) -> Result<Vec<String>, String>
     let min = semver::Version::parse(manifest["host"]["min"].as_str().unwrap()).unwrap();
     let max = semver::Version::parse(manifest["host"]["maxExclusive"].as_str().unwrap()).unwrap();
     if host < min || host >= max { issues.push("当前宿主版本不在插件要求的范围内。".into()); }
-    if model.contributions.iter().any(|entry|entry.kind != "capabilityProvider") || manifest.get("presentation").is_some() {
-        issues.push("插件已登记；此版本尚未支持 Manifest v2 的 Agent、语义视图或呈现激活。".into());
+    if model.contributions.iter().any(|entry|entry.kind != "capabilityProvider" && !(entry.kind == "semanticView" && semantic_supported(&entry.metadata,manifest))) || manifest.get("presentation").is_some() {
+        issues.push("插件已登记；当前仅支持只读能力和 workspace.tool 列表/详情语义视图；其他 Agent、语义类型或呈现尚不可激活。".into());
     }
     if model.contributions.iter().any(|entry|entry.kind == "capabilityProvider") && (manifest["protocols"]["runtime"]["min"] != "2.0" || manifest["protocols"]["runtime"]["max"] != "2.0") {
         issues.push("能力运行时目前仅支持实验协议 2.0。".into());
@@ -197,7 +204,9 @@ mod tests {
         assert_eq!(model.agents().count(), 0);
         assert!(model.executable_dependencies.is_empty());
         assert!(!manifest.as_object().unwrap().contains_key("entrypoint"));
-        assert!(!activation_issues(&manifest).unwrap().is_empty());
+        assert!(activation_issues(&manifest).unwrap().is_empty());
+        let mut unsupported=manifest.clone();unsupported["contributions"][0]["semanticType"]=json!("inspector");
+        assert!(!activation_issues(&unsupported).unwrap().is_empty());
         let model = normalize(&provider()).unwrap();
         assert_eq!(model.executable_dependencies.len(), 2);
         assert_eq!(model.contributions[0].scope, "workspace");

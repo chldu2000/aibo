@@ -52,10 +52,39 @@ pub(crate) struct Provider {
     pub contribution_id: String,
     pub plugin_id: String,
     pub version: String,
-    #[serde(skip_serializing)] operation: Value,
+    #[serde(skip_serializing)] pub(crate) operation: Value,
     #[serde(skip_serializing)] manifest: Value,
     #[serde(skip_serializing)] directory: PathBuf,
     #[serde(skip_serializing)] digest: String,
+}
+const MAX_CALL_DEPTH: usize = 8;
+const MAX_CHILD_CALLS: usize = 32;
+#[derive(Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct CallSite { invocation_id: String, installation_id: String, contribution_id: String }
+#[derive(Clone)]
+struct Chain {
+    caller: String,
+    sites: Vec<CallSite>,
+    permissions: Vec<String>,
+    deadline: Instant,
+    deadline_ms: i64,
+    cancellations: Vec<watch::Receiver<bool>>,
+    ancestors: Vec<PluginRuntime>,
+}
+impl Chain {
+    async fn cancelled(&self) {
+        loop {
+            if self.cancellations.iter().any(|cancel| *cancel.borrow() || cancel.has_changed().is_err()) || self.ancestors.iter().any(|runtime|runtime.was_stopped() || runtime.has_exited()) { return; }
+            tokio::time::sleep(Duration::from_millis(10)).await;
+        }
+    }
+}
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+struct ChildRequest {
+    invocation_id: String, generation_id: String, plugin_id: String,
+    contribution_id: String, capability: String, version: String, input: Value,
 }
 struct Slot { permit: Arc<Semaphore>, runtime: Mutex<Option<PluginRuntime>>, touched: Mutex<Instant> }
 struct Flight { cancel: watch::Sender<bool>, installation_id: String, contribution_id: String, workspace_id: Option<String> }
@@ -93,10 +122,13 @@ impl Broker {
         Ok(())
     }
     pub async fn providers(&self, scope: &Scope, capability: &str, version: &str) -> Result<Vec<Provider>, Failure> {
+        self.offers(scope,capability,version,None).await
+    }
+    async fn offers(&self, scope: &Scope, capability: &str, version: &str, installation: Option<&str>) -> Result<Vec<Provider>, Failure> {
         Self::identity(scope, capability, version)?;
         self.workspace(scope).await?;
-        let rows = sqlx::query("SELECT id,plugin_id,manifest_json,install_path,package_digest FROM plugin_installations WHERE installed=1 AND enabled=1")
-            .fetch_all(&self.db).await.map_err(database)?;
+        let rows = sqlx::query("SELECT id,plugin_id,manifest_json,install_path,package_digest FROM plugin_installations WHERE installed=1 AND enabled=1 AND (? IS NULL OR id=?)")
+            .bind(installation).bind(installation).fetch_all(&self.db).await.map_err(database)?;
         let mut providers = vec![];
         let mut other_version = false;
         for row in rows {
@@ -151,6 +183,13 @@ impl Broker {
         if offers.is_empty() { return Err(fail("unsupported", "No provider declares this capability")); }
         Err(fail("provider_selection_required", "Choose and bind a provider before calling it"))
     }
+    /// Host-selected semantic contribution binding; never accepts plugin-provided caller authority.
+    pub(crate) async fn invoke_bound(&self, caller: &str, request: Request, binding: &Binding) -> Result<Response,Failure> {
+        Self::identity(&request.scope,&request.capability,&request.version)?;
+        if request.scope != binding.scope || request.capability != binding.capability || request.version != binding.version || request.input.to_string().len() > MAX_INPUT { return Err(fail("invalid_input", "Contribution binding mismatch")); }
+        let provider = self.offers(&request.scope,&request.capability,&request.version,Some(&binding.installation_id)).await?.into_iter().find(|offer|offer.contribution_id == binding.contribution_id).ok_or_else(||fail("provider_unavailable", "Contribution provider is unavailable"))?;
+        self.invoke_selected(caller,request,provider,None).await
+    }
     pub async fn cancel(&self, caller: &str, request_id: &str) -> bool {
         self.flights.lock().await.get(&(caller.into(),request_id.into())).is_some_and(|flight|flight.cancel.send(true).is_ok())
     }
@@ -199,14 +238,25 @@ impl Broker {
         Self::identity(&request.scope,&request.capability,&request.version)?;
         if request.request_id.is_empty() || request.request_id.len() > 160 || request.input.to_string().len() > MAX_INPUT { return Err(fail("invalid_input", "Request size or identity limit")); }
         let provider = self.provider(&request).await?;
+        self.invoke_selected(caller,request,provider,None).await
+    }
+    fn invoke_selected<'a>(&'a self, caller: &'a str, request: Request, provider: Provider, parent: Option<Chain>) -> std::pin::Pin<Box<dyn std::future::Future<Output=Result<Response,Failure>> + Send + 'a>> {
+        Box::pin(async move {
         if provider.operation["effect"] != "read" { return Err(fail("permission_denied", "Write operations are not enabled in this runtime slice")); }
         let workspace = self.workspace(&request.scope).await?;
         if provider.operation["permissions"].as_array().unwrap().iter().any(|permission| permission != "workspace.read" || workspace.is_none()) { return Err(fail("permission_denied", "Operation requires an unavailable permission")); }
         if !jsonschema::options().build(&provider.operation["inputSchema"]).map_err(database)?.is_valid(&request.input) { return Err(fail("invalid_input", "Input does not match the capability contract")); }
+        let permissions: Vec<String> = provider.operation["permissions"].as_array().unwrap().iter().map(|value|value.as_str().unwrap().to_owned()).collect();
+        if let Some(parent) = &parent {
+            if permissions.iter().any(|permission|!parent.permissions.contains(permission)) { return Err(fail("permission_denied", "Dependency call exceeds its caller permissions")); }
+            if parent.sites.len() >= MAX_CALL_DEPTH || parent.sites.iter().any(|site|site.installation_id == provider.installation_id && site.contribution_id == provider.contribution_id) {
+                return Err(fail("busy", "Dependency call cycle or depth limit"));
+            }
+        }
         let slot = self.slot(&provider,&request.scope).await?;
         let _permit = slot.permit.clone().try_acquire_owned().map_err(|_|fail("busy", "An invocation is already active in this scope"))?;
         let key = (caller.to_string(),request.request_id.clone());
-        let (cancel,mut cancelled) = watch::channel(false);
+        let (cancel,cancelled) = watch::channel(false);
         {
             let mut flights = self.flights.lock().await;
             if flights.len() >= MAX_ACTIVE || flights.contains_key(&key) { return Err(fail("busy", "Invocation limit or duplicate request ID")); }
@@ -214,16 +264,19 @@ impl Broker {
         }
         let id = ulid::Ulid::new().to_string();
         let timeout = Duration::from_millis(provider.operation["timeoutMs"].as_u64().unwrap());
+        let deadline = Instant::now() + timeout;
         let deadline_ms = (time::OffsetDateTime::now_utc().unix_timestamp_nanos() / 1_000_000) as i64 + timeout.as_millis() as i64;
+        let mut chain = parent.clone().unwrap_or_else(||Chain { caller: caller.into(), sites: vec![], permissions: permissions.clone(), deadline, deadline_ms, cancellations: vec![], ancestors: vec![] });
+        chain.permissions = permissions;
+        chain.deadline = chain.deadline.min(deadline);
+        chain.deadline_ms = chain.deadline_ms.min(deadline_ms);
+        chain.cancellations.push(cancelled);
+        chain.sites.push(CallSite { invocation_id: id.clone(), installation_id: provider.installation_id.clone(), contribution_id: provider.contribution_id.clone() });
         let (kind,scope_id) = request.scope.key();
-        let insert = sqlx::query("INSERT INTO capability_invocations(id,caller_window,scope_kind,scope_id,capability_id,contract_version,installation_id,contribution_id,status,started_at,deadline_ms) VALUES(?,?,?,?,?,?,?,?,'running',?,?)")
-            .bind(&id).bind(caller).bind(kind).bind(scope_id).bind(&request.capability).bind(&request.version).bind(&provider.installation_id).bind(&provider.contribution_id).bind(crate::now_iso()).bind(deadline_ms).execute(&self.db).await;
+        let insert = sqlx::query("INSERT INTO capability_invocations(id,caller_window,scope_kind,scope_id,capability_id,contract_version,installation_id,contribution_id,status,started_at,deadline_ms,parent_invocation_id,root_invocation_id,caller_installation_id) VALUES(?,?,?,?,?,?,?,?,'running',?,?,?,?,?)")
+            .bind(&id).bind(caller).bind(kind).bind(scope_id).bind(&request.capability).bind(&request.version).bind(&provider.installation_id).bind(&provider.contribution_id).bind(crate::now_iso()).bind(chain.deadline_ms).bind(parent.as_ref().and_then(|chain|chain.sites.last()).map(|site|&site.invocation_id)).bind(&chain.sites[0].invocation_id).bind(parent.as_ref().and_then(|chain|chain.sites.last()).map(|site|&site.installation_id)).execute(&self.db).await;
         if let Err(error) = insert { self.flights.lock().await.remove(&key); return Err(database(error)); }
-        let mut result = tokio::select! {
-            biased;
-            _ = cancelled.changed() => Err(fail("cancelled", "Invocation was cancelled")),
-            result = tokio::time::timeout(timeout,self.execute(&id,&request,&provider,&slot,workspace.as_ref(),deadline_ms)) => result.unwrap_or_else(|_|Err(fail("timeout", "Invocation deadline expired"))),
-        };
+        let mut result = self.execute(&id,&request,&provider,&slot,workspace.as_ref(),&chain).await;
         if result.is_err() { if let Some(runtime) = slot.runtime.lock().await.take() { runtime.stop().await; } }
         *slot.touched.lock().await = Instant::now();
         self.flights.lock().await.remove(&key);
@@ -231,8 +284,10 @@ impl Broker {
         sqlx::query("UPDATE capability_invocations SET status=?,finished_at=? WHERE id=?").bind(status).bind(crate::now_iso()).bind(&id).execute(&self.db).await.map_err(database)?;
         if let Err(error) = &mut result { error.invocation_id = Some(id); }
         result
+        })
     }
-    async fn execute(&self, id: &str, request: &Request, provider: &Provider, slot: &Slot, workspace: Option<&crate::Workspace>, deadline_ms: i64) -> Result<Response, Failure> {
+    async fn execute(&self, id: &str, request: &Request, provider: &Provider, slot: &Slot, workspace: Option<&crate::Workspace>, chain: &Chain) -> Result<Response, Failure> {
+        let prepare = async {
         let current: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM plugin_installations WHERE id=? AND enabled=1 AND installed=1").bind(&provider.installation_id).fetch_one(&self.db).await.map_err(database)?;
         if current != 1 { return Err(fail("provider_unavailable", "Provider was disabled")); }
         let (_,_,digest) = plugin_registry::inspect(&provider.directory).map_err(|_|fail("provider_unavailable", "Installed package integrity check failed"))?;
@@ -241,8 +296,9 @@ impl Broker {
         if !dependencies.supports(&provider.contribution_id) { return Err(fail("provider_unavailable", "A pinned package dependency is unavailable")); }
         // Recheck scope authority immediately before giving a runtime its workspace.
         self.workspace(&request.scope).await?;
+        crate::git_capability_guard::check(&request.capability,&request.input,workspace.map(|workspace|workspace.path.as_str())).map_err(|_|fail("permission_denied", "Git target is outside the allowed workspace resources"))?;
         let mut active = slot.runtime.lock().await;
-        if active.as_ref().is_some_and(|runtime|runtime.was_stopped()) { *active = None; }
+        if active.as_ref().is_some_and(|runtime|runtime.was_stopped() || runtime.has_exited()) { *active = None; }
         if active.is_none() {
             let entrypoint = provider.directory.join(provider.manifest["entrypoint"]["executable"].as_str().unwrap());
             let mut args: Vec<String> = provider.manifest["entrypoint"]["args"].as_array().into_iter().flatten().map(|arg|arg.as_str().unwrap().into()).collect();
@@ -263,16 +319,74 @@ impl Broker {
             return Err(fail("incompatible_version", "Runtime did not negotiate the declared operation"));
         }
         sqlx::query("UPDATE capability_invocations SET generation_id=? WHERE id=?").bind(&runtime.generation_id).bind(id).execute(&self.db).await.map_err(database)?;
-        let raw = runtime.request("capability.invoke",json!({"invocationId":id,"generationId":runtime.generation_id,"contributionId":provider.contribution_id,"capability":request.capability,"contractVersion":request.version,"operationId":provider.operation["id"],"scope":request.scope,"deadlineUnixMs":deadline_ms,"context":{"workspaceId":workspace.map(|workspace|&workspace.id),"workspacePath":workspace.map(|workspace|&workspace.path)},"input":request.input}),Duration::from_millis(provider.operation["timeoutMs"].as_u64().unwrap())).await.map_err(transport)?;
+        Ok::<_,Failure>(runtime)
+        };
+        let runtime = tokio::select! {
+            biased;
+            _ = chain.cancelled() => return Err(fail("cancelled", "Invocation was cancelled")),
+            _ = tokio::time::sleep_until(chain.deadline.into()) => return Err(fail("timeout", "Invocation deadline expired")),
+            runtime = prepare => runtime?,
+        };
+        let call = runtime.request("capability.invoke",json!({"invocationId":id,"generationId":runtime.generation_id,"contributionId":provider.contribution_id,"capability":request.capability,"contractVersion":request.version,"operationId":provider.operation["id"],"scope":request.scope,"deadlineUnixMs":chain.deadline_ms,"context":{"workspaceId":workspace.filter(|_|chain.permissions.iter().any(|permission|permission == "workspace.read")).map(|workspace|&workspace.id),"workspacePath":workspace.filter(|_|chain.permissions.iter().any(|permission|permission == "workspace.read")).map(|workspace|&workspace.path),"originalCaller":{"kind":"window","id":chain.caller},"permissions":chain.permissions,"callChain":chain.sites},"input":request.input}),chain.deadline.saturating_duration_since(Instant::now()));
+        tokio::pin!(call);
+        let mut notifications = runtime.notifications.lock().await;
+        let mut child_ids = std::collections::HashSet::new();
+        let raw = loop {
+            tokio::select! {
+                biased;
+                _ = chain.cancelled() => return Err(fail("cancelled", "Invocation was cancelled")),
+                _ = tokio::time::sleep_until(chain.deadline.into()) => return Err(fail("timeout", "Invocation deadline expired")),
+                raw = &mut call => break raw.map_err(transport)?,
+                message = notifications.recv() => {
+                    let message = message.ok_or_else(||fail("provider_unavailable", "Capability process exited"))?;
+                    let child_id = message["id"].as_str().ok_or_else(||fail("invalid_input", "Missing child request ID"))?;
+                    if message["method"] != "capability.call" || child_ids.len() >= MAX_CHILD_CALLS || !child_ids.insert(child_id.to_owned()) { return Err(fail("busy", "Duplicate child request or call count limit")); }
+                    let result = self.child_call(&message["params"],id,&runtime,request,provider,chain).await;
+                    // Failures are structured data, so no plugin-provided text is reflected.
+                    let reply = match result { Ok(response) => json!({"ok":true,"response":response}), Err(error) => json!({"ok":false,"error":error}) };
+                    tokio::select! {
+                        biased;
+                        _ = chain.cancelled() => return Err(fail("cancelled", "Invocation was cancelled")),
+                        _ = tokio::time::sleep_until(chain.deadline.into()) => return Err(fail("timeout", "Invocation deadline expired")),
+                        result = runtime.reply(message["id"].clone(),Ok(reply)) => result.map_err(transport)?,
+                    }
+                }
+            }
+        };
         if raw["invocationId"] != id || raw["generationId"] != runtime.generation_id || raw["output"].to_string().len() > MAX_OUTPUT || !raw.as_object().is_some_and(|object|object.len() == 3 && object.contains_key("output")) || !jsonschema::options().build(&provider.operation["outputSchema"]).map_err(database)?.is_valid(&raw["output"]) {
             return Err(fail("invalid_output", "Runtime returned a stale or invalid result"));
         }
-        Ok(Response { invocation_id: id.into(), installation_id: provider.installation_id.clone(), generation_id: runtime.generation_id, output: raw["output"].clone() })
+        Ok(Response { invocation_id: id.into(), installation_id: provider.installation_id.clone(), generation_id: runtime.generation_id.clone(), output: raw["output"].clone() })
     }
+    async fn child_call(&self, params: &Value, parent_id: &str, runtime: &PluginRuntime, request: &Request, provider: &Provider, chain: &Chain) -> Result<Response, Failure> {
+        let child: ChildRequest = serde_json::from_value(params.clone()).map_err(|_|fail("invalid_input", "Invalid dependency call envelope"))?;
+        if child.invocation_id != parent_id || child.generation_id != runtime.generation_id { return Err(fail("permission_denied", "Dependency call does not belong to this invocation")); }
+        if child.input.to_string().len() > MAX_INPUT { return Err(fail("invalid_input", "Dependency input exceeds limit")); }
+        let prepare = async {
+            let dependencies = crate::plugin_dependencies::resolve(&self.db,&provider.installation_id,true).await.map_err(database)?;
+            let dependency = dependencies.dependencies.iter().find(|dependency|dependency.plugin_id == child.plugin_id && dependency.contribution_ids.contains(&provider.contribution_id))
+                .ok_or_else(||fail("permission_denied", "Calling contribution has not declared this dependency"))?;
+            if !dependencies.supports(&provider.contribution_id) || !dependency.available { return Err(fail("provider_unavailable", "Pinned dependency is unavailable")); }
+            let offers = self.offers(&request.scope,&child.capability,&child.version,dependency.installation_id.as_deref()).await?;
+            offers.into_iter().find(|offer|Some(&offer.installation_id) == dependency.installation_id.as_ref() && offer.contribution_id == child.contribution_id)
+                .ok_or_else(||fail("provider_unavailable", "Pinned dependency does not provide this contribution"))
+        };
+        let selected = tokio::select! {
+            biased;
+            _ = chain.cancelled() => return Err(fail("cancelled", "Invocation was cancelled")),
+            _ = tokio::time::sleep_until(chain.deadline.into()) => return Err(fail("timeout", "Invocation deadline expired")),
+            selected = prepare => selected?,
+        };
+        let mut child_chain = chain.clone();
+        child_chain.ancestors.push(runtime.clone());
+        // Children inherit scope and original identity; UI provider settings cannot reroute them.
+        self.invoke_selected(&chain.caller,Request { scope: request.scope.clone(), capability: child.capability, version: child.version, request_id: ulid::Ulid::new().to_string(), input: child.input },selected,Some(child_chain)).await
+    }
+
 }
 fn transport(error: String) -> Failure {
     let code = error.split(':').next().unwrap_or("");
-    fail(match code { "busy" | "timeout" | "cancelled" | "unsupported" | "incompatible_version" | "permission_denied" | "invalid_output" => code, _ => "provider_unavailable" }, "Capability transport failed")
+    fail(match code { "busy" | "timeout" | "cancelled" | "unsupported" | "incompatible_version" | "permission_denied" | "invalid_output" | "invalid_input" => code, _ => "provider_unavailable" }, "Capability transport failed")
 }
 
 #[cfg(test)]
@@ -308,6 +422,32 @@ mod tests {
             assert!(plugin.runnable);
             plugin_registry::enable(&self.db,&plugin.id,true).await.unwrap();
             plugin.id
+        }
+        async fn chain_package(&self, name: &str, dependency: Option<&str>, permissions: bool, timeout: u64) -> String {
+            let path = self.root.join(name);
+            fs::create_dir_all(&path).unwrap();
+            let mut manifest: Value = serde_json::from_str(include_str!("../../fixtures/plugins/capability-echo/plugin.json")).unwrap();
+            let plugin = format!("dev.aibo.{name}");
+            manifest["pluginId"] = json!(plugin);
+            manifest["contributions"][0]["id"] = json!(format!("{plugin}.read"));
+            let op = &mut manifest["contributions"][0]["operations"][0];
+            op["id"] = json!(format!("{plugin}.echo"));
+            op["capability"]["id"] = json!(format!("{plugin}.echo"));
+            op["permissions"] = if permissions {json!(["workspace.read"])} else {json!([])};
+            op["timeoutMs"] = json!(timeout);
+            op["inputSchema"]["properties"]["mode"] = json!({"enum":["normal","stale","undeclared","scope","parent-crash"]});
+            op["outputSchema"]["properties"]["value"]["maxLength"] = json!(8192);
+            if let Some(dependency) = dependency {
+                manifest["packageDependencies"] = json!([{"pluginId":format!("dev.aibo.{dependency}"),"version":{"min":"1.0.0","maxExclusive":"2.0.0"},"required":true,"contributionIds":[format!("{plugin}.read")]}]);
+            }
+            fs::write(path.join("plugin.json"),manifest.to_string()).unwrap();
+            fs::write(path.join("worker.mjs"),include_str!("../../fixtures/plugins/capability-chain/worker.mjs")).unwrap();
+            let installed = plugin_registry::install(&self.db,&self.root.join("data"),&path).await.unwrap();
+            plugin_registry::enable(&self.db,&installed.id,true).await.unwrap();
+            installed.id
+        }
+        async fn chain_binding(&self, name: &str, installation: &str, workspace: &str) {
+            self.broker.bind(Binding {scope:Scope::Workspace(workspace.into()),capability:format!("dev.aibo.{name}.echo"),version:"1.0.0".into(),installation_id:installation.into(),contribution_id:format!("dev.aibo.{name}.read")}).await.unwrap();
         }
         async fn bind(&self, scope: Scope, installation: &str) {
             self.broker.bind(Binding { scope, capability: CAP.into(),version:"1.0.0".into(),installation_id:installation.into(),contribution_id:CONTRIBUTION.into() }).await.unwrap();
@@ -430,6 +570,106 @@ mod tests {
         // A later data migration changing the session pin must not silently retain an incompatible binding.
         sqlx::query("UPDATE sessions SET plugin_installation_id=? WHERE id='session'").bind(application).execute(&fixture.db).await.unwrap();
         assert_eq!(fixture.broker.invoke("main",Request {scope:Scope::Session("session".into()),..request("ignored","stale",json!({"value":"session"}))}).await.unwrap_err().code,"provider_unavailable");
+        fixture.finish().await;
+    }
+    fn chain_request(workspace: &str, name: &str, id: &str, input: Value) -> Request {
+        Request {capability:format!("dev.aibo.{name}.echo"),..request(workspace,id,input)}
+    }
+    #[tokio::test]
+    async fn dependency_chain_preserves_identity_scope_release_and_audit() {
+        let fixture = Fixture::new().await;
+        let leaf = fixture.chain_package("leaf",None,true,5000).await;
+        let middle = fixture.chain_package("middle",Some("leaf"),true,4000).await;
+        let parent = fixture.chain_package("parent",Some("middle"),true,3000).await;
+        fixture.chain_binding("parent",&parent,"a").await;
+        let source = fixture.root.join("leaf");
+        let mut manifest: Value = serde_json::from_str(&fs::read_to_string(source.join("plugin.json")).unwrap()).unwrap();
+        manifest["version"] = json!("1.1.0");
+        fs::write(source.join("plugin.json"),manifest.to_string()).unwrap();
+        let newer = plugin_registry::install(&fixture.db,&fixture.root.join("data"),&source).await.unwrap();
+        plugin_registry::enable(&fixture.db,&newer.id,true).await.unwrap();
+        fixture.chain_binding("leaf",&newer.id,"a").await;
+        // The child uses its dependency pin even when the UI binds a newer leaf release.
+        // Middle has no UI provider binding at all.
+        let response = fixture.broker.invoke("original-window",chain_request("a","parent","chain",json!({"value":"chain"}))).await.unwrap();
+        let output: Value = serde_json::from_str(response.output["value"].as_str().unwrap()).unwrap();
+        assert_eq!(output["caller"],json!({"kind":"window","id":"original-window"}));
+        assert_eq!(output["chain"].as_array().unwrap().iter().map(|site|site["installationId"].as_str().unwrap()).collect::<Vec<_>>(),vec![parent.as_str(),middle.as_str(),leaf.as_str()]);
+        assert_eq!(response.output["workspacePath"],fixture.root.join("a").to_string_lossy().as_ref());
+        let rows = sqlx::query("SELECT * FROM capability_invocations ORDER BY started_at").fetch_all(&fixture.db).await.unwrap();
+        assert_eq!(rows.len(),3);
+        for row in &rows {
+            assert_eq!(row.get::<String,_>("caller_window"),"original-window");
+            assert_eq!(row.get::<String,_>("root_invocation_id"),response.invocation_id);
+            assert_eq!(row.get::<i64,_>("deadline_ms"),rows[0].get::<i64,_>("deadline_ms"));
+            assert_eq!(row.get::<String,_>("status"),"completed");
+        }
+        assert_eq!(rows[1].get::<String,_>("parent_invocation_id"),response.invocation_id);
+        assert_eq!(rows[1].get::<String,_>("caller_installation_id"),parent);
+        fixture.finish().await;
+    }
+    #[tokio::test]
+    async fn dependency_calls_reject_forgery_and_permission_amplification() {
+        let fixture = Fixture::new().await;
+        fixture.chain_package("leaf",None,true,3000).await;
+        let parent = fixture.chain_package("parent",Some("leaf"),true,3000).await;
+        fixture.chain_binding("parent",&parent,"a").await;
+        for (mode,code) in [("stale","permission_denied"),("undeclared","permission_denied"),("scope","provider_unavailable")] {
+            assert_eq!(fixture.broker.invoke("main",chain_request("a","parent",mode,json!({"value":"bad","mode":mode}))).await.unwrap_err().code,code);
+        }
+        let weak = fixture.chain_package("weak",Some("leaf"),false,3000).await;
+        fixture.chain_binding("weak",&weak,"a").await;
+        assert_eq!(fixture.broker.invoke("main",chain_request("a","weak","denied",json!({"value":"bad"}))).await.unwrap_err().code,"permission_denied");
+        let children: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM capability_invocations WHERE parent_invocation_id IS NOT NULL").fetch_one(&fixture.db).await.unwrap();
+        assert_eq!(children,0);
+        fixture.finish().await;
+    }
+    #[tokio::test]
+    async fn parent_cancellation_drains_descendants_and_preserves_other_workspace() {
+        let fixture = Fixture::new().await;
+        fixture.chain_package("leaf",None,true,5000).await;
+        let parent = fixture.chain_package("parent",Some("leaf"),true,5000).await;
+        for workspace in ["a","b"] {fixture.chain_binding("parent",&parent,workspace).await;}
+        let first = {let broker=fixture.broker.clone();tokio::spawn(async move {broker.invoke("main",chain_request("a","parent","cancel",json!({"value":"cancel","delayMs":1000}))).await})};
+        let second = {let broker=fixture.broker.clone();tokio::spawn(async move {broker.invoke("main",chain_request("b","parent","keep",json!({"value":"keep","delayMs":1000}))).await})};
+        running(&fixture,4).await;
+        assert!(!fixture.broker.cancel("other","cancel").await);
+        assert!(fixture.broker.cancel("main","cancel").await);
+        assert_eq!(first.await.unwrap().unwrap_err().code,"cancelled");
+        let statuses: Vec<String> = sqlx::query_scalar("SELECT status FROM capability_invocations WHERE scope_id='a'").fetch_all(&fixture.db).await.unwrap();
+        assert_eq!(statuses,vec!["cancelled","cancelled"]);
+        assert!(second.await.unwrap().is_ok());
+        fixture.finish().await;
+    }
+    #[tokio::test]
+    async fn parent_deadline_and_crash_stop_children_without_running_audit_leaks() {
+        let fixture = Fixture::new().await;
+        fixture.chain_package("leaf",None,true,5000).await;
+        let parent = fixture.chain_package("parent",Some("leaf"),true,700).await;
+        fixture.chain_binding("parent",&parent,"a").await;
+        assert_eq!(fixture.broker.invoke("main",chain_request("a","parent","timeout",json!({"value":"slow","delayMs":5000}))).await.unwrap_err().code,"timeout");
+        assert_eq!(fixture.broker.invoke("main",chain_request("a","parent","crash",json!({"value":"slow","mode":"parent-crash","delayMs":5000}))).await.unwrap_err().code,"provider_unavailable");
+        let running: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM capability_invocations WHERE status='running'").fetch_one(&fixture.db).await.unwrap();
+        assert_eq!(running,0);
+        let children: Vec<String> = sqlx::query_scalar("SELECT status FROM capability_invocations WHERE parent_invocation_id IS NOT NULL ORDER BY started_at").fetch_all(&fixture.db).await.unwrap();
+        assert_eq!(children,vec!["timeout","cancelled"]);
+        assert!(fixture.broker.flights.lock().await.is_empty());
+        fixture.finish().await;
+    }
+    #[tokio::test]
+    async fn dependency_call_depth_is_bounded_and_permissionless_context_has_no_path() {
+        let fixture = Fixture::new().await;
+        let mut last = String::new();
+        for index in (0..9).rev() {
+            let dependency = (index < 8).then(||format!("depth{}",index+1));
+            last=fixture.chain_package(&format!("depth{index}"),dependency.as_deref(),false,15000).await;
+        }
+        fixture.chain_binding("depth0",&last,"a").await;
+        assert_eq!(fixture.broker.invoke("main",chain_request("a","depth0","depth",json!({"value":"deep"}))).await.unwrap_err().code,"busy");
+        let leaf: String = sqlx::query_scalar("SELECT id FROM plugin_installations WHERE plugin_id='dev.aibo.depth8'").fetch_one(&fixture.db).await.unwrap();
+        fixture.chain_binding("depth8",&leaf,"a").await;
+        let result=fixture.broker.invoke("main",chain_request("a","depth8","no-path",json!({"value":"none"}))).await.unwrap();
+        assert_eq!(result.output["workspacePath"],Value::Null);
         fixture.finish().await;
     }
     #[test]

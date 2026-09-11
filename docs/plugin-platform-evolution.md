@@ -1,12 +1,12 @@
 # Aibo 向插件宿主、能力插件与 UI 插件演进
 
-> 日期：2026-09-10 · 状态：架构演进提案；P0/P1/P2 已实施，P3 只读能力运行链实施中，P4/P5 待实施，本文不替代现行契约。
+> 日期：2026-09-10 · 状态：架构演进提案；P0/P1/P2 已实施，P3 已打通 Git 安装/调用/呈现，阶段收尾中，P4/P5 待实施，本文不替代现行契约。
 >
 > 输入：[讨论原文](./discuss-with-gpt.md)的三轮讨论，以及当前仓库代码。本次修订将重点从“通用能力插件与可插拔面板”调整为“业务语义与整个表现层解耦”；框架无关是目标性质，当前实现仍是 Svelte。
 
 2026-09-11 实施进度：[P1 Git 只读语义切片](./plugin-platform-p1-semantic-slice.md)已通过自动检查、四组合浏览器与原生 WebView 脚本验收；[P2](./plugin-platform-p2-agent-state.md) 已完成统一 Agent 路由、宿主状态、整窗呈现切换及失败恢复，并通过真实 Codex/Pi、应用重启和窗口隔离验收；详细范围见 [P2 退出矩阵](./baselines/plugin-platform-p2/completion-matrix.md)。
 
-P3 已完成 [Manifest v2 与统一贡献目录](./plugin-platform-p3-manifest.md)草案及安装登记，并接通 [Broker 与无 Agent 只读运行链](./plugin-platform-p3-broker.md)，以及[声明依赖解析与 release 固定](./plugin-platform-p3-dependencies.md)；插件调用链、Git 能力及语义贡献激活仍在实施。
+P3 已完成 [Manifest v2 与统一贡献目录](./plugin-platform-p3-manifest.md)草案及安装登记，并接通 [Broker 与无 Agent 只读运行链](./plugin-platform-p3-broker.md)，以及[声明依赖解析与 release 固定](./plugin-platform-p3-dependencies.md)与[只读插件调用链](./plugin-platform-p3-call-chain.md)；[Git 能力包与语义贡献安装](./plugin-platform-p3-git.md)已打通，完整生命周期、扩展点合同与稳定协议仍在收尾。
 
 ### 已确认的实施决策（2026-09-10）
 

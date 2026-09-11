@@ -29,6 +29,7 @@ pub(crate) struct PluginRuntime {
     pub generation_id: String,
     pub notifications: Arc<Mutex<mpsc::Receiver<Value>>>,
     stop_requested: Arc<AtomicBool>,
+    exited: Arc<AtomicBool>,
 }
 
 impl PluginRuntime {
@@ -55,6 +56,11 @@ impl PluginRuntime {
             .stderr(std::process::Stdio::piped());
         #[cfg(windows)]
         command.creation_flags(0x08000000);
+        #[cfg(unix)]
+        if capability {
+            use std::os::unix::process::CommandExt;
+            command.as_std_mut().process_group(0);
+        }
         let mut child = command.spawn().map_err(|_| "dependency_missing: plugin entrypoint could not start".to_string())?;
         let mut stdin = child.stdin.take().ok_or("internal: missing stdin")?;
         let mut stdout = child.stdout.take().ok_or("internal: missing stdout")?;
@@ -68,6 +74,8 @@ impl PluginRuntime {
             let mut bytes = [0u8; 4096];
             while matches!(stderr.read(&mut bytes).await, Ok(n) if n > 0) {}
         });
+        let exited = Arc::new(AtomicBool::new(false));
+        let process_exited = exited.clone();
         tokio::spawn(async move {
             let mut pending: HashMap<String, Reply> = HashMap::new();
             let mut frame = Vec::new();
@@ -126,7 +134,7 @@ impl PluginRuntime {
                             frame.clear();
                             if message["jsonrpc"] != "2.0" { break 'runtime "protocol_incompatible: JSON-RPC version"; }
                             if !(if capability { &crate::plugin_contract::contracts().capability_runtime } else { &crate::plugin_contract::contracts().runtime }).is_valid(&message) { break 'runtime "invalid_request: plugin response schema"; }
-                            if message["method"] == "aibo/tool-request" {
+                            if message["method"] == "aibo/tool-request" || (capability && message["method"] == "capability.call") {
                                 if !matches!(message.get("id"), Some(Value::String(_) | Value::Number(_))) || !message["params"].is_object() {
                                     break 'runtime "invalid_request: malformed Core tool request";
                                 }
@@ -154,12 +162,17 @@ impl PluginRuntime {
                     }
                 }
             };
+            process_exited.store(true, Ordering::Release);
+            #[cfg(unix)]
+            if capability {
+                if let Some(pid) = child.id() { unsafe { libc::kill(-(pid as i32),libc::SIGKILL); } }
+            }
             let _ = child.kill().await;
             let _ = child.wait().await;
             stderr_task.abort();
             for (_, reply) in pending { let _ = reply.send(Err(reason.into())); }
         });
-        Ok(Self { commands, generation_id, notifications: Arc::new(Mutex::new(notifications)), stop_requested })
+        Ok(Self { commands, generation_id, notifications: Arc::new(Mutex::new(notifications)), stop_requested, exited })
     }
 
     pub async fn request(&self, method: &str, params: Value, timeout: Duration) -> Result<Value, String> {
@@ -183,6 +196,8 @@ impl PluginRuntime {
             .await
             .map_err(|_| "internal: plugin unavailable".to_owned())
     }
+
+    pub fn has_exited(&self) -> bool { self.exited.load(Ordering::Acquire) }
 
     pub fn was_stopped(&self) -> bool { self.stop_requested.load(Ordering::Acquire) }
 

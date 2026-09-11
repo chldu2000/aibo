@@ -180,3 +180,5 @@ App 中所有业务回调和可写绑定经 generation、当前工作区及会�
 P3 第二批增加宿主注入窗口身份的 capability IPC 与类型化 API，输入不接受 caller、permission 或 workspacePath。只读 capabilityProvider 可独立激活；App 不负责执行或管理进程，不因 capability 的名字选择 Provider。语义贡献自动呈现仍待后续实施，当前管理面板继续显示未支持贡献的激活原因。
 
 第三批由宿主返回包依赖诊断及受影响 contribution ID，管理面板展示固定版本和不可用原因：必需依赖失效阻止启用，可选依赖失效只提示相关功能停用，保留其他功能的启用入口。安装卡片以插件显示名提供可访问标签；继续复用 UiKitAdapter，不新增皮肤样式或契约字段。
+
+P3 第五批通过 `InstalledWorkbench` 和纯数据端口接入已安装语义贡献。App 从宿主目录生成工作区工具命令，按 installation/contribution 标识打开页面；不根据 Git 名称或皮肤选择渲染实现。快照仍经 PresentationSurface 和 UiKitAdapter 校验、挂载与切换，新增组件仅使用已有 Button/Card，CSS 只包含布局。目录变化关闭失效工具，卸载后不保留可执行动作；导航状态按窗口/工作区/贡献/release 隔离。既有 P1 固定只读命令退出主界面，参考端口与测试保留。

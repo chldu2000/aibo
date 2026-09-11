@@ -1,15 +1,182 @@
 {
-  "$schema":"https://json-schema.org/draft/2020-12/schema",
-  "$id":"https://aibo.local/contracts/capability-runtime.experimental.schema.json",
-  "title":"Capability runtime 2.0 experimental response envelope",
-  "type":"object","additionalProperties":false,"required":["jsonrpc","id"],
-  "properties":{
-    "jsonrpc":{"const":"2.0"},"id":{"type":"string","minLength":1,"maxLength":160},
-    "result":{"type":"object"},
-    "error":{"type":"object","additionalProperties":false,"required":["code","message"],"properties":{
-      "code":{"type":"integer"},"message":{"type":"string","maxLength":4096},
-      "data":{"type":"object","additionalProperties":false,"required":["kind"],"properties":{"kind":{"enum":["unsupported","incompatible_version","permission_denied","provider_unavailable","busy","cancelled","timeout","invalid_output"]}}}
-    }}
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://aibo.local/contracts/capability-runtime.experimental.schema.json",
+  "title": "Capability runtime 2.0 experimental response and dependency call envelopes",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "jsonrpc",
+    "id"
+  ],
+  "properties": {
+    "jsonrpc": {
+      "const": "2.0"
+    },
+    "id": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 160
+    },
+    "result": {
+      "type": "object"
+    },
+    "error": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "code",
+        "message"
+      ],
+      "properties": {
+        "code": {
+          "type": "integer"
+        },
+        "message": {
+          "type": "string",
+          "maxLength": 4096
+        },
+        "data": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "kind"
+          ],
+          "properties": {
+            "kind": {
+              "enum": [
+                "unsupported",
+                "incompatible_version",
+                "permission_denied",
+                "provider_unavailable",
+                "busy",
+                "cancelled",
+                "timeout",
+                "invalid_output",
+                "invalid_input"
+              ]
+            }
+          }
+        }
+      }
+    },
+    "method": {
+      "const": "capability.call"
+    },
+    "params": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "invocationId",
+        "generationId",
+        "pluginId",
+        "contributionId",
+        "capability",
+        "version",
+        "input"
+      ],
+      "properties": {
+        "invocationId": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 160
+        },
+        "generationId": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 160
+        },
+        "pluginId": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 160
+        },
+        "contributionId": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 160
+        },
+        "capability": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 160
+        },
+        "version": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 160
+        },
+        "input": {}
+      }
+    }
   },
-  "oneOf":[{"required":["result"],"not":{"required":["error"]}},{"required":["error"],"not":{"required":["result"]}}]
+  "oneOf": [
+    {
+      "required": [
+        "result"
+      ],
+      "not": {
+        "anyOf": [
+          {
+            "required": [
+              "error"
+            ]
+          },
+          {
+            "required": [
+              "method"
+            ]
+          },
+          {
+            "required": [
+              "params"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "required": [
+        "error"
+      ],
+      "not": {
+        "anyOf": [
+          {
+            "required": [
+              "result"
+            ]
+          },
+          {
+            "required": [
+              "method"
+            ]
+          },
+          {
+            "required": [
+              "params"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "required": [
+        "method",
+        "params"
+      ],
+      "not": {
+        "anyOf": [
+          {
+            "required": [
+              "result"
+            ]
+          },
+          {
+            "required": [
+              "error"
+            ]
+          }
+        ]
+      }
+    }
+  ]
 }

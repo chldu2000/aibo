@@ -13,6 +13,8 @@ mod plugin_registry;
 mod plugin_host;
 mod workspace_guard;
 mod semantic_git;
+mod semantic_plugins;
+mod git_capability_guard;
 
 use change_set::{
     capture as capture_workspace, checkpoint_file_path, persist as persist_change_set,
@@ -74,6 +76,7 @@ pub struct AppState {
     codex: CodexManager,
     plugins: plugin_host::PluginHost,
     semantic_git: semantic_git::GitPresentation,
+    semantic_plugins: semantic_plugins::SemanticPlugins,
     capability_broker: capability_broker::Broker,
     data_dir: PathBuf,
 }
@@ -4822,6 +4825,7 @@ async fn set_agent_plugin_enabled(id: String, enabled: bool, state: State<'_, Ap
     plugin_registry::enable(&state.db, &id, enabled).await?;
     if !enabled {
         for (installation,contributions) in plugin_dependencies::invalidations(&state.db,&id).await? {
+            state.semantic_plugins.invalidate(&state.capability_broker,&installation,contributions.as_deref()).await;
             state.capability_broker.stop_contributions(&installation,contributions.as_deref()).await.map_err(|error|error.message)?;
         }
     }
@@ -4833,7 +4837,8 @@ async fn uninstall_agent_plugin(id: String, state: State<'_, AppState>) -> Resul
     let _guard = state.capability_broker.mutation_guard().await;
     plugin_registry::enable(&state.db, &id, false).await?;
     for (installation,contributions) in plugin_dependencies::invalidations(&state.db,&id).await? {
-        state.capability_broker.stop_contributions(&installation,contributions.as_deref()).await.map_err(|error|error.message)?;
+        state.semantic_plugins.invalidate(&state.capability_broker,&installation,contributions.as_deref()).await;
+            state.capability_broker.stop_contributions(&installation,contributions.as_deref()).await.map_err(|error|error.message)?;
     }
     state.plugins.uninstall(&state.data_dir, &id).await
 }
@@ -5742,6 +5747,7 @@ pub fn run() {
             app.manage(AppState {
                 capability_broker: capability_broker::Broker::new(db.clone()),
                 semantic_git: semantic_git::GitPresentation::default(),
+                semantic_plugins: semantic_plugins::SemanticPlugins::default(),
                 plugins: plugin_host::PluginHost::with_app(db.clone(), app.handle().clone()),
                 db,
                 codex,
@@ -5750,6 +5756,11 @@ pub fn run() {
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
+            semantic_plugins::cancel_semantic_open,
+            semantic_plugins::list_semantic_contributions,
+            semantic_plugins::open_semantic_contribution,
+            semantic_plugins::act_semantic_contribution,
+            semantic_plugins::release_semantic_contribution,
             semantic_git::open_semantic_git,
             semantic_git::act_semantic_git,
             semantic_git::release_semantic_git,

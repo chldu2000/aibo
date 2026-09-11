@@ -4,10 +4,25 @@
   let workbenchDrafts = $state(readWorkbenchDrafts(draftStorage, presentationWindowId()));
   $effect(() => { writeWorkbenchDrafts(draftStorage, presentationWindowId(), workbenchDrafts); });
   import { WorkbenchPresentation } from '$lib/ui-kit';
-  const loadGitWorkbench = () => import('$lib/workbench/GitWorkbench.svelte');
-  import { openSemanticGit, actSemanticGit, releaseSemanticGit } from '$lib/api';
-  const semanticGitPort = { open: openSemanticGit, act: actSemanticGit, release: releaseSemanticGit };
-  let semanticGitOpen = $state(false);
+  const loadInstalledWorkbench = () => import('$lib/workbench/InstalledWorkbench.svelte');
+  import { listSemanticContributions, cancelSemanticOpen, openSemanticContribution, actSemanticContribution, releaseSemanticContribution } from '$lib/api';
+  import type { InstalledContribution } from '$lib/presentation/installed-controller';
+  const installedPort = { cancelOpen: cancelSemanticOpen, open: openSemanticContribution, act: actSemanticContribution, release: releaseSemanticContribution };
+  let installedContributions = $state<InstalledContribution[]>([]);
+  let installedTool = $state<InstalledContribution | null>(null);
+  let catalogBusy = false;
+  async function refreshInstalledTools() {
+    if (!desktop || catalogBusy) return;
+    catalogBusy = true;
+    try {
+      installedContributions = await listSemanticContributions();
+      if (installedTool && !installedContributions.some(item => item.installationId === installedTool?.installationId && item.contributionId === installedTool?.contributionId && item.available)) installedTool = null;
+    } catch { installedContributions = []; installedTool = null; }
+    finally { catalogBusy = false; }
+  }
+  onMount(() => { void refreshInstalledTools(); const timer = setInterval(() => { void refreshInstalledTools(); }, 2000); return () => clearInterval(timer); });
+  $effect(() => { pluginInstallations; untrack(() => { void refreshInstalledTools(); }); });
+
   const presentationState = createViewStateStore({
     getItem: key => window.localStorage.getItem(key),
     setItem: (key, value) => window.localStorage.setItem(key, value),
@@ -447,7 +462,7 @@
     settingsOpen = false;
     diagnosticsOpen = false;
     commandPaletteOpen = false;
-    semanticGitOpen = false;
+    installedTool = null;
     pluginsOpen = true;
     void pluginOperation(async () => { pluginInstallations = await listPluginInstallations(); });
   }
@@ -941,8 +956,8 @@
   });
 
   const commandPaletteCommands = $derived.by((): CommandPaletteCommand[] => [
-    { id: 'workspace-semantic-git', label: '工作区变更（只读）', description: '查看变更列表和文件差异', disabled: !desktop || !selectedWorkspaceId,
-      run: () => { semanticGitOpen = true; pluginsOpen = false; commandPaletteOpen = false; } },
+    ...installedContributions.map(item => ({ id: `installed:${item.installationId}:${item.contributionId}`, label: item.title, description: item.issue ?? '已安装的工作区工具', disabled: !desktop || !selectedWorkspaceId || !item.available,
+      run: () => { installedTool = item; pluginsOpen = false; commandPaletteOpen = false; } })),
     {
       id: 'new-session',
       label: '新建会话',
@@ -2986,7 +3001,7 @@
         if (workspaceId !== selectedWorkspaceId) activateWorkspace(workspaceId);
         void createPi();
       })}
-      onSelectSession={guard('onSelectSession', (id) => { semanticGitOpen = false; pluginsOpen = false; selectSession(id); })}
+      onSelectSession={guard('onSelectSession', (id) => { installedTool = null; pluginsOpen = false; selectSession(id); })}
       onUnarchiveSession={guard('onUnarchiveSession', (sessionId) => void unarchiveSession(sessionId))}
       onRequestArchiveSession={guard('onRequestArchiveSession', requestArchiveSession)}
       onSyncCodexThread={guard('onSyncCodexThread', (sessionId) => void syncCodexThread(sessionId))}
@@ -3000,10 +3015,12 @@
       onPointerDown={guard('onPointerDown', (event) => beginColumnResize('workspace', event))}
       onKeyDown={guard('onKeyDown', (event) => handleSplitterKeydown('workspace', event))}
     />
-    {#if semanticGitOpen && selectedWorkspaceId}
-      {#await loadGitWorkbench() then workbench}
-        <workbench.default workspaceId={selectedWorkspaceId} port={semanticGitPort} stateStore={presentationState} onClose={guard('onClose', () => semanticGitOpen = false)} />
-      {/await}
+    {#if installedTool && selectedWorkspaceId}
+      {#key `${selectedWorkspaceId}:${installedTool.installationId}:${installedTool.contributionId}`}
+        {#await loadInstalledWorkbench() then workbench}
+          <workbench.default workspaceId={selectedWorkspaceId} contribution={installedTool} port={installedPort} stateStore={presentationState} onClose={guard('onClose', () => installedTool = null)} />
+        {/await}
+      {/key}
     {:else if pluginsOpen}
     <PluginWorkspacePanel interaction={workbenchDrafts.plugin} onInteractionChange={guard('onInteractionChange', (value) => { workbenchDrafts.plugin = value; })}
       installations={pluginInstallations}

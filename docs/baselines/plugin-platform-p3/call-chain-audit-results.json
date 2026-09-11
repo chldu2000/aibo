@@ -1,0 +1,10 @@
+{
+  "invocations": {
+    "completed": 4,
+    "permission_denied": 2
+  },
+  "childInvocations": 2,
+  "invalidChildLinks": 0,
+  "sessions": 0,
+  "agentEvents": 0
+}

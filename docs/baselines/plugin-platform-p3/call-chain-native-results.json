@@ -1,0 +1,30 @@
+{
+  "results": [
+    {
+      "ok": true,
+      "stage": 0,
+      "evidence": {
+        "realPluginToPluginCall": true,
+        "originalCaller": true,
+        "pinnedDependency": true,
+        "inheritedScopeAndPermissions": true,
+        "staleGenerationRejected": true,
+        "noAgentSession": true
+      }
+    },
+    {
+      "ok": true,
+      "stage": 1,
+      "evidence": {
+        "realPluginToPluginCall": true,
+        "originalCaller": true,
+        "pinnedDependency": true,
+        "inheritedScopeAndPermissions": true,
+        "staleGenerationRejected": true,
+        "noAgentSession": true,
+        "actualAppRestart": true,
+        "dependencyDisableEnforced": true
+      }
+    }
+  ]
+}

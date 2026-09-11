@@ -1,0 +1,476 @@
+{
+  "schema": "aibo.plugin-manifest/v2",
+  "pluginId": "dev.aibo.git",
+  "version": "1.0.0",
+  "displayName": "Git \u53ea\u8bfb\u5de5\u5177",
+  "host": {
+    "min": "0.1.0",
+    "maxExclusive": "0.2.0"
+  },
+  "platforms": [
+    "darwin-arm64",
+    "darwin-x64",
+    "linux-x64",
+    "linux-arm64"
+  ],
+  "protocols": {
+    "runtime": {
+      "min": "2.0",
+      "max": "2.0"
+    },
+    "semanticView": {
+      "min": "1.0",
+      "max": "1.0"
+    }
+  },
+  "contributions": [
+    {
+      "kind": "capabilityProvider",
+      "id": "dev.aibo.git.read",
+      "scope": "workspace",
+      "required": true,
+      "displayName": "Git read",
+      "operations": [
+        {
+          "id": "dev.aibo.git.changes",
+          "capability": {
+            "id": "dev.aibo.git.changes",
+            "version": "1.0.0"
+          },
+          "inputSchema": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [],
+            "properties": {}
+          },
+          "outputSchema": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "items",
+              "truncated"
+            ],
+            "properties": {
+              "items": {
+                "type": "array",
+                "maxItems": 1000,
+                "items": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "required": [
+                    "id",
+                    "path",
+                    "previousPath",
+                    "status",
+                    "staged"
+                  ],
+                  "properties": {
+                    "id": {
+                      "type": "string",
+                      "maxLength": 8192
+                    },
+                    "path": {
+                      "type": "string",
+                      "maxLength": 4000
+                    },
+                    "previousPath": {
+                      "type": [
+                        "string",
+                        "null"
+                      ],
+                      "maxLength": 4000
+                    },
+                    "status": {
+                      "type": "string",
+                      "maxLength": 40
+                    },
+                    "staged": {
+                      "type": "boolean"
+                    }
+                  }
+                }
+              },
+              "truncated": {
+                "type": "boolean"
+              }
+            }
+          },
+          "effect": "read",
+          "permissions": [
+            "workspace.read"
+          ],
+          "timeoutMs": 10000,
+          "idempotent": true
+        },
+        {
+          "id": "dev.aibo.git.diff",
+          "capability": {
+            "id": "dev.aibo.git.diff",
+            "version": "1.0.0"
+          },
+          "inputSchema": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "path",
+              "staged"
+            ],
+            "properties": {
+              "path": {
+                "type": "string",
+                "maxLength": 4000
+              },
+              "staged": {
+                "type": "boolean"
+              }
+            }
+          },
+          "outputSchema": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "content",
+              "truncated"
+            ],
+            "properties": {
+              "content": {
+                "type": "string",
+                "maxLength": 32000
+              },
+              "truncated": {
+                "type": "boolean"
+              }
+            }
+          },
+          "effect": "read",
+          "permissions": [
+            "workspace.read"
+          ],
+          "timeoutMs": 10000,
+          "idempotent": true
+        },
+        {
+          "id": "dev.aibo.git.view",
+          "capability": {
+            "id": "dev.aibo.git.view",
+            "version": "1.0.0"
+          },
+          "inputSchema": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "actionId",
+              "itemId",
+              "offset"
+            ],
+            "properties": {
+              "actionId": {
+                "enum": [
+                  "refresh",
+                  "open-diff",
+                  "back",
+                  "next",
+                  "previous"
+                ]
+              },
+              "itemId": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "maxLength": 8192
+              },
+              "offset": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 10000
+              }
+            }
+          },
+          "outputSchema": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "state",
+              "view",
+              "actions"
+            ],
+            "properties": {
+              "state": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "status",
+                  "message"
+                ],
+                "properties": {
+                  "status": {
+                    "enum": [
+                      "ready",
+                      "loading",
+                      "empty",
+                      "error",
+                      "unavailable"
+                    ]
+                  },
+                  "message": {
+                    "type": "string",
+                    "maxLength": 8192
+                  }
+                }
+              },
+              "view": {
+                "oneOf": [
+                  {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "required": [
+                      "kind",
+                      "properties",
+                      "items",
+                      "selection",
+                      "page"
+                    ],
+                    "properties": {
+                      "kind": {
+                        "const": "collection"
+                      },
+                      "properties": {
+                        "type": "array",
+                        "maxItems": 16,
+                        "items": {
+                          "type": "object",
+                          "additionalProperties": false,
+                          "required": [
+                            "key",
+                            "label",
+                            "type",
+                            "values"
+                          ],
+                          "properties": {
+                            "key": {
+                              "type": "string",
+                              "maxLength": 64
+                            },
+                            "label": {
+                              "type": "string",
+                              "maxLength": 8192
+                            },
+                            "type": {
+                              "enum": [
+                                "text",
+                                "enum"
+                              ]
+                            },
+                            "values": {
+                              "type": "array",
+                              "maxItems": 32,
+                              "items": {
+                                "type": "string",
+                                "maxLength": 8192
+                              }
+                            }
+                          }
+                        }
+                      },
+                      "items": {
+                        "type": "array",
+                        "maxItems": 50,
+                        "items": {
+                          "type": "object",
+                          "additionalProperties": false,
+                          "required": [
+                            "id",
+                            "values"
+                          ],
+                          "properties": {
+                            "id": {
+                              "type": "string",
+                              "maxLength": 8192
+                            },
+                            "values": {
+                              "type": "object",
+                              "maxProperties": 16,
+                              "additionalProperties": {
+                                "type": "string",
+                                "maxLength": 8192
+                              }
+                            }
+                          }
+                        }
+                      },
+                      "selection": {
+                        "type": [
+                          "string",
+                          "null"
+                        ],
+                        "maxLength": 8192
+                      },
+                      "page": {
+                        "type": "object",
+                        "additionalProperties": false,
+                        "required": [
+                          "offset",
+                          "size",
+                          "total",
+                          "truncated"
+                        ],
+                        "properties": {
+                          "offset": {
+                            "type": "integer",
+                            "minimum": 0,
+                            "maximum": 10000
+                          },
+                          "size": {
+                            "const": 50
+                          },
+                          "total": {
+                            "type": "integer",
+                            "minimum": 0,
+                            "maximum": 10000
+                          },
+                          "truncated": {
+                            "type": "boolean"
+                          }
+                        }
+                      }
+                    }
+                  },
+                  {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "required": [
+                      "kind",
+                      "itemId",
+                      "properties",
+                      "content",
+                      "truncated"
+                    ],
+                    "properties": {
+                      "kind": {
+                        "const": "detail"
+                      },
+                      "itemId": {
+                        "type": "string",
+                        "maxLength": 8192
+                      },
+                      "properties": {
+                        "type": "array",
+                        "maxItems": 16,
+                        "items": {
+                          "type": "object",
+                          "additionalProperties": false,
+                          "required": [
+                            "label",
+                            "value"
+                          ],
+                          "properties": {
+                            "label": {
+                              "type": "string",
+                              "maxLength": 8192
+                            },
+                            "value": {
+                              "type": "string",
+                              "maxLength": 8192
+                            }
+                          }
+                        }
+                      },
+                      "content": {
+                        "type": "string",
+                        "maxLength": 210000
+                      },
+                      "truncated": {
+                        "type": "boolean"
+                      }
+                    }
+                  }
+                ]
+              },
+              "actions": {
+                "type": "array",
+                "maxItems": 5,
+                "items": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "required": [
+                    "id",
+                    "label",
+                    "intent",
+                    "enabled"
+                  ],
+                  "properties": {
+                    "id": {
+                      "enum": [
+                        "refresh",
+                        "open-diff",
+                        "back",
+                        "next",
+                        "previous"
+                      ]
+                    },
+                    "label": {
+                      "type": "string",
+                      "maxLength": 8192
+                    },
+                    "intent": {
+                      "enum": [
+                        "refresh",
+                        "inspect",
+                        "navigate"
+                      ]
+                    },
+                    "enabled": {
+                      "type": "boolean"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "effect": "read",
+          "permissions": [
+            "workspace.read"
+          ],
+          "timeoutMs": 10000,
+          "idempotent": true
+        }
+      ]
+    },
+    {
+      "kind": "semanticView",
+      "id": "dev.aibo.git.workspace",
+      "scope": "workspace",
+      "required": true,
+      "title": "Git \u5de5\u4f5c\u533a\u53d8\u66f4",
+      "extensionPoint": "workspace.tool",
+      "semanticType": "collection",
+      "contractVersion": "1.0.0",
+      "visibility": "workspaceSelected",
+      "provider": {
+        "capability": "dev.aibo.git.view",
+        "version": {
+          "min": "1.0.0",
+          "maxExclusive": "2.0.0"
+        },
+        "operation": "dev.aibo.git.view"
+      }
+    }
+  ],
+  "entrypoint": {
+    "executable": "git-worker.mjs"
+  },
+  "executableDependencies": [
+    {
+      "kind": "runtime",
+      "name": "node",
+      "versionRange": ">=22",
+      "required": true
+    },
+    {
+      "kind": "executable",
+      "name": "git",
+      "required": true
+    }
+  ]
+}

@@ -366,7 +366,7 @@ mod tests {
     use sqlx::Connection;
 
     #[tokio::test]
-    async fn installs_declarative_v2_without_an_entrypoint_but_rejects_premature_activation() {
+    async fn installs_declarative_v2_without_an_entrypoint_but_requires_its_dependency() {
         let root = std::env::temp_dir().join(format!("aibo-v2-registry-{}", ulid::Ulid::new()));
         let package = root.join("package");
         fs::create_dir_all(&package).unwrap();
@@ -380,8 +380,9 @@ mod tests {
         assert!(installed.dependencies.is_empty(), "package dependencies are not local executable probes");
         assert_eq!(installed.contributions.len(), 1);
         assert_eq!(installed.contributions[0].kind, "semanticView");
-        assert!(!installed.activation_issues.is_empty());
-        assert!(enable(&db, &installed.id, true).await.unwrap_err().contains("protocol_incompatible"));
+        assert!(installed.activation_issues.is_empty());
+        assert!(!installed.package_dependencies.ready());
+        assert!(enable(&db, &installed.id, true).await.unwrap_err().contains("dependency"));
         assert!(!list(&db).await.unwrap()[0].enabled);
         let sessions: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM sessions").fetch_one(&db).await.unwrap();
         assert_eq!(sessions, 0);
