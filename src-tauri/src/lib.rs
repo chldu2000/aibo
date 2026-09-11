@@ -1,5 +1,6 @@
 mod compatibility;
 mod project_actions;
+mod controlled_process;
 mod workspace_git;
 use workspace_git::apply_git_index_action;
 mod artifact;

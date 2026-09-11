@@ -1,9 +1,9 @@
 //! Project task definitions and execution, independent of Tauri command state.
 use crate::{CoreError, ProjectAction, ProjectActionRun, workspace_by_id, session_by_id,
-    now_iso, read_process_output, isolate_process_tree, terminate_process_tree};
+    now_iso};
 use sqlx::{Row, SqlitePool};
 use std::{fs, path::Path, time::Duration};
-use tokio::{process::Command as TokioCommand, time as tokio_time};
+use tokio::process::Command as TokioCommand;
 use ulid::Ulid;
 
 fn project_action_from_row(row: &sqlx::sqlite::SqliteRow) -> Result<ProjectAction, CoreError> {
@@ -208,48 +208,13 @@ pub(crate) async fn run_project_action(
         .map_err(CoreError::InvalidWorkspacePath)?;
     let started_at = now_iso();
     let mut command = TokioCommand::new(&action.program);
-    command
-        .args(&action.args)
-        .current_dir(&cwd)
-        .stdout(std::process::Stdio::piped())
-        .stderr(std::process::Stdio::piped());
-    isolate_process_tree(&mut command);
-    let mut child = command
-        .kill_on_drop(true)
-        .spawn()
-        .map_err(|error| CoreError::Initialization(format!("start project action: {error}")))?;
-    let stdout = child
-        .stdout
-        .take()
-        .ok_or_else(|| CoreError::Initialization("project action stdout unavailable".to_owned()))?;
-    let stderr = child
-        .stderr
-        .take()
-        .ok_or_else(|| CoreError::Initialization("project action stderr unavailable".to_owned()))?;
-    let stdout_task = tokio::spawn(read_process_output(stdout));
-    let stderr_task = tokio::spawn(read_process_output(stderr));
-    let wait_result = tokio_time::timeout(Duration::from_secs(300), child.wait()).await;
-    let (status, exit_code) = match wait_result {
-        Ok(result) => {
-            let status = result.map_err(|error| {
-                CoreError::Initialization(format!("wait for project action: {error}"))
-            })?;
-            (
-                if status.success() {
-                    "completed"
-                } else {
-                    "failed"
-                },
-                status.code().map(i64::from),
-            )
-        }
-        Err(_) => {
-            terminate_process_tree(&mut child).await;
-            ("timed_out", None)
-        }
-    };
-    let mut output = String::from_utf8_lossy(&stdout_task.await.unwrap_or_default()).to_string();
-    let stderr = String::from_utf8_lossy(&stderr_task.await.unwrap_or_default()).to_string();
+    command.args(&action.args).current_dir(&cwd);
+    let execution = crate::controlled_process::execute(command, Duration::from_secs(300), 1024 * 1024 + 1)
+        .await.map_err(|error| CoreError::Initialization(format!("execute project action: {error}")))?;
+    let status = if execution.timed_out { "timed_out" } else if execution.success { "completed" } else { "failed" };
+    let exit_code = execution.exit_code.map(i64::from);
+    let mut output = String::from_utf8_lossy(&execution.stdout).to_string();
+    let stderr = String::from_utf8_lossy(&execution.stderr).to_string();
     if !stderr.is_empty() {
         if !output.is_empty() {
             output.push('\n');
