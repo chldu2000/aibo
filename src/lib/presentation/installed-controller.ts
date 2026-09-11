@@ -1,8 +1,9 @@
 import { assertSnapshot } from './validation.ts';
 import type { ActionMessage, Snapshot } from './contract.ts';
-export type InstalledContribution = { installationId: string; contributionId: string; title: string; available: boolean; issue: string | null };
+export type InstalledScope = { kind: 'application' } | { kind: 'workspace' | 'session'; id: string };
+export type InstalledContribution = { scope?: 'application' | 'workspace' | 'session'; extensionPoint?: string; visibility?: 'always' | 'workspaceSelected' | 'sessionSelected'; installationId: string; contributionId: string; title: string; available: boolean; issue: string | null };
 export type InstalledPort = {
-  open(workspaceId: string, installationId: string, contributionId: string, requestId: string): Promise<Snapshot>;
+  open(workspaceId: string, installationId: string, contributionId: string, requestId: string, scope?: InstalledScope): Promise<Snapshot>;
   cancelOpen(requestId: string): Promise<void>;
   act(action: ActionMessage): Promise<Snapshot>;
   release(generation: string): Promise<void>;
@@ -27,17 +28,17 @@ export function createInstalledController(port: InstalledPort, publish: (snapsho
   let sequence = 0;
   let disposed = false;
   const release = (generation?: string) => { if (generation) void port.release(generation).catch(() => {}); };
-  async function open(workspaceId: string, contribution: InstalledContribution) {
+  async function open(workspaceId: string, contribution: InstalledContribution, scope: InstalledScope = {kind:"workspace",id:workspaceId}) {
     const ticket = ++sequence;
     release(current?.context.generation); current = null; publish(null, '');
     const requestId = crypto.randomUUID();
     const cancellation = setInterval(() => { if (disposed || ticket !== sequence) void port.cancelOpen(requestId).catch(() => {}); }, 100);
     try {
-      const result = await port.open(workspaceId, contribution.installationId, contribution.contributionId, requestId);
+      const result = await port.open(workspaceId, contribution.installationId, contribution.contributionId, requestId, scope);
       if (disposed || ticket !== sequence) { release(result.context?.generation); return; }
       try {
         assertSnapshot(result);
-        if (result.context.workspaceId !== workspaceId || result.context.contributionId !== contribution.contributionId || !result.context.generation || result.context.revision < 1) throw Error('invalid_output: context');
+        if ((scope.kind === "application" ? result.context.workspaceId !== null : result.context.workspaceId !== workspaceId) || (scope.kind === "session" && result.context.sessionId !== scope.id) || result.context.contributionId !== contribution.contributionId || !result.context.generation || result.context.revision < 1) throw Error('invalid_output: context');
       } catch (error) { release(result.context?.generation); throw error; }
       current = result; publish(result, '');
     } catch (error) { if (!disposed && ticket === sequence) publish(null, failureMessage(error)); }
@@ -51,7 +52,7 @@ export function createInstalledController(port: InstalledPort, publish: (snapsho
       const result = await port.act(message);
       if (disposed || ticket !== sequence) return;
       assertSnapshot(result);
-      if (result.context.generation !== previous.context.generation || result.context.workspaceId !== previous.context.workspaceId || result.context.contributionId !== previous.context.contributionId || result.context.revision <= previous.context.revision) throw Error('invalid_output: context');
+      if (result.context.sessionId !== previous.context.sessionId || result.context.generation !== previous.context.generation || result.context.workspaceId !== previous.context.workspaceId || result.context.contributionId !== previous.context.contributionId || result.context.revision <= previous.context.revision) throw Error('invalid_output: context');
       current = result; publish(result, '');
     } catch (error) { if (!disposed && ticket === sequence) { current = null; release(previous.context.generation); publish(null, failureMessage(error)); } }
   }

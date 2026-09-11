@@ -6,10 +6,18 @@
   import { WorkbenchPresentation } from '$lib/ui-kit';
   const loadInstalledWorkbench = () => import('$lib/workbench/InstalledWorkbench.svelte');
   import { listSemanticContributions, cancelSemanticOpen, openSemanticContribution, actSemanticContribution, releaseSemanticContribution } from '$lib/api';
-  import type { InstalledContribution } from '$lib/presentation/installed-controller';
+  import type { InstalledContribution, InstalledScope } from '$lib/presentation/installed-controller';
   const installedPort = { cancelOpen: cancelSemanticOpen, open: openSemanticContribution, act: actSemanticContribution, release: releaseSemanticContribution };
   let installedContributions = $state<InstalledContribution[]>([]);
   let installedTool = $state<InstalledContribution | null>(null);
+  const installedScope = $derived<InstalledScope>(installedTool?.scope === 'application' ? {kind:'application'} : installedTool?.scope === 'session' ? {kind:'session',id:selectedSessionId ?? ''} : {kind:'workspace',id:selectedWorkspaceId ?? ''});
+  function contributionAvailable(item: InstalledContribution) {
+    return desktop && item.available
+      && (item.scope !== 'workspace' && item.scope !== undefined || !!selectedWorkspaceId)
+      && (item.scope !== 'session' || !!selectedSessionId)
+      && (item.visibility !== 'workspaceSelected' || !!selectedWorkspaceId)
+      && (item.visibility !== 'sessionSelected' || !!selectedSessionId);
+  }
   let catalogBusy = false;
   async function refreshInstalledTools() {
     if (!desktop || catalogBusy) return;
@@ -956,7 +964,7 @@
   });
 
   const commandPaletteCommands = $derived.by((): CommandPaletteCommand[] => [
-    ...installedContributions.map(item => ({ id: `installed:${item.installationId}:${item.contributionId}`, label: item.title, description: item.issue ?? '已安装的工作区工具', disabled: !desktop || !selectedWorkspaceId || !item.available,
+    ...installedContributions.map(item => ({ id: `installed:${item.installationId}:${item.contributionId}`, label: item.title, description: item.issue ?? '已安装的插件视图', disabled: !contributionAvailable(item),
       run: () => { installedTool = item; pluginsOpen = false; commandPaletteOpen = false; } })),
     {
       id: 'new-session',
@@ -3015,10 +3023,10 @@
       onPointerDown={guard('onPointerDown', (event) => beginColumnResize('workspace', event))}
       onKeyDown={guard('onKeyDown', (event) => handleSplitterKeydown('workspace', event))}
     />
-    {#if installedTool && selectedWorkspaceId}
-      {#key `${selectedWorkspaceId}:${installedTool.installationId}:${installedTool.contributionId}`}
+    {#if installedTool && contributionAvailable(installedTool)}
+      {#key JSON.stringify([installedScope,installedTool.installationId,installedTool.contributionId])}
         {#await loadInstalledWorkbench() then workbench}
-          <workbench.default workspaceId={selectedWorkspaceId} contribution={installedTool} port={installedPort} stateStore={presentationState} onClose={guard('onClose', () => installedTool = null)} />
+          <workbench.default workspaceId={selectedWorkspaceId ?? ""} invocationScope={installedScope} contribution={installedTool} port={installedPort} stateStore={presentationState} onClose={guard('onClose', () => installedTool = null)} />
         {/await}
       {/key}
     {:else if pluginsOpen}

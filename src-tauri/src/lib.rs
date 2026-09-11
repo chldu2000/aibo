@@ -10,6 +10,7 @@ mod plugin_manifest;
 mod plugin_dependencies;
 mod capability_broker;
 mod plugin_registry;
+mod plugin_storage;
 mod plugin_host;
 mod workspace_guard;
 mod semantic_git;
@@ -5747,6 +5748,9 @@ pub fn run() {
             })?;
             tauri::async_runtime::block_on(capability_broker::Broker::recover(&db))
                 .map_err(|error| Box::new(CoreError::Initialization(error)) as Box<dyn Error>)?;
+            if let Err(error) = tauri::async_runtime::block_on(plugin_registry::collect_retired(&db, &data_dir)) {
+                warn!(%error, "retired plugin collection deferred");
+            }
             info!(path = %db_path.display(), "aibo core initialized");
             let codex = CodexManager::new(app.handle().clone(), db.clone(), data_dir.clone());
             app.manage(AppState {

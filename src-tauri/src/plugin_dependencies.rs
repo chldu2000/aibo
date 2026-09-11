@@ -226,6 +226,24 @@ mod tests {
         json!([{"pluginId":plugin,"version":{"min":"1.0.0","maxExclusive":"2.0.0"},"required":required,"contributionIds":[format!("{owner}.{}",if optional_contribution {"optional"} else {"read"})]}])
     }
     #[tokio::test]
+    async fn retired_dependency_chain_survives_for_session_recovery() {
+        let f=Fixture::new().await;
+        let leaf=f.install("dev.test.leaf","1.0.0",json!([]),false).await;plugin_registry::enable(&f.db,&leaf,true).await.unwrap();
+        let parent=f.install("dev.test.parent","1.0.0",dependency("dev.test.leaf","dev.test.parent",true,false),false).await;plugin_registry::enable(&f.db,&parent,true).await.unwrap();
+        sqlx::query("INSERT INTO sessions(id,workspace_id,agent,label,state,created_at,updated_at,plugin_installation_id) VALUES('recovery','w','test','test','closed',?,?,?)")
+            .bind(crate::now_iso()).bind(crate::now_iso()).bind(&parent).execute(&f.db).await.unwrap();
+        plugin_registry::uninstall(&f.db,&f.root.join("data"),&parent).await.unwrap();
+        plugin_registry::uninstall(&f.db,&f.root.join("data"),&leaf).await.unwrap();
+        plugin_registry::collect_retired(&f.db,&f.root.join("data")).await.unwrap();
+        let retained=|id:&str| f.root.join("data/plugins").join(format!(".retained-{id}"));
+        assert!(retained(&parent).is_dir() && retained(&leaf).is_dir(),"session recovery retains transitive package dependencies");
+        sqlx::query("DELETE FROM sessions WHERE id='recovery'").execute(&f.db).await.unwrap();
+        plugin_registry::collect_retired(&f.db,&f.root.join("data")).await.unwrap();
+        assert!(!retained(&parent).exists() && !retained(&leaf).exists());
+        f.finish().await;
+    }
+
+    #[tokio::test]
     async fn required_missing_blocks_activation_optional_missing_only_disables_target_contribution() {
         let f=Fixture::new().await;
         let required=f.install("dev.test.required","1.0.0",dependency("dev.test.missing","dev.test.required",true,false),false).await;

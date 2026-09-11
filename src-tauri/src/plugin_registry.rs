@@ -277,6 +277,8 @@ pub(crate) async fn install(db: &SqlitePool, data_dir: &Path, source: &Path) -> 
         Ok::<(), String>(())
     }.await;
     if let Err(error) = persist { let _ = fs::remove_dir_all(&staging); let _ = fs::remove_dir_all(&destination); return Err(error); }
+    let retained = registry.join(format!(".retained-{id}"));
+    if retained.exists() { fs::remove_dir_all(retained).map_err(io_error)?; }
     let dependencies = dependency_diagnostics(&manifest);
     let activation_issues = plugin_manifest::activation_issues(&manifest)?;
     let package_dependencies = plugin_dependencies::resolve(db, &id, false).await?;
@@ -332,6 +334,34 @@ pub(crate) async fn enable(db: &SqlitePool, id: &str, enabled: bool) -> Result<(
     Ok(())
 }
 
+// Recovery references outlive active processes. Closed sessions retain their exact release.
+async fn recovery_references(db: &SqlitePool, id: &str) -> Result<i64,String> {
+    sqlx::query_scalar("WITH RECURSIVE retained(id) AS (
+        SELECT id FROM plugin_installations WHERE installed=1 AND id<>?
+        UNION SELECT plugin_installation_id FROM sessions WHERE plugin_installation_id IS NOT NULL
+        UNION SELECT installation_id FROM capability_invocations WHERE status='running'
+        UNION SELECT installation_id FROM capability_provider_bindings
+        UNION SELECT d.dependency_installation_id FROM plugin_dependency_bindings d JOIN retained r ON r.id=d.installation_id
+    ) SELECT COUNT(*) FROM retained WHERE id=?")
+        .bind(id).bind(id).fetch_one(db).await.map_err(io_error)
+}
+
+/// Reclaim only tombstoned releases whose exact-release recovery references are gone.
+pub(crate) async fn collect_retired(db: &SqlitePool, data_dir: &Path) -> Result<(),String> {
+    let _lock = INSTALL_LOCK.lock().await;
+    let registry=data_dir.join("plugins");
+    if !registry.exists() { return Ok(()); }
+    let registry=registry.canonicalize().map_err(io_error)?;
+    let rows=sqlx::query("SELECT id,install_path FROM plugin_installations WHERE installed=0").fetch_all(db).await.map_err(io_error)?;
+    for row in rows {
+        let id: String=row.get("id");
+        let path=PathBuf::from(row.get::<String,_>("install_path"));
+        if path != registry.join(format!(".retained-{id}")) || recovery_references(db,&id).await? != 0 {continue;}
+        if path.exists() {fs::remove_dir_all(path).map_err(io_error)?;}
+    }
+    Ok(())
+}
+
 pub(crate) async fn uninstall(db: &SqlitePool, data_dir: &Path, id: &str) -> Result<(), String> {
     let _lock = INSTALL_LOCK.lock().await;
     let row = sqlx::query("SELECT install_path, installed FROM plugin_installations WHERE id=?")
@@ -344,13 +374,16 @@ pub(crate) async fn uninstall(db: &SqlitePool, data_dir: &Path, id: &str) -> Res
     if parent != registry || path.file_name().and_then(|name|name.to_str()) != Some(id) {
         return Err("invalid_request: installation path escapes registry".into());
     }
-    let trash = parent.join(format!(".removing-{id}"));
+    let active:i64=sqlx::query_scalar("SELECT COUNT(*) FROM capability_invocations WHERE installation_id=? AND status='running'").bind(id).fetch_one(db).await.map_err(io_error)?;
+    if active != 0 {return Err("busy: capability invocations must drain before uninstall".into());}
+    let retained = recovery_references(db,id).await? > 0;
+    let trash = parent.join(format!(".retained-{id}"));
     if path.exists() { fs::rename(&path, &trash).map_err(io_error)?; }
-    let result = sqlx::query("UPDATE plugin_installations SET installed=0,enabled=0,enabled_at=NULL,removed_at=? WHERE id=? AND installed=1")
-        .bind(crate::now_iso()).bind(id).execute(db).await.map_err(io_error);
+    let result = sqlx::query("UPDATE plugin_installations SET installed=0,enabled=0,enabled_at=NULL,removed_at=?,install_path=? WHERE id=? AND installed=1")
+        .bind(crate::now_iso()).bind(trash.to_string_lossy().as_ref()).bind(id).execute(db).await.map_err(io_error);
     match result {
         Ok(changed) if changed.rows_affected() == 1 => {
-            if trash.exists() { fs::remove_dir_all(trash).map_err(io_error)?; }
+            if !retained && trash.exists() { fs::remove_dir_all(trash).map_err(io_error)?; }
             Ok(())
         }
         _ => {
@@ -394,6 +427,31 @@ mod tests {
         assert_eq!(reinstalled.manifest, original);
         db.close().await;
         fs::remove_dir_all(root).unwrap();
+    }
+
+    #[tokio::test]
+    async fn retired_release_is_retained_until_recovery_references_disappear() {
+        let root=std::env::temp_dir().join(format!("aibo-release-{}",ulid::Ulid::new()));
+        let db=crate::open_database(&root.join("aibo.sqlite3")).await.unwrap();
+        let source=Path::new(env!("CARGO_MANIFEST_DIR")).join("../fixtures/plugins/capability-echo");
+        let release=install(&db,&root,&source).await.unwrap();
+        sqlx::query("INSERT INTO capability_provider_bindings(scope_kind,scope_id,capability_id,contract_version,installation_id,contribution_id,updated_at) VALUES('application','application','test','1.0.0',?,'test',?)")
+            .bind(&release.id).bind(crate::now_iso()).execute(&db).await.unwrap();
+        let data=crate::plugin_storage::directory(&root.join("plugins").join(&release.id),&release.plugin_id,&release.id,"instance").unwrap();
+        fs::write(data.join("cache"),"retained").unwrap();
+        uninstall(&db,&root,&release.id).await.unwrap();
+        let retained=root.join("plugins").join(format!(".retained-{}",release.id));
+        collect_retired(&db,&root).await.unwrap();assert!(retained.is_dir());
+        assert!(!list(&db).await.unwrap()[0].installed);
+        let restored=install(&db,&root,&source).await.unwrap();
+        assert_eq!(restored.id,release.id);
+        assert!(!retained.exists());
+        assert_eq!(fs::read_to_string(data.join("cache")).unwrap(),"retained");
+        uninstall(&db,&root,&release.id).await.unwrap();
+        sqlx::query("DELETE FROM capability_provider_bindings WHERE installation_id=?").bind(&release.id).execute(&db).await.unwrap();
+        collect_retired(&db,&root).await.unwrap();assert!(!retained.exists());
+        assert!(data.join("cache").exists(),"package collection never cleans private data");
+        db.close().await;fs::remove_dir_all(root).unwrap();
     }
 
     #[test]

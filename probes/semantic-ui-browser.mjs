@@ -37,6 +37,14 @@ try {
     }
     evidence.push({renderer:'svelte',kit,layout,keyboard:'Enter/Space',focus:'detail and return',states:'passed',screenshot:`${kit}-${layout}.png`});
   }
+  for(const renderer of ['svelte','dom']) for(const kit of ['shadcn','material3']) for(const fixture of ['stableSettings','stableInspector']) {
+    await page.evaluate(async({renderer,kit,fixture})=>window.semanticProbe.mount(renderer,kit,'central',fixture),{renderer,kit,fixture});
+    assert.match(await page.getByRole('textbox',{name:'视图内容',exact:true}).inputValue(),/CONFIGURATION_OK|INSPECTOR_OK/);
+    await page.getByRole('button',{name:'刷新',exact:true}).click();
+    assert.equal((await page.evaluate(()=>window.semanticProbe.actions.at(-1))).actionId,'refresh');
+    await page.screenshot({path:output+'/'+renderer+'-'+kit+'-'+fixture+'.png',fullPage:true});
+    evidence.push({renderer,kit,fixture,readOnly:true,refresh:true});
+  }
   await page.evaluate(()=>window.semanticProbe.mount('dom'));
   await page.getByRole('button',{name:/查看差异 文件: src\/App.svelte/}).click();
   assert.deepEqual(await page.evaluate(()=>window.semanticProbe.actions.at(-1)),expected);

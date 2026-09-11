@@ -164,7 +164,7 @@ impl Broker {
             if model.version != 2 || !plugin_manifest::activation_issues(&manifest).map_err(database)?.is_empty() { continue; }
             if plugin_registry::dependency_diagnostics(&manifest).iter().any(|dependency|dependency.required && !dependency.available) { continue; }
             let dependencies = crate::plugin_dependencies::resolve(&self.db,row.get("id"),false).await.map_err(database)?;
-            for contribution in model.contributions.iter().filter(|item|item.kind == "capabilityProvider" && item.scope == scope.key().0 && dependencies.supports(&item.id)) {
+            for contribution in model.contributions.iter().filter(|item|item.kind == "capabilityProvider" && plugin_manifest::contribution_supported(item,&manifest) && item.scope == scope.key().0 && dependencies.supports(&item.id)) {
                 for operation in contribution.metadata["operations"].as_array().unwrap() {
                     if operation["capability"]["id"] != capability { continue; }
                     if operation["capability"]["version"] != version { other_version = true; continue; }
@@ -347,7 +347,8 @@ impl Broker {
         drop(active);
         // Handshake is idempotent for an existing generation, and every invocation
         // checks the exact contribution/contract/operation instead of trusting a capability name.
-        let handshake = runtime.request("capability.initialize",json!({"protocol":"2.0","instanceId":slot.id,"generationId":runtime.generation_id,"installationId":provider.installation_id,"pluginId":provider.plugin_id,"pluginVersion":provider.manifest["version"],"contributionId":provider.contribution_id}),Duration::from_secs(5)).await.map_err(transport)?;
+        let private_data = crate::plugin_storage::directory(&provider.directory,&provider.plugin_id,&provider.installation_id,&slot.id).map_err(database)?;
+        let handshake = runtime.request("capability.initialize",json!({"protocol":"2.0","instanceId":slot.id,"privateData":{"path":private_data,"formatVersion":1},"generationId":runtime.generation_id,"installationId":provider.installation_id,"pluginId":provider.plugin_id,"pluginVersion":provider.manifest["version"],"contributionId":provider.contribution_id}),Duration::from_secs(5)).await.map_err(transport)?;
         let expected = json!({"capability":request.capability,"version":request.version,"operationId":provider.operation["id"]});
         if handshake["protocol"] != "2.0" || handshake["pluginId"] != provider.plugin_id || handshake["pluginVersion"] != provider.manifest["version"] || handshake["generationId"] != runtime.generation_id || !handshake["operations"].as_array().is_some_and(|operations|operations.contains(&expected)) {
             return Err(fail("incompatible_version", "Runtime did not negotiate the declared operation"));
@@ -524,6 +525,30 @@ mod tests {
         restarted.stop_installation(&fixture.installation).await.unwrap();
         fixture.finish().await;
     }
+    #[tokio::test]
+    async fn cache_limit_eviction_and_crash_preserve_scope_identity_and_isolation() {
+        let f=Fixture::new().await;
+        for scope in ["a","b"] { f.bind(Scope::Workspace(scope.into()),&f.installation).await; }
+        let first=f.broker.invoke("main",request("a","first",json!({"value":"first"}))).await.unwrap();
+        let provider=f.broker.provider(&request("a","lookup",json!({"value":"ok"}))).await.unwrap();
+        for index in 1..MAX_INSTANCES {f.broker.slot(&provider,&Scope::Workspace(format!("cache-{index}"))).await.unwrap();}
+        assert_eq!(f.broker.slot(&provider,&Scope::Workspace("overflow".into())).await.err().unwrap().code,"busy");
+        let slot=f.broker.slot(&provider,&Scope::Workspace("a".into())).await.unwrap();
+        let old_runtime=slot.runtime.lock().await.clone().unwrap();
+        *slot.touched.lock().await=Instant::now()-IDLE_TTL-Duration::from_secs(1);
+        // Reopening an expired instance evicts its process but keeps persisted identity.
+        let reopened=f.broker.invoke("main",request("a","reopen",json!({"value":"ok"}))).await.unwrap();
+        assert_eq!(first.instance_id,reopened.instance_id);
+        assert_ne!(first.generation_id,reopened.generation_id);
+        assert!(old_runtime.was_stopped());
+        f.broker.stop_installation(&f.installation).await.unwrap();
+        let other={let broker=f.broker.clone();tokio::spawn(async move {broker.invoke("main",request("b","other",json!({"value":"keep","delayMs":500}))).await})};
+        running(&f,1).await;
+        assert_eq!(f.broker.invoke("main",request("a","crash",json!({"value":"crash","mode":"crash"}))).await.unwrap_err().code,"provider_unavailable");
+        assert_eq!(other.await.unwrap().unwrap().output["value"],"keep");
+        f.finish().await;
+    }
+
     #[tokio::test]
     async fn lifecycle_events_are_snapshots_scoped_and_recover_once() {
         let f = Fixture::new().await;

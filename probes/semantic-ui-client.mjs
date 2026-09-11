@@ -11,7 +11,9 @@ import loading from '/fixtures/semantic-git/loading.json';
 import unavailable from '/fixtures/semantic-git/unavailable.json';
 import partial from '/fixtures/semantic-git/partial.json';
 import partialDetail from '/fixtures/semantic-git/partial-detail.json';
-const fixtures={collection,detail,empty,error,loading,unavailable,partial,partialDetail};
+const stableSettings={...structuredClone(detail),schema:'aibo.semantic-view/v1',context:{...detail.context,workspaceId:null},contribution:{...detail.contribution,extensionPoint:'settings.page',title:'只读设置'},view:{...detail.view,kind:'settings',content:'CONFIGURATION_OK'},actions:[{id:'refresh',label:'刷新',intent:'refresh',enabled:true}]};
+const stableInspector={...structuredClone(stableSettings),context:{...detail.context,sessionId:'session'},contribution:{...detail.contribution,extensionPoint:'session.context',title:'会话检查器'},view:{...detail.view,kind:'inspector',content:'INSPECTOR_OK'}};
+const fixtures={collection,detail,empty,error,loading,unavailable,partial,partialDetail,stableSettings,stableInspector};
 const target=document.getElementById('probe');
 let mounted;
 window.semanticProbe={

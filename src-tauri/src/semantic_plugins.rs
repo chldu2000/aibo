@@ -3,7 +3,7 @@ use crate::{
     capability_broker::{Binding, Broker, Request, Scope},
     plugin_dependencies, plugin_manifest,
 };
-use serde::Serialize;
+use serde::{Serialize,Deserialize};
 use serde_json::{json, Value};
 use sqlx::{Row, SqlitePool};
 use std::{
@@ -22,6 +22,9 @@ pub(crate) struct Contribution {
     pub installation_id: String,
     pub contribution_id: String,
     pub title: String,
+    pub scope: String,
+    pub extension_point: String,
+    pub visibility: String,
     pub available: bool,
     pub issue: Option<String>,
     #[serde(skip)]
@@ -40,20 +43,29 @@ pub(crate) async fn catalog(db: &SqlitePool) -> Result<Vec<Contribution>, String
         let dependencies = plugin_dependencies::resolve(db, row.get("id"), false).await?;
         for contribution in model.contributions.into_iter().filter(|entry| {
             entry.kind == "semanticView"
-                && plugin_manifest::semantic_supported(&entry.metadata, &manifest)
         }) {
-            let available = dependencies.supports(&contribution.id);
+            let available = dependencies.supports(&contribution.id) && plugin_manifest::semantic_supported(&contribution.metadata,&manifest);
             result.push(Contribution {
                 installation_id: row.get("id"),
                 contribution_id: contribution.id,
+                scope: contribution.scope,
+                extension_point: contribution.metadata["extensionPoint"].as_str().unwrap().into(),
+                visibility: contribution.metadata["visibility"].as_str().unwrap().into(),
                 title: contribution.metadata["title"].as_str().unwrap().into(),
                 available,
-                issue: (!available).then(|| "依赖不可用".into()),
+                issue: (!available).then(|| "依赖或语义版本不可用".into()),
                 metadata: contribution.metadata,
             });
         }
     }
     Ok(result)
+}
+#[derive(Clone,Deserialize)]
+#[serde(rename_all="camelCase",deny_unknown_fields)]
+pub(crate) struct SemanticAction {
+    context: Value,
+    action_id: String,
+    item_id: Option<String>,
 }
 struct ViewState {
     snapshot: Value,
@@ -77,7 +89,7 @@ fn validate(snapshot: &Value) -> Result<(), String> {
     let validator = SCHEMA.get_or_init(|| {
         jsonschema::validator_for(
             &serde_json::from_str::<Value>(include_str!(
-                "../../contracts/semantic-view.experimental-v1.schema.json"
+                "../../contracts/semantic-view.v1.schema.json"
             ))
             .unwrap(),
         )
@@ -167,6 +179,9 @@ impl SemanticPlugins {
         contribution: &str,
         request_id: Option<String>,
     ) -> Result<Value, String> {
+        self.open_scoped(db,broker,owner,Scope::Workspace(workspace.into()),installation,contribution,request_id).await
+    }
+    async fn open_scoped(&self, db:&SqlitePool, broker:&Broker, owner:&str, scope:Scope, installation:&str, contribution:&str, request_id:Option<String>) -> Result<Value,String> {
         if request_id
             .as_ref()
             .is_some_and(|id| id.is_empty() || id.len() > 160)
@@ -191,7 +206,10 @@ impl SemanticPlugins {
                 .filter(|d| d.available && d.contribution_ids.contains(&selected.contribution_id))
                 .filter_map(|d| d.installation_id.clone()),
         );
-        let scope = Scope::Workspace(workspace.into());
+        let kind = match &scope {Scope::Application=>"application",Scope::Workspace(_)=>"workspace",Scope::Session(_)=>"session"};
+        if selected.scope != kind {return Err("permission_denied: contribution scope mismatch".into());}
+        if selected.visibility == "sessionSelected" && kind != "session" || selected.visibility == "workspaceSelected" && kind == "application" {return Err("permission_denied: contribution visibility".into());}
+
         let capability = selected.metadata["provider"]["capability"]
             .as_str()
             .unwrap()
@@ -319,10 +337,17 @@ impl SemanticPlugins {
         if lease.released.load(Ordering::Acquire) {
             return Err("cancelled: released view".into());
         }
-        let Scope::Workspace(workspace) = &lease.binding.scope else {
-            return Err("invalid scope".into());
+        let (workspace,session): (Option<String>,Option<String>) = match &lease.binding.scope {
+            Scope::Application=>(None,None),
+            Scope::Workspace(id)=>(Some(id.clone()),None),
+            Scope::Session(id)=>(Some(sqlx::query_scalar("SELECT workspace_id FROM sessions WHERE id=?").bind(id).fetch_one(db).await.map_err(|_|"provider_unavailable: session")?),Some(id.clone())),
         };
-        let snapshot = json!({"schema":"aibo.semantic-view/experimental-v1","context":{"workspaceId":workspace,"contributionId":lease.contribution.contribution_id,"generation":lease.generation,"revision":state.snapshot["context"]["revision"].as_u64().unwrap_or(0)+1},"contribution":{"id":lease.contribution.contribution_id,"title":lease.contribution.title,"extensionPoint":"workspace.tool"},"state":output["state"],"view":output["view"],"actions":output["actions"]});
+        let mut context=json!({"workspaceId":workspace,"contributionId":lease.contribution.contribution_id,"generation":lease.generation,"revision":state.snapshot["context"]["revision"].as_u64().unwrap_or(0)+1});
+        if let Some(session)=session {context["sessionId"]=json!(session);}
+        let snapshot = json!({"schema":"aibo.semantic-view/v1","context":context,"contribution":{"id":lease.contribution.contribution_id,"title":lease.contribution.title,"extensionPoint":lease.contribution.extension_point},"state":output["state"],"view":output["view"],"actions":output["actions"]});
+        let declared=lease.contribution.metadata["semanticType"].as_str().unwrap();
+        let actual=snapshot["view"]["kind"].as_str().unwrap_or("");
+        if actual != declared && !(declared=="collection" && actual=="detail") {return Err("invalid_output: undeclared semantic kind".into());}
         validate(&snapshot)?;
         state.snapshot = snapshot.clone();
         state.touched = Instant::now();
@@ -333,13 +358,13 @@ impl SemanticPlugins {
         db: &SqlitePool,
         broker: &Broker,
         owner: &str,
-        action: crate::semantic_git::Action,
+        action: SemanticAction,
     ) -> Result<Value, String> {
         let lease = self
             .leases
             .lock()
             .await
-            .get(&action.context.generation)
+            .get(action.context["generation"].as_str().ok_or("invalid_input: generation")?)
             .cloned()
             .ok_or("stale_context: unknown view")?;
         if lease.owner != owner {
@@ -350,7 +375,7 @@ impl SemanticPlugins {
                 .state
                 .try_lock()
                 .map_err(|_| "busy: semantic action")?;
-            if state.snapshot["context"] != serde_json::to_value(&action.context).unwrap() {
+            if state.snapshot["context"] != action.context {
                 return Err("stale_context: action revision".into());
             }
             if !state.snapshot["actions"]
@@ -361,7 +386,7 @@ impl SemanticPlugins {
             {
                 return Err("unsupported: disabled action".into());
             }
-            if action.action_id == "open-diff" {
+            if matches!(action.action_id.as_str(),"open-diff" | "inspect") {
                 if !state.snapshot["view"]["items"]
                     .as_array()
                     .is_some_and(|items| {
@@ -392,7 +417,7 @@ impl SemanticPlugins {
             &action.action_id,
             action.item_id.as_deref(),
             offset,
-            Some(serde_json::to_value(&action.context).unwrap()),
+            Some(action.context),
         )
         .await
     }
@@ -466,6 +491,7 @@ pub(crate) async fn list_semantic_contributions(
 #[tauri::command]
 pub(crate) async fn open_semantic_contribution(
     workspace_id: String,
+    scope: Option<Scope>,
     installation_id: String,
     contribution_id: String,
     request_id: Option<String>,
@@ -474,11 +500,11 @@ pub(crate) async fn open_semantic_contribution(
 ) -> Result<Value, String> {
     state
         .semantic_plugins
-        .open_requested(
+        .open_scoped(
             &state.db,
             &state.capability_broker,
             window.label(),
-            &workspace_id,
+            scope.unwrap_or(Scope::Workspace(workspace_id)),
             &installation_id,
             &contribution_id,
             request_id,
@@ -487,7 +513,7 @@ pub(crate) async fn open_semantic_contribution(
 }
 #[tauri::command]
 pub(crate) async fn act_semantic_contribution(
-    action: crate::semantic_git::Action,
+    action: SemanticAction,
     window: tauri::WebviewWindow,
     state: tauri::State<'_, crate::AppState>,
 ) -> Result<Value, String> {
@@ -629,7 +655,40 @@ mod tests {
             fs::remove_dir_all(self.root).unwrap();
         }
     }
-    fn action(snapshot: &Value, id: &str, item: Option<&str>) -> crate::semantic_git::Action {
+    #[tokio::test]
+    async fn all_registered_extension_points_have_scoped_read_only_views() {
+        let f=Fixture::new().await;
+        let source=std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../fixtures/plugins/semantic-catalog");
+        let package=crate::plugin_registry::install(&f.db,&f.root.join("data"),&source).await.unwrap();
+        crate::plugin_registry::enable(&f.db,&package.id,true).await.unwrap();
+        let catalog=catalog(&f.db).await.unwrap();
+        assert!(catalog.iter().any(|c|c.contribution_id=="dev.aibo.catalog.future" && !c.available && c.issue.is_some()));
+        sqlx::query("INSERT INTO sessions(id,workspace_id,agent,label,state,created_at,updated_at) VALUES('catalog-session','w','test','test','idle',?,?)").bind(crate::now_iso()).bind(crate::now_iso()).execute(&f.db).await.unwrap();
+        let host=SemanticPlugins::default();
+        for (name,scope,kind) in [
+            ("tool",Scope::Workspace("w".into()),"inspector"),
+            ("context",Scope::Session("catalog-session".into()),"inspector"),
+            ("action",Scope::Session("catalog-session".into()),"detail"),
+            ("settings",Scope::Application,"settings"),
+            ("command",Scope::Application,"detail"),
+        ] {
+            let snapshot=host.open_scoped(&f.db,&f.broker,"main",scope.clone(),&package.id,&format!("dev.aibo.catalog.{name}.view"),None).await.unwrap();
+            assert_eq!(snapshot["schema"],"aibo.semantic-view/v1");
+            assert_eq!(snapshot["view"]["kind"],kind);
+            assert_eq!(snapshot["view"]["content"],"CATALOG_OK");
+            if scope==Scope::Application {assert_eq!(snapshot["context"]["workspaceId"],Value::Null);}
+            if matches!(scope,Scope::Session(_)) {assert_eq!(snapshot["context"]["sessionId"],"catalog-session");}
+            let next=host.act(&f.db,&f.broker,"main",action(&snapshot,"refresh",None)).await.unwrap();
+            assert_eq!(next["context"]["revision"],2);
+            assert!(host.act(&f.db,&f.broker,"main",action(&snapshot,"refresh",None)).await.is_err());
+            host.release(&f.broker,"main",snapshot["context"]["generation"].as_str().unwrap()).await.unwrap();
+        }
+        assert!(host.open_scoped(&f.db,&f.broker,"main",Scope::Application,&package.id,"dev.aibo.catalog.tool.view",None).await.is_err());
+        f.broker.stop_installation(&package.id).await.unwrap();
+        f.finish().await;
+    }
+
+    fn action(snapshot: &Value, id: &str, item: Option<&str>) -> SemanticAction {
         serde_json::from_value(json!({"context":snapshot["context"],"actionId":id,"itemId":item}))
             .unwrap()
     }

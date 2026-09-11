@@ -101,37 +101,41 @@
 - [x] 定义 Manifest v2 的 `agent`、`capabilityProvider`、`semanticView` contributions 和 `presentation` 描述；纯声明式包无需 entrypoint，有运行逻辑的包必须声明入口。
 - [x] 分开宿主、runtime/view 协议、能力契约版本、本机可执行依赖和包依赖；不改变 v1 `dependencies` 含义。
 - [x] 定义字段限额、输入输出 schema、operation 映射、激活诊断；补齐正反 schema fixture。
-- [ ] 落实插件命名空间能力契约与宿主治理的核心视图边界；P3 对外发布前冻结首个稳定语义版本，并确定兼容窗口与弃用通知策略。
+- [x] 落实插件命名空间能力契约与宿主治理的核心视图边界；P3 对外发布前冻结首个稳定语义版本，并确定兼容窗口与弃用通知策略。
 - [x] 通过 v1 adapter 将旧 agents 映射为内部 contribution；保持旧 wire protocol、session ID 和 binding，不兼容包在激活前拒绝。
 
 
-**第一批进度：** [Manifest v2 与统一贡献目录](./plugin-platform-p3-manifest.md)。v2 合同为草案；已接通无执行入口包的安装登记、诊断与卸载。第二批已开放只读 capabilityProvider 激活，第三批已完成声明依赖解析；第五批已接通 Git 能力包与 workspace.tool 列表/详情安装；settings/inspector 等完整合同仍未完成，不能据此勾选 P3 退出条件。
+**第一批进度：** [Manifest v2 与统一贡献目录](./plugin-platform-p3-manifest.md)。v2 合同为草案；已接通无执行入口包的安装登记、诊断与卸载。第二批已开放只读 capabilityProvider 激活，第三批已完成声明依赖解析；第五批已接通 Git 能力包与 workspace.tool 列表/详情安装；settings/inspector 与扩展点合同、release 回收和私有数据已在收尾批次补齐，见下方完成记录。
 
 ### P3.2 Broker 与调用链
 
 - [x] 提取通用 Broker，支持 application/workspace/session scope；workspace 路径由宿主身份解析，turn 先作为调用上下文。 证据：[实例身份与能力事件](./plugin-platform-p3-lifecycle.md)。
-- [ ] 实现调用者身份、契约版本、manifest 声明、运行时协商、可用状态及输入输出验证；绑定 invocation ID、release、generation 和 deadline。
-- [ ] 分离 capability 与 permission，落实审批、资源限额、并发、超时、取消、幂等规则及审计。
-- [ ] 实现 provider 绑定：session 固定，workspace/application 显式配置；歧义返回 `provider_selection_required`，失效不静默转交写操作。
-- [ ] 覆盖 `unsupported`、`incompatible_version`、`permission_denied`、`provider_unavailable`、`busy`、`cancelled`、`timeout`、`invalid_output`；写后断连表达结果未知，无幂等保证不得自动重试。
+- [x] 实现调用者身份、契约版本、manifest 声明、运行时协商、可用状态及输入输出验证；绑定 invocation ID、release、generation 和 deadline。
+- [x] 分离 capability 与 permission，落实 P3 只读权限检查、资源限额、并发、超时、取消、禁止自动重试及审计；额外权限和写操作在激活前拒绝。写入审批及持久幂等按 P4 验收。
+- [x] 实现 provider 绑定：session 固定，workspace/application 显式配置；歧义返回 `provider_selection_required`，失效不静默转交写操作。
+- [x] 覆盖 `unsupported`、`incompatible_version`、`permission_denied`、`provider_unavailable`、`busy`、`cancelled`、`timeout`、`invalid_output`；只读调用不自动重试。写后断连的结果未知按 P4 验收。
 - [x] 插件间调用仅走 Broker，传播原始调用者、资源范围、调用链和 deadline；权限取调用链约束交集，限制深度/并发并向子调用传播取消。证据：[只读插件调用链](./plugin-platform-p3-call-chain.md)；当前范围为只读、同一工作区，Git 路径级检查已在第五批完成，写入审批仍待 P4。
 - [x] 实现声明依赖解析和 release 固定，拒绝必需依赖环，可选依赖缺失仅禁用相关 contribution。证据：[依赖解析与 release 固定](./plugin-platform-p3-dependencies.md)。
 
-**第二批进度：** [Broker 与无 Agent 只读运行链](./plugin-platform-p3-broker.md)已通过真实子进程和原生桌面双启动验收：三种 scope 服务、显式 release 绑定、输入/输出与 generation 校验、取消隔离、禁用/信任撤销和调用审计已实现。第六批已补齐 turn 关联、持久化实例身份与独立能力事件；权限审批和完整 release 生命周期仍待对应阶段完成。
+**第二批进度：** [Broker 与无 Agent 只读运行链](./plugin-platform-p3-broker.md)已通过真实子进程和原生桌面双启动验收：三种 scope 服务、显式 release 绑定、输入/输出与 generation 校验、取消隔离、禁用/信任撤销和调用审计已实现。第六批已补齐 turn 关联、持久化实例身份与独立能力事件；收尾批次已补齐完整 release 生命周期；写入权限审批保留在 P4。
 
 ### P3.3 Runtime、贡献与 Git 迁移
 
 - [x] 复用 Registry/Runtime，分离安装与激活；无 session runtime 使用 instance ID/generation，按作用域懒启动。 证据：[实例身份与能力事件](./plugin-platform-p3-lifecycle.md)。
-- [ ] workspace 能力默认按工作区隔离实例和进程故障边界；确定实例复用键、上限及回收规则，测试一个工作区的取消/崩溃不会终止另一个工作区的调用。
-- [ ] 登记 `workspace.tool`、`session.context`、`session.action`、`settings.page`、`command` 的完整扩展点合同；拒绝未知扩展点，诊断可选不兼容贡献。
-- [ ] 补齐 `settings`、`inspector` 核心语义合同；统一有限可见性条件与有界数据更新，保留 PluginView v1 并行路径。
+- [x] workspace 能力默认按工作区隔离实例和进程故障边界；确定实例复用键、上限及回收规则，测试一个工作区的取消/崩溃不会终止另一个工作区的调用。
+- [x] 登记 `workspace.tool`、`session.context`、`session.action`、`settings.page`、`command` 的完整扩展点合同；拒绝未知扩展点，诊断可选不兼容贡献。
+- [x] 补齐 P3 只读 `settings`、`inspector` 核心语义合同；统一有限可见性条件与有界数据更新，保留 PluginView v1 并行路径。
 - [x] 将 Git 只读实现迁入进程外能力包，宿主继续执行资源范围/权限检查；支持语义贡献随能力包或独立声明包安装。证据：[Git 能力包与贡献安装](./plugin-platform-p3-git.md)，已验收 macOS 实际 App；包暂不声明 Windows 支持。
-- [ ] 实现升级保留活动 session/invocation/依赖的 release，禁用先停止新调用再有界排空/取消；无活动引用且符合恢复策略才回收旧包。
-- [ ] 插件私有数据置于 release 包外的版本化命名空间；卸载保留核心历史，用户数据清理单独处理。
+- [x] 实现升级保留活动 session/invocation/依赖的 release，禁用先停止新调用再有界排空/取消；无活动引用且符合恢复策略才回收旧包。
+- [x] 新能力插件私有数据置于 release 包外的版本化命名空间；卸载保留核心历史，用户数据清理单独处理。
 - [x] 为能力事件建立独立版本合同；Git 查询不伪装为 AgentEvent，相关执行可用关联 ID 连接 turn。 证据：[实例身份与能力事件](./plugin-platform-p3-lifecycle.md)。
-- [ ] 测试伪造身份、过期 action/generation、跨插件越权、提供者冲突、取消、崩溃、升级及依赖缺失。
+- [x] 测试伪造身份、过期 action/generation、跨插件越权、提供者冲突、取消、崩溃、升级及依赖缺失。
 
 **退出条件：** 不启动 Agent、不加载 Git UI 也能调用 Git 能力；安装其语义贡献后现有 UI 自动呈现；权限、冲突、取消、升级测试及 v1 Echo/Codex/Pi 回归通过。
+
+**P3 完成（2026-09-12）：** [收尾记录](./plugin-platform-p3-completion.md)与[退出矩阵](./baselines/plugin-platform-p3/completion-matrix.md)。Rust 140 项、Node 140 项、23 项架构检查、类型检查和生产构建通过；真实 App 双启动、双皮肤/双 renderer、Codex transport/smoke/resume 与 Pi 插件真实 smoke 通过。
+
+**阶段边界说明：** 原 P3 Broker 清单同时提到了写入审批、写后断连和幂等；按架构文档及既有 P4 计划，P3 验收为只读通路和拒绝未开放权限，P4 再验收实际写入。上方明确拆开两者，不将拒绝写入当作写入审批通过。settings v1 为只读配置语义，编辑和保存仍由 P4 完善。接纳前拒绝直接返回错误，独立生命周期事件从接纳开始；P4 写入审批审计不得复用此简化作为完整闭环。
 
 ## P4：完整 UI 插件边界与写入能力
 

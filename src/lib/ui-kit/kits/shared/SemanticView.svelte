@@ -7,7 +7,7 @@
   let previousKind: string | null = null;
   let previouslyInteractive: boolean | null = null;
   const loading = $derived(snapshot.state.status === 'loading');
-  const inspect = $derived(snapshot.actions.find(action => action.id === 'open-diff'));
+  const inspect = $derived(snapshot.actions.find(action => (action.id === 'inspect' || action.id === 'open-diff')));
   function act(id: (typeof snapshot.actions)[number]['id'], item: string | null = null) {
     if (loading) return;
     onAction(actionMessage(snapshot, id, item));
@@ -15,10 +15,10 @@
   $effect(() => {
     const kind = snapshot.view.kind;
     const target = focusTarget;
-    const interactive = snapshot.actions.some(action => action.id === 'open-diff' && action.enabled);
-    if ((kind !== previousKind && (previousKind !== null || kind === 'detail' || target)) || (previouslyInteractive === false && interactive && target)) {
+    const interactive = snapshot.actions.some(action => (action.id === 'inspect' || action.id === 'open-diff') && action.enabled);
+    if ((kind !== previousKind && (previousKind !== null || kind !== 'collection' || target)) || (previouslyInteractive === false && interactive && target)) {
       void tick().then(() => {
-        if (kind === 'detail') root?.querySelector<HTMLElement>('h2')?.focus();
+        if (kind !== 'collection') root?.querySelector<HTMLElement>('h2')?.focus();
         else {
           const button = Array.from(root?.querySelectorAll<HTMLButtonElement>('[data-item]') ?? []).find(button => button.dataset.item === target);
           (button ?? root?.querySelector<HTMLElement>('h2'))?.focus();
@@ -31,9 +31,9 @@
 </script>
 <section bind:this={root} class="semantic-view" aria-label={snapshot.contribution.title} aria-busy={loading}>
   <header>
-    <div><p class="eyebrow">工作区工具</p><h2 tabindex="-1">{snapshot.contribution.title}</h2></div>
+    <div><p class="eyebrow">插件视图</p><h2 tabindex="-1">{snapshot.contribution.title}</h2></div>
     <nav aria-label="视图操作">
-      {#each snapshot.actions.filter(action => action.id !== 'open-diff') as action (action.id)}
+      {#each snapshot.actions.filter(action => action.id !== 'inspect' && action.id !== 'open-diff') as action (action.id)}
         <button type="button" disabled={!action.enabled || loading} onclick={() => act(action.id)}>{action.label}</button>
       {/each}
     </nav>
@@ -46,19 +46,19 @@
     <div class="contents">
       {#if layout === 'central'}
         <table>
-          <caption>工作区文件变更</caption>
+          <caption>{snapshot.contribution.title}</caption>
           <thead><tr>{#each snapshot.view.properties as property}<th scope="col">{property.label}</th>{/each}<th scope="col">操作</th></tr></thead>
           <tbody>{#each snapshot.view.items as item (item.id)}
             <tr aria-current={snapshot.view.selection === item.id ? 'true' : undefined}>
               {#each snapshot.view.properties as property}<td>{item.values[property.key]}</td>{/each}
-              <td><button type="button" data-item={item.id} aria-label={`${inspect?.label ?? '查看差异'} ${item.values[snapshot.view.properties[0]?.key ?? ''] ?? item.id}`} disabled={loading || !inspect?.enabled} onclick={() => act('open-diff', item.id)}>{inspect?.label ?? '查看差异'}</button></td>
+              <td><button type="button" data-item={item.id} aria-label={`${inspect?.label ?? '查看差异'} ${item.values[snapshot.view.properties[0]?.key ?? ''] ?? item.id}`} disabled={loading || !inspect?.enabled} onclick={() => act(inspect?.id ?? 'inspect', item.id)}>{inspect?.label ?? '查看差异'}</button></td>
             </tr>
           {/each}</tbody>
         </table>
       {:else}
-        <ul aria-label="工作区文件变更">
+        <ul aria-label={snapshot.contribution.title}>
           {#each snapshot.view.items as item (item.id)}
-            <li><button class="file" type="button" data-item={item.id} aria-label={`${inspect?.label ?? '查看差异'} ${item.values[snapshot.view.properties[0]?.key ?? ''] ?? item.id}`} aria-current={snapshot.view.selection === item.id ? 'true' : undefined} disabled={loading || !inspect?.enabled} onclick={() => act('open-diff', item.id)}>
+            <li><button class="file" type="button" data-item={item.id} aria-label={`${inspect?.label ?? '查看差异'} ${item.values[snapshot.view.properties[0]?.key ?? ''] ?? item.id}`} aria-current={snapshot.view.selection === item.id ? 'true' : undefined} disabled={loading || !inspect?.enabled} onclick={() => act(inspect?.id ?? 'inspect', item.id)}>
               {#each snapshot.view.properties as property}<span><span class="label">{property.label}</span> {item.values[property.key]}</span>{/each}
             </button></li>
           {/each}
@@ -67,8 +67,8 @@
     </div>
   {:else}
     <dl>{#each snapshot.view.properties as property}<div><dt>{property.label}</dt><dd>{property.value}</dd></div>{/each}</dl>
-    {#if snapshot.view.truncated}<p role="status">差异内容已截断，剩余内容未加载。</p>{/if}
-    <textarea class="diff-content" readonly rows="16" aria-label="文件差异内容" value={snapshot.view.content}></textarea>
+    {#if snapshot.view.truncated}<p role="status">内容已截断，剩余内容未加载。</p>{/if}
+    <textarea class="diff-content" readonly rows="16" aria-label={snapshot.view.kind === "detail" ? "文件差异内容" : "视图内容"} value={snapshot.view.content}></textarea>
   {/if}
 </section>
 <style>

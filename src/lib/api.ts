@@ -601,7 +601,7 @@ export const resolveAgentUserInput = (
 ): Promise<void> => invoke('resolve_agent_user_input', { sessionId, requestId, answers });
 
 export const listSemanticContributions = (): Promise<import('./presentation/installed-controller').InstalledContribution[]> => invoke('list_semantic_contributions');
-export const openSemanticContribution = (workspaceId: string, installationId: string, contributionId: string, requestId: string): Promise<import('./presentation/contract').Snapshot> => invoke('open_semantic_contribution', { workspaceId, installationId, contributionId, requestId });
+export const openSemanticContribution = (workspaceId: string, installationId: string, contributionId: string, requestId: string, scope?: CapabilityScope): Promise<import('./presentation/contract').Snapshot> => invoke('open_semantic_contribution', { workspaceId, installationId, contributionId, requestId, scope });
 export const actSemanticContribution = (action: import('./presentation/contract').ActionMessage): Promise<import('./presentation/contract').Snapshot> => invoke('act_semantic_contribution', { action });
 export const releaseSemanticContribution = (generation: string): Promise<void> => invoke('release_semantic_contribution', { generation });
 

@@ -5,7 +5,15 @@ export function assertSnapshot(value: unknown): asserts value is Snapshot {
   if (!validate(value)) throw new Error('invalid_snapshot: schema');
   const snapshot = value as Snapshot;
   if (snapshot.context.contributionId !== snapshot.contribution.id) throw new Error('invalid_snapshot: contribution identity');
-  if (JSON.stringify(snapshot).length > 1_000_000) throw new Error('invalid_snapshot: size');
+  const serialized = JSON.stringify(snapshot);
+  if (snapshot.schema === 'aibo.semantic-view/v1') {
+    let bytes = 0;
+    for (const character of serialized) {
+      const point = character.codePointAt(0)!;
+      bytes += point <= 0x7f ? 1 : point <= 0x7ff ? 2 : point <= 0xffff ? 3 : 4;
+      if (bytes > 262_144) throw new Error('invalid_snapshot: size');
+    }
+  } else if (serialized.length > 1_000_000) throw new Error('invalid_snapshot: size');
   if (new Set(snapshot.actions.map(action => action.id)).size !== snapshot.actions.length) throw new Error('invalid_snapshot: duplicate action');
   if (snapshot.view.kind === 'collection') {
     const view = snapshot.view;

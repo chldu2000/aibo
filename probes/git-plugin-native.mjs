@@ -4,13 +4,13 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { spawn, execFileSync } from 'node:child_process';
 const root=await mkdtemp(path.join(tmpdir(),'aibo-git-plugin-native-'));
-const workspacePath=path.join(root,'workspace'),gitPath=path.resolve('fixtures/plugins/git-read'),viewPath=path.resolve('fixtures/plugins/git-view');
+const workspacePath=path.join(root,'workspace'),gitPath=path.resolve('fixtures/plugins/git-read'),viewPath=path.resolve('fixtures/plugins/git-view'),catalogPath=path.resolve('fixtures/plugins/semantic-catalog');
 await mkdir(workspacePath);
 execFileSync('git',['init','-q',workspacePath]);
 await writeFile(path.join(workspacePath,'native.txt'),'NATIVE_GIT_PLUGIN_OK\n');
 let stage=0,saved={},finish;
 const server=await createServer({server:{host:'127.0.0.1',port:0,hmr:false,watch:null},plugins:[{name:'git-plugin-native',configureServer(server){
-  server.middlewares.use('/__git_config',(_req,res)=>{res.setHeader('Content-Type','application/json');res.end(JSON.stringify({stage,saved,workspacePath,gitPath,viewPath}));});
+  server.middlewares.use('/__git_config',(_req,res)=>{res.setHeader('Content-Type','application/json');res.end(JSON.stringify({stage,saved,workspacePath,gitPath,viewPath,catalogPath}));});
   server.middlewares.use('/__git_report',(req,res)=>{let body='';req.on('data',chunk=>body+=chunk);req.on('end',()=>{res.end('ok');finish(JSON.parse(body));});});
 }}]});await server.listen();
 const identifier=`local.aibo.gitpluginprobe.${Date.now()}`,config=path.join(root,'tauri.json');

@@ -182,3 +182,12 @@ P3 第二批增加宿主注入窗口身份的 capability IPC 与类型化 API，
 第三批由宿主返回包依赖诊断及受影响 contribution ID，管理面板展示固定版本和不可用原因：必需依赖失效阻止启用，可选依赖失效只提示相关功能停用，保留其他功能的启用入口。安装卡片以插件显示名提供可访问标签；继续复用 UiKitAdapter，不新增皮肤样式或契约字段。
 
 P3 第五批通过 `InstalledWorkbench` 和纯数据端口接入已安装语义贡献。App 从宿主目录生成工作区工具命令，按 installation/contribution 标识打开页面；不根据 Git 名称或皮肤选择渲染实现。快照仍经 PresentationSurface 和 UiKitAdapter 校验、挂载与切换，新增组件仅使用已有 Button/Card，CSS 只包含布局。目录变化关闭失效工具，卸载后不保留可执行动作；导航状态按窗口/工作区/贡献/release 隔离。既有 P1 固定只读命令退出主界面，参考端口与测试保留。
+
+
+## P3 稳定语义贡献
+
+安装贡献由宿主解析 application/workspace/session 上下文，并通过统一命令入口打开。页面只传语义 scope、数据和动作，不指定皮肤或固定物理面板。SemanticView 继续是 UiKitAdapter 必需成员；两套皮肤共同支持 collection/detail、只读 settings 和 inspector，未增加 optional 例外，也未放宽 app 层样式规则。
+
+稳定合同为 contracts/semantic-view.v1.schema.json，原 experimental-v1 schema 独立保留；生成验证器同时读取两者，不能用新字段重新解释旧版本。settings.page 的 workspaceId 为 null，session.context/session.action 必须有 sessionId 和所属 workspaceId。宿主 lease 验证当前上下文、revision、窗口与启用状态后才调度只读能力。P4 再接入编辑、写入审批及任意呈现插件。
+
+架构检查继续覆盖纯数据边界、双皮肤必需成员和 workbench 视觉边界；test/semantic-stable.test.mjs 验证稳定/旧版本读取、作用域伪造与通用 inspect 选择。双 renderer 与双皮肤证据见 [P3 收尾记录](./plugin-platform-p3-completion.md)。

@@ -106,6 +106,7 @@ pub(crate) fn normalize(manifest: &Value) -> Result<ManifestModel, String> {
                 "workspace.tool" => Some("workspace"), "session.context" | "session.action" => Some("session"), "settings.page" => Some("application"), _ => None,
             };
             if expected_scope.is_some_and(|scope| entry["scope"] != scope) { return Err(invalid("extension point scope mismatch")); }
+            if entry["visibility"] == "sessionSelected" && entry["scope"] != "session" || entry["visibility"] == "workspaceSelected" && entry["scope"] == "application" {return Err(invalid("visibility cannot be satisfied by contribution scope"));}
             semver::Version::parse(entry["contractVersion"].as_str().unwrap()).map_err(|_| invalid("invalid semantic contract version"))?;
         }
         let mut mappings = HashSet::new();
@@ -146,10 +147,19 @@ pub(crate) fn normalize(manifest: &Value) -> Result<ManifestModel, String> {
 }
 
 pub(crate) fn semantic_supported(metadata: &Value, manifest: &Value) -> bool {
-    metadata["scope"] == "workspace" && metadata["extensionPoint"] == "workspace.tool"
-        && metadata["contractVersion"] == "1.0.0" && matches!(metadata["semanticType"].as_str(),Some("collection" | "detail"))
-        && metadata["visibility"] == "workspaceSelected"
+    metadata["contractVersion"] == "1.0.0"
+        && matches!(metadata["semanticType"].as_str(),Some("collection" | "detail" | "settings" | "inspector"))
         && manifest["protocols"]["semanticView"]["min"] == "1.0" && manifest["protocols"]["semanticView"]["max"] == "1.0"
+
+}
+
+pub(crate) fn contribution_supported(entry: &Contribution, manifest: &Value) -> bool {
+    match entry.kind.as_str() {
+        "semanticView" => semantic_supported(&entry.metadata,manifest),
+        "capabilityProvider" => manifest["protocols"]["runtime"]["min"] == "2.0" && manifest["protocols"]["runtime"]["max"] == "2.0"
+            && entry.metadata["operations"].as_array().unwrap().iter().all(|operation|operation["effect"] == "read" && operation["permissions"].as_array().unwrap().iter().all(|permission|permission == "workspace.read")),
+        _ => false,
+    }
 }
 
 /// Installation is distinct from activation. Never launch v2 through the v1 runtime.
@@ -162,14 +172,8 @@ pub(crate) fn activation_issues(manifest: &Value) -> Result<Vec<String>, String>
     let min = semver::Version::parse(manifest["host"]["min"].as_str().unwrap()).unwrap();
     let max = semver::Version::parse(manifest["host"]["maxExclusive"].as_str().unwrap()).unwrap();
     if host < min || host >= max { issues.push("当前宿主版本不在插件要求的范围内。".into()); }
-    if model.contributions.iter().any(|entry|entry.kind != "capabilityProvider" && !(entry.kind == "semanticView" && semantic_supported(&entry.metadata,manifest))) || manifest.get("presentation").is_some() {
-        issues.push("插件已登记；当前仅支持只读能力和 workspace.tool 列表/详情语义视图；其他 Agent、语义类型或呈现尚不可激活。".into());
-    }
-    if model.contributions.iter().any(|entry|entry.kind == "capabilityProvider") && (manifest["protocols"]["runtime"]["min"] != "2.0" || manifest["protocols"]["runtime"]["max"] != "2.0") {
-        issues.push("能力运行时目前仅支持实验协议 2.0。".into());
-    }
-    if model.contributions.iter().filter(|entry|entry.kind == "capabilityProvider").any(|entry| entry.metadata["operations"].as_array().unwrap().iter().any(|operation| operation["effect"] != "read" || operation["permissions"].as_array().unwrap().iter().any(|permission|permission != "workspace.read"))) {
-        issues.push("当前能力运行时仅支持只读操作与工作区读取权限。".into());
+    if model.contributions.iter().any(|entry|entry.required && !contribution_supported(entry,manifest)) || manifest.get("presentation").is_some() {
+        issues.push("插件已登记；必需贡献要求尚未支持的协议、语义版本或权限。当前仅支持只读能力和语义视图 1.0。".into());
     }
     Ok(issues)
 }
@@ -205,7 +209,7 @@ mod tests {
         assert!(model.executable_dependencies.is_empty());
         assert!(!manifest.as_object().unwrap().contains_key("entrypoint"));
         assert!(activation_issues(&manifest).unwrap().is_empty());
-        let mut unsupported=manifest.clone();unsupported["contributions"][0]["semanticType"]=json!("inspector");
+        let mut unsupported=manifest.clone();unsupported["contributions"][0]["contractVersion"]=json!("2.0.0");
         assert!(!activation_issues(&unsupported).unwrap().is_empty());
         let model = normalize(&provider()).unwrap();
         assert_eq!(model.executable_dependencies.len(), 2);
