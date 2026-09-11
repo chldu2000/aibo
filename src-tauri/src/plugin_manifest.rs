@@ -157,7 +157,13 @@ pub(crate) fn contribution_supported(entry: &Contribution, manifest: &Value) -> 
     match entry.kind.as_str() {
         "semanticView" => semantic_supported(&entry.metadata,manifest),
         "capabilityProvider" => manifest["protocols"]["runtime"]["min"] == "2.0" && manifest["protocols"]["runtime"]["max"] == "2.0"
-            && entry.metadata["operations"].as_array().unwrap().iter().all(|operation|operation["effect"] == "read" && operation["permissions"].as_array().unwrap().iter().all(|permission|permission == "workspace.read")),
+            && entry.metadata["operations"].as_array().unwrap().iter().all(|operation| {
+                let permissions = operation["permissions"].as_array().unwrap();
+                if operation["effect"] == "write" {
+                    cfg!(unix) && entry.scope != "application" && permissions.iter().any(|permission|permission == "workspace.write")
+                        && permissions.iter().all(|permission|permission == "workspace.read" || permission == "workspace.write")
+                } else { permissions.iter().all(|permission|permission == "workspace.read") }
+            }),
         _ => false,
     }
 }
@@ -173,7 +179,7 @@ pub(crate) fn activation_issues(manifest: &Value) -> Result<Vec<String>, String>
     let max = semver::Version::parse(manifest["host"]["maxExclusive"].as_str().unwrap()).unwrap();
     if host < min || host >= max { issues.push("当前宿主版本不在插件要求的范围内。".into()); }
     if model.contributions.iter().any(|entry|entry.required && !contribution_supported(entry,manifest)) || manifest.get("presentation").is_some() {
-        issues.push("插件已登记；必需贡献要求尚未支持的协议、语义版本或权限。当前仅支持只读能力和语义视图 1.0。".into());
+        issues.push("插件已登记；必需贡献要求尚未支持的协议、语义版本或权限。当前支持只读能力、经宿主批准的工作区写入和语义视图 1.0。".into());
     }
     Ok(issues)
 }

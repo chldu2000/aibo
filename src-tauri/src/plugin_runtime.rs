@@ -30,6 +30,7 @@ pub(crate) struct PluginRuntime {
     pub notifications: Arc<Mutex<mpsc::Receiver<Value>>>,
     stop_requested: Arc<AtomicBool>,
     exited: Arc<AtomicBool>,
+    cleanup_complete: Arc<AtomicBool>,
 }
 
 impl PluginRuntime {
@@ -76,6 +77,8 @@ impl PluginRuntime {
         });
         let exited = Arc::new(AtomicBool::new(false));
         let process_exited = exited.clone();
+        let cleanup_complete = Arc::new(AtomicBool::new(false));
+        let cleaned = cleanup_complete.clone();
         tokio::spawn(async move {
             let mut pending: HashMap<String, Reply> = HashMap::new();
             let mut frame = Vec::new();
@@ -170,9 +173,10 @@ impl PluginRuntime {
             let _ = child.kill().await;
             let _ = child.wait().await;
             stderr_task.abort();
+            cleaned.store(true, Ordering::Release);
             for (_, reply) in pending { let _ = reply.send(Err(reason.into())); }
         });
-        Ok(Self { commands, generation_id, notifications: Arc::new(Mutex::new(notifications)), stop_requested, exited })
+        Ok(Self { commands, generation_id, notifications: Arc::new(Mutex::new(notifications)), stop_requested, exited, cleanup_complete })
     }
 
     pub async fn request(&self, method: &str, params: Value, timeout: Duration) -> Result<Value, String> {
@@ -200,6 +204,14 @@ impl PluginRuntime {
     pub fn has_exited(&self) -> bool { self.exited.load(Ordering::Acquire) }
 
     pub fn was_stopped(&self) -> bool { self.stop_requested.load(Ordering::Acquire) }
+
+    /// A write must not settle and release its workspace while transport cleanup is pending.
+    pub async fn stop_and_wait(&self) -> bool {
+        tokio::time::timeout(Duration::from_secs(6), async {
+            self.stop().await;
+            while !self.cleanup_complete.load(Ordering::Acquire) { tokio::time::sleep(Duration::from_millis(10)).await; }
+        }).await.is_ok()
+    }
 
     pub async fn stop(&self) {
         self.stop_requested.store(true, Ordering::Release);

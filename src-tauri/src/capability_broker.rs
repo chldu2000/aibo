@@ -1,5 +1,7 @@
 //! Trusted caller identity is injected by IPC. No caller permissions or workspace paths
-//! are accepted from request JSON. This first runtime slice executes read operations only.
+//! are accepted from request JSON. Writes require a separate host approval boundary.
+#[path = "capability_writes.rs"]
+mod writes;
 use crate::{plugin_manifest, plugin_registry, plugin_runtime::PluginRuntime};
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
@@ -39,12 +41,12 @@ pub(crate) struct Binding {
     pub installation_id: String,
     pub contribution_id: String,
 }
-#[derive(Clone, Serialize, Debug)]
+#[derive(Clone, Deserialize, Serialize, Debug)]
 #[serde(rename_all = "camelCase")]
 pub(crate) struct Failure { pub code: String, pub message: String, pub invocation_id: Option<String> }
 fn fail(code: &str, message: &str) -> Failure { Failure { code: code.into(), message: message.into(), invocation_id: None } }
 fn database(_: impl std::fmt::Display) -> Failure { fail("provider_unavailable", "Capability storage is unavailable") }
-#[derive(Serialize, Debug)]
+#[derive(Deserialize, Serialize, Debug)]
 #[serde(rename_all = "camelCase")]
 pub(crate) struct Response { pub instance_id: String, pub invocation_id: String, pub installation_id: String, pub generation_id: String, pub output: Value }
 #[derive(Clone, Serialize)]
@@ -73,11 +75,13 @@ struct Chain {
     deadline_ms: i64,
     cancellations: Vec<watch::Receiver<bool>>,
     ancestors: Vec<PluginRuntime>,
+    write_cancellation: Option<crate::workspace_write_runs::Cancellation>,
 }
 impl Chain {
     async fn cancelled(&self) {
         loop {
             if self.cancellations.iter().any(|cancel| *cancel.borrow() || cancel.has_changed().is_err()) || self.ancestors.iter().any(|runtime|runtime.was_stopped() || runtime.has_exited()) { return; }
+            if let Some(cancel) = &self.write_cancellation { if cancel.is_requested().await { return; } }
             tokio::time::sleep(Duration::from_millis(10)).await;
         }
     }
@@ -103,7 +107,7 @@ impl Broker {
     // Serialize desktop lifecycle mutations so re-enable cannot race with drain/uninstall.
     pub async fn mutation_guard(&self) -> tokio::sync::OwnedMutexGuard<()> { self.mutations.clone().lock_owned().await }
     pub async fn recover(db: &SqlitePool) -> Result<(), String> {
-        sqlx::query("UPDATE capability_invocations SET status='interrupted',finished_at=? WHERE status='running'")
+        sqlx::query("UPDATE capability_invocations SET status=CASE WHEN write_run_id IS NULL THEN 'interrupted' ELSE 'outcome_unknown' END,finished_at=? WHERE status='running'")
             .bind(crate::now_iso()).execute(db).await.map_err(|e|e.to_string())?;
         Ok(())
     }
@@ -162,8 +166,7 @@ impl Broker {
             let manifest: Value = serde_json::from_str(row.get("manifest_json")).map_err(database)?;
             let model = plugin_manifest::normalize(&manifest).map_err(database)?;
             if model.version != 2 || !plugin_manifest::activation_issues(&manifest).map_err(database)?.is_empty() { continue; }
-            if plugin_registry::dependency_diagnostics(&manifest).iter().any(|dependency|dependency.required && !dependency.available) { continue; }
-            let dependencies = crate::plugin_dependencies::resolve(&self.db,row.get("id"),false).await.map_err(database)?;
+            let dependencies = crate::plugin_dependencies::resolve_metadata(&self.db,row.get("id")).await.map_err(database)?;
             for contribution in model.contributions.iter().filter(|item|item.kind == "capabilityProvider" && plugin_manifest::contribution_supported(item,&manifest) && item.scope == scope.key().0 && dependencies.supports(&item.id)) {
                 for operation in contribution.metadata["operations"].as_array().unwrap() {
                     if operation["capability"]["id"] != capability { continue; }
@@ -215,22 +218,27 @@ impl Broker {
         Self::identity(&request.scope,&request.capability,&request.version)?;
         if request.scope != binding.scope || request.capability != binding.capability || request.version != binding.version || request.input.to_string().len() > MAX_INPUT { return Err(fail("invalid_input", "Contribution binding mismatch")); }
         let provider = self.offers(&request.scope,&request.capability,&request.version,Some(&binding.installation_id)).await?.into_iter().find(|offer|offer.contribution_id == binding.contribution_id).ok_or_else(||fail("provider_unavailable", "Contribution provider is unavailable"))?;
-        self.invoke_selected(caller,request,provider,None).await
+        self.invoke_selected(caller,request,provider,None,None).await
     }
     pub async fn cancel(&self, caller: &str, request_id: &str) -> bool {
-        self.flights.lock().await.get(&(caller.into(),request_id.into())).is_some_and(|flight|flight.cancel.send(true).is_ok())
+        let durable = sqlx::query("UPDATE workspace_write_runs SET cancel_requested_at=COALESCE(cancel_requested_at,?) WHERE operation='capability.invoke' AND caller_window=? AND request_id=? AND status IN ('awaiting_approval','running')")
+            .bind(crate::now_iso()).bind(caller).bind(request_id).execute(&self.db).await.is_ok_and(|result|result.rows_affected() > 0);
+        self.flights.lock().await.get(&(caller.into(),request_id.into())).is_some_and(|flight|flight.cancel.send(true).is_ok()) || durable
     }
     pub async fn stop_installation(&self, installation: &str) -> Result<(), Failure> {
         self.stop_contributions(installation,None).await
     }
     pub async fn stop_contributions(&self, installation: &str, contributions: Option<&[String]>) -> Result<(), Failure> {
         let matches = |id: &str| contributions.map_or(true,|ids|ids.iter().any(|item|item == id));
+        let pending: Vec<(String,String)> = sqlx::query_as("SELECT id,json_extract(snapshot_json,'$.approvalContext.provider.contributionId') FROM workspace_write_runs WHERE operation='capability.invoke' AND json_extract(snapshot_json,'$.approvalContext.provider.installationId')=? AND status IN ('awaiting_approval','running')")
+            .bind(installation).fetch_all(&self.db).await.map_err(database)?;
+        for (id, contribution) in pending { if matches(&contribution) { sqlx::query("UPDATE workspace_write_runs SET cancel_requested_at=COALESCE(cancel_requested_at,?) WHERE id=?").bind(crate::now_iso()).bind(id).execute(&self.db).await.map_err(database)?; } }
         for flight in self.flights.lock().await.values().filter(|flight|flight.installation_id == installation && matches(&flight.contribution_id)) { let _ = flight.cancel.send(true); }
         let mut slots = self.slots.lock().await;
         let keys: Vec<_> = slots.keys().filter(|key|key.0 == installation && matches(&key.1)).cloned().collect();
         let retired: Vec<_> = keys.into_iter().filter_map(|key|slots.remove(&key)).collect();
         drop(slots);
-        for slot in retired { if let Some(runtime) = slot.runtime.lock().await.take() { runtime.stop().await; } }
+        for slot in retired { if let Some(runtime) = slot.runtime.lock().await.clone() { if !runtime.stop_and_wait().await { return Err(fail("outcome_unknown", "Provider cleanup did not complete")); } } }
         tokio::time::timeout(Duration::from_secs(6),async {
             while self.flights.lock().await.values().any(|flight|flight.installation_id == installation && matches(&flight.contribution_id)) {
                 tokio::time::sleep(Duration::from_millis(10)).await;
@@ -239,13 +247,15 @@ impl Broker {
         Ok(())
     }
     pub async fn stop_workspace(&self, workspace: &str) -> Result<(), Failure> {
+        sqlx::query("UPDATE workspace_write_runs SET cancel_requested_at=COALESCE(cancel_requested_at,?) WHERE operation='capability.invoke' AND workspace_id=? AND status IN ('awaiting_approval','running')")
+            .bind(crate::now_iso()).bind(workspace).execute(&self.db).await.map_err(database)?;
         for flight in self.flights.lock().await.values().filter(|flight|flight.workspace_id.as_deref() == Some(workspace)) { let _ = flight.cancel.send(true); }
         let sessions: Vec<String> = sqlx::query_scalar("SELECT id FROM sessions WHERE workspace_id=?").bind(workspace).fetch_all(&self.db).await.map_err(database)?;
         let mut slots = self.slots.lock().await;
         let keys: Vec<_> = slots.keys().filter(|key|match &key.2 { Scope::Workspace(id) => id == workspace, Scope::Session(id) => sessions.contains(id), Scope::Application => false }).cloned().collect();
         let retired: Vec<_> = keys.into_iter().filter_map(|key|slots.remove(&key)).collect();
         drop(slots);
-        for slot in retired { if let Some(runtime) = slot.runtime.lock().await.take() { runtime.stop().await; } }
+        for slot in retired { if let Some(runtime) = slot.runtime.lock().await.clone() { if !runtime.stop_and_wait().await { return Err(fail("outcome_unknown", "Provider cleanup did not complete")); } } }
         Ok(())
     }
     async fn slot(&self, provider: &Provider, scope: &Scope) -> Result<Arc<Slot>, Failure> {
@@ -270,14 +280,14 @@ impl Broker {
         Self::identity(&request.scope,&request.capability,&request.version)?;
         if request.request_id.is_empty() || request.request_id.len() > 160 || request.input.to_string().len() > MAX_INPUT { return Err(fail("invalid_input", "Request size or identity limit")); }
         let provider = self.provider(&request).await?;
-        self.invoke_selected(caller,request,provider,None).await
+        self.invoke_selected(caller,request,provider,None,None).await
     }
-    fn invoke_selected<'a>(&'a self, caller: &'a str, request: Request, provider: Provider, parent: Option<Chain>) -> std::pin::Pin<Box<dyn std::future::Future<Output=Result<Response,Failure>> + Send + 'a>> {
+    fn invoke_selected<'a>(&'a self, caller: &'a str, request: Request, provider: Provider, parent: Option<Chain>, write_cancellation: Option<crate::workspace_write_runs::Cancellation>) -> std::pin::Pin<Box<dyn std::future::Future<Output=Result<Response,Failure>> + Send + 'a>> {
         Box::pin(async move {
-        if provider.operation["effect"] != "read" { return Err(fail("permission_denied", "Write operations are not enabled in this runtime slice")); }
+        if provider.operation["effect"] != "read" && write_cancellation.is_none() { return Err(fail("permission_denied", "Write operation requires host approval; dependency writes are not enabled yet")); }
         let workspace = self.workspace(&request.scope).await?;
         self.validate_turn(&request).await?;
-        if provider.operation["permissions"].as_array().unwrap().iter().any(|permission| permission != "workspace.read" || workspace.is_none()) { return Err(fail("permission_denied", "Operation requires an unavailable permission")); }
+        if provider.operation["permissions"].as_array().unwrap().iter().any(|permission| (permission != "workspace.read" && !(permission == "workspace.write" && write_cancellation.is_some())) || workspace.is_none()) { return Err(fail("permission_denied", "Operation requires an unavailable permission")); }
         if !jsonschema::options().build(&provider.operation["inputSchema"]).map_err(database)?.is_valid(&request.input) { return Err(fail("invalid_input", "Input does not match the capability contract")); }
         let permissions: Vec<String> = provider.operation["permissions"].as_array().unwrap().iter().map(|value|value.as_str().unwrap().to_owned()).collect();
         if let Some(parent) = &parent {
@@ -299,18 +309,23 @@ impl Broker {
         let timeout = Duration::from_millis(provider.operation["timeoutMs"].as_u64().unwrap());
         let deadline = Instant::now() + timeout;
         let deadline_ms = (time::OffsetDateTime::now_utc().unix_timestamp_nanos() / 1_000_000) as i64 + timeout.as_millis() as i64;
-        let mut chain = parent.clone().unwrap_or_else(||Chain { caller: caller.into(), sites: vec![], permissions: permissions.clone(), deadline, deadline_ms, cancellations: vec![], ancestors: vec![] });
+        let mut chain = parent.clone().unwrap_or_else(||Chain { caller: caller.into(), sites: vec![], permissions: permissions.clone(), deadline, deadline_ms, cancellations: vec![], ancestors: vec![], write_cancellation });
         chain.permissions = permissions;
         chain.deadline = chain.deadline.min(deadline);
         chain.deadline_ms = chain.deadline_ms.min(deadline_ms);
         chain.cancellations.push(cancelled);
         chain.sites.push(CallSite { invocation_id: id.clone(), installation_id: provider.installation_id.clone(), contribution_id: provider.contribution_id.clone() });
         let (kind,scope_id) = request.scope.key();
-        let insert = sqlx::query("INSERT INTO capability_invocations(id,caller_window,scope_kind,scope_id,capability_id,contract_version,installation_id,contribution_id,status,started_at,deadline_ms,parent_invocation_id,root_invocation_id,caller_installation_id,instance_id,turn_id) VALUES(?,?,?,?,?,?,?,?,'running',?,?,?,?,?,?,?)")
-            .bind(&id).bind(caller).bind(kind).bind(scope_id).bind(&request.capability).bind(&request.version).bind(&provider.installation_id).bind(&provider.contribution_id).bind(crate::now_iso()).bind(chain.deadline_ms).bind(parent.as_ref().and_then(|chain|chain.sites.last()).map(|site|&site.invocation_id)).bind(&chain.sites[0].invocation_id).bind(parent.as_ref().and_then(|chain|chain.sites.last()).map(|site|&site.installation_id)).bind(&slot.id).bind(&request.turn_id).execute(&self.db).await;
+        let insert = sqlx::query("INSERT INTO capability_invocations(id,caller_window,scope_kind,scope_id,capability_id,contract_version,installation_id,contribution_id,status,started_at,deadline_ms,parent_invocation_id,root_invocation_id,caller_installation_id,instance_id,turn_id,write_run_id) VALUES(?,?,?,?,?,?,?,?,'running',?,?,?,?,?,?,?,?)")
+            .bind(&id).bind(caller).bind(kind).bind(scope_id).bind(&request.capability).bind(&request.version).bind(&provider.installation_id).bind(&provider.contribution_id).bind(crate::now_iso()).bind(chain.deadline_ms).bind(parent.as_ref().and_then(|chain|chain.sites.last()).map(|site|&site.invocation_id)).bind(&chain.sites[0].invocation_id).bind(parent.as_ref().and_then(|chain|chain.sites.last()).map(|site|&site.installation_id)).bind(&slot.id).bind(&request.turn_id).bind(chain.write_cancellation.as_ref().map(|cancel|cancel.run_id())).execute(&self.db).await;
         if let Err(error) = insert { self.flights.lock().await.remove(&key); return Err(database(error)); }
         let mut result = self.execute(&id,&request,&provider,&slot,workspace.as_ref(),&chain).await;
-        if result.is_err() { if let Some(runtime) = slot.runtime.lock().await.take() { runtime.stop().await; } }
+        if chain.write_cancellation.is_some() {
+            if let Some(runtime) = slot.runtime.lock().await.take() {
+                if !runtime.stop_and_wait().await { result = Err(fail("outcome_unknown", "Capability process cleanup could not be confirmed")); }
+            }
+            if let Err(error) = &mut result { error.code = "outcome_unknown".into(); error.message = "Approved capability execution did not produce a confirmed result; inspect its effects before another request".into(); }
+        } else if result.is_err() { if let Some(runtime) = slot.runtime.lock().await.take() { runtime.stop().await; } }
         *slot.touched.lock().await = Instant::now();
         self.flights.lock().await.remove(&key);
         let status = match &result { Ok(_) => "completed", Err(error) => error.code.as_str() };
@@ -320,12 +335,13 @@ impl Broker {
         })
     }
     async fn execute(&self, id: &str, request: &Request, provider: &Provider, slot: &Slot, workspace: Option<&crate::Workspace>, chain: &Chain) -> Result<Response, Failure> {
+        self.check_executables(&provider.manifest, chain).await?;
         let prepare = async {
         let current: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM plugin_installations WHERE id=? AND enabled=1 AND installed=1").bind(&provider.installation_id).fetch_one(&self.db).await.map_err(database)?;
         if current != 1 { return Err(fail("provider_unavailable", "Provider was disabled")); }
         let (_,_,digest) = plugin_registry::inspect(&provider.directory).map_err(|_|fail("provider_unavailable", "Installed package integrity check failed"))?;
         if digest != provider.digest { return Err(fail("provider_unavailable", "Installed package changed")); }
-        let dependencies = crate::plugin_dependencies::resolve(&self.db,&provider.installation_id,true).await.map_err(database)?;
+        let dependencies = crate::plugin_dependencies::resolve_metadata_pinned(&self.db,&provider.installation_id).await.map_err(database)?;
         if !dependencies.supports(&provider.contribution_id) { return Err(fail("provider_unavailable", "A pinned package dependency is unavailable")); }
         // Recheck scope authority immediately before giving a runtime its workspace.
         self.workspace(&request.scope).await?;
@@ -362,7 +378,7 @@ impl Broker {
             _ = tokio::time::sleep_until(chain.deadline.into()) => return Err(fail("timeout", "Invocation deadline expired")),
             runtime = prepare => runtime?,
         };
-        let call = runtime.request("capability.invoke",json!({"invocationId":id,"instanceId":slot.id,"generationId":runtime.generation_id,"contributionId":provider.contribution_id,"capability":request.capability,"contractVersion":request.version,"operationId":provider.operation["id"],"scope":request.scope,"deadlineUnixMs":chain.deadline_ms,"context":{"turnId":request.turn_id,"workspaceId":workspace.filter(|_|chain.permissions.iter().any(|permission|permission == "workspace.read")).map(|workspace|&workspace.id),"workspacePath":workspace.filter(|_|chain.permissions.iter().any(|permission|permission == "workspace.read")).map(|workspace|&workspace.path),"originalCaller":{"kind":"window","id":chain.caller},"permissions":chain.permissions,"callChain":chain.sites},"input":request.input}),chain.deadline.saturating_duration_since(Instant::now()));
+        let call = runtime.request("capability.invoke",json!({"invocationId":id,"instanceId":slot.id,"generationId":runtime.generation_id,"contributionId":provider.contribution_id,"capability":request.capability,"contractVersion":request.version,"operationId":provider.operation["id"],"scope":request.scope,"deadlineUnixMs":chain.deadline_ms,"context":{"turnId":request.turn_id,"workspaceId":workspace.filter(|_|chain.permissions.iter().any(|permission|permission == "workspace.read" || permission == "workspace.write")).map(|workspace|&workspace.id),"workspacePath":workspace.filter(|_|chain.permissions.iter().any(|permission|permission == "workspace.read" || permission == "workspace.write")).map(|workspace|&workspace.path),"originalCaller":{"kind":"window","id":chain.caller},"permissions":chain.permissions,"callChain":chain.sites},"input":request.input}),chain.deadline.saturating_duration_since(Instant::now()));
         tokio::pin!(call);
         let mut notifications = runtime.notifications.lock().await;
         let mut child_ids = std::collections::HashSet::new();
@@ -398,7 +414,7 @@ impl Broker {
         if child.invocation_id != parent_id || child.generation_id != runtime.generation_id { return Err(fail("permission_denied", "Dependency call does not belong to this invocation")); }
         if child.input.to_string().len() > MAX_INPUT { return Err(fail("invalid_input", "Dependency input exceeds limit")); }
         let prepare = async {
-            let dependencies = crate::plugin_dependencies::resolve(&self.db,&provider.installation_id,true).await.map_err(database)?;
+            let dependencies = crate::plugin_dependencies::resolve_metadata_pinned(&self.db,&provider.installation_id).await.map_err(database)?;
             let dependency = dependencies.dependencies.iter().find(|dependency|dependency.plugin_id == child.plugin_id && dependency.contribution_ids.contains(&provider.contribution_id))
                 .ok_or_else(||fail("permission_denied", "Calling contribution has not declared this dependency"))?;
             if !dependencies.supports(&provider.contribution_id) || !dependency.available { return Err(fail("provider_unavailable", "Pinned dependency is unavailable")); }
@@ -415,7 +431,7 @@ impl Broker {
         let mut child_chain = chain.clone();
         child_chain.ancestors.push(runtime.clone());
         // Children inherit scope and original identity; UI provider settings cannot reroute them.
-        self.invoke_selected(&chain.caller,Request { turn_id: request.turn_id.clone(), scope: request.scope.clone(), capability: child.capability, version: child.version, request_id: ulid::Ulid::new().to_string(), input: child.input },selected,Some(child_chain)).await
+        self.invoke_selected(&chain.caller,Request { turn_id: request.turn_id.clone(), scope: request.scope.clone(), capability: child.capability, version: child.version, request_id: ulid::Ulid::new().to_string(), input: child.input },selected,Some(child_chain),None).await
     }
 
 }

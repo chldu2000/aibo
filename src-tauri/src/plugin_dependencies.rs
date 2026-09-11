@@ -41,6 +41,7 @@ struct Graph {
     planned: Vec<(String,String,String)>,
     visited: HashSet<String>,
     health: HashMap<String,bool>,
+    probe_executables: bool,
 }
 impl Graph {
     fn compatible(release: &Release, dependency: &Value) -> bool {
@@ -61,7 +62,7 @@ impl Graph {
     fn executable(&mut self, release: &Release) -> bool {
         *self.health.entry(release.id.clone()).or_insert_with(|| {
             plugin_manifest::activation_issues(&release.manifest).is_ok_and(|issues|issues.is_empty()) &&
-                plugin_registry::dependency_diagnostics(&release.manifest).iter().all(|dependency|!dependency.required || dependency.available)
+                (!self.probe_executables || plugin_registry::dependency_diagnostics(&release.manifest).iter().all(|dependency|!dependency.required || dependency.available))
         })
     }
     fn walk(&mut self, id: &str, stack: &mut Vec<String>) -> Result<Report,String> {
@@ -106,6 +107,19 @@ impl Graph {
 /// Dry-run for UI; `persist` is used for activation and before Broker dispatch.
 /// A failed required graph cannot leave a partially committed set of pins.
 pub(crate) async fn resolve(db: &SqlitePool, root: &str, persist: bool) -> Result<Report,String> {
+    resolve_policy(db, root, persist, true).await
+}
+
+/// Approval and discovery may inspect declarations, never execute dependency programs.
+pub(crate) async fn resolve_metadata(db: &SqlitePool, root: &str) -> Result<Report,String> {
+    resolve_policy(db, root, false, false).await
+}
+
+pub(crate) async fn resolve_metadata_pinned(db: &SqlitePool, root: &str) -> Result<Report,String> {
+    resolve_policy(db, root, true, false).await
+}
+
+async fn resolve_policy(db: &SqlitePool, root: &str, persist: bool, probe_executables: bool) -> Result<Report,String> {
     let _guard = RESOLUTION_LOCK.lock().await;
     let mut tx = db.begin().await.map_err(|e|e.to_string())?;
     let root_manifest: String = sqlx::query_scalar("SELECT manifest_json FROM plugin_installations WHERE id=?")
@@ -125,7 +139,7 @@ pub(crate) async fn resolve(db: &SqlitePool, root: &str, persist: bool) -> Resul
     }
     let pins: Vec<(String,String,String)> = sqlx::query_as("SELECT installation_id,dependency_plugin_id,dependency_installation_id FROM plugin_dependency_bindings")
         .fetch_all(&mut *tx).await.map_err(|e|e.to_string())?;
-    let mut graph = Graph { releases,pins:pins.into_iter().map(|(owner,plugin,id)|((owner,plugin),id)).collect(),planned:vec![],visited:HashSet::new(),health:HashMap::new() };
+    let mut graph = Graph { probe_executables, releases,pins:pins.into_iter().map(|(owner,plugin,id)|((owner,plugin),id)).collect(),planned:vec![],visited:HashSet::new(),health:HashMap::new() };
     // Load only the selected reachable releases, not every historical manifest.
     // The whole graph has a byte budget in addition to per-manifest limits.
     let mut pending = vec![root.to_owned()];

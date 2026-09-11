@@ -40,7 +40,7 @@ pub(crate) struct PluginInstallation {
     pub manifest: Value,
 }
 
-fn parse_dependency_version(output: &str) -> Option<semver::Version> {
+pub(crate) fn parse_dependency_version(output: &str) -> Option<semver::Version> {
     output.split_whitespace().find_map(|token| {
         let token = token.trim_matches(|character: char| !character.is_ascii_alphanumeric() && !matches!(character, '.' | '-' | '+')).trim_start_matches('v');
         if !token.chars().next().is_some_and(|character|character.is_ascii_digit()) { return None; }

@@ -1,0 +1,41 @@
+{
+  "identifier": "local.aibo.callchainprobe.1789165390845",
+  "results": [
+    {
+      "ok": true,
+      "stage": 0,
+      "saved": {
+        "workspaceId": "01M2992RNRVEVAKQQYFJFHTSNA",
+        "parentId": "01M2992RQ6STF6CPQ896ATCTYG",
+        "childId": "01M2992RP0VVX9EWGYE70QP4SC"
+      },
+      "evidence": {
+        "realPluginToPluginCall": true,
+        "originalCaller": true,
+        "pinnedDependency": true,
+        "inheritedScopeAndPermissions": true,
+        "staleGenerationRejected": true,
+        "noAgentSession": true
+      }
+    },
+    {
+      "ok": true,
+      "stage": 1,
+      "saved": {
+        "workspaceId": "01M2992RNRVEVAKQQYFJFHTSNA",
+        "parentId": "01M2992RQ6STF6CPQ896ATCTYG",
+        "childId": "01M2992RP0VVX9EWGYE70QP4SC"
+      },
+      "evidence": {
+        "realPluginToPluginCall": true,
+        "originalCaller": true,
+        "pinnedDependency": true,
+        "inheritedScopeAndPermissions": true,
+        "staleGenerationRejected": true,
+        "noAgentSession": true,
+        "actualAppRestart": true,
+        "dependencyDisableEnforced": true
+      }
+    }
+  ]
+}

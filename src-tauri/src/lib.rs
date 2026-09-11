@@ -3630,8 +3630,9 @@ async fn bind_capability_provider(binding: capability_broker::Binding, state: St
 async fn invoke_capability(request: capability_broker::Request, window: tauri::WebviewWindow, state: State<'_, AppState>) -> Result<capability_broker::Response, capability_broker::Failure> {
     let broker = state.capability_broker.clone();
     let caller = window.label().to_owned();
+    let approval = host_write_request(request.request_id.clone(), window, "Aibo · 确认能力写入");
     // Execution belongs to Core even if the calling view disappears.
-    tokio::spawn(async move { broker.invoke(&caller, request).await }).await.map_err(|_| capability_broker::Failure { code: "provider_unavailable".into(), message: "Capability task stopped".into(), invocation_id: None })?
+    tokio::spawn(async move { broker.invoke_authorized(&caller, request, &approval).await }).await.map_err(|_| capability_broker::Failure { code: "provider_unavailable".into(), message: "Capability task stopped".into(), invocation_id: None })?
 }
 #[tauri::command]
 async fn list_capability_history_scopes(before: Option<String>, window: tauri::WebviewWindow, state: State<'_, AppState>) -> Result<capability_history::ScopePage, CoreError> {

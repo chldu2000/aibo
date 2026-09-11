@@ -20,6 +20,7 @@ impl Request {
     where F: Fn(String) -> Fut + Send + Sync + 'static, Fut: Future<Output = Result<bool, String>> + Send + 'static {
         Self { id, caller, confirmation: Some(Box::new(move |message| Box::pin(confirm(message)))) }
     }
+    pub(crate) fn matches(&self, id: &str, caller: &str) -> bool { self.id == id && self.caller == caller && self.confirmation.is_some() }
     #[cfg(test)]
     pub(crate) fn test() -> Self { Self::new(ulid::Ulid::new().to_string(), "test".into()) }
 }
@@ -28,6 +29,7 @@ impl Request {
 #[derive(Clone)]
 pub(crate) struct Cancellation { db: SqlitePool, run_id: String }
 impl Cancellation {
+    pub(crate) fn run_id(&self) -> &str { &self.run_id }
     pub(crate) async fn is_requested(&self) -> bool {
         sqlx::query_scalar::<_, i64>("SELECT cancel_requested_at IS NOT NULL OR status NOT IN ('awaiting_approval','running') FROM workspace_write_runs WHERE id=?")
             .bind(&self.run_id).fetch_optional(&self.db).await.map(|value| value != Some(0)).unwrap_or(true)
@@ -64,6 +66,12 @@ async fn replay<T: DeserializeOwned>(db: &SqlitePool, workspace_id: &str, reques
         let message = document["error"]["message"].as_str().ok_or_else(|| CoreError::Initialization("stored write error has no message".into()))?;
         Ok(Some(Err(CoreError::WriteReplay { code: code.into(), message: message.into() })))
     }
+}
+
+/// Read an already admitted result before resolving a provider that may be gone.
+pub(crate) async fn replay_requested<T: DeserializeOwned>(db: &SqlitePool, workspace_id: &str, operation: &str, input: &Value, request: &Request) -> Result<Option<Result<T, CoreError>>, CoreError> {
+    let identity = serde_json::json!({"operation":operation,"input":input,"caller":&request.caller}).to_string();
+    replay(db, workspace_id, request, &identity).await
 }
 
 #[derive(Debug, Serialize)]
@@ -120,7 +128,7 @@ where T: Serialize + DeserializeOwned, F: FnOnce(Cancellation) -> Fut, Fut: Futu
     let approval_context = if request.confirmation.is_some() { Some(prepare().await?) } else { None };
     let mut message = format!("宿主写入：{operation}\n工作区：{}\n调用窗口：{}\n输入：{}\n\n批准仅适用于本次请求；取消不保证撤销已发生的更改。", workspace.path, request.caller, input);
     if let Some(description) = approval_context.as_ref().and_then(|context| context["approvalDescription"].as_str()) { message.push_str("\n\n"); message.push_str(description); }
-    if request.confirmation.is_some() && message.len() > 16 * 1024 { return Err(CoreError::InvalidWorkspacePath("Git approval summary exceeds 16 KiB".into())); }
+    if request.confirmation.is_some() && message.len() > 16 * 1024 { return Err(CoreError::InvalidWorkspacePath("Host write approval summary exceeds 16 KiB".into())); }
     let snapshot = serde_json::json!({"schema":"aibo.workspace-write-intent/v1","origin":"host","workspaceId":workspace.id,"workspacePath":workspace.path,"operation":operation,"input":input,"approvalContext":approval_context});
     let snapshot_json = snapshot.to_string();
     if snapshot_json.len() > 64 * 1024 { return Err(CoreError::InvalidWorkspacePath("workspace write intent exceeds 64 KiB".into())); }
