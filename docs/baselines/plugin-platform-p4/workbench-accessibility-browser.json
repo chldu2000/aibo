@@ -1,0 +1,96 @@
+{
+  "results": [
+    {
+      "kit": "shadcn",
+      "layouts": [
+        {
+          "layout": "standard",
+          "namedControls": 28,
+          "hostRecovery": true,
+          "mainLandmark": true
+        },
+        {
+          "layout": "review",
+          "namedControls": 28,
+          "hostRecovery": true,
+          "mainLandmark": true
+        },
+        {
+          "layout": "focus",
+          "namedControls": 12,
+          "hostRecovery": true,
+          "mainLandmark": true
+        }
+      ],
+      "semantics": [
+        {
+          "fixture": "collection",
+          "namedControls": 8,
+          "readOnlyExposed": false
+        },
+        {
+          "fixture": "detail",
+          "namedControls": 3,
+          "readOnlyExposed": true
+        },
+        {
+          "fixture": "stableSettings",
+          "namedControls": 2,
+          "readOnlyExposed": true
+        },
+        {
+          "fixture": "stableInspector",
+          "namedControls": 2,
+          "readOnlyExposed": true
+        }
+      ],
+      "errorAlert": true
+    },
+    {
+      "kit": "material3",
+      "layouts": [
+        {
+          "layout": "standard",
+          "namedControls": 28,
+          "hostRecovery": true,
+          "mainLandmark": true
+        },
+        {
+          "layout": "review",
+          "namedControls": 28,
+          "hostRecovery": true,
+          "mainLandmark": true
+        },
+        {
+          "layout": "focus",
+          "namedControls": 12,
+          "hostRecovery": true,
+          "mainLandmark": true
+        }
+      ],
+      "semantics": [
+        {
+          "fixture": "collection",
+          "namedControls": 8,
+          "readOnlyExposed": false
+        },
+        {
+          "fixture": "detail",
+          "namedControls": 3,
+          "readOnlyExposed": true
+        },
+        {
+          "fixture": "stableSettings",
+          "namedControls": 2,
+          "readOnlyExposed": true
+        },
+        {
+          "fixture": "stableInspector",
+          "namedControls": 2,
+          "readOnlyExposed": true
+        }
+      ],
+      "errorAlert": true
+    }
+  ]
+}

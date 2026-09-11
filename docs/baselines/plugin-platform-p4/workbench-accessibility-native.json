@@ -1,0 +1,97 @@
+{
+  "identifier": "local.aibo.accessibility.1789170316663",
+  "ok": true,
+  "realWorkspace": true,
+  "results": [
+    {
+      "kit": "shadcn",
+      "layout": "standard",
+      "hostRecovery": true,
+      "inspectedNodes": 239,
+      "nativeButtons": 22,
+      "nativeRecoveryPressed": false,
+      "systemControlsWithRoleDescription": [
+        "AXCloseButton",
+        "AXMinimizeButton"
+      ],
+      "unnamedButtons": 0
+    },
+    {
+      "kit": "shadcn",
+      "layout": "review",
+      "hostRecovery": true,
+      "inspectedNodes": 239,
+      "nativeButtons": 22,
+      "nativeRecoveryPressed": false,
+      "systemControlsWithRoleDescription": [
+        "AXCloseButton",
+        "AXMinimizeButton"
+      ],
+      "unnamedButtons": 0
+    },
+    {
+      "kit": "shadcn",
+      "layout": "focus",
+      "hostRecovery": true,
+      "inspectedNodes": 204,
+      "nativeButtons": 12,
+      "nativeRecoveryPressed": false,
+      "systemControlsWithRoleDescription": [
+        "AXCloseButton",
+        "AXMinimizeButton"
+      ],
+      "unnamedButtons": 0
+    },
+    {
+      "kit": "material3",
+      "layout": "standard",
+      "hostRecovery": true,
+      "inspectedNodes": 239,
+      "nativeButtons": 22,
+      "nativeRecoveryPressed": false,
+      "systemControlsWithRoleDescription": [
+        "AXCloseButton",
+        "AXMinimizeButton"
+      ],
+      "unnamedButtons": 0
+    },
+    {
+      "kit": "material3",
+      "layout": "review",
+      "hostRecovery": true,
+      "inspectedNodes": 239,
+      "nativeButtons": 22,
+      "nativeRecoveryPressed": false,
+      "systemControlsWithRoleDescription": [
+        "AXCloseButton",
+        "AXMinimizeButton"
+      ],
+      "unnamedButtons": 0
+    },
+    {
+      "kit": "material3",
+      "layout": "focus",
+      "hostRecovery": true,
+      "inspectedNodes": 204,
+      "nativeButtons": 12,
+      "nativeRecoveryPressed": false,
+      "systemControlsWithRoleDescription": [
+        "AXCloseButton",
+        "AXMinimizeButton"
+      ],
+      "unnamedButtons": 0
+    }
+  ],
+  "recoveries": [
+    {
+      "kit": "shadcn",
+      "nativeRecoveryPressed": true,
+      "standardRestored": true
+    },
+    {
+      "kit": "material3",
+      "nativeRecoveryPressed": true,
+      "standardRestored": true
+    }
+  ]
+}
