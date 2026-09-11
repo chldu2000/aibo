@@ -3,7 +3,7 @@
   const draftStorage = { getItem: (key: string) => window.localStorage.getItem(key), setItem: (key: string, value: string) => window.localStorage.setItem(key, value) };
   let workbenchDrafts = $state(readWorkbenchDrafts(draftStorage, presentationWindowId()));
   $effect(() => { writeWorkbenchDrafts(draftStorage, presentationWindowId(), workbenchDrafts); });
-  import { WorkbenchPresentation } from '$lib/ui-kit';
+  import { WorkbenchPresentation, Badge, Button, Card, CardHeader, CardTitle, CardContent } from '$lib/ui-kit';
   const loadInstalledWorkbench = () => import('$lib/workbench/InstalledWorkbench.svelte');
   import { listSemanticContributions, cancelSemanticOpen, openSemanticContribution, actSemanticContribution, releaseSemanticContribution } from '$lib/api';
   import type { InstalledContribution, InstalledScope } from '$lib/presentation/installed-controller';
@@ -2988,6 +2988,30 @@
     onRefresh={() => void refresh()}
     onClose={() => (diagnosticsOpen = false)}
   />
+  {#if pendingApprovals.length > 0}
+    <section class="approval-list" aria-label="宿主审批" aria-live="assertive" style="max-height: 40vh; overflow: auto; flex-shrink: 0;">
+      {#each pendingApprovals as approval (JSON.stringify([approval.sessionId, approval.requestId]))}
+        <Card class="approval-card">
+          <CardHeader class="approval-card-heading">
+            <CardTitle>需要确认 · {sessions.find(session => session.id === approval.sessionId)?.label ?? approval.sessionId}</CardTitle>
+            <Badge variant="warning">{approval.kind}</Badge>
+          </CardHeader>
+          <CardContent class="approval-card-content">
+            {#if approval.command}<code>{approval.command}</code>{/if}
+            {#if approval.cwd}<small>{approval.cwd}</small>{/if}
+            <div class="approval-actions">
+              {#if approval.availableDecisions.includes('cancel')}
+                <Button variant="ghost" size="sm" onclick={() => void resolveApproval(approval, 'cancel')} disabled={busy}>拒绝</Button>
+              {/if}
+              {#if approval.availableDecisions.includes('accept')}
+                <Button size="sm" onclick={() => void resolveApproval(approval, 'accept')} disabled={busy}>允许</Button>
+              {/if}
+            </div>
+          </CardContent>
+        </Card>
+      {/each}
+    </section>
+  {/if}
   {#if pluginsOpen}
     <div class="host-plugin-region" style="display: grid; flex: 1; min-height: 0; overflow: auto;">
       <PluginWorkspacePanel interaction={workbenchDrafts.plugin} onInteractionChange={hostGuard('onInteractionChange', (value) => { workbenchDrafts.plugin = value; })}
@@ -3109,7 +3133,6 @@
       usageValues={usageValues}
       retryPrompt={retryPrompt}
       retryReason={retryReason}
-      approvals={selectedApprovals}
       userInputRequests={selectedUserInputRequests}
       queueSnapshot={queueSnapshot}
       agentActivityLabel={agentActivityLabel}
@@ -3138,10 +3161,6 @@
       onOpenPiTree={guard('onOpenPiTree', openPiTree)}
       onTimelineScroll={guard('onTimelineScroll', handleTimelineScroll)}
       onRetry={guard('onRetry', () => void retryLastPrompt())}
-      onResolveApproval={guard('onResolveApproval', (requestId, decision) => {
-        const approval = selectedApprovals.find((item) => item.requestId === requestId);
-        if (approval) void resolveApproval(approval, decision);
-      })}
       onResolveUserInput={guard('onResolveUserInput', (request, answers) => resolveUserInput(request, answers))}
       onCancelUserInput={guard('onCancelUserInput', (request) => {
         if (request.sessionId === selectedSessionId) void abortPrompt();

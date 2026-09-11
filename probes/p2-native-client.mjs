@@ -75,12 +75,25 @@ try {
       const approvalOffset=events.length;
       await invoke('send_agent_prompt',{sessionId:session.id,input:agent==='pi'?'Use the write tool to create p2-approval.txt containing P2_APPROVAL_OK. Then reply P2_APPROVAL_DONE.':'Run the read-only shell command pwd exactly once, then reply P2_APPROVAL_DONE. Do not modify files.'});
       const approval=await until(()=>{const active=events.slice(approvalOffset).filter(event=>event.sessionId===session.id);const request=active.find(event=>event.type==='approval.requested');if(!request&&active.some(event=>['turn.completed','turn.failed'].includes(event.type)))throw Error(agent+' turn ended without requested approval');return request;},agent+' approval',120_000);
-      await invoke('resolve_agent_approval',{sessionId:session.id,requestId:approval.payload.requestId,decision:'accept'});
+      const approvalRegion = await until(() => document.querySelector('[aria-label="宿主审批"]'), agent+' host approval region');
+      check(!approvalRegion.closest('.workbench-presentation'), 'approval must be host owned');
+      [...document.querySelectorAll('button')].find(button => button.textContent.trim() === '插件').click();
+      await until(() => document.querySelector('.host-plugin-region'), 'management alongside approval');
+      document.querySelector('button[aria-label="切换工作台呈现"]').click();
+      await until(() => document.querySelector('[data-presentation-layout="focus"][aria-busy="false"]'), 'switch during approval');
+      check(document.querySelector('[aria-label="宿主审批"]') === approvalRegion, 'approval survives presentation remount');
+      const accept = [...approvalRegion.querySelectorAll('button')].find(button => button.textContent.trim() === '允许');
+      check(accept && !accept.disabled, 'host decision remains available');
+      accept.click();
+      await until(() => !document.querySelector('[aria-label="宿主审批"]'), 'host approval resolved');
+      document.querySelector('button[aria-label="恢复默认呈现"]').click();
+      await until(() => document.querySelector('[data-presentation-layout="standard"][aria-busy="false"]'), 'restore after approval');
+      [...document.querySelectorAll('button')].find(button => button.textContent.trim() === '返回会话').click();
       await until(()=>events.slice(approvalOffset).some(event=>event.sessionId===session.id&&event.type==='turn.completed'),agent+' approved completion',120_000);
       const cancelOffset=events.length;await invoke('send_agent_prompt',{sessionId:session.id,input:'Write 1000 numbered lines of P2_CANCEL. Do not use tools.'});
       await invoke('cancel_agent_turn',{sessionId:session.id});
       await until(()=>events.slice(cancelOffset).some(event=>event.sessionId===session.id&&['turn.completed','turn.failed'].includes(event.type)),agent+' cancel');
-      evidence.push({agent,pluginBinding:true,profile:true,models:true,reasoning:level?.id??'not supported',stream:true,approval:true,cancel:true,treeQueue:agent==='pi'?'passed':'not declared'});
+      evidence.push({agent,pluginBinding:true,profile:true,models:true,reasoning:level?.id??'not supported',stream:true,approval:true,hostApprovalAcrossLayoutAndManagement:true,cancel:true,treeQueue:agent==='pi'?'passed':'not declared'});
     }
     await invoke('save_composer_draft',{sessionId:echo.id,text:'P2_DRAFT_KEEP',sendFailed:false});
     writePersistedSelection(localStorage,{workspaceId:workspace.id,sessionId:echo.id},'main');

@@ -10,8 +10,13 @@ test('workbench callbacks and writable bindings cross the generation gate', asyn
   let hostCallbacks = 0;
   const hostComponents = new Set(['WindowTitlebar', 'SettingsPanel', 'DiagnosticsPanel', 'PluginWorkspacePanel']);
   const foundHost = new Set();
+  let hostApprovalRegion = false;
   function visit(node, inside = false) {
     if (!node || typeof node !== 'object') return;
+    if (node.type === 'RegularElement' && node.attributes?.some(attribute => attribute.name === 'aria-label' && attribute.value?.[0]?.data === '宿主审批')) {
+      assert.equal(inside, false, 'approvals must remain outside replaceable presentation');
+      hostApprovalRegion = true;
+    }
     if (node.type === 'Component' && hostComponents.has(node.name)) {
       assert.equal(inside, false, `${node.name} must survive renderer disposal`);
       foundHost.add(node.name);
@@ -44,7 +49,10 @@ test('workbench callbacks and writable bindings cross the generation gate', asyn
     }
   }
   visit(tree.fragment);
+  assert.equal(hostApprovalRegion, true);
   assert.deepEqual(foundHost, hostComponents);
+  const timeline = await readFile('src/lib/components/app/TimelinePanel.svelte', 'utf8');
+  assert.doesNotMatch(timeline, /onResolveApproval|availableDecisions/, 'presentation cannot own approval controls');
   assert.ok(guarded + hostCallbacks >= 100, 'all workbench and independent host callbacks must be covered');
   assert.match(source, /listenToAgentEvents/);
   const shell = await readFile('src/lib/workbench/WorkbenchPresentation.svelte', 'utf8');

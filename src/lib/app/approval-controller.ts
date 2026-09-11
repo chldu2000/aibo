@@ -19,6 +19,11 @@ export type ApprovalControllerContext = {
 
 /** Coordinates approval resolution without depending on Svelte state or UI. */
 export function createApprovalController(context: ApprovalControllerContext) {
+  const resolving = new Set<string>();
+  const sameRequest = (left: ApprovalRequest, right: ApprovalRequest) =>
+    left.sessionId === right.sessionId && left.requestId === right.requestId
+    && left.turnId === right.turnId && left.kind === right.kind
+    && left.command === right.command && left.cwd === right.cwd;
   async function resolveApproval(
     approval: ApprovalRequest,
     decision: ApprovalDecision,
@@ -27,7 +32,13 @@ export function createApprovalController(context: ApprovalControllerContext) {
       context.setNotice('当前是 Web 预览；审批操作需要在 Tauri 桌面模式中执行。');
       return;
     }
-    if (!approval.availableDecisions.includes(decision)) return;
+    const key = JSON.stringify([approval.sessionId, approval.requestId]);
+    const current = context.getPendingApprovals().find(item =>
+      item.sessionId === approval.sessionId && item.requestId === approval.requestId);
+    // A detached card cannot approve a replaced request or change its advertised choices.
+    if (!current || resolving.has(key) || !current.availableDecisions.includes(decision)) return;
+    if (!sameRequest(current, approval)) return;
+    resolving.add(key);
 
     context.setBusy(true);
     context.setErrorMessage(null);
@@ -36,14 +47,15 @@ export function createApprovalController(context: ApprovalControllerContext) {
       context.setPendingApprovals(
         context.getPendingApprovals().filter(
           (item) =>
-            item.sessionId !== approval.sessionId || item.requestId !== approval.requestId,
+            !sameRequest(item, current),
         ),
       );
       context.setNotice(decision === 'accept' ? '已允许本次操作。' : '已拒绝本次操作。');
     } catch (error) {
       context.setErrorMessage(toErrorMessage(error));
     } finally {
-      context.setBusy(false);
+      resolving.delete(key);
+      context.setBusy(resolving.size > 0);
     }
   }
 

@@ -141,7 +141,7 @@
 
 **前置：** P3 安装和 Broker 可用。**交付物：** 可信默认 Presentation Plugin、正式 Core/optional/fallback 契约、可信审批闭环、项目任务与 Git 写入切片。
 
-**第一批进度：** [呈现描述与降级协商](./plugin-platform-p4-presentation.md)已落地 ADR-0007、可信默认呈现描述、必需核心校验及完整数据降级协商，并接入实际预检路径。完整槽位装配、专业呈现实例、独立恢复入口和写入审批仍待实施，P4 退出条件保持未完成。
+**当前进度：** [呈现边界实施记录](./plugin-platform-p4-presentation.md)已落地 ADR-0007、可信默认呈现描述、必需核心校验及完整数据降级协商，并接入实际预检路径。恢复入口、插件管理、设置、诊断及 Agent 审批已移入独立宿主区域。完整槽位装配、专业呈现实例、独立历史、PluginView 确认及 Capability 写入审批仍待实施，P4 退出条件保持未完成。
 
 - [ ] 提交正式 ADR，冻结 Core/optional/fallback、支持版本表与布局所有权；同步 UI contract、架构测试和 `ui-architecture.md` 后才引入 optional 成员。
 - [ ] 将默认工作台装配为可信 Presentation Plugin，明确 Shell/renderer/skin 职责及构建期发布边界，允许重排整个工作台。

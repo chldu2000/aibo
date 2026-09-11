@@ -2,14 +2,13 @@
   import type { ModelConfigurationState } from '$lib/app/model-configuration';
   import { sessionAgentKind } from '$lib/app/agent-kind';
   import { Badge, Button, Card, CardContent, CardHeader, CardTitle, Icon, Input, Separator } from '$lib/ui-kit';
-  import type { AgentCommand, AgentGoal, AgentQueueSnapshot, ApprovalDecision, ContextAttachment, SessionAccessMode, SessionExecutionProfile, SessionModelCatalog, UserInputRequest, WorkspacePathSuggestion } from '$lib/types';
+  import type { AgentCommand, AgentGoal, AgentQueueSnapshot, ContextAttachment, SessionAccessMode, SessionExecutionProfile, SessionModelCatalog, UserInputRequest, WorkspacePathSuggestion } from '$lib/types';
   import type { UsageValues } from './view-models';
   import Composer from './Composer.svelte';
   import MarkdownContent from './MarkdownContent.svelte';
   import { sessionStateLabel } from './session-utils';
   import { groupTimelineItems, isDiffContent, toolLabel } from './timeline-utils';
   import type {
-    ApprovalView,
     CodexThreadView,
     SessionPanelView,
     TimelineViewItem,
@@ -27,7 +26,6 @@
     usageValues: UsageValues | null;
     retryPrompt: string | null;
     retryReason: string | null;
-    approvals: ApprovalView[];
     userInputRequests: UserInputRequest[];
     queueSnapshot: AgentQueueSnapshot | null;
     agentActivityLabel: string | null;
@@ -54,7 +52,6 @@
     onOpenPiTree: () => void;
     onTimelineScroll: (event: Event) => void;
     onRetry: () => void;
-    onResolveApproval: (requestId: string, decision: ApprovalDecision) => void;
     onResolveUserInput: (request: UserInputRequest, answers: Record<string, string[]>) => void | Promise<void>;
     onCancelUserInput: (request: UserInputRequest) => void;
     onSend: () => void;
@@ -80,7 +77,6 @@
     usageValues,
     retryPrompt,
     retryReason,
-    approvals,
     userInputRequests,
     queueSnapshot,
     agentActivityLabel,
@@ -104,7 +100,6 @@
     onOpenPiTree,
     onTimelineScroll,
     onRetry,
-    onResolveApproval,
     onResolveUserInput,
     onCancelUserInput,
     onSend,
@@ -395,31 +390,6 @@
             <div class="user-input-actions">
               <Button type="button" size="sm" variant="ghost" onclick={() => onCancelUserInput(request)} disabled={busy}>停止并取消</Button>
               <Button type="button" size="sm" onclick={() => submitUserInput(request)} disabled={busy}>提交回答</Button>
-            </div>
-          </CardContent>
-        </Card>
-      {/each}
-    </div>
-  {/if}
-
-  {#if approvals.length > 0}
-    <div class="approval-list" aria-live="assertive">
-      {#each approvals as approval (approval.requestId)}
-        <Card class="approval-card">
-          <CardHeader class="approval-card-heading">
-            <CardTitle>需要确认</CardTitle>
-            <Badge variant="warning">{approval.kind}</Badge>
-          </CardHeader>
-          <CardContent class="approval-card-content">
-            {#if approval.command}<code>{approval.command}</code>{/if}
-            {#if approval.cwd}<small>{approval.cwd}</small>{/if}
-            <div class="approval-actions">
-              {#if approval.availableDecisions.includes('cancel')}
-                <Button variant="ghost" size="sm" type="button" onclick={() => onResolveApproval(approval.requestId, 'cancel')} disabled={busy}>拒绝</Button>
-              {/if}
-              {#if approval.availableDecisions.includes('accept')}
-                <Button size="sm" type="button" onclick={() => onResolveApproval(approval.requestId, 'accept')} disabled={busy}>允许</Button>
-              {/if}
             </div>
           </CardContent>
         </Card>
