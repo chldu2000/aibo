@@ -1370,13 +1370,19 @@ impl PluginHost {
         self.project_event(session_id, workspace_id, generation, binding, sequence, message, EventOrigin::Plugin).await
     }
 
+    async fn begin_projection(&self) -> Result<sqlx::Transaction<'static, sqlx::Sqlite>, sqlx::Error> {
+        // A deferred read transaction cannot upgrade after another connection writes
+        // (SQLITE_BUSY_SNAPSHOT). Reserve the writer before reading projection state.
+        self.db.begin_with("BEGIN IMMEDIATE").await
+    }
+
     async fn project_event(&self, session_id: &str, workspace_id: &str, generation: &str, binding: &Value, sequence: i64, message: Value, origin: EventOrigin) -> Result<(), String> {
         if !contracts().runtime.is_valid(&message) { return Err("invalid_request: notification schema".into()); }
         let p = &message["params"];
         if p["sessionId"] != session_id || p["agentId"] != binding["agentId"] { return Err("invalid_session: notification identity".into()); }
         let mut emitted_event = None;
         let _write_guard = self.database_writes.lock().await;
-        let mut tx = self.db.begin().await.map_err(|e|e.to_string())?;
+        let mut tx = self.begin_projection().await.map_err(|e|e.to_string())?;
         let active: (String, String) = sqlx::query_as("SELECT generation_id,plugin_capabilities_json FROM session_bindings WHERE session_id=?").bind(session_id).fetch_one(&mut *tx).await.map_err(|e|e.to_string())?;
         if active.0 != generation { return Err("invalid_session: old generation".into()); }
         if message["method"] == "view/render" {
@@ -1683,7 +1689,35 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn projection_reserves_writer_before_reading_shared_state() {
+        let root = std::env::temp_dir().join(format!("aibo-projection-lock-{}", ulid::Ulid::new()));
+        std::fs::create_dir(&root).unwrap();
+        let db = crate::open_database(&root.join("host.db")).await.unwrap();
+        sqlx::query("CREATE TABLE projection_probe (value INTEGER)").execute(&db).await.unwrap();
+        sqlx::query("INSERT INTO projection_probe VALUES (0)").execute(&db).await.unwrap();
+        let host = PluginHost::new(db.clone());
+        let mut transaction = host.begin_projection().await.unwrap();
+        let value: i64 = sqlx::query_scalar("SELECT value FROM projection_probe").fetch_one(&mut *transaction).await.unwrap();
+        assert_eq!(value, 0);
+        let external = db.clone();
+        let (started, ready) = tokio::sync::oneshot::channel();
+        let mut writer = tokio::spawn(async move {
+            let _ = started.send(());
+            sqlx::query("UPDATE projection_probe SET value=value+1").execute(&external).await.unwrap();
+        });
+        ready.await.unwrap();
+        assert!(tokio::time::timeout(Duration::from_millis(100), &mut writer).await.is_err(), "external writers must wait for projection commit");
+        sqlx::query("UPDATE projection_probe SET value=value+1").execute(&mut *transaction).await.unwrap();
+        transaction.commit().await.unwrap();
+        writer.await.unwrap();
+        assert_eq!(sqlx::query_scalar::<_,i64>("SELECT value FROM projection_probe").fetch_one(&db).await.unwrap(), 2);
+        db.close().await;
+        std::fs::remove_dir_all(root).unwrap();
+    }
+
+    #[tokio::test]
     async fn installs_external_package_streams_cancels_and_restores_persisted_session() {
+        let _ = tracing_subscriber::fmt().with_max_level(tracing::Level::ERROR).with_test_writer().try_init();
         let root = std::env::temp_dir().join(format!("aibo-plugin-host-{}", ulid::Ulid::new()));
         fs::create_dir(&root).unwrap();
         let package = root.join("external-package");
