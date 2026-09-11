@@ -6,6 +6,9 @@ use std::{fs, path::Path, time::Duration};
 use tokio::process::Command as TokioCommand;
 use ulid::Ulid;
 
+// Serialize only admission, so duplicates observe the first persisted intent.
+static ADMISSION: tokio::sync::Mutex<()> = tokio::sync::Mutex::const_new(());
+
 fn project_action_from_row(row: &sqlx::sqlite::SqliteRow) -> Result<ProjectAction, CoreError> {
     let args_json: String = row.try_get("args_json")?;
     let args = serde_json::from_str(&args_json).map_err(|error| {
@@ -206,6 +209,7 @@ pub(crate) async fn run_project_action(
     if request_id.is_empty() || request_id.len() > 128 || !request_id.bytes().all(|c| c.is_ascii_alphanumeric() || matches!(c, b'-' | b'_')) {
         return Err(CoreError::InvalidWorkspacePath("invalid project task request ID".into()));
     }
+    let admission = ADMISSION.lock().await;
     let request_json = serde_json::json!({"actionId": &action_id, "sessionId": &session_id}).to_string();
     let workspace = workspace_by_id(db, &workspace_id).await?;
     if workspace.trust != "trusted" {
@@ -232,6 +236,7 @@ pub(crate) async fn run_project_action(
         .map_err(|error| CoreError::InvalidWorkspacePath(error.to_string()))?;
     let cwd = crate::workspace_guard::canonicalize_target(&root, Path::new(&action.cwd))
         .map_err(CoreError::InvalidWorkspacePath)?;
+    let _write = crate::workspace_writes::acquire(db, &workspace_id, &root).await?;
     let started_at = now_iso();
     let run_id = Ulid::new().to_string();
     let snapshot = serde_json::to_string(&serde_json::json!({"schema":"aibo.project-action-snapshot/v1","origin":"admission","definition":&action})).map_err(|error| CoreError::Initialization(error.to_string()))?;
@@ -242,6 +247,7 @@ pub(crate) async fn run_project_action(
         return replay_request(db, &workspace_id, &request_id, &request_json).await?
             .ok_or_else(|| CoreError::Initialization("project task request disappeared during admission".into()));
     }
+    drop(admission);
     let mut command = TokioCommand::new(&action.program);
     command.args(&action.args).current_dir(&cwd);
     let execution = match crate::controlled_process::execute(command, Duration::from_secs(300), 1024 * 1024 + 1).await {
@@ -408,6 +414,7 @@ mod tests {
         assert_eq!(pending[0].status, "running");
         assert!(pending[0].completed_at.is_none());
         owner.abort(); let _ = owner.await;
+        assert!(matches!(crate::workspace_git::apply_workspace_git_action(&db, "workspace".into(), "stage_all".into()).await, Err(CoreError::WorkspaceWriteBusy)));
         delete_project_action(&db, "workspace".into(), action.id.clone()).await.unwrap();
         db.close().await;
         let reopened = crate::open_database(&root.join("host.db")).await.unwrap();
@@ -428,6 +435,40 @@ mod tests {
         assert!(list_project_action_runs(&reopened, "workspace".into(), None).await.unwrap().iter().any(|run| run.id == failed.id));
         reopened.close().await;
         fs::remove_dir_all(root).unwrap();
+    }
+
+    #[tokio::test]
+    async fn tasks_and_git_share_workspace_exclusion_without_blocking_other_workspaces() {
+        let root = std::env::temp_dir().join(format!("aibo-write-scope-{}", Ulid::new()));
+        let first = root.join("first"); let second = root.join("second");
+        fs::create_dir_all(&first).unwrap(); fs::create_dir_all(&second).unwrap();
+        assert!(std::process::Command::new("git").args(["init", "-q"]).current_dir(&first).status().unwrap().success());
+        let db = crate::open_database(&root.join("host.db")).await.unwrap();
+        for (id, path) in [("first", &first), ("second", &second)] {
+            sqlx::query("INSERT INTO workspaces (id,path,label,trusted,created_at,updated_at) VALUES (?,?,'Writes',1,?,?)")
+                .bind(id).bind(path.to_string_lossy().as_ref()).bind(now_iso()).bind(now_iso()).execute(&db).await.unwrap();
+        }
+        let slow = save_project_action(&db, "first".into(), None, "Slow".into(), "test".into(), "/bin/sh".into(),
+            vec!["-c".into(), "touch started; while [ ! -f release ]; do sleep 0.01; done".into()], None, None).await.unwrap();
+        let fast = save_project_action(&db, "second".into(), None, "Fast".into(), "test".into(), "/bin/sh".into(),
+            vec!["-c".into(), "echo independent".into()], None, None).await.unwrap();
+        // A Git-side reservation also excludes task admission, before any run is recorded.
+        let reservation = crate::workspace_writes::acquire(&db, "first", &first).await.unwrap();
+        assert!(matches!(run_project_action(&db, &root, "first".into(), slow.id.clone(), None, "blocked".into()).await, Err(CoreError::WorkspaceWriteBusy)));
+        assert!(list_project_action_runs(&db, "first".into(), None).await.unwrap().is_empty());
+        drop(reservation);
+        let task_db = db.clone(); let task_root = root.clone(); let id = slow.id.clone();
+        let owner = tokio::spawn(async move { run_project_action(&task_db, &task_root, "first".into(), id, None, "active".into()).await });
+        tokio::time::timeout(Duration::from_secs(5), async { while !first.join("started").exists() { tokio::time::sleep(Duration::from_millis(10)).await; } }).await.unwrap();
+        assert!(matches!(run_project_action(&db, &root, "first".into(), slow.id, None, "different-request".into()).await, Err(CoreError::WorkspaceWriteBusy)));
+        assert!(matches!(crate::workspace_git::apply_workspace_git_action(&db, "first".into(), "stage_all".into()).await, Err(CoreError::WorkspaceWriteBusy)));
+        assert_eq!(run_project_action(&db, &root, "second".into(), fast.id, None, "independent".into()).await.unwrap().status, "completed");
+        assert!(std::process::Command::new("git").args(["diff", "--cached", "--name-only"]).current_dir(&first).output().unwrap().stdout.is_empty());
+        fs::write(first.join("release"), "done").unwrap();
+        assert_eq!(owner.await.unwrap().unwrap().status, "completed");
+        assert!(crate::workspace_git::apply_workspace_git_action(&db, "first".into(), "stage_all".into()).await.unwrap().applied);
+        assert!(!std::process::Command::new("git").args(["diff", "--cached", "--name-only"]).current_dir(&first).output().unwrap().stdout.is_empty());
+        db.close().await; fs::remove_dir_all(root).unwrap();
     }
 
     #[tokio::test]

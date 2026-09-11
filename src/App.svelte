@@ -61,6 +61,7 @@
     writePersistedSelection as writeSelectionToStorage,
   } from '$lib/app/selection-storage';
   import { handleAgentEvent as processAgentEvent } from '$lib/app/agent-event-handler';
+  import { createProjectTaskController } from '$lib/app/project-task-controller';
   import { createApprovalController } from '$lib/app/approval-controller';
   import { toErrorMessage } from '$lib/app/error-utils';
   import { createSessionLifecycleController } from '$lib/app/session-lifecycle-controller';
@@ -2916,6 +2917,8 @@
     setNotice: (value) => (notice = value),
   });
 
+  const projectTaskController = createProjectTaskController({ requestId: () => crypto.randomUUID(), execute: runProjectAction });
+
   const approvalController = createApprovalController({
     api: { resolveAgentApproval },
     getDesktop: () => desktop,
@@ -3237,7 +3240,7 @@
         const sessionId = selectedSessionId;
         if (!workspaceId) return;
         try {
-          const result = await runProjectAction(workspaceId, actionId, sessionId);
+          const result = await projectTaskController.run(workspaceId, actionId, sessionId);
           if (selectedWorkspaceId !== workspaceId) return;
           projectActionRuns = [result, ...projectActionRuns.filter((item) => item.id !== result.id)].slice(0, 20);
           if (sessionId && selectedSessionId === sessionId) await refreshArtifacts(sessionId);

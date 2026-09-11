@@ -2,6 +2,7 @@ mod compatibility;
 mod project_actions;
 mod controlled_process;
 mod workspace_git;
+mod workspace_writes;
 use workspace_git::apply_git_index_action;
 mod artifact;
 mod change_set;
@@ -555,6 +556,8 @@ pub enum CoreError {
     WorkspaceNotFound(String),
     #[error("workspace trust is required for the requested execution profile")]
     WorkspaceTrustRequired,
+    #[error("workspace has an unfinished write; wait for it to settle before submitting another operation")]
+    WorkspaceWriteBusy,
     #[error("session not found: {0}")]
     SessionNotFound(String),
     #[error("session must be idle before its execution profile can change")]
@@ -592,6 +595,7 @@ impl Serialize for CoreError {
             Self::InvalidWorkspacePath(_) => "invalid_workspace_path",
             Self::WorkspaceNotFound(_) => "workspace_not_found",
             Self::WorkspaceTrustRequired => "workspace_trust_required",
+            Self::WorkspaceWriteBusy => "workspace_write_busy",
             Self::SessionNotFound(_) => "session_not_found",
             Self::SessionBusy => "session_busy",
             Self::InvalidSessionLabel(_) => "invalid_session_label",

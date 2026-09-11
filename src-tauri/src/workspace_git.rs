@@ -70,6 +70,7 @@ pub(crate) async fn apply_workspace_git_file_action(
     if workspace.trust != "trusted" {
         return Err(CoreError::WorkspaceTrustRequired);
     }
+    let _write = crate::workspace_writes::acquire(db, &workspace_id, std::path::Path::new(&workspace.path)).await?;
     apply_git_index_action(&workspace.path, &path, &action)
 }
 
@@ -134,6 +135,7 @@ pub(crate) async fn apply_workspace_git_action(
     if workspace.trust != "trusted" {
         return Err(CoreError::WorkspaceTrustRequired);
     }
+    let _write = crate::workspace_writes::acquire(db, &workspace_id, std::path::Path::new(&workspace.path)).await?;
     run_git_workspace_action(&workspace.path, &action)
 }
 
@@ -192,6 +194,7 @@ pub(crate) async fn commit_workspace_changes(
     if workspace.trust != "trusted" {
         return Err(CoreError::WorkspaceTrustRequired);
     }
+    let _write = crate::workspace_writes::acquire(db, &workspace_id, std::path::Path::new(&workspace.path)).await?;
     commit_workspace(&workspace.path, &message)
 }
 
@@ -271,6 +274,7 @@ pub(crate) async fn checkout_workspace_git_branch(
     if workspace.trust != "trusted" {
         return Err(CoreError::WorkspaceTrustRequired);
     }
+    let _write = crate::workspace_writes::acquire(db, &workspace_id, std::path::Path::new(&workspace.path)).await?;
     let output = Command::new("git")
         .args(["-C", &workspace.path, "switch", "--", &branch])
         .output()
@@ -307,6 +311,7 @@ pub(crate) async fn create_workspace_git_branch(
     if workspace.trust != "trusted" {
         return Err(CoreError::WorkspaceTrustRequired);
     }
+    let _write = crate::workspace_writes::acquire(db, &workspace_id, std::path::Path::new(&workspace.path)).await?;
     let output = Command::new("git")
         .args(["-C", &workspace.path, "switch", "-c", &branch])
         .output()
@@ -604,6 +609,7 @@ pub(crate) async fn sync_workspace_git(
     if workspace.trust != "trusted" {
         return Err(CoreError::WorkspaceTrustRequired);
     }
+    let _write = crate::workspace_writes::acquire(db, &workspace_id, std::path::Path::new(&workspace.path)).await?;
     let args: &[&str] = match action.as_str() {
         "fetch" => &["fetch", "--all", "--prune"],
         "pull" => &["pull", "--ff-only"],
@@ -689,6 +695,7 @@ pub(crate) async fn apply_workspace_git_stash(
     if workspace.trust != "trusted" {
         return Err(CoreError::WorkspaceTrustRequired);
     }
+    let _write = crate::workspace_writes::acquire(db, &workspace_id, std::path::Path::new(&workspace.path)).await?;
     let output = Command::new("git")
         .args(["-C", &workspace.path, "stash", "apply", &reference])
         .output()
@@ -724,6 +731,7 @@ pub(crate) async fn stash_workspace_git(
     if workspace.trust != "trusted" {
         return Err(CoreError::WorkspaceTrustRequired);
     }
+    let _write = crate::workspace_writes::acquire(db, &workspace_id, std::path::Path::new(&workspace.path)).await?;
     let message = message.unwrap_or_else(|| "aibo workspace changes".to_owned());
     let output = Command::new("git")
         .args(["-C", &workspace.path, "stash", "push", "-u", "-m", &message])
