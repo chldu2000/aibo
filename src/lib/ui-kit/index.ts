@@ -7,7 +7,7 @@
  * and native attributes) and can be wired here without touching business code.
  */
 export * from './primitives';
-export type { UiPluginViewProps, UiPluginViewDocument, UiPluginViewNode, UiPluginViewInteraction } from './plugin-view';
+export type { UiPluginViewProps, UiPluginViewSnapshot, UiPluginViewVersion, UiPluginViewDocument, UiPluginViewNode, UiPluginViewInteraction } from './plugin-view';
 export type {
   AppearanceSelection,
   UiAgentStatusMarkProps,

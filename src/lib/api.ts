@@ -1,7 +1,7 @@
 import { invoke } from '@tauri-apps/api/core';
 import { listen, type UnlistenFn } from '@tauri-apps/api/event';
 import { getCurrentWindow } from '@tauri-apps/api/window';
-import type { UiPluginViewDocument } from './ui-kit/contract';
+import type { UiPluginViewSnapshot, UiPluginViewVersion } from './ui-kit/plugin-view';
 import type {
   AgentDiagnostic,
   WorkspaceCapabilityInventory,
@@ -99,8 +99,8 @@ export const sendAgentPrompt = (sessionId: string, input: string): Promise<Sessi
 export const cancelAgentTurn = (sessionId: string): Promise<void> => invoke('cancel_agent_turn', { sessionId });
 export const resumeAgentSession = (sessionId: string): Promise<void> => invoke('resume_agent_session', { sessionId });
 export const closeAgentSession = (sessionId: string): Promise<void> => invoke('close_agent_session', { sessionId });
-export const getPluginViews = (sessionId: string): Promise<UiPluginViewDocument[]> => invoke('get_plugin_views', { sessionId });
-export const invokePluginViewAction = (sessionId: string, viewId: string, actionId: string, input: Record<string, unknown>): Promise<Record<string, unknown>> => invoke('invoke_plugin_view_action', { sessionId, viewId, actionId, input });
+export const getPluginViews = (sessionId: string): Promise<UiPluginViewSnapshot[]> => invoke('get_plugin_view_snapshots', { sessionId });
+export const invokePluginViewAction = (sessionId: string, viewId: string, actionId: string, input: Record<string, unknown>, version: UiPluginViewVersion): Promise<Record<string, unknown>> => invoke('invoke_plugin_view_action', { sessionId, viewId, actionId, input, version });
 export const invokeAgentCapability = (sessionId: string, capability: string, input: Record<string, unknown>): Promise<Record<string, unknown>> => invoke('invoke_agent_capability', { sessionId, capability, input });
 
 export const presentationWindowId = (): string => isTauri() ? getCurrentWindow().label : 'preview';

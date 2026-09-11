@@ -66,13 +66,13 @@ test('App plugin controls forward every lifecycle callback and surface recoverab
   assert.match(app, /onCancel=\{hostGuard\('onCancel', \(\) => pluginSessionOperation\(cancelAgentTurn\)\)\}/);
   assert.match(app, /onResume=\{hostGuard\('onResume', \(\) => pluginSessionOperation\(resumeAgentSession\)\)\}/);
   assert.match(app, /onCloseSession=\{hostGuard\('onCloseSession', \(\) => pluginSessionOperation\(closeAgentSession\)\)\}/);
-  assert.match(app, /onViewAction=\{hostGuard\('onViewAction', \(viewId, actionId, input\) => void invokePluginAction\(viewId, actionId, input\)\)\}/);
+  assert.match(app, /onViewAction=\{hostGuard\('onViewAction', \(viewId, actionId, input, version\) => void invokePluginAction\(viewId, actionId, input, version\)\)\}/);
 
   assert.match(panel, /role="alert"/, 'plugin errors must be announced');
   assert.match(panel, /aria-label="插件消息"/, 'plugin timeline must remain readable');
   assert.match(panel, /const resumable = \$derived\(selectedSession\?\.state === 'interrupted' \|\| selectedSession\?\.state === 'failed'\)/);
   assert.match(panel, /disabled=\{busy \|\| !resumable\}/, 'closed or idle sessions must not offer resume');
-  assert.match(panel, /views as view \(view\.viewId\)/);
+  assert.match(panel, /views as snapshot \(snapshot\.document\.viewId\)/);
   assert.match(manager, /!installation\.installed \|\| !installation\.enabled/, 'uninstalled plugins cannot create sessions');
   assert.match(manager, /!installation\.runnable/, 'plugins with missing required dependencies cannot create sessions');
   assert.match(manager, /dependency\.required && !dependency\.available \? 'alert'/, 'missing required dependencies must be explicit');

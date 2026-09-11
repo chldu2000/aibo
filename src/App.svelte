@@ -169,7 +169,7 @@
     unarchiveSession as unarchiveSessionApi,
   } from './lib/api';
   import type { PluginInstallation } from './lib/api';
-  import type { UiPluginViewDocument } from '$lib/ui-kit';
+  import type { UiPluginViewSnapshot, UiPluginViewVersion } from '$lib/ui-kit';
   import type {
     AgentQueueSnapshot,
     AgentCommand,
@@ -449,7 +449,7 @@
   let pluginsOpen = $state(false);
   let pluginInstallations = $state<PluginInstallation[]>([]);
   const pluginSessions = $derived((workspaceSessionMap[selectedWorkspaceId ?? ''] ?? []).filter(session => Boolean(session.pluginInstallationId)));
-  let pluginViews = $state<UiPluginViewDocument[]>([]);
+  let pluginViews = $state<UiPluginViewSnapshot[]>([]);
   let pluginViewSessionId = $state<string | null>(null);
   let pluginPackagePath = $state('');
   let pluginBusy = $state(false);
@@ -532,11 +532,11 @@
     });
   }
 
-  async function invokePluginAction(viewId: string, actionId: string, input: Record<string, unknown>): Promise<void> {
+  async function invokePluginAction(viewId: string, actionId: string, input: Record<string, unknown>, version: UiPluginViewVersion): Promise<void> {
     const sessionId = pluginSessionId;
     if (!sessionId) return;
     await pluginOperation(async () => {
-      await invokePluginViewAction(sessionId, viewId, actionId, input);
+      await invokePluginViewAction(sessionId, viewId, actionId, input, version);
       if (pluginSessionId === sessionId) pluginViews = await getPluginViews(sessionId);
     });
   }
@@ -3037,7 +3037,7 @@
       onCancel={hostGuard('onCancel', () => pluginSessionOperation(cancelAgentTurn))}
       onResume={hostGuard('onResume', () => pluginSessionOperation(resumeAgentSession))}
       onCloseSession={hostGuard('onCloseSession', () => pluginSessionOperation(closeAgentSession))}
-      onViewAction={hostGuard('onViewAction', (viewId, actionId, input) => void invokePluginAction(viewId, actionId, input))}
+      onViewAction={hostGuard('onViewAction', (viewId, actionId, input, version) => void invokePluginAction(viewId, actionId, input, version))}
       onClose={hostGuard('onClose', () => { pluginsOpen = false; })}
     />
     </div>

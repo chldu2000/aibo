@@ -220,7 +220,7 @@ capability 表示“能做什么”，permission 表示“当前允许访问什�
 
 可见性采用有限的上下文/能力条件，业务复杂条件由能力计算成状态，不能发展为表达式语言。加载、空、错误、分页、selection 和 validation 使用标准数据结构。流式消息使用现有事件投影和有界批量更新，不要求每个 token 重发整棵页面树；也不在第一版发明任意节点 patch 引擎。
 
-宿主在 action 提交时再验证上下文、revision、generation 和权限，renderer 不直接选择任意 IPC method。P4 已接入非 `never` view action 的原生宿主确认和确认后上下文复核；调用者所见 revision/generation 的旧 v1 IPC 扩展及原生对话框验收仍待补齐，不能把显示按钮视为完整审批验收。详见 [P4 实施记录](./plugin-platform-p4-presentation.md)。
+宿主在 action 提交时再验证上下文、revision、generation 和权限，renderer 不直接选择任意 IPC method。P4 已接入非 `never` view action 的原生宿主确认和确认后上下文复核；调用者 revision/generation 校验已接通，原生对话框验收仍待补齐，不能把显示按钮视为完整审批验收。详见 [P4 实施记录](./plugin-platform-p4-presentation.md)。
 
 ### 4.5 公共数据协议与 Renderer Adapter 分开
 

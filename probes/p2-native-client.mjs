@@ -52,6 +52,24 @@ try {
     document.querySelector('button[aria-label="切换工作台呈现"]').click();await until(()=>document.querySelector('[data-presentation-layout="standard"]:not([inert])'),'standard presentation');
     check(document.querySelector('input[aria-label="提交信息"]')?.value==='P2_COMMIT_DRAFT','Git draft survives renderer switch');
     evidence.push({agent:'echo',streamAcrossSwitch:true,draft:true,gitDraft:true,focus:true,noAgentRestart:true,history:true});
+    [...document.querySelectorAll('button')].find(button => button.textContent.trim() === '插件').click();
+    const refreshView = await until(() => [...document.querySelectorAll('button')].find(button => button.textContent.trim() === 'Refresh view' && !button.disabled), 'versioned plugin view');
+    const beforeView = (await invoke('get_plugin_view_snapshots', {sessionId: echo.id}))[0];
+    refreshView.click();
+    await until(async () => (await invoke('get_plugin_view_snapshots', {sessionId: echo.id}))[0]?.version.revision > beforeView.version.revision, 'versioned action reached runtime');
+    const currentView = (await invoke('get_plugin_view_snapshots', {sessionId: echo.id}))[0];
+    for (const version of [beforeView.version, {...currentView.version, generationId: 'old-generation'}]) {
+      let rejected = false;
+      try { await invoke('invoke_plugin_view_action', {sessionId: echo.id, viewId: beforeView.document.viewId, actionId: 'commands', input: {}, version}); }
+      catch (error) { rejected = String(error).includes('stale_view'); }
+      check(rejected, 'native IPC rejects stale view identity');
+    }
+    let missingVersionRejected = false;
+    try { await invoke('invoke_plugin_view_action', {sessionId: echo.id, viewId: beforeView.document.viewId, actionId: 'commands', input: {}}); }
+    catch (error) { missingVersionRejected = String(error).includes('version'); }
+    check(missingVersionRejected, 'native IPC requires caller view version');
+    [...document.querySelectorAll('button')].find(button => button.textContent.trim() === '返回会话').click();
+    evidence.push({versionedPluginViewAction:true,staleRevisionRejected:true,staleGenerationRejected:true,missingVersionRejected:true});
     for(const agent of ['codex','pi']){
       const profile={schema:'aibo.execution-profile/v1',interactionMode:'edit',approvalPolicy:agent==='codex'?'untrusted':'on-request',filesystemPolicy:'workspace-write',commandPolicy:'approved',networkPolicy:'disabled',model:null,reasoningEffort:null};
       const session=await invoke('create_agent_session',{workspaceId:workspace.id,agentId:`dev.aibo.${agent}.agent`,requestedProfile:profile});

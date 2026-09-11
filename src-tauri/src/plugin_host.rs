@@ -103,6 +103,13 @@ fn event_capability(kind: &str) -> Option<&'static str> {
     }
 }
 
+#[derive(Clone, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub(crate) struct ViewVersion {
+    generation_id: String,
+    revision: u64,
+}
+
 #[derive(Clone)]
 pub(crate) struct PluginHost {
     db: SqlitePool,
@@ -1099,8 +1106,27 @@ impl PluginHost {
         Ok(())
     }
 
-    pub async fn invoke(&self, session_id: &str, view_id: &str, action_id: &str, input: Value) -> Result<Value, String> {
-        self.invoke_with_confirmation(session_id, view_id, action_id, input, |message| async move {
+    pub async fn view_snapshots(&self, session_id: &str) -> Result<Vec<Value>, String> {
+        let rows = sqlx::query("SELECT generation_id,document_json FROM plugin_views WHERE session_id=? ORDER BY view_id")
+            .bind(session_id).fetch_all(&self.db).await.map_err(|error| error.to_string())?;
+        rows.into_iter().map(|row| {
+            let document: Value = serde_json::from_str(row.get::<&str,_>("document_json")).map_err(|_| "invalid_request: stored view")?;
+            let revision = document["revision"].as_u64().ok_or("invalid_request: stored view revision")?;
+            Ok(json!({"document":document,"version":ViewVersion { generation_id: row.get("generation_id"), revision }}))
+        }).collect()
+    }
+
+    #[cfg(test)]
+    async fn invoke(&self, session_id: &str, view_id: &str, action_id: &str, input: Value) -> Result<Value, String> {
+        self.invoke_native(session_id, view_id, action_id, input, None).await
+    }
+
+    pub async fn invoke_versioned(&self, session_id: &str, view_id: &str, action_id: &str, input: Value, version: ViewVersion) -> Result<Value, String> {
+        self.invoke_native(session_id, view_id, action_id, input, Some(version)).await
+    }
+
+    async fn invoke_native(&self, session_id: &str, view_id: &str, action_id: &str, input: Value, version: Option<ViewVersion>) -> Result<Value, String> {
+        self.invoke_with_confirmation(session_id, view_id, action_id, input, version, |message| async move {
             let app = self.app.as_ref().ok_or("confirmation_unavailable: desktop host required")?;
             let (send, receive) = tokio::sync::oneshot::channel();
             app.dialog().message(message).title("Aibo · 确认插件操作")
@@ -1138,7 +1164,7 @@ impl PluginHost {
         Ok(())
     }
 
-    async fn invoke_with_confirmation<F, Fut>(&self, session_id: &str, view_id: &str, action_id: &str, input: Value, confirm: F) -> Result<Value, String>
+    async fn invoke_with_confirmation<F, Fut>(&self, session_id: &str, view_id: &str, action_id: &str, input: Value, version: Option<ViewVersion>, confirm: F) -> Result<Value, String>
     where F: FnOnce(String) -> Fut, Fut: std::future::Future<Output = Result<bool, String>> {
         // One host confirmation/dispatch at a time; permit drops on cancellation too.
         let _permit = self.view_action_gate.clone().try_acquire_owned().map_err(|_| "busy: another view action is pending")?;
@@ -1154,6 +1180,11 @@ impl PluginHost {
         }
         if row.get::<String,_>("state") == "running" { return Err("busy: session has an active turn".into()); }
         let document: Value = serde_json::from_str(row.get::<&str,_>("document_json")).map_err(|_|"invalid_request: stored view")?;
+        if let Some(version) = version {
+            if version.generation_id != runtime.generation_id || document["revision"].as_u64() != Some(version.revision) {
+                return Err("stale_view: refresh the view before submitting this action".into());
+            }
+        }
         let action = document["actions"].as_array().and_then(|actions|actions.iter().find(|action|action["id"] == action_id))
             .ok_or("invalid_request: undeclared view action")?;
         let expected_context = self.view_action_context(session_id, view_id).await?;
@@ -1809,6 +1840,14 @@ mod tests {
         // The native dialog is a host-only port; exercise decisions with the real
         // package/runtime while keeping unit tests independent of window automation.
         let original = settled_view(&db, &session.id, before_revision).await;
+        let snapshots = host.view_snapshots(&session.id).await.unwrap();
+        let snapshot = snapshots.iter().find(|item| item["document"]["viewId"] == "dev.aibo.echo.tasks").unwrap();
+        let version: ViewVersion = serde_json::from_value(snapshot["version"].clone()).unwrap();
+        assert_eq!(version.revision, snapshot["document"]["revision"].as_u64().unwrap());
+        assert!(host.invoke_versioned(&session.id, "dev.aibo.echo.tasks", "commands", json!({}), ViewVersion { revision: version.revision + 1, ..version.clone() }).await.unwrap_err().contains("stale_view"));
+        assert!(host.invoke_versioned(&session.id, "dev.aibo.echo.tasks", "commands", json!({}), ViewVersion { generation_id: "old-runtime".into(), ..version.clone() }).await.unwrap_err().contains("stale_view"));
+        let versioned = host.invoke_versioned(&session.id, "dev.aibo.echo.tasks", "commands", json!({}), version).await.unwrap();
+        assert_eq!(versioned, json!({"commands":[]}));
         let mut confirmation_view: Value = serde_json::from_str(&original).unwrap();
         for action in confirmation_view["actions"].as_array_mut().unwrap() {
             if action["id"] == "refresh" { action["confirmation"] = json!("always"); }
@@ -1818,7 +1857,7 @@ mod tests {
             .bind(&confirmed_document).bind(&session.id).execute(&db).await.unwrap();
         let concurrent_host = host.clone();
         let concurrent_session = session.id.clone();
-        let denied = host.invoke_with_confirmation(&session.id, "dev.aibo.echo.tasks", "refresh", json!({"label":"manual"}), |message| async move {
+        let denied = host.invoke_with_confirmation(&session.id, "dev.aibo.echo.tasks", "refresh", json!({"label":"manual"}), None, |message| async move {
             assert!(message.contains("manual"));
             // A duplicate submission cannot open a second dialog or execute.
             assert!(concurrent_host.invoke(&concurrent_session, "dev.aibo.echo.tasks", "refresh", json!({"label":"manual"})).await.unwrap_err().contains("busy"));
@@ -1832,7 +1871,7 @@ mod tests {
         }
         sqlx::query("UPDATE plugin_views SET document_json=? WHERE session_id=? AND view_id='dev.aibo.echo.tasks'")
             .bind(sensitive_view.to_string()).bind(&session.id).execute(&db).await.unwrap();
-        let approved = host.invoke_with_confirmation(&session.id, "dev.aibo.echo.tasks", "refresh", json!({"label":"manual"}), |_| async { Ok(true) }).await.unwrap();
+        let approved = host.invoke_with_confirmation(&session.id, "dev.aibo.echo.tasks", "refresh", json!({"label":"manual"}), None, |_| async { Ok(true) }).await.unwrap();
         assert_eq!(approved, json!({"cursor":6}));
         let confirmation_revision = confirmation_view["revision"].as_u64().unwrap();
         let _ = settled_view(&db, &session.id, confirmation_revision).await;
@@ -1840,7 +1879,7 @@ mod tests {
             .bind(&confirmed_document).bind(&session.id).execute(&db).await.unwrap();
         let unavailable = host.invoke(&session.id, "dev.aibo.echo.tasks", "refresh", json!({"label":"manual"})).await.unwrap_err();
         assert!(unavailable.contains("confirmation_unavailable"));
-        let revoked = host.invoke_with_confirmation(&session.id, "dev.aibo.echo.tasks", "refresh", json!({"label":"manual"}), |_| async {
+        let revoked = host.invoke_with_confirmation(&session.id, "dev.aibo.echo.tasks", "refresh", json!({"label":"manual"}), None, |_| async {
             sqlx::query("UPDATE workspaces SET trusted=0 WHERE id=(SELECT workspace_id FROM sessions WHERE id=?)")
                 .bind(&session.id).execute(&db).await.unwrap();
             Ok(true)
@@ -1849,7 +1888,7 @@ mod tests {
         sqlx::query("UPDATE workspaces SET trusted=1 WHERE id=(SELECT workspace_id FROM sessions WHERE id=?)")
             .bind(&session.id).execute(&db).await.unwrap();
         // A view update while the human decides requires a fresh confirmation.
-        let stale = host.invoke_with_confirmation(&session.id, "dev.aibo.echo.tasks", "refresh", json!({"label":"manual"}), |_| async {
+        let stale = host.invoke_with_confirmation(&session.id, "dev.aibo.echo.tasks", "refresh", json!({"label":"manual"}), None, |_| async {
             sqlx::query("UPDATE plugin_views SET document_json=? WHERE session_id=? AND view_id='dev.aibo.echo.tasks'")
                 .bind(&original).bind(&session.id).execute(&db).await.unwrap();
             Ok(true)

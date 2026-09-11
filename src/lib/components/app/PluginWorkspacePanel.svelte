@@ -1,6 +1,6 @@
 <script lang="ts">
   import { Button, Card, CardContent, CardHeader, CardTitle, Label, PluginView, Textarea } from '$lib/ui-kit';
-  import type { UiPluginViewDocument, UiPluginViewInteraction } from '$lib/ui-kit';
+  import type { UiPluginViewSnapshot, UiPluginViewVersion, UiPluginViewInteraction } from '$lib/ui-kit';
   import PluginManagerPanel from './PluginManagerPanel.svelte';
   import type { Session, TimelineItem } from '$lib/types';
 
@@ -16,7 +16,7 @@
     packagePath: string;
     prompt: string;
     timeline: TimelineItem[];
-    views: UiPluginViewDocument[];
+    views: UiPluginViewSnapshot[];
     busy: boolean;
     error: string;
     desktop: boolean;
@@ -31,7 +31,7 @@
     onCancel: () => void;
     onResume: () => void;
     onCloseSession: () => void;
-    onViewAction: (viewId: string, actionId: string, input: Record<string, unknown>) => void;
+    onViewAction: (viewId: string, actionId: string, input: Record<string, unknown>, version: UiPluginViewVersion) => void;
     onClose: () => void;
   };
   let { interaction, onInteractionChange, installations, sessions, selectedSession, workspaceLabel, packagePath, prompt, timeline, views, busy, error, desktop, onPackagePathChange, onPromptChange, onInstall, onEnabledChange, onUninstall, onCreateSession, onSelectSession, onSend, onCancel, onResume, onCloseSession, onViewAction, onClose }: Props = $props();
@@ -70,8 +70,9 @@
               <Card><CardHeader><CardTitle>{item.role} · {item.status}</CardTitle></CardHeader><CardContent>{item.content}</CardContent></Card>
             {/each}
           </div>
-          {#each views as view (view.viewId)}
-            <PluginView {interaction} {onInteractionChange} document={view} sessionId={selectedSession.id} disabled={busy} onAction={(actionId, input) => onViewAction(view.viewId, actionId, input)} />
+          {#each views as snapshot (snapshot.document.viewId)}
+            {@const view = snapshot.document}
+            <PluginView {interaction} {onInteractionChange} document={view} sessionId={selectedSession.id} disabled={busy} onAction={(actionId, input) => onViewAction(view.viewId, actionId, input, snapshot.version)} />
           {/each}
           <form class="plugin-prompt" onsubmit={(event) => { event.preventDefault(); if (!busy && !running && prompt.trim()) onSend(); }}>
             <Label for={promptId}>发送给插件 Agent</Label>

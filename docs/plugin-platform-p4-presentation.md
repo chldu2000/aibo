@@ -85,3 +85,18 @@ Pi 请求均通过宿主按钮批准，覆盖后台会话、插件管理同时�
 
 第五批验证命令：`cargo test --manifest-path src-tauri/Cargo.toml`（140 通过），
 `pnpm run verify`（23 项架构检查、144 项 Node 测试、类型与构建通过）。
+
+### 调用者视图版本（第六批）
+
+宿主新增 `get_plugin_view_snapshots`，从同一行读取 v1 文档及 generation，并
+以 `{ document, version: { generationId, revision } }` 返回。插件自身的文档
+协议保持不变。前端保存该快照，将对应版本原样传入动作 IPC；缺少版本不能调用。
+原生宿主在动作确认前核对 revision/generation，拒绝旧视图、旧运行实例的动作；
+确认后的整份上下文检查继续生效。测试专用的无版本调用不编译进生产接口。
+
+第五批提到的 caller freshness 缺口由此补齐；原生确认对话框点击验收仍待完成。
+
+第六批验证：完整 Rust 测试 140 通过；`pnpm run verify` 的 23 项架构检查、
+144 项 Node 测试、类型与构建通过。`node probes/p2-native.mjs` 两次真实桌面
+启动通过：实际插件视图按钮完成调用，原生 IPC 拒绝旧 revision、旧 generation
+及缺少版本的请求；Codex/Pi 审批、重启恢复和窗口隔离回归通过。

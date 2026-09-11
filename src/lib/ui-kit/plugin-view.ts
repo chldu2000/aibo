@@ -52,3 +52,7 @@ export function pluginViewProps(document: UiPluginViewDocument, node: UiPluginVi
   }
   return result;
 }
+
+/** Host read envelope; never part of a plugin-published v1 document. */
+export type UiPluginViewVersion = { generationId: string; revision: number };
+export type UiPluginViewSnapshot = { document: UiPluginViewDocument; version: UiPluginViewVersion };
