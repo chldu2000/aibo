@@ -9,7 +9,6 @@ mod capability_history;
 mod workspace_git_approval;
 mod workspace_writes;
 mod workspace_write_runs;
-use workspace_git::apply_git_index_action;
 mod artifact;
 mod change_set;
 mod codex;
@@ -2992,65 +2991,6 @@ async fn apply_git_hunk_action(
     core_turn_git::apply_hunk(&state.db, &state.data_dir, &session_id, &turn_id, &path, hunk_index, &action, &request).await
 }
 
-async fn restore_git_file_baseline(
-    workspace_path: &str,
-    path: &str,
-    target: &Path,
-    sources: &TurnDiffSources,
-) -> Result<(), String> {
-    if sources.baseline_exists {
-        if let Some(parent) = target.parent() {
-            tokio::fs::create_dir_all(parent)
-                .await
-                .map_err(|error| format!("create restore directory: {error}"))?;
-        }
-        tokio::fs::write(target, &sources.baseline)
-            .await
-            .map_err(|error| format!("restore file baseline: {error}"))?;
-    } else if sources.result_exists {
-        tokio::fs::remove_file(target)
-            .await
-            .map_err(|error| format!("remove added file: {error}"))?;
-    }
-
-    // Keep the index consistent with the exact recorded baseline. Using
-    // `git restore` here would restore from the current index and can both
-    // lose post-turn edits and leave staged Agent changes untouched.
-    let output = if sources.baseline_exists {
-        Command::new("git")
-            .args(["-C", workspace_path, "add", "--", path])
-            .output()
-    } else {
-        Command::new("git")
-            .args([
-                "-C",
-                workspace_path,
-                "rm",
-                "--cached",
-                "--ignore-unmatch",
-                "--",
-                path,
-            ])
-            .output()
-    }
-    .map_err(|error| format!("update Git restore state: {error}"))?;
-    if output.status.success() {
-        return Ok(());
-    }
-
-    if sources.result_exists {
-        let _ = tokio::fs::write(target, &sources.result).await;
-    } else {
-        let _ = tokio::fs::remove_file(target).await;
-    }
-    let message = String::from_utf8_lossy(&output.stderr).trim().to_owned();
-    Err(if message.is_empty() {
-        format!("git exited with {}", output.status)
-    } else {
-        message
-    })
-}
-
 #[tauri::command]
 async fn apply_workspace_git_file_action(
     workspace_id: String,
@@ -3212,90 +3152,8 @@ async fn apply_git_file_action(
     window: tauri::WebviewWindow,
     state: State<'_, AppState>,
 ) -> Result<GitFileActionResult, CoreError> {
-    let session = session_by_id(&state.db, &session_id).await?;
-    let workspace = workspace_by_id(&state.db, &session.workspace_id).await?;
-    if workspace.trust != "trusted" {
-        return Err(CoreError::WorkspaceTrustRequired);
-    }
-    if !matches!(action.as_str(), "stage" | "unstage" | "revert") {
-        return Err(CoreError::InvalidWorkspacePath(
-            "unsupported Git file action".to_owned(),
-        ));
-    }
-    let root = Path::new(&workspace.path);
-    let target = crate::workspace_guard::canonicalize_target(root, Path::new(&path))
-        .map_err(CoreError::InvalidWorkspacePath)?;
-    if action == "revert" {
-        let Some(turn_id) = turn_id.as_deref() else {
-            return Ok(GitFileActionResult {
-                path,
-                action,
-                applied: false,
-                message: "整文件还原需要明确的本轮变更记录".to_owned(),
-            });
-        };
-        let sources = match load_turn_diff_sources(
-            &state.db,
-            &state.data_dir,
-            &workspace.path,
-            &session_id,
-            turn_id,
-            &path,
-            false,
-        )
-        .await
-        {
-            Ok(sources) => sources,
-            Err(TurnDiffSourceError::NotChanged) => {
-                return Ok(GitFileActionResult {
-                    path,
-                    action,
-                    applied: false,
-                    message: "该文件不在本轮变更记录中".to_owned(),
-                });
-            }
-            Err(TurnDiffSourceError::UnsafePath(error)) => {
-                return Err(CoreError::InvalidWorkspacePath(error));
-            }
-            Err(TurnDiffSourceError::Unavailable(message)) => {
-                return Ok(GitFileActionResult {
-                    path,
-                    action,
-                    applied: false,
-                    message,
-                });
-            }
-            Err(TurnDiffSourceError::Failed(error)) => return Err(CoreError::Database(error)),
-        };
-        if sources.baseline_dirty {
-            return Ok(GitFileActionResult {
-                path,
-                action,
-                applied: false,
-                message: "本轮前已有修改，禁止整文件还原；请审阅后处理".to_owned(),
-            });
-        }
-
-        if let Err(message) =
-            restore_git_file_baseline(&workspace.path, &path, &target, &sources).await
-        {
-            return Ok(GitFileActionResult {
-                path,
-                action,
-                applied: false,
-                message,
-            });
-        }
-        return Ok(GitFileActionResult {
-            path,
-            action,
-            applied: true,
-            message: "已恢复到本轮开始前的文件内容".to_owned(),
-        });
-    }
     let request = git_write_request(request_id, window);
-    workspace_write_runs::execute_requested(&state.db, &workspace, "git.index", serde_json::json!({"path":path,"action":action,"sessionId":session_id,"turnId":turn_id}), &request,
-        |cancel| apply_git_index_action(&workspace.path, &path, &action, Some(cancel))).await
+    core_turn_git::apply_file(&state.db, &state.data_dir, &session_id, &path, &action, turn_id.as_deref(), &request).await
 }
 
 #[tauri::command]
@@ -4959,8 +4817,8 @@ mod tests {
         find_executable, mark_turn_interrupted, normalize_session_filter, now_iso, open_database,
         persist_restore_operation, pi_snapshot_timeline, plugin_model_catalog, recover_interrupted_sessions,
         recover_interrupted_turn_changes, remove_cached_runtime, require_trusted_workspace,
-        restore_git_file_baseline, session_execution_profile, session_label_from_first_message,
-        workspace_label, CoreError, SessionListFilter, TurnDiffSources, Workspace,
+        session_execution_profile, session_label_from_first_message,
+        workspace_label, CoreError, SessionListFilter, Workspace,
     };
     use crate::change_set::{
         capture as capture_workspace, persist_baseline_checkpoint, persist_checkpoint_metadata,
@@ -5210,7 +5068,7 @@ mod tests {
         fs::write(root.join("tracked.txt"), "changed").expect("modified file");
 
         assert!(
-            super::apply_git_index_action(root_path, "tracked.txt", "stage", None).await
+            crate::workspace_git::apply_git_index_action(root_path, "tracked.txt", "stage", None).await
                 .expect("stage")
                 .applied
         );
@@ -5221,7 +5079,7 @@ mod tests {
         assert!(String::from_utf8_lossy(&staged.stdout).starts_with("M "));
 
         assert!(
-            super::apply_git_index_action(root_path, "tracked.txt", "unstage", None).await
+            crate::workspace_git::apply_git_index_action(root_path, "tracked.txt", "unstage", None).await
                 .expect("unstage")
                 .applied
         );
@@ -5230,65 +5088,6 @@ mod tests {
             .output()
             .expect("unstaged status");
         assert!(String::from_utf8_lossy(&unstaged.stdout).starts_with(" M"));
-        fs::remove_dir_all(root).expect("cleanup");
-    }
-
-    #[test]
-    fn whole_file_restore_uses_turn_baseline_even_when_agent_result_is_staged() {
-        let root = test_directory();
-        let target = root.join("tracked.txt");
-        fs::write(&target, "baseline").expect("baseline file");
-        assert!(std::process::Command::new("git")
-            .args(["-C", root.to_str().unwrap(), "init", "-q"])
-            .status()
-            .unwrap()
-            .success());
-        assert!(std::process::Command::new("git")
-            .args(["-C", root.to_str().unwrap(), "add", "tracked.txt"])
-            .status()
-            .unwrap()
-            .success());
-        assert!(std::process::Command::new("git")
-            .args([
-                "-C",
-                root.to_str().unwrap(),
-                "-c",
-                "user.name=Aibo",
-                "-c",
-                "user.email=aibo@example.invalid",
-                "commit",
-                "-qm",
-                "initial",
-            ])
-            .status()
-            .unwrap()
-            .success());
-        fs::write(&target, "agent result").expect("agent result");
-        assert!(std::process::Command::new("git")
-            .args(["-C", root.to_str().unwrap(), "add", "tracked.txt"])
-            .status()
-            .unwrap()
-            .success());
-
-        tauri::async_runtime::block_on(restore_git_file_baseline(
-            root.to_str().unwrap(),
-            "tracked.txt",
-            &target,
-            &TurnDiffSources {
-                baseline: b"baseline".to_vec(),
-                result: b"agent result".to_vec(),
-                baseline_exists: true,
-                result_exists: true,
-                baseline_dirty: false,
-            },
-        ))
-        .expect("restore turn baseline");
-        assert_eq!(fs::read_to_string(&target).unwrap(), "baseline");
-        assert!(std::process::Command::new("git")
-            .args(["-C", root.to_str().unwrap(), "diff", "--cached", "--quiet"])
-            .status()
-            .unwrap()
-            .success());
         fs::remove_dir_all(root).expect("cleanup");
     }
 

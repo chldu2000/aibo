@@ -141,7 +141,7 @@
 
 **前置：** P3 安装和 Broker 可用。**交付物：** 可信默认 Presentation Plugin、正式 Core/optional/fallback 契约、可信审批闭环、项目任务与 Git 写入切片。
 
-**当前进度：** [呈现边界实施记录](./plugin-platform-p4-presentation.md)已落地 ADR-0007、可信默认呈现描述、必需核心校验及完整数据降级协商，并接入实际预检路径。恢复入口、插件管理、设置、诊断及 Agent 审批已移入独立宿主区域。工程任务、主要 Git 写入及 Core hunk 已接入持久记录、审批、去重及取消；执行历史、保存的会话消息及能力生命周期审计已有独立入口。完整槽位装配、专业呈现实例、Core 整文件 revert/基线恢复统一和通用 Capability 写入审批仍待实施；历史兼容范围及整体验收继续按分批记录核对，P4 退出条件保持未完成。
+**当前进度：** [呈现边界实施记录](./plugin-platform-p4-presentation.md)已落地 ADR-0007、可信默认呈现描述、必需核心校验及完整数据降级协商，并接入实际预检路径。恢复入口、插件管理、设置、诊断及 Agent 审批已移入独立宿主区域。工程任务、主要 Git 写入及 Core 文件/hunk 已接入持久记录、审批、去重及取消；执行历史、保存的会话消息及能力生命周期审计已有独立入口。完整槽位装配、专业呈现实例、Core 整轮基线恢复统一和通用 Capability 写入审批仍待实施；历史兼容范围及整体验收继续按分批记录核对，P4 退出条件保持未完成。
 
 - [ ] 提交正式 ADR，冻结 Core/optional/fallback、支持版本表与布局所有权；同步 UI contract、架构测试和 `ui-architecture.md` 后才引入 optional 成员。
 - [ ] 将默认工作台装配为可信 Presentation Plugin，明确 Shell/renderer/skin 职责及构建期发布边界，允许重排整个工作台。

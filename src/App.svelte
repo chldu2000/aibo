@@ -1895,7 +1895,6 @@
   }
 
   async function applyGitFileActionFromInspector(sessionId: string, turnId: string, path: string, action: GitFileAction) {
-    if (action === 'revert' && !window.confirm(`确认撤销文件变更：${path}？此操作不可撤销。`)) return;
     try {
       const result = await applyGitFileAction(sessionId, path, action, turnId);
       if (result.applied) {

@@ -4,6 +4,8 @@ import { tmpdir, homedir } from 'node:os';
 import path from 'node:path';
 import { spawn, execFileSync } from 'node:child_process';
 if (process.platform !== 'darwin') throw Error('This native probe currently verifies macOS only');
+const mode = process.argv[2] ?? 'hunk';
+if (!['hunk', 'file'].includes(mode)) throw Error('Expected hunk or file mode');
 const identifier = `local.aibo.corehunk.${Date.now()}`;
 const dataDir = path.join(homedir(), 'Library', 'Application Support', identifier);
 const root = await mkdtemp(path.join(tmpdir(), 'aibo-core-hunk-'));
@@ -62,7 +64,7 @@ const server = await createServer({ server: { host: '127.0.0.1', port: 0, hmr: f
       try {
         const { phase } = JSON.parse(body);
         const index = git(['show', ':file.txt']);
-        const expected = phase === 'stage' ? baseline.replace('line 1\n', 'first change\n') : baseline;
+        const expected = phase === 'stage' ? (mode === 'file' ? changed : baseline.replace('line 1\n', 'first change\n')) : baseline;
         if (index !== expected) throw Error(`Wrong index after ${phase}`);
         res.end('ok');
       } catch (error) { res.statusCode = 500; res.end(String(error)); finish({ ok: false, error: String(error) }); }
@@ -73,18 +75,18 @@ const server = await createServer({ server: { host: '127.0.0.1', port: 0, hmr: f
 } }] });
 await server.listen();
 const config = path.join(root, 'tauri.json');
-await writeFile(config, JSON.stringify({ identifier, productName: 'Aibo isolated hunk verification', build: { beforeDevCommand: '', devUrl: `http://127.0.0.1:${server.httpServer.address().port}` }, app: { windows: [{ label: 'main', title: 'Core hunk verification', url: 'probes/core-hunk-native.html', width: 900, height: 700 }] } }));
+await writeFile(config, JSON.stringify({ identifier, productName: 'Aibo isolated hunk verification', build: { beforeDevCommand: '', devUrl: `http://127.0.0.1:${server.httpServer.address().port}` }, app: { windows: [{ label: 'main', title: 'Core hunk verification', url: `probes/core-${mode}-native.html`, width: 900, height: 700 }] } }));
 try {
   child = spawn('pnpm', ['tauri', 'dev', '--no-watch', '--config', config], { stdio: ['ignore', 'pipe', 'pipe'], detached: true });
   child.stdout.pipe(process.stdout); child.stderr.pipe(process.stderr);
   const result = await Promise.race([report, new Promise((_, reject) => { timer = setTimeout(() => reject(Error('Core hunk probe timeout')), 120000); }), new Promise((_, reject) => child.on('exit', code => reject(Error(`Native exit ${code}`))))]);
   if (!result.ok) throw Error(result.error);
   const nativeClicks = await Promise.all(clicks);
-  if (nativeClicks.length !== 4 || !result.denial || !result.replay || !result.history) throw Error('Incomplete native hunk verification');
+  if (nativeClicks.length !== (mode === 'file' ? 3 : 4) || !result.denial || !result.replay || !result.history) throw Error('Incomplete native hunk verification');
   if (git(['show', ':file.txt']) !== baseline) throw Error('Hunk operations changed unrelated index content');
-  if (await readFile(path.join(workspacePath, 'file.txt'), 'utf8') !== baseline.replace('line 28\n', 'last change\n')) throw Error('Hunk revert changed another hunk');
-  const evidence = { ...result, nativeClicks, platform: process.platform, indexAndWorktreeVerified: true };
-  await writeFile('/tmp/aibo-p4-core-hunk-native.json', JSON.stringify(evidence, null, 2) + '\n');
+  if (await readFile(path.join(workspacePath, 'file.txt'), 'utf8') !== (mode === 'file' ? baseline : baseline.replace('line 28\n', 'last change\n'))) throw Error('Hunk revert changed another hunk');
+  const evidence = { ...result, mode, nativeClicks, platform: process.platform, indexAndWorktreeVerified: true };
+  await writeFile(`/tmp/aibo-p4-core-${mode}-native.json`, JSON.stringify(evidence, null, 2) + '\n');
   console.log(JSON.stringify(evidence));
 } finally {
   clearTimeout(timer);

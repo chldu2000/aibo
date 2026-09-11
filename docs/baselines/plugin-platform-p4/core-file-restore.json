@@ -1,0 +1,17 @@
+{
+  "ok": true,
+  "denial": true,
+  "replay": true,
+  "changedInput": true,
+  "history": true,
+  "stagedBaselineRestored": true,
+  "readableAfterTrustRevocation": true,
+  "mode": "file",
+  "nativeClicks": [
+    "clicked isolated dialog: 取消",
+    "clicked isolated dialog: 允许本次执行",
+    "clicked isolated dialog: 允许本次执行"
+  ],
+  "platform": "darwin",
+  "indexAndWorktreeVerified": true
+}
