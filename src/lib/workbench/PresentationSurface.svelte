@@ -4,7 +4,8 @@
   import type { PresentationProps } from './types';
   import { SveltePresentationAdapter } from './svelte-adapter';
   import { createPresentationController, type Renderer } from '../app/presentation-controller';
-  import { assertSnapshot } from '../presentation/validation';
+  import { choosePresentation } from '../app/renderer-negotiation';
+  import { defaultPresentation } from './plugins/default-presentation';
   let { snapshot, layout, focusTarget = null, onAction }: PresentationProps = $props();
   let target: HTMLDivElement;
   let host = $state<ReturnType<typeof createPresentationController> | null>(null);
@@ -14,7 +15,7 @@
   const recovery = () => ({ selection: snapshot.view.kind === 'collection' ? snapshot.view.selection : snapshot.view.itemId, detail: snapshot.view.kind === 'detail' ? snapshot.view.itemId : null, focus: focusTarget });
   function renderer(nextLayout: PresentationProps['layout']): Renderer {
     return {
-      async preflight(value) { assertSnapshot(value.view); },
+      async preflight(value) { choosePresentation(defaultPresentation, value.view); },
       async mount(value, dispatch, active) {
         const container = target.ownerDocument.createElement('div');
         const instance = await SveltePresentationAdapter.mount(container, {

@@ -22,14 +22,21 @@ test('public semantic contract and projection have no transitive renderer or pla
       function visit(node){assert.ok(!ts.isFunctionTypeNode(node)&&!ts.isMethodSignature(node),'wire types cannot carry callbacks');ts.forEachChild(node,visit);}visit(ast);
     }
   }
-  await check(path.resolve('src/lib/presentation/workbench-contract.ts'));await check(path.resolve('src/lib/presentation/presentation-contract.ts'));await check(path.resolve('src/lib/presentation/contract.ts'));await check(path.resolve('src/lib/presentation/git.ts'));
+  await check(path.resolve('src/lib/presentation/renderer-contract.ts'));await check(path.resolve('src/lib/presentation/workbench-contract.ts'));await check(path.resolve('src/lib/presentation/presentation-contract.ts'));await check(path.resolve('src/lib/presentation/contract.ts'));await check(path.resolve('src/lib/presentation/git.ts'));
   const program=ts.createProgram(['src/lib/presentation/presentation-contract.ts','src/lib/presentation/contract.ts','src/lib/presentation/git.ts'],{target:ts.ScriptTarget.ES2022,module:ts.ModuleKind.ESNext,moduleResolution:ts.ModuleResolutionKind.Bundler,lib:['lib.es2022.d.ts'],types:[],strict:true,noEmit:true,allowImportingTsExtensions:true,skipLibCheck:true});
   assert.deepEqual(ts.getPreEmitDiagnostics(program).map(d=>ts.flattenDiagnosticMessageText(d.messageText,' ')),[]);
 });
 
 test('workbench obeys the same visual seam, layout CSS and business dependency rules', async () => {
-  for(const name of await readdir('src/lib/workbench')) {
-    const source=await readFile(`src/lib/workbench/${name}`,'utf8');
+  async function* files(directory) {
+    for (const entry of await readdir(directory,{withFileTypes:true})) {
+      const filename=path.join(directory,entry.name);
+      if(entry.isDirectory()) yield* files(filename);
+      else yield filename;
+    }
+  }
+  for await(const name of files('src/lib/workbench')) {
+    const source=await readFile(name,'utf8');
     assert.doesNotMatch(source,/from ['"][^'"]*(?:\/api|components\/ui|@lucide|iconset-material)/);
     assert.doesNotMatch(source,/\b(?:shadcn|material3|data-ui-kit|data-ui-theme)\b/);
     if(name.endsWith('.svelte')) {

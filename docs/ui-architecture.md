@@ -191,3 +191,9 @@ P3 第五批通过 `InstalledWorkbench` 和纯数据端口接入已安装语义�
 稳定合同为 contracts/semantic-view.v1.schema.json，原 experimental-v1 schema 独立保留；生成验证器同时读取两者，不能用新字段重新解释旧版本。settings.page 的 workspaceId 为 null，session.context/session.action 必须有 sessionId 和所属 workspaceId。宿主 lease 验证当前上下文、revision、窗口与启用状态后才调度只读能力。P4 再接入编辑、写入审批及任意呈现插件。
 
 架构检查继续覆盖纯数据边界、双皮肤必需成员和 workbench 视觉边界；test/semantic-stable.test.mjs 验证稳定/旧版本读取、作用域伪造与通用 inspect 选择。双 renderer 与双皮肤证据见 [P3 收尾记录](./plugin-platform-p3-completion.md)。
+
+## P4 呈现协商边界
+
+[ADR-0007](./adr/0007-presentation-core-and-fallback.md)将必需核心语义与可选专业呈现分开。renderer-contract.ts 只包含纯数据描述；app/renderer-negotiation.ts 验证描述符并选择专业呈现或相同数据的核心视图。当前默认呈现通过可信构建模块登记，工作台和语义视图均在预检时验证合同；没有新增任意代码加载通道或 UiKitAdapter optional 成员。
+
+workbench 的架构检查递归覆盖子目录，包括 plugins 中的可信呈现模块；新目录不能绕过皮肤隔离、纯布局 CSS 或 API 依赖限制。正式专业呈现和完整槽位布局仍需后续验收。

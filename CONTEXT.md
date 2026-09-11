@@ -61,3 +61,10 @@ _Avoid_：用“皮肤”泛指整个 Presentation Plugin。
 **宿主导航（Host Navigation）**：以业务目标描述的当前位置、详情目标与返回关系，不指定侧栏、中央面板等物理位置。
 
 **能力作用域（Capability Scope）**：能力调用所关联的身份与资源边界，包括 application、workspace 和 session。作用域不等于运行实例或进程。
+
+**核心语义（Core Semantic）**：每个兼容表现插件都必须保留的信息结构和操作含义，由宿主治理其版本。
+
+**专业呈现（Specialized Presentation）**：针对已知语义提供的可选展示方式；它不拥有业务事实，也不替代权限或审批。
+
+**语义降级（Semantic Fallback）**：专业呈现不可用时，使用仍保留必要信息与操作的核心视图表达同一功能。
+_Avoid_：用“降级”指代隐藏必需数据或禁掉必需操作。

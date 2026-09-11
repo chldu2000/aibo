@@ -1,6 +1,7 @@
 <script lang="ts">
   import { onMount, tick, untrack, type Snippet } from 'svelte';
   import { Button, Card } from '$lib/ui-kit';
+  import { preflightDefaultPresentation } from './plugins/default-presentation';
   import { createPresentationController, type Renderer } from '../app/presentation-controller';
   import type { WorkbenchSnapshot, WorkbenchAction } from '../presentation/workbench-contract';
   let { snapshot, windowId, children }: {
@@ -29,7 +30,7 @@
   const recovery = () => ({ selection: snapshot.sessionId, detail: snapshot.navigation, focus });
   function renderer(layout: string, failMount = false): Renderer<WorkbenchSnapshot, WorkbenchAction> {
     return {
-      async preflight(value) { JSON.stringify(value); if (!['standard', 'focus'].includes(layout)) throw Error('unknown presentation'); },
+      async preflight(value) { JSON.stringify(value); preflightDefaultPresentation(layout); },
       async mount(value, dispatch, active) {
         if (failMount) throw Error('测试呈现挂载失败');
         const owner = value.generation;
