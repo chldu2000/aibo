@@ -8,7 +8,7 @@ test('workbench callbacks and writable bindings cross the generation gate', asyn
   const tree = parse(source, { modern: true });
   let guarded = 0;
   let hostCallbacks = 0;
-  const hostComponents = new Set(['WindowTitlebar', 'SettingsPanel', 'DiagnosticsPanel', 'PluginWorkspacePanel', 'ExecutionHistoryPanel']);
+  const hostComponents = new Set(['WindowTitlebar', 'SettingsPanel', 'DiagnosticsPanel', 'PluginWorkspacePanel', 'ExecutionHistoryPanel', 'SessionHistoryPanel']);
   const foundHost = new Set();
   let hostApprovalRegion = false;
   function visit(node, inside = false) {
@@ -73,4 +73,14 @@ test('generic host routing checks plugin binding and keeps native compatibility 
   assert.doesNotMatch(create, /create_codex_session|create_pi_session/);
   const app = await readFile('src/App.svelte', 'utf8');
   assert.doesNotMatch(app, /\b(?:sendCodexPrompt|sendPiPrompt|abortCodexTurn|abortPiTurn|setPiModel|setPiThinkingLevel|sessionModelBackend)\b/);
+});
+
+test('independent persisted session history never activates an Agent runtime', async () => {
+  const [host, service] = await Promise.all([
+    readFile('src-tauri/src/lib.rs', 'utf8'), readFile('src-tauri/src/session_history.rs', 'utf8'),
+  ]);
+  const command = host.slice(host.indexOf('async fn read_session_history(')).split('#[tauri::command]')[0];
+  assert.match(command, /session_history::read\(&state\.db/);
+  assert.doesNotMatch(command, /state\.(?!db\b)\w+/, 'the recovery command may only access the database port');
+  assert.doesNotMatch(service, /use tauri|PluginHost|PiManager|CodexManager|invoke_capability|resume_session/, 'persisted reads must not depend on a live runtime');
 });

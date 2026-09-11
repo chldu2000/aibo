@@ -40,6 +40,19 @@ try {
     await page.screenshot({ path: `/tmp/aibo-history-${kit}.png` });
     await page.keyboard.press('Escape'); await history.waitFor({state: 'detached'});
     assert.equal(await historyButton.evaluate(node => document.activeElement === node), true);
+    const sessionHistoryButton = page.getByRole('button', {name:'会话历史',exact:true});
+    await sessionHistoryButton.click();
+    const sessionHistory = page.getByRole('region',{name:'会话历史',exact:true}); await sessionHistory.waitFor();
+    assert.equal(await page.locator('#session-history-heading').evaluate(node=>document.activeElement===node),true);
+    await page.evaluate(()=>{window.savedSessionHistory=document.querySelector('.host-session-history-region');});
+    await page.getByRole('button',{name:'切换工作台呈现',exact:true}).click();
+    await page.waitForFunction(()=>document.querySelector('[data-presentation-layout="focus"][aria-busy="false"]'));
+    await page.getByRole('button',{name:'恢复默认呈现',exact:true}).click();
+    await page.waitForFunction(()=>document.querySelector('[data-presentation-layout="standard"][aria-busy="false"]'));
+    assert.equal(await page.evaluate(()=>window.savedSessionHistory===document.querySelector('.host-session-history-region')),true);
+    await page.keyboard.press('Escape'); await sessionHistory.waitFor({state:'detached'});
+    assert.equal(await sessionHistoryButton.evaluate(node=>document.activeElement===node),true);
+
 
   }
   assert.deepEqual(errors, []);

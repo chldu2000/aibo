@@ -633,3 +633,6 @@ export const cancelSemanticOpen = (requestId: string): Promise<void> => invoke('
 
 export const cancelWorkspaceWrite = (workspaceId: string, runId: string): Promise<boolean> =>
   invoke("cancel_workspace_write", { workspaceId, runId });
+
+export const readSessionHistory = (workspaceId: string, sessionId: string, before: import('./types').SessionHistoryCursor | null = null): Promise<import('./types').SessionHistoryPage> =>
+  invoke('read_session_history', { workspaceId, sessionId, before });

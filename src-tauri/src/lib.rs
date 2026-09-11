@@ -3,6 +3,7 @@ mod project_actions;
 mod controlled_process;
 mod workspace_git;
 mod execution_history;
+mod session_history;
 mod workspace_git_approval;
 mod workspace_writes;
 mod workspace_write_runs;
@@ -1831,6 +1832,11 @@ async fn rename_session(
         return Err(CoreError::SessionNotFound(session_id));
     }
     session_by_id(&state.db, &session_id).await
+}
+
+#[tauri::command]
+async fn read_session_history(workspace_id: String, session_id: String, before: Option<session_history::Cursor>, state: State<'_, AppState>) -> Result<session_history::Page, CoreError> {
+    session_history::read(&state.db, workspace_id, session_id, before).await
 }
 
 #[tauri::command]
@@ -4976,6 +4982,7 @@ pub fn run() {
             update_session_execution_profile,
             list_sessions,
             get_timeline,
+            read_session_history,
             get_turn_change_set,
             list_turn_checkpoints,
             list_restore_operations,

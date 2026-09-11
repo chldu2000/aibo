@@ -47,6 +47,7 @@
     TimelinePanel,
     WindowTitlebar,
     ExecutionHistoryPanel,
+    SessionHistoryPanel,
     WorkspaceFileDiffPreview,
     WorkspaceGitPanel,
     WorkspaceSidebar,
@@ -63,7 +64,8 @@
   } from '$lib/app/selection-storage';
   import { handleAgentEvent as processAgentEvent } from '$lib/app/agent-event-handler';
   import { createExecutionHistoryController, emptyExecutionHistory } from '$lib/app/execution-history-controller';
-  import { listWorkspaceWriteRuns, cancelWorkspaceWrite } from '$lib/api';
+  import { createSessionHistoryController, emptySessionHistory } from '$lib/app/session-history-controller';
+  import { listWorkspaceWriteRuns, cancelWorkspaceWrite, readSessionHistory } from '$lib/api';
   import { createProjectTaskController, observeProjectTaskHistory } from '$lib/app/project-task-controller';
   import { createApprovalController } from '$lib/app/approval-controller';
   import { toErrorMessage } from '$lib/app/error-utils';
@@ -467,6 +469,7 @@
     return () => executionHistoryController.close();
   });
   function openExecutionHistory(): void {
+    sessionHistoryOpen = false;
     historyTrigger = document.activeElement instanceof HTMLElement ? document.activeElement : null;
     pluginsOpen = false; settingsOpen = false; diagnosticsOpen = false; commandPaletteOpen = false;
     historyWorkspaceId = selectedWorkspaceId ?? workspaces[0]?.id ?? null;
@@ -475,6 +478,31 @@
   function closeExecutionHistory(): void { historyOpen = false;
     const trigger = historyTrigger?.isConnected ? historyTrigger : document.querySelector<HTMLElement>('[data-host-navigation="history"]');
     trigger?.focus(); }
+
+  let sessionHistoryOpen = $state(false);
+  let sessionHistoryWorkspaceId = $state<string | null>(null);
+  let sessionHistory = $state(emptySessionHistory());
+  let sessionHistoryTrigger: HTMLElement | null = null;
+  const sessionHistoryController = createSessionHistoryController({
+    list: id => listAllSessions(id, { statusFilter: 'all' }), read: readSessionHistory,
+    publish: value => { sessionHistory = value; },
+  });
+  $effect(() => {
+    if (!sessionHistoryOpen || !desktop || !sessionHistoryWorkspaceId) return;
+    void sessionHistoryController.open(sessionHistoryWorkspaceId, untrack(() => selectedSessionId));
+    return () => sessionHistoryController.close();
+  });
+  function openSessionHistory(): void {
+    sessionHistoryTrigger = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    historyOpen = false; pluginsOpen = false; settingsOpen = false; diagnosticsOpen = false; commandPaletteOpen = false;
+    sessionHistoryWorkspaceId = selectedWorkspaceId ?? workspaces[0]?.id ?? null;
+    sessionHistoryOpen = true;
+  }
+  function closeSessionHistory(): void {
+    sessionHistoryOpen = false;
+    const trigger = sessionHistoryTrigger?.isConnected ? sessionHistoryTrigger : document.querySelector<HTMLElement>('[data-host-navigation="session-history"]');
+    trigger?.focus();
+  }
 
   let pluginInstallations = $state<PluginInstallation[]>([]);
   const pluginSessions = $derived((workspaceSessionMap[selectedWorkspaceId ?? ''] ?? []).filter(session => Boolean(session.pluginInstallationId)));
@@ -506,6 +534,7 @@
   }
 
   function openPluginPanel(): void {
+    sessionHistoryOpen = false;
     historyOpen = false;
     settingsOpen = false;
     diagnosticsOpen = false;
@@ -1069,6 +1098,10 @@
   function handleGlobalKeydown(event: KeyboardEvent): void {
     const key = event.key.toLocaleLowerCase();
     const modifier = event.metaKey || event.ctrlKey;
+    if (sessionHistoryOpen && !settingsOpen && !diagnosticsOpen) {
+      if (key === 'escape') { event.preventDefault(); closeSessionHistory(); }
+      return;
+    }
     if (historyOpen && !settingsOpen && !diagnosticsOpen) {
       if (key === 'escape') { event.preventDefault(); closeExecutionHistory(); }
       return;
@@ -3015,6 +3048,7 @@
   <WindowTitlebar
     onOpenPlugins={openPluginPanel}
     onOpenHistory={openExecutionHistory}
+    onOpenSessionHistory={openSessionHistory}
     onOpenSettings={openSettingsPanel}
     onOpenDiagnostics={openDiagnosticsPanel}
     sidePanelOpen={sidePanelOpen}
@@ -3066,6 +3100,15 @@
       {/each}
     </section>
   {/if}
+  {#if sessionHistoryOpen}
+    <div class="host-session-history-region" style="order:2; display:grid; flex:1; min-height:0; overflow:auto;">
+      <SessionHistoryPanel {workspaces} workspaceId={sessionHistoryWorkspaceId} state={sessionHistory} {desktop}
+        onWorkspace={id=>{sessionHistoryWorkspaceId=id;}} onSession={id=>void sessionHistoryController.select(id)}
+        onRefresh={()=>void sessionHistoryController.refresh()} onOlder={()=>void sessionHistoryController.older()}
+        onNewer={()=>void sessionHistoryController.newer()} onLatest={()=>void sessionHistoryController.latest()} onClose={closeSessionHistory}
+        onReload={()=>{if (sessionHistoryWorkspaceId) void sessionHistoryController.open(sessionHistoryWorkspaceId, sessionHistory.selectedId);}} />
+    </div>
+  {/if}
   {#if historyOpen}
     <div class="host-history-region" style="order: 2; display: grid; flex: 1; min-height: 0; overflow: auto;">
       <ExecutionHistoryPanel {workspaces} workspaceId={historyWorkspaceId} windowId={presentationWindowId()} state={executionHistory} {desktop}
@@ -3104,7 +3147,7 @@
     />
     </div>
   {/if}
-<WorkbenchPresentation suspended={pluginsOpen || historyOpen} windowId={presentationWindowId()} snapshot={{ workspaceId: selectedWorkspaceId, sessionId: selectedSessionId, draft: composerText, navigation: sidePanelView, timelineRevision: timeline.length }}>
+<WorkbenchPresentation suspended={pluginsOpen || historyOpen || sessionHistoryOpen} windowId={presentationWindowId()} snapshot={{ workspaceId: selectedWorkspaceId, sessionId: selectedSessionId, draft: composerText, navigation: sidePanelView, timelineRevision: timeline.length }}>
 {#snippet children(guard)}
   <main
     bind:this={workspaceGridElement}

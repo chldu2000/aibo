@@ -656,3 +656,12 @@ export interface AgentEvent {
 export interface ExecutionCursor {
   schema: 'aibo.execution-cursor/v1'; workspaceId: string; startedAt: string; kind: 'task' | 'git'; id: string;
 }
+
+export interface SessionHistoryCursor {
+  schema: 'aibo.session-history-cursor/v1'; workspaceId: string; sessionId: string;
+  createdAt: string; sequence: string; id: string;
+}
+export interface SessionHistoryPage {
+  schema: 'aibo.session-history-page/v1'; source: 'persisted-core'; session: Session;
+  items: TimelineItem[]; nextBefore: SessionHistoryCursor | null;
+}

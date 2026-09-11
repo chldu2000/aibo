@@ -39,3 +39,5 @@ export type {
 } from './view-types';
 
 export { default as ExecutionHistoryPanel } from './ExecutionHistoryPanel.svelte';
+
+export { default as SessionHistoryPanel } from './SessionHistoryPanel.svelte';

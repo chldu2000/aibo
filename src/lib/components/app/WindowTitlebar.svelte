@@ -6,6 +6,7 @@
     onOpenDiagnostics: () => void;
     onOpenPlugins: () => void;
     onOpenHistory: () => void;
+    onOpenSessionHistory: () => void;
     sidePanelOpen: boolean;
     onToggleSidePanel: () => void;
     onToggleMaximize: () => void;
@@ -18,6 +19,7 @@
     onOpenDiagnostics,
     onOpenPlugins,
     onOpenHistory,
+    onOpenSessionHistory,
     sidePanelOpen,
     onToggleSidePanel,
     onToggleMaximize,
@@ -41,6 +43,7 @@
   <div class="window-actions">
     <Button variant="ghost" type="button" data-host-navigation="plugins" onclick={onOpenPlugins}>插件</Button>
     <Button variant="ghost" type="button" data-host-navigation="history" onclick={onOpenHistory}>执行历史</Button>
+    <Button variant="ghost" type="button" data-host-navigation="session-history" onclick={onOpenSessionHistory}>会话历史</Button>
     <Button variant="ghost" size="icon" type="button" aria-label="打开设置" title="设置" onclick={onOpenSettings}>
       <Icon name="settings" size={15} />
     </Button>
