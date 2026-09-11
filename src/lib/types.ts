@@ -432,6 +432,18 @@ export interface ProjectAction {
   updatedAt: string;
 }
 
+export interface WorkspaceWriteRun {
+  schema: 'aibo.workspace-write-run/v1';
+  id: string;
+  workspaceId: string;
+  operation: string;
+  status: 'running' | 'completed' | 'failed' | 'outcome_unknown';
+  snapshot: { schema: 'aibo.workspace-write-intent/v1'; origin: 'host'; workspaceId: string; workspacePath: string; operation: string; input: Record<string, unknown> };
+  result: { ok: true; output: unknown } | { ok: false; error: { code: string; message: string } } | null;
+  startedAt: string;
+  completedAt: string | null;
+}
+
 export interface ProjectActionRun {
   schema: 'aibo.project-action-run/v1' | 'aibo.project-action-run/v2' | 'aibo.project-action-run/v3';
   id: string;

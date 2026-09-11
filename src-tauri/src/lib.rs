@@ -3,6 +3,7 @@ mod project_actions;
 mod controlled_process;
 mod workspace_git;
 mod workspace_writes;
+mod workspace_write_runs;
 use workspace_git::apply_git_index_action;
 mod artifact;
 mod change_set;
@@ -3379,8 +3380,8 @@ async fn apply_git_file_action(
             message: "已恢复到本轮开始前的文件内容".to_owned(),
         });
     }
-    let _write = workspace_writes::acquire(&state.db, &workspace.id, Path::new(&workspace.path)).await?;
-    apply_git_index_action(&workspace.path, &path, &action).await
+    workspace_write_runs::execute(&state.db, &workspace, "git.index", serde_json::json!({"path":path,"action":action,"sessionId":session_id,"turnId":turn_id}),
+        || apply_git_index_action(&workspace.path, &path, &action)).await
 }
 
 #[tauri::command]
@@ -3751,6 +3752,11 @@ async fn cancel_project_action(
     workspace_id: String, run_id: String, state: State<'_, AppState>,
 ) -> Result<bool, CoreError> {
     project_actions::cancel_project_action(&state.db, workspace_id, run_id).await
+}
+
+#[tauri::command]
+async fn list_workspace_write_runs(workspace_id: String, limit: Option<i64>, state: State<'_, AppState>) -> Result<Vec<workspace_write_runs::WriteRun>, CoreError> {
+    workspace_write_runs::list(&state.db, workspace_id, limit).await
 }
 
 #[tauri::command]
@@ -4857,6 +4863,8 @@ pub fn run() {
             })?;
             tauri::async_runtime::block_on(project_actions::recover(&db))
                 .map_err(|error| Box::new(CoreError::Initialization(format!("recover project tasks: {error}"))) as Box<dyn Error>)?;
+            tauri::async_runtime::block_on(workspace_write_runs::recover(&db))
+                .map_err(|error| Box::new(CoreError::Initialization(format!("recover workspace writes: {error}"))) as Box<dyn Error>)?;
             tauri::async_runtime::block_on(capability_broker::Broker::recover(&db))
                 .map_err(|error| Box::new(CoreError::Initialization(error)) as Box<dyn Error>)?;
             if let Err(error) = tauri::async_runtime::block_on(plugin_registry::collect_retired(&db, &data_dir)) {
@@ -4953,6 +4961,7 @@ pub fn run() {
             run_project_action,
             cancel_project_action,
             list_project_action_runs,
+            list_workspace_write_runs,
             rename_session,
             list_codex_threads,
             read_codex_thread,

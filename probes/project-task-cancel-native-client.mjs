@@ -14,6 +14,12 @@ try {
   const { workspacePath } = await (await fetch('/__task_config')).json();
   const workspace = await invoke('add_workspace', { path: workspacePath });
   await invoke('set_workspace_trust', { workspaceId: workspace.id, trusted: true });
+  const staged = await invoke('apply_workspace_git_action', { workspaceId: workspace.id, action: 'stage_all' });
+  if (!staged.applied) throw Error('Native Git staging failed');
+  const writeRuns = await invoke('list_workspace_write_runs', { workspaceId: workspace.id });
+  const writeRun = writeRuns.find(run => run.operation === 'git.index-all');
+  if (!writeRun || writeRun.schema !== 'aibo.workspace-write-run/v1' || writeRun.status !== 'completed' || writeRun.snapshot.input.action !== 'stage_all' || !writeRun.result?.output.applied || !writeRun.completedAt) throw Error('Native write history does not match the completed operation');
+
   const deniedAction = await invoke('save_project_action', { workspaceId: workspace.id, name: 'Deny task', kind: 'test', program: '/bin/sh', args: ['-c', 'touch denied-effect'], enabled: true });
   await fetch('/__task_approval', { method: 'POST', body: JSON.stringify({ marker: 'Deny task', decision: '取消' }) });
   const denied = await invoke('run_project_action', { workspaceId: workspace.id, actionId: deniedAction.id, sessionId: null, requestId: 'native-denied' });
@@ -50,5 +56,5 @@ try {
     await invoke('set_workspace_trust', { workspaceId: workspace.id, trusted: true });
   }
   await pause(2200);
-  await report({ ok: true, results, denialPreventedExecution: true });
+  await report({ ok: true, results, denialPreventedExecution: true, workspaceWriteHistory: true, writeRunId: writeRun.id });
 } catch (error) { await report({ ok: false, error: String(error) }); }

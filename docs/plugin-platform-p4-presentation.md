@@ -434,3 +434,41 @@ Git 持久接纳、审批、主动取消和通用 Broker 写入仍待接入。�
 第十七批最终验证：完整 Rust 测试 157 通过；`pnpm run verify` 的 23 项架构检查、
 146 项 Node 测试、类型及构建通过。所有 Git 写入与钩子验证均在临时仓库进行；
 路径表达式/特殊文件名和进程组用例在 Unix/macOS 验证，未声明 Windows 实测支持。
+
+### Git 持久执行记录（第十八批）
+
+迁移 0033 建立宿主持有的 workspace_write_runs。工作区 Git 的索引、整体索引、
+提交、分支、同步与 stash 服务，以及 Core 整文件 stage/unstage，统一通过
+workspace_write_runs::execute：先取得工作区许可，持久保存 operation、工作区
+路径与完整输入，再构造/等待执行 future，最后更新同一 run ID。意图超过 64 KiB
+在执行前拒绝，不静默截断输入。旧 Git 返回对象保持兼容，新只读 IPC
+list_workspace_write_runs 返回独立版本化的 `aibo.workspace-write-run/v1` 历史。
+
+记录的 completed 表示调用已正常返回，是否实际应用更改仍由原 output.applied /
+output.committed 表达；无可提交更改或明确非零退出不被改写成成功写入。宿主错误
+记录为 failed，执行结果不确定记录为 outcome_unknown。每条记录保留原结果/错误
+对象与时间，初始 running 的 result/completedAt 为 null。
+
+意图保存失败不会进入执行；副作用发生后的结果序列化/保存失败返回
+outcome_unknown，不能向调用者宣称成功结算。未完成 Git 记录也参与工作区互斥：
+即使 owner 丢失释放了内存许可，仍阻止另一项任务或 Git 写入直接绕过。启动恢复
+将 running 改为 outcome_unknown、保留 ID 与输入，重复恢复幂等，不重放 Git。
+已完成记录不受恢复影响。与现有任务数据政策一致，删除工作区会级联清理该工作区
+记录；本批没有改动这一保留边界。
+
+直接测试用 SQLite 故障触发器验证“接纳失败无副作用”和“副作用后保存失败为
+未知”；真实 Git post-commit 钩子测试验证 commit 已存在时中断 owner，关闭并
+重开数据库后恢复原记录，后代副作用不继续、commit 数不增加。已有 Git 服务
+回归逐项检查操作结果进入持久历史。桌面任务探针补充真实 Git 暂存和新历史 IPC
+读取，并由外层 Git index 检查核对实际暂存文件。
+
+本批仍不是完整写入接纳协议：Git 未绑定客户端幂等键、调用窗口/插件身份，尚未
+接入审批和主动取消；记录保存的是宿主操作意图，不是审批过的仓库状态快照。
+没有把本历史接口当成已完成的独立宿主历史 UI。Core hunk/基线恢复路径与通用
+Broker 写入仍待统一，P4 整体验收保持未完成。
+
+第十八批验证：完整 Rust 测试 159 通过；`pnpm run verify` 的 23 项架构检查、
+146 项 Node 测试、类型及构建通过。macOS 原生探针验证实际暂存、新历史 IPC 的
+schema/输入/结果/时间及真实 Git index，同时复跑两套皮肤的任务批准与停止；
+证据见 [工作区写入历史验收](./baselines/plugin-platform-p4/workspace-write-history.json)。
+外层探针退出码 0；结束隔离 App 后的子 pnpm ELIFECYCLE 为主动清理产生。

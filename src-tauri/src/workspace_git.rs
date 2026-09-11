@@ -66,8 +66,7 @@ pub(crate) async fn apply_workspace_git_file_action(
     if workspace.trust != "trusted" {
         return Err(CoreError::WorkspaceTrustRequired);
     }
-    let _write = crate::workspace_writes::acquire(db, &workspace_id, std::path::Path::new(&workspace.path)).await?;
-    apply_git_index_action(&workspace.path, &path, &action).await
+    crate::workspace_write_runs::execute(db, &workspace, "git.index", serde_json::json!({"path":path,"action":action}), || apply_git_index_action(&workspace.path, &path, &action)).await
 }
 
 async fn run_git_workspace_action(workspace_path: &str, action: &str) -> Result<GitWorkspaceActionResult, CoreError> {
@@ -91,8 +90,7 @@ pub(crate) async fn apply_workspace_git_action(
     if workspace.trust != "trusted" {
         return Err(CoreError::WorkspaceTrustRequired);
     }
-    let _write = crate::workspace_writes::acquire(db, &workspace_id, std::path::Path::new(&workspace.path)).await?;
-    run_git_workspace_action(&workspace.path, &action).await
+    crate::workspace_write_runs::execute(db, &workspace, "git.index-all", serde_json::json!({"action":action}), || run_git_workspace_action(&workspace.path, &action)).await
 }
 
 async fn commit_workspace(operation: &GitOperation<'_>, message: &str) -> Result<GitCommitResult, CoreError> {
@@ -123,8 +121,7 @@ pub(crate) async fn commit_workspace_changes(
     if workspace.trust != "trusted" {
         return Err(CoreError::WorkspaceTrustRequired);
     }
-    let _write = crate::workspace_writes::acquire(db, &workspace_id, std::path::Path::new(&workspace.path)).await?;
-    commit_workspace(&GitOperation::new(&workspace.path), &message).await
+    crate::workspace_write_runs::execute(db, &workspace, "git.commit", serde_json::json!({"message":message}), || async { commit_workspace(&GitOperation::new(&workspace.path), &message).await }).await
 }
 
 fn list_git_branches(workspace_path: &str) -> Result<Vec<GitBranch>, CoreError> {
@@ -203,8 +200,7 @@ pub(crate) async fn checkout_workspace_git_branch(
     if workspace.trust != "trusted" {
         return Err(CoreError::WorkspaceTrustRequired);
     }
-    let _write = crate::workspace_writes::acquire(db, &workspace_id, std::path::Path::new(&workspace.path)).await?;
-    GitOperation::new(&workspace.path).action(&["switch", "--", &branch], "checkout").await
+    crate::workspace_write_runs::execute(db, &workspace, "git.checkout", serde_json::json!({"branch":branch}), || async { GitOperation::new(&workspace.path).action(&["switch", "--", &branch], "checkout").await }).await
 }
 
 pub(crate) async fn create_workspace_git_branch(
@@ -217,8 +213,7 @@ pub(crate) async fn create_workspace_git_branch(
     if workspace.trust != "trusted" {
         return Err(CoreError::WorkspaceTrustRequired);
     }
-    let _write = crate::workspace_writes::acquire(db, &workspace_id, std::path::Path::new(&workspace.path)).await?;
-    GitOperation::new(&workspace.path).action(&["switch", "-c", &branch], "create_branch").await
+    crate::workspace_write_runs::execute(db, &workspace, "git.create-branch", serde_json::json!({"branch":branch}), || async { GitOperation::new(&workspace.path).action(&["switch", "-c", &branch], "create_branch").await }).await
 }
 
 fn list_git_history(workspace_path: &str, limit: u32) -> Result<Vec<GitCommit>, CoreError> {
@@ -492,9 +487,8 @@ pub(crate) async fn sync_workspace_git(
     if workspace.trust != "trusted" {
         return Err(CoreError::WorkspaceTrustRequired);
     }
-    let _write = crate::workspace_writes::acquire(db, &workspace_id, std::path::Path::new(&workspace.path)).await?;
     let command = git_sync_command(&workspace.path, &action)?;
-    execute_git_action(command, action, Duration::from_secs(120)).await
+    crate::workspace_write_runs::execute(db, &workspace, "git.sync", serde_json::json!({"action":action}), || execute_git_action(command, action, Duration::from_secs(120))).await
 }
 
 fn git_sync_command(workspace_path: &str, action: &str) -> Result<TokioCommand, CoreError> {
@@ -582,8 +576,7 @@ pub(crate) async fn apply_workspace_git_stash(
     if workspace.trust != "trusted" {
         return Err(CoreError::WorkspaceTrustRequired);
     }
-    let _write = crate::workspace_writes::acquire(db, &workspace_id, std::path::Path::new(&workspace.path)).await?;
-    GitOperation::new(&workspace.path).action(&["stash", "apply", &reference], "stash_apply").await
+    crate::workspace_write_runs::execute(db, &workspace, "git.stash-apply", serde_json::json!({"reference":reference}), || async { GitOperation::new(&workspace.path).action(&["stash", "apply", &reference], "stash_apply").await }).await
 }
 
 pub(crate) async fn stash_workspace_git(
@@ -595,9 +588,8 @@ pub(crate) async fn stash_workspace_git(
     if workspace.trust != "trusted" {
         return Err(CoreError::WorkspaceTrustRequired);
     }
-    let _write = crate::workspace_writes::acquire(db, &workspace_id, std::path::Path::new(&workspace.path)).await?;
     let message = message.unwrap_or_else(|| "aibo workspace changes".to_owned());
-    GitOperation::new(&workspace.path).action(&["stash", "push", "-u", "-m", &message], "stash_push").await
+    crate::workspace_write_runs::execute(db, &workspace, "git.stash-push", serde_json::json!({"message":message}), || async { GitOperation::new(&workspace.path).action(&["stash", "push", "-u", "-m", &message], "stash_push").await }).await
 }
 
 
@@ -761,6 +753,11 @@ mod tests {
         for action in ["push", "fetch", "pull"] {
             let result = sync_workspace_git(&db, "workspace".into(), action.into()).await.unwrap();
             assert!(result.applied, "{action}: {}", result.message);
+        }
+        let history = crate::workspace_write_runs::list(&db, "workspace".into(), Some(100)).await.unwrap();
+        let history = serde_json::to_value(history).unwrap();
+        for operation in ["git.index", "git.commit", "git.create-branch", "git.checkout", "git.stash-push", "git.stash-apply", "git.sync"] {
+            assert!(history.as_array().unwrap().iter().any(|run| run["operation"] == operation && run["status"] == "completed" && run["result"]["ok"] == true), "missing history for {operation}");
         }
         let remote_head = Command::new("git").arg("-C").arg(&remote).args(["rev-parse", "refs/heads/service-test"]).output().unwrap();
         assert!(remote_head.status.success());

@@ -490,6 +490,9 @@ export const runProjectAction = (
 export const cancelProjectAction = (workspaceId: string, runId: string): Promise<boolean> =>
   invoke('cancel_project_action', { workspaceId, runId });
 
+export const listWorkspaceWriteRuns = (workspaceId: string, limit = 20): Promise<import('./types').WorkspaceWriteRun[]> =>
+  invoke('list_workspace_write_runs', { workspaceId, limit });
+
 export const listProjectActionRuns = (
   workspaceId: string,
   limit = 10,

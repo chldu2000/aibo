@@ -22,8 +22,8 @@ pub(crate) async fn acquire(db: &SqlitePool, workspace_id: &str, path: &Path) ->
     let guard = WorkspaceWrite(path);
     // An interrupted task owner may have released its in-memory guard before
     // startup recovery settles the durable record. Do not bypass that record.
-    let pending: bool = sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM project_action_runs WHERE workspace_id=? AND status IN ('awaiting_approval','running'))")
-        .bind(workspace_id).fetch_one(db).await?;
+    let pending: bool = sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM project_action_runs WHERE workspace_id=? AND status IN ('awaiting_approval','running')) OR EXISTS(SELECT 1 FROM workspace_write_runs WHERE workspace_id=? AND status='running')")
+        .bind(workspace_id).bind(workspace_id).fetch_one(db).await?;
     if pending { return Err(CoreError::WorkspaceWriteBusy); }
     Ok(guard)
 }
