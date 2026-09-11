@@ -5,7 +5,7 @@ use crate::{CoreError, GitFileActionResult, GitWorkspaceActionResult, GitCommitR
     truncate_diff_with_marker, parse_unified_hunks};
 use sqlx::SqlitePool;
 use std::{path::Path, process::Command, time::Duration};
-use tokio::{process::Command as TokioCommand, time as tokio_time};
+use tokio::process::Command as TokioCommand;
 
 pub(crate) fn apply_git_index_action(
     workspace_path: &str,
@@ -610,46 +610,50 @@ pub(crate) async fn sync_workspace_git(
         return Err(CoreError::WorkspaceTrustRequired);
     }
     let _write = crate::workspace_writes::acquire(db, &workspace_id, std::path::Path::new(&workspace.path)).await?;
-    let args: &[&str] = match action.as_str() {
+    let command = git_sync_command(&workspace.path, &action)?;
+    execute_git_sync(command, action, Duration::from_secs(120)).await
+}
+
+fn git_sync_command(workspace_path: &str, action: &str) -> Result<TokioCommand, CoreError> {
+    let args: &[&str] = match action {
         "fetch" => &["fetch", "--all", "--prune"],
         "pull" => &["pull", "--ff-only"],
         "push" => &["push"],
-        _ => {
-            return Err(CoreError::InvalidWorkspacePath(
-                "unsupported Git sync action".to_owned(),
-            ));
-        }
+        _ => return Err(CoreError::InvalidWorkspacePath("unsupported Git sync action".into())),
     };
     let mut command = TokioCommand::new("git");
-    command
-        .args(["-C", &workspace.path])
-        .args(args)
-        .env("GIT_TERMINAL_PROMPT", "0")
-        .env("GCM_INTERACTIVE", "Never")
-        .kill_on_drop(true);
-    let output = tokio_time::timeout(Duration::from_secs(120), command.output())
-        .await
-        .map_err(|_| CoreError::Database(format!("Git {action} timed out after 120 seconds")))?
-        .map_err(|error| CoreError::Database(format!("run Git {action}: {error}")))?;
-    let message = String::from_utf8_lossy(if output.status.success() {
-        &output.stdout
-    } else {
-        &output.stderr
-    })
-    .trim()
-    .to_owned();
+    command.args(["-C", workspace_path]).args(args)
+        .env("GIT_TERMINAL_PROMPT", "0").env("GCM_INTERACTIVE", "Never");
+    Ok(command)
+}
+
+async fn execute_git_sync(command: TokioCommand, action: String, timeout: Duration) -> Result<GitWorkspaceActionResult, CoreError> {
+    const OUTPUT_LIMIT: usize = 256 * 1024;
+    let output = crate::controlled_process::execute(command, timeout, OUTPUT_LIMIT + 1).await
+        .map_err(|error| CoreError::WriteOutcomeUnknown(format!("Git {action}: {error}")))?;
+    let mut message = String::from_utf8_lossy(&output.stdout).to_string();
+    if !output.stderr.is_empty() {
+        if !message.is_empty() { message.push('\n'); }
+        message.push_str(&String::from_utf8_lossy(&output.stderr));
+    }
+    // Redaction may shorten captured output below the byte limit. Remember
+    // truncation before sanitizing so that discarded bytes are never hidden.
+    let truncated = output.stdout.len() > OUTPUT_LIMIT || output.stderr.len() > OUTPUT_LIMIT || message.len() > OUTPUT_LIMIT;
+    let sanitized = crate::artifact::sanitize_content("git.sync.command", message.trim());
+    let message = if truncated || sanitized.len() > OUTPUT_LIMIT {
+        const SUFFIX: &str = "\n… Git 输出已截断";
+        format!("{}{}", crate::artifact::truncate_utf8(&sanitized, OUTPUT_LIMIT - SUFFIX.len(), ""), SUFFIX)
+    } else { sanitized };
+    if output.timed_out || output.cancelled {
+        return Err(CoreError::WriteOutcomeUnknown(format!("Git {action} 已停止，远端或本地引用可能已更改。\n{message}")));
+    }
     Ok(GitWorkspaceActionResult {
         action,
-        applied: output.status.success(),
+        applied: output.success,
         message: if message.is_empty() {
-            if output.status.success() {
-                "Git 同步已完成".to_owned()
-            } else {
-                format!("git exited with {}", output.status)
-            }
-        } else {
-            message
-        },
+            if output.success { "Git 同步已完成".into() }
+            else { format!("git exited with {:?}", output.exit_code) }
+        } else { message },
     })
 }
 
@@ -764,6 +768,41 @@ pub(crate) async fn stash_workspace_git(
 mod tests {
     use super::*;
 
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn git_sync_deadline_stops_transport_descendants_and_reports_uncertain_effects() {
+        use std::os::unix::fs::PermissionsExt;
+        let root = std::env::temp_dir().join(format!("aibo-git-transport-{}", ulid::Ulid::new()));
+        std::fs::create_dir_all(&root).unwrap();
+        assert!(Command::new("git").args(["init", "-q"]).arg(&root).status().unwrap().success());
+        assert!(Command::new("git").arg("-C").arg(&root).args(["remote", "add", "origin", "ssh://fixture.invalid/repo"]).status().unwrap().success());
+        let helper = root.join("transport");
+        std::fs::write(&helper, "#!/bin/sh\nprintf BEFORE_TIMEOUT >&2\n(sleep 4; touch late-effect) &\nexit 1\n").unwrap();
+        std::fs::set_permissions(&helper, std::fs::Permissions::from_mode(0o700)).unwrap();
+        let mut command = git_sync_command(root.to_str().unwrap(), "fetch").unwrap();
+        // Git invokes only this local fixture; no SSH connection is attempted.
+        command.current_dir(&root).env("GIT_SSH", &helper).env("GIT_SSH_VARIANT", "ssh");
+        let result = tokio::time::timeout(Duration::from_secs(5), execute_git_sync(command, "fetch".into(), Duration::from_secs(2))).await.unwrap();
+        let error = result.unwrap_err();
+        assert!(matches!(&error, CoreError::WriteOutcomeUnknown(_)), "{error}");
+        assert!(error.to_string().contains("BEFORE_TIMEOUT"), "{error}");
+        assert_eq!(serde_json::to_value(&error).unwrap()["code"], "outcome_unknown");
+        tokio::time::sleep(Duration::from_millis(4200)).await;
+        assert!(!root.join("late-effect").exists());
+        assert!(git_sync_command(root.to_str().unwrap(), "--upload-pack=unexpected").is_err());
+        // A transport that exits conclusively still returns a bounded failure response.
+        std::fs::write(&helper, "#!/bin/sh\nprintf 'token=fixture-secret\\n' >&2\nhead -c 400000 /dev/zero | tr '\\000' x >&2\nexit 1\n").unwrap();
+        let mut command = git_sync_command(root.to_str().unwrap(), "fetch").unwrap();
+        command.current_dir(&root).env("GIT_SSH", &helper).env("GIT_SSH_VARIANT", "ssh");
+        let result = execute_git_sync(command, "fetch".into(), Duration::from_secs(3)).await.unwrap();
+        assert!(!result.applied);
+        assert!(result.message.len() <= 256 * 1024 + 64);
+        assert!(result.message.contains("Git 输出已截断"));
+        assert!(result.message.contains("[REDACTED]"));
+        assert!(!result.message.contains("fixture-secret"));
+        std::fs::remove_dir_all(root).unwrap();
+    }
+
     #[tokio::test]
     async fn workspace_git_service_preserves_writes_history_and_trust_without_a_window() {
         let root = std::env::temp_dir().join(format!("aibo-git-service-{}", ulid::Ulid::new()));
@@ -804,6 +843,20 @@ mod tests {
         assert_eq!(std::fs::read_to_string(repo.join("source.txt")).unwrap(), "second\n");
         assert!(apply_workspace_git_file_action(&db, "workspace".into(), "../outside".into(), "stage".into()).await.is_err());
         assert!(create_workspace_git_branch(&db, "workspace".into(), "--orphan".into()).await.is_err());
+        // Exercise production push/fetch/pull against a local bare remote, without network or credentials.
+        let remote = root.join("remote.git");
+        assert!(Command::new("git").args(["init", "--bare", "-q"]).arg(&remote).status().unwrap().success());
+        assert!(Command::new("git").arg("-C").arg(&remote).args(["config", "core.hooksPath", hooks.to_str().unwrap()]).status().unwrap().success());
+        git(&["remote", "add", "origin", remote.to_str().unwrap()]);
+        git(&["config", "branch.service-test.remote", "origin"]);
+        git(&["config", "branch.service-test.merge", "refs/heads/service-test"]);
+        for action in ["push", "fetch", "pull"] {
+            let result = sync_workspace_git(&db, "workspace".into(), action.into()).await.unwrap();
+            assert!(result.applied, "{action}: {}", result.message);
+        }
+        let remote_head = Command::new("git").arg("-C").arg(&remote).args(["rev-parse", "refs/heads/service-test"]).output().unwrap();
+        assert!(remote_head.status.success());
+        assert_eq!(String::from_utf8_lossy(&remote_head.stdout).trim(), git(&["rev-parse", "HEAD"]));
         sqlx::query("UPDATE workspaces SET trusted=0 WHERE id='workspace'").execute(&db).await.unwrap();
         assert!(matches!(apply_workspace_git_action(&db, "workspace".into(), "stage_all".into()).await, Err(CoreError::WorkspaceTrustRequired)));
         assert!(git(&["diff", "--cached", "--name-only"]).is_empty());

@@ -558,6 +558,8 @@ pub enum CoreError {
     WorkspaceTrustRequired,
     #[error("workspace has an unfinished write; wait for it to settle before submitting another operation")]
     WorkspaceWriteBusy,
+    #[error("写入结果未知，请核对实际更改后再操作：{0}")]
+    WriteOutcomeUnknown(String),
     #[error("session not found: {0}")]
     SessionNotFound(String),
     #[error("session must be idle before its execution profile can change")]
@@ -596,6 +598,7 @@ impl Serialize for CoreError {
             Self::WorkspaceNotFound(_) => "workspace_not_found",
             Self::WorkspaceTrustRequired => "workspace_trust_required",
             Self::WorkspaceWriteBusy => "workspace_write_busy",
+            Self::WriteOutcomeUnknown(_) => "outcome_unknown",
             Self::SessionNotFound(_) => "session_not_found",
             Self::SessionBusy => "session_busy",
             Self::InvalidSessionLabel(_) => "invalid_session_label",
