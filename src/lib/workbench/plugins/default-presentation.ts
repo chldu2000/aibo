@@ -7,7 +7,7 @@ export const defaultPresentation = {
   version: '1.0.0',
   semanticVersion: '1.0.0',
   core: ['collection', 'detail', 'settings', 'inspector'],
-  optional: [],
+  optional: [{ id: 'dev.aibo.ui-default.numbered-detail', version: '1.0.0', semantic: 'detail' }],
 } as const satisfies RendererDescriptor;
 
 export const defaultLayouts = ['standard', 'focus'] as const;
@@ -24,3 +24,5 @@ export function defaultWorkbenchSlots(layout: string): readonly WorkbenchSlot[] 
   preflightDefaultPresentation(layout);
   return layout === 'focus' ? ['content'] : workbenchSlots;
 }
+
+export const defaultDetailPreference = { id: 'dev.aibo.ui-default.numbered-detail', version: '1.0.0' } as const;

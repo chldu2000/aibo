@@ -31,7 +31,7 @@ try {
     await until(() => finished, 'native write completed');
     await until(() => [...document.querySelectorAll('button')].find(button => button.textContent.includes('写入样例') && !button.disabled), 'refreshed write view');
     check(writes === 1, 'repeated click issued one request');
-    await until(() => document.querySelector('textarea')?.value.includes('semantic-write'), 'refreshed result displayed');
+    await until(() => (document.querySelector('textarea')?.value ?? [...document.querySelectorAll('.text-line > span:last-child')].map(line => line.textContent).join('\n')).includes('semantic-write'), 'refreshed result displayed');
     const rows = await api.listWorkspaceWriteRuns(workspace.id);
     check(rows.length === results.length + 1 && rows.every(row => row.operation === 'semantic.write' && row.status === 'completed'), 'durable semantic write history');
     results.push({ kit, actualButton: true, nativeApproved: true, duplicateSuppressed: true, refreshedResult: true });

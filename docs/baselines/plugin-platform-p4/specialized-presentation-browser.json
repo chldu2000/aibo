@@ -1,0 +1,24 @@
+{
+  "results": [
+    {
+      "kit": "shadcn",
+      "completeText": true,
+      "properties": true,
+      "actions": true,
+      "incompatibleFallback": true,
+      "updateFailureFallback": true,
+      "mountFailureFallback": true,
+      "largeTextPreserved": true
+    },
+    {
+      "kit": "material3",
+      "completeText": true,
+      "properties": true,
+      "actions": true,
+      "incompatibleFallback": true,
+      "updateFailureFallback": true,
+      "mountFailureFallback": true,
+      "largeTextPreserved": true
+    }
+  ]
+}

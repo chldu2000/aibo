@@ -2,7 +2,7 @@
   import { tick } from 'svelte';
   import type { PresentationProps } from '../../presentation-props';
   import { actionMessage } from '../../../presentation/actions';
-  let { snapshot, layout, onAction, focusTarget = null }: PresentationProps = $props();
+  let { snapshot, layout, onAction, focusTarget = null, detailPresentation = 'plain' }: PresentationProps = $props();
   let root: HTMLElement;
   let previousKind: string | null = null;
   let previouslyInteractive: boolean | null = null;
@@ -68,7 +68,11 @@
   {:else}
     <dl>{#each snapshot.view.properties as property}<div><dt>{property.label}</dt><dd>{property.value}</dd></div>{/each}</dl>
     {#if snapshot.view.truncated}<p role="status">内容已截断，剩余内容未加载。</p>{/if}
+    {#if detailPresentation === 'numbered' && snapshot.view.kind === 'detail'}
+      <div class="numbered-content" role="textbox" aria-readonly="true" aria-multiline="true" tabindex="0" aria-label="带行号的文本内容">{#each snapshot.view.content.split('\n') as line, index}<span class="text-line"><span class="line-number" aria-hidden="true">{index + 1}</span><span>{line}</span></span>{/each}</div>
+    {:else}
     <textarea class="diff-content" readonly rows="16" aria-label={snapshot.view.kind === "detail" ? "文件差异内容" : "视图内容"} value={snapshot.view.content}></textarea>
+    {/if}
   {/if}
 </section>
 <style>
@@ -82,6 +86,10 @@
   button:hover { background: var(--accent); }
   button:disabled { opacity: 0.5; cursor: default; }
   :is(button, h2, .diff-content):focus-visible { outline: 2px solid var(--ring); outline-offset: 3px; }
+  .numbered-content { margin: 0; overflow: auto; white-space: pre; font-family: monospace; font-size: 0.8125rem; background: var(--muted); border: 1px solid var(--border); border-radius: var(--semantic-radius); padding: 1rem; }
+  .numbered-content:focus-visible { outline: 2px solid var(--ring); outline-offset: 3px; }
+  .text-line { display: flex; min-height: 1.25em; }
+  .line-number { display: inline-block; min-width: 4ch; margin-right: 1rem; text-align: right; color: var(--muted-foreground); user-select: none; }
   .contents { overflow: auto; min-height: 0; }
   table { width: 100%; border-collapse: collapse; text-align: left; font-size: 0.875rem; }
   caption { text-align: left; color: var(--muted-foreground); padding-bottom: 0.75rem; }

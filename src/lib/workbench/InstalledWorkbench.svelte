@@ -9,6 +9,7 @@
   let { workspaceId, contribution, invocationScope = {kind:"workspace", id:workspaceId}, port, onClose, stateStore = createViewStateStore() }: { workspaceId: string; invocationScope?: InstalledScope; contribution: InstalledContribution; port: InstalledPort; onClose: () => void; stateStore?: ViewStateStore } = $props();
   let snapshot = $state<Snapshot | null>(null);
   let error = $state('');
+  let enhanced = $state(true);
   let layout = $state<'central' | 'sidebar'>('central');
   let focusTarget = $state<string | null>(null);
   let offset = 0;
@@ -57,11 +58,12 @@
 <section class="installed-workbench" aria-label={contribution.title}>
   <div class="controls">
     <Button variant="outline" onclick={() => { layout = layout === 'central' ? 'sidebar' : 'central'; save(); }}>切换布局</Button>
+    {#if snapshot?.view.kind === 'detail'}<Button variant="outline" onclick={() => enhanced = !enhanced}>{enhanced ? '使用通用阅读' : '使用带行号阅读'}</Button>{/if}
     <Button variant="ghost" onclick={onClose}>关闭插件视图</Button>
   </div>
   {#if snapshot}
     {#if error}<Card><p role="alert">{error}</p></Card>{/if}
-    <PresentationSurface {snapshot} {layout} {focusTarget} onAction={act} />
+    <PresentationSurface preference={enhanced ? undefined : null} {snapshot} {layout} {focusTarget} onAction={act} />
   {:else if error}
     <Card><p role="alert">此工具暂不可用：{error}</p><Button variant="outline" onclick={restore}>重新加载</Button></Card>
   {:else}<Card><p role="status">正在读取…</p></Card>{/if}

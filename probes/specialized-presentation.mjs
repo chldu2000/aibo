@@ -1,0 +1,50 @@
+import assert from 'node:assert/strict';
+import { createServer } from 'vite';
+import { chromium } from 'playwright';
+import { writeFile } from 'node:fs/promises';
+const server = await createServer({server:{host:'127.0.0.1',port:0,hmr:false,watch:null}}); await server.listen();
+const browser = await chromium.launch({headless:true});
+const results = [];
+try {
+  for (const kit of ['shadcn','material3']) {
+    const page = await browser.newPage(), errors = [];
+    page.on('pageerror', error => errors.push(error.message));
+    await page.goto(`http://127.0.0.1:${server.httpServer.address().port}/probes/specialized-presentation.html`);
+    await page.waitForFunction(() => window.specializedProbe);
+    await page.evaluate(kit => window.specializedProbe.kit(kit), kit);
+    await page.locator('[data-presentation-mode="specialized"]').waitFor();
+    const snapshot = await page.evaluate(() => window.specializedProbe.snapshot());
+    assert.equal(await page.locator('.text-line > span:last-child').evaluateAll(lines => lines.map(line => line.textContent).join('\n')), snapshot.view.content);
+    const properties = await page.locator('dl').textContent();
+    const actions = await page.locator('nav[aria-label="视图操作"] button').allTextContents();
+    await page.getByRole('button',{name:'刷新',exact:true}).click();
+    assert.deepEqual(await page.evaluate(() => window.specializedProbe.actions()), [{context:snapshot.context,actionId:'refresh',itemId:null}]);
+    await page.getByRole('button',{name:'写入样例',exact:true}).click();
+    assert.deepEqual((await page.evaluate(() => window.specializedProbe.actions()))[1], {context:snapshot.context,actionId:'dev.probe.write',itemId:null});
+    assert.equal(await page.getByRole('button',{name:'不可用动作',exact:true}).isDisabled(), true);
+    await page.evaluate(() => window.specializedProbe.core());
+    await page.locator('[data-presentation-mode="core"]').waitFor();
+    assert.equal(await page.locator('textarea').inputValue(), snapshot.view.content);
+    assert.equal(await page.getByRole('button',{name:'不可用动作',exact:true}).isDisabled(), true);
+    assert.equal(await page.locator('dl').textContent(), properties);
+    assert.deepEqual(await page.locator('nav[aria-label="视图操作"] button').allTextContents(), actions);
+    await page.evaluate(() => window.specializedProbe.incompatible());
+    await page.getByRole('status').filter({hasText:'专业阅读界面不可用'}).waitFor();
+    assert.equal(await page.locator('textarea').inputValue(), snapshot.view.content);
+    await page.evaluate(() => window.specializedProbe.specialized());
+    await page.locator('[data-presentation-mode="specialized"]').waitFor();
+    await page.evaluate(() => window.specializedProbe.large());
+    await page.locator('[data-presentation-mode="core"]').waitFor();
+    assert.equal(await page.locator('textarea').inputValue(), 'full line\n'.repeat(6000));
+    await page.getByRole('alert').filter({hasText:'specialized_presentation_limit'}).waitFor();
+    const previousGeneration = Number(await page.locator('[data-presentation-mode="core"]').getAttribute('data-presentation-generation'));
+    await page.evaluate(() => window.specializedProbe.specialized());
+    await page.waitForFunction(previous => Number(document.querySelector('[data-presentation-mode="core"]')?.dataset.presentationGeneration) > previous, previousGeneration);
+    assert.equal(await page.locator('textarea').inputValue(), 'full line\n'.repeat(6000));
+    assert.deepEqual(errors, []);
+    results.push({kit,completeText:true,properties:true,actions:true,incompatibleFallback:true,updateFailureFallback:true,mountFailureFallback:true,largeTextPreserved:true});
+    await page.close();
+  }
+  await writeFile('/tmp/aibo-p4-specialized-presentation.json', JSON.stringify({results},null,2)+'\n');
+  console.log(JSON.stringify({results}));
+} finally { await browser.close(); await server.close(); }
