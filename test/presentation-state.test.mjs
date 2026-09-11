@@ -42,5 +42,5 @@ test('draft persistence does not discard older drafts and plugin panels share Co
   assert.doesNotMatch(app, /pluginDrafts|pluginTimeline|pluginSelection/);
   assert.match(app, /prompt=\{pluginSessionId \? composerText/);
   assert.match(app, /timeline=\{timeline\.filter/);
-  assert.match(app, /onSelectSession=\{guard\('onSelectSession', selectSession\)\}/);
+  assert.match(app, /onSelectSession=\{hostGuard\('onSelectSession', selectSession\)\}/);
 });

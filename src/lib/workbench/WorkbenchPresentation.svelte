@@ -4,9 +4,10 @@
   import { preflightDefaultPresentation } from './plugins/default-presentation';
   import { createPresentationController, type Renderer } from '../app/presentation-controller';
   import type { WorkbenchSnapshot, WorkbenchAction } from '../presentation/workbench-contract';
-  let { snapshot, windowId, children }: {
+  let { snapshot, windowId, children, suspended = false }: {
     snapshot: WorkbenchSnapshot;
     windowId: string;
+    suspended?: boolean;
     children: Snippet<[(id: string, callback: (...args: any[]) => any) => (...args: any[]) => any]>;
   } = $props();
   let target: HTMLDivElement;
@@ -23,7 +24,7 @@
     if (element && target.contains(element)) focus = element.dataset.presentationFocus ?? element.getAttribute('aria-label') ?? element.id ?? null;
   }
   function restoreFocus() {
-    if (!focus) return;
+    if (!focus || suspended) return;
     const element = [...target.querySelectorAll<HTMLElement>('[data-presentation-focus], [aria-label], [id]')]
       .find(item => (item.dataset.presentationFocus ?? item.getAttribute('aria-label') ?? item.id) === focus);
     (element ?? target.querySelector<HTMLElement>('textarea:not(:disabled),button:not(:disabled)'))?.focus();
@@ -92,7 +93,7 @@
     window.addEventListener('keydown', handleRecoveryKey, true);
     host = createPresentationController<WorkbenchSnapshot, WorkbenchAction>({
       view: $state.snapshot(snapshot), recovery: recovery(), fallback: renderer('standard'),
-      validateAction: (current, action) => Boolean(action && allowedActions.has(action.id) && action.workspaceId === current.workspaceId && action.sessionId === current.sessionId),
+      validateAction: (current, action) => Boolean(!suspended && action && allowedActions.has(action.id) && action.workspaceId === current.workspaceId && action.sessionId === current.sessionId),
       onAction() {}, onError: error => { failure = String(error); },
     });
     let layout = 'standard';
@@ -110,12 +111,12 @@
   <Button variant="ghost" onclick={restoreDefault} aria-label="恢复默认呈现" aria-keyshortcuts="Control+Shift+Backspace Meta+Shift+Backspace">恢复默认呈现</Button>
   {#if failure}<Card><p role="alert">呈现错误：{failure}</p></Card>{/if}
 </div>
-<div bind:this={target} onfocusin={rememberFocus} class="workbench-presentation" data-presentation-focus-target={focus} data-presentation-layout={instance?.layout} data-presentation-generation={instance?.generation} inert={switching} aria-busy={switching}>
+<div bind:this={target} onfocusin={rememberFocus} class="workbench-presentation" data-presentation-focus-target={focus} data-presentation-layout={instance?.layout} data-presentation-generation={instance?.generation} inert={switching || suspended} aria-busy={switching} style:display={suspended ? 'none' : 'flex'}>
   {#if instance}{#key instance.generation}{@render children(instance.guard)}{/key}{/if}
 </div>
 <style>
   .presentation-controls { position: fixed; right: 160px; top: 0; z-index: 100; display: flex; }
-  .workbench-presentation { height: 100%; }
+  .workbench-presentation { display: flex; flex-direction: column; flex: 1; min-width: 0; min-height: 0; }
   .workbench-presentation[data-presentation-layout='focus'] :global(.workspace-grid) { grid-template-columns: minmax(0, 1fr); }
   .workbench-presentation[data-presentation-layout='focus'] :global(.workspace-grid > :not(.timeline):not(.plugin-workspace)) { display: none; }
 </style>

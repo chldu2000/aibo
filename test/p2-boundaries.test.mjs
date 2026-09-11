@@ -7,8 +7,26 @@ test('workbench callbacks and writable bindings cross the generation gate', asyn
   const source = await readFile('src/App.svelte', 'utf8');
   const tree = parse(source, { modern: true });
   let guarded = 0;
+  let hostCallbacks = 0;
+  const hostComponents = new Set(['WindowTitlebar', 'SettingsPanel', 'DiagnosticsPanel', 'PluginWorkspacePanel']);
+  const foundHost = new Set();
   function visit(node, inside = false) {
     if (!node || typeof node !== 'object') return;
+    if (node.type === 'Component' && hostComponents.has(node.name)) {
+      assert.equal(inside, false, `${node.name} must survive renderer disposal`);
+      foundHost.add(node.name);
+      for (const attribute of node.attributes) {
+        if (!/^on[A-Z]/.test(attribute.name) || !attribute.value?.expression) continue;
+        const expression = attribute.value.expression;
+        if (node.name === 'PluginWorkspacePanel') {
+          assert.equal(expression.type, 'CallExpression');
+          assert.equal(expression.callee.name, 'hostGuard', 'host plugin actions retain context checks');
+        } else {
+          assert.notEqual(expression.callee?.name, 'guard', 'host controls cannot depend on renderer generation');
+        }
+        hostCallbacks++;
+      }
+    }
     if (node.type === 'SnippetBlock' && node.expression?.name === 'children') inside = true;
     if (inside && node.type === 'Attribute' && /^on[A-Z]/.test(node.name) && node.value?.expression) {
       assert.equal(node.value.expression.type, 'CallExpression', node.name);
@@ -26,7 +44,8 @@ test('workbench callbacks and writable bindings cross the generation gate', asyn
     }
   }
   visit(tree.fragment);
-  assert.ok(guarded >= 100, 'the complete workbench, including overlays, must be guarded');
+  assert.deepEqual(foundHost, hostComponents);
+  assert.ok(guarded + hostCallbacks >= 100, 'all workbench and independent host callbacks must be covered');
   assert.match(source, /listenToAgentEvents/);
   const shell = await readFile('src/lib/workbench/WorkbenchPresentation.svelte', 'utf8');
   assert.doesNotMatch(shell, /listenToAgentEvents|sendAgentPrompt|resumeAgentSession|cancelAgentTurn|pluginInstallationId/);

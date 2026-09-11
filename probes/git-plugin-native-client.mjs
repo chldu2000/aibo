@@ -23,6 +23,22 @@ try {
   check(output.output.items.some(item => item.path === 'native.txt'), 'background Git query');
   mount(App, { target: document.getElementById('app') });
   const workspaceButton = await until(() => document.querySelector('button[aria-label="workspace，可信"]'), 'workspace loaded'); workspaceButton.click();
+  for (const kit of ['shadcn', 'material3']) {
+    setUiKit(kit); await tick();
+    const titlebar = document.querySelector('[data-ui-component="window-titlebar"]');
+    button('插件').click();
+    const management = await until(() => document.querySelector('.host-plugin-region .plugin-workspace'), 'independent plugin management');
+    check(!management.closest('.workbench-presentation'), 'management is host owned');
+    document.querySelector('button[aria-label="切换工作台呈现"]').click();
+    await until(() => document.querySelector('[data-presentation-layout="focus"]'), 'switch with host management open');
+    check(document.querySelector('.host-plugin-region .plugin-workspace') === management, 'management survives layout remount');
+    check(document.querySelector('[data-ui-component="window-titlebar"]') === titlebar, 'window controls survive layout remount');
+    document.querySelector('button[aria-label="恢复默认呈现"]').click();
+    await until(() => document.querySelector('[data-presentation-layout="standard"]'), 'restore with management open');
+    check(document.querySelector('.host-plugin-region .plugin-workspace') === management, 'management survives recovery');
+    button('返回会话').click();
+    await until(() => !document.querySelector('.host-plugin-region'), 'return to workbench');
+  }
   const rendered = [];
   for (const [kit, title] of [['shadcn', 'Git 工作区变更'], ['material3', 'Git 工作区变更'], ['material3', 'Git 变更（独立声明包）']]) {
     setUiKit(kit); await tick();
@@ -59,5 +75,5 @@ try {
     check(catalog.find(item => item.installationId === saved.viewId)?.available === false, 'separate view reports missing dependency');
   }
   check((await invoke('list_sessions', { workspaceId: saved.workspaceId })).length === 0, 'no Agent session');
-  await report({ ok: true, stage: config.stage, saved, evidence: { backgroundGitWithoutUi: true, installedCommands: rendered, catalogViews, optionalIncompatibilityDiagnosed:true, disablingViewClosesSurface: true, noAgentSession: true, ...(config.stage === 1 ? { actualAppRestart: true, persistedCapabilityBinding: true, uninstallInvalidatesBothForms: true } : {}) } });
+  await report({ ok: true, stage: config.stage, saved, evidence: { backgroundGitWithoutUi: true, independentHostManagementBothSkins: true, installedCommands: rendered, catalogViews, optionalIncompatibilityDiagnosed:true, disablingViewClosesSurface: true, noAgentSession: true, ...(config.stage === 1 ? { actualAppRestart: true, persistedCapabilityBinding: true, uninstallInvalidatesBothForms: true } : {}) } });
 } catch (error) { await report({ ok: false, surface: document.querySelector('section.installed-workbench')?.textContent, error: JSON.stringify(error, Object.getOwnPropertyNames(error ?? {})) }); }

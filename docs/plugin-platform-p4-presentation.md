@@ -30,3 +30,19 @@ Ctrl/Cmd + Shift + Backspace。恢复请求可以覆盖正在排队的布局切�
 验证：`pnpm run verify` 通过；`node probes/workbench-recovery-browser.mjs`
 使用真实 WorkbenchPresentation 验证常驻按钮、快捷键、挂载失败回退和再次恢复。
 此批仅完成恢复控制路径；插件管理、授权、历史的独立宿主区域及完整布局装配仍待完成。
+
+### 独立宿主区域（第三批）
+
+标题栏、插件管理、设置与诊断移出可替换工作台。插件面板不再因为呈现切换而
+重新挂载；恢复控件在插件管理打开时仍可操作。工作台暂时隐藏但保持实例，
+关闭管理后继续显示。插件操作捕获宿主工作区/会话上下文，拒绝旧上下文回调；
+不再依赖 renderer generation。`workbench-contract.ts` 仍只描述可替换区域的
+快照与动作，宿主控件不会作为插件可调用的动作注册进去。
+
+授权、独立历史浏览与完整布局装配尚未完成，本批不据此勾选整项 P4 验收。
+
+第三批验证：`pnpm run verify`；`node probes/git-plugin-native.mjs` 的两次真实
+桌面启动均通过（含双皮肤宿主管理实例保留、Git 视图与重启恢复）；
+`node probes/host-shell-browser.mjs` 使用真实 App 与鼠标点击验证双皮肤入口可达，
+没有以 DOM `.click()` 代替遮挡检查。隐藏工作台的动作通道也暂停，防止迟到的
+界面回调在管理区域打开时继续触发。

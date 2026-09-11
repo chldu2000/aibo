@@ -466,6 +466,16 @@
     finally { pluginBusy = false; }
   }
 
+  // Host controls survive renderer generations, but never a workspace/session change.
+  function hostGuard(_id: string, callback: (...args: any[]) => any) {
+    const workspaceId = selectedWorkspaceId;
+    const sessionId = selectedSessionId;
+    return (...args: any[]) => {
+      if (workspaceId !== selectedWorkspaceId || sessionId !== selectedSessionId) return;
+      return callback(...args);
+    };
+  }
+
   function openPluginPanel(): void {
     settingsOpen = false;
     diagnosticsOpen = false;
@@ -2942,8 +2952,6 @@
 
 <svelte:window onkeydown={handleGlobalKeydown} />
 
-<WorkbenchPresentation windowId={presentationWindowId()} snapshot={{ workspaceId: selectedWorkspaceId, sessionId: selectedSessionId, draft: composerText, navigation: sidePanelView, timelineRevision: timeline.length }}>
-{#snippet children(guard)}
 <div
   class="app-shell"
   data-ui-kit={$activeUiKitName}
@@ -2952,16 +2960,66 @@
   style={$activeThemeStyle}
 >
   <WindowTitlebar
-    onOpenPlugins={guard('onOpenPlugins', openPluginPanel)}
-    onOpenSettings={guard('onOpenSettings', openSettingsPanel)}
-    onOpenDiagnostics={guard('onOpenDiagnostics', openDiagnosticsPanel)}
+    onOpenPlugins={openPluginPanel}
+    onOpenSettings={openSettingsPanel}
+    onOpenDiagnostics={openDiagnosticsPanel}
     sidePanelOpen={sidePanelOpen}
-    onToggleSidePanel={guard('onToggleSidePanel', toggleSidePanel)}
-    onToggleMaximize={guard('onToggleMaximize', toggleMaximizeWindow)}
-    onMinimize={guard('onMinimize', minimizeAppWindow)}
-    onClose={guard('onClose', closeAppWindow)}
+    onToggleSidePanel={toggleSidePanel}
+    onToggleMaximize={toggleMaximizeWindow}
+    onMinimize={minimizeAppWindow}
+    onClose={closeAppWindow}
   />
-
+  <SettingsPanel
+    open={settingsOpen}
+    uiKits={availableUiKits}
+    activeUiKitName={$activeUiKitName}
+    activeThemeId={$activeTheme.id}
+    onSelectUiKit={setUiKit}
+    onSelectTheme={setUiTheme}
+    onClose={() => (settingsOpen = false)}
+  />
+  <DiagnosticsPanel
+    open={diagnosticsOpen}
+    diagnostics={diagnostics}
+    desktop={desktop}
+    workspaceCount={workspaces.length}
+    sessionCount={sessions.length}
+    busy={busy}
+    onRefresh={() => void refresh()}
+    onClose={() => (diagnosticsOpen = false)}
+  />
+  {#if pluginsOpen}
+    <div class="host-plugin-region" style="display: grid; flex: 1; min-height: 0; overflow: auto;">
+      <PluginWorkspacePanel interaction={workbenchDrafts.plugin} onInteractionChange={hostGuard('onInteractionChange', (value) => { workbenchDrafts.plugin = value; })}
+      installations={pluginInstallations}
+      sessions={pluginSessions.filter((session) => session.workspaceId === selectedWorkspaceId)}
+      selectedSession={pluginSession?.workspaceId === selectedWorkspaceId ? pluginSession : null}
+      workspaceLabel={selectedWorkspace?.label ?? null}
+      packagePath={pluginPackagePath}
+      prompt={pluginSessionId ? composerText : ''}
+      timeline={timeline.filter((item) => item.sessionId === pluginSessionId)}
+      views={pluginViewSessionId === pluginSessionId ? pluginViews : []}
+      busy={pluginBusy}
+      error={pluginError || errorMessage || ''}
+      {desktop}
+      onPackagePathChange={hostGuard('onPackagePathChange', (value) => { pluginPackagePath = value; })}
+      onPromptChange={hostGuard('onPromptChange', (value) => { if (pluginSessionId) { composerText = value; handleComposerInput(value); } })}
+      onInstall={hostGuard('onInstall', () => void installPlugin())}
+      onEnabledChange={hostGuard('onEnabledChange', (id, enabled) => void enablePlugin(id, enabled))}
+      onUninstall={hostGuard('onUninstall', (id) => void uninstallPlugin(id))}
+      onCreateSession={hostGuard('onCreateSession', (installationId, agentId) => void createPluginSession(installationId, agentId))}
+      onSelectSession={hostGuard('onSelectSession', selectSession)}
+      onSend={hostGuard('onSend', () => void sendPluginPrompt())}
+      onCancel={hostGuard('onCancel', () => pluginSessionOperation(cancelAgentTurn))}
+      onResume={hostGuard('onResume', () => pluginSessionOperation(resumeAgentSession))}
+      onCloseSession={hostGuard('onCloseSession', () => pluginSessionOperation(closeAgentSession))}
+      onViewAction={hostGuard('onViewAction', (viewId, actionId, input) => void invokePluginAction(viewId, actionId, input))}
+      onClose={hostGuard('onClose', () => { pluginsOpen = false; })}
+    />
+    </div>
+  {/if}
+<WorkbenchPresentation suspended={pluginsOpen} windowId={presentationWindowId()} snapshot={{ workspaceId: selectedWorkspaceId, sessionId: selectedSessionId, draft: composerText, navigation: sidePanelView, timelineRevision: timeline.length }}>
+{#snippet children(guard)}
   <main
     bind:this={workspaceGridElement}
     class:inspector-hidden={!inspectorOpen}
@@ -3029,33 +3087,6 @@
           <workbench.default workspaceId={selectedWorkspaceId ?? ""} invocationScope={installedScope} contribution={installedTool} port={installedPort} stateStore={presentationState} onClose={guard('onClose', () => installedTool = null)} />
         {/await}
       {/key}
-    {:else if pluginsOpen}
-    <PluginWorkspacePanel interaction={workbenchDrafts.plugin} onInteractionChange={guard('onInteractionChange', (value) => { workbenchDrafts.plugin = value; })}
-      installations={pluginInstallations}
-      sessions={pluginSessions.filter((session) => session.workspaceId === selectedWorkspaceId)}
-      selectedSession={pluginSession?.workspaceId === selectedWorkspaceId ? pluginSession : null}
-      workspaceLabel={selectedWorkspace?.label ?? null}
-      packagePath={pluginPackagePath}
-      prompt={pluginSessionId ? composerText : ''}
-      timeline={timeline.filter((item) => item.sessionId === pluginSessionId)}
-      views={pluginViewSessionId === pluginSessionId ? pluginViews : []}
-      busy={pluginBusy}
-      error={pluginError || errorMessage || ''}
-      {desktop}
-      onPackagePathChange={guard('onPackagePathChange', (value) => { pluginPackagePath = value; })}
-      onPromptChange={guard('onPromptChange', (value) => { if (pluginSessionId) { composerText = value; handleComposerInput(value); } })}
-      onInstall={guard('onInstall', () => void installPlugin())}
-      onEnabledChange={guard('onEnabledChange', (id, enabled) => void enablePlugin(id, enabled))}
-      onUninstall={guard('onUninstall', (id) => void uninstallPlugin(id))}
-      onCreateSession={guard('onCreateSession', (installationId, agentId) => void createPluginSession(installationId, agentId))}
-      onSelectSession={guard('onSelectSession', selectSession)}
-      onSend={guard('onSend', () => void sendPluginPrompt())}
-      onCancel={guard('onCancel', () => pluginSessionOperation(cancelAgentTurn))}
-      onResume={guard('onResume', () => pluginSessionOperation(resumeAgentSession))}
-      onCloseSession={guard('onCloseSession', () => pluginSessionOperation(closeAgentSession))}
-      onViewAction={guard('onViewAction', (viewId, actionId, input) => void invokePluginAction(viewId, actionId, input))}
-      onClose={guard('onClose', () => { pluginsOpen = false; })}
-    />
     {:else if workspaceFileDiffPath !== null || workspaceFileDiff || workspaceFileDiffLoading || workspaceFileDiffError}
     <WorkspaceFileDiffPreview
       fileDiff={workspaceFileDiff}
@@ -3240,25 +3271,6 @@
     {/if}
   </main>
 
-  <SettingsPanel
-    open={settingsOpen}
-    uiKits={availableUiKits}
-    activeUiKitName={$activeUiKitName}
-    activeThemeId={$activeTheme.id}
-    onSelectUiKit={guard('onSelectUiKit', setUiKit)}
-    onSelectTheme={guard('onSelectTheme', setUiTheme)}
-    onClose={guard('onClose', () => (settingsOpen = false))}
-  />
-  <DiagnosticsPanel
-    open={diagnosticsOpen}
-    diagnostics={diagnostics}
-    desktop={desktop}
-    workspaceCount={workspaces.length}
-    sessionCount={sessions.length}
-    busy={busy}
-    onRefresh={guard('onRefresh', () => void refresh())}
-    onClose={guard('onClose', () => (diagnosticsOpen = false))}
-  />
   <CommandPalette
     open={commandPaletteOpen}
     commands={commandPaletteCommands}
@@ -3292,7 +3304,6 @@
     onConfirmPiNavigation={guard('onConfirmPiNavigation', (options) => void confirmPiTreeNavigation(options))}
     onCancelPiNavigation={guard('onCancelPiNavigation', () => (piNavigationEntryId = null))}
   />
-</div>
-
 {/snippet}
 </WorkbenchPresentation>
+</div>

@@ -197,3 +197,12 @@ P3 第五批通过 `InstalledWorkbench` 和纯数据端口接入已安装语义�
 [ADR-0007](./adr/0007-presentation-core-and-fallback.md)将必需核心语义与可选专业呈现分开。renderer-contract.ts 只包含纯数据描述；app/renderer-negotiation.ts 验证描述符并选择专业呈现或相同数据的核心视图。当前默认呈现通过可信构建模块登记，工作台和语义视图均在预检时验证合同；没有新增任意代码加载通道或 UiKitAdapter optional 成员。
 
 workbench 的架构检查递归覆盖子目录，包括 plugins 中的可信呈现模块；新目录不能绕过皮肤隔离、纯布局 CSS 或 API 依赖限制。正式专业呈现和完整槽位布局仍需后续验收。
+
+### P4：宿主区域与呈现实例边界
+
+`App.svelte` 直接持有窗口标题栏、插件管理、设置和诊断；这些组件位于
+`WorkbenchPresentation` 的 children snippet 之外，不随 renderer generation 销毁。
+插件管理打开时仅隐藏工作台内容，恢复控件仍可访问；关闭管理后显示同一工作台。
+插件管理操作通过宿主上下文门检查工作区和会话，窗口控制不依赖呈现实例授权。
+呈现内部的回调与可写绑定继续通过 generation gate。架构测试分别验证两种边界，
+禁止将宿主组件重新放回可替换 snippet。授权与历史的完整独立装配仍待后续实现。
