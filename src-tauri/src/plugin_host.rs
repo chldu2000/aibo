@@ -1933,8 +1933,12 @@ mod tests {
         assert_eq!(commands, json!({"commands":[]}));
         let invoked = host.invoke_capability(&session.id, "ext.dev.aibo.echo.refresh", json!({"label":"semantic"})).await.unwrap();
         assert_eq!(invoked, json!({"cursor":6}));
+        // The operation response does not acknowledge asynchronous view projection.
+        // Validate malformed input against the settled document, not a refresh race.
+        let _ = settled_view(&db, &session.id, confirmation_revision).await;
         assert!(host.invoke_capability(&session.id, "goal.manage", json!({})).await.unwrap_err().contains("no operation"));
-        assert!(host.invoke(&session.id, "dev.aibo.echo.tasks", "refresh", json!({})).await.unwrap_err().contains("input schema"));
+        let invalid_input = host.invoke(&session.id, "dev.aibo.echo.tasks", "refresh", json!({})).await.unwrap_err();
+        assert!(invalid_input.contains("input schema"), "{invalid_input}");
         assert!(host.invoke(&session.id, "dev.aibo.echo.tasks", "missing", json!({})).await.unwrap_err().contains("undeclared view action"));
         host.send(&session.id, "reasoning fixture").await.unwrap();
         wait_turn(&db, &session.id, "completed").await;
