@@ -1,5 +1,7 @@
 mod compatibility;
 mod project_actions;
+mod workspace_git;
+use workspace_git::apply_git_index_action;
 mod artifact;
 mod change_set;
 mod codex;
@@ -3152,59 +3154,6 @@ async fn restore_git_file_baseline(
     })
 }
 
-fn apply_git_index_action(
-    workspace_path: &str,
-    path: &str,
-    action: &str,
-) -> Result<GitFileActionResult, CoreError> {
-    crate::workspace_guard::canonicalize_target(Path::new(workspace_path), Path::new(path))
-        .map_err(CoreError::InvalidWorkspacePath)?;
-    if !matches!(action, "stage" | "unstage") {
-        return Err(CoreError::InvalidWorkspacePath(
-            "unsupported Git index action".to_owned(),
-        ));
-    }
-    let mut command = Command::new("git");
-    command.args(["-C", workspace_path]);
-    if action == "stage" {
-        command.args(["add", "--", path]);
-    } else {
-        let has_head = Command::new("git")
-            .args(["-C", workspace_path, "rev-parse", "--verify", "HEAD"])
-            .output()
-            .is_ok_and(|output| output.status.success());
-        if has_head {
-            command.args(["restore", "--staged", "--", path]);
-        } else {
-            command.args(["rm", "--cached", "--ignore-unmatch", "--", path]);
-        }
-    }
-    let output = command
-        .output()
-        .map_err(|error| CoreError::Database(format!("run Git file action: {error}")))?;
-    let message = String::from_utf8_lossy(if output.status.success() {
-        &output.stdout
-    } else {
-        &output.stderr
-    })
-    .trim()
-    .to_owned();
-    Ok(GitFileActionResult {
-        path: path.to_owned(),
-        action: action.to_owned(),
-        applied: output.status.success(),
-        message: if message.is_empty() {
-            if output.status.success() {
-                "Git 操作已完成".to_owned()
-            } else {
-                format!("git exited with {}", output.status)
-            }
-        } else {
-            message
-        },
-    })
-}
-
 #[tauri::command]
 async fn apply_workspace_git_file_action(
     workspace_id: String,
@@ -3212,63 +3161,7 @@ async fn apply_workspace_git_file_action(
     action: String,
     state: State<'_, AppState>,
 ) -> Result<GitFileActionResult, CoreError> {
-    let workspace = workspace_by_id(&state.db, &workspace_id).await?;
-    if workspace.trust != "trusted" {
-        return Err(CoreError::WorkspaceTrustRequired);
-    }
-    apply_git_index_action(&workspace.path, &path, &action)
-}
-
-fn run_git_workspace_action(
-    workspace_path: &str,
-    action: &str,
-) -> Result<GitWorkspaceActionResult, CoreError> {
-    let mut command = Command::new("git");
-    command.args(["-C", workspace_path]);
-    match action {
-        "stage_all" => {
-            command.args(["add", "-A", "--", "."]);
-        }
-        "unstage_all" => {
-            let has_head = Command::new("git")
-                .args(["-C", workspace_path, "rev-parse", "--verify", "HEAD"])
-                .output()
-                .is_ok_and(|output| output.status.success());
-            if has_head {
-                command.args(["restore", "--staged", "--", "."]);
-            } else {
-                command.args(["rm", "--cached", "-r", "--ignore-unmatch", "--", "."]);
-            }
-        }
-        _ => {
-            return Err(CoreError::InvalidWorkspacePath(
-                "unsupported Git workspace action".to_owned(),
-            ));
-        }
-    }
-    let output = command
-        .output()
-        .map_err(|error| CoreError::Database(format!("run Git workspace action: {error}")))?;
-    let message = String::from_utf8_lossy(if output.status.success() {
-        &output.stdout
-    } else {
-        &output.stderr
-    })
-    .trim()
-    .to_owned();
-    Ok(GitWorkspaceActionResult {
-        action: action.to_owned(),
-        applied: output.status.success(),
-        message: if message.is_empty() {
-            if output.status.success() {
-                "Git 操作已完成".to_owned()
-            } else {
-                format!("git exited with {}", output.status)
-            }
-        } else {
-            message
-        },
-    })
+    workspace_git::apply_workspace_git_file_action(&state.db, workspace_id, path, action).await
 }
 
 #[tauri::command]
@@ -3277,57 +3170,7 @@ async fn apply_workspace_git_action(
     action: String,
     state: State<'_, AppState>,
 ) -> Result<GitWorkspaceActionResult, CoreError> {
-    let workspace = workspace_by_id(&state.db, &workspace_id).await?;
-    if workspace.trust != "trusted" {
-        return Err(CoreError::WorkspaceTrustRequired);
-    }
-    run_git_workspace_action(&workspace.path, &action)
-}
-
-fn commit_workspace(workspace_path: &str, message: &str) -> Result<GitCommitResult, CoreError> {
-    let trimmed = message.trim();
-    if trimmed.is_empty() {
-        return Err(CoreError::Database("提交信息不能为空".to_owned()));
-    }
-    let staged = Command::new("git")
-        .args(["-C", workspace_path, "diff", "--cached", "--quiet"])
-        .output()
-        .map_err(|error| CoreError::Database(format!("check staged Git changes: {error}")))?;
-    if staged.status.success() {
-        return Ok(GitCommitResult {
-            committed: false,
-            hash: None,
-            message: "没有已暂存的更改可提交".to_owned(),
-        });
-    }
-    let output = Command::new("git")
-        .args(["-C", workspace_path, "commit", "-m", trimmed])
-        .output()
-        .map_err(|error| CoreError::Database(format!("create Git commit: {error}")))?;
-    if !output.status.success() {
-        let message = String::from_utf8_lossy(&output.stderr).trim().to_owned();
-        return Ok(GitCommitResult {
-            committed: false,
-            hash: None,
-            message: if message.is_empty() {
-                format!("git commit exited with {}", output.status)
-            } else {
-                message
-            },
-        });
-    }
-    let hash = Command::new("git")
-        .args(["-C", workspace_path, "rev-parse", "HEAD"])
-        .output()
-        .ok()
-        .filter(|value| value.status.success())
-        .map(|value| String::from_utf8_lossy(&value.stdout).trim().to_owned())
-        .filter(|value| !value.is_empty());
-    Ok(GitCommitResult {
-        committed: true,
-        hash,
-        message: String::from_utf8_lossy(&output.stdout).trim().to_owned(),
-    })
+    workspace_git::apply_workspace_git_action(&state.db, workspace_id, action).await
 }
 
 #[tauri::command]
@@ -3336,59 +3179,7 @@ async fn commit_workspace_changes(
     message: String,
     state: State<'_, AppState>,
 ) -> Result<GitCommitResult, CoreError> {
-    let workspace = workspace_by_id(&state.db, &workspace_id).await?;
-    if workspace.trust != "trusted" {
-        return Err(CoreError::WorkspaceTrustRequired);
-    }
-    commit_workspace(&workspace.path, &message)
-}
-
-fn list_git_branches(workspace_path: &str) -> Result<Vec<GitBranch>, CoreError> {
-    let output = Command::new("git")
-        .args([
-            "-C",
-            workspace_path,
-            "for-each-ref",
-            "--format=%(refname:short)%09%(HEAD)%09%(objectname)",
-            "refs/heads",
-        ])
-        .output()
-        .map_err(|error| CoreError::Database(format!("list Git branches: {error}")))?;
-    if !output.status.success() {
-        let message = String::from_utf8_lossy(&output.stderr).trim().to_owned();
-        return Err(CoreError::Database(if message.is_empty() {
-            format!("git branch listing exited with {}", output.status)
-        } else {
-            message
-        }));
-    }
-    let mut branches = String::from_utf8_lossy(&output.stdout)
-        .lines()
-        .filter_map(|line| {
-            let mut fields = line.split('\t');
-            let name = fields.next()?.trim();
-            if name.is_empty() {
-                return None;
-            }
-            let marker = fields.next().unwrap_or_default().trim();
-            let commit = fields
-                .next()
-                .map(str::trim)
-                .filter(|value| !value.is_empty());
-            Some(GitBranch {
-                name: name.to_owned(),
-                current: marker == "*",
-                commit: commit.map(ToOwned::to_owned),
-            })
-        })
-        .collect::<Vec<_>>();
-    branches.sort_by(|left, right| {
-        right
-            .current
-            .cmp(&left.current)
-            .then_with(|| left.name.cmp(&right.name))
-    });
-    Ok(branches)
+    workspace_git::commit_workspace_changes(&state.db, workspace_id, message).await
 }
 
 #[tauri::command]
@@ -3396,18 +3187,7 @@ async fn list_workspace_git_branches(
     workspace_id: String,
     state: State<'_, AppState>,
 ) -> Result<Vec<GitBranch>, CoreError> {
-    let workspace = workspace_by_id(&state.db, &workspace_id).await?;
-    list_git_branches(&workspace.path)
-}
-
-fn validate_git_ref_name(name: &str) -> Result<(), CoreError> {
-    if name.trim().is_empty() || name.starts_with('-') || name.contains('\n') || name.contains('\r')
-    {
-        return Err(CoreError::InvalidWorkspacePath(
-            "无效的 Git 分支名称".to_owned(),
-        ));
-    }
-    Ok(())
+    workspace_git::list_workspace_git_branches(&state.db, workspace_id).await
 }
 
 #[tauri::command]
@@ -3416,35 +3196,7 @@ async fn checkout_workspace_git_branch(
     branch: String,
     state: State<'_, AppState>,
 ) -> Result<GitWorkspaceActionResult, CoreError> {
-    validate_git_ref_name(&branch)?;
-    let workspace = workspace_by_id(&state.db, &workspace_id).await?;
-    if workspace.trust != "trusted" {
-        return Err(CoreError::WorkspaceTrustRequired);
-    }
-    let output = Command::new("git")
-        .args(["-C", &workspace.path, "switch", "--", &branch])
-        .output()
-        .map_err(|error| CoreError::Database(format!("switch Git branch: {error}")))?;
-    let message = String::from_utf8_lossy(if output.status.success() {
-        &output.stdout
-    } else {
-        &output.stderr
-    })
-    .trim()
-    .to_owned();
-    Ok(GitWorkspaceActionResult {
-        action: "checkout".to_owned(),
-        applied: output.status.success(),
-        message: if message.is_empty() {
-            if output.status.success() {
-                format!("已切换到 {branch}")
-            } else {
-                format!("git switch exited with {}", output.status)
-            }
-        } else {
-            message
-        },
-    })
+    workspace_git::checkout_workspace_git_branch(&state.db, workspace_id, branch).await
 }
 
 #[tauri::command]
@@ -3453,78 +3205,7 @@ async fn create_workspace_git_branch(
     branch: String,
     state: State<'_, AppState>,
 ) -> Result<GitWorkspaceActionResult, CoreError> {
-    validate_git_ref_name(&branch)?;
-    let workspace = workspace_by_id(&state.db, &workspace_id).await?;
-    if workspace.trust != "trusted" {
-        return Err(CoreError::WorkspaceTrustRequired);
-    }
-    let output = Command::new("git")
-        .args(["-C", &workspace.path, "switch", "-c", &branch])
-        .output()
-        .map_err(|error| CoreError::Database(format!("create Git branch: {error}")))?;
-    let message = String::from_utf8_lossy(if output.status.success() {
-        &output.stdout
-    } else {
-        &output.stderr
-    })
-    .trim()
-    .to_owned();
-    Ok(GitWorkspaceActionResult {
-        action: "create_branch".to_owned(),
-        applied: output.status.success(),
-        message: if message.is_empty() {
-            if output.status.success() {
-                format!("已创建并切换到 {branch}")
-            } else {
-                format!("git switch -c exited with {}", output.status)
-            }
-        } else {
-            message
-        },
-    })
-}
-
-fn list_git_history(workspace_path: &str, limit: u32) -> Result<Vec<GitCommit>, CoreError> {
-    let limit = limit.clamp(1, 100);
-    let output = Command::new("git")
-        .args([
-            "-C",
-            workspace_path,
-            "log",
-            &format!("-{limit}"),
-            "--date=iso-strict",
-            "--format=%H%x09%h%x09%s%x09%an%x09%aI",
-        ])
-        .output()
-        .map_err(|error| CoreError::Database(format!("read Git history: {error}")))?;
-    if !output.status.success() {
-        let message = String::from_utf8_lossy(&output.stderr).trim().to_owned();
-        if message.contains("does not have any commits") || message.contains("bad default revision")
-        {
-            return Ok(Vec::new());
-        }
-        return Err(CoreError::Database(if message.is_empty() {
-            format!("git log exited with {}", output.status)
-        } else {
-            message
-        }));
-    }
-    Ok(String::from_utf8_lossy(&output.stdout)
-        .lines()
-        .filter_map(|line| {
-            let fields = line.split('\t').collect::<Vec<_>>();
-            if fields.len() < 5 || fields[0].is_empty() {
-                return None;
-            }
-            Some(GitCommit {
-                hash: fields[0].to_owned(),
-                short_hash: fields[1].to_owned(),
-                subject: fields[2].to_owned(),
-                author: fields[3].to_owned(),
-                authored_at: fields[4].to_owned(),
-            })
-        })
-        .collect())
+    workspace_git::create_workspace_git_branch(&state.db, workspace_id, branch).await
 }
 
 #[tauri::command]
@@ -3533,70 +3214,7 @@ async fn list_workspace_git_history(
     limit: Option<u32>,
     state: State<'_, AppState>,
 ) -> Result<Vec<GitCommit>, CoreError> {
-    let workspace = workspace_by_id(&state.db, &workspace_id).await?;
-    list_git_history(&workspace.path, limit.unwrap_or(30))
-}
-
-fn git_commit_files(workspace_path: &str, commit: &str) -> Result<Vec<GitCommitFile>, CoreError> {
-    let output = Command::new("git")
-        .args([
-            "-C",
-            workspace_path,
-            "diff-tree",
-            "--root",
-            "--no-commit-id",
-            "--name-status",
-            "-r",
-            "-z",
-            "-M",
-            commit,
-        ])
-        .output()
-        .map_err(|error| CoreError::Database(format!("read Git commit files: {error}")))?;
-    if !output.status.success() {
-        return Err(CoreError::Database(
-            String::from_utf8_lossy(&output.stderr).trim().to_owned(),
-        ));
-    }
-
-    let fields = output
-        .stdout
-        .split(|byte| *byte == 0)
-        .filter(|field| !field.is_empty())
-        .collect::<Vec<_>>();
-    let mut files = Vec::new();
-    let mut index = 0;
-    while index < fields.len() {
-        let status = String::from_utf8_lossy(fields[index]);
-        index += 1;
-        let Some(path) = fields.get(index) else { break };
-        index += 1;
-        let code = status.chars().next().unwrap_or('M');
-        let (previous_path, path) = if matches!(code, 'R' | 'C') {
-            let Some(new_path) = fields.get(index) else {
-                break;
-            };
-            index += 1;
-            (
-                Some(String::from_utf8_lossy(path).into_owned()),
-                String::from_utf8_lossy(new_path).into_owned(),
-            )
-        } else {
-            (None, String::from_utf8_lossy(path).into_owned())
-        };
-        files.push(GitCommitFile {
-            path,
-            previous_path,
-            kind: match code {
-                'A' => "added",
-                'D' => "deleted",
-                'R' | 'C' => "renamed",
-                _ => "modified",
-            }
-            .to_owned(),
-        });
-    }
-    Ok(files)
+    workspace_git::list_workspace_git_history(&state.db, workspace_id, limit).await
 }
 
 #[tauri::command]
@@ -3607,17 +3225,7 @@ async fn list_workspace_git_commit_files(
     limit: Option<usize>,
     state: State<'_, AppState>,
 ) -> Result<GitCommitFileList, CoreError> {
-    validate_git_ref_name(&commit)?;
-    let workspace = workspace_by_id(&state.db, &workspace_id).await?;
-    let files = git_commit_files(&workspace.path, &commit)?;
-    let total = files.len();
-    let offset = offset.unwrap_or(0).min(total);
-    let limit = limit.unwrap_or(10).clamp(1, 100);
-    Ok(GitCommitFileList {
-        commit,
-        files: files.into_iter().skip(offset).take(limit).collect(),
-        total,
-    })
+    workspace_git::list_workspace_git_commit_files(&state.db, workspace_id, commit, offset, limit).await
 }
 
 #[tauri::command]
@@ -3627,118 +3235,7 @@ async fn get_workspace_git_commit_file_diff(
     path: String,
     state: State<'_, AppState>,
 ) -> Result<WorkspaceFileDiff, CoreError> {
-    validate_git_ref_name(&commit)?;
-    if Path::new(&path).is_absolute()
-        || Path::new(&path)
-            .components()
-            .any(|part| matches!(part, std::path::Component::ParentDir))
-    {
-        return Err(CoreError::InvalidWorkspacePath(
-            "无效的提交文件路径".to_owned(),
-        ));
-    }
-    let workspace = workspace_by_id(&state.db, &workspace_id).await?;
-    let mut command = Command::new("git");
-    let output = command_output_bounded(
-        command.args([
-            "-C",
-            &workspace.path,
-            "show",
-            "--no-ext-diff",
-            "--no-color",
-            "--format=",
-            "--unified=3",
-            &commit,
-            "--",
-            &path,
-        ]),
-        WORKSPACE_DIFF_MAX_BYTES + 1,
-    )
-    .map_err(|error| CoreError::Database(format!("read Git commit diff: {error}")))?;
-    if !output.status.success() {
-        return Err(CoreError::Database(
-            String::from_utf8_lossy(&output.stderr).trim().to_owned(),
-        ));
-    }
-    let truncated = output.stdout_truncated;
-    let diff = if truncated {
-        truncate_diff_with_marker(
-            &String::from_utf8_lossy(&output.stdout),
-            WORKSPACE_DIFF_MAX_BYTES,
-        )
-    } else {
-        String::from_utf8_lossy(&output.stdout).into_owned()
-    };
-    Ok(WorkspaceFileDiff {
-        path,
-        staged: false,
-        available: !diff.is_empty(),
-        truncated,
-        hunks: parse_unified_hunks(&diff),
-        diff,
-        reason: Some("该提交中的文件没有可展示的文本差异".to_owned())
-            .filter(|_| output.stdout.is_empty()),
-    })
-}
-
-fn git_remote_status(workspace_path: &str) -> Result<GitRemoteStatus, CoreError> {
-    let branch = Command::new("git")
-        .args(["-C", workspace_path, "branch", "--show-current"])
-        .output()
-        .map_err(|error| CoreError::Database(format!("read Git branch: {error}")))?;
-    let branch = String::from_utf8_lossy(&branch.stdout).trim().to_owned();
-    let branch = (!branch.is_empty()).then_some(branch);
-    let upstream = Command::new("git")
-        .args([
-            "-C",
-            workspace_path,
-            "rev-parse",
-            "--abbrev-ref",
-            "--symbolic-full-name",
-            "@{upstream}",
-        ])
-        .output()
-        .ok()
-        .filter(|value| value.status.success())
-        .map(|value| String::from_utf8_lossy(&value.stdout).trim().to_owned())
-        .filter(|value| !value.is_empty());
-    let Some(upstream_name) = upstream.clone() else {
-        return Ok(GitRemoteStatus {
-            branch,
-            upstream: None,
-            ahead: 0,
-            behind: 0,
-        });
-    };
-    let counts = Command::new("git")
-        .args([
-            "-C",
-            workspace_path,
-            "rev-list",
-            "--left-right",
-            "--count",
-            "HEAD...@{upstream}",
-        ])
-        .output()
-        .map_err(|error| CoreError::Database(format!("read Git remote status: {error}")))?;
-    if !counts.status.success() {
-        return Ok(GitRemoteStatus {
-            branch,
-            upstream: Some(upstream_name),
-            ahead: 0,
-            behind: 0,
-        });
-    }
-    let values = String::from_utf8_lossy(&counts.stdout)
-        .split_whitespace()
-        .filter_map(|value| value.parse::<u32>().ok())
-        .collect::<Vec<_>>();
-    Ok(GitRemoteStatus {
-        branch,
-        upstream: Some(upstream_name),
-        ahead: values.first().copied().unwrap_or(0),
-        behind: values.get(1).copied().unwrap_or(0),
-    })
+    workspace_git::get_workspace_git_commit_file_diff(&state.db, workspace_id, commit, path).await
 }
 
 #[tauri::command]
@@ -3746,8 +3243,7 @@ async fn get_workspace_git_remote_status(
     workspace_id: String,
     state: State<'_, AppState>,
 ) -> Result<GitRemoteStatus, CoreError> {
-    let workspace = workspace_by_id(&state.db, &workspace_id).await?;
-    git_remote_status(&workspace.path)
+    workspace_git::get_workspace_git_remote_status(&state.db, workspace_id).await
 }
 
 #[tauri::command]
@@ -3756,51 +3252,7 @@ async fn sync_workspace_git(
     action: String,
     state: State<'_, AppState>,
 ) -> Result<GitWorkspaceActionResult, CoreError> {
-    let workspace = workspace_by_id(&state.db, &workspace_id).await?;
-    if workspace.trust != "trusted" {
-        return Err(CoreError::WorkspaceTrustRequired);
-    }
-    let args: &[&str] = match action.as_str() {
-        "fetch" => &["fetch", "--all", "--prune"],
-        "pull" => &["pull", "--ff-only"],
-        "push" => &["push"],
-        _ => {
-            return Err(CoreError::InvalidWorkspacePath(
-                "unsupported Git sync action".to_owned(),
-            ));
-        }
-    };
-    let mut command = TokioCommand::new("git");
-    command
-        .args(["-C", &workspace.path])
-        .args(args)
-        .env("GIT_TERMINAL_PROMPT", "0")
-        .env("GCM_INTERACTIVE", "Never")
-        .kill_on_drop(true);
-    let output = tokio_time::timeout(Duration::from_secs(120), command.output())
-        .await
-        .map_err(|_| CoreError::Database(format!("Git {action} timed out after 120 seconds")))?
-        .map_err(|error| CoreError::Database(format!("run Git {action}: {error}")))?;
-    let message = String::from_utf8_lossy(if output.status.success() {
-        &output.stdout
-    } else {
-        &output.stderr
-    })
-    .trim()
-    .to_owned();
-    Ok(GitWorkspaceActionResult {
-        action,
-        applied: output.status.success(),
-        message: if message.is_empty() {
-            if output.status.success() {
-                "Git 同步已完成".to_owned()
-            } else {
-                format!("git exited with {}", output.status)
-            }
-        } else {
-            message
-        },
-    })
+    workspace_git::sync_workspace_git(&state.db, workspace_id, action).await
 }
 
 #[tauri::command]
@@ -3808,32 +3260,7 @@ async fn list_workspace_git_stashes(
     workspace_id: String,
     state: State<'_, AppState>,
 ) -> Result<Vec<GitStashEntry>, CoreError> {
-    let workspace = workspace_by_id(&state.db, &workspace_id).await?;
-    let output = Command::new("git")
-        .args([
-            "-C",
-            &workspace.path,
-            "stash",
-            "list",
-            "--format=%gd%x09%gs",
-        ])
-        .output()
-        .map_err(|error| CoreError::Database(format!("list Git stashes: {error}")))?;
-    if !output.status.success() {
-        return Err(CoreError::Database(
-            String::from_utf8_lossy(&output.stderr).trim().to_owned(),
-        ));
-    }
-    Ok(String::from_utf8_lossy(&output.stdout)
-        .lines()
-        .filter_map(|line| {
-            let (reference, message) = line.split_once('\t')?;
-            Some(GitStashEntry {
-                reference: reference.to_owned(),
-                message: message.to_owned(),
-            })
-        })
-        .collect())
+    workspace_git::list_workspace_git_stashes(&state.db, workspace_id).await
 }
 
 #[tauri::command]
@@ -3842,35 +3269,7 @@ async fn apply_workspace_git_stash(
     reference: String,
     state: State<'_, AppState>,
 ) -> Result<GitWorkspaceActionResult, CoreError> {
-    validate_git_ref_name(&reference)?;
-    let workspace = workspace_by_id(&state.db, &workspace_id).await?;
-    if workspace.trust != "trusted" {
-        return Err(CoreError::WorkspaceTrustRequired);
-    }
-    let output = Command::new("git")
-        .args(["-C", &workspace.path, "stash", "apply", &reference])
-        .output()
-        .map_err(|error| CoreError::Database(format!("apply Git stash: {error}")))?;
-    let message = String::from_utf8_lossy(if output.status.success() {
-        &output.stdout
-    } else {
-        &output.stderr
-    })
-    .trim()
-    .to_owned();
-    Ok(GitWorkspaceActionResult {
-        action: "stash_apply".to_owned(),
-        applied: output.status.success(),
-        message: if message.is_empty() {
-            if output.status.success() {
-                "已应用暂存栈".to_owned()
-            } else {
-                format!("git stash apply exited with {}", output.status)
-            }
-        } else {
-            message
-        },
-    })
+    workspace_git::apply_workspace_git_stash(&state.db, workspace_id, reference).await
 }
 
 #[tauri::command]
@@ -3879,35 +3278,7 @@ async fn stash_workspace_git(
     message: Option<String>,
     state: State<'_, AppState>,
 ) -> Result<GitWorkspaceActionResult, CoreError> {
-    let workspace = workspace_by_id(&state.db, &workspace_id).await?;
-    if workspace.trust != "trusted" {
-        return Err(CoreError::WorkspaceTrustRequired);
-    }
-    let message = message.unwrap_or_else(|| "aibo workspace changes".to_owned());
-    let output = Command::new("git")
-        .args(["-C", &workspace.path, "stash", "push", "-u", "-m", &message])
-        .output()
-        .map_err(|error| CoreError::Database(format!("create Git stash: {error}")))?;
-    let text = String::from_utf8_lossy(if output.status.success() {
-        &output.stdout
-    } else {
-        &output.stderr
-    })
-    .trim()
-    .to_owned();
-    Ok(GitWorkspaceActionResult {
-        action: "stash_push".to_owned(),
-        applied: output.status.success(),
-        message: if text.is_empty() {
-            if output.status.success() {
-                "已保存暂存栈".to_owned()
-            } else {
-                format!("git stash push exited with {}", output.status)
-            }
-        } else {
-            text
-        },
-    })
+    workspace_git::stash_workspace_git(&state.db, workspace_id, message).await
 }
 
 #[tauri::command]
