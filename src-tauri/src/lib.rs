@@ -3379,7 +3379,8 @@ async fn apply_git_file_action(
             message: "已恢复到本轮开始前的文件内容".to_owned(),
         });
     }
-    apply_git_index_action(&workspace.path, &path, &action)
+    let _write = workspace_writes::acquire(&state.db, &workspace.id, Path::new(&workspace.path)).await?;
+    apply_git_index_action(&workspace.path, &path, &action).await
 }
 
 #[tauri::command]
@@ -5220,8 +5221,8 @@ mod tests {
         assert!(diff.ends_with("diff 已截断"));
     }
 
-    #[test]
-    fn workspace_git_index_actions_stage_and_unstage_files() {
+    #[tokio::test]
+    async fn workspace_git_index_actions_stage_and_unstage_files() {
         let root = test_directory();
         let root_path = root.to_str().unwrap();
         fs::write(root.join("tracked.txt"), "baseline").expect("tracked file");
@@ -5253,7 +5254,7 @@ mod tests {
         fs::write(root.join("tracked.txt"), "changed").expect("modified file");
 
         assert!(
-            super::apply_git_index_action(root_path, "tracked.txt", "stage")
+            super::apply_git_index_action(root_path, "tracked.txt", "stage").await
                 .expect("stage")
                 .applied
         );
@@ -5264,7 +5265,7 @@ mod tests {
         assert!(String::from_utf8_lossy(&staged.stdout).starts_with("M "));
 
         assert!(
-            super::apply_git_index_action(root_path, "tracked.txt", "unstage")
+            super::apply_git_index_action(root_path, "tracked.txt", "unstage").await
                 .expect("unstage")
                 .applied
         );

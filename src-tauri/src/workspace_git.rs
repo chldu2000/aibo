@@ -4,60 +4,56 @@ use crate::{CoreError, GitFileActionResult, GitWorkspaceActionResult, GitCommitR
     GitStashEntry, workspace_by_id, command_output_bounded, WORKSPACE_DIFF_MAX_BYTES,
     truncate_diff_with_marker, parse_unified_hunks};
 use sqlx::SqlitePool;
-use std::{path::Path, process::Command, time::Duration};
+use std::{path::Path, process::Command, time::{Duration, Instant}};
 use tokio::process::Command as TokioCommand;
 
-pub(crate) fn apply_git_index_action(
-    workspace_path: &str,
-    path: &str,
-    action: &str,
+/// One deadline for preconditions, mutation, and result inspection.
+struct GitOperation<'a> {
+    workspace_path: &'a str,
+    deadline: Instant,
+}
+impl<'a> GitOperation<'a> {
+    fn new(workspace_path: &'a str) -> Self {
+        Self { workspace_path, deadline: Instant::now() + Duration::from_secs(120) }
+    }
+    async fn run(&self, args: &[&str], action: &str) -> Result<(crate::controlled_process::ProcessResult, String), CoreError> {
+        capture_git_operation(git_command(self.workspace_path, args), action, self.deadline.saturating_duration_since(Instant::now())).await
+    }
+    async fn action(&self, args: &[&str], action: &str) -> Result<GitWorkspaceActionResult, CoreError> {
+        let (output, message) = self.run(args, action).await?;
+        Ok(GitWorkspaceActionResult { action: action.into(), applied: output.success, message })
+    }
+    async fn has_head(&self) -> Result<bool, CoreError> {
+        let (output, message) = self.run(&["rev-parse", "--verify", "--quiet", "HEAD"], "inspect_head").await?;
+        match output.exit_code {
+            Some(0) => Ok(true), Some(1) => Ok(false),
+            _ => Err(CoreError::Database(format!("Unable to inspect Git HEAD: {message}"))),
+        }
+    }
+}
+
+fn git_command(workspace_path: &str, args: &[&str]) -> TokioCommand {
+    let mut command = TokioCommand::new("git");
+    command.args(["--literal-pathspecs", "-C", workspace_path]).args(args)
+        .env("GIT_TERMINAL_PROMPT", "0").env("GCM_INTERACTIVE", "Never");
+    command
+}
+
+pub(crate) async fn apply_git_index_action(
+    workspace_path: &str, path: &str, action: &str,
 ) -> Result<GitFileActionResult, CoreError> {
     crate::workspace_guard::canonicalize_target(Path::new(workspace_path), Path::new(path))
         .map_err(CoreError::InvalidWorkspacePath)?;
-    if !matches!(action, "stage" | "unstage") {
-        return Err(CoreError::InvalidWorkspacePath(
-            "unsupported Git index action".to_owned(),
-        ));
-    }
-    let mut command = Command::new("git");
-    command.args(["-C", workspace_path]);
-    if action == "stage" {
-        command.args(["add", "--", path]);
-    } else {
-        let has_head = Command::new("git")
-            .args(["-C", workspace_path, "rev-parse", "--verify", "HEAD"])
-            .output()
-            .is_ok_and(|output| output.status.success());
-        if has_head {
-            command.args(["restore", "--staged", "--", path]);
-        } else {
-            command.args(["rm", "--cached", "--ignore-unmatch", "--", path]);
+    let operation = GitOperation::new(workspace_path);
+    let result = match action {
+        "stage" => operation.action(&["add", "--", path], action).await?,
+        "unstage" => {
+            if operation.has_head().await? { operation.action(&["restore", "--staged", "--", path], action).await? }
+            else { operation.action(&["rm", "--cached", "--ignore-unmatch", "--", path], action).await? }
         }
-    }
-    let output = command
-        .output()
-        .map_err(|error| CoreError::Database(format!("run Git file action: {error}")))?;
-    let message = String::from_utf8_lossy(if output.status.success() {
-        &output.stdout
-    } else {
-        &output.stderr
-    })
-    .trim()
-    .to_owned();
-    Ok(GitFileActionResult {
-        path: path.to_owned(),
-        action: action.to_owned(),
-        applied: output.status.success(),
-        message: if message.is_empty() {
-            if output.status.success() {
-                "Git 操作已完成".to_owned()
-            } else {
-                format!("git exited with {}", output.status)
-            }
-        } else {
-            message
-        },
-    })
+        _ => return Err(CoreError::InvalidWorkspacePath("unsupported Git index action".into())),
+    };
+    Ok(GitFileActionResult { path: path.into(), action: action.into(), applied: result.applied, message: result.message })
 }
 
 pub(crate) async fn apply_workspace_git_file_action(
@@ -71,59 +67,19 @@ pub(crate) async fn apply_workspace_git_file_action(
         return Err(CoreError::WorkspaceTrustRequired);
     }
     let _write = crate::workspace_writes::acquire(db, &workspace_id, std::path::Path::new(&workspace.path)).await?;
-    apply_git_index_action(&workspace.path, &path, &action)
+    apply_git_index_action(&workspace.path, &path, &action).await
 }
 
-fn run_git_workspace_action(
-    workspace_path: &str,
-    action: &str,
-) -> Result<GitWorkspaceActionResult, CoreError> {
-    let mut command = Command::new("git");
-    command.args(["-C", workspace_path]);
+async fn run_git_workspace_action(workspace_path: &str, action: &str) -> Result<GitWorkspaceActionResult, CoreError> {
+    let operation = GitOperation::new(workspace_path);
     match action {
-        "stage_all" => {
-            command.args(["add", "-A", "--", "."]);
-        }
+        "stage_all" => operation.action(&["add", "-A", "--", "."], action).await,
         "unstage_all" => {
-            let has_head = Command::new("git")
-                .args(["-C", workspace_path, "rev-parse", "--verify", "HEAD"])
-                .output()
-                .is_ok_and(|output| output.status.success());
-            if has_head {
-                command.args(["restore", "--staged", "--", "."]);
-            } else {
-                command.args(["rm", "--cached", "-r", "--ignore-unmatch", "--", "."]);
-            }
+            if operation.has_head().await? { operation.action(&["restore", "--staged", "--", "."], action).await }
+            else { operation.action(&["rm", "--cached", "-r", "--ignore-unmatch", "--", "."], action).await }
         }
-        _ => {
-            return Err(CoreError::InvalidWorkspacePath(
-                "unsupported Git workspace action".to_owned(),
-            ));
-        }
+        _ => Err(CoreError::InvalidWorkspacePath("unsupported Git workspace action".into())),
     }
-    let output = command
-        .output()
-        .map_err(|error| CoreError::Database(format!("run Git workspace action: {error}")))?;
-    let message = String::from_utf8_lossy(if output.status.success() {
-        &output.stdout
-    } else {
-        &output.stderr
-    })
-    .trim()
-    .to_owned();
-    Ok(GitWorkspaceActionResult {
-        action: action.to_owned(),
-        applied: output.status.success(),
-        message: if message.is_empty() {
-            if output.status.success() {
-                "Git 操作已完成".to_owned()
-            } else {
-                format!("git exited with {}", output.status)
-            }
-        } else {
-            message
-        },
-    })
 }
 
 pub(crate) async fn apply_workspace_git_action(
@@ -136,53 +92,26 @@ pub(crate) async fn apply_workspace_git_action(
         return Err(CoreError::WorkspaceTrustRequired);
     }
     let _write = crate::workspace_writes::acquire(db, &workspace_id, std::path::Path::new(&workspace.path)).await?;
-    run_git_workspace_action(&workspace.path, &action)
+    run_git_workspace_action(&workspace.path, &action).await
 }
 
-fn commit_workspace(workspace_path: &str, message: &str) -> Result<GitCommitResult, CoreError> {
+async fn commit_workspace(operation: &GitOperation<'_>, message: &str) -> Result<GitCommitResult, CoreError> {
     let trimmed = message.trim();
-    if trimmed.is_empty() {
-        return Err(CoreError::Database("提交信息不能为空".to_owned()));
+    if trimmed.is_empty() { return Err(CoreError::Database("提交信息不能为空".into())); }
+    let (staged, detail) = operation.run(&["diff", "--cached", "--quiet"], "inspect_staged").await?;
+    match staged.exit_code {
+        Some(0) => return Ok(GitCommitResult { committed: false, hash: None, message: "没有已暂存的更改可提交".into() }),
+        Some(1) => {},
+        _ => return Err(CoreError::Database(format!("Unable to inspect staged changes: {detail}"))),
     }
-    let staged = Command::new("git")
-        .args(["-C", workspace_path, "diff", "--cached", "--quiet"])
-        .output()
-        .map_err(|error| CoreError::Database(format!("check staged Git changes: {error}")))?;
-    if staged.status.success() {
-        return Ok(GitCommitResult {
-            committed: false,
-            hash: None,
-            message: "没有已暂存的更改可提交".to_owned(),
-        });
-    }
-    let output = Command::new("git")
-        .args(["-C", workspace_path, "commit", "-m", trimmed])
-        .output()
-        .map_err(|error| CoreError::Database(format!("create Git commit: {error}")))?;
-    if !output.status.success() {
-        let message = String::from_utf8_lossy(&output.stderr).trim().to_owned();
-        return Ok(GitCommitResult {
-            committed: false,
-            hash: None,
-            message: if message.is_empty() {
-                format!("git commit exited with {}", output.status)
-            } else {
-                message
-            },
-        });
-    }
-    let hash = Command::new("git")
-        .args(["-C", workspace_path, "rev-parse", "HEAD"])
-        .output()
-        .ok()
-        .filter(|value| value.status.success())
-        .map(|value| String::from_utf8_lossy(&value.stdout).trim().to_owned())
+    let result = operation.action(&["commit", "-m", trimmed], "commit").await?;
+    if !result.applied { return Ok(GitCommitResult { committed: false, hash: None, message: result.message }); }
+    // The successful mutation remains successful if optional hash inspection fails.
+    let hash = operation.run(&["rev-parse", "HEAD"], "inspect_commit").await.ok()
+        .filter(|(output, _)| output.success)
+        .map(|(output, _)| String::from_utf8_lossy(&output.stdout).trim().to_owned())
         .filter(|value| !value.is_empty());
-    Ok(GitCommitResult {
-        committed: true,
-        hash,
-        message: String::from_utf8_lossy(&output.stdout).trim().to_owned(),
-    })
+    Ok(GitCommitResult { committed: true, hash, message: result.message })
 }
 
 pub(crate) async fn commit_workspace_changes(
@@ -195,7 +124,7 @@ pub(crate) async fn commit_workspace_changes(
         return Err(CoreError::WorkspaceTrustRequired);
     }
     let _write = crate::workspace_writes::acquire(db, &workspace_id, std::path::Path::new(&workspace.path)).await?;
-    commit_workspace(&workspace.path, &message)
+    commit_workspace(&GitOperation::new(&workspace.path), &message).await
 }
 
 fn list_git_branches(workspace_path: &str) -> Result<Vec<GitBranch>, CoreError> {
@@ -275,30 +204,7 @@ pub(crate) async fn checkout_workspace_git_branch(
         return Err(CoreError::WorkspaceTrustRequired);
     }
     let _write = crate::workspace_writes::acquire(db, &workspace_id, std::path::Path::new(&workspace.path)).await?;
-    let output = Command::new("git")
-        .args(["-C", &workspace.path, "switch", "--", &branch])
-        .output()
-        .map_err(|error| CoreError::Database(format!("switch Git branch: {error}")))?;
-    let message = String::from_utf8_lossy(if output.status.success() {
-        &output.stdout
-    } else {
-        &output.stderr
-    })
-    .trim()
-    .to_owned();
-    Ok(GitWorkspaceActionResult {
-        action: "checkout".to_owned(),
-        applied: output.status.success(),
-        message: if message.is_empty() {
-            if output.status.success() {
-                format!("已切换到 {branch}")
-            } else {
-                format!("git switch exited with {}", output.status)
-            }
-        } else {
-            message
-        },
-    })
+    GitOperation::new(&workspace.path).action(&["switch", "--", &branch], "checkout").await
 }
 
 pub(crate) async fn create_workspace_git_branch(
@@ -312,30 +218,7 @@ pub(crate) async fn create_workspace_git_branch(
         return Err(CoreError::WorkspaceTrustRequired);
     }
     let _write = crate::workspace_writes::acquire(db, &workspace_id, std::path::Path::new(&workspace.path)).await?;
-    let output = Command::new("git")
-        .args(["-C", &workspace.path, "switch", "-c", &branch])
-        .output()
-        .map_err(|error| CoreError::Database(format!("create Git branch: {error}")))?;
-    let message = String::from_utf8_lossy(if output.status.success() {
-        &output.stdout
-    } else {
-        &output.stderr
-    })
-    .trim()
-    .to_owned();
-    Ok(GitWorkspaceActionResult {
-        action: "create_branch".to_owned(),
-        applied: output.status.success(),
-        message: if message.is_empty() {
-            if output.status.success() {
-                format!("已创建并切换到 {branch}")
-            } else {
-                format!("git switch -c exited with {}", output.status)
-            }
-        } else {
-            message
-        },
-    })
+    GitOperation::new(&workspace.path).action(&["switch", "-c", &branch], "create_branch").await
 }
 
 fn list_git_history(workspace_path: &str, limit: u32) -> Result<Vec<GitCommit>, CoreError> {
@@ -611,7 +494,7 @@ pub(crate) async fn sync_workspace_git(
     }
     let _write = crate::workspace_writes::acquire(db, &workspace_id, std::path::Path::new(&workspace.path)).await?;
     let command = git_sync_command(&workspace.path, &action)?;
-    execute_git_sync(command, action, Duration::from_secs(120)).await
+    execute_git_action(command, action, Duration::from_secs(120)).await
 }
 
 fn git_sync_command(workspace_path: &str, action: &str) -> Result<TokioCommand, CoreError> {
@@ -621,13 +504,16 @@ fn git_sync_command(workspace_path: &str, action: &str) -> Result<TokioCommand, 
         "push" => &["push"],
         _ => return Err(CoreError::InvalidWorkspacePath("unsupported Git sync action".into())),
     };
-    let mut command = TokioCommand::new("git");
-    command.args(["-C", workspace_path]).args(args)
-        .env("GIT_TERMINAL_PROMPT", "0").env("GCM_INTERACTIVE", "Never");
-    Ok(command)
+    Ok(git_command(workspace_path, args))
 }
 
-async fn execute_git_sync(command: TokioCommand, action: String, timeout: Duration) -> Result<GitWorkspaceActionResult, CoreError> {
+async fn execute_git_action(command: TokioCommand, action: String, timeout: Duration) -> Result<GitWorkspaceActionResult, CoreError> {
+    let (output, message) = capture_git_operation(command, &action, timeout).await?;
+    Ok(GitWorkspaceActionResult { action, applied: output.success, message })
+}
+
+async fn capture_git_operation(command: TokioCommand, action: &str, timeout: Duration) -> Result<(crate::controlled_process::ProcessResult, String), CoreError> {
+    if timeout.is_zero() { return Err(CoreError::WriteOutcomeUnknown(format!("Git {action}: deadline expired before launching the next command"))); }
     const OUTPUT_LIMIT: usize = 256 * 1024;
     let output = crate::controlled_process::execute(command, timeout, OUTPUT_LIMIT + 1).await
         .map_err(|error| CoreError::WriteOutcomeUnknown(format!("Git {action}: {error}")))?;
@@ -639,22 +525,19 @@ async fn execute_git_sync(command: TokioCommand, action: String, timeout: Durati
     // Redaction may shorten captured output below the byte limit. Remember
     // truncation before sanitizing so that discarded bytes are never hidden.
     let truncated = output.stdout.len() > OUTPUT_LIMIT || output.stderr.len() > OUTPUT_LIMIT || message.len() > OUTPUT_LIMIT;
-    let sanitized = crate::artifact::sanitize_content("git.sync.command", message.trim());
+    let sanitized = crate::artifact::sanitize_content("git.command", message.trim());
     let message = if truncated || sanitized.len() > OUTPUT_LIMIT {
         const SUFFIX: &str = "\n… Git 输出已截断";
         format!("{}{}", crate::artifact::truncate_utf8(&sanitized, OUTPUT_LIMIT - SUFFIX.len(), ""), SUFFIX)
     } else { sanitized };
     if output.timed_out || output.cancelled {
-        return Err(CoreError::WriteOutcomeUnknown(format!("Git {action} 已停止，远端或本地引用可能已更改。\n{message}")));
+        return Err(CoreError::WriteOutcomeUnknown(format!("Git {action} 已停止，部分更改可能已生效。\n{message}")));
     }
-    Ok(GitWorkspaceActionResult {
-        action,
-        applied: output.success,
-        message: if message.is_empty() {
-            if output.success { "Git 同步已完成".into() }
-            else { format!("git exited with {:?}", output.exit_code) }
-        } else { message },
-    })
+    let message = if message.is_empty() {
+        if output.success { "Git 操作已完成".into() }
+        else { format!("git exited with {:?}", output.exit_code) }
+    } else { message };
+    Ok((output, message))
 }
 
 pub(crate) async fn list_workspace_git_stashes(
@@ -700,30 +583,7 @@ pub(crate) async fn apply_workspace_git_stash(
         return Err(CoreError::WorkspaceTrustRequired);
     }
     let _write = crate::workspace_writes::acquire(db, &workspace_id, std::path::Path::new(&workspace.path)).await?;
-    let output = Command::new("git")
-        .args(["-C", &workspace.path, "stash", "apply", &reference])
-        .output()
-        .map_err(|error| CoreError::Database(format!("apply Git stash: {error}")))?;
-    let message = String::from_utf8_lossy(if output.status.success() {
-        &output.stdout
-    } else {
-        &output.stderr
-    })
-    .trim()
-    .to_owned();
-    Ok(GitWorkspaceActionResult {
-        action: "stash_apply".to_owned(),
-        applied: output.status.success(),
-        message: if message.is_empty() {
-            if output.status.success() {
-                "已应用暂存栈".to_owned()
-            } else {
-                format!("git stash apply exited with {}", output.status)
-            }
-        } else {
-            message
-        },
-    })
+    GitOperation::new(&workspace.path).action(&["stash", "apply", &reference], "stash_apply").await
 }
 
 pub(crate) async fn stash_workspace_git(
@@ -737,36 +597,82 @@ pub(crate) async fn stash_workspace_git(
     }
     let _write = crate::workspace_writes::acquire(db, &workspace_id, std::path::Path::new(&workspace.path)).await?;
     let message = message.unwrap_or_else(|| "aibo workspace changes".to_owned());
-    let output = Command::new("git")
-        .args(["-C", &workspace.path, "stash", "push", "-u", "-m", &message])
-        .output()
-        .map_err(|error| CoreError::Database(format!("create Git stash: {error}")))?;
-    let text = String::from_utf8_lossy(if output.status.success() {
-        &output.stdout
-    } else {
-        &output.stderr
-    })
-    .trim()
-    .to_owned();
-    Ok(GitWorkspaceActionResult {
-        action: "stash_push".to_owned(),
-        applied: output.status.success(),
-        message: if text.is_empty() {
-            if output.status.success() {
-                "已保存暂存栈".to_owned()
-            } else {
-                format!("git stash push exited with {}", output.status)
-            }
-        } else {
-            text
-        },
-    })
+    GitOperation::new(&workspace.path).action(&["stash", "push", "-u", "-m", &message], "stash_push").await
 }
 
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[tokio::test]
+    async fn unborn_index_and_failed_preconditions_do_not_delete_working_files_or_start_writes() {
+        let root = std::env::temp_dir().join(format!("aibo-git-preconditions-{}", ulid::Ulid::new()));
+        std::fs::create_dir_all(&root).unwrap();
+        let path = root.to_str().unwrap();
+        let invalid = GitOperation::new(path);
+        assert!(invalid.has_head().await.is_err());
+        assert!(commit_workspace(&invalid, "must not commit").await.is_err());
+        assert!(Command::new("git").args(["init", "-q", path]).status().unwrap().success());
+        std::fs::write(root.join("file.txt"), "keep working content").unwrap();
+        assert!(apply_git_index_action(path, "file.txt", "stage").await.unwrap().applied);
+        assert!(apply_git_index_action(path, "file.txt", "unstage").await.unwrap().applied);
+        assert!(run_git_workspace_action(path, "stage_all").await.unwrap().applied);
+        assert!(run_git_workspace_action(path, "unstage_all").await.unwrap().applied);
+        assert_eq!(std::fs::read_to_string(root.join("file.txt")).unwrap(), "keep working content");
+        assert!(Command::new("git").args(["-C", path, "ls-files"]).output().unwrap().stdout.is_empty());
+        let expired = GitOperation { workspace_path: path, deadline: Instant::now() - Duration::from_secs(1) };
+        assert!(expired.action(&["config", "aibo.unexpected", "written"], "expired-write").await.is_err());
+        assert!(!Command::new("git").args(["-C", path, "config", "--get", "aibo.unexpected"]).status().unwrap().success());
+        #[cfg(unix)]
+        {
+        // A nested workspace must not reinterpret a filename as a repository-root pathspec.
+        let nested = root.join("nested"); std::fs::create_dir(&nested).unwrap();
+        std::fs::write(root.join("outside.txt"), "outside workspace").unwrap();
+        assert!(!apply_git_index_action(nested.to_str().unwrap(), ":(top)outside.txt", "stage").await.unwrap().applied);
+        assert!(Command::new("git").args(["-C", path, "ls-files"]).output().unwrap().stdout.is_empty());
+        std::fs::write(nested.join(":(glob)*.txt"), "literal name").unwrap();
+        assert!(apply_git_index_action(nested.to_str().unwrap(), ":(glob)*.txt", "stage").await.unwrap().applied);
+        let staged = Command::new("git").args(["-C", path, "ls-files"]).output().unwrap();
+        assert!(String::from_utf8_lossy(&staged.stdout).contains(":(glob)*.txt"));
+        assert!(!String::from_utf8_lossy(&staged.stdout).contains("outside.txt"));
+        }
+        std::fs::remove_dir_all(root).unwrap();
+    }
+
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn commit_hook_timeout_preserves_uncertain_commit_and_stops_descendants() {
+        use std::os::unix::fs::PermissionsExt;
+        let root = std::env::temp_dir().join(format!("aibo-git-hook-{}", ulid::Ulid::new()));
+        std::fs::create_dir_all(&root).unwrap();
+        let path = root.to_str().unwrap();
+        let git = |args: &[&str]| {
+            let output = Command::new("git").args(["-C", path]).args(args).output().unwrap();
+            assert!(output.status.success(), "{}", String::from_utf8_lossy(&output.stderr));
+            String::from_utf8_lossy(&output.stdout).trim().to_owned()
+        };
+        git(&["init", "-q"]); git(&["config", "user.name", "Aibo Fixture"]);
+        git(&["config", "user.email", "fixture@example.invalid"]); git(&["config", "commit.gpgsign", "false"]);
+        let hooks = root.join("hooks"); std::fs::create_dir(&hooks).unwrap();
+        git(&["config", "core.hooksPath", hooks.to_str().unwrap()]);
+        let hook = hooks.join("post-commit");
+        std::fs::write(&hook, "#!/bin/sh\nprintf POST_COMMIT_STARTED\ntouch hook-started\n(sleep 6; touch late-hook-effect) &\nwait\n").unwrap();
+        std::fs::set_permissions(&hook, std::fs::Permissions::from_mode(0o700)).unwrap();
+        std::fs::write(root.join("file.txt"), "committed content").unwrap();
+        git(&["add", "--", "file.txt"]);
+        let operation = GitOperation { workspace_path: path, deadline: Instant::now() + Duration::from_secs(3) };
+        let error = tokio::time::timeout(Duration::from_secs(5), commit_workspace(&operation, "Fixture\n\nCo-authored-by: Codex <codex@openai.com>")).await.unwrap().unwrap_err();
+        assert!(matches!(&error, CoreError::WriteOutcomeUnknown(_)), "{error}");
+        assert!(error.to_string().contains("POST_COMMIT_STARTED"), "{error}");
+        assert!(root.join("hook-started").exists());
+        // A commit can exist even though its post-commit hook never returned.
+        assert_eq!(git(&["show", "HEAD:file.txt"]), "committed content");
+        assert_eq!(git(&["rev-list", "--count", "HEAD"]), "1");
+        tokio::time::sleep(Duration::from_millis(6200)).await;
+        assert!(!root.join("late-hook-effect").exists());
+        std::fs::remove_dir_all(root).unwrap();
+    }
 
     #[cfg(unix)]
     #[tokio::test]
@@ -782,7 +688,7 @@ mod tests {
         let mut command = git_sync_command(root.to_str().unwrap(), "fetch").unwrap();
         // Git invokes only this local fixture; no SSH connection is attempted.
         command.current_dir(&root).env("GIT_SSH", &helper).env("GIT_SSH_VARIANT", "ssh");
-        let result = tokio::time::timeout(Duration::from_secs(5), execute_git_sync(command, "fetch".into(), Duration::from_secs(2))).await.unwrap();
+        let result = tokio::time::timeout(Duration::from_secs(5), execute_git_action(command, "fetch".into(), Duration::from_secs(2))).await.unwrap();
         let error = result.unwrap_err();
         assert!(matches!(&error, CoreError::WriteOutcomeUnknown(_)), "{error}");
         assert!(error.to_string().contains("BEFORE_TIMEOUT"), "{error}");
@@ -794,7 +700,7 @@ mod tests {
         std::fs::write(&helper, "#!/bin/sh\nprintf 'token=fixture-secret\\n' >&2\nhead -c 400000 /dev/zero | tr '\\000' x >&2\nexit 1\n").unwrap();
         let mut command = git_sync_command(root.to_str().unwrap(), "fetch").unwrap();
         command.current_dir(&root).env("GIT_SSH", &helper).env("GIT_SSH_VARIANT", "ssh");
-        let result = execute_git_sync(command, "fetch".into(), Duration::from_secs(3)).await.unwrap();
+        let result = execute_git_action(command, "fetch".into(), Duration::from_secs(3)).await.unwrap();
         assert!(!result.applied);
         assert!(result.message.len() <= 256 * 1024 + 64);
         assert!(result.message.contains("Git 输出已截断"));
@@ -834,6 +740,8 @@ mod tests {
         assert_eq!(list_workspace_git_commit_files(&db, "workspace".into(), history[0].hash.clone(), None, None).await.unwrap().files[0].path, "source.txt");
         assert!(create_workspace_git_branch(&db, "workspace".into(), "service-test".into()).await.unwrap().applied);
         assert!(list_workspace_git_branches(&db, "workspace".into()).await.unwrap().iter().any(|branch| branch.name == "service-test" && branch.current));
+        assert!(checkout_workspace_git_branch(&db, "workspace".into(), "main".into()).await.unwrap().applied);
+        assert!(checkout_workspace_git_branch(&db, "workspace".into(), "service-test".into()).await.unwrap().applied);
         std::fs::write(repo.join("source.txt"), "second\n").unwrap();
         assert!(stash_workspace_git(&db, "workspace".into(), Some("service fixture".into())).await.unwrap().applied);
         assert_eq!(std::fs::read_to_string(repo.join("source.txt")).unwrap(), "first\n");
