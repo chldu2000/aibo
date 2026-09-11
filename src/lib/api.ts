@@ -283,8 +283,9 @@ export const getTurnChangeSet = (
 export const restoreTurnChangeSet = (
   sessionId: string,
   turnId: string,
+  requestId?: string,
 ): Promise<RestoreTurnChangeSetResult> =>
-  invoke<RestoreTurnChangeSetResult>('restore_turn_change_set', { sessionId, turnId });
+  workspaceWrites.invoke<RestoreTurnChangeSetResult>('restore_turn_change_set', { sessionId, turnId }, requestId);
 
 export const listTurnCheckpoints = (
   sessionId: string,

@@ -1,5 +1,5 @@
 export type WorkspaceWriteCommand =
-  | 'apply_workspace_git_file_action' | 'apply_workspace_git_action'
+  | 'restore_turn_change_set' | 'apply_workspace_git_file_action' | 'apply_workspace_git_action'
   | 'commit_workspace_changes' | 'checkout_workspace_git_branch'
   | 'create_workspace_git_branch' | 'sync_workspace_git'
   | 'apply_git_hunk_action' | 'apply_workspace_git_stash' | 'stash_workspace_git' | 'apply_git_file_action';

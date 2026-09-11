@@ -95,6 +95,18 @@ pub(crate) async fn execute_requested<T, F, Fut>(
     db: &SqlitePool, workspace: &Workspace, operation: &str, input: Value, request: &Request, execute: F,
 ) -> Result<T, CoreError>
 where T: Serialize + DeserializeOwned, F: FnOnce(Cancellation) -> Fut, Fut: Future<Output = Result<T, CoreError>> {
+    execute_with_context(db, workspace, operation, input.clone(), request,
+        || prepare_approval(db, workspace, &input), execute).await
+}
+
+/// Domain-supplied preflight is trusted host code, never frontend-provided context.
+/// The same context is recomputed after approval, while the workspace remains occupied.
+pub(crate) async fn execute_with_context<T, F, Fut, P, Prepared>(
+    db: &SqlitePool, workspace: &Workspace, operation: &str, input: Value, request: &Request,
+    prepare: P, execute: F,
+) -> Result<T, CoreError>
+where T: Serialize + DeserializeOwned, F: FnOnce(Cancellation) -> Fut, Fut: Future<Output = Result<T, CoreError>>,
+    P: Fn() -> Prepared, Prepared: Future<Output = Result<Value, CoreError>> {
     if workspace.trust != "trusted" { return Err(CoreError::WorkspaceTrustRequired); }
     if request.id.is_empty() || request.id.len() > 128 || !request.id.bytes().all(|c| c.is_ascii_alphanumeric() || matches!(c, b'-' | b'_')) {
         return Err(CoreError::InvalidWorkspacePath("invalid workspace write request ID".into()));
@@ -105,8 +117,9 @@ where T: Serialize + DeserializeOwned, F: FnOnce(Cancellation) -> Fut, Fut: Futu
     let _write = crate::workspace_writes::acquire(db, &workspace.id, Path::new(&workspace.path)).await?;
     drop(admission);
     let id = ulid::Ulid::new().to_string();
-    let approval_context = if request.confirmation.is_some() { Some(prepare_approval(db, workspace, &input).await?) } else { None };
-    let message = format!("Git 写入：{operation}\n工作区：{}\n调用窗口：{}\n输入：{}\n\n批准仅适用于本次请求；操作可能执行仓库钩子或修改远程引用。", workspace.path, request.caller, input);
+    let approval_context = if request.confirmation.is_some() { Some(prepare().await?) } else { None };
+    let mut message = format!("宿主写入：{operation}\n工作区：{}\n调用窗口：{}\n输入：{}\n\n批准仅适用于本次请求；取消不保证撤销已发生的更改。", workspace.path, request.caller, input);
+    if let Some(description) = approval_context.as_ref().and_then(|context| context["approvalDescription"].as_str()) { message.push_str("\n\n"); message.push_str(description); }
     if request.confirmation.is_some() && message.len() > 16 * 1024 { return Err(CoreError::InvalidWorkspacePath("Git approval summary exceeds 16 KiB".into())); }
     let snapshot = serde_json::json!({"schema":"aibo.workspace-write-intent/v1","origin":"host","workspaceId":workspace.id,"workspacePath":workspace.path,"operation":operation,"input":input,"approvalContext":approval_context});
     let snapshot_json = snapshot.to_string();
@@ -121,7 +134,7 @@ where T: Serialize + DeserializeOwned, F: FnOnce(Cancellation) -> Fut, Fut: Futu
         let cancellation = Cancellation { db: db.clone(), run_id: id.clone() };
         let mut decision = await_approval(confirm(message), cancellation.requested(), std::time::Duration::from_secs(300)).await;
         if decision == "approved" {
-            match prepare_approval(db, workspace, &snapshot["input"]).await {
+            match prepare().await {
                 Ok(context) if Some(&context) == approval_context.as_ref() => {},
                 _ => decision = "stale",
             }
@@ -133,7 +146,7 @@ where T: Serialize + DeserializeOwned, F: FnOnce(Cancellation) -> Fut, Fut: Futu
             if started != 1 { decision = "cancelled"; }
         }
         if decision != "approved" {
-            let error = CoreError::WriteReplay { code: "approval_rejected".into(), message: format!("Git write was not started: approval {decision}. Check the current context before submitting a new request.") };
+            let error = CoreError::WriteReplay { code: "approval_rejected".into(), message: format!("Host write was not started: approval {decision}. Check the current context before submitting a new request.") };
             let result = serde_json::json!({"ok":false,"error":&error});
             sqlx::query("UPDATE workspace_write_runs SET status='rejected',approval_outcome=?,approval_decided_at=?,completed_at=?,result_json=? WHERE id=? AND status='awaiting_approval'")
                 .bind(decision).bind(&decided_at).bind(&decided_at).bind(result.to_string()).bind(&id).execute(db).await?;
@@ -205,7 +218,7 @@ async fn prepare_approval(db: &SqlitePool, workspace: &Workspace, input: &Value)
         Some(context.ok_or_else(|| CoreError::InvalidWorkspacePath("Git turn file context is no longer available".into()))?)
     } else { None };
     let fingerprint = crate::workspace_git_approval::fingerprint(&current.path).await?;
-    Ok(serde_json::json!({"root":root,"workspacePath":current.path,"workspaceTrust":current.trust,"workspaceUpdatedAt":current.updated_at,"session":session,"turn":turn,"repositoryFingerprint":fingerprint}))
+    Ok(serde_json::json!({"root":root,"workspacePath":current.path,"workspaceTrust":current.trust,"workspaceUpdatedAt":current.updated_at,"session":session,"turn":turn,"repositoryFingerprint":fingerprint,"approvalDescription":"Git 操作可能执行仓库钩子、过滤器或修改远程引用。"}))
 }
 
 async fn await_approval(confirmation: impl Future<Output = Result<bool, String>>, cancellation: impl Future<Output = ()>, timeout: std::time::Duration) -> &'static str {
@@ -219,7 +232,7 @@ async fn await_approval(confirmation: impl Future<Output = Result<bool, String>>
 
 /// Startup-only. Unsettled writes are observable, never replayed.
 pub(crate) async fn recover(db: &SqlitePool) -> Result<u64, sqlx::Error> {
-    let rejected_result = serde_json::json!({"ok":false,"error":{"code":"approval_rejected","message":"Host restarted during approval; Git write was not started."}});
+    let rejected_result = serde_json::json!({"ok":false,"error":{"code":"approval_rejected","message":"Host restarted during approval; write was not started."}});
     let rejected = sqlx::query("UPDATE workspace_write_runs SET status='rejected',approval_outcome='recovered',approval_decided_at=?,completed_at=?,result_json=? WHERE status='awaiting_approval'")
         .bind(crate::now_iso()).bind(crate::now_iso()).bind(rejected_result.to_string()).execute(db).await?.rows_affected();
     let result = serde_json::json!({"ok":false,"error":{"code":"outcome_unknown","message":"Host restarted before write settlement; inspect local and remote effects before another operation."}});

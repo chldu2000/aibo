@@ -54,7 +54,7 @@ pub(crate) async fn apply_file(
                 _ => return Ok(result(false, "Git 基线不是可恢复的普通文件，拒绝整文件还原".into())),
             }
         } else { None };
-        restore_worktree(&workspace.path, path, &sources, baseline_mode, &cancel).await?;
+        restore_worktree(&workspace.path, path, &sources, baseline_mode, Some(&cancel)).await?;
         // The worktree has changed. Any subsequent failure is a partial/unknown outcome,
         // even a conclusive nonzero Git exit. Never blindly overwrite the file to roll back.
         let (output, message) = if sources.baseline_exists {
@@ -74,10 +74,10 @@ impl Drop for RestoreTemp {
     fn drop(&mut self) { let _ = std::fs::remove_file(&self.0); }
 }
 
-async fn restore_worktree(
+pub(crate) async fn restore_worktree(
     workspace_path: &str, path: &str, sources: &crate::TurnDiffSources,
     baseline_mode: Option<u32>,
-    cancel: &crate::workspace_write_runs::Cancellation,
+    cancel: Option<&crate::workspace_write_runs::Cancellation>,
 ) -> Result<(), CoreError> {
     let root = tokio::fs::canonicalize(workspace_path).await.map_err(|error| CoreError::InvalidWorkspacePath(error.to_string()))?;
     let resolve = || {
@@ -90,7 +90,7 @@ async fn restore_worktree(
     let target = resolve()?;
     let unknown = |error| CoreError::WriteOutcomeUnknown(format!("恢复文件 {path} 时出错，文件或目录可能已改变：{error}"));
     let stopped = || CoreError::WriteReplay { code: "cancelled".into(), message: "整文件还原已在替换文件前取消".into() };
-    if cancel.is_requested().await { return Err(stopped()); }
+    if let Some(cancel) = cancel { if cancel.is_requested().await { return Err(stopped()); } }
     // Prepare a sibling and rename it, rather than truncating a live file or writing
     // through hard links. Await each filesystem step; cancellation does not abandon
     // a blocking filesystem worker that could write after the workspace lock is freed.
@@ -117,7 +117,7 @@ async fn restore_worktree(
         drop(file);
         Some(temporary)
     } else { None };
-    if cancel.is_requested().await { return Err(stopped()); }
+    if let Some(cancel) = cancel { if cancel.is_requested().await { return Err(stopped()); } }
     if resolve()? != target { return Err(CoreError::InvalidWorkspacePath("restore target changed".into())); }
     // Recheck after preparing the replacement. An external writer is not covered by
     // the host lock; this reduces the race but is not a filesystem compare-and-swap.

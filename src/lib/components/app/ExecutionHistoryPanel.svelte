@@ -24,7 +24,7 @@
       <Button variant={workspace.id === workspaceId ? 'secondary' : 'ghost'} aria-pressed={workspace.id === workspaceId} onclick={() => onSelectWorkspace(workspace.id)}>{workspace.label}</Button>
     {/each}
   </nav>
-  <p>按时间浏览所选工作区的工程任务与 Git 写入，每页最多 20 条。关闭此页不会停止执行。</p>
+  <p>按时间浏览所选工作区的工程任务与工作区写入，每页最多 20 条。关闭此页不会停止执行。</p>
   {#if !desktop}<p role="status">执行历史需要桌面宿主。</p>
   {:else if !workspaceId}<p role="status">请先添加工作区。</p>
   {:else if state.loading}<p role="status">正在读取执行记录…</p>
@@ -39,9 +39,9 @@
   </nav>
   <div class="history-entries">
     {#each state.entries as entry (entry.key)}
-      <Card as="article" aria-label={`${entry.kind === 'git' ? 'Git' : '工程任务'} · ${entry.title}`}>
+      <Card as="article" aria-label={`${entry.kind === 'git' ? '工作区写入' : '工程任务'} · ${entry.title}`}>
         <CardHeader>
-          <CardTitle>{entry.kind === 'git' ? 'Git' : '工程任务'} · {entry.title}</CardTitle>
+          <CardTitle>{entry.kind === 'git' ? '工作区写入' : '工程任务'} · {entry.title}</CardTitle>
           <Badge variant={entry.status === 'outcome_unknown' || entry.status === 'failed' ? 'warning' : 'outline'}>{executionStatus(entry)}</Badge>
         </CardHeader>
         <CardContent>
@@ -52,7 +52,7 @@
           {#if canStopExecution(entry, windowId)}
             <Button variant="outline" disabled={!desktop || state.stopping.includes(entry.key)} onclick={() => onStop(entry.key)} aria-label={`停止 ${entry.title}`}>{state.stopping.includes(entry.key) ? '正在请求停止…' : '停止'}</Button>
           {:else if executionActive(entry) && entry.kind === 'git' && entry.caller !== windowId}
-            <p>请在发起窗口停止此 Git 操作。</p>
+            <p>请在发起窗口停止此工作区写入。</p>
           {/if}
         </CardContent>
       </Card>

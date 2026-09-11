@@ -3,6 +3,7 @@ mod project_actions;
 mod controlled_process;
 mod workspace_git;
 mod core_turn_git;
+mod turn_restore;
 mod execution_history;
 mod session_history;
 mod capability_history;
@@ -29,7 +30,7 @@ mod git_capability_guard;
 
 use change_set::{
     capture as capture_workspace, checkpoint_file_path, persist as persist_change_set,
-    restore as restore_change_set, workspace_changes, FileState, RestoreReport, WorkspaceSnapshot,
+    workspace_changes, FileState, WorkspaceSnapshot,
 };
 use codex::{CodexManager, CodexThreadSnapshot, CodexThreadSummary};
 use execution_profile::{
@@ -304,7 +305,7 @@ pub struct CheckpointFile {
     pub(crate) created_at: String,
 }
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct RestoreTurnChangeSetResult {
     pub(crate) applied: bool,
@@ -2038,12 +2039,13 @@ async fn list_turn_checkpoints(
         .map_err(Into::into)
 }
 
+#[cfg(test)]
 async fn persist_restore_operation(
     db: &SqlitePool,
     workspace_id: &str,
     session_id: &str,
     turn_id: &str,
-    report: &RestoreReport,
+    report: &crate::change_set::RestoreReport,
     status_override: Option<&str>,
 ) -> Result<RestoreOperation, CoreError> {
     let id = Ulid::new().to_string();
@@ -2100,86 +2102,12 @@ async fn persist_restore_operation(
 async fn restore_turn_change_set(
     session_id: String,
     turn_id: String,
+    request_id: String,
+    window: tauri::WebviewWindow,
     state: State<'_, AppState>,
 ) -> Result<RestoreTurnChangeSetResult, CoreError> {
-    let session = session_by_id(&state.db, &session_id).await?;
-    let workspace = workspace_by_id(&state.db, &session.workspace_id).await?;
-    if workspace.trust != "trusted" {
-        return Err(CoreError::WorkspaceTrustRequired);
-    }
-    let report = match restore_change_set(
-        &state.db,
-        &state.data_dir.join("checkpoints"),
-        Path::new(&workspace.path),
-        &session_id,
-        &turn_id,
-    )
-    .await
-    {
-        Ok(report) => report,
-        Err(error) => {
-            let failure = RestoreReport {
-                unsupported: vec![error.clone()],
-                ..RestoreReport::default()
-            };
-            persist_restore_operation(
-                &state.db,
-                &session.workspace_id,
-                &session_id,
-                &turn_id,
-                &failure,
-                Some("failed"),
-            )
-            .await?;
-            return Err(CoreError::Database(error));
-        }
-    };
-    let _operation = persist_restore_operation(
-        &state.db,
-        &session.workspace_id,
-        &session_id,
-        &turn_id,
-        &report,
-        None,
-    )
-    .await?;
-    let audit_id = Ulid::new().to_string();
-    let now = now_iso();
-    let audit_message = if report.applied {
-        format!(
-            "已恢复本轮 Agent 变更（{} 个文件）；恢复动作已记录。",
-            report.restored.len()
-        )
-    } else if !report.conflicts.is_empty() {
-        format!(
-            "恢复已阻止：{} 个文件在本轮后发生了变化；未覆盖用户修改。",
-            report.conflicts.len()
-        )
-    } else if !report.unsupported.is_empty() {
-        format!("恢复已阻止：{}", report.unsupported.join("、"))
-    } else {
-        "恢复未执行：没有可恢复的变更。".to_owned()
-    };
-    sqlx::query(
-        "INSERT INTO messages
-         (id, session_id, turn_id, external_message_id, role, content, status, sequence, created_at, updated_at)
-         VALUES (?, ?, ?, ?, 'system', ?, 'completed', 0, ?, ?)",
-    )
-    .bind(&audit_id)
-    .bind(&session_id)
-    .bind(&turn_id)
-    .bind(format!("restore:{audit_id}"))
-    .bind(audit_message)
-    .bind(&now)
-    .bind(&now)
-    .execute(&state.db)
-    .await?;
-    Ok(RestoreTurnChangeSetResult {
-        applied: report.applied,
-        restored: report.restored,
-        conflicts: report.conflicts,
-        unsupported: report.unsupported,
-    })
+    let request = host_write_request(request_id, window, "Aibo · 确认恢复本轮变更");
+    turn_restore::restore_requested(&state.db, &state.data_dir, &session_id, &turn_id, &request).await
 }
 
 #[tauri::command]
@@ -3527,12 +3455,16 @@ async fn cancel_project_action(
 }
 
 fn git_write_request(request_id: String, window: tauri::WebviewWindow) -> workspace_write_runs::Request {
+    host_write_request(request_id, window, "Aibo · 确认 Git 写入")
+}
+
+fn host_write_request(request_id: String, window: tauri::WebviewWindow, title: &'static str) -> workspace_write_runs::Request {
     use tauri_plugin_dialog::{DialogExt, MessageDialogButtons};
     workspace_write_runs::Request::with_confirmation(request_id, window.label().into(), move |message| {
         let window = window.clone();
         async move {
             let (send, receive) = tokio::sync::oneshot::channel();
-            window.app_handle().dialog().message(message).parent(&window).title("Aibo · 确认 Git 写入")
+            window.app_handle().dialog().message(message).parent(&window).title(title)
                 .buttons(MessageDialogButtons::OkCancelCustom("允许本次执行".into(), "取消".into()))
                 .show(move |accepted| { let _ = send.send(accepted); });
             receive.await.map_err(|_| "confirmation_unavailable".to_owned())

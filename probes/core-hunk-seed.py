@@ -2,9 +2,11 @@
 import hashlib
 import sqlite3
 import sys
+from pathlib import Path
 from datetime import datetime, timezone
 
-database, workspace, head, baseline, changed = sys.argv[1:]
+database, workspace, head, baseline, changed = sys.argv[1:6]
+mode = sys.argv[6] if len(sys.argv) > 6 else "hunk"
 assert "/local.aibo.corehunk." in database, "Refuse a non-probe database"
 now = datetime.now(timezone.utc).isoformat()
 digest = lambda content: "sha256:" + hashlib.sha256(content.encode()).hexdigest()
@@ -12,5 +14,17 @@ with sqlite3.connect(database, timeout=15) as db:
     db.execute("PRAGMA foreign_keys=ON")
     db.execute("INSERT INTO sessions (id,workspace_id,agent,label,state,created_at,updated_at) VALUES ('hunk-session',?,'pi','Hunk fixture','idle',?,?)", (workspace, now, now))
     db.execute("INSERT INTO turns (id,session_id,external_turn_id,status,started_at) VALUES ('hunk-turn','hunk-session','fixture','completed',?)", (now,))
-    db.execute("INSERT INTO turn_change_sets (id,workspace_id,session_id,turn_id,schema_version,baseline_head,attribution,capture_status,created_at,updated_at) VALUES ('hunk-set',?,'hunk-session','hunk-turn','aibo.turn-changeset/v1',?,'agent','captured',?,?)", (workspace, head, now, now))
+    db.execute("INSERT INTO turn_change_sets (id,workspace_id,session_id,turn_id,schema_version,baseline_head,attribution,capture_status,created_at,updated_at) VALUES ('hunk-set',?,'hunk-session','hunk-turn','aibo.turn-changeset/v1',?,'agent','captured',?,?)", (workspace, head or None, now, now))
     db.execute("INSERT INTO file_changes (id,change_set_id,path,change_kind,baseline_exists,baseline_hash,result_exists,result_hash,created_at) VALUES ('hunk-file','hunk-set','file.txt','modified',1,?,1,?,?)", (digest(baseline), digest(changed), now))
+
+    if mode.startswith("turn-"):
+        for name, previous, kind, before, after in [
+            ("new.txt", "old.txt", "renamed", "before old.txt", "before old.txt"),
+            ("deleted.txt", None, "deleted", "before deleted.txt", None),
+            ("added.txt", None, "added", None, "added"),
+        ]:
+            db.execute("INSERT INTO file_changes (id,change_set_id,path,previous_path,change_kind,baseline_exists,baseline_hash,result_exists,result_hash,created_at) VALUES (?,'hunk-set',?,?,?,?,?,?,?,?)", (name, name, previous, kind, int(before is not None), digest(before) if before is not None else None, int(after is not None), digest(after) if after is not None else None, now))
+        checkpoint_root = Path(database).parent / "checkpoints" / hashlib.sha256(b"hunk-session\0hunk-turn").hexdigest()
+        checkpoint_root.mkdir(parents=True)
+        for name, content in [("file.txt", baseline), ("old.txt", "before old.txt"), ("deleted.txt", "before deleted.txt")]:
+            (checkpoint_root / (hashlib.sha256(name.encode()).hexdigest() + ".bin")).write_text(content)

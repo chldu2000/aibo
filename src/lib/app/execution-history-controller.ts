@@ -20,7 +20,7 @@ function taskEntry(run: ProjectActionRun): ExecutionEntry {
   return { key: `task:${run.id}`, id: run.id, workspaceId: run.workspaceId, kind: 'task', title: run.actionName ?? run.actionId, status: run.status, startedAt: run.startedAt, completedAt: run.completedAt, output: run.output, stopRequested: false };
 }
 function gitEntry(run: WorkspaceWriteRun): ExecutionEntry {
-  const names: Record<string, string> = { 'git.file-revert': '整文件撤销', 'git.hunk': '局部修改', 'git.index': '文件暂存', 'git.index-all': '整体暂存', 'git.commit': '提交', 'git.checkout': '切换分支', 'git.create-branch': '创建分支', 'git.sync': '远程同步', 'git.stash-apply': '应用暂存记录', 'git.stash-push': '保存暂存记录' };
+  const names: Record<string, string> = { 'core.turn-restore': '整轮恢复', 'git.file-revert': '整文件撤销', 'git.hunk': '局部修改', 'git.index': '文件暂存', 'git.index-all': '整体暂存', 'git.commit': '提交', 'git.checkout': '切换分支', 'git.create-branch': '创建分支', 'git.sync': '远程同步', 'git.stash-apply': '应用暂存记录', 'git.stash-push': '保存暂存记录' };
   return { key: `git:${run.id}`, id: run.id, workspaceId: run.workspaceId, kind: 'git', title: names[run.operation] ?? run.operation, status: run.status, startedAt: run.startedAt, completedAt: run.completedAt, caller: run.callerWindow, input: JSON.stringify(run.snapshot.input, null, 2), output: run.result ? JSON.stringify(run.result, null, 2) : '', stopRequested: !!run.cancelRequestedAt };
 }
 
@@ -56,7 +56,7 @@ export function createExecutionHistoryController(ports: {
       for (const [index, result] of results.entries()) {
         const kind = index === 0 ? 'task' : 'git';
         if (result.status === 'rejected') {
-          errors.push(`${kind === 'task' ? '工程任务' : 'Git'}记录读取失败：${toErrorMessage(result.reason)}`);
+          errors.push(`${kind === 'task' ? '工程任务' : '工作区写入'}记录读取失败：${toErrorMessage(result.reason)}`);
           entries.push(...view.state.entries.filter(entry => entry.kind === kind));
         } else {
           const next = index === 0 ? (result.value as ProjectActionRun[]).map(taskEntry) : (result.value as WorkspaceWriteRun[]).map(gitEntry);

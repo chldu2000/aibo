@@ -1932,7 +1932,6 @@
 
   async function restoreTurnChangeSet(sessionId: string, turnId: string) {
     if (!desktop) return;
-    if (!window.confirm('确认恢复本轮 Agent 变更？只有当前文件未被后续修改时才会执行。')) return;
     try {
       const result = await restoreTurnChangeSetApi(sessionId, turnId);
       if (result.applied) {
