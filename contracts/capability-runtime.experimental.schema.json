@@ -1,0 +1,15 @@
+{
+  "$schema":"https://json-schema.org/draft/2020-12/schema",
+  "$id":"https://aibo.local/contracts/capability-runtime.experimental.schema.json",
+  "title":"Capability runtime 2.0 experimental response envelope",
+  "type":"object","additionalProperties":false,"required":["jsonrpc","id"],
+  "properties":{
+    "jsonrpc":{"const":"2.0"},"id":{"type":"string","minLength":1,"maxLength":160},
+    "result":{"type":"object"},
+    "error":{"type":"object","additionalProperties":false,"required":["code","message"],"properties":{
+      "code":{"type":"integer"},"message":{"type":"string","maxLength":4096},
+      "data":{"type":"object","additionalProperties":false,"required":["kind"],"properties":{"kind":{"enum":["unsupported","incompatible_version","permission_denied","provider_unavailable","busy","cancelled","timeout","invalid_output"]}}}
+    }}
+  },
+  "oneOf":[{"required":["result"],"not":{"required":["error"]}},{"required":["error"],"not":{"required":["result"]}}]
+}

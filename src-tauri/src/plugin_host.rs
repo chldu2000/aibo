@@ -210,6 +210,9 @@ impl PluginHost {
         let directory = PathBuf::from(row.get::<String,_>("install_path"));
         let (manifest, _, digest) = plugin_registry::inspect(&directory)?;
         if digest != row.get::<String,_>("package_digest") { return Err("manifest_mismatch: installed package changed".into()); }
+        if crate::plugin_manifest::normalize(&manifest)?.version != 1 {
+            return Err("protocol_incompatible: v2 activation is not available".into());
+        }
         let agent_id: String = row.get("agent");
         let agent = manifest["agents"].as_array().unwrap().iter().find(|agent| agent["agentId"] == agent_id).ok_or("invalid_session: Agent contribution missing")?;
         // v1 minimal host grants no workspace/command/network/credential proxies.
@@ -1110,6 +1113,9 @@ impl PluginHost {
             .ok_or("invalid_request: undeclared view action")?;
         if action["confirmation"] != "never" { return Err("capability_unsupported: action confirmation is not implemented".into()); }
         let manifest: Value = serde_json::from_str(row.get::<&str,_>("manifest_json")).map_err(|_|"manifest_mismatch")?;
+        if crate::plugin_manifest::normalize(&manifest)?.version != 1 {
+            return Err("protocol_incompatible: v2 activation is not available".into());
+        }
         let agent_id: String = row.get("agent");
         let agent = manifest["agents"].as_array().and_then(|agents|agents.iter().find(|agent|agent["agentId"] == agent_id))
             .ok_or("manifest_mismatch: Agent contribution missing")?;
@@ -1157,6 +1163,9 @@ impl PluginHost {
         // remain available while a Pi turn is streaming or compacting.
         if row.get::<String,_>("state") == "running" && !matches!(capability, "queue.manage" | "session.snapshot") { return Err("busy: session has an active turn".into()); }
         let manifest: Value = serde_json::from_str(row.get::<&str,_>("manifest_json")).map_err(|_|"manifest_mismatch")?;
+        if crate::plugin_manifest::normalize(&manifest)?.version != 1 {
+            return Err("protocol_incompatible: v2 activation is not available".into());
+        }
         let agent_id: String = row.get("agent");
         let agent = manifest["agents"].as_array().and_then(|agents|agents.iter().find(|agent|agent["agentId"] == agent_id))
             .ok_or("manifest_mismatch: Agent contribution missing")?;

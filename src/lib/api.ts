@@ -66,8 +66,21 @@ export interface PluginInstallation {
   installed: boolean;
   runnable: boolean;
   dependencies: { kind: string; name: string; required: boolean; available: boolean; executable: string | null; versionRange: string | null; detectedVersion: string | null; issue: string | null }[];
-  manifest: { displayName: string; agents: { agentId: string; displayName: string }[]; [key: string]: unknown };
+  activationIssues?: string[];
+  contributions?: { id: string; kind: string; scope: string; required: boolean; metadata: Record<string, unknown> }[];
+  manifest: { displayName: string; agents?: { agentId: string; displayName: string }[]; [key: string]: unknown };
 }
+// Caller identity and workspace paths are injected by the desktop host.
+export type CapabilityValue = null | boolean | number | string | CapabilityValue[] | { [key: string]: CapabilityValue };
+export type CapabilityScope = { kind: 'application' } | { kind: 'workspace' | 'session'; id: string };
+export type CapabilityProvider = { installationId: string; contributionId: string; pluginId: string; version: string };
+export type CapabilityRequest = { scope: CapabilityScope; capability: string; version: string; requestId: string; input: CapabilityValue };
+export type CapabilityResult = { invocationId: string; installationId: string; generationId: string; output: CapabilityValue };
+export const listCapabilityProviders = (scope: CapabilityScope, capability: string, version: string): Promise<CapabilityProvider[]> => invoke('list_capability_providers', { scope, capability, version });
+export const bindCapabilityProvider = (scope: CapabilityScope, capability: string, version: string, provider: CapabilityProvider): Promise<void> => invoke('bind_capability_provider', { binding: { scope, capability, version, installationId: provider.installationId, contributionId: provider.contributionId } });
+export const invokeCapability = (request: CapabilityRequest): Promise<CapabilityResult> => invoke('invoke_capability', { request });
+export const cancelCapability = (requestId: string): Promise<boolean> => invoke('cancel_capability', { requestId });
+
 export const listPluginInstallations = (): Promise<PluginInstallation[]> => invoke('list_plugin_installations');
 export const installAgentPlugin = (path: string): Promise<PluginInstallation> => invoke('install_agent_plugin', { path });
 export const setAgentPluginEnabled = (id: string, enabled: boolean): Promise<void> => invoke('set_agent_plugin_enabled', { id, enabled });

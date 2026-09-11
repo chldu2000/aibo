@@ -1,0 +1,11 @@
+{
+  "identifier": "local.aibo.capabilityprobe.1789112388541",
+  "source": "read-only isolated SQLite after two native app processes",
+  "invocationsByStatus": {
+    "cancelled": 1,
+    "completed": 4
+  },
+  "agentSessions": 0,
+  "agentEvents": 0,
+  "generations": 4
+}

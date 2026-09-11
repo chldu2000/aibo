@@ -172,3 +172,9 @@ explicitly unavailable until host capability/confirmation dispatch is wired.
 App 中所有业务回调和可写绑定经 generation、当前工作区及会话检查；`test/p2-boundaries.test.mjs` 通过 Svelte AST 检查这些入口并禁止 Shell 导入 Agent 生命周期 API。切换期间 inert，挂载失败回到标准呈现，焦点使用语义 ID。App/Git 提交说明、分支名和插件表单由宿主持有，并在窗口命名空间持久化；会话 Composer 草稿继续使用 Core session 持久化。两套皮肤继续提供同一视觉合同，新增 CSS 仅控制布局。
 
 验收包括两套皮肤的模型矩阵、两种 Git 布局、真实桌面流式切换/应用重启/窗口隔离，以及浏览器故障注入。详见 [P2 记录](./plugin-platform-p2-agent-state.md)。
+
+## P3 安装目录与激活诊断
+
+插件管理面板允许安装记录没有旧 `agents` 数组，显示宿主返回的激活诊断，并在不可运行时禁止启用；已启用插件始终保留禁用入口。现有 v1 新建会话和卸载入口保留。Registry 返回的统一 contributions 是数据目录，不由管理面板执行；声明式贡献自动挂载将在 Broker/扩展点合同就绪后接入。此批不修改 UiKitAdapter，也不添加皮肤分支或视觉样式。
+
+P3 第二批增加宿主注入窗口身份的 capability IPC 与类型化 API，输入不接受 caller、permission 或 workspacePath。只读 capabilityProvider 可独立激活；App 不负责执行或管理进程，不因 capability 的名字选择 Provider。语义贡献自动呈现仍待后续实施，当前管理面板继续显示未支持贡献的激活原因。

@@ -6,6 +6,8 @@ mod execution_profile;
 mod pi;
 mod plugin_runtime;
 mod plugin_contract;
+mod plugin_manifest;
+mod capability_broker;
 mod plugin_registry;
 mod plugin_host;
 mod workspace_guard;
@@ -71,6 +73,7 @@ pub struct AppState {
     codex: CodexManager,
     plugins: plugin_host::PluginHost,
     semantic_git: semantic_git::GitPresentation,
+    capability_broker: capability_broker::Broker,
     data_dir: PathBuf,
 }
 
@@ -1305,6 +1308,7 @@ async fn set_workspace_trust(
     trusted: bool,
     state: State<'_, AppState>,
 ) -> Result<Workspace, CoreError> {
+    let _guard = state.capability_broker.mutation_guard().await;
     let updated = sqlx::query("UPDATE workspaces SET trusted = ?, updated_at = ? WHERE id = ?")
         .bind(i64::from(trusted))
         .bind(now_iso())
@@ -1314,6 +1318,7 @@ async fn set_workspace_trust(
     if updated.rows_affected() == 0 {
         return Err(CoreError::WorkspaceNotFound(workspace_id));
     }
+    if !trusted { state.capability_broker.stop_workspace(&workspace_id).await.map_err(|error|CoreError::Initialization(error.message))?; }
     workspace_by_id(&state.db, &workspace_id).await
 }
 
@@ -1322,6 +1327,8 @@ async fn remove_workspace(
     workspace_id: String,
     state: State<'_, AppState>,
 ) -> Result<(), CoreError> {
+    let _guard = state.capability_broker.mutation_guard().await;
+    state.capability_broker.stop_workspace(&workspace_id).await.map_err(|error|CoreError::Initialization(error.message))?;
     state.codex.close_workspace(&workspace_id).await?;
     state
         .plugins
@@ -4779,6 +4786,26 @@ async fn unarchive_session(
 }
 
 #[tauri::command]
+async fn list_capability_providers(scope: capability_broker::Scope, capability: String, version: String, state: State<'_, AppState>) -> Result<Vec<capability_broker::Provider>, capability_broker::Failure> {
+    state.capability_broker.providers(&scope, &capability, &version).await
+}
+#[tauri::command]
+async fn bind_capability_provider(binding: capability_broker::Binding, state: State<'_, AppState>) -> Result<(), capability_broker::Failure> {
+    state.capability_broker.bind(binding).await
+}
+#[tauri::command]
+async fn invoke_capability(request: capability_broker::Request, window: tauri::WebviewWindow, state: State<'_, AppState>) -> Result<capability_broker::Response, capability_broker::Failure> {
+    let broker = state.capability_broker.clone();
+    let caller = window.label().to_owned();
+    // Execution belongs to Core even if the calling view disappears.
+    tokio::spawn(async move { broker.invoke(&caller, request).await }).await.map_err(|_| capability_broker::Failure { code: "provider_unavailable".into(), message: "Capability task stopped".into(), invocation_id: None })?
+}
+#[tauri::command]
+async fn cancel_capability(request_id: String, window: tauri::WebviewWindow, state: State<'_, AppState>) -> Result<bool, String> {
+    Ok(state.capability_broker.cancel(window.label(), &request_id).await)
+}
+
+#[tauri::command]
 async fn list_plugin_installations(state: State<'_, AppState>) -> Result<Vec<plugin_registry::PluginInstallation>, String> {
     plugin_registry::list(&state.db).await
 }
@@ -4790,11 +4817,17 @@ async fn install_agent_plugin(path: String, state: State<'_, AppState>) -> Resul
 
 #[tauri::command]
 async fn set_agent_plugin_enabled(id: String, enabled: bool, state: State<'_, AppState>) -> Result<(), String> {
-    plugin_registry::enable(&state.db, &id, enabled).await
+    let _guard = state.capability_broker.mutation_guard().await;
+    plugin_registry::enable(&state.db, &id, enabled).await?;
+    if !enabled { state.capability_broker.stop_installation(&id).await.map_err(|error|error.message)?; }
+    Ok(())
 }
 
 #[tauri::command]
 async fn uninstall_agent_plugin(id: String, state: State<'_, AppState>) -> Result<(), String> {
+    let _guard = state.capability_broker.mutation_guard().await;
+    plugin_registry::enable(&state.db, &id, false).await?;
+    state.capability_broker.stop_installation(&id).await.map_err(|error|error.message)?;
     state.plugins.uninstall(&state.data_dir, &id).await
 }
 
@@ -5695,9 +5728,12 @@ pub fn run() {
                     "recover interrupted sessions: {error}"
                 ))) as Box<dyn Error>
             })?;
+            tauri::async_runtime::block_on(capability_broker::Broker::recover(&db))
+                .map_err(|error| Box::new(CoreError::Initialization(error)) as Box<dyn Error>)?;
             info!(path = %db_path.display(), "aibo core initialized");
             let codex = CodexManager::new(app.handle().clone(), db.clone(), data_dir.clone());
             app.manage(AppState {
+                capability_broker: capability_broker::Broker::new(db.clone()),
                 semantic_git: semantic_git::GitPresentation::default(),
                 plugins: plugin_host::PluginHost::with_app(db.clone(), app.handle().clone()),
                 db,
@@ -5710,6 +5746,10 @@ pub fn run() {
             semantic_git::open_semantic_git,
             semantic_git::act_semantic_git,
             semantic_git::release_semantic_git,
+            list_capability_providers,
+            bind_capability_provider,
+            invoke_capability,
+            cancel_capability,
             list_plugin_installations,
             install_agent_plugin,
             set_agent_plugin_enabled,

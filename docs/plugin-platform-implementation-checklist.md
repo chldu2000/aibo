@@ -1,6 +1,6 @@
 # 插件平台演进实施 Checklist
 
-> 日期：2026-09-10 · 状态：P0 已按用户确认完成（保留验收例外）；P1 已实施并通过自动/原生 WebView 脚本验收；P2 已完成统一路由、宿主状态与整窗生命周期验收；P3–P5 待实施。
+> 日期：2026-09-10 · 状态：P0 已按用户确认完成（保留验收例外）；P1 已实施并通过自动/原生 WebView 脚本验收；P2 已完成统一路由、宿主状态与整窗生命周期验收；P3 只读 Broker 与能力运行链实施中；P4–P5 待实施。
 > 依据：[插件平台架构演进提案](./plugin-platform-evolution.md)。本文将提案转为执行清单，不替代现行契约或授权放宽架构检查。
 
 原提案已给出职责、协议方向、分阶段路线与验收标准，因此采用 checklist，不再重复架构论证。所有复选框表示本次演进的待办；仓库已有基础不等于这些验收项已经通过。
@@ -98,11 +98,14 @@
 
 ### P3.1 Manifest 与兼容
 
-- [ ] 定义 Manifest v2 的 `agent`、`capabilityProvider`、`semanticView` contributions 和 `presentation` 描述；纯声明式包无需 entrypoint，有运行逻辑的包必须声明入口。
-- [ ] 分开宿主、runtime/view 协议、能力契约版本、本机可执行依赖和包依赖；不改变 v1 `dependencies` 含义。
-- [ ] 定义字段限额、输入输出 schema、operation 映射、激活诊断；补齐正反 schema fixture。
+- [x] 定义 Manifest v2 的 `agent`、`capabilityProvider`、`semanticView` contributions 和 `presentation` 描述；纯声明式包无需 entrypoint，有运行逻辑的包必须声明入口。
+- [x] 分开宿主、runtime/view 协议、能力契约版本、本机可执行依赖和包依赖；不改变 v1 `dependencies` 含义。
+- [x] 定义字段限额、输入输出 schema、operation 映射、激活诊断；补齐正反 schema fixture。
 - [ ] 落实插件命名空间能力契约与宿主治理的核心视图边界；P3 对外发布前冻结首个稳定语义版本，并确定兼容窗口与弃用通知策略。
-- [ ] 通过 v1 adapter 将旧 agents 映射为内部 contribution；保持旧 wire protocol、session ID 和 binding，不兼容包在激活前拒绝。
+- [x] 通过 v1 adapter 将旧 agents 映射为内部 contribution；保持旧 wire protocol、session ID 和 binding，不兼容包在激活前拒绝。
+
+
+**第一批进度：** [Manifest v2 与统一贡献目录](./plugin-platform-p3-manifest.md)。v2 合同为草案；已接通无执行入口包的安装登记、诊断与卸载。第二批已开放无包依赖的只读 capabilityProvider 激活；语义视图、依赖图、settings/inspector 完整合同和 Git 运行链尚未完成，不能据此勾选 P3 退出条件。
 
 ### P3.2 Broker 与调用链
 
@@ -113,6 +116,8 @@
 - [ ] 覆盖 `unsupported`、`incompatible_version`、`permission_denied`、`provider_unavailable`、`busy`、`cancelled`、`timeout`、`invalid_output`；写后断连表达结果未知，无幂等保证不得自动重试。
 - [ ] 插件间调用仅走 Broker，传播原始调用者、资源范围、调用链和 deadline；权限取调用链约束交集，限制深度/并发并向子调用传播取消。
 - [ ] 实现声明依赖解析和 release 固定，拒绝必需依赖环，可选依赖缺失仅禁用相关 contribution。
+
+**第二批进度：** [Broker 与无 Agent 只读运行链](./plugin-platform-p3-broker.md)已通过真实子进程和原生桌面双启动验收：三种 scope 服务、显式 release 绑定、输入/输出与 generation 校验、取消隔离、禁用/信任撤销和调用审计已实现。上述 Broker 项和下述 Runtime 项仍需 turn/插件调用链、权限审批、依赖解析、能力事件及 Git/语义贡献链补齐，故不将局部完成标成整项通过。
 
 ### P3.3 Runtime、贡献与 Git 迁移
 

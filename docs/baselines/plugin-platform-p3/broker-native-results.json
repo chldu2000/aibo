@@ -1,0 +1,30 @@
+{
+  "identifier": "local.aibo.capabilityprobe.1789112388541",
+  "results": [
+    {
+      "ok": true,
+      "stage": 0,
+      "evidence": {
+        "realCapabilityProcess": true,
+        "explicitBinding": true,
+        "hostWorkspacePath": true,
+        "forgedCallerRejected": true,
+        "cancellation": true,
+        "workspaceIsolation": true,
+        "noAgentSession": true
+      }
+    },
+    {
+      "ok": true,
+      "stage": 1,
+      "evidence": {
+        "actualAppRestart": true,
+        "persistedBinding": true,
+        "newGeneration": true,
+        "disabledBindingRejected": true,
+        "reenabledRelease": true,
+        "uninstall": true
+      }
+    }
+  ]
+}

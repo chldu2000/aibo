@@ -1,4 +1,5 @@
-//! Process transport for Agent Runtime v1. Policy and persistence remain in Core.
+//! Bounded process transport for Agent v1 and experimental capability v2 envelopes.
+//! Policy, operation validation and persistence remain in Core.
 use serde_json::{json, Value};
 use std::{
     collections::HashMap,
@@ -32,6 +33,14 @@ pub(crate) struct PluginRuntime {
 
 impl PluginRuntime {
     pub fn spawn(executable: &Path, args: &[String], directory: &Path, sdk_module: Option<&Path>) -> Result<Self, String> {
+        Self::spawn_transport(executable, args, directory, sdk_module, false)
+    }
+
+    pub fn spawn_capability(executable: &Path, args: &[String], directory: &Path) -> Result<Self, String> {
+        Self::spawn_transport(executable, args, directory, None, true)
+    }
+
+    fn spawn_transport(executable: &Path, args: &[String], directory: &Path, sdk_module: Option<&Path>, capability: bool) -> Result<Self, String> {
         let mut command = Command::new(executable);
         command.env_clear();
         for name in ["SystemRoot", "WINDIR", "TEMP", "TMP", "PATH", "LANG", "LC_ALL"] {
@@ -116,7 +125,7 @@ impl PluginRuntime {
                             };
                             frame.clear();
                             if message["jsonrpc"] != "2.0" { break 'runtime "protocol_incompatible: JSON-RPC version"; }
-                            if !crate::plugin_contract::contracts().runtime.is_valid(&message) { break 'runtime "invalid_request: plugin response schema"; }
+                            if !(if capability { &crate::plugin_contract::contracts().capability_runtime } else { &crate::plugin_contract::contracts().runtime }).is_valid(&message) { break 'runtime "invalid_request: plugin response schema"; }
                             if message["method"] == "aibo/tool-request" {
                                 if !matches!(message.get("id"), Some(Value::String(_) | Value::Number(_))) || !message["params"].is_object() {
                                     break 'runtime "invalid_request: malformed Core tool request";

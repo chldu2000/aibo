@@ -9,7 +9,8 @@
     installed: boolean;
     runnable: boolean;
     dependencies: { kind: string; name: string; required: boolean; available: boolean; versionRange: string | null; detectedVersion?: string | null; issue?: string | null }[];
-    manifest: { displayName: string; agents: { agentId: string; displayName: string }[] };
+    activationIssues?: string[];
+    manifest: { displayName: string; agents?: { agentId: string; displayName: string }[] };
   };
 
   type Props = {
@@ -27,8 +28,8 @@
   const fieldId = $props.id();
 </script>
 
-<Card aria-label="Agent 插件" aria-busy={busy}>
-  <CardHeader><CardTitle>Agent 插件</CardTitle></CardHeader>
+<Card aria-label="插件" aria-busy={busy}>
+  <CardHeader><CardTitle>插件</CardTitle></CardHeader>
   <CardContent>
     <div class="plugin-manager">
       <p>从本地解包目录安装插件，安装后默认禁用。启用前请确认来源可信：插件在独立进程运行，但不等于系统沙箱。</p>
@@ -39,7 +40,7 @@
       </form>
 
       {#if installations.length === 0}
-        <p role="status">尚未安装外部 Agent 插件。</p>
+        <p role="status">尚未安装外部插件。</p>
       {:else}
         <div class="plugin-list">
           {#each installations as installation (installation.id)}
@@ -58,12 +59,13 @@
                       {dependency.kind} · {dependency.name}{dependency.versionRange ? ` ${dependency.versionRange}` : ''}{dependency.detectedVersion ? `（检测到 ${dependency.detectedVersion}）` : ''} · {dependency.available ? '可用' : dependency.required ? `不可用（必需${dependency.issue ? `：${dependency.issue}` : ''}）` : `不可用（可选${dependency.issue ? `：${dependency.issue}` : ''}）`}
                     </p>
                   {/each}
+                  {#each installation.activationIssues ?? [] as issue}<p role="status">{issue}</p>{/each}
                   <div class="plugin-actions">
                     {#if installation.installed}
-                      <Button type="button" variant="outline" disabled={busy} onclick={() => onEnabledChange(installation.id, !installation.enabled)}>{installation.enabled ? '禁用插件' : '启用插件'}</Button>
+                      <Button type="button" variant="outline" disabled={busy || (!installation.enabled && !installation.runnable)} onclick={() => onEnabledChange(installation.id, !installation.enabled)}>{installation.enabled ? '禁用插件' : '启用插件'}</Button>
                       <Button type="button" variant="outline" disabled={busy} onclick={() => onUninstall(installation.id)}>卸载插件</Button>
                     {/if}
-                    {#each installation.manifest.agents as agent (agent.agentId)}
+                    {#each (installation.manifest.agents ?? []) as agent (agent.agentId)}
                       <Button type="button" disabled={busy || !installation.installed || !installation.enabled || !installation.runnable} onclick={() => onCreateSession(installation.id, agent.agentId)}>新建 {agent.displayName} 会话</Button>
                     {/each}
                   </div>
