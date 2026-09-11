@@ -3,23 +3,25 @@ use crate::{CoreError, Workspace};
 use serde::{Serialize, de::DeserializeOwned};
 use serde_json::Value;
 use sqlx::{Row, SqlitePool};
-use std::{future::Future, path::Path};
+use std::{future::Future, path::{Path, PathBuf}, sync::Arc};
 
 static ADMISSION: tokio::sync::Mutex<()> = tokio::sync::Mutex::const_new(());
 
 /// Constructed by the host composition root; never deserialized from UI input.
+#[derive(Clone)]
 pub(crate) struct Request {
     id: String,
     caller: String,
-    confirmation: Option<Box<dyn Fn(String) -> std::pin::Pin<Box<dyn Future<Output = Result<bool, String>> + Send>> + Send + Sync>>,
+    confirmation: Option<Arc<dyn Fn(String) -> std::pin::Pin<Box<dyn Future<Output = Result<bool, String>> + Send>> + Send + Sync>>,
 }
 impl Request {
     #[cfg(test)]
     pub(crate) fn new(id: String, caller: String) -> Self { Self { id, caller, confirmation: None } }
     pub(crate) fn with_confirmation<F, Fut>(id: String, caller: String, confirm: F) -> Self
     where F: Fn(String) -> Fut + Send + Sync + 'static, Fut: Future<Output = Result<bool, String>> + Send + 'static {
-        Self { id, caller, confirmation: Some(Box::new(move |message| Box::pin(confirm(message)))) }
+        Self { id, caller, confirmation: Some(Arc::new(move |message| Box::pin(confirm(message)))) }
     }
+    pub(crate) fn child(&self, id: String) -> Self { Self { id, caller:self.caller.clone(), confirmation:self.confirmation.clone() } }
     pub(crate) fn matches(&self, id: &str, caller: &str) -> bool { self.id == id && self.caller == caller && self.confirmation.is_some() }
     #[cfg(test)]
     pub(crate) fn test() -> Self { Self::new(ulid::Ulid::new().to_string(), "test".into()) }
@@ -27,12 +29,16 @@ impl Request {
 
 /// Explicit execution context; cancellation survives renderer disposal and trust revocation.
 #[derive(Clone)]
-pub(crate) struct Cancellation { db: SqlitePool, run_id: String }
+pub(crate) struct Cancellation { db: SqlitePool, run_id: String, ancestors: Vec<String>, lease: Arc<WriteLease> }
+struct WriteLease { workspace_id: String, root: PathBuf, caller: String, _guard: crate::workspace_writes::WorkspaceWrite }
 impl Cancellation {
     pub(crate) fn run_id(&self) -> &str { &self.run_id }
+    pub(crate) fn root_run_id(&self) -> &str { self.ancestors.first().map(String::as_str).unwrap_or(&self.run_id) }
     pub(crate) async fn is_requested(&self) -> bool {
-        sqlx::query_scalar::<_, i64>("SELECT cancel_requested_at IS NOT NULL OR status NOT IN ('awaiting_approval','running') FROM workspace_write_runs WHERE id=?")
-            .bind(&self.run_id).fetch_optional(&self.db).await.map(|value| value != Some(0)).unwrap_or(true)
+        let mut ids = self.ancestors.clone(); ids.push(self.run_id.clone());
+        let active: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM workspace_write_runs WHERE id IN (SELECT value FROM json_each(?)) AND cancel_requested_at IS NULL AND (status='running' OR (id=? AND status='awaiting_approval'))")
+            .bind(serde_json::to_string(&ids).unwrap()).bind(&self.run_id).fetch_one(&self.db).await.unwrap_or(0);
+        active as usize != ids.len()
     }
     pub(crate) async fn requested(&self) {
         loop {
@@ -91,6 +97,8 @@ pub(crate) struct WriteRun {
     cancel_requested_at: Option<String>,
     approval_outcome: Option<String>,
     approval_decided_at: Option<String>,
+    parent_write_run_id: Option<String>,
+    root_write_run_id: Option<String>,
 }
 
 #[cfg(test)]
@@ -115,6 +123,26 @@ pub(crate) async fn execute_with_context<T, F, Fut, P, Prepared>(
 ) -> Result<T, CoreError>
 where T: Serialize + DeserializeOwned, F: FnOnce(Cancellation) -> Fut, Fut: Future<Output = Result<T, CoreError>>,
     P: Fn() -> Prepared, Prepared: Future<Output = Result<Value, CoreError>> {
+    execute_in_lease(db, workspace, operation, input, request, None, std::future::pending(), prepare, execute).await
+}
+
+/// Only a live host-issued lease can admit a nested write without reacquiring the
+/// workspace. Frontend/plugin JSON cannot manufacture this capability.
+pub(crate) async fn execute_child_with_context<T, F, Fut, P, Prepared, Stop>(
+    db: &SqlitePool, workspace: &Workspace, operation: &str, input: Value, request: &Request,
+    parent: &Cancellation, stop: Stop, prepare: P, execute: F,
+) -> Result<T, CoreError>
+where T: Serialize + DeserializeOwned, F: FnOnce(Cancellation) -> Fut, Fut: Future<Output = Result<T, CoreError>>,
+    P: Fn() -> Prepared, Prepared: Future<Output = Result<Value, CoreError>>, Stop: Future<Output = ()> {
+    execute_in_lease(db, workspace, operation, input, request, Some(parent), stop, prepare, execute).await
+}
+
+async fn execute_in_lease<T, F, Fut, P, Prepared, Stop>(
+    db: &SqlitePool, workspace: &Workspace, operation: &str, input: Value, request: &Request,
+    parent: Option<&Cancellation>, stop: Stop, prepare: P, execute: F,
+) -> Result<T, CoreError>
+where T: Serialize + DeserializeOwned, F: FnOnce(Cancellation) -> Fut, Fut: Future<Output = Result<T, CoreError>>,
+    P: Fn() -> Prepared, Prepared: Future<Output = Result<Value, CoreError>>, Stop: Future<Output = ()> {
     if workspace.trust != "trusted" { return Err(CoreError::WorkspaceTrustRequired); }
     if request.id.is_empty() || request.id.len() > 128 || !request.id.bytes().all(|c| c.is_ascii_alphanumeric() || matches!(c, b'-' | b'_')) {
         return Err(CoreError::InvalidWorkspacePath("invalid workspace write request ID".into()));
@@ -122,9 +150,23 @@ where T: Serialize + DeserializeOwned, F: FnOnce(Cancellation) -> Fut, Fut: Futu
     let identity = serde_json::json!({"operation":operation,"input":&input,"caller":&request.caller}).to_string();
     let admission = ADMISSION.lock().await;
     if let Some(result) = replay(db, &workspace.id, request, &identity).await? { return result; }
-    let _write = crate::workspace_writes::acquire(db, &workspace.id, Path::new(&workspace.path)).await?;
+    let lease = if let Some(parent) = parent {
+        let root = tokio::fs::canonicalize(&workspace.path).await.map_err(|error|CoreError::InvalidWorkspacePath(error.to_string()))?;
+        if parent.lease.workspace_id != workspace.id || parent.lease.root != root || parent.lease.caller != request.caller || parent.is_requested().await {
+            return Err(CoreError::InvalidWorkspacePath("Nested write has no live lease for this workspace and caller".into()));
+        }
+        parent.lease.clone()
+    } else {
+        let guard = crate::workspace_writes::acquire(db, &workspace.id, Path::new(&workspace.path)).await?;
+        let root = guard.root().to_path_buf();
+        Arc::new(WriteLease { workspace_id:workspace.id.clone(), root, caller:request.caller.clone(), _guard:guard })
+    };
     drop(admission);
     let id = ulid::Ulid::new().to_string();
+    let mut ancestors = parent.map(|parent|parent.ancestors.clone()).unwrap_or_default();
+    if let Some(parent) = parent { ancestors.push(parent.run_id.clone()); }
+    let root_id = ancestors.first().cloned().unwrap_or_else(||id.clone());
+    let cancellation = Cancellation { db:db.clone(), run_id:id.clone(), ancestors, lease:lease.clone() };
     let approval_context = if request.confirmation.is_some() { Some(prepare().await?) } else { None };
     let mut message = format!("宿主写入：{operation}\n工作区：{}\n调用窗口：{}\n输入：{}\n\n批准仅适用于本次请求；取消不保证撤销已发生的更改。", workspace.path, request.caller, input);
     if let Some(description) = approval_context.as_ref().and_then(|context| context["approvalDescription"].as_str()) { message.push_str("\n\n"); message.push_str(description); }
@@ -132,21 +174,22 @@ where T: Serialize + DeserializeOwned, F: FnOnce(Cancellation) -> Fut, Fut: Futu
     let snapshot = serde_json::json!({"schema":"aibo.workspace-write-intent/v1","origin":"host","workspaceId":workspace.id,"workspacePath":workspace.path,"operation":operation,"input":input,"approvalContext":approval_context});
     let snapshot_json = snapshot.to_string();
     if snapshot_json.len() > 64 * 1024 { return Err(CoreError::InvalidWorkspacePath("workspace write intent exceeds 64 KiB".into())); }
-    let admitted = sqlx::query("INSERT INTO workspace_write_runs (id,schema_version,workspace_id,operation,status,snapshot_json,started_at,request_id,caller_window,request_json) VALUES (?,?,?,?,?,?,?,?,?,?) ON CONFLICT(workspace_id,request_id) DO NOTHING")
-        .bind(&id).bind(if request.confirmation.is_some() { "aibo.workspace-write-run/v2" } else { "aibo.workspace-write-run/v1" }).bind(&workspace.id).bind(operation).bind(if request.confirmation.is_some() { "awaiting_approval" } else { "running" }).bind(snapshot_json).bind(crate::now_iso()).bind(&request.id).bind(&request.caller).bind(&identity).execute(db).await?.rows_affected();
+    let admitted = sqlx::query("INSERT INTO workspace_write_runs (id,schema_version,workspace_id,operation,status,snapshot_json,started_at,request_id,caller_window,request_json,parent_write_run_id,root_write_run_id) VALUES (?,?,?,?,?,?,?,?,?,?,?,?) ON CONFLICT(workspace_id,request_id) DO NOTHING")
+        .bind(&id).bind(if request.confirmation.is_some() { "aibo.workspace-write-run/v2" } else { "aibo.workspace-write-run/v1" }).bind(&workspace.id).bind(operation).bind(if request.confirmation.is_some() { "awaiting_approval" } else { "running" }).bind(snapshot_json).bind(crate::now_iso()).bind(&request.id).bind(&request.caller).bind(&identity).bind(parent.map(|parent|parent.run_id.as_str())).bind(&root_id).execute(db).await?.rows_affected();
     if admitted == 0 {
         return replay(db, &workspace.id, request, &identity).await?
             .ok_or_else(|| CoreError::Initialization("write request disappeared during admission".into()))?;
     }
     if let Some(confirm) = &request.confirmation {
-        let cancellation = Cancellation { db: db.clone(), run_id: id.clone() };
-        let mut decision = await_approval(confirm(message), cancellation.requested(), std::time::Duration::from_secs(300)).await;
+        let cancelled = async { tokio::select! { _ = cancellation.requested() => {}, _ = stop => {} } };
+        let mut decision = await_approval(confirm(message), cancelled, std::time::Duration::from_secs(300)).await;
         if decision == "approved" {
             match prepare().await {
                 Ok(context) if Some(&context) == approval_context.as_ref() => {},
                 _ => decision = "stale",
             }
         }
+        if decision == "approved" && cancellation.is_requested().await { decision = "cancelled"; }
         let decided_at = crate::now_iso();
         if decision == "approved" {
             let started = sqlx::query("UPDATE workspace_write_runs SET status='running',approval_outcome='approved',approval_decided_at=? WHERE id=? AND status='awaiting_approval' AND cancel_requested_at IS NULL")
@@ -162,7 +205,7 @@ where T: Serialize + DeserializeOwned, F: FnOnce(Cancellation) -> Fut, Fut: Futu
         }
     }
     // Construct/poll the operation only after durable admission and approval succeed.
-    let result = execute(Cancellation { db: db.clone(), run_id: id.clone() }).await;
+    let result = execute(cancellation).await;
     let (status, document) = match &result {
         // Completed is lifecycle settlement, not a claim that Git applied changes.
         // The original typed output retains applied/committed and its explanation.
@@ -196,7 +239,7 @@ pub(crate) async fn list_page(db: &SqlitePool, workspace_id: String, limit: Opti
             operation: row.try_get("operation")?, status: row.try_get("status")?,
             snapshot: serde_json::from_str(&snapshot).map_err(|error| CoreError::Initialization(error.to_string()))?,
             result: result.map(|value| serde_json::from_str(&value)).transpose().map_err(|error| CoreError::Initialization(error.to_string()))?,
-            started_at: row.try_get("started_at")?, completed_at: row.try_get("completed_at")?, cancel_requested_at: row.try_get("cancel_requested_at")?, approval_outcome: row.try_get("approval_outcome")?, approval_decided_at: row.try_get("approval_decided_at")? })
+            started_at: row.try_get("started_at")?, completed_at: row.try_get("completed_at")?, cancel_requested_at: row.try_get("cancel_requested_at")?, approval_outcome: row.try_get("approval_outcome")?, approval_decided_at: row.try_get("approval_decided_at")?, parent_write_run_id:row.try_get("parent_write_run_id")?, root_write_run_id:row.try_get("root_write_run_id")? })
     }).collect()
 }
 

@@ -3,6 +3,17 @@
 use super::*;
 use crate::{workspace_write_runs, CoreError};
 
+#[derive(Clone)]
+pub(super) struct WriteContext {
+    pub cancellation: workspace_write_runs::Cancellation,
+    pub approval: workspace_write_runs::Request,
+    pub uncertain: Arc<std::sync::atomic::AtomicBool>,
+}
+impl WriteContext {
+    pub fn is_uncertain(&self) -> bool { self.uncertain.load(std::sync::atomic::Ordering::Acquire) }
+    pub fn mark_uncertain(&self) { self.uncertain.store(true,std::sync::atomic::Ordering::Release); }
+}
+
 const OPERATION: &str = "capability.invoke";
 fn core(error: Failure) -> CoreError { CoreError::WriteReplay { code: error.code, message: error.message } }
 fn failure(error: CoreError) -> Failure {
@@ -66,18 +77,58 @@ impl Broker {
         self.validate_turn(&request).await?;
         if !jsonschema::options().build(&provider.operation["inputSchema"]).map_err(database)?.is_valid(&request.input) { return Err(fail("invalid_input", "Input does not match the capability contract")); }
         workspace_write_runs::execute_with_context(&self.db, &workspace, OPERATION, identity, approval,
-            || self.prepare_write(&request, &provider, &workspace),
+            || self.prepare_write(&request, &provider, &workspace, None),
             |cancel| async {
                 if cancel.is_requested().await { return Err(CoreError::WriteReplay { code:"cancelled".into(),message:"Capability was cancelled before dispatch".into() }); }
                 // The runtime and its dependency probes are constructed only here,
                 // after durable admission, native approval and context comparison.
-                self.invoke_selected(caller, request.clone(), provider.clone(), None, Some(cancel)).await.map_err(|error| {
+                self.invoke_selected(caller, request.clone(), provider.clone(), None, Some(WriteContext { cancellation:cancel, approval:approval.clone(), uncertain:Default::default() })).await.map_err(|error| {
                     CoreError::WriteOutcomeUnknown(format!("{}; invocation {}", error.message, error.invocation_id.as_deref().unwrap_or("not assigned")))
                 })
             }).await.map_err(failure)
     }
 
-    async fn prepare_write(&self, request: &Request, provider: &Provider, workspace: &crate::Workspace) -> Result<Value, CoreError> {
+    pub(super) async fn dependency_provider(&self, request: &Request, owner: &Provider, plugin: &str, contribution: &str, persist: bool) -> Result<Provider,Failure> {
+        let current: Option<(String,String)> = sqlx::query_as("SELECT manifest_json,package_digest FROM plugin_installations WHERE id=? AND installed=1 AND enabled=1").bind(&owner.installation_id).fetch_optional(&self.db).await.map_err(database)?;
+        if !current.is_some_and(|(manifest,digest)|digest == owner.digest && serde_json::from_str::<Value>(&manifest).ok().as_ref() == Some(&owner.manifest)) { return Err(fail("provider_unavailable", "Calling release changed")); }
+        let dependencies = if persist {crate::plugin_dependencies::resolve_metadata_pinned(&self.db,&owner.installation_id).await} else {crate::plugin_dependencies::resolve_metadata(&self.db,&owner.installation_id).await}.map_err(database)?;
+        let dependency = dependencies.dependencies.iter().find(|dependency|dependency.plugin_id == plugin && dependency.contribution_ids.contains(&owner.contribution_id))
+            .ok_or_else(||fail("permission_denied", "Calling contribution has not declared this dependency"))?;
+        if !dependencies.supports(&owner.contribution_id) || !dependency.available { return Err(fail("provider_unavailable", "Pinned dependency is unavailable")); }
+        let offers = self.offers(&request.scope,&request.capability,&request.version,dependency.installation_id.as_deref()).await?;
+        offers.into_iter().find(|offer|Some(&offer.installation_id) == dependency.installation_id.as_ref() && offer.contribution_id == contribution)
+            .ok_or_else(||fail("provider_unavailable", "Pinned dependency does not provide this contribution"))
+    }
+
+    pub(super) async fn invoke_child_write(&self, request: Request, provider: Provider, owner: &Provider, chain: Chain) -> Result<Response,Failure> {
+        let write = chain.write.as_ref().ok_or_else(||fail("permission_denied", "A read call cannot acquire write authority through a dependency"))?;
+        if provider.operation["permissions"].as_array().unwrap().iter().any(|permission|!chain.permissions.iter().any(|allowed|permission == allowed)) {
+            return Err(fail("permission_denied", "Dependency call exceeds its caller permissions"));
+        }
+        if chain.sites.len() >= MAX_CALL_DEPTH || chain.sites.iter().any(|site|site.installation_id == provider.installation_id && site.contribution_id == provider.contribution_id) {
+            return Err(fail("busy", "Dependency call cycle or depth limit"));
+        }
+        if !jsonschema::options().build(&provider.operation["inputSchema"]).map_err(database)?.is_valid(&request.input) { return Err(fail("invalid_input", "Input does not match the capability contract")); }
+        let workspace = self.workspace(&request.scope).await?.ok_or_else(||fail("permission_denied", "Dependency write requires a workspace"))?;
+        let approval = write.approval.child(request.request_id.clone());
+        let mut identity = input(&request);
+        identity["parentInvocationId"] = json!(chain.sites.last().map(|site|&site.invocation_id));
+        identity["parentWriteRunId"] = json!(write.cancellation.run_id());
+        identity["installationId"] = json!(provider.installation_id);
+        identity["contributionId"] = json!(provider.contribution_id);
+        let stop = async { tokio::select! { _ = chain.cancelled() => {}, _ = tokio::time::sleep_until(chain.deadline.into()) => {} } };
+        let result = workspace_write_runs::execute_child_with_context(&self.db,&workspace,OPERATION,identity,&approval,&write.cancellation,stop,
+            ||self.prepare_write(&request,&provider,&workspace,Some((owner,&chain))),
+            |cancel| async {
+                let context = WriteContext {cancellation:cancel,approval:approval.clone(),uncertain:write.uncertain.clone()};
+                self.invoke_selected(&chain.caller,request.clone(),provider.clone(),Some(chain.clone()),Some(context)).await
+                    .map_err(|error|CoreError::WriteOutcomeUnknown(format!("{}; invocation {}",error.message,error.invocation_id.as_deref().unwrap_or("not assigned"))))
+            }).await.map_err(failure);
+        if result.as_ref().is_err_and(|error|error.code == "outcome_unknown") { write.mark_uncertain(); }
+        result
+    }
+
+    async fn prepare_write(&self, request: &Request, provider: &Provider, workspace: &crate::Workspace, parent: Option<(&Provider,&Chain)>) -> Result<Value, CoreError> {
         let current = self.workspace(&request.scope).await.map_err(core)?.ok_or(CoreError::WorkspaceTrustRequired)?;
         if current.id != workspace.id || current.path != workspace.path { return Err(CoreError::InvalidWorkspacePath("Capability workspace changed".into())); }
         self.validate_turn(request).await.map_err(core)?;
@@ -86,7 +137,24 @@ impl Broker {
         if !metadata.is_dir() { return Err(CoreError::InvalidWorkspacePath("Capability workspace is not a directory".into())); }
         #[cfg(unix)] let root_identity = { use std::os::unix::fs::MetadataExt; json!({"device":metadata.dev(),"inode":metadata.ino()}) };
         #[cfg(not(unix))] let root_identity = json!({"created":metadata.created().ok().map(|value|format!("{value:?}"))});
-        let selected = self.provider(request).await.map_err(core)?;
+        let mut ancestry = Vec::new();
+        let selected = if let Some((owner, chain)) = parent {
+            if chain.deadline <= Instant::now() || chain.is_cancelled().await { return Err(CoreError::InvalidWorkspacePath("Parent invocation is no longer active".into())); }
+            let write = chain.write.as_ref().ok_or(CoreError::WorkspaceTrustRequired)?;
+            let original: String = sqlx::query_scalar("SELECT snapshot_json FROM workspace_write_runs WHERE id=?").bind(write.cancellation.root_run_id()).fetch_one(&self.db).await?;
+            let original: Value = serde_json::from_str(&original).map_err(|error|CoreError::Initialization(error.to_string()))?;
+            if original["approvalContext"]["rootIdentity"] != root_identity || original["approvalContext"]["root"] != json!(root) {
+                return Err(CoreError::InvalidWorkspacePath("Root write workspace directory changed".into()));
+            }
+            for site in &chain.sites {
+                let proof: Option<String> = sqlx::query_scalar("SELECT json_object('invocationId',i.id,'generationId',i.generation_id,'installationId',p.id,'packageDigest',p.package_digest,'contributionId',i.contribution_id) FROM capability_invocations i JOIN plugin_installations p ON p.id=i.installation_id WHERE i.id=? AND i.caller_window=? AND i.scope_kind=? AND i.scope_id=? AND i.status='running' AND p.installed=1 AND p.enabled=1")
+                    .bind(&site.invocation_id).bind(&chain.caller).bind(request.scope.key().0).bind(request.scope.key().1).fetch_optional(&self.db).await?;
+                ancestry.push(proof.ok_or_else(||CoreError::InvalidWorkspacePath("Calling plugin chain changed".into()))?);
+            }
+            let (_,_,digest) = plugin_registry::inspect(&owner.directory).map_err(|_|CoreError::InvalidWorkspacePath("Calling plugin integrity check failed".into()))?;
+            if digest != owner.digest { return Err(CoreError::InvalidWorkspacePath("Calling plugin package changed".into())); }
+            self.dependency_provider(request,owner,&provider.plugin_id,&provider.contribution_id,false).await.map_err(core)?
+        } else { self.provider(request).await.map_err(core)? };
         if selected.installation_id != provider.installation_id || selected.contribution_id != provider.contribution_id || selected.digest != provider.digest || selected.operation != provider.operation {
             return Err(CoreError::InvalidWorkspacePath("Capability provider changed before approval".into()));
         }
@@ -95,8 +163,8 @@ impl Broker {
         let dependencies = crate::plugin_dependencies::resolve_metadata(&self.db, &selected.installation_id).await.map_err(|_|CoreError::InvalidWorkspacePath("Capability dependencies changed".into()))?;
         if !dependencies.supports(&selected.contribution_id) { return Err(CoreError::InvalidWorkspacePath("Capability dependencies are unavailable".into())); }
         let (kind, id) = request.scope.key();
-        let binding: String = sqlx::query_scalar("SELECT json_object('installationId',installation_id,'contributionId',contribution_id,'updatedAt',updated_at) FROM capability_provider_bindings WHERE scope_kind=? AND scope_id=? AND capability_id=? AND contract_version=?")
-            .bind(kind).bind(id).bind(&request.capability).bind(&request.version).fetch_one(&self.db).await?;
+        let binding: Value = if parent.is_some() {json!({"source":"pinned-dependency","callChain":ancestry})} else {json!(sqlx::query_scalar::<_,String>("SELECT json_object('installationId',installation_id,'contributionId',contribution_id,'updatedAt',updated_at) FROM capability_provider_bindings WHERE scope_kind=? AND scope_id=? AND capability_id=? AND contract_version=?")
+            .bind(kind).bind(id).bind(&request.capability).bind(&request.version).fetch_one(&self.db).await?)};
         let session = if let Scope::Session(id) = &request.scope {
             let value: Option<String> = sqlx::query_scalar("SELECT json_object('id',id,'state',state,'archived',archived,'updatedAt',updated_at,'installationId',plugin_installation_id) FROM sessions WHERE id=? AND archived=0")
                 .bind(id).fetch_optional(&self.db).await?;
@@ -107,11 +175,12 @@ impl Broker {
         } else { None };
         // Input is already rendered in full by the ledger. It is an operation
         // request, not a generic filesystem revision contract.
+        let caller_description = parent.map(|(_,chain)|format!("\n原始调用窗口：{}\n调用链：{}\n父写入已获准且可能已经修改文件；本次批准只允许下面的子操作继续。",chain.caller,serde_json::to_string(&chain.sites).unwrap())).unwrap_or_default();
         Ok(json!({"schema":"aibo.capability-write-context/v1","root":root,"rootIdentity":root_identity,
             "workspaceId":current.id,"workspacePath":current.path,"workspaceTrust":current.trust,"workspaceUpdatedAt":current.updated_at,"session":session,"turn":turn,
             "provider":{"installationId":selected.installation_id,"contributionId":selected.contribution_id,"pluginId":selected.plugin_id,"packageDigest":digest,"operation":selected.operation},
             "dependencies":dependencies,"binding":binding,
-            "approvalDescription":format!("能力插件：{}\n贡献：{}\n安装版本：{}\n权限：{}\n此请求允许插件在当前工作区执行写入；批准后才启动执行和依赖版本检查。宿主不提供任意本机代码的操作系统沙箱。",selected.plugin_id,selected.contribution_id,selected.installation_id,selected.operation["permissions"])}))
+            "approvalDescription":format!("能力插件：{}\n贡献：{}\n安装版本：{}\n权限：{}\n此请求允许插件在当前工作区执行写入；批准后才启动执行和依赖版本检查。宿主不提供任意本机代码的操作系统沙箱。{}",selected.plugin_id,selected.contribution_id,selected.installation_id,selected.operation["permissions"],caller_description)}))
     }
 }
 

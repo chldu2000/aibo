@@ -433,6 +433,8 @@ export interface ProjectAction {
 }
 
 export interface WorkspaceWriteRun {
+  parentWriteRunId?: string | null;
+  rootWriteRunId?: string | null;
   cancelRequestedAt?: string | null;
   schema: 'aibo.workspace-write-run/v1' | 'aibo.workspace-write-run/v2';
   id: string;

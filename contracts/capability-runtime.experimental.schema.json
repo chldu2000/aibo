@@ -52,7 +52,9 @@
                 "cancelled",
                 "timeout",
                 "invalid_output",
-                "invalid_input"
+                "invalid_input",
+                "approval_rejected",
+                "outcome_unknown"
               ]
             }
           }

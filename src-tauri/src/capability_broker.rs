@@ -2,6 +2,9 @@
 //! are accepted from request JSON. Writes require a separate host approval boundary.
 #[path = "capability_writes.rs"]
 mod writes;
+#[cfg(all(test, unix))]
+#[path = "capability_write_chain_tests.rs"]
+mod write_chain_tests;
 use crate::{plugin_manifest, plugin_registry, plugin_runtime::PluginRuntime};
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
@@ -75,13 +78,17 @@ struct Chain {
     deadline_ms: i64,
     cancellations: Vec<watch::Receiver<bool>>,
     ancestors: Vec<PluginRuntime>,
-    write_cancellation: Option<crate::workspace_write_runs::Cancellation>,
+    write: Option<writes::WriteContext>,
 }
 impl Chain {
+    async fn is_cancelled(&self) -> bool {
+        if self.cancellations.iter().any(|cancel| *cancel.borrow() || cancel.has_changed().is_err()) || self.ancestors.iter().any(|runtime|runtime.was_stopped() || runtime.has_exited()) { return true; }
+        if let Some(write) = &self.write { return write.cancellation.is_requested().await; }
+        false
+    }
     async fn cancelled(&self) {
         loop {
-            if self.cancellations.iter().any(|cancel| *cancel.borrow() || cancel.has_changed().is_err()) || self.ancestors.iter().any(|runtime|runtime.was_stopped() || runtime.has_exited()) { return; }
-            if let Some(cancel) = &self.write_cancellation { if cancel.is_requested().await { return; } }
+            if self.is_cancelled().await { return; }
             tokio::time::sleep(Duration::from_millis(10)).await;
         }
     }
@@ -282,12 +289,12 @@ impl Broker {
         let provider = self.provider(&request).await?;
         self.invoke_selected(caller,request,provider,None,None).await
     }
-    fn invoke_selected<'a>(&'a self, caller: &'a str, request: Request, provider: Provider, parent: Option<Chain>, write_cancellation: Option<crate::workspace_write_runs::Cancellation>) -> std::pin::Pin<Box<dyn std::future::Future<Output=Result<Response,Failure>> + Send + 'a>> {
+    fn invoke_selected<'a>(&'a self, caller: &'a str, request: Request, provider: Provider, parent: Option<Chain>, write: Option<writes::WriteContext>) -> std::pin::Pin<Box<dyn std::future::Future<Output=Result<Response,Failure>> + Send + 'a>> {
         Box::pin(async move {
-        if provider.operation["effect"] != "read" && write_cancellation.is_none() { return Err(fail("permission_denied", "Write operation requires host approval; dependency writes are not enabled yet")); }
+        if provider.operation["effect"] != "read" && write.is_none() { return Err(fail("permission_denied", "Write operation requires host approval")); }
         let workspace = self.workspace(&request.scope).await?;
         self.validate_turn(&request).await?;
-        if provider.operation["permissions"].as_array().unwrap().iter().any(|permission| (permission != "workspace.read" && !(permission == "workspace.write" && write_cancellation.is_some())) || workspace.is_none()) { return Err(fail("permission_denied", "Operation requires an unavailable permission")); }
+        if provider.operation["permissions"].as_array().unwrap().iter().any(|permission| (permission != "workspace.read" && !(permission == "workspace.write" && write.is_some())) || workspace.is_none()) { return Err(fail("permission_denied", "Operation requires an unavailable permission")); }
         if !jsonschema::options().build(&provider.operation["inputSchema"]).map_err(database)?.is_valid(&request.input) { return Err(fail("invalid_input", "Input does not match the capability contract")); }
         let permissions: Vec<String> = provider.operation["permissions"].as_array().unwrap().iter().map(|value|value.as_str().unwrap().to_owned()).collect();
         if let Some(parent) = &parent {
@@ -309,7 +316,8 @@ impl Broker {
         let timeout = Duration::from_millis(provider.operation["timeoutMs"].as_u64().unwrap());
         let deadline = Instant::now() + timeout;
         let deadline_ms = (time::OffsetDateTime::now_utc().unix_timestamp_nanos() / 1_000_000) as i64 + timeout.as_millis() as i64;
-        let mut chain = parent.clone().unwrap_or_else(||Chain { caller: caller.into(), sites: vec![], permissions: permissions.clone(), deadline, deadline_ms, cancellations: vec![], ancestors: vec![], write_cancellation });
+        let mut chain = parent.clone().unwrap_or_else(||Chain { caller: caller.into(), sites: vec![], permissions: permissions.clone(), deadline, deadline_ms, cancellations: vec![], ancestors: vec![], write:write.clone() });
+        if let Some(write) = write { chain.write = Some(write); }
         chain.permissions = permissions;
         chain.deadline = chain.deadline.min(deadline);
         chain.deadline_ms = chain.deadline_ms.min(deadline_ms);
@@ -317,14 +325,15 @@ impl Broker {
         chain.sites.push(CallSite { invocation_id: id.clone(), installation_id: provider.installation_id.clone(), contribution_id: provider.contribution_id.clone() });
         let (kind,scope_id) = request.scope.key();
         let insert = sqlx::query("INSERT INTO capability_invocations(id,caller_window,scope_kind,scope_id,capability_id,contract_version,installation_id,contribution_id,status,started_at,deadline_ms,parent_invocation_id,root_invocation_id,caller_installation_id,instance_id,turn_id,write_run_id) VALUES(?,?,?,?,?,?,?,?,'running',?,?,?,?,?,?,?,?)")
-            .bind(&id).bind(caller).bind(kind).bind(scope_id).bind(&request.capability).bind(&request.version).bind(&provider.installation_id).bind(&provider.contribution_id).bind(crate::now_iso()).bind(chain.deadline_ms).bind(parent.as_ref().and_then(|chain|chain.sites.last()).map(|site|&site.invocation_id)).bind(&chain.sites[0].invocation_id).bind(parent.as_ref().and_then(|chain|chain.sites.last()).map(|site|&site.installation_id)).bind(&slot.id).bind(&request.turn_id).bind(chain.write_cancellation.as_ref().map(|cancel|cancel.run_id())).execute(&self.db).await;
+            .bind(&id).bind(caller).bind(kind).bind(scope_id).bind(&request.capability).bind(&request.version).bind(&provider.installation_id).bind(&provider.contribution_id).bind(crate::now_iso()).bind(chain.deadline_ms).bind(parent.as_ref().and_then(|chain|chain.sites.last()).map(|site|&site.invocation_id)).bind(&chain.sites[0].invocation_id).bind(parent.as_ref().and_then(|chain|chain.sites.last()).map(|site|&site.installation_id)).bind(&slot.id).bind(&request.turn_id).bind(chain.write.as_ref().map(|write|write.cancellation.run_id())).execute(&self.db).await;
         if let Err(error) = insert { self.flights.lock().await.remove(&key); return Err(database(error)); }
         let mut result = self.execute(&id,&request,&provider,&slot,workspace.as_ref(),&chain).await;
-        if chain.write_cancellation.is_some() {
+        if let Some(write) = &chain.write {
+            if write.is_uncertain() { result = Err(fail("outcome_unknown", "A descendant write has an unknown outcome")); }
             if let Some(runtime) = slot.runtime.lock().await.take() {
                 if !runtime.stop_and_wait().await { result = Err(fail("outcome_unknown", "Capability process cleanup could not be confirmed")); }
             }
-            if let Err(error) = &mut result { error.code = "outcome_unknown".into(); error.message = "Approved capability execution did not produce a confirmed result; inspect its effects before another request".into(); }
+            if let Err(error) = &mut result { write.mark_uncertain(); error.message = format!("Approved capability execution did not produce a confirmed result ({}); inspect its effects before another request",error.code); error.code = "outcome_unknown".into(); }
         } else if result.is_err() { if let Some(runtime) = slot.runtime.lock().await.take() { runtime.stop().await; } }
         *slot.touched.lock().await = Instant::now();
         self.flights.lock().await.remove(&key);
@@ -392,7 +401,8 @@ impl Broker {
                     let message = message.ok_or_else(||fail("provider_unavailable", "Capability process exited"))?;
                     let child_id = message["id"].as_str().ok_or_else(||fail("invalid_input", "Missing child request ID"))?;
                     if message["method"] != "capability.call" || child_ids.len() >= MAX_CHILD_CALLS || !child_ids.insert(child_id.to_owned()) { return Err(fail("busy", "Duplicate child request or call count limit")); }
-                    let result = self.child_call(&message["params"],id,&runtime,request,provider,chain).await;
+                    let result = self.child_call(child_id,&message["params"],id,&runtime,request,provider,chain).await;
+                    if chain.write.as_ref().is_some_and(|write|write.is_uncertain()) { return Err(fail("outcome_unknown", "A descendant write has an unknown outcome")); }
                     // Failures are structured data, so no plugin-provided text is reflected.
                     let reply = match result { Ok(response) => json!({"ok":true,"response":response}), Err(error) => json!({"ok":false,"error":error}) };
                     tokio::select! {
@@ -409,19 +419,13 @@ impl Broker {
         }
         Ok(Response { instance_id: slot.id.clone(), invocation_id: id.into(), installation_id: provider.installation_id.clone(), generation_id: runtime.generation_id.clone(), output: raw["output"].clone() })
     }
-    async fn child_call(&self, params: &Value, parent_id: &str, runtime: &PluginRuntime, request: &Request, provider: &Provider, chain: &Chain) -> Result<Response, Failure> {
+    async fn child_call(&self, child_id: &str, params: &Value, parent_id: &str, runtime: &PluginRuntime, request: &Request, provider: &Provider, chain: &Chain) -> Result<Response, Failure> {
         let child: ChildRequest = serde_json::from_value(params.clone()).map_err(|_|fail("invalid_input", "Invalid dependency call envelope"))?;
         if child.invocation_id != parent_id || child.generation_id != runtime.generation_id { return Err(fail("permission_denied", "Dependency call does not belong to this invocation")); }
         if child.input.to_string().len() > MAX_INPUT { return Err(fail("invalid_input", "Dependency input exceeds limit")); }
-        let prepare = async {
-            let dependencies = crate::plugin_dependencies::resolve_metadata_pinned(&self.db,&provider.installation_id).await.map_err(database)?;
-            let dependency = dependencies.dependencies.iter().find(|dependency|dependency.plugin_id == child.plugin_id && dependency.contribution_ids.contains(&provider.contribution_id))
-                .ok_or_else(||fail("permission_denied", "Calling contribution has not declared this dependency"))?;
-            if !dependencies.supports(&provider.contribution_id) || !dependency.available { return Err(fail("provider_unavailable", "Pinned dependency is unavailable")); }
-            let offers = self.offers(&request.scope,&child.capability,&child.version,dependency.installation_id.as_deref()).await?;
-            offers.into_iter().find(|offer|Some(&offer.installation_id) == dependency.installation_id.as_ref() && offer.contribution_id == child.contribution_id)
-                .ok_or_else(||fail("provider_unavailable", "Pinned dependency does not provide this contribution"))
-        };
+        let child_request = Request { turn_id:request.turn_id.clone(), scope:request.scope.clone(), capability:child.capability.clone(), version:child.version.clone(),
+            request_id: {use sha2::{Digest,Sha256}; format!("child-{:x}",Sha256::digest(format!("{parent_id}\0{child_id}")))}, input:child.input.clone() };
+        let prepare = self.dependency_provider(&child_request,provider,&child.plugin_id,&child.contribution_id,true);
         let selected = tokio::select! {
             biased;
             _ = chain.cancelled() => return Err(fail("cancelled", "Invocation was cancelled")),
@@ -431,13 +435,15 @@ impl Broker {
         let mut child_chain = chain.clone();
         child_chain.ancestors.push(runtime.clone());
         // Children inherit scope and original identity; UI provider settings cannot reroute them.
-        self.invoke_selected(&chain.caller,Request { turn_id: request.turn_id.clone(), scope: request.scope.clone(), capability: child.capability, version: child.version, request_id: ulid::Ulid::new().to_string(), input: child.input },selected,Some(child_chain),None).await
+        if selected.operation["effect"] == "write" {
+            self.invoke_child_write(child_request,selected,provider,child_chain).await
+        } else { self.invoke_selected(&chain.caller,child_request,selected,Some(child_chain),None).await }
     }
 
 }
 fn transport(error: String) -> Failure {
     let code = error.split(':').next().unwrap_or("");
-    fail(match code { "busy" | "timeout" | "cancelled" | "unsupported" | "incompatible_version" | "permission_denied" | "invalid_output" | "invalid_input" => code, _ => "provider_unavailable" }, "Capability transport failed")
+    fail(match code { "busy" | "timeout" | "cancelled" | "unsupported" | "incompatible_version" | "permission_denied" | "invalid_output" | "invalid_input" | "approval_rejected" | "outcome_unknown" => code, _ => "provider_unavailable" }, "Capability transport failed")
 }
 
 #[cfg(test)]

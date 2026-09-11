@@ -17,3 +17,7 @@ test('dependency requests cannot supply scope, caller, permissions, release or d
 test('capability transport rejects mixed response/request envelopes and Agent tool requests', () => {
   for (const message of [{ ...call, result: {} }, { ...call, method: 'aibo/tool-request' }, { ...call, id: 'x'.repeat(161) }, { jsonrpc: '2.0', id: 'bad', result: {}, error: { code: -1, message: 'bad' } }]) assert.equal(validate(message), false);
 });
+
+test('capability error envelopes carry approval rejection and unknown write outcomes', () => {
+  for (const kind of ['approval_rejected', 'outcome_unknown']) assert.equal(validate({ jsonrpc: '2.0', id: 'reply', error: { code: -32000, message: 'Dependency did not complete', data: { kind } } }), true);
+});

@@ -7,6 +7,7 @@ use std::{collections::HashSet, path::{Path, PathBuf}, sync::{LazyLock, Mutex}};
 static WRITERS: LazyLock<Mutex<HashSet<PathBuf>>> = LazyLock::new(|| Mutex::new(HashSet::new()));
 
 pub(crate) struct WorkspaceWrite(PathBuf);
+impl WorkspaceWrite { pub(crate) fn root(&self) -> &Path { &self.0 } }
 impl Drop for WorkspaceWrite {
     fn drop(&mut self) {
         WRITERS.lock().unwrap_or_else(|error| error.into_inner()).remove(&self.0);

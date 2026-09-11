@@ -2,8 +2,8 @@
 
 本批开放窗口经 `invoke_capability` 发起的工作区/会话能力写入。插件仍声明
 Manifest v2 的操作、schema、effect、permissions、timeoutMs 和 idempotent；
-宿主不增加 Provider 专用分支。插件间写调用及安装语义视图的写动作接入留给
-后续批次，本批不完成通用写入整项验收。
+宿主不增加 Provider 专用分支。后续已接入[插件间写调用](./plugin-platform-p4-write-chain.md)；
+安装语义视图的写动作仍待接入，通用写入整项验收尚未完成。
 
 ## 权限与审批
 
@@ -60,7 +60,7 @@ outcome_unknown；不根据插件错误文字声称“没有修改”。不会�
 
 ## 后续工作
 
-- 插件间写调用的原始调用者、依赖 release、逐层审批、共享写入占用与子记录。
+- 插件间写调用已接入，见[调用链实施说明](./plugin-platform-p4-write-chain.md)；继续在整体交互中验收。
 - 安装语义视图的写动作接入，保留 revision/generation 与确认后上下文校验。
 - 完整工作台生命周期和交互验收；本批仅证明脱离页面的持久执行及真实重启。
 - SDK 与平台支持矩阵继续在 P5 固化，Windows 写入不按已支持宣传。
