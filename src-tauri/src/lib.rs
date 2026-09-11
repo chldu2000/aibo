@@ -4616,6 +4616,7 @@ pub fn run() {
             semantic_plugins::list_semantic_contributions,
             semantic_plugins::open_semantic_contribution,
             semantic_plugins::act_semantic_contribution,
+            semantic_plugins::writes::write_semantic_contribution,
             semantic_plugins::release_semantic_contribution,
             semantic_git::open_semantic_git,
             semantic_git::act_semantic_git,

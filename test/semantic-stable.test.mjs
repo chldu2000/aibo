@@ -32,3 +32,25 @@ test('generic inspect action validates the selected item',async()=>{
   assert.throws(()=>actionMessage(collection,'inspect','missing'));
   assert.throws(()=>actionMessage(collection,'refresh',collection.view.items[0].id));
 });
+
+test('semantic 1.1 write actions are strict JSON and do not reinterpret read-only v1', () => {
+  const view = { ...source, schema: 'aibo.semantic-view/v1.1', actions: [
+    { id: 'refresh', label: '刷新', intent: 'refresh', enabled: true },
+    { id: 'dev.example.write', label: '写入', intent: 'execute', enabled: true, input: { value: 'hello', options: [null, true, 1] } }
+  ] };
+  assertSnapshot(view);
+  assert.deepEqual(actionMessage(view, 'dev.example.write'), { context: view.context, actionId: 'dev.example.write', itemId: null });
+  assert.throws(() => assertSnapshot({ ...view, schema: 'aibo.semantic-view/v1' }));
+  for (const mutate of [
+    value => value.actions[1].id = 'write',
+    value => delete value.actions[1].input,
+    value => value.actions[1].input = 'raw',
+    value => value.actions[1].provider = 'caller-selected',
+    value => value.actions[1].intent = 'refresh',
+    value => value.actions[1].input = { html: '界'.repeat(90000) }
+  ]) {
+    const invalid = structuredClone(view); mutate(invalid);
+    assert.throws(() => assertSnapshot(invalid));
+  }
+  assert.throws(() => actionMessage(view, 'dev.example.write', 'item'));
+});

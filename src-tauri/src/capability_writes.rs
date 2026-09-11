@@ -77,7 +77,7 @@ impl Broker {
         self.validate_turn(&request).await?;
         if !jsonschema::options().build(&provider.operation["inputSchema"]).map_err(database)?.is_valid(&request.input) { return Err(fail("invalid_input", "Input does not match the capability contract")); }
         workspace_write_runs::execute_with_context(&self.db, &workspace, OPERATION, identity, approval,
-            || self.prepare_write(&request, &provider, &workspace, None),
+            || self.prepare_write(&request, &provider, &workspace, None, None),
             |cancel| async {
                 if cancel.is_requested().await { return Err(CoreError::WriteReplay { code:"cancelled".into(),message:"Capability was cancelled before dispatch".into() }); }
                 // The runtime and its dependency probes are constructed only here,
@@ -118,7 +118,7 @@ impl Broker {
         identity["contributionId"] = json!(provider.contribution_id);
         let stop = async { tokio::select! { _ = chain.cancelled() => {}, _ = tokio::time::sleep_until(chain.deadline.into()) => {} } };
         let result = workspace_write_runs::execute_child_with_context(&self.db,&workspace,OPERATION,identity,&approval,&write.cancellation,stop,
-            ||self.prepare_write(&request,&provider,&workspace,Some((owner,&chain))),
+            ||self.prepare_write(&request,&provider,&workspace,Some((owner,&chain)),None),
             |cancel| async {
                 let context = WriteContext {cancellation:cancel,approval:approval.clone(),uncertain:write.uncertain.clone()};
                 self.invoke_selected(&chain.caller,request.clone(),provider.clone(),Some(chain.clone()),Some(context)).await
@@ -128,7 +128,38 @@ impl Broker {
         result
     }
 
-    async fn prepare_write(&self, request: &Request, provider: &Provider, workspace: &crate::Workspace, parent: Option<(&Provider,&Chain)>) -> Result<Value, CoreError> {
+    async fn bound_write_provider(&self, request: &Request, binding: &Binding) -> Result<Provider,Failure> {
+        if request.scope != binding.scope || request.capability != binding.capability || request.version != binding.version {return Err(fail("invalid_input","Semantic write binding mismatch"));}
+        self.offers(&request.scope,&request.capability,&request.version,Some(&binding.installation_id)).await?.into_iter()
+            .find(|provider|provider.contribution_id == binding.contribution_id && provider.operation["effect"] == "write")
+            .ok_or_else(||fail("provider_unavailable","Semantic write provider is unavailable"))
+    }
+
+    /// The semantic host supplies its own immutable action identity and a fresh
+    /// generation/revision proof. Neither comes from renderer-selected capability input.
+    pub(crate) async fn invoke_semantic_write<P,Fut>(&self, caller: &str, request: Request, binding: &Binding,
+        identity: Value, approval: &workspace_write_runs::Request, check_view: P) -> Result<Response,Failure>
+    where P: Fn() -> Fut, Fut: std::future::Future<Output=Result<Value,CoreError>> {
+        if !approval.matches(&request.request_id,caller) || request.input.to_string().len() > MAX_INPUT {return Err(fail("invalid_input","Invalid semantic write identity or size"));}
+        let provider = self.bound_write_provider(&request,binding).await?;
+        if !jsonschema::options().build(&provider.operation["inputSchema"]).map_err(database)?.is_valid(&request.input) {return Err(fail("invalid_input","Input does not match the capability contract"));}
+        let workspace = self.workspace(&request.scope).await?.ok_or_else(||fail("permission_denied","Semantic writes require a workspace"))?;
+        workspace_write_runs::execute_with_context(&self.db,&workspace,"semantic.write",identity,approval,
+            || async {
+                let mut context = self.prepare_write(&request,&provider,&workspace,None,Some(binding)).await?;
+                context["semantic"] = check_view().await?;
+                context["capabilityInput"] = request.input.clone();
+                context["approvalDescription"] = json!(format!("{}\n视图动作：{}\n能力输入：{}",context["approvalDescription"].as_str().unwrap_or(""),context["semantic"],request.input));
+                Ok(context)
+            },
+            |cancel| async {
+                if cancel.is_requested().await {return Err(CoreError::WriteReplay {code:"cancelled".into(),message:"Semantic write cancelled before dispatch".into()});}
+                self.invoke_selected(caller,request.clone(),provider.clone(),None,Some(WriteContext {cancellation:cancel,approval:approval.clone(),uncertain:Default::default()})).await
+                    .map_err(|error|CoreError::WriteOutcomeUnknown(error.message))
+            }).await.map_err(failure)
+    }
+
+    async fn prepare_write(&self, request: &Request, provider: &Provider, workspace: &crate::Workspace, parent: Option<(&Provider,&Chain)>, bound: Option<&Binding>) -> Result<Value, CoreError> {
         let current = self.workspace(&request.scope).await.map_err(core)?.ok_or(CoreError::WorkspaceTrustRequired)?;
         if current.id != workspace.id || current.path != workspace.path { return Err(CoreError::InvalidWorkspacePath("Capability workspace changed".into())); }
         self.validate_turn(request).await.map_err(core)?;
@@ -154,7 +185,7 @@ impl Broker {
             let (_,_,digest) = plugin_registry::inspect(&owner.directory).map_err(|_|CoreError::InvalidWorkspacePath("Calling plugin integrity check failed".into()))?;
             if digest != owner.digest { return Err(CoreError::InvalidWorkspacePath("Calling plugin package changed".into())); }
             self.dependency_provider(request,owner,&provider.plugin_id,&provider.contribution_id,false).await.map_err(core)?
-        } else { self.provider(request).await.map_err(core)? };
+        } else if let Some(bound) = bound {self.bound_write_provider(request,bound).await.map_err(core)?} else { self.provider(request).await.map_err(core)? };
         if selected.installation_id != provider.installation_id || selected.contribution_id != provider.contribution_id || selected.digest != provider.digest || selected.operation != provider.operation {
             return Err(CoreError::InvalidWorkspacePath("Capability provider changed before approval".into()));
         }
@@ -163,7 +194,7 @@ impl Broker {
         let dependencies = crate::plugin_dependencies::resolve_metadata(&self.db, &selected.installation_id).await.map_err(|_|CoreError::InvalidWorkspacePath("Capability dependencies changed".into()))?;
         if !dependencies.supports(&selected.contribution_id) { return Err(CoreError::InvalidWorkspacePath("Capability dependencies are unavailable".into())); }
         let (kind, id) = request.scope.key();
-        let binding: Value = if parent.is_some() {json!({"source":"pinned-dependency","callChain":ancestry})} else {json!(sqlx::query_scalar::<_,String>("SELECT json_object('installationId',installation_id,'contributionId',contribution_id,'updatedAt',updated_at) FROM capability_provider_bindings WHERE scope_kind=? AND scope_id=? AND capability_id=? AND contract_version=?")
+        let binding: Value = if let Some(bound) = bound {json!({"source":"semantic-contribution","binding":bound})} else if parent.is_some() {json!({"source":"pinned-dependency","callChain":ancestry})} else {json!(sqlx::query_scalar::<_,String>("SELECT json_object('installationId',installation_id,'contributionId',contribution_id,'updatedAt',updated_at) FROM capability_provider_bindings WHERE scope_kind=? AND scope_id=? AND capability_id=? AND contract_version=?")
             .bind(kind).bind(id).bind(&request.capability).bind(&request.version).fetch_one(&self.db).await?)};
         let session = if let Scope::Session(id) = &request.scope {
             let value: Option<String> = sqlx::query_scalar("SELECT json_object('id',id,'state',state,'archived',archived,'updatedAt',updated_at,'installationId',plugin_installation_id) FROM sessions WHERE id=? AND archived=0")

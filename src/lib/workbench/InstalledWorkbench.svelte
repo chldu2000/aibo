@@ -60,6 +60,7 @@
     <Button variant="ghost" onclick={onClose}>关闭插件视图</Button>
   </div>
   {#if snapshot}
+    {#if error}<Card><p role="alert">{error}</p></Card>{/if}
     <PresentationSurface {snapshot} {layout} {focusTarget} onAction={act} />
   {:else if error}
     <Card><p role="alert">此工具暂不可用：{error}</p><Button variant="outline" onclick={restore}>重新加载</Button></Card>

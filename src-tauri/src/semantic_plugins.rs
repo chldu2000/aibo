@@ -1,4 +1,6 @@
 //! Installed JSON semantic contributions. Identity, leases and actions belong to the host.
+#[path = "semantic_writes.rs"]
+pub(crate) mod writes;
 use crate::{
     capability_broker::{Binding, Broker, Request, Scope},
     plugin_dependencies, plugin_manifest,
@@ -40,7 +42,7 @@ pub(crate) async fn catalog(db: &SqlitePool) -> Result<Vec<Contribution>, String
         if model.version != 2 || !plugin_manifest::activation_issues(&manifest)?.is_empty() {
             continue;
         }
-        let dependencies = plugin_dependencies::resolve(db, row.get("id"), false).await?;
+        let dependencies = plugin_dependencies::resolve_metadata(db, row.get("id")).await?;
         for contribution in model.contributions.into_iter().filter(|entry| {
             entry.kind == "semanticView"
         }) {
@@ -86,7 +88,10 @@ pub(crate) struct SemanticPlugins {
 }
 fn validate(snapshot: &Value) -> Result<(), String> {
     static SCHEMA: OnceLock<jsonschema::Validator> = OnceLock::new();
-    let validator = SCHEMA.get_or_init(|| {
+    static WRITE_SCHEMA: OnceLock<jsonschema::Validator> = OnceLock::new();
+    let validator = if snapshot["schema"] == "aibo.semantic-view/v1.1" {
+        WRITE_SCHEMA.get_or_init(||jsonschema::validator_for(&serde_json::from_str::<Value>(include_str!("../../contracts/semantic-view.v1.1.schema.json")).unwrap()).unwrap())
+    } else {SCHEMA.get_or_init(|| {
         jsonschema::validator_for(
             &serde_json::from_str::<Value>(include_str!(
                 "../../contracts/semantic-view.v1.schema.json"
@@ -94,7 +99,7 @@ fn validate(snapshot: &Value) -> Result<(), String> {
             .unwrap(),
         )
         .unwrap()
-    });
+    })};
     if snapshot.to_string().len() > 262_144 || !validator.is_valid(snapshot) {
         return Err("invalid_output: semantic snapshot".into());
     }
@@ -197,7 +202,7 @@ impl SemanticPlugins {
                     && item.available
             })
             .ok_or("provider_unavailable: semantic contribution")?;
-        let dependencies = plugin_dependencies::resolve(db, installation, true).await?;
+        let dependencies = plugin_dependencies::resolve_metadata_pinned(db, installation).await?;
         let mut allowed = vec![installation.to_owned()];
         allowed.extend(
             dependencies
@@ -344,11 +349,14 @@ impl SemanticPlugins {
         };
         let mut context=json!({"workspaceId":workspace,"contributionId":lease.contribution.contribution_id,"generation":lease.generation,"revision":state.snapshot["context"]["revision"].as_u64().unwrap_or(0)+1});
         if let Some(session)=session {context["sessionId"]=json!(session);}
-        let snapshot = json!({"schema":"aibo.semantic-view/v1","context":context,"contribution":{"id":lease.contribution.contribution_id,"title":lease.contribution.title,"extensionPoint":lease.contribution.extension_point},"state":output["state"],"view":output["view"],"actions":output["actions"]});
+        let snapshot = json!({"schema":if lease.contribution.metadata["contractVersion"] == "1.1.0" {"aibo.semantic-view/v1.1"} else {"aibo.semantic-view/v1"},"context":context,"contribution":{"id":lease.contribution.contribution_id,"title":lease.contribution.title,"extensionPoint":lease.contribution.extension_point},"state":output["state"],"view":output["view"],"actions":output["actions"]});
         let declared=lease.contribution.metadata["semanticType"].as_str().unwrap();
         let actual=snapshot["view"]["kind"].as_str().unwrap_or("");
         if actual != declared && !(declared=="collection" && actual=="detail") {return Err("invalid_output: undeclared semantic kind".into());}
         validate(&snapshot)?;
+        for action in snapshot["actions"].as_array().unwrap().iter().filter(|action|action["intent"] == "execute") {
+            if !lease.contribution.metadata["writeActions"].as_array().is_some_and(|actions|actions.iter().any(|declared|declared["id"] == action["id"])) || action["input"].to_string().len() > 65536 {return Err("invalid_output: undeclared or oversized write action".into());}
+        }
         state.snapshot = snapshot.clone();
         state.touched = Instant::now();
         Ok(snapshot)
@@ -400,6 +408,7 @@ impl SemanticPlugins {
             } else if action.item_id.is_some() {
                 return Err("invalid_input: unexpected item".into());
             }
+            if state.snapshot["actions"].as_array().unwrap().iter().any(|a|a["id"] == action.action_id && a["intent"] == "execute") {return Err("permission_denied: write action requires host approval".into());}
             let offset = state.snapshot["view"]["page"]["offset"]
                 .as_u64()
                 .unwrap_or(0);

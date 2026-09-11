@@ -5,9 +5,9 @@
   $effect(() => { writeWorkbenchDrafts(draftStorage, presentationWindowId(), workbenchDrafts); });
   import { WorkbenchPresentation, Badge, Button, Card, CardHeader, CardTitle, CardContent } from '$lib/ui-kit';
   const loadInstalledWorkbench = () => import('$lib/workbench/InstalledWorkbench.svelte');
-  import { listSemanticContributions, cancelSemanticOpen, openSemanticContribution, actSemanticContribution, releaseSemanticContribution } from '$lib/api';
+  import { listSemanticContributions, cancelSemanticOpen, openSemanticContribution, actSemanticContribution, writeSemanticContribution, releaseSemanticContribution } from '$lib/api';
   import type { InstalledContribution, InstalledScope } from '$lib/presentation/installed-controller';
-  const installedPort = { cancelOpen: cancelSemanticOpen, open: openSemanticContribution, act: actSemanticContribution, release: releaseSemanticContribution };
+  const installedPort = { cancelOpen: cancelSemanticOpen, open: openSemanticContribution, act: actSemanticContribution, write: writeSemanticContribution, release: releaseSemanticContribution };
   let installedContributions = $state<InstalledContribution[]>([]);
   let installedTool = $state<InstalledContribution | null>(null);
   const installedScope = $derived<InstalledScope>(installedTool?.scope === 'application' ? {kind:'application'} : installedTool?.scope === 'session' ? {kind:'session',id:selectedSessionId ?? ''} : {kind:'workspace',id:selectedWorkspaceId ?? ''});

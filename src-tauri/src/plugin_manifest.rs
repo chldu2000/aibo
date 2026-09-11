@@ -109,6 +109,11 @@ pub(crate) fn normalize(manifest: &Value) -> Result<ManifestModel, String> {
             if entry["visibility"] == "sessionSelected" && entry["scope"] != "session" || entry["visibility"] == "workspaceSelected" && entry["scope"] == "application" {return Err(invalid("visibility cannot be satisfied by contribution scope"));}
             semver::Version::parse(entry["contractVersion"].as_str().unwrap()).map_err(|_| invalid("invalid semantic contract version"))?;
         }
+        let mut write_ids = HashSet::new();
+        for action in entry["writeActions"].as_array().into_iter().flatten() {
+            if kind != "semanticView" || entry["contractVersion"] != "1.1.0" || entry["scope"] == "application" || !owned(action["id"].as_str().unwrap(),plugin) || !write_ids.insert(action["id"].as_str().unwrap()) { return Err(invalid("write action identity, scope or semantic version")); }
+            range(&action["provider"]["version"])?;
+        }
         let mut mappings = HashSet::new();
         for operation in entry["operations"].as_array().into_iter().flatten() {
             let operation_id = operation["id"].as_str().unwrap();
@@ -147,9 +152,9 @@ pub(crate) fn normalize(manifest: &Value) -> Result<ManifestModel, String> {
 }
 
 pub(crate) fn semantic_supported(metadata: &Value, manifest: &Value) -> bool {
-    metadata["contractVersion"] == "1.0.0"
+    matches!(metadata["contractVersion"].as_str(),Some("1.0.0" | "1.1.0"))
         && matches!(metadata["semanticType"].as_str(),Some("collection" | "detail" | "settings" | "inspector"))
-        && manifest["protocols"]["semanticView"]["min"] == "1.0" && manifest["protocols"]["semanticView"]["max"] == "1.0"
+        && {let protocol = if metadata["contractVersion"] == "1.1.0" {"1.1"} else {"1.0"}; manifest["protocols"]["semanticView"]["min"] == protocol && manifest["protocols"]["semanticView"]["max"] == protocol}
 
 }
 

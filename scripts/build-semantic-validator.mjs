@@ -2,7 +2,7 @@ import { readFile, writeFile } from 'node:fs/promises';
 import Ajv from 'ajv';
 import standaloneCode from 'ajv/dist/standalone/index.js';
 export async function validatorSource() {
-  const schema={anyOf:await Promise.all(['semantic-view.experimental-v1.schema.json','semantic-view.v1.schema.json'].map(async name=>JSON.parse(await readFile(new URL('../contracts/'+name,import.meta.url),'utf8'))))};
+  const schema={anyOf:await Promise.all(['semantic-view.experimental-v1.schema.json','semantic-view.v1.schema.json','semantic-view.v1.1.schema.json'].map(async name=>JSON.parse(await readFile(new URL('../contracts/'+name,import.meta.url),'utf8'))))};
   const ajv=new Ajv({strict:false,allErrors:false,code:{source:true,esm:true}});
   let source=standaloneCode(ajv,ajv.compile(schema));
   // Ajv emits its Unicode length helper as CommonJS even with esm output.

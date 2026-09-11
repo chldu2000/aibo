@@ -35,7 +35,7 @@ pub(crate) struct Request {
     pub turn_id: Option<String>,
     pub input: Value,
 }
-#[derive(Clone, Deserialize)]
+#[derive(Clone, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub(crate) struct Binding {
     pub scope: Scope,
@@ -228,7 +228,7 @@ impl Broker {
         self.invoke_selected(caller,request,provider,None,None).await
     }
     pub async fn cancel(&self, caller: &str, request_id: &str) -> bool {
-        let durable = sqlx::query("UPDATE workspace_write_runs SET cancel_requested_at=COALESCE(cancel_requested_at,?) WHERE operation='capability.invoke' AND caller_window=? AND request_id=? AND status IN ('awaiting_approval','running')")
+        let durable = sqlx::query("UPDATE workspace_write_runs SET cancel_requested_at=COALESCE(cancel_requested_at,?) WHERE operation IN ('capability.invoke','semantic.write') AND caller_window=? AND request_id=? AND status IN ('awaiting_approval','running')")
             .bind(crate::now_iso()).bind(caller).bind(request_id).execute(&self.db).await.is_ok_and(|result|result.rows_affected() > 0);
         self.flights.lock().await.get(&(caller.into(),request_id.into())).is_some_and(|flight|flight.cancel.send(true).is_ok()) || durable
     }
@@ -237,7 +237,7 @@ impl Broker {
     }
     pub async fn stop_contributions(&self, installation: &str, contributions: Option<&[String]>) -> Result<(), Failure> {
         let matches = |id: &str| contributions.map_or(true,|ids|ids.iter().any(|item|item == id));
-        let pending: Vec<(String,String)> = sqlx::query_as("SELECT id,json_extract(snapshot_json,'$.approvalContext.provider.contributionId') FROM workspace_write_runs WHERE operation='capability.invoke' AND json_extract(snapshot_json,'$.approvalContext.provider.installationId')=? AND status IN ('awaiting_approval','running')")
+        let pending: Vec<(String,String)> = sqlx::query_as("SELECT id,json_extract(snapshot_json,'$.approvalContext.provider.contributionId') FROM workspace_write_runs WHERE operation IN ('capability.invoke','semantic.write') AND json_extract(snapshot_json,'$.approvalContext.provider.installationId')=? AND status IN ('awaiting_approval','running')")
             .bind(installation).fetch_all(&self.db).await.map_err(database)?;
         for (id, contribution) in pending { if matches(&contribution) { sqlx::query("UPDATE workspace_write_runs SET cancel_requested_at=COALESCE(cancel_requested_at,?) WHERE id=?").bind(crate::now_iso()).bind(id).execute(&self.db).await.map_err(database)?; } }
         for flight in self.flights.lock().await.values().filter(|flight|flight.installation_id == installation && matches(&flight.contribution_id)) { let _ = flight.cancel.send(true); }
@@ -254,7 +254,7 @@ impl Broker {
         Ok(())
     }
     pub async fn stop_workspace(&self, workspace: &str) -> Result<(), Failure> {
-        sqlx::query("UPDATE workspace_write_runs SET cancel_requested_at=COALESCE(cancel_requested_at,?) WHERE operation='capability.invoke' AND workspace_id=? AND status IN ('awaiting_approval','running')")
+        sqlx::query("UPDATE workspace_write_runs SET cancel_requested_at=COALESCE(cancel_requested_at,?) WHERE operation IN ('capability.invoke','semantic.write') AND workspace_id=? AND status IN ('awaiting_approval','running')")
             .bind(crate::now_iso()).bind(workspace).execute(&self.db).await.map_err(database)?;
         for flight in self.flights.lock().await.values().filter(|flight|flight.workspace_id.as_deref() == Some(workspace)) { let _ = flight.cancel.send(true); }
         let sessions: Vec<String> = sqlx::query_scalar("SELECT id FROM sessions WHERE workspace_id=?").bind(workspace).fetch_all(&self.db).await.map_err(database)?;

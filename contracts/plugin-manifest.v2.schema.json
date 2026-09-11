@@ -706,6 +706,26 @@
               "$ref": "#/$defs/namespacedId"
             }
           }
+        },
+        "writeActions": {
+          "type": "array",
+          "maxItems": 16,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "id",
+              "provider"
+            ],
+            "properties": {
+              "id": {
+                "$ref": "#/$defs/namespacedId"
+              },
+              "provider": {
+                "$ref": "#/$defs/viewV2/properties/provider"
+              }
+            }
+          }
         }
       }
     },

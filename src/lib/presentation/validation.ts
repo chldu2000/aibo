@@ -6,7 +6,7 @@ export function assertSnapshot(value: unknown): asserts value is Snapshot {
   const snapshot = value as Snapshot;
   if (snapshot.context.contributionId !== snapshot.contribution.id) throw new Error('invalid_snapshot: contribution identity');
   const serialized = JSON.stringify(snapshot);
-  if (snapshot.schema === 'aibo.semantic-view/v1') {
+  if (snapshot.schema !== 'aibo.semantic-view/experimental-v1') {
     let bytes = 0;
     for (const character of serialized) {
       const point = character.codePointAt(0)!;
