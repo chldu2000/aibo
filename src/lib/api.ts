@@ -427,14 +427,15 @@ export const applyGitHunkAction = (
   path: string,
   hunkIndex: number,
   action: GitFileAction,
+  requestId?: string,
 ): Promise<GitHunkActionResult> =>
-  invoke<GitHunkActionResult>('apply_git_hunk_action', {
+  workspaceWrites.invoke<GitHunkActionResult>('apply_git_hunk_action', {
     sessionId,
     turnId,
     path,
     hunkIndex,
     action,
-  });
+  }, requestId);
 
 export const registerSessionAttachments = (
   sessionId: string,

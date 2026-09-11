@@ -1917,7 +1917,6 @@
     hunkIndex: number,
     action: GitFileAction,
   ) {
-    if (action === 'revert' && !window.confirm(`确认撤销第 ${hunkIndex + 1} 个 hunk：${path}？此操作不可撤销。`)) return;
     try {
       const result = await applyGitHunkAction(sessionId, turnId, path, hunkIndex, action);
       if (result.applied) {

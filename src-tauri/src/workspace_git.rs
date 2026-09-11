@@ -8,17 +8,17 @@ use std::{path::Path, process::Command, time::{Duration, Instant}};
 use tokio::process::Command as TokioCommand;
 
 /// One deadline for preconditions, mutation, and result inspection.
-struct GitOperation<'a> {
+pub(crate) struct GitOperation<'a> {
     workspace_path: &'a str,
     deadline: Instant,
     cancellation: Option<crate::workspace_write_runs::Cancellation>,
 }
 impl<'a> GitOperation<'a> {
-    fn new(workspace_path: &'a str) -> Self {
+    pub(crate) fn new(workspace_path: &'a str) -> Self {
         Self { workspace_path, cancellation: None, deadline: Instant::now() + Duration::from_secs(120) }
     }
-    fn cancellable(mut self, cancellation: crate::workspace_write_runs::Cancellation) -> Self { self.cancellation = Some(cancellation); self }
-    async fn run(&self, args: &[&str], action: &str) -> Result<(crate::controlled_process::ProcessResult, String), CoreError> {
+    pub(crate) fn cancellable(mut self, cancellation: crate::workspace_write_runs::Cancellation) -> Self { self.cancellation = Some(cancellation); self }
+    pub(crate) async fn run(&self, args: &[&str], action: &str) -> Result<(crate::controlled_process::ProcessResult, String), CoreError> {
         capture_git_operation(git_command(self.workspace_path, args), action, self.deadline.saturating_duration_since(Instant::now()), self.cancellation.as_ref()).await
     }
     async fn action(&self, args: &[&str], action: &str) -> Result<GitWorkspaceActionResult, CoreError> {

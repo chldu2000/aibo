@@ -2,6 +2,7 @@ mod compatibility;
 mod project_actions;
 mod controlled_process;
 mod workspace_git;
+mod core_turn_git;
 mod execution_history;
 mod session_history;
 mod capability_history;
@@ -458,7 +459,7 @@ pub struct GitCommitResult {
     pub(crate) message: String,
 }
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct GitHunkActionResult {
     pub(crate) path: String,
@@ -2625,6 +2626,15 @@ enum TurnDiffSourceError {
     Failed(String),
 }
 
+async fn read_turn_diff_file(path: &Path) -> Result<Vec<u8>, std::io::Error> {
+    tokio::time::timeout(std::time::Duration::from_secs(15), async {
+        let mut bytes = Vec::new();
+        tokio::fs::File::open(path).await?.take(10 * 1024 * 1024 + 1).read_to_end(&mut bytes).await?;
+        if bytes.len() > 10 * 1024 * 1024 { return Err(std::io::Error::other("turn diff file exceeds 10 MiB")); }
+        Ok(bytes)
+    }).await.map_err(|_| std::io::Error::other("turn diff file read timed out"))?
+}
+
 async fn load_turn_diff_sources(
     db: &SqlitePool,
     data_dir: &Path,
@@ -2635,7 +2645,7 @@ async fn load_turn_diff_sources(
     require_text: bool,
 ) -> Result<TurnDiffSources, TurnDiffSourceError> {
     let row = sqlx::query(
-        "SELECT previous_path, change_kind, baseline_exists, baseline_hash, baseline_dirty,
+        "SELECT previous_path, change_kind, baseline_exists, baseline_hash, file_changes.baseline_dirty,
                 result_exists, result_hash, baseline_head, attribution
          FROM file_changes
          JOIN turn_change_sets ON turn_change_sets.id = file_changes.change_set_id
@@ -2710,25 +2720,25 @@ async fn load_turn_diff_sources(
             baseline_path,
         );
         if checkpoint.is_file() {
-            fs::read(checkpoint)
+            read_turn_diff_file(&checkpoint).await
                 .map_err(|error| TurnDiffSourceError::Failed(format!("read checkpoint: {error}")))?
         } else if baseline_dirty {
             return Err(TurnDiffSourceError::Unavailable(
                 "本轮前已有修改，且 baseline checkpoint 不可用".to_owned(),
             ));
         } else if let Some(head) = baseline_head.as_deref() {
-            let output = Command::new("git")
-                .args([
+            let mut command = TokioCommand::new("git");
+            command.args([
                     "-C",
                     workspace_path,
                     "show",
                     &format!("{head}:{baseline_path}"),
-                ])
-                .output()
+                ]);
+            let output = crate::controlled_process::execute(command, std::time::Duration::from_secs(15), 10 * 1024 * 1024 + 1).await
                 .map_err(|error| {
                     TurnDiffSourceError::Failed(format!("read Git baseline: {error}"))
                 })?;
-            if !output.status.success() {
+            if !output.success || output.timed_out || output.stdout.len() > 10 * 1024 * 1024 || output.stderr.len() > 10 * 1024 * 1024 {
                 return Err(TurnDiffSourceError::Unavailable(
                     "Git baseline 不可用".to_owned(),
                 ));
@@ -2751,7 +2761,7 @@ async fn load_turn_diff_sources(
         }
     }
     let result = if result_exists {
-        let bytes = fs::read(&target)
+        let bytes = read_turn_diff_file(&target).await
             .map_err(|error| TurnDiffSourceError::Failed(format!("read current file: {error}")))?;
         let current_hash = {
             let mut digest = Sha256::new();
@@ -2974,147 +2984,12 @@ async fn apply_git_hunk_action(
     path: String,
     hunk_index: i64,
     action: String,
+    request_id: String,
+    window: tauri::WebviewWindow,
     state: State<'_, AppState>,
 ) -> Result<GitHunkActionResult, CoreError> {
-    let session = session_by_id(&state.db, &session_id).await?;
-    let workspace = workspace_by_id(&state.db, &session.workspace_id).await?;
-    if workspace.trust != "trusted" {
-        return Err(CoreError::WorkspaceTrustRequired);
-    }
-    if !matches!(action.as_str(), "stage" | "unstage" | "revert") {
-        return Err(CoreError::InvalidWorkspacePath(
-            "unsupported Git hunk action".to_owned(),
-        ));
-    }
-    if hunk_index < 0 {
-        return Err(CoreError::InvalidWorkspacePath(
-            "hunk index must not be negative".to_owned(),
-        ));
-    }
-    let sources = match load_turn_diff_sources(
-        &state.db,
-        &state.data_dir,
-        &workspace.path,
-        &session_id,
-        &turn_id,
-        &path,
-        true,
-    )
-    .await
-    {
-        Ok(sources) => sources,
-        Err(TurnDiffSourceError::NotChanged) => {
-            return Err(CoreError::Database(
-                "requested file is not in the turn change set".to_owned(),
-            ));
-        }
-        Err(TurnDiffSourceError::UnsafePath(error)) => {
-            return Err(CoreError::InvalidWorkspacePath(error));
-        }
-        Err(TurnDiffSourceError::Unavailable(reason)) => {
-            return Ok(GitHunkActionResult {
-                path,
-                hunk_index,
-                action,
-                applied: false,
-                message: reason,
-            });
-        }
-        Err(TurnDiffSourceError::Failed(error)) => return Err(CoreError::Database(error)),
-    };
-    if sources.baseline_dirty {
-        return Ok(GitHunkActionResult {
-            path,
-            hunk_index,
-            action,
-            applied: false,
-            message: "本轮前已有修改，拒绝执行 hunk 级 Git 操作".to_owned(),
-        });
-    }
-    let git = Command::new("git")
-        .args(["-C", &workspace.path, "rev-parse", "--is-inside-work-tree"])
-        .output()
-        .map_err(|error| CoreError::Database(format!("probe Git workspace: {error}")))?;
-    if !git.status.success() || String::from_utf8_lossy(&git.stdout).trim() != "true" {
-        return Ok(GitHunkActionResult {
-            path,
-            hunk_index,
-            action,
-            applied: false,
-            message: "非 Git 工作区不支持 hunk 级操作".to_owned(),
-        });
-    }
-    let full_diff = run_unified_text_diff(&path, &sources.baseline, &sources.result)
-        .map_err(CoreError::Database)?;
-    let patch =
-        select_unified_hunk(&full_diff, hunk_index as usize).map_err(CoreError::Database)?;
-    let patch_path = env::temp_dir().join(format!("aibo-hunk-{id}.patch", id = Ulid::new()));
-    fs::write(&patch_path, patch.as_bytes())
-        .map_err(|error| CoreError::Database(format!("write hunk patch: {error}")))?;
-    let mut check_args = vec![
-        "-C".to_owned(),
-        workspace.path.clone(),
-        "apply".to_owned(),
-        "--check".to_owned(),
-        "--whitespace=nowarn".to_owned(),
-    ];
-    if action == "stage" || action == "unstage" {
-        check_args.push("--cached".to_owned());
-    }
-    if action == "unstage" || action == "revert" {
-        check_args.push("--reverse".to_owned());
-    }
-    check_args.push(patch_path.to_string_lossy().into_owned());
-    let check = Command::new("git")
-        .args(&check_args)
-        .output()
-        .map_err(|error| CoreError::Database(format!("check hunk patch: {error}")))?;
-    if !check.status.success() {
-        let _ = fs::remove_file(&patch_path);
-        let message = String::from_utf8_lossy(&check.stderr).trim().to_owned();
-        return Ok(GitHunkActionResult {
-            path,
-            hunk_index,
-            action,
-            applied: false,
-            message: if message.is_empty() {
-                format!("git apply --check exited with {}", check.status)
-            } else {
-                message
-            },
-        });
-    }
-    let mut apply_args = check_args;
-    if let Some(check_index) = apply_args.iter().position(|value| value == "--check") {
-        apply_args.remove(check_index);
-    }
-    let output = Command::new("git")
-        .args(&apply_args)
-        .output()
-        .map_err(|error| CoreError::Database(format!("apply hunk patch: {error}")))?;
-    let _ = fs::remove_file(&patch_path);
-    let message = String::from_utf8_lossy(if output.status.success() {
-        &output.stdout
-    } else {
-        &output.stderr
-    })
-    .trim()
-    .to_owned();
-    Ok(GitHunkActionResult {
-        path,
-        hunk_index,
-        action,
-        applied: output.status.success(),
-        message: if message.is_empty() {
-            if output.status.success() {
-                "Git hunk 操作已完成".to_owned()
-            } else {
-                format!("git exited with {}", output.status)
-            }
-        } else {
-            message
-        },
-    })
+    let request = git_write_request(request_id, window);
+    core_turn_git::apply_hunk(&state.db, &state.data_dir, &session_id, &turn_id, &path, hunk_index, &action, &request).await
 }
 
 async fn restore_git_file_baseline(

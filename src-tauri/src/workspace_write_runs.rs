@@ -189,8 +189,23 @@ async fn prepare_approval(db: &SqlitePool, workspace: &Workspace, input: &Value)
             .bind(id).bind(&workspace.id).fetch_optional(db).await?;
         Some(context.ok_or_else(|| CoreError::InvalidWorkspacePath("Git caller session is no longer in this workspace".into()))?)
     } else { None };
+    let turn = if let Some(turn_id) = input["turnId"].as_str() {
+        let context: Option<String> = sqlx::query_scalar(
+            "SELECT json_object('turnId',t.id,'turnStatus',t.status,'setId',c.id,
+                'schema',c.schema_version,'updatedAt',c.updated_at,'baselineHead',c.baseline_head,
+                'attribution',c.attribution,'captureStatus',c.capture_status,
+                'fileId',f.id,'path',f.path,'previousPath',f.previous_path,'kind',f.change_kind,
+                'baselineExists',f.baseline_exists,'baselineHash',f.baseline_hash,'baselineDirty',f.baseline_dirty,
+                'resultExists',f.result_exists,'resultHash',f.result_hash)
+             FROM turns t JOIN turn_change_sets c ON c.turn_id=t.id AND c.session_id=t.session_id
+             JOIN file_changes f ON f.change_set_id=c.id
+             WHERE t.id=? AND t.session_id=? AND c.workspace_id=? AND f.path=?"
+        ).bind(turn_id).bind(input["sessionId"].as_str()).bind(&workspace.id).bind(input["path"].as_str())
+            .fetch_optional(db).await?;
+        Some(context.ok_or_else(|| CoreError::InvalidWorkspacePath("Git turn file context is no longer available".into()))?)
+    } else { None };
     let fingerprint = crate::workspace_git_approval::fingerprint(&current.path).await?;
-    Ok(serde_json::json!({"root":root,"workspacePath":current.path,"workspaceTrust":current.trust,"workspaceUpdatedAt":current.updated_at,"session":session,"repositoryFingerprint":fingerprint}))
+    Ok(serde_json::json!({"root":root,"workspacePath":current.path,"workspaceTrust":current.trust,"workspaceUpdatedAt":current.updated_at,"session":session,"turn":turn,"repositoryFingerprint":fingerprint}))
 }
 
 async fn await_approval(confirmation: impl Future<Output = Result<bool, String>>, cancellation: impl Future<Output = ()>, timeout: std::time::Duration) -> &'static str {

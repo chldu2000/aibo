@@ -732,3 +732,34 @@ Git 插件探针两次启动、两套皮肤，验证调用完成后停用/卸载
 [能力生命周期审计验收](./baselines/plugin-platform-p4/capability-history.json)。
 真实 App 浏览器额外验证鼠标进入审计、标题焦点和返回执行历史。原生探针外层
 退出码 0，隔离 App 清理的子 pnpm ELIFECYCLE 为主动结束产生。
+
+### Core hunk 统一写入（第二十六批）
+
+局部暂存、取消暂存及撤销已从 Tauri 命令提取到 `core_turn_git` 服务，并接入
+`workspace_write_runs`。IPC 必须带 requestId，窗口身份由 Tauri 注入；前端合并
+同一 session/turn/path/hunk/action 的等待中点击。宿主先保存意图、取得工作区
+写入占用并显示原生确认框，然后执行与保存结果。同一请求重放返回原结果；
+更换动作或调用窗口不能复用原请求。撤销入口移除旧网页确认，只使用宿主审批。
+
+确认上下文现在包含所选 turn/file 的身份、状态、归属、基线及结果 hash，适用于
+带 turnId 的 Core 文件操作。确认后重新读取并比较这些记录、会话上下文及仓库
+指纹，任一失效都拒绝执行；实际执行时仍校验 checkpoint hash、当前文件 hash、
+路径范围及 baseline_dirty。变更记录不属于当前会话/工作区时不能借用。
+同时修正旧 diff 读取 SQL 中未限定表名的 baseline_dirty 列，避免两表同名歧义。
+
+Git diff、apply --check 与 apply 共用受控执行器的 120 秒 deadline、持久取消
+信号及每流 256 KiB 输出上限；diff 超限直接拒绝，不应用截断补丁。源文件读取
+每次最多 10 MiB、15 秒，Git baseline 读取也有相同限额；源读取之后的 Git
+步骤会检查取消。临时源文件和补丁使用独立目录（Unix 权限 0700），在退出或
+future 丢弃时清理；文件头使用 Git 路径转义，不能通过文件名注入另一个补丁。
+新增/删除文件使用 /dev/null 文件头。取消、超时或执行结果无法确定时保留
+outcome_unknown，不自动重试，也不将已发生的副作用描述成撤销成功。
+
+这些记录可在独立执行历史中查看、停止，撤销工作区信任后仍可读。确认期间
+拒绝和取消不执行补丁；外部进程并发写入仍不在宿主锁的覆盖范围内，本批没有
+提供原子文件系统快照或跨进程锁。
+
+验证见[Core hunk 验收](./baselines/plugin-platform-p4/core-hunk.md)：173 项 Rust
+测试、完整 verify（25 项架构检查、157 项 Node 测试、类型检查和构建）及隔离
+macOS 原生审批探针通过。整文件 revert、整轮基线恢复和通用 Capability 写入
+仍待迁移；P4 退出条件保持未完成。
