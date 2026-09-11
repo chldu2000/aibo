@@ -141,14 +141,14 @@
 
 **前置：** P3 安装和 Broker 可用。**交付物：** 可信默认 Presentation Plugin、正式 Core/optional/fallback 契约、可信审批闭环、项目任务与 Git 写入切片。
 
-**当前进度：** [呈现边界实施记录](./plugin-platform-p4-presentation.md)已落地 ADR-0007、可信默认呈现描述、必需核心校验及完整数据降级协商，并接入实际预检路径。恢复入口、插件管理、设置、诊断及 Agent 审批已移入独立宿主区域。完整槽位装配、专业呈现实例、独立历史、PluginView 确认及 Capability 写入审批仍待实施，P4 退出条件保持未完成。
+**当前进度：** [呈现边界实施记录](./plugin-platform-p4-presentation.md)已落地 ADR-0007、可信默认呈现描述、必需核心校验及完整数据降级协商，并接入实际预检路径。恢复入口、插件管理、设置、诊断及 Agent 审批已移入独立宿主区域。完整槽位装配、专业呈现实例、独立历史及 Capability 写入审批仍待实施；PluginView 确认已验收，P4 退出条件保持未完成。
 
 - [ ] 提交正式 ADR，冻结 Core/optional/fallback、支持版本表与布局所有权；同步 UI contract、架构测试和 `ui-architecture.md` 后才引入 optional 成员。
 - [ ] 将默认工作台装配为可信 Presentation Plugin，明确 Shell/renderer/skin 职责及构建期发布边界，允许重排整个工作台。
 - [ ] 验证新增标准语义贡献无需逐一修改每套 UI；通用导航保证入口可达，缺提供者或不兼容有诊断。
 - [ ] 实现专业呈现 → 当前 renderer 核心语义 fallback → 不可用说明的协商；必需语义缺失拒绝启用，可选增强缺失仅局部降级。
 - [ ] 用实际专业呈现验证 fallback 保留必需数据、操作和选择规则，不嵌入其他皮肤组件；时间线与 Composer 暂保留可信专业实现。
-- [ ] 补齐 view confirmation 非 `never` 的宿主确认闭环，测试取消、拒绝、失效及确认后再验证；显示按钮不代表审批完成。
+- [x] 补齐 view confirmation 非 `never` 的宿主确认闭环，测试取消、拒绝、失效及确认后再验证；证据见 [P4 第五至七批](./plugin-platform-p4-presentation.md)：原生窗口对话框、调用者版本、真实子进程与真实原生按钮验收。
 - [ ] 确保插件管理、授权、历史、停用故障插件和默认工作台恢复入口独立可用，UI 不能遮蔽或伪造可信审批。
 - [ ] 先从 `lib.rs` 提取可测试的项目任务/Git 领域服务，再接受控执行；宿主保留批准、取消、日志、artifact、工作区限制和输出限制。
 - [ ] 接入项目任务和 Git 写入，覆盖重复提交、作用域写冲突、取消、超时结果未知与禁止盲目重试；通用宿主路由不新增 Provider 分支。

@@ -4907,8 +4907,8 @@ async fn get_plugin_view_snapshots(session_id: String, state: State<'_, AppState
 }
 
 #[tauri::command]
-async fn invoke_plugin_view_action(session_id: String, view_id: String, action_id: String, input: serde_json::Value, version: plugin_host::ViewVersion, state: State<'_, AppState>) -> Result<serde_json::Value, String> {
-    state.plugins.invoke_versioned(&session_id, &view_id, &action_id, input, version).await
+async fn invoke_plugin_view_action(session_id: String, view_id: String, action_id: String, input: serde_json::Value, version: plugin_host::ViewVersion, window: tauri::WebviewWindow, state: State<'_, AppState>) -> Result<serde_json::Value, String> {
+    state.plugins.invoke_versioned(&session_id, &view_id, &action_id, input, version, Some(window)).await
 }
 
 #[tauri::command]

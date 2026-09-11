@@ -1118,18 +1118,19 @@ impl PluginHost {
 
     #[cfg(test)]
     async fn invoke(&self, session_id: &str, view_id: &str, action_id: &str, input: Value) -> Result<Value, String> {
-        self.invoke_native(session_id, view_id, action_id, input, None).await
+        self.invoke_native(session_id, view_id, action_id, input, None, None).await
     }
 
-    pub async fn invoke_versioned(&self, session_id: &str, view_id: &str, action_id: &str, input: Value, version: ViewVersion) -> Result<Value, String> {
-        self.invoke_native(session_id, view_id, action_id, input, Some(version)).await
+    pub async fn invoke_versioned(&self, session_id: &str, view_id: &str, action_id: &str, input: Value, version: ViewVersion, window: Option<tauri::WebviewWindow>) -> Result<Value, String> {
+        self.invoke_native(session_id, view_id, action_id, input, Some(version), window).await
     }
 
-    async fn invoke_native(&self, session_id: &str, view_id: &str, action_id: &str, input: Value, version: Option<ViewVersion>) -> Result<Value, String> {
+    async fn invoke_native(&self, session_id: &str, view_id: &str, action_id: &str, input: Value, version: Option<ViewVersion>, window: Option<tauri::WebviewWindow>) -> Result<Value, String> {
         self.invoke_with_confirmation(session_id, view_id, action_id, input, version, |message| async move {
             let app = self.app.as_ref().ok_or("confirmation_unavailable: desktop host required")?;
+            let window = window.as_ref().ok_or("confirmation_unavailable: caller window required")?;
             let (send, receive) = tokio::sync::oneshot::channel();
-            app.dialog().message(message).title("Aibo · 确认插件操作")
+            app.dialog().message(message).parent(window).title("Aibo · 确认插件操作")
                 .buttons(MessageDialogButtons::OkCancelCustom("允许本次操作".into(), "取消".into()))
                 .show(move |accepted| { let _ = send.send(accepted); });
             tokio::time::timeout(Duration::from_secs(300), receive).await
@@ -1844,9 +1845,9 @@ mod tests {
         let snapshot = snapshots.iter().find(|item| item["document"]["viewId"] == "dev.aibo.echo.tasks").unwrap();
         let version: ViewVersion = serde_json::from_value(snapshot["version"].clone()).unwrap();
         assert_eq!(version.revision, snapshot["document"]["revision"].as_u64().unwrap());
-        assert!(host.invoke_versioned(&session.id, "dev.aibo.echo.tasks", "commands", json!({}), ViewVersion { revision: version.revision + 1, ..version.clone() }).await.unwrap_err().contains("stale_view"));
-        assert!(host.invoke_versioned(&session.id, "dev.aibo.echo.tasks", "commands", json!({}), ViewVersion { generation_id: "old-runtime".into(), ..version.clone() }).await.unwrap_err().contains("stale_view"));
-        let versioned = host.invoke_versioned(&session.id, "dev.aibo.echo.tasks", "commands", json!({}), version).await.unwrap();
+        assert!(host.invoke_versioned(&session.id, "dev.aibo.echo.tasks", "commands", json!({}), ViewVersion { revision: version.revision + 1, ..version.clone() }, None).await.unwrap_err().contains("stale_view"));
+        assert!(host.invoke_versioned(&session.id, "dev.aibo.echo.tasks", "commands", json!({}), ViewVersion { generation_id: "old-runtime".into(), ..version.clone() }, None).await.unwrap_err().contains("stale_view"));
+        let versioned = host.invoke_versioned(&session.id, "dev.aibo.echo.tasks", "commands", json!({}), version, None).await.unwrap();
         assert_eq!(versioned, json!({"commands":[]}));
         let mut confirmation_view: Value = serde_json::from_str(&original).unwrap();
         for action in confirmation_view["actions"].as_array_mut().unwrap() {

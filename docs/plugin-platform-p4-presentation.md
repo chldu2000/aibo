@@ -100,3 +100,25 @@ Pi 请求均通过宿主按钮批准，覆盖后台会话、插件管理同时�
 144 项 Node 测试、类型与构建通过。`node probes/p2-native.mjs` 两次真实桌面
 启动通过：实际插件视图按钮完成调用，原生 IPC 拒绝旧 revision、旧 generation
 及缺少版本的请求；Codex/Pi 审批、重启恢复和窗口隔离回归通过。
+
+### 原生对话框验收（第七批）
+
+动作 IPC 由 Tauri 注入发起调用的 WebviewWindow，宿主将它设置为原生确认的
+父窗口。该窗口不是插件提供的参数。没有发起窗口时不打开独立的系统级通知
+对话框；这一点使多窗口确认的归属明确。macOS 库的无父窗口分支使用系统通知，
+有父窗口分支使用应用内原生 sheet，本批用实际运行验证并切换到后者。
+
+`node probes/view-confirmation-native.mjs` 创建隔离工作区及 Echo 安装包，将测试
+动作声明为 always，通过真实 IPC 发起确认。Swift 辅助功能工具只在该隔离进程
+中定位包含指定测试标记的对话框，实际点击取消和批准。取消返回
+confirmation_cancelled 且不更新视图；批准返回操作结果并更新视图。没有模拟
+确认返回值，也没有操作用户的其他应用窗口。此 probe 适用于已授予辅助功能
+权限的 macOS；其他平台的原生对话框外观不据此宣称已经验收。
+
+结合第五批真实子进程的拒绝、信任撤销、上下文变化和重复提交检查，以及第六批
+真实 IPC 的 revision/generation 检查，PluginView confirmation 清单项现已完成。
+[原生按钮验收结果](./baselines/plugin-platform-p4/view-dialog.json)仅包含布尔结果
+和按钮名称。完整 P4 的布局、独立历史、专业呈现和 Broker 写入仍待完成。
+
+第七批完整回归：`cargo test --manifest-path src-tauri/Cargo.toml` 140 通过；
+`pnpm run verify` 的 23 项架构检查、144 项 Node 测试、类型检查及构建通过。

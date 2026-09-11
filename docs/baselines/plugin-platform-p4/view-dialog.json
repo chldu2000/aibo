@@ -1,0 +1,11 @@
+{
+  "ok": true,
+  "nativeCancel": true,
+  "cancelDidNotExecute": true,
+  "nativeAccept": true,
+  "acceptedOperationExecuted": true,
+  "nativeClicks": [
+    "clicked isolated dialog: 取消",
+    "clicked isolated dialog: 允许本次操作"
+  ]
+}
