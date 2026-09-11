@@ -144,7 +144,7 @@
         <div class="project-action-run-list" aria-label="最近工程动作运行结果">
           {#each projectActionRuns.slice(0, 5) as run (run.id)}
             <div class="project-action-run" role="status">
-              <small>{projectActions.find((action) => action.id === run.actionId)?.name ?? '工程动作'} · {run.status === 'completed' ? '成功' : run.status === 'timed_out' ? '超时' : '失败'}{run.exitCode === null ? '' : ` · 退出码 ${run.exitCode}`}</small>
+              <small>{run.actionName ?? projectActions.find((action) => action.id === run.actionId)?.name ?? '工程动作'} · {run.status === 'running' ? '执行中' : run.status === 'outcome_unknown' ? '结果未知，请核对实际更改后再操作' : run.status === 'completed' ? '成功' : run.status === 'timed_out' ? '超时' : '失败'}{run.exitCode === null ? '' : ` · 退出码 ${run.exitCode}`}</small>
               <pre>{run.output || '没有输出'}</pre>
               {#if run.artifactId}<small class="project-action-artifact">输出已保存为任务工件</small>{/if}
             </div>

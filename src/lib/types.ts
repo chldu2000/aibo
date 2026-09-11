@@ -433,9 +433,10 @@ export interface ProjectAction {
 }
 
 export interface ProjectActionRun {
-  schema: 'aibo.project-action-run/v1';
+  schema: 'aibo.project-action-run/v1' | 'aibo.project-action-run/v2';
   id: string;
   actionId: string;
+  actionName?: string | null;
   workspaceId: string;
   sessionId: string | null;
   status: 'completed' | 'failed' | 'timed_out' | string;
@@ -443,7 +444,7 @@ export interface ProjectActionRun {
   output: string;
   artifactId: string | null;
   startedAt: string;
-  completedAt: string;
+  completedAt: string | null;
 }
 
 export type GitFileAction = 'stage' | 'unstage' | 'revert';

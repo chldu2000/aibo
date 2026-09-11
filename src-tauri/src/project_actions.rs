@@ -207,11 +207,28 @@ pub(crate) async fn run_project_action(
     let cwd = crate::workspace_guard::canonicalize_target(&root, Path::new(&action.cwd))
         .map_err(CoreError::InvalidWorkspacePath)?;
     let started_at = now_iso();
+    let run_id = Ulid::new().to_string();
+    let snapshot = serde_json::to_string(&serde_json::json!({"schema":"aibo.project-action-snapshot/v1","origin":"admission","definition":&action})).map_err(|error| CoreError::Initialization(error.to_string()))?;
+    // Record intent before the first side effect. A crash leaves a recoverable run.
+    sqlx::query("INSERT INTO project_action_runs (id,schema_version,action_id,workspace_id,session_id,status,output,started_at,completed_at,snapshot_json) VALUES (?,'aibo.project-action-run/v2',?,?,?,'running','',?,NULL,?)")
+        .bind(&run_id).bind(&action_id).bind(&workspace_id).bind(&session_id).bind(&started_at).bind(snapshot).execute(db).await?;
     let mut command = TokioCommand::new(&action.program);
     command.args(&action.args).current_dir(&cwd);
-    let execution = crate::controlled_process::execute(command, Duration::from_secs(300), 1024 * 1024 + 1)
-        .await.map_err(|error| CoreError::Initialization(format!("execute project action: {error}")))?;
-    let status = if execution.timed_out { "timed_out" } else if execution.success { "completed" } else { "failed" };
+    let execution = match crate::controlled_process::execute(command, Duration::from_secs(300), 1024 * 1024 + 1).await {
+        Ok(execution) => execution,
+        Err(error) => {
+            let message = crate::artifact::sanitize_content("project-action.command", &format!("Execution result unknown: {error}"));
+            let completed_at = now_iso();
+            let changed = sqlx::query("UPDATE project_action_runs SET status='outcome_unknown',output=?,completed_at=? WHERE id=? AND status='running'")
+                .bind(&message).bind(&completed_at).bind(&run_id).execute(db).await?.rows_affected();
+            if changed != 1 { return Err(CoreError::Initialization("project task record changed concurrently".into())); }
+            return Ok(ProjectActionRun { schema: "aibo.project-action-run/v2".into(), id: run_id,
+                action_id, action_name: Some(action.name), workspace_id, session_id,
+                status: "outcome_unknown".into(), exit_code: None, output: message, artifact_id: None,
+                started_at, completed_at: Some(completed_at) });
+        }
+    };
+    let status = if execution.timed_out { "outcome_unknown" } else if execution.success { "completed" } else { "failed" };
     let exit_code = execution.exit_code.map(i64::from);
     let mut output = String::from_utf8_lossy(&execution.stdout).to_string();
     let stderr = String::from_utf8_lossy(&execution.stderr).to_string();
@@ -227,7 +244,6 @@ pub(crate) async fn run_project_action(
         "\n… 工程动作输出已截断",
     );
     let completed_at = now_iso();
-    let run_id = Ulid::new().to_string();
     let artifact_id = if let Some(session_id) = session_id.as_deref() {
         crate::artifact::persist_text(
             db,
@@ -244,27 +260,14 @@ pub(crate) async fn run_project_action(
     } else {
         None
     };
-    sqlx::query(
-        "INSERT INTO project_action_runs
-         (id, schema_version, action_id, workspace_id, session_id, status, exit_code, output, artifact_id, started_at, completed_at)
-         VALUES (?, 'aibo.project-action-run/v1', ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-    )
-    .bind(&run_id)
-    .bind(&action_id)
-    .bind(&workspace_id)
-    .bind(&session_id)
-    .bind(status)
-    .bind(exit_code)
-    .bind(&output)
-    .bind(&artifact_id)
-    .bind(&started_at)
-    .bind(&completed_at)
-    .execute(db)
-    .await?;
+    let changed = sqlx::query("UPDATE project_action_runs SET status=?,exit_code=?,output=?,artifact_id=?,completed_at=? WHERE id=? AND status='running'")
+        .bind(status).bind(exit_code).bind(&output).bind(&artifact_id).bind(&completed_at).bind(&run_id).execute(db).await?.rows_affected();
+    if changed != 1 { return Err(CoreError::Initialization("project task record changed concurrently".into())); }
     Ok(ProjectActionRun {
-        schema: "aibo.project-action-run/v1".to_owned(),
+        schema: "aibo.project-action-run/v2".to_owned(),
         id: run_id,
         action_id,
+        action_name: Some(action.name),
         workspace_id,
         session_id,
         status: status.to_owned(),
@@ -272,7 +275,7 @@ pub(crate) async fn run_project_action(
         output,
         artifact_id,
         started_at,
-        completed_at,
+        completed_at: Some(completed_at),
     })
 }
 
@@ -283,6 +286,7 @@ fn project_action_run_from_row(
         schema: row.try_get("schema_version")?,
         id: row.try_get("id")?,
         action_id: row.try_get("action_id")?,
+        action_name: row.try_get("action_name")?,
         workspace_id: row.try_get("workspace_id")?,
         session_id: row.try_get("session_id")?,
         status: row.try_get("status")?,
@@ -303,9 +307,9 @@ pub(crate) async fn list_project_action_runs(
     let limit = limit.unwrap_or(10).clamp(1, 50);
     let rows = sqlx::query(
         "SELECT id, schema_version, action_id, workspace_id, session_id, status,
-                exit_code, output, artifact_id, started_at, completed_at
+                exit_code, output, artifact_id, started_at, completed_at, json_extract(snapshot_json,'$.definition.name') AS action_name
          FROM project_action_runs WHERE workspace_id = ?
-         ORDER BY completed_at DESC LIMIT ?",
+         ORDER BY started_at DESC, id DESC LIMIT ?",
     )
     .bind(&workspace_id)
     .bind(limit)
@@ -314,6 +318,12 @@ pub(crate) async fn list_project_action_runs(
     rows.iter().map(project_action_run_from_row).collect()
 }
 
+
+/// Startup-only recovery: incomplete execution is never automatically replayed.
+pub(crate) async fn recover(db: &SqlitePool) -> Result<u64, sqlx::Error> {
+    Ok(sqlx::query("UPDATE project_action_runs SET status='outcome_unknown',completed_at=?,output=output || '\nHost restarted before execution settled; inspect effects before retrying.' WHERE status='running'")
+        .bind(now_iso()).execute(db).await?.rows_affected())
+}
 
 #[cfg(all(test, unix))]
 mod tests {
@@ -346,7 +356,62 @@ mod tests {
         assert_eq!(list_project_action_runs(&db, "workspace".into(), None).await.unwrap().len(), 1);
         delete_project_action(&db, "workspace".into(), action.id).await.unwrap();
         assert!(list_project_actions(&db, "workspace".into()).await.unwrap().is_empty());
+        let retained = list_project_action_runs(&db, "workspace".into(), None).await.unwrap();
+        assert_eq!(retained.len(), 1);
+        assert_eq!(retained[0].action_name.as_deref(), Some("Check"));
         db.close().await;
         fs::remove_dir_all(root).unwrap();
     }
+    #[tokio::test]
+    async fn running_record_survives_owner_loss_and_startup_marks_unknown() {
+        let root = std::env::temp_dir().join(format!("aibo-task-recovery-{}", Ulid::new()));
+        fs::create_dir_all(&root).unwrap();
+        let db = crate::open_database(&root.join("host.db")).await.unwrap();
+        let now = now_iso();
+        sqlx::query("INSERT INTO workspaces (id,path,label,trusted,created_at,updated_at) VALUES ('workspace',?,'Recovery',1,?,?)")
+            .bind(root.to_string_lossy().as_ref()).bind(&now).bind(&now).execute(&db).await.unwrap();
+        let action = save_project_action(&db, "workspace".into(), None, "Long task".into(), "test".into(), "/bin/sh".into(), vec!["-c".into(), "touch started; sleep 30".into()], None, None).await.unwrap();
+        let task_db = db.clone(); let task_root = root.clone(); let action_id = action.id.clone();
+        let owner = tokio::spawn(async move { run_project_action(&task_db, &task_root, "workspace".into(), action_id, None).await });
+        tokio::time::timeout(Duration::from_secs(3), async { while !root.join("started").exists() { tokio::time::sleep(Duration::from_millis(10)).await; } }).await.unwrap();
+        let pending = list_project_action_runs(&db, "workspace".into(), None).await.unwrap();
+        assert_eq!(pending[0].status, "running");
+        assert!(pending[0].completed_at.is_none());
+        owner.abort(); let _ = owner.await;
+        delete_project_action(&db, "workspace".into(), action.id).await.unwrap();
+        db.close().await;
+        let reopened = crate::open_database(&root.join("host.db")).await.unwrap();
+        assert_eq!(recover(&reopened).await.unwrap(), 1);
+        assert_eq!(recover(&reopened).await.unwrap(), 0);
+        let recovered = list_project_action_runs(&reopened, "workspace".into(), None).await.unwrap();
+        assert_eq!(recovered[0].id, pending[0].id);
+        assert_eq!(recovered[0].status, "outcome_unknown");
+        assert_eq!(recovered[0].action_name.as_deref(), Some("Long task"));
+        assert!(recovered[0].completed_at.is_some());
+        let missing = save_project_action(&reopened, "workspace".into(), None, "Missing program".into(), "test".into(), root.join("missing-program").to_string_lossy().into_owned(), vec![], None, None).await.unwrap();
+        let failed = run_project_action(&reopened, &root, "workspace".into(), missing.id, None).await.unwrap();
+        assert_eq!(failed.status, "outcome_unknown");
+        assert_eq!(failed.schema, "aibo.project-action-run/v2");
+        assert!(list_project_action_runs(&reopened, "workspace".into(), None).await.unwrap().iter().any(|run| run.id == failed.id));
+        reopened.close().await;
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[tokio::test]
+    async fn lifecycle_migration_keeps_v1_records_and_marks_backfilled_definition_origin() {
+        let db = sqlx::sqlite::SqlitePoolOptions::new().max_connections(1).connect("sqlite::memory:").await.unwrap();
+        sqlx::raw_sql("CREATE TABLE workspaces(id TEXT PRIMARY KEY); CREATE TABLE sessions(id TEXT PRIMARY KEY); CREATE TABLE project_actions(id TEXT PRIMARY KEY,name TEXT,kind TEXT,program TEXT,args_json TEXT,cwd TEXT); INSERT INTO workspaces VALUES ('w'); INSERT INTO project_actions VALUES ('a','Old name','test','echo','[]','.');").execute(&db).await.unwrap();
+        sqlx::raw_sql(include_str!("../migrations/0012_project_action_runs.sql")).execute(&db).await.unwrap();
+        sqlx::query("INSERT INTO project_action_runs VALUES ('r','aibo.project-action-run/v1','a','w',NULL,'completed',0,'OLD_OUTPUT',NULL,'before','after')").execute(&db).await.unwrap();
+        sqlx::raw_sql(include_str!("../migrations/0029_project_action_lifecycle.sql")).execute(&db).await.unwrap();
+        sqlx::query("DELETE FROM project_actions WHERE id='a'").execute(&db).await.unwrap();
+        let row = sqlx::query("SELECT * FROM project_action_runs WHERE id='r'").fetch_one(&db).await.unwrap();
+        assert_eq!(row.get::<String,_>("schema_version"), "aibo.project-action-run/v1");
+        assert_eq!(row.get::<String,_>("output"), "OLD_OUTPUT");
+        assert_eq!(row.get::<String,_>("completed_at"), "after");
+        let snapshot: serde_json::Value = serde_json::from_str(row.get::<&str,_>("snapshot_json")).unwrap();
+        assert_eq!(snapshot["origin"], "migration-current-definition");
+        db.close().await;
+    }
+
 }

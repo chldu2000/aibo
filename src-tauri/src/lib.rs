@@ -536,6 +536,7 @@ pub struct ProjectActionRun {
     pub(crate) schema: String,
     pub(crate) id: String,
     pub(crate) action_id: String,
+    pub(crate) action_name: Option<String>,
     pub(crate) workspace_id: String,
     pub(crate) session_id: Option<String>,
     pub(crate) status: String,
@@ -543,7 +544,7 @@ pub struct ProjectActionRun {
     pub(crate) output: String,
     pub(crate) artifact_id: Option<String>,
     pub(crate) started_at: String,
-    pub(crate) completed_at: String,
+    pub(crate) completed_at: Option<String>,
 }
 
 #[derive(Debug, thiserror::Error)]
@@ -4829,6 +4830,8 @@ pub fn run() {
                     "recover interrupted sessions: {error}"
                 ))) as Box<dyn Error>
             })?;
+            tauri::async_runtime::block_on(project_actions::recover(&db))
+                .map_err(|error| Box::new(CoreError::Initialization(format!("recover project tasks: {error}"))) as Box<dyn Error>)?;
             tauri::async_runtime::block_on(capability_broker::Broker::recover(&db))
                 .map_err(|error| Box::new(CoreError::Initialization(error)) as Box<dyn Error>)?;
             if let Err(error) = tauri::async_runtime::block_on(plugin_registry::collect_retired(&db, &data_dir)) {

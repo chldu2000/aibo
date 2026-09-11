@@ -3233,14 +3233,18 @@
         }
       })}
       onRunProjectAction={guard('onRunProjectAction', async (actionId) => {
+        const workspaceId = selectedWorkspaceId;
+        const sessionId = selectedSessionId;
+        if (!workspaceId) return;
         try {
-          if (!selectedWorkspaceId) return;
-          const result = await runProjectAction(selectedWorkspaceId, actionId, selectedSessionId);
+          const result = await runProjectAction(workspaceId, actionId, sessionId);
+          if (selectedWorkspaceId !== workspaceId) return;
           projectActionRuns = [result, ...projectActionRuns.filter((item) => item.id !== result.id)].slice(0, 20);
-          if (selectedSessionId) await refreshArtifacts(selectedSessionId);
-          notice = result.status === 'completed' ? '工程动作已完成。' : `工程动作${result.status === 'timed_out' ? '超时' : '失败'}。`;
+          if (sessionId && selectedSessionId === sessionId) await refreshArtifacts(sessionId);
+          if (selectedWorkspaceId !== workspaceId) return;
+          notice = result.status === 'outcome_unknown' ? '工程动作结果未知，请核对实际更改后再操作。' : result.status === 'completed' ? '工程动作已完成。' : `工程动作${result.status === 'timed_out' ? '超时' : '失败'}。`;
         } catch (error) {
-          errorMessage = toErrorMessage(error);
+          if (selectedWorkspaceId === workspaceId) errorMessage = toErrorMessage(error);
         }
       })}
       onRefresh={guard('onRefresh', () => void refresh())}
