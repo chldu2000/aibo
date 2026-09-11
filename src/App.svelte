@@ -457,7 +457,7 @@
   let executionHistory = $state(emptyExecutionHistory());
   let historyTrigger: HTMLElement | null = null;
   const executionHistoryController = createExecutionHistoryController({
-    readTasks: id => listProjectActionRuns(id, 20), readWrites: id => listWorkspaceWriteRuns(id, 20),
+    readTasks: (id, before) => listProjectActionRuns(id, 21, before), readWrites: (id, before) => listWorkspaceWriteRuns(id, 21, before),
     cancelTask: cancelProjectAction, cancelWrite: cancelWorkspaceWrite,
     publish: value => { executionHistory = value; },
   });
@@ -3070,7 +3070,8 @@
     <div class="host-history-region" style="order: 2; display: grid; flex: 1; min-height: 0; overflow: auto;">
       <ExecutionHistoryPanel {workspaces} workspaceId={historyWorkspaceId} windowId={presentationWindowId()} state={executionHistory} {desktop}
         onSelectWorkspace={id => { historyWorkspaceId = id; }} onRefresh={() => void executionHistoryController.refresh()}
-        onStop={key => void executionHistoryController.stop(key)} onClose={closeExecutionHistory} />
+        onStop={key => void executionHistoryController.stop(key)} onClose={closeExecutionHistory}
+        onOlder={() => void executionHistoryController.older()} onNewer={() => void executionHistoryController.newer()} onLatest={() => void executionHistoryController.latest()} />
     </div>
   {/if}
   {#if pluginsOpen}

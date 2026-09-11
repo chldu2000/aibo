@@ -424,15 +424,24 @@ pub(crate) async fn list_project_action_runs(
     workspace_id: String,
     limit: Option<i64>,
 ) -> Result<Vec<ProjectActionRun>, CoreError> {
+    list_project_action_runs_page(db, workspace_id, limit, None).await
+}
+
+pub(crate) async fn list_project_action_runs_page(db: &SqlitePool, workspace_id: String, limit: Option<i64>, before: Option<&crate::execution_history::Cursor>) -> Result<Vec<ProjectActionRun>, CoreError> {
+    if let Some(cursor) = before { cursor.validate(&workspace_id)?; }
     workspace_by_id(db, &workspace_id).await?;
     let limit = limit.unwrap_or(10).clamp(1, 50);
     let rows = sqlx::query(
         "SELECT id, schema_version, action_id, workspace_id, session_id, status,
                 exit_code, output, artifact_id, started_at, completed_at, json_extract(snapshot_json,'$.definition.name') AS action_name
-         FROM project_action_runs WHERE workspace_id = ?
+         FROM project_action_runs WHERE workspace_id = ? AND (? IS NULL OR (started_at, 'task', id) < (?, ?, ?))
          ORDER BY started_at DESC, id DESC LIMIT ?",
     )
     .bind(&workspace_id)
+    .bind(before.map(|cursor| cursor.started_at.as_str()))
+    .bind(before.map(|cursor| cursor.started_at.as_str()))
+    .bind(before.map(|cursor| cursor.kind.as_str()))
+    .bind(before.map(|cursor| cursor.id.as_str()))
     .bind(limit)
     .fetch_all(db)
     .await?;

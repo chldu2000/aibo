@@ -44,8 +44,8 @@ try {
   await invoke('set_workspace_trust', { workspaceId: workspace.id, trusted: false });
   let gitState, gitStop;
   const gitHistory = createExecutionHistoryController({
-    readTasks: workspaceId => invoke('list_project_action_runs', { workspaceId }),
-    readWrites: workspaceId => invoke('list_workspace_write_runs', { workspaceId }),
+    readTasks: (workspaceId, before) => invoke('list_project_action_runs', { workspaceId, before, limit: 21 }),
+    readWrites: (workspaceId, before) => invoke('list_workspace_write_runs', { workspaceId, before, limit: 21 }),
     cancelTask: () => { throw Error('unexpected task stop'); },
     cancelWrite: async (workspaceId, runId) => { gitStop = await invoke('cancel_workspace_write', { workspaceId, runId }); return gitStop; },
     publish: state => { gitState = state; },
@@ -53,6 +53,7 @@ try {
   gitHistory.open(workspace.id, 'main'); await gitHistory.refresh();
   const gitPanel = mount(Panel, { target: document.getElementById('probe'), props: {
     workspaces: [{id:workspace.id,label:'Native Git'}], workspaceId:workspace.id, windowId:'main', state:gitState, desktop:true,
+    onOlder:()=>gitHistory.older(), onNewer:()=>gitHistory.newer(), onLatest:()=>gitHistory.latest(),
     onSelectWorkspace:()=>{}, onRefresh:()=>gitHistory.refresh(), onStop:key=>gitHistory.stop(key), onClose:()=>{},
   } });
   await tick();
@@ -85,8 +86,8 @@ try {
     let cancelled, cancelError;
     let historyState;
     const historyController = createExecutionHistoryController({
-      readTasks: workspaceId => invoke('list_project_action_runs', { workspaceId, limit: 20 }),
-      readWrites: workspaceId => invoke('list_workspace_write_runs', { workspaceId, limit: 20 }),
+      readTasks: (workspaceId, before) => invoke('list_project_action_runs', { workspaceId, before, limit: 21 }),
+      readWrites: (workspaceId, before) => invoke('list_workspace_write_runs', { workspaceId, before, limit: 21 }),
       cancelTask: async (workspaceId, runId) => { try { cancelled = await invoke('cancel_project_action', { workspaceId, runId }); return cancelled; } catch (error) { cancelError = error; throw error; } },
       cancelWrite: (workspaceId, runId) => invoke('cancel_workspace_write', { workspaceId, runId }),
       publish: state => { historyState = state; },
@@ -94,6 +95,7 @@ try {
     historyController.open(workspace.id, 'main'); await historyController.refresh();
     const panel = mount(Panel, { target: document.getElementById('probe'), props: {
       workspaces: [{ id: workspace.id, label: 'Native fixture' }], workspaceId: workspace.id, windowId: 'main', desktop: true, state: historyState,
+      onOlder: () => historyController.older(), onNewer: () => historyController.newer(), onLatest: () => historyController.latest(),
       onSelectWorkspace: () => {}, onRefresh: () => historyController.refresh(), onStop: key => historyController.stop(key), onClose: () => {},
     } });
     await tick();
@@ -110,6 +112,15 @@ try {
     await unmount(panel); historyController.close();
     await invoke('set_workspace_trust', { workspaceId: workspace.id, trusted: true });
   }
+  for (const [command, kind] of [['list_workspace_write_runs','git'], ['list_project_action_runs','task']]) {
+    const first = (await invoke(command, {workspaceId:workspace.id,limit:1}))[0];
+    const before = {schema:'aibo.execution-cursor/v1',workspaceId:workspace.id,startedAt:first.startedAt,kind,id:first.id};
+    const older = await invoke(command, {workspaceId:workspace.id,limit:1,before});
+    if (older.length !== 1 || older[0].id === first.id) throw Error('Native history cursor failed');
+    let rejected = false;
+    try { await invoke(command, {workspaceId:workspace.id,limit:1,before:{...before,workspaceId:'wrong-workspace'}}); } catch { rejected=true; }
+    if (!rejected) throw Error('Native history cursor accepted another workspace');
+  }
   await pause(2200);
-  await report({ ok: true, results, denialPreventedExecution: true, gitDenialPreventedExecution: true, gitCancellation: true, workspaceWriteHistory: true, duplicateWriteReused: true, writeRunId: writeRun.id });
+  await report({ ok: true, results, denialPreventedExecution: true, gitDenialPreventedExecution: true, gitCancellation: true, historyPagination: true, workspaceWriteHistory: true, duplicateWriteReused: true, writeRunId: writeRun.id });
 } catch (error) { await report({ ok: false, error: String(error) }); }

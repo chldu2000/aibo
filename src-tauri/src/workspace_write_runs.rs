@@ -159,9 +159,14 @@ where T: Serialize + DeserializeOwned, F: FnOnce(Cancellation) -> Fut, Fut: Futu
 }
 
 pub(crate) async fn list(db: &SqlitePool, workspace_id: String, limit: Option<i64>) -> Result<Vec<WriteRun>, CoreError> {
+    list_page(db, workspace_id, limit, None).await
+}
+
+pub(crate) async fn list_page(db: &SqlitePool, workspace_id: String, limit: Option<i64>, before: Option<&crate::execution_history::Cursor>) -> Result<Vec<WriteRun>, CoreError> {
+    if let Some(cursor) = before { cursor.validate(&workspace_id)?; }
     crate::workspace_by_id(db, &workspace_id).await?;
-    let rows = sqlx::query("SELECT * FROM workspace_write_runs WHERE workspace_id=? ORDER BY started_at DESC,id DESC LIMIT ?")
-        .bind(workspace_id).bind(limit.unwrap_or(20).clamp(1,100)).fetch_all(db).await?;
+    let rows = sqlx::query("SELECT * FROM workspace_write_runs WHERE workspace_id=? AND (? IS NULL OR (started_at, 'git', id) < (?, ?, ?)) ORDER BY started_at DESC,id DESC LIMIT ?")
+        .bind(workspace_id).bind(before.map(|cursor| cursor.started_at.as_str())).bind(before.map(|cursor| cursor.started_at.as_str())).bind(before.map(|cursor| cursor.kind.as_str())).bind(before.map(|cursor| cursor.id.as_str())).bind(limit.unwrap_or(20).clamp(1,100)).fetch_all(db).await?;
     rows.iter().map(|row| {
         let snapshot: String = row.try_get("snapshot_json")?;
         let result: Option<String> = row.try_get("result_json")?;

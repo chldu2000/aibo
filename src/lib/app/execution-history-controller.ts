@@ -1,4 +1,4 @@
-import type { ProjectActionRun, WorkspaceWriteRun } from '../types';
+import type { ExecutionCursor, ProjectActionRun, WorkspaceWriteRun } from '../types';
 import { toErrorMessage } from './error-utils';
 
 export type ExecutionEntry = {
@@ -6,8 +6,8 @@ export type ExecutionEntry = {
   status: string; startedAt: string; completedAt: string | null; output: string;
   input?: string; caller?: string | null; stopRequested: boolean;
 };
-export type ExecutionHistoryState = { entries: ExecutionEntry[]; loading: boolean; errors: string[]; stopping: string[] };
-export const emptyExecutionHistory = (): ExecutionHistoryState => ({ entries: [], loading: false, errors: [], stopping: [] });
+export type ExecutionHistoryState = { entries: ExecutionEntry[]; loading: boolean; errors: string[]; stopping: string[]; page: number; hasOlder: boolean; hasNewer: boolean };
+export const emptyExecutionHistory = (): ExecutionHistoryState => ({ entries: [], loading: false, errors: [], stopping: [], page: 1, hasOlder: false, hasNewer: false });
 export const executionActive = (entry: ExecutionEntry) => ['awaiting_approval', 'running'].includes(entry.status);
 export function executionStatus(entry: ExecutionEntry): string {
   if (executionActive(entry) && entry.stopRequested) return '已请求停止';
@@ -24,15 +24,22 @@ function gitEntry(run: WorkspaceWriteRun): ExecutionEntry {
   return { key: `git:${run.id}`, id: run.id, workspaceId: run.workspaceId, kind: 'git', title: names[run.operation] ?? run.operation, status: run.status, startedAt: run.startedAt, completedAt: run.completedAt, caller: run.callerWindow, input: JSON.stringify(run.snapshot.input, null, 2), output: run.result ? JSON.stringify(run.result, null, 2) : '', stopRequested: !!run.cancelRequestedAt };
 }
 
+// SQLite TEXT ordering is binary UTF-8, not locale-sensitive ordering.
+function compareBytes(a: string, b: string): number {
+  const left = new TextEncoder().encode(a), right = new TextEncoder().encode(b);
+  for (let index = 0; index < Math.min(left.length, right.length); index++) if (left[index] !== right[index]) return left[index] - right[index];
+  return left.length - right.length;
+}
+
 /** Reading and stopping are owned by the host shell, never the active renderer. */
 export function createExecutionHistoryController(ports: {
-  readTasks(workspaceId: string): Promise<ProjectActionRun[]>;
-  readWrites(workspaceId: string): Promise<WorkspaceWriteRun[]>;
+  readTasks(workspaceId: string, before: ExecutionCursor | null): Promise<ProjectActionRun[]>;
+  readWrites(workspaceId: string, before: ExecutionCursor | null): Promise<WorkspaceWriteRun[]>;
   cancelTask(workspaceId: string, runId: string): Promise<boolean>;
   cancelWrite(workspaceId: string, runId: string): Promise<boolean>;
   publish(state: ExecutionHistoryState): void;
 }, interval = 750) {
-  type View = { workspaceId: string; windowId: string; state: ExecutionHistoryState; pending?: Promise<void>; timer?: ReturnType<typeof setTimeout> };
+  type View = { before: ExecutionCursor | null; back: (ExecutionCursor | null)[]; workspaceId: string; windowId: string; state: ExecutionHistoryState; pending?: Promise<void>; timer?: ReturnType<typeof setTimeout> };
   let current: View | undefined;
   const publish = (view: View) => { if (current === view) ports.publish({ ...view.state, entries: [...view.state.entries], stopping: [...view.state.stopping] }); };
   function close() { if (current) clearTimeout(current.timer); current = undefined; }
@@ -42,7 +49,7 @@ export function createExecutionHistoryController(ports: {
     if (view.pending) return view.pending;
     clearTimeout(view.timer);
     view.pending = (async () => {
-      const results = await Promise.allSettled([ports.readTasks(view.workspaceId), ports.readWrites(view.workspaceId)]);
+      const results = await Promise.allSettled([ports.readTasks(view.workspaceId, view.before), ports.readWrites(view.workspaceId, view.before)]);
       if (current !== view) return;
       const entries: ExecutionEntry[] = []; const errors: string[] = [];
       const rank = (status: string) => status === 'awaiting_approval' ? 0 : status === 'running' ? 1 : 2;
@@ -60,17 +67,30 @@ export function createExecutionHistoryController(ports: {
           }
         }
       }
-      view.state = { ...view.state, entries: entries.sort((a, b) => b.startedAt.localeCompare(a.startedAt) || b.key.localeCompare(a.key)), loading: false, errors };
+      view.state = { ...view.state, entries: entries.sort((a, b) => compareBytes(b.startedAt, a.startedAt) || compareBytes(b.key, a.key)).slice(0, 20), hasOlder: errors.length === 0 && entries.length > 20, loading: false, errors };
       publish(view);
     })().finally(() => { view.pending = undefined; if (current === view) view.timer = setTimeout(() => void refresh(), interval); });
     return view.pending;
   }
+  function openPage(workspaceId: string, windowId: string, before: ExecutionCursor | null, back: (ExecutionCursor | null)[]): Promise<void> {
+    close(); current = { workspaceId, windowId, before, back, state: { ...emptyExecutionHistory(), loading: true, page: back.length + 1, hasNewer: back.length > 0 } };
+    publish(current); return refresh();
+  }
   return {
     close, refresh,
     open(workspaceId: string, windowId: string) {
-      close(); current = { workspaceId, windowId, state: { ...emptyExecutionHistory(), loading: true } };
-      publish(current); void refresh();
+      void openPage(workspaceId, windowId, null, []);
     },
+    older(): Promise<void> {
+      const view = current; const last = view?.state.entries.at(-1);
+      if (!view || !last || view.state.loading || !view.state.hasOlder) return Promise.resolve();
+      return openPage(view.workspaceId, view.windowId, { schema: 'aibo.execution-cursor/v1', workspaceId: view.workspaceId, startedAt: last.startedAt, kind: last.kind, id: last.id }, [...view.back, view.before]);
+    },
+    newer(): Promise<void> {
+      const view = current; if (!view?.back.length) return Promise.resolve();
+      return openPage(view.workspaceId, view.windowId, view.back.at(-1) ?? null, view.back.slice(0, -1));
+    },
+    latest(): Promise<void> { const view = current; return view ? openPage(view.workspaceId, view.windowId, null, []) : Promise.resolve(); },
     async stop(key: string): Promise<void> {
       const view = current; const entry = view?.state.entries.find(item => item.key === key);
       if (!view || !entry || !canStopExecution(entry, view.windowId) || view.state.stopping.includes(key)) return;

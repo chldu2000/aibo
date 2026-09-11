@@ -53,3 +53,35 @@ test('partial history failures stay visible and Git stops require the originatin
     await controller.stop('task:task');
   } finally { controller?.close(); await server.close(); }
 });
+
+test('merged history pages use one stable source-aware cursor and return to newly inserted head records', async () => {
+  const server = await createServer({ server: { middlewareMode: true, ws: false, watch: null }, appType: 'custom' });
+  let controller;
+  try {
+    const { createExecutionHistoryController } = await server.ssrLoadModule('/src/lib/app/execution-history-controller.ts');
+    const tasks = Array.from({length:21}, (_, index) => task('w', `same-${String(index).padStart(3,'0')}`, 'completed'));
+    const writes = Array.from({length:21}, (_, index) => ({...git('w', `same-${String(index).padStart(3,'0')}`), status:'completed'}));
+    const requests = []; let state, fail = false;
+    function read(kind, rows, before) {
+      requests.push({kind,before});
+      if (fail && kind === 'git') return Promise.reject(Error('read failed'));
+      return Promise.resolve(rows.filter(row => !before || row.startedAt < before.startedAt || row.startedAt === before.startedAt && (kind < before.kind || kind === before.kind && row.id < before.id))
+        .sort((a,b) => a.startedAt === b.startedAt ? b.id.localeCompare(a.id) : b.startedAt.localeCompare(a.startedAt)).slice(0,21));
+    }
+    controller = createExecutionHistoryController({ readTasks: (_id,before) => read('task',tasks,before), readWrites: (_id,before) => read('git',writes,before), cancelTask: async()=>false, cancelWrite:async()=>false, publish: next=>state=next },60000);
+    controller.open('w','main'); await controller.refresh();
+    assert.equal(state.page,1); assert.equal(state.entries.length,20); assert.equal(state.hasOlder,true);
+    const seen = new Set(state.entries.map(entry=>entry.key));
+    tasks.push({...task('w','new-head','completed'), startedAt:'2027-01-01T00:00:00Z'});
+    await controller.older(); assert.equal(state.page,2); assert.equal(state.hasNewer,true);
+    assert.equal(requests.at(-1).before.kind,'task'); assert.equal(requests.at(-1).before.workspaceId,'w');
+    for (const entry of state.entries) { assert(!seen.has(entry.key)); seen.add(entry.key); }
+    await controller.older(); assert.equal(state.page,3); assert.equal(state.hasOlder,false);
+    for (const entry of state.entries) { assert(!seen.has(entry.key)); seen.add(entry.key); }
+    assert.equal(seen.size,42);
+    await controller.newer(); assert.equal(state.page,2);
+    await controller.latest(); assert.equal(state.page,1); assert.equal(state.entries[0].id,'new-head');
+    fail=true; await controller.refresh(); assert.equal(state.hasOlder,false,'partial reads cannot advance past missing source records');
+    await controller.older(); assert.equal(state.page,1);
+  } finally { controller?.close(); await server.close(); }
+});

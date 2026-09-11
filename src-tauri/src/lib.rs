@@ -2,6 +2,7 @@ mod compatibility;
 mod project_actions;
 mod controlled_process;
 mod workspace_git;
+mod execution_history;
 mod workspace_git_approval;
 mod workspace_writes;
 mod workspace_write_runs;
@@ -3805,17 +3806,18 @@ async fn cancel_workspace_write(workspace_id: String, run_id: String, window: ta
 }
 
 #[tauri::command]
-async fn list_workspace_write_runs(workspace_id: String, limit: Option<i64>, state: State<'_, AppState>) -> Result<Vec<workspace_write_runs::WriteRun>, CoreError> {
-    workspace_write_runs::list(&state.db, workspace_id, limit).await
+async fn list_workspace_write_runs(workspace_id: String, limit: Option<i64>, before: Option<execution_history::Cursor>, state: State<'_, AppState>) -> Result<Vec<workspace_write_runs::WriteRun>, CoreError> {
+    workspace_write_runs::list_page(&state.db, workspace_id, limit, before.as_ref()).await
 }
 
 #[tauri::command]
 async fn list_project_action_runs(
     workspace_id: String,
     limit: Option<i64>,
+    before: Option<execution_history::Cursor>,
     state: State<'_, AppState>,
 ) -> Result<Vec<ProjectActionRun>, CoreError> {
-    project_actions::list_project_action_runs(&state.db, workspace_id, limit).await
+    project_actions::list_project_action_runs_page(&state.db, workspace_id, limit, before.as_ref()).await
 }
 
 pub(crate) async fn read_process_output<R: tokio::io::AsyncRead + Unpin>(reader: R) -> Vec<u8> {

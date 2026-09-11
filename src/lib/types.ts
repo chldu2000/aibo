@@ -652,3 +652,7 @@ export interface AgentEvent {
   payload: Record<string, unknown>;
   rawRef: string | null;
 }
+
+export interface ExecutionCursor {
+  schema: 'aibo.execution-cursor/v1'; workspaceId: string; startedAt: string; kind: 'task' | 'git'; id: string;
+}

@@ -62,7 +62,7 @@ try {
   const result = await Promise.race([report, new Promise((_, reject) => { timer = setTimeout(() => reject(Error('Task cancellation probe timeout')), 120000); }), new Promise((_, reject) => child.on('exit', code => reject(Error(`Native exit ${code}`))))]);
   if (!result.ok) throw Error(result.error);
   const staged = execFileSync('git', ['-C', workspacePath, 'diff', '--cached', '--name-only'], { encoding: 'utf8' }).trim();
-  if (!result.workspaceWriteHistory || !result.gitCancellation || staged !== '' || execFileSync('git', ['-C', workspacePath, 'rev-list', '--count', 'HEAD'], { encoding: 'utf8' }).trim() !== '1' || execFileSync('git', ['-C', workspacePath, 'show', 'HEAD:ledger-proof.txt'], { encoding: 'utf8' }) !== 'native durable write\n') throw Error('Native durable Git write verification failed');
+  if (!result.historyPagination || !result.workspaceWriteHistory || !result.gitCancellation || staged !== '' || execFileSync('git', ['-C', workspacePath, 'rev-list', '--count', 'HEAD'], { encoding: 'utf8' }).trim() !== '1' || execFileSync('git', ['-C', workspacePath, 'show', 'HEAD:ledger-proof.txt'], { encoding: 'utf8' }) !== 'native durable write\n') throw Error('Native durable Git write verification failed');
   const nativeClicks = await Promise.all(clicks);
   if (nativeClicks.length !== 6 || !result.denialPreventedExecution || !result.gitDenialPreventedExecution) throw Error('Native denial and both approvals must be verified');
   const files = await readdir(workspacePath);

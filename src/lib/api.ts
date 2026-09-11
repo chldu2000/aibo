@@ -505,14 +505,15 @@ export const runProjectAction = (
 export const cancelProjectAction = (workspaceId: string, runId: string): Promise<boolean> =>
   invoke('cancel_project_action', { workspaceId, runId });
 
-export const listWorkspaceWriteRuns = (workspaceId: string, limit = 20): Promise<import('./types').WorkspaceWriteRun[]> =>
-  invoke('list_workspace_write_runs', { workspaceId, limit });
+export const listWorkspaceWriteRuns = (workspaceId: string, limit = 20, before: import('./types').ExecutionCursor | null = null): Promise<import('./types').WorkspaceWriteRun[]> =>
+  invoke('list_workspace_write_runs', { workspaceId, limit, before });
 
 export const listProjectActionRuns = (
   workspaceId: string,
   limit = 10,
+  before: import('./types').ExecutionCursor | null = null,
 ): Promise<ProjectActionRun[]> =>
-  invoke<ProjectActionRun[]>('list_project_action_runs', { workspaceId, limit });
+  invoke<ProjectActionRun[]>('list_project_action_runs', { workspaceId, limit, before });
 
 export const listCodexThreads = (workspaceId: string): Promise<CodexThreadSummary[]> =>
   invoke<CodexThreadSummary[]>('list_codex_threads', { workspaceId });

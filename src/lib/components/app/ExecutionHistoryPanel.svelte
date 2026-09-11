@@ -2,10 +2,11 @@
   import { onMount } from 'svelte';
   import { Badge, Button, Card, CardContent, CardHeader, CardTitle, Textarea } from '$lib/ui-kit';
   import { canStopExecution, executionActive, executionStatus, type ExecutionHistoryState } from '$lib/app/execution-history-controller';
-  let { workspaces, workspaceId, windowId, state, desktop, onSelectWorkspace, onRefresh, onStop, onClose }: {
+  let { workspaces, workspaceId, windowId, state, desktop, onSelectWorkspace, onRefresh, onStop, onClose, onOlder, onNewer, onLatest }: {
     workspaces: { id: string; label: string }[]; workspaceId: string | null; windowId: string;
     state: ExecutionHistoryState; desktop: boolean; onSelectWorkspace: (id: string) => void;
     onRefresh: () => void; onStop: (key: string) => void; onClose: () => void;
+    onOlder: () => void; onNewer: () => void; onLatest: () => void;
   } = $props();
   let heading: HTMLHeadingElement;
   onMount(() => heading?.focus());
@@ -22,13 +23,19 @@
       <Button variant={workspace.id === workspaceId ? 'secondary' : 'ghost'} aria-pressed={workspace.id === workspaceId} onclick={() => onSelectWorkspace(workspace.id)}>{workspace.label}</Button>
     {/each}
   </nav>
-  <p>显示所选工作区最近 20 条工程任务与 20 条 Git 写入。关闭此页不会停止执行。</p>
+  <p>按时间浏览所选工作区的工程任务与 Git 写入，每页最多 20 条。关闭此页不会停止执行。</p>
   {#if !desktop}<p role="status">执行历史需要桌面宿主。</p>
   {:else if !workspaceId}<p role="status">请先添加工作区。</p>
   {:else if state.loading}<p role="status">正在读取执行记录…</p>
   {/if}
   {#each state.errors as error}<p role="alert">{error}</p>{/each}
   {#if desktop && workspaceId && !state.loading && !state.entries.length && !state.errors.length}<p role="status">暂无执行记录。</p>{/if}
+  <nav aria-label="执行历史翻页" class="history-workspaces">
+    <Button variant="outline" onclick={onLatest} disabled={!desktop || !workspaceId}>最新记录</Button>
+    <Button variant="outline" onclick={onNewer} disabled={!desktop || !state.hasNewer}>较新一页</Button>
+    <span role="status">第 {state.page} 页</span>
+    <Button variant="outline" onclick={onOlder} disabled={!desktop || state.loading || !state.hasOlder}>更早一页</Button>
+  </nav>
   <div class="history-entries">
     {#each state.entries as entry (entry.key)}
       <Card as="article" aria-label={`${entry.kind === 'git' ? 'Git' : '工程任务'} · ${entry.title}`}>
