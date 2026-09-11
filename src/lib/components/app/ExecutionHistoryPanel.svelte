@@ -2,11 +2,11 @@
   import { onMount } from 'svelte';
   import { Badge, Button, Card, CardContent, CardHeader, CardTitle, Textarea } from '$lib/ui-kit';
   import { canStopExecution, executionActive, executionStatus, type ExecutionHistoryState } from '$lib/app/execution-history-controller';
-  let { workspaces, workspaceId, windowId, state, desktop, onSelectWorkspace, onRefresh, onStop, onClose, onOlder, onNewer, onLatest }: {
+  let { workspaces, workspaceId, windowId, state, desktop, onSelectWorkspace, onRefresh, onStop, onClose, onOlder, onNewer, onLatest, onOpenAudit }: {
     workspaces: { id: string; label: string }[]; workspaceId: string | null; windowId: string;
     state: ExecutionHistoryState; desktop: boolean; onSelectWorkspace: (id: string) => void;
     onRefresh: () => void; onStop: (key: string) => void; onClose: () => void;
-    onOlder: () => void; onNewer: () => void; onLatest: () => void;
+    onOlder: () => void; onNewer: () => void; onLatest: () => void; onOpenAudit?: () => void;
   } = $props();
   let heading: HTMLHeadingElement;
   onMount(() => heading?.focus());
@@ -16,6 +16,7 @@
   <div class="history-heading">
     <h2 id="execution-history-heading" tabindex="-1" bind:this={heading}>执行历史</h2>
     <Button variant="outline" onclick={onRefresh} disabled={!desktop || !workspaceId || state.loading}>刷新记录</Button>
+    {#if onOpenAudit}<Button variant="outline" onclick={onOpenAudit}>插件调用历史</Button>{/if}
     <Button variant="ghost" onclick={onClose}>返回工作台</Button>
   </div>
   <nav aria-label="执行历史工作区" class="history-workspaces">

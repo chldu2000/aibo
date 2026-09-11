@@ -74,6 +74,36 @@ try {
     check(catalog.every(item => item.installationId !== saved.gitId), 'uninstalled bundled contribution absent');
     check(catalog.find(item => item.installationId === saved.viewId)?.available === false, 'separate view reports missing dependency');
   }
+  if(config.stage===0) await invoke('set_agent_plugin_enabled',{id:saved.gitId,enabled:false});
+  await invoke('set_workspace_trust',{workspaceId:saved.workspaceId,trusted:false});
+  const auditScope={kind:'workspace',id:saved.workspaceId};
+  let audit=await invoke('read_capability_history',{scope:auditScope,before:null});
+  for(let count=0;count<20&&!audit.events.some(event=>event.payload.invocationId===output.invocationId&&event.payload.status==='completed')&&audit.nextBefore;count++) audit=await invoke('read_capability_history',{scope:auditScope,before:audit.nextBefore});
+  check(audit.events.some(event=>event.payload.invocationId===output.invocationId&&event.payload.status==='completed'),'persisted completed capability audit');
+  const scopePage=await invoke('list_capability_history_scopes',{before:null});
+  check(scopePage.items.some(item=>item.scope.kind==='workspace'&&item.scope.id===saved.workspaceId),'audit catalog survives trust revocation');
+  for(const kit of ['shadcn','material3']) {
+    setUiKit(kit);await tick();button('执行历史').click();
+    (await until(()=>button('插件调用历史'),'audit entry')).click();
+    const panel=await until(()=>document.querySelector('.host-capability-history-region'),'independent audit region');
+    check(!panel.closest('.workbench-presentation'),'audit is host owned');
+    const scopeButton=await until(()=>[...document.querySelectorAll('nav[aria-label="调用历史作用域"] button')].find(item=>item.textContent.includes('工作区 · workspace')),'persisted audit scope');scopeButton.click();
+    await tick();await until(()=>panel.querySelector('[data-ui-component="capability-history"]')?.getAttribute('aria-busy')==='false','audit page settled');
+    for(let count=0;count<20&&![...panel.querySelectorAll('textarea')].some(item=>item.value.includes(output.invocationId));count++) {
+      const older=[...panel.querySelectorAll('button')].find(item=>item.textContent.trim()==='更早记录');check(older&&!older.disabled,'older audit page exists');older.click();await tick();
+      await until(()=>panel.querySelector('[data-ui-component="capability-history"]')?.getAttribute('aria-busy')==='false','older audit page settled');
+    }
+    check([...panel.querySelectorAll('textarea')].some(item=>item.value.includes(output.invocationId)),'audit renders real invocation');
+    document.querySelector('button[aria-label="切换工作台呈现"]').click();
+    await until(()=>document.querySelector('[data-presentation-layout="focus"][aria-busy="false"]'),'switch with audit open');
+    check(document.querySelector('.host-capability-history-region')===panel,'audit survives renderer replacement');
+    document.querySelector('button[aria-label="恢复默认呈现"]').click();
+    await until(()=>document.querySelector('[data-presentation-layout="standard"][aria-busy="false"]'),'restore with audit open');
+    check(document.querySelector('.host-capability-history-region')===panel,'audit survives recovery');
+    button('返回执行历史').click();(await until(()=>button('返回工作台'),'return to execution history')).click();
+  }
+  await invoke('set_workspace_trust',{workspaceId:saved.workspaceId,trusted:true});
+  if(config.stage===0) await invoke('set_agent_plugin_enabled',{id:saved.gitId,enabled:true});
   check((await invoke('list_sessions', { workspaceId: saved.workspaceId })).length === 0, 'no Agent session');
-  await report({ ok: true, stage: config.stage, saved, evidence: { backgroundGitWithoutUi: true, independentHostManagementBothSkins: true, installedCommands: rendered, catalogViews, optionalIncompatibilityDiagnosed:true, disablingViewClosesSurface: true, noAgentSession: true, ...(config.stage === 1 ? { actualAppRestart: true, persistedCapabilityBinding: true, uninstallInvalidatesBothForms: true } : {}) } });
+  await report({ ok: true, stage: config.stage, saved, evidence: { backgroundGitWithoutUi: true, independentCapabilityAuditBothSkins:true, auditReadableAfterRevocation:true, independentHostManagementBothSkins: true, installedCommands: rendered, catalogViews, optionalIncompatibilityDiagnosed:true, disablingViewClosesSurface: true, noAgentSession: true, ...(config.stage === 1 ? { actualAppRestart: true, persistedCapabilityBinding: true, uninstallInvalidatesBothForms: true } : {}) } });
 } catch (error) { await report({ ok: false, surface: document.querySelector('section.installed-workbench')?.textContent, error: JSON.stringify(error, Object.getOwnPropertyNames(error ?? {})) }); }

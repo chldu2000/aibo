@@ -38,6 +38,10 @@ try {
     await page.waitForFunction(() => document.querySelector('[data-presentation-layout="standard"][aria-busy="false"]'));
     assert.equal(await page.evaluate(() => window.savedHistory === document.querySelector('.host-history-region')), true);
     await page.screenshot({ path: `/tmp/aibo-history-${kit}.png` });
+    await page.getByRole('button',{name:'插件调用历史',exact:true}).click();
+    const audit=page.getByRole('region',{name:'插件调用历史',exact:true});await audit.waitFor();
+    assert.equal(await page.locator('#capability-history-heading').evaluate(node=>document.activeElement===node),true);
+    await page.getByRole('button',{name:'返回执行历史',exact:true}).click();await history.waitFor();
     await page.keyboard.press('Escape'); await history.waitFor({state: 'detached'});
     assert.equal(await historyButton.evaluate(node => document.activeElement === node), true);
     const sessionHistoryButton = page.getByRole('button', {name:'会话历史',exact:true});

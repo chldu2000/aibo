@@ -665,3 +665,13 @@ export interface SessionHistoryPage {
   schema: 'aibo.session-history-page/v1'; source: 'persisted-core'; session: Session;
   items: TimelineItem[]; nextBefore: SessionHistoryCursor | null;
 }
+
+export type CapabilityHistoryScope = {kind:'application'} | {kind:'workspace'|'session';id:string};
+export type CapabilityHistoryScopeItem = {scope:CapabilityHistoryScope;label:string|null};
+export interface CapabilityHistoryScopes {
+  schema:'aibo.capability-history-scopes/v1'; items:CapabilityHistoryScopeItem[]; nextBefore:string|null;
+}
+export interface CapabilityHistoryEvents {
+  schema:'aibo.capability-history-events/v1'; scope:CapabilityHistoryScope;
+  events:{sequence:string;payload:Record<string,unknown>}[]; nextBefore:string|null;
+}

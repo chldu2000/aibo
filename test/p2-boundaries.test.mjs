@@ -8,7 +8,7 @@ test('workbench callbacks and writable bindings cross the generation gate', asyn
   const tree = parse(source, { modern: true });
   let guarded = 0;
   let hostCallbacks = 0;
-  const hostComponents = new Set(['WindowTitlebar', 'SettingsPanel', 'DiagnosticsPanel', 'PluginWorkspacePanel', 'ExecutionHistoryPanel', 'SessionHistoryPanel']);
+  const hostComponents = new Set(['WindowTitlebar', 'SettingsPanel', 'DiagnosticsPanel', 'PluginWorkspacePanel', 'ExecutionHistoryPanel', 'SessionHistoryPanel', 'CapabilityHistoryPanel']);
   const foundHost = new Set();
   let hostApprovalRegion = false;
   function visit(node, inside = false) {
@@ -83,4 +83,15 @@ test('independent persisted session history never activates an Agent runtime', a
   assert.match(command, /session_history::read\(&state\.db/);
   assert.doesNotMatch(command, /state\.(?!db\b)\w+/, 'the recovery command may only access the database port');
   assert.doesNotMatch(service, /use tauri|PluginHost|PiManager|CodexManager|invoke_capability|resume_session/, 'persisted reads must not depend on a live runtime');
+});
+
+test('host capability audit reads inject the window and access only persisted data',async()=>{
+ const host=await readFile('src-tauri/src/lib.rs','utf8');
+ for(const name of ['list_capability_history_scopes','read_capability_history']){
+  const command=host.slice(host.indexOf(`async fn ${name}(`)).split('#[tauri::command]')[0];
+  assert.match(command,/window: tauri::WebviewWindow/);assert.match(command,/window\.label\(\)/);
+  assert.doesNotMatch(command,/state\.(?!db\b)\w+/);
+ }
+ const service=await readFile('src-tauri/src/capability_history.rs','utf8');
+ assert.doesNotMatch(service,/invoke_capability|PluginHost|workspace_by_id|session_by_id/,'historical scopes must not require a live resource or runtime');
 });

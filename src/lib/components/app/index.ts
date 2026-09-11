@@ -41,3 +41,5 @@ export type {
 export { default as ExecutionHistoryPanel } from './ExecutionHistoryPanel.svelte';
 
 export { default as SessionHistoryPanel } from './SessionHistoryPanel.svelte';
+
+export { default as CapabilityHistoryPanel } from './CapabilityHistoryPanel.svelte';

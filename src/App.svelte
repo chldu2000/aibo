@@ -48,6 +48,7 @@
     WindowTitlebar,
     ExecutionHistoryPanel,
     SessionHistoryPanel,
+    CapabilityHistoryPanel,
     WorkspaceFileDiffPreview,
     WorkspaceGitPanel,
     WorkspaceSidebar,
@@ -65,6 +66,8 @@
   import { handleAgentEvent as processAgentEvent } from '$lib/app/agent-event-handler';
   import { createExecutionHistoryController, emptyExecutionHistory } from '$lib/app/execution-history-controller';
   import { createSessionHistoryController, emptySessionHistory } from '$lib/app/session-history-controller';
+  import { createCapabilityHistoryController, emptyCapabilityHistory } from '$lib/app/capability-history-controller';
+  import { listCapabilityHistoryScopes, readCapabilityHistory } from '$lib/api';
   import { listWorkspaceWriteRuns, cancelWorkspaceWrite, readSessionHistory } from '$lib/api';
   import { createProjectTaskController, observeProjectTaskHistory } from '$lib/app/project-task-controller';
   import { createApprovalController } from '$lib/app/approval-controller';
@@ -469,6 +472,7 @@
     return () => executionHistoryController.close();
   });
   function openExecutionHistory(): void {
+    capabilityHistoryOpen = false;
     sessionHistoryOpen = false;
     historyTrigger = document.activeElement instanceof HTMLElement ? document.activeElement : null;
     pluginsOpen = false; settingsOpen = false; diagnosticsOpen = false; commandPaletteOpen = false;
@@ -493,6 +497,7 @@
     return () => sessionHistoryController.close();
   });
   function openSessionHistory(): void {
+    capabilityHistoryOpen = false;
     sessionHistoryTrigger = document.activeElement instanceof HTMLElement ? document.activeElement : null;
     historyOpen = false; pluginsOpen = false; settingsOpen = false; diagnosticsOpen = false; commandPaletteOpen = false;
     sessionHistoryWorkspaceId = selectedWorkspaceId ?? workspaces[0]?.id ?? null;
@@ -503,6 +508,17 @@
     const trigger = sessionHistoryTrigger?.isConnected ? sessionHistoryTrigger : document.querySelector<HTMLElement>('[data-host-navigation="session-history"]');
     trigger?.focus();
   }
+
+  let capabilityHistoryOpen = $state(false);
+  let capabilityHistory = $state(emptyCapabilityHistory());
+  const capabilityHistoryController = createCapabilityHistoryController({list:listCapabilityHistoryScopes,read:readCapabilityHistory,publish:value=>{capabilityHistory=value;}});
+  $effect(()=>{
+    if(!capabilityHistoryOpen||!desktop)return;
+    void capabilityHistoryController.open();
+    return ()=>capabilityHistoryController.close();
+  });
+  function openCapabilityHistory():void { historyOpen=false;sessionHistoryOpen=false;pluginsOpen=false;capabilityHistoryOpen=true; }
+  function backFromCapabilityHistory():void { capabilityHistoryOpen=false;historyOpen=true; }
 
   let pluginInstallations = $state<PluginInstallation[]>([]);
   const pluginSessions = $derived((workspaceSessionMap[selectedWorkspaceId ?? ''] ?? []).filter(session => Boolean(session.pluginInstallationId)));
@@ -534,6 +550,7 @@
   }
 
   function openPluginPanel(): void {
+    capabilityHistoryOpen = false;
     sessionHistoryOpen = false;
     historyOpen = false;
     settingsOpen = false;
@@ -1098,6 +1115,10 @@
   function handleGlobalKeydown(event: KeyboardEvent): void {
     const key = event.key.toLocaleLowerCase();
     const modifier = event.metaKey || event.ctrlKey;
+    if (capabilityHistoryOpen && !settingsOpen && !diagnosticsOpen) {
+      if (key === 'escape') {event.preventDefault();backFromCapabilityHistory();}
+      return;
+    }
     if (sessionHistoryOpen && !settingsOpen && !diagnosticsOpen) {
       if (key === 'escape') { event.preventDefault(); closeSessionHistory(); }
       return;
@@ -3100,6 +3121,14 @@
       {/each}
     </section>
   {/if}
+  {#if capabilityHistoryOpen}
+    <div class="host-capability-history-region" style="order:2;display:grid;flex:1;min-height:0;overflow:auto;">
+      <CapabilityHistoryPanel state={capabilityHistory} {desktop} onSelect={scope=>void capabilityHistoryController.select(scope)}
+        onReload={()=>void capabilityHistoryController.open()} onMoreScopes={()=>void capabilityHistoryController.moreScopes()}
+        onRefresh={()=>void capabilityHistoryController.refresh()} onOlder={()=>void capabilityHistoryController.older()}
+        onNewer={()=>void capabilityHistoryController.newer()} onLatest={()=>void capabilityHistoryController.latest()} onBack={backFromCapabilityHistory} />
+    </div>
+  {/if}
   {#if sessionHistoryOpen}
     <div class="host-session-history-region" style="order:2; display:grid; flex:1; min-height:0; overflow:auto;">
       <SessionHistoryPanel {workspaces} workspaceId={sessionHistoryWorkspaceId} state={sessionHistory} {desktop}
@@ -3112,7 +3141,7 @@
   {#if historyOpen}
     <div class="host-history-region" style="order: 2; display: grid; flex: 1; min-height: 0; overflow: auto;">
       <ExecutionHistoryPanel {workspaces} workspaceId={historyWorkspaceId} windowId={presentationWindowId()} state={executionHistory} {desktop}
-        onSelectWorkspace={id => { historyWorkspaceId = id; }} onRefresh={() => void executionHistoryController.refresh()}
+        onOpenAudit={openCapabilityHistory} onSelectWorkspace={id => { historyWorkspaceId = id; }} onRefresh={() => void executionHistoryController.refresh()}
         onStop={key => void executionHistoryController.stop(key)} onClose={closeExecutionHistory}
         onOlder={() => void executionHistoryController.older()} onNewer={() => void executionHistoryController.newer()} onLatest={() => void executionHistoryController.latest()} />
     </div>
@@ -3147,7 +3176,7 @@
     />
     </div>
   {/if}
-<WorkbenchPresentation suspended={pluginsOpen || historyOpen || sessionHistoryOpen} windowId={presentationWindowId()} snapshot={{ workspaceId: selectedWorkspaceId, sessionId: selectedSessionId, draft: composerText, navigation: sidePanelView, timelineRevision: timeline.length }}>
+<WorkbenchPresentation suspended={pluginsOpen || historyOpen || sessionHistoryOpen || capabilityHistoryOpen} windowId={presentationWindowId()} snapshot={{ workspaceId: selectedWorkspaceId, sessionId: selectedSessionId, draft: composerText, navigation: sidePanelView, timelineRevision: timeline.length }}>
 {#snippet children(guard)}
   <main
     bind:this={workspaceGridElement}

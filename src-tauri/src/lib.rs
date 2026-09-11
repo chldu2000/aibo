@@ -4,6 +4,7 @@ mod controlled_process;
 mod workspace_git;
 mod execution_history;
 mod session_history;
+mod capability_history;
 mod workspace_git_approval;
 mod workspace_writes;
 mod workspace_write_runs;
@@ -3974,6 +3975,15 @@ async fn invoke_capability(request: capability_broker::Request, window: tauri::W
     tokio::spawn(async move { broker.invoke(&caller, request).await }).await.map_err(|_| capability_broker::Failure { code: "provider_unavailable".into(), message: "Capability task stopped".into(), invocation_id: None })?
 }
 #[tauri::command]
+async fn list_capability_history_scopes(before: Option<String>, window: tauri::WebviewWindow, state: State<'_, AppState>) -> Result<capability_history::ScopePage, CoreError> {
+    capability_history::scopes(&state.db, window.label(), before).await
+}
+#[tauri::command]
+async fn read_capability_history(scope: capability_broker::Scope, before: Option<String>, window: tauri::WebviewWindow, state: State<'_, AppState>) -> Result<capability_history::EventPage, CoreError> {
+    capability_history::events(&state.db, window.label(), scope, before).await
+}
+
+#[tauri::command]
 async fn list_capability_events(scope: capability_broker::Scope, after_sequence: i64, limit: u32, window: tauri::WebviewWindow, state: State<'_, AppState>) -> Result<Vec<serde_json::Value>, capability_broker::Failure> {
     state.capability_broker.events(window.label(), &scope, after_sequence, limit).await
 }
@@ -4955,6 +4965,8 @@ pub fn run() {
             invoke_capability,
             cancel_capability,
             list_capability_events,
+            list_capability_history_scopes,
+            read_capability_history,
             list_plugin_installations,
             install_agent_plugin,
             set_agent_plugin_enabled,
