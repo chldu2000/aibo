@@ -19,3 +19,14 @@
 验证：pnpm run verify 覆盖 23 项架构检查、143 项 Node 测试、类型检查和生产构建；新增 renderer-negotiation 测试验证核心要求、专业版本不匹配、完整数据/动作保留和类型约束。架构测试现已递归扫描 workbench 子目录，没有降低原有规则。
 
 node probes/semantic-ui-browser.mjs 通过两套皮肤和两种 renderer 的显示、动作、焦点及恢复回归。本批没有 Rust 改动。
+
+### 宿主恢复入口（第二批）
+
+工作台在可替换内容之外始终提供「恢复默认呈现」按钮，并在窗口捕获阶段响应
+Ctrl/Cmd + Shift + Backspace。恢复请求可以覆盖正在排队的布局切换；旧切换的
+完成回调不能清除新请求的 busy 状态，过期挂载不能写入布局偏好或恢复焦点。
+错误提示仅报告「呈现错误」，避免在默认呈现也失败时误报已经恢复。
+
+验证：`pnpm run verify` 通过；`node probes/workbench-recovery-browser.mjs`
+使用真实 WorkbenchPresentation 验证常驻按钮、快捷键、挂载失败回退和再次恢复。
+此批仅完成恢复控制路径；插件管理、授权、历史的独立宿主区域及完整布局装配仍待完成。

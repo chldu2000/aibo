@@ -13,6 +13,7 @@
   let host = $state<ReturnType<typeof createPresentationController<WorkbenchSnapshot, WorkbenchAction>> | null>(null);
   let failure = $state('');
   let switching = $state(false);
+  let switchTicket = 0;
   let instance = $state<{ generation: number; layout: string; guard: (id: string, callback: (...args: any[]) => any) => (...args: any[]) => any } | null>(null);
   const storageKey = $derived(`aibo.workbench-presentation.v1.${encodeURIComponent(windowId)}`);
   let focus = $state<string | null>(null);
@@ -33,6 +34,7 @@
       async preflight(value) { JSON.stringify(value); preflightDefaultPresentation(layout); },
       async mount(value, dispatch, active) {
         if (failMount) throw Error('测试呈现挂载失败');
+        if (!active()) throw Error('presentation_superseded');
         const owner = value.generation;
         allowedActions = new Set();
         const guard = (id: string, callback: (...args: any[]) => any) => {
@@ -47,6 +49,10 @@
         };
         instance = { generation: owner, layout, guard };
         await tick();
+        if (!active()) {
+          if (instance?.generation === owner) instance = null;
+          throw Error('presentation_superseded');
+        }
         restoreFocus();
         try { localStorage.setItem(storageKey, layout); } catch { /* Memory-only navigation remains usable. */ }
         return {
@@ -56,16 +62,34 @@
       },
     };
   }
-  async function switchLayout(layout: string, failMount = false) {
-    if (!host || switching) return;
+  async function switchLayout(layout: string, failMount = false, recover = false) {
+    if (!host || (switching && !recover)) return;
+    const ticket = ++switchTicket;
     rememberFocus();
     switching = true; failure = '';
     host.update($state.snapshot(snapshot), recovery());
     try { await host.switchRenderer(renderer(layout, failMount)); }
-    catch (error) { failure = String(error); }
-    finally { switching = false; await tick(); await new Promise<void>(resolve => requestAnimationFrame(() => resolve())); restoreFocus(); }
+    catch (error) { if (ticket === switchTicket) failure = String(error); }
+    finally {
+      if (ticket === switchTicket) {
+        switching = false;
+        await tick();
+        await new Promise<void>(resolve => requestAnimationFrame(() => resolve()));
+        if (ticket === switchTicket) restoreFocus();
+      }
+    }
+  }
+  function restoreDefault() { return switchLayout('standard', false, true); }
+  function handleRecoveryKey(event: KeyboardEvent) {
+    if ((event.metaKey || event.ctrlKey) && event.shiftKey && event.code === 'Backspace') {
+      event.preventDefault();
+      event.stopImmediatePropagation();
+      void restoreDefault();
+    }
   }
   onMount(() => {
+    // Capture phase keeps this host command independent of renderer key handlers.
+    window.addEventListener('keydown', handleRecoveryKey, true);
     host = createPresentationController<WorkbenchSnapshot, WorkbenchAction>({
       view: $state.snapshot(snapshot), recovery: recovery(), fallback: renderer('standard'),
       validateAction: (current, action) => Boolean(action && allowedActions.has(action.id) && action.workspaceId === current.workspaceId && action.sessionId === current.sessionId),
@@ -75,7 +99,7 @@
     try { layout = localStorage.getItem(storageKey) === 'focus' ? 'focus' : 'standard'; } catch {}
     void switchLayout(layout);
     const controller = host;
-    return () => { void controller.dispose(); };
+    return () => { window.removeEventListener('keydown', handleRecoveryKey, true); void controller.dispose(); };
   });
   $effect(() => { if (host) host.update($state.snapshot(snapshot), untrack(recovery)); });
   // Local diagnostics use the same lifecycle path; no remote renderer code is loaded.
@@ -83,7 +107,8 @@
 </script>
 <div class="presentation-controls">
   <Button variant="ghost" onclick={() => switchLayout(instance?.layout === 'focus' ? 'standard' : 'focus')} disabled={switching} aria-label="切换工作台呈现">{instance?.layout === 'focus' ? '恢复标准工作台' : '专注会话'}</Button>
-  {#if failure}<Card><p role="alert">呈现已恢复：{failure}</p><Button onclick={() => switchLayout('standard')}>恢复默认呈现</Button></Card>{/if}
+  <Button variant="ghost" onclick={restoreDefault} aria-label="恢复默认呈现" aria-keyshortcuts="Control+Shift+Backspace Meta+Shift+Backspace">恢复默认呈现</Button>
+  {#if failure}<Card><p role="alert">呈现错误：{failure}</p></Card>{/if}
 </div>
 <div bind:this={target} onfocusin={rememberFocus} class="workbench-presentation" data-presentation-focus-target={focus} data-presentation-layout={instance?.layout} data-presentation-generation={instance?.generation} inert={switching} aria-busy={switching}>
   {#if instance}{#key instance.generation}{@render children(instance.guard)}{/key}{/if}
