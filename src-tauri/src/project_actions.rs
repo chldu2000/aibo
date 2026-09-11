@@ -189,7 +189,12 @@ async fn replay_request(
         .bind(workspace_id).bind(request_id).fetch_optional(db).await?;
     match row {
         Some(row) => {
-            if row.try_get::<String, _>("request_json")? != request_json {
+            let stored: serde_json::Value = serde_json::from_str(row.try_get::<&str, _>("request_json")?).map_err(|error| CoreError::Initialization(error.to_string()))?;
+            let mut requested: serde_json::Value = serde_json::from_str(request_json).map_err(|error| CoreError::Initialization(error.to_string()))?;
+            // Old desktop-only requests did not record a window. They remain
+            // readable, but replay still cannot enter approval or execution.
+            if stored.get("caller").is_none() { requested.as_object_mut().unwrap().remove("caller"); }
+            if stored != requested {
                 return Err(CoreError::InvalidWorkspacePath("request ID already belongs to different project task input".into()));
             }
             Ok(Some(project_action_run_from_row(&row)?))
@@ -201,14 +206,14 @@ async fn replay_request(
 /// Persist user intent before signalling execution; repeated cancellation is idempotent.
 pub(crate) async fn cancel_project_action(db: &SqlitePool, workspace_id: String, run_id: String) -> Result<bool, CoreError> {
     workspace_by_id(db, &workspace_id).await?;
-    let changed = sqlx::query("UPDATE project_action_runs SET cancel_requested_at=COALESCE(cancel_requested_at,?) WHERE workspace_id=? AND id=? AND status='running'")
+    let changed = sqlx::query("UPDATE project_action_runs SET cancel_requested_at=COALESCE(cancel_requested_at,?) WHERE workspace_id=? AND id=? AND status IN ('awaiting_approval','running')")
         .bind(now_iso()).bind(workspace_id).bind(run_id).execute(db).await?.rows_affected();
     Ok(changed == 1)
 }
 
 async fn cancellation_requested(db: &SqlitePool, run_id: &str) {
     loop {
-        let requested = sqlx::query_scalar::<_, Option<String>>("SELECT cancel_requested_at FROM project_action_runs WHERE id=? AND status='running'")
+        let requested = sqlx::query_scalar::<_, Option<String>>("SELECT cancel_requested_at FROM project_action_runs WHERE id=? AND status IN ('awaiting_approval','running')")
             .bind(run_id).fetch_optional(db).await;
         match requested {
             Ok(Some(None)) => tokio::time::sleep(Duration::from_millis(100)).await,
@@ -219,19 +224,68 @@ async fn cancellation_requested(db: &SqlitePool, run_id: &str) {
     }
 }
 
-pub(crate) async fn run_project_action(
+async fn await_approval(
+    confirmation: impl std::future::Future<Output = Result<bool, String>>,
+    cancellation: impl std::future::Future<Output = ()>,
+    timeout: Duration,
+) -> &'static str {
+    tokio::select! {
+        result = tokio::time::timeout(timeout, confirmation) => match result {
+            Ok(Ok(true)) => "approved", Ok(Ok(false)) => "denied",
+            Ok(Err(_)) => "unavailable", Err(_) => "expired",
+        },
+        _ = cancellation => "cancelled",
+    }
+}
+
+struct PreparedTask {
+    action: ProjectAction,
+    root: std::path::PathBuf,
+    cwd: std::path::PathBuf,
+    context: serde_json::Value,
+}
+
+async fn prepare_task(db: &SqlitePool, workspace_id: &str, action_id: &str, session_id: Option<&str>) -> Result<PreparedTask, CoreError> {
+    let workspace = workspace_by_id(db, workspace_id).await?;
+    if workspace.trust != "trusted" { return Err(CoreError::WorkspaceTrustRequired); }
+    let action = project_action_by_id(db, workspace_id, action_id).await?;
+    if !action.enabled { return Err(CoreError::InvalidWorkspacePath("project action is disabled".into())); }
+    let session_context = if let Some(id) = session_id {
+        let session = session_by_id(db, id).await?;
+        if session.workspace_id != workspace_id { return Err(CoreError::InvalidWorkspacePath("session does not belong to workspace".into())); }
+        let context: String = sqlx::query_scalar("SELECT json_object('id',id,'workspaceId',workspace_id,'state',state,'archived',archived,'updatedAt',updated_at) FROM sessions WHERE id=?")
+            .bind(id).fetch_one(db).await?;
+        Some(context)
+    } else { None };
+    let root = fs::canonicalize(&workspace.path).map_err(|error| CoreError::InvalidWorkspacePath(error.to_string()))?;
+    let cwd = crate::workspace_guard::canonicalize_target(&root, Path::new(&action.cwd)).map_err(CoreError::InvalidWorkspacePath)?;
+    if !cwd.is_dir() { return Err(CoreError::InvalidWorkspacePath("task working directory is not a directory".into())); }
+    let context = serde_json::json!({"workspaceId":workspace_id,"workspacePath":workspace.path,"workspaceTrust":workspace.trust,"workspaceUpdatedAt":workspace.updated_at,"root":root,"cwd":cwd,"definition":action,"session":session_context});
+    Ok(PreparedTask { action, root, cwd, context })
+}
+
+#[cfg(test)]
+pub(crate) async fn run_project_action(db: &SqlitePool, data_dir: &Path, workspace_id: String, action_id: String, session_id: Option<String>, request_id: String) -> Result<ProjectActionRun, CoreError> {
+    run_project_action_with_confirmation(db, data_dir, workspace_id, action_id, session_id, request_id, "test".into(), |_| async { Ok(true) }).await
+}
+
+#[allow(clippy::too_many_arguments)]
+pub(crate) async fn run_project_action_with_confirmation<F, Fut>(
     db: &SqlitePool,
     data_dir: &Path,
     workspace_id: String,
     action_id: String,
     session_id: Option<String>,
     request_id: String,
-) -> Result<ProjectActionRun, CoreError> {
+    caller: String,
+    confirm: F,
+) -> Result<ProjectActionRun, CoreError>
+where F: FnOnce(String) -> Fut, Fut: std::future::Future<Output = Result<bool, String>> {
     if request_id.is_empty() || request_id.len() > 128 || !request_id.bytes().all(|c| c.is_ascii_alphanumeric() || matches!(c, b'-' | b'_')) {
         return Err(CoreError::InvalidWorkspacePath("invalid project task request ID".into()));
     }
     let admission = ADMISSION.lock().await;
-    let request_json = serde_json::json!({"actionId": &action_id, "sessionId": &session_id}).to_string();
+    let request_json = serde_json::json!({"actionId": &action_id, "sessionId": &session_id, "caller": &caller}).to_string();
     let workspace = workspace_by_id(db, &workspace_id).await?;
     if workspace.trust != "trusted" {
         return Err(CoreError::WorkspaceTrustRequired);
@@ -239,38 +293,45 @@ pub(crate) async fn run_project_action(
     if let Some(run) = replay_request(db, &workspace_id, &request_id, &request_json).await? {
         return Ok(run);
     }
-    let action = project_action_by_id(db, &workspace_id, &action_id).await?;
-    if !action.enabled {
-        return Err(CoreError::InvalidWorkspacePath(
-            "project action is disabled".to_owned(),
-        ));
-    }
-    if let Some(session_id) = session_id.as_deref() {
-        let session = session_by_id(db, session_id).await?;
-        if session.workspace_id != workspace_id {
-            return Err(CoreError::InvalidWorkspacePath(
-                "session does not belong to workspace".to_owned(),
-            ));
-        }
-    }
-    let root = fs::canonicalize(&workspace.path)
-        .map_err(|error| CoreError::InvalidWorkspacePath(error.to_string()))?;
-    let cwd = crate::workspace_guard::canonicalize_target(&root, Path::new(&action.cwd))
-        .map_err(CoreError::InvalidWorkspacePath)?;
-    let _write = crate::workspace_writes::acquire(db, &workspace_id, &root).await?;
+    let prepared = prepare_task(db, &workspace_id, &action_id, session_id.as_deref()).await?;
+    let message = format!("任务：{}\n工作区：{}\n工作目录：{}\n程序：{}\n参数（JSON 数组）：{}\n会话：{}\n窗口：{}", prepared.action.name, prepared.root.display(), prepared.cwd.display(), prepared.action.program, serde_json::to_string(&prepared.action.args).unwrap(), session_id.as_deref().unwrap_or("无"), caller);
+    if message.len() > 16 * 1024 { return Err(CoreError::InvalidWorkspacePath("task approval summary exceeds 16 KiB".into())); }
+    let _write = crate::workspace_writes::acquire(db, &workspace_id, &prepared.root).await?;
+    let action = &prepared.action;
     let started_at = now_iso();
     let run_id = Ulid::new().to_string();
-    let snapshot = serde_json::to_string(&serde_json::json!({"schema":"aibo.project-action-snapshot/v1","origin":"admission","definition":&action})).map_err(|error| CoreError::Initialization(error.to_string()))?;
+    let snapshot = serde_json::to_string(&serde_json::json!({"schema":"aibo.project-action-snapshot/v1","origin":"admission","definition":&action,"approvalContext":&prepared.context,"caller":&caller})).map_err(|error| CoreError::Initialization(error.to_string()))?;
     // Record intent before the first side effect. A crash leaves a recoverable run.
-    let admitted = sqlx::query("INSERT INTO project_action_runs (id,schema_version,action_id,workspace_id,session_id,status,output,started_at,completed_at,snapshot_json,request_id,request_json) VALUES (?,'aibo.project-action-run/v2',?,?,?,'running','',?,NULL,?,?,?) ON CONFLICT(workspace_id,request_id) DO NOTHING")
+    let admitted = sqlx::query("INSERT INTO project_action_runs (id,schema_version,action_id,workspace_id,session_id,status,output,started_at,completed_at,snapshot_json,request_id,request_json) VALUES (?,'aibo.project-action-run/v3',?,?,?,'awaiting_approval','',?,NULL,?,?,?) ON CONFLICT(workspace_id,request_id) DO NOTHING")
         .bind(&run_id).bind(&action_id).bind(&workspace_id).bind(&session_id).bind(&started_at).bind(snapshot).bind(&request_id).bind(&request_json).execute(db).await?.rows_affected();
     if admitted == 0 {
         return replay_request(db, &workspace_id, &request_id, &request_json).await?
             .ok_or_else(|| CoreError::Initialization("project task request disappeared during admission".into()));
     }
     drop(admission);
+    let decision = await_approval(confirm(message), cancellation_requested(db, &run_id), Duration::from_secs(300)).await;
+    let mut decision = decision;
+    if decision == "approved" {
+        match prepare_task(db, &workspace_id, &action_id, session_id.as_deref()).await {
+            Ok(current) if current.context == prepared.context => {},
+            _ => decision = "stale",
+        }
+    }
+    let decided_at = now_iso();
+    if decision == "approved" {
+        let started = sqlx::query("UPDATE project_action_runs SET status='running',approval_outcome='approved',approval_decided_at=? WHERE id=? AND status='awaiting_approval' AND cancel_requested_at IS NULL")
+            .bind(&decided_at).bind(&run_id).execute(db).await?.rows_affected();
+        if started == 0 { decision = "cancelled"; }
+    }
+    if decision != "approved" {
+        sqlx::query("UPDATE project_action_runs SET status='rejected',approval_outcome=?,approval_decided_at=?,completed_at=?,output=? WHERE id=? AND status='awaiting_approval'")
+            .bind(decision).bind(&decided_at).bind(&decided_at).bind(format!("Task was not started: approval {decision}. Submit a new request after checking the current context."))
+            .bind(&run_id).execute(db).await?;
+        return replay_request(db, &workspace_id, &request_id, &request_json).await?
+            .ok_or_else(|| CoreError::Initialization("task approval record disappeared".into()));
+    }
     let mut command = TokioCommand::new(&action.program);
-    command.args(&action.args).current_dir(&cwd);
+    command.args(&action.args).current_dir(&prepared.cwd);
     let execution = match crate::controlled_process::execute_cancellable(command, Duration::from_secs(300), 1024 * 1024 + 1, cancellation_requested(db, &run_id)).await {
         Ok(execution) => execution,
         Err(error) => {
@@ -279,8 +340,8 @@ pub(crate) async fn run_project_action(
             let changed = sqlx::query("UPDATE project_action_runs SET status='outcome_unknown',output=?,completed_at=? WHERE id=? AND status='running'")
                 .bind(&message).bind(&completed_at).bind(&run_id).execute(db).await?.rows_affected();
             if changed != 1 { return Err(CoreError::Initialization("project task record changed concurrently".into())); }
-            return Ok(ProjectActionRun { schema: "aibo.project-action-run/v2".into(), id: run_id,
-                action_id, action_name: Some(action.name), workspace_id, session_id,
+            return Ok(ProjectActionRun { schema: "aibo.project-action-run/v3".into(), id: run_id,
+                action_id, action_name: Some(action.name.clone()), workspace_id, session_id,
                 status: "outcome_unknown".into(), exit_code: None, output: message, artifact_id: None,
                 started_at, completed_at: Some(completed_at) });
         }
@@ -324,10 +385,10 @@ pub(crate) async fn run_project_action(
         .bind(status).bind(exit_code).bind(&output).bind(&artifact_id).bind(&completed_at).bind(&run_id).execute(db).await?.rows_affected();
     if changed != 1 { return Err(CoreError::Initialization("project task record changed concurrently".into())); }
     Ok(ProjectActionRun {
-        schema: "aibo.project-action-run/v2".to_owned(),
+        schema: "aibo.project-action-run/v3".to_owned(),
         id: run_id,
         action_id,
-        action_name: Some(action.name),
+        action_name: Some(action.name.clone()),
         workspace_id,
         session_id,
         status: status.to_owned(),
@@ -381,8 +442,10 @@ pub(crate) async fn list_project_action_runs(
 
 /// Startup-only recovery: incomplete execution is never automatically replayed.
 pub(crate) async fn recover(db: &SqlitePool) -> Result<u64, sqlx::Error> {
+    let rejected = sqlx::query("UPDATE project_action_runs SET status='rejected',approval_outcome='recovered',approval_decided_at=?,completed_at=?,output='Host restarted during approval; task was not started.' WHERE status='awaiting_approval'")
+        .bind(now_iso()).bind(now_iso()).execute(db).await?.rows_affected();
     Ok(sqlx::query("UPDATE project_action_runs SET status='outcome_unknown',completed_at=?,output=output || '\nHost restarted before execution settled; inspect effects before retrying.' WHERE status='running'")
-        .bind(now_iso()).execute(db).await?.rows_affected())
+        .bind(now_iso()).execute(db).await?.rows_affected() + rejected)
 }
 
 #[cfg(all(test, unix))]
@@ -455,10 +518,89 @@ mod tests {
         let missing = save_project_action(&reopened, "workspace".into(), None, "Missing program".into(), "test".into(), root.join("missing-program").to_string_lossy().into_owned(), vec![], None, None).await.unwrap();
         let failed = run_project_action(&reopened, &root, "workspace".into(), missing.id, None, Ulid::new().to_string()).await.unwrap();
         assert_eq!(failed.status, "outcome_unknown");
-        assert_eq!(failed.schema, "aibo.project-action-run/v2");
+        assert_eq!(failed.schema, "aibo.project-action-run/v3");
         assert!(list_project_action_runs(&reopened, "workspace".into(), None).await.unwrap().iter().any(|run| run.id == failed.id));
         reopened.close().await;
         fs::remove_dir_all(root).unwrap();
+    }
+
+    #[tokio::test]
+    async fn approval_wait_is_bounded_even_when_the_window_never_replies() {
+        let result = tokio::time::timeout(Duration::from_secs(1), await_approval(std::future::pending(), std::future::pending(), Duration::from_millis(10))).await.unwrap();
+        assert_eq!(result, "expired");
+    }
+
+    #[tokio::test]
+    async fn approval_rechecks_definition_trust_and_cancellation_before_any_effect() {
+        let root = std::env::temp_dir().join(format!("aibo-task-approval-{}", Ulid::new()));
+        fs::create_dir_all(&root).unwrap();
+        let db = crate::open_database(&root.join("host.db")).await.unwrap();
+        sqlx::query("INSERT INTO workspaces (id,path,label,trusted,created_at,updated_at) VALUES ('workspace',?,'Approval',1,?,?)")
+            .bind(root.to_string_lossy().as_ref()).bind(now_iso()).bind(now_iso()).execute(&db).await.unwrap();
+        let action = save_project_action(&db, "workspace".into(), None, "Review command".into(), "test".into(), "/bin/sh".into(),
+            vec!["-c".into(), "touch original".into()], None, None).await.unwrap();
+        let denied = run_project_action_with_confirmation(&db, &root, "workspace".into(), action.id.clone(), None, "denied".into(), "window".into(), |message| {
+            assert!(message.contains("/bin/sh")); assert!(message.contains("touch original")); assert!(message.contains("window"));
+            async {
+            let pending = list_project_action_runs(&db, "workspace".into(), None).await.unwrap();
+            assert_eq!(pending[0].status, "awaiting_approval");
+            assert!(!root.join("original").exists());
+            Ok(false)
+            }
+        }).await.unwrap();
+        assert_eq!(denied.status, "rejected");
+        assert!(denied.output.contains("denied"));
+        let replay = run_project_action_with_confirmation(&db, &root, "workspace".into(), action.id.clone(), None, "denied".into(), "window".into(), |_| async { panic!("a replay must not request approval again") }).await.unwrap();
+        assert_eq!(replay.id, denied.id);
+        assert!(run_project_action_with_confirmation(&db, &root, "workspace".into(), action.id.clone(), None, "denied".into(), "other-window".into(), |_| async { Ok(true) }).await.is_err());
+        let unavailable = run_project_action_with_confirmation(&db, &root, "workspace".into(), action.id.clone(), None, "unavailable".into(), "window".into(), |_| async { Err("window closed".into()) }).await.unwrap();
+        assert!(unavailable.output.contains("unavailable"));
+        let revoked = run_project_action_with_confirmation(&db, &root, "workspace".into(), action.id.clone(), None, "revoked".into(), "window".into(), |_| async {
+            sqlx::query("UPDATE workspaces SET trusted=0 WHERE id='workspace'").execute(&db).await.unwrap(); Ok(true)
+        }).await.unwrap();
+        assert!(revoked.output.contains("stale"));
+        sqlx::query("UPDATE workspaces SET trusted=1 WHERE id='workspace'").execute(&db).await.unwrap();
+        let changed = run_project_action_with_confirmation(&db, &root, "workspace".into(), action.id.clone(), None, "changed".into(), "window".into(), |_| async {
+            sqlx::query("UPDATE project_actions SET args_json=? WHERE id=?").bind(serde_json::json!(["-c","touch changed"]).to_string()).bind(&action.id).execute(&db).await.unwrap(); Ok(true)
+        }).await.unwrap();
+        assert!(changed.output.contains("stale"));
+        assert!(!root.join("original").exists()); assert!(!root.join("changed").exists());
+        let cancelled = run_project_action_with_confirmation(&db, &root, "workspace".into(), action.id.clone(), None, "cancel-approval".into(), "window".into(), |_| async {
+            let pending = list_project_action_runs(&db, "workspace".into(), None).await.unwrap().into_iter().find(|run| run.status == "awaiting_approval").unwrap();
+            assert!(cancel_project_action(&db, "workspace".into(), pending.id).await.unwrap());
+            std::future::pending::<Result<bool, String>>().await
+        }).await.unwrap();
+        assert!(cancelled.output.contains("cancelled")); assert!(!root.join("changed").exists());
+        let approved = run_project_action_with_confirmation(&db, &root, "workspace".into(), action.id, None, "approved".into(), "window".into(), |message| async move { assert!(message.contains("touch changed")); Ok(true) }).await.unwrap();
+        assert_eq!(approved.status, "completed"); assert!(root.join("changed").exists()); assert!(!root.join("original").exists());
+        let approval: (String, String) = sqlx::query_as("SELECT approval_outcome,approval_decided_at FROM project_action_runs WHERE id=?").bind(&approved.id).fetch_one(&db).await.unwrap();
+        assert_eq!(approval.0, "approved"); assert!(!approval.1.is_empty());
+        db.close().await; fs::remove_dir_all(root).unwrap();
+    }
+
+    #[tokio::test]
+    async fn restart_during_approval_rejects_without_replaying_or_claiming_unknown_effects() {
+        let root = std::env::temp_dir().join(format!("aibo-approval-recovery-{}", Ulid::new()));
+        fs::create_dir_all(&root).unwrap();
+        let db = crate::open_database(&root.join("host.db")).await.unwrap();
+        sqlx::query("INSERT INTO workspaces (id,path,label,trusted,created_at,updated_at) VALUES ('workspace',?,'Recovery',1,?,?)")
+            .bind(root.to_string_lossy().as_ref()).bind(now_iso()).bind(now_iso()).execute(&db).await.unwrap();
+        let action = save_project_action(&db, "workspace".into(), None, "Pending".into(), "test".into(), "/bin/sh".into(), vec!["-c".into(), "touch effect".into()], None, None).await.unwrap();
+        let task_db = db.clone(); let task_root = root.clone(); let id = action.id.clone();
+        let owner = tokio::spawn(async move { run_project_action_with_confirmation(&task_db, &task_root, "workspace".into(), id, None, "pending".into(), "test".into(), |_| std::future::pending()).await });
+        tokio::time::timeout(Duration::from_secs(3), async { loop {
+            if list_project_action_runs(&db, "workspace".into(), None).await.unwrap().iter().any(|run| run.status == "awaiting_approval") { break; }
+            tokio::time::sleep(Duration::from_millis(10)).await;
+        } }).await.unwrap();
+        owner.abort(); let _ = owner.await;
+        assert!(!root.join("effect").exists());
+        db.close().await;
+        let reopened = crate::open_database(&root.join("host.db")).await.unwrap();
+        assert_eq!(recover(&reopened).await.unwrap(), 1); assert_eq!(recover(&reopened).await.unwrap(), 0);
+        let replay = run_project_action(&reopened, &root, "workspace".into(), action.id, None, "pending".into()).await.unwrap();
+        assert_eq!(replay.status, "rejected"); assert!(replay.output.contains("not started"));
+        assert!(!root.join("effect").exists());
+        reopened.close().await; fs::remove_dir_all(root).unwrap();
     }
 
     #[tokio::test]
@@ -552,6 +694,9 @@ mod tests {
         assert!(first.status == "completed" || second.status == "completed");
         assert_eq!(fs::read_to_string(root.join("effects")).unwrap(), "effect\n");
         assert!(run_project_action(&db, &root, "workspace".into(), "different-action".into(), None, "same-request".into()).await.is_err());
+        // Emulate a pre-approval v2 request: its original identity has no caller.
+        sqlx::query("UPDATE project_action_runs SET schema_version='aibo.project-action-run/v2',request_json=json_remove(request_json,'$.caller'),approval_outcome=NULL,approval_decided_at=NULL WHERE id=?")
+            .bind(&first.id).execute(&db).await.unwrap();
         delete_project_action(&db, "workspace".into(), action.id.clone()).await.unwrap();
         db.close().await;
         let reopened = crate::open_database(&root.join("host.db")).await.unwrap();
@@ -570,9 +715,16 @@ mod tests {
         sqlx::raw_sql(include_str!("../migrations/0012_project_action_runs.sql")).execute(&db).await.unwrap();
         sqlx::query("INSERT INTO project_action_runs VALUES ('r','aibo.project-action-run/v1','a','w',NULL,'completed',0,'OLD_OUTPUT',NULL,'before','after')").execute(&db).await.unwrap();
         sqlx::raw_sql(include_str!("../migrations/0029_project_action_lifecycle.sql")).execute(&db).await.unwrap();
+        sqlx::raw_sql(include_str!("../migrations/0030_project_action_requests.sql")).execute(&db).await.unwrap();
+        sqlx::raw_sql(include_str!("../migrations/0031_project_action_cancellation.sql")).execute(&db).await.unwrap();
+        sqlx::query("UPDATE project_action_runs SET request_id='legacy-key',request_json='{}',cancel_requested_at='legacy-cancel' WHERE id='r'").execute(&db).await.unwrap();
+        sqlx::raw_sql(include_str!("../migrations/0032_project_action_approval.sql")).execute(&db).await.unwrap();
         sqlx::query("DELETE FROM project_actions WHERE id='a'").execute(&db).await.unwrap();
         let row = sqlx::query("SELECT * FROM project_action_runs WHERE id='r'").fetch_one(&db).await.unwrap();
         assert_eq!(row.get::<String,_>("schema_version"), "aibo.project-action-run/v1");
+        assert_eq!(row.get::<String,_>("request_id"), "legacy-key");
+        assert_eq!(row.get::<String,_>("cancel_requested_at"), "legacy-cancel");
+        assert!(row.get::<Option<String>,_>("approval_outcome").is_none());
         assert_eq!(row.get::<String,_>("output"), "OLD_OUTPUT");
         assert_eq!(row.get::<String,_>("completed_at"), "after");
         let snapshot: serde_json::Value = serde_json::from_str(row.get::<&str,_>("snapshot_json")).unwrap();

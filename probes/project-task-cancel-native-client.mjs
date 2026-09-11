@@ -14,10 +14,15 @@ try {
   const { workspacePath } = await (await fetch('/__task_config')).json();
   const workspace = await invoke('add_workspace', { path: workspacePath });
   await invoke('set_workspace_trust', { workspaceId: workspace.id, trusted: true });
+  const deniedAction = await invoke('save_project_action', { workspaceId: workspace.id, name: 'Deny task', kind: 'test', program: '/bin/sh', args: ['-c', 'touch denied-effect'], enabled: true });
+  await fetch('/__task_approval', { method: 'POST', body: JSON.stringify({ marker: 'Deny task', decision: '取消' }) });
+  const denied = await invoke('run_project_action', { workspaceId: workspace.id, actionId: deniedAction.id, sessionId: null, requestId: 'native-denied' });
+  if (denied.status !== 'rejected' || !denied.output.includes('denied')) throw Error('Native denial must reject without execution');
   const results = [];
   for (const kit of ['shadcn', 'material3']) {
     setUiKit(kit); document.body.dataset.uiKit = kit;
     const action = await invoke('save_project_action', { workspaceId: workspace.id, name: `Cancel ${kit}`, kind: 'test', program: '/bin/sh', args: ['-c', `printf BEFORE_CANCEL; touch ${kit}-before; (sleep 2; touch ${kit}-after) & wait`], enabled: true });
+    await fetch('/__task_approval', { method: 'POST', body: JSON.stringify({ marker: `Cancel ${kit}`, decision: '允许本次执行' }) });
     const execution = invoke('run_project_action', { workspaceId: workspace.id, actionId: action.id, sessionId: null, requestId: `native-${kit}` }).then(value => ({ value }), error => ({ error }));
     await until(async () => (await (await fetch('/__task_started')).json()).includes(`${kit}-before`), 'process start');
     const runs = await invoke('list_project_action_runs', { workspaceId: workspace.id });
@@ -45,5 +50,5 @@ try {
     await invoke('set_workspace_trust', { workspaceId: workspace.id, trusted: true });
   }
   await pause(2200);
-  await report({ ok: true, results });
+  await report({ ok: true, results, denialPreventedExecution: true });
 } catch (error) { await report({ ok: false, error: String(error) }); }

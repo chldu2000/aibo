@@ -2927,7 +2927,8 @@
         // A read started before settlement must not regress a known terminal run.
         projectActionRuns = runs.map((run) => {
           const existing = projectActionRuns.find((item) => item.id === run.id);
-          return run.status === 'running' && existing && existing.status !== 'running' ? existing : run;
+          const rank = (status: string) => status === 'awaiting_approval' ? 0 : status === 'running' ? 1 : 2;
+          return existing && rank(existing.status) > rank(run.status) ? existing : run;
         });
       },
       error: (error) => console.warn('unable to observe project task history', error),
@@ -3272,7 +3273,7 @@
           projectActionRuns = [result, ...projectActionRuns.filter((item) => item.id !== result.id)].slice(0, 20);
           if (sessionId && selectedSessionId === sessionId) await refreshArtifacts(sessionId);
           if (selectedWorkspaceId !== workspaceId) return;
-          notice = result.status === 'outcome_unknown' ? '工程动作结果未知，请核对实际更改后再操作。' : result.status === 'completed' ? '工程动作已完成。' : `工程动作${result.status === 'timed_out' ? '超时' : '失败'}。`;
+          notice = result.status === 'rejected' ? '工程动作未执行，请查看审批结果。' : result.status === 'awaiting_approval' ? '工程动作正在等待宿主批准。' : result.status === 'running' ? '工程动作正在执行。' : result.status === 'outcome_unknown' ? '工程动作结果未知，请核对实际更改后再操作。' : result.status === 'completed' ? '工程动作已完成。' : `工程动作${result.status === 'timed_out' ? '超时' : '失败'}。`;
         } catch (error) {
           if (selectedWorkspaceId === workspaceId) errorMessage = toErrorMessage(error);
         }

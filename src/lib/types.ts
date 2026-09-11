@@ -433,7 +433,7 @@ export interface ProjectAction {
 }
 
 export interface ProjectActionRun {
-  schema: 'aibo.project-action-run/v1' | 'aibo.project-action-run/v2';
+  schema: 'aibo.project-action-run/v1' | 'aibo.project-action-run/v2' | 'aibo.project-action-run/v3';
   id: string;
   actionId: string;
   actionName?: string | null;

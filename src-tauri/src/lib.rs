@@ -3728,9 +3728,18 @@ async fn run_project_action(
     action_id: String,
     session_id: Option<String>,
     request_id: String,
+    window: tauri::WebviewWindow,
     state: State<'_, AppState>,
 ) -> Result<ProjectActionRun, CoreError> {
-    project_actions::run_project_action(&state.db, &state.data_dir, workspace_id, action_id, session_id, request_id).await
+    use tauri_plugin_dialog::{DialogExt, MessageDialogButtons};
+    let caller = window.label().to_owned();
+    project_actions::run_project_action_with_confirmation(&state.db, &state.data_dir, workspace_id, action_id, session_id, request_id, caller, |message| async move {
+        let (send, receive) = tokio::sync::oneshot::channel();
+        window.app_handle().dialog().message(message).parent(&window).title("Aibo · 确认工程动作")
+            .buttons(MessageDialogButtons::OkCancelCustom("允许本次执行".into(), "取消".into()))
+            .show(move |accepted| { let _ = send.send(accepted); });
+        receive.await.map_err(|_| "confirmation_unavailable".to_owned())
+    }).await
 }
 
 #[tauri::command]

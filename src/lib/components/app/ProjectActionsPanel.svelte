@@ -146,8 +146,8 @@
         <div class="project-action-run-list" aria-label="最近工程动作运行结果">
           {#each projectActionRuns.slice(0, 5) as run (run.id)}
             <div class="project-action-run" role="status">
-              <small>{run.actionName ?? projectActions.find((action) => action.id === run.actionId)?.name ?? '工程动作'} · {run.status === 'running' ? '执行中' : run.status === 'outcome_unknown' ? '结果未知，请核对实际更改后再操作' : run.status === 'completed' ? '成功' : run.status === 'timed_out' ? '超时' : '失败'}{run.exitCode === null ? '' : ` · 退出码 ${run.exitCode}`}</small>
-              {#if run.status === 'running'}
+              <small>{run.actionName ?? projectActions.find((action) => action.id === run.actionId)?.name ?? '工程动作'} · {run.status === 'awaiting_approval' ? '等待宿主批准' : run.status === 'rejected' ? '未执行' : run.status === 'running' ? '执行中' : run.status === 'outcome_unknown' ? '结果未知，请核对实际更改后再操作' : run.status === 'completed' ? '成功' : run.status === 'timed_out' ? '超时' : '失败'}{run.exitCode === null ? '' : ` · 退出码 ${run.exitCode}`}</small>
+              {#if run.status === 'running' || run.status === 'awaiting_approval'}
                 <Button variant="ghost" size="sm" type="button" onclick={() => void onCancelProjectAction(run.id)} disabled={!desktop} aria-label={`停止 ${run.actionName ?? '工程动作'}`}>停止</Button>
               {/if}
               <pre>{run.output || '没有输出'}</pre>
