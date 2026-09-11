@@ -7,7 +7,8 @@ use serde_json::{json, Value};
 use sqlx::{Row, SqlitePool};
 use std::{collections::HashMap, path::{Path, PathBuf}, sync::Arc, time::Duration};
 use tauri::{Emitter, Manager};
-use tokio::sync::Mutex;
+use tokio::sync::{Mutex, Semaphore};
+use tauri_plugin_dialog::{DialogExt, MessageDialogButtons};
 
 const TIMEOUT: Duration = Duration::from_secs(15);
 const MAX_COMMAND_BYTES: usize = 16 * 1024;
@@ -112,6 +113,7 @@ pub(crate) struct PluginHost {
     event_sequences: Arc<Mutex<HashMap<String, i64>>>,
     pending_tools: Arc<Mutex<HashMap<String, PendingPluginTool>>>,
     app: Option<tauri::AppHandle>,
+    view_action_gate: Arc<Semaphore>,
 }
 
 struct PendingPluginTool {
@@ -126,7 +128,7 @@ struct PendingPluginTool {
 }
 
 impl PluginHost {
-    pub fn new(db: SqlitePool) -> Self { Self { db, runtimes: Arc::default(), lifecycle: Arc::default(), database_writes: Arc::default(), turn_baselines: Arc::default(), event_sequences: Arc::default(), pending_tools: Arc::default(), app: None } }
+    pub fn new(db: SqlitePool) -> Self { Self { db, runtimes: Arc::default(), lifecycle: Arc::default(), database_writes: Arc::default(), turn_baselines: Arc::default(), event_sequences: Arc::default(), pending_tools: Arc::default(), app: None, view_action_gate: Arc::new(Semaphore::new(1)) } }
 
     pub fn with_app(db: SqlitePool, app: tauri::AppHandle) -> Self {
         Self { app: Some(app), ..Self::new(db) }
@@ -1098,7 +1100,50 @@ impl PluginHost {
     }
 
     pub async fn invoke(&self, session_id: &str, view_id: &str, action_id: &str, input: Value) -> Result<Value, String> {
+        self.invoke_with_confirmation(session_id, view_id, action_id, input, |message| async move {
+            let app = self.app.as_ref().ok_or("confirmation_unavailable: desktop host required")?;
+            let (send, receive) = tokio::sync::oneshot::channel();
+            app.dialog().message(message).title("Aibo · 确认插件操作")
+                .buttons(MessageDialogButtons::OkCancelCustom("允许本次操作".into(), "取消".into()))
+                .show(move |accepted| { let _ = send.send(accepted); });
+            tokio::time::timeout(Duration::from_secs(300), receive).await
+                .map_err(|_| "confirmation_expired".to_string())?
+                .map_err(|_| "confirmation_cancelled".to_string())
+        }).await
+    }
+
+    async fn view_action_context(&self, session_id: &str, view_id: &str) -> Result<String, String> {
+        let row = sqlx::query("SELECT s.state,s.archived,w.trusted,p.enabled,p.installed,p.install_path,p.package_digest,b.generation_id,v.generation_id AS view_generation,json_object('session',s.id,'workspace',s.workspace_id,'state',s.state,'updated',s.updated_at,'installation',p.id,'digest',p.package_digest,'generation',b.generation_id,'document',v.document_json,'profile',(SELECT json_object('requested',requested_json,'enforced',enforced_json,'backend',enforcement_backend) FROM session_execution_profiles WHERE session_id=s.id),'pluginId',p.plugin_id,'label',s.label,'workspacePath',w.path) AS context FROM sessions s JOIN workspaces w ON w.id=s.workspace_id JOIN session_bindings b ON b.session_id=s.id JOIN plugin_installations p ON p.id=s.plugin_installation_id JOIN plugin_views v ON v.session_id=s.id AND v.view_id=? WHERE s.id=?")
+            .bind(view_id).bind(session_id).fetch_optional(&self.db).await.map_err(|e|e.to_string())?
+            .ok_or("invalid_request: view context unavailable")?;
+        if row.get::<i64,_>("enabled") == 0 || row.get::<i64,_>("installed") == 0 || row.get::<i64,_>("trusted") == 0 || row.get::<i64,_>("archived") != 0 {
+            return Err("permission_denied: view context is no longer available".into());
+        }
+        if matches!(row.get::<String,_>("state").as_str(), "running" | "waiting_approval" | "waiting_user" | "closed") { return Err("busy: session is not available for view actions".into()); }
+        let runtime = self.runtimes.lock().await.get(session_id).cloned().ok_or("invalid_session: runtime unavailable")?;
+        if runtime.generation_id != row.get::<String,_>("generation_id") || runtime.generation_id != row.get::<String,_>("view_generation") { return Err("invalid_session: stale view generation".into()); }
+        let (_, _, digest) = plugin_registry::inspect(Path::new(&row.get::<String,_>("install_path")))?;
+        if digest != row.get::<String,_>("package_digest") { return Err("manifest_mismatch: installed package changed".into()); }
+        Ok(row.get("context"))
+    }
+
+    async fn confirm_view_action<F, Fut>(&self, session_id: &str, view_id: &str, action: &Value, input: &Value, expected: &str, confirm: F) -> Result<(), String>
+    where F: FnOnce(String) -> Fut, Fut: std::future::Future<Output = Result<bool, String>> {
+        if action["confirmation"] != "never" {
+            let context: Value = serde_json::from_str(expected).map_err(|_| "invalid_request: confirmation context")?;
+            let message = format!("插件：{}\n会话：{}\n工作区：{}\n视图：{}\n动作：{}\n能力：{}\n参数：{}", context["pluginId"].as_str().unwrap_or_default(), context["label"].as_str().unwrap_or(session_id), context["workspacePath"].as_str().unwrap_or_default(), view_id, action["id"].as_str().unwrap_or_default(), action["capability"].as_str().unwrap_or_default(), input);
+            if !confirm(message).await? { return Err("confirmation_cancelled: action was not executed".into()); }
+        }
+        if self.view_action_context(session_id, view_id).await? != expected { return Err("confirmation_stale: view context changed; request confirmation again".into()); }
+        Ok(())
+    }
+
+    async fn invoke_with_confirmation<F, Fut>(&self, session_id: &str, view_id: &str, action_id: &str, input: Value, confirm: F) -> Result<Value, String>
+    where F: FnOnce(String) -> Fut, Fut: std::future::Future<Output = Result<bool, String>> {
+        // One host confirmation/dispatch at a time; permit drops on cancellation too.
+        let _permit = self.view_action_gate.clone().try_acquire_owned().map_err(|_| "busy: another view action is pending")?;
         if !input.is_object() { return Err("invalid_request: operation input must be an object".into()); }
+        if input.to_string().len() > 16 * 1024 { return Err("invalid_request: view action input exceeds 16 KiB".into()); }
         self.resume(session_id).await?;
         let runtime = self.runtimes.lock().await.get(session_id).cloned().ok_or("invalid_session: runtime unavailable")?;
         let row = sqlx::query("SELECT s.agent,s.state,b.generation_id,b.plugin_capabilities_json,p.manifest_json,v.generation_id AS view_generation,v.document_json FROM sessions s JOIN session_bindings b ON b.session_id=s.id JOIN plugin_installations p ON p.id=s.plugin_installation_id JOIN plugin_views v ON v.session_id=s.id WHERE s.id=? AND v.view_id=?")
@@ -1111,7 +1156,14 @@ impl PluginHost {
         let document: Value = serde_json::from_str(row.get::<&str,_>("document_json")).map_err(|_|"invalid_request: stored view")?;
         let action = document["actions"].as_array().and_then(|actions|actions.iter().find(|action|action["id"] == action_id))
             .ok_or("invalid_request: undeclared view action")?;
-        if action["confirmation"] != "never" { return Err("capability_unsupported: action confirmation is not implemented".into()); }
+        let expected_context = self.view_action_context(session_id, view_id).await?;
+        let expected: Value = serde_json::from_str(&expected_context).map_err(|_| "invalid_request: confirmation context")?;
+        if expected["document"].as_str() != Some(row.get::<&str,_>("document_json")) {
+            return Err("confirmation_stale: view changed during validation".into());
+        }
+        if expected["generation"].as_str() != Some(runtime.generation_id.as_str()) {
+            return Err("confirmation_stale: runtime changed during validation".into());
+        }
         let manifest: Value = serde_json::from_str(row.get::<&str,_>("manifest_json")).map_err(|_|"manifest_mismatch")?;
         if crate::plugin_manifest::normalize(&manifest)?.version != 1 {
             return Err("protocol_incompatible: v2 activation is not available".into());
@@ -1126,6 +1178,7 @@ impl PluginHost {
             let input_validator = jsonschema::options().should_validate_formats(true).build(&action["inputSchema"])
                 .map_err(|_|"manifest_mismatch: standard action input schema")?;
             if !input_validator.is_valid(&input) { return Err("invalid_request: standard action input schema validation failed".into()); }
+            self.confirm_view_action(session_id, view_id, action, &input, &expected_context, confirm).await?;
             return self.invoke_capability(session_id, capability, input).await;
         }
         let operation_id = action["operationId"].as_str().ok_or("manifest_mismatch: operation id")?;
@@ -1141,6 +1194,7 @@ impl PluginHost {
         let input_validator = jsonschema::options().should_validate_formats(true).build(&operation["inputSchema"])
             .map_err(|_|"manifest_mismatch: operation input schema")?;
         if !input_validator.is_valid(&input) { return Err("invalid_request: operation input schema validation failed".into()); }
+        self.confirm_view_action(session_id, view_id, action, &input, &expected_context, confirm).await?;
         let result = runtime.request("operation.invoke", json!({"agentId":agent_id,"sessionId":session_id,"operationId":operation_id,"input":input}), TIMEOUT).await?;
         if result["kind"] != "operation" || result["operationId"] != operation_id { runtime.stop().await; return Err("manifest_mismatch: operation response identity".into()); }
         let output_validator = jsonschema::options().should_validate_formats(true).build(&operation["outputSchema"])
@@ -1738,8 +1792,69 @@ mod tests {
         assert_eq!(after_configuration.enforced.filesystem_policy, before_configuration.enforced.filesystem_policy);
         assert_eq!(after_configuration.enforced.command_policy, before_configuration.enforced.command_policy);
 
+        async fn settled_view(db: &SqlitePool, session: &str, after: u64) -> String {
+            for _ in 0..200 {
+                let document: String = sqlx::query_scalar("SELECT document_json FROM plugin_views WHERE session_id=? AND view_id='dev.aibo.echo.tasks'")
+                    .bind(session).fetch_one(db).await.unwrap();
+                let value: Value = serde_json::from_str(&document).unwrap();
+                if value["data"]["cursor"] == "Completed turns: 6" && value["revision"].as_u64().unwrap() > after { return document; }
+                tokio::time::sleep(Duration::from_millis(10)).await;
+            }
+            panic!("view projection did not settle");
+        }
+        let before_view = settled_view(&db, &session.id, 0).await;
+        let before_revision = serde_json::from_str::<Value>(&before_view).unwrap()["revision"].as_u64().unwrap();
         let invoked = host.invoke(&session.id, "dev.aibo.echo.tasks", "refresh", json!({"label":"manual"})).await.unwrap();
         assert_eq!(invoked, json!({"cursor":6}));
+        // The native dialog is a host-only port; exercise decisions with the real
+        // package/runtime while keeping unit tests independent of window automation.
+        let original = settled_view(&db, &session.id, before_revision).await;
+        let mut confirmation_view: Value = serde_json::from_str(&original).unwrap();
+        for action in confirmation_view["actions"].as_array_mut().unwrap() {
+            if action["id"] == "refresh" { action["confirmation"] = json!("always"); }
+        }
+        let confirmed_document = confirmation_view.to_string();
+        sqlx::query("UPDATE plugin_views SET document_json=? WHERE session_id=? AND view_id='dev.aibo.echo.tasks'")
+            .bind(&confirmed_document).bind(&session.id).execute(&db).await.unwrap();
+        let concurrent_host = host.clone();
+        let concurrent_session = session.id.clone();
+        let denied = host.invoke_with_confirmation(&session.id, "dev.aibo.echo.tasks", "refresh", json!({"label":"manual"}), |message| async move {
+            assert!(message.contains("manual"));
+            // A duplicate submission cannot open a second dialog or execute.
+            assert!(concurrent_host.invoke(&concurrent_session, "dev.aibo.echo.tasks", "refresh", json!({"label":"manual"})).await.unwrap_err().contains("busy"));
+            Ok(false)
+        }).await;
+        let error = denied.unwrap_err();
+        assert!(error.contains("confirmation_cancelled"), "{error}");
+        let mut sensitive_view = confirmation_view.clone();
+        for action in sensitive_view["actions"].as_array_mut().unwrap() {
+            if action["id"] == "refresh" { action["confirmation"] = json!("when-sensitive"); }
+        }
+        sqlx::query("UPDATE plugin_views SET document_json=? WHERE session_id=? AND view_id='dev.aibo.echo.tasks'")
+            .bind(sensitive_view.to_string()).bind(&session.id).execute(&db).await.unwrap();
+        let approved = host.invoke_with_confirmation(&session.id, "dev.aibo.echo.tasks", "refresh", json!({"label":"manual"}), |_| async { Ok(true) }).await.unwrap();
+        assert_eq!(approved, json!({"cursor":6}));
+        let confirmation_revision = confirmation_view["revision"].as_u64().unwrap();
+        let _ = settled_view(&db, &session.id, confirmation_revision).await;
+        sqlx::query("UPDATE plugin_views SET document_json=? WHERE session_id=? AND view_id='dev.aibo.echo.tasks'")
+            .bind(&confirmed_document).bind(&session.id).execute(&db).await.unwrap();
+        let unavailable = host.invoke(&session.id, "dev.aibo.echo.tasks", "refresh", json!({"label":"manual"})).await.unwrap_err();
+        assert!(unavailable.contains("confirmation_unavailable"));
+        let revoked = host.invoke_with_confirmation(&session.id, "dev.aibo.echo.tasks", "refresh", json!({"label":"manual"}), |_| async {
+            sqlx::query("UPDATE workspaces SET trusted=0 WHERE id=(SELECT workspace_id FROM sessions WHERE id=?)")
+                .bind(&session.id).execute(&db).await.unwrap();
+            Ok(true)
+        }).await;
+        assert!(revoked.unwrap_err().contains("permission_denied"));
+        sqlx::query("UPDATE workspaces SET trusted=1 WHERE id=(SELECT workspace_id FROM sessions WHERE id=?)")
+            .bind(&session.id).execute(&db).await.unwrap();
+        // A view update while the human decides requires a fresh confirmation.
+        let stale = host.invoke_with_confirmation(&session.id, "dev.aibo.echo.tasks", "refresh", json!({"label":"manual"}), |_| async {
+            sqlx::query("UPDATE plugin_views SET document_json=? WHERE session_id=? AND view_id='dev.aibo.echo.tasks'")
+                .bind(&original).bind(&session.id).execute(&db).await.unwrap();
+            Ok(true)
+        }).await;
+        assert!(stale.unwrap_err().contains("confirmation_stale"));
         let commands = host.invoke(&session.id, "dev.aibo.echo.tasks", "commands", json!({})).await.unwrap();
         assert_eq!(commands, json!({"commands":[]}));
         let invoked = host.invoke_capability(&session.id, "ext.dev.aibo.echo.refresh", json!({"label":"semantic"})).await.unwrap();
