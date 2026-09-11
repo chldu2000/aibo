@@ -3411,7 +3411,7 @@ async fn apply_git_file_action(
     }
     let request = workspace_write_runs::Request::new(request_id, window.label().into());
     workspace_write_runs::execute_requested(&state.db, &workspace, "git.index", serde_json::json!({"path":path,"action":action,"sessionId":session_id,"turnId":turn_id}), &request,
-        || apply_git_index_action(&workspace.path, &path, &action)).await
+        |cancel| apply_git_index_action(&workspace.path, &path, &action, Some(cancel))).await
 }
 
 #[tauri::command]
@@ -3782,6 +3782,11 @@ async fn cancel_project_action(
     workspace_id: String, run_id: String, state: State<'_, AppState>,
 ) -> Result<bool, CoreError> {
     project_actions::cancel_project_action(&state.db, workspace_id, run_id).await
+}
+
+#[tauri::command]
+async fn cancel_workspace_write(workspace_id: String, run_id: String, window: tauri::WebviewWindow, state: State<'_, AppState>) -> Result<bool, CoreError> {
+    workspace_write_runs::cancel(&state.db, &workspace_id, &run_id, window.label()).await
 }
 
 #[tauri::command]
@@ -4992,6 +4997,7 @@ pub fn run() {
             cancel_project_action,
             list_project_action_runs,
             list_workspace_write_runs,
+            cancel_workspace_write,
             rename_session,
             list_codex_threads,
             read_codex_thread,
@@ -5293,7 +5299,7 @@ mod tests {
         fs::write(root.join("tracked.txt"), "changed").expect("modified file");
 
         assert!(
-            super::apply_git_index_action(root_path, "tracked.txt", "stage").await
+            super::apply_git_index_action(root_path, "tracked.txt", "stage", None).await
                 .expect("stage")
                 .applied
         );
@@ -5304,7 +5310,7 @@ mod tests {
         assert!(String::from_utf8_lossy(&staged.stdout).starts_with("M "));
 
         assert!(
-            super::apply_git_index_action(root_path, "tracked.txt", "unstage").await
+            super::apply_git_index_action(root_path, "tracked.txt", "unstage", None).await
                 .expect("unstage")
                 .applied
         );

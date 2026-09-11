@@ -18,6 +18,27 @@ impl Request {
     pub(crate) fn test() -> Self { Self::new(ulid::Ulid::new().to_string(), "test".into()) }
 }
 
+/// Explicit execution context; cancellation survives renderer disposal and trust revocation.
+#[derive(Clone)]
+pub(crate) struct Cancellation { db: SqlitePool, run_id: String }
+impl Cancellation {
+    pub(crate) async fn is_requested(&self) -> bool {
+        sqlx::query_scalar::<_, i64>("SELECT cancel_requested_at IS NOT NULL OR status != 'running' FROM workspace_write_runs WHERE id=?")
+            .bind(&self.run_id).fetch_optional(&self.db).await.map(|value| value != Some(0)).unwrap_or(true)
+    }
+    pub(crate) async fn requested(&self) {
+        loop {
+            if self.is_requested().await { return; }
+            tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+        }
+    }
+}
+
+pub(crate) async fn cancel(db: &SqlitePool, workspace_id: &str, run_id: &str, caller: &str) -> Result<bool, CoreError> {
+    Ok(sqlx::query("UPDATE workspace_write_runs SET cancel_requested_at=COALESCE(cancel_requested_at,?) WHERE id=? AND workspace_id=? AND caller_window=? AND status='running'")
+        .bind(crate::now_iso()).bind(run_id).bind(workspace_id).bind(caller).execute(db).await?.rows_affected() == 1)
+}
+
 async fn replay<T: DeserializeOwned>(db: &SqlitePool, workspace_id: &str, request: &Request, identity: &str) -> Result<Option<Result<T, CoreError>>, CoreError> {
     let row = sqlx::query("SELECT id,status,request_json,result_json FROM workspace_write_runs WHERE workspace_id=? AND request_id=?")
         .bind(workspace_id).bind(&request.id).fetch_optional(db).await?;
@@ -53,18 +74,19 @@ pub(crate) struct WriteRun {
     result: Option<Value>,
     started_at: String,
     completed_at: Option<String>,
+    cancel_requested_at: Option<String>,
 }
 
 #[cfg(test)]
 pub(crate) async fn execute<T, F, Fut>(db: &SqlitePool, workspace: &Workspace, operation: &str, input: Value, execute: F) -> Result<T, CoreError>
 where T: Serialize + DeserializeOwned, F: FnOnce() -> Fut, Fut: Future<Output = Result<T, CoreError>> {
-    execute_requested(db, workspace, operation, input, &Request::test(), execute).await
+    execute_requested(db, workspace, operation, input, &Request::test(), |_| execute()).await
 }
 
 pub(crate) async fn execute_requested<T, F, Fut>(
     db: &SqlitePool, workspace: &Workspace, operation: &str, input: Value, request: &Request, execute: F,
 ) -> Result<T, CoreError>
-where T: Serialize + DeserializeOwned, F: FnOnce() -> Fut, Fut: Future<Output = Result<T, CoreError>> {
+where T: Serialize + DeserializeOwned, F: FnOnce(Cancellation) -> Fut, Fut: Future<Output = Result<T, CoreError>> {
     if workspace.trust != "trusted" { return Err(CoreError::WorkspaceTrustRequired); }
     if request.id.is_empty() || request.id.len() > 128 || !request.id.bytes().all(|c| c.is_ascii_alphanumeric() || matches!(c, b'-' | b'_')) {
         return Err(CoreError::InvalidWorkspacePath("invalid workspace write request ID".into()));
@@ -85,7 +107,7 @@ where T: Serialize + DeserializeOwned, F: FnOnce() -> Fut, Fut: Future<Output = 
     }
     drop(admission);
     // Construct/poll the operation only after durable admission succeeds.
-    let result = execute().await;
+    let result = execute(Cancellation { db: db.clone(), run_id: id.clone() }).await;
     let (status, document) = match &result {
         // Completed is lifecycle settlement, not a claim that Git applied changes.
         // The original typed output retains applied/committed and its explanation.
@@ -114,7 +136,7 @@ pub(crate) async fn list(db: &SqlitePool, workspace_id: String, limit: Option<i6
             operation: row.try_get("operation")?, status: row.try_get("status")?,
             snapshot: serde_json::from_str(&snapshot).map_err(|error| CoreError::Initialization(error.to_string()))?,
             result: result.map(|value| serde_json::from_str(&value)).transpose().map_err(|error| CoreError::Initialization(error.to_string()))?,
-            started_at: row.try_get("started_at")?, completed_at: row.try_get("completed_at")? })
+            started_at: row.try_get("started_at")?, completed_at: row.try_get("completed_at")?, cancel_requested_at: row.try_get("cancel_requested_at")? })
     }).collect()
 }
 
@@ -146,13 +168,35 @@ mod tests {
         sqlx::raw_sql(include_str!("../migrations/0033_workspace_write_runs.sql")).execute(&db).await.unwrap();
         sqlx::query(r#"INSERT INTO workspace_write_runs VALUES ('old','aibo.workspace-write-run/v1','w','git.commit','completed','{}','{"ok":true,"output":{"committed":true}}','before','after')"#).execute(&db).await.unwrap();
         sqlx::raw_sql(include_str!("../migrations/0034_workspace_write_requests.sql")).execute(&db).await.unwrap();
+        sqlx::raw_sql(include_str!("../migrations/0035_workspace_write_cancellation.sql")).execute(&db).await.unwrap();
         let row = sqlx::query("SELECT * FROM workspace_write_runs WHERE id='old'").fetch_one(&db).await.unwrap();
         assert_eq!(row.get::<String,_>("completed_at"), "after");
         assert!(row.get::<Option<String>,_>("request_id").is_none());
         assert!(row.get::<Option<String>,_>("caller_window").is_none());
+        assert!(row.get::<Option<String>,_>("cancel_requested_at").is_none());
         let value: Value = serde_json::from_str(row.get::<&str,_>("result_json")).unwrap();
         assert_eq!(value["output"]["committed"], true);
         db.close().await;
+    }
+
+    #[tokio::test]
+    async fn durable_cancel_prevents_the_next_git_command_and_is_idempotent() {
+        let (root, db, workspace) = fixture().await;
+        std::fs::write(root.join("file.txt"), "keep").unwrap();
+        let result = execute_requested(&db, &workspace, "git.index", serde_json::json!({}), &Request::test(), |context| async {
+            let runs = list(&db, "workspace".into(), None).await.unwrap();
+            assert!(cancel(&db, "workspace", &runs[0].id, "test").await.unwrap());
+            let first = list(&db, "workspace".into(), None).await.unwrap()[0].cancel_requested_at.clone();
+            assert!(cancel(&db, "workspace", &runs[0].id, "test").await.unwrap());
+            assert_eq!(list(&db, "workspace".into(), None).await.unwrap()[0].cancel_requested_at, first);
+            crate::workspace_git::apply_git_index_action(&workspace.path, "file.txt", "stage", Some(context)).await
+        }).await.unwrap_err();
+        // This directory is not a Git repository: a spawned command would instead
+        // return a known nonzero result. Cancellation rejects before any spawn.
+        assert!(matches!(result, CoreError::WriteOutcomeUnknown(_)));
+        assert!(result.to_string().contains("before launching"));
+        assert_eq!(std::fs::read_to_string(root.join("file.txt")).unwrap(), "keep");
+        db.close().await; std::fs::remove_dir_all(root).unwrap();
     }
 
     #[tokio::test]
@@ -160,18 +204,18 @@ mod tests {
         let (root, db, workspace) = fixture().await;
         let request = Request::new("same-request".into(), "main".into());
         for id in ["".to_owned(), "x".repeat(129), "bad id".to_owned()] {
-            assert!(execute_requested::<Value, _, _>(&db, &workspace, "fixture.write", serde_json::json!({}), &Request::new(id, "main".into()), || async { panic!("invalid ID executed") }).await.is_err());
+            assert!(execute_requested::<Value, _, _>(&db, &workspace, "fixture.write", serde_json::json!({}), &Request::new(id, "main".into()), |_| async { panic!("invalid ID executed") }).await.is_err());
         }
         let calls = std::sync::atomic::AtomicUsize::new(0);
         let input = serde_json::json!({"name":"effect"});
         let (first, second) = tokio::join!(
-            execute_requested(&db, &workspace, "fixture.write", input.clone(), &request, || async {
+            execute_requested(&db, &workspace, "fixture.write", input.clone(), &request, |_| async {
                 calls.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
                 std::fs::write(root.join("effect"), "once").unwrap();
                 tokio::time::sleep(std::time::Duration::from_millis(30)).await;
                 Ok(serde_json::json!({"applied":true}))
             }),
-            execute_requested(&db, &workspace, "fixture.write", input.clone(), &request, || async {
+            execute_requested(&db, &workspace, "fixture.write", input.clone(), &request, |_| async {
                 calls.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
                 std::fs::write(root.join("effect"), "once").unwrap();
                 tokio::time::sleep(std::time::Duration::from_millis(30)).await;
@@ -181,23 +225,23 @@ mod tests {
         assert_eq!(calls.load(std::sync::atomic::Ordering::SeqCst), 1);
         assert!(first.is_ok() || second.is_ok());
         for result in [first, second] { if let Err(error) = result { assert!(matches!(error, CoreError::WorkspaceWriteBusy)); } }
-        let replay: Value = execute_requested(&db, &workspace, "fixture.write", input.clone(), &request, || async { panic!("duplicate re-executed") }).await.unwrap();
+        let replay: Value = execute_requested(&db, &workspace, "fixture.write", input.clone(), &request, |_| async { panic!("duplicate re-executed") }).await.unwrap();
         assert_eq!(replay, serde_json::json!({"applied":true}));
         for (operation, input, request) in [
             ("different-operation", input.clone(), Request::new("same-request".into(), "main".into())),
             ("fixture.write", serde_json::json!({"name":"other"}), Request::new("same-request".into(), "main".into())),
             ("fixture.write", input.clone(), Request::new("same-request".into(), "other-window".into())),
         ] {
-            assert!(execute_requested::<Value, _, _>(&db, &workspace, operation, input, &request, || async { panic!("conflicting request executed") }).await.is_err());
+            assert!(execute_requested::<Value, _, _>(&db, &workspace, operation, input, &request, |_| async { panic!("conflicting request executed") }).await.is_err());
         }
         let denied = Request::new("failed-request".into(), "main".into());
-        let original = execute_requested::<Value, _, _>(&db, &workspace, "fixture.error", serde_json::json!({}), &denied, || async { Err(CoreError::InvalidWorkspacePath("fixture rejection".into())) }).await.unwrap_err();
-        let repeated = execute_requested::<Value, _, _>(&db, &workspace, "fixture.error", serde_json::json!({}), &denied, || async { panic!("failed request replayed") }).await.unwrap_err();
+        let original = execute_requested::<Value, _, _>(&db, &workspace, "fixture.error", serde_json::json!({}), &denied, |_| async { Err(CoreError::InvalidWorkspacePath("fixture rejection".into())) }).await.unwrap_err();
+        let repeated = execute_requested::<Value, _, _>(&db, &workspace, "fixture.error", serde_json::json!({}), &denied, |_| async { panic!("failed request replayed") }).await.unwrap_err();
         assert_eq!(serde_json::to_value(original).unwrap(), serde_json::to_value(repeated).unwrap());
         assert_eq!(list(&db, "workspace".into(), None).await.unwrap().len(), 2);
         db.close().await;
         let reopened = crate::open_database(&root.join("host.db")).await.unwrap();
-        let replay: Value = execute_requested(&reopened, &workspace, "fixture.write", input, &request, || async { panic!("restarted request executed") }).await.unwrap();
+        let replay: Value = execute_requested(&reopened, &workspace, "fixture.write", input, &request, |_| async { panic!("restarted request executed") }).await.unwrap();
         assert_eq!(replay["applied"], true);
         assert_eq!(std::fs::read_to_string(root.join("effect")).unwrap(), "once");
         reopened.close().await; std::fs::remove_dir_all(root).unwrap();
@@ -262,6 +306,55 @@ mod tests {
         db.close().await;
         let reopened = crate::open_database(&root.join("host.db")).await.unwrap();
         assert_eq!(recover(&reopened).await.unwrap(), 1); assert_eq!(recover(&reopened).await.unwrap(), 0);
+        let history = list(&reopened, "workspace".into(), None).await.unwrap();
+        assert_eq!(history.len(), 1); assert_eq!(history[0].id, pending[0].id); assert_eq!(history[0].status, "outcome_unknown");
+        assert!(history[0].completed_at.is_some());
+        let replay = crate::workspace_git::commit_workspace_changes_requested(&reopened, "workspace".into(), "Ledger fixture\n\nCo-authored-by: Codex <codex@openai.com>".into(), &Request::new("restart-commit".into(), "test".into())).await.unwrap_err();
+        assert_eq!(serde_json::to_value(replay).unwrap()["code"], "outcome_unknown");
+        assert_eq!(list(&reopened, "workspace".into(), None).await.unwrap().len(), 1);
+        tokio::time::sleep(std::time::Duration::from_millis(2200)).await;
+        assert!(!root.join("late-hook").exists()); assert_eq!(git(&["rev-list", "--count", "HEAD"]), "1");
+        reopened.close().await; std::fs::remove_dir_all(root).unwrap();
+    }
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn cancelled_git_commit_preserves_effects_output_and_caller_scope() {
+        use std::os::unix::fs::PermissionsExt;
+        let (root, db, _) = fixture().await;
+        let git = |args: &[&str]| {
+            let output = std::process::Command::new("git").arg("-C").arg(&root).args(args).output().unwrap();
+            assert!(output.status.success(), "{}", String::from_utf8_lossy(&output.stderr));
+            String::from_utf8_lossy(&output.stdout).trim().to_owned()
+        };
+        git(&["init", "-q"]); git(&["config", "user.name", "Aibo Fixture"]); git(&["config", "user.email", "fixture@example.invalid"]); git(&["config", "commit.gpgsign", "false"]);
+        let hooks = root.join("hooks"); std::fs::create_dir(&hooks).unwrap(); git(&["config", "core.hooksPath", hooks.to_str().unwrap()]);
+        let hook = hooks.join("post-commit");
+        std::fs::write(&hook, "#!/bin/sh\nprintf BEFORE_CANCEL\ntouch hook-started\n(sleep 2; touch late-hook) &\nwait\n").unwrap();
+        std::fs::set_permissions(&hook, std::fs::Permissions::from_mode(0o700)).unwrap();
+        std::fs::write(root.join("source.txt"), "committed").unwrap(); git(&["add", "--", "source.txt"]);
+        let task_db = db.clone();
+        let owner = tokio::spawn(async move { crate::workspace_git::commit_workspace_changes_requested(&task_db, "workspace".into(), "Ledger fixture\n\nCo-authored-by: Codex <codex@openai.com>".into(), &Request::new("restart-commit".into(), "test".into())).await });
+        tokio::time::timeout(std::time::Duration::from_secs(5), async { while !root.join("hook-started").exists() { tokio::time::sleep(std::time::Duration::from_millis(10)).await; } }).await.unwrap();
+        let pending = list(&db, "workspace".into(), None).await.unwrap();
+        assert_eq!(pending[0].status, "running"); assert_eq!(pending[0].operation, "git.commit");
+        assert!(pending[0].snapshot["input"]["message"].as_str().unwrap().starts_with("Ledger fixture"));
+        let run_id = &pending[0].id;
+        assert!(!cancel(&db, "workspace", run_id, "other-window").await.unwrap());
+        assert!(!cancel(&db, "other-workspace", run_id, "test").await.unwrap());
+        assert!(list(&db, "workspace".into(), None).await.unwrap()[0].cancel_requested_at.is_none());
+        sqlx::query("UPDATE workspaces SET trusted=0 WHERE id='workspace'").execute(&db).await.unwrap();
+        assert!(cancel(&db, "workspace", run_id, "test").await.unwrap());
+        let result = tokio::time::timeout(std::time::Duration::from_secs(3), owner).await.unwrap().unwrap().unwrap_err();
+        assert!(matches!(result, CoreError::WriteOutcomeUnknown(_)));
+        assert!(result.to_string().contains("BEFORE_CANCEL"));
+        assert!(!cancel(&db, "workspace", run_id, "test").await.unwrap());
+        let settled = list(&db, "workspace".into(), None).await.unwrap();
+        assert!(settled[0].cancel_requested_at.is_some());
+        sqlx::query("UPDATE workspaces SET trusted=1 WHERE id='workspace'").execute(&db).await.unwrap();
+        assert_eq!(git(&["show", "HEAD:source.txt"]), "committed");
+        db.close().await;
+        let reopened = crate::open_database(&root.join("host.db")).await.unwrap();
+        assert_eq!(recover(&reopened).await.unwrap(), 0); assert_eq!(recover(&reopened).await.unwrap(), 0);
         let history = list(&reopened, "workspace".into(), None).await.unwrap();
         assert_eq!(history.len(), 1); assert_eq!(history[0].id, pending[0].id); assert_eq!(history[0].status, "outcome_unknown");
         assert!(history[0].completed_at.is_some());

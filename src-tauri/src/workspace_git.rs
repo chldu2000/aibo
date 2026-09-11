@@ -11,13 +11,15 @@ use tokio::process::Command as TokioCommand;
 struct GitOperation<'a> {
     workspace_path: &'a str,
     deadline: Instant,
+    cancellation: Option<crate::workspace_write_runs::Cancellation>,
 }
 impl<'a> GitOperation<'a> {
     fn new(workspace_path: &'a str) -> Self {
-        Self { workspace_path, deadline: Instant::now() + Duration::from_secs(120) }
+        Self { workspace_path, cancellation: None, deadline: Instant::now() + Duration::from_secs(120) }
     }
+    fn cancellable(mut self, cancellation: crate::workspace_write_runs::Cancellation) -> Self { self.cancellation = Some(cancellation); self }
     async fn run(&self, args: &[&str], action: &str) -> Result<(crate::controlled_process::ProcessResult, String), CoreError> {
-        capture_git_operation(git_command(self.workspace_path, args), action, self.deadline.saturating_duration_since(Instant::now())).await
+        capture_git_operation(git_command(self.workspace_path, args), action, self.deadline.saturating_duration_since(Instant::now()), self.cancellation.as_ref()).await
     }
     async fn action(&self, args: &[&str], action: &str) -> Result<GitWorkspaceActionResult, CoreError> {
         let (output, message) = self.run(args, action).await?;
@@ -40,11 +42,12 @@ fn git_command(workspace_path: &str, args: &[&str]) -> TokioCommand {
 }
 
 pub(crate) async fn apply_git_index_action(
-    workspace_path: &str, path: &str, action: &str,
+    workspace_path: &str, path: &str, action: &str, cancellation: Option<crate::workspace_write_runs::Cancellation>,
 ) -> Result<GitFileActionResult, CoreError> {
     crate::workspace_guard::canonicalize_target(Path::new(workspace_path), Path::new(path))
         .map_err(CoreError::InvalidWorkspacePath)?;
-    let operation = GitOperation::new(workspace_path);
+    let mut operation = GitOperation::new(workspace_path);
+    operation.cancellation = cancellation;
     let result = match action {
         "stage" => operation.action(&["add", "--", path], action).await?,
         "unstage" => {
@@ -67,11 +70,12 @@ pub(crate) async fn apply_workspace_git_file_action_requested(
     if workspace.trust != "trusted" {
         return Err(CoreError::WorkspaceTrustRequired);
     }
-    crate::workspace_write_runs::execute_requested(db, &workspace, "git.index", serde_json::json!({"path":path,"action":action}), request, || apply_git_index_action(&workspace.path, &path, &action)).await
+    crate::workspace_write_runs::execute_requested(db, &workspace, "git.index", serde_json::json!({"path":path,"action":action}), request, |cancel| apply_git_index_action(&workspace.path, &path, &action, Some(cancel))).await
 }
 
-async fn run_git_workspace_action(workspace_path: &str, action: &str) -> Result<GitWorkspaceActionResult, CoreError> {
-    let operation = GitOperation::new(workspace_path);
+async fn run_git_workspace_action(workspace_path: &str, action: &str, cancellation: Option<crate::workspace_write_runs::Cancellation>) -> Result<GitWorkspaceActionResult, CoreError> {
+    let mut operation = GitOperation::new(workspace_path);
+    operation.cancellation = cancellation;
     match action {
         "stage_all" => operation.action(&["add", "-A", "--", "."], action).await,
         "unstage_all" => {
@@ -92,7 +96,7 @@ pub(crate) async fn apply_workspace_git_action_requested(
     if workspace.trust != "trusted" {
         return Err(CoreError::WorkspaceTrustRequired);
     }
-    crate::workspace_write_runs::execute_requested(db, &workspace, "git.index-all", serde_json::json!({"action":action}), request, || run_git_workspace_action(&workspace.path, &action)).await
+    crate::workspace_write_runs::execute_requested(db, &workspace, "git.index-all", serde_json::json!({"action":action}), request, |cancel| run_git_workspace_action(&workspace.path, &action, Some(cancel))).await
 }
 
 async fn commit_workspace(operation: &GitOperation<'_>, message: &str) -> Result<GitCommitResult, CoreError> {
@@ -124,7 +128,7 @@ pub(crate) async fn commit_workspace_changes_requested(
     if workspace.trust != "trusted" {
         return Err(CoreError::WorkspaceTrustRequired);
     }
-    crate::workspace_write_runs::execute_requested(db, &workspace, "git.commit", serde_json::json!({"message":message}), request, || async { commit_workspace(&GitOperation::new(&workspace.path), &message).await }).await
+    crate::workspace_write_runs::execute_requested(db, &workspace, "git.commit", serde_json::json!({"message":message}), request, |cancel| async { commit_workspace(&GitOperation::new(&workspace.path).cancellable(cancel), &message).await }).await
 }
 
 fn list_git_branches(workspace_path: &str) -> Result<Vec<GitBranch>, CoreError> {
@@ -204,7 +208,7 @@ pub(crate) async fn checkout_workspace_git_branch_requested(
     if workspace.trust != "trusted" {
         return Err(CoreError::WorkspaceTrustRequired);
     }
-    crate::workspace_write_runs::execute_requested(db, &workspace, "git.checkout", serde_json::json!({"branch":branch}), request, || async { GitOperation::new(&workspace.path).action(&["switch", "--", &branch], "checkout").await }).await
+    crate::workspace_write_runs::execute_requested(db, &workspace, "git.checkout", serde_json::json!({"branch":branch}), request, |cancel| async { GitOperation::new(&workspace.path).cancellable(cancel).action(&["switch", "--", &branch], "checkout").await }).await
 }
 
 pub(crate) async fn create_workspace_git_branch_requested(
@@ -218,7 +222,7 @@ pub(crate) async fn create_workspace_git_branch_requested(
     if workspace.trust != "trusted" {
         return Err(CoreError::WorkspaceTrustRequired);
     }
-    crate::workspace_write_runs::execute_requested(db, &workspace, "git.create-branch", serde_json::json!({"branch":branch}), request, || async { GitOperation::new(&workspace.path).action(&["switch", "-c", &branch], "create_branch").await }).await
+    crate::workspace_write_runs::execute_requested(db, &workspace, "git.create-branch", serde_json::json!({"branch":branch}), request, |cancel| async { GitOperation::new(&workspace.path).cancellable(cancel).action(&["switch", "-c", &branch], "create_branch").await }).await
 }
 
 fn list_git_history(workspace_path: &str, limit: u32) -> Result<Vec<GitCommit>, CoreError> {
@@ -494,7 +498,7 @@ pub(crate) async fn sync_workspace_git_requested(
         return Err(CoreError::WorkspaceTrustRequired);
     }
     let command = git_sync_command(&workspace.path, &action)?;
-    crate::workspace_write_runs::execute_requested(db, &workspace, "git.sync", serde_json::json!({"action":action}), request, || execute_git_action(command, action, Duration::from_secs(120))).await
+    crate::workspace_write_runs::execute_requested(db, &workspace, "git.sync", serde_json::json!({"action":action}), request, |cancel| execute_git_action(command, action, Duration::from_secs(120), Some(cancel))).await
 }
 
 fn git_sync_command(workspace_path: &str, action: &str) -> Result<TokioCommand, CoreError> {
@@ -507,15 +511,20 @@ fn git_sync_command(workspace_path: &str, action: &str) -> Result<TokioCommand, 
     Ok(git_command(workspace_path, args))
 }
 
-async fn execute_git_action(command: TokioCommand, action: String, timeout: Duration) -> Result<GitWorkspaceActionResult, CoreError> {
-    let (output, message) = capture_git_operation(command, &action, timeout).await?;
+async fn execute_git_action(command: TokioCommand, action: String, timeout: Duration, cancellation: Option<crate::workspace_write_runs::Cancellation>) -> Result<GitWorkspaceActionResult, CoreError> {
+    let (output, message) = capture_git_operation(command, &action, timeout, cancellation.as_ref()).await?;
     Ok(GitWorkspaceActionResult { action, applied: output.success, message })
 }
 
-async fn capture_git_operation(command: TokioCommand, action: &str, timeout: Duration) -> Result<(crate::controlled_process::ProcessResult, String), CoreError> {
+async fn capture_git_operation(command: TokioCommand, action: &str, timeout: Duration, cancellation: Option<&crate::workspace_write_runs::Cancellation>) -> Result<(crate::controlled_process::ProcessResult, String), CoreError> {
     if timeout.is_zero() { return Err(CoreError::WriteOutcomeUnknown(format!("Git {action}: deadline expired before launching the next command"))); }
+    if let Some(cancel) = cancellation {
+        if cancel.is_requested().await { return Err(CoreError::WriteOutcomeUnknown(format!("Git {action}: stopped before launching the next command"))); }
+    }
     const OUTPUT_LIMIT: usize = 256 * 1024;
-    let output = crate::controlled_process::execute(command, timeout, OUTPUT_LIMIT + 1).await
+    let output = crate::controlled_process::execute_cancellable(command, timeout, OUTPUT_LIMIT + 1, async {
+        match cancellation { Some(cancel) => cancel.requested().await, None => std::future::pending::<()>().await }
+    }).await
         .map_err(|error| CoreError::WriteOutcomeUnknown(format!("Git {action}: {error}")))?;
     let mut message = String::from_utf8_lossy(&output.stdout).to_string();
     if !output.stderr.is_empty() {
@@ -583,7 +592,7 @@ pub(crate) async fn apply_workspace_git_stash_requested(
     if workspace.trust != "trusted" {
         return Err(CoreError::WorkspaceTrustRequired);
     }
-    crate::workspace_write_runs::execute_requested(db, &workspace, "git.stash-apply", serde_json::json!({"reference":reference}), request, || async { GitOperation::new(&workspace.path).action(&["stash", "apply", &reference], "stash_apply").await }).await
+    crate::workspace_write_runs::execute_requested(db, &workspace, "git.stash-apply", serde_json::json!({"reference":reference}), request, |cancel| async { GitOperation::new(&workspace.path).cancellable(cancel).action(&["stash", "apply", &reference], "stash_apply").await }).await
 }
 
 pub(crate) async fn stash_workspace_git_requested(
@@ -597,7 +606,7 @@ pub(crate) async fn stash_workspace_git_requested(
         return Err(CoreError::WorkspaceTrustRequired);
     }
     let message = message.unwrap_or_else(|| "aibo workspace changes".to_owned());
-    crate::workspace_write_runs::execute_requested(db, &workspace, "git.stash-push", serde_json::json!({"message":message}), request, || async { GitOperation::new(&workspace.path).action(&["stash", "push", "-u", "-m", &message], "stash_push").await }).await
+    crate::workspace_write_runs::execute_requested(db, &workspace, "git.stash-push", serde_json::json!({"message":message}), request, |cancel| async { GitOperation::new(&workspace.path).cancellable(cancel).action(&["stash", "push", "-u", "-m", &message], "stash_push").await }).await
 }
 
 
@@ -688,13 +697,13 @@ mod tests {
         assert!(commit_workspace(&invalid, "must not commit").await.is_err());
         assert!(Command::new("git").args(["init", "-q", path]).status().unwrap().success());
         std::fs::write(root.join("file.txt"), "keep working content").unwrap();
-        assert!(apply_git_index_action(path, "file.txt", "stage").await.unwrap().applied);
-        assert!(apply_git_index_action(path, "file.txt", "unstage").await.unwrap().applied);
-        assert!(run_git_workspace_action(path, "stage_all").await.unwrap().applied);
-        assert!(run_git_workspace_action(path, "unstage_all").await.unwrap().applied);
+        assert!(apply_git_index_action(path, "file.txt", "stage", None).await.unwrap().applied);
+        assert!(apply_git_index_action(path, "file.txt", "unstage", None).await.unwrap().applied);
+        assert!(run_git_workspace_action(path, "stage_all", None).await.unwrap().applied);
+        assert!(run_git_workspace_action(path, "unstage_all", None).await.unwrap().applied);
         assert_eq!(std::fs::read_to_string(root.join("file.txt")).unwrap(), "keep working content");
         assert!(Command::new("git").args(["-C", path, "ls-files"]).output().unwrap().stdout.is_empty());
-        let expired = GitOperation { workspace_path: path, deadline: Instant::now() - Duration::from_secs(1) };
+        let expired = GitOperation { workspace_path: path, cancellation: None, deadline: Instant::now() - Duration::from_secs(1) };
         assert!(expired.action(&["config", "aibo.unexpected", "written"], "expired-write").await.is_err());
         assert!(!Command::new("git").args(["-C", path, "config", "--get", "aibo.unexpected"]).status().unwrap().success());
         #[cfg(unix)]
@@ -702,10 +711,10 @@ mod tests {
         // A nested workspace must not reinterpret a filename as a repository-root pathspec.
         let nested = root.join("nested"); std::fs::create_dir(&nested).unwrap();
         std::fs::write(root.join("outside.txt"), "outside workspace").unwrap();
-        assert!(!apply_git_index_action(nested.to_str().unwrap(), ":(top)outside.txt", "stage").await.unwrap().applied);
+        assert!(!apply_git_index_action(nested.to_str().unwrap(), ":(top)outside.txt", "stage", None).await.unwrap().applied);
         assert!(Command::new("git").args(["-C", path, "ls-files"]).output().unwrap().stdout.is_empty());
         std::fs::write(nested.join(":(glob)*.txt"), "literal name").unwrap();
-        assert!(apply_git_index_action(nested.to_str().unwrap(), ":(glob)*.txt", "stage").await.unwrap().applied);
+        assert!(apply_git_index_action(nested.to_str().unwrap(), ":(glob)*.txt", "stage", None).await.unwrap().applied);
         let staged = Command::new("git").args(["-C", path, "ls-files"]).output().unwrap();
         assert!(String::from_utf8_lossy(&staged.stdout).contains(":(glob)*.txt"));
         assert!(!String::from_utf8_lossy(&staged.stdout).contains("outside.txt"));
@@ -734,7 +743,7 @@ mod tests {
         std::fs::set_permissions(&hook, std::fs::Permissions::from_mode(0o700)).unwrap();
         std::fs::write(root.join("file.txt"), "committed content").unwrap();
         git(&["add", "--", "file.txt"]);
-        let operation = GitOperation { workspace_path: path, deadline: Instant::now() + Duration::from_secs(3) };
+        let operation = GitOperation { workspace_path: path, cancellation: None, deadline: Instant::now() + Duration::from_secs(3) };
         let error = tokio::time::timeout(Duration::from_secs(5), commit_workspace(&operation, "Fixture\n\nCo-authored-by: Codex <codex@openai.com>")).await.unwrap().unwrap_err();
         assert!(matches!(&error, CoreError::WriteOutcomeUnknown(_)), "{error}");
         assert!(error.to_string().contains("POST_COMMIT_STARTED"), "{error}");
@@ -761,7 +770,7 @@ mod tests {
         let mut command = git_sync_command(root.to_str().unwrap(), "fetch").unwrap();
         // Git invokes only this local fixture; no SSH connection is attempted.
         command.current_dir(&root).env("GIT_SSH", &helper).env("GIT_SSH_VARIANT", "ssh");
-        let result = tokio::time::timeout(Duration::from_secs(5), execute_git_action(command, "fetch".into(), Duration::from_secs(2))).await.unwrap();
+        let result = tokio::time::timeout(Duration::from_secs(5), execute_git_action(command, "fetch".into(), Duration::from_secs(2), None)).await.unwrap();
         let error = result.unwrap_err();
         assert!(matches!(&error, CoreError::WriteOutcomeUnknown(_)), "{error}");
         assert!(error.to_string().contains("BEFORE_TIMEOUT"), "{error}");
@@ -773,7 +782,7 @@ mod tests {
         std::fs::write(&helper, "#!/bin/sh\nprintf 'token=fixture-secret\\n' >&2\nhead -c 400000 /dev/zero | tr '\\000' x >&2\nexit 1\n").unwrap();
         let mut command = git_sync_command(root.to_str().unwrap(), "fetch").unwrap();
         command.current_dir(&root).env("GIT_SSH", &helper).env("GIT_SSH_VARIANT", "ssh");
-        let result = execute_git_action(command, "fetch".into(), Duration::from_secs(3)).await.unwrap();
+        let result = execute_git_action(command, "fetch".into(), Duration::from_secs(3), None).await.unwrap();
         assert!(!result.applied);
         assert!(result.message.len() <= 256 * 1024 + 64);
         assert!(result.message.contains("Git 输出已截断"));

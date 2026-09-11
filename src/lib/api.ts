@@ -629,3 +629,6 @@ export const actSemanticContribution = (action: import('./presentation/contract'
 export const releaseSemanticContribution = (generation: string): Promise<void> => invoke('release_semantic_contribution', { generation });
 
 export const cancelSemanticOpen = (requestId: string): Promise<void> => invoke('cancel_semantic_open', { requestId });
+
+export const cancelWorkspaceWrite = (workspaceId: string, runId: string): Promise<boolean> =>
+  invoke("cancel_workspace_write", { workspaceId, runId });
