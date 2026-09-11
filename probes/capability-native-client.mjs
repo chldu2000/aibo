@@ -24,15 +24,23 @@ try {
     let cancelled=false;for(let i=0;i<100&&!cancelled;i++){cancelled=await invoke('cancel_capability',{requestId:'cancel'});if(!cancelled)await delay(20);}
     check(cancelled,'active request cancellation');check((await pending).code==='cancelled','cancel terminal');check((await other).output.value==='OTHER_WORKSPACE_OK','other workspace unaffected');
     check((await invoke('list_sessions',{workspaceId:a.id})).length===0,'no Agent session created');
-    saved={a,b,installationId:plugin.id,generationId:value.generationId};
-    await report({ok:true,stage:0,saved,evidence:{realCapabilityProcess:true,explicitBinding:true,hostWorkspacePath:true,forgedCallerRejected:true,cancellation:true,workspaceIsolation:true,noAgentSession:true}});
+    const events=await invoke('list_capability_events',{scope:{kind:'workspace',id:a.id},afterSequence:0,limit:100});
+    const first=events.filter(event=>event.invocationId===value.invocationId);
+    check(first.length===3&&first.map(event=>event.type).join(',')==='admitted,started,finished','independent lifecycle events');
+    check(first[0].generationId===null&&first[2].generationId===value.generationId,'immutable event snapshots');
+    check(first.every(event=>event.instanceId===value.instanceId&&event.turnId===null),'instance identity without turn');
+    saved={a,b,installationId:plugin.id,generationId:value.generationId,instanceId:value.instanceId,lastSequence:events.at(-1).sequence};
+    await report({ok:true,stage:0,saved,evidence:{realCapabilityProcess:true,explicitBinding:true,hostWorkspacePath:true,forgedCallerRejected:true,cancellation:true,workspaceIsolation:true,noAgentSession:true,lifecycleEvents:true}});
   } else {
     const resumed=await invoke('invoke_capability',{request:request(saved.a,'restart')});check(resumed.output.value==='AIBO_CAPABILITY_OK','binding restored after actual App restart');check(resumed.generationId!==saved.generationId,'new process generation');
+    check(resumed.instanceId===saved.instanceId,'stable instance after actual App restart');
+    const events=await invoke('list_capability_events',{scope:{kind:'workspace',id:saved.a.id},afterSequence:saved.lastSequence,limit:100});
+    check(events.length===3&&events.every(event=>event.invocationId===resumed.invocationId),'persisted cursor and isolated restart events');
     await invoke('set_agent_plugin_enabled',{id:saved.installationId,enabled:false});
     const disabled=await invoke('invoke_capability',{request:request(saved.a,'disabled')}).catch(error=>error);check(disabled.code==='provider_unavailable','no silent fallback');
     await invoke('set_agent_plugin_enabled',{id:saved.installationId,enabled:true});
     check((await invoke('invoke_capability',{request:request(saved.a,'reenabled')})).output.value==='AIBO_CAPABILITY_OK','explicit release restored');
     await invoke('uninstall_agent_plugin',{id:saved.installationId});
-    await report({ok:true,stage:1,saved,evidence:{actualAppRestart:true,persistedBinding:true,newGeneration:true,disabledBindingRejected:true,reenabledRelease:true,uninstall:true}});
+    await report({ok:true,stage:1,saved,evidence:{actualAppRestart:true,persistedBinding:true,newGeneration:true,stableInstance:true,persistedEventCursor:true,disabledBindingRejected:true,reenabledRelease:true,uninstall:true}});
   }
 }catch(error){await report({ok:false,error:JSON.stringify(error,Object.getOwnPropertyNames(error??{}))});}

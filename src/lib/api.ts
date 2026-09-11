@@ -75,8 +75,16 @@ export interface PluginInstallation {
 export type CapabilityValue = null | boolean | number | string | CapabilityValue[] | { [key: string]: CapabilityValue };
 export type CapabilityScope = { kind: 'application' } | { kind: 'workspace' | 'session'; id: string };
 export type CapabilityProvider = { installationId: string; contributionId: string; pluginId: string; version: string };
-export type CapabilityRequest = { scope: CapabilityScope; capability: string; version: string; requestId: string; input: CapabilityValue };
-export type CapabilityResult = { invocationId: string; installationId: string; generationId: string; output: CapabilityValue };
+export type CapabilityRequest = { turnId?: string; scope: CapabilityScope; capability: string; version: string; requestId: string; input: CapabilityValue };
+export type CapabilityResult = { instanceId: string; invocationId: string; installationId: string; generationId: string; output: CapabilityValue };
+export type CapabilityEvent = {
+  schemaVersion: '1.0'; sequence: number; type: 'admitted' | 'started' | 'finished';
+  invocationId: string; instanceId: string | null; installationId: string; contributionId: string;
+  capability: string; contractVersion: string; scope: CapabilityScope;
+  turnId: string | null; parentInvocationId: string | null; rootInvocationId: string;
+  generationId: string | null; status: string; occurredAt: string;
+};
+export const listCapabilityEvents = (scope: CapabilityScope, afterSequence = 0, limit = 100): Promise<CapabilityEvent[]> => invoke('list_capability_events', { scope, afterSequence, limit });
 export const listCapabilityProviders = (scope: CapabilityScope, capability: string, version: string): Promise<CapabilityProvider[]> => invoke('list_capability_providers', { scope, capability, version });
 export const bindCapabilityProvider = (scope: CapabilityScope, capability: string, version: string, provider: CapabilityProvider): Promise<void> => invoke('bind_capability_provider', { binding: { scope, capability, version, installationId: provider.installationId, contributionId: provider.contributionId } });
 export const invokeCapability = (request: CapabilityRequest): Promise<CapabilityResult> => invoke('invoke_capability', { request });

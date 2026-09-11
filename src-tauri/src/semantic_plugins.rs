@@ -299,6 +299,7 @@ impl SemanticPlugins {
             return Err("provider_unavailable: semantic contribution".into());
         }
         let request = Request {
+            turn_id: None,
             scope: lease.binding.scope.clone(),
             capability: lease.binding.capability.clone(),
             version: lease.binding.version.clone(),
@@ -612,6 +613,7 @@ mod tests {
                 .invoke(
                     "main",
                     Request {
+                        turn_id: None,
                         scope: Scope::Workspace("w".into()),
                         capability: format!("dev.aibo.git.{cap}"),
                         version: "1.0.0".into(),

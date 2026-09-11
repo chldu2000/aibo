@@ -4805,6 +4805,11 @@ async fn invoke_capability(request: capability_broker::Request, window: tauri::W
     tokio::spawn(async move { broker.invoke(&caller, request).await }).await.map_err(|_| capability_broker::Failure { code: "provider_unavailable".into(), message: "Capability task stopped".into(), invocation_id: None })?
 }
 #[tauri::command]
+async fn list_capability_events(scope: capability_broker::Scope, after_sequence: i64, limit: u32, window: tauri::WebviewWindow, state: State<'_, AppState>) -> Result<Vec<serde_json::Value>, capability_broker::Failure> {
+    state.capability_broker.events(window.label(), &scope, after_sequence, limit).await
+}
+
+#[tauri::command]
 async fn cancel_capability(request_id: String, window: tauri::WebviewWindow, state: State<'_, AppState>) -> Result<bool, String> {
     Ok(state.capability_broker.cancel(window.label(), &request_id).await)
 }
@@ -5768,6 +5773,7 @@ pub fn run() {
             bind_capability_provider,
             invoke_capability,
             cancel_capability,
+            list_capability_events,
             list_plugin_installations,
             install_agent_plugin,
             set_agent_plugin_enabled,

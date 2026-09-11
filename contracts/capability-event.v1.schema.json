@@ -1,0 +1,132 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Host capability lifecycle event v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "invocationId",
+    "installationId",
+    "contributionId",
+    "capability",
+    "contractVersion",
+    "rootInvocationId",
+    "status",
+    "occurredAt",
+    "instanceId",
+    "turnId",
+    "parentInvocationId",
+    "generationId",
+    "schemaVersion",
+    "sequence",
+    "type",
+    "scope"
+  ],
+  "properties": {
+    "invocationId": {
+      "type": "string",
+      "minLength": 1
+    },
+    "installationId": {
+      "type": "string",
+      "minLength": 1
+    },
+    "contributionId": {
+      "type": "string",
+      "minLength": 1
+    },
+    "capability": {
+      "type": "string",
+      "minLength": 1
+    },
+    "contractVersion": {
+      "type": "string",
+      "minLength": 1
+    },
+    "rootInvocationId": {
+      "type": "string",
+      "minLength": 1
+    },
+    "status": {
+      "type": "string",
+      "minLength": 1
+    },
+    "occurredAt": {
+      "type": "string",
+      "minLength": 1
+    },
+    "instanceId": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "turnId": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "parentInvocationId": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "generationId": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "schemaVersion": {
+      "const": "1.0"
+    },
+    "sequence": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "type": {
+      "enum": [
+        "admitted",
+        "started",
+        "finished"
+      ]
+    },
+    "scope": {
+      "oneOf": [
+        {
+          "type": "object",
+          "required": [
+            "kind"
+          ],
+          "additionalProperties": false,
+          "properties": {
+            "kind": {
+              "const": "application"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": [
+            "kind",
+            "id"
+          ],
+          "additionalProperties": false,
+          "properties": {
+            "kind": {
+              "enum": [
+                "workspace",
+                "session"
+              ]
+            },
+            "id": {
+              "type": "string",
+              "minLength": 1
+            }
+          }
+        }
+      ]
+    }
+  }
+}

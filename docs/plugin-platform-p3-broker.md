@@ -50,8 +50,8 @@ scope 支持 application、workspace 和 session。workspace/session 必须存�
 
 包依赖图、环检测、可选贡献降级与依赖 release 固定已在第三批完成；只读插件间调用的原始调用者、权限交集、调用链、嵌套 deadline/取消传播已在[第四批](./plugin-platform-p3-call-chain.md)完成。
 
-1. turn 关联上下文、审批、写入并发/幂等和结果未知，以及接纳前失败审计；v1 Agent 能力继续走 P2 facade，尚未改成 v2 runtime。
-2. 稳定 instance ID、独立能力事件合同，以及完整生命周期/升级策略。当前进程复用键和 generation 能隔离调用，不等于这些合同已全部冻结。
+1. 审批、写入并发/幂等和结果未知，以及接纳前失败审计；v1 Agent 能力继续走 P2 facade，尚未改成 v2 runtime。
+2. 完整生命周期/升级策略。稳定 instance ID、turn 关联与独立能力事件已在[第六批](./plugin-platform-p3-lifecycle.md)完成。
 3. settings/inspector 完整合同、其他扩展点可达性与稳定协议支持窗口。[第五批](./plugin-platform-p3-git.md)已完成 Git 只读能力包和 workspace.tool 语义贡献安装。
 
 P3 退出条件保持未完成；下一步补齐完整扩展点合同、生命周期和稳定协议收尾。

@@ -306,7 +306,7 @@ mod tests {
         for (cap,contribution) in [("echo","read"),("optional-echo","optional")] {
             f.broker.bind(Binding {scope:Scope::Workspace("w".into()),capability:format!("dev.test.parent.{cap}"),version:"1.0.0".into(),installation_id:parent.clone(),contribution_id:format!("dev.test.parent.{contribution}")}).await.unwrap();
         }
-        let invoke=|cap:&str| {let broker=f.broker.clone();let capability=format!("dev.test.parent.{cap}");let request_id=cap.to_owned();tokio::spawn(async move {broker.invoke("main",Request {scope:Scope::Workspace("w".into()),capability,version:"1.0.0".into(),request_id,input:json!({"value":"ok","delayMs":500})}).await})};
+        let invoke=|cap:&str| {let broker=f.broker.clone();let capability=format!("dev.test.parent.{cap}");let request_id=cap.to_owned();tokio::spawn(async move {broker.invoke("main",Request {turn_id:None,scope:Scope::Workspace("w".into()),capability,version:"1.0.0".into(),request_id,input:json!({"value":"ok","delayMs":500})}).await})};
         let regular=invoke("echo");let affected=invoke("optional-echo");
         tokio::time::timeout(Duration::from_secs(5),async {loop {
             let count:i64=sqlx::query_scalar("SELECT COUNT(*) FROM capability_invocations WHERE status='running' AND generation_id IS NOT NULL").fetch_one(&f.db).await.unwrap();
