@@ -46,6 +46,7 @@
     SettingsPanel,
     TimelinePanel,
     WindowTitlebar,
+    ExecutionHistoryPanel,
     WorkspaceFileDiffPreview,
     WorkspaceGitPanel,
     WorkspaceSidebar,
@@ -61,6 +62,8 @@
     writePersistedSelection as writeSelectionToStorage,
   } from '$lib/app/selection-storage';
   import { handleAgentEvent as processAgentEvent } from '$lib/app/agent-event-handler';
+  import { createExecutionHistoryController, emptyExecutionHistory } from '$lib/app/execution-history-controller';
+  import { listWorkspaceWriteRuns, cancelWorkspaceWrite } from '$lib/api';
   import { createProjectTaskController, observeProjectTaskHistory } from '$lib/app/project-task-controller';
   import { createApprovalController } from '$lib/app/approval-controller';
   import { toErrorMessage } from '$lib/app/error-utils';
@@ -449,6 +452,30 @@
   let settingsOpen = $state(false);
   const listSessions: typeof listAllSessions = listAllSessions;
   let pluginsOpen = $state(false);
+  let historyOpen = $state(false);
+  let historyWorkspaceId = $state<string | null>(null);
+  let executionHistory = $state(emptyExecutionHistory());
+  let historyTrigger: HTMLElement | null = null;
+  const executionHistoryController = createExecutionHistoryController({
+    readTasks: id => listProjectActionRuns(id, 20), readWrites: id => listWorkspaceWriteRuns(id, 20),
+    cancelTask: cancelProjectAction, cancelWrite: cancelWorkspaceWrite,
+    publish: value => { executionHistory = value; },
+  });
+  $effect(() => {
+    if (!historyOpen || !desktop || !historyWorkspaceId) return;
+    executionHistoryController.open(historyWorkspaceId, presentationWindowId());
+    return () => executionHistoryController.close();
+  });
+  function openExecutionHistory(): void {
+    historyTrigger = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    pluginsOpen = false; settingsOpen = false; diagnosticsOpen = false; commandPaletteOpen = false;
+    historyWorkspaceId = selectedWorkspaceId ?? workspaces[0]?.id ?? null;
+    historyOpen = true;
+  }
+  function closeExecutionHistory(): void { historyOpen = false;
+    const trigger = historyTrigger?.isConnected ? historyTrigger : document.querySelector<HTMLElement>('[data-host-navigation="history"]');
+    trigger?.focus(); }
+
   let pluginInstallations = $state<PluginInstallation[]>([]);
   const pluginSessions = $derived((workspaceSessionMap[selectedWorkspaceId ?? ''] ?? []).filter(session => Boolean(session.pluginInstallationId)));
   let pluginViews = $state<UiPluginViewSnapshot[]>([]);
@@ -479,6 +506,7 @@
   }
 
   function openPluginPanel(): void {
+    historyOpen = false;
     settingsOpen = false;
     diagnosticsOpen = false;
     commandPaletteOpen = false;
@@ -1041,6 +1069,10 @@
   function handleGlobalKeydown(event: KeyboardEvent): void {
     const key = event.key.toLocaleLowerCase();
     const modifier = event.metaKey || event.ctrlKey;
+    if (historyOpen && !settingsOpen && !diagnosticsOpen) {
+      if (key === 'escape') { event.preventDefault(); closeExecutionHistory(); }
+      return;
+    }
     if (pluginsOpen && !settingsOpen && !diagnosticsOpen) {
       if (key === 'escape') { event.preventDefault(); pluginsOpen = false; }
       return;
@@ -2982,6 +3014,7 @@
 >
   <WindowTitlebar
     onOpenPlugins={openPluginPanel}
+    onOpenHistory={openExecutionHistory}
     onOpenSettings={openSettingsPanel}
     onOpenDiagnostics={openDiagnosticsPanel}
     sidePanelOpen={sidePanelOpen}
@@ -3033,8 +3066,15 @@
       {/each}
     </section>
   {/if}
+  {#if historyOpen}
+    <div class="host-history-region" style="order: 2; display: grid; flex: 1; min-height: 0; overflow: auto;">
+      <ExecutionHistoryPanel {workspaces} workspaceId={historyWorkspaceId} windowId={presentationWindowId()} state={executionHistory} {desktop}
+        onSelectWorkspace={id => { historyWorkspaceId = id; }} onRefresh={() => void executionHistoryController.refresh()}
+        onStop={key => void executionHistoryController.stop(key)} onClose={closeExecutionHistory} />
+    </div>
+  {/if}
   {#if pluginsOpen}
-    <div class="host-plugin-region" style="display: grid; flex: 1; min-height: 0; overflow: auto;">
+    <div class="host-plugin-region" style="order: 2; display: grid; flex: 1; min-height: 0; overflow: auto;">
       <PluginWorkspacePanel interaction={workbenchDrafts.plugin} onInteractionChange={hostGuard('onInteractionChange', (value) => { workbenchDrafts.plugin = value; })}
       installations={pluginInstallations}
       sessions={pluginSessions.filter((session) => session.workspaceId === selectedWorkspaceId)}
@@ -3063,7 +3103,7 @@
     />
     </div>
   {/if}
-<WorkbenchPresentation suspended={pluginsOpen} windowId={presentationWindowId()} snapshot={{ workspaceId: selectedWorkspaceId, sessionId: selectedSessionId, draft: composerText, navigation: sidePanelView, timelineRevision: timeline.length }}>
+<WorkbenchPresentation suspended={pluginsOpen || historyOpen} windowId={presentationWindowId()} snapshot={{ workspaceId: selectedWorkspaceId, sessionId: selectedSessionId, draft: composerText, navigation: sidePanelView, timelineRevision: timeline.length }}>
 {#snippet children(guard)}
   <main
     bind:this={workspaceGridElement}

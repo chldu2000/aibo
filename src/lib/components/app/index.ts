@@ -37,3 +37,5 @@ export type {
   TimelineViewItem,
   WorkspaceListItem,
 } from './view-types';
+
+export { default as ExecutionHistoryPanel } from './ExecutionHistoryPanel.svelte';

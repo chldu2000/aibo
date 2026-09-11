@@ -46,6 +46,7 @@ button:disabled { cursor: default; }
 .window-titlebar.macos-titlebar { padding-left: 88px; }
 .window-title { color: var(--aibo-text); font-size: 12px; font-weight: 600; letter-spacing: -0.01em; }
 .window-actions [data-slot='button'] { width: 28px; height: 28px; }
+.window-actions [data-slot='button'][data-host-navigation] { width: auto; flex-shrink: 0; padding-inline: 8px; }
 .window-actions, .window-system-actions, .agent-identity, .agent-card-head, .panel-heading, .workspace-toolbar, .trust-card-heading { display: flex; align-items: center; }
 .window-actions { gap: 2px; }
 .window-system-actions { gap: 2px; margin-left: 4px; }

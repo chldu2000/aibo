@@ -13,7 +13,10 @@ try {
     await page.evaluate(async kit => (await import('/src/lib/ui-kit/registry.ts')).setUiKit(kit), kit);
     await page.getByRole('button', {name: '插件', exact: true}).click();
     const panel = page.getByRole('region', {name: '插件工作台'});
-    await panel.waitFor();
+    try { await panel.waitFor(); } catch (error) {
+      console.error(JSON.stringify({ kit, errors, text: await page.locator('body').innerText(), panels: await page.locator('.host-plugin-region').count() }));
+      await page.screenshot({ path: '/tmp/aibo-history-browser-failure.png' }); throw error;
+    }
     await page.evaluate(() => { window.savedHostPanel = document.querySelector('.host-plugin-region'); });
     await page.getByRole('button', {name: '切换工作台呈现', exact: true}).click();
     await page.waitForFunction(() => document.querySelector('[data-presentation-layout="focus"][aria-busy="false"]'));
@@ -23,7 +26,22 @@ try {
     await page.getByRole('button', {name: '返回会话', exact: true}).click();
     await panel.waitFor({state: 'detached'});
     await page.locator('.workspace-grid').waitFor();
+    const historyButton = page.getByRole('button', { name: '执行历史', exact: true });
+    await historyButton.click();
+    const history = page.getByRole('region', { name: '执行历史', exact: true });
+    await history.waitFor();
+    assert.equal(await page.locator('#execution-history-heading').evaluate(node => document.activeElement === node), true);
+    await page.evaluate(() => { window.savedHistory = document.querySelector('.host-history-region'); });
+    await page.getByRole('button', {name: '切换工作台呈现', exact: true}).click();
+    await page.waitForFunction(() => document.querySelector('[data-presentation-layout="focus"][aria-busy="false"]'));
+    await page.getByRole('button', {name: '恢复默认呈现', exact: true}).click();
+    await page.waitForFunction(() => document.querySelector('[data-presentation-layout="standard"][aria-busy="false"]'));
+    assert.equal(await page.evaluate(() => window.savedHistory === document.querySelector('.host-history-region')), true);
+    await page.screenshot({ path: `/tmp/aibo-history-${kit}.png` });
+    await page.keyboard.press('Escape'); await history.waitFor({state: 'detached'});
+    assert.equal(await historyButton.evaluate(node => document.activeElement === node), true);
+
   }
   assert.deepEqual(errors, []);
-  console.log('Actual App host controls and plugin management remain clickable across layouts in both skins');
+  console.log('Actual App host controls , plugin management, and execution history remain clickable across layouts in both skins');
 } finally { await browser.close(); await server.close(); }

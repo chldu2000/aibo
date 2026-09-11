@@ -115,8 +115,8 @@
   {#if instance}{#key instance.generation}{@render children(instance.guard)}{/key}{/if}
 </div>
 <style>
-  .presentation-controls { position: fixed; right: 160px; top: 0; z-index: 100; display: flex; }
-  .workbench-presentation { display: flex; flex-direction: column; flex: 1; min-width: 0; min-height: 0; }
+  .presentation-controls { display: flex; flex-wrap: wrap; align-self: flex-end; flex-shrink: 0; order: 1; }
+  .workbench-presentation { order: 2; display: flex; flex-direction: column; flex: 1; min-width: 0; min-height: 0; }
   .workbench-presentation[data-presentation-layout='focus'] :global(.workspace-grid) { grid-template-columns: minmax(0, 1fr); }
   .workbench-presentation[data-presentation-layout='focus'] :global(.workspace-grid > :not(.timeline):not(.plugin-workspace)) { display: none; }
 </style>

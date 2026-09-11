@@ -9,6 +9,9 @@ const workspacePath = path.join(root, 'workspace');
 await mkdir(workspacePath);
 execFileSync('git', ['init', '-q', workspacePath]);
 await writeFile(path.join(workspacePath, 'ledger-proof.txt'), 'native durable write\n');
+const hooks = path.join(root, 'hooks'); await mkdir(hooks);
+await writeFile(path.join(hooks, 'post-commit'), '#!/bin/sh\nprintf GIT_BEFORE_CANCEL\ntouch git-before\n(sleep 3; touch git-after) &\nwait\n', { mode: 0o700 });
+for (const [key, value] of [['user.name', 'Aibo Fixture'], ['user.email', 'fixture@example.invalid'], ['commit.gpgsign', 'false'], ['core.hooksPath', hooks]]) execFileSync('git', ['-C', workspacePath, 'config', key, value]);
 let child, timer, finish;
 const report = new Promise(resolve => { finish = resolve; });
 const clicks = [], helpers = new Set();
@@ -59,10 +62,11 @@ try {
   const result = await Promise.race([report, new Promise((_, reject) => { timer = setTimeout(() => reject(Error('Task cancellation probe timeout')), 120000); }), new Promise((_, reject) => child.on('exit', code => reject(Error(`Native exit ${code}`))))]);
   if (!result.ok) throw Error(result.error);
   const staged = execFileSync('git', ['-C', workspacePath, 'diff', '--cached', '--name-only'], { encoding: 'utf8' }).trim();
-  if (!result.workspaceWriteHistory || staged !== 'ledger-proof.txt') throw Error('Native durable Git write verification failed');
+  if (!result.workspaceWriteHistory || !result.gitCancellation || staged !== '' || execFileSync('git', ['-C', workspacePath, 'rev-list', '--count', 'HEAD'], { encoding: 'utf8' }).trim() !== '1' || execFileSync('git', ['-C', workspacePath, 'show', 'HEAD:ledger-proof.txt'], { encoding: 'utf8' }) !== 'native durable write\n') throw Error('Native durable Git write verification failed');
   const nativeClicks = await Promise.all(clicks);
-  if (nativeClicks.length !== 5 || !result.denialPreventedExecution || !result.gitDenialPreventedExecution) throw Error('Native denial and both approvals must be verified');
+  if (nativeClicks.length !== 6 || !result.denialPreventedExecution || !result.gitDenialPreventedExecution) throw Error('Native denial and both approvals must be verified');
   const files = await readdir(workspacePath);
+  if (!files.includes('git-before') || files.includes('git-after')) throw Error('Unexpected Git hook effects after cancellation');
   if (files.includes('denied-effect')) throw Error('Denied task executed');
   for (const kit of ['shadcn', 'material3']) {
     if (!files.includes(`${kit}-before`) || files.includes(`${kit}-after`)) throw Error(`Unexpected descendant effects for ${kit}`);

@@ -5,6 +5,7 @@
     onOpenSettings: () => void;
     onOpenDiagnostics: () => void;
     onOpenPlugins: () => void;
+    onOpenHistory: () => void;
     sidePanelOpen: boolean;
     onToggleSidePanel: () => void;
     onToggleMaximize: () => void;
@@ -16,6 +17,7 @@
     onOpenSettings,
     onOpenDiagnostics,
     onOpenPlugins,
+    onOpenHistory,
     sidePanelOpen,
     onToggleSidePanel,
     onToggleMaximize,
@@ -37,7 +39,8 @@
 >
   <span class="window-title">Aibo</span>
   <div class="window-actions">
-    <Button variant="ghost" type="button" onclick={onOpenPlugins}>插件</Button>
+    <Button variant="ghost" type="button" data-host-navigation="plugins" onclick={onOpenPlugins}>插件</Button>
+    <Button variant="ghost" type="button" data-host-navigation="history" onclick={onOpenHistory}>执行历史</Button>
     <Button variant="ghost" size="icon" type="button" aria-label="打开设置" title="设置" onclick={onOpenSettings}>
       <Icon name="settings" size={15} />
     </Button>
