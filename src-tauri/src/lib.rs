@@ -3734,6 +3734,13 @@ async fn run_project_action(
 }
 
 #[tauri::command]
+async fn cancel_project_action(
+    workspace_id: String, run_id: String, state: State<'_, AppState>,
+) -> Result<bool, CoreError> {
+    project_actions::cancel_project_action(&state.db, workspace_id, run_id).await
+}
+
+#[tauri::command]
 async fn list_project_action_runs(
     workspace_id: String,
     limit: Option<i64>,
@@ -4931,6 +4938,7 @@ pub fn run() {
             save_project_action,
             delete_project_action,
             run_project_action,
+            cancel_project_action,
             list_project_action_runs,
             rename_session,
             list_codex_threads,

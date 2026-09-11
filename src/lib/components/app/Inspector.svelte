@@ -44,6 +44,7 @@
     onSaveProjectAction: (input: { workspaceId: string; actionId?: string | null; name: string; kind: ProjectActionKind; program: string; args: string[]; cwd?: string | null; enabled?: boolean }) => Promise<void>;
     onDeleteProjectAction: (actionId: string) => Promise<void>;
     onRunProjectAction: (actionId: string) => Promise<void>;
+    onCancelProjectAction: (runId: string) => Promise<void>;
     onRefresh: () => void;
     onSelectView: (view: 'context' | 'git') => void;
   };
@@ -80,6 +81,7 @@
     onSaveProjectAction,
     onDeleteProjectAction,
     onRunProjectAction,
+    onCancelProjectAction,
     onRefresh,
     onSelectView,
   }: InspectorProps = $props();
@@ -161,6 +163,7 @@
     {onSaveProjectAction}
     {onDeleteProjectAction}
     {onRunProjectAction}
+    {onCancelProjectAction}
   />
 
   {#if workspace && desktop}

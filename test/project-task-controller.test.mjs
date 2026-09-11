@@ -32,3 +32,30 @@ test('task submissions share pending work but keep workspace/session identity an
     await Promise.all([otherWorkspace, otherSession]);
   } finally { await server.close(); }
 });
+
+test('history observation ignores disposed reads and keeps polling after a transient read error', async () => {
+  const server = await createServer({ server: { middlewareMode: true, ws: false, watch: null }, appType: 'custom' });
+  try {
+    const { observeProjectTaskHistory } = await server.ssrLoadModule('/src/lib/app/project-task-controller.ts');
+    let resolveOld;
+    const published = [], errors = [];
+    const disposeOld = observeProjectTaskHistory({
+      read: () => new Promise(resolve => { resolveOld = resolve; }),
+      publish: value => published.push(value), error: error => errors.push(error),
+    }, 5);
+    disposeOld(); resolveOld([{ id: 'old-workspace' }]);
+    await Promise.resolve();
+    assert.deepEqual(published, []);
+    let reads = 0, finished;
+    const observed = new Promise(resolve => { finished = resolve; });
+    const dispose = observeProjectTaskHistory({
+      read: async () => { if (++reads === 1) throw new Error('temporary'); return [{ id: 'current-workspace', status: 'running' }]; },
+      publish: value => { published.push(value); finished(); }, error: error => errors.push(error),
+    }, 5);
+    try {
+      await observed;
+      assert.equal(errors.length, 1);
+      assert.equal(published[0][0].id, 'current-workspace');
+    } finally { dispose(); }
+  } finally { await server.close(); }
+});

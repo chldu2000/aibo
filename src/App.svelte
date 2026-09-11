@@ -61,7 +61,7 @@
     writePersistedSelection as writeSelectionToStorage,
   } from '$lib/app/selection-storage';
   import { handleAgentEvent as processAgentEvent } from '$lib/app/agent-event-handler';
-  import { createProjectTaskController } from '$lib/app/project-task-controller';
+  import { createProjectTaskController, observeProjectTaskHistory } from '$lib/app/project-task-controller';
   import { createApprovalController } from '$lib/app/approval-controller';
   import { toErrorMessage } from '$lib/app/error-utils';
   import { createSessionLifecycleController } from '$lib/app/session-lifecycle-controller';
@@ -126,6 +126,7 @@
     readArtifact,
     listProjectActions,
     listProjectActionRuns,
+    cancelProjectAction,
     saveProjectAction,
     deleteProjectAction,
     runProjectAction,
@@ -2917,6 +2918,22 @@
     setNotice: (value) => (notice = value),
   });
 
+  $effect(() => {
+    const workspaceId = selectedWorkspaceId;
+    if (!desktop || !workspaceId || !inspectorOpen || sidePanelView !== 'context') return;
+    return observeProjectTaskHistory({
+      read: () => listProjectActionRuns(workspaceId),
+      publish: (runs) => {
+        // A read started before settlement must not regress a known terminal run.
+        projectActionRuns = runs.map((run) => {
+          const existing = projectActionRuns.find((item) => item.id === run.id);
+          return run.status === 'running' && existing && existing.status !== 'running' ? existing : run;
+        });
+      },
+      error: (error) => console.warn('unable to observe project task history', error),
+    });
+  });
+
   const projectTaskController = createProjectTaskController({ requestId: () => crypto.randomUUID(), execute: runProjectAction });
 
   const approvalController = createApprovalController({
@@ -3233,6 +3250,16 @@
           }
         } catch (error) {
           errorMessage = toErrorMessage(error);
+        }
+      })}
+      onCancelProjectAction={guard('onCancelProjectAction', async (runId) => {
+        const workspaceId = selectedWorkspaceId;
+        if (!workspaceId) return;
+        try {
+          const requested = await cancelProjectAction(workspaceId, runId);
+          if (selectedWorkspaceId === workspaceId) notice = requested ? '已请求停止，正在等待执行结束；已有更改不会自动撤销。' : '该执行已结束或不属于当前工作区。';
+        } catch (error) {
+          if (selectedWorkspaceId === workspaceId) errorMessage = toErrorMessage(error);
         }
       })}
       onRunProjectAction={guard('onRunProjectAction', async (actionId) => {

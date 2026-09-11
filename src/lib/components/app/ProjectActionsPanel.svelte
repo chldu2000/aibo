@@ -11,6 +11,7 @@
     onSaveProjectAction: (input: { workspaceId: string; actionId?: string | null; name: string; kind: ProjectActionKind; program: string; args: string[]; cwd?: string | null; enabled?: boolean }) => Promise<void>;
     onDeleteProjectAction: (actionId: string) => Promise<void>;
     onRunProjectAction: (actionId: string) => Promise<void>;
+    onCancelProjectAction: (runId: string) => Promise<void>;
   };
 
   let {
@@ -22,6 +23,7 @@
     onSaveProjectAction,
     onDeleteProjectAction,
     onRunProjectAction,
+    onCancelProjectAction,
   }: ProjectActionsPanelProps = $props();
 
   let actionEditorOpen = $state(false);
@@ -145,6 +147,9 @@
           {#each projectActionRuns.slice(0, 5) as run (run.id)}
             <div class="project-action-run" role="status">
               <small>{run.actionName ?? projectActions.find((action) => action.id === run.actionId)?.name ?? '工程动作'} · {run.status === 'running' ? '执行中' : run.status === 'outcome_unknown' ? '结果未知，请核对实际更改后再操作' : run.status === 'completed' ? '成功' : run.status === 'timed_out' ? '超时' : '失败'}{run.exitCode === null ? '' : ` · 退出码 ${run.exitCode}`}</small>
+              {#if run.status === 'running'}
+                <Button variant="ghost" size="sm" type="button" onclick={() => void onCancelProjectAction(run.id)} disabled={!desktop} aria-label={`停止 ${run.actionName ?? '工程动作'}`}>停止</Button>
+              {/if}
               <pre>{run.output || '没有输出'}</pre>
               {#if run.artifactId}<small class="project-action-artifact">输出已保存为任务工件</small>{/if}
             </div>

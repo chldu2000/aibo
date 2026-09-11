@@ -487,6 +487,9 @@ export const runProjectAction = (
     sessionId: sessionId ?? null,
   });
 
+export const cancelProjectAction = (workspaceId: string, runId: string): Promise<boolean> =>
+  invoke('cancel_project_action', { workspaceId, runId });
+
 export const listProjectActionRuns = (
   workspaceId: string,
   limit = 10,

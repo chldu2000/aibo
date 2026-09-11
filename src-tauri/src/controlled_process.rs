@@ -6,6 +6,7 @@ pub(crate) struct ProcessResult {
     pub exit_code: Option<i32>,
     pub success: bool,
     pub timed_out: bool,
+    pub cancelled: bool,
     pub stdout: Vec<u8>,
     pub stderr: Vec<u8>,
 }
@@ -36,7 +37,14 @@ async fn capture<R: tokio::io::AsyncRead + Unpin>(mut reader: R, bytes: &mut Vec
     }
 }
 
-pub(crate) async fn execute(mut command: Command, timeout: Duration, output_limit: usize) -> io::Result<ProcessResult> {
+pub(crate) async fn execute(command: Command, timeout: Duration, output_limit: usize) -> io::Result<ProcessResult> {
+    execute_cancellable(command, timeout, output_limit, std::future::pending()).await
+}
+
+pub(crate) async fn execute_cancellable(
+    mut command: Command, timeout: Duration, output_limit: usize,
+    cancellation: impl std::future::Future<Output = ()>,
+) -> io::Result<ProcessResult> {
     command.stdout(Stdio::piped()).stderr(Stdio::piped()).kill_on_drop(true);
     crate::isolate_process_tree(&mut command);
     let mut child = command.spawn()?;
@@ -44,15 +52,19 @@ pub(crate) async fn execute(mut command: Command, timeout: Duration, output_limi
     let group = ProcessGroup(child.id().expect("spawned process has an id"));
     let stdout = child.stdout.take().expect("stdout is piped");
     let stderr = child.stderr.take().expect("stderr is piped");
-    let mut result = ProcessResult { exit_code: None, success: false, timed_out: false, stdout: Vec::new(), stderr: Vec::new() };
-    let completion = tokio::time::timeout(timeout, async {
-        tokio::try_join!(child.wait(), capture(stdout, &mut result.stdout, output_limit), capture(stderr, &mut result.stderr, output_limit))
-    }).await;
+    let mut result = ProcessResult { exit_code: None, success: false, timed_out: false, cancelled: false, stdout: Vec::new(), stderr: Vec::new() };
+    let completion = tokio::select! {
+        completion = tokio::time::timeout(timeout, async {
+            tokio::try_join!(child.wait(), capture(stdout, &mut result.stdout, output_limit), capture(stderr, &mut result.stderr, output_limit))
+        }) => Some(completion),
+        _ = cancellation => None,
+    };
     drop(group);
     match completion {
-        Ok(Ok((status, (), ()))) => { result.exit_code = status.code(); result.success = status.success(); }
-        Ok(Err(error)) => { reap(&mut child).await; return Err(error); }
-        Err(_) => { result.timed_out = true; reap(&mut child).await; }
+        Some(Ok(Ok((status, (), ())))) => { result.exit_code = status.code(); result.success = status.success(); }
+        Some(Ok(Err(error))) => { reap(&mut child).await; return Err(error); }
+        Some(Err(_)) => { result.timed_out = true; reap(&mut child).await; }
+        None => { result.cancelled = true; reap(&mut child).await; }
     }
     Ok(result)
 }

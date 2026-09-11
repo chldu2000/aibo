@@ -198,6 +198,27 @@ async fn replay_request(
     }
 }
 
+/// Persist user intent before signalling execution; repeated cancellation is idempotent.
+pub(crate) async fn cancel_project_action(db: &SqlitePool, workspace_id: String, run_id: String) -> Result<bool, CoreError> {
+    workspace_by_id(db, &workspace_id).await?;
+    let changed = sqlx::query("UPDATE project_action_runs SET cancel_requested_at=COALESCE(cancel_requested_at,?) WHERE workspace_id=? AND id=? AND status='running'")
+        .bind(now_iso()).bind(workspace_id).bind(run_id).execute(db).await?.rows_affected();
+    Ok(changed == 1)
+}
+
+async fn cancellation_requested(db: &SqlitePool, run_id: &str) {
+    loop {
+        let requested = sqlx::query_scalar::<_, Option<String>>("SELECT cancel_requested_at FROM project_action_runs WHERE id=? AND status='running'")
+            .bind(run_id).fetch_optional(db).await;
+        match requested {
+            Ok(Some(None)) => tokio::time::sleep(Duration::from_millis(100)).await,
+            // Loss of the record or database access also stops execution rather
+            // than allowing unobservable writes. Settlement may require recovery.
+            _ => return,
+        }
+    }
+}
+
 pub(crate) async fn run_project_action(
     db: &SqlitePool,
     data_dir: &Path,
@@ -250,7 +271,7 @@ pub(crate) async fn run_project_action(
     drop(admission);
     let mut command = TokioCommand::new(&action.program);
     command.args(&action.args).current_dir(&cwd);
-    let execution = match crate::controlled_process::execute(command, Duration::from_secs(300), 1024 * 1024 + 1).await {
+    let execution = match crate::controlled_process::execute_cancellable(command, Duration::from_secs(300), 1024 * 1024 + 1, cancellation_requested(db, &run_id)).await {
         Ok(execution) => execution,
         Err(error) => {
             let message = crate::artifact::sanitize_content("project-action.command", &format!("Execution result unknown: {error}"));
@@ -264,7 +285,7 @@ pub(crate) async fn run_project_action(
                 started_at, completed_at: Some(completed_at) });
         }
     };
-    let status = if execution.timed_out { "outcome_unknown" } else if execution.success { "completed" } else { "failed" };
+    let status = if execution.timed_out || execution.cancelled { "outcome_unknown" } else if execution.success { "completed" } else { "failed" };
     let exit_code = execution.exit_code.map(i64::from);
     let mut output = String::from_utf8_lossy(&execution.stdout).to_string();
     let stderr = String::from_utf8_lossy(&execution.stderr).to_string();
@@ -273,6 +294,9 @@ pub(crate) async fn run_project_action(
             output.push('\n');
         }
         output.push_str(&stderr);
+    }
+    if execution.cancelled {
+        output.push_str("\nExecution stopped after cancellation or loss of its record; earlier effects may remain. Inspect changes before another run.");
     }
     let output = crate::artifact::truncate_utf8(
         &crate::artifact::sanitize_content("project-action.command", &output),
@@ -435,6 +459,44 @@ mod tests {
         assert!(list_project_action_runs(&reopened, "workspace".into(), None).await.unwrap().iter().any(|run| run.id == failed.id));
         reopened.close().await;
         fs::remove_dir_all(root).unwrap();
+    }
+
+    #[tokio::test]
+    async fn cancellation_is_scoped_persistent_and_stops_descendants_without_erasing_effects() {
+        let root = std::env::temp_dir().join(format!("aibo-task-cancel-{}", Ulid::new()));
+        fs::create_dir_all(&root).unwrap();
+        let db = crate::open_database(&root.join("host.db")).await.unwrap();
+        for (id, path) in [("workspace", root.clone()), ("other", root.join("other"))] {
+            fs::create_dir_all(&path).unwrap();
+            sqlx::query("INSERT INTO workspaces (id,path,label,trusted,created_at,updated_at) VALUES (?,?,'Cancel',1,?,?)")
+                .bind(id).bind(path.to_string_lossy().as_ref()).bind(now_iso()).bind(now_iso()).execute(&db).await.unwrap();
+        }
+        let action = save_project_action(&db, "workspace".into(), None, "Cancel me".into(), "test".into(), "/bin/sh".into(),
+            vec!["-c".into(), "printf BEFORE_CANCEL; touch before; (sleep 1; touch after) & wait".into()], None, None).await.unwrap();
+        let task_db = db.clone(); let task_root = root.clone(); let action_id = action.id.clone();
+        let owner = tokio::spawn(async move { run_project_action(&task_db, &task_root, "workspace".into(), action_id, None, "cancel-request".into()).await });
+        tokio::time::timeout(Duration::from_secs(5), async { while !root.join("before").exists() { tokio::time::sleep(Duration::from_millis(10)).await; } }).await.unwrap();
+        let run = list_project_action_runs(&db, "workspace".into(), None).await.unwrap().remove(0);
+        assert!(!cancel_project_action(&db, "other".into(), run.id.clone()).await.unwrap());
+        assert!(!cancel_project_action(&db, "workspace".into(), "missing".into()).await.unwrap());
+        // Revoking trust must not prevent a user from stopping existing execution.
+        sqlx::query("UPDATE workspaces SET trusted=0 WHERE id='workspace'").execute(&db).await.unwrap();
+        assert!(cancel_project_action(&db, "workspace".into(), run.id.clone()).await.unwrap());
+        let requested: String = sqlx::query_scalar("SELECT cancel_requested_at FROM project_action_runs WHERE id=?").bind(&run.id).fetch_one(&db).await.unwrap();
+        let _ = cancel_project_action(&db, "workspace".into(), run.id.clone()).await.unwrap();
+        let settled = tokio::time::timeout(Duration::from_secs(3), owner).await.unwrap().unwrap().unwrap();
+        assert_eq!(settled.status, "outcome_unknown");
+        assert!(settled.output.contains("BEFORE_CANCEL"));
+        assert!(settled.output.contains("earlier effects may remain"));
+        assert_eq!(sqlx::query_scalar::<_, String>("SELECT cancel_requested_at FROM project_action_runs WHERE id=?").bind(&run.id).fetch_one(&db).await.unwrap(), requested);
+        assert!(!cancel_project_action(&db, "workspace".into(), run.id.clone()).await.unwrap());
+        tokio::time::sleep(Duration::from_millis(1200)).await;
+        assert!(root.join("before").exists()); assert!(!root.join("after").exists());
+        sqlx::query("UPDATE workspaces SET trusted=1 WHERE id='workspace'").execute(&db).await.unwrap();
+        let replay = run_project_action(&db, &root, "workspace".into(), action.id, None, "cancel-request".into()).await.unwrap();
+        assert_eq!(replay.id, run.id); assert_eq!(replay.status, "outcome_unknown");
+        let _released = crate::workspace_writes::acquire(&db, "workspace", &root).await.unwrap();
+        db.close().await; fs::remove_dir_all(root).unwrap();
     }
 
     #[tokio::test]

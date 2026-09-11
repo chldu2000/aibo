@@ -19,3 +19,25 @@ export function createProjectTaskController(ports: {
     },
   };
 }
+
+/** Observe durable history while visible; disposing a reader never cancels a writer. */
+export function observeProjectTaskHistory(ports: {
+  read(): Promise<ProjectActionRun[]>;
+  publish(runs: ProjectActionRun[]): void;
+  error(error: unknown): void;
+}, interval = 750): () => void {
+  let disposed = false;
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  async function poll(): Promise<void> {
+    try {
+      const runs = await ports.read();
+      if (!disposed) ports.publish(runs);
+    } catch (error) {
+      if (!disposed) ports.error(error);
+    } finally {
+      if (!disposed) timer = setTimeout(() => void poll(), interval);
+    }
+  }
+  void poll();
+  return () => { disposed = true; clearTimeout(timer); };
+}

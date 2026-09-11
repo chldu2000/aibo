@@ -1,0 +1,22 @@
+{
+  "ok": true,
+  "results": [
+    {
+      "kit": "shadcn",
+      "runId": "01M28XE5FFFE2BSSSPP49FTTW1",
+      "status": "outcome_unknown",
+      "stopButton": true,
+      "history": true
+    },
+    {
+      "kit": "material3",
+      "runId": "01M28XE5JVW061TPBAT1BF43X4",
+      "status": "outcome_unknown",
+      "stopButton": true,
+      "history": true
+    }
+  ],
+  "platform": "darwin",
+  "earlierEffectsPreserved": true,
+  "descendantEffectsStopped": true
+}
