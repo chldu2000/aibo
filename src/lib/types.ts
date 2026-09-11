@@ -434,14 +434,16 @@ export interface ProjectAction {
 
 export interface WorkspaceWriteRun {
   cancelRequestedAt?: string | null;
-  schema: 'aibo.workspace-write-run/v1';
+  schema: 'aibo.workspace-write-run/v1' | 'aibo.workspace-write-run/v2';
   id: string;
   requestId?: string | null;
   callerWindow?: string | null;
   workspaceId: string;
   operation: string;
-  status: 'running' | 'completed' | 'failed' | 'outcome_unknown';
-  snapshot: { schema: 'aibo.workspace-write-intent/v1'; origin: 'host'; workspaceId: string; workspacePath: string; operation: string; input: Record<string, unknown> };
+  status: 'awaiting_approval' | 'rejected' | 'running' | 'completed' | 'failed' | 'outcome_unknown';
+  approvalOutcome?: 'approved' | 'denied' | 'cancelled' | 'expired' | 'stale' | 'unavailable' | 'recovered' | null;
+  approvalDecidedAt?: string | null;
+  snapshot: { schema: 'aibo.workspace-write-intent/v1'; origin: 'host'; workspaceId: string; workspacePath: string; operation: string; input: Record<string, unknown>; approvalContext?: Record<string, unknown> | null };
   result: { ok: true; output: unknown } | { ok: false; error: { code: string; message: string } } | null;
   startedAt: string;
   completedAt: string | null;

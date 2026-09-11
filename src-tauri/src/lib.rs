@@ -2,6 +2,7 @@ mod compatibility;
 mod project_actions;
 mod controlled_process;
 mod workspace_git;
+mod workspace_git_approval;
 mod workspace_writes;
 mod workspace_write_runs;
 use workspace_git::apply_git_index_action;
@@ -3176,7 +3177,7 @@ async fn apply_workspace_git_file_action(
     window: tauri::WebviewWindow,
     state: State<'_, AppState>,
 ) -> Result<GitFileActionResult, CoreError> {
-    let request = workspace_write_runs::Request::new(request_id, window.label().into());
+    let request = git_write_request(request_id, window);
     workspace_git::apply_workspace_git_file_action_requested(&state.db, workspace_id, path, action, &request).await
 }
 
@@ -3188,7 +3189,7 @@ async fn apply_workspace_git_action(
     window: tauri::WebviewWindow,
     state: State<'_, AppState>,
 ) -> Result<GitWorkspaceActionResult, CoreError> {
-    let request = workspace_write_runs::Request::new(request_id, window.label().into());
+    let request = git_write_request(request_id, window);
     workspace_git::apply_workspace_git_action_requested(&state.db, workspace_id, action, &request).await
 }
 
@@ -3200,7 +3201,7 @@ async fn commit_workspace_changes(
     window: tauri::WebviewWindow,
     state: State<'_, AppState>,
 ) -> Result<GitCommitResult, CoreError> {
-    let request = workspace_write_runs::Request::new(request_id, window.label().into());
+    let request = git_write_request(request_id, window);
     workspace_git::commit_workspace_changes_requested(&state.db, workspace_id, message, &request).await
 }
 
@@ -3220,7 +3221,7 @@ async fn checkout_workspace_git_branch(
     window: tauri::WebviewWindow,
     state: State<'_, AppState>,
 ) -> Result<GitWorkspaceActionResult, CoreError> {
-    let request = workspace_write_runs::Request::new(request_id, window.label().into());
+    let request = git_write_request(request_id, window);
     workspace_git::checkout_workspace_git_branch_requested(&state.db, workspace_id, branch, &request).await
 }
 
@@ -3232,7 +3233,7 @@ async fn create_workspace_git_branch(
     window: tauri::WebviewWindow,
     state: State<'_, AppState>,
 ) -> Result<GitWorkspaceActionResult, CoreError> {
-    let request = workspace_write_runs::Request::new(request_id, window.label().into());
+    let request = git_write_request(request_id, window);
     workspace_git::create_workspace_git_branch_requested(&state.db, workspace_id, branch, &request).await
 }
 
@@ -3282,7 +3283,7 @@ async fn sync_workspace_git(
     window: tauri::WebviewWindow,
     state: State<'_, AppState>,
 ) -> Result<GitWorkspaceActionResult, CoreError> {
-    let request = workspace_write_runs::Request::new(request_id, window.label().into());
+    let request = git_write_request(request_id, window);
     workspace_git::sync_workspace_git_requested(&state.db, workspace_id, action, &request).await
 }
 
@@ -3302,7 +3303,7 @@ async fn apply_workspace_git_stash(
     window: tauri::WebviewWindow,
     state: State<'_, AppState>,
 ) -> Result<GitWorkspaceActionResult, CoreError> {
-    let request = workspace_write_runs::Request::new(request_id, window.label().into());
+    let request = git_write_request(request_id, window);
     workspace_git::apply_workspace_git_stash_requested(&state.db, workspace_id, reference, &request).await
 }
 
@@ -3314,7 +3315,7 @@ async fn stash_workspace_git(
     window: tauri::WebviewWindow,
     state: State<'_, AppState>,
 ) -> Result<GitWorkspaceActionResult, CoreError> {
-    let request = workspace_write_runs::Request::new(request_id, window.label().into());
+    let request = git_write_request(request_id, window);
     workspace_git::stash_workspace_git_requested(&state.db, workspace_id, message, &request).await
 }
 
@@ -3409,7 +3410,7 @@ async fn apply_git_file_action(
             message: "已恢复到本轮开始前的文件内容".to_owned(),
         });
     }
-    let request = workspace_write_runs::Request::new(request_id, window.label().into());
+    let request = git_write_request(request_id, window);
     workspace_write_runs::execute_requested(&state.db, &workspace, "git.index", serde_json::json!({"path":path,"action":action,"sessionId":session_id,"turnId":turn_id}), &request,
         |cancel| apply_git_index_action(&workspace.path, &path, &action, Some(cancel))).await
 }
@@ -3782,6 +3783,20 @@ async fn cancel_project_action(
     workspace_id: String, run_id: String, state: State<'_, AppState>,
 ) -> Result<bool, CoreError> {
     project_actions::cancel_project_action(&state.db, workspace_id, run_id).await
+}
+
+fn git_write_request(request_id: String, window: tauri::WebviewWindow) -> workspace_write_runs::Request {
+    use tauri_plugin_dialog::{DialogExt, MessageDialogButtons};
+    workspace_write_runs::Request::with_confirmation(request_id, window.label().into(), move |message| {
+        let window = window.clone();
+        async move {
+            let (send, receive) = tokio::sync::oneshot::channel();
+            window.app_handle().dialog().message(message).parent(&window).title("Aibo · 确认 Git 写入")
+                .buttons(MessageDialogButtons::OkCancelCustom("允许本次执行".into(), "取消".into()))
+                .show(move |accepted| { let _ = send.send(accepted); });
+            receive.await.map_err(|_| "confirmation_unavailable".to_owned())
+        }
+    })
 }
 
 #[tauri::command]

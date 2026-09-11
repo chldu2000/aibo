@@ -14,6 +14,15 @@ try {
   const { workspacePath } = await (await fetch('/__task_config')).json();
   const workspace = await invoke('add_workspace', { path: workspacePath });
   await invoke('set_workspace_trust', { workspaceId: workspace.id, trusted: true });
+  await fetch('/__task_approval', { method: 'POST', body: JSON.stringify({ marker: 'git.index-all', decision: '取消', kind: 'git' }) });
+  let gitDenied = false;
+  try { await invoke('apply_workspace_git_action', { workspaceId: workspace.id, action: 'stage_all', requestId: 'native-git-denied' }); }
+  catch (error) { gitDenied = error.code === 'approval_rejected'; }
+  const deniedWrites = await invoke('list_workspace_write_runs', { workspaceId: workspace.id });
+  if (!gitDenied || deniedWrites.length !== 1 || deniedWrites[0].status !== 'rejected' || deniedWrites[0].approvalOutcome !== 'denied') throw Error('Native Git denial was not persisted');
+  // The outer runner also checks the real index before approving the next request.
+  await fetch('/__git_denial_check');
+  await fetch('/__task_approval', { method: 'POST', body: JSON.stringify({ marker: 'git.index-all', decision: '允许本次执行', kind: 'git' }) });
   const staged = await invoke('apply_workspace_git_action', { workspaceId: workspace.id, action: 'stage_all', requestId: 'native-stage' });
   if (!staged.applied) throw Error('Native Git staging failed');
   const stagedAgain = await invoke('apply_workspace_git_action', { workspaceId: workspace.id, action: 'stage_all', requestId: 'native-stage' });
@@ -24,9 +33,9 @@ try {
   if (!changedInputRejected || !missingIdRejected) throw Error('Native write request identity was not enforced');
 
   const writeRuns = await invoke('list_workspace_write_runs', { workspaceId: workspace.id });
-  const writeRun = writeRuns.find(run => run.operation === 'git.index-all');
-  if (writeRuns.length !== 1 || writeRun?.requestId !== 'native-stage' || writeRun?.callerWindow !== 'main') throw Error('Native duplicate created a new run or lost host caller identity');
-  if (!writeRun || writeRun.schema !== 'aibo.workspace-write-run/v1' || writeRun.status !== 'completed' || writeRun.snapshot.input.action !== 'stage_all' || !writeRun.result?.output.applied || !writeRun.completedAt) throw Error('Native write history does not match the completed operation');
+  const writeRun = writeRuns.find(run => run.requestId === 'native-stage');
+  if (writeRuns.length !== 2 || writeRun?.requestId !== 'native-stage' || writeRun?.callerWindow !== 'main') throw Error('Native duplicate created a new run or lost host caller identity');
+  if (!writeRun || writeRun.schema !== 'aibo.workspace-write-run/v2' || writeRun.approvalOutcome !== 'approved' || !writeRun.approvalDecidedAt || writeRun.status !== 'completed' || writeRun.snapshot.input.action !== 'stage_all' || !writeRun.result?.output.applied || !writeRun.completedAt) throw Error('Native write history does not match the completed operation');
 
   const deniedAction = await invoke('save_project_action', { workspaceId: workspace.id, name: 'Deny task', kind: 'test', program: '/bin/sh', args: ['-c', 'touch denied-effect'], enabled: true });
   await fetch('/__task_approval', { method: 'POST', body: JSON.stringify({ marker: 'Deny task', decision: '取消' }) });
@@ -64,5 +73,5 @@ try {
     await invoke('set_workspace_trust', { workspaceId: workspace.id, trusted: true });
   }
   await pause(2200);
-  await report({ ok: true, results, denialPreventedExecution: true, workspaceWriteHistory: true, duplicateWriteReused: true, writeRunId: writeRun.id });
+  await report({ ok: true, results, denialPreventedExecution: true, gitDenialPreventedExecution: true, workspaceWriteHistory: true, duplicateWriteReused: true, writeRunId: writeRun.id });
 } catch (error) { await report({ ok: false, error: String(error) }); }

@@ -28,8 +28,8 @@ const server = await createServer({ server: { host: '127.0.0.1', port: 0, hmr: f
   server.middlewares.use('/__task_approval', (req, res) => {
     let body = ''; req.on('data', chunk => body += chunk); req.on('end', () => {
       try {
-        const { marker, decision } = JSON.parse(body);
-        const helper = spawn('swift', ['probes/native-dialog-click.swift', String(isolatedPid()), marker, decision, '确认工程动作'], { stdio: ['ignore', 'pipe', 'pipe'] });
+        const { marker, decision, kind } = JSON.parse(body);
+        const helper = spawn('swift', ['probes/native-dialog-click.swift', String(isolatedPid()), marker, decision, kind === 'git' ? '确认 Git 写入' : '确认工程动作'], { stdio: ['ignore', 'pipe', 'pipe'] });
         helpers.add(helper); helper.on('exit', () => helpers.delete(helper));
         const clicked = new Promise((resolve, reject) => {
           let output = ''; helper.stdout.on('data', data => output += data); helper.stderr.on('data', data => output += data);
@@ -38,6 +38,13 @@ const server = await createServer({ server: { host: '127.0.0.1', port: 0, hmr: f
         clicks.push(clicked); clicked.catch(error => finish({ ok: false, error: String(error) })); res.end('ok');
       } catch (error) { res.statusCode = 500; res.end(String(error)); finish({ ok: false, error: String(error) }); }
     });
+  });
+  server.middlewares.use('/__git_denial_check', (_req, res) => {
+    try {
+      const index = execFileSync('git', ['-C', workspacePath, 'ls-files'], { encoding: 'utf8' });
+      if (index.trim()) throw Error('Denied Git request changed the index');
+      res.end('ok');
+    } catch (error) { res.statusCode = 500; res.end(String(error)); finish({ ok: false, error: String(error) }); }
   });
   server.middlewares.use('/__task_config', (_req, res) => { res.setHeader('Content-Type', 'application/json'); res.end(JSON.stringify({ workspacePath })); });
   server.middlewares.use('/__task_started', (_req, res) => { readdir(workspacePath).then(files => res.end(JSON.stringify(files)), error => { res.statusCode = 500; res.end(String(error)); }); });
@@ -54,7 +61,7 @@ try {
   const staged = execFileSync('git', ['-C', workspacePath, 'diff', '--cached', '--name-only'], { encoding: 'utf8' }).trim();
   if (!result.workspaceWriteHistory || staged !== 'ledger-proof.txt') throw Error('Native durable Git write verification failed');
   const nativeClicks = await Promise.all(clicks);
-  if (nativeClicks.length !== 3 || !result.denialPreventedExecution) throw Error('Native denial and both approvals must be verified');
+  if (nativeClicks.length !== 5 || !result.denialPreventedExecution || !result.gitDenialPreventedExecution) throw Error('Native denial and both approvals must be verified');
   const files = await readdir(workspacePath);
   if (files.includes('denied-effect')) throw Error('Denied task executed');
   for (const kit of ['shadcn', 'material3']) {
