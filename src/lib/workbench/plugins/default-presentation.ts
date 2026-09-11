@@ -16,3 +16,11 @@ export function preflightDefaultPresentation(layout: string): asserts layout is 
   validateRenderer(defaultPresentation);
   if (!defaultLayouts.some(candidate => candidate === layout)) throw Error('incompatible_renderer: unknown layout');
 }
+
+/** Ordered slots belong to the trusted presentation; host data and callbacks do not. */
+export const workbenchSlots = ['navigation', 'navigationResize', 'content', 'auxiliaryResize', 'auxiliary'] as const;
+export type WorkbenchSlot = typeof workbenchSlots[number];
+export function defaultWorkbenchSlots(layout: string): readonly WorkbenchSlot[] {
+  preflightDefaultPresentation(layout);
+  return layout === 'focus' ? ['content'] : workbenchSlots;
+}

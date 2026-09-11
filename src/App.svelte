@@ -3173,14 +3173,8 @@
     />
     </div>
   {/if}
-<WorkbenchPresentation suspended={pluginsOpen || historyOpen || sessionHistoryOpen || capabilityHistoryOpen} windowId={presentationWindowId()} snapshot={{ workspaceId: selectedWorkspaceId, sessionId: selectedSessionId, draft: composerText, navigation: sidePanelView, timelineRevision: timeline.length }}>
-{#snippet children(guard)}
-  <main
-    bind:this={workspaceGridElement}
-    class:inspector-hidden={!inspectorOpen}
-    class="workspace-grid"
-    style={`--workspace-sidebar-width: ${workspaceSidebarWidth}px; --workspace-inspector-width: ${inspectorWidth}px`}
-  >
+<WorkbenchPresentation bind:gridElement={workspaceGridElement} navigationWidth={workspaceSidebarWidth} auxiliaryWidth={inspectorWidth} auxiliaryOpen={sidePanelOpen} suspended={pluginsOpen || historyOpen || sessionHistoryOpen || capabilityHistoryOpen} windowId={presentationWindowId()} snapshot={{ workspaceId: selectedWorkspaceId, sessionId: selectedSessionId, draft: composerText, navigation: sidePanelView, timelineRevision: timeline.length }}>
+{#snippet navigation(guard)}
     <WorkspaceSidebar
       workspaces={workspaceItems}
       sessionsByWorkspace={sessionItemsByWorkspace}
@@ -3230,12 +3224,16 @@
       onSaveSessionRename={guard('onSaveSessionRename', () => void saveSessionRename())}
       onCancelRenameSession={guard('onCancelRenameSession', cancelRenameSession)}
     />
+{/snippet}
+{#snippet navigationResize(guard)}
     <ColumnSplitter
       label="调整工作区与会话宽度"
       width={workspaceSidebarWidth}
       onPointerDown={guard('onPointerDown', (event) => beginColumnResize('workspace', event))}
       onKeyDown={guard('onKeyDown', (event) => handleSplitterKeydown('workspace', event))}
     />
+{/snippet}
+{#snippet content(guard)}
     {#if installedTool && contributionAvailable(installedTool)}
       {#key JSON.stringify([installedScope,installedTool.installationId,installedTool.contributionId])}
         {#await loadInstalledWorkbench() then workbench}
@@ -3306,6 +3304,8 @@
       onCompact={guard('onCompact', () => void compactCurrentSession())}
     />
     {/if}
+{/snippet}
+{#snippet auxiliaryResize(guard)}
     {#if sidePanelOpen}
       <ColumnSplitter
         label="调整会话与侧边栏宽度"
@@ -3313,6 +3313,10 @@
         onPointerDown={guard('onPointerDown', (event) => beginColumnResize('inspector', event))}
         onKeyDown={guard('onKeyDown', (event) => handleSplitterKeydown('inspector', event))}
       />
+    {/if}
+{/snippet}
+{#snippet auxiliary(guard)}
+    {#if sidePanelOpen}
       {#if sidePanelView === 'context'}
       <Inspector
       visible={true}
@@ -3433,8 +3437,8 @@
         {/key}
       {/if}
     {/if}
-  </main>
-
+{/snippet}
+{#snippet overlays(guard)}
   <CommandPalette
     open={commandPaletteOpen}
     commands={commandPaletteCommands}

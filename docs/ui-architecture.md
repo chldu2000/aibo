@@ -196,12 +196,12 @@ P3 第五批通过 `InstalledWorkbench` 和纯数据端口接入已安装语义�
 
 [ADR-0007](./adr/0007-presentation-core-and-fallback.md)将必需核心语义与可选专业呈现分开。renderer-contract.ts 只包含纯数据描述；app/renderer-negotiation.ts 验证描述符并选择专业呈现或相同数据的核心视图。当前默认呈现通过可信构建模块登记，工作台和语义视图均在预检时验证合同；没有新增任意代码加载通道或 UiKitAdapter optional 成员。
 
-workbench 的架构检查递归覆盖子目录，包括 plugins 中的可信呈现模块；新目录不能绕过皮肤隔离、纯布局 CSS 或 API 依赖限制。正式专业呈现和完整槽位布局仍需后续验收。
+workbench 的架构检查递归覆盖子目录，包括 plugins 中的可信呈现模块；新目录不能绕过皮肤隔离、纯布局 CSS 或 API 依赖限制。工作台已改为命名槽位装配；正式专业呈现和完整布局退出矩阵仍需后续验收。
 
 ### P4：宿主区域与呈现实例边界
 
 `App.svelte` 直接持有窗口标题栏、插件管理、执行历史、会话历史、插件调用历史、设置和诊断；这些组件位于
-`WorkbenchPresentation` 的 children snippet 之外，不随 renderer generation 销毁。
+`WorkbenchPresentation` 的命名槽位之外，不随 renderer generation 销毁。
 插件管理打开时仅隐藏工作台内容，恢复控件仍可访问；关闭管理后显示同一工作台。
 插件管理操作通过宿主上下文门检查工作区和会话，窗口控制不依赖呈现实例授权。
 呈现内部的回调与可写绑定继续通过 generation gate。架构测试分别验证两种边界，
@@ -227,3 +227,11 @@ PluginView 的宿主读取接口返回 `{ document, version: { generationId, rev
 PluginView 的非 never 确认使用宿主原生对话框，并以 Tauri 注入的调用者窗口为
 父窗口；插件不能指定其他窗口或提交已确认标志。macOS 原生取消/批准已通过
 隔离进程的真实按钮自动化验收，结果见 P4 实施记录。
+
+### P4：工作台槽位合同
+
+`WorkbenchPresentation` 的 renderer 本地接口接收 `navigation`、`navigationResize`、必需的 `content`、`auxiliaryResize`、`auxiliary` 和 `overlays` snippets。这些 Svelte 类型只存在于可信 renderer 实现，纯数据 presentation/capability 协议不导出它们。App 提供数据绑定与经 guard 包装的操作，不再提供整个工作台 main 或决定区域顺序。
+
+可信默认呈现模块拥有区域顺序：standard 装配可用区域，focus 仅装配 content；overlays 独立于列顺序。宿主传入宽度偏好和辅助区域开启状态，呈现模块根据实际存在的槽位计算列布局，不依赖业务组件类名选择器隐藏区域。所有槽位随呈现代际一起释放，宿主管理、审批与恢复控件继续位于外部。
+
+架构测试枚举所有六个 App 槽位并检查回调和可写绑定的 generation guard，保留原有宿主区域检查。新增槽位必须同时更新接口和测试覆盖，不能通过恢复不透明 children 包装绕过边界。

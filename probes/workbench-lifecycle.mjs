@@ -29,7 +29,20 @@ try{
  await page.evaluate(()=>window.lifecycleProbe.select('a'));
  await page.waitForFunction(()=>document.querySelector('label input')?.value==='PLUGIN_DRAFT');
  await page.waitForFunction(before=>window.lifecycleProbe.state().chunks>before,before.chunks);
+ for (const kit of ['shadcn', 'material3']) {
+  await page.evaluate(kit => window.lifecycleProbe.kit(kit), kit);
+  await page.evaluate(() => window.lifecycleProbe.switch('standard'));
+  await page.getByRole('complementary', {name:'槽位导航'}).waitFor();
+  await page.getByRole('complementary', {name:'槽位辅助'}).waitFor();
+  await page.evaluate(() => window.lifecycleProbe.switch('focus'));
+  assert.equal(await page.getByRole('complementary', {name:'槽位导航'}).count(), 0);
+  assert.equal(await page.getByRole('complementary', {name:'槽位辅助'}).count(), 0);
+  assert.equal(await page.getByRole('textbox', {name:'草稿', exact:true}).inputValue(), 'DRAFT_DURING_STREAM');
+  await page.getByRole('button', {name:'浮层操作'}).click();
+  await page.getByRole('button', {name:'恢复默认呈现', exact:true}).click();
+  await page.getByRole('complementary', {name:'槽位导航'}).waitFor();
+ }
  assert.deepEqual(errors,[]);
- const result={pluginFormSurvivesRemount:true,pluginFormSessionIsolation:true,failedMountFallback:true,streamContinues:true,draft:true,semanticFocus:true,oldGenerationRejected:true,oldSessionRejected:true,currentActions:true};
+ const result={namedSlotsBothSkins:true,focusOmitsNavigationAndAuxiliary:true,overlaysReachable:true,pluginFormSurvivesRemount:true,pluginFormSessionIsolation:true,failedMountFallback:true,streamContinues:true,draft:true,semanticFocus:true,oldGenerationRejected:true,oldSessionRejected:true,currentActions:true};
  await writeFile('/tmp/aibo-p2-workbench-lifecycle.json',JSON.stringify(result,null,2)+'\n');console.log(result);
 }finally{await browser.close();await server.close();}

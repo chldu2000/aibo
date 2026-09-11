@@ -1,21 +1,35 @@
 <script lang="ts">
   import { onMount, tick, untrack, type Snippet } from 'svelte';
   import { Button, Card } from '$lib/ui-kit';
-  import { preflightDefaultPresentation } from './plugins/default-presentation';
+  import { preflightDefaultPresentation, defaultWorkbenchSlots } from './plugins/default-presentation';
   import { createPresentationController, type Renderer } from '../app/presentation-controller';
   import type { WorkbenchSnapshot, WorkbenchAction } from '../presentation/workbench-contract';
-  let { snapshot, windowId, children, suspended = false }: {
+  type Guard = (id: string, callback: (...args: any[]) => any) => (...args: any[]) => any;
+  let { snapshot, windowId, navigation, navigationResize, content, auxiliaryResize, auxiliary, overlays,
+    gridElement = $bindable(null), navigationWidth = 260, auxiliaryWidth = 320, auxiliaryOpen = true, suspended = false }: {
     snapshot: WorkbenchSnapshot;
     windowId: string;
     suspended?: boolean;
-    children: Snippet<[(id: string, callback: (...args: any[]) => any) => (...args: any[]) => any]>;
+    navigation?: Snippet<[Guard]>;
+    navigationResize?: Snippet<[Guard]>;
+    content: Snippet<[Guard]>;
+    auxiliaryResize?: Snippet<[Guard]>;
+    auxiliary?: Snippet<[Guard]>;
+    overlays?: Snippet<[Guard]>;
+    gridElement?: HTMLElement | null;
+    navigationWidth?: number;
+    auxiliaryWidth?: number;
+    auxiliaryOpen?: boolean;
   } = $props();
+  const slots = $derived({ navigation, navigationResize, content, auxiliaryResize, auxiliary });
   let target: HTMLDivElement;
   let host = $state<ReturnType<typeof createPresentationController<WorkbenchSnapshot, WorkbenchAction>> | null>(null);
   let failure = $state('');
   let switching = $state(false);
   let switchTicket = 0;
   let instance = $state<{ generation: number; layout: string; guard: (id: string, callback: (...args: any[]) => any) => (...args: any[]) => any } | null>(null);
+  const visibleSlots = $derived(instance ? defaultWorkbenchSlots(instance.layout).filter(slot => slots[slot] && (auxiliaryOpen || (slot !== 'auxiliary' && slot !== 'auxiliaryResize'))) : []);
+  const columns = $derived(visibleSlots.map(slot => slot === 'content' ? 'minmax(0, 1fr)' : slot === 'navigation' ? `minmax(0, ${navigationWidth}px)` : slot === 'auxiliary' ? `minmax(0, ${auxiliaryWidth}px)` : '14px').join(' '));
   const storageKey = $derived(`aibo.workbench-presentation.v1.${encodeURIComponent(windowId)}`);
   let focus = $state<string | null>(null);
   let allowedActions = new Set<string>();
@@ -112,11 +126,16 @@
   {#if failure}<Card><p role="alert">呈现错误：{failure}</p></Card>{/if}
 </div>
 <div bind:this={target} onfocusin={rememberFocus} class="workbench-presentation" data-presentation-focus-target={focus} data-presentation-layout={instance?.layout} data-presentation-generation={instance?.generation} inert={switching || suspended} aria-busy={switching} style:display={suspended ? 'none' : 'flex'}>
-  {#if instance}{#key instance.generation}{@render children(instance.guard)}{/key}{/if}
+  {#if instance}{#key instance.generation}
+      <main bind:this={gridElement} class="workspace-grid" class:inspector-hidden={!auxiliaryOpen} style:grid-template-columns={columns} style={`--workspace-sidebar-width: ${navigationWidth}px; --workspace-inspector-width: ${auxiliaryWidth}px`}>
+        {#each visibleSlots as slot (slot)}
+          {@render slots[slot]?.(instance.guard)}
+        {/each}
+      </main>
+      {@render overlays?.(instance.guard)}
+  {/key}{/if}
 </div>
 <style>
   .presentation-controls { display: flex; flex-wrap: wrap; align-self: flex-end; flex-shrink: 0; order: 1; }
   .workbench-presentation { order: 2; display: flex; flex-direction: column; flex: 1; min-width: 0; min-height: 0; }
-  .workbench-presentation[data-presentation-layout='focus'] :global(.workspace-grid) { grid-template-columns: minmax(0, 1fr); }
-  .workbench-presentation[data-presentation-layout='focus'] :global(.workspace-grid > :not(.timeline):not(.plugin-workspace)) { display: none; }
 </style>

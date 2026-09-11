@@ -11,6 +11,8 @@ test('workbench callbacks and writable bindings cross the generation gate', asyn
   const hostComponents = new Set(['WindowTitlebar', 'SettingsPanel', 'DiagnosticsPanel', 'PluginWorkspacePanel', 'ExecutionHistoryPanel', 'SessionHistoryPanel', 'CapabilityHistoryPanel']);
   const foundHost = new Set();
   let hostApprovalRegion = false;
+  const slots = new Set(['navigation', 'navigationResize', 'content', 'auxiliaryResize', 'auxiliary', 'overlays']);
+  const foundSlots = new Set();
   function visit(node, inside = false) {
     if (!node || typeof node !== 'object') return;
     if (node.type === 'RegularElement' && node.attributes?.some(attribute => attribute.name === 'aria-label' && attribute.value?.[0]?.data === '宿主审批')) {
@@ -32,7 +34,7 @@ test('workbench callbacks and writable bindings cross the generation gate', asyn
         hostCallbacks++;
       }
     }
-    if (node.type === 'SnippetBlock' && node.expression?.name === 'children') inside = true;
+    if (node.type === 'SnippetBlock' && slots.has(node.expression?.name)) { inside = true; foundSlots.add(node.expression.name); }
     if (inside && node.type === 'Attribute' && /^on[A-Z]/.test(node.name) && node.value?.expression) {
       assert.equal(node.value.expression.type, 'CallExpression', node.name);
       assert.equal(node.value.expression.callee.name, 'guard', node.name);
@@ -49,6 +51,7 @@ test('workbench callbacks and writable bindings cross the generation gate', asyn
     }
   }
   visit(tree.fragment);
+  assert.deepEqual(foundSlots, slots, 'all named workbench slots retain generation guards');
   assert.equal(hostApprovalRegion, true);
   assert.deepEqual(foundHost, hostComponents);
   const timeline = await readFile('src/lib/components/app/TimelinePanel.svelte', 'utf8');
