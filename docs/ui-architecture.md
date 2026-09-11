@@ -232,7 +232,7 @@ PluginView 的非 never 确认使用宿主原生对话框，并以 Tauri 注入�
 
 `WorkbenchPresentation` 的 renderer 本地接口接收 `navigation`、`navigationResize`、必需的 `content`、`auxiliaryResize`、`auxiliary` 和 `overlays` snippets。这些 Svelte 类型只存在于可信 renderer 实现，纯数据 presentation/capability 协议不导出它们。App 提供数据绑定与经 guard 包装的操作，不再提供整个工作台 main 或决定区域顺序。
 
-可信默认呈现模块拥有区域顺序：standard 装配可用区域，focus 仅装配 content；overlays 独立于列顺序。宿主传入宽度偏好和辅助区域开启状态，呈现模块根据实际存在的槽位计算列布局，不依赖业务组件类名选择器隐藏区域。所有槽位随呈现代际一起释放，宿主管理、审批与恢复控件继续位于外部。
+可信默认呈现模块拥有区域顺序：standard 装配可用区域，focus 仅装配 content，review 将辅助区域移到左侧、导航移到右侧；overlays 独立于列顺序。宿主传入宽度偏好和辅助区域开启状态，呈现模块根据实际存在的槽位计算列布局，不依赖业务组件类名选择器隐藏区域。所有槽位随呈现代际一起释放，宿主管理、审批与恢复控件继续位于外部。
 
 架构测试枚举所有六个 App 槽位并检查回调和可写绑定的 generation guard，保留原有宿主区域检查。新增槽位必须同时更新接口和测试覆盖，不能通过恢复不透明 children 包装绕过边界。
 
@@ -243,3 +243,5 @@ PluginView 的非 never 确认使用宿主原生对话框，并以 Tauri 注入�
 现有 UiKitAdapter.SemanticView 的本地 props 增加语义选项 `detailPresentation: plain | numbered`，两套皮肤均通过各自 SemanticView 包装呈现。专业视图继续显示全部属性、状态、截断提示和原动作；行号为辅助视觉，屏幕阅读器不会将行号混入文本。安装视图允许切换到通用阅读，不改变快照、输入和宿主权限。
 
 专业视图最多生成 5,000 个文本行节点，首次挂载或更新超出限制时由呈现生命周期控制器回退到完整文本的核心视图，保留当前布局。限制只影响呈现方式，不截断底层内容。专业实现的限制与宿主快照大小限制分别验证。
+
+槽位第二参数提供 `growthDirection: 1 | -1`，表示分隔条向右移动时目标区域宽度的增长方向。方向由呈现中的实际顺序计算，App 的列宽偏好更新不再假定导航固定在左侧。布局重新挂载时宿主清理旧拖动监听，旧指针移动不能继续修改新布局。standard/focus/review 都可作为窗口级持久布局，独立恢复入口始终返回 standard。

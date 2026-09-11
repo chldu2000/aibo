@@ -1,0 +1,28 @@
+{
+  "results": [
+    {
+      "kit": "shadcn",
+      "actualApp": true,
+      "reordered": true,
+      "keyboardResize": true,
+      "pointerResize": true,
+      "bothResizeDirections": true,
+      "oldDragStopped": true,
+      "layoutPersisted": true,
+      "hostRecovery": true,
+      "reducedMotionRequested": true
+    },
+    {
+      "kit": "material3",
+      "actualApp": true,
+      "reordered": true,
+      "keyboardResize": true,
+      "pointerResize": true,
+      "bothResizeDirections": true,
+      "oldDragStopped": true,
+      "layoutPersisted": true,
+      "hostRecovery": true,
+      "reducedMotionRequested": true
+    }
+  ]
+}

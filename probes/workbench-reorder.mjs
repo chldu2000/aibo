@@ -1,0 +1,53 @@
+import assert from 'node:assert/strict';
+import { createServer } from 'vite';
+import { chromium } from 'playwright';
+import { writeFile } from 'node:fs/promises';
+const server = await createServer({server:{host:'127.0.0.1',port:0,hmr:false,watch:null}}); await server.listen();
+const browser = await chromium.launch({headless:true}); const results = [];
+try {
+  for (const kit of ['shadcn','material3']) {
+    const page = await browser.newPage({viewport:{width:1600,height:1000},reducedMotion:'reduce'}), errors = [];
+    page.on('pageerror', error => errors.push(error.message));
+    await page.goto(`http://127.0.0.1:${server.httpServer.address().port}`);
+    await page.evaluate(async kit => (await import('/src/lib/ui-kit/registry.ts')).setUiKit(kit), kit);
+    const navigation = page.locator('[data-ui-component="workspace-sidebar"]');
+    await navigation.waitFor();
+    const initial = await navigation.boundingBox();
+    await page.getByRole('button',{name:'交换工作台侧边区域',exact:true}).click();
+    await page.waitForFunction(() => document.querySelector('[data-presentation-layout]')?.dataset.presentationLayout === 'review');
+    assert.ok((await navigation.boundingBox()).x > initial.x + 400, 'navigation must actually move to the right');
+    let splitter = page.getByRole('button',{name:/调整工作区与会话宽度/});
+    const width = (await navigation.boundingBox()).width;
+    await splitter.focus(); await page.keyboard.press('ArrowLeft');
+    await page.waitForFunction(width => Math.abs(document.querySelector('[data-ui-component="workspace-sidebar"]').getBoundingClientRect().width - width - 16) < 1, width);
+    const box = await splitter.boundingBox();
+    await page.mouse.move(box.x + box.width/2, box.y + 20); await page.mouse.down();
+    await page.mouse.move(box.x + box.width/2 - 40, box.y + 20); await page.mouse.up();
+    assert.ok(Math.abs((await navigation.boundingBox()).width - width - 56) < 1, 'right navigation grows when separator moves left');
+    const auxiliary = page.locator('.workspace-grid > :first-child');
+    const auxiliaryWidth = (await auxiliary.boundingBox()).width;
+    const auxiliarySplitter = page.getByRole('button',{name:/调整会话与侧边栏宽度/});
+    await auxiliarySplitter.focus(); await page.keyboard.press('ArrowRight');
+    await page.waitForFunction(width => Math.abs(document.querySelector('.workspace-grid > :first-child').getBoundingClientRect().width - width - 16) < 1, auxiliaryWidth);
+    const auxiliaryBox = await auxiliarySplitter.boundingBox();
+    await page.mouse.move(auxiliaryBox.x + auxiliaryBox.width/2, auxiliaryBox.y + 20); await page.mouse.down();
+    await page.mouse.move(auxiliaryBox.x + auxiliaryBox.width/2 + 32, auxiliaryBox.y + 20); await page.mouse.up();
+    assert.ok(Math.abs((await auxiliary.boundingBox()).width - auxiliaryWidth - 48) < 1, 'left auxiliary grows when separator moves right');
+    const keptWidth = (await navigation.boundingBox()).width;
+    const current = await splitter.boundingBox();
+    await page.mouse.move(current.x + current.width/2, current.y + 20); await page.mouse.down();
+    await page.keyboard.press('Control+Shift+Backspace');
+    await page.waitForFunction(() => document.querySelector('[data-presentation-layout]')?.dataset.presentationLayout === 'standard');
+    await page.mouse.move(current.x - 80, current.y + 20); await page.mouse.up();
+    assert.ok(Math.abs((await navigation.boundingBox()).width - keptWidth) < 1, 'renderer disposal stops old drag');
+    await page.getByRole('button',{name:'交换工作台侧边区域',exact:true}).click();
+    await page.reload();
+    await page.waitForFunction(() => document.querySelector('[data-presentation-layout]')?.dataset.presentationLayout === 'review');
+    await page.getByRole('button',{name:'恢复默认呈现',exact:true}).click();
+    await page.waitForFunction(() => document.querySelector('[data-presentation-layout]')?.dataset.presentationLayout === 'standard');
+    assert.deepEqual(errors, []);
+    results.push({kit,actualApp:true,reordered:true,keyboardResize:true,pointerResize:true,bothResizeDirections:true,oldDragStopped:true,layoutPersisted:true,hostRecovery:true,reducedMotionRequested:true});
+    await page.close();
+  }
+  await writeFile('/tmp/aibo-p4-workbench-reorder.json',JSON.stringify({results},null,2)+'\n'); console.log(JSON.stringify({results}));
+} finally { await browser.close(); await server.close(); }

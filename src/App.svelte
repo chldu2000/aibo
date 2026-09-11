@@ -656,8 +656,10 @@
     target: ColumnResizeTarget;
     startX: number;
     startWidth: number;
+    growthDirection: 1 | -1;
   };
   let columnResizeState: ColumnResizeState | null = null;
+  $effect(() => { workspaceGridElement; untrack(endColumnResize); });
   const workspaceColumnMin = 180;
   const timelineColumnMin = 320;
   const inspectorColumnMin = 220;
@@ -706,7 +708,7 @@
   function maxColumnWidth(target: ColumnResizeTarget): number {
     const totalWidth = workspaceGridElement?.clientWidth ?? 0;
     const splitterWidth = splitterTrackWidth * (sidePanelOpen ? 2 : 1);
-    const otherColumnWidth = target === 'workspace' ? inspectorWidth : workspaceSidebarWidth;
+    const otherColumnWidth = target === 'workspace' ? (sidePanelOpen ? inspectorWidth : 0) : workspaceSidebarWidth;
     return totalWidth - splitterWidth - otherColumnWidth - timelineColumnMin;
   }
 
@@ -718,12 +720,13 @@
     }
   }
 
-  function beginColumnResize(target: ColumnResizeTarget, event: PointerEvent): void {
+  function beginColumnResize(target: ColumnResizeTarget, event: PointerEvent, growthDirection: 1 | -1): void {
     if (event.button !== 0 || !workspaceGridElement) return;
     event.preventDefault();
     columnResizeState = {
       target,
       startX: event.clientX,
+      growthDirection,
       startWidth: target === 'workspace' ? workspaceSidebarWidth : inspectorWidth,
     };
     window.addEventListener('pointermove', handleColumnResize);
@@ -735,9 +738,7 @@
     const state = columnResizeState;
     if (!state) return;
     const delta = event.clientX - state.startX;
-    const width = state.target === 'workspace'
-      ? state.startWidth + delta
-      : state.startWidth - delta;
+    const width = state.startWidth + delta * state.growthDirection;
     setColumnWidth(state.target, width);
   }
 
@@ -748,11 +749,11 @@
     window.removeEventListener('pointercancel', endColumnResize);
   }
 
-  function handleSplitterKeydown(target: ColumnResizeTarget, event: KeyboardEvent): void {
+  function handleSplitterKeydown(target: ColumnResizeTarget, event: KeyboardEvent, growthDirection: 1 | -1): void {
     if (event.key !== 'ArrowLeft' && event.key !== 'ArrowRight') return;
     event.preventDefault();
     const direction = event.key === 'ArrowRight' ? 1 : -1;
-    const delta = target === 'workspace' ? direction : -direction;
+    const delta = direction * growthDirection;
     const currentWidth = target === 'workspace' ? workspaceSidebarWidth : inspectorWidth;
     setColumnWidth(target, currentWidth + delta * 16);
   }
@@ -3225,12 +3226,12 @@
       onCancelRenameSession={guard('onCancelRenameSession', cancelRenameSession)}
     />
 {/snippet}
-{#snippet navigationResize(guard)}
+{#snippet navigationResize(guard, slot)}
     <ColumnSplitter
       label="调整工作区与会话宽度"
       width={workspaceSidebarWidth}
-      onPointerDown={guard('onPointerDown', (event) => beginColumnResize('workspace', event))}
-      onKeyDown={guard('onKeyDown', (event) => handleSplitterKeydown('workspace', event))}
+      onPointerDown={guard('onPointerDown', (event) => beginColumnResize('workspace', event, slot.growthDirection))}
+      onKeyDown={guard('onKeyDown', (event) => handleSplitterKeydown('workspace', event, slot.growthDirection))}
     />
 {/snippet}
 {#snippet content(guard)}
@@ -3305,13 +3306,13 @@
     />
     {/if}
 {/snippet}
-{#snippet auxiliaryResize(guard)}
+{#snippet auxiliaryResize(guard, slot)}
     {#if sidePanelOpen}
       <ColumnSplitter
         label="调整会话与侧边栏宽度"
         width={inspectorWidth}
-        onPointerDown={guard('onPointerDown', (event) => beginColumnResize('inspector', event))}
-        onKeyDown={guard('onKeyDown', (event) => handleSplitterKeydown('inspector', event))}
+        onPointerDown={guard('onPointerDown', (event) => beginColumnResize('inspector', event, slot.growthDirection))}
+        onKeyDown={guard('onKeyDown', (event) => handleSplitterKeydown('inspector', event, slot.growthDirection))}
       />
     {/if}
 {/snippet}

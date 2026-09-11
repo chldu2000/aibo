@@ -1,7 +1,7 @@
 <script lang="ts">
   import { onMount, tick, untrack, type Snippet } from 'svelte';
   import { Button, Card } from '$lib/ui-kit';
-  import { preflightDefaultPresentation, defaultWorkbenchSlots } from './plugins/default-presentation';
+  import { preflightDefaultPresentation, defaultWorkbenchSlots, defaultLayouts } from './plugins/default-presentation';
   import { createPresentationController, type Renderer } from '../app/presentation-controller';
   import type { WorkbenchSnapshot, WorkbenchAction } from '../presentation/workbench-contract';
   type Guard = (id: string, callback: (...args: any[]) => any) => (...args: any[]) => any;
@@ -10,12 +10,12 @@
     snapshot: WorkbenchSnapshot;
     windowId: string;
     suspended?: boolean;
-    navigation?: Snippet<[Guard]>;
-    navigationResize?: Snippet<[Guard]>;
-    content: Snippet<[Guard]>;
-    auxiliaryResize?: Snippet<[Guard]>;
-    auxiliary?: Snippet<[Guard]>;
-    overlays?: Snippet<[Guard]>;
+    navigation?: Snippet<[Guard, { growthDirection: 1 | -1 }]>;
+    navigationResize?: Snippet<[Guard, { growthDirection: 1 | -1 }]>;
+    content: Snippet<[Guard, { growthDirection: 1 | -1 }]>;
+    auxiliaryResize?: Snippet<[Guard, { growthDirection: 1 | -1 }]>;
+    auxiliary?: Snippet<[Guard, { growthDirection: 1 | -1 }]>;
+    overlays?: Snippet<[Guard, { growthDirection: 1 | -1 }]>;
     gridElement?: HTMLElement | null;
     navigationWidth?: number;
     auxiliaryWidth?: number;
@@ -111,7 +111,7 @@
       onAction() {}, onError: error => { failure = String(error); },
     });
     let layout = 'standard';
-    try { layout = localStorage.getItem(storageKey) === 'focus' ? 'focus' : 'standard'; } catch {}
+    try { const saved = localStorage.getItem(storageKey); layout = defaultLayouts.find(candidate => candidate === saved) ?? 'standard'; } catch {}
     void switchLayout(layout);
     const controller = host;
     return () => { window.removeEventListener('keydown', handleRecoveryKey, true); void controller.dispose(); };
@@ -122,6 +122,7 @@
 </script>
 <div class="presentation-controls">
   <Button variant="ghost" onclick={() => switchLayout(instance?.layout === 'focus' ? 'standard' : 'focus')} disabled={switching} aria-label="切换工作台呈现">{instance?.layout === 'focus' ? '恢复标准工作台' : '专注会话'}</Button>
+  <Button variant="ghost" onclick={() => switchLayout(instance?.layout === 'review' ? 'standard' : 'review')} disabled={switching} aria-label="交换工作台侧边区域">{instance?.layout === 'review' ? '导航移到左侧' : '导航移到右侧'}</Button>
   <Button variant="ghost" onclick={restoreDefault} aria-label="恢复默认呈现" aria-keyshortcuts="Control+Shift+Backspace Meta+Shift+Backspace">恢复默认呈现</Button>
   {#if failure}<Card><p role="alert">呈现错误：{failure}</p></Card>{/if}
 </div>
@@ -129,10 +130,10 @@
   {#if instance}{#key instance.generation}
       <main bind:this={gridElement} class="workspace-grid" class:inspector-hidden={!auxiliaryOpen} style:grid-template-columns={columns} style={`--workspace-sidebar-width: ${navigationWidth}px; --workspace-inspector-width: ${auxiliaryWidth}px`}>
         {#each visibleSlots as slot (slot)}
-          {@render slots[slot]?.(instance.guard)}
+          {@render slots[slot]?.(instance.guard, { growthDirection: visibleSlots.indexOf(slot) < visibleSlots.indexOf('content') ? 1 : -1 })}
         {/each}
       </main>
-      {@render overlays?.(instance.guard)}
+      {@render overlays?.(instance.guard, { growthDirection: 1 })}
   {/key}{/if}
 </div>
 <style>
