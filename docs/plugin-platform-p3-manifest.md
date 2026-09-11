@@ -8,7 +8,7 @@
 
 v2 包可以通过现有本地安装入口登记、列出、卸载及重新安装。纯声明式包不需要执行文件；包含 Agent 或 capabilityProvider 时必须提供实际存在的 entrypoint 和 runtime 协议范围。安装不创建 Agent session，不启动包进程。本地可执行依赖仍使用原有有界版本检查。
 
-第一批对全部 v2 拒绝激活；第二批已允许不含包依赖的只读 capabilityProvider 通过实验协议 2.0 运行。尚未支持的 Agent、语义视图、presentation、包依赖或写入操作继续显示激活原因并禁用启用按钮。Agent Host 仍拒绝将任何 v2 包送入 v1 runtime；直接调用 IPC 也不能绕过此限制。
+第一批对全部 v2 拒绝激活；第二批已允许只读 capabilityProvider 通过实验协议 2.0 运行，第三批补齐[包依赖解析与固定](./plugin-platform-p3-dependencies.md)。尚未支持的 Agent、语义视图、presentation 或写入操作继续显示激活原因并禁用启用按钮。Agent Host 仍拒绝将任何 v2 包送入 v1 runtime；直接调用 IPC 也不能绕过此限制。
 
 ## 字段和决定
 
@@ -26,7 +26,7 @@ v2 包可以通过现有本地安装入口登记、列出、卸载及重新安�
 
 贡献与 operation ID 必须属于声明插件；`aibo.*` 为宿主保留的命名空间，v2 插件不得占用。新 capabilityProvider 在本插件命名空间定义能力合同，不能伪造宿主核心合同；跨插件合同实现和稳定核心能力目录将在 Broker 合同中明确。核心语义类型固定为 collection/detail/settings/inspector，枚举名称登记不等于 settings/inspector 数据及交互合同已实现。
 
-版本必须可解析，区间不能为空；拒绝重复贡献/operation、包自身依赖、重复依赖及指向不存在本地贡献的依赖。必需依赖环和 release 固定属于 P3.2，当前不宣称已解析依赖图。
+版本必须可解析，区间不能为空；拒绝重复贡献/operation、包自身依赖、重复依赖及指向不存在本地贡献的依赖。第三批已实现必需依赖环检测、可选贡献降级和 release 固定，详见依赖实施记录。
 
 ## 限额与 schema 安全边界
 

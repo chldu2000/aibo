@@ -8,9 +8,10 @@ ajv.addFormat('uri', value => { try { return Boolean(new URL(value).protocol); }
 const validate = ajv.compile(await read('../contracts/plugin-manifest.v2.schema.json'));
 const view = await read('../fixtures/plugins/platform-v2/declarative.json');
 const provider = await read('../fixtures/plugins/platform-v2/provider.json');
+const dependent = await read('../fixtures/plugins/platform-v2/dependent.json');
 
 test('v2 structural schema admits declarative and executable contributions with distinct dependencies', () => {
-  for (const value of [view, provider]) assert.equal(validate(value), true, JSON.stringify(validate.errors));
+  for (const value of [view, provider, dependent]) assert.equal(validate(value), true, JSON.stringify(validate.errors));
   assert.equal('entrypoint' in view, false);
   assert.equal('dependencies' in provider, false);
 });

@@ -1,4 +1,5 @@
 use crate::plugin_manifest::{self, Contribution};
+use crate::plugin_dependencies::{self, Report as DependencyReport};
 use serde::Serialize;
 use serde_json::Value;
 use sha2::{Digest, Sha256};
@@ -35,6 +36,7 @@ pub(crate) struct PluginInstallation {
     pub dependencies: Vec<PluginDependencyDiagnostic>,
     pub contributions: Vec<Contribution>,
     pub activation_issues: Vec<String>,
+    pub package_dependencies: DependencyReport,
     pub manifest: Value,
 }
 
@@ -208,16 +210,19 @@ pub(crate) async fn list(db: &SqlitePool) -> Result<Vec<PluginInstallation>, Str
          ORDER BY p.created_at, p.id",
     )
         .fetch_all(db).await.map_err(|e| e.to_string())?;
-    rows.into_iter().map(|row| {
+    let mut installations = Vec::new();
+    for row in rows {
         let manifest: Value = serde_json::from_str(row.get::<&str, _>("manifest_json")).map_err(io_error)?;
         let normalized = plugin_manifest::normalize(&manifest)?;
         let activation_issues = plugin_manifest::activation_issues(&manifest)?;
+        let package_dependencies = plugin_dependencies::resolve(db, row.get("id"), false).await?;
         let dependencies = dependency_diagnostics(&manifest);
         let installed = row.get::<i64, _>("installed") != 0;
-        Ok(PluginInstallation { id: row.get("id"), plugin_id: row.get("plugin_id"), plugin_version: row.get("plugin_version"),
+        installations.push(PluginInstallation { id: row.get("id"), plugin_id: row.get("plugin_id"), plugin_version: row.get("plugin_version"),
             package_digest: row.get("package_digest"), enabled: row.get::<i64, _>("enabled") != 0, installed,
-            runnable: installed && activation_issues.is_empty() && dependencies.iter().all(|dependency|!dependency.required || dependency.available), dependencies, contributions: normalized.contributions, activation_issues, manifest })
-    }).collect()
+            runnable: installed && package_dependencies.ready() && activation_issues.is_empty() && dependencies.iter().all(|dependency|!dependency.required || dependency.available), dependencies, contributions: normalized.contributions, activation_issues, package_dependencies, manifest });
+    }
+    Ok(installations)
 }
 
 pub(crate) async fn install(db: &SqlitePool, data_dir: &Path, source: &Path) -> Result<PluginInstallation, String> {
@@ -274,9 +279,10 @@ pub(crate) async fn install(db: &SqlitePool, data_dir: &Path, source: &Path) -> 
     if let Err(error) = persist { let _ = fs::remove_dir_all(&staging); let _ = fs::remove_dir_all(&destination); return Err(error); }
     let dependencies = dependency_diagnostics(&manifest);
     let activation_issues = plugin_manifest::activation_issues(&manifest)?;
-    let runnable = activation_issues.is_empty() && dependencies.iter().all(|dependency|!dependency.required || dependency.available);
+    let package_dependencies = plugin_dependencies::resolve(db, &id, false).await?;
+    let runnable = package_dependencies.ready() && activation_issues.is_empty() && dependencies.iter().all(|dependency|!dependency.required || dependency.available);
     Ok(PluginInstallation { id, plugin_id: manifest["pluginId"].as_str().unwrap().into(), plugin_version: manifest["version"].as_str().unwrap().into(),
-        package_digest: expected_digest, enabled: false, installed: true, runnable, dependencies, contributions: normalized.contributions, activation_issues, manifest })
+        package_digest: expected_digest, enabled: false, installed: true, runnable, dependencies, contributions: normalized.contributions, activation_issues, package_dependencies, manifest })
 }
 
 pub(crate) async fn install_builtins(db: &SqlitePool, data_dir: &Path) -> Result<(), String> {
@@ -311,6 +317,13 @@ pub(crate) async fn enable(db: &SqlitePool, id: &str, enabled: bool) -> Result<(
         if !issues.is_empty() { return Err(format!("protocol_incompatible: {}", issues.join(" "))); }
         if manifest["schema"] == "aibo.plugin-manifest/v2" && dependency_diagnostics(&manifest).iter().any(|dependency|dependency.required && !dependency.available) {
             return Err("dependency_missing: required executable dependency is unavailable".into());
+        }
+    }
+    if enabled {
+        let report = plugin_dependencies::resolve(db, id, true).await?;
+        if !report.ready() {
+            let problem = report.dependencies.iter().find(|dependency|dependency.required && !dependency.available).unwrap();
+            return Err(format!("{}: {}",problem.plugin_id,problem.issue.as_deref().unwrap_or("dependency unavailable")));
         }
     }
     let changed = sqlx::query("UPDATE plugin_installations SET enabled = ?, enabled_at = ? WHERE id = ? AND installed=1")

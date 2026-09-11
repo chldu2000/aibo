@@ -7,6 +7,7 @@ mod pi;
 mod plugin_runtime;
 mod plugin_contract;
 mod plugin_manifest;
+mod plugin_dependencies;
 mod capability_broker;
 mod plugin_registry;
 mod plugin_host;
@@ -4819,7 +4820,11 @@ async fn install_agent_plugin(path: String, state: State<'_, AppState>) -> Resul
 async fn set_agent_plugin_enabled(id: String, enabled: bool, state: State<'_, AppState>) -> Result<(), String> {
     let _guard = state.capability_broker.mutation_guard().await;
     plugin_registry::enable(&state.db, &id, enabled).await?;
-    if !enabled { state.capability_broker.stop_installation(&id).await.map_err(|error|error.message)?; }
+    if !enabled {
+        for (installation,contributions) in plugin_dependencies::invalidations(&state.db,&id).await? {
+            state.capability_broker.stop_contributions(&installation,contributions.as_deref()).await.map_err(|error|error.message)?;
+        }
+    }
     Ok(())
 }
 
@@ -4827,7 +4832,9 @@ async fn set_agent_plugin_enabled(id: String, enabled: bool, state: State<'_, Ap
 async fn uninstall_agent_plugin(id: String, state: State<'_, AppState>) -> Result<(), String> {
     let _guard = state.capability_broker.mutation_guard().await;
     plugin_registry::enable(&state.db, &id, false).await?;
-    state.capability_broker.stop_installation(&id).await.map_err(|error|error.message)?;
+    for (installation,contributions) in plugin_dependencies::invalidations(&state.db,&id).await? {
+        state.capability_broker.stop_contributions(&installation,contributions.as_deref()).await.map_err(|error|error.message)?;
+    }
     state.plugins.uninstall(&state.data_dir, &id).await
 }
 

@@ -6,7 +6,7 @@
 
 2026-09-11 实施进度：[P1 Git 只读语义切片](./plugin-platform-p1-semantic-slice.md)已通过自动检查、四组合浏览器与原生 WebView 脚本验收；[P2](./plugin-platform-p2-agent-state.md) 已完成统一 Agent 路由、宿主状态、整窗呈现切换及失败恢复，并通过真实 Codex/Pi、应用重启和窗口隔离验收；详细范围见 [P2 退出矩阵](./baselines/plugin-platform-p2/completion-matrix.md)。
 
-P3 已完成 [Manifest v2 与统一贡献目录](./plugin-platform-p3-manifest.md)草案及安装登记，并接通 [Broker 与无 Agent 只读运行链](./plugin-platform-p3-broker.md)；依赖/调用链、Git 能力及语义贡献激活仍在实施。
+P3 已完成 [Manifest v2 与统一贡献目录](./plugin-platform-p3-manifest.md)草案及安装登记，并接通 [Broker 与无 Agent 只读运行链](./plugin-platform-p3-broker.md)，以及[声明依赖解析与 release 固定](./plugin-platform-p3-dependencies.md)；插件调用链、Git 能力及语义贡献激活仍在实施。
 
 ### 已确认的实施决策（2026-09-10）
 

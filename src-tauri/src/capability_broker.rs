@@ -58,7 +58,7 @@ pub(crate) struct Provider {
     #[serde(skip_serializing)] digest: String,
 }
 struct Slot { permit: Arc<Semaphore>, runtime: Mutex<Option<PluginRuntime>>, touched: Mutex<Instant> }
-struct Flight { cancel: watch::Sender<bool>, installation_id: String, workspace_id: Option<String> }
+struct Flight { cancel: watch::Sender<bool>, installation_id: String, contribution_id: String, workspace_id: Option<String> }
 type RuntimeKey = (String, String, Scope);
 #[derive(Clone)]
 pub(crate) struct Broker {
@@ -104,7 +104,8 @@ impl Broker {
             let model = plugin_manifest::normalize(&manifest).map_err(database)?;
             if model.version != 2 || !plugin_manifest::activation_issues(&manifest).map_err(database)?.is_empty() { continue; }
             if plugin_registry::dependency_diagnostics(&manifest).iter().any(|dependency|dependency.required && !dependency.available) { continue; }
-            for contribution in model.contributions.iter().filter(|item|item.kind == "capabilityProvider" && item.scope == scope.key().0) {
+            let dependencies = crate::plugin_dependencies::resolve(&self.db,row.get("id"),false).await.map_err(database)?;
+            for contribution in model.contributions.iter().filter(|item|item.kind == "capabilityProvider" && item.scope == scope.key().0 && dependencies.supports(&item.id)) {
                 for operation in contribution.metadata["operations"].as_array().unwrap() {
                     if operation["capability"]["id"] != capability { continue; }
                     if operation["capability"]["version"] != version { other_version = true; continue; }
@@ -124,6 +125,8 @@ impl Broker {
             let pinned: Option<String> = sqlx::query_scalar("SELECT plugin_installation_id FROM sessions WHERE id=?").bind(id).fetch_one(&self.db).await.map_err(database)?;
             if pinned.as_deref() != Some(binding.installation_id.as_str()) { return Err(fail("permission_denied", "Session provider must match its pinned installation")); }
         }
+        let dependencies = crate::plugin_dependencies::resolve(&self.db,&binding.installation_id,true).await.map_err(database)?;
+        if !dependencies.supports(&binding.contribution_id) { return Err(fail("provider_unavailable", "Selected contribution has an unavailable dependency")); }
         let (kind,id) = binding.scope.key();
         sqlx::query("INSERT INTO capability_provider_bindings(scope_kind,scope_id,capability_id,contract_version,installation_id,contribution_id,updated_at) VALUES(?,?,?,?,?,?,?) ON CONFLICT(scope_kind,scope_id,capability_id,contract_version) DO UPDATE SET installation_id=excluded.installation_id,contribution_id=excluded.contribution_id,updated_at=excluded.updated_at")
             .bind(kind).bind(id).bind(binding.capability).bind(binding.version).bind(binding.installation_id).bind(binding.contribution_id).bind(crate::now_iso()).execute(&self.db).await.map_err(database)?;
@@ -152,14 +155,18 @@ impl Broker {
         self.flights.lock().await.get(&(caller.into(),request_id.into())).is_some_and(|flight|flight.cancel.send(true).is_ok())
     }
     pub async fn stop_installation(&self, installation: &str) -> Result<(), Failure> {
-        for flight in self.flights.lock().await.values().filter(|flight|flight.installation_id == installation) { let _ = flight.cancel.send(true); }
+        self.stop_contributions(installation,None).await
+    }
+    pub async fn stop_contributions(&self, installation: &str, contributions: Option<&[String]>) -> Result<(), Failure> {
+        let matches = |id: &str| contributions.map_or(true,|ids|ids.iter().any(|item|item == id));
+        for flight in self.flights.lock().await.values().filter(|flight|flight.installation_id == installation && matches(&flight.contribution_id)) { let _ = flight.cancel.send(true); }
         let mut slots = self.slots.lock().await;
-        let keys: Vec<_> = slots.keys().filter(|key|key.0 == installation).cloned().collect();
+        let keys: Vec<_> = slots.keys().filter(|key|key.0 == installation && matches(&key.1)).cloned().collect();
         let retired: Vec<_> = keys.into_iter().filter_map(|key|slots.remove(&key)).collect();
         drop(slots);
         for slot in retired { if let Some(runtime) = slot.runtime.lock().await.take() { runtime.stop().await; } }
         tokio::time::timeout(Duration::from_secs(6),async {
-            while self.flights.lock().await.values().any(|flight|flight.installation_id == installation) {
+            while self.flights.lock().await.values().any(|flight|flight.installation_id == installation && matches(&flight.contribution_id)) {
                 tokio::time::sleep(Duration::from_millis(10)).await;
             }
         }).await.map_err(|_|fail("busy", "Provider invocations are still draining"))?;
@@ -203,7 +210,7 @@ impl Broker {
         {
             let mut flights = self.flights.lock().await;
             if flights.len() >= MAX_ACTIVE || flights.contains_key(&key) { return Err(fail("busy", "Invocation limit or duplicate request ID")); }
-            flights.insert(key.clone(),Flight { cancel, installation_id: provider.installation_id.clone(), workspace_id: workspace.as_ref().map(|workspace|workspace.id.clone()) });
+            flights.insert(key.clone(),Flight { cancel, installation_id: provider.installation_id.clone(), contribution_id: provider.contribution_id.clone(), workspace_id: workspace.as_ref().map(|workspace|workspace.id.clone()) });
         }
         let id = ulid::Ulid::new().to_string();
         let timeout = Duration::from_millis(provider.operation["timeoutMs"].as_u64().unwrap());
@@ -230,6 +237,8 @@ impl Broker {
         if current != 1 { return Err(fail("provider_unavailable", "Provider was disabled")); }
         let (_,_,digest) = plugin_registry::inspect(&provider.directory).map_err(|_|fail("provider_unavailable", "Installed package integrity check failed"))?;
         if digest != provider.digest { return Err(fail("provider_unavailable", "Installed package changed")); }
+        let dependencies = crate::plugin_dependencies::resolve(&self.db,&provider.installation_id,true).await.map_err(database)?;
+        if !dependencies.supports(&provider.contribution_id) { return Err(fail("provider_unavailable", "A pinned package dependency is unavailable")); }
         // Recheck scope authority immediately before giving a runtime its workspace.
         self.workspace(&request.scope).await?;
         let mut active = slot.runtime.lock().await;

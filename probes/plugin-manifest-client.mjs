@@ -4,6 +4,7 @@ import { get } from 'svelte/store';
 import { setUiKit, activeThemeStyle } from '/src/lib/ui-kit/registry.ts';
 import PluginManagerPanel from '/src/lib/components/app/PluginManagerPanel.svelte';
 import view from '/fixtures/plugins/platform-v2/declarative.json';
+import parent from '/fixtures/plugins/platform-v2/dependent.json';
 import echo from '/fixtures/plugins/echo-agent/plugin.json';
 let component;
 const calls = [];
@@ -14,6 +15,7 @@ window.manifestProbe = { calls, async render(kit) {
   component = mount(PluginManagerPanel, { target: document.getElementById('probe'), props: {
     installations: [
       { id:'view',pluginId:view.pluginId,pluginVersion:'1.0.0',installed:true,enabled:false,runnable:false,dependencies:[],manifest:view,activationIssues:['插件已登记；此版本尚未支持 Manifest v2 的能力与视图激活。'] },
+      { id:'parent',pluginId:parent.pluginId,pluginVersion:'1.0.0',installed:true,enabled:false,runnable:true,dependencies:[],manifest:parent,activationIssues:[],packageDependencies:{dependencies:[{pluginId:'dev.aibo.capability-echo',required:false,available:false,version:'1.0.0',issue:'dependency_unavailable',contributionIds:['dev.aibo.capability-parent.optional']}],unavailableContributions:['dev.aibo.capability-parent.optional']} },
       { id:'echo',pluginId:echo.pluginId,pluginVersion:'1.0.0',installed:true,enabled:true,runnable:true,dependencies:[],manifest:echo,activationIssues:[] },
     ], packagePath:'',busy:false,onPackagePathChange(){},onInstall(){},
     onEnabledChange:(...args)=>calls.push(['enable',...args]),onUninstall:(...args)=>calls.push(['uninstall',...args]),onCreateSession:(...args)=>calls.push(['create',...args]),

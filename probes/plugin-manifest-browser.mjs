@@ -15,14 +15,16 @@ try {
   for(const kit of ['shadcn','material3']) {
     await page.evaluate(kit=>window.manifestProbe.render(kit),kit);
     await page.getByText('插件已登记；此版本尚未支持 Manifest v2 的能力与视图激活。',{exact:true}).waitFor();
-    assert.equal(await page.getByRole('button',{name:'启用插件',exact:true}).isDisabled(),true);
+    assert.equal(await page.getByLabel('Git changes contribution',{exact:true}).getByRole('button',{name:'启用插件',exact:true}).isDisabled(),true);
     assert.equal(await page.getByRole('button',{name:'新建 Echo Agent 会话',exact:true}).isEnabled(),true);
+    await page.getByText(/可选依赖不可用，相关功能已停用/).waitFor();
+    assert.equal(await page.getByLabel('Capability Parent',{exact:true}).getByRole('button',{name:'启用插件',exact:true}).isEnabled(),true);
     await page.getByRole('button',{name:'新建 Echo Agent 会话',exact:true}).click();
     assert.deepEqual(await page.evaluate(()=>window.manifestProbe.calls.at(-1)),['create','echo','dev.aibo.echo.agent']);
     await page.getByRole('button',{name:'卸载插件',exact:true}).first().click();
     assert.deepEqual(await page.evaluate(()=>window.manifestProbe.calls.at(-1)),['uninstall','view']);
     await page.screenshot({path:`${output}/${kit}.png`});
-    results.push({kit,declarativeWithoutAgents:true,activationReasonVisible:true,enableBlocked:true,v1CreationPreserved:true,uninstallAvailable:true});
+    results.push({kit,declarativeWithoutAgents:true,activationReasonVisible:true,enableBlocked:true,v1CreationPreserved:true,uninstallAvailable:true,optionalDependencyDiagnostic:true,unrelatedFeaturesEnableable:true});
   }
   assert.deepEqual(errors,[]);
   await writeFile(`${output}/results.json`,JSON.stringify(results,null,2)+'\n');

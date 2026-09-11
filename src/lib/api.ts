@@ -66,6 +66,7 @@ export interface PluginInstallation {
   installed: boolean;
   runnable: boolean;
   dependencies: { kind: string; name: string; required: boolean; available: boolean; executable: string | null; versionRange: string | null; detectedVersion: string | null; issue: string | null }[];
+  packageDependencies?: { dependencies: { pluginId: string; required: boolean; available: boolean; installationId: string | null; version: string | null; issue: string | null; contributionIds: string[] }[]; unavailableContributions: string[] };
   activationIssues?: string[];
   contributions?: { id: string; kind: string; scope: string; required: boolean; metadata: Record<string, unknown> }[];
   manifest: { displayName: string; agents?: { agentId: string; displayName: string }[]; [key: string]: unknown };

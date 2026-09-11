@@ -1,0 +1,26 @@
+{
+  "results": [
+    {
+      "ok": true,
+      "stage": 0,
+      "evidence": {
+        "missingOptionalIsLocalized": true,
+        "lazyPin": true,
+        "newReleaseDoesNotReplacePin": true,
+        "noSilentFailover": true,
+        "unrelatedFeatureWorks": true,
+        "realParentProcess": true
+      }
+    },
+    {
+      "ok": true,
+      "stage": 1,
+      "evidence": {
+        "actualAppRestart": true,
+        "persistedDependencyPin": true,
+        "uninstallBlocksAffectedOnly": true,
+        "noAgentSession": true
+      }
+    }
+  ]
+}

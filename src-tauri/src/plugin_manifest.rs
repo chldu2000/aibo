@@ -161,9 +161,6 @@ pub(crate) fn activation_issues(manifest: &Value) -> Result<Vec<String>, String>
     if model.contributions.iter().any(|entry|entry.kind == "capabilityProvider") && (manifest["protocols"]["runtime"]["min"] != "2.0" || manifest["protocols"]["runtime"]["max"] != "2.0") {
         issues.push("能力运行时目前仅支持实验协议 2.0。".into());
     }
-    if manifest["packageDependencies"].as_array().is_some_and(|dependencies|!dependencies.is_empty()) {
-        issues.push("此版本尚未支持插件包依赖解析，不能激活依赖此包的贡献。".into());
-    }
     if model.contributions.iter().filter(|entry|entry.kind == "capabilityProvider").any(|entry| entry.metadata["operations"].as_array().unwrap().iter().any(|operation| operation["effect"] != "read" || operation["permissions"].as_array().unwrap().iter().any(|permission|permission != "workspace.read"))) {
         issues.push("当前能力运行时仅支持只读操作与工作区读取权限。".into());
     }

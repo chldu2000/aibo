@@ -4,9 +4,9 @@
 
 ## 本批结果
 
-启用不含包依赖的 v2 只读 capabilityProvider 后，宿主可以列举候选提供者、显式绑定某个安装 release，再调用真实进程。无需创建 Agent session，也不产生 AgentEvent。应用重启恢复的是绑定；进程按需重新启动并获得新 generation。
+启用依赖就绪的 v2 只读 capabilityProvider 后，宿主可以列举候选提供者、显式绑定某个安装 release，再调用真实进程。无需创建 Agent session，也不产生 AgentEvent。应用重启恢复的是绑定；进程按需重新启动并获得新 generation。
 
-新增 `capability_broker.rs` 和迁移 `0025_capability_broker.sql`。`PluginRuntime` 复用原有有界进程传输，Agent v1 与能力实验协议 2.0 分别验证响应；v2 不能向旧 Agent 网关发送 tool request 或 AgentEvent。Registry 按真实支持范围允许只读提供者激活，继续拒绝尚未支持的 v2 Agent、语义视图、presentation、包依赖和写入能力。
+新增 `capability_broker.rs` 和迁移 `0025_capability_broker.sql`。`PluginRuntime` 复用原有有界进程传输，Agent v1 与能力实验协议 2.0 分别验证响应；v2 不能向旧 Agent 网关发送 tool request 或 AgentEvent。Registry 按真实支持范围允许只读提供者激活，继续拒绝尚未支持的 v2 Agent、语义视图、presentation 和写入能力。
 
 ## 调用合同
 
@@ -35,7 +35,7 @@ scope 支持 application、workspace 和 session。workspace/session 必须存�
 - 桌面启停、卸载与工作区权限变更串行处理，避免重新启用与排空/卸载交错。禁用先阻止新调用，再取消该安装的活动调用并停止缓存进程；卸载先走同一取消路径，最多等待 6 秒排空。未排空时保留包并返回 busy，不继续删除。撤销工作区信任或移除工作区也取消对应作用域执行。
 - 已接纳调用写入 `capability_invocations`，保存身份、release、generation、deadline 和终态，不保存请求/结果正文。应用启动将上次遗留 running 记录标为 interrupted；绑定和审计不会因卸载而消失。接纳前的参数/权限拒绝返回错误，本批尚未增加其独立审计记录。
 
-当前只开放 read 操作和宿主 workspace.read 上下文；写操作、额外权限或包依赖不通过激活。执行文件仍遵守现有可信本地插件边界，进程隔离不是 OS 文件/网络沙箱，能力声明也不是限制任意进程系统调用的机制。Git 包仍须实现并验证具体路径/资源范围检查。
+当前只开放 read 操作和宿主 workspace.read 上下文；写操作和额外权限不通过激活；包依赖已由[第三批](./plugin-platform-p3-dependencies.md)接通。执行文件仍遵守现有可信本地插件边界，进程隔离不是 OS 文件/网络沙箱，能力声明也不是限制任意进程系统调用的机制。Git 包仍须实现并验证具体路径/资源范围检查。
 
 ## 验证
 
@@ -48,9 +48,9 @@ scope 支持 application、workspace 和 session。workspace/session 必须存�
 
 ## 仍需完成
 
-1. 插件间调用的原始调用者、权限交集、调用链、嵌套 deadline/取消传播；包依赖图、环检测、可选贡献降级与依赖 release 固定。本批包依赖明确拒绝，不借此标记依赖解析已完成。
+1. 插件间调用的原始调用者、权限交集、调用链、嵌套 deadline/取消传播。包依赖图、环检测、可选贡献降级与依赖 release 固定已在第三批完成。
 2. turn 关联上下文、审批、写入并发/幂等和结果未知，以及接纳前失败审计；v1 Agent 能力继续走 P2 facade，尚未改成 v2 runtime。
 3. 稳定 instance ID、独立能力事件合同，以及完整生命周期/升级策略。当前进程复用键和 generation 能隔离调用，不等于这些合同已全部冻结。
 4. Git 只读实现迁入能力包，安装语义贡献后自动呈现；settings/inspector 完整合同、扩展点可达性与稳定协议支持窗口。
 
-P3 退出条件保持未完成；下一步应补 Broker 调用链与依赖，再将此运行链用于真实 Git 能力和语义贡献安装。
+P3 退出条件保持未完成；下一步应补 Broker 插件调用链，再将此运行链用于真实 Git 能力和语义贡献安装。

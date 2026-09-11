@@ -9,6 +9,7 @@
     installed: boolean;
     runnable: boolean;
     dependencies: { kind: string; name: string; required: boolean; available: boolean; versionRange: string | null; detectedVersion?: string | null; issue?: string | null }[];
+    packageDependencies?: { dependencies: { pluginId: string; required: boolean; available: boolean; version: string | null; issue: string | null }[]; unavailableContributions: string[] };
     activationIssues?: string[];
     manifest: { displayName: string; agents?: { agentId: string; displayName: string }[] };
   };
@@ -44,7 +45,7 @@
       {:else}
         <div class="plugin-list">
           {#each installations as installation (installation.id)}
-            <Card>
+            <Card aria-label={installation.manifest.displayName}>
               <CardHeader>
                 <div class="plugin-heading">
                   <CardTitle>{installation.manifest.displayName}</CardTitle>
@@ -57,6 +58,11 @@
                   {#each installation.dependencies as dependency (`${dependency.kind}:${dependency.name}`)}
                     <p role={dependency.required && !dependency.available ? 'alert' : undefined}>
                       {dependency.kind} · {dependency.name}{dependency.versionRange ? ` ${dependency.versionRange}` : ''}{dependency.detectedVersion ? `（检测到 ${dependency.detectedVersion}）` : ''} · {dependency.available ? '可用' : dependency.required ? `不可用（必需${dependency.issue ? `：${dependency.issue}` : ''}）` : `不可用（可选${dependency.issue ? `：${dependency.issue}` : ''}）`}
+                    </p>
+                  {/each}
+                  {#each installation.packageDependencies?.dependencies ?? [] as dependency (dependency.pluginId)}
+                    <p role={dependency.required && !dependency.available ? 'alert' : 'status'}>
+                      插件依赖 {dependency.pluginId}{dependency.version ? ` · ${dependency.version}` : ''}：{dependency.available ? '可用' : dependency.required ? '必需依赖不可用' : '可选依赖不可用，相关功能已停用'}{dependency.issue ? `（${dependency.issue}）` : ''}
                     </p>
                   {/each}
                   {#each installation.activationIssues ?? [] as issue}<p role="status">{issue}</p>{/each}

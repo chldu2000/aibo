@@ -178,3 +178,5 @@ App 中所有业务回调和可写绑定经 generation、当前工作区及会�
 插件管理面板允许安装记录没有旧 `agents` 数组，显示宿主返回的激活诊断，并在不可运行时禁止启用；已启用插件始终保留禁用入口。现有 v1 新建会话和卸载入口保留。Registry 返回的统一 contributions 是数据目录，不由管理面板执行；声明式贡献自动挂载将在 Broker/扩展点合同就绪后接入。此批不修改 UiKitAdapter，也不添加皮肤分支或视觉样式。
 
 P3 第二批增加宿主注入窗口身份的 capability IPC 与类型化 API，输入不接受 caller、permission 或 workspacePath。只读 capabilityProvider 可独立激活；App 不负责执行或管理进程，不因 capability 的名字选择 Provider。语义贡献自动呈现仍待后续实施，当前管理面板继续显示未支持贡献的激活原因。
+
+第三批由宿主返回包依赖诊断及受影响 contribution ID，管理面板展示固定版本和不可用原因：必需依赖失效阻止启用，可选依赖失效只提示相关功能停用，保留其他功能的启用入口。安装卡片以插件显示名提供可访问标签；继续复用 UiKitAdapter，不新增皮肤样式或契约字段。

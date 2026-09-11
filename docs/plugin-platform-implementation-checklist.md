@@ -105,7 +105,7 @@
 - [x] 通过 v1 adapter 将旧 agents 映射为内部 contribution；保持旧 wire protocol、session ID 和 binding，不兼容包在激活前拒绝。
 
 
-**第一批进度：** [Manifest v2 与统一贡献目录](./plugin-platform-p3-manifest.md)。v2 合同为草案；已接通无执行入口包的安装登记、诊断与卸载。第二批已开放无包依赖的只读 capabilityProvider 激活；语义视图、依赖图、settings/inspector 完整合同和 Git 运行链尚未完成，不能据此勾选 P3 退出条件。
+**第一批进度：** [Manifest v2 与统一贡献目录](./plugin-platform-p3-manifest.md)。v2 合同为草案；已接通无执行入口包的安装登记、诊断与卸载。第二批已开放只读 capabilityProvider 激活，第三批已完成声明依赖解析；语义视图、settings/inspector 完整合同和 Git 运行链尚未完成，不能据此勾选 P3 退出条件。
 
 ### P3.2 Broker 与调用链
 
@@ -115,9 +115,9 @@
 - [ ] 实现 provider 绑定：session 固定，workspace/application 显式配置；歧义返回 `provider_selection_required`，失效不静默转交写操作。
 - [ ] 覆盖 `unsupported`、`incompatible_version`、`permission_denied`、`provider_unavailable`、`busy`、`cancelled`、`timeout`、`invalid_output`；写后断连表达结果未知，无幂等保证不得自动重试。
 - [ ] 插件间调用仅走 Broker，传播原始调用者、资源范围、调用链和 deadline；权限取调用链约束交集，限制深度/并发并向子调用传播取消。
-- [ ] 实现声明依赖解析和 release 固定，拒绝必需依赖环，可选依赖缺失仅禁用相关 contribution。
+- [x] 实现声明依赖解析和 release 固定，拒绝必需依赖环，可选依赖缺失仅禁用相关 contribution。证据：[依赖解析与 release 固定](./plugin-platform-p3-dependencies.md)。
 
-**第二批进度：** [Broker 与无 Agent 只读运行链](./plugin-platform-p3-broker.md)已通过真实子进程和原生桌面双启动验收：三种 scope 服务、显式 release 绑定、输入/输出与 generation 校验、取消隔离、禁用/信任撤销和调用审计已实现。上述 Broker 项和下述 Runtime 项仍需 turn/插件调用链、权限审批、依赖解析、能力事件及 Git/语义贡献链补齐，故不将局部完成标成整项通过。
+**第二批进度：** [Broker 与无 Agent 只读运行链](./plugin-platform-p3-broker.md)已通过真实子进程和原生桌面双启动验收：三种 scope 服务、显式 release 绑定、输入/输出与 generation 校验、取消隔离、禁用/信任撤销和调用审计已实现。上述 Broker 项和下述 Runtime 项仍需 turn/插件调用链、权限审批、能力事件及 Git/语义贡献链补齐，故不将局部完成标成整项通过。
 
 ### P3.3 Runtime、贡献与 Git 迁移
 
