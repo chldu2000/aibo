@@ -106,7 +106,7 @@ export function createRefreshController(context: RefreshControllerContext) {
     }
   }
 
-  async function refreshSessions(workspaceId: string): Promise<void> {
+  async function refreshSessions(workspaceId: string, hydrate = true): Promise<void> {
     const generation = sessionRequests.begin(workspaceId);
     if (!context.getSessionsLoadingWorkspaceIds().includes(workspaceId)) {
       context.setSessionsLoadingWorkspaceIds([
@@ -166,6 +166,7 @@ export function createRefreshController(context: RefreshControllerContext) {
       }
       const nextSelectedSessionId = context.getSelectedSessionId();
       if (nextSelectedSessionId) {
+        if (!hydrate) return;
         // Hydrate the selected pane independently. A slow adapter/DB request
         // must not block the already-loaded workspace session list or the
         // completion of the global refresh operation.

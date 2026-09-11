@@ -1,3 +1,5 @@
+mod compatibility;
+use compatibility::{negotiated_capabilities, apply_pi_recovery_profile, empty_codex_session_recovery_allowed};
 use crate::{artifact::sanitize_content, change_set::{capture as capture_workspace, persist as persist_change_set, WorkspaceSnapshot}, execution_profile, plugin_contract::contracts, plugin_registry, plugin_runtime::PluginRuntime, workspace_guard::canonicalize_target, Session};
 use base64::{engine::general_purpose::STANDARD as BASE64, Engine as _};
 use regex::RegexBuilder;
@@ -78,6 +80,15 @@ fn image_mime_type(bytes: &[u8]) -> Option<&'static str> {
     if bytes.starts_with(b"BM") { return Some("image/bmp"); }
     None
 }
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum EventOrigin { Plugin, CoreTool }
+
+fn event_capability_required(kind: &str, origin: EventOrigin) -> Option<&'static str> {
+    // Provenance is assigned at the call site, never read from plugin JSON.
+    if origin == EventOrigin::CoreTool && matches!(kind, "approval.requested" | "approval.resolved") { None }
+    else { event_capability(kind) }
+}
+
 fn event_capability(kind: &str) -> Option<&'static str> {
     match kind {
         "approval.requested" | "approval.resolved" => Some("approval.respond"),
@@ -90,27 +101,7 @@ fn event_capability(kind: &str) -> Option<&'static str> {
         _ => None,
     }
 }
-fn negotiated_capabilities(
-    plugin_id: &str,
-    agent_id: &str,
-    declared: &[Value],
-    actual: &[Value],
-) -> Vec<Value> {
-    let mut negotiated = actual.to_vec();
-    // Bundled Codex 1.0.0 releases shipped the approval and user-input
-    // handlers and declared both capabilities in their manifest, but omitted
-    // them from the runtime handshake. Keep already-pinned sessions usable
-    // while newer releases report the capabilities correctly.
-    if plugin_id == "dev.aibo.codex" && agent_id == "dev.aibo.codex.agent" {
-        for capability in ["approval.respond", "user-input.respond"] {
-            let capability = json!(capability);
-            if declared.contains(&capability) && !negotiated.contains(&capability) {
-                negotiated.push(capability);
-            }
-        }
-    }
-    negotiated
-}
+
 #[derive(Clone)]
 pub(crate) struct PluginHost {
     db: SqlitePool,
@@ -269,6 +260,7 @@ impl PluginHost {
             }
             let negotiated_caps = negotiated_capabilities(
                 manifest["pluginId"].as_str().unwrap(),
+                manifest["version"].as_str().unwrap_or_default(),
                 &agent_id,
                 declared,
                 actual_caps,
@@ -278,7 +270,7 @@ impl PluginHost {
                 .filter_map(Value::as_str)
                 .map(ToOwned::to_owned)
                 .collect::<Vec<String>>();
-            let profile_agent = crate::execution_profile_agent(&agent_id, &actual_capabilities);
+            let backend = execution_profile::EnforcementBackend::legacy_agent(&agent_id);
             let stored_profile: i64 = sqlx::query_scalar(
                 "SELECT EXISTS(SELECT 1 FROM session_execution_profiles WHERE session_id=?)",
             )
@@ -292,10 +284,9 @@ impl PluginHost {
                     .map_err(|error| error.to_string())?
                     .profile
             } else {
-                execution_profile::resolve(&profile_agent, None, crate::now_iso())?
+                execution_profile::resolve_with_backend(backend, None, crate::now_iso())?
             };
             execution_profile.adapter_capabilities = actual_capabilities;
-            execution_profile.native_sandbox = profile_agent == "codex";
             execution_profile::save_for_session(&self.db, session_id, &execution_profile)
                 .await
                 .map_err(|error| error.to_string())?;
@@ -672,28 +663,27 @@ impl PluginHost {
             tool: tool.to_owned(),
             input: normalized_input,
         };
-        if self
-            .pending_tools
-            .lock()
-            .await
-            .insert(approval_id.clone(), pending)
-            .is_some()
         {
-            return Self::reply_tool_error(runtime, request_id, "busy: duplicate Core tool request")
-                .await;
+            let mut pending_tools = self.pending_tools.lock().await;
+            if pending_tools.contains_key(&approval_id) {
+                drop(pending_tools);
+                return Self::reply_tool_error(runtime, request_id, "busy: duplicate Core tool request").await;
+            }
+            pending_tools.insert(approval_id.clone(), pending);
         }
         let event = json!({"jsonrpc":"2.0","method":"agent/event","params":{
             "agentId":binding["agentId"],"sessionId":session_id,"nativeSessionId":binding["nativeSessionId"],"turnId":turn_id,
             "type":"approval.requested","correlation":{"requestId":approval_id},"payload":approval_payload
         }});
         if let Err(error) = self
-            .project(
+            .project_event(
                 session_id,
                 workspace_id,
                 &runtime.generation_id,
                 binding,
                 sequence,
                 event,
+                EventOrigin::CoreTool,
             )
             .await
         {
@@ -889,7 +879,17 @@ impl PluginHost {
         }
     }
 
-    pub async fn resolve_pi_approval(
+    /// The v1 pi-tool namespace belongs to Core, regardless of the agent identity.
+    /// Expired Core approvals must never fall through to a provider operation.
+    pub async fn resolve_approval(&self, session_id: &str, request_id: &str, decision: &str) -> Result<(), String> {
+        if request_id.starts_with("pi-tool:") {
+            return self.resolve_core_tool_approval(session_id, request_id, decision).await;
+        }
+        self.invoke_capability(session_id, "approval.respond", json!({"requestId": request_id, "decision": decision})).await?;
+        Ok(())
+    }
+
+    pub async fn resolve_core_tool_approval(
         &self,
         session_id: &str,
         request_id: &str,
@@ -898,22 +898,15 @@ impl PluginHost {
         if !matches!(decision, "accept" | "cancel") {
             return Err("invalid_request: approval decision must be accept or cancel".into());
         }
-        let pending = self
-            .pending_tools
-            .lock()
-            .await
-            .remove(request_id)
-            .ok_or_else(|| "invalid_request: Pi tool approval is no longer pending".to_owned())?;
-        if pending.session_id != session_id {
-            let _ = pending
-                .runtime
-                .reply(
-                    pending.request_id,
-                    Err("invalid_session: approval session mismatch".into()),
-                )
-                .await;
-            return Err("invalid_session: approval session mismatch".into());
-        }
+        let pending = {
+            let mut pending_tools = self.pending_tools.lock().await;
+            let pending = pending_tools.get(request_id)
+                .ok_or_else(|| "invalid_request: Core tool approval is no longer pending".to_owned())?;
+            if pending.session_id != session_id {
+                return Err("invalid_session: approval session mismatch".into());
+            }
+            pending_tools.remove(request_id).expect("pending request checked under lock")
+        };
         let binding_json: String =
             sqlx::query_scalar("SELECT plugin_binding_json FROM session_bindings WHERE session_id=?")
                 .bind(session_id)
@@ -928,13 +921,14 @@ impl PluginHost {
             "type":"approval.resolved","correlation":{"requestId":request_id},"payload":{"requestId":request_id,"decision":decision,"tool":pending.tool}
         }});
         if let Err(error) = self
-            .project(
+            .project_event(
                 session_id,
                 &pending.workspace_id,
                 &pending.generation_id,
                 &binding,
                 sequence,
                 event,
+                EventOrigin::CoreTool,
             )
             .await
         {
@@ -960,7 +954,7 @@ impl PluginHost {
             .map(|(id, _)| id.clone())
             .collect::<Vec<_>>();
         for id in ids {
-            let _ = self.resolve_pi_approval(session_id, &id, "cancel").await;
+            let _ = self.resolve_core_tool_approval(session_id, &id, "cancel").await;
         }
     }
 
@@ -1186,6 +1180,20 @@ impl PluginHost {
         let output_validator = jsonschema::options().should_validate_formats(true).build(&operation["outputSchema"])
             .map_err(|_|"manifest_mismatch: operation output schema")?;
         if !output_validator.is_valid(&result["output"]) { runtime.stop().await; return Err("invalid_request: operation output schema validation failed".into()); }
+        if input["action"] == "set" && matches!(capability, "model.select" | "model.reasoning") {
+            // Persist successful configuration at the shared boundary. In particular,
+            // Pi resumes from this profile; generic calls must not bypass that write.
+            let _write_guard = self.database_writes.lock().await;
+            let generation: Option<String> = sqlx::query_scalar("SELECT generation_id FROM session_bindings WHERE session_id=?")
+                .bind(session_id).fetch_one(&self.db).await.map_err(|error|error.to_string())?;
+            if generation.as_deref() != Some(runtime.generation_id.as_str()) {
+                return Err("invalid_session: stale model configuration response".into());
+            }
+            let mut profile = crate::session_execution_profile(&self.db, session_id).await.map_err(|error|error.to_string())?.profile;
+            if apply_model_configuration(&mut profile, capability, &input, &result["output"]) {
+                execution_profile::save_for_session(&self.db, session_id, &profile).await.map_err(|error|error.to_string())?;
+            }
+        }
         Ok(result["output"].clone())
     }
 
@@ -1264,6 +1272,10 @@ impl PluginHost {
     }
 
     async fn project(&self, session_id: &str, workspace_id: &str, generation: &str, binding: &Value, sequence: i64, message: Value) -> Result<(), String> {
+        self.project_event(session_id, workspace_id, generation, binding, sequence, message, EventOrigin::Plugin).await
+    }
+
+    async fn project_event(&self, session_id: &str, workspace_id: &str, generation: &str, binding: &Value, sequence: i64, message: Value, origin: EventOrigin) -> Result<(), String> {
         if !contracts().runtime.is_valid(&message) { return Err("invalid_request: notification schema".into()); }
         let p = &message["params"];
         if p["sessionId"] != session_id || p["agentId"] != binding["agentId"] { return Err("invalid_session: notification identity".into()); }
@@ -1319,7 +1331,7 @@ impl PluginHost {
                 return Err("capability_unsupported: event outside minimal lifecycle".into());
             }
             let negotiated: Value = serde_json::from_str(&active.1).map_err(|_|"manifest_mismatch: negotiated capabilities missing")?;
-            if event_capability(kind).is_some_and(|capability|!negotiated.as_array().is_some_and(|items|items.contains(&json!(capability)))) {
+            if event_capability_required(kind, origin).is_some_and(|capability|!negotiated.as_array().is_some_and(|items|items.contains(&json!(capability)))) {
                 return Err("capability_unsupported: event capability was not negotiated".into());
             }
             let turn_id = p["turnId"].as_str();
@@ -1435,35 +1447,30 @@ fn scoped_external_item_id(turn_id: &str, item_id: &str) -> String {
     format!("{turn_id}:{item_id}")
 }
 
-fn apply_pi_recovery_profile(profile: &mut execution_profile::ResolvedExecutionProfile, binding: &Value) -> bool {
-    let data = &binding["recovery"]["data"];
-    let model = data["model"]["provider"].as_str().zip(data["model"]["modelId"].as_str())
-        .map(|(provider, model_id)| format!("{provider}/{model_id}"));
-    let reasoning_effort = data["thinkingLevel"].as_str().map(ToOwned::to_owned);
-    let mut changed = false;
-    if profile.requested.model.is_none() {
-        if let Some(model) = model {
-            profile.requested.model = Some(model.clone());
-            profile.enforced.model = Some(model);
-            changed = true;
-        }
-    }
-    if profile.requested.reasoning_effort.is_none() {
-        if let Some(reasoning_effort) = reasoning_effort {
-            profile.requested.reasoning_effort = Some(reasoning_effort.clone());
-            profile.enforced.reasoning_effort = Some(reasoning_effort);
-            changed = true;
-        }
-    }
-    if !changed {
-        return false;
-    }
-    profile.resolved_at = crate::now_iso();
-    true
-}
 
-fn empty_codex_session_recovery_allowed(plugin_id: &str, agent_id: &str, has_turns: bool) -> bool {
-    plugin_id == "dev.aibo.codex" && agent_id == "dev.aibo.codex.agent" && !has_turns
+
+
+
+// v1 model capabilities accept either a reference or a provider/model pair.
+// Only model fields are mirrored for recovery; permissions and enforcement stay unchanged.
+fn apply_model_configuration(profile: &mut execution_profile::ResolvedExecutionProfile, capability: &str, input: &Value, output: &Value) -> bool {
+    let value = if capability == "model.select" {
+        output.get("current").and_then(Value::as_str).map(ToOwned::to_owned)
+            .or_else(|| input.get("reference").and_then(Value::as_str).map(ToOwned::to_owned))
+            .or_else(|| Some(format!("{}/{}", input.get("provider")?.as_str()?, input.get("modelId")?.as_str()?)))
+    } else {
+        output.get("level").or_else(||output.get("current")).and_then(Value::as_str)
+            .or_else(||input.get("level").and_then(Value::as_str)).map(ToOwned::to_owned)
+    };
+    let Some(value) = value else { return false; };
+    if capability == "model.select" {
+        profile.requested.model = Some(value.clone());
+        profile.enforced.model = Some(value);
+    } else {
+        profile.requested.reasoning_effort = Some(value.clone());
+        profile.enforced.reasoning_effort = Some(value);
+    }
+    true
 }
 
 #[cfg(test)]
@@ -1514,6 +1521,11 @@ mod tests {
         assert_eq!(event_capability("approval.requested"), Some("approval.respond"));
         assert_eq!(event_capability("user_input.resolved"), Some("user-input.respond"));
         assert_eq!(event_capability("message.delta"), None);
+        assert_eq!(event_capability_required("approval.requested", EventOrigin::Plugin), Some("approval.respond"));
+        assert_eq!(event_capability_required("approval.resolved", EventOrigin::Plugin), Some("approval.respond"));
+        assert_eq!(event_capability_required("approval.requested", EventOrigin::CoreTool), None);
+        assert_eq!(event_capability_required("approval.resolved", EventOrigin::CoreTool), None);
+        assert_eq!(event_capability_required("queue.updated", EventOrigin::CoreTool), Some("queue.manage"));
     }
 
     #[test]
@@ -1531,14 +1543,16 @@ mod tests {
         let actual = vec![json!("turn.send")];
         let bundled = negotiated_capabilities(
             "dev.aibo.codex",
+            "1.0.0",
             "dev.aibo.codex.agent",
             &declared,
             &actual,
         );
+        assert_eq!(negotiated_capabilities("dev.aibo.codex", "2.0.0", "dev.aibo.codex.agent", &declared, &actual), actual);
         assert!(bundled.contains(&json!("approval.respond")));
         assert!(bundled.contains(&json!("user-input.respond")));
         assert_eq!(
-            negotiated_capabilities("dev.example.plugin", "dev.example.agent", &declared, &actual),
+            negotiated_capabilities("dev.example.plugin", "1.0.0", "dev.example.agent", &declared, &actual),
             actual,
         );
     }
@@ -1671,8 +1685,9 @@ mod tests {
             model: None,
             reasoning_effort: None,
         };
-        let resolved_profile = execution_profile::resolve("pi", Some(requested_profile), crate::now_iso()).unwrap();
+        let resolved_profile = execution_profile::resolve_with_backend(execution_profile::EnforcementBackend::CoreProxy, Some(requested_profile), crate::now_iso()).unwrap();
         execution_profile::save_for_session(&db, &session.id, &resolved_profile).await.unwrap();
+        assert!(!session.capabilities.contains(&"approval.respond".to_owned()), "Core approvals must work without a plugin approval operation");
         host.send(&session.id, "core tool fixture").await.unwrap();
         wait_session_state(&db, &session.id, "waiting_approval").await;
         let approval_id: String = sqlx::query_scalar(
@@ -1683,7 +1698,9 @@ mod tests {
         .await
         .unwrap();
         assert!(approval_id.starts_with("pi-tool:"));
-        host.resolve_pi_approval(&session.id, &approval_id, "accept").await.unwrap();
+        assert!(host.resolve_approval("another-session", &approval_id, "accept").await.unwrap_err().contains("session mismatch"));
+        host.resolve_approval(&session.id, &approval_id, "accept").await.unwrap();
+        assert!(host.resolve_approval(&session.id, &approval_id, "accept").await.unwrap_err().contains("no longer pending"));
         wait_turn(&db, &session.id, "completed").await;
         assert_eq!(fs::read_to_string(root.join("core-tool.txt")).unwrap(), "Core mediated Pi write");
         host.send(&session.id, "core command fixture").await.unwrap();
@@ -1696,11 +1713,22 @@ mod tests {
         .await
         .unwrap();
         assert!(command_approval_id.starts_with("pi-tool:"));
-        host.resolve_pi_approval(&session.id, &command_approval_id, "accept").await.unwrap();
+        host.resolve_approval(&session.id, &command_approval_id, "accept").await.unwrap();
         wait_turn(&db, &session.id, "completed").await;
         let command_output: String = sqlx::query_scalar("SELECT content FROM messages WHERE session_id=? AND external_message_id LIKE '%:core-command-result'")
             .bind(&session.id).fetch_one(&db).await.unwrap();
         assert_eq!(command_output, "AIBO_CORE_COMMAND_OK");
+        let before_configuration = crate::session_execution_profile(&db, &session.id).await.unwrap().profile;
+        host.invoke_capability(&session.id, "model.select", json!({"action":"set","provider":"external","modelId":"new-model"})).await.unwrap();
+        host.invoke_capability(&session.id, "model.reasoning", json!({"action":"set","level":"high"})).await.unwrap();
+        assert!(host.invoke_capability(&session.id, "model.reasoning", json!({"action":"set","level":"invalid"})).await.is_err());
+        let after_configuration = crate::session_execution_profile(&db, &session.id).await.unwrap().profile;
+        assert_eq!(after_configuration.requested.model.as_deref(), Some("external/new-model"));
+        assert_eq!(after_configuration.requested.reasoning_effort.as_deref(), Some("high"));
+        assert_eq!(after_configuration.enforcement_backend, before_configuration.enforcement_backend);
+        assert_eq!(after_configuration.enforced.filesystem_policy, before_configuration.enforced.filesystem_policy);
+        assert_eq!(after_configuration.enforced.command_policy, before_configuration.enforced.command_policy);
+
         let invoked = host.invoke(&session.id, "dev.aibo.echo.tasks", "refresh", json!({"label":"manual"})).await.unwrap();
         assert_eq!(invoked, json!({"cursor":6}));
         let commands = host.invoke(&session.id, "dev.aibo.echo.tasks", "commands", json!({})).await.unwrap();
@@ -1737,6 +1765,8 @@ mod tests {
         assert_eq!(process_state, "exited");
         let restarted = PluginHost::new(db.clone());
         restarted.resume(&session.id).await.unwrap();
+        assert_eq!(restarted.invoke_capability(&session.id, "model.select", json!({"action":"list"})).await.unwrap()["current"], "external/new-model");
+        assert_eq!(restarted.invoke_capability(&session.id, "model.reasoning", json!({"action":"list"})).await.unwrap()["current"], "high");
         restarted.send(&session.id, "after restart").await.unwrap();
         wait_turn(&db, &session.id, "completed").await;
         wait_session_state(&db, &session.id, "idle").await;

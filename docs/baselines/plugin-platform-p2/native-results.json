@@ -1,0 +1,31 @@
+{
+  "ok": true,
+  "evidence": [
+    {
+      "kit": "shadcn",
+      "layout": "central",
+      "source": "native WebView -> Tauri command -> real temporary Git repository",
+      "diff": "passed"
+    },
+    {
+      "kit": "shadcn",
+      "layout": "sidebar",
+      "source": "native WebView -> Tauri command -> real temporary Git repository",
+      "diff": "passed"
+    },
+    {
+      "kit": "material3",
+      "layout": "central",
+      "source": "native WebView -> Tauri command -> real temporary Git repository",
+      "diff": "passed"
+    },
+    {
+      "kit": "material3",
+      "layout": "sidebar",
+      "source": "native WebView -> Tauri command -> real temporary Git repository",
+      "diff": "passed"
+    }
+  ],
+  "sessions": 0,
+  "interaction": "scripted native DOM clicks; physical keyboard and screen reader not claimed"
+}

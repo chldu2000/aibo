@@ -5,7 +5,7 @@ import { upsertSession } from './session-transitions';
 
 export type MessageControllerContext = {
   api: {
-    createCodexSession: (workspaceId: string) => Promise<Session>;
+    createDefaultSession: (workspaceId: string) => Promise<Session>;
     sendAgentPrompt: (sessionId: string, input: string) => Promise<Session>;
     cancelAgentTurn: (sessionId: string) => Promise<void>;
     invokeAgentCapability: (sessionId: string, capability: string, input: Record<string, unknown>) => Promise<Record<string, unknown>>;
@@ -18,6 +18,7 @@ export type MessageControllerContext = {
   getSessionRunning: () => boolean;
   getComposerText: () => string;
   setComposerText: (value: string) => void;
+  consumeDraft: (sessionId: string, submitted: string) => void;
   setComposerDraftStatus?: (sessionId: string, sendFailed: boolean) => void;
   getAttachments: () => ContextAttachment[];
   setAttachments: (value: ContextAttachment[]) => void;
@@ -65,7 +66,8 @@ export function createMessageController(context: MessageControllerContext) {
   }
 
   async function sendPrompt(): Promise<void> {
-    const input = context.getComposerText().trim();
+    const draftText = context.getComposerText();
+    const input = draftText.trim();
     if (!input) return;
     const workspace = context.getSelectedWorkspace();
     if (!workspace) {
@@ -109,14 +111,14 @@ export function createMessageController(context: MessageControllerContext) {
     try {
       let session = selectedSession;
       if (!session) {
-        session = await context.api.createCodexSession(workspace.id);
+        session = await context.api.createDefaultSession(workspace.id);
         context.setWorkspaceSessionMap(upsertSession(context.getWorkspaceSessionMap(), session));
-        context.setSelectedSessionId(session.id);
+        if (context.getSelectedWorkspace()?.id === workspace.id && !context.getSelectedSession()) context.setSelectedSessionId(session.id);
       }
       session = await context.api.sendAgentPrompt(session.id, requestInput);
       context.setWorkspaceSessionMap(upsertSession(context.getWorkspaceSessionMap(), session));
       await Promise.all([context.refreshTimeline(session.id), context.refreshAttachments(session.id)]);
-      context.setComposerText('');
+      context.consumeDraft(session.id, draftText);
       if (session) context.setComposerDraftStatus?.(session.id, false);
       context.updateWorkspaceSessions(session.workspaceId, (items) =>
         items.map((item) => (item.id === session?.id ? { ...item, state: 'running' } : item)),
@@ -162,7 +164,8 @@ export function createMessageController(context: MessageControllerContext) {
   }
 
   async function queuePiPrompt(mode: 'steer' | 'followUp'): Promise<void> {
-    const input = context.getComposerText().trim();
+    const draftText = context.getComposerText();
+    const input = draftText.trim();
     const session = context.getSelectedSession();
     if (!input || !session || !session.capabilities.includes('queue.manage') || !context.getDesktop()) return;
     const unsupported = unsupportedAttachmentPaths();
@@ -182,7 +185,7 @@ export function createMessageController(context: MessageControllerContext) {
     try {
       await agent.invoke(session, 'queue.manage', { action: mode, message: requestInput });
       await Promise.all([context.refreshTimeline(session.id), context.refreshAttachments(session.id)]);
-      context.setComposerText('');
+      context.consumeDraft(session.id, draftText);
     } catch (error) {
       context.setErrorMessage(toErrorMessage(error));
     } finally {

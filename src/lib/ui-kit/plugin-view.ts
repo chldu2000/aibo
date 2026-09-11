@@ -30,6 +30,7 @@ export type UiPluginViewProps = {
   onAction: (actionId: string, input: Record<string, unknown>) => void | Promise<void>;
   /** Owned by the runtime proxy, outside replaceable skin components. */
   interaction?: UiPluginViewInteraction;
+  onInteractionChange?: (interaction: UiPluginViewInteraction) => void;
 };
 
 /** JSON Pointer reads are own-property-only; prototype names never resolve. */

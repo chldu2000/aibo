@@ -1,8 +1,17 @@
 <script lang="ts">
+  import { readWorkbenchDrafts, writeWorkbenchDrafts, emptyGitPanelState } from '$lib/app/workbench-drafts';
+  const draftStorage = { getItem: (key: string) => window.localStorage.getItem(key), setItem: (key: string, value: string) => window.localStorage.setItem(key, value) };
+  let workbenchDrafts = $state(readWorkbenchDrafts(draftStorage, presentationWindowId()));
+  $effect(() => { writeWorkbenchDrafts(draftStorage, presentationWindowId(), workbenchDrafts); });
+  import { WorkbenchPresentation } from '$lib/ui-kit';
   const loadGitWorkbench = () => import('$lib/workbench/GitWorkbench.svelte');
   import { openSemanticGit, actSemanticGit, releaseSemanticGit } from '$lib/api';
   const semanticGitPort = { open: openSemanticGit, act: actSemanticGit, release: releaseSemanticGit };
   let semanticGitOpen = $state(false);
+  const presentationState = createViewStateStore({
+    getItem: key => window.localStorage.getItem(key),
+    setItem: (key, value) => window.localStorage.setItem(key, value),
+  }, presentationWindowId());
   import { onDestroy, onMount, untrack } from 'svelte';
   import { open } from '@tauri-apps/plugin-dialog';
   import {
@@ -35,7 +44,14 @@
   import { createAgentSessionController } from '$lib/app/agent-session-controller';
   import { createSessionContextController } from '$lib/app/session-context-controller';
   import { createRefreshController } from '$lib/app/refresh-controller';
+  import { createModelConfigurationService, modelConfigurationState } from '$lib/app/model-configuration';
+  import type { ModelConfigurationChange } from '$lib/app/model-configuration';
+  import { createLegacyModelConfiguration } from '$lib/app/compatibility/legacy-model-configuration';
+  import { listCodexThreads, readCodexThread, forkCodexThread, listPiCommands, listCodexSkills, getPiSessionTree, navigatePiSessionTree } from '$lib/compatibility/agent-api';
+  import { legacyAgentOperations } from '$lib/compatibility/agent-api';
+  import { legacyCapability } from '$lib/app/compatibility/legacy-capability';
   import { createAgentFacade } from '$lib/app/agent-facade';
+  import { createViewStateStore } from '$lib/app/view-state-storage';
   import { createMessageController } from '$lib/app/message-controller';
   import { createNavigationController } from '$lib/app/navigation-controller';
   import { createPiTreeController } from '$lib/app/pi-tree-controller';
@@ -53,14 +69,11 @@
   } from '$lib/app/composer-draft-storage';
   import type { ComposerDrafts } from '$lib/app/composer-draft-storage';
   import { isSessionRunning } from '$lib/app/session-state';
-  import { sessionAgentKind, sessionModelBackend } from '$lib/app/agent-kind';
+  import { dispatchBuiltinCommand } from '$lib/app/compatibility/command-dispatch';
+  import { sessionAgentKind } from '$lib/app/agent-kind';
   import {
     addWorkspace,
-    abortCodexTurn,
     archiveSession as archiveSessionApi,
-    createCodexSession,
-    createPiSession,
-    forkCodexThread,
     getSessionExecutionProfile,
     getTurnChangeSet,
     listRestoreOperations,
@@ -97,24 +110,13 @@
     validateSessionAttachments,
     restoreTurnChangeSet as restoreTurnChangeSetApi,
     getTimeline,
-    getPiSessionTree,
     isTauri,
-    listCodexThreads,
     listWorkspaces,
     searchWorkspacePaths,
     getComposerDraft,
     saveComposerDraft,
-    listPiCommands,
-    compactPiSession,
-    setPiThinkingLevel,
-    setPiModel,
     getSessionModels,
-    listCodexSkills,
-    getCodexGoal,
-    setCodexGoal,
-    clearCodexGoal,
     updateSessionExecutionProfile,
-    reloadPiSession,
     listSessions as listAllSessions,
     listPluginInstallations,
     installAgentPlugin,
@@ -129,22 +131,15 @@
     invokePluginViewAction,
     invokeAgentCapability,
     listenToAgentEvents,
-    navigatePiSessionTree,
     probeAgents,
     inspectWorkspaceCapabilities,
-    readCodexThread,
     renameSession as renameSessionApi,
     removeWorkspace,
     openWorkspaceLocation as openWorkspaceLocationApi,
-    resolveCodexApproval,
-    resolveCodexUserInput,
-    resolvePiApproval,
-    sendCodexPrompt,
-    sendPiPrompt,
-    steerPiPrompt,
-    followUpPiPrompt,
-    abortPiTurn,
+    resolveAgentApproval,
+    resolveAgentUserInput,
     setWorkspaceTrust,
+    presentationWindowId,
     toggleWindowMaximize,
     minimizeWindow,
     closeWindow,
@@ -246,7 +241,7 @@
   function readPersistedSelection(): PersistedSelection | null {
     if (typeof window === 'undefined') return null;
     try {
-      return readSelectionFromStorage(window.localStorage);
+      return readSelectionFromStorage(window.localStorage, presentationWindowId());
     } catch {
       return null;
     }
@@ -255,7 +250,7 @@
   function writePersistedSelection(selection: PersistedSelection | null) {
     if (typeof window === 'undefined') return;
     try {
-      writeSelectionToStorage(window.localStorage, selection);
+      writeSelectionToStorage(window.localStorage, selection, presentationWindowId());
     } catch {
       // The WebView may reject localStorage access altogether.
     }
@@ -427,20 +422,16 @@
   let retryReason = $state<string | null>(null);
   let lastSubmittedPrompt = $state<string | null>(null);
   let settingsOpen = $state(false);
-  type PluginSession = Session;
   const listSessions: typeof listAllSessions = listAllSessions;
   let pluginsOpen = $state(false);
   let pluginInstallations = $state<PluginInstallation[]>([]);
-  let pluginSessions = $state<PluginSession[]>([]);
-  let pluginSelection = $state<Record<string, string>>({});
-  let pluginDrafts = $state<Record<string, string>>({});
-  let pluginTimeline = $state<TimelineItem[]>([]);
+  const pluginSessions = $derived((workspaceSessionMap[selectedWorkspaceId ?? ''] ?? []).filter(session => Boolean(session.pluginInstallationId)));
   let pluginViews = $state<UiPluginViewDocument[]>([]);
   let pluginViewSessionId = $state<string | null>(null);
   let pluginPackagePath = $state('');
   let pluginBusy = $state(false);
   let pluginError = $state('');
-  const pluginSessionId = $derived(pluginSelection[selectedWorkspaceId ?? ''] ?? null);
+  const pluginSessionId = $derived(pluginSessions.some(session => session.id === selectedSessionId) ? selectedSessionId : null);
   const pluginSession = $derived(pluginSessions.find((session) => session.id === pluginSessionId) ?? null);
 
   async function pluginOperation(operation: () => Promise<void>): Promise<void> {
@@ -480,7 +471,7 @@
     await pluginOperation(async () => {
       await uninstallAgentPlugin(id);
       pluginInstallations = await listPluginInstallations();
-    pluginSessions = (await listAllSessions()).filter((session) => sessionAgentKind(session) === 'plugin');
+      if (selectedWorkspaceId) await refreshSessions(selectedWorkspaceId);
     });
   }
 
@@ -489,27 +480,23 @@
     if (!workspaceId) { pluginError = '请先选择工作区。'; return; }
     await pluginOperation(async () => {
       const session = await createAgentSession(workspaceId, agentId, installationId);
-      if (selectedWorkspaceId !== workspaceId) return;
-      pluginSessions = [...pluginSessions.filter((item) => item.id !== session.id), session];
-      pluginSelection[workspaceId] = session.id;
+      workspaceSessionMap = upsertSession(workspaceSessionMap, session);
+      if (selectedWorkspaceId === workspaceId) navigationController.selectSession(session.id);
     });
   }
 
   async function sendPluginPrompt(): Promise<void> {
-    const id = pluginSessionId;
-    if (!id) return;
-    const input = pluginDrafts[id] ?? '';
-    if (!input.trim()) return;
-    await pluginOperation(async () => {
-      const session = await sendAgentPrompt(id, input);
-      pluginSessions = pluginSessions.map((item) => item.id === id ? session : item);
-      if (pluginDrafts[id] === input) pluginDrafts[id] = '';
-    });
+    if (!pluginSessionId) return;
+    await pluginOperation(() => messageController.sendPrompt());
   }
 
   function pluginSessionOperation(operation: (sessionId: string) => Promise<void>): void {
     const id = pluginSessionId;
-    if (id) void pluginOperation(() => operation(id));
+    if (id) void pluginOperation(async () => {
+      await operation(id);
+      const session = findSession(id);
+      if (session) await refreshSessions(session.workspaceId);
+    });
   }
 
   async function invokePluginAction(viewId: string, actionId: string, input: Record<string, unknown>): Promise<void> {
@@ -531,17 +518,14 @@
       if (polling || disposed) return;
       polling = true;
       try {
-        const [allSessions, items, views] = await Promise.allSettled([
-          listAllSessions(workspaceId!),
-          sessionId ? getTimeline(sessionId) : Promise.resolve([]),
+        const [sessions, views] = await Promise.allSettled([
+          refreshSessions(workspaceId!, false),
           sessionId ? getPluginViews(sessionId) : Promise.resolve([]),
         ]);
         if (disposed) return;
-        if (allSessions.status === 'fulfilled') pluginSessions = allSessions.value.filter((session) => sessionAgentKind(session) === 'plugin');
-        if (items.status === 'fulfilled') pluginTimeline = items.value;
         pluginViews = views.status === 'fulfilled' ? views.value : [];
         pluginViewSessionId = sessionId;
-        const failed = [allSessions, items, views].find((result) => result.status === 'rejected');
+        const failed = [sessions, views].find((result) => result.status === 'rejected');
         if (failed?.status === 'rejected') pluginError = toErrorMessage(failed.reason);
       } catch (error) {
         if (!disposed) pluginError = toErrorMessage(error);
@@ -725,12 +709,12 @@
     const id = selectedSessionId;
     const agent = selectedSessionAgent;
     const archived = selectedSessionArchived;
-    if (!desktop || agent !== 'codex' || archived || !id) {
+    if (!desktop || !selectedSession?.capabilities.includes('goal.manage') || archived || !id) {
       codexGoal = null;
       return;
     }
     codexGoal = null;
-    void getCodexGoal(id)
+    void agentFacade.invoke(selectedSession!, 'goal.manage', { action: 'get' })
       .then((value) => {
         if (selectedSessionId === id) codexGoal = normalizeCodexGoal(value);
       })
@@ -922,6 +906,13 @@
     }
     return withActivityAge(`${agentLabel} 等待模型响应（可能正在思考）…`);
   });
+  async function loadSessionCommands(session: Session): Promise<AgentCommand[]> {
+    const capability = session.capabilities.includes('command.list') ? 'command.list' : session.capabilities.includes('skill.list') ? 'skill.list' : null;
+    if (!capability) return [];
+    const result = await agentFacade.invoke(session, capability);
+    return (Array.isArray(result.commands) ? result.commands : Array.isArray(result.skills) ? result.skills : []) as AgentCommand[];
+  }
+
   const contextCompacting = $derived(agentActivityLabel?.includes('压缩上下文') ?? false);
 
   $effect(() => {
@@ -933,14 +924,7 @@
     }
     agentCommandsLoading = true;
     const generation = ++commandSearchGeneration;
-    const loadCommands = session.pluginInstallationId
-      ? (session.capabilities.includes('command.list')
-        ? agentFacade.invoke(session, 'command.list').then((result) => Array.isArray(result.commands) ? result.commands as AgentCommand[] : [])
-        : session.capabilities.includes('skill.list')
-          ? agentFacade.invoke(session, 'skill.list').then((result) => Array.isArray(result.skills) ? result.skills as AgentCommand[] : [])
-          : Promise.resolve([]))
-      : sessionAgentKind(session) === 'pi' ? listPiCommands(session.id)
-      : sessionAgentKind(session) === 'codex' ? listCodexSkills(session.id) : Promise.resolve([]);
+    const loadCommands = loadSessionCommands(session);
     void loadCommands
       .then((commands) => {
         if (generation === commandSearchGeneration && selectedSessionId === session.id) {
@@ -1174,8 +1158,8 @@
     await refreshController.refresh();
   }
 
-  async function refreshSessions(workspaceId: string) {
-    await refreshController.refreshSessions(workspaceId);
+  async function refreshSessions(workspaceId: string, hydrate = true) {
+    await refreshController.refreshSessions(workspaceId, hydrate);
   }
 
   async function refreshExpandedSessions() {
@@ -1463,6 +1447,8 @@
         errorMessage = result.message;
         return;
       }
+      const draft = workbenchDrafts.git[workspaceId];
+      if (draft?.branchDraft.trim() === branch.trim()) workbenchDrafts.git[workspaceId] = { ...draft, branchDraft: '' };
       notice = `已创建并切换到 ${branch}。`;
       await Promise.all([refreshWorkspaceChanges(workspaceId), refreshWorkspaceGitMetadata(workspaceId)]);
       closeWorkspaceFileDiff();
@@ -1576,15 +1562,11 @@
       diffLength >= maxReviewDiffLength ? '\n\n部分 diff 因长度限制已截断。' : '',
     ].join('\n');
     try {
-      let reviewSession = sessionAgentKind(session) === 'codex'
-        ? await createCodexSession(workspaceId, reviewProfile)
-        : await createPiSession(workspaceId, reviewProfile);
+      let reviewSession = await createAgentSession(workspaceId, session.agent, session.pluginInstallationId ?? undefined, reviewProfile);
       workspaceSessionMap = upsertSession(workspaceSessionMap, reviewSession);
       clearSelectedSessionContext();
       selectedSessionId = reviewSession.id;
-      reviewSession = sessionAgentKind(session) === 'codex'
-        ? await sendCodexPrompt(reviewSession.id, prompt)
-        : await sendPiPrompt(reviewSession.id, prompt);
+      reviewSession = await sendAgentPrompt(reviewSession.id, prompt);
       workspaceSessionMap = upsertSession(workspaceSessionMap, reviewSession);
       void refreshTimeline(reviewSession.id);
       void refreshExecutionProfile(reviewSession.id);
@@ -1711,6 +1693,8 @@
         errorMessage = result.message;
         return false;
       }
+      const draft = workbenchDrafts.git[workspaceId];
+      if (draft?.commitMessage.trim() === message.trim()) workbenchDrafts.git[workspaceId] = { ...draft, commitMessage: '' };
       notice = result.hash ? `已创建提交 ${result.hash.slice(0, 8)}。` : '已创建提交。';
       await refreshWorkspaceChanges(workspaceId);
       await refreshWorkspaceGitMetadata(workspaceId);
@@ -2038,276 +2022,55 @@
     }
   }
 
-  async function applySessionModel(model: string | null): Promise<void> {
+  async function applyModelChange(change: ModelConfigurationChange): Promise<void> {
     const session = selectedSession;
     if (!session) return;
     if (!desktop) {
       errorMessage = '当前是 Web 预览；请在 Tauri 桌面模式中调整会话模型。';
       return;
     }
-    if (sessionRunning || selectedSessionArchiving) {
-      errorMessage = '会话运行中不能切换模型，请等待当前回合结束。';
+    if (busy || sessionRunning || selectedSessionArchiving) {
+      errorMessage = '会话忙碌时不能切换模型或推理强度，请稍候重试。';
       return;
     }
     busy = true;
     errorMessage = null;
-    // An earlier catalog read must not overwrite the result of a switch.
-    ++sessionModelRequestGeneration;
+    const generation = ++sessionModelRequestGeneration;
     sessionModelCatalogLoading = false;
+    const ownsSelection = () => selectedSessionId === session.id && generation === sessionModelRequestGeneration;
     try {
-      if (sessionModelBackend(session) === 'plugin') {
-        if (!session.capabilities.includes('model.select')) {
-          errorMessage = '此插件未声明模型选择能力。';
-          return;
-        }
-        if (!model) {
-          errorMessage = '此插件未提供恢复默认模型的能力。';
-          return;
-        }
-        const selected = sessionModelCatalog?.models.find((option) => option.reference === model);
-        await invokeAgentCapability(session.id, 'model.select', selected?.provider
-          ? { action: 'set', provider: selected.provider, modelId: selected.id }
-          : { action: 'set', reference: selected?.id ?? model });
-        if (selectedSessionId !== session.id) return;
-        await loadSessionModels();
-        notice = `模型已切换为 ${selected?.label ?? model}。`;
-      } else if (sessionModelBackend(session) === 'pi') {
-        const result = await setPiModel(session.id, model ?? undefined);
-        if (selectedSessionId !== session.id) return;
-        const current = result.current && typeof result.current === 'object'
-          ? result.current as { provider?: unknown; id?: unknown }
-          : result;
-        const provider = typeof current.provider === 'string' ? current.provider : '';
-        const id = typeof current.id === 'string' ? current.id : null;
-        const selectedModelLabel = id ? `${provider ? `${provider}/` : ''}${id}` : model;
-        sessionModelOverride = selectedModelLabel;
-        if (sessionModelCatalog && selectedModelLabel) {
-          const selected = sessionModelCatalog.models.find(
-            (option) => option.reference === selectedModelLabel,
-          );
-          sessionModelCatalog = {
-            ...sessionModelCatalog,
-            current: selected ?? {
-              reference: selectedModelLabel,
-              label: selectedModelLabel,
-              provider: provider || null,
-              id: id ?? selectedModelLabel,
-              description: null,
-              isDefault: false,
-              defaultReasoningEffort: null,
-              reasoningEfforts: [],
-            },
-          };
-        }
-        executionProfile = await getSessionExecutionProfile(session.id);
-        await loadSessionModels();
-        notice = selectedModelLabel ? `Pi 模型已切换为 ${selectedModelLabel}。` : '已读取 Pi 当前模型。';
-      } else {
-        const current = executionProfile?.requested;
-        if (!current) {
-          errorMessage = '当前会话配置尚未加载，请稍候重试。';
-          return;
-        }
-        if ((current.model ?? null) === model) {
-          notice = model ? `Codex 当前已使用 ${model}。` : 'Codex 当前已使用默认模型。';
-          return;
-        }
-        const selected = model
-          ? sessionModelCatalog?.models.find((option) => option.reference === model)
-          : sessionModelCatalog?.models.find((option) => option.isDefault);
-        const supportedReasoning = selected?.reasoningEfforts ?? [];
-        const reasoningEffort = supportedReasoning.length > 0 &&
-          (!current.reasoningEffort || !supportedReasoning.some((option) => option.id === current.reasoningEffort))
-          ? selected?.defaultReasoningEffort ?? supportedReasoning[0]?.id ?? null
-          : current.reasoningEffort;
-        const updatedProfile = await updateSessionExecutionProfile(session.id, {
-          ...current,
-          model,
-          reasoningEffort,
-        });
-        markSessionIdle(session);
-        if (selectedSessionId !== session.id) return;
-        executionProfile = updatedProfile;
-        if (sessionModelCatalog) {
-          const selected = model
-            ? sessionModelCatalog.models.find((option) => option.reference === model)
-            : sessionModelCatalog.models.find((option) => option.isDefault);
-          sessionModelCatalog = {
-            ...sessionModelCatalog,
-            current: selected ?? (model
-              ? {
-                  reference: model,
-                  label: model,
-                  provider: null,
-                  id: model,
-                  description: null,
-                  isDefault: false,
-                  defaultReasoningEffort: null,
-                  reasoningEfforts: [],
-                }
-              : null),
-            currentReasoningEffort: updatedProfile.enforced.reasoningEffort
-              ?? selected?.defaultReasoningEffort
-              ?? null,
-          };
-        }
-        notice = model ? `Codex 模型已切换为 ${model}。` : 'Codex 将使用默认模型。';
-      }
+      const result = await modelConfigurationService.apply(session, change, sessionModelCatalog, executionProfile);
+      if (result.profile && !session.pluginInstallationId) markSessionIdle(session);
+      if (!ownsSelection()) return;
+      if (result.profile) executionProfile = result.profile;
+      sessionModelCatalog = result.catalog;
+      sessionModelOverride = null;
+      notice = `当前模型：${result.catalog.current?.label ?? '默认'} · ${result.catalog.currentReasoningEffort ?? '模型默认'}。`;
     } catch (error) {
-      errorMessage = toErrorMessage(error);
+      // A model update may have succeeded before a reasoning update failed.
+      // Re-read the owner so the matrix does not pretend the combined operation rolled back.
+      if (ownsSelection()) {
+        errorMessage = toErrorMessage(error);
+        try {
+          const catalog = await getSessionModels(session.id);
+          if (ownsSelection()) { sessionModelCatalog = catalog; sessionModelOverride = null; }
+        } catch { /* Keep the original operation error; a later refresh can retry. */ }
+      }
     } finally {
       busy = false;
     }
+  }
+
+  async function applySessionModel(model: string | null): Promise<void> {
+    await applyModelChange({ kind: 'model', model });
   }
 
   async function applySessionReasoningEffort(reasoningEffort: string | null): Promise<void> {
-    const session = selectedSession;
-    if (!session) return;
-    if (!desktop) {
-      errorMessage = '当前是 Web 预览；请在 Tauri 桌面模式中调整推理强度。';
-      return;
-    }
-    if (sessionRunning || selectedSessionArchiving) {
-      errorMessage = '会话运行中不能切换推理强度，请等待当前回合结束。';
-      return;
-    }
-    busy = true;
-    errorMessage = null;
-    ++sessionModelRequestGeneration;
-    try {
-      if (sessionModelBackend(session) === 'plugin') {
-        if (!session.capabilities.includes('model.reasoning')) {
-          errorMessage = '此插件未声明推理强度能力。';
-          return;
-        }
-        if (!reasoningEffort) {
-          errorMessage = '此插件未提供恢复默认推理强度的能力。';
-          return;
-        }
-        await invokeAgentCapability(session.id, 'model.reasoning', { action: 'set', level: reasoningEffort });
-        if (selectedSessionId !== session.id) return;
-        await loadSessionModels();
-        notice = `推理强度已切换为 ${reasoningEffort}。`;
-      } else if (sessionModelBackend(session) === 'pi') {
-        const result = await setPiThinkingLevel(session.id, reasoningEffort ?? undefined);
-        if (selectedSessionId !== session.id) return;
-        executionProfile = await getSessionExecutionProfile(session.id);
-        const level = typeof result.level === 'string' ? result.level : reasoningEffort;
-        sessionModelCatalog = sessionModelCatalog
-          ? { ...sessionModelCatalog, currentReasoningEffort: level ?? null }
-          : sessionModelCatalog;
-        notice = level ? `Pi 推理强度已切换为 ${level}。` : '已读取 Pi 当前推理强度。';
-      } else {
-        const current = executionProfile?.requested;
-        if (!current) {
-          errorMessage = '当前会话配置尚未加载，请稍候重试。';
-          return;
-        }
-        if ((current.reasoningEffort ?? null) === reasoningEffort) {
-          notice = reasoningEffort ? `Codex 当前已使用 ${reasoningEffort} 推理强度。` : 'Codex 将使用模型默认推理强度。';
-          return;
-        }
-        const updatedProfile = await updateSessionExecutionProfile(session.id, {
-          ...current,
-          reasoningEffort,
-        });
-        markSessionIdle(session);
-        if (selectedSessionId !== session.id) return;
-        executionProfile = updatedProfile;
-        sessionModelCatalog = sessionModelCatalog
-          ? {
-              ...sessionModelCatalog,
-              currentReasoningEffort: updatedProfile.enforced.reasoningEffort ?? null,
-            }
-          : sessionModelCatalog;
-        notice = updatedProfile.enforced.reasoningEffort
-          ? `Codex 推理强度已切换为 ${updatedProfile.enforced.reasoningEffort}。`
-          : 'Codex 将使用模型默认推理强度。';
-      }
-    } catch (error) {
-      errorMessage = toErrorMessage(error);
-    } finally {
-      busy = false;
-    }
+    await applyModelChange({ kind: 'reasoning', reasoningEffort });
   }
 
   async function applySessionModelConfiguration(model: string, reasoningEffort: string | null): Promise<void> {
-    const session = selectedSession;
-    if (!session) return;
-    if (!desktop) {
-      errorMessage = '当前是 Web 预览；请在 Tauri 桌面模式中调整会话模型。';
-      return;
-    }
-    if (sessionRunning || selectedSessionArchiving) {
-      errorMessage = '会话运行中不能切换模型或推理强度，请等待当前回合结束。';
-      return;
-    }
-    busy = true;
-    errorMessage = null;
-    ++sessionModelRequestGeneration;
-    sessionModelCatalogLoading = false;
-    try {
-      if (sessionModelBackend(session) === 'plugin') {
-        if (!session.capabilities.includes('model.select')) {
-          errorMessage = '此插件未声明模型选择能力。';
-          return;
-        }
-        const selected = sessionModelCatalog?.models.find((option) => option.reference === model);
-        await invokeAgentCapability(session.id, 'model.select', selected?.provider
-          ? { action: 'set', provider: selected.provider, modelId: selected.id }
-          : { action: 'set', reference: selected?.id ?? model });
-        if (reasoningEffort && session.capabilities.includes('model.reasoning')) {
-          await invokeAgentCapability(session.id, 'model.reasoning', { action: 'set', level: reasoningEffort });
-        }
-        if (selectedSessionId !== session.id) return;
-        await loadSessionModels();
-        notice = reasoningEffort
-          ? `模型已切换为 ${selected?.label ?? model} · ${reasoningEffort}。`
-          : `模型已切换为 ${selected?.label ?? model}。`;
-      } else if (sessionModelBackend(session) === 'pi') {
-        const result = await setPiModel(session.id, model);
-        if (selectedSessionId !== session.id) return;
-        const current = result.current && typeof result.current === 'object'
-          ? result.current as { provider?: unknown; id?: unknown }
-          : result;
-        const provider = typeof current.provider === 'string' ? current.provider : '';
-        const id = typeof current.id === 'string' ? current.id : null;
-        const selectedModelLabel = id ? `${provider ? `${provider}/` : ''}${id}` : model;
-        sessionModelOverride = selectedModelLabel;
-        if (reasoningEffort !== null) await setPiThinkingLevel(session.id, reasoningEffort);
-        if (selectedSessionId !== session.id) return;
-        executionProfile = await getSessionExecutionProfile(session.id);
-        await loadSessionModels();
-        notice = reasoningEffort ? `Pi 已切换为 ${selectedModelLabel} · ${reasoningEffort}。` : `Pi 模型已切换为 ${selectedModelLabel}。`;
-      } else {
-        const current = executionProfile?.requested;
-        if (!current) {
-          errorMessage = '当前会话配置尚未加载，请稍候重试。';
-          return;
-        }
-        const updatedProfile = await updateSessionExecutionProfile(session.id, {
-          ...current,
-          model,
-          reasoningEffort,
-        });
-        markSessionIdle(session);
-        if (selectedSessionId !== session.id) return;
-        executionProfile = updatedProfile;
-        if (sessionModelCatalog) {
-          const selected = sessionModelCatalog.models.find((option) => option.reference === model);
-          sessionModelCatalog = {
-            ...sessionModelCatalog,
-            current: selected ?? sessionModelCatalog.current,
-            currentReasoningEffort: updatedProfile.enforced.reasoningEffort ?? null,
-          };
-        }
-        notice = `Codex 已切换为 ${model} · ${updatedProfile.enforced.reasoningEffort ?? '模型默认'}。`;
-      }
-    } catch (error) {
-      errorMessage = toErrorMessage(error);
-    } finally {
-      busy = false;
-    }
+    await applyModelChange({ kind: 'configuration', model, reasoningEffort });
   }
 
   async function executePiBuiltinCommand(input: string): Promise<boolean> {
@@ -2416,51 +2179,26 @@
         return true;
       case 'compact':
         await run(async () => {
-          await compactPiSession(session.id, command.args);
+          await agentFacade.invoke(session, 'compaction.run', { instructions: command.args });
           timeline = await getTimeline(session.id);
           notice = 'Pi 上下文压缩已完成。';
         });
         return true;
       case 'thinking':
-        await run(async () => {
-          const result = await setPiThinkingLevel(session.id, command.args || undefined);
-          executionProfile = await getSessionExecutionProfile(session.id);
-          const level = typeof result.level === 'string' ? result.level : null;
-          const available = Array.isArray(result.availableLevels)
-            ? result.availableLevels.filter((item): item is string => typeof item === 'string')
-            : [];
-          notice = command.args
-            ? `推理强度已设置为 ${level ?? command.args}。`
-            : `当前推理强度：${level ?? '未知'}${available.length > 0 ? `（可选：${available.join('、')}）` : ''}`;
-        });
+        if (command.args) await applySessionReasoningEffort(command.args);
+        else {
+          await loadSessionModels();
+          if (selectedSessionId === session.id && !errorMessage) notice = `当前推理强度：${sessionModelCatalog?.currentReasoningEffort ?? '模型默认'}。`;
+        }
+        if (selectedSessionId === session.id && composerText === input) composerText = '';
         return true;
       case 'model':
-        await run(async () => {
-          const result = await setPiModel(session.id, command.args || undefined);
-          if (command.args) {
-            const provider = typeof result.provider === 'string' ? result.provider : '';
-            const id = typeof result.id === 'string' ? result.id : command.args;
-            sessionModelOverride = `${provider ? `${provider}/` : ''}${id}`;
-            notice = `当前模型已切换为 ${provider ? `${provider}/` : ''}${id}。`;
-          } else {
-            const current = result.current && typeof result.current === 'object'
-              ? result.current as { provider?: unknown; id?: unknown }
-              : null;
-            const models = Array.isArray(result.models)
-              ? result.models.filter((item): item is { provider?: unknown; id?: unknown } => Boolean(item && typeof item === 'object'))
-              : [];
-            const currentLabel = current && typeof current.provider === 'string' && typeof current.id === 'string'
-              ? `${current.provider}/${current.id}`
-              : '未选择';
-            sessionModelOverride = currentLabel === '未选择' ? null : currentLabel;
-            notice = `当前模型：${currentLabel}${models.length > 0 ? ` · 可用 ${models.length} 个` : ''}`;
-          }
-          executionProfile = await getSessionExecutionProfile(session.id);
-          // Keep the composer model button in sync with a model changed through
-          // the slash command, so opening it immediately still shows the
-          // session's actual model and the latest catalog.
+        if (command.args) await applySessionModel(command.args);
+        else {
           await loadSessionModels();
-        });
+          if (selectedSessionId === session.id && !errorMessage) notice = `当前模型：${sessionModelCatalog?.current?.label ?? '默认'}。`;
+        }
+        if (selectedSessionId === session.id && composerText === input) composerText = '';
         return true;
       case 'reload':
         if (command.args) {
@@ -2468,7 +2206,7 @@
           return true;
         }
         await run(async () => {
-          const result = await reloadPiSession(session.id);
+          const result = await agentFacade.invoke(session, 'session.reload', {});
           if (Array.isArray(result.commands)) {
             agentCommands = result.commands.filter((item): item is AgentCommand => Boolean(item && typeof item === 'object' && typeof item.name === 'string'));
           }
@@ -2636,20 +2374,20 @@
       case 'goal':
         await run(async () => {
           if (command.args.toLocaleLowerCase() === 'clear') {
-            await clearCodexGoal(session.id);
+            await agentFacade.invoke(session, 'goal.manage', { action: 'clear' });
             codexGoal = null;
             notice = 'Codex 当前目标已清除。';
             return;
           }
           if (!command.args) {
-            const result = await getCodexGoal(session.id);
+            const result = await agentFacade.invoke(session, 'goal.manage', { action: 'get' });
             const goal = normalizeCodexGoal(result);
             notice = goal?.objective
               ? `当前目标：${goal.objective}${goal.status ? ` · ${goal.status}` : ''}`
               : '当前会话没有目标。';
             return;
           }
-          const result = await setCodexGoal(session.id, command.args);
+          const result = await agentFacade.invoke(session, 'goal.manage', { action: 'set', objective: command.args });
           codexGoal = normalizeCodexGoal(result) ?? {
             objective: command.args,
             status: 'active',
@@ -2666,7 +2404,7 @@
           return true;
         }
         await run(async () => {
-          agentCommands = await listCodexSkills(session.id);
+          agentCommands = await loadSessionCommands(session);
           notice = `已刷新 Codex Skills（${agentCommands.length} 项）。`;
         });
         return true;
@@ -2676,8 +2414,7 @@
   }
 
   async function sendPrompt() {
-    if (sessionAgentKind(selectedSession) === 'codex' && await executeCodexBuiltinCommand(composerText)) return;
-    if (sessionAgentKind(selectedSession) === 'pi' && await executePiBuiltinCommand(composerText)) return;
+    if (await dispatchBuiltinCommand(selectedSession, composerText, { codex: executeCodexBuiltinCommand, pi: executePiBuiltinCommand })) return;
     await messageController.sendPrompt();
   }
 
@@ -2703,7 +2440,7 @@
     errorMessage = null;
     setAgentActivity(session.id, true, 'Pi 正在压缩上下文…');
     try {
-      await compactPiSession(session.id);
+      await agentFacade.invoke(session, 'compaction.run', {});
       if (selectedSessionId === session.id) timeline = await getTimeline(session.id);
       setAgentActivity(session.id, false);
       notice = 'Pi 上下文压缩已完成。';
@@ -2768,7 +2505,7 @@
     busy = true;
     errorMessage = null;
     try {
-      await resolveCodexUserInput(request.sessionId, request.requestId, answers);
+      await resolveAgentUserInput(request.sessionId, request.requestId, answers);
       pendingUserInputs = pendingUserInputs.filter(
         (item) => item.sessionId !== request.sessionId || item.requestId !== request.requestId,
       );
@@ -2841,11 +2578,9 @@
 
   const sessionContextController = createSessionContextController({
     api: {
-      listCodexThreads,
-      readCodexThread,
-      getTimeline,
-      getPiSessionTree,
-      invokeAgentCapability,
+      listCodexThreads, readCodexThread, getPiSessionTree,
+          getTimeline,
+        invokeAgentCapability,
       getSessionExecutionProfile,
       getTurnChangeSet,
       listRestoreOperations,
@@ -2914,10 +2649,10 @@
 
   const sessionLifecycle = createSessionLifecycleController({
     api: {
+      forkCodexThread,
       closeAgentSession,
       renameSession: renameSessionApi,
-      forkCodexThread,
-      archiveSession: archiveSessionApi,
+        archiveSession: archiveSessionApi,
       unarchiveSession: unarchiveSessionApi,
       getTimeline,
     },
@@ -2954,9 +2689,9 @@
   });
 
   const agentSessionController = createAgentSessionController({
+    getSelectedWorkspaceId: () => selectedWorkspaceId,
     api: {
-      createCodexSession,
-      createPiSession,
+      createSession: (workspaceId, agentId, profile) => createAgentSession(workspaceId, agentId, undefined, profile),
     },
     getDesktop: () => desktop,
     getWorkspaceSessionMap: () => workspaceSessionMap,
@@ -3086,11 +2821,17 @@
     setPiNavigationEntryId: (value) => (piNavigationEntryId = value),
   });
 
-  const agentFacade = createAgentFacade({ invokeAgentCapability });
+  const agentFacade = createAgentFacade({ invokeAgentCapability, legacyCapability: legacyCapability(legacyAgentOperations) });
+  const modelConfigurationService = createModelConfigurationService({
+    facade: agentFacade,
+    getSessionModels,
+    getSessionExecutionProfile,
+    legacyApply: createLegacyModelConfiguration({ updateSessionExecutionProfile }),
+  });
 
   const messageController = createMessageController({
     api: {
-      createCodexSession,
+      createDefaultSession: (workspaceId) => createAgentSession(workspaceId, 'dev.aibo.codex.agent'),
       sendAgentPrompt,
       cancelAgentTurn,
       invokeAgentCapability,
@@ -3103,6 +2844,16 @@
     getSessionRunning: () => sessionRunning,
     getComposerText: () => composerText,
     setComposerText: (value) => (composerText = value),
+    consumeDraft: (sessionId, submitted) => {
+      if (selectedSessionId === sessionId && composerText === submitted) composerText = '';
+      if (composerDrafts[sessionId]?.text === submitted) {
+        const next = { ...composerDrafts };
+        delete next[sessionId];
+        composerDrafts = next;
+        writePersistedComposerDrafts(next);
+        scheduleComposerDraftWrite(sessionId, '', false, true);
+      }
+    },
     setComposerDraftStatus: (sessionId, sendFailed) => {
       const draft = composerDrafts[sessionId];
       if (!draft) return;
@@ -3133,9 +2884,8 @@
   });
 
   const approvalController = createApprovalController({
-    api: { resolveCodexApproval, resolvePiApproval },
+    api: { resolveAgentApproval },
     getDesktop: () => desktop,
-    getSessionAgent: (sessionId) => findSession(sessionId)?.agent ?? null,
     getPendingApprovals: () => pendingApprovals,
     setPendingApprovals: (value) => (pendingApprovals = value),
     setBusy: (value) => (busy = value),
@@ -3144,7 +2894,8 @@
   });
 
   const piTreeController = createPiTreeController({
-    api: { navigatePiSessionTree, invokeAgentCapability, getTimeline },
+    api: {
+      navigatePiSessionTree, invokeAgentCapability, getTimeline },
     getDesktop: () => desktop,
     getSelectedSession: () => selectedSession,
     getSelectedSessionId: () => selectedSessionId,
@@ -3168,6 +2919,8 @@
 
 <svelte:window onkeydown={handleGlobalKeydown} />
 
+<WorkbenchPresentation windowId={presentationWindowId()} snapshot={{ workspaceId: selectedWorkspaceId, sessionId: selectedSessionId, draft: composerText, navigation: sidePanelView, timelineRevision: timeline.length }}>
+{#snippet children(guard)}
 <div
   class="app-shell"
   data-ui-kit={$activeUiKitName}
@@ -3176,14 +2929,14 @@
   style={$activeThemeStyle}
 >
   <WindowTitlebar
-    onOpenPlugins={openPluginPanel}
-    onOpenSettings={openSettingsPanel}
-    onOpenDiagnostics={openDiagnosticsPanel}
+    onOpenPlugins={guard('onOpenPlugins', openPluginPanel)}
+    onOpenSettings={guard('onOpenSettings', openSettingsPanel)}
+    onOpenDiagnostics={guard('onOpenDiagnostics', openDiagnosticsPanel)}
     sidePanelOpen={sidePanelOpen}
-    onToggleSidePanel={toggleSidePanel}
-    onToggleMaximize={toggleMaximizeWindow}
-    onMinimize={minimizeAppWindow}
-    onClose={closeAppWindow}
+    onToggleSidePanel={guard('onToggleSidePanel', toggleSidePanel)}
+    onToggleMaximize={guard('onToggleMaximize', toggleMaximizeWindow)}
+    onMinimize={guard('onMinimize', minimizeAppWindow)}
+    onClose={guard('onClose', closeAppWindow)}
   />
 
   <main
@@ -3205,78 +2958,78 @@
       archivingSessionId={archivingSessionId}
       sessionSearchOpen={sessionSearchOpen}
       sessionFilterOpen={sessionFilterOpen}
-      bind:sessionSearch
-      bind:sessionFilter
+      bind:sessionSearch={() => sessionSearch, guard('bind:sessionSearch', (value) => { sessionSearch = value; })}
+      bind:sessionFilter={() => sessionFilter, guard('bind:sessionFilter', (value) => { sessionFilter = value; })}
       createSessionWorkspaceId={createSessionWorkspaceId}
       renamingSessionId={renamingSessionId}
-      bind:sessionLabelDraft
-      onToggleSearch={() => (sessionSearchOpen = !sessionSearchOpen)}
-      onToggleFilter={() => (sessionFilterOpen = !sessionFilterOpen)}
-      onApplyFilters={() => void refreshExpandedSessions()}
-      onChooseWorkspaceDirectory={() => void chooseWorkspaceDirectory()}
-      onSelectWorkspace={selectWorkspace}
-      onToggleSessionCreator={toggleSessionCreator}
-      onToggleTrust={(workspaceId) => {
+      bind:sessionLabelDraft={() => sessionLabelDraft, guard('bind:sessionLabelDraft', (value) => { sessionLabelDraft = value; })}
+      onToggleSearch={guard('onToggleSearch', () => (sessionSearchOpen = !sessionSearchOpen))}
+      onToggleFilter={guard('onToggleFilter', () => (sessionFilterOpen = !sessionFilterOpen))}
+      onApplyFilters={guard('onApplyFilters', () => void refreshExpandedSessions())}
+      onChooseWorkspaceDirectory={guard('onChooseWorkspaceDirectory', () => void chooseWorkspaceDirectory())}
+      onSelectWorkspace={guard('onSelectWorkspace', selectWorkspace)}
+      onToggleSessionCreator={guard('onToggleSessionCreator', toggleSessionCreator)}
+      onToggleTrust={guard('onToggleTrust', (workspaceId) => {
         const workspace = workspaces.find((item) => item.id === workspaceId);
         if (workspace) void toggleTrust(workspace);
-      }}
-      onDeleteWorkspace={(workspaceId) => {
+      })}
+      onDeleteWorkspace={guard('onDeleteWorkspace', (workspaceId) => {
         const workspace = workspaces.find((item) => item.id === workspaceId);
         if (workspace) void deleteWorkspace(workspace);
-      }}
-      onOpenWorkspaceLocation={(workspaceId) => void openWorkspaceLocation(workspaceId)}
-      onCreateCodex={(workspaceId) => {
+      })}
+      onOpenWorkspaceLocation={guard('onOpenWorkspaceLocation', (workspaceId) => void openWorkspaceLocation(workspaceId))}
+      onCreateCodex={guard('onCreateCodex', (workspaceId) => {
         if (workspaceId !== selectedWorkspaceId) activateWorkspace(workspaceId);
         void createCodex();
-      }}
-      onCreatePi={(workspaceId) => {
+      })}
+      onCreatePi={guard('onCreatePi', (workspaceId) => {
         if (workspaceId !== selectedWorkspaceId) activateWorkspace(workspaceId);
         void createPi();
-      }}
-      onSelectSession={(id) => { semanticGitOpen = false; pluginsOpen = false; selectSession(id); }}
-      onUnarchiveSession={(sessionId) => void unarchiveSession(sessionId)}
-      onRequestArchiveSession={requestArchiveSession}
-      onSyncCodexThread={(sessionId) => void syncCodexThread(sessionId)}
-      onBeginRenameSession={beginRenameSession}
-      onSaveSessionRename={() => void saveSessionRename()}
-      onCancelRenameSession={cancelRenameSession}
+      })}
+      onSelectSession={guard('onSelectSession', (id) => { semanticGitOpen = false; pluginsOpen = false; selectSession(id); })}
+      onUnarchiveSession={guard('onUnarchiveSession', (sessionId) => void unarchiveSession(sessionId))}
+      onRequestArchiveSession={guard('onRequestArchiveSession', requestArchiveSession)}
+      onSyncCodexThread={guard('onSyncCodexThread', (sessionId) => void syncCodexThread(sessionId))}
+      onBeginRenameSession={guard('onBeginRenameSession', beginRenameSession)}
+      onSaveSessionRename={guard('onSaveSessionRename', () => void saveSessionRename())}
+      onCancelRenameSession={guard('onCancelRenameSession', cancelRenameSession)}
     />
     <ColumnSplitter
       label="调整工作区与会话宽度"
       width={workspaceSidebarWidth}
-      onPointerDown={(event) => beginColumnResize('workspace', event)}
-      onKeyDown={(event) => handleSplitterKeydown('workspace', event)}
+      onPointerDown={guard('onPointerDown', (event) => beginColumnResize('workspace', event))}
+      onKeyDown={guard('onKeyDown', (event) => handleSplitterKeydown('workspace', event))}
     />
     {#if semanticGitOpen && selectedWorkspaceId}
       {#await loadGitWorkbench() then workbench}
-        <workbench.default workspaceId={selectedWorkspaceId} port={semanticGitPort} onClose={() => semanticGitOpen = false} />
+        <workbench.default workspaceId={selectedWorkspaceId} port={semanticGitPort} stateStore={presentationState} onClose={guard('onClose', () => semanticGitOpen = false)} />
       {/await}
     {:else if pluginsOpen}
-    <PluginWorkspacePanel
+    <PluginWorkspacePanel interaction={workbenchDrafts.plugin} onInteractionChange={guard('onInteractionChange', (value) => { workbenchDrafts.plugin = value; })}
       installations={pluginInstallations}
       sessions={pluginSessions.filter((session) => session.workspaceId === selectedWorkspaceId)}
       selectedSession={pluginSession?.workspaceId === selectedWorkspaceId ? pluginSession : null}
       workspaceLabel={selectedWorkspace?.label ?? null}
       packagePath={pluginPackagePath}
-      prompt={pluginDrafts[pluginSessionId ?? ''] ?? ''}
-      timeline={pluginTimeline.filter((item) => item.sessionId === pluginSessionId)}
+      prompt={pluginSessionId ? composerText : ''}
+      timeline={timeline.filter((item) => item.sessionId === pluginSessionId)}
       views={pluginViewSessionId === pluginSessionId ? pluginViews : []}
       busy={pluginBusy}
-      error={pluginError}
+      error={pluginError || errorMessage || ''}
       {desktop}
-      onPackagePathChange={(value) => { pluginPackagePath = value; }}
-      onPromptChange={(value) => { if (pluginSessionId) pluginDrafts[pluginSessionId] = value; }}
-      onInstall={() => void installPlugin()}
-      onEnabledChange={(id, enabled) => void enablePlugin(id, enabled)}
-      onUninstall={(id) => void uninstallPlugin(id)}
-      onCreateSession={(installationId, agentId) => void createPluginSession(installationId, agentId)}
-      onSelectSession={(id) => { if (selectedWorkspaceId) pluginSelection[selectedWorkspaceId] = id; }}
-      onSend={() => void sendPluginPrompt()}
-      onCancel={() => pluginSessionOperation(cancelAgentTurn)}
-      onResume={() => pluginSessionOperation(resumeAgentSession)}
-      onCloseSession={() => pluginSessionOperation(closeAgentSession)}
-      onViewAction={(viewId, actionId, input) => void invokePluginAction(viewId, actionId, input)}
-      onClose={() => { pluginsOpen = false; }}
+      onPackagePathChange={guard('onPackagePathChange', (value) => { pluginPackagePath = value; })}
+      onPromptChange={guard('onPromptChange', (value) => { if (pluginSessionId) { composerText = value; handleComposerInput(value); } })}
+      onInstall={guard('onInstall', () => void installPlugin())}
+      onEnabledChange={guard('onEnabledChange', (id, enabled) => void enablePlugin(id, enabled))}
+      onUninstall={guard('onUninstall', (id) => void uninstallPlugin(id))}
+      onCreateSession={guard('onCreateSession', (installationId, agentId) => void createPluginSession(installationId, agentId))}
+      onSelectSession={guard('onSelectSession', selectSession)}
+      onSend={guard('onSend', () => void sendPluginPrompt())}
+      onCancel={guard('onCancel', () => pluginSessionOperation(cancelAgentTurn))}
+      onResume={guard('onResume', () => pluginSessionOperation(resumeAgentSession))}
+      onCloseSession={guard('onCloseSession', () => pluginSessionOperation(closeAgentSession))}
+      onViewAction={guard('onViewAction', (viewId, actionId, input) => void invokePluginAction(viewId, actionId, input))}
+      onClose={guard('onClose', () => { pluginsOpen = false; })}
     />
     {:else if workspaceFileDiffPath !== null || workspaceFileDiff || workspaceFileDiffLoading || workspaceFileDiffError}
     <WorkspaceFileDiffPreview
@@ -3286,7 +3039,7 @@
       selectedPath={workspaceFileDiffPath}
       selectedStaged={workspaceFileDiffStaged}
       contextLabel={workspaceFileDiffContextLabel}
-      onClose={closeWorkspaceFileDiff}
+      onClose={guard('onClose', closeWorkspaceFileDiff)}
     />
     {:else}
     <TimelinePanel
@@ -3310,6 +3063,7 @@
       busy={busy}
       attachments={attachments}
       executionProfile={executionProfile}
+      modelConfiguration={modelConfigurationState(selectedSession, sessionModelCatalog, executionProfile)}
       modelCatalog={sessionModelCatalog}
       modelCatalogLoading={sessionModelCatalogLoading}
       modelOverride={sessionModelOverride}
@@ -3317,41 +3071,41 @@
       agentCommands={visibleAgentCommands}
       agentCommandsLoading={agentCommandsLoading}
       composerDraftFailed={composerDraftFailed}
-      bind:composerText
-      onComposerInput={handleComposerInput}
-      onSelectWorkspacePath={selectComposerWorkspacePath}
-      onAddAttachments={() => void chooseSessionAttachments()}
-      onAddDirectory={() => void chooseSessionAttachmentDirectory()}
-      onRemoveAttachment={(attachmentId) => void removeAttachment(attachmentId)}
-      onLoadOlderTimeline={loadOlderTimeline}
-      onForkSession={(throughTurnId) => void forkSession(selectedSessionId, throughTurnId)}
-      onOpenPiTree={openPiTree}
-      onTimelineScroll={handleTimelineScroll}
-      onRetry={() => void retryLastPrompt()}
-      onResolveApproval={(requestId, decision) => {
+      bind:composerText={() => composerText, guard('bind:composerText', (value) => { composerText = value; })}
+      onComposerInput={guard('onComposerInput', handleComposerInput)}
+      onSelectWorkspacePath={guard('onSelectWorkspacePath', selectComposerWorkspacePath)}
+      onAddAttachments={guard('onAddAttachments', () => void chooseSessionAttachments())}
+      onAddDirectory={guard('onAddDirectory', () => void chooseSessionAttachmentDirectory())}
+      onRemoveAttachment={guard('onRemoveAttachment', (attachmentId) => void removeAttachment(attachmentId))}
+      onLoadOlderTimeline={guard('onLoadOlderTimeline', loadOlderTimeline)}
+      onForkSession={guard('onForkSession', (throughTurnId) => void forkSession(selectedSessionId, throughTurnId))}
+      onOpenPiTree={guard('onOpenPiTree', openPiTree)}
+      onTimelineScroll={guard('onTimelineScroll', handleTimelineScroll)}
+      onRetry={guard('onRetry', () => void retryLastPrompt())}
+      onResolveApproval={guard('onResolveApproval', (requestId, decision) => {
         const approval = selectedApprovals.find((item) => item.requestId === requestId);
         if (approval) void resolveApproval(approval, decision);
-      }}
-      onResolveUserInput={(request, answers) => resolveUserInput(request, answers)}
-      onCancelUserInput={(request) => {
+      })}
+      onResolveUserInput={guard('onResolveUserInput', (request, answers) => resolveUserInput(request, answers))}
+      onCancelUserInput={guard('onCancelUserInput', (request) => {
         if (request.sessionId === selectedSessionId) void abortPrompt();
-      }}
-      onSend={() => void sendPrompt()}
-      onQueue={(mode) => void queuePiPrompt(mode)}
-      onClearQueue={() => void clearPiPromptQueue()}
-      onAbort={() => void abortPrompt()}
-      onSelectAccess={(mode) => void applySessionAccess(mode)}
-      onLoadModels={() => void loadSessionModels()}
-      onSelectModelConfiguration={(model, reasoningEffort) => void applySessionModelConfiguration(model, reasoningEffort)}
-      onCompact={() => void compactCurrentSession()}
+      })}
+      onSend={guard('onSend', () => void sendPrompt())}
+      onQueue={guard('onQueue', (mode) => void queuePiPrompt(mode))}
+      onClearQueue={guard('onClearQueue', () => void clearPiPromptQueue())}
+      onAbort={guard('onAbort', () => void abortPrompt())}
+      onSelectAccess={guard('onSelectAccess', (mode) => void applySessionAccess(mode))}
+      onLoadModels={guard('onLoadModels', () => void loadSessionModels())}
+      onSelectModelConfiguration={guard('onSelectModelConfiguration', (model, reasoningEffort) => void applySessionModelConfiguration(model, reasoningEffort))}
+      onCompact={guard('onCompact', () => void compactCurrentSession())}
     />
     {/if}
     {#if sidePanelOpen}
       <ColumnSplitter
         label="调整会话与侧边栏宽度"
         width={inspectorWidth}
-        onPointerDown={(event) => beginColumnResize('inspector', event)}
-        onKeyDown={(event) => handleSplitterKeydown('inspector', event)}
+        onPointerDown={guard('onPointerDown', (event) => beginColumnResize('inspector', event))}
+        onKeyDown={guard('onKeyDown', (event) => handleSplitterKeydown('inspector', event))}
       />
       {#if sidePanelView === 'context'}
       <Inspector
@@ -3377,13 +3131,13 @@
       busy={busy}
       sessionRunning={sessionRunning}
       selectedSessionArchiving={selectedSessionArchiving}
-      onSyncCodexThreads={() => void syncCodexThreads()}
-      onRestoreTurnChangeSet={restoreTurnChangeSet}
-      onShowTurnFileDiff={showTurnFileDiff}
-      onApplyGitFileAction={applyGitFileActionFromInspector}
-      onApplyGitHunkAction={applyGitHunkActionFromInspector}
-      onReadArtifact={readArtifact}
-      onSaveProjectAction={async (input) => {
+      onSyncCodexThreads={guard('onSyncCodexThreads', () => void syncCodexThreads())}
+      onRestoreTurnChangeSet={guard('onRestoreTurnChangeSet', restoreTurnChangeSet)}
+      onShowTurnFileDiff={guard('onShowTurnFileDiff', showTurnFileDiff)}
+      onApplyGitFileAction={guard('onApplyGitFileAction', applyGitFileActionFromInspector)}
+      onApplyGitHunkAction={guard('onApplyGitHunkAction', applyGitHunkActionFromInspector)}
+      onReadArtifact={guard('onReadArtifact', readArtifact)}
+      onSaveProjectAction={guard('onSaveProjectAction', async (input) => {
         try {
           const saved = await saveProjectAction(input);
           projectActions = projectActions.some((item) => item.id === saved.id)
@@ -3392,8 +3146,8 @@
         } catch (error) {
           errorMessage = toErrorMessage(error);
         }
-      }}
-      onDeleteProjectAction={async (actionId) => {
+      })}
+      onDeleteProjectAction={guard('onDeleteProjectAction', async (actionId) => {
         try {
           if (selectedWorkspaceId) {
             await deleteProjectAction(selectedWorkspaceId, actionId);
@@ -3402,8 +3156,8 @@
         } catch (error) {
           errorMessage = toErrorMessage(error);
         }
-      }}
-      onRunProjectAction={async (actionId) => {
+      })}
+      onRunProjectAction={guard('onRunProjectAction', async (actionId) => {
         try {
           if (!selectedWorkspaceId) return;
           const result = await runProjectAction(selectedWorkspaceId, actionId, selectedSessionId);
@@ -3413,13 +3167,13 @@
         } catch (error) {
           errorMessage = toErrorMessage(error);
         }
-      }}
-      onRefresh={() => void refresh()}
-      onSelectView={selectSidePanelView}
+      })}
+      onRefresh={guard('onRefresh', () => void refresh())}
+      onSelectView={guard('onSelectView', selectSidePanelView)}
       />
       {:else if sidePanelView === 'git'}
         {#key selectedWorkspaceId}
-        <WorkspaceGitPanel
+        <WorkspaceGitPanel draftState={workbenchDrafts.git[selectedWorkspaceId ?? ''] ?? emptyGitPanelState()} onDraftChange={guard('onDraftChange', (value) => { if (selectedWorkspaceId) workbenchDrafts.git[selectedWorkspaceId] = value; })}
           workspace={selectedWorkspace}
           desktop={desktop}
           changes={workspaceChanges}
@@ -3439,22 +3193,22 @@
           reviewBusy={workspaceGitReviewBusy}
           canRequestReview={selectedSession !== null && selectedSession.workspaceId === selectedWorkspaceId && !selectedSession.archived && !sessionRunning}
           activeView={sidePanelView}
-          onRefresh={() => selectedWorkspaceId && void refreshWorkspaceChanges(selectedWorkspaceId)}
-          onApplyFileAction={(workspaceId, path, action) => void applyWorkspaceGitAction(workspaceId, path, action)}
-          onApplyWorkspaceAction={(workspaceId, action) => void applyWorkspaceGitWorkspaceAction(workspaceId, action)}
-          onCommit={(workspaceId, message) => commitWorkspaceGitChanges(workspaceId, message)}
-          onOpenDiff={(workspaceId, path, staged) => void openWorkspaceFileDiff(workspaceId, path, staged)}
-          onRefreshGitMetadata={(workspaceId) => void refreshWorkspaceGitMetadata(workspaceId)}
-          onCheckoutBranch={(workspaceId, branch) => void checkoutWorkspaceBranch(workspaceId, branch)}
-          onCreateBranch={(workspaceId, branch) => void createWorkspaceBranch(workspaceId, branch)}
-          onSelectCommit={(workspaceId, commit) => void loadWorkspaceCommitFiles(workspaceId, commit)}
-          onLoadMoreCommitFiles={(workspaceId, commit) => void loadWorkspaceCommitFiles(workspaceId, commit, true)}
-          onOpenCommitFileDiff={(workspaceId, commit, path) => void openWorkspaceCommitFileDiff(workspaceId, commit, path)}
-          onSync={(workspaceId, action) => void syncWorkspaceBranch(workspaceId, action)}
-          onSaveStash={(workspaceId) => void saveWorkspaceStash(workspaceId)}
-          onApplyStash={(workspaceId, reference) => void applyWorkspaceStash(workspaceId, reference)}
-          onRequestReview={(workspaceId) => void requestWorkspaceAgentReview(workspaceId)}
-          onSelectView={selectSidePanelView}
+          onRefresh={guard('onRefresh', () => selectedWorkspaceId && void refreshWorkspaceChanges(selectedWorkspaceId))}
+          onApplyFileAction={guard('onApplyFileAction', (workspaceId, path, action) => void applyWorkspaceGitAction(workspaceId, path, action))}
+          onApplyWorkspaceAction={guard('onApplyWorkspaceAction', (workspaceId, action) => void applyWorkspaceGitWorkspaceAction(workspaceId, action))}
+          onCommit={guard('onCommit', (workspaceId, message) => commitWorkspaceGitChanges(workspaceId, message))}
+          onOpenDiff={guard('onOpenDiff', (workspaceId, path, staged) => void openWorkspaceFileDiff(workspaceId, path, staged))}
+          onRefreshGitMetadata={guard('onRefreshGitMetadata', (workspaceId) => void refreshWorkspaceGitMetadata(workspaceId))}
+          onCheckoutBranch={guard('onCheckoutBranch', (workspaceId, branch) => void checkoutWorkspaceBranch(workspaceId, branch))}
+          onCreateBranch={guard('onCreateBranch', (workspaceId, branch) => void createWorkspaceBranch(workspaceId, branch))}
+          onSelectCommit={guard('onSelectCommit', (workspaceId, commit) => void loadWorkspaceCommitFiles(workspaceId, commit))}
+          onLoadMoreCommitFiles={guard('onLoadMoreCommitFiles', (workspaceId, commit) => void loadWorkspaceCommitFiles(workspaceId, commit, true))}
+          onOpenCommitFileDiff={guard('onOpenCommitFileDiff', (workspaceId, commit, path) => void openWorkspaceCommitFileDiff(workspaceId, commit, path))}
+          onSync={guard('onSync', (workspaceId, action) => void syncWorkspaceBranch(workspaceId, action))}
+          onSaveStash={guard('onSaveStash', (workspaceId) => void saveWorkspaceStash(workspaceId))}
+          onApplyStash={guard('onApplyStash', (workspaceId, reference) => void applyWorkspaceStash(workspaceId, reference))}
+          onRequestReview={guard('onRequestReview', (workspaceId) => void requestWorkspaceAgentReview(workspaceId))}
+          onSelectView={guard('onSelectView', selectSidePanelView)}
         />
         {/key}
       {/if}
@@ -3466,9 +3220,9 @@
     uiKits={availableUiKits}
     activeUiKitName={$activeUiKitName}
     activeThemeId={$activeTheme.id}
-    onSelectUiKit={setUiKit}
-    onSelectTheme={setUiTheme}
-    onClose={() => (settingsOpen = false)}
+    onSelectUiKit={guard('onSelectUiKit', setUiKit)}
+    onSelectTheme={guard('onSelectTheme', setUiTheme)}
+    onClose={guard('onClose', () => (settingsOpen = false))}
   />
   <DiagnosticsPanel
     open={diagnosticsOpen}
@@ -3477,13 +3231,13 @@
     workspaceCount={workspaces.length}
     sessionCount={sessions.length}
     busy={busy}
-    onRefresh={() => void refresh()}
-    onClose={() => (diagnosticsOpen = false)}
+    onRefresh={guard('onRefresh', () => void refresh())}
+    onClose={guard('onClose', () => (diagnosticsOpen = false))}
   />
   <CommandPalette
     open={commandPaletteOpen}
     commands={commandPaletteCommands}
-    onClose={() => (commandPaletteOpen = false)}
+    onClose={guard('onClose', () => (commandPaletteOpen = false))}
   />
   <PiSessionTreeOverlay
     open={piTreeOpen && selectedSession?.capabilities.includes('session.tree')}
@@ -3493,11 +3247,11 @@
     {sessionRunning}
     {selectedSessionArchiving}
     navigationStatus={piNavigationStatus}
-    onClose={() => {
+    onClose={guard('onClose', () => {
       if (!piNavigationStatus) piTreeOpen = false;
-    }}
-    onRefresh={(sessionId) => void refreshPiTree(sessionId)}
-    onSelectNode={requestPiTreeNavigation}
+    })}
+    onRefresh={guard('onRefresh', (sessionId) => void refreshPiTree(sessionId))}
+    onSelectNode={guard('onSelectNode', requestPiTreeNavigation)}
   />
   <AppOverlays
     {errorMessage}
@@ -3506,11 +3260,14 @@
     piNavigationOpen={piNavigationEntryId !== null}
     {piNavigationMode}
     {piNavigationCustomInstructions}
-    onConfirmArchive={() => void confirmArchiveSession()}
-    onCancelArchive={() => (archiveConfirmationSessionId = null)}
-    onSetPiNavigationMode={(mode) => (piNavigationMode = mode)}
-    onSetPiNavigationCustomInstructions={(value) => (piNavigationCustomInstructions = value)}
-    onConfirmPiNavigation={(options) => void confirmPiTreeNavigation(options)}
-    onCancelPiNavigation={() => (piNavigationEntryId = null)}
+    onConfirmArchive={guard('onConfirmArchive', () => void confirmArchiveSession())}
+    onCancelArchive={guard('onCancelArchive', () => (archiveConfirmationSessionId = null))}
+    onSetPiNavigationMode={guard('onSetPiNavigationMode', (mode) => (piNavigationMode = mode))}
+    onSetPiNavigationCustomInstructions={guard('onSetPiNavigationCustomInstructions', (value) => (piNavigationCustomInstructions = value))}
+    onConfirmPiNavigation={guard('onConfirmPiNavigation', (options) => void confirmPiTreeNavigation(options))}
+    onCancelPiNavigation={guard('onCancelPiNavigation', () => (piNavigationEntryId = null))}
   />
 </div>
+
+{/snippet}
+</WorkbenchPresentation>

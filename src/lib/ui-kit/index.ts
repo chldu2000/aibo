@@ -34,3 +34,6 @@ export {
   setUiTheme,
 } from './registry';
 export type { UiKitName } from './registry';
+
+// Trusted local lifecycle shell; visuals continue to use the active kit.
+export { default as WorkbenchPresentation } from '../workbench/WorkbenchPresentation.svelte';

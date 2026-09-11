@@ -1,0 +1,95 @@
+<script lang="ts">
+  import { onMount, tick, untrack, type Snippet } from 'svelte';
+  import { Button, Card } from '$lib/ui-kit';
+  import { createPresentationController, type Renderer } from '../app/presentation-controller';
+  import type { WorkbenchSnapshot, WorkbenchAction } from '../presentation/workbench-contract';
+  let { snapshot, windowId, children }: {
+    snapshot: WorkbenchSnapshot;
+    windowId: string;
+    children: Snippet<[(id: string, callback: (...args: any[]) => any) => (...args: any[]) => any]>;
+  } = $props();
+  let target: HTMLDivElement;
+  let host = $state<ReturnType<typeof createPresentationController<WorkbenchSnapshot, WorkbenchAction>> | null>(null);
+  let failure = $state('');
+  let switching = $state(false);
+  let instance = $state<{ generation: number; layout: string; guard: (id: string, callback: (...args: any[]) => any) => (...args: any[]) => any } | null>(null);
+  const storageKey = $derived(`aibo.workbench-presentation.v1.${encodeURIComponent(windowId)}`);
+  let focus = $state<string | null>(null);
+  let allowedActions = new Set<string>();
+  function rememberFocus(event?: FocusEvent) {
+    const element = (event?.target ?? target?.ownerDocument.activeElement) as HTMLElement | null;
+    if (element && target.contains(element)) focus = element.dataset.presentationFocus ?? element.getAttribute('aria-label') ?? element.id ?? null;
+  }
+  function restoreFocus() {
+    if (!focus) return;
+    const element = [...target.querySelectorAll<HTMLElement>('[data-presentation-focus], [aria-label], [id]')]
+      .find(item => (item.dataset.presentationFocus ?? item.getAttribute('aria-label') ?? item.id) === focus);
+    (element ?? target.querySelector<HTMLElement>('textarea:not(:disabled),button:not(:disabled)'))?.focus();
+  }
+  const recovery = () => ({ selection: snapshot.sessionId, detail: snapshot.navigation, focus });
+  function renderer(layout: string, failMount = false): Renderer<WorkbenchSnapshot, WorkbenchAction> {
+    return {
+      async preflight(value) { JSON.stringify(value); if (!['standard', 'focus'].includes(layout)) throw Error('unknown presentation'); },
+      async mount(value, dispatch, active) {
+        if (failMount) throw Error('测试呈现挂载失败');
+        const owner = value.generation;
+        allowedActions = new Set();
+        const guard = (id: string, callback: (...args: any[]) => any) => {
+          allowedActions.add(id);
+          // Capture the context visible when this callback is rendered. A late control
+          // from another session is rejected even within the same renderer instance.
+          const context = { workspaceId: snapshot.workspaceId, sessionId: snapshot.sessionId };
+          return (...args: any[]) => {
+            if (!dispatch({ schema: 'aibo.presentation-action/experimental-v1', generation: owner, action: { id, ...context } })) return;
+            return callback(...args);
+          };
+        };
+        instance = { generation: owner, layout, guard };
+        await tick();
+        restoreFocus();
+        try { localStorage.setItem(storageKey, layout); } catch { /* Memory-only navigation remains usable. */ }
+        return {
+          update() {},
+          async dispose() { if (instance?.generation === owner) instance = null; await tick(); },
+        };
+      },
+    };
+  }
+  async function switchLayout(layout: string, failMount = false) {
+    if (!host || switching) return;
+    rememberFocus();
+    switching = true; failure = '';
+    host.update($state.snapshot(snapshot), recovery());
+    try { await host.switchRenderer(renderer(layout, failMount)); }
+    catch (error) { failure = String(error); }
+    finally { switching = false; await tick(); await new Promise<void>(resolve => requestAnimationFrame(() => resolve())); restoreFocus(); }
+  }
+  onMount(() => {
+    host = createPresentationController<WorkbenchSnapshot, WorkbenchAction>({
+      view: $state.snapshot(snapshot), recovery: recovery(), fallback: renderer('standard'),
+      validateAction: (current, action) => Boolean(action && allowedActions.has(action.id) && action.workspaceId === current.workspaceId && action.sessionId === current.sessionId),
+      onAction() {}, onError: error => { failure = String(error); },
+    });
+    let layout = 'standard';
+    try { layout = localStorage.getItem(storageKey) === 'focus' ? 'focus' : 'standard'; } catch {}
+    void switchLayout(layout);
+    const controller = host;
+    return () => { void controller.dispose(); };
+  });
+  $effect(() => { if (host) host.update($state.snapshot(snapshot), untrack(recovery)); });
+  // Local diagnostics use the same lifecycle path; no remote renderer code is loaded.
+  export function switchPresentation(layout: string, failMount = false) { return switchLayout(layout, failMount); }
+</script>
+<div class="presentation-controls">
+  <Button variant="ghost" onclick={() => switchLayout(instance?.layout === 'focus' ? 'standard' : 'focus')} disabled={switching} aria-label="切换工作台呈现">{instance?.layout === 'focus' ? '恢复标准工作台' : '专注会话'}</Button>
+  {#if failure}<Card><p role="alert">呈现已恢复：{failure}</p><Button onclick={() => switchLayout('standard')}>恢复默认呈现</Button></Card>{/if}
+</div>
+<div bind:this={target} onfocusin={rememberFocus} class="workbench-presentation" data-presentation-focus-target={focus} data-presentation-layout={instance?.layout} data-presentation-generation={instance?.generation} inert={switching} aria-busy={switching}>
+  {#if instance}{#key instance.generation}{@render children(instance.guard)}{/key}{/if}
+</div>
+<style>
+  .presentation-controls { position: fixed; right: 160px; top: 0; z-index: 100; display: flex; }
+  .workbench-presentation { height: 100%; }
+  .workbench-presentation[data-presentation-layout='focus'] :global(.workspace-grid) { grid-template-columns: minmax(0, 1fr); }
+  .workbench-presentation[data-presentation-layout='focus'] :global(.workspace-grid > :not(.timeline):not(.plugin-workspace)) { display: none; }
+</style>

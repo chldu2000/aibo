@@ -23,7 +23,7 @@
     "probe:pi:plugin:smoke": "node probes/pi-plugin-smoke.mjs",
     "probe:pi:plugin:diff": "node probes/pi-plugin-diff.mjs",
     "probe": "node probes/run-all.mjs",
-    "check:architecture": "node --test test/architecture-boundaries.test.mjs test/ui-style-boundaries.test.mjs test/presentation-boundaries.test.mjs",
+    "check:architecture": "node --test test/architecture-boundaries.test.mjs test/ui-style-boundaries.test.mjs test/presentation-boundaries.test.mjs test/p2-boundaries.test.mjs",
     "check:types": "tsc --noEmit",
     "verify": "pnpm run check:architecture && pnpm run check:types && pnpm test && pnpm run build",
     "test:contracts": "node --test test/adapter-contract.test.mjs",

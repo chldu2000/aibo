@@ -6,10 +6,10 @@ const session = (agent, pluginInstallationId, capabilities = []) => ({
   agent, pluginInstallationId, capabilities,
 });
 
-test('built-in Pi plugin uses the model API that persists execution settings', () => {
+test('all bound plugins use the capability route that persists execution settings', () => {
   assert.equal(sessionModelBackend(session('dev.aibo.pi.agent', 'pi-installation', [
     'model.select', 'model.reasoning', 'session.tree',
-  ])), 'pi');
+  ])), 'plugin');
   assert.equal(sessionModelBackend(session('external.agent', 'external-installation', [
     'model.select',
   ])), 'plugin');

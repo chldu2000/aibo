@@ -1,0 +1,55 @@
+[
+  {
+    "renderer": "svelte",
+    "kit": "shadcn",
+    "layout": "central",
+    "keyboard": "Enter/Space",
+    "focus": "detail and return",
+    "states": "passed",
+    "screenshot": "shadcn-central.png"
+  },
+  {
+    "renderer": "svelte",
+    "kit": "shadcn",
+    "layout": "sidebar",
+    "keyboard": "Enter/Space",
+    "focus": "detail and return",
+    "states": "passed",
+    "screenshot": "shadcn-sidebar.png"
+  },
+  {
+    "renderer": "svelte",
+    "kit": "material3",
+    "layout": "central",
+    "keyboard": "Enter/Space",
+    "focus": "detail and return",
+    "states": "passed",
+    "screenshot": "material3-central.png"
+  },
+  {
+    "renderer": "svelte",
+    "kit": "material3",
+    "layout": "sidebar",
+    "keyboard": "Enter/Space",
+    "focus": "detail and return",
+    "states": "passed",
+    "screenshot": "material3-sidebar.png"
+  },
+  {
+    "kit": "shadcn",
+    "workbench": "sidebar detail / return / central / close passed"
+  },
+  {
+    "kit": "material3",
+    "workbench": "sidebar detail / return / central / close passed"
+  },
+  {
+    "recovery": "workspace A/B/A, layout/detail restored after disposal, deleted target returns to collection"
+  },
+  {
+    "renderer": "dom",
+    "fixture": "same collection/detail",
+    "action": "identical",
+    "dispose": "passed"
+  }
+]

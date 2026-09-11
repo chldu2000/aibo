@@ -15,6 +15,10 @@ test('Agent capability routing does not identify providers or choose provider AP
   assert.doesNotMatch(kinds, /capabilities\.(?:includes|some|find)/);
   const lifecycle = await readFile(path.join(root, 'src/lib/app/session-lifecycle-controller.ts'), 'utf8');
   assert.doesNotMatch(lifecycle, /closePiSession|closeCodexSession/);
+  const host = await readFile(path.join(root, 'src-tauri/src/lib.rs'), 'utf8');
+  assert.doesNotMatch(host, /execution_profile_agent\s*\(/, 'execution policy must use the persisted host backend');
+  const runtime = await readFile(path.join(root, 'src-tauri/src/plugin_host.rs'), 'utf8');
+  assert.doesNotMatch(runtime, /execution_profile_agent\s*\(/);
 });
 
 async function sourceFiles(directory, extension) {

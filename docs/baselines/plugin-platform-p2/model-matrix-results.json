@@ -1,0 +1,16 @@
+[
+  {
+    "kit": "shadcn",
+    "initialHigh": true,
+    "switchMedium": true,
+    "preserve": true,
+    "remountMedium": true
+  },
+  {
+    "kit": "material3",
+    "initialHigh": true,
+    "switchMedium": true,
+    "preserve": true,
+    "remountMedium": true
+  }
+]

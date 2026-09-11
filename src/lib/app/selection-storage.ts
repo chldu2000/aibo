@@ -20,21 +20,22 @@ export function parsePersistedSelection(raw: string | null): PersistedSelection 
   }
 }
 
-export function readPersistedSelection(storage: Pick<Storage, 'getItem'>): PersistedSelection | null {
+export function readPersistedSelection(storage: { getItem(key: string): string | null }, windowId = 'main'): PersistedSelection | null {
   try {
-    return parsePersistedSelection(storage.getItem(selectedSessionStorageKey));
+    const raw = storage.getItem(`${selectedSessionStorageKey}.v2.${encodeURIComponent(windowId)}`);
+    return parsePersistedSelection(raw ?? (windowId === 'main' ? storage.getItem(selectedSessionStorageKey) : null));
   } catch {
     return null;
   }
 }
 
 export function writePersistedSelection(
-  storage: Pick<Storage, 'setItem' | 'removeItem'>,
+  storage: { setItem(key: string, value: string): void; removeItem(key: string): void },
   selection: PersistedSelection | null,
+  windowId = 'main',
 ): void {
   try {
-    if (selection) storage.setItem(selectedSessionStorageKey, JSON.stringify(selection));
-    else storage.removeItem(selectedSessionStorageKey);
+    storage.setItem(`${selectedSessionStorageKey}.v2.${encodeURIComponent(windowId)}`, JSON.stringify(selection));
   } catch {
     // Storage can be unavailable in a restricted WebView.
   }

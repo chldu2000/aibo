@@ -25,18 +25,17 @@ export function parseComposerDrafts(raw: string | null): ComposerDrafts {
   }
 }
 
-export function readComposerDrafts(storage: Pick<Storage, 'getItem'>): ComposerDrafts {
+export function readComposerDrafts(storage: { getItem(key: string): string | null }): ComposerDrafts {
   return parseComposerDrafts(storage.getItem(composerDraftsStorageKey));
 }
 
 export function writeComposerDrafts(
-  storage: Pick<Storage, 'setItem' | 'removeItem'>,
+  storage: { setItem(key: string, value: string): void; removeItem(key: string): void },
   drafts: ComposerDrafts,
 ): void {
   const entries = Object.entries(drafts)
     .filter(([, draft]) => draft.text.trim().length > 0)
-    .sort(([, left], [, right]) => right.updatedAt.localeCompare(left.updatedAt))
-    .slice(0, 50);
+    .sort(([, left], [, right]) => right.updatedAt.localeCompare(left.updatedAt));
   if (entries.length === 0) {
     storage.removeItem(composerDraftsStorageKey);
     return;

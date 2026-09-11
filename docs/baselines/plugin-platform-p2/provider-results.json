@@ -1,0 +1,32 @@
+[
+  {
+    "agent": "codex",
+    "transportPassed": true,
+    "smokePassed": true,
+    "resumePassed": true,
+    "failure": null
+  },
+  {
+    "agent": "pi-plugin-smoke",
+    "provider": "real",
+    "completedText": null,
+    "failure": "Timed out after 60000 ms waiting for JSONL event"
+  },
+  {
+    "agent": "pi-plugin-smoke",
+    "provider": "real",
+    "completedText": null,
+    "failure": "Probe assertion failed: Provided authentication token is expired."
+  },
+  {
+    "agent": "pi-plugin-smoke",
+    "provider": "real",
+    "completedText": "AIBO_PI_PLUGIN_SMOKE_OK",
+    "failure": null,
+    "eventCounts": {
+      "agent/event": 13,
+      "response": 4,
+      "view/render": 2
+    }
+  }
+]

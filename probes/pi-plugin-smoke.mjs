@@ -68,7 +68,7 @@ try {
     (message) => message.method === "agent/event"
       && message.params?.sessionId === sessionId
       && message.params?.turnId === turnId
-      && message.params?.type === "turn.completed",
+      && ["turn.completed", "turn.failed"].includes(message.params?.type),
     { timeoutMs: 60_000 },
   );
   await request("turn.send", {
@@ -79,7 +79,8 @@ try {
       attachments: [],
     },
   }, 60_000);
-  await completed;
+  const terminal = await completed;
+  assertProbe(terminal.params.type === "turn.completed", terminal.params.payload?.message ?? "Pi turn failed");
   completedText = messages
     .filter((message) => message.method === "agent/event"
       && message.params?.turnId === turnId

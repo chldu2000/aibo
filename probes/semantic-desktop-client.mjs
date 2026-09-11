@@ -5,7 +5,7 @@ import App from '/src/App.svelte';
 import { setUiKit } from '/src/lib/ui-kit/registry.ts';
 const delay=ms=>new Promise(resolve=>setTimeout(resolve,ms));
 async function until(find,label) {for(let n=0;n<300;n++){const value=find();if(value)return value;await delay(50);}throw Error(`timeout: ${label}`);}
-const button=label=>Array.from(document.querySelectorAll('button')).find(node=>node.textContent.trim()===label&&!node.disabled);
+const button=label=>Array.from(document.querySelectorAll('button')).find(node=>node.textContent.trim()===label&&!node.disabled&&!node.closest('[inert]'));
 const report=result=>fetch('/__semantic_native_report',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(result)});
 try {
   const {workspacePath}=await (await fetch('/__semantic_native_config')).json();
@@ -20,11 +20,11 @@ try {
     setUiKit(kit);await tick();
     for(const layout of ['central','sidebar']) {
       if(layout==='sidebar'){(await until(()=>button('切换侧栏布局'),'sidebar toggle')).click();await tick();}
-      const inspect=await until(()=>document.querySelector('button[data-item="worktree:one.txt"]:not(:disabled)'),'real Git file');inspect.click();
+      const inspect=await until(()=>Array.from(document.querySelectorAll('button[data-item="worktree:one.txt"]:not(:disabled)')).find(node=>!node.closest('[inert]')),'real Git file');inspect.click();
       const diff=await until(()=>document.querySelector('textarea[aria-label="文件差异内容"]'),'native diff');
       if(!diff.value.includes('AIBO_NATIVE_SEMANTIC_OK'))throw Error('unexpected native Git diff');
       (await until(()=>button('返回变更列表'),'back')).click();await tick();
-      await until(()=>document.querySelector('button[data-item="worktree:one.txt"]:not(:disabled)'),'restored list');
+      await until(()=>Array.from(document.querySelectorAll('button[data-item="worktree:one.txt"]:not(:disabled)')).find(node=>!node.closest('[inert]')),'restored list');
       evidence.push({kit,layout,source:'native WebView -> Tauri command -> real temporary Git repository',diff:'passed'});
     }
     (await until(()=>button('切换中央布局'),'central toggle')).click();await tick();

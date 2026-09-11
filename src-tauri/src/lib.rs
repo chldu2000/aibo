@@ -1,3 +1,4 @@
+mod compatibility;
 mod artifact;
 mod change_set;
 mod codex;
@@ -16,7 +17,7 @@ use change_set::{
 };
 use codex::{CodexManager, CodexThreadSnapshot, CodexThreadSummary};
 use execution_profile::{
-    default_requested_profile, from_row as profile_from_row, resolve as resolve_profile,
+    from_row as profile_from_row, resolve as resolve_profile,
     save_for_session as save_session_profile, ExecutionProfile, ResolvedExecutionProfile,
     SessionExecutionProfile,
 };
@@ -1561,26 +1562,6 @@ async fn session_agent(db: &SqlitePool, session_id: &str) -> Result<String, Core
         .ok_or_else(|| CoreError::SessionNotFound(session_id.to_owned()))
 }
 
-fn execution_profile_agent(agent: &str, capabilities: &[String]) -> String {
-    if agent == "codex"
-        || agent == "dev.aibo.codex.agent"
-        || capabilities
-            .iter()
-            .any(|capability| capability == "permissions.nativeSandbox")
-    {
-        "codex".to_owned()
-    } else if agent == "pi"
-        || agent == "dev.aibo.pi.agent"
-        || capabilities
-            .iter()
-            .any(|capability| capability == "session.tree" || capability == "queue.manage")
-    {
-        "pi".to_owned()
-    } else {
-        agent.to_owned()
-    }
-}
-
 fn require_trusted_workspace(
     workspace: &Workspace,
     profile: &ResolvedExecutionProfile,
@@ -1600,40 +1581,38 @@ async fn session_execution_profile(
 ) -> Result<SessionExecutionProfile, CoreError> {
     let row = sqlx::query(
         "SELECT session_id, schema_version, requested_json, enforced_json, unsupported_json,
-                adapter_capabilities_json, native_sandbox, resolved_at
+                adapter_capabilities_json, native_sandbox, resolved_at, enforcement_backend
          FROM session_execution_profiles WHERE session_id = ?",
     )
     .bind(session_id)
     .fetch_optional(db)
     .await?;
     let session = session_by_id(db, session_id).await?;
-    let profile_agent = execution_profile_agent(&session.agent, &session.capabilities);
+    let backend = execution_profile::EnforcementBackend::legacy_agent(&session.agent);
     if let Some(row) = row {
         let mut stored = profile_from_row(&row, session_id.to_owned())
             .map_err(CoreError::InvalidExecutionProfile)?;
         if session.plugin_installation_id.is_some() {
-            let mut resolved = resolve_profile(
-                &profile_agent,
+            let mut resolved = execution_profile::resolve_with_backend(
+                stored.profile.enforcement_backend,
                 Some(stored.profile.requested.clone()),
                 stored.profile.resolved_at.clone(),
             )
             .map_err(CoreError::InvalidExecutionProfile)?;
             resolved.adapter_capabilities = session.capabilities;
-            resolved.native_sandbox = profile_agent == "codex";
             stored.profile = resolved;
         }
         return Ok(stored);
     }
 
-    let mut resolved = resolve_profile(
-        &profile_agent,
-        default_requested_profile(&profile_agent).ok(),
+    let mut resolved = execution_profile::resolve_with_backend(
+        backend,
+        None,
         now_iso(),
     )
     .map_err(CoreError::InvalidExecutionProfile)?;
     if session.plugin_installation_id.is_some() {
         resolved.adapter_capabilities = session.capabilities;
-        resolved.native_sandbox = profile_agent == "codex";
     }
     resolved
         .unsupported
@@ -1679,12 +1658,11 @@ async fn update_session_execution_profile(
     ) {
         return Err(CoreError::SessionBusy);
     }
-    let profile_agent = execution_profile_agent(&session.agent, &session.capabilities);
-    let mut resolved = resolve_profile(&profile_agent, Some(requested), now_iso())
+    let backend = session_execution_profile(&state.db, &session_id).await?.profile.enforcement_backend;
+    let mut resolved = execution_profile::resolve_with_backend(backend, Some(requested), now_iso())
         .map_err(CoreError::InvalidExecutionProfile)?;
     if session.plugin_installation_id.is_some() {
         resolved.adapter_capabilities = session.capabilities.clone();
-        resolved.native_sandbox = profile_agent == "codex";
     }
     let workspace = workspace_by_id(&state.db, &session.workspace_id).await?;
     require_trusted_workspace(&workspace, &resolved)?;
@@ -4728,45 +4706,13 @@ async fn list_codex_threads(
 }
 
 #[tauri::command]
-async fn read_codex_thread(
-    session_id: String,
-    state: State<'_, AppState>,
-) -> Result<CodexThreadSnapshot, CoreError> {
-    state
-        .codex
-        .read_thread(&session_id)
-        .await
-        .map_err(Into::into)
+async fn read_codex_thread(session_id: String, state: State<'_, AppState>) -> Result<CodexThreadSnapshot, CoreError> {
+    compatibility::read_codex_thread(session_id, state).await
 }
 
 #[tauri::command]
-async fn fork_codex_thread(
-    session_id: String,
-    through_turn_id: Option<String>,
-    state: State<'_, AppState>,
-) -> Result<Session, CoreError> {
-    let source = session_by_id(&state.db, &session_id).await?;
-    if source.plugin_installation_id.is_some() {
-        let forked = state
-            .codex
-            .fork_plugin_codex_session(&session_id, through_turn_id.as_deref())
-            .await
-            .map_err(CoreError::from)?;
-        state
-            .plugins
-            .resume(&forked.id)
-            .await
-            .map_err(CoreError::Initialization)?;
-        return session_by_id(&state.db, &forked.id).await;
-    }
-    let source_profile = session_execution_profile(&state.db, &session_id).await?;
-    let forked = state
-        .codex
-        .fork(&session_id, through_turn_id.as_deref())
-        .await
-        .map_err(CoreError::from)?;
-    save_session_profile(&state.db, &forked.id, &source_profile.profile).await?;
-    Ok(forked)
+async fn fork_codex_thread(session_id: String, through_turn_id: Option<String>, state: State<'_, AppState>) -> Result<Session, CoreError> {
+    compatibility::fork_codex_thread(session_id, through_turn_id, state).await
 }
 
 #[tauri::command]
@@ -4853,62 +4799,49 @@ async fn uninstall_agent_plugin(id: String, state: State<'_, AppState>) -> Resul
 }
 
 #[tauri::command]
-async fn create_agent_session(workspace_id: String, agent_id: String, installation_id: Option<String>, state: State<'_, AppState>) -> Result<Session, String> {
-    if let Some(installation_id) = installation_id {
-        return state.plugins.create(&workspace_id, &installation_id, &agent_id).await;
-    }
-    let contributed_installation: Option<String> = sqlx::query_scalar(
-        "SELECT p.id FROM agent_contributions a JOIN plugin_installations p ON p.id=a.installation_id
-         WHERE a.agent_id=? AND p.installed=1 AND p.enabled=1 ORDER BY p.enabled_at DESC, p.created_at DESC LIMIT 1",
-    ).bind(&agent_id).fetch_optional(&state.db).await.map_err(|error|error.to_string())?;
-    if let Some(installation_id) = contributed_installation {
-        return state.plugins.create(&workspace_id, &installation_id, &agent_id).await;
-    }
-    // Temporary P4.7B compatibility seam. C replaces these managers with Plugin Releases.
-    match agent_id.as_str() {
-        "codex" => create_codex_session(workspace_id, None, state).await.map_err(|e|e.to_string()),
-        "pi" => create_pi_session(workspace_id, None, state).await.map_err(|e|e.to_string()),
-        _ => Err("invalid_request: installation ID required".into()),
-    }
+async fn create_agent_session(workspace_id: String, agent_id: String, installation_id: Option<String>, requested_profile: Option<ExecutionProfile>, state: State<'_, AppState>) -> Result<Session, String> {
+    let agent_id = compatibility::contribution_id(&agent_id).to_owned();
+    let installation_id = match installation_id {
+        Some(id) => id,
+        None => sqlx::query_scalar(
+            "SELECT p.id FROM agent_contributions a JOIN plugin_installations p ON p.id=a.installation_id WHERE a.agent_id=? AND p.installed=1 AND p.enabled=1 ORDER BY p.enabled_at DESC, p.created_at DESC LIMIT 1",
+        ).bind(&agent_id).fetch_optional(&state.db).await.map_err(|error|error.to_string())?
+            .ok_or("provider_unavailable: no enabled installation for this contribution")?,
+    };
+    let profile = requested_profile.map(|requested| execution_profile::resolve(&agent_id, Some(requested), now_iso())).transpose()?;
+    state.plugins.create_with_profile(&workspace_id, &installation_id, &agent_id, profile).await
 }
 
 #[tauri::command]
 async fn send_agent_prompt(session_id: String, input: String, state: State<'_, AppState>) -> Result<Session, String> {
-    match session_agent(&state.db, &session_id).await.map_err(|e|e.to_string())?.as_str() {
-        "codex" => send_codex_prompt(session_id, input, state).await.map_err(|e|e.to_string()),
-        "pi" => send_pi_prompt(session_id, input, state).await.map_err(|e|e.to_string()),
-        _ => { state.plugins.send(&session_id, &input).await?; session_by_id(&state.db,&session_id).await.map_err(|e|e.to_string()) }
-    }
+    let session = session_by_id(&state.db, &session_id).await.map_err(|error|error.to_string())?;
+    if session.plugin_installation_id.is_none() { return compatibility::send_agent_prompt(session_id, input, state).await; }
+    state.plugins.send(&session_id, &input).await?;
+    session_by_id(&state.db, &session_id).await.map_err(|error|error.to_string())
 }
 
 #[tauri::command]
 async fn cancel_agent_turn(session_id: String, state: State<'_, AppState>) -> Result<(), String> {
-    match session_agent(&state.db, &session_id).await.map_err(|e|e.to_string())?.as_str() {
-        "codex" => abort_codex_turn(session_id, state).await.map_err(|e|e.to_string()),
-        "pi" => abort_pi_turn(session_id, state).await.map_err(|e|e.to_string()),
-        _ => state.plugins.cancel(&session_id).await,
-    }
+    let session = session_by_id(&state.db, &session_id).await.map_err(|error|error.to_string())?;
+    if session.plugin_installation_id.is_none() { return compatibility::cancel_agent_turn(session_id, state).await; }
+    state.plugins.cancel(&session_id).await?;
+    Ok(())
 }
 
 #[tauri::command]
 async fn resume_agent_session(session_id: String, state: State<'_, AppState>) -> Result<(), String> {
-    let session = session_by_id(&state.db, &session_id).await.map_err(|error| error.to_string())?;
-    if session.plugin_installation_id.is_some() {
-        state.plugins.resume(&session_id).await
-    } else if session.agent == "pi" {
-        Err("dependency_missing: this legacy Pi session is history-only; create a new Pi SDK plugin session to resume it".to_owned())
-    } else {
-        Err("invalid_request: session is not plugin-backed".to_owned())
-    }
+    let session = session_by_id(&state.db, &session_id).await.map_err(|error|error.to_string())?;
+    if session.plugin_installation_id.is_none() { return compatibility::resume_agent_session(session_id, state).await; }
+    state.plugins.resume(&session_id).await?;
+    Ok(())
 }
 
 #[tauri::command]
 async fn close_agent_session(session_id: String, state: State<'_, AppState>) -> Result<(), String> {
-    match session_agent(&state.db, &session_id).await.map_err(|e|e.to_string())?.as_str() {
-        "codex" => close_codex_session(session_id, state).await.map_err(|e|e.to_string()),
-        "pi" => close_pi_session(session_id, state).await.map_err(|e|e.to_string()),
-        _ => state.plugins.close(&session_id).await,
-    }
+    let session = session_by_id(&state.db, &session_id).await.map_err(|error|error.to_string())?;
+    if session.plugin_installation_id.is_none() { return compatibility::close_agent_session(session_id, state).await; }
+    state.plugins.close(&session_id).await?;
+    Ok(())
 }
 
 #[tauri::command]
@@ -4964,7 +4897,7 @@ async fn abort_codex_turn(session_id: String, state: State<'_, AppState>) -> Res
 }
 
 #[tauri::command]
-async fn resolve_codex_approval(
+async fn resolve_agent_approval(
     session_id: String,
     request_id: String,
     decision: String,
@@ -4974,11 +4907,7 @@ async fn resolve_codex_approval(
     if session.plugin_installation_id.is_some() {
         state
             .plugins
-            .invoke_capability(
-                &session_id,
-                "approval.respond",
-                serde_json::json!({ "requestId": request_id, "decision": decision }),
-            )
+            .resolve_approval(&session_id, &request_id, &decision)
             .await
             .map_err(CoreError::Initialization)?;
         return Ok(());
@@ -4991,7 +4920,7 @@ async fn resolve_codex_approval(
 }
 
 #[tauri::command]
-async fn resolve_codex_user_input(
+async fn resolve_agent_user_input(
     session_id: String,
     request_id: String,
     answers: serde_json::Value,
@@ -5076,23 +5005,20 @@ async fn abort_pi_turn(session_id: String, state: State<'_, AppState>) -> Result
     Err(CoreError::Initialization("legacy Pi session is history-only and has no active SDK runtime; create a new Pi SDK plugin session".to_owned()))
 }
 
+// Compatibility commands retained for older clients; routing belongs to the host.
 #[tauri::command]
-async fn resolve_pi_approval(
-    session_id: String,
-    request_id: String,
-    decision: String,
-    state: State<'_, AppState>,
-) -> Result<(), CoreError> {
-    let session = session_by_id(&state.db, &session_id).await?;
-    if session.plugin_installation_id.is_some() {
-        state
-            .plugins
-            .resolve_pi_approval(&session_id, &request_id, &decision)
-            .await
-            .map_err(CoreError::Initialization)?;
-        return Ok(());
-    }
-    Err(CoreError::Initialization("legacy Pi session is history-only; approval requests require a new Pi SDK plugin session".to_owned()))
+async fn resolve_pi_approval(session_id: String, request_id: String, decision: String, state: State<'_, AppState>) -> Result<(), CoreError> {
+    resolve_agent_approval(session_id, request_id, decision, state).await
+}
+
+#[tauri::command]
+async fn resolve_codex_approval(session_id: String, request_id: String, decision: String, state: State<'_, AppState>) -> Result<(), CoreError> {
+    resolve_agent_approval(session_id, request_id, decision, state).await
+}
+
+#[tauri::command]
+async fn resolve_codex_user_input(session_id: String, request_id: String, answers: serde_json::Value, state: State<'_, AppState>) -> Result<(), CoreError> {
+    resolve_agent_user_input(session_id, request_id, answers, state).await
 }
 
 #[tauri::command]
@@ -5200,14 +5126,6 @@ async fn set_pi_thinking_level(
             )
             .await
             .map_err(CoreError::Initialization)?;
-        if let Some(current_level) = result.get("level").and_then(serde_json::Value::as_str) {
-            let current = session_execution_profile(&state.db, &session_id).await?;
-            let mut requested = current.profile.requested;
-            requested.reasoning_effort = Some(current_level.to_owned());
-            let resolved = resolve_profile("pi", Some(requested), now_iso())
-                .map_err(CoreError::InvalidExecutionProfile)?;
-            save_session_profile(&state.db, &session_id, &resolved).await?;
-        }
         return Ok(result);
     }
     Err(CoreError::Initialization("legacy Pi session is history-only; reasoning configuration requires a new Pi SDK plugin session".to_owned()))
@@ -5234,17 +5152,6 @@ async fn set_pi_model(
             )
             .await
             .map_err(CoreError::Initialization)?;
-        if let (Some(provider), Some(model_id)) = (
-            result.get("provider").and_then(serde_json::Value::as_str),
-            result.get("id").and_then(serde_json::Value::as_str),
-        ) {
-            let current = session_execution_profile(&state.db, &session_id).await?;
-            let mut requested = current.profile.requested;
-            requested.model = Some(format!("{provider}/{model_id}"));
-            let resolved = resolve_profile("pi", Some(requested), now_iso())
-                .map_err(CoreError::InvalidExecutionProfile)?;
-            save_session_profile(&state.db, &session_id, &resolved).await?;
-        }
         return Ok(result);
     }
     Err(CoreError::Initialization("legacy Pi session is history-only; model configuration requires a new Pi SDK plugin session".to_owned()))
@@ -5876,6 +5783,8 @@ pub fn run() {
             create_codex_session,
             send_codex_prompt,
             abort_codex_turn,
+            resolve_agent_approval,
+            resolve_agent_user_input,
             resolve_codex_approval,
             resolve_codex_user_input,
             close_codex_session,
@@ -5910,7 +5819,7 @@ mod tests {
     use super::{
         auto_name_session_from_first_message, bind_pending_attachments_to_turn,
         canonical_workspace_path, clone_cached_runtime, collect_workspace_capabilities,
-        execution_profile_agent, find_executable, mark_turn_interrupted, normalize_session_filter, now_iso, open_database,
+        find_executable, mark_turn_interrupted, normalize_session_filter, now_iso, open_database,
         persist_restore_operation, pi_snapshot_timeline, plugin_model_catalog, recover_interrupted_sessions,
         recover_interrupted_turn_changes, remove_cached_runtime, require_trusted_workspace,
         restore_git_file_baseline, session_execution_profile, session_label_from_first_message,
@@ -6815,19 +6724,6 @@ mod tests {
         let _ = fs::remove_file(database_path.with_extension("sqlite3-wal"));
         let _ = fs::remove_file(database_path.with_extension("sqlite3-shm"));
         fs::remove_dir_all(directory).expect("remove test directory");
-    }
-
-    #[test]
-    fn bundled_plugin_agents_keep_their_semantic_execution_profile() {
-        assert_eq!(
-            execution_profile_agent("dev.aibo.codex.agent", &[]),
-            "codex"
-        );
-        assert_eq!(execution_profile_agent("dev.aibo.pi.agent", &[]), "pi");
-        assert_eq!(
-            execution_profile_agent("dev.example.agent", &["queue.manage".to_owned()]),
-            "pi"
-        );
     }
 
     #[test]

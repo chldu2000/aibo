@@ -128,8 +128,10 @@ v1 document, `sessionId`, `disabled`, and `onAction(actionId, input)`; actions r
 current form fields indexed by `fieldId`. Core must validate and authorize each action,
 including its confirmation policy, before dispatch. The renderer performs no API calls.
 
-The runtime proxy owns form drafts and expansion state keyed by session/view/node IDs,
-so replacing a skin preserves these values. Child lists are keyed by stable node IDs.
+The host may supply `interaction` and `onInteractionChange` to own form drafts and
+expansion state keyed by session/view/node IDs across whole-workbench remounts and
+application restarts. Without host state, the runtime proxy retains the existing
+skin-switch preservation behavior. Both skins forward this same controlled-state contract. Child lists are keyed by stable node IDs.
 Both registered skins implement the control and own shape and semantic color tokens;
 shared skin markup only renders explicit supported semantics and never spreads plugin
 properties into DOM attributes. JSON Pointer bindings only read own properties.
@@ -158,3 +160,15 @@ explicitly unavailable until host capability/confirmation dispatch is wired.
 +Svelte 与最小 DOM adapter 均提供 mount/update/dispose 并消费相同 fixture。默认产品入口使用可信 Svelte 工作区组件，adapter 验证入口位于 `probes/semantic-ui.html`；最小 DOM renderer 不作为产品工作台发布，也不加载第三方脚本。JSON schema 验证器在开发阶段生成，运行时不调用 eval/Function，保持现行桌面 CSP。
 +
 +具体协议和验收见 [P1 实施记录](./plugin-platform-p1-semantic-slice.md)。
+
+## P2 宿主状态与整窗呈现生命周期
+
+插件工作台复用主会话的列表、选择、草稿及时间线投影。窗口导航使用独立存储键；可恢复状态按工作区/contribution 分离，草稿与核心历史仍使用 Core session 存储。
+
+`presentation/presentation-contract.ts` 只定义 JSON 快照与动作；`app/presentation-controller.ts` 通过注入的本地端口管理预检、generation、挂载、清理和失败恢复，不依赖 Svelte、DOM 或具体 API。`workbench/PresentationSurface.svelte` 将其接到本地 Svelte adapter，切换期间使用 inert 限制交互，视觉仍由 UiKitAdapter 提供。宿主装配组件本身不引入新皮肤。
+
+`WorkbenchPresentation` 经 `$lib/ui-kit` 导出为可信宿主装配，复用生命周期控制器切换标准/专注会话布局，dispose 后真正重新挂载整个 App 可视子树。App 根状态、Agent 订阅与执行保持在子树之外；切换/默认恢复入口也在子树之外。`workbench-contract.ts` 是 JSON 上下文与动作，Svelte snippet 和本地函数端口不进入公共协议。此实现不加载第三方 UI 脚本，不代表 P4 Presentation Plugin 发布已完成。
+
+App 中所有业务回调和可写绑定经 generation、当前工作区及会话检查；`test/p2-boundaries.test.mjs` 通过 Svelte AST 检查这些入口并禁止 Shell 导入 Agent 生命周期 API。切换期间 inert，挂载失败回到标准呈现，焦点使用语义 ID。App/Git 提交说明、分支名和插件表单由宿主持有，并在窗口命名空间持久化；会话 Composer 草稿继续使用 Core session 持久化。两套皮肤继续提供同一视觉合同，新增 CSS 仅控制布局。
+
+验收包括两套皮肤的模型矩阵、两种 Git 布局、真实桌面流式切换/应用重启/窗口隔离，以及浏览器故障注入。详见 [P2 记录](./plugin-platform-p2-agent-state.md)。

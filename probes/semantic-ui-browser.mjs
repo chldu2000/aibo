@@ -57,6 +57,27 @@ try {
     assert.equal(await page.locator('#probe').innerHTML(),'');
     evidence.push({kit,workbench:'sidebar detail / return / central / close passed'});
   }
+  // Host navigation survives disposal, separates workspaces and validates restored targets.
+  await page.evaluate(()=>window.semanticProbe.workbench('shadcn',{persist:true,workspaceId:'restore-a'}));
+  await page.getByRole('button',{name:'查看差异 src/App.svelte',exact:true}).click();
+  await page.getByRole('textbox',{name:'文件差异内容',exact:true}).waitFor();
+  await page.getByRole('button',{name:'切换侧栏布局',exact:true}).click();
+  await page.getByRole('button',{name:'关闭工作区工具',exact:true}).click();
+  await page.evaluate(()=>window.semanticProbe.workbench('shadcn',{persist:true,workspaceId:'restore-b'}));
+  await page.getByRole('table').waitFor();
+  assert.equal(await page.getByRole('textbox',{name:'文件差异内容',exact:true}).count(),0);
+  await page.getByRole('button',{name:'关闭工作区工具',exact:true}).click();
+  await page.evaluate(()=>window.semanticProbe.workbench('shadcn',{persist:true,workspaceId:'restore-a'}));
+  await page.getByRole('textbox',{name:'文件差异内容',exact:true}).waitFor();
+  await page.getByRole('button',{name:'切换中央布局',exact:true}).waitFor();
+  await page.screenshot({path:`${output}/restored-detail.png`,fullPage:true});
+  await page.getByRole('button',{name:'关闭工作区工具',exact:true}).click();
+  await page.evaluate(()=>window.semanticProbe.workbench('shadcn',{persist:true,workspaceId:'restore-a',missing:true}));
+  await page.getByRole('button',{name:'查看差异 new.txt',exact:true}).waitFor();
+  assert.equal(await page.getByRole('textbox',{name:'文件差异内容',exact:true}).count(),0);
+  assert.equal(await page.getByRole('button',{name:'查看差异 src/App.svelte',exact:true}).count(),0);
+  await page.getByRole('button',{name:'关闭工作区工具',exact:true}).click();
+  evidence.push({recovery:'workspace A/B/A, layout/detail restored after disposal, deleted target returns to collection'});
   assert.deepEqual(errors,[]);evidence.push({renderer:'dom',fixture:'same collection/detail',action:'identical',dispose:'passed'});
   await writeFile(`${output}/results.json`,JSON.stringify(evidence,null,2)+'\n');console.log(JSON.stringify({output,evidence},null,2));
 } finally {await browser.close();await server.close();}

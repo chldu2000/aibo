@@ -1,4 +1,5 @@
 <script lang="ts">
+  import type { ModelConfigurationState } from '$lib/app/model-configuration';
   import { Button, Card, Icon, ModelMatrix, Textarea } from '$lib/ui-kit';
   import type { UiModelMatrixRow } from '$lib/ui-kit';
   import type { AgentCommand, AgentCommandCategory, ContextAttachment, SessionAccessMode, SessionExecutionProfile, SessionModelCatalog, WorkspacePathSuggestion } from '$lib/types';
@@ -15,6 +16,7 @@
     busy: boolean;
     attachments: ContextAttachment[];
     executionProfile: SessionExecutionProfile | null;
+    modelConfiguration: ModelConfigurationState;
     modelCatalog: SessionModelCatalog | null;
     modelCatalogLoading: boolean;
     modelOverride?: string | null;
@@ -45,6 +47,7 @@
     busy,
     attachments,
     executionProfile,
+    modelConfiguration,
     modelCatalog,
     modelCatalogLoading,
     modelOverride = null,
@@ -173,17 +176,9 @@
   const modelLabel = $derived(
     modelOverride || modelCatalog?.current?.label || activeProfile?.model || (modelCatalogLoading ? '正在读取模型…' : '模型未读取'),
   );
-  const currentReasoningEffort = $derived(
-    modelCatalog?.currentReasoningEffort
-      || activeProfile?.reasoningEffort
-      || modelCatalog?.current?.defaultReasoningEffort
-      || null,
-  );
+  const currentReasoningEffort = $derived(modelConfiguration.currentReasoningEffort);
   const reasoningLabel = $derived(currentReasoningEffort ? ` · ${currentReasoningEffort}` : '');
-  const selectedReasoningEffort = $derived(
-    activeProfile?.reasoningEffort
-      ?? (selectedAgent === 'pi' ? currentReasoningEffort : null),
-  );
+  const selectedReasoningEffort = $derived(modelConfiguration.selectedReasoningEffort);
   const reasoningOptions = $derived(
     modelCatalog?.current?.reasoningEfforts?.length
       ? modelCatalog.current.reasoningEfforts
@@ -196,7 +191,7 @@
     ];
     return [...new Map(options.map((option) => [option.id, option])).values()];
   });
-  const matrixDefaultLabel = $derived(selectedAgent === 'codex' ? '默认' : '保留');
+  const matrixDefaultLabel = $derived(modelConfiguration.defaultAction === 'reset' ? '默认' : '保留');
   const matrixRows = $derived.by((): UiModelMatrixRow[] =>
     (modelCatalog?.models ?? []).map((option) => ({
       reference: option.reference,
@@ -222,7 +217,7 @@
   function modelConfigurationIsActive(model: { reference: string }, reasoningEffort: string | null): boolean {
     return model.reference === modelCatalog?.current?.reference
       && (reasoningEffort === null
-        ? selectedAgent === 'codex' && selectedReasoningEffort === null
+        ? modelConfiguration.defaultAction === 'reset' && selectedReasoningEffort === null
         : reasoningEffort === selectedReasoningEffort);
   }
 
@@ -303,7 +298,7 @@
         上下文 · {pendingAttachments.length} 项 · 约 {formatBytes(pendingAttachmentBytes)}
       </small>
     {/if}
-    <Textarea
+    <Textarea data-presentation-focus="composer"
       class="composer-textarea"
       data-composer-input="true"
       bind:value={text}
@@ -537,7 +532,7 @@
                   columns={matrixReasoningOptions}
                   rows={matrixRows}
                   defaultLabel={matrixDefaultLabel}
-                  defaultTitle={selectedAgent === 'codex' ? '使用该模型的默认推理强度' : '切换模型，保留当前推理强度'}
+                  defaultTitle={modelConfiguration.defaultAction === 'reset' ? '使用该模型的默认推理强度' : '切换模型，保留当前推理强度'}
                   disabled={matrixDisabled}
                   onSelect={(model, reasoningEffort) => {
                     modelMenuOpen = false;

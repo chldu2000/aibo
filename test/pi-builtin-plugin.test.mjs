@@ -55,6 +55,10 @@ test('bundled Pi plugin translates RPC lifecycle into Agent Runtime v1', { concu
   assert.deepEqual(multiMessages.map((message) => [message.params.payload.itemId, message.params.payload.text]), [
     ['assistant-message-1', 'first message'], ['assistant-message-2', 'second message'],
   ]);
+  const providerFailed = client.waitFor((message) => message.params?.type === 'turn.failed' && message.params.turnId === 'provider-failed-turn');
+  await request('turn.send', { agentId: scope.agentId, sessionId: scope.sessionId, turnId: 'provider-failed-turn', input: { text: 'provider failure', attachments: [] } });
+  assert.equal((await providerFailed).params.payload.message, 'provider rejected model');
+
 });
 
 test('bundled Pi plugin isolates delayed old provider exit from replacement requests', { concurrency: false }, async (t) => {

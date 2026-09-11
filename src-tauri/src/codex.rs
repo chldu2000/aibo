@@ -3844,6 +3844,7 @@ mod tests {
     #[test]
     fn maps_codex_profile_overrides_to_thread_and_turn_requests() {
         let profile = ResolvedExecutionProfile {
+            enforcement_backend: crate::execution_profile::EnforcementBackend::CodexNative,
             schema: EXECUTION_PROFILE_SCHEMA.to_owned(),
             requested: ExecutionProfile {
                 schema: EXECUTION_PROFILE_SCHEMA.to_owned(),
@@ -3898,6 +3899,7 @@ mod tests {
     #[test]
     fn rejects_codex_thread_start_when_provider_downgrades_profile() {
         let profile = ResolvedExecutionProfile {
+            enforcement_backend: crate::execution_profile::EnforcementBackend::CodexNative,
             schema: EXECUTION_PROFILE_SCHEMA.to_owned(),
             requested: ExecutionProfile {
                 schema: EXECUTION_PROFILE_SCHEMA.to_owned(),

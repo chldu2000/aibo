@@ -37,7 +37,11 @@ input.on('line', (line) => {
   }
   else if (request.type === 'prompt') {
     if (request.message === 'fail prompt') write({ id: request.id, type: 'response', command: request.type, success: false, error: 'fake prompt rejection' });
-    else {
+    else if (request.message === 'provider failure') {
+      write({ id: request.id, type: 'response', command: request.type, success: true });
+      write({ type: 'agent_end', messages: [{ role: 'assistant', content: [], stopReason: 'error', errorMessage: 'provider rejected model' }], willRetry: false });
+      write({ type: 'agent_settled' });
+    } else {
       write({ id: request.id, type: 'response', command: request.type, success: true });
       const messages = request.message === 'two messages'
         ? [{ id: 'assistant-message-1', role: 'assistant', content: [{ type: 'text', text: 'first message' }], stopReason: 'stop' },

@@ -533,13 +533,15 @@ function onPi(message, startedProvider) {
     rememberAgentMessages(turn, message.messages);
     turn.aborted = message.messages?.some((item) => item?.stopReason === 'aborted') === true;
     turn.failed = message.messages?.some((item) => item?.stopReason === 'error') === true;
+    const failure = message.messages?.findLast((item) => item?.stopReason === 'error')?.errorMessage ?? message.error;
+    turn.failureMessage = typeof failure === 'string' && failure.trim() ? failure.slice(0, 8000) : 'Pi turn failed';
   } else if (message.type === 'agent_settled') {
     if (turn.items.size === 0 && (turn.finalText || turn.text)) {
       const item = newTurnItem(turn);
       item.text = turn.finalText || turn.text;
     }
     for (const item of turn.itemOrder) completeTurnItem(turn, item);
-    if (turn.failed) emit('turn.failed', { message: 'Pi turn failed' }, turn.id, { requestId: turn.requestId, itemId: null });
+    if (turn.failed) emit('turn.failed', { message: turn.failureMessage ?? 'Pi turn failed' }, turn.id, { requestId: turn.requestId, itemId: null });
     else emit('turn.completed', { status: turn.aborted ? 'interrupted' : 'completed' }, turn.id, { requestId: turn.requestId, itemId: null });
     session.turn = null; render(); void updateRecovery();
   }

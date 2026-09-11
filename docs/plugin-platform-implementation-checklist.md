@@ -1,6 +1,6 @@
 # 插件平台演进实施 Checklist
 
-> 日期：2026-09-10 · 状态：P0 已按用户确认完成（保留验收例外）；P1 已实施并通过自动/原生 WebView 脚本验收；P2 首批路由收敛进行中；P3–P5 待实施。
+> 日期：2026-09-10 · 状态：P0 已按用户确认完成（保留验收例外）；P1 已实施并通过自动/原生 WebView 脚本验收；P2 已完成统一路由、宿主状态与整窗生命周期验收；P3–P5 待实施。
 > 依据：[插件平台架构演进提案](./plugin-platform-evolution.md)。本文将提案转为执行清单，不替代现行契约或授权放宽架构检查。
 
 原提案已给出职责、协议方向、分阶段路线与验收标准，因此采用 checklist，不再重复架构论证。所有复选框表示本次演进的待办；仓库已有基础不等于这些验收项已经通过。
@@ -77,18 +77,18 @@
 
 **前置：** P1 证明语义边界。**交付物：** 统一 Agent facade、宿主 UI 状态模型、renderer 生命周期与恢复实现。
 
-- [ ] 按 P0 清单逐项把业务调用迁入统一 facade，以明确 capability 与绑定选择操作；不凭 `queue.manage`、`session.tree` 或 Provider ID 推断 Pi API。
-- [ ] 将必要的 Provider 专用装配/恢复留在显式兼容模块，登记退出条件；架构测试禁止通用路由及新工作台新增 Provider 分支。
-- [x] 增加「非 Pi Agent 也支持 queue/tree」回归样例，证明不会误路由。证据：`test/agent-facade.test.mjs`（绑定调用、无绑定拒绝、真实树控制器）；仅覆盖前端路由，Rust 执行配置兼容依赖见 P2 实施记录。
-- [ ] 合并插件列表、选择、草稿、时间线的重复状态，按 contribution 作用域保存 UI 状态；核心会话与历史仍由宿主持有。
-- [ ] 按已确认的状态矩阵验证草稿跨重启保留、选择/详情在切换和工作区往返时保留、恢复目标失效时回到合理入口；确定窗口隔离、存储键、保存时机与保留期限。
-- [ ] 定义可序列化 `PresentationSnapshot`、动作消息及受限 channel；Web mount/update/dispose 接口与能力 SDK 分离。
-- [ ] 实现切换：保存草稿/选择/导航/焦点语义 ID → 预检 → 解除订阅并 dispose → mount → 恢复状态。
-- [ ] 引入 presentation generation，拒绝旧 renderer 迟到消息和过期异步结果；测试订阅清理与重复挂载。
-- [ ] 验证挂载失败恢复默认 renderer，流式 turn 持续、Agent 不重启、草稿不丢失，焦点按语义目标恢复。
-- [ ] 复跑 P0 能力等价矩阵和旧历史/恢复样本；真实 Codex/Pi 验收覆盖本阶段改动链路。
+- [x] 按 P0 清单逐项把业务调用迁入统一 facade，以明确 capability 与绑定选择操作；不凭 `queue.manage`、`session.tree` 或 Provider ID 推断 Pi API。
+- [x] 将必要的 Provider 专用装配/恢复留在显式兼容模块，登记退出条件；架构测试禁止通用路由及新工作台新增 Provider 分支。
+- [x] 增加「非 Pi Agent 也支持 queue/tree」回归样例，证明不会误路由。证据：`test/agent-facade.test.mjs`（绑定调用、无绑定拒绝、真实树控制器）；Rust 已改用宿主持久化执行方式，Echo Core 审批与迁移回归见 P2 实施记录。
+- [x] 合并插件列表、选择、草稿、时间线的重复状态，按 contribution 作用域保存 UI 状态；核心会话与历史仍由宿主持有。证据：[P2 状态归属与存储规则](./plugin-platform-p2-agent-state.md)、`test/presentation-state.test.mjs`。
+- [x] 按已确认的状态矩阵验证草稿跨重启保留、选择/详情在切换和工作区往返时保留、恢复目标失效时回到合理入口；确定窗口隔离、存储键、保存时机与保留期限。
+- [x] 定义可序列化 `PresentationSnapshot`、动作消息及受限 channel；Web mount/update/dispose 接口与能力 SDK 分离。证据：`presentation-contract.ts`、`test/presentation-boundaries.test.mjs`、`test/presentation-lifecycle.test.mjs`。
+- [x] 实现切换：保存草稿/选择/导航/焦点语义 ID → 预检 → 解除订阅并 dispose → mount → 恢复状态。
+- [x] 引入 presentation generation，拒绝旧 renderer 迟到消息和过期异步结果；测试订阅清理与重复挂载。证据：`test/presentation-lifecycle.test.mjs`；已接入 Git 与整窗工作台，失败/过期动作证据见 P2 退出矩阵。
+- [x] 验证挂载失败恢复默认 renderer，流式 turn 持续、Agent 不重启、草稿不丢失，焦点按语义目标恢复。
+- [x] 复跑 P0 能力等价矩阵和旧历史/恢复样本；真实 Codex/Pi 验收覆盖本阶段改动链路。
 
-**首批进度：** 见 [P2 实施记录](./plugin-platform-p2-agent-state.md)。首批修复能力身份误判，收敛队列/树/命令读取与关闭入口；其余迁移、状态与 renderer 生命周期仍待实施。
+**验收完成（2026-09-11）：** 见 [P2 实施记录](./plugin-platform-p2-agent-state.md)及[退出矩阵](./baselines/plugin-platform-p2/completion-matrix.md)。统一入口保留创建 profile 与配置恢复语义；Codex 推理矩阵修复；整窗标准/专注呈现切换、失败恢复、草稿/浏览/焦点恢复、真实应用重启与窗口隔离均通过。真实 Codex/Pi 能力回归及 Echo Core 审批/恢复、旧历史样本通过。`pnpm run verify`（23 项架构、129 项 Node、类型/构建）、Rust 102 项通过；P0 B05 原始异常仍保留，不宣称根因已修复。
 
 **退出条件：** Agent 路径无能力误判，UI 状态有统一所有者；切换和失败恢复不破坏会话、turn、草稿及历史。
 
@@ -174,6 +174,6 @@
 
 ## 暂不纳入实施承诺
 
-仍待后续确定：P1 的消息字段/关联方式、revision 粒度、控件具体交互及数据限额；P2 的窗口隔离、状态存储键/保存时机/保留期限；P3 的命名空间校验与契约分发、新呈现类型协商、实例资源策略及稳定协议支持窗口/弃用通知；P4 的写入审批与结果未知完整流程。分别在相应阶段合同冻结前解决。状态归属与恢复原则、只读结果接纳方式已确认，不再列为未定方向。
+P1 消息/revision/交互/限额与 P2 窗口隔离、存储键/保存时机/保留期限已在阶段实施记录中冻结。仍待后续确定：P3 的命名空间校验与契约分发、新呈现类型协商、实例资源策略及稳定协议支持窗口/弃用通知；P4 的写入审批与结果未知完整流程。分别在相应阶段合同冻结前解决。状态归属与恢复原则、只读结果接纳方式已确认，不再列为未定方向。
 
 插件市场、自动远程更新、运行中 Provider 热替换、任意第三方前端代码、完整服务容器、通用工作流语言，以及完整第二框架产品 UI。语义模型跨框架不等于本机执行、路径和认证已跨平台。

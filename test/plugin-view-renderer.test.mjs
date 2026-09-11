@@ -60,13 +60,13 @@ test('App plugin controls forward every lifecycle callback and surface recoverab
   ]) {
     assert.match(app, new RegExp(`\\b${callback}\\b`), `${callback} must be wired through App`);
   }
-  assert.match(app, /onOpenPlugins=\{openPluginPanel\}/);
+  assert.match(app, /onOpenPlugins=\{guard\('onOpenPlugins', openPluginPanel\)\}/);
   assert.match(app, /catch \(error\) \{ pluginError = toErrorMessage\(error\); \}/);
   assert.match(app, /finally \{ pluginBusy = false; \}/);
-  assert.match(app, /onCancel=\{\(\) => pluginSessionOperation\(cancelAgentTurn\)\}/);
-  assert.match(app, /onResume=\{\(\) => pluginSessionOperation\(resumeAgentSession\)\}/);
-  assert.match(app, /onCloseSession=\{\(\) => pluginSessionOperation\(closeAgentSession\)\}/);
-  assert.match(app, /onViewAction=\{\(viewId, actionId, input\) => void invokePluginAction\(viewId, actionId, input\)\}/);
+  assert.match(app, /onCancel=\{guard\('onCancel', \(\) => pluginSessionOperation\(cancelAgentTurn\)\)\}/);
+  assert.match(app, /onResume=\{guard\('onResume', \(\) => pluginSessionOperation\(resumeAgentSession\)\)\}/);
+  assert.match(app, /onCloseSession=\{guard\('onCloseSession', \(\) => pluginSessionOperation\(closeAgentSession\)\)\}/);
+  assert.match(app, /onViewAction=\{guard\('onViewAction', \(viewId, actionId, input\) => void invokePluginAction\(viewId, actionId, input\)\)\}/);
 
   assert.match(panel, /role="alert"/, 'plugin errors must be announced');
   assert.match(panel, /aria-label="插件消息"/, 'plugin timeline must remain readable');

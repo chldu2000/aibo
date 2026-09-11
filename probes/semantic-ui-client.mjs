@@ -32,13 +32,15 @@ await window.semanticProbe.mount();
 import { mount, unmount } from 'svelte';
 import GitWorkbench from '/src/lib/workbench/GitWorkbench.svelte';
 import sourcePage from '/fixtures/semantic-git/source-page.json';
+import { createViewStateStore } from '/src/lib/app/view-state-storage.ts';
+const savedViews=createViewStateStore(localStorage,'p2-probe');
 let workbench;
-window.semanticProbe.workbench = async function(kit='shadcn') {
+window.semanticProbe.workbench = async function(kit='shadcn',options={}) {
   if(mounted)await mounted.dispose();if(workbench)await unmount(workbench);
   setUiKit(kit);document.body.setAttribute('data-ui-kit',kit);document.body.style.cssText=get(activeThemeStyle)+';background:var(--background);color:var(--foreground);font-family:system-ui';
   let current=structuredClone(sourcePage);
   const port={
-    async open(workspaceId){current=structuredClone(sourcePage);current.context.workspaceId=workspaceId;return structuredClone(current);},
+    async open(workspaceId){current=structuredClone(sourcePage);current.context.workspaceId=workspaceId;if(options.missing){current.items=current.items.filter(item=>item.id!=='worktree:src/App.svelte');current.total=current.items.length;current.status=current.total?'ready':'empty';}return structuredClone(current);},
     async act(message){
       if(JSON.stringify(message.context)!==JSON.stringify(current.context))throw Error('stale_context');
       if(message.actionId==='open-diff') {const item=current.items.find(item=>item.id===message.itemId);current.detail={itemId:item.id,path:item.path,staged:item.staged,content:'--- before\n+++ after\n+semantic fixture',truncated:false};}
@@ -46,5 +48,5 @@ window.semanticProbe.workbench = async function(kit='shadcn') {
       current.context.revision++;return structuredClone(current);
     },async release(){},
   };
-  workbench=mount(GitWorkbench,{target,props:{workspaceId:'fixture-workspace',port,onClose:()=>{void unmount(workbench);workbench=null;}}});
+  workbench=mount(GitWorkbench,{target,props:{workspaceId:options.workspaceId??'fixture-workspace',port,stateStore:options.persist?savedViews:undefined,onClose:()=>{void unmount(workbench);workbench=null;}}});
 };

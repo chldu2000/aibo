@@ -72,7 +72,7 @@ export const listPluginInstallations = (): Promise<PluginInstallation[]> => invo
 export const installAgentPlugin = (path: string): Promise<PluginInstallation> => invoke('install_agent_plugin', { path });
 export const setAgentPluginEnabled = (id: string, enabled: boolean): Promise<void> => invoke('set_agent_plugin_enabled', { id, enabled });
 export const uninstallAgentPlugin = (id: string): Promise<void> => invoke('uninstall_agent_plugin', { id });
-export const createAgentSession = (workspaceId: string, agentId: string, installationId?: string): Promise<Session> => invoke('create_agent_session', { workspaceId, agentId, installationId });
+export const createAgentSession = (workspaceId: string, agentId: string, installationId?: string, requestedProfile?: ExecutionProfile | null): Promise<Session> => invoke('create_agent_session', { workspaceId, agentId, installationId, requestedProfile });
 export const sendAgentPrompt = (sessionId: string, input: string): Promise<Session> => invoke('send_agent_prompt', { sessionId, input });
 export const cancelAgentTurn = (sessionId: string): Promise<void> => invoke('cancel_agent_turn', { sessionId });
 export const resumeAgentSession = (sessionId: string): Promise<void> => invoke('resume_agent_session', { sessionId });
@@ -80,6 +80,8 @@ export const closeAgentSession = (sessionId: string): Promise<void> => invoke('c
 export const getPluginViews = (sessionId: string): Promise<UiPluginViewDocument[]> => invoke('get_plugin_views', { sessionId });
 export const invokePluginViewAction = (sessionId: string, viewId: string, actionId: string, input: Record<string, unknown>): Promise<Record<string, unknown>> => invoke('invoke_plugin_view_action', { sessionId, viewId, actionId, input });
 export const invokeAgentCapability = (sessionId: string, capability: string, input: Record<string, unknown>): Promise<Record<string, unknown>> => invoke('invoke_agent_capability', { sessionId, capability, input });
+
+export const presentationWindowId = (): string => isTauri() ? getCurrentWindow().label : 'preview';
 
 export const toggleWindowMaximize = (): Promise<void> => getCurrentWindow().toggleMaximize();
 
@@ -487,9 +489,9 @@ export const unarchiveCodexThread = (sessionId: string): Promise<Session> =>
 
 export const createCodexSession = (
   workspaceId: string,
-  _requestedProfile?: ExecutionProfile | null,
+  requestedProfile?: ExecutionProfile | null,
 ): Promise<Session> =>
-  createAgentSession(workspaceId, 'dev.aibo.codex.agent');
+  createAgentSession(workspaceId, 'dev.aibo.codex.agent', undefined, requestedProfile);
 
 export const sendCodexPrompt = (sessionId: string, input: string): Promise<Session> =>
   invoke<Session>('send_codex_prompt', { sessionId, input });
@@ -514,9 +516,9 @@ export const closeCodexSession = (sessionId: string): Promise<void> =>
 
 export const createPiSession = (
   workspaceId: string,
-  _requestedProfile?: ExecutionProfile | null,
+  requestedProfile?: ExecutionProfile | null,
 ): Promise<Session> =>
-  createAgentSession(workspaceId, 'dev.aibo.pi.agent');
+  createAgentSession(workspaceId, 'dev.aibo.pi.agent', undefined, requestedProfile);
 
 export const sendPiPrompt = (sessionId: string, input: string): Promise<Session> =>
   invoke<Session>('send_pi_prompt', { sessionId, input });
@@ -563,3 +565,15 @@ export const listenToAgentEvents = (
 export const openSemanticGit = (workspaceId: string): Promise<import('./presentation/git').GitPage> => invoke('open_semantic_git', { workspaceId });
 export const actSemanticGit = (action: import('./presentation/contract').ActionMessage): Promise<import('./presentation/git').GitPage> => invoke('act_semantic_git', { action });
 export const releaseSemanticGit = (generation: string): Promise<void> => invoke('release_semantic_git', { generation });
+
+export const resolveAgentApproval = (
+  sessionId: string,
+  requestId: string,
+  decision: ApprovalDecision,
+): Promise<void> => invoke('resolve_agent_approval', { sessionId, requestId, decision });
+
+export const resolveAgentUserInput = (
+  sessionId: string,
+  requestId: string,
+  answers: Record<string, string[]>,
+): Promise<void> => invoke('resolve_agent_user_input', { sessionId, requestId, answers });

@@ -1,0 +1,104 @@
+{
+  "identifier": "local.aibo.p2probe.1789098965624",
+  "results": [
+    {
+      "ok": true,
+      "stage": 0,
+      "saved": {
+        "workspaceId": "01M279QPC7F01MPK23BPFMZ88J",
+        "echoId": "01M279QPD8461RJ1B59K9GNPE4",
+        "agents": [
+          {
+            "agent": "codex",
+            "id": "01M279QR5VNYZ795MRCBEX2T5F",
+            "model": "gpt-6-astra",
+            "level": "low"
+          },
+          {
+            "agent": "pi",
+            "id": "01M279RA89VAF8Y0QZN00MWTS6",
+            "model": "openai-codex/gpt-5.6-luna",
+            "level": "low"
+          }
+        ]
+      },
+      "evidence": [
+        {
+          "agent": "echo",
+          "streamAcrossSwitch": true,
+          "draft": true,
+          "gitDraft": true,
+          "focus": true,
+          "noAgentRestart": true,
+          "history": true
+        },
+        {
+          "agent": "codex",
+          "pluginBinding": true,
+          "profile": true,
+          "models": true,
+          "reasoning": "low",
+          "stream": true,
+          "approval": true,
+          "cancel": true,
+          "treeQueue": "not declared"
+        },
+        {
+          "agent": "pi",
+          "pluginBinding": true,
+          "profile": true,
+          "models": true,
+          "reasoning": "low",
+          "stream": true,
+          "approval": true,
+          "cancel": true,
+          "treeQueue": "passed"
+        }
+      ]
+    },
+    {
+      "ok": true,
+      "stage": 1,
+      "saved": {
+        "workspaceId": "01M279QPC7F01MPK23BPFMZ88J",
+        "echoId": "01M279QPD8461RJ1B59K9GNPE4",
+        "agents": [
+          {
+            "agent": "codex",
+            "id": "01M279QR5VNYZ795MRCBEX2T5F",
+            "model": "gpt-6-astra",
+            "level": "low"
+          },
+          {
+            "agent": "pi",
+            "id": "01M279RA89VAF8Y0QZN00MWTS6",
+            "model": "openai-codex/gpt-5.6-luna",
+            "level": "low"
+          }
+        ]
+      },
+      "evidence": [
+        {
+          "agent": "codex",
+          "realProcessRestart": true,
+          "configuration": true,
+          "archiveUnarchive": true,
+          "history": true
+        },
+        {
+          "agent": "pi",
+          "realProcessRestart": true,
+          "configuration": true,
+          "archiveUnarchive": true,
+          "history": true
+        },
+        {
+          "draftAfterNativeRestart": true,
+          "selectionAfterNativeRestart": true,
+          "historyAfterNativeRestart": true,
+          "windowIsolation": true
+        }
+      ]
+    }
+  ]
+}

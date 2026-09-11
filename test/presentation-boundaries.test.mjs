@@ -18,12 +18,12 @@ test('public semantic contract and projection have no transitive renderer or pla
         assert.ok(target.startsWith(path.resolve('src/lib/presentation')+path.sep),`escaped data boundary ${target}`);await check(target);
       }
     }
-    if(file.endsWith('/contract.ts')) {
+    if(file.endsWith('contract.ts')) {
       function visit(node){assert.ok(!ts.isFunctionTypeNode(node)&&!ts.isMethodSignature(node),'wire types cannot carry callbacks');ts.forEachChild(node,visit);}visit(ast);
     }
   }
-  await check(path.resolve('src/lib/presentation/contract.ts'));await check(path.resolve('src/lib/presentation/git.ts'));
-  const program=ts.createProgram(['src/lib/presentation/contract.ts','src/lib/presentation/git.ts'],{target:ts.ScriptTarget.ES2022,module:ts.ModuleKind.ESNext,moduleResolution:ts.ModuleResolutionKind.Bundler,lib:['lib.es2022.d.ts'],types:[],strict:true,noEmit:true,allowImportingTsExtensions:true,skipLibCheck:true});
+  await check(path.resolve('src/lib/presentation/workbench-contract.ts'));await check(path.resolve('src/lib/presentation/presentation-contract.ts'));await check(path.resolve('src/lib/presentation/contract.ts'));await check(path.resolve('src/lib/presentation/git.ts'));
+  const program=ts.createProgram(['src/lib/presentation/presentation-contract.ts','src/lib/presentation/contract.ts','src/lib/presentation/git.ts'],{target:ts.ScriptTarget.ES2022,module:ts.ModuleKind.ESNext,moduleResolution:ts.ModuleResolutionKind.Bundler,lib:['lib.es2022.d.ts'],types:[],strict:true,noEmit:true,allowImportingTsExtensions:true,skipLibCheck:true});
   assert.deepEqual(ts.getPreEmitDiagnostics(program).map(d=>ts.flattenDiagnosticMessageText(d.messageText,' ')),[]);
 });
 

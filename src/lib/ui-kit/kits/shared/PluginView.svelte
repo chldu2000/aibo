@@ -1,14 +1,21 @@
 <script lang="ts">
   import { pluginViewProps, type UiPluginViewProps, type UiPluginViewNode, type UiPluginViewInteraction } from '../../plugin-view';
 
-  let { document, sessionId = '', disabled = false, onAction, interaction }: UiPluginViewProps = $props();
+  let { document, sessionId = '', disabled = false, onAction, interaction, onInteractionChange }: UiPluginViewProps = $props();
   let local = $state<UiPluginViewInteraction>({ fields: {}, expanded: {} });
   const state = $derived(interaction ?? local);
   const supported = new Set(['stack', 'row', 'grid', 'panel', 'toolbar', 'text', 'markdown', 'badge', 'list', 'item', 'tree', 'timeline', 'code', 'diff', 'form-field', 'button', 'empty-state']);
   const text = (value: unknown) => typeof value === 'string' ? value : '';
   const key = (id: string) => JSON.stringify([sessionId, document.viewId, id]);
   const fieldValue = (node: UiPluginViewNode, props: Record<string, unknown>) => state.fields[key(node.id)] ?? props.value;
-  function update(node: UiPluginViewNode, value: string | boolean) { state.fields[key(node.id)] = value; }
+  function update(node: UiPluginViewNode, value: string | boolean) {
+    if (onInteractionChange) onInteractionChange({ ...state, fields: { ...state.fields, [key(node.id)]: value } });
+    else state.fields[key(node.id)] = value;
+  }
+  function expand(node: UiPluginViewNode, value: boolean) {
+    if (onInteractionChange) onInteractionChange({ ...state, expanded: { ...state.expanded, [key(node.id)]: value } });
+    else state.expanded[key(node.id)] = value;
+  }
   function act(actionId: string) {
     if (disabled || !document.actions.some((action) => action.id === actionId)) return;
     const input: Record<string, unknown> = {};
@@ -57,7 +64,7 @@
   {:else if node.type === 'text' || node.type === 'badge' || node.type === 'empty-state'}
     <div class={node.type} data-emphasis={text(p.emphasis)} data-tone={text(p.tone)}>{text(p.text) || label || text(p.emptyText)}</div>
   {:else if p.collapsible === true || node.type === 'tree'}
-    <details open={state.expanded[key(node.id)] ?? p.expanded !== false} ontoggle={(event) => { state.expanded[key(node.id)] = event.currentTarget.open; }}>
+    <details open={state.expanded[key(node.id)] ?? p.expanded !== false} ontoggle={(event) => { expand(node, event.currentTarget.open); }}>
       <summary>{label || text(p.text) || 'Items'}</summary>
       <div class="stack">{@render children(node)}</div>
     </details>

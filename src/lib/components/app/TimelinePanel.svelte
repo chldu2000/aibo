@@ -1,4 +1,5 @@
 <script lang="ts">
+  import type { ModelConfigurationState } from '$lib/app/model-configuration';
   import { sessionAgentKind } from '$lib/app/agent-kind';
   import { Badge, Button, Card, CardContent, CardHeader, CardTitle, Icon, Input, Separator } from '$lib/ui-kit';
   import type { AgentCommand, AgentGoal, AgentQueueSnapshot, ApprovalDecision, ContextAttachment, SessionAccessMode, SessionExecutionProfile, SessionModelCatalog, UserInputRequest, WorkspacePathSuggestion } from '$lib/types';
@@ -36,6 +37,7 @@
     busy: boolean;
     attachments: ContextAttachment[];
     executionProfile: SessionExecutionProfile | null;
+    modelConfiguration: ModelConfigurationState;
     modelCatalog: SessionModelCatalog | null;
     modelCatalogLoading: boolean;
     modelOverride?: string | null;
@@ -88,6 +90,7 @@
     busy,
     attachments,
     executionProfile,
+    modelConfiguration,
     modelCatalog,
     modelCatalogLoading,
     modelOverride = null,
@@ -460,6 +463,7 @@
     busy={busy}
     attachments={attachments}
     executionProfile={executionProfile}
+    {modelConfiguration}
     modelCatalog={modelCatalog}
     modelCatalogLoading={modelCatalogLoading}
     {modelOverride}
