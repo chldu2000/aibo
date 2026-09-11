@@ -177,16 +177,42 @@ pub(crate) async fn delete_project_action(
     Ok(())
 }
 
+/// Request identity is scoped to a workspace. Replaying observes the original run,
+/// including unknown outcomes; it never resolves a new task definition or executes again.
+async fn replay_request(
+    db: &SqlitePool, workspace_id: &str, request_id: &str, request_json: &str,
+) -> Result<Option<ProjectActionRun>, CoreError> {
+    let row = sqlx::query("SELECT *, json_extract(snapshot_json,'$.definition.name') AS action_name FROM project_action_runs WHERE workspace_id=? AND request_id=?")
+        .bind(workspace_id).bind(request_id).fetch_optional(db).await?;
+    match row {
+        Some(row) => {
+            if row.try_get::<String, _>("request_json")? != request_json {
+                return Err(CoreError::InvalidWorkspacePath("request ID already belongs to different project task input".into()));
+            }
+            Ok(Some(project_action_run_from_row(&row)?))
+        }
+        None => Ok(None),
+    }
+}
+
 pub(crate) async fn run_project_action(
     db: &SqlitePool,
     data_dir: &Path,
     workspace_id: String,
     action_id: String,
     session_id: Option<String>,
+    request_id: String,
 ) -> Result<ProjectActionRun, CoreError> {
+    if request_id.is_empty() || request_id.len() > 128 || !request_id.bytes().all(|c| c.is_ascii_alphanumeric() || matches!(c, b'-' | b'_')) {
+        return Err(CoreError::InvalidWorkspacePath("invalid project task request ID".into()));
+    }
+    let request_json = serde_json::json!({"actionId": &action_id, "sessionId": &session_id}).to_string();
     let workspace = workspace_by_id(db, &workspace_id).await?;
     if workspace.trust != "trusted" {
         return Err(CoreError::WorkspaceTrustRequired);
+    }
+    if let Some(run) = replay_request(db, &workspace_id, &request_id, &request_json).await? {
+        return Ok(run);
     }
     let action = project_action_by_id(db, &workspace_id, &action_id).await?;
     if !action.enabled {
@@ -210,8 +236,12 @@ pub(crate) async fn run_project_action(
     let run_id = Ulid::new().to_string();
     let snapshot = serde_json::to_string(&serde_json::json!({"schema":"aibo.project-action-snapshot/v1","origin":"admission","definition":&action})).map_err(|error| CoreError::Initialization(error.to_string()))?;
     // Record intent before the first side effect. A crash leaves a recoverable run.
-    sqlx::query("INSERT INTO project_action_runs (id,schema_version,action_id,workspace_id,session_id,status,output,started_at,completed_at,snapshot_json) VALUES (?,'aibo.project-action-run/v2',?,?,?,'running','',?,NULL,?)")
-        .bind(&run_id).bind(&action_id).bind(&workspace_id).bind(&session_id).bind(&started_at).bind(snapshot).execute(db).await?;
+    let admitted = sqlx::query("INSERT INTO project_action_runs (id,schema_version,action_id,workspace_id,session_id,status,output,started_at,completed_at,snapshot_json,request_id,request_json) VALUES (?,'aibo.project-action-run/v2',?,?,?,'running','',?,NULL,?,?,?) ON CONFLICT(workspace_id,request_id) DO NOTHING")
+        .bind(&run_id).bind(&action_id).bind(&workspace_id).bind(&session_id).bind(&started_at).bind(snapshot).bind(&request_id).bind(&request_json).execute(db).await?.rows_affected();
+    if admitted == 0 {
+        return replay_request(db, &workspace_id, &request_id, &request_json).await?
+            .ok_or_else(|| CoreError::Initialization("project task request disappeared during admission".into()));
+    }
     let mut command = TokioCommand::new(&action.program);
     command.args(&action.args).current_dir(&cwd);
     let execution = match crate::controlled_process::execute(command, Duration::from_secs(300), 1024 * 1024 + 1).await {
@@ -340,7 +370,7 @@ mod tests {
         let action = save_project_action(&db, "workspace".into(), None, "Check".into(), "test".into(), "/bin/sh".into(),
             vec!["-c".into(), "printf PROJECT_TASK_OK; printf TASK_STDERR >&2".into()], None, None).await.unwrap();
         assert_eq!(list_project_actions(&db, "workspace".into()).await.unwrap().len(), 1);
-        let run = run_project_action(&db, &root, "workspace".into(), action.id.clone(), None).await.unwrap();
+        let run = run_project_action(&db, &root, "workspace".into(), action.id.clone(), None, Ulid::new().to_string()).await.unwrap();
         assert_eq!(run.status, "completed");
         assert_eq!(run.exit_code, Some(0));
         assert!(run.output.contains("PROJECT_TASK_OK"));
@@ -352,7 +382,7 @@ mod tests {
         assert!(save_project_action(&db, "workspace".into(), None, "Escape".into(), "test".into(), "/bin/sh".into(),
             vec![], Some("..".into()), None).await.is_err());
         sqlx::query("UPDATE workspaces SET trusted=0 WHERE id='workspace'").execute(&db).await.unwrap();
-        assert!(matches!(run_project_action(&db, &root, "workspace".into(), action.id.clone(), None).await, Err(CoreError::WorkspaceTrustRequired)));
+        assert!(matches!(run_project_action(&db, &root, "workspace".into(), action.id.clone(), None, Ulid::new().to_string()).await, Err(CoreError::WorkspaceTrustRequired)));
         assert_eq!(list_project_action_runs(&db, "workspace".into(), None).await.unwrap().len(), 1);
         delete_project_action(&db, "workspace".into(), action.id).await.unwrap();
         assert!(list_project_actions(&db, "workspace".into()).await.unwrap().is_empty());
@@ -372,13 +402,13 @@ mod tests {
             .bind(root.to_string_lossy().as_ref()).bind(&now).bind(&now).execute(&db).await.unwrap();
         let action = save_project_action(&db, "workspace".into(), None, "Long task".into(), "test".into(), "/bin/sh".into(), vec!["-c".into(), "touch started; sleep 30".into()], None, None).await.unwrap();
         let task_db = db.clone(); let task_root = root.clone(); let action_id = action.id.clone();
-        let owner = tokio::spawn(async move { run_project_action(&task_db, &task_root, "workspace".into(), action_id, None).await });
+        let owner = tokio::spawn(async move { run_project_action(&task_db, &task_root, "workspace".into(), action_id, None, "recovery-request".into()).await });
         tokio::time::timeout(Duration::from_secs(3), async { while !root.join("started").exists() { tokio::time::sleep(Duration::from_millis(10)).await; } }).await.unwrap();
         let pending = list_project_action_runs(&db, "workspace".into(), None).await.unwrap();
         assert_eq!(pending[0].status, "running");
         assert!(pending[0].completed_at.is_none());
         owner.abort(); let _ = owner.await;
-        delete_project_action(&db, "workspace".into(), action.id).await.unwrap();
+        delete_project_action(&db, "workspace".into(), action.id.clone()).await.unwrap();
         db.close().await;
         let reopened = crate::open_database(&root.join("host.db")).await.unwrap();
         assert_eq!(recover(&reopened).await.unwrap(), 1);
@@ -388,11 +418,44 @@ mod tests {
         assert_eq!(recovered[0].status, "outcome_unknown");
         assert_eq!(recovered[0].action_name.as_deref(), Some("Long task"));
         assert!(recovered[0].completed_at.is_some());
+        let replay = run_project_action(&reopened, &root, "workspace".into(), action.id, None, "recovery-request".into()).await.unwrap();
+        assert_eq!(replay.id, pending[0].id);
+        assert_eq!(replay.status, "outcome_unknown");
         let missing = save_project_action(&reopened, "workspace".into(), None, "Missing program".into(), "test".into(), root.join("missing-program").to_string_lossy().into_owned(), vec![], None, None).await.unwrap();
-        let failed = run_project_action(&reopened, &root, "workspace".into(), missing.id, None).await.unwrap();
+        let failed = run_project_action(&reopened, &root, "workspace".into(), missing.id, None, Ulid::new().to_string()).await.unwrap();
         assert_eq!(failed.status, "outcome_unknown");
         assert_eq!(failed.schema, "aibo.project-action-run/v2");
         assert!(list_project_action_runs(&reopened, "workspace".into(), None).await.unwrap().iter().any(|run| run.id == failed.id));
+        reopened.close().await;
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[tokio::test]
+    async fn duplicate_requests_execute_once_and_survive_definition_deletion_and_restart() {
+        let root = std::env::temp_dir().join(format!("aibo-task-dedup-{}", Ulid::new()));
+        fs::create_dir_all(&root).unwrap();
+        let db = crate::open_database(&root.join("host.db")).await.unwrap();
+        let now = now_iso();
+        sqlx::query("INSERT INTO workspaces (id,path,label,trusted,created_at,updated_at) VALUES ('workspace',?,'Dedup',1,?,?)")
+            .bind(root.to_string_lossy().as_ref()).bind(&now).bind(&now).execute(&db).await.unwrap();
+        let action = save_project_action(&db, "workspace".into(), None, "Write".into(), "test".into(), "/bin/sh".into(),
+            vec!["-c".into(), "echo effect >> effects; sleep 0.2".into()], None, None).await.unwrap();
+        let (first, second) = tokio::join!(
+            run_project_action(&db, &root, "workspace".into(), action.id.clone(), None, "same-request".into()),
+            run_project_action(&db, &root, "workspace".into(), action.id.clone(), None, "same-request".into())
+        );
+        let first = first.unwrap(); let second = second.unwrap();
+        assert_eq!(first.id, second.id);
+        assert!(first.status == "completed" || second.status == "completed");
+        assert_eq!(fs::read_to_string(root.join("effects")).unwrap(), "effect\n");
+        assert!(run_project_action(&db, &root, "workspace".into(), "different-action".into(), None, "same-request".into()).await.is_err());
+        delete_project_action(&db, "workspace".into(), action.id.clone()).await.unwrap();
+        db.close().await;
+        let reopened = crate::open_database(&root.join("host.db")).await.unwrap();
+        let replay = run_project_action(&reopened, &root, "workspace".into(), action.id, None, "same-request".into()).await.unwrap();
+        assert_eq!(replay.id, first.id);
+        assert_eq!(replay.status, "completed");
+        assert_eq!(fs::read_to_string(root.join("effects")).unwrap(), "effect\n");
         reopened.close().await;
         fs::remove_dir_all(root).unwrap();
     }

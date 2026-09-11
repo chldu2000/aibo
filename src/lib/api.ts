@@ -478,8 +478,10 @@ export const runProjectAction = (
   workspaceId: string,
   actionId: string,
   sessionId?: string | null,
+  requestId = crypto.randomUUID(),
 ): Promise<ProjectActionRun> =>
   invoke<ProjectActionRun>('run_project_action', {
+    requestId,
     workspaceId,
     actionId,
     sessionId: sessionId ?? null,

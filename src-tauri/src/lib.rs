@@ -3723,9 +3723,10 @@ async fn run_project_action(
     workspace_id: String,
     action_id: String,
     session_id: Option<String>,
+    request_id: String,
     state: State<'_, AppState>,
 ) -> Result<ProjectActionRun, CoreError> {
-    project_actions::run_project_action(&state.db, &state.data_dir, workspace_id, action_id, session_id).await
+    project_actions::run_project_action(&state.db, &state.data_dir, workspace_id, action_id, session_id, request_id).await
 }
 
 #[tauri::command]
