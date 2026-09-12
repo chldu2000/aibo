@@ -3252,6 +3252,8 @@
       onClose={guard('onClose', closeWorkspaceFileDiff)}
     />
     {:else}
+    <!-- Input callbacks refresh their session guard; a function-binding setter
+         is initialized once and would reject edits after session navigation. -->
     <TimelinePanel
       workspace={selectedWorkspace}
       session={selectedSession}
@@ -3280,8 +3282,8 @@
       agentCommands={visibleAgentCommands}
       agentCommandsLoading={agentCommandsLoading}
       composerDraftFailed={composerDraftFailed}
-      bind:composerText={() => composerText, guard('bind:composerText', (value) => { composerText = value; })}
-      onComposerInput={guard('onComposerInput', handleComposerInput)}
+      composerText={composerText}
+      onComposerInput={guard('onComposerInput', (value) => { composerText = value; handleComposerInput(value); })}
       onSelectWorkspacePath={guard('onSelectWorkspacePath', selectComposerWorkspacePath)}
       onAddAttachments={guard('onAddAttachments', () => void chooseSessionAttachments())}
       onAddDirectory={guard('onAddDirectory', () => void chooseSessionAttachmentDirectory())}
