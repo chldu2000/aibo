@@ -13,3 +13,15 @@
 这一步只证明公共数据包可独立构建和消费。Capability Runtime SDK、完整仓库外能力包的安装/执行/贡献/卸载、发布版本与平台矩阵、升级失败及数据恢复仍待实施；P5 清单保持未完成。是否统一所有插件目录和注册表发布，仍应在完整仓库外样例验证后决定。
 
 本批验证：独立协议/边界测试通过；`pnpm run verify` 通过（25 项架构检查、169 项 Node 测试、类型检查及构建）；`node probes/semantic-ui-browser.mjs` 双皮肤核心视图、布局、状态、键盘和恢复回归通过。未修改 Rust。主 chunk 大小提示仍保留。
+
+## 第二批：Capability Runtime SDK
+
+`packages/capability-sdk` 提供本地版本 `@aibo/capability-sdk@0.1.0`。默认入口为独立消息 dispatcher，`/stdio` 使用 Node 标准输入/输出承载 Runtime 2.0。初始化绑定 plugin/version/contribution/instance/generation，调用检查协商过的精确 operation 和 deadline；同一实例拒绝并发执行。插件间 call 自动带上当前 invocation/generation，禁止覆盖宿主 scope、权限等字段；有界子请求关联保留成功/拒绝，未做自动重试。
+
+调用完成、deadline 到达或传输关闭后，取消信号失效旧上下文，待处理子请求拒绝，迟到 handler 结果不再发送。SDK 不宣称停止 handler 的全部本机副作用；真实权限、输入输出 schema、进程终止、批准、持久身份及结果未知仍由 Broker 决定。业务实现必须合作处理取消信号。
+
+公共协议包新增与当前 Rust 消息一致的 Capability 数据类型；前端 `api.ts` 的 scope/request/result 改为重用公共定义。运行 SDK 的函数/取消接口与纯数据类型分包；取消接口使用结构类型，不重导出 DOM AbortSignal 或框架类型。
+
+验证包括 dispatcher 的身份/版本/过期拒绝、子调用关联及权限字段拒绝、拒绝不重试、deadline 后迟到结果忽略；真实 Node stdio 进程完成初始化和调用。两个实际 tarball 在仓库外解包后，SDK 与协议声明使用 ES2022、空自动类型列表编译，并验证所有入口可导入。该验证仍不替代仓库外插件的生产安装、Broker 调用、语义贡献和卸载链路，下一批继续完成这些要求。
+
+第二批 `pnpm run verify` 通过：25 项架构检查、173 项 Node 测试、类型检查及生产构建。未修改 Rust；主 chunk 大小提示保留。

@@ -5,6 +5,7 @@ Aibo 公共 JSON 类型与呈现能力声明。零运行时依赖，不导出 Sv
 - `@aibo/plugin-protocol/semantic`：语义快照与动作。
 - `@aibo/plugin-protocol/presentation`：呈现代际消息；仍标记 experimental-v1。
 - `@aibo/plugin-protocol/renderer`：纯数据 renderer 描述、核心语义和支持版本常量。
+- 默认入口另导出 Capability Runtime 2.0 的初始化、调用、scope、结果及子请求目标类型。
 
 包版本不替代 wire schema 版本。当前语义数据类型保留 experimental-v1、v1 与 v1.1；具体载荷仍须通过宿主运行时 schema 校验，TypeScript 类型本身不是权限或有效性证明。
 

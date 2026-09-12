@@ -1,0 +1,13 @@
+{
+  "name":"@aibo/capability-sdk",
+  "version":"0.1.0",
+  "private":true,
+  "type":"module",
+  "files":["runtime.mjs","stdio.mjs","runtime.d.ts","stdio.d.ts","README.md"],
+  "exports":{
+    ".":{"types":"./runtime.d.ts","import":"./runtime.mjs"},
+    "./stdio":{"types":"./stdio.d.ts","import":"./stdio.mjs"}
+  },
+  "dependencies":{"@aibo/plugin-protocol":"0.1.0"},
+  "engines":{"node":">=22"}
+}

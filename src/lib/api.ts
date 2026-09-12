@@ -78,11 +78,9 @@ export interface PluginInstallation {
   manifest: { displayName: string; agents?: { agentId: string; displayName: string }[]; [key: string]: unknown };
 }
 // Caller identity and workspace paths are injected by the desktop host.
-export type CapabilityValue = null | boolean | number | string | CapabilityValue[] | { [key: string]: CapabilityValue };
-export type CapabilityScope = { kind: 'application' } | { kind: 'workspace' | 'session'; id: string };
+import type { JsonValue as CapabilityValue, CapabilityScope, CapabilityRequest, CapabilityResult } from '../../packages/plugin-protocol/src/index';
+export type { CapabilityValue, CapabilityScope, CapabilityRequest, CapabilityResult };
 export type CapabilityProvider = { installationId: string; contributionId: string; pluginId: string; version: string };
-export type CapabilityRequest = { turnId?: string; scope: CapabilityScope; capability: string; version: string; requestId: string; input: CapabilityValue };
-export type CapabilityResult = { instanceId: string; invocationId: string; installationId: string; generationId: string; output: CapabilityValue };
 export type CapabilityEvent = {
   schemaVersion: '1.0'; sequence: number; type: 'admitted' | 'started' | 'finished';
   invocationId: string; instanceId: string | null; installationId: string; contributionId: string;
