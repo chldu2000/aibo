@@ -36,11 +36,19 @@ try {
     skins.push({kit,genericEntry:true,rendered:true,refreshInvoked:true});
     if(kit==='shadcn') [...document.querySelectorAll('button')].find(button=>button.textContent.trim()==='关闭插件视图').click();
   }
+  const broken=await api.installAgentPlugin(config.brokenPackagePath);check(broken.runnable,'Candidate metadata valid');await api.setAgentPluginEnabled(broken.id,true);
+  const candidate=(await api.listCapabilityProviders(scope,'dev.example.greeting.read','1.0.0')).find(item=>item.installationId===broken.id);
+  check(candidate,'Replacement provider discovered');await api.bindCapabilityProvider(scope,'dev.example.greeting.read','1.0.0',candidate);
+  let candidateFailed=false;try {await api.invokeCapability({scope,capability:'dev.example.greeting.read',version:'1.0.0',requestId:'broken-upgrade',input:{actionId:'refresh',itemId:null,offset:0}});}catch{candidateFailed=true;}
+  check(candidateFailed,'Broken replacement reports failure');
+  const recovered=await api.invokeCapability({scope,capability:'dev.example.greeting.read',version:'1.0.0',requestId:'after-broken-upgrade',input:{actionId:'refresh',itemId:null,offset:0}});
+  check(recovered.installationId===plugin.id&&recovered.output.view.content==='EXTERNAL_SDK_OK','Confirmed release remains callable after failed upgrade');
+  await api.uninstallAgentPlugin(broken.id);
   await api.uninstallAgentPlugin(plugin.id);
   check(!(await api.listSemanticContributions()).some(item=>item.installationId===plugin.id),'Uninstall removed contribution');
   await until(()=>!document.querySelector('section.installed-workbench'),'Uninstall removed active view');
   let denied=false;try {await api.invokeCapability({scope,capability:'dev.example.greeting.read',version:'1.0.0',requestId:'after-uninstall',input:{actionId:'refresh',itemId:null,offset:0}});}catch{denied=true;}
   check(denied,'Uninstalled provider cannot execute');
   check((await api.listSessions(workspace.id)).length===0,'No Agent session needed');
-  await fetch('/__external_report',{method:'POST',body:JSON.stringify({ok:true,installed:true,capabilityWithoutUi:true,skins,uninstalled:true,activeViewClosed:true,newInvocationRejected:true,noAgentSession:true})});
+  await fetch('/__external_report',{method:'POST',body:JSON.stringify({ok:true,installed:true,candidateFailureReported:true,confirmedReleaseRecovered:true,capabilityWithoutUi:true,skins,uninstalled:true,activeViewClosed:true,newInvocationRejected:true,noAgentSession:true})});
 } catch(error) {await fetch('/__external_report',{method:'POST',body:JSON.stringify({ok:false,error:JSON.stringify(error,Object.getOwnPropertyNames(error??{})),surface:document.querySelector('section.installed-workbench')?.textContent})});}

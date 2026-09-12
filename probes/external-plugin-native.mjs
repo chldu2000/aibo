@@ -1,15 +1,21 @@
 import { createServer } from 'vite';
-import { mkdir, writeFile, rm } from 'node:fs/promises';
+import { mkdir, readFile, writeFile, rm } from 'node:fs/promises';
 import path from 'node:path';
 import { spawn } from 'node:child_process';
 import { buildExternalPlugin } from './build-external-plugin.mjs';
 if(process.platform!=='darwin')throw Error('This native acceptance currently verifies macOS');
 const built=await buildExternalPlugin();
+const brokenPackagePath=path.join(built.root,'broken-upgrade');await mkdir(brokenPackagePath);
+const brokenManifest=JSON.parse(await readFile(path.join(built.packagePath,'plugin.json'),'utf8'));
+brokenManifest.version='1.1.0';brokenManifest.contributions=brokenManifest.contributions.filter(item=>item.kind==='capabilityProvider');
+brokenManifest.entrypoint={executable:'worker.mjs'};
+await writeFile(path.join(brokenPackagePath,'plugin.json'),JSON.stringify(brokenManifest));
+await writeFile(path.join(brokenPackagePath,'worker.mjs'),'process.exit(1);');
 const workspacePath=path.join(built.root,'workspace');await mkdir(workspacePath);
 let finish,child,timer;
 const report=new Promise(resolve=>finish=resolve);
 const server=await createServer({server:{host:'127.0.0.1',port:0,hmr:false,watch:null},plugins:[{name:'external-sdk',configureServer(server){
-  server.middlewares.use('/__external_config',(_req,res)=>{res.setHeader('Content-Type','application/json');res.end(JSON.stringify({workspacePath,packagePath:built.packagePath}));});
+  server.middlewares.use('/__external_config',(_req,res)=>{res.setHeader('Content-Type','application/json');res.end(JSON.stringify({workspacePath,packagePath:built.packagePath,brokenPackagePath}));});
   server.middlewares.use('/__external_report',(req,res)=>{let body='';req.on('data',chunk=>body+=chunk);req.on('end',()=>{res.end('ok');finish(JSON.parse(body));});});
 }}]});await server.listen();
 const identifier=`local.aibo.externalsdk.${Date.now()}`,config=path.join(built.root,'tauri.json');

@@ -258,6 +258,64 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn failed_upgrade_keeps_old_dependency_chain_recoverable() {
+        let f = Fixture::new().await;
+        let leaf = f.install("dev.test.leaf", "1.0.0", json!([]), false).await;
+        plugin_registry::enable(&f.db, &leaf, true).await.unwrap();
+        let parent = f.install("dev.test.parent", "1.0.0", dependency("dev.test.leaf", "dev.test.parent", true, false), false).await;
+        plugin_registry::enable(&f.db, &parent, true).await.unwrap();
+        let binding = |installation: &str| Binding {scope:Scope::Workspace("w".into()), capability:"dev.test.parent.echo".into(), version:"1.0.0".into(), installation_id:installation.into(), contribution_id:"dev.test.parent.read".into()};
+        let request = |id: &str| Request {scope:Scope::Workspace("w".into()), capability:"dev.test.parent.echo".into(), version:"1.0.0".into(), request_id:id.into(), turn_id:None, input:json!({"value":id})};
+        f.broker.bind(binding(&parent)).await.unwrap();
+        assert_eq!(f.broker.invoke("main", request("old")).await.unwrap().installation_id, parent);
+        let newer_leaf = f.install("dev.test.leaf", "1.1.0", json!([]), false).await;
+        plugin_registry::enable(&f.db, &newer_leaf, true).await.unwrap();
+        let missing = f.install("dev.test.parent", "1.1.0", dependency("dev.test.missing", "dev.test.parent", true, false), false).await;
+        assert!(plugin_registry::enable(&f.db, &missing, true).await.is_err());
+        assert!(f.broker.bind(binding(&missing)).await.is_err());
+        // A metadata-valid upgrade pins the newer dependency, but cannot replace
+        // the confirmed parent when its actual runtime fails initialization.
+        let package = f.root.join("broken-upgrade"); fs::create_dir_all(&package).unwrap();
+        let mut manifest: Value = serde_json::from_slice(&fs::read(f.root.join("dev.test.parent-1.0.0/plugin.json")).unwrap()).unwrap();
+        manifest["version"] = json!("1.2.0");
+        fs::write(package.join("plugin.json"), manifest.to_string()).unwrap();
+        fs::write(package.join("worker.mjs"), "process.exit(1);").unwrap();
+        let broken = plugin_registry::install(&f.db, &f.root.join("data"), &package).await.unwrap();
+        plugin_registry::enable(&f.db, &broken.id, true).await.unwrap();
+        assert_eq!(resolve(&f.db, &broken.id, false).await.unwrap().dependencies[0].installation_id.as_deref(), Some(newer_leaf.as_str()));
+        f.broker.bind(binding(&broken.id)).await.unwrap();
+        assert!(f.broker.invoke("main", request("broken")).await.is_err());
+        assert_eq!(resolve(&f.db, &parent, false).await.unwrap().dependencies[0].installation_id.as_deref(), Some(leaf.as_str()));
+        assert_eq!(f.broker.invoke("main", request("still-old")).await.unwrap().installation_id, parent);
+        f.broker.stop_installation(&parent).await.unwrap();
+        plugin_registry::uninstall(&f.db, &f.root.join("data"), &parent).await.unwrap();
+        plugin_registry::uninstall(&f.db, &f.root.join("data"), &leaf).await.unwrap();
+        plugin_registry::collect_retired(&f.db, &f.root.join("data")).await.unwrap();
+        for release in [&parent, &leaf] {
+            assert!(f.root.join("data/plugins").join(format!(".retained-{release}")).join("worker.mjs").is_file());
+        }
+        // The old binding reaches the retired leaf transitively, despite a newer
+        // compatible leaf being installed. Restore exact retained package bytes.
+        assert!(f.broker.invoke("main", request("uninstalled")).await.is_err());
+        for release in [&leaf, &parent] {
+            let retained = f.root.join("data/plugins").join(format!(".retained-{release}"));
+            let source = f.root.join(format!("recovery-export-{release}"));
+            fs::create_dir_all(&source).unwrap();
+            let (_, entries, _) = plugin_registry::inspect(&retained.canonicalize().unwrap()).unwrap();
+            for entry in entries {
+                fs::create_dir_all(source.join(&entry).parent().unwrap()).unwrap();
+                fs::copy(retained.join(&entry), source.join(&entry)).unwrap();
+            }
+            let restored = plugin_registry::install(&f.db, &f.root.join("data"), &source).await.unwrap();
+            assert_eq!(&restored.id, release);
+            plugin_registry::enable(&f.db, release, true).await.unwrap();
+        }
+        assert_eq!(resolve(&f.db, &parent, false).await.unwrap().dependencies[0].installation_id.as_deref(), Some(leaf.as_str()));
+        assert_eq!(f.broker.invoke("main", request("restored")).await.unwrap().installation_id, parent);
+        f.finish().await;
+    }
+
+    #[tokio::test]
     async fn required_missing_blocks_activation_optional_missing_only_disables_target_contribution() {
         let f=Fixture::new().await;
         let required=f.install("dev.test.required","1.0.0",dependency("dev.test.missing","dev.test.required",true,false),false).await;
