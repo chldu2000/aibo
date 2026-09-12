@@ -183,7 +183,7 @@ class FakeSession {
         ? { path: text.includes('image') ? 'read-tool.png' : 'read-tool.txt' }
         : toolName === 'write'
           ? { path: 'core-tool.txt', content: 'Core plugin write' }
-          : { command: 'printf AIBO_PLUGIN_COMMAND_OK', cwd: '.' };
+          : { command: text.includes('cancel command') ? 'printf started > command-started; sleep 1; printf finished > command-finished' : 'printf AIBO_PLUGIN_COMMAND_OK', cwd: '.' };
       this.emit({ type: 'tool_execution_start', toolCallId, toolName, args: input });
       const result = await tool.execute(toolCallId, input, undefined, undefined, { model: this.model, sessionManager: this.sessionManager, thinkingLevel: this.thinkingLevel });
       this.emit({ type: 'tool_execution_end', toolCallId, toolName, result, isError: false });

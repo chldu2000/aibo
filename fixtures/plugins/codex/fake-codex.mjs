@@ -3,8 +3,10 @@ import readline from 'node:readline';
 const write = (message) => process.stdout.write(`${JSON.stringify({ jsonrpc: '2.0', ...message })}\n`);
 const input = readline.createInterface({ input: process.stdin, crlfDelay: Infinity });
 let goal = null;
+const nativeTurns = [];
 let interactiveTurn = null;
 function completeTurn(params) {
+  nativeTurns.push({id:'native-turn'});
   write({ method: 'item/agentMessage/delta', params: { threadId: params.threadId, turnId: 'native-turn', itemId: 'message', delta: params.input[0].text } });
   write({ method: 'item/completed', params: { threadId: params.threadId, turnId: 'native-turn', item: { id: 'message', type: 'agentMessage', text: params.input[0].text } } });
   write({ method: 'turn/completed', params: { threadId: params.threadId, turn: { id: 'native-turn', status: 'completed', items: [] } } });
@@ -18,10 +20,18 @@ input.on('line', (line) => {
     completeTurn(interactiveTurn.params); interactiveTurn = null; return;
   }
   const { id, method, params = {} } = request;
+  const policy = {approvalPolicy:params.approvalPolicy,model:params.model,sandbox:{type:process.env.CODEX_FAKE_SANDBOX ?? ({'read-only':'readOnly','workspace-write':'workspaceWrite','danger-full-access':'dangerFullAccess'}[params.sandbox])}};
   if (method === 'initialize') write({ id, result: { userAgent: 'fake-codex/1.0.0' } });
-  else if (method === 'thread/start') write({ id, result: { thread: { id: process.env.CODEX_FAKE_THREAD_ID ?? 'native-thread' }, approvalPolicy: 'never', sandbox: { type: 'readOnly' } } });
+  else if (method === 'thread/start') write({ id, result: { thread: { id: process.env.CODEX_FAKE_THREAD_ID ?? 'native-thread' }, ...policy } });
   else if (method === 'thread/resume' && process.env.CODEX_FAKE_MISSING_ROLLOUT === '1') write({ id, error: { code: -32600, message: `no rollout found for thread id ${params.threadId}` } });
-  else if (method === 'thread/resume') write({ id, result: { thread: { id: params.threadId } } });
+  else if (method === 'thread/resume') write({ id, result: { thread: { id: params.threadId }, ...policy } });
+  else if (method === 'thread/list') write({id,result:{data:[{id:'catalog-thread',title:'Catalog entry',cwd:params.cwd,status:{type:'idle'}}]}});
+  else if (method === 'thread/read' && params.includeTurns && process.env.CODEX_FAKE_NO_TURNS === '1') write({id,error:{code:-32600,message:'list_turns is not supported yet'}});
+  else if (method === 'thread/read') write({id,result:{thread:{id:params.threadId,title:'Native thread',cwd:process.cwd(),status:{type:'idle'},updatedAt:'2026-09-12T00:00:00Z',turns:process.env.CODEX_FAKE_NO_TURNS === '1' ? undefined : nativeTurns}}});
+  else if (method === 'thread/fork') {
+    if (params.lastTurnId && params.lastTurnId !== 'native-turn') throw Error('host turn ID leaked into native fork');
+    write({id,result:{thread:{id:process.env.CODEX_FAKE_FORK_SAME_THREAD==='1'?params.threadId:'forked-thread',parentThreadId:params.threadId}}});
+  }
   else if (method === 'turn/start') {
     if (params.summary !== 'auto') {
       write({ id, error: { code: -32000, message: 'reasoning summary was not requested' } });
