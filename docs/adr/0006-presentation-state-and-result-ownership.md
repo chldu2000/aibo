@@ -12,4 +12,4 @@ status: accepted
 
 只读旧请求尽量取消，即使取消失败，其迟到结果也不能覆盖当前视图。写入必须保留独立执行状态；离开页面不代表取消成功、执行失败或副作用消失。写入取消、冲突和结果未知的完整流程在 P4 冻结。
 
-具体行为矩阵、验收场景及未定参数见[语义交互与状态规则](../plugin-platform-interaction-decisions.md)。此决定尚待实施，不改变现行 UI 契约。
+具体行为矩阵、验收场景及未定参数见[语义交互与状态规则](../archive/plugin-platform-interaction-decisions.md)。此决定尚待实施，不改变现行 UI 契约。

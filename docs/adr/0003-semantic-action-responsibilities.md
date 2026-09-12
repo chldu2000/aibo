@@ -10,4 +10,4 @@ status: accepted
 
 这一选择使布局切换能够保留业务位置与返回关系，又无需将所有瞬时交互交给能力进程。让能力直接打开面板会绑定 Shell；让 renderer 独占导航与持久选择会使切换恢复依赖旧组件实例。业务动作仍须经宿主验证和授权。
 
-同日后续确认：UI 提交语义意图和上下文，宿主负责验证、导航与能力调度；只读浏览按最新有效意图接纳结果，写入独立跟踪。状态保存范围与恢复原则见 [ADR-0006](./0006-presentation-state-and-result-ownership.md)，交互、过期动作和数据量处理见[语义交互与状态规则](../plugin-platform-interaction-decisions.md)。具体消息字段、存储键和失效判定粒度仍待冻结。
+同日后续确认：UI 提交语义意图和上下文，宿主负责验证、导航与能力调度；只读浏览按最新有效意图接纳结果，写入独立跟踪。状态保存范围与恢复原则见 [ADR-0006](./0006-presentation-state-and-result-ownership.md)，交互、过期动作和数据量处理见[语义交互与状态规则](../archive/plugin-platform-interaction-decisions.md)。具体消息字段、存储键和失效判定粒度仍待冻结。

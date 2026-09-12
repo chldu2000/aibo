@@ -168,7 +168,7 @@ explicitly unavailable until host capability/confirmation dispatch is wired.
 +
 +Svelte 与最小 DOM adapter 均提供 mount/update/dispose 并消费相同 fixture。默认产品入口使用可信 Svelte 工作区组件，adapter 验证入口位于 `probes/semantic-ui.html`；最小 DOM renderer 不作为产品工作台发布，也不加载第三方脚本。JSON schema 验证器在开发阶段生成，运行时不调用 eval/Function，保持现行桌面 CSP。
 +
-+具体协议和验收见 [P1 实施记录](./plugin-platform-p1-semantic-slice.md)。
++具体协议和验收见 [P1 实施记录](archive/plugin-platform-p1-semantic-slice.md)。
 
 ## P2 宿主状态与整窗呈现生命周期
 
@@ -180,7 +180,7 @@ explicitly unavailable until host capability/confirmation dispatch is wired.
 
 App 中所有业务回调和可写绑定经 generation、当前工作区及会话检查；`test/p2-boundaries.test.mjs` 通过 Svelte AST 检查这些入口并禁止 Shell 导入 Agent 生命周期 API。切换期间 inert，挂载失败回到标准呈现，焦点使用语义 ID。App/Git 提交说明、分支名和插件表单由宿主持有，并在窗口命名空间持久化；会话 Composer 草稿继续使用 Core session 持久化。两套皮肤继续提供同一视觉合同，新增 CSS 仅控制布局。
 
-验收包括两套皮肤的模型矩阵、两种 Git 布局、真实桌面流式切换/应用重启/窗口隔离，以及浏览器故障注入。详见 [P2 记录](./plugin-platform-p2-agent-state.md)。
+验收包括两套皮肤的模型矩阵、两种 Git 布局、真实桌面流式切换/应用重启/窗口隔离，以及浏览器故障注入。详见 [P2 记录](archive/plugin-platform-p2-agent-state.md)。
 
 ## P3 安装目录与激活诊断
 
@@ -199,7 +199,7 @@ P3 第五批通过 `InstalledWorkbench` 和纯数据端口接入已安装语义�
 
 稳定合同为 contracts/semantic-view.v1.schema.json，原 experimental-v1 schema 独立保留；生成验证器同时读取两者，不能用新字段重新解释旧版本。settings.page 的 workspaceId 为 null，session.context/session.action 必须有 sessionId 和所属 workspaceId。宿主 lease 验证当前上下文、revision、窗口与启用状态后才调度只读能力。P4 再接入编辑、写入审批及任意呈现插件。
 
-架构检查继续覆盖纯数据边界、双皮肤必需成员和 workbench 视觉边界；test/semantic-stable.test.mjs 验证稳定/旧版本读取、作用域伪造与通用 inspect 选择。双 renderer 与双皮肤证据见 [P3 收尾记录](./plugin-platform-p3-completion.md)。
+架构检查继续覆盖纯数据边界、双皮肤必需成员和 workbench 视觉边界；test/semantic-stable.test.mjs 验证稳定/旧版本读取、作用域伪造与通用 inspect 选择。双 renderer 与双皮肤证据见 [P3 收尾记录](archive/plugin-platform-p3-completion.md)。
 
 ## P4 呈现协商边界
 

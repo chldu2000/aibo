@@ -8,4 +8,4 @@ status: accepted
 
 这一选择避免一个工作区的卡死、取消或进程崩溃直接拖累另一个工作区，代价是更多进程与资源占用。默认共享进程虽然节约资源，却提前引入复用调度、取消隔离和故障归因复杂度。
 
-插件不能自行把 workspace 权限提升为 application 权限。进程隔离仍不等于操作系统沙箱，也不保证完全隔离机器资源竞争。实例复用键、空闲回收、实例上限及 application/session 拓扑待后续设计；本决定不改变现有 Agent session 拓扑，沿用 [ADR-0001](./0001-process-isolated-agent-plugins.md) 的监督原则。
+插件不能自行把 workspace 权限提升为 application 权限。进程隔离仍不等于操作系统沙箱，也不保证完全隔离机器资源竞争。实例复用键、空闲回收、实例上限及 application/session 拓扑待后续设计；本决定不改变现有 Agent session 拓扑，沿用 [ADR-0001](../archive/adr/0001-process-isolated-agent-plugins.md) 的监督原则。

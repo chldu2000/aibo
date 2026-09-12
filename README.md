@@ -1,29 +1,22 @@
 # Aibo
 
-Aibo is a local multi-agent workbench. It owns workspace and session management, renders a unified interface, and exchanges reviewable context between headless agent runtimes.
+Aibo is a local coding workbench composed of a plugin host, capability plugins,
+and presentation plugins. Codex and Pi run through the shared capability Broker;
+the host owns workspace trust, sessions, approvals, and history.
 
-The first supported runtimes are Codex and Pi. The product architecture and phased delivery plan are documented in [docs/aibo-research-and-delivery-plan.md](docs/aibo-research-and-delivery-plan.md); the macOS-first freeze is recorded in [docs/architecture-freeze.md](docs/architecture-freeze.md).
+See the [current documentation](docs/README.md) for architecture and supported
+contracts. Previous plans, designs, and phase reports are in the
+[documentation archive](docs/archive/README.md).
 
-The proposed evolution toward a plugin host, capability plugins, and UI plugins is described in [docs/plugin-platform-evolution.md](docs/plugin-platform-evolution.md).
-
-## Current status
-
-Phase 0 protocol probes are complete on the local macOS validation host, and the architecture is frozen for a macOS-first release. Codex App Server and both Pi paths (the locked SDK host and the RPC compatibility path) have passed the recorded protocol/history probes; real-model smoke still depends on native agent credentials. Windows is a follow-up compatibility gate after native Pi login. Phase 1 Codex real-session acceptance is complete on the local macOS host: the Svelte 5 + Tauri 2 shell, Rust Core, SQLite projection, stdio App Server adapter, streaming timeline, interruption, and restart resume passed the real UI gate. Phase 2 covers explicit approval, normalized tool/usage projection, binding checks, and typed Codex thread list/read/fork/archive/unarchive APIs. The macOS Phase 3 gate is now complete: Pi uses a SDK host with create/open, streaming, abort, steer/follow-up, session-tree inspection/navigation, lifecycle projection, crash/reopen recovery, and a handoff snapshot seam; it exposes read-only tools and explicitly does not claim a native sandbox. Windows compatibility remains the next platform gate before Phase 4.
-
-## Phase 1 Codex vertical slice
-
-The macOS-first shell provides workspace CRUD, canonical path validation, explicit trust state, SQLite/WAL migrations, Codex/Pi installation diagnostics, and a Codex session timeline. Create a workspace, start a Codex session, send a read-only prompt, observe streamed output, and restart the app to exercise the persisted projection. Run the desktop development app with:
+## Development
 
 ```sh
 pnpm install
 pnpm tauri dev
 ```
 
-The browser-only `pnpm dev` command remains useful for UI preview; it uses clearly marked sample data and does not persist workspace changes.
-
-## Phase 2 Codex capability expansion
-
-Phase 2 adds an explicit approval path, typed Codex thread lifecycle, and normalized tool/usage events. Codex requests use the `on-request` policy while retaining the read-only sandbox. Aibo projects approval requests as reviewable cards, sends an explicit `accept` or `cancel` decision, reads remote history, creates persistent branches, archives without deleting the local timeline, and can unarchive a thread; it never auto-approves. Command/file/MCP item progress is projected into the unified timeline, with binding and generation checks guarding recovery.
+Use `pnpm dev` for browser UI preview and `pnpm run verify` for architecture,
+type, test, and frontend build checks.
 
 ## Capability sessions
 
@@ -45,7 +38,7 @@ These tests include opening the installed Pi SDK, but do not make real-model
 requests. Migration status and remaining validation are tracked in
 [the migration record](docs/capability-session-migration.md).
 
-## Phase 0 probes
+## Native engine probes
 
 Requirements:
 
@@ -73,7 +66,7 @@ pnpm probe:pi:rpc
 ```
 
 `pnpm probe:pi:smoke` exercises the project-locked SDK host. To exercise the
-RPC compatibility path with a real model turn, run `pnpm probe:pi:rpc -- --smoke`.
+native RPC diagnostic path with a real model turn, run `pnpm probe:pi:rpc -- --smoke`.
 
 Add `--smoke` to run a minimal model turn with all mutation tools disabled or read-only:
 

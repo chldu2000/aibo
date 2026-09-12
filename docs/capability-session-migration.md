@@ -70,7 +70,7 @@ flowchart TB
 验证环境中 Vite 样式扫描可能撞上 Cargo 刚删除的临时目录，故前端验证与 Cargo 编译
 顺序运行。全量 Node 验证使用临时 PATH 包装限制并发，未改变仓库脚本或测试断言。
 
-完整批次、失败诊断和修复经过见 [历史实施记录](capability-session-migration-history.md)。
+完整批次、失败诊断和修复经过见 [历史实施记录](archive/capability-session-migration-history.md)。
 
 发布检查已生成 `src-tauri/target/release/bundle/macos/Aibo.app`，资源目录仅包含锁定 Pi SDK
 bundle 与应用图标，没有旧 Pi host。最终 SDK 核对补齐 handler 错误信封的 `data.kind`，

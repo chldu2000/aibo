@@ -32,7 +32,7 @@
 
 清单必须显式包含当前平台，宿主不会将纯数据协议跨平台等同于插件执行跨平台。表中 Linux/Windows 是代码识别范围，不是已经通过的发行支持承诺；外部样例仅声明两个 darwin 平台。其他 OS/架构未列入支持范围。
 
-证据：[P4 退出核对](./plugin-platform-p4-exit-audit.md)、[P5 外部插件原生记录](./baselines/plugin-platform-p5/external-plugin-native.json)。P5 JSON 记录了 darwin，执行工作站为 Darwin arm64；它不提供其他架构证明。
+证据：[P4 退出核对](archive/plugin-platform-p4-exit-audit.md)、[P5 外部插件原生记录](archive/baselines/plugin-platform-p5/external-plugin-native.json)。P5 JSON 记录了 darwin，执行工作站为 Darwin arm64；它不提供其他架构证明。
 
 ## UI 信任与扩展边界
 
