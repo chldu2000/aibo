@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { mkdtemp, mkdir, copyFile, writeFile, readFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
-import { execFileSync } from 'node:child_process';
+import { execFileSync, spawnSync } from 'node:child_process';
 
 test('packed protocol compiles and imports outside the repository without DOM or framework dependencies', async () => {
   const root = await mkdtemp(path.join(tmpdir(), 'aibo-protocol-package-'));
@@ -28,6 +28,12 @@ test('packed protocol compiles and imports outside the repository without DOM or
     const sdkPacked=JSON.parse(execFileSync('npm',['pack','--ignore-scripts','--offline','--json','--cache',path.join(root,'cache')],{cwd:sdkStaging,encoding:'utf8'}))[0];
     const sdkInstalled=path.join(consumer,'node_modules/@aibo/capability-runtime');await mkdir(sdkInstalled,{recursive:true});
     execFileSync('tar',['-xzf',path.join(sdkStaging,sdkPacked.filename),'-C',sdkInstalled,'--strip-components=1']);
+    const webStaging=path.join(root,'web');await mkdir(webStaging);
+    for(const name of ['package.json','README.md','index.d.ts']) await copyFile(path.resolve('packages/web-presentation',name),path.join(webStaging,name));
+    const webPacked=JSON.parse(execFileSync('npm',['pack','--ignore-scripts','--offline','--json','--cache',path.join(root,'cache')],{cwd:webStaging,encoding:'utf8'}))[0];
+    assert.deepEqual(webPacked.files.map(file=>file.path).sort(),['README.md','index.d.ts','package.json']);
+    const webInstalled=path.join(consumer,'node_modules/@aibo/web-presentation');await mkdir(webInstalled,{recursive:true});
+    execFileSync('tar',['-xzf',path.join(webStaging,webPacked.filename),'-C',webInstalled,'--strip-components=1']);
     await writeFile(path.join(consumer,'consumer.mts'), `
 import { SEMANTIC_SCHEMA, type Snapshot } from '@aibo/plugin-protocol/semantic';
 import type { PresentationSnapshot } from '@aibo/plugin-protocol/presentation';
@@ -46,6 +52,21 @@ type BrowserGlobal = Window;
 `);
     await writeFile(path.join(consumer,'tsconfig.json'),JSON.stringify({compilerOptions:{target:'ES2022',module:'NodeNext',moduleResolution:'NodeNext',lib:['ES2022'],types:[],strict:true,noEmit:true},include:['consumer.mts']}));
     execFileSync(process.execPath,[tsc,'-p','tsconfig.json'],{cwd:consumer,stdio:'pipe'});
+    await writeFile(path.join(consumer,'web-consumer.mts'),`
+import type { WebPresentationAdapter } from '@aibo/web-presentation';
+const adapter: WebPresentationAdapter = { async mount(target, props) {
+  target.textContent = props.snapshot.state.message;
+  return {update(snapshot){ target.textContent = snapshot.state.message; },async dispose(){target.replaceChildren();}};
+}};
+`);
+    const webConfig={compilerOptions:{target:'ES2022',module:'NodeNext',moduleResolution:'NodeNext',lib:['ES2022'],types:[],strict:true,noEmit:true},include:['web-consumer.mts']};
+    await writeFile(path.join(consumer,'web-tsconfig.json'),JSON.stringify(webConfig));
+    const withoutDom=spawnSync(process.execPath,[tsc,'-p','web-tsconfig.json'],{cwd:consumer,encoding:'utf8'});
+    assert.notEqual(withoutDom.status,0,'the Web contract must be an explicit DOM opt-in');
+    assert.match(withoutDom.stdout,/HTMLElement/);
+    webConfig.compilerOptions.lib.push('DOM');
+    await writeFile(path.join(consumer,'web-tsconfig.json'),JSON.stringify(webConfig));
+    execFileSync(process.execPath,[tsc,'-p','web-tsconfig.json'],{cwd:consumer,stdio:'pipe'});
     execFileSync(process.execPath,['--input-type=module','--eval',`
       import { SEMANTIC_SCHEMA, CORE_SEMANTICS } from '@aibo/plugin-protocol';
       import '@aibo/plugin-protocol/presentation';

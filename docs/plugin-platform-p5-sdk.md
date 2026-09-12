@@ -37,3 +37,15 @@
 包边界与发布决定：继续单仓库维护，保留独立可打包的 `@aibo/plugin-protocol`（公共纯数据 SDK）和 `@aibo/capability-runtime`（插件本地 Node helper）。后者的函数处理器和取消回调不属于 SDK 数据合同，也不跨进程序列化；公共 SDK 不重导出 helper。暂不发布注册表、不迁移既有 Agent 插件目录；先完成版本/平台与升级恢复矩阵。可信 Web renderer 本地接口的独立包仍待后续处理，因此 P5 第一项暂不勾选。
 
 第三批证据：[外部构建与原生结果](./baselines/plugin-platform-p5/external-plugin-native.json)，包括 tarball 文件清单、挂载前调用、双皮肤通用入口/刷新及卸载。`node probes/external-plugin-native.mjs` 外层退出 0，清理隔离 App 的内部 ELIFECYCLE 为正常结束输出。`pnpm run verify` 通过：25 项架构检查、174 项 Node 测试、类型检查与构建；新增构建回归检查解包产物没有符号链接、临时路径依赖或应用源码。当前原生证据仅覆盖 macOS，样例 manifest 也只声明对应平台。
+
+## 第四批：可信 Web renderer 本地接口
+
+新增独立类型包 `@aibo/web-presentation@0.1.0`，持有 PresentationProps、WebPresentationAdapter 和 MountedPresentation。包没有运行时代码，仅供可信构建 `import type`；它不会使安装 manifest 的 presentation 描述获得代码加载权限。
+
+宿主的 `workbench/types.ts` 与 `ui-kit/presentation-props.ts` 改为重导出同一份定义，避免本地接口漂移。该包依赖公共协议，允许 HTMLElement 与挂载/更新/释放回调；公共协议 SDK 禁止反向依赖本地 Web 接口或 Node helper。根 TypeScript 路径映射用于仓库内开发，外部消费者不使用该映射。
+
+实际 tarball 测试将三个包解到外部消费者目录：只导入协议/Node helper 时不带 DOM 编译通过；显式导入 Web 接口时，不带 DOM 因 HTMLElement 缺失而失败，加入 DOM 后实现一个 renderer 编译通过。Web 包只含声明、README 与 package.json。既有 Svelte/DOM renderer 实现继续由宿主可信构建提供。
+
+公共纯数据 SDK、插件本地 Runtime helper 和 Web 本地接口现已分开，可勾选 P5 的 SDK 提取项；注册表发布、兼容平台/版本以及升级与数据恢复验收继续保留未完成。
+
+第四批 `pnpm run verify` 通过：25 项架构检查、174 项 Node 测试、类型检查及构建。独立打包和有/无 DOM 的编译测试通过；未修改 Rust 或 renderer 运行逻辑。主 chunk 大小提示仍保留。

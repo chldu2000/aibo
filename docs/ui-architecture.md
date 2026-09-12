@@ -4,7 +4,10 @@
 `src/lib/presentation/{contract,renderer-contract,presentation-contract}.ts`
 为兼容导出入口。纯数据架构检查沿重导出递归进入协议包，并禁止协议包反向依赖
 宿主、平台或框架；独立编译仅使用 ES2022 类型库。可执行 renderer 本地接口仍在
-`src/lib/workbench/types.ts`，不属于公共数据包。UiKitAdapter 的必需视觉成员不变。
+`packages/web-presentation/index.d.ts`，`src/lib/workbench/types.ts` 和
+`src/lib/ui-kit/presentation-props.ts` 仅重导出类型，不属于公共数据包。
+该本地接口允许 DOM 和函数回调，消费者必须显式引入 DOM 类型库；独立打包测试
+验证能力消费者仍可不带 DOM 编译。UiKitAdapter 的必需视觉成员不变。
 插件本地 Node 执行 helper 位于 `packages/capability-runtime`，其处理函数不属于
 公共纯数据 SDK；协议包禁止反向重导出该 helper。
 

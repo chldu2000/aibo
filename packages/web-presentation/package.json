@@ -1,0 +1,9 @@
+{
+  "name":"@aibo/web-presentation",
+  "version":"0.1.0",
+  "private":true,
+  "type":"module",
+  "files":["index.d.ts","README.md"],
+  "exports":{".":{"types":"./index.d.ts"}},
+  "dependencies":{"@aibo/plugin-protocol":"0.1.0"}
+}
