@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { createCapabilityRuntime } from '../packages/capability-sdk/runtime.mjs';
+import { createCapabilityRuntime } from '../packages/capability-runtime/runtime.mjs';
 import { spawn } from 'node:child_process';
 import { createInterface } from 'node:readline';
 import { once } from 'node:events';
@@ -52,7 +52,7 @@ test('SDK reports child rejection without retries and discards a handler complet
 });
 
 test('SDK stdio worker negotiates and replies through a real process',async()=>{
-  const entry=new URL('../packages/capability-sdk/stdio.mjs',import.meta.url).href;
+  const entry=new URL('../packages/capability-runtime/stdio.mjs',import.meta.url).href;
   const child=spawn(process.execPath,['--input-type=module','--eval',`import {serveCapability} from ${JSON.stringify(entry)};serveCapability({...${JSON.stringify(init)},operations:${JSON.stringify([operation])},invoke:async p=>p.input});`],{stdio:['pipe','pipe','pipe']});
   const exited=once(child,'exit');const lines=createInterface({input:child.stdout});
   let errors='';child.stderr.on('data',chunk=>errors+=chunk);

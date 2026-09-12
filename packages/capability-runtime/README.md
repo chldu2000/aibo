@@ -1,9 +1,9 @@
-# @aibo/capability-sdk
+# @aibo/capability-runtime
 
 Node 22+ Capability Runtime 2.0 helper，当前仅本地打包。`serveCapability` 使用标准输入/输出 JSON-RPC；日志请写入 stderr。每个实例注册一个 contribution 及明确的 capability/version/operationId 列表。
 
 ```js
-import { serveCapability } from '@aibo/capability-sdk/stdio';
+import { serveCapability } from '@aibo/capability-runtime/stdio';
 serveCapability({
   pluginId: 'dev.example.echo', pluginVersion: '1.0.0',
   contributionId: 'dev.example.echo.worker',

@@ -5,6 +5,8 @@ export type JsonValue = null | boolean | number | string | JsonValue[] | { [key:
 export type ReadAction = { id: 'refresh' | 'inspect' | 'open-diff' | 'back' | 'next' | 'previous'; label: string; intent: 'refresh' | 'inspect' | 'navigate'; enabled: boolean };
 export type Action = ReadAction | { id: string; label: string; intent: 'execute'; enabled: boolean; input: { [key: string]: JsonValue } };
 export type ActionMessage = { context: Context; actionId: Action['id']; itemId: string | null };
+/** Input sent by the host to a semantic contribution's read provider. */
+export type SemanticQuery = { actionId: ReadAction['id']; itemId: string | null; offset: number };
 export type Property = { key: string; label: string; type: 'text' | 'enum'; values: string[] };
 export type Item = { id: string; values: Record<string, string> };
 export type Collection = { kind: 'collection'; properties: Property[]; items: Item[]; selection: string | null; page: { offset: number; size: number; total: number; truncated: boolean } };

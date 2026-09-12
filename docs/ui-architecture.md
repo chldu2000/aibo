@@ -5,6 +5,8 @@
 为兼容导出入口。纯数据架构检查沿重导出递归进入协议包，并禁止协议包反向依赖
 宿主、平台或框架；独立编译仅使用 ES2022 类型库。可执行 renderer 本地接口仍在
 `src/lib/workbench/types.ts`，不属于公共数据包。UiKitAdapter 的必需视觉成员不变。
+插件本地 Node 执行 helper 位于 `packages/capability-runtime`，其处理函数不属于
+公共纯数据 SDK；协议包禁止反向重导出该 helper。
 
 当前 UI 按四层组织：
 
