@@ -655,6 +655,53 @@ mod tests {
         fixture.finish().await;
     }
     #[tokio::test]
+    async fn explicit_code_rollback_reopens_old_private_data_after_database_and_broker_restart() {
+        let mut fixture = Fixture::new().await;
+        let mut releases = Vec::new();
+        for version in ["2.0.0", "3.0.0"] {
+            let path = fixture.root.join(format!("rollback-{version}"));
+            fs::create_dir_all(&path).unwrap();
+            let mut manifest: Value = serde_json::from_str(include_str!("../../fixtures/plugins/capability-echo/plugin.json")).unwrap();
+            manifest["version"] = json!(version);
+            fs::write(path.join("plugin.json"), manifest.to_string()).unwrap();
+            let worker = include_str!("../../fixtures/plugins/capability-echo/worker.mjs")
+                .replace("{ readFileSync }", "{ readFileSync, writeFileSync, existsSync }")
+                .replace("let generation;", "let generation; let storage;")
+                .replace("generation=p.generationId;", "generation=p.generationId; storage=p.privateData.path+'/state'; if(!existsSync(storage))writeFileSync(storage,manifest.version);")
+                .replace("value:p.input.value", "value:readFileSync(storage,'utf8')");
+            fs::write(path.join("worker.mjs"), worker).unwrap();
+            let release = plugin_registry::install(&fixture.db, &fixture.root.join("data"), &path).await.unwrap();
+            plugin_registry::enable(&fixture.db, &release.id, true).await.unwrap();
+            releases.push(release.id);
+        }
+        fixture.bind(Scope::Workspace("a".into()), &releases[0]).await;
+        let old = fixture.broker.invoke("main", request("a", "old-data", json!({"value":"unused"}))).await.unwrap();
+        assert_eq!(old.output["value"], "2.0.0");
+        fixture.bind(Scope::Workspace("a".into()), &releases[1]).await;
+        let new = fixture.broker.invoke("main", request("a", "new-data", json!({"value":"unused"}))).await.unwrap();
+        assert_eq!(new.output["value"], "3.0.0");
+        assert_ne!(old.instance_id, new.instance_id);
+        for release in &releases { fixture.broker.stop_installation(release).await.unwrap(); }
+        // Uninstall the new code without cleaning its data, then explicitly select
+        // the old release. A fresh Broker must reuse the old release's identity.
+        plugin_registry::uninstall(&fixture.db, &fixture.root.join("data"), &releases[1]).await.unwrap();
+        fixture.bind(Scope::Workspace("a".into()), &releases[0]).await;
+        fixture.db.close().await;
+        fixture.db = crate::open_database(&fixture.root.join("data/aibo.sqlite3")).await.unwrap();
+        let restarted = Broker::new(fixture.db.clone());
+        fixture.broker = restarted.clone();
+        let restored = restarted.invoke("main", request("a", "restored-data", json!({"value":"unused"}))).await.unwrap();
+        assert_eq!(restored.installation_id, releases[0]);
+        assert_eq!(restored.instance_id, old.instance_id);
+        assert_eq!(restored.output["value"], "2.0.0");
+        for (release, instance, expected) in [(&releases[0], &old.instance_id, "2.0.0"), (&releases[1], &new.instance_id, "3.0.0")] {
+            let data = crate::plugin_storage::directory(&fixture.root.join("data/plugins").join(release), "dev.aibo.capability-echo", release, instance).unwrap();
+            assert_eq!(fs::read_to_string(data.join("state")).unwrap(), expected);
+        }
+        restarted.stop_installation(&releases[0]).await.unwrap();
+        fixture.finish().await;
+    }
+    #[tokio::test]
     async fn cancellation_is_owned_by_window_and_isolated_from_other_workspaces() {
         let fixture = Fixture::new().await;
         for id in ["a","b"] { fixture.bind(Scope::Workspace(id.into()),&fixture.installation).await; }
