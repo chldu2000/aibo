@@ -1,0 +1,32 @@
+{
+  "identifier": "local.aibo.capabilitywrite.1789172506569",
+  "platform": "darwin",
+  "results": [
+    {
+      "ok": true,
+      "results": [
+        {
+          "kit": "shadcn",
+          "actualButton": true,
+          "nativeApproved": true,
+          "duplicateSuppressed": true,
+          "refreshedResult": true
+        },
+        {
+          "kit": "material3",
+          "actualButton": true,
+          "nativeApproved": true,
+          "duplicateSuppressed": true,
+          "refreshedResult": true
+        }
+      ]
+    }
+  ],
+  "nativeClicks": [
+    "clicked isolated dialog: 允许本次执行",
+    "clicked isolated dialog: 允许本次执行"
+  ],
+  "actualEffectsVerified": true,
+  "bothSkinsVerified": true,
+  "duplicateClickSuppressed": true
+}

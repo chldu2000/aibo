@@ -1,0 +1,24 @@
+<!doctype html><html lang="zh"><head><meta charset="UTF-8"><title>Plugin management recovery probe</title></head><body><div id="probe"></div><script type="module">
+import '/src/app.css';
+import { mount, unmount } from 'svelte';
+import Panel from '/src/lib/components/app/PluginManagerPanel.svelte';
+import { setUiKit } from '/src/lib/ui-kit/registry.ts';
+let instance;
+const actions = [];
+window.managementRecoveryProbe = {
+  actions: () => actions,
+  async show(kit, enabled = true) {
+    if (instance) await unmount(instance);
+    setUiKit(kit);
+    instance = mount(Panel, { target: document.getElementById('probe'), props: {
+      installations: [{id:'broken-installation',pluginId:'dev.probe.broken',pluginVersion:'1.0.0',installed:true,enabled,runnable:false,
+        dependencies:[{kind:'runtime',name:'missing-runtime',required:true,available:false,versionRange:null,issue:'执行依赖不可用'}],
+        activationIssues:['故障插件不能启动'],manifest:{displayName:'故障插件'}}],
+      packagePath:'',busy:false,onPackagePathChange(){},onInstall(){},
+      onEnabledChange:(id,value)=>actions.push({type:'enabled',id,value}),
+      onUninstall:id=>actions.push({type:'uninstall',id}),
+      onCreateSession(){throw Error('Recovery must not start an Agent');},
+    }});
+  },
+};
+</script></body></html>

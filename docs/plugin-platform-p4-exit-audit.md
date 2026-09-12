@@ -66,11 +66,37 @@
 
 本批 `pnpm run verify` 通过（25 项架构检查、168 项 Node 测试、类型检查及构建）。生产主 chunk 约 520 kB 的提示仍存在；未调整阈值。没有修改产品实现或 Rust；本批改动为探针观测时机、空态断言及验收归档。
 
-## 尚需逐项核对的 P4 范围
+## 受控写入与页面生命周期
 
-- 独立插件管理、审批、历史、停用及默认工作台恢复。
-- 项目任务/Git 服务边界、受控写入、日志及资源限制。
-- 直接与插件间 Capability 写入、审批预检执行边界。
-- 页面生命周期、过期上下文及权限复核。
+| 清单要求 | 当前实现与直接验证 |
+| --- | --- |
+| 项目任务/Git 领域服务与宿主控制 | `lib.rs` 的任务和 Git 命令调用 `project_actions`、`workspace_git`，Core 恢复调用 `core_turn_git`；窗口只提供宿主身份和原生确认。任务工作目录规范化检查、执行记录、日志脱敏/截断、可选会话 artifact 保留在宿主服务；`controlled_process` 限制执行时间和输出并清理后代。任务/Git 无窗口服务测试、目录越界/信任拒绝和 noisy/timeout 进程测试直接覆盖这些边界；artifact 保存调用仍在宿主服务中，不由插件或 UI 决定存储路径 |
+| 重复请求与作用域写冲突 | `project_actions` 和 `workspace_write_runs` 在副作用前保存意图与请求身份；相同请求读取原结果，改变输入/调用者拒绝；`workspace_writes` 按规范化工作区路径互斥。`duplicate_requests_execute_once_and_survive_definition_deletion_and_restart`、`duplicate_requests_do_not_repeat_effects_and_preserve_results_and_errors`、`tasks_and_git_share_workspace_exclusion_without_blocking_other_workspaces` 用实际文件和数据库验证 |
+| 取消、超时和未知结果 | 持久取消信号进入受控进程；开始执行后的取消/超时不宣称撤销已有更改，未知结果不自动重试。任务取消测试、Git commit hook/同步 transport 超时测试、`cancelled_git_commit_preserves_effects_output_and_caller_scope` 和结算失败/重启测试保留已知输出与副作用；待审批恢复为拒绝，执行中恢复为未知 |
+| 通用 Capability 写入与调用链 | `capability_writes`、Broker 与共享写入上下文保留原窗口、声明权限、scope、精确 release 和父/根关系，每层单独批准。`capability_write_chain_tests` 覆盖三层写入、共享占用、固定依赖、伪造 generation、未声明依赖、read→write / write→read→write 拒绝、取消与 deadline、子未知不能被父成功掩盖、重启与无副作用重放 |
+| 审批预检执行边界 | `workspace_git_approval` 使用安全 Git 读取策略及宿主文件哈希；带正向对照的 `preflight_never_runs_fsmonitor_filters_or_diff_drivers_but_approved_git_can` 验证批准前不运行过滤器等程序，批准后实际 Git 可运行。缺失 promisor 对象不触发 lazy fetch；隐藏编辑/子模块/大文件均有测试。Capability 的依赖发现读取元数据，版本程序仅在批准后通过受控进程执行；`approved_version_probe_cancellation_stops_descendants_before_settlement` 验证取消收尾 |
+| 离开页面仍保留执行与结果 | `write_semantic_contribution` 由宿主任务持有写入，页面 release 仅失效视图和读取。`semantic_write_survives_page_release_and_reopens_settled_results` 在实际副作用后释放页面，覆盖完成、取消、崩溃、非法输出及重开数据库后的原结果重放；独立历史关闭不会取消执行，控制器测试拒绝迟到读取/停止结果 |
+| 过期上下文和权限重新确认 | 任务/Git/Capability 均在批准后重新计算上下文，变化则拒绝原请求；新请求才能重新确认。语义写 proof 检查 lease、TTL、revision、包摘要及读/写绑定；`installed_write_uses_cached_input_and_replays_after_release` 覆盖等待确认时页面释放后无副作用，任务测试覆盖信任/定义改变，调用链测试覆盖子包停用/篡改 |
 
-以上已有多批实现和专项证据，列表表示尚未完成本轮逐项归档，不表示需要重新实现。
+本轮完整 Rust 测试 **208 项通过**。上述测试使用真实临时工作区、SQLite 和子进程；注入批准回调用于精确控制时序，不将它们冒充真实原生按钮验收。原生探针另覆盖生产 IPC、原生批准和实际文件结果。没有给通用路由添加 Provider 分支；`p2-boundaries.test.mjs` 继续限制 Provider 专用装配位于兼容模块。
+
+## 宿主控制与 P4 退出结论
+
+宿主控制的结构与实际入口证据见前文。`PluginManagerPanel` 的禁用按钮只受 busy 与安装启用状态约束：`runnable=false` 阻止重新启用，不阻止禁用已启用的故障插件。注册服务只在启用时检查运行依赖，禁用后先阻止新调用，并失效相关语义视图、停止关联能力实例。新增 `plugin-management-recovery` 浏览器探针验证故障诊断、禁用/卸载回调身份及禁止重新启用；它使用真实组件与 fixture 安装状态，生产安装/停用的 IPC 与历史保留由前文原生贡献探针验证。
+
+可信审批不由语义数据或呈现动作提供批准凭据。Agent 审批区域与回调保留在宿主，过期/重复/替换请求由 `approval-routing.test.mjs` 验证；既有 P4 第四批实际 Codex/Pi 宿主审批证据保留。写入批准使用最初窗口构造的原生对话框和不可反序列化回调；本轮原生探针验证实际允许/取消按钮。该边界建立在可信构建的呈现实现和纯数据安装贡献上，不宣称任意第三方前端已经安全隔离。
+
+本轮专项证据：
+
+- [任务/Git 原生写入](./baselines/plugin-platform-p4/write-exit-host-native.json)：6 次原生按钮操作；拒绝不执行、重复请求不重写、双皮肤历史停止按钮、已有提交/文件保留、后代延迟写入被停止。
+- [插件间写入原生验收](./baselines/plugin-platform-p4/write-exit-chain-native.json)：两次 App 启动、6 次逐层原生按钮操作；子拒绝不执行、固定依赖、父/根持久关系、子取消传播未知、卸载与撤销信任后的历史和重放，外层检查无新进程/重复文件效果。
+- [安装语义写入](./baselines/plugin-platform-p4/write-exit-semantic-native.json)：两套皮肤各一次原生批准；实际页面按钮、重复点击合并、读取刷新，以及文件恰好写入两次。
+- [故障插件管理](./baselines/plugin-platform-p4/plugin-management-recovery-browser.json)：两套皮肤的实际鼠标按钮、故障说明、禁用/卸载身份、不可运行插件禁止重新启用。组件 fixture 不宣称模拟了真实插件崩溃；后端停用与独立宿主入口另有真实 IPC/布局验收。
+
+三个原生 runner 和新增管理浏览器探针均退出 0；共 14 次原生按钮操作，隔离进程清理时的内部 ELIFECYCLE 输出不是测试失败。
+
+最终 `pnpm run verify` 通过：25 项架构检查、168 项 Node 测试、类型检查与生产构建。结合本轮 208 项 Rust 测试及前述浏览器/原生证据，完成本阶段验证；未修改或削弱架构规则。
+
+**P4 退出条件已满足。** 工作台可重排且宿主恢复/管理/审批/历史独立可达；专业增强缺失按当前核心语义降级，核心缺失拒绝启用；项目任务、Git 与通用写入经过可信批准、持久身份和副作用验收。代码/框架/视觉边界继续由架构检查约束，原始清单中的各项均有上述对应证据。
+
+下一阶段为 P5：提取 SDK、在仓库外完成插件开发/安装链路、发布兼容与升级/数据恢复矩阵。Custom Surface 仍是有真实需求才实施的条件项。已有的 macOS 原生证据不替代其他平台发布验证；本机子进程控制不等同于任意本机代码的系统沙箱。主 chunk 大小提示作为性能后续保留，没有修改构建阈值，也不是本阶段原始退出条件。

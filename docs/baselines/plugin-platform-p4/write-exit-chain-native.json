@@ -1,0 +1,46 @@
+{
+  "identifier": "local.aibo.writechain.1789172490715",
+  "platform": "darwin",
+  "results": [
+    {
+      "ok": true,
+      "saved": {
+        "workspaceId": "01M29FVE9X1MYHEC1BP37DKAYP",
+        "parentId": "01M29FVEBTFSH67RGFXKCV2THK",
+        "leafId": "01M29FVEA9F4Z603VYCT80SYG5",
+        "alternateId": "01M29FVEE95ZRYATFK46KNY307",
+        "invocationId": "01M29FVG8K6ZJGZ3D0WJ682PMJ"
+      },
+      "separateNativeApprovals": true,
+      "childDenialPreventedExecution": true,
+      "pinnedDependency": true,
+      "durableLineage": true,
+      "childCancellationPropagatedUnknown": true,
+      "independentHistory": true
+    },
+    {
+      "ok": true,
+      "saved": {
+        "workspaceId": "01M29FVE9X1MYHEC1BP37DKAYP",
+        "parentId": "01M29FVEBTFSH67RGFXKCV2THK",
+        "leafId": "01M29FVEA9F4Z603VYCT80SYG5",
+        "alternateId": "01M29FVEE95ZRYATFK46KNY307",
+        "invocationId": "01M29FVG8K6ZJGZ3D0WJ682PMJ"
+      },
+      "actualRestart": true,
+      "chainReplayAfterUninstall": true,
+      "historyAfterTrustRevocation": true
+    }
+  ],
+  "nativeClicks": [
+    "clicked isolated dialog: 允许本次执行",
+    "clicked isolated dialog: 取消",
+    "clicked isolated dialog: 允许本次执行",
+    "clicked isolated dialog: 允许本次执行",
+    "clicked isolated dialog: 允许本次执行",
+    "clicked isolated dialog: 允许本次执行"
+  ],
+  "actualEffectsVerified": true,
+  "descendantStopped": true,
+  "noReplayExecution": true
+}

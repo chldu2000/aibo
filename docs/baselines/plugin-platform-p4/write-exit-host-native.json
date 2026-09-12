@@ -1,0 +1,39 @@
+{
+  "ok": true,
+  "results": [
+    {
+      "kit": "shadcn",
+      "runId": "01M29FV43R9DTANZ9NPJFC4S7W",
+      "status": "outcome_unknown",
+      "stopButton": true,
+      "history": true,
+      "surface": "host-history"
+    },
+    {
+      "kit": "material3",
+      "runId": "01M29FV4V7P76SCEPDSW5C2VQP",
+      "status": "outcome_unknown",
+      "stopButton": true,
+      "history": true,
+      "surface": "host-history"
+    }
+  ],
+  "denialPreventedExecution": true,
+  "gitDenialPreventedExecution": true,
+  "gitCancellation": true,
+  "historyPagination": true,
+  "workspaceWriteHistory": true,
+  "duplicateWriteReused": true,
+  "writeRunId": "01M29FV1Q25B2Y4VH2HRGY8B8H",
+  "nativeClicks": [
+    "clicked isolated dialog: 取消",
+    "clicked isolated dialog: 允许本次执行",
+    "clicked isolated dialog: 允许本次执行",
+    "clicked isolated dialog: 取消",
+    "clicked isolated dialog: 允许本次执行",
+    "clicked isolated dialog: 允许本次执行"
+  ],
+  "platform": "darwin",
+  "earlierEffectsPreserved": true,
+  "descendantEffectsStopped": true
+}
