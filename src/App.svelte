@@ -321,6 +321,8 @@
   let executionProfile = $state<SessionExecutionProfile | null>(null);
   let sessionModelOverride = $state<string | null>(null);
   let sessionModelCatalog = $state<SessionModelCatalog | null>(null);
+  // Confirmed catalogs belong to sessions, not the currently selected pane.
+  const sessionModelCatalogs = new Map<string, SessionModelCatalog>();
   let sessionModelCatalogLoading = $state(false);
   let codexGoal = $state<AgentGoal | null>(null);
   let sessionModelRequestGeneration = 0;
@@ -2107,13 +2109,15 @@
       // error from that expected transition.
       untrack(() => {
         ++sessionModelRequestGeneration;
+        sessionModelCatalog = sessionModelCatalogs.get(session.id) ?? null;
+        sessionModelOverride = null;
         sessionModelCatalogLoading = false;
       });
       return;
     }
     untrack(() => {
       ++sessionModelRequestGeneration;
-      sessionModelCatalog = null;
+      sessionModelCatalog = session ? sessionModelCatalogs.get(session.id) ?? null : null;
       sessionModelOverride = null;
       sessionModelCatalogLoading = false;
       if (enabled && session && !session.archived) void loadSessionModels();
@@ -2129,6 +2133,7 @@
     try {
       const catalog = await getSessionModels(session.id);
       if (generation === sessionModelRequestGeneration && selectedSessionId === session.id) {
+        sessionModelCatalogs.set(session.id, catalog);
         sessionModelCatalog = catalog;
         sessionModelOverride = null;
       }
@@ -2162,6 +2167,7 @@
       if (result.profile && !session.pluginInstallationId) markSessionIdle(session);
       if (!ownsSelection()) return;
       if (result.profile) executionProfile = result.profile;
+      sessionModelCatalogs.set(session.id, result.catalog);
       sessionModelCatalog = result.catalog;
       sessionModelOverride = null;
       notice = `当前模型：${result.catalog.current?.label ?? '默认'} · ${result.catalog.currentReasoningEffort ?? '模型默认'}。`;
@@ -2172,7 +2178,7 @@
         errorMessage = toErrorMessage(error);
         try {
           const catalog = await getSessionModels(session.id);
-          if (ownsSelection()) { sessionModelCatalog = catalog; sessionModelOverride = null; }
+          if (ownsSelection()) { sessionModelCatalogs.set(session.id, catalog); sessionModelCatalog = catalog; sessionModelOverride = null; }
         } catch { /* Keep the original operation error; a later refresh can retry. */ }
       }
     } finally {

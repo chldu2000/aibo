@@ -525,6 +525,9 @@
             <div class="composer-menu composer-model-menu" role="menu" aria-label="模型设置">
               <div class="composer-menu-heading">模型与推理</div>
               <div class="composer-menu-detail">当前：{modelLabel}{reasoningLabel}</div>
+              {#if sessionRunning}
+                <div class="composer-menu-detail">会话运行中，模型与推理强度暂不可修改。</div>
+              {/if}
               {#if modelCatalogLoading}
                 <div class="composer-suggestions-empty">正在读取可用模型…</div>
               {:else if modelCatalog && modelCatalog.models.length > 0}
@@ -539,6 +542,8 @@
                     void onSelectModelConfiguration(model, reasoningEffort);
                   }}
                 />
+              {:else if sessionRunning}
+                <div class="composer-suggestions-empty">尚无已确认的模型配置，回合结束后将自动读取。</div>
               {:else}
                 <div class="composer-suggestions-empty">未获取到可用模型，请稍后重试。</div>
               {/if}
