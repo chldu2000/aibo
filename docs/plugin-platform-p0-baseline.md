@@ -57,7 +57,10 @@ Host `invoke_capability` 当前会先恢复 session，验证 generation、协商
 | 归档 | Host 实现，未找到本批专门覆盖其完整恢复闭环的自动断言 | Host/旧 thread 两条路径存在，不能据此宣称等价 | Host 路径存在 | 未验证 |
 | 重启恢复 | Node 跨进程 binding 恢复通过；Rust 综合测试首次失败，复跑通过 | fake 空 thread 重建及配置保留通过；一般有历史恢复未在该测试完整覆盖 | fake SDK session file 在新进程恢复通过；旧 Pi history-only | 未验证 |
 
-自动证据：[Echo 进程](../test/echo-plugin-process.test.mjs)、[Codex 插件](../test/codex-builtin-plugin.test.mjs)、[Pi 插件](../test/pi-builtin-plugin.test.mjs)、[Pi parity](../test/pi-plugin-parity.test.mjs)、[parity 场景](../probes/pi-plugin-diff.mjs)、[事件投影](../test/adapter-contract.test.mjs)、[Rust Host 测试](../src-tauri/src/plugin_host.rs)。Pi production-path 测试也不能代替联网模型运行。
+历史 Agent runtime 的对比探针和 Codex 测试已随迁移退役。当前自动证据见
+[会话能力进程测试](../test/session-capability-providers.test.mjs)、
+[Pi 能力工作流](../test/pi-capability-workflow.test.mjs) 和
+[宿主会话测试](../src-tauri/src/session_host_tests.rs)。这些离线测试不能代替联网模型运行。
 
 真实验收待办：在临时工作区分别验证默认 Codex 和显式 Codex 插件、默认 Pi 的创建/流式/取消/审批/模型设置/归档/应用重启；Pi 额外验证树和队列。记录 Provider 版本、脱敏结果、实际调用路径和桌面操作证据。现有 `pnpm run probe:pi:plugin:smoke` 是真实 Pi 插件发送与恢复入口，`probe:codex:smoke` 等为原生 Provider probes，不能单独证明默认 UI 已走插件路径。本次未运行联网模型请求或桌面操作，也未将历史录制升级为本次成功证据。
 
@@ -98,8 +101,8 @@ B05 初次前端/Rust 套件并行运行，后续独立测试及 Rust 全量串�
 | Session binding v1 | Echo lifecycle 的 `session.resume.params.binding`，本批已提取到 JSON 索引；Node 与 Rust 测试动态构造绑定 | session/plugin installation/native ID、release、协议版本、版本化 recovery 与恢复身份关系 |
 | AgentEvent v1/v2 | 两份 schema；`fixtures/codex/*.redacted.jsonl`、`fixtures/pi/*.redacted.jsonl`；`adapter-contract.test.mjs` 将输入投影为规范事件；Host `project` 构造 v2 source | 原生录制不是规范事件文件，不能直接当 v2 样本；保留转换测试与旧事件读取路径 |
 | PluginView v1 | Echo lifecycle 的 `view/render` document，已提取到索引；实际 Echo 进程也产生 view | revision、binding、action、资源和旧节点树解释；不重解释为 collection |
-| Codex recovery | `test/codex-builtin-plugin.test.mjs` 与插件 `recovery()` | `dev.aibo.codex.recovery` v1 的 threadId/model/reasoningEffort；空 thread 恢复特例 |
-| Pi recovery | `test/pi-builtin-plugin.test.mjs` 与插件 `recovery()` | `dev.aibo.pi.recovery` v1 的 nativeSessionId/sessionFile/model/thinkingLevel；profile 优先级 |
+| Codex recovery | `test/session-capability-providers.test.mjs` 与能力插件 `recovery()` | `dev.aibo.codex.recovery` v1 的 threadId/model/reasoningEffort；空 thread 恢复特例 |
+| Pi recovery | `test/pi-capability-workflow.test.mjs` 与能力插件 `recovery()` | `dev.aibo.pi.recovery` v1 的 nativeSessionId/sessionFile/model/thinkingLevel；profile 优先级 |
 | 旧 Pi 历史 | `fixtures/pi/session.redacted.jsonl`、序列化测试及 IPC history-only 明确分支 | 可读不等于可继续执行，不伪造恢复成功 |
 
 本批复用并固定已有脱敏/合成资产，不复制用户 SQLite、认证配置或真实 session 文件。Codex/Pi recovery 的样本值由已有测试生成；完整桌面数据库迁移回归样本仍需后续验收补齐。

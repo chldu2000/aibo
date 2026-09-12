@@ -7,9 +7,9 @@
 | 层 | 当前支持 | 判定依据与限制 |
 | --- | --- | --- |
 | 宿主 | 0.1.0 | Cargo 与 Tauri 版本一致；v2 清单的 `host.min <= host < host.maxExclusive`，以 Cargo 版本判定 |
-| Manifest | v1、v2 | v1 经过兼容适配；v2 分别声明执行依赖、能力和语义贡献，不走旧 Agent runtime |
-| 旧 Agent runtime / view | 1.0 / 1.0 | v1 包安装时要求两个协议范围的 min/max 均为 1.0 |
-| Capability runtime | 2.0 | 当前 v2 提供者要求 min/max 均为 2.0；实际初始化还校验插件、release、generation 和操作身份 |
+| Manifest | v2 可执行；v1 只读元数据 | v1 不可启用；v2 分别声明执行依赖、能力和语义贡献 |
+| 旧 Agent runtime / view | 执行支持已移除 | 旧 PluginHost 与 v1 进程传输已删除；旧视图动作 IPC 与渲染组件已删除 |
+| Capability runtime | 2.0；迁移中的 2.1 | min/max 必须精确匹配同一受支持版本；2.1 增加 invocation 流与执行中控制，内置 Codex/Pi 及线程读取、分支、目录已接入共享 Broker；旧原生管理器已删除。实际初始化校验插件、release、generation 和操作身份；进度见[会话能力迁移](./capability-session-migration.md) |
 | 语义视图 | contract 1.0.0 / protocol 1.0；contract 1.1.0 / protocol 1.1 | 每种组合要求 semanticView min/max 精确匹配；核心为 collection、detail、settings、inspector；1.1 增加受控写操作 |
 | 业务 capability | 插件声明的版本化契约 | 不设全局业务版本；命名空间、输入/输出 schema、提供者依赖范围与具体绑定共同约束选择，不因安装新版本自动换绑 |
 | 默认 renderer | dev.aibo.ui-default 1.0.0，semanticVersion 1.0.0 | 显式接受 experimental-v1、v1、v1.1 快照；四个核心语义必需；numbered-detail 1.0.0 可选，失败回退核心 detail |
@@ -42,6 +42,6 @@ Custom Surface 目前没有必须通过任意插件界面才能满足的实际�
 
 ## 后续版本变更门
 
-当前继续保留 v1 兼容入口与已接受的稳定快照，不借 SDK 拆包删除旧协议。新增支持组合须同步本表、运行时校验与真实消费者回归；破坏性变化使用新的协议/契约版本，不修改旧版本的解释。弃用须先在发行说明中列出受影响版本、替代方式和迁移证据，再单独决定移除版本；当前未宣布任何移除日期，也不承诺未经验证的未来版本自动兼容。
+本次会话迁移已退役 v1 Agent 插件执行；旧清单元数据及已保存历史仍可读取。新增支持组合须同步本表、运行时校验与真实消费者回归；破坏性变化使用新的协议/契约版本，不修改旧版本的解释。弃用须先在发行说明中列出受影响版本、替代方式和迁移证据，再单独决定移除版本；其他协议的未来版本不承诺自动兼容。
 
 升级失败、绑定提交、旧依赖保留和数据恢复仍是 P5 独立验收项。本表不会用“元数据检查通过”替代这些测试；对应清单在获得证据前保持未完成。

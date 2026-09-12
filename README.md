@@ -25,22 +25,25 @@ The browser-only `pnpm dev` command remains useful for UI preview; it uses clear
 
 Phase 2 adds an explicit approval path, typed Codex thread lifecycle, and normalized tool/usage events. Codex requests use the `on-request` policy while retaining the read-only sandbox. Aibo projects approval requests as reviewable cards, sends an explicit `accept` or `cancel` decision, reads remote history, creates persistent branches, archives without deleting the local timeline, and can unarchive a thread; it never auto-approves. Command/file/MCP item progress is projected into the unified timeline, with binding and generation checks guarding recovery.
 
-## Phase 3 Pi SDK adapter
+## Capability sessions
 
-The Pi path runs through the project-locked `@earendil-works/pi-coding-agent`
-SDK in a small Node JSONL host. Rust owns lifecycle, generation checks, SQLite,
-and the shared `AgentEvent v1` projection. Create a Pi session from the desktop
-toolbar to exercise the same composer/timeline as Codex. The initial host only
-allows Pi's `read`, `grep`, `find`, and `ls` tools; Pi has no native OS sandbox,
-so workspace trust and the UI warning remain explicit. The host contract probe
-is available without credentials:
+Codex and Pi run as v2 capability plugins through the shared Aibo Broker.
+The host owns session identity, approvals, history and recovery admission;
+plugins own their native engines. Pi uses the project-locked
+`@earendil-works/pi-coding-agent` SDK. Workspace tools return through the
+host gateway, including approved writes and commands.
+
+The old Agent runtime and Pi JSONL host are retired. Old sessions without a
+v2 capability binding are read-only. Offline process tests cover the new
+session protocol and the Pi workflow:
 
 ```sh
-pnpm run probe:pi:sdk-host
+pnpm run probe:session:capabilities
 ```
 
-The optional real-model host smoke (`pnpm run probe:pi:sdk-host:smoke`) requires
-Pi-native authentication.
+These tests include opening the installed Pi SDK, but do not make real-model
+requests. Migration status and remaining validation are tracked in
+[the migration record](docs/capability-session-migration.md).
 
 ## Phase 0 probes
 
