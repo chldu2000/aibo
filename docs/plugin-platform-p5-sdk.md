@@ -81,3 +81,7 @@
 外部插件原生探针增加崩溃新版选择、失败与旧版后续调用的验收；同时复跑可信写入原生探针，两组外层 exit 0。完整 Rust 213 项通过。证据和恢复步骤见[release 恢复验收](./plugin-platform-release-recovery.md)，P5 release 清单项完成。
 
 本批 `pnpm run verify` 通过；主包体积警告仍为已知构建提示。
+
+## 第九批：核心数据库退出核对
+
+逐项核对嵌入式迁移、独立迁移连接的外键策略、复制重建表与旧历史读取断言，形成[数据库退出核对](./plugin-platform-database-exit-audit.md)。结合最新完整 Rust 213 项和原生恢复证据，P5 数据库清单项完成。本批为文档核对，`pnpm run verify` 通过；全部阶段的最终审计仍单独进行。

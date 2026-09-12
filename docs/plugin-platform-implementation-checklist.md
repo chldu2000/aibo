@@ -168,7 +168,7 @@
 - [x] 用仓库外能力包验证构建、打包、安装、调用、语义贡献和卸载，无 Svelte/DOM/CSS 依赖；再决定独立包发布与目录统一。见 [P5 第三批](./plugin-platform-p5-sdk.md)：实际 tarball、外部消费者编译、隔离 App 及双皮肤验收；继续单仓库本地打包，注册表发布与旧插件目录迁移暂缓。
 - [x] 建立宿主/manifest/runtime/view/capability/renderer 版本与支持平台矩阵，明确 UI 包的构建期可信边界。见[支持矩阵](./plugin-platform-support-matrix.md)：区分协议识别、实现存在与原生验收通过，未批准动态 UI 加载。
 - [x] 验证新 release 激活失败、旧依赖保留、私有数据可并存版本、失败不切换 binding；分别记录代码回滚和数据恢复路径。见[release 恢复验收](./plugin-platform-release-recovery.md)：候选初始化提交、真实进程与审批回归、旧依赖保留包导出重装、数据库重开后的数据恢复及原生复验。
-- [ ] 验证核心数据库增量迁移、旧 AgentEvent/历史可读，不以删除旧列作为早期清理手段。
+- [x] 验证核心数据库增量迁移、旧 AgentEvent/历史可读，不以删除旧列作为早期清理手段。见[数据库退出核对](./plugin-platform-database-exit-audit.md)：磁盘旧库升级至 0040、v1/v2 事件与身份保留、只读分页历史、任务/写入表重建及 legacy 能力历史。
 - [ ] （条件项：当前无实际需求，暂缓，不阻塞 P5；见[支持矩阵](./plugin-platform-support-matrix.md)）如有真实 Custom Surface 需求，先单独通过 ADR：隔离 WebView/origin 或受限 iframe、无直接 Tauri 权限的消息桥、CSP、导航/网络、弹窗、剪贴板、拖放、来源校验和限流。
 - [ ] 如实施 Custom Surface，再验证主题信号、局部样式、键盘/焦点、无障碍替代视图、缺 surface 降级及崩溃恢复；不可仅以 Shadow DOM 或 token 声明作为安全/兼容证明。
 
