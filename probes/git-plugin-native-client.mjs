@@ -1,3 +1,4 @@
+import { togglePresentationFocus, restorePresentation } from './presentation-actions-client.mjs';
 import '/src/app.css';
 import { invoke } from '@tauri-apps/api/core';
 import { mount, tick } from 'svelte';
@@ -43,11 +44,11 @@ try {
     button('插件').click();
     const management = await until(() => document.querySelector('.host-plugin-region .plugin-workspace'), 'independent plugin management');
     check(!management.closest('.workbench-presentation'), 'management is host owned');
-    document.querySelector('button[aria-label="切换工作台呈现"]').click();
+    await togglePresentationFocus();
     await until(() => document.querySelector('[data-presentation-layout="focus"]'), 'switch with host management open');
     check(document.querySelector('.host-plugin-region .plugin-workspace') === management, 'management survives layout remount');
     check(document.querySelector('[data-ui-component="window-titlebar"]') === titlebar, 'window controls survive layout remount');
-    document.querySelector('button[aria-label="恢复默认呈现"]').click();
+    restorePresentation();
     await until(() => document.querySelector('[data-presentation-layout="standard"]'), 'restore with management open');
     check(document.querySelector('.host-plugin-region .plugin-workspace') === management, 'management survives recovery');
     button('返回会话').click();
@@ -110,10 +111,10 @@ try {
       await until(()=>panel.querySelector('[data-ui-component="capability-history"]')?.getAttribute('aria-busy')==='false','older audit page settled');
     }
     check([...panel.querySelectorAll('textarea')].some(item=>item.value.includes(output.invocationId)),'audit renders real invocation');
-    document.querySelector('button[aria-label="切换工作台呈现"]').click();
+    await togglePresentationFocus();
     await until(()=>document.querySelector('[data-presentation-layout="focus"][aria-busy="false"]'),'switch with audit open');
     check(document.querySelector('.host-capability-history-region')===panel,'audit survives renderer replacement');
-    document.querySelector('button[aria-label="恢复默认呈现"]').click();
+    restorePresentation();
     await until(()=>document.querySelector('[data-presentation-layout="standard"][aria-busy="false"]'),'restore with audit open');
     check(document.querySelector('.host-capability-history-region')===panel,'audit survives recovery');
     button('返回执行历史').click();(await until(()=>button('返回工作台'),'return to execution history')).click();

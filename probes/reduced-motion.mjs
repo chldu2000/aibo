@@ -24,9 +24,11 @@ try {
     await page.emulateMedia({reducedMotion:'reduce'});
     const reduced = await inspect();
     assert.deepEqual(reduced.filter(item => item.duration > .000011 || item.delay !== 0 || item.transition > .000011 || item.transitionDelay !== 0 || item.iterations.includes('infinite') || item.scroll === 'smooth'), []);
+    await page.getByRole('button', {name:'打开设置',exact:true}).click();
     await page.getByRole('button',{name:'交换工作台侧边区域',exact:true}).click();
+    await page.getByRole('button',{name:'关闭设置',exact:true}).click();
     await page.waitForFunction(() => document.querySelector('[data-presentation-layout]')?.dataset.presentationLayout === 'review');
-    await page.getByRole('button',{name:'恢复默认呈现',exact:true}).click();
+    await page.keyboard.press('Control+Shift+Backspace');
     await page.waitForFunction(() => document.querySelector('[data-presentation-layout]')?.dataset.presentationLayout === 'standard');
     results.push({kit,normalAnimation:true,normalTransitions:true,checkedStyles:reduced.length,reducedMotionComputed:true,layoutRecovery:true});
   }

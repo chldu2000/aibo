@@ -14,6 +14,7 @@ export type UiIconName =
   | 'edit'
   | 'filter'
   | 'file'
+  | 'focus'
   | 'folder'
   | 'folder-add'
   | 'panel-right'

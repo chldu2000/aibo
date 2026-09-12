@@ -23,7 +23,7 @@ while Date() < deadline {
  let elements = descendants(app)
  let buttons = elements.filter { (value($0, kAXRoleAttribute) as? String) == kAXButtonRole }
  let names = buttons.map { element in [kAXTitleAttribute, kAXDescriptionAttribute, kAXHelpAttribute].compactMap { value(element, $0) as? String }.filter { !$0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty } }
- if names.contains(where: { $0.contains("恢复默认呈现") }) {
+ if names.contains(where: { $0.contains("打开设置") || $0.contains("恢复默认呈现") }) {
   let systemRoles: Set<String> = ["AXCloseButton", "AXMinimizeButton", "AXZoomButton", "AXFullScreenButton"]
   var systemControls: [String] = []
   var unnamed = 0

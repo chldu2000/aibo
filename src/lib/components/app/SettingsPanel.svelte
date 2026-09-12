@@ -1,8 +1,10 @@
 <script lang="ts">
+  import type { Snippet } from 'svelte';
   import { Button, Card, CardHeader, CardTitle, Icon, Separator } from '$lib/ui-kit';
   import type { UiKitOption } from '$lib/ui-kit';
 
   type SettingsPanelProps = {
+    presentationActions?: Snippet;
     open: boolean;
     uiKits: readonly UiKitOption[];
     activeUiKitName: string;
@@ -13,6 +15,7 @@
   };
 
   let {
+    presentationActions,
     open,
     uiKits,
     activeUiKitName,
@@ -38,6 +41,7 @@
 
       <div class="settings-content">
         <div id="appearance-settings" class="settings-tab-panel" role="tabpanel">
+          {@render presentationActions?.()}
           <section class="settings-section" aria-labelledby="ui-kit-title">
             <div class="settings-section-heading">
               <div>

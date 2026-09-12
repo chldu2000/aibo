@@ -1,3 +1,4 @@
+import { togglePresentationFocus, restorePresentation } from './presentation-actions-client.mjs';
 import '/src/app.css';
 import { getCurrentWindow } from '@tauri-apps/api/window';
 import { invoke } from '@tauri-apps/api/core';
@@ -41,7 +42,7 @@ try {
     await until(()=>events.some(event=>event.sessionId===echo.id&&event.type==='message.delta'),'stream starts');
     const composer=document.querySelector('[data-presentation-focus="composer"]');composer.focus();await tick();
     const generation=document.querySelector('[data-presentation-generation]').dataset.presentationGeneration;
-    document.querySelector('button[aria-label="切换工作台呈现"]').click();
+    await togglePresentationFocus();
     await until(()=>document.querySelector('[data-presentation-layout="focus"]:not([inert])'),'focus presentation');
     check(document.querySelector('[data-presentation-generation]').dataset.presentationGeneration!==generation,'renderer must remount');
     check(document.querySelector('[data-presentation-focus="composer"]').value==='P2_DRAFT_KEEP','draft survives switch');
@@ -49,7 +50,7 @@ try {
     await until(()=>events.some(event=>event.sessionId===echo.id&&event.type==='turn.completed'),'stream completes across switch');
     check(events.filter(event=>event.sessionId===echo.id&&event.type==='session.started').length===before,'switch must not restart Agent');
     const timeline=await invoke('get_timeline',{sessionId:echo.id});check(timeline.some(item=>item.content?.includes('P2_STREAM')),'history kept');
-    document.querySelector('button[aria-label="切换工作台呈现"]').click();await until(()=>document.querySelector('[data-presentation-layout="standard"]:not([inert])'),'standard presentation');
+    await togglePresentationFocus();await until(()=>document.querySelector('[data-presentation-layout="standard"]:not([inert])'),'standard presentation');
     check(document.querySelector('input[aria-label="提交信息"]')?.value==='P2_COMMIT_DRAFT','Git draft survives renderer switch');
     evidence.push({agent:'echo',streamAcrossSwitch:true,draft:true,gitDraft:true,focus:true,noAgentRestart:true,history:true});
     [...document.querySelectorAll('button')].find(button => button.textContent.trim() === '插件').click();
@@ -97,14 +98,14 @@ try {
       check(!approvalRegion.closest('.workbench-presentation'), 'approval must be host owned');
       [...document.querySelectorAll('button')].find(button => button.textContent.trim() === '插件').click();
       await until(() => document.querySelector('.host-plugin-region'), 'management alongside approval');
-      document.querySelector('button[aria-label="切换工作台呈现"]').click();
+      await togglePresentationFocus();
       await until(() => document.querySelector('[data-presentation-layout="focus"][aria-busy="false"]'), 'switch during approval');
       check(document.querySelector('[aria-label="宿主审批"]') === approvalRegion, 'approval survives presentation remount');
       const accept = [...approvalRegion.querySelectorAll('button')].find(button => button.textContent.trim() === '允许');
       check(accept && !accept.disabled, 'host decision remains available');
       accept.click();
       await until(() => !document.querySelector('[aria-label="宿主审批"]'), 'host approval resolved');
-      document.querySelector('button[aria-label="恢复默认呈现"]').click();
+      restorePresentation();
       await until(() => document.querySelector('[data-presentation-layout="standard"][aria-busy="false"]'), 'restore after approval');
       [...document.querySelectorAll('button')].find(button => button.textContent.trim() === '返回会话').click();
       await until(()=>events.slice(approvalOffset).some(event=>event.sessionId===session.id&&event.type==='turn.completed'),agent+' approved completion',120_000);

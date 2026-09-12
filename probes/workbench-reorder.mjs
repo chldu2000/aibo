@@ -13,7 +13,9 @@ try {
     const navigation = page.locator('[data-ui-component="workspace-sidebar"]');
     await navigation.waitFor();
     const initial = await navigation.boundingBox();
+    await page.getByRole('button', {name:'打开设置',exact:true}).click();
     await page.getByRole('button',{name:'交换工作台侧边区域',exact:true}).click();
+    await page.getByRole('button',{name:'关闭设置',exact:true}).click();
     await page.waitForFunction(() => document.querySelector('[data-presentation-layout]')?.dataset.presentationLayout === 'review');
     assert.ok((await navigation.boundingBox()).x > initial.x + 400, 'navigation must actually move to the right');
     let splitter = page.getByRole('button',{name:/调整工作区与会话宽度/});
@@ -44,10 +46,12 @@ try {
     // Observe a rendered frame after the old pointer events before checking their absence of effects.
     await page.evaluate(() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))));
     assert.ok(Math.abs((await navigation.boundingBox()).width - keptWidth) < 1, 'renderer disposal stops old drag');
+    await page.getByRole('button', {name:'打开设置',exact:true}).click();
     await page.getByRole('button',{name:'交换工作台侧边区域',exact:true}).click();
+    await page.getByRole('button',{name:'关闭设置',exact:true}).click();
     await page.reload();
     await page.waitForFunction(() => document.querySelector('[data-presentation-layout]')?.dataset.presentationLayout === 'review');
-    await page.getByRole('button',{name:'恢复默认呈现',exact:true}).click();
+    await page.keyboard.press('Control+Shift+Backspace');
     await page.waitForFunction(() => document.querySelector('[data-presentation-layout]')?.dataset.presentationLayout === 'standard');
     assert.deepEqual(errors, []);
     results.push({kit,actualApp:true,reordered:true,keyboardResize:true,pointerResize:true,bothResizeDirections:true,oldDragStopped:true,layoutPersisted:true,hostRecovery:true,reducedMotionRequested:true});

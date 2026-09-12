@@ -3,7 +3,7 @@
   const draftStorage = { getItem: (key: string) => window.localStorage.getItem(key), setItem: (key: string, value: string) => window.localStorage.setItem(key, value) };
   let workbenchDrafts = $state(readWorkbenchDrafts(draftStorage, presentationWindowId()));
   $effect(() => { writeWorkbenchDrafts(draftStorage, presentationWindowId(), workbenchDrafts); });
-  import { WorkbenchPresentation, Badge, Button, Card, CardHeader, CardTitle, CardContent } from '$lib/ui-kit';
+  import { WorkbenchPresentation, DefaultPresentationActions, Badge, Button, Card, CardHeader, CardTitle, CardContent } from '$lib/ui-kit';
   const loadInstalledWorkbench = () => import('$lib/workbench/InstalledWorkbench.svelte');
   import { listSemanticContributions, cancelSemanticOpen, openSemanticContribution, actSemanticContribution, writeSemanticContribution, releaseSemanticContribution } from '$lib/api';
   import type { InstalledContribution, InstalledScope } from '$lib/presentation/installed-controller';
@@ -35,7 +35,7 @@
     getItem: key => window.localStorage.getItem(key),
     setItem: (key, value) => window.localStorage.setItem(key, value),
   }, presentationWindowId());
-  import { onDestroy, onMount, untrack } from 'svelte';
+  import { onDestroy, onMount, tick, untrack } from 'svelte';
   import { open } from '@tauri-apps/plugin-dialog';
   import {
     AppOverlays,
@@ -476,8 +476,9 @@
     historyWorkspaceId = selectedWorkspaceId ?? workspaces[0]?.id ?? null;
     historyOpen = true;
   }
-  function closeExecutionHistory(): void { historyOpen = false;
-    const trigger = historyTrigger?.isConnected ? historyTrigger : document.querySelector<HTMLElement>('[data-host-navigation="history"]');
+  async function closeExecutionHistory(): Promise<void> { historyOpen = false;
+    await tick();
+    const trigger = historyTrigger?.isConnected ? historyTrigger : document.querySelector<HTMLElement>('[aria-label="打开 Agent 诊断"]');
     trigger?.focus(); }
 
   let sessionHistoryOpen = $state(false);
@@ -500,9 +501,10 @@
     sessionHistoryWorkspaceId = selectedWorkspaceId ?? workspaces[0]?.id ?? null;
     sessionHistoryOpen = true;
   }
-  function closeSessionHistory(): void {
+  async function closeSessionHistory(): Promise<void> {
     sessionHistoryOpen = false;
-    const trigger = sessionHistoryTrigger?.isConnected ? sessionHistoryTrigger : document.querySelector<HTMLElement>('[data-host-navigation="session-history"]');
+    await tick();
+    const trigger = sessionHistoryTrigger?.isConnected ? sessionHistoryTrigger : document.querySelector<HTMLElement>('[aria-label="会话历史"]') ?? document.querySelector<HTMLElement>('[aria-label="打开设置"]');
     trigger?.focus();
   }
 
@@ -1028,7 +1030,15 @@
       });
   });
 
+  let workbenchPresentation: { switchPresentation: (layout: string) => Promise<void>; restoreDefault: () => Promise<void> } | undefined = $state();
+  let presentationLayout = $state('standard');
+  let presentationSwitching = $state(false);
+
   const commandPaletteCommands = $derived.by((): CommandPaletteCommand[] => [
+    { id: 'focus-presentation', label: '切换专注会话', description: '显示或收起工作台侧边区域', run: () => { void workbenchPresentation?.switchPresentation(presentationLayout === 'focus' ? 'standard' : 'focus'); } },
+    { id: 'restore-presentation', label: '恢复默认呈现', description: '恢复标准工作台布局', shortcut: '⌘⇧⌫', run: () => { void workbenchPresentation?.restoreDefault(); } },
+    { id: 'execution-history', label: '执行历史', description: '查看执行记录', run: openExecutionHistory },
+    { id: 'session-history', label: '会话历史', description: '查找与恢复历史会话', run: openSessionHistory },
     ...installedContributions.map(item => ({ id: `installed:${item.installationId}:${item.contributionId}`, label: item.title, description: item.issue ?? '已安装的插件视图', disabled: !contributionAvailable(item),
       run: () => { installedTool = item; pluginsOpen = false; commandPaletteOpen = false; } })),
     {
@@ -1092,8 +1102,19 @@
   ]);
 
   function handleGlobalKeydown(event: KeyboardEvent): void {
+    if (event.defaultPrevented) return;
     const key = event.key.toLocaleLowerCase();
     const modifier = event.metaKey || event.ctrlKey;
+    if (modifier && key === 'k') {
+      event.preventDefault();
+      commandPaletteOpen = !commandPaletteOpen;
+      return;
+    }
+
+    if (commandPaletteOpen) {
+      if (key === 'escape') { event.preventDefault(); commandPaletteOpen = false; }
+      return;
+    }
     if (capabilityHistoryOpen && !settingsOpen && !diagnosticsOpen) {
       if (key === 'escape') {event.preventDefault();backFromCapabilityHistory();}
       return;
@@ -1108,11 +1129,6 @@
     }
     if (pluginsOpen && !settingsOpen && !diagnosticsOpen) {
       if (key === 'escape') { event.preventDefault(); pluginsOpen = false; }
-      return;
-    }
-    if (modifier && key === 'k') {
-      event.preventDefault();
-      commandPaletteOpen = !commandPaletteOpen;
       return;
     }
     if (modifier && key === 'n' && selectedWorkspaceId && !busy) {
@@ -1136,10 +1152,7 @@
       return;
     }
     if (event.key === 'Escape') {
-      if (commandPaletteOpen) {
-        event.preventDefault();
-        commandPaletteOpen = false;
-      } else if (settingsOpen) {
+      if (settingsOpen) {
         event.preventDefault();
         settingsOpen = false;
       } else if (diagnosticsOpen) {
@@ -3032,6 +3045,18 @@
 
 </script>
 
+{#snippet appearanceActions()}{@render presentationActions('appearance')}{/snippet}
+{#snippet diagnosticsActions()}{@render presentationActions('diagnostics')}{/snippet}
+{#snippet navigationActions()}{@render presentationActions('navigation')}{/snippet}
+{#snippet conversationActions()}{@render presentationActions('conversation')}{/snippet}
+{#snippet presentationActions(surface: 'conversation' | 'navigation' | 'diagnostics' | 'appearance')}
+  <DefaultPresentationActions {surface} layout={presentationLayout} switching={presentationSwitching}
+    onSwitchLayout={(layout) => { void workbenchPresentation?.switchPresentation(layout); }}
+    onRestore={() => { void workbenchPresentation?.restoreDefault(); }}
+    onOpenExecutionHistory={openExecutionHistory}
+    onOpenSessionHistory={openSessionHistory} />
+{/snippet}
+
 <svelte:head>
   <title>Aibo</title>
 </svelte:head>
@@ -3045,10 +3070,13 @@
   data-color-scheme={$activeTheme.colorScheme}
   style={$activeThemeStyle}
 >
+  <CommandPalette
+    open={commandPaletteOpen}
+    commands={commandPaletteCommands}
+    onClose={() => (commandPaletteOpen = false)}
+  />
   <WindowTitlebar
     onOpenPlugins={openPluginPanel}
-    onOpenHistory={openExecutionHistory}
-    onOpenSessionHistory={openSessionHistory}
     onOpenSettings={openSettingsPanel}
     onOpenDiagnostics={openDiagnosticsPanel}
     sidePanelOpen={sidePanelOpen}
@@ -3058,6 +3086,7 @@
     onClose={closeAppWindow}
   />
   <SettingsPanel
+    presentationActions={appearanceActions}
     open={settingsOpen}
     uiKits={availableUiKits}
     activeUiKitName={$activeUiKitName}
@@ -3067,6 +3096,7 @@
     onClose={() => (settingsOpen = false)}
   />
   <DiagnosticsPanel
+    presentationActions={diagnosticsActions}
     open={diagnosticsOpen}
     diagnostics={diagnostics}
     desktop={desktop}
@@ -3153,9 +3183,10 @@
     />
     </div>
   {/if}
-<WorkbenchPresentation bind:gridElement={workspaceGridElement} navigationWidth={workspaceSidebarWidth} auxiliaryWidth={inspectorWidth} auxiliaryOpen={sidePanelOpen} suspended={pluginsOpen || historyOpen || sessionHistoryOpen || capabilityHistoryOpen} windowId={presentationWindowId()} snapshot={{ workspaceId: selectedWorkspaceId, sessionId: selectedSessionId, draft: composerText, navigation: sidePanelView, timelineRevision: timeline.length }}>
+<WorkbenchPresentation bind:this={workbenchPresentation} bind:layout={presentationLayout} bind:switching={presentationSwitching} bind:gridElement={workspaceGridElement} navigationWidth={workspaceSidebarWidth} auxiliaryWidth={inspectorWidth} auxiliaryOpen={sidePanelOpen} suspended={pluginsOpen || historyOpen || sessionHistoryOpen || capabilityHistoryOpen} windowId={presentationWindowId()} snapshot={{ workspaceId: selectedWorkspaceId, sessionId: selectedSessionId, draft: composerText, navigation: sidePanelView, timelineRevision: timeline.length }}>
 {#snippet navigation(guard)}
     <WorkspaceSidebar
+      presentationActions={navigationActions}
       workspaces={workspaceItems}
       sessionsByWorkspace={sessionItemsByWorkspace}
       selectedWorkspaceId={selectedWorkspaceId}
@@ -3234,6 +3265,7 @@
     <!-- Input callbacks refresh their session guard; a function-binding setter
          is initialized once and would reject edits after session navigation. -->
     <TimelinePanel
+      presentationActions={conversationActions}
       workspace={selectedWorkspace}
       session={selectedSession}
       selectedSessionId={selectedSessionId}
@@ -3421,11 +3453,6 @@
     {/if}
 {/snippet}
 {#snippet overlays(guard)}
-  <CommandPalette
-    open={commandPaletteOpen}
-    commands={commandPaletteCommands}
-    onClose={guard('onClose', () => (commandPaletteOpen = false))}
-  />
   <PiSessionTreeOverlay
     open={piTreeOpen && selectedSession?.capabilities.includes('session.tree')}
     session={selectedSession}

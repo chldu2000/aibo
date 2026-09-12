@@ -11,6 +11,7 @@
   import edit from '@ktibow/iconset-material-symbols/edit-outline-rounded';
   import filter from '@ktibow/iconset-material-symbols/filter-list-rounded';
   import file from '@ktibow/iconset-material-symbols/article-outline-rounded';
+  import focus from '@ktibow/iconset-material-symbols/fullscreen-rounded';
   import folder from '@ktibow/iconset-material-symbols/folder-outline-rounded';
   import folderAdd from '@ktibow/iconset-material-symbols/create-new-folder-outline-rounded';
   import refresh from '@ktibow/iconset-material-symbols/refresh-rounded';
@@ -49,6 +50,7 @@
     edit,
     filter,
     file,
+    focus,
     folder,
     'folder-add': folderAdd,
     refresh,

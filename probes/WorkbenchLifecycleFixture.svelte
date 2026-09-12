@@ -1,10 +1,10 @@
 <script lang="ts">
   import { setUiKit } from '$lib/ui-kit/registry';
   import { onMount } from 'svelte';
-  import { WorkbenchPresentation, Button, Textarea, PluginView } from '$lib/ui-kit';
+  import { WorkbenchPresentation, Button, Textarea, Input } from '$lib/ui-kit';
   let surface;
-  let interaction = $state({ fields: {}, expanded: {} });
-  const document = {schema:'aibo.plugin-view/v1',viewId:'test.form',revision:1,title:'Test Form',data:{},bindings:[],actions:[],resources:[],root:{id:'field',type:'form-field',props:{fieldId:'draft',label:'插件草稿',value:''},children:[]}};
+  // Host-owned per-session state must survive replacement of the slot that edits it.
+  let slotDrafts = $state<Record<string, string>>({});
   let draft = $state('KEEP_DRAFT');
   let draftDisabled = $state(false);
   let draftHidden = $state(false);
@@ -35,7 +35,7 @@
       <Textarea disabled={draftDisabled} hidden={draftHidden} data-presentation-focus="draft" aria-label="草稿" value={draft} oninput={guard('draft.change', event => { draft = event.currentTarget.value; })} />
       <Button onclick={() => { oldAction = action; }}>捕获旧回调</Button>
       <Button onclick={action}>执行动作</Button>
-      <PluginView {document} {sessionId} {interaction} onInteractionChange={guard('plugin.form', value => { interaction = value; })} onAction={() => {}} />
+      <label>槽位草稿<Input value={slotDrafts[sessionId] ?? ''} oninput={guard('slot.draft', event => { slotDrafts[sessionId] = event.currentTarget.value; })} /></label>
       <p aria-label="stream">{chunks}</p>
     </section>
   {/snippet}

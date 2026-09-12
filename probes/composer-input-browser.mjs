@@ -37,13 +37,13 @@ try {
   assert.equal(await input.inputValue(), 'world');
   await page.keyboard.insertText('，你好');
   assert.equal(await input.inputValue(), 'world，你好');
-  await page.getByRole('button', { name: '切换工作台呈现', exact: true }).click();
+  await page.getByRole('button', { name: '专注会话', exact: true }).click();
   await page.waitForFunction(() => document.querySelector('[data-presentation-layout="focus"][aria-busy="false"]'));
   assert.equal(await input.inputValue(), 'world，你好', 'host draft must survive presentation remount');
   await input.press('End');
   await page.keyboard.type('!');
   assert.equal(await input.inputValue(), 'world，你好!');
-  await page.getByRole('button', { name: '恢复默认呈现', exact: true }).click();
+  await page.keyboard.press('Control+Shift+Backspace');
   await page.getByText('Input session a', { exact: true }).click();
   await input.fill('back in a');
   assert.equal(await input.inputValue(), 'back in a');

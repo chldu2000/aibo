@@ -9,12 +9,14 @@ try {
   const page = await browser.newPage({viewport:{width:1440,height:1000}});
   await page.goto(`http://127.0.0.1:${server.httpServer.address().port}`);
   await page.evaluate(async kit => (await import('/src/lib/ui-kit/registry.ts')).setUiKit(kit), kit);
-  await page.getByRole('button',{name:'恢复默认呈现',exact:true}).waitFor();
+  await page.locator('[data-presentation-layout="standard"]:not([inert])').waitFor();
   const client = await page.context().newCDPSession(page);
   const layouts = [];
   for (const layout of ['standard','review','focus']) {
-   if (layout === 'review') await page.getByRole('button',{name:'交换工作台侧边区域',exact:true}).click();
-   if (layout === 'focus') await page.getByRole('button',{name:'切换工作台呈现',exact:true}).click();
+   if (layout === 'review') { await page.getByRole('button', {name:'打开设置',exact:true}).click();
+    await page.getByRole('button',{name:'交换工作台侧边区域',exact:true}).click();
+    await page.getByRole('button',{name:'关闭设置',exact:true}).click(); }
+   if (layout === 'focus') await page.getByRole('button',{name:'专注会话',exact:true}).click();
    await page.waitForFunction(layout => document.querySelector('[data-presentation-layout]')?.dataset.presentationLayout === layout, layout);
    const {nodes} = await client.send('Accessibility.getFullAXTree');
    const exposed = nodes.filter(node => !node.ignored);
@@ -22,7 +24,7 @@ try {
    const controls = exposed.filter(node => roles.has(node.role?.value));
    const unnamed = controls.filter(node => !node.name?.value?.trim()).map(node => ({role:node.role.value,backendDOMNodeId:node.backendDOMNodeId}));
    assert.deepEqual(unnamed, [], `${kit}/${layout}: unnamed controls`);
-   assert.ok(controls.some(node => node.name.value === '恢复默认呈现'), 'host recovery remains exposed');
+   assert.ok(controls.some(node => node.name.value === '打开设置'), 'host settings remain exposed for recovery');
    assert.equal(exposed.filter(node => node.role?.value === 'main').length, 1, 'one main landmark');
    layouts.push({layout,namedControls:controls.length,hostRecovery:true,mainLandmark:true});
   }

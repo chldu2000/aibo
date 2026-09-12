@@ -22,7 +22,7 @@ try {
   const result=await api.invokeCapability({scope,capability:'dev.example.greeting.read',version:'1.0.0',requestId:'outside-ui',input:{actionId:'refresh',itemId:null,offset:0}});
   check(result.output.view.content==='EXTERNAL_SDK_OK','External capability response');
   mount(App,{target:document.getElementById('app')});
-  await until(()=>document.querySelector('button[aria-label="恢复默认呈现"]'),'Actual App loaded');
+  await until(()=>document.querySelector('[data-presentation-layout]:not([inert])'),'Actual App loaded');
   const skins=[];
   for(const kit of ['shadcn','material3']) {
     setUiKit(kit);await tick();

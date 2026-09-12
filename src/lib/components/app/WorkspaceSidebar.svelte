@@ -1,10 +1,12 @@
 <script lang="ts">
+  import type { Snippet } from 'svelte';
   import { AgentStatusMark, Button, Card, CardHeader, CardTitle, Icon, Input } from '$lib/ui-kit';
   import type { SessionFilter } from '$lib/types';
   import { relativeTimeLabel, sessionStateLabel, sessionStatusTone, isSessionRunning } from './session-utils';
   import type { SessionListItem, WorkspaceListItem } from './view-types';
 
   type WorkspaceSidebarProps = {
+    presentationActions?: Snippet;
     workspaces: WorkspaceListItem[];
     sessionsByWorkspace: Record<string, SessionListItem[]>;
     selectedWorkspaceId: string | null;
@@ -43,6 +45,7 @@
   };
 
   let {
+    presentationActions,
     workspaces,
     sessionsByWorkspace,
     selectedWorkspaceId,
@@ -154,6 +157,7 @@
   <CardHeader class="panel-heading">
     <CardTitle>工作区</CardTitle>
     <div class="workspace-toolbar" aria-label="工作区工具">
+          {@render presentationActions?.()}
       <Button
         variant="ghost"
         size="icon"

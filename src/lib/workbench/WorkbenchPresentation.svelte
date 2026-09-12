@@ -6,7 +6,9 @@
   import type { WorkbenchSnapshot, WorkbenchAction } from '../presentation/workbench-contract';
   type Guard = (id: string, callback: (...args: any[]) => any) => (...args: any[]) => any;
   let { snapshot, windowId, navigation, navigationResize, content, auxiliaryResize, auxiliary, overlays,
-    gridElement = $bindable(null), navigationWidth = 260, auxiliaryWidth = 320, auxiliaryOpen = true, suspended = false }: {
+    layout = $bindable('standard'), switching = $bindable(false), gridElement = $bindable(null), navigationWidth = 260, auxiliaryWidth = 320, auxiliaryOpen = true, suspended = false }: {
+    layout?: string;
+    switching?: boolean;
     snapshot: WorkbenchSnapshot;
     windowId: string;
     suspended?: boolean;
@@ -25,7 +27,6 @@
   let target: HTMLDivElement;
   let host = $state<ReturnType<typeof createPresentationController<WorkbenchSnapshot, WorkbenchAction>> | null>(null);
   let failure = $state('');
-  let switching = $state(false);
   let switchTicket = 0;
   let instance = $state<{ generation: number; layout: string; guard: (id: string, callback: (...args: any[]) => any) => (...args: any[]) => any } | null>(null);
   const visibleSlots = $derived(instance ? defaultWorkbenchSlots(instance.layout).filter(slot => slots[slot] && (auxiliaryOpen || (slot !== 'auxiliary' && slot !== 'auxiliaryResize'))) : []);
@@ -43,6 +44,9 @@
   }
   function restoreFocus() {
     if ((!focus && !hadWorkbenchFocus) || suspended) return;
+    // Settings and other host controls keep focus while the workbench remounts.
+    const active = target.ownerDocument.activeElement;
+    if (active && active !== target.ownerDocument.body && active.isConnected && !target.contains(active)) return;
     const remembered = focus ? [...target.querySelectorAll<HTMLElement>('[data-presentation-focus], [aria-label], [id]')]
       .find(item => (item.dataset.presentationFocus ?? item.getAttribute('aria-label') ?? item.id) === focus) : null;
     const candidates = [remembered, ...target.querySelectorAll<HTMLElement>('textarea,button,input:not([type="hidden"]),select,a[href],[tabindex]')];
@@ -103,7 +107,7 @@
       }
     }
   }
-  function restoreDefault() { return switchLayout('standard', false, true); }
+  export function restoreDefault() { return switchLayout('standard', false, true); }
   function handleRecoveryKey(event: KeyboardEvent) {
     if ((event.metaKey || event.ctrlKey) && event.shiftKey && event.code === 'Backspace') {
       event.preventDefault();
@@ -125,16 +129,16 @@
     const controller = host;
     return () => { window.removeEventListener('keydown', handleRecoveryKey, true); void controller.dispose(); };
   });
+  $effect(() => { if (instance) layout = instance.layout; });
   $effect(() => { if (host) host.update($state.snapshot(snapshot), untrack(recovery)); });
   // Local diagnostics use the same lifecycle path; no remote renderer code is loaded.
   export function switchPresentation(layout: string, failMount = false) { return switchLayout(layout, failMount); }
 </script>
-<div class="presentation-controls">
-  <Button variant="ghost" onclick={() => switchLayout(instance?.layout === 'focus' ? 'standard' : 'focus')} disabled={switching} aria-label="切换工作台呈现">{instance?.layout === 'focus' ? '恢复标准工作台' : '专注会话'}</Button>
-  <Button variant="ghost" onclick={() => switchLayout(instance?.layout === 'review' ? 'standard' : 'review')} disabled={switching} aria-label="交换工作台侧边区域">{instance?.layout === 'review' ? '导航移到左侧' : '导航移到右侧'}</Button>
-  <Button variant="ghost" onclick={restoreDefault} aria-label="恢复默认呈现" aria-keyshortcuts="Control+Shift+Backspace Meta+Shift+Backspace">恢复默认呈现</Button>
-  {#if failure}<Card><p role="alert">呈现错误：{failure}</p></Card>{/if}
-</div>
+{#if failure}
+  <Card><p role="alert">呈现错误：{failure}</p>
+    <Button variant="ghost" onclick={restoreDefault} aria-label="恢复默认呈现" aria-keyshortcuts="Control+Shift+Backspace Meta+Shift+Backspace">恢复默认呈现</Button>
+  </Card>
+{/if}
 <div bind:this={target} onfocusin={rememberFocus} class="workbench-presentation" data-presentation-focus-target={focus} data-presentation-layout={instance?.layout} data-presentation-generation={instance?.generation} inert={switching || suspended} aria-busy={switching} style:display={suspended ? 'none' : 'flex'}>
   {#if instance}{#key instance.generation}
       <main bind:this={gridElement} class="workspace-grid" class:inspector-hidden={!auxiliaryOpen} style:grid-template-columns={columns} style={`--workspace-sidebar-width: ${navigationWidth}px; --workspace-inspector-width: ${auxiliaryWidth}px`}>
@@ -146,6 +150,5 @@
   {/key}{/if}
 </div>
 <style>
-  .presentation-controls { display: flex; flex-wrap: wrap; align-self: flex-end; flex-shrink: 0; order: 1; }
   .workbench-presentation { order: 2; display: flex; flex-direction: column; flex: 1; min-width: 0; min-height: 0; }
 </style>

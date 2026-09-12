@@ -1,4 +1,5 @@
 <script lang="ts">
+  import type { Snippet } from 'svelte';
   import type { ModelConfigurationState } from '$lib/app/model-configuration';
   import { sessionAgentKind } from '$lib/app/agent-kind';
   import { Badge, Button, Card, CardContent, CardHeader, CardTitle, Icon, Input, Separator } from '$lib/ui-kit';
@@ -16,6 +17,7 @@
   } from './view-types';
 
   type TimelinePanelProps = {
+    presentationActions?: Snippet;
     workspace: WorkspaceListItem | null;
     session: SessionPanelView | null;
     selectedSessionId: string | null;
@@ -67,6 +69,7 @@
   };
 
   let {
+    presentationActions,
     workspace,
     session,
     selectedSessionId,
@@ -185,6 +188,7 @@
   <CardHeader class="panel-heading timeline-heading">
     <CardTitle>{session?.label ?? workspace?.label ?? '选择工作区'}</CardTitle>
     <div class="timeline-heading-actions">
+          {@render presentationActions?.()}
       {#if codexGoal?.objective}
         <Badge variant="outline" title={codexGoal.objective}>目标 · {codexGoal.status}</Badge>
       {/if}

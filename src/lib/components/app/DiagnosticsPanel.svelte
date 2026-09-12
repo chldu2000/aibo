@@ -1,8 +1,10 @@
 <script lang="ts">
+  import type { Snippet } from 'svelte';
   import { Badge, Button, Card, CardContent, CardHeader, CardTitle, Icon, Separator } from '$lib/ui-kit';
   import type { AgentDiagnosticView } from './view-types';
 
   type DiagnosticsPanelProps = {
+    presentationActions?: Snippet;
     open: boolean;
     diagnostics: AgentDiagnosticView[];
     desktop: boolean;
@@ -14,6 +16,7 @@
   };
 
   let {
+    presentationActions,
     open,
     diagnostics,
     desktop,
@@ -40,6 +43,7 @@
 
       <div class="settings-content">
         <div id="diagnostics-panel-content" class="settings-tab-panel" role="tabpanel">
+          {@render presentationActions?.()}
           <section class="settings-section" aria-labelledby="agent-diagnostics-title">
             <div class="settings-section-heading">
               <div>

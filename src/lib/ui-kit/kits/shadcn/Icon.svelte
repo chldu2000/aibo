@@ -48,6 +48,7 @@
     edit: EditIcon,
     filter: FilterIcon,
     file: FileIcon,
+    focus: WindowMaximizeIcon,
     folder: FolderIcon,
     'folder-add': FolderAddIcon,
     refresh: RefreshIcon,

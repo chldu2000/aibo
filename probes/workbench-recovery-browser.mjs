@@ -19,8 +19,8 @@ try {
     const standard = page.locator('[data-presentation-layout="standard"]:not([inert])');
     await standard.waitFor();
     const restore = page.getByRole('button', { name: '恢复默认呈现', exact: true });
-    assert.equal(await restore.isEnabled(), true);
-    await page.getByRole('button', { name: '切换工作台呈现', exact: true }).click();
+    assert.equal(await restore.count(), 0, 'recovery does not occupy the healthy workbench');
+    await page.evaluate(() => window.recoveryWorkbench.switchPresentation('focus'));
     await page.locator('[data-presentation-layout="focus"]:not([inert])').waitFor({timeout: 5000}).catch(async error => { console.log(await page.locator('body').innerText(), errors); throw error; });
     await page.getByRole('textbox', { name: 'draft' }).focus();
     await page.keyboard.press('Control+Shift+Backspace');
@@ -35,5 +35,5 @@ try {
     assert.equal(await page.getByRole('alert').count(), 0);
   }
   assert.deepEqual(errors, []);
-  console.log('Workbench persistent recovery button, capture shortcut and mount-failure recovery passed');
+  console.log('Workbench capture shortcut and independent mount-failure recovery passed');
 } finally { await browser.close(); await server.close(); }
