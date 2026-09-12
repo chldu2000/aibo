@@ -61,3 +61,13 @@ test('non-Pi tree navigation uses the same production controller and rejects unb
     assert.match(error, /provider_unavailable/);
   } finally { await server.close(); }
 });
+
+test("unbound historical sessions cannot invoke either capability or legacy execution", async () => {
+  const facade = createAgentFacade({
+    invokeAgentCapability: async () => assert.fail("history must not execute a capability"),
+    legacyCapability: async () => assert.fail("history must not execute a legacy runtime"),
+  });
+  for (const agent of ["codex", "pi", "dev.example.agent"]) {
+    await assert.rejects(facade.invoke({ ...session, agent, pluginInstallationId: null }, "session.tree"), /provider_unavailable/);
+  }
+});

@@ -202,7 +202,7 @@
           {selectedSessionArchiving ? '归档中' : sessionStateLabel(session)}
         </Badge>
         {#if codexThreadSnapshot && codexThreadSnapshot.id === session.externalSessionId}
-          <Badge variant="outline">远端 {codexThreadSnapshot.turnCount} 轮</Badge>
+          <Badge variant="outline">{codexThreadSnapshot.turnCount === null ? '远端轮次未知' : `远端 ${codexThreadSnapshot.turnCount} 轮`}</Badge>
         {/if}
       {/if}
       {#if workspace}

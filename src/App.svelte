@@ -78,10 +78,7 @@
   import { createRefreshController } from '$lib/app/refresh-controller';
   import { createModelConfigurationService, modelConfigurationState } from '$lib/app/model-configuration';
   import type { ModelConfigurationChange } from '$lib/app/model-configuration';
-  import { createLegacyModelConfiguration } from '$lib/app/compatibility/legacy-model-configuration';
-  import { listCodexThreads, readCodexThread, forkCodexThread, listPiCommands, listCodexSkills, getPiSessionTree, navigatePiSessionTree } from '$lib/compatibility/agent-api';
-  import { legacyAgentOperations } from '$lib/compatibility/agent-api';
-  import { legacyCapability } from '$lib/app/compatibility/legacy-capability';
+  import { listCodexThreads, readCodexThread, forkCodexThread, getPiSessionTree, navigatePiSessionTree } from '$lib/api';
   import { createAgentFacade } from '$lib/app/agent-facade';
   import { createViewStateStore } from '$lib/app/view-state-storage';
   import { createMessageController } from '$lib/app/message-controller';
@@ -160,8 +157,6 @@
     cancelAgentTurn,
     resumeAgentSession,
     closeAgentSession,
-    getPluginViews,
-    invokePluginViewAction,
     invokeAgentCapability,
     listenToAgentEvents,
     probeAgents,
@@ -179,7 +174,7 @@
     unarchiveSession as unarchiveSessionApi,
   } from './lib/api';
   import type { PluginInstallation } from './lib/api';
-  import type { UiPluginViewSnapshot, UiPluginViewVersion } from '$lib/ui-kit';
+  import { sessionProviders } from '$lib/app/session-providers';
   import type {
     AgentQueueSnapshot,
     AgentCommand,
@@ -524,8 +519,7 @@
 
   let pluginInstallations = $state<PluginInstallation[]>([]);
   const pluginSessions = $derived((workspaceSessionMap[selectedWorkspaceId ?? ''] ?? []).filter(session => Boolean(session.pluginInstallationId)));
-  let pluginViews = $state<UiPluginViewSnapshot[]>([]);
-  let pluginViewSessionId = $state<string | null>(null);
+  const pluginManagerInstallations = $derived(pluginInstallations.map(installation => ({ ...installation, sessionProviders: sessionProviders(installation) })));
   let pluginPackagePath = $state('');
   let pluginBusy = $state(false);
   let pluginError = $state('');
@@ -610,18 +604,8 @@
     });
   }
 
-  async function invokePluginAction(viewId: string, actionId: string, input: Record<string, unknown>, version: UiPluginViewVersion): Promise<void> {
-    const sessionId = pluginSessionId;
-    if (!sessionId) return;
-    await pluginOperation(async () => {
-      await invokePluginViewAction(sessionId, viewId, actionId, input, version);
-      if (pluginSessionId === sessionId) pluginViews = await getPluginViews(sessionId);
-    });
-  }
-
   $effect(() => {
     const workspaceId = selectedWorkspaceId;
-    const sessionId = pluginSessionId;
     if (!pluginsOpen || !desktop || !workspaceId) return;
     let disposed = false;
     let polling = false;
@@ -629,15 +613,7 @@
       if (polling || disposed) return;
       polling = true;
       try {
-        const [sessions, views] = await Promise.allSettled([
-          refreshSessions(workspaceId!, false),
-          sessionId ? getPluginViews(sessionId) : Promise.resolve([]),
-        ]);
-        if (disposed) return;
-        pluginViews = views.status === 'fulfilled' ? views.value : [];
-        pluginViewSessionId = sessionId;
-        const failed = [sessions, views].find((result) => result.status === 'rejected');
-        if (failed?.status === 'rejected') pluginError = toErrorMessage(failed.reason);
+        await refreshSessions(workspaceId!, false);
       } catch (error) {
         if (!disposed) pluginError = toErrorMessage(error);
       } finally { polling = false; }
@@ -2946,12 +2922,11 @@
     setPiNavigationEntryId: (value) => (piNavigationEntryId = value),
   });
 
-  const agentFacade = createAgentFacade({ invokeAgentCapability, legacyCapability: legacyCapability(legacyAgentOperations) });
+  const agentFacade = createAgentFacade({ invokeAgentCapability });
   const modelConfigurationService = createModelConfigurationService({
     facade: agentFacade,
     getSessionModels,
     getSessionExecutionProfile,
-    legacyApply: createLegacyModelConfiguration({ updateSessionExecutionProfile }),
   });
 
   const messageController = createMessageController({
@@ -3152,15 +3127,14 @@
   {/if}
   {#if pluginsOpen}
     <div class="host-plugin-region" style="order: 2; display: grid; flex: 1; min-height: 0; overflow: auto;">
-      <PluginWorkspacePanel interaction={workbenchDrafts.plugin} onInteractionChange={hostGuard('onInteractionChange', (value) => { workbenchDrafts.plugin = value; })}
-      installations={pluginInstallations}
+      <PluginWorkspacePanel
+      installations={pluginManagerInstallations}
       sessions={pluginSessions.filter((session) => session.workspaceId === selectedWorkspaceId)}
       selectedSession={pluginSession?.workspaceId === selectedWorkspaceId ? pluginSession : null}
       workspaceLabel={selectedWorkspace?.label ?? null}
       packagePath={pluginPackagePath}
       prompt={pluginSessionId ? composerText : ''}
       timeline={timeline.filter((item) => item.sessionId === pluginSessionId)}
-      views={pluginViewSessionId === pluginSessionId ? pluginViews : []}
       busy={pluginBusy}
       error={pluginError || errorMessage || ''}
       {desktop}
@@ -3175,7 +3149,6 @@
       onCancel={hostGuard('onCancel', () => pluginSessionOperation(cancelAgentTurn))}
       onResume={hostGuard('onResume', () => pluginSessionOperation(resumeAgentSession))}
       onCloseSession={hostGuard('onCloseSession', () => pluginSessionOperation(closeAgentSession))}
-      onViewAction={hostGuard('onViewAction', (viewId, actionId, input, version) => void invokePluginAction(viewId, actionId, input, version))}
       onClose={hostGuard('onClose', () => { pluginsOpen = false; })}
     />
     </div>

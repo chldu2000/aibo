@@ -37,15 +37,12 @@ export function createModelConfigurationService(ports: {
   facade: Pick<ReturnType<typeof createAgentFacade>, 'invoke'>;
   getSessionModels: (sessionId: string) => Promise<SessionModelCatalog>;
   getSessionExecutionProfile: (sessionId: string) => Promise<SessionExecutionProfile>;
-  legacyApply: (session: CapabilitySession, change: ModelConfigurationChange, catalog: SessionModelCatalog | null,
-    profile: SessionExecutionProfile | null) => Promise<SessionExecutionProfile>;
 }) {
   return {
     async apply(session: CapabilitySession, change: ModelConfigurationChange,
       catalog: SessionModelCatalog | null, profile: SessionExecutionProfile | null) {
       if (!session.pluginInstallationId) {
-        const updatedProfile = await ports.legacyApply(session, change, catalog, profile);
-        return { catalog: await ports.getSessionModels(session.id), profile: updatedProfile };
+        throw new Error("history_only: old session configuration is read-only");
       }
       const changesModel = change.kind !== 'reasoning';
       const level = change.kind === 'model' ? null : change.reasoningEffort;

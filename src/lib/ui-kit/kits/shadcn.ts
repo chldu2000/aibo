@@ -17,7 +17,6 @@ import IconComponent from './shadcn/Icon.svelte';
 import ModelMatrixComponent from './shadcn/ModelMatrix.svelte';
 import ColumnSplitterComponent from './shadcn/ColumnSplitter.svelte';
 import AgentStatusMarkComponent from './shadcn/AgentStatusMark.svelte';
-import PluginViewComponent from './shadcn/PluginView.svelte';
 import type { UiKitAdapter, UiKitRegistration, UiThemeRegistration } from '../contract';
 import { lightStatusThemeTokens, statusThemeTokens } from '../theme-tokens';
 
@@ -78,7 +77,6 @@ function semanticTokens(colors: ShadcnColorTokens): Record<`--${string}`, string
 
 export const shadcnUiKit: UiKitAdapter = {
   SemanticView,
-  PluginView: PluginViewComponent,
   AgentStatusMark: AgentStatusMarkComponent,
   AlertDialog: AlertDialogComponent,
   Badge: BadgeComponent,

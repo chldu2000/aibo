@@ -222,7 +222,7 @@ export interface CodexThreadSummary {
 }
 
 export interface CodexThreadSnapshot extends CodexThreadSummary {
-  turnCount: number;
+  turnCount: number | null;
 }
 
 export interface TimelineItem {

@@ -1,4 +1,4 @@
-//! Bounded process transport for Agent v1 and experimental capability v2 envelopes.
+//! Bounded process transport for capability runtime 2.0 and 2.1.
 //! Policy, operation validation and persistence remain in Core.
 use serde_json::{json, Value};
 use std::{
@@ -34,15 +34,15 @@ pub(crate) struct PluginRuntime {
 }
 
 impl PluginRuntime {
-    pub fn spawn(executable: &Path, args: &[String], directory: &Path, sdk_module: Option<&Path>) -> Result<Self, String> {
-        Self::spawn_transport(executable, args, directory, sdk_module, false)
-    }
-
     pub fn spawn_capability(executable: &Path, args: &[String], directory: &Path) -> Result<Self, String> {
-        Self::spawn_transport(executable, args, directory, None, true)
+        Self::spawn_transport(executable, args, directory, None, false)
     }
 
-    fn spawn_transport(executable: &Path, args: &[String], directory: &Path, sdk_module: Option<&Path>, capability: bool) -> Result<Self, String> {
+    pub fn spawn_interactive(executable: &Path, args: &[String], directory: &Path, sdk_module: Option<&Path>) -> Result<Self, String> {
+        Self::spawn_transport(executable, args, directory, sdk_module, true)
+    }
+
+    fn spawn_transport(executable: &Path, args: &[String], directory: &Path, sdk_module: Option<&Path>, interactive: bool) -> Result<Self, String> {
         let mut command = Command::new(executable);
         command.env_clear();
         for name in ["SystemRoot", "WINDIR", "TEMP", "TMP", "PATH", "LANG", "LC_ALL"] {
@@ -58,7 +58,7 @@ impl PluginRuntime {
         #[cfg(windows)]
         command.creation_flags(0x08000000);
         #[cfg(unix)]
-        if capability {
+        {
             use std::os::unix::process::CommandExt;
             command.as_std_mut().process_group(0);
         }
@@ -136,8 +136,8 @@ impl PluginRuntime {
                             };
                             frame.clear();
                             if message["jsonrpc"] != "2.0" { break 'runtime "protocol_incompatible: JSON-RPC version"; }
-                            if !(if capability { &crate::plugin_contract::contracts().capability_runtime } else { &crate::plugin_contract::contracts().runtime }).is_valid(&message) { break 'runtime "invalid_request: plugin response schema"; }
-                            if message["method"] == "aibo/tool-request" || (capability && message["method"] == "capability.call") {
+                            if !(if interactive { &crate::plugin_contract::contracts().capability_interactive } else { &crate::plugin_contract::contracts().capability_runtime }).is_valid(&message) { break 'runtime "invalid_request: plugin response schema"; }
+                            if message["method"] == "capability.call" {
                                 if !matches!(message.get("id"), Some(Value::String(_) | Value::Number(_))) || !message["params"].is_object() {
                                     break 'runtime "invalid_request: malformed Core tool request";
                                 }
@@ -155,7 +155,8 @@ impl PluginRuntime {
                                 } else { Ok(message["result"].clone()) };
                                 let _ = reply.send(response);
                             } else {
-                                if message.get("id").is_some() || !matches!(message["method"].as_str(), Some("agent/event" | "view/render")) || !message["params"].is_object() {
+                                let allowed = interactive && message["method"] == "capability.event";
+                                if message.get("id").is_some() || !allowed || !message["params"].is_object() {
                                     break 'runtime "invalid_request: unknown plugin notification";
                                 }
                                 // Bounded queue: fail this generation rather than silently drop durable events.
@@ -167,7 +168,7 @@ impl PluginRuntime {
             };
             process_exited.store(true, Ordering::Release);
             #[cfg(unix)]
-            if capability {
+            {
                 if let Some(pid) = child.id() { unsafe { libc::kill(-(pid as i32),libc::SIGKILL); } }
             }
             let _ = child.kill().await;
@@ -224,36 +225,68 @@ mod tests {
     use super::*;
 
     #[tokio::test]
+    async fn interactive_capability_stream_and_control_share_one_generation() {
+        let root = Path::new(env!("CARGO_MANIFEST_DIR")).parent().unwrap();
+        let script = r#"
+            import {serveCapability} from './packages/capability-runtime/stdio.mjs';
+            let finish;
+            serveCapability({protocol:'2.1',pluginId:'dev.test',pluginVersion:'1.0.0',contributionId:'dev.test.session',
+              operations:[{capability:'dev.test.turn',version:'1.0.0',operationId:'turn'},{capability:'dev.test.answer',version:'1.0.0',operationId:'answer'}],
+              invoke:async (_p,tools)=>{tools.emit({type:'input.requested'});return await new Promise(resolve=>finish=resolve);},
+              control:async ()=>{setTimeout(()=>finish({status:'completed'}),10);return {accepted:true};}
+            });
+        "#;
+        let runtime = PluginRuntime::spawn_interactive(Path::new("node"), &["--input-type=module".into(),"--eval".into(),script.into()], root, None).unwrap();
+        let result = runtime.request("capability.initialize",json!({"protocol":"2.1","pluginId":"dev.test","pluginVersion":"1.0.0","contributionId":"dev.test.session","instanceId":"instance","generationId":runtime.generation_id}),Duration::from_secs(5)).await.unwrap();
+        assert_eq!(result["protocol"],"2.1");
+        let deadline = (time::OffsetDateTime::now_utc().unix_timestamp_nanos()/1_000_000) as i64 + 5000;
+        let running_runtime = runtime.clone();
+        let running = tokio::spawn(async move {
+            running_runtime.request("capability.invoke",json!({"invocationId":"turn","instanceId":"instance","generationId":running_runtime.generation_id,"contributionId":"dev.test.session","capability":"dev.test.turn","contractVersion":"1.0.0","operationId":"turn","deadlineUnixMs":deadline,"scope":{"kind":"session","id":"session"},"context":{},"input":{}}),Duration::from_secs(5)).await
+        });
+        let event = tokio::time::timeout(Duration::from_secs(5),async {runtime.notifications.lock().await.recv().await}).await.unwrap().unwrap();
+        assert_eq!(event["method"],"capability.event");
+        assert_eq!(event["params"]["generationId"],runtime.generation_id);
+        assert_eq!(event["params"]["sequence"],1);
+        let answer = runtime.request("capability.control",json!({"invocationId":"turn","instanceId":"instance","generationId":runtime.generation_id,"contributionId":"dev.test.session","capability":"dev.test.answer","contractVersion":"1.0.0","operationId":"answer","input":{}}),Duration::from_secs(5)).await.unwrap();
+        assert_eq!(answer["output"]["accepted"],true);
+        assert_eq!(running.await.unwrap().unwrap()["output"]["status"],"completed");
+        assert!(runtime.stop_and_wait().await);
+    }
+
+    #[tokio::test]
     async fn echo_process_round_trip_and_generation_isolation() {
         let root = Path::new(env!("CARGO_MANIFEST_DIR")).parent().unwrap();
-        let script = root.join("fixtures/plugins/echo-agent/echo-agent.mjs");
+        let script = root.join("fixtures/plugins/capability-echo/worker.mjs");
         let args = vec![script.to_string_lossy().into_owned()];
-        let first = PluginRuntime::spawn(Path::new("node"), &args, root, None).unwrap();
-        let second = PluginRuntime::spawn(Path::new("node"), &args, root, None).unwrap();
+        let first = PluginRuntime::spawn_capability(Path::new("node"), &args, root).unwrap();
+        let second = PluginRuntime::spawn_capability(Path::new("node"), &args, root).unwrap();
         assert_ne!(first.generation_id, second.generation_id);
-        let result = first.request("aibo.initialize", json!({
-            "runtimeInstanceId":"test", "generationId":first.generation_id,
-            "expectedPlugin":{"pluginId":"dev.aibo.echo","pluginVersion":"1.0.0"},
-            "host":{"runtimeProtocolVersions":["1.0"],"viewProtocolVersions":["1.0"]},"permissionGrants":[]
+        let result = first.request("capability.initialize", json!({
+            "protocol":"2.0", "generationId":first.generation_id,
+            "pluginId":"dev.aibo.capability-echo", "pluginVersion":"1.0.0",
+            "contributionId":"dev.aibo.capability-echo.read"
         }), Duration::from_secs(5)).await.unwrap();
-        assert_eq!(result["kind"], "initialized");
-        first.request("session.create", json!({"agentId":"dev.aibo.echo.agent","sessionId":"rust-test"}), Duration::from_secs(5)).await.unwrap();
-        let event = tokio::time::timeout(Duration::from_secs(5), async { first.notifications.lock().await.recv().await }).await.unwrap().unwrap();
-        assert_eq!(event["params"]["sessionId"], "rust-test");
+        assert_eq!(result["protocol"], "2.0");
+        let result = first.request("capability.invoke", json!({"invocationId":"roundtrip","input":{"value":"hello"},"context":{"workspacePath":"/test"}}), Duration::from_secs(5)).await.unwrap();
+        assert_eq!(result["generationId"], first.generation_id);
+        assert_eq!(result["output"]["value"], "hello");
         assert!(second.notifications.lock().await.try_recv().is_err());
-        first.stop().await;
-        second.stop().await;
+        assert!(first.stop_and_wait().await);
+        assert!(second.stop_and_wait().await);
     }
 
     #[tokio::test]
     async fn rejects_malformed_oversized_and_unrelated_responses_without_hanging() {
         for script in [
+            "process.stdin.once('data',()=>process.stdout.write(JSON.stringify({jsonrpc:'2.0',method:'agent/event',params:{}})+'\\n'));",
+            "process.stdin.once('data',()=>process.stdout.write(JSON.stringify({jsonrpc:'2.0',method:'aibo/tool-request',id:'old-tool',params:{}})+'\\n'));",
             "process.stdin.once('data',()=>process.stdout.write('not-json\\n'));",
             "process.stdin.once('data',()=>process.stdout.write('x'.repeat(1048577)));",
             "process.stdin.once('data',()=>process.stdout.write(JSON.stringify({jsonrpc:'2.0',id:'unknown',result:{kind:'accepted',accepted:true}})+'\\n'));",
         ] {
-            let runtime = PluginRuntime::spawn(Path::new("node"), &["-e".into(), script.into()], Path::new(env!("CARGO_MANIFEST_DIR")), None).unwrap();
-            let result = runtime.request("aibo.initialize", json!({}), Duration::from_secs(5)).await;
+            let runtime = PluginRuntime::spawn_capability(Path::new("node"), &["-e".into(), script.into()], Path::new(env!("CARGO_MANIFEST_DIR"))).unwrap();
+            let result = runtime.request("capability.initialize", json!({}), Duration::from_secs(5)).await;
             assert!(result.unwrap_err().contains("invalid_request"));
             runtime.stop().await;
         }
@@ -261,8 +294,8 @@ mod tests {
 
     #[tokio::test]
     async fn request_timeout_terminates_stalled_generation() {
-        let runtime = PluginRuntime::spawn(Path::new("node"), &["-e".into(), "process.stdin.resume();".into()], Path::new(env!("CARGO_MANIFEST_DIR")), None).unwrap();
-        assert!(runtime.request("aibo.initialize", json!({}), Duration::from_millis(50)).await.unwrap_err().starts_with("timeout:"));
+        let runtime = PluginRuntime::spawn_capability(Path::new("node"), &["-e".into(), "process.stdin.resume();".into()], Path::new(env!("CARGO_MANIFEST_DIR"))).unwrap();
+        assert!(runtime.request("capability.initialize", json!({}), Duration::from_millis(50)).await.unwrap_err().starts_with("timeout:"));
         let closed = tokio::time::timeout(Duration::from_secs(5), async { runtime.notifications.lock().await.recv().await }).await.unwrap();
         assert!(closed.is_none());
     }

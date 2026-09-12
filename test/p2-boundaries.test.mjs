@@ -62,13 +62,18 @@ test('workbench callbacks and writable bindings cross the generation gate', asyn
   assert.doesNotMatch(shell, /listenToAgentEvents|sendAgentPrompt|resumeAgentSession|cancelAgentTurn|pluginInstallationId/);
 });
 
-test('generic host routing checks plugin binding and keeps native compatibility outside the entrypoint', async () => {
+test('generic host routing requires capability sessions and rejects unbound history', async () => {
   const source = await readFile('src-tauri/src/lib.rs', 'utf8');
   for (const method of ['send_agent_prompt', 'cancel_agent_turn', 'resume_agent_session', 'close_agent_session']) {
     const code = source.slice(source.indexOf(`async fn ${method}(`)).split('#[tauri::command]')[0];
     assert.match(code, /plugin_installation_id/);
-    assert.match(code, /compatibility::/);
+    assert.match(code, /history_only:/);
+    assert.match(code, /window\.label\(\)/);
+    assert.doesNotMatch(code, /compatibility::|state\.codex/);
     assert.doesNotMatch(code, /session_agent\(|\.agent\s*==|"codex"|"pi"/);
+  }
+  for (const method of ['create_codex_session','create_pi_session','send_codex_prompt','send_pi_prompt','abort_codex_turn','abort_pi_turn','close_codex_session','close_pi_session']) {
+    assert.ok(!source.includes(`async fn ${method}(`), `${method} is retired; use the shared capability session route`);
   }
   const create = source.slice(source.indexOf('async fn create_agent_session(')).split('#[tauri::command]')[0];
   assert.match(create, /requested_profile/);

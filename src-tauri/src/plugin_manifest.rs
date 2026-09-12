@@ -24,6 +24,18 @@ impl ManifestModel {
     pub fn agents(&self) -> impl Iterator<Item = &Value> {
         self.contributions.iter().filter(|entry| entry.kind == "agent").map(|entry| &entry.metadata)
     }
+    /// Session pickers index domain contributions, without creating a second runtime kind.
+    pub fn session_agents(&self,plugin:&str)->Vec<Value> {
+        let mut agents:Vec<Value>=self.agents().cloned().collect();
+        for entry in self.contributions.iter().filter(|entry|entry.kind=="capabilityProvider" && entry.scope=="session") {
+            let operations=entry.metadata["operations"].as_array().unwrap();
+            if !operations.iter().any(|op|op["capability"]["id"]=="aibo.session.open") {continue;}
+            let mut capabilities=vec!["session.create".to_string(),"session.resume".into(),"session.close".into(),"turn.send".into(),"turn.cancel".into(),"stream.text".into()];
+            for operation in operations {if let Some(cap)=operation["capability"]["id"].as_str().and_then(|id|id.strip_prefix(&format!("{plugin}."))) {capabilities.push(cap.into());}}
+            agents.push(json!({"agentId":entry.id,"displayName":entry.metadata["displayName"],"description":entry.metadata["description"],"capabilities":capabilities,"requestedPermissions":[],"views":[]}));
+        }
+        agents
+    }
 }
 
 fn invalid(message: &str) -> String { format!("invalid_manifest: {message}") }
@@ -122,7 +134,9 @@ pub(crate) fn normalize(manifest: &Value) -> Result<ManifestModel, String> {
             if kind == "capabilityProvider" {
                 let capability = operation["capability"]["id"].as_str().unwrap();
                 if !mappings.insert((capability,operation["capability"]["version"].as_str().unwrap())) { return Err(invalid("ambiguous capability operation mapping")); }
-                if !owned(capability, plugin) { return Err(invalid("custom capability contract must belong to its plugin")); }
+                if capability.starts_with("aibo.session.") {
+                    if !crate::session_contract::validates_operation(operation,entry["scope"].as_str().unwrap(),manifest) { return Err(invalid("session capability must use the host contract, scope, protocol and permissions")); }
+                } else if !owned(capability, plugin) { return Err(invalid("custom capability contract must belong to its plugin")); }
                 semver::Version::parse(operation["capability"]["version"].as_str().unwrap()).map_err(|_| invalid("invalid capability version"))?;
             }
             operation_schema(&operation["inputSchema"])?;
@@ -161,7 +175,7 @@ pub(crate) fn semantic_supported(metadata: &Value, manifest: &Value) -> bool {
 pub(crate) fn contribution_supported(entry: &Contribution, manifest: &Value) -> bool {
     match entry.kind.as_str() {
         "semanticView" => semantic_supported(&entry.metadata,manifest),
-        "capabilityProvider" => manifest["protocols"]["runtime"]["min"] == "2.0" && manifest["protocols"]["runtime"]["max"] == "2.0"
+        "capabilityProvider" => matches!(manifest["protocols"]["runtime"]["min"].as_str(),Some("2.0" | "2.1")) && manifest["protocols"]["runtime"]["max"] == manifest["protocols"]["runtime"]["min"]
             && entry.metadata["operations"].as_array().unwrap().iter().all(|operation| {
                 let permissions = operation["permissions"].as_array().unwrap();
                 if operation["effect"] == "write" {
@@ -177,7 +191,7 @@ pub(crate) fn contribution_supported(entry: &Contribution, manifest: &Value) -> 
 /// These diagnostics are replaced by negotiated Broker/runtime checks in P3.2/P3.3.
 pub(crate) fn activation_issues(manifest: &Value) -> Result<Vec<String>, String> {
     let model = normalize(manifest)?;
-    if model.version == 1 { return Ok(vec![]); }
+    if model.version == 1 { return Ok(vec!["旧 Agent runtime 已退役；此插件仅保留历史元数据，不可启用。".into()]); }
     let mut issues = vec![];
     let host = semver::Version::parse(env!("CARGO_PKG_VERSION")).unwrap();
     let min = semver::Version::parse(manifest["host"]["min"].as_str().unwrap()).unwrap();
@@ -196,8 +210,8 @@ mod tests {
     fn provider() -> Value { serde_json::from_str(include_str!("../../fixtures/plugins/platform-v2/provider.json")).unwrap() }
 
     #[test]
-    fn v1_adapter_preserves_agent_metadata_and_executable_dependency_meaning() {
-        for source in [include_str!("../../fixtures/plugins/echo-agent/plugin.json"), include_str!("../builtin-plugins/codex/plugin.json"), include_str!("../builtin-plugins/pi/plugin.json")] {
+    fn retired_v1_metadata_is_readable_but_cannot_be_activated() {
+        for source in [include_str!("../../fixtures/plugins/echo-agent/plugin.json")] {
             let manifest: Value = serde_json::from_str(source).unwrap();
             let before = manifest.clone();
             let model = normalize(&manifest).unwrap();
@@ -206,7 +220,7 @@ mod tests {
             assert!(model.contributions.iter().all(|entry|entry.kind == "agent" && entry.scope == "session"));
             assert_eq!(model.executable_dependencies, manifest["dependencies"].as_array().cloned().unwrap_or_default());
             assert_eq!(manifest, before, "wire manifest must not be rewritten");
-            assert!(activation_issues(&manifest).unwrap().is_empty());
+            assert!(activation_issues(&manifest).unwrap().iter().any(|issue| issue.contains("已退役")));
         }
     }
 

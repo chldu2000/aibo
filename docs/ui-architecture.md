@@ -84,13 +84,11 @@ macOS 的拖动和双击缩放均交给原生标题栏处理，页面不能再�
 
 `test/architecture-boundaries.test.mjs` 会在 `pnpm test` 中检查：页面组件不得直接导入具体 UI 实现或 API，业务模块不得反向依赖 Svelte、UI 或 API 实现。新增模块若违反边界会在 CI 中失败。
 
-## Agent Plugin View 边界
+## 能力与呈现边界
 
-Phase 4.7 的插件不能导入 Svelte 组件或把 HTML、CSS、脚本注入主 WebView。插件提交符合 `contracts/plugin-view-protocol.v1.schema.json` 的完整声明式文档；Aibo Renderer 验证节点、binding、action、资源和 revision 后，只通过 `$lib/ui-kit` 渲染。
+旧 Agent View 协议的渲染组件、动作 IPC 和视图轮询已删除。能力插件提交能力结果与会话领域事件，由宿主验证并投影；呈现插件消费宿主的语义快照和动作合同。SemanticView 与 WorkbenchPresentation 继续通过 UI kit 装配，管理入口和默认呈现恢复由宿主保有。
 
-View v1 只允许语义属性，包括 tone、density、gap、对齐、内容、表单值、状态和 action ID。它不接受 `class`、`style`、颜色、皮肤 ID、任意组件名或具体 UI 库属性。功能图标使用语义名称并由当前 `UiKitAdapter` 映射；插件品牌资源必须来自安装时已校验哈希的 manifest resource。
-
-Renderer 的交互状态以 `(sessionId, viewId, nodeId)` 为稳定键。文档 revision 更新以及 shadcn/Material 3 切换都应保留选中项、表单草稿和焦点恢复目标。若某套皮肤缺少新复合控件，应先扩展 `UiKitAdapter` 并为所有皮肤实现同一契约，不能在 Renderer 或页面组件中检测皮肤 ID。
+插件管理面板的新建会话入口从 session scope 的 aibo.session.open 能力贡献发现，不读取旧 manifest.agents。皮肤不拥有能力选择、会话状态或执行权。test/plugin-management.test.mjs 检查旧视图入口缺席及能力贡献发现，现有语义呈现测试继续检查合同、降级和动作权限。
 
 ## Agent 与 CI 硬约束
 
@@ -268,3 +266,15 @@ PluginView 的非 never 确认使用宿主原生对话框，并以 Tauri 注入�
 ### P4：快照读取能力必须显式声明
 
 RendererDescriptor.semanticVersion 描述必需核心语义，snapshotSchemas 描述实际快照格式。未声明后者的旧 renderer 只能读取原只读格式；v1.1 写动作需要显式 opt-in。描述符验证拒绝未知、重复或缺少稳定 v1 的列表，协商在选择专业实现之前检查格式支持。默认可信呈现明确声明 experimental-v1/v1/v1.1；该声明不改变原生审批与 Capability 权限。版本支持表见 ADR-0007。
+
+## 会话能力迁移中的执行边界
+
+通用会话发送、取消、恢复和关闭入口必须拒绝没有插件绑定的旧会话，不能回退到原生执行。调用者窗口身份传入 SessionHost，再由共享能力 Broker 执行。呈现层继续消费宿主事件；执行失败事件也必须先持久化，再通知界面。`test/p2-boundaries.test.mjs` 检查这些通用入口；其他旧专属入口仍在迁移中，本规则不表示旧运行时已完全退役。
+
+前端能力门面、会话树控制器与模型配置服务不再接收旧执行回退。无插件绑定的历史会话拒绝能力调用和模型配置写入；其历史展示仍可独立读取。对应回归见 agent-facade.test.mjs 和 model-configuration.test.mjs。
+
+旧 PluginHost 实现已删除。SessionHost 只能调用共享 Broker，不能创建插件进程；架构检查禁止重新接入旧 Host 或在会话宿主中直接启动进程。旧 Agent 视图动作暂保留拒绝执行的 IPC，后续随旧呈现 API 一并删除。
+
+Codex/Pi 原生管理器已删除。线程目录通过 workspace scope 的能力贡献读取，
+会话快照和分支通过会话绑定的能力调用；App 的原生兼容 API 重导出层也已删除。
+架构检查禁止重新编译旧管理器。

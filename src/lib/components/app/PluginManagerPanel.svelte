@@ -11,7 +11,8 @@
     dependencies: { kind: string; name: string; required: boolean; available: boolean; versionRange: string | null; detectedVersion?: string | null; issue?: string | null }[];
     packageDependencies?: { dependencies: { pluginId: string; required: boolean; available: boolean; version: string | null; issue: string | null }[]; unavailableContributions: string[] };
     activationIssues?: string[];
-    manifest: { displayName: string; agents?: { agentId: string; displayName: string }[] };
+    sessionProviders: { id: string; displayName: string }[];
+    manifest: { displayName: string };
   };
 
   type Props = {
@@ -71,8 +72,8 @@
                       <Button type="button" variant="outline" disabled={busy || (!installation.enabled && !installation.runnable)} onclick={() => onEnabledChange(installation.id, !installation.enabled)}>{installation.enabled ? '禁用插件' : '启用插件'}</Button>
                       <Button type="button" variant="outline" disabled={busy} onclick={() => onUninstall(installation.id)}>卸载插件</Button>
                     {/if}
-                    {#each (installation.manifest.agents ?? []) as agent (agent.agentId)}
-                      <Button type="button" disabled={busy || !installation.installed || !installation.enabled || !installation.runnable} onclick={() => onCreateSession(installation.id, agent.agentId)}>新建 {agent.displayName} 会话</Button>
+                    {#each installation.sessionProviders as provider (provider.id)}
+                      <Button type="button" disabled={busy || !installation.installed || !installation.enabled || !installation.runnable} onclick={() => onCreateSession(installation.id, provider.id)}>新建 {provider.displayName} 会话</Button>
                     {/each}
                   </div>
                 </div>

@@ -7,7 +7,6 @@ export type CapabilityPort = (sessionId: string, capability: string, input: Capa
 /** Binding selects the transport; capability selects the operation, never the provider. */
 export function createAgentFacade(ports: {
   invokeAgentCapability: CapabilityPort;
-  legacyCapability?: (session: CapabilitySession, capability: string, input: CapabilityInput) => Promise<CapabilityInput>;
 }) {
   return {
     async invoke(session: CapabilitySession, capability: string, input: CapabilityInput = {}): Promise<CapabilityInput> {
@@ -17,7 +16,6 @@ export function createAgentFacade(ports: {
       if (session.pluginInstallationId) {
         return ports.invokeAgentCapability(session.id, capability, input);
       }
-      if (ports.legacyCapability) return ports.legacyCapability(session, capability, input);
       throw new Error('provider_unavailable: session has no plugin binding');
     },
   };

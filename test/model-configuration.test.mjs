@@ -47,10 +47,9 @@ test('combined model changes validate all capabilities and levels before any mut
   assert.equal(mutations, 0);
 }));
 
-test('bound Pi uses the capability facade and unbound Codex retains explicit default behavior', () => withModule(async ({ createModelConfigurationService, modelConfigurationState }, server) => {
-  const { createLegacyModelConfiguration } = await server.ssrLoadModule('/src/lib/app/compatibility/legacy-model-configuration.ts');
+test('bound Pi uses the capability facade and unbound sessions reject configuration changes', () => withModule(async ({ createModelConfigurationService, modelConfigurationState }, server) => {
   const calls = [];
-  const legacyApply = createLegacyModelConfiguration({ updateSessionExecutionProfile: async (id, requested) => ({ sessionId: id, requested, enforced: requested }) });
+  const legacyApply = () => assert.fail("history must not change execution profiles");
   const service = createModelConfigurationService({ getSessionExecutionProfile: async () => ({ requested: {}, enforced: {} }), facade: { invoke: async (...args) => { calls.push(args); } }, getSessionModels: async () => initialCatalog, legacyApply });
   const piOption = { ...option, reference: 'provider/model', provider: 'provider' };
   const piCatalog = { ...initialCatalog, current: piOption, models: [piOption] };
@@ -58,8 +57,6 @@ test('bound Pi uses the capability facade and unbound Codex retains explicit def
   assert.deepEqual(calls[0][2], { action: 'set', provider: 'provider', modelId: 'model' });
   assert.equal(calls[1][1], 'model.reasoning');
   const legacy = { ...session, agent: 'codex', pluginInstallationId: null };
-  const result = await service.apply(legacy, { kind: 'configuration', model: 'model', reasoningEffort: null }, initialCatalog, { requested: { reasoningEffort: 'high' } });
-  assert.equal(result.profile.requested.reasoningEffort, null);
-  assert.deepEqual(modelConfigurationState(legacy, initialCatalog, result.profile), { selectedReasoningEffort: null, currentReasoningEffort: 'high', defaultAction: 'reset' });
-  await assert.rejects(service.apply({ ...legacy, agent: 'external' }, { kind: 'model', model: 'model' }, initialCatalog, null), /provider_unavailable/);
+  await assert.rejects(service.apply(legacy, { kind: "configuration", model: "model", reasoningEffort: null }, initialCatalog, { requested: { reasoningEffort: "high" } }), /history_only/);
+  await assert.rejects(service.apply({ ...legacy, agent: 'external' }, { kind: 'model', model: 'model' }, initialCatalog, null), /history_only/);
 }));

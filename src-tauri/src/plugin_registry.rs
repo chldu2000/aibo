@@ -164,8 +164,8 @@ pub(crate) fn inspect(root: &Path) -> Result<(Value, Vec<PathBuf>, String), Stri
     }
     if let Some(executable) = manifest["entrypoint"]["executable"].as_str() { package_path(root, executable)?; }
     let mut ids = HashSet::new();
-    for agent in normalized.agents() {
-        if !ids.insert(agent["agentId"].as_str().unwrap()) { return Err("manifest_mismatch: duplicate Agent ID".into()); }
+    for agent in normalized.session_agents(manifest["pluginId"].as_str().unwrap()) {
+        if !ids.insert(agent["agentId"].as_str().unwrap().to_owned()) { return Err("manifest_mismatch: duplicate Agent ID".into()); }
     }
     if let Some(resources) = manifest["resources"].as_array() {
         for resource in resources {
@@ -254,7 +254,7 @@ pub(crate) async fn install(db: &SqlitePool, data_dir: &Path, source: &Path) -> 
     if let Err(error) = copy_result { let _ = fs::remove_dir_all(&staging); return Err(error); }
     let persist = async {
         let mut transaction = db.begin().await.map_err(io_error)?;
-        for agent in normalized.agents() {
+        for agent in normalized.session_agents(manifest["pluginId"].as_str().unwrap()) {
             let conflict: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM agent_contributions a JOIN plugin_installations p ON a.installation_id = p.id WHERE a.agent_id = ? AND p.plugin_id <> ?")
                 .bind(agent["agentId"].as_str().unwrap()).bind(manifest["pluginId"].as_str().unwrap()).fetch_one(&mut *transaction).await.map_err(io_error)?;
             if conflict != 0 { return Err("manifest_mismatch: Agent ID belongs to another plugin".into()); }
@@ -267,7 +267,7 @@ pub(crate) async fn install(db: &SqlitePool, data_dir: &Path, source: &Path) -> 
                 .bind(&id).bind(manifest["pluginId"].as_str().unwrap()).bind(manifest["version"].as_str().unwrap()).bind(&expected_digest)
                 .bind(source.to_string_lossy().as_ref()).bind(destination.to_string_lossy().as_ref()).bind(manifest.to_string()).bind(crate::now_iso())
                 .execute(&mut *transaction).await.map_err(io_error)?;
-            for agent in normalized.agents() {
+            for agent in normalized.session_agents(manifest["pluginId"].as_str().unwrap()) {
                 sqlx::query("INSERT INTO agent_contributions (installation_id, agent_id, metadata_json) VALUES (?, ?, ?)")
                     .bind(&id).bind(agent["agentId"].as_str().unwrap()).bind(agent.to_string()).execute(&mut *transaction).await.map_err(io_error)?;
             }
@@ -288,9 +288,12 @@ pub(crate) async fn install(db: &SqlitePool, data_dir: &Path, source: &Path) -> 
 }
 
 pub(crate) async fn install_builtins(db: &SqlitePool, data_dir: &Path) -> Result<(), String> {
+    // Keep retired package metadata for history, but never advertise it as enabled.
+    sqlx::query("UPDATE plugin_installations SET enabled=0 WHERE json_extract(manifest_json,'$.schema')='aibo.plugin-manifest/v1'")
+        .execute(db).await.map_err(io_error)?;
     for (directory, files) in [
-        ("codex-1.0.0", vec![("plugin.json", include_bytes!("../builtin-plugins/codex/plugin.json").as_slice()), ("codex-plugin.mjs", include_bytes!("../builtin-plugins/codex/codex-plugin.mjs").as_slice())]),
-        ("pi-1.0.0", vec![("plugin.json", include_bytes!("../builtin-plugins/pi/plugin.json").as_slice()), ("pi-plugin.mjs", include_bytes!("../builtin-plugins/pi/pi-plugin.mjs").as_slice())]),
+        ("codex-2.0.0", vec![("plugin.json", include_bytes!("../capability-plugins/codex/plugin.json").as_slice()), ("engine.mjs", include_bytes!("../capability-plugins/codex/engine.mjs").as_slice()), ("worker.mjs", include_bytes!("../capability-plugins/codex/worker.mjs").as_slice()), ("session-provider.mjs", include_bytes!("../capability-plugins/session-provider.mjs").as_slice()), ("runtime.mjs", include_bytes!("../../packages/capability-runtime/runtime.mjs").as_slice()), ("stdio.mjs", include_bytes!("../../packages/capability-runtime/stdio.mjs").as_slice())]),
+        ("pi-2.0.0", vec![("plugin.json", include_bytes!("../capability-plugins/pi/plugin.json").as_slice()), ("engine.mjs", include_bytes!("../capability-plugins/pi/engine.mjs").as_slice()), ("worker.mjs", include_bytes!("../capability-plugins/pi/worker.mjs").as_slice()), ("session-provider.mjs", include_bytes!("../capability-plugins/session-provider.mjs").as_slice()), ("runtime.mjs", include_bytes!("../../packages/capability-runtime/runtime.mjs").as_slice()), ("stdio.mjs", include_bytes!("../../packages/capability-runtime/stdio.mjs").as_slice())]),
     ] {
         let source = data_dir.join("bundled-plugin-sources").join(directory);
         fs::create_dir_all(&source).map_err(io_error)?;

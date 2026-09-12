@@ -1,14 +1,11 @@
 <script lang="ts">
-  import { Button, Card, CardContent, CardHeader, CardTitle, Label, PluginView, Textarea } from '$lib/ui-kit';
-  import type { UiPluginViewSnapshot, UiPluginViewVersion, UiPluginViewInteraction } from '$lib/ui-kit';
+  import { Button, Card, CardContent, CardHeader, CardTitle, Label, Textarea } from '$lib/ui-kit';
   import PluginManagerPanel from './PluginManagerPanel.svelte';
   import type { Session, TimelineItem } from '$lib/types';
 
-  type Installation = { id: string; pluginId: string; pluginVersion: string; enabled: boolean; installed: boolean; runnable: boolean; dependencies: { kind: string; name: string; required: boolean; available: boolean; versionRange: string | null; detectedVersion?: string | null; issue?: string | null }[]; manifest: { displayName: string; agents: { agentId: string; displayName: string }[] } };
+  type Installation = { id: string; pluginId: string; pluginVersion: string; enabled: boolean; installed: boolean; runnable: boolean; dependencies: { kind: string; name: string; required: boolean; available: boolean; versionRange: string | null; detectedVersion?: string | null; issue?: string | null }[]; sessionProviders: { id: string; displayName: string }[]; manifest: { displayName: string } };
   type PluginSession = Omit<Session, 'agent'> & { agent: string };
   type Props = {
-    interaction: UiPluginViewInteraction;
-    onInteractionChange: (state: UiPluginViewInteraction) => void;
     installations: Installation[];
     sessions: PluginSession[];
     selectedSession: PluginSession | null;
@@ -16,7 +13,6 @@
     packagePath: string;
     prompt: string;
     timeline: TimelineItem[];
-    views: UiPluginViewSnapshot[];
     busy: boolean;
     error: string;
     desktop: boolean;
@@ -31,12 +27,11 @@
     onCancel: () => void;
     onResume: () => void;
     onCloseSession: () => void;
-    onViewAction: (viewId: string, actionId: string, input: Record<string, unknown>, version: UiPluginViewVersion) => void;
     onClose: () => void;
   };
-  let { interaction, onInteractionChange, installations, sessions, selectedSession, workspaceLabel, packagePath, prompt, timeline, views, busy, error, desktop, onPackagePathChange, onPromptChange, onInstall, onEnabledChange, onUninstall, onCreateSession, onSelectSession, onSend, onCancel, onResume, onCloseSession, onViewAction, onClose }: Props = $props();
+  let { installations, sessions, selectedSession, workspaceLabel, packagePath, prompt, timeline, busy, error, desktop, onPackagePathChange, onPromptChange, onInstall, onEnabledChange, onUninstall, onCreateSession, onSelectSession, onSend, onCancel, onResume, onCloseSession, onClose }: Props = $props();
   const promptId = $props.id();
-  const running = $derived(selectedSession?.state === 'running' || selectedSession?.state === 'starting');
+  const running = $derived(['starting', 'running', 'waiting_approval', 'waiting_user', 'compacting'].includes(selectedSession?.state ?? ''));
   const resumable = $derived(selectedSession?.state === 'interrupted' || selectedSession?.state === 'failed');
 </script>
 
@@ -70,12 +65,8 @@
               <Card><CardHeader><CardTitle>{item.role} · {item.status}</CardTitle></CardHeader><CardContent>{item.content}</CardContent></Card>
             {/each}
           </div>
-          {#each views as snapshot (snapshot.document.viewId)}
-            {@const view = snapshot.document}
-            <PluginView {interaction} {onInteractionChange} document={view} sessionId={selectedSession.id} disabled={busy} onAction={(actionId, input) => onViewAction(view.viewId, actionId, input, snapshot.version)} />
-          {/each}
           <form class="plugin-prompt" onsubmit={(event) => { event.preventDefault(); if (!busy && !running && prompt.trim()) onSend(); }}>
-            <Label for={promptId}>发送给插件 Agent</Label>
+            <Label for={promptId}>发送给能力会话</Label>
             <Textarea id={promptId} value={prompt} disabled={busy || running} oninput={(event: Event) => onPromptChange((event.currentTarget as HTMLTextAreaElement).value)} />
             <Button type="submit" disabled={busy || running || !prompt.trim()}>发送</Button>
           </form>

@@ -58,8 +58,11 @@ impl Broker {
     /// A replay is checked before provider resolution, so disable/rebind cannot
     /// silently transfer an old write to another implementation.
     pub(crate) async fn invoke_authorized(&self, caller: &str, request: Request, approval: &workspace_write_runs::Request) -> Result<Response, Failure> {
+        self.invoke_authorized_observed(caller,request,approval,None).await
+    }
+    pub(crate) async fn invoke_authorized_observed(&self, caller: &str, request: Request, approval: &workspace_write_runs::Request,observer:Option<EventObserver>) -> Result<Response, Failure> {
         Self::identity(&request.scope, &request.capability, &request.version)?;
-        if !approval.matches(&request.request_id, caller) || request.request_id.is_empty() || request.request_id.len() > 160 || request.input.to_string().len() > MAX_INPUT {
+        if !approval.matches(&request.request_id, caller) || request.request_id.is_empty() || request.request_id.len() > 160 || request.input.to_string().len() > input_limit(&request.capability) {
             return Err(fail("invalid_input", "Invalid capability request or host approval identity"));
         }
         let workspace_id: Option<String> = match &request.scope {
@@ -72,7 +75,7 @@ impl Broker {
             if let Some(result) = workspace_write_runs::replay_requested(&self.db, workspace, OPERATION, &identity, approval).await.map_err(failure)? { return result.map_err(failure); }
         }
         let provider = self.provider(&request).await?;
-        if provider.operation["effect"] == "read" { return self.invoke_selected(caller, request, provider, None, None).await; }
+        if provider.operation["effect"] == "read" { return self.invoke_selected_observed(caller, request, provider, None, None,observer).await; }
         let workspace = self.workspace(&request.scope).await?.ok_or_else(||fail("permission_denied", "Capability writes require a workspace"))?;
         self.validate_turn(&request).await?;
         if !jsonschema::options().build(&provider.operation["inputSchema"]).map_err(database)?.is_valid(&request.input) { return Err(fail("invalid_input", "Input does not match the capability contract")); }
@@ -82,7 +85,7 @@ impl Broker {
                 if cancel.is_requested().await { return Err(CoreError::WriteReplay { code:"cancelled".into(),message:"Capability was cancelled before dispatch".into() }); }
                 // The runtime and its dependency probes are constructed only here,
                 // after durable admission, native approval and context comparison.
-                self.invoke_selected(caller, request.clone(), provider.clone(), None, Some(WriteContext { cancellation:cancel, approval:approval.clone(), uncertain:Default::default() })).await.map_err(|error| {
+                self.invoke_selected_observed(caller, request.clone(), provider.clone(), None, Some(WriteContext { cancellation:cancel, approval:approval.clone(), uncertain:Default::default() }),observer.clone()).await.map_err(|error| {
                     CoreError::WriteOutcomeUnknown(format!("{}; invocation {}", error.message, error.invocation_id.as_deref().unwrap_or("not assigned")))
                 })
             }).await.map_err(failure)

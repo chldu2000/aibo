@@ -2,7 +2,6 @@ import { createWorkspaceWriteController } from './app/workspace-write-controller
 import { invoke } from '@tauri-apps/api/core';
 import { listen, type UnlistenFn } from '@tauri-apps/api/event';
 import { getCurrentWindow } from '@tauri-apps/api/window';
-import type { UiPluginViewSnapshot, UiPluginViewVersion } from './ui-kit/plugin-view';
 import type {
   AgentDiagnostic,
   WorkspaceCapabilityInventory,
@@ -14,7 +13,6 @@ import type {
   CodexThreadSummary,
   PiSessionTreeNavigation,
   PiTreeNavigationOptions,
-  PiSessionSnapshot,
   PiSessionTreeSnapshot,
   SessionListOptions,
   ExecutionProfile,
@@ -51,7 +49,6 @@ import type {
   ProjectActionRun,
   Workspace,
   WorkspacePathSuggestion,
-  AgentCommand,
   ComposerDraft,
 } from './types';
 
@@ -103,8 +100,6 @@ export const sendAgentPrompt = (sessionId: string, input: string): Promise<Sessi
 export const cancelAgentTurn = (sessionId: string): Promise<void> => invoke('cancel_agent_turn', { sessionId });
 export const resumeAgentSession = (sessionId: string): Promise<void> => invoke('resume_agent_session', { sessionId });
 export const closeAgentSession = (sessionId: string): Promise<void> => invoke('close_agent_session', { sessionId });
-export const getPluginViews = (sessionId: string): Promise<UiPluginViewSnapshot[]> => invoke('get_plugin_view_snapshots', { sessionId });
-export const invokePluginViewAction = (sessionId: string, viewId: string, actionId: string, input: Record<string, unknown>, version: UiPluginViewVersion): Promise<Record<string, unknown>> => invoke('invoke_plugin_view_action', { sessionId, viewId, actionId, input, version });
 export const invokeAgentCapability = (sessionId: string, capability: string, input: Record<string, unknown>): Promise<Record<string, unknown>> => invoke('invoke_agent_capability', { sessionId, capability, input });
 
 export const presentationWindowId = (): string => isTauri() ? getCurrentWindow().label : 'preview';
@@ -134,67 +129,18 @@ export const saveComposerDraft = (
 ): Promise<ComposerDraft | null> =>
   invoke<ComposerDraft | null>('save_composer_draft', { sessionId, text, sendFailed });
 
-export const listPiCommands = (sessionId: string): Promise<AgentCommand[]> =>
-  invoke<AgentCommand[]>('list_pi_commands', { sessionId });
 
-export const compactPiSession = (
-  sessionId: string,
-  instructions?: string,
-): Promise<Record<string, unknown>> =>
-  invoke<Record<string, unknown>>('compact_pi_session', {
-    sessionId,
-    instructions: instructions?.trim() || null,
-  });
 
-export const setPiThinkingLevel = (
-  sessionId: string,
-  level?: string,
-): Promise<Record<string, unknown>> =>
-  invoke<Record<string, unknown>>('set_pi_thinking_level', {
-    sessionId,
-    level: level?.trim() || null,
-  });
 
-export const setPiModel = (
-  sessionId: string,
-  reference?: string,
-): Promise<Record<string, unknown>> =>
-  invoke<Record<string, unknown>>('set_pi_model', {
-    sessionId,
-    reference: reference?.trim() || null,
-  });
 
 export const getSessionModels = (sessionId: string): Promise<SessionModelCatalog> =>
   invoke<SessionModelCatalog>('get_session_models', { sessionId });
 
-export const listCodexSkills = (sessionId: string): Promise<AgentCommand[]> =>
-  invoke<AgentCommand[]>('list_codex_skills', { sessionId });
 
-export const getCodexGoal = (sessionId: string): Promise<Record<string, unknown>> =>
-  invoke<Record<string, unknown>>('get_codex_goal', { sessionId });
 
-export const setCodexGoal = (
-  sessionId: string,
-  objective: string,
-  tokenBudget?: number,
-): Promise<Record<string, unknown>> =>
-  invoke<Record<string, unknown>>('set_codex_goal', {
-    sessionId,
-    objective,
-    tokenBudget: tokenBudget ?? null,
-  });
 
-export const clearCodexGoal = (sessionId: string): Promise<Record<string, unknown>> =>
-  invoke<Record<string, unknown>>('clear_codex_goal', { sessionId });
 
-export const resolveCodexUserInput = (
-  sessionId: string,
-  requestId: string,
-  answers: Record<string, string[]>,
-): Promise<void> => invoke('resolve_codex_user_input', { sessionId, requestId, answers });
 
-export const reloadPiSession = (sessionId: string): Promise<Record<string, unknown>> =>
-  invoke<Record<string, unknown>>('reload_pi_session', { sessionId });
 
 export const addWorkspace = (path: string): Promise<Workspace> =>
   invoke<Workspace>('add_workspace', { path });
@@ -533,56 +479,18 @@ export const archiveCodexThread = (sessionId: string): Promise<Session> =>
 export const unarchiveCodexThread = (sessionId: string): Promise<Session> =>
   invoke<Session>('unarchive_codex_thread', { sessionId });
 
-export const createCodexSession = (
-  workspaceId: string,
-  requestedProfile?: ExecutionProfile | null,
-): Promise<Session> =>
-  createAgentSession(workspaceId, 'dev.aibo.codex.agent', undefined, requestedProfile);
 
-export const sendCodexPrompt = (sessionId: string, input: string): Promise<Session> =>
-  invoke<Session>('send_codex_prompt', { sessionId, input });
 
-export const abortCodexTurn = (sessionId: string): Promise<void> =>
-  invoke('abort_codex_turn', { sessionId });
 
-export const resolveCodexApproval = (
-  sessionId: string,
-  requestId: string,
-  decision: ApprovalDecision,
-): Promise<void> => invoke('resolve_codex_approval', { sessionId, requestId, decision });
 
-export const resolvePiApproval = (
-  sessionId: string,
-  requestId: string,
-  decision: ApprovalDecision,
-): Promise<void> => invoke('resolve_pi_approval', { sessionId, requestId, decision });
 
-export const closeCodexSession = (sessionId: string): Promise<void> =>
-  invoke('close_codex_session', { sessionId });
 
-export const createPiSession = (
-  workspaceId: string,
-  requestedProfile?: ExecutionProfile | null,
-): Promise<Session> =>
-  createAgentSession(workspaceId, 'dev.aibo.pi.agent', undefined, requestedProfile);
 
-export const sendPiPrompt = (sessionId: string, input: string): Promise<Session> =>
-  invoke<Session>('send_pi_prompt', { sessionId, input });
 
-export const abortPiTurn = (sessionId: string): Promise<void> =>
-  invoke('abort_pi_turn', { sessionId });
 
-export const closePiSession = (sessionId: string): Promise<void> =>
-  invoke('close_pi_session', { sessionId });
 
-export const steerPiPrompt = (sessionId: string, input: string): Promise<void> =>
-  invoke('steer_pi_prompt', { sessionId, input });
 
-export const followUpPiPrompt = (sessionId: string, input: string): Promise<void> =>
-  invoke('follow_up_pi_prompt', { sessionId, input });
 
-export const clearPiQueue = (sessionId: string): Promise<void> =>
-  invoke('clear_pi_queue', { sessionId });
 
 export const getPiSessionTree = (sessionId: string): Promise<PiSessionTreeSnapshot> =>
   invoke<PiSessionTreeSnapshot>('get_pi_session_tree', { sessionId });
@@ -600,8 +508,6 @@ export const navigatePiSessionTree = (
     replaceInstructions: false,
   });
 
-export const getPiSessionSnapshot = (sessionId: string): Promise<PiSessionSnapshot> =>
-  invoke<PiSessionSnapshot>('get_pi_session_snapshot', { sessionId });
 
 export const listenToAgentEvents = (
   handler: (event: AgentEvent) => void,

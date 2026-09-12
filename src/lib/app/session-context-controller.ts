@@ -17,7 +17,6 @@ import type {
 import { toErrorMessage } from './error-utils';
 import { sessionAgentKind } from './agent-kind';
 import { createAgentFacade } from './agent-facade';
-import { legacyTreeCapability } from './compatibility/legacy-tree';
 
 export type SessionContextControllerContext = {
   api: {
@@ -62,7 +61,7 @@ export type SessionContextControllerContext = {
 
 /** Reads selected-session context and normalizes refresh feedback for the UI. */
 export function createSessionContextController(context: SessionContextControllerContext) {
-  const agent = createAgentFacade({ ...context.api, legacyCapability: legacyTreeCapability(context.api) });
+  const agent = createAgentFacade(context.api);
   async function refreshCodexThreads(
     workspaceId: string,
     announce = false,
@@ -102,7 +101,7 @@ export function createSessionContextController(context: SessionContextController
       if (sessionId === context.getSelectedSessionId()) {
         context.setCodexThreadSnapshot(snapshot);
       }
-      if (announce) context.setNotice(`已读取远端线程，共 ${snapshot.turnCount} 轮。`);
+      if (announce) context.setNotice(snapshot.turnCount === null ? '已读取远端线程，原生引擎未提供轮次统计。' : `已读取远端线程，共 ${snapshot.turnCount} 轮。`);
     } catch (error) {
       if (sessionId === context.getSelectedSessionId()) {
         context.setCodexThreadSnapshot(null);

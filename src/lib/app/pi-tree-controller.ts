@@ -7,7 +7,6 @@ import type {
 } from '$lib/types';
 import { toErrorMessage } from './error-utils';
 import { createAgentFacade } from './agent-facade';
-import { legacyTreeCapability } from './compatibility/legacy-tree';
 
 export type PiTreeControllerContext = {
   api: {
@@ -36,7 +35,7 @@ export type PiTreeControllerContext = {
 
 /** Coordinates Pi branch selection and navigation without owning page state. */
 export function createPiTreeController(context: PiTreeControllerContext) {
-  const agent = createAgentFacade({ ...context.api, legacyCapability: legacyTreeCapability(context.api) });
+  const agent = createAgentFacade(context.api);
   function requestNavigation(entryId: string): void {
     const session = context.getSelectedSession();
     if (

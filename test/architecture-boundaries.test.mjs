@@ -17,8 +17,15 @@ test('Agent capability routing does not identify providers or choose provider AP
   assert.doesNotMatch(lifecycle, /closePiSession|closeCodexSession/);
   const host = await readFile(path.join(root, 'src-tauri/src/lib.rs'), 'utf8');
   assert.doesNotMatch(host, /execution_profile_agent\s*\(/, 'execution policy must use the persisted host backend');
-  const runtime = await readFile(path.join(root, 'src-tauri/src/plugin_host.rs'), 'utf8');
-  assert.doesNotMatch(runtime, /execution_profile_agent\s*\(/);
+  const runtime = await readFile(path.join(root, 'src-tauri/src/session_host.rs'), 'utf8');
+  assert.doesNotMatch(runtime, /execution_profile_agent\s*\(|PluginRuntime|Command::new|tokio::process/);
+  assert.match(runtime, /broker:Broker/);
+  assert.doesNotMatch(runtime, /pub async fn (?:create_with_profile|resume|send|cancel|close|archive|invoke_capability|resolve_approval)\(/, 'session operations must require an explicit caller');
+  assert.doesNotMatch(host, /\.plugins\s*\.(?:create_with_profile|resume|send|cancel|close|archive|invoke_capability|resolve_approval)\(/, 'IPC must not use a default main-window identity');
+
+  assert.doesNotMatch(host, /mod plugin_host;|mod codex;|mod pi;|CodexManager|PiManager/, 'the retired Agent host must not be compiled');
+  assert.doesNotMatch(host, /async fn (?:send_(?:codex|pi)_prompt|abort_(?:codex|pi)_turn|resolve_(?:codex|pi)_approval|set_pi_model|set_pi_thinking_level|compact_pi_session|steer_pi_prompt|follow_up_pi_prompt|clear_pi_queue)\b/, 'retired provider-specific execution IPC must not return');
+
 });
 
 async function sourceFiles(directory, extension) {
@@ -174,13 +181,13 @@ test('Pi tree navigation exposes all native summary modes', async () => {
   const [overlays, api, host] = await Promise.all([
     readFile(path.join(root, 'src/lib/components/app/AppOverlays.svelte'), 'utf8'),
     readFile(path.join(root, 'src/lib/api.ts'), 'utf8'),
-    readFile(path.join(root, 'src-tauri/pi-sdk-host.mjs'), 'utf8'),
+    readFile(path.join(root, 'src-tauri/capability-plugins/pi/engine.mjs'), 'utf8'),
   ]);
   for (const label of ['No Summary', 'Summarize', 'Summarize with custom prompt']) {
     assert.match(overlays, new RegExp(label), `Pi navigation must expose ${label}`);
   }
   assert.match(api, /summarize: options\.mode !== 'none'/, 'summary selection must reach the native command');
-  assert.match(host, /customInstructions: customInstructions \|\| undefined/, 'custom summary instructions must reach Pi');
+  assert.match(host, /customInstructions: fields\.customInstructions \|\| undefined/, 'custom summary instructions must reach Pi');
 });
 
 test('Pi timeline groups ordinary system nodes without folding summaries', async () => {

@@ -1,7 +1,5 @@
 import type { PresentationProps } from './presentation-props';
 import type { Component } from 'svelte';
-import type { UiPluginViewProps } from './plugin-view';
-export type { UiPluginViewDocument, UiPluginViewProps } from './plugin-view';
 
 export type UiIconName =
   | 'add'
@@ -99,7 +97,6 @@ export type UiAgentStatusMarkProps = {
  */
 export type UiKitAdapter = {
   SemanticView: Component<PresentationProps>;
-  PluginView: Component<UiPluginViewProps>;
   AgentStatusMark: Component<UiAgentStatusMarkProps>;
   AlertDialog: Component;
   Badge: Component;
