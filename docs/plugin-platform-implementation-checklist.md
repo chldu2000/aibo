@@ -166,10 +166,10 @@
 
 - [x] 提取能力 SDK 和纯数据 presentation 协议；renderer 本地接口单独暴露，不从能力 SDK 重导出 DOM/框架类型。见 [P5 第一至四批](./plugin-platform-p5-sdk.md)：三个独立包、宿主重用、tarball 消费者有/无 DOM 的正反编译验证。
 - [x] 用仓库外能力包验证构建、打包、安装、调用、语义贡献和卸载，无 Svelte/DOM/CSS 依赖；再决定独立包发布与目录统一。见 [P5 第三批](./plugin-platform-p5-sdk.md)：实际 tarball、外部消费者编译、隔离 App 及双皮肤验收；继续单仓库本地打包，注册表发布与旧插件目录迁移暂缓。
-- [ ] 建立宿主/manifest/runtime/view/capability/renderer 版本与支持平台矩阵，明确 UI 包的构建期可信或已批准的隔离加载机制。
+- [x] 建立宿主/manifest/runtime/view/capability/renderer 版本与支持平台矩阵，明确 UI 包的构建期可信边界。见[支持矩阵](./plugin-platform-support-matrix.md)：区分协议识别、实现存在与原生验收通过，未批准动态 UI 加载。
 - [ ] 验证新 release 激活失败、旧依赖保留、私有数据可并存版本或迁移前备份、失败不切换 binding；分别记录代码回滚和数据恢复路径。
 - [ ] 验证核心数据库增量迁移、旧 AgentEvent/历史可读，不以删除旧列作为早期清理手段。
-- [ ] 如有真实 Custom Surface 需求，先单独通过 ADR：隔离 WebView/origin 或受限 iframe、无直接 Tauri 权限的消息桥、CSP、导航/网络、弹窗、剪贴板、拖放、来源校验和限流。
+- [ ] （条件项：当前无实际需求，暂缓，不阻塞 P5；见[支持矩阵](./plugin-platform-support-matrix.md)）如有真实 Custom Surface 需求，先单独通过 ADR：隔离 WebView/origin 或受限 iframe、无直接 Tauri 权限的消息桥、CSP、导航/网络、弹窗、剪贴板、拖放、来源校验和限流。
 - [ ] 如实施 Custom Surface，再验证主题信号、局部样式、键盘/焦点、无障碍替代视图、缺 surface 降级及崩溃恢复；不可仅以 Shadow DOM 或 token 声明作为安全/兼容证明。
 
 **退出条件：** 仓库外能力包可通过稳定合同运行；版本、依赖、失败和回滚可诊断。Custom Surface 为条件项，无需求时注明暂缓，不阻塞基础 SDK 交付，也不宣称已支持任意第三方 UI。
