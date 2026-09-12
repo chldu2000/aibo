@@ -49,3 +49,13 @@
 公共纯数据 SDK、插件本地 Runtime helper 和 Web 本地接口现已分开，可勾选 P5 的 SDK 提取项；注册表发布、兼容平台/版本以及升级与数据恢复验收继续保留未完成。
 
 第四批 `pnpm run verify` 通过：25 项架构检查、174 项 Node 测试、类型检查及构建。独立打包和有/无 DOM 的编译测试通过；未修改 Rust 或 renderer 运行逻辑。主 chunk 大小提示仍保留。
+
+## 第五批：版本矩阵与真实旧数据库升级
+
+版本与平台范围见[支持矩阵](./plugin-platform-support-matrix.md)。公共数据包、本地执行 helper、可信 renderer 类型包分别版本化；Custom Surface 无当前实际需求，暂缓。
+
+将 `session_migration_preserves_old_history_and_allows_external_identity` 从内存逐条 SQL 测试加强为磁盘数据库回归：先由 SQLx Migrator 建立 migration 19 的旧数据库，写入会话、绑定、turn、消息、进程记录和旧事件；迁移到 27 后加入 schema 2.0 事件，再通过应用 `open_database` 升到当前版本，并关闭、重新打开验证第二次迁移不重复数据。检查两种事件原始 payload/schema、外部会话/turn 身份、进程 generation 与消息保留，且实际 `session_history::read` 无 runtime 即可读取旧消息；原有外键与外部 Agent 身份断言保留。
+
+该测试补强 Agent 历史的升级证据，不代表插件升级失败或私有数据恢复已经验收。核心迁移的完整退出核对与 release 回滚项继续保持待完成。
+
+本批验证：完整 Rust 208 项通过；`pnpm run verify` 通过。已有主包体积警告仍在，本批未修改运行时代码或构建阈值。

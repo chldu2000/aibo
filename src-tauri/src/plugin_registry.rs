@@ -489,13 +489,16 @@ mod tests {
 
     #[tokio::test]
     async fn session_migration_preserves_old_history_and_allows_external_identity() {
-        let mut connection = sqlx::SqliteConnection::connect_with(&sqlx::sqlite::SqliteConnectOptions::new().in_memory(true).foreign_keys(false)).await.unwrap();
+        let root = std::env::temp_dir().join(format!("aibo-history-upgrade-{}", ulid::Ulid::new()));
+        let old = root.join("migrations");
+        fs::create_dir_all(&old).unwrap();
         let migrations = sqlx::migrate!("./migrations");
-        for migration in migrations.iter().filter(|m|m.version < 20) {
-            let mut transaction = connection.begin().await.unwrap();
-            sqlx::raw_sql(&migration.sql).execute(&mut *transaction).await.unwrap();
-            transaction.commit().await.unwrap();
+        for migration in migrations.iter().filter(|m| m.version < 20) {
+            fs::write(old.join(format!("{:04}_fixture.sql", migration.version)), migration.sql.as_bytes()).unwrap();
         }
+        let path = root.join("host.db");
+        let mut connection = sqlx::SqliteConnection::connect_with(&sqlx::sqlite::SqliteConnectOptions::new().filename(&path).create_if_missing(true).foreign_keys(false)).await.unwrap();
+        sqlx::migrate::Migrator::new(old.as_path()).await.unwrap().run(&mut connection).await.unwrap();
         sqlx::raw_sql("INSERT INTO workspaces(id,path,label,created_at,updated_at) VALUES('w','/old','old','2026','2026');
             INSERT INTO sessions(id,workspace_id,agent,label,state,created_at,updated_at) VALUES('s','w','codex','history','idle','2026','2026');
             INSERT INTO session_bindings(session_id,external_session_id,bound_at) VALUES('s','native-old','2026');
@@ -504,11 +507,28 @@ mod tests {
             INSERT INTO agent_events(event_id,session_id,generation_id,sequence,occurred_at,event_type,payload_json) VALUES('e','s','g',0,'2026','session.started','{\"historical\":true}');
             INSERT INTO process_runs(id,session_id,agent,generation_id,state,started_at) VALUES('p','s','codex','g','exited','2026');")
             .execute(&mut connection).await.unwrap();
-        for migration in migrations.iter().filter(|m|m.version >= 20) {
-            let mut transaction = connection.begin().await.unwrap();
-            sqlx::raw_sql(&migration.sql).execute(&mut *transaction).await.unwrap();
-            transaction.commit().await.unwrap();
+        // First cross the event-version boundary, then upgrade this real database
+        // through the application's normal migrator. Preserve both event formats.
+        for migration in migrations.iter().filter(|m| m.version >= 20 && m.version <= 27) {
+            fs::write(old.join(format!("{:04}_fixture.sql", migration.version)), migration.sql.as_bytes()).unwrap();
         }
+        sqlx::migrate::Migrator::new(old.as_path()).await.unwrap().run(&mut connection).await.unwrap();
+        sqlx::query("INSERT INTO agent_events(event_id,session_id,generation_id,sequence,occurred_at,event_type,payload_json,schema_version) VALUES('e2','s','g',1,'2026','session.started','{\"historicalV2\":true}','2.0')").execute(&mut connection).await.unwrap();
+        connection.close().await.unwrap();
+        for _ in 0..2 {
+            let db = crate::open_database(&path).await.unwrap();
+            let events: Vec<(String, String)> = sqlx::query_as("SELECT payload_json,schema_version FROM agent_events ORDER BY sequence").fetch_all(&db).await.unwrap();
+            assert_eq!(events, vec![("{\"historical\":true}".into(), "1.0".into()), ("{\"historicalV2\":true}".into(), "2.0".into())]);
+            assert_eq!(sqlx::query_scalar::<_, i64>("SELECT COUNT(*) FROM messages WHERE id='m'").fetch_one(&db).await.unwrap(), 1);
+            let history = serde_json::to_value(crate::session_history::read(&db, "w".into(), "s".into(), None).await.unwrap()).unwrap();
+            assert_eq!(history["source"], "persisted-core");
+            assert_eq!(history["items"][0]["content"], "preserve me");
+            assert_eq!(sqlx::query_scalar::<_, String>("SELECT external_session_id FROM session_bindings WHERE session_id='s'").fetch_one(&db).await.unwrap(), "native-old");
+            assert_eq!(sqlx::query_scalar::<_, String>("SELECT external_turn_id FROM turns WHERE id='t'").fetch_one(&db).await.unwrap(), "native-turn");
+            assert_eq!(sqlx::query_scalar::<_, String>("SELECT generation_id FROM process_runs WHERE id='p'").fetch_one(&db).await.unwrap(), "g");
+            db.close().await;
+        }
+        let mut connection = sqlx::SqliteConnection::connect_with(&sqlx::sqlite::SqliteConnectOptions::new().filename(&path)).await.unwrap();
         sqlx::query("PRAGMA foreign_keys=ON").execute(&mut connection).await.unwrap();
         assert!(sqlx::query("PRAGMA foreign_key_check").fetch_all(&mut connection).await.unwrap().is_empty());
         let message: String = sqlx::query_scalar("SELECT content FROM messages WHERE id='m' AND session_id='s'").fetch_one(&mut connection).await.unwrap();
@@ -517,6 +537,8 @@ mod tests {
         assert_eq!(event,("{\"historical\":true}".into(),"1.0".into()));
         sqlx::query("INSERT INTO sessions(id,workspace_id,agent,label,state,created_at,updated_at) VALUES('external','w','dev.example.agent','external','idle','2026','2026')").execute(&mut connection).await.unwrap();
         assert!(sqlx::query("INSERT INTO sessions(id,workspace_id,agent,label,state,created_at,updated_at) VALUES('bad','missing','dev.example.agent','bad','idle','2026','2026')").execute(&mut connection).await.is_err());
+        connection.close().await.unwrap();
+        fs::remove_dir_all(root).unwrap();
     }
 
     #[tokio::test]
