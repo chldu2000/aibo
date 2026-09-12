@@ -23,6 +23,7 @@ try {
     const box = await splitter.boundingBox();
     await page.mouse.move(box.x + box.width/2, box.y + 20); await page.mouse.down();
     await page.mouse.move(box.x + box.width/2 - 40, box.y + 20); await page.mouse.up();
+    await page.waitForFunction(width => Math.abs(document.querySelector('[data-ui-component="workspace-sidebar"]').getBoundingClientRect().width - width - 56) < 1, width);
     assert.ok(Math.abs((await navigation.boundingBox()).width - width - 56) < 1, 'right navigation grows when separator moves left');
     const auxiliary = page.locator('.workspace-grid > :first-child');
     const auxiliaryWidth = (await auxiliary.boundingBox()).width;
@@ -32,6 +33,7 @@ try {
     const auxiliaryBox = await auxiliarySplitter.boundingBox();
     await page.mouse.move(auxiliaryBox.x + auxiliaryBox.width/2, auxiliaryBox.y + 20); await page.mouse.down();
     await page.mouse.move(auxiliaryBox.x + auxiliaryBox.width/2 + 32, auxiliaryBox.y + 20); await page.mouse.up();
+    await page.waitForFunction(width => Math.abs(document.querySelector('.workspace-grid > :first-child').getBoundingClientRect().width - width - 48) < 1, auxiliaryWidth);
     assert.ok(Math.abs((await auxiliary.boundingBox()).width - auxiliaryWidth - 48) < 1, 'left auxiliary grows when separator moves right');
     const keptWidth = (await navigation.boundingBox()).width;
     const current = await splitter.boundingBox();
@@ -39,6 +41,8 @@ try {
     await page.keyboard.press('Control+Shift+Backspace');
     await page.waitForFunction(() => document.querySelector('[data-presentation-layout]')?.dataset.presentationLayout === 'standard');
     await page.mouse.move(current.x - 80, current.y + 20); await page.mouse.up();
+    // Observe a rendered frame after the old pointer events before checking their absence of effects.
+    await page.evaluate(() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))));
     assert.ok(Math.abs((await navigation.boundingBox()).width - keptWidth) < 1, 'renderer disposal stops old drag');
     await page.getByRole('button',{name:'交换工作台侧边区域',exact:true}).click();
     await page.reload();

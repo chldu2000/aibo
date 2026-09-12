@@ -43,12 +43,34 @@
 
 本批 `pnpm run verify` 全部通过（25 项架构检查、168 项 Node 测试、类型检查及构建）；两项浏览器探针和两轮原生探针均退出 0。未修改 Rust 实现；现有 Rust 编译警告和主 chunk 大小提示保留。
 
+## 整体交互验收
+
+本轮重新检查各探针的实际断言，并顺序运行以下浏览器验收。没有把“设置了减少动态效果”或“没有脚本错误”当作交互要求已完成的证据。
+
+| 清单要求 | 命令与实际覆盖 |
+| --- | --- |
+| 整体布局切换 | `node probes/workbench-reorder.mjs`：实际 App、两套皮肤、导航左右重排、两侧鼠标/箭头键调整、拖动期间恢复后旧事件失效、重载保留布局 |
+| 全部核心语义视图 | `node probes/semantic-ui-browser.mjs`：collection/detail/settings/inspector；集合/详情覆盖双皮肤与中央/侧栏，settings/inspector 覆盖双皮肤与 Svelte/DOM；集合/详情状态覆盖加载、空、错误、不可用、部分结果和截断 |
+| 键盘与焦点 | 核心视图探针验证 Enter/Space、详情标题及返回条目焦点；`node probes/workbench-lifecycle.mjs` 验证两套皮肤中被移除、隐藏、禁用的焦点目标，以及 Tab 可继续导航 |
+| 状态与生命周期 | 生命周期探针验证草稿/插件表单、挂载失败后恢复、模拟流继续、旧 generation/会话动作拒绝；核心视图探针验证工作区 A/B/A 和失效详情目标恢复 |
+| 屏幕阅读器标签 | `node probes/workbench-accessibility.mjs` 读取 Chromium AX 树：双皮肤三种布局，恢复按钮和唯一 main landmark；全部核心视图控件名称、只读属性与错误 alert |
+| 减少动态效果 | `node probes/reduced-motion.mjs`：正常动画/过渡必须实际存在；reduce 时检查全部已挂载节点和伪元素的计算样式，双皮肤分别 444/363 组，布局操作仍可用 |
+
+布局探针本轮连续两次失败，定位为鼠标事件后过早读取布局：右侧导航即时宽度为 276px，下一帧为预期 316px。命中元素和 pointer 事件正确；另一侧也出现相同现象。修复仅让探针等待精确目标宽度，保留原数值、方向与 1px 容差；旧拖动无效的断言额外观察渲染帧，避免漏掉迟到影响。独立修复复跑和整组原始验收均通过，临时诊断日志已移除。
+
+浏览器结果仍与各专项归档的语义结论一致：[工作台重排](./baselines/plugin-platform-p4/workbench-reorder-browser.json)、[焦点与生命周期](./baselines/plugin-platform-p4/workbench-focus-browser.json)、[核心视图](./baselines/plugin-platform-p4/core-semantic-views-browser.json)、[无障碍树](./baselines/plugin-platform-p4/workbench-accessibility-browser.json)、[减少动态效果](./baselines/plugin-platform-p4/reduced-motion-browser.json)。浏览器证据不代替原生执行、系统偏好或完整人工 VoiceOver 体验认证；原始清单要求的是可验证的屏幕阅读器标签。
+
+本轮也复跑 `node probes/workbench-accessibility-native.mjs`，在隔离 macOS App 中创建真实工作区：双皮肤 × 三布局均无未命名应用按钮；系统关闭/最小化控件具有明确系统角色描述和可执行动作。每套皮肤通过原生 AXPress 按下恢复按钮后，实际 WebView 均返回 standard。[原生结果](./baselines/plugin-platform-p4/workbench-accessibility-native.json)已更新为本轮记录，外层退出 0。语义视图探针另补空态/不可用说明的显式可见断言，避免只挂载 fixture 却不核对提示。
+
+**整体布局、核心视图、键盘、焦点、屏幕阅读器标签、减少动态效果与双皮肤验收项已完成核对。** 这些结果不推导全部本机能力跨平台支持；发布平台矩阵仍归 P5。
+
+本批 `pnpm run verify` 通过（25 项架构检查、168 项 Node 测试、类型检查及构建）。生产主 chunk 约 520 kB 的提示仍存在；未调整阈值。没有修改产品实现或 Rust；本批改动为探针观测时机、空态断言及验收归档。
+
 ## 尚需逐项核对的 P4 范围
 
 - 独立插件管理、审批、历史、停用及默认工作台恢复。
 - 项目任务/Git 服务边界、受控写入、日志及资源限制。
 - 直接与插件间 Capability 写入、审批预检执行边界。
 - 页面生命周期、过期上下文及权限复核。
-- 整体布局、全部核心视图、键盘、焦点、无障碍标签及减少动态效果。
 
 以上已有多批实现和专项证据，列表表示尚未完成本轮逐项归档，不表示需要重新实现。

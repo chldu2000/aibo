@@ -4,7 +4,7 @@ import { createServer } from 'vite';
 import { chromium } from 'playwright';
 const output=process.env.AIBO_SEMANTIC_SCREENSHOTS ?? '/tmp/aibo-p1-screenshots';
 await mkdir(output,{recursive:true});
-const server=await createServer({server:{host:'127.0.0.1',port:0}});await server.listen();
+const server=await createServer({server:{host:'127.0.0.1',port:0,hmr:false,watch:null}});await server.listen();
 const address=server.httpServer.address();
 const browser=await chromium.launch({headless:true});
 const page=await browser.newPage({viewport:{width:1280,height:900},reducedMotion:'reduce'});
@@ -30,6 +30,8 @@ try {
     await page.waitForFunction(()=>document.activeElement?.getAttribute('data-item')==='worktree:src/App.svelte');
     for(const fixture of ['empty','error','loading','unavailable','partial','partialDetail']) {
       await page.evaluate(fixture=>window.semanticProbe.update(fixture),fixture);
+      if(fixture==='empty')assert.equal(await page.getByText('没有工作区变更',{exact:true}).isVisible(),true);
+      if(fixture==='unavailable')assert.equal(await page.getByText('当前工作区不支持 Git',{exact:true}).isVisible(),true);
       if(fixture==='error')assert.match(await page.getByRole('alert').innerText(),/失败/);
       if(fixture==='loading')assert.equal(await page.getByRole('button',{name:'刷新',exact:true}).isDisabled(),true);
       if(fixture==='partial')assert.match(await page.locator('#probe').innerText(),/部分结果/);
