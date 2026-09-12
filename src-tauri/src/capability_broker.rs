@@ -2,6 +2,8 @@
 //! are accepted from request JSON. Writes require a separate host approval boundary.
 #[path = "capability_writes.rs"]
 mod writes;
+#[path = "capability_binding_candidates.rs"]
+mod binding_candidates;
 #[cfg(all(test, unix))]
 #[path = "capability_write_chain_tests.rs"]
 mod write_chain_tests;
@@ -63,6 +65,7 @@ pub(crate) struct Provider {
     #[serde(skip_serializing)] manifest: Value,
     #[serde(skip_serializing)] directory: PathBuf,
     #[serde(skip_serializing)] digest: String,
+    #[serde(skip_serializing)] candidate: Option<String>,
 }
 const MAX_CALL_DEPTH: usize = 8;
 const MAX_CHILD_CALLS: usize = 32;
@@ -116,6 +119,7 @@ impl Broker {
     pub async fn recover(db: &SqlitePool) -> Result<(), String> {
         sqlx::query("UPDATE capability_invocations SET status=CASE WHEN write_run_id IS NULL THEN 'interrupted' ELSE 'outcome_unknown' END,finished_at=? WHERE status='running'")
             .bind(crate::now_iso()).execute(db).await.map_err(|e|e.to_string())?;
+        sqlx::query("DELETE FROM capability_binding_candidates").execute(db).await.map_err(|e|e.to_string())?;
         Ok(())
     }
     async fn workspace(&self, scope: &Scope) -> Result<Option<crate::Workspace>, Failure> {
@@ -178,7 +182,7 @@ impl Broker {
                 for operation in contribution.metadata["operations"].as_array().unwrap() {
                     if operation["capability"]["id"] != capability { continue; }
                     if operation["capability"]["version"] != version { other_version = true; continue; }
-                    providers.push(Provider { installation_id: row.get("id"), contribution_id: contribution.id.clone(), plugin_id: row.get("plugin_id"), version: version.into(), operation: operation.clone(), manifest: manifest.clone(), directory: PathBuf::from(row.get::<String,_>("install_path")), digest: row.get("package_digest") });
+                    providers.push(Provider { installation_id: row.get("id"), contribution_id: contribution.id.clone(), plugin_id: row.get("plugin_id"), version: version.into(), operation: operation.clone(), manifest: manifest.clone(), directory: PathBuf::from(row.get::<String,_>("install_path")), digest: row.get("package_digest"), candidate: None });
                 }
             }
         }
@@ -196,19 +200,37 @@ impl Broker {
         }
         let dependencies = crate::plugin_dependencies::resolve(&self.db,&binding.installation_id,true).await.map_err(database)?;
         if !dependencies.supports(&binding.contribution_id) { return Err(fail("provider_unavailable", "Selected contribution has an unavailable dependency")); }
-        let (kind,id) = binding.scope.key();
-        sqlx::query("INSERT INTO capability_provider_bindings(scope_kind,scope_id,capability_id,contract_version,installation_id,contribution_id,updated_at) VALUES(?,?,?,?,?,?,?) ON CONFLICT(scope_kind,scope_id,capability_id,contract_version) DO UPDATE SET installation_id=excluded.installation_id,contribution_id=excluded.contribution_id,updated_at=excluded.updated_at")
-            .bind(kind).bind(id).bind(binding.capability).bind(binding.version).bind(binding.installation_id).bind(binding.contribution_id).bind(crate::now_iso()).execute(&self.db).await.map_err(database)?;
-        Ok(())
+        self.select_binding(&binding).await
     }
     async fn provider(&self, request: &Request) -> Result<Provider, Failure> {
         let (kind,id) = request.scope.key();
         let binding: Option<(String,String)> = sqlx::query_as("SELECT installation_id,contribution_id FROM capability_provider_bindings WHERE scope_kind=? AND scope_id=? AND capability_id=? AND contract_version=?")
             .bind(kind).bind(id).bind(&request.capability).bind(&request.version).fetch_optional(&self.db).await.map_err(database)?;
+        let candidate: Option<(String,String,String)> = sqlx::query_as("SELECT candidate_id,installation_id,contribution_id FROM capability_binding_candidates WHERE scope_kind=? AND scope_id=? AND capability_id=? AND contract_version=?")
+            .bind(kind).bind(id).bind(&request.capability).bind(&request.version).fetch_optional(&self.db).await.map_err(database)?;
         let offers = match self.providers(&request.scope, &request.capability, &request.version).await {
-            Err(error) if binding.is_some() && error.code == "incompatible_version" => return Err(fail("provider_unavailable", "Bound contract version is unavailable")),
-            result => result?,
+            Err(error) => {
+                if let Some((token, _, _)) = &candidate { self.discard_candidate(token).await?; }
+                if binding.is_some() && error.code == "incompatible_version" { return Err(fail("provider_unavailable", "Bound contract version is unavailable")); }
+                return Err(error);
+            }
+            Ok(offers) => offers,
         };
+        if let Some((token, installation, contribution)) = candidate {
+            if let Scope::Session(session) = &request.scope {
+                let pinned: Option<String> = sqlx::query_scalar("SELECT plugin_installation_id FROM sessions WHERE id=?").bind(session).fetch_one(&self.db).await.map_err(database)?;
+                if pinned.as_deref() != Some(installation.as_str()) {
+                    self.discard_candidate(&token).await?;
+                    return Err(fail("provider_unavailable", "Candidate no longer matches the session's pinned installation"));
+                }
+            }
+            if let Some(mut provider) = offers.iter().find(|provider|provider.installation_id == installation && provider.contribution_id == contribution).cloned() {
+                provider.candidate = Some(token);
+                return Ok(provider);
+            }
+            self.discard_candidate(&token).await?;
+            return Err(fail("provider_unavailable", "Candidate provider is unavailable; confirmed binding was retained"));
+        }
         if let Some((installation,contribution)) = binding {
             if let Scope::Session(id) = &request.scope {
                 let pinned: Option<String> = sqlx::query_scalar("SELECT plugin_installation_id FROM sessions WHERE id=?").bind(id).fetch_one(&self.db).await.map_err(database)?;
@@ -328,6 +350,7 @@ impl Broker {
             .bind(&id).bind(caller).bind(kind).bind(scope_id).bind(&request.capability).bind(&request.version).bind(&provider.installation_id).bind(&provider.contribution_id).bind(crate::now_iso()).bind(chain.deadline_ms).bind(parent.as_ref().and_then(|chain|chain.sites.last()).map(|site|&site.invocation_id)).bind(&chain.sites[0].invocation_id).bind(parent.as_ref().and_then(|chain|chain.sites.last()).map(|site|&site.installation_id)).bind(&slot.id).bind(&request.turn_id).bind(chain.write.as_ref().map(|write|write.cancellation.run_id())).execute(&self.db).await;
         if let Err(error) = insert { self.flights.lock().await.remove(&key); return Err(database(error)); }
         let mut result = self.execute(&id,&request,&provider,&slot,workspace.as_ref(),&chain).await;
+        if result.is_err() { if let Some(token) = &provider.candidate { if let Err(error) = self.discard_candidate(token).await { result = Err(error); } } }
         if let Some(write) = &chain.write {
             if write.is_uncertain() { result = Err(fail("outcome_unknown", "A descendant write has an unknown outcome")); }
             if let Some(runtime) = slot.runtime.lock().await.take() {
@@ -387,6 +410,7 @@ impl Broker {
             _ = tokio::time::sleep_until(chain.deadline.into()) => return Err(fail("timeout", "Invocation deadline expired")),
             runtime = prepare => runtime?,
         };
+        if let Some(token) = &provider.candidate { self.promote_candidate(token).await?; }
         let call = runtime.request("capability.invoke",json!({"invocationId":id,"instanceId":slot.id,"generationId":runtime.generation_id,"contributionId":provider.contribution_id,"capability":request.capability,"contractVersion":request.version,"operationId":provider.operation["id"],"scope":request.scope,"deadlineUnixMs":chain.deadline_ms,"context":{"turnId":request.turn_id,"workspaceId":workspace.filter(|_|chain.permissions.iter().any(|permission|permission == "workspace.read" || permission == "workspace.write")).map(|workspace|&workspace.id),"workspacePath":workspace.filter(|_|chain.permissions.iter().any(|permission|permission == "workspace.read" || permission == "workspace.write")).map(|workspace|&workspace.path),"originalCaller":{"kind":"window","id":chain.caller},"permissions":chain.permissions,"callChain":chain.sites},"input":request.input}),chain.deadline.saturating_duration_since(Instant::now()));
         tokio::pin!(call);
         let mut notifications = runtime.notifications.lock().await;
@@ -652,7 +676,57 @@ mod tests {
         assert_eq!(fixture.broker.invoke("main",req.clone()).await.unwrap_err().code,"provider_unavailable");
         fixture.bind(req.scope.clone(),&newer).await;
         assert_eq!(fixture.broker.invoke("main",req).await.unwrap().installation_id,newer);
+        assert_eq!(sqlx::query_scalar::<_,String>("SELECT installation_id FROM capability_provider_bindings WHERE scope_id='a'").fetch_one(&fixture.db).await.unwrap(), newer);
+        assert_eq!(sqlx::query_scalar::<_,i64>("SELECT COUNT(*) FROM capability_binding_candidates").fetch_one(&fixture.db).await.unwrap(), 0);
         fixture.finish().await;
+    }
+    #[tokio::test]
+    async fn superseded_candidate_cannot_commit_or_delete_a_new_choice() {
+        let fixture = Fixture::new().await;
+        fixture.bind(Scope::Workspace("a".into()), &fixture.installation).await;
+        let newer = fixture.install("1.1.0", "workspace", None).await;
+        fixture.bind(Scope::Workspace("a".into()), &newer).await;
+        let selected = fixture.broker.provider(&request("a", "lookup", json!({"value":"x"}))).await.unwrap();
+        let token = selected.candidate.unwrap();
+        // Re-selecting even the same release creates a new approval/activation identity.
+        fixture.bind(Scope::Workspace("a".into()), &newer).await;
+        assert!(fixture.broker.promote_candidate(&token).await.is_err());
+        fixture.broker.discard_candidate(&token).await.unwrap();
+        assert_eq!(sqlx::query_scalar::<_,i64>("SELECT COUNT(*) FROM capability_binding_candidates").fetch_one(&fixture.db).await.unwrap(), 1);
+        Broker::recover(&fixture.db).await.unwrap();
+        assert_eq!(sqlx::query_scalar::<_,i64>("SELECT COUNT(*) FROM capability_binding_candidates").fetch_one(&fixture.db).await.unwrap(), 0);
+        assert_eq!(fixture.broker.invoke("main", request("a", "after-recovery", json!({"value":"old"}))).await.unwrap().installation_id, fixture.installation);
+        fixture.finish().await;
+    }
+    #[tokio::test]
+    async fn failed_candidate_initialization_preserves_confirmed_binding() {
+        for mode in ["crash", "incompatible", "timeout"] {
+        let fixture = Fixture::new().await;
+        fixture.bind(Scope::Workspace("a".into()), &fixture.installation).await;
+        fixture.broker.invoke("main", request("a", "old", json!({"value":"old"}))).await.unwrap();
+        let path = fixture.root.join("broken-release");
+        fs::create_dir_all(&path).unwrap();
+        let mut manifest: Value = serde_json::from_str(include_str!("../../fixtures/plugins/capability-echo/plugin.json")).unwrap();
+        manifest["version"] = json!("4.0.0");
+        fs::write(path.join("plugin.json"), manifest.to_string()).unwrap();
+        fs::write(path.join("worker.mjs"), match mode {
+            "crash" => "process.exit(1);",
+            "incompatible" => "import {createInterface} from 'node:readline'; createInterface({input:process.stdin}).on('line',line=>{ const {id}=JSON.parse(line); console.log(JSON.stringify({jsonrpc:'2.0',id,result:{protocol:'unsupported'}})); });",
+            _ => "setInterval(()=>{},1000);",
+        }).unwrap();
+        let broken = plugin_registry::install(&fixture.db, &fixture.root.join("data"), &path).await.unwrap();
+        plugin_registry::enable(&fixture.db, &broken.id, true).await.unwrap();
+        fixture.bind(Scope::Workspace("a".into()), &broken.id).await;
+        let confirmed: String = sqlx::query_scalar("SELECT installation_id FROM capability_provider_bindings WHERE scope_id='a'").fetch_one(&fixture.db).await.unwrap();
+        assert_eq!(confirmed, fixture.installation, "selection must not commit an uninitialized replacement");
+        assert!(fixture.broker.invoke("main", request("a", "candidate", json!({"value":"candidate"}))).await.is_err());
+        let confirmed: String = sqlx::query_scalar("SELECT installation_id FROM capability_provider_bindings WHERE scope_id='a'").fetch_one(&fixture.db).await.unwrap();
+        assert_eq!(confirmed, fixture.installation);
+        let recovered = fixture.broker.invoke("main", request("a", "recover", json!({"value":"recovered"}))).await.unwrap();
+        assert_eq!(recovered.installation_id, fixture.installation);
+        assert_eq!(recovered.output["value"], "recovered");
+        fixture.finish().await;
+        }
     }
     #[tokio::test]
     async fn explicit_code_rollback_reopens_old_private_data_after_database_and_broker_restart() {
@@ -686,8 +760,12 @@ mod tests {
         // the old release. A fresh Broker must reuse the old release's identity.
         plugin_registry::uninstall(&fixture.db, &fixture.root.join("data"), &releases[1]).await.unwrap();
         fixture.bind(Scope::Workspace("a".into()), &releases[0]).await;
+        let rollback = fixture.broker.invoke("main", request("a", "confirm-rollback", json!({"value":"unused"}))).await.unwrap();
+        assert_eq!(rollback.installation_id, releases[0]);
+        fixture.broker.stop_installation(&releases[0]).await.unwrap();
         fixture.db.close().await;
         fixture.db = crate::open_database(&fixture.root.join("data/aibo.sqlite3")).await.unwrap();
+        Broker::recover(&fixture.db).await.unwrap();
         let restarted = Broker::new(fixture.db.clone());
         fixture.broker = restarted.clone();
         let restored = restarted.invoke("main", request("a", "restored-data", json!({"value":"unused"}))).await.unwrap();

@@ -186,7 +186,7 @@ impl Broker {
             if digest != owner.digest { return Err(CoreError::InvalidWorkspacePath("Calling plugin package changed".into())); }
             self.dependency_provider(request,owner,&provider.plugin_id,&provider.contribution_id,false).await.map_err(core)?
         } else if let Some(bound) = bound {self.bound_write_provider(request,bound).await.map_err(core)?} else { self.provider(request).await.map_err(core)? };
-        if selected.installation_id != provider.installation_id || selected.contribution_id != provider.contribution_id || selected.digest != provider.digest || selected.operation != provider.operation {
+        if selected.installation_id != provider.installation_id || selected.contribution_id != provider.contribution_id || selected.digest != provider.digest || selected.operation != provider.operation || selected.candidate != provider.candidate {
             return Err(CoreError::InvalidWorkspacePath("Capability provider changed before approval".into()));
         }
         let (_, _, digest) = plugin_registry::inspect(&selected.directory).map_err(|_|CoreError::InvalidWorkspacePath("Capability package integrity check failed".into()))?;
@@ -209,7 +209,7 @@ impl Broker {
         let caller_description = parent.map(|(_,chain)|format!("\n原始调用窗口：{}\n调用链：{}\n父写入已获准且可能已经修改文件；本次批准只允许下面的子操作继续。",chain.caller,serde_json::to_string(&chain.sites).unwrap())).unwrap_or_default();
         Ok(json!({"schema":"aibo.capability-write-context/v1","root":root,"rootIdentity":root_identity,
             "workspaceId":current.id,"workspacePath":current.path,"workspaceTrust":current.trust,"workspaceUpdatedAt":current.updated_at,"session":session,"turn":turn,
-            "provider":{"installationId":selected.installation_id,"contributionId":selected.contribution_id,"pluginId":selected.plugin_id,"packageDigest":digest,"operation":selected.operation},
+            "provider":{"installationId":selected.installation_id,"contributionId":selected.contribution_id,"pluginId":selected.plugin_id,"packageDigest":digest,"operation":selected.operation,"candidateId":selected.candidate},
             "dependencies":dependencies,"binding":binding,
             "approvalDescription":format!("能力插件：{}\n贡献：{}\n安装版本：{}\n权限：{}\n此请求允许插件在当前工作区执行写入；批准后才启动执行和依赖版本检查。宿主不提供任意本机代码的操作系统沙箱。{}",selected.plugin_id,selected.contribution_id,selected.installation_id,selected.operation["permissions"],caller_description)}))
     }
@@ -263,6 +263,46 @@ mod tests {
         tokio::time::timeout(Duration::from_secs(8),async {while !root.join("a/effect.txt").exists() {tokio::time::sleep(Duration::from_millis(10)).await;}}).await.unwrap();
     }
 
+    #[tokio::test]
+    async fn failed_write_candidate_requires_approval_and_retains_old_binding() {
+        let f = Fixture::new().await;
+        let package = f.root.join("candidate"); fs::create_dir_all(&package).unwrap();
+        let mut manifest: Value = serde_json::from_slice(&fs::read(f.root.join("package/plugin.json")).unwrap()).unwrap();
+        manifest["version"] = json!("2.0.0");
+        fs::write(package.join("plugin.json"), manifest.to_string()).unwrap();
+        fs::write(package.join("worker.mjs"), "import {writeFileSync} from 'node:fs'; writeFileSync(process.argv[2], 'started'); process.exit(1);").unwrap();
+        let candidate = plugin_registry::install(&f.db, &f.root.join("data"), &package).await.unwrap();
+        plugin_registry::enable(&f.db, &candidate.id, true).await.unwrap();
+        fs::remove_file(f.root.join("version-ran")).unwrap();
+        f.broker.bind(Binding {scope:Scope::Workspace("a".into()),capability:CAP.into(),version:"1.0.0".into(),installation_id:candidate.id.clone(),contribution_id:CONTRIBUTION.into()}).await.unwrap();
+        assert!(!f.root.join("started").exists()); assert!(!f.root.join("version-ran").exists());
+        let deny = workspace_write_runs::Request::with_confirmation("deny-candidate".into(), "main".into(), |_|async {Ok(false)});
+        assert_eq!(f.broker.invoke_authorized("main", request("deny-candidate", "normal"), &deny).await.unwrap_err().code, "approval_rejected");
+        assert!(!f.root.join("started").exists()); assert!(!f.root.join("version-ran").exists());
+        let broker = f.broker.clone(); let installation = candidate.id.clone();
+        let stale = workspace_write_runs::Request::with_confirmation("reselect-candidate".into(), "main".into(), move |_| {
+            let broker = broker.clone(); let installation = installation.clone(); async move {
+                broker.bind(Binding {scope:Scope::Workspace("a".into()),capability:CAP.into(),version:"1.0.0".into(),installation_id:installation,contribution_id:CONTRIBUTION.into()}).await.unwrap();
+                Ok(true)
+            }
+        });
+        assert_eq!(f.broker.invoke_authorized("main", request("reselect-candidate", "normal"), &stale).await.unwrap_err().code, "approval_rejected");
+        assert!(!f.root.join("started").exists()); assert!(!f.root.join("version-ran").exists());
+        let root = f.root.clone();
+        let allow = workspace_write_runs::Request::with_confirmation("try-candidate".into(), "main".into(), move |_| {
+            let root = root.clone(); async move { assert!(!root.join("started").exists()); assert!(!root.join("version-ran").exists()); Ok(true) }
+        });
+        assert_eq!(f.broker.invoke_authorized("main", request("try-candidate", "normal"), &allow).await.unwrap_err().code, "outcome_unknown");
+        assert!(f.root.join("started").exists());
+        let confirmed: String = sqlx::query_scalar("SELECT installation_id FROM capability_provider_bindings WHERE scope_id='a'").fetch_one(&f.db).await.unwrap();
+        assert_eq!(confirmed, f.installation);
+        assert_eq!(sqlx::query_scalar::<_,i64>("SELECT COUNT(*) FROM capability_binding_candidates").fetch_one(&f.db).await.unwrap(), 0);
+        let never = workspace_write_runs::Request::with_confirmation("try-candidate".into(), "main".into(), |_|async {panic!("unknown write must replay without executing the old provider")});
+        assert_eq!(f.broker.invoke_authorized("main", request("try-candidate", "normal"), &never).await.unwrap_err().code, "outcome_unknown");
+        assert!(!f.root.join("a/effect.txt").exists());
+        f.broker.stop_installation(&candidate.id).await.unwrap();
+        f.finish().await;
+    }
     #[tokio::test]
     async fn native_authority_denial_and_durable_replay_survive_uninstall_and_trust_revocation() {
         let f = Fixture::new().await;

@@ -341,6 +341,7 @@ async fn recovery_references(db: &SqlitePool, id: &str) -> Result<i64,String> {
         UNION SELECT plugin_installation_id FROM sessions WHERE plugin_installation_id IS NOT NULL
         UNION SELECT installation_id FROM capability_invocations WHERE status='running'
         UNION SELECT installation_id FROM capability_provider_bindings
+        UNION SELECT installation_id FROM capability_binding_candidates
         UNION SELECT d.dependency_installation_id FROM plugin_dependency_bindings d JOIN retained r ON r.id=d.installation_id
     ) SELECT COUNT(*) FROM retained WHERE id=?")
         .bind(id).bind(id).fetch_one(db).await.map_err(io_error)
