@@ -1,5 +1,11 @@
 # UI 架构与组件库扩展
 
+公共语义与呈现数据定义由 `packages/plugin-protocol/src/` 持有，原
+`src/lib/presentation/{contract,renderer-contract,presentation-contract}.ts`
+为兼容导出入口。纯数据架构检查沿重导出递归进入协议包，并禁止协议包反向依赖
+宿主、平台或框架；独立编译仅使用 ES2022 类型库。可执行 renderer 本地接口仍在
+`src/lib/workbench/types.ts`，不属于公共数据包。UiKitAdapter 的必需视觉成员不变。
+
 当前 UI 按四层组织：
 
 1. `App.svelte` 负责状态装配、生命周期和页面组合；业务动作通过 `src/lib/app/` 控制器完成。

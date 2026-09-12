@@ -162,6 +162,8 @@
 
 **前置：** P4 合同经真实功能验证。**交付物：** 稳定 SDK、仓库外样例、发布兼容/回滚矩阵；有实际需求时另立 Custom Surface ADR。
 
+**当前进度：** 已开始提取[公共数据协议包](./plugin-platform-p5-sdk.md)，宿主与打包消费者共用类型定义；Capability Runtime SDK 与完整仓库外插件链路尚待完成。
+
 - [ ] 提取能力 SDK 和纯数据 presentation 协议；renderer 本地接口单独暴露，不从能力 SDK 重导出 DOM/框架类型。
 - [ ] 用仓库外能力包验证构建、打包、安装、调用、语义贡献和卸载，无 Svelte/DOM/CSS 依赖；再决定独立包发布与目录统一。
 - [ ] 建立宿主/manifest/runtime/view/capability/renderer 版本与支持平台矩阵，明确 UI 包的构建期可信或已批准的隔离加载机制。

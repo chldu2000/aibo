@@ -14,15 +14,18 @@ test('public semantic contract and projection have no transitive renderer or pla
     for(const node of ast.statements) {
       if((ts.isImportDeclaration(node)||ts.isExportDeclaration(node))&&node.moduleSpecifier) {
         const spec=node.moduleSpecifier.text;assert.ok(spec.startsWith('.'),`external dependency ${spec}`);
-        const target=path.resolve(path.dirname(file),spec.endsWith('.ts')?spec:spec+'.ts');
-        assert.ok(target.startsWith(path.resolve('src/lib/presentation')+path.sep),`escaped data boundary ${target}`);await check(target);
+        const target=path.resolve(path.dirname(file),spec.endsWith('.js')?spec.slice(0,-3)+'.ts':spec.endsWith('.ts')?spec:spec+'.ts');
+        const inPackage=file.startsWith(path.resolve('packages/plugin-protocol/src')+path.sep);
+        const roots=inPackage?['packages/plugin-protocol/src']:['src/lib/presentation','packages/plugin-protocol/src'];
+        assert.ok(roots.some(root=>target.startsWith(path.resolve(root)+path.sep)),`escaped data boundary ${target}`);await check(target);
       }
     }
-    if(file.endsWith('contract.ts')) {
+    if(file.endsWith('contract.ts') || file.startsWith(path.resolve('packages/plugin-protocol/src')+path.sep)) {
       function visit(node){assert.ok(!ts.isFunctionTypeNode(node)&&!ts.isMethodSignature(node),'wire types cannot carry callbacks');ts.forEachChild(node,visit);}visit(ast);
     }
   }
   await check(path.resolve('src/lib/presentation/renderer-contract.ts'));await check(path.resolve('src/lib/presentation/workbench-contract.ts'));await check(path.resolve('src/lib/presentation/presentation-contract.ts'));await check(path.resolve('src/lib/presentation/contract.ts'));await check(path.resolve('src/lib/presentation/git.ts'));
+  await check(path.resolve('packages/plugin-protocol/src/index.ts'));
   const program=ts.createProgram(['src/lib/presentation/presentation-contract.ts','src/lib/presentation/contract.ts','src/lib/presentation/git.ts'],{target:ts.ScriptTarget.ES2022,module:ts.ModuleKind.ESNext,moduleResolution:ts.ModuleResolutionKind.Bundler,lib:['lib.es2022.d.ts'],types:[],strict:true,noEmit:true,allowImportingTsExtensions:true,skipLibCheck:true});
   assert.deepEqual(ts.getPreEmitDiagnostics(program).map(d=>ts.flattenDiagnosticMessageText(d.messageText,' ')),[]);
 });
