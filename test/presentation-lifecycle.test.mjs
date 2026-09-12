@@ -6,6 +6,46 @@ const view = JSON.parse(await readFile(new URL('../fixtures/semantic-git/collect
 const recovery = { selection: null, detail: null, focus: 'entry' };
 const deferred = () => { let resolve; const promise = new Promise(done => { resolve = done; }); return { promise, resolve }; };
 
+test('failed specialization and core fallback invalidate old actions and still allow recovery', async () => {
+  const server = await createServer({ server: { middlewareMode: true, ws: false, watch: null }, appType: 'custom' });
+  try {
+    const { createPresentationController } = await server.ssrLoadModule('/src/lib/app/presentation-controller.ts');
+    const errors = [], actions = [], instances = [];
+    let disposed = 0;
+    const working = {
+      async preflight() {},
+      async mount(snapshot, dispatch) {
+        instances.push({ snapshot, dispatch });
+        return { update() {}, async dispose() { disposed++; } };
+      },
+    };
+    const fallback = { async preflight() {}, async mount() { throw Error('core_unavailable'); } };
+    const host = createPresentationController({ view, recovery, fallback, onAction: action => actions.push(action), onError: error => errors.push(String(error)) });
+    await host.switchRenderer(working);
+    const old = instances[0];
+    const message = instance => ({ schema: 'aibo.presentation-action/experimental-v1', generation: instance.snapshot.generation, action: { context: instance.snapshot.view.context, actionId: 'refresh', itemId: null } });
+    await assert.rejects(host.switchRenderer({ ...working, async mount() { throw Error('specialized_unavailable'); } }), /core_unavailable/);
+    assert.equal(disposed, 1);
+    assert.equal(old.dispatch(message(old)), false);
+    assert.deepEqual(host.snapshot().view, view);
+    assert.deepEqual(host.snapshot().recovery, recovery);
+    assert.ok(errors.some(error => error.includes('specialized_unavailable')));
+    assert.ok(errors.some(error => error.includes('core_unavailable')));
+    const next = structuredClone(view); next.context.revision++;
+    const nextRecovery = { ...recovery, focus: 'restored-entry' };
+    host.update(next, nextRecovery);
+    await host.switchRenderer(working);
+    const restored = instances.at(-1);
+    assert.deepEqual(restored.snapshot.view, next);
+    assert.deepEqual(restored.snapshot.recovery, nextRecovery);
+    assert.equal(old.dispatch(message(restored)), false, 'old channel cannot borrow the recovered generation');
+    assert.equal(restored.dispatch(message(restored)), true);
+    assert.equal(actions.length, 1);
+    await host.dispose();
+    assert.equal(disposed, 2);
+  } finally { await server.close(); }
+});
+
 test('renderer switch restores the latest snapshot, disposes subscriptions and rejects old channels', async () => {
   const server = await createServer({ server: { middlewareMode: true, ws: false, watch: null }, appType: 'custom' });
   try {

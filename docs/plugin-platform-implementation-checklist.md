@@ -146,7 +146,7 @@
 - [x] 提交正式 ADR，冻结 Core/optional/fallback、支持版本表与布局所有权；见 ADR-0007 的 P4 收敛表、renderer 描述符显式快照支持校验及 `ui-architecture.md`。UiKitAdapter 必需成员保持必需。
 - [x] 将默认工作台装配为可信 Presentation Plugin，明确 Shell/renderer/skin 职责及构建期发布边界，允许重排整个工作台；见第三十三批命名槽位与[第三十五批实际 App 重排验收](./plugin-platform-p4-workbench-reorder.md)。
 - [ ] 验证新增标准语义贡献无需逐一修改每套 UI；通用导航保证入口可达，缺提供者或不兼容有诊断。
-- [ ] 实现专业呈现 → 当前 renderer 核心语义 fallback → 不可用说明的协商；必需语义缺失拒绝启用，可选增强缺失仅局部降级。
+- [x] 实现专业呈现 → 当前 renderer 核心语义 fallback → 不可用说明的协商；必需语义缺失拒绝启用，可选增强缺失仅局部降级。证据见 [P4 退出核对：呈现协商与失败恢复](./plugin-platform-p4-exit-audit.md)，包含专业/核心连续失败后的恢复回归。
 - [ ] 用实际专业呈现验证 fallback 保留必需数据、操作和选择规则，不嵌入其他皮肤组件；时间线与 Composer 暂保留可信专业实现。
 - [x] 补齐 view confirmation 非 `never` 的宿主确认闭环，测试取消、拒绝、失效及确认后再验证；证据见 [P4 第五至七批](./plugin-platform-p4-presentation.md)：原生窗口对话框、调用者版本、真实子进程与真实原生按钮验收。
 - [ ] 确保插件管理、授权、历史、停用故障插件和默认工作台恢复入口独立可用，UI 不能遮蔽或伪造可信审批。
