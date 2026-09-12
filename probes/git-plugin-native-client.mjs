@@ -8,6 +8,20 @@ async function until(find, label) { const end = Date.now() + 30000; while (Date.
 const check = (value, label) => { if (!value) throw Error(label); };
 const report = value => fetch('/__git_report', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(value) });
 const button = text => [...document.querySelectorAll('button')].find(item => item.textContent.trim() === text);
+const semanticContent = () => {
+  const surface = document.querySelector('section.installed-workbench');
+  const plain = surface?.querySelector('textarea');
+  if (plain) return plain.value;
+  const lines = surface?.querySelectorAll('.text-line > span:last-child');
+  return lines?.length ? [...lines].map(line => line.textContent).join('\n') : null;
+};
+async function diagnoseCommand(title) {
+  window.dispatchEvent(new KeyboardEvent('keydown', {key:'k',metaKey:true,bubbles:true}));
+  const entry = await until(() => [...document.querySelectorAll('[role="option"]')].find(item => item.querySelector('strong')?.textContent === title && item.disabled && item.textContent.includes('依赖或语义版本不可用')), 'visible unavailable command: '+title);
+  check(entry.disabled, 'unavailable contribution cannot be activated');
+  window.dispatchEvent(new KeyboardEvent('keydown', {key:'Escape',bubbles:true}));
+  await until(() => !document.querySelector('[role="option"]'), 'close command palette');
+}
 try {
   const config = await (await fetch('/__git_config')).json(); let saved = config.saved;
   if (config.stage === 0) {
@@ -45,8 +59,8 @@ try {
     window.dispatchEvent(new KeyboardEvent('keydown', { key: 'k', metaKey: true, bubbles: true }));
     const entry = await until(() => [...document.querySelectorAll('[role="option"]')].find(item => item.querySelector('strong')?.textContent === title && !item.disabled), 'installed command: ' + title);
     entry.click();
-    const inspect = await until(() => document.querySelector('button[aria-label="查看差异 native.txt"]') ?? document.querySelector('textarea[aria-label="文件差异内容"]'), 'installed collection or restored detail'); if (inspect.tagName === 'BUTTON') inspect.click();
-    await until(() => document.querySelector('textarea[aria-label="文件差异内容"]')?.value.includes('NATIVE_GIT_PLUGIN_OK'), 'installed diff');
+    const inspect = await until(() => document.querySelector('button[aria-label="查看差异 native.txt"]') ?? (semanticContent()?.includes('NATIVE_GIT_PLUGIN_OK') ? true : null), 'installed collection or restored detail'); if (inspect.tagName === 'BUTTON') inspect.click();
+    await until(() => semanticContent()?.includes('NATIVE_GIT_PLUGIN_OK'), 'installed diff');
     rendered.push({ kit, title, commandDiscovered: true, collection: true, realDiff: true });
     if (title.includes('独立')) {
       await invoke('set_agent_plugin_enabled', { id: saved.viewId, enabled: false });
@@ -60,19 +74,21 @@ try {
     window.dispatchEvent(new KeyboardEvent('keydown',{key:'k',metaKey:true,bubbles:true}));
     const entry=await until(()=>[...document.querySelectorAll('[role="option"]')].find(item=>item.querySelector('strong')?.textContent==='Catalog '+name&&!item.disabled),'catalog command '+name);
     entry.click();
-    await until(()=>document.querySelector('section.installed-workbench textarea')?.value==='CATALOG_OK','catalog view '+name);
+    await until(()=>semanticContent()==='CATALOG_OK','catalog view '+name);
     button('刷新').click();
-    await until(()=>document.querySelector('section.installed-workbench textarea')?.value==='CATALOG_OK','refreshed catalog');
+    await until(()=>semanticContent()==='CATALOG_OK','refreshed catalog');
     catalogViews.push({kit,name,installed:true,rendered:true});
     button('关闭插件视图').click();await until(()=>!document.querySelector('section.installed-workbench'),'close catalog');
   }
   const catalog=await invoke('list_semantic_contributions');
   check(catalog.find(item=>item.contributionId==='dev.aibo.catalog.future')?.available===false,'optional unsupported contribution diagnosed');
+  for (const kit of ['shadcn','material3']) { setUiKit(kit); await tick(); await diagnoseCommand('Future optional view'); }
   if (config.stage === 1) {
     await invoke('uninstall_agent_plugin', { id: saved.gitId });
     const catalog = await invoke('list_semantic_contributions');
     check(catalog.every(item => item.installationId !== saved.gitId), 'uninstalled bundled contribution absent');
     check(catalog.find(item => item.installationId === saved.viewId)?.available === false, 'separate view reports missing dependency');
+    for (const kit of ['shadcn','material3']) { setUiKit(kit); await tick(); await diagnoseCommand('Git 变更（独立声明包）'); }
   }
   if(config.stage===0) await invoke('set_agent_plugin_enabled',{id:saved.gitId,enabled:false});
   await invoke('set_workspace_trust',{workspaceId:saved.workspaceId,trusted:false});
@@ -105,5 +121,5 @@ try {
   await invoke('set_workspace_trust',{workspaceId:saved.workspaceId,trusted:true});
   if(config.stage===0) await invoke('set_agent_plugin_enabled',{id:saved.gitId,enabled:true});
   check((await invoke('list_sessions', { workspaceId: saved.workspaceId })).length === 0, 'no Agent session');
-  await report({ ok: true, stage: config.stage, saved, evidence: { backgroundGitWithoutUi: true, independentCapabilityAuditBothSkins:true, auditReadableAfterRevocation:true, independentHostManagementBothSkins: true, installedCommands: rendered, catalogViews, optionalIncompatibilityDiagnosed:true, disablingViewClosesSurface: true, noAgentSession: true, ...(config.stage === 1 ? { actualAppRestart: true, persistedCapabilityBinding: true, uninstallInvalidatesBothForms: true } : {}) } });
+  await report({ ok: true, stage: config.stage, saved, evidence: { backgroundGitWithoutUi: true, independentCapabilityAuditBothSkins:true, auditReadableAfterRevocation:true, independentHostManagementBothSkins: true, installedCommands: rendered, catalogViews, optionalIncompatibilityDiagnosed:true, unavailableCommandDiagnosticsBothSkins:true, disablingViewClosesSurface: true, noAgentSession: true, ...(config.stage === 1 ? { actualAppRestart: true, persistedCapabilityBinding: true, uninstallInvalidatesBothForms: true, missingDependencyCommandDiagnosticsBothSkins: true } : {}) } });
 } catch (error) { await report({ ok: false, surface: document.querySelector('section.installed-workbench')?.textContent, error: JSON.stringify(error, Object.getOwnPropertyNames(error ?? {})) }); }

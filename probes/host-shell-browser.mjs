@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { createServer } from 'vite';
 import { chromium } from 'playwright';
-const server = await createServer({server: {host: '127.0.0.1', port: 0}});
+const server = await createServer({server: {host: '127.0.0.1', port: 0, hmr: false, watch: null}});
 await server.listen();
 const browser = await chromium.launch({headless: true});
 try {

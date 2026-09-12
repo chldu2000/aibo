@@ -1,0 +1,171 @@
+{
+  "identifier": "local.aibo.gitpluginprobe.1789171912504",
+  "results": [
+    {
+      "ok": true,
+      "stage": 0,
+      "saved": {
+        "catalogId": "01M29F9WZBVWNMGTJ83MX0G5FX",
+        "workspaceId": "01M29F9WS0V9Q6W29Y495E6N64",
+        "gitId": "01M29F9WVAZ6TH3HRJ2JY51CJP",
+        "viewId": "01M29F9WXJHK5P79P6DCSZ34MD"
+      },
+      "evidence": {
+        "backgroundGitWithoutUi": true,
+        "independentCapabilityAuditBothSkins": true,
+        "auditReadableAfterRevocation": true,
+        "independentHostManagementBothSkins": true,
+        "installedCommands": [
+          {
+            "kit": "shadcn",
+            "title": "Git 工作区变更",
+            "commandDiscovered": true,
+            "collection": true,
+            "realDiff": true
+          },
+          {
+            "kit": "material3",
+            "title": "Git 工作区变更",
+            "commandDiscovered": true,
+            "collection": true,
+            "realDiff": true
+          },
+          {
+            "kit": "material3",
+            "title": "Git 变更（独立声明包）",
+            "commandDiscovered": true,
+            "collection": true,
+            "realDiff": true
+          }
+        ],
+        "catalogViews": [
+          {
+            "kit": "shadcn",
+            "name": "settings",
+            "installed": true,
+            "rendered": true
+          },
+          {
+            "kit": "shadcn",
+            "name": "tool",
+            "installed": true,
+            "rendered": true
+          },
+          {
+            "kit": "shadcn",
+            "name": "command",
+            "installed": true,
+            "rendered": true
+          },
+          {
+            "kit": "material3",
+            "name": "settings",
+            "installed": true,
+            "rendered": true
+          },
+          {
+            "kit": "material3",
+            "name": "tool",
+            "installed": true,
+            "rendered": true
+          },
+          {
+            "kit": "material3",
+            "name": "command",
+            "installed": true,
+            "rendered": true
+          }
+        ],
+        "optionalIncompatibilityDiagnosed": true,
+        "unavailableCommandDiagnosticsBothSkins": true,
+        "disablingViewClosesSurface": true,
+        "noAgentSession": true
+      }
+    },
+    {
+      "ok": true,
+      "stage": 1,
+      "saved": {
+        "catalogId": "01M29F9WZBVWNMGTJ83MX0G5FX",
+        "workspaceId": "01M29F9WS0V9Q6W29Y495E6N64",
+        "gitId": "01M29F9WVAZ6TH3HRJ2JY51CJP",
+        "viewId": "01M29F9WXJHK5P79P6DCSZ34MD"
+      },
+      "evidence": {
+        "backgroundGitWithoutUi": true,
+        "independentCapabilityAuditBothSkins": true,
+        "auditReadableAfterRevocation": true,
+        "independentHostManagementBothSkins": true,
+        "installedCommands": [
+          {
+            "kit": "shadcn",
+            "title": "Git 工作区变更",
+            "commandDiscovered": true,
+            "collection": true,
+            "realDiff": true
+          },
+          {
+            "kit": "material3",
+            "title": "Git 工作区变更",
+            "commandDiscovered": true,
+            "collection": true,
+            "realDiff": true
+          },
+          {
+            "kit": "material3",
+            "title": "Git 变更（独立声明包）",
+            "commandDiscovered": true,
+            "collection": true,
+            "realDiff": true
+          }
+        ],
+        "catalogViews": [
+          {
+            "kit": "shadcn",
+            "name": "settings",
+            "installed": true,
+            "rendered": true
+          },
+          {
+            "kit": "shadcn",
+            "name": "tool",
+            "installed": true,
+            "rendered": true
+          },
+          {
+            "kit": "shadcn",
+            "name": "command",
+            "installed": true,
+            "rendered": true
+          },
+          {
+            "kit": "material3",
+            "name": "settings",
+            "installed": true,
+            "rendered": true
+          },
+          {
+            "kit": "material3",
+            "name": "tool",
+            "installed": true,
+            "rendered": true
+          },
+          {
+            "kit": "material3",
+            "name": "command",
+            "installed": true,
+            "rendered": true
+          }
+        ],
+        "optionalIncompatibilityDiagnosed": true,
+        "unavailableCommandDiagnosticsBothSkins": true,
+        "disablingViewClosesSurface": true,
+        "noAgentSession": true,
+        "actualAppRestart": true,
+        "persistedCapabilityBinding": true,
+        "uninstallInvalidatesBothForms": true,
+        "missingDependencyCommandDiagnosticsBothSkins": true
+      }
+    }
+  ]
+}

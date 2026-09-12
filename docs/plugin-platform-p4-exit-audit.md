@@ -18,10 +18,33 @@
 
 本批验证：`pnpm run verify` 通过（25 项架构检查、168 项 Node 测试、类型检查及生产构建）；`node probes/specialized-presentation.mjs` 复跑通过，两套皮肤的全部断言与已有归档一致。构建仍提示主 chunk 超过 500 kB，未调整告警阈值。本批未修改 Rust。
 
+## 实际专业呈现与数据保留
+
+**专业呈现验收项已完成核对。** 当前实际增强为 detail 带行号阅读，collection/settings/inspector 继续使用核心呈现。`svelte-adapter.ts` 的专业/核心实例共用 SvelteRoot → `$lib/ui-kit.SemanticView` 路径；增强仅决定文本阅读形式，没有嵌入另一套皮肤。
+
+上一批复跑的 `specialized-presentation` 验证两套皮肤中完整文本、属性、读写动作身份、禁用状态、版本不兼容，以及首次挂载/更新失败后的 6,000 行全文。协商测试比较完整快照；`semantic-git.test.mjs` 拒绝禁用动作和不在集合中的选择。collection 选择/返回/焦点由[全部核心视图探针](./baselines/plugin-platform-p4/core-semantic-views-browser.json)覆盖，本轮原生 Git 探针继续验证真实集合选择、详情和返回。专业 detail 没有另建选择模型。Timeline 与 Composer 仍为可信构建中的专业组件，未作为第三方标准语义呈现开放。
+
+## 标准贡献与独立宿主入口
+
+标准贡献通过 `list_semantic_contributions` 进入 App 的通用命令列表。入口按 contribution 身份生成，不按 Provider 或皮肤分支；可用性同时受安装诊断、作用域和当前选择约束。安装后的数据由 `InstalledWorkbench` 送入公共 PresentationSurface，新增标准语义贡献不需要修改皮肤实现。
+
+`git-plugin-native` 探针在真实隔离 App 安装 Git 能力包、独立声明包及 semantic-catalog，覆盖两套皮肤中的集合/详情，以及 workspace.tool、settings.page、command 的实际通用入口。session.context/session.action 的作用域与执行合同由 `semantic_plugins::tests::all_registered_extension_points_have_scoped_read_only_views` 覆盖；该原生探针刻意不创建 Agent 会话，不将它描述为这两个扩展点的桌面验收。
+
+本轮修复原生探针对旧 textarea 呈现的单一依赖，使其同时读取当前带行号详情与核心只读文本。补充断言要求不兼容贡献、卸载 Provider 后的独立视图仍出现在命令列表中，禁用且显示“依赖或语义版本不可用”；检查覆盖两套皮肤。
+
+**标准贡献入口项已完成核对。** [本轮原生证据](./baselines/plugin-platform-p4/contribution-entry-native.json)两次 App 启动均通过，包含重启保留绑定、卸载后缺依赖诊断。外层探针退出码为 0；清理隔离 App 时子进程的 ELIFECYCLE 不表示断言失败。原生客户端使用 DOM 操作验证实际 IPC 与状态链，鼠标命中/遮挡由独立 `host-shell-browser` 验证；本轮证据不扩展为 Windows/Linux 桌面支持。
+
+独立宿主控制已核对以下证据，整项仍需结合审批与停用路径完成汇总：
+
+- `p2-boundaries.test.mjs` 解析 App AST，要求插件管理、设置、诊断、执行/会话/能力历史和 Agent 审批区域位于可替换槽位之外；宿主回调不依赖 renderer generation，插件管理操作保留宿主上下文检查。
+- `host-shell-browser.mjs` 在实际 App 使用 Playwright 鼠标点击，验证插件管理、执行/会话/能力历史入口、布局切换后的 DOM 身份和进出焦点。它证明浏览器中入口可点击，不替代原生审批。
+- `workbench-recovery-browser.mjs` 原先仍使用已移除的 `children` 属性，复跑在寻找草稿时超时。改为当前 `content` 槽位后，两套皮肤均验证恢复按钮、捕获阶段快捷键、强制挂载失败的可见提示、草稿保留及再次恢复。
+- 原生 Git 探针验证管理与审计面板跨布局保持实例；真实调用完成后，插件停用/卸载且信任撤销，宿主仍能读取并显示同一 invocation 的持久记录。
+
+本批 `pnpm run verify` 全部通过（25 项架构检查、168 项 Node 测试、类型检查及构建）；两项浏览器探针和两轮原生探针均退出 0。未修改 Rust 实现；现有 Rust 编译警告和主 chunk 大小提示保留。
+
 ## 尚需逐项核对的 P4 范围
 
-- 标准贡献的通用入口、提供者诊断及无需逐皮肤修改的安装证据。
-- 实际专业呈现的数据、操作、选择规则与皮肤边界。
 - 独立插件管理、审批、历史、停用及默认工作台恢复。
 - 项目任务/Git 服务边界、受控写入、日志及资源限制。
 - 直接与插件间 Capability 写入、审批预检执行边界。
