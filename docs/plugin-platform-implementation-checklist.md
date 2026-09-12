@@ -143,7 +143,7 @@
 
 **当前进度：** [呈现边界实施记录](./plugin-platform-p4-presentation.md)已落地 ADR-0007、可信默认呈现描述、必需核心校验及完整数据降级协商，并接入实际预检路径。恢复入口、插件管理、设置、诊断及 Agent 审批已移入独立宿主区域。工程任务、主要 Git 写入及 Core 文件/hunk/整轮恢复已接入持久记录、审批、去重及取消；执行历史、保存的会话消息及能力生命周期审计已有独立入口。Git 审批预检已改为受控查询与宿主文件哈希，并通过真实程序执行边界验证。通用 Capability 的窗口直接写入已接入原生审批与持久执行，见[实施说明](./plugin-platform-p4-capability-writes.md)；[插件间写调用](./plugin-platform-p4-write-chain.md)已具备逐层批准、共享占用及父/根持久记录，[安装语义视图写动作](./plugin-platform-p4-semantic-writes.md)已接入缓存输入、原生审批及持久结果，并通过两套皮肤按钮验收；[默认工作台命名槽位装配](./plugin-platform-p4-workbench-slots.md)已完成首批迁移；[首个专业文本呈现及核心回退](./plugin-platform-p4-specialized-presentation.md)已接入真实适配器并通过两套皮肤；[实际工作台左右重排](./plugin-platform-p4-workbench-reorder.md)及两侧宽度调整已验证；[减少动态效果](./plugin-platform-p4-reduced-motion.md)已通过两套皮肤计算样式验证；[布局切换后的焦点恢复](./plugin-platform-p4-workbench-focus.md)已修复并验证；[无障碍树与原生恢复入口](./plugin-platform-p4-accessibility.md)已通过两套皮肤、三种布局及真实工作区验证；完整退出矩阵仍待核对；[旧能力调用快照](./plugin-platform-p4-legacy-capability-history.md)已补齐迁移与独立读取；整体验收继续按分批记录核对，P4 退出条件保持未完成。
 
-- [ ] 提交正式 ADR，冻结 Core/optional/fallback、支持版本表与布局所有权；同步 UI contract、架构测试和 `ui-architecture.md` 后才引入 optional 成员。
+- [x] 提交正式 ADR，冻结 Core/optional/fallback、支持版本表与布局所有权；见 ADR-0007 的 P4 收敛表、renderer 描述符显式快照支持校验及 `ui-architecture.md`。UiKitAdapter 必需成员保持必需。
 - [x] 将默认工作台装配为可信 Presentation Plugin，明确 Shell/renderer/skin 职责及构建期发布边界，允许重排整个工作台；见第三十三批命名槽位与[第三十五批实际 App 重排验收](./plugin-platform-p4-workbench-reorder.md)。
 - [ ] 验证新增标准语义贡献无需逐一修改每套 UI；通用导航保证入口可达，缺提供者或不兼容有诊断。
 - [ ] 实现专业呈现 → 当前 renderer 核心语义 fallback → 不可用说明的协商；必需语义缺失拒绝启用，可选增强缺失仅局部降级。

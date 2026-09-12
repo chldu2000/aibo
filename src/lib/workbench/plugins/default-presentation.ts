@@ -6,6 +6,7 @@ export const defaultPresentation = {
   id: 'dev.aibo.ui-default',
   version: '1.0.0',
   semanticVersion: '1.0.0',
+  snapshotSchemas: ['aibo.semantic-view/experimental-v1', 'aibo.semantic-view/v1', 'aibo.semantic-view/v1.1'],
   core: ['collection', 'detail', 'settings', 'inspector'],
   optional: [{ id: 'dev.aibo.ui-default.numbered-detail', version: '1.0.0', semantic: 'detail' }],
 } as const satisfies RendererDescriptor;

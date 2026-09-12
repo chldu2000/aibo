@@ -253,3 +253,7 @@ PluginView 的非 never 确认使用宿主原生对话框，并以 Tauri 注入�
 ### P4：可用焦点恢复
 
 工作台呈现同时保存焦点标识与“曾获得焦点”的状态。原目标不再可用时，恢复到可见、可交互控件；禁用、hidden/inert/aria-hidden、无布局区域的目标不能接收恢复焦点。聚焦后检查 activeElement，不能因为找到同名非交互容器就停止回退。工作台被宿主管理区域暂停时不抢焦点；这一规则不改变业务动作的代际和上下文校验。
+
+### P4：快照读取能力必须显式声明
+
+RendererDescriptor.semanticVersion 描述必需核心语义，snapshotSchemas 描述实际快照格式。未声明后者的旧 renderer 只能读取原只读格式；v1.1 写动作需要显式 opt-in。描述符验证拒绝未知、重复或缺少稳定 v1 的列表，协商在选择专业实现之前检查格式支持。默认可信呈现明确声明 experimental-v1/v1/v1.1；该声明不改变原生审批与 Capability 权限。版本支持表见 ADR-0007。

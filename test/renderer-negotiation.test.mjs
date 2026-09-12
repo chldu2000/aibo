@@ -26,3 +26,12 @@ test('optional specialization cannot receive the wrong semantic kind',async()=>{
   const choice=choosePresentation(descriptor,detail,{id:'dev.test.renderer.graph',version:'1.0.0'});
   assert.equal(choice.kind,'core');assert.deepEqual(choice.snapshot,detail);
 });
+
+test('snapshot 1.1 requires explicit renderer support independently of core semantic version',()=>{
+ const writeView={...structuredClone(snapshot),schema:'aibo.semantic-view/v1.1',actions:[...snapshot.actions,{id:'dev.test.write',label:'Write',intent:'execute',enabled:true,input:{value:'frozen'}}]};
+ assert.throws(()=>choosePresentation(descriptor,writeView),/snapshot version not supported/);
+ const supported={...descriptor,snapshotSchemas:['aibo.semantic-view/v1','aibo.semantic-view/v1.1']};
+ assert.deepEqual(choosePresentation(supported,writeView).snapshot,writeView);
+ for(const snapshotSchemas of [[],['aibo.semantic-view/v1.1'],['aibo.semantic-view/v1','aibo.semantic-view/v1'],['aibo.semantic-view/v1','aibo.semantic-view/v9']])assert.throws(()=>validateRenderer({...descriptor,snapshotSchemas}),/snapshot schema declaration/);
+ assert.deepEqual(choosePresentation(descriptor,snapshot).snapshot,snapshot);
+});
