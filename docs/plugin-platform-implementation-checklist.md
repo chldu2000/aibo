@@ -162,7 +162,7 @@
 
 **前置：** P4 合同经真实功能验证。**交付物：** 稳定 SDK、仓库外样例、发布兼容/回滚矩阵；有实际需求时另立 Custom Surface ADR。
 
-**当前进度：** 已提取[公共纯数据 SDK、本地 Capability Runtime helper 与可信 Web renderer 接口包](./plugin-platform-p5-sdk.md)，宿主与打包消费者共用类型定义；仓库外插件已通过 macOS 实际 App 的安装/绑定/调用、双皮肤语义贡献与卸载验证。发布兼容和升级恢复矩阵继续推进。
+**P5 完成：** 三个独立包、仓库外真实插件、版本/平台矩阵、release 升级恢复与核心数据库验收均已闭合。Custom Surface 两项未触发，按约定暂缓。全阶段要求与证据见[最终退出审计](./plugin-platform-final-audit.md)。
 
 - [x] 提取能力 SDK 和纯数据 presentation 协议；renderer 本地接口单独暴露，不从能力 SDK 重导出 DOM/框架类型。见 [P5 第一至四批](./plugin-platform-p5-sdk.md)：三个独立包、宿主重用、tarball 消费者有/无 DOM 的正反编译验证。
 - [x] 用仓库外能力包验证构建、打包、安装、调用、语义贡献和卸载，无 Svelte/DOM/CSS 依赖；再决定独立包发布与目录统一。见 [P5 第三批](./plugin-platform-p5-sdk.md)：实际 tarball、外部消费者编译、隔离 App 及双皮肤验收；继续单仓库本地打包，注册表发布与旧插件目录迁移暂缓。
