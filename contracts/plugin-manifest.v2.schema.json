@@ -515,12 +515,38 @@
         "timeoutMs": {
           "type": "integer",
           "minimum": 100,
-          "maximum": 120000
+          "maximum": 43200000
         },
         "idempotent": {
           "type": "boolean"
         }
-      }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "capability": {
+                "properties": {
+                  "id": {
+                    "enum": [
+                      "aibo.session.turn",
+                      "aibo.session.turn.write"
+                    ]
+                  }
+                }
+              }
+            }
+          },
+          "then": {},
+          "else": {
+            "properties": {
+              "timeoutMs": {
+                "maximum": 120000
+              }
+            }
+          }
+        }
+      ]
     },
     "agentV2": {
       "type": "object",
