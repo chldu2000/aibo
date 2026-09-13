@@ -339,3 +339,22 @@ P3 双皮肤及完整样例、P4 原生退出项继续保留。
 P3 第一批验证：`pnpm run verify` 通过（25 项架构检查、222 项 Node 测试、类型
 检查和生产构建）。独立 tarball 构建测试与共享解析器测试通过；既有主 chunk
 体积提示保留。本批没有修改原生实现，未将文件构建测试作为真实 App 安装证据。
+
+P3 第一批提交：`070c9d5`。
+
+P3 第二批建立 `packages/presentation-shadcn` 与 `packages/presentation-material3`
+独立包。原有八个主题提取为包内唯一数据源，内置兼容注册读取同一数据。包脚本
+提供四类核心语义视图及 ModelMatrix/AgentStatusMark；shadcn 使用表格集合，
+Material 3 使用卡片集合。包可从 tarball 在仓库外构建，不导入宿主源码或框架。
+
+这是分批迁移的可安装版本，尚非完整皮肤等价替代：完整工作台、其他控件、图标
+资源与视觉细节仍需迁移；内置适配器暂时保留。当前状态标记使用文字图形，尚未
+迁移原有品牌 SVG。P2 状态恢复、P3 完整样例/升级卸载和 P4 原生验收继续保留。
+
+P3 第二批验证：最终 `pnpm run verify` 通过（25 项架构检查、223 项 Node 测试、
+类型检查和构建）。仓库外 tarball 测试验证全部主题、内容和动作 token、禁用
+模型选择及唯一节点 key。[浏览器记录](baselines/presentation-p3/skins-browser.json)
+验证真实 PresentationHost 与 Worker 的双包切换、八个主题颜色、完整详情、
+宿主动作上下文和集合条目身份、释放后默认恢复。截图检查发现并修复 null 主题
+选择未采用 manifest 默认主题的问题；另补齐绘制桥标准 aria-busy 属性支持。
+本批未执行实际 Tauri 安装/升级/卸载，不能据此勾选 P3/P4 完成。保留构建体积提示。

@@ -388,3 +388,10 @@ InstalledWorkbench 是纯展示组件：接收 InstalledWorkbenchState 与语义
 外部工作台的语义动作从已验证快照构造，经过目录和原 InstalledController 两层
 上下文检查。格式兼容同时覆盖独立 semantic 角色与整窗 workbench 角色；不得因
 外部工作台存在而忽略 snapshotSchemas 声明。
+
+### 独立皮肤主题数据
+
+shadcn 和 Material 3 的主题定义分别归属 `packages/presentation-shadcn/themes.json`
+与 `packages/presentation-material3/themes.json`。内置兼容注册仅组合这些元数据
+与本地适配器，包构建读取同一数据，避免主题分叉。包当前独立实现语义视图及两项
+公开控件；完整工作台与其余视觉资源迁移仍在进行。固定宿主区域继续使用可信适配器。

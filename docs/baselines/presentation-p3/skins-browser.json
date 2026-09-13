@@ -1,0 +1,14 @@
+{
+  "passed": true,
+  "browser": "153.0.8010.12",
+  "nativePort": "not exercised; actual PresentationHost and Worker",
+  "checks": [
+    "both skin packages built from tarballs outside repo",
+    "four-kind and controls activation preflights",
+    "all eight theme selections and default theme colors",
+    "full detail content",
+    "host action context and collection item identity",
+    "switch between independent skins",
+    "dispose restores default"
+  ]
+}

@@ -21,11 +21,11 @@
   let mounted = $state<MountedSandbox | null>(null);
   let mountedRevision = -1;
   const replacesWorkbench = $derived(Boolean(active?.release.manifest.surfaces?.includes('workbench')));
-  const tokens = $derived(active?.release.manifest.themes?.find(theme => theme.id === themeId)?.tokens ?? {});
+  const tokens = $derived(active?.release.manifest.themes?.find(theme => theme.id === (themeId ?? active?.release.manifest.defaultThemeId))?.tokens ?? {});
   const themeStyle = $derived(Object.entries(tokens).map(([name, value]) => `${name}:${value}`).join(';'));
 
   export async function prepare(value: InstalledPresentationPackage, selectedTheme: string | null, failure: (error: Error) => void, signal: AbortSignal): Promise<PresentationInstance> {
-    const theme = value.release.manifest.themes?.find(theme => theme.id === selectedTheme)?.tokens ?? {};
+    const theme = value.release.manifest.themes?.find(theme => theme.id === (selectedTheme ?? value.release.manifest.defaultThemeId))?.tokens ?? {};
     const registration: ExternalPresentation = { package: value, theme, recover: onRestore };
     const surfaces = value.release.manifest.surfaces ?? [];
     if (surfaces.includes('controls')) {
