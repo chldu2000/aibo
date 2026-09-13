@@ -4,10 +4,13 @@ import { createActionDirectory } from './action-directory.ts';
 import { answeredRequest } from '../app/user-input-drafts.ts';
 import { sessionAgentKind } from '../app/agent-kind.ts';
 
+import {markdownTargets} from '../../../packages/presentation-workbench/markdown.js';
+
 type Spec = Omit<PresentationConversationAction, 'token'>;
 export function conversationActions(state: PresentationConversation): Spec[] {
   const entries: Spec[] = [];
   const add = (operation: Spec['operation'], args: Spec['args'] = [], event: Spec['event'] = 'click') => entries.push({ operation, args, event });
+  for(const entry of state.timelineVisibleCount>0?state.timeline.slice(-state.timelineVisibleCount):[])for(const target of markdownTargets(entry.content))add(target.kind==='code'?'copyCode':'openLink',[entry.id,String(target.index),target.value]);
   const session = state.session;
   if (state.timeline.length > state.timelineVisibleCount) add('loadOlder');
   if (!session) return entries;

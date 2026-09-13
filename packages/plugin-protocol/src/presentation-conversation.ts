@@ -214,7 +214,7 @@ export type PresentationConversation = {
   treeNavigationStatus: string | null;
 };
 
-export type PresentationConversationOperation = 'draft' | 'send' | 'stop' | 'retry' | 'queueSteer' | 'queueFollowUp' | 'clearQueue'
+export type PresentationConversationOperation = 'copyCode' | 'openLink' | 'draft' | 'send' | 'stop' | 'retry' | 'queueSteer' | 'queueFollowUp' | 'clearQueue'
   | 'addAttachments' | 'addDirectory' | 'removeAttachment' | 'selectPath' | 'selectCommand'
   | 'loadOlder' | 'fork' | 'loadModels' | 'selectModel' | 'selectAccess' | 'compact'
   | 'answer' | 'chooseAnswer' | 'submitAnswers' | 'cancelAnswers'

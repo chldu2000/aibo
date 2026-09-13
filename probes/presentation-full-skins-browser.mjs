@@ -10,7 +10,7 @@ const browser=await chromium.launch({headless:true});const page=await browser.ne
 page.on('pageerror',error=>errors.push(error.message));page.setDefaultTimeout(10000);
 try {
   await page.addInitScript(pkg=>{
-    let callback=0;window.presentationCommands=[];window.presentationInstallable=pkg;
+    let callback=0;window.presentationCopies=[];window.presentationLinks=[];Object.defineProperty(navigator,'clipboard',{value:{writeText:async value=>window.presentationCopies.push(value)},configurable:true});window.open=(...args)=>{window.presentationLinks.push(args);return null};window.presentationCommands=[];window.presentationInstallable=pkg;
     const workspaces = ['w1','w2'].map(id=>({id,label:id,path:'/probe/'+id,trust:'trusted',createdAt:'2026-09-13',updatedAt:'2026-09-13',lastOpenedAt:null}));
     const sessions = ['s1','s2'].map((id,index)=>({id,workspaceId:'w'+(index+1),label:id,agent:'plugin',state:'idle',archived:false,externalSessionId:null,pluginInstallationId:'provider',capabilities:['queue.manage','model.list','model.select','model.reasoning','compaction.run'],createdAt:'2026-09-13',updatedAt:'2026-09-13'}));
     window.navigationCalls=[];
@@ -31,7 +31,7 @@ try {
         if(command==='get_workspace_git_remote_status')return {branch:'main',upstream:null,ahead:0,behind:0};
         if(command==='get_turn_change_set')return null;
         if(command==='get_session_models')return catalog;
-        if(command==='get_timeline')return [{id:'message',sessionId:args.sessionId,turnId:'turn',externalMessageId:null,role:'assistant',toolName:'tool-name',entryType:'note',content:'Complete timeline data',status:'completed',createdAt:'2026-09-13',updatedAt:'2026-09-13'}];
+        if(command==='get_timeline')return [{id:'message',sessionId:args.sessionId,turnId:'turn',externalMessageId:null,role:'assistant',toolName:'tool-name',entryType:'note',content:'Complete timeline data\n\n## Rich heading\n\n**Bold message** and `inline` [Reference](https://example.invalid)\n\n- Item one\n- Item two\n\n```js\nconst answer = 42;\n```\n[AIBO_CONTEXT_ATTACHMENTS]internal metadata[/AIBO_CONTEXT_ATTACHMENTS]',status:'completed',createdAt:'2026-09-13',updatedAt:'2026-09-13'}];
         if(command==='invoke_agent_capability'){if(args.capability==='model.reasoning')catalog.currentReasoningEffort=args.input.level;return {};}
         if(command==='send_agent_prompt')return {...sessions.find(session=>session.id===args.sessionId),state:'idle'};
         if(command==='resolve_agent_user_input')return;
@@ -76,6 +76,12 @@ try {
     await frame.getByRole('button',{name:'s1',exact:true}).click();
     const composer=frame.getByRole('textbox',{name:'消息',exact:true});await composer.waitFor();
     await frame.getByText('Complete timeline data',{exact:true}).waitFor();
+    await frame.getByRole('heading',{name:'Rich heading',exact:true}).waitFor();
+    await frame.getByRole('button',{name:'复制代码',exact:true}).click();
+    await page.waitForFunction(()=>window.presentationCopies.includes('const answer = 42;'));
+    await frame.getByRole('link',{name:'Reference',exact:true}).click();
+    await page.waitForFunction(()=>window.presentationLinks.some(args=>args[0]==='https://example.invalid'));
+    assert.equal(await frame.getByText('internal metadata',{exact:true}).count(),0);
     await composer.fill('');await composer.pressSequentially('完整皮肤 keeps draft',{delay:12});
     await page.waitForTimeout(200);assert.equal(await composer.inputValue(),'完整皮肤 keeps draft');
     await frame.getByRole('button',{name:'发送',exact:true}).click();
@@ -98,6 +104,6 @@ try {
     await page.getByRole('button',{name:'完成',exact:true}).click();
   }
   assert.deepEqual(errors,[]);
-  const result={passed:true,nativePort:'mocked; actual App and independently built full skin Workers',browser:browser.version(),checks:['both full packages install and activate','workspace and session navigation','full timeline content','rapid Chinese/English input and send','Git/context panel switching','default/external switch retains host draft']};
+  const result={passed:true,nativePort:'mocked; actual App and independently built full skin Workers',browser:browser.version(),checks:['both full packages install and activate','workspace and session navigation','rich timeline headings, lists, inline and fenced code','host-bound code copy and link actions','attachment transport metadata hidden','rapid Chinese/English input and send','Git/context panel switching','default/external switch retains host draft']};
   await writeFile('/tmp/aibo-full-skins-browser.json',JSON.stringify(result,null,2)+'\n');console.log(JSON.stringify(result));
 } catch(error) {console.error(JSON.stringify({errors,body:await page.locator('body').innerText()}));throw error;} finally {await browser.close();await server.close();await built.dispose();}

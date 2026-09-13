@@ -10,11 +10,17 @@
     "./navigation": "./navigation.js",
     "./conversation": "./conversation.js",
     "./bundle": "./bundle.mjs",
-    ".": "./workbench.js"
+    ".": "./workbench.js",
+    "./markdown": {
+      "types": "./markdown.d.ts",
+      "default": "./markdown.js"
+    },
+    "./rich-text": "./rich-text.js"
   },
   "files": [
     "*.js",
     "README.md",
-    "bundle.mjs"
+    "bundle.mjs",
+    "markdown.d.ts"
   ]
 }

@@ -1,4 +1,5 @@
 import {node,button,field,section,text,actionFor} from './tree.js';
+import {renderRichText} from './rich-text.js';
 const labels={send:'发送',stop:'停止',retry:'重试',queueSteer:'立即引导',queueFollowUp:'排队发送',clearQueue:'清空队列',addAttachments:'添加附件',addDirectory:'添加目录',loadOlder:'加载更早消息',fork:'分叉会话',loadModels:'刷新模型',compact:'压缩上下文',openTree:'会话树',closeTree:'关闭会话树',refreshTree:'刷新会话树',submitAnswers:'提交回答',cancelAnswers:'取消回答'};
 const accessLabels={'read-only':'只读',plan:'计划','workspace-write':'工作区写入','ask-for-approval':'请求审批','approve-for-me':'自动审批','full-access':'完整访问'};
 export function renderConversation(state,actions){
@@ -8,7 +9,7 @@ export function renderConversation(state,actions){
  if(state.goal)children.push(section('conversation:goal','目标',[text('goal:objective',state.goal.objective),text('goal:status',state.goal.status),text('goal:budget',state.goal.tokenBudget===null?null:`Token：${state.goal.tokensUsed??0} / ${state.goal.tokenBudget}`)]));
  if(state.usage)children.push(text('conversation:usage',`输入 ${state.usage.input??'—'} · 输出 ${state.usage.output??'—'} · 合计 ${state.usage.total??'—'} · 上下文 ${state.usage.contextUsed??'—'} / ${state.usage.contextLimit??'—'}${state.usage.contextEstimated?'（估算）':''}`));
  const messages=(state.timelineVisibleCount>0?state.timeline.slice(-state.timelineVisibleCount):[]).map(entry=>{
-  const parts=[node('header','message:header:'+entry.id,null,[node('strong','message:role:'+entry.id,entry.role),text('message:tool:'+entry.id,entry.toolName),text('message:status:'+entry.id,entry.status)]),node('pre','message:content:'+entry.id,entry.content,[],{tabindex:'0'})];
+  const parts=[node('header','message:header:'+entry.id,null,[node('strong','message:role:'+entry.id,entry.role),text('message:tool:'+entry.id,entry.toolName),text('message:status:'+entry.id,entry.status)]),renderRichText(entry.content,'message:content:'+entry.id,entry.id,actions)];
   const fork=entry.turnId&&find('fork',entry.turnId);if(fork&&entry.role==='assistant')parts.push(button('message:fork:'+entry.id,'从此处分叉',fork));
   return node('article','message:'+entry.id,null,parts);
  });

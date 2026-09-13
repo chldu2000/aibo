@@ -38,7 +38,13 @@ test('packed protocol compiles and imports outside the repository without DOM or
     const toolsPacked=JSON.parse(execFileSync('npm',['pack','--ignore-scripts','--offline','--json','--pack-destination',root,'--cache',path.join(root,'cache')],{cwd:path.resolve('packages/presentation-tools'),encoding:'utf8'}))[0];
     const toolsInstalled=path.join(consumer,'node_modules/@aibo/presentation-tools');await mkdir(toolsInstalled,{recursive:true});
     execFileSync('tar',['-xzf',path.join(root,toolsPacked.filename),'-C',toolsInstalled,'--strip-components=1']);
+    const workbenchPacked=JSON.parse(execFileSync('npm',['pack','--ignore-scripts','--offline','--json','--pack-destination',root,'--cache',path.join(root,'cache')],{cwd:path.resolve('packages/presentation-workbench'),encoding:'utf8'}))[0];
+    const workbenchInstalled=path.join(consumer,'node_modules/@aibo/presentation-workbench');await mkdir(workbenchInstalled,{recursive:true});
+    execFileSync('tar',['-xzf',path.join(root,workbenchPacked.filename),'-C',workbenchInstalled,'--strip-components=1']);
     await writeFile(path.join(consumer,'consumer.mts'), `
+import { parseMarkdown, markdownTargets } from '@aibo/presentation-workbench/markdown';
+type MarkdownBlocks = ReturnType<typeof parseMarkdown>;
+type MarkdownTargets = ReturnType<typeof markdownTargets>;
 import { parsePresentationManifest } from '@aibo/presentation-tools/manifest';
 type ParsedPresentation = ReturnType<typeof parsePresentationManifest>;
 import { SEMANTIC_SCHEMA, type Snapshot } from '@aibo/plugin-protocol/semantic';

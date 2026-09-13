@@ -137,6 +137,8 @@
     const [target, detail, option] = action.args;
     switch (action.operation) {
       case 'draft': composerText = intent.value!; handleComposerInput(composerText); break;
+      case 'copyCode': await navigator.clipboard.writeText(action.args[2]!); notice = '代码已复制'; break;
+      case 'openLink': window.open(action.args[2]!, '_blank', 'noopener,noreferrer'); break;
       case 'send': await sendPrompt(); break;
       case 'stop': await abortPrompt(); break;
       case 'retry': await retryLastPrompt(); break;

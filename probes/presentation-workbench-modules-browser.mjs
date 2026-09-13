@@ -7,7 +7,8 @@ import {createConversationDirectory} from '../src/lib/presentation-runtime/conve
 import {createGitDirectory} from '../src/lib/presentation-runtime/git.ts';
 import {createInspectorDirectory} from '../src/lib/presentation-runtime/inspector.ts';
 let source='';
-const tree=(await readFile('packages/presentation-workbench/tree.js','utf8')).replaceAll('export ','');
+let tree=(await readFile('packages/presentation-workbench/tree.js','utf8')).replaceAll('export ','');
+for(const name of ['markdown','rich-text'])tree+='\n'+(await readFile(`packages/presentation-workbench/${name}.js`,'utf8')).replace(/^import .*;\n/gm,'').replaceAll('export ','');
 for(const name of ['navigation','conversation','git','inspector']){
  const code=(await readFile(`packages/presentation-workbench/${name}.js`,'utf8')).replace(/^import .*;\n/gm,'').replaceAll('export ','');
  source+=`self.render${name}=(()=>{${tree}\n${code}\nreturn render${name[0].toUpperCase()+name.slice(1)};})();\n`;
