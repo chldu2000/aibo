@@ -4,6 +4,8 @@
   import type { InstalledPresentationPackage } from '../presentation-runtime/types';
   import { preparePresentationSandbox, type MountedSandbox } from '../presentation-runtime/sandbox';
   import type { PresentationInstance } from '../app/presentation-package-controller';
+  import { get } from 'svelte/store';
+  import { externalPresentation, type ExternalPresentation } from './external-presentation';
   let { active, themeId, input, suspended = false, onIntent, onRestore, children }: {
     active: InstalledPresentationPackage | null;
     themeId: string | null;
@@ -21,15 +23,27 @@
   const themeStyle = $derived(Object.entries(tokens).map(([name, value]) => `${name}:${value}`).join(';'));
 
   export async function prepare(value: InstalledPresentationPackage, selectedTheme: string | null, failure: (error: Error) => void, signal: AbortSignal): Promise<PresentationInstance> {
-    if (!value.release.manifest.entry) return { activate() {}, dispose() {} };
-    if (!value.release.manifest.surfaces?.includes('workbench')) throw Error('当前版本尚未接入该呈现范围');
     const theme = value.release.manifest.themes?.find(theme => theme.id === selectedTheme)?.tokens ?? {};
+    const registration: ExternalPresentation = { package: value, theme, recover: onRestore };
+    const surfaces = value.release.manifest.surfaces ?? [];
+    if (surfaces.includes('controls')) throw Error('当前版本尚未接入独立控件呈现');
+    if (surfaces.includes('semantic')) {
+      const { semanticInput, semanticPreflightSnapshots } = await import('../presentation-runtime/semantic');
+      for (const snapshot of semanticPreflightSnapshots()) {
+        const preflight = await preparePresentationSandbox(target, value, semanticInput(snapshot, 1, theme), () => {}, failure, signal);
+        preflight.dispose();
+      }
+    }
+    if (!surfaces.includes('workbench')) return {
+      activate() { externalPresentation.set(registration); },
+      dispose() { if (get(externalPresentation) === registration) externalPresentation.set(null); },
+    };
     const snapshot = $state.snapshot(input);
     const candidate = await preparePresentationSandbox(target, value, { ...snapshot, theme },
       intent => { if (!suspended) onIntent(intent); }, failure, signal, { localInputActions: ['draft'], onRecover: onRestore });
     return {
-      activate() { candidate.activate(); mountedRevision = snapshot.context.revision; mounted = candidate; },
-      dispose() { candidate.dispose(); if (mounted === candidate) mounted = null; },
+      activate() { candidate.activate(); mountedRevision = snapshot.context.revision; mounted = candidate; externalPresentation.set(registration); },
+      dispose() { candidate.dispose(); if (mounted === candidate) mounted = null; if (get(externalPresentation) === registration) externalPresentation.set(null); },
     };
   }
   $effect(() => {

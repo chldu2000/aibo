@@ -123,3 +123,20 @@ CSS 字体或图片地址可写 `url("aibo-resource:font.woff2")`，宿主只替
 Ctrl/Command+Shift+Backspace 是宿主保留的恢复快捷键。固定绘制桥在 iframe
 捕获真实按键并发送恢复消息，因此焦点在外部输入框时也能恢复内置呈现；该消息
 不经过包 Worker 的事件处理。
+
+## 独立语义呈现与本地交互
+
+声明 semantic 角色的包在选择前用 collection、detail、settings、inspector 四类
+有效快照预检；预检是可运行性检查，不能证明任意插件都完整展示了每个字段。
+实际输入的 `data.snapshot` 保留经过校验的完整核心快照；`data.actions` 提供
+宿主生成的短 token、标签和原动作身份。视图使用 token 绑定真实 click，宿主按
+当前快照重新解析并校验，插件不能自行构造能力调用或更改动作输入。
+
+未声明支持的快照格式、渲染异常或超时会销毁该语义实例，使用同一份 props 恢复
+默认 SemanticView。语义角色继承宿主工作台，不要求包同时实现整窗呈现。
+
+`localEvents` 用于纯呈现交互，与发给宿主的 `events` 分开。同一个节点的同一种
+事件不能同时属于两者。宿主绘制桥只将真实本地事件送到 Worker 的
+`self.aiboPresentation.handle(event, input)`，处理后调用 render 更新视图；本地
+事件不会转成业务动作。Worker 可以持有筛选、展开等临时状态；需要跨插件切换或
+重启恢复的状态仍需宿主状态合同，不能依赖 Worker 全局变量持久化。

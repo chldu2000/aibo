@@ -64,6 +64,16 @@
             ...(event === 'keydown' ? { key: e.key } : {}) } });
         });
       }
+      if (value.localEvents) for (const [event, id] of Object.entries(value.localEvents)) {
+        if (!eventNames.has(event) || typeof id !== 'string' || !id || id.length > 256 || value.events?.[event]) throw Error('invalid_local_presentation_event');
+        element.addEventListener(event, e => {
+          if (!e.isTrusted) return;
+          e.stopPropagation();
+          update(current, acceptedEdits, { id, event,
+            ...('value' in element ? { value: String(element.value).slice(0, 1024 * 1024) } : {}),
+            ...(event === 'keydown' ? { key: e.key } : {}) });
+        });
+      }
       const edit = edits.get(value.key);
       if (edit && 'value' in element) {
         if (edit.sequence > acceptedEdits) element.value = edit.value;
@@ -89,7 +99,7 @@
     }
     window.scrollTo(...windowScroll);
   }
-  function update(input, acknowledged = 0) {
+  function update(input, acknowledged = 0, local = undefined) {
     if (current && (current.context.workspaceId !== input.context.workspaceId || current.context.sessionId !== input.context.sessionId)) edits.clear();
     acceptedEdits = acknowledged;
     current = input; const ticket = ++sequence;
@@ -98,7 +108,7 @@
     for (const [name, value] of Object.entries(input.theme)) document.documentElement.style.setProperty(name, value);
     clearTimeout(timer);
     timer = setTimeout(() => fail('presentation_render_timeout'), 3000);
-    worker.postMessage({ ticket, input });
+    worker.postMessage({ ticket, input, local });
   }
   function start(packet) {
     assets = packet.assets;
@@ -107,7 +117,7 @@
     style.textContent = 'html,body{margin:0;min-height:100%;}*{box-sizing:border-box;}' + packet.css;
     document.head.append(style);
     // Worker blob inherits this document's CSP: no network, imports or eval.
-    const source = packet.source + '\n;self.onmessage = async ({data}) => { if(data.ping) { self.postMessage({pong:true}); return; } try { const tree = await self.aiboPresentation.render(data.input); self.postMessage({ticket:data.ticket,tree}); } catch(error) { self.postMessage({ticket:data.ticket,error:String(error)}); } };';
+    const source = packet.source + '\n;self.onmessage = async ({data}) => { if(data.ping) { self.postMessage({pong:true}); return; } try { if(data.local) await self.aiboPresentation.handle(data.local,data.input); const tree = await self.aiboPresentation.render(data.input); self.postMessage({ticket:data.ticket,tree}); } catch(error) { self.postMessage({ticket:data.ticket,error:String(error)}); } };';
     workerUrl = URL.createObjectURL(new Blob([source], { type: 'text/javascript' }));
     worker = new Worker(workerUrl);
     worker.onerror = () => fail('presentation_worker_failed');

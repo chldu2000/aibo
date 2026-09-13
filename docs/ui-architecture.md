@@ -25,6 +25,11 @@ P2c 的 `PresentationHost` 与 `WorkbenchPresentation` 都是宿主生命周期�
 区域。安装/选择的串行事务由框架无关的 presentation-package-controller 持有，
 原生存储与 UI 挂载通过注入端口连接。完整角色覆盖进度以重构清单为准。
 
+独立 semantic 角色由 UI kit 的 SemanticView runtime 门面接入，UiKitAdapter
+仍提供完整默认实现。只有激活后的窗口内注册可以进入外部语义 renderer，安装
+声明本身不加载代码。四类预检通过后才提交选择；每个实际实例继续校验快照格式，
+失败时保留原 props 降级。专业/核心动作都使用宿主快照身份，不接受插件任意 IPC。
+
 公共语义与呈现数据定义由 `packages/plugin-protocol/src/` 持有，原
 `src/lib/presentation/{contract,renderer-contract,presentation-contract}.ts`
 为兼容导出入口。纯数据架构检查沿重导出递归进入协议包，并禁止协议包反向依赖

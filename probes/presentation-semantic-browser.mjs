@@ -1,0 +1,37 @@
+import assert from 'node:assert/strict';
+import {createHash} from 'node:crypto';
+import {readFile,writeFile} from 'node:fs/promises';
+import {createServer} from 'vite';
+import {chromium} from 'playwright';
+const packageOf=source=>({release:{digest:createHash('sha256').update(source).digest('hex'),enabled:true,manifest:{schema:'aibo.presentation-package/v1',id:'dev.example.semantic',displayName:'Semantic skin',version:'1.0.0',hostApi:'1.0.0',coreSemantics:'1.0.0',snapshotSchemas:['aibo.semantic-view/v1','aibo.semantic-view/v1.1','aibo.semantic-view/experimental-v1'],entry:'skin.js',surfaces:['semantic'],resources:[{path:'skin.js',bytes:Buffer.byteLength(source),sha256:createHash('sha256').update(source).digest('hex'),mediaType:'text/javascript'}]}},resources:{'skin.js':Buffer.from(source).toString('base64')}});
+const source="let expanded=false;self.aiboPresentation={handle(){expanded=!expanded},render(input){const {snapshot,actions}=input.data;if(snapshot.view.content==='fail')throw Error('semantic failure');return {tag:'section',key:'view',children:[{tag:'h1',key:'title',text:'Plugin '+snapshot.view.kind+(expanded?' expanded':'')},{tag:'button',key:'expand',text:'Toggle local detail',localEvents:{click:'toggle'}},...actions.map(entry=>({tag:'button',key:entry.token,text:entry.label,events:{click:entry.token}}))]}}};";
+const server=await createServer({server:{host:'127.0.0.1',port:0,hmr:false,watch:null}});await server.listen();
+const browser=await chromium.launch({headless:true});const page=await browser.newPage();const errors=[];page.on('pageerror',e=>errors.push(e.message));
+try{
+  await page.goto(`http://127.0.0.1:${server.httpServer.address().port}/probes/presentation-semantic.html`);
+  await page.waitForFunction(()=>window.semanticPackageProbe);
+  await page.evaluate(pkg=>window.semanticPackageProbe.select(pkg),packageOf(source));
+  await page.frameLocator('.external-semantic iframe').getByRole('heading',{name:'Plugin detail'}).waitFor();
+  await page.frameLocator('.external-semantic iframe').getByRole('button',{name:'Toggle local detail'}).click();
+  await page.frameLocator('.external-semantic iframe').getByRole('heading',{name:'Plugin detail expanded'}).waitFor();
+  assert.equal(await page.evaluate(()=>window.semanticPackageProbe.result().length),0);
+  const detail=JSON.parse(await readFile('fixtures/semantic-git/detail.json','utf8'));
+  const first=detail.actions.find(action=>action.enabled);
+  await page.frameLocator('.external-semantic iframe').getByRole('button',{name:first.label,exact:true}).click();
+  await page.waitForFunction(()=>window.semanticPackageProbe.result().length===1);
+  const action=await page.evaluate(()=>window.semanticPackageProbe.result()[0]);
+  assert.equal(action.actionId,first.id);assert.deepEqual(action.context,detail.context);
+  const bad=packageOf("self.aiboPresentation={render(input){if(input.data.snapshot.view.kind==='inspector')throw Error('missing inspector');return {tag:'p',key:'ok',text:'candidate'}}};");
+  await assert.rejects(page.evaluate(pkg=>window.semanticPackageProbe.select(pkg),bad),/missing inspector/);
+  const ambiguous=packageOf("self.aiboPresentation={render(){return {tag:'button',key:'mixed',events:{click:'host'},localEvents:{click:'local'}}}};");
+  await assert.rejects(page.evaluate(pkg=>window.semanticPackageProbe.select(pkg),ambiguous),/invalid_local_presentation_event/);
+  assert.equal(await page.frameLocator('.external-semantic iframe').getByRole('heading',{name:'Plugin detail expanded'}).count(),1);
+  await page.evaluate(snapshot=>window.semanticPackageProbe.update(snapshot),{...detail,view:{...detail.view,content:'fail'}});
+  await page.getByRole('status').filter({hasText:'恢复默认视图'}).waitFor();
+  assert.equal(await page.locator('.external-semantic iframe').count(),0);
+  assert.equal(await page.locator('textarea').inputValue(),'fail');
+  await page.evaluate(()=>window.semanticPackageProbe.dispose());
+  assert.deepEqual(errors,[]);
+  const result={passed:true,browser:browser.version(),checks:['all four core kinds preflight','actual semantic skin rendering','host action identity retained','local interaction stays inside presentation worker','incomplete candidate preserves old renderer','runtime failure preserves full default content']};
+  await writeFile('/tmp/aibo-presentation-semantic-browser.json',JSON.stringify(result,null,2));console.log(JSON.stringify(result));
+}finally{await browser.close();await server.close();}

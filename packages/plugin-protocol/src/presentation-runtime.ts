@@ -15,6 +15,8 @@ export type PresentationNode = {
   attrs?: Readonly<Record<string, string | boolean>>;
   /** User events become intents; only the host decides whether to execute them. */
   events?: Partial<Record<'click' | 'input' | 'change' | 'keydown', string>>;
+  /** Presentation-owned interaction, delivered only to the package Worker. */
+  localEvents?: Partial<Record<'click' | 'input' | 'change' | 'keydown', string>>;
   children?: readonly PresentationNode[];
 };
 
