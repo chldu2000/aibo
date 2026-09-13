@@ -36,5 +36,6 @@ export type { UiKitName } from './registry';
 
 // Trusted local lifecycle shell; visuals continue to use the active kit.
 export { default as WorkbenchPresentation } from '../workbench/WorkbenchPresentation.svelte';
+export { default as PresentationHost } from './PresentationHost.svelte';
 
 export { default as DefaultPresentationActions } from '../workbench/plugins/DefaultPresentationActions.svelte';

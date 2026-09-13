@@ -16,6 +16,7 @@ export async function preparePresentationSandbox(
   onIntent: (intent: PresentationIntent) => void,
   onFailure: (error: Error) => void,
   signal?: AbortSignal,
+  options: { localInputActions?: readonly string[]; onRecover?: () => void } = {},
 ): Promise<MountedSandbox> {
   const verified = await verifyPresentationPackage(JSON.stringify(installed.release.manifest), async path => {
     const value = installed.resources[path];
@@ -48,6 +49,7 @@ export async function preparePresentationSandbox(
   frame.hidden = true;
   const channel = new MessageChannel();
   let input = structuredClone(initial), active = false, ready = false, disposed = false;
+  let acceptedEdits = 0;
   let timeout: ReturnType<typeof setTimeout>;
   let resolveReady: (value: MountedSandbox) => void;
   let rejectReady: (error: Error) => void;
@@ -73,25 +75,32 @@ export async function preparePresentationSandbox(
     update(next) {
       if (disposed) return;
       if (next.context.revision <= input.context.revision) throw Error('presentation_revision_must_increase');
-      input = structuredClone(next); armTimeout(); channel.port1.postMessage({ type: 'update', input });
+      input = structuredClone(next); armTimeout(); channel.port1.postMessage({ type: 'update', input, acceptedEdits });
     },
     dispose,
   };
   channel.port1.onmessage = ({ data }) => {
     if (disposed || !data) return;
-    if (data.type === 'connected') { channel.port1.postMessage({ type: 'start', source, css, assets, input }); }
+    if (data.type === 'connected') { channel.port1.postMessage({ type: 'start', source, css, assets, input, localInputActions: options.localInputActions ?? [] }); }
     else if (data.type === 'rendered' && data.revision === input.context.revision) {
       clearTimeout(timeout);
       frame.dataset.presentationRevision = String(data.revision);
       if (!ready) { ready = true; resolveReady(instance); }
     } else if (data.type === 'failure') fail(typeof data.message === 'string' ? data.message.slice(0, 512) : 'presentation_failed');
+    else if (data.type === 'recovery' && active) {
+      if (options.onRecover) options.onRecover(); else fail('presentation_recovery_requested');
+    }
     else if (data.type === 'intent' && active) {
       const intent = data.intent;
       if (!intent || typeof intent.id !== 'string' || intent.id.length > 256
-        || intent.context?.revision !== input.context.revision
+        || (intent.context?.revision !== input.context.revision && !(intent.event === 'input' && options.localInputActions?.includes(intent.id)))
         || intent.context?.workspaceId !== input.context.workspaceId || intent.context?.sessionId !== input.context.sessionId
         || (intent.value !== undefined && (typeof intent.value !== 'string' || intent.value.length > 1024 * 1024))
         || (intent.key !== undefined && (typeof intent.key !== 'string' || intent.key.length > 64))) return;
+      if (intent.event === 'input' && options.localInputActions?.includes(intent.id)) {
+        if (!Number.isSafeInteger(intent.editSequence) || intent.editSequence <= acceptedEdits) return;
+        acceptedEdits = intent.editSequence;
+      }
       onIntent(intent);
     }
   };

@@ -6,7 +6,8 @@
   import type { WorkbenchSnapshot, WorkbenchAction } from '../presentation/workbench-contract';
   type Guard = (id: string, callback: (...args: any[]) => any) => (...args: any[]) => any;
   let { snapshot, windowId, navigation, navigationResize, content, auxiliaryResize, auxiliary, overlays,
-    layout = $bindable('standard'), switching = $bindable(false), gridElement = $bindable(null), navigationWidth = 260, auxiliaryWidth = 320, auxiliaryOpen = true, suspended = false }: {
+    layout = $bindable('standard'), switching = $bindable(false), gridElement = $bindable(null), navigationWidth = 260, auxiliaryWidth = 320, auxiliaryOpen = true, suspended = false, onRestore }: {
+    onRestore?: () => Promise<void>;
     layout?: string;
     switching?: boolean;
     snapshot: WorkbenchSnapshot;
@@ -107,7 +108,7 @@
       }
     }
   }
-  export function restoreDefault() { return switchLayout('standard', false, true); }
+  export async function restoreDefault() { await onRestore?.(); return switchLayout('standard', false, true); }
   function handleRecoveryKey(event: KeyboardEvent) {
     if ((event.metaKey || event.ctrlKey) && event.shiftKey && event.code === 'Backspace') {
       event.preventDefault();

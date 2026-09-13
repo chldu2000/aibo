@@ -5,6 +5,7 @@
 
   type SettingsPanelProps = {
     presentationActions?: Snippet;
+    packageManagement?: Snippet;
     open: boolean;
     uiKits: readonly UiKitOption[];
     activeUiKitName: string;
@@ -16,6 +17,7 @@
 
   let {
     presentationActions,
+    packageManagement,
     open,
     uiKits,
     activeUiKitName,
@@ -42,6 +44,7 @@
       <div class="settings-content">
         <div id="appearance-settings" class="settings-tab-panel" role="tabpanel">
           {@render presentationActions?.()}
+          {@render packageManagement?.()}
           <section class="settings-section" aria-labelledby="ui-kit-title">
             <div class="settings-section-heading">
               <div>

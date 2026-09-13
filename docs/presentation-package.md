@@ -113,3 +113,13 @@ CSS 字体或图片地址可写 `url("aibo-resource:font.woff2")`，宿主只替
 具有超时，Worker 心跳发现运行中失控后终止 Worker 并移除 frame。宿主销毁旧
 实例时关闭 MessagePort、移除文档并释放 Worker URL。输入 revision 必须递增，
 旧树上的迟到用户事件不会获得新上下文权限。
+
+宿主可将明确的本地编辑动作（当前为工作台 draft）加入 localInputActions。
+这类 input 事件在同一工作区/会话内允许跨快照 revision，防止流式或草稿快照
+更新丢弃连续打字；它不放宽导航、发送、停止或跨会话动作的校验。绘制桥为本地
+输入生成 editSequence，宿主快照回传确认序号，较旧渲染结果不得覆盖尚未确认的
+文本和光标。可执行包不能自行把动作加入此宿主许可列表。
+
+Ctrl/Command+Shift+Backspace 是宿主保留的恢复快捷键。固定绘制桥在 iframe
+捕获真实按键并发送恢复消息，因此焦点在外部输入框时也能恢复内置呈现；该消息
+不经过包 Worker 的事件处理。

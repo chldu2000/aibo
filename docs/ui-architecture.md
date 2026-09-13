@@ -19,6 +19,12 @@ P2b 可执行包使用 `presentation-runtime/sandbox.ts` 装配：静态隔离�
 消息中。主 WebView 不执行包代码。Tauri CSP 的 worker-src 明确允许 blob Worker，
 隔离文档另加 connect-src none 等限制，不扩大主文档脚本或网络来源。
 
+P2c 的 `PresentationHost` 与 `WorkbenchPresentation` 都是宿主生命周期装配，
+不作为另一种用户可选插件。App 向前者传递数据与动作回调，并将原工作台作为
+继承内容；外部主题的视觉 token 在 UI kit 内应用到工作台，不能进入宿主管理
+区域。安装/选择的串行事务由框架无关的 presentation-package-controller 持有，
+原生存储与 UI 挂载通过注入端口连接。完整角色覆盖进度以重构清单为准。
+
 公共语义与呈现数据定义由 `packages/plugin-protocol/src/` 持有，原
 `src/lib/presentation/{contract,renderer-contract,presentation-contract}.ts`
 为兼容导出入口。纯数据架构检查沿重导出递归进入协议包，并禁止协议包反向依赖

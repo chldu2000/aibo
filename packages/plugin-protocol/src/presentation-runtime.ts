@@ -31,6 +31,8 @@ export type PresentationInput = {
 };
 export type PresentationIntent = {
   id: string;
+  event?: 'click' | 'input' | 'change' | 'keydown';
+  editSequence?: number;
   context: PresentationContext;
   value?: string;
   key?: string;

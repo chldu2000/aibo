@@ -1,5 +1,5 @@
 import { preparePresentationSandbox } from '../src/lib/presentation-runtime/sandbox.ts';
-let current, revision=0;
+let current, revision=0, echoDraft=false;
 const intents=[],failures=[];
 const target=document.getElementById('target');
 let recovered=0;
@@ -11,6 +11,7 @@ async function packageOf(source) {
 }
 const input=data=>({surface:'workbench',context:{workspaceId:'workspace',sessionId:'session',revision:++revision},data,theme:{'--primary':'#123456'}});
 window.sandboxProbe={intents,failures,get recovered(){return recovered;},
+  echoDraft(value){echoDraft=value;},
   async abortCandidate() {
     const abort=new AbortController();
     const candidate=preparePresentationSandbox(target,await packageOf('while(true){}'),input({}),()=>{},()=>{},abort.signal);
@@ -18,7 +19,7 @@ window.sandboxProbe={intents,failures,get recovered(){return recovered;},
     return candidate;
   },
   async mount(source,data={}) {
-    const candidate=await preparePresentationSandbox(target,await packageOf(source),input(data),intent=>intents.push(intent),error=>failures.push(error.message));
+    const candidate=await preparePresentationSandbox(target,await packageOf(source),input(data),intent=>{intents.push(intent);if(echoDraft&&intent.id==='draft')current?.update(input({draft:intent.value}));},error=>failures.push(error.message),undefined,{localInputActions:echoDraft?['draft']:[]});
     current?.dispose();current=candidate;candidate.activate();
   },
   update(data){current.update(input(data));},

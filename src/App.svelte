@@ -3,7 +3,68 @@
   const draftStorage = { getItem: (key: string) => window.localStorage.getItem(key), setItem: (key: string, value: string) => window.localStorage.setItem(key, value) };
   let workbenchDrafts = $state(readWorkbenchDrafts(draftStorage, presentationWindowId()));
   $effect(() => { writeWorkbenchDrafts(draftStorage, presentationWindowId(), workbenchDrafts); });
-  import { WorkbenchPresentation, DefaultPresentationActions, Badge, Button, Card, CardHeader, CardTitle, CardContent } from '$lib/ui-kit';
+  import { PresentationHost, WorkbenchPresentation, DefaultPresentationActions, Badge, Button, Card, CardHeader, CardTitle, CardContent } from '$lib/ui-kit';
+  import { createPresentationPackageController, type PresentationPackageState } from '$lib/app/presentation-package-controller';
+  import { listPresentationPackages, readPresentationPackage, installPresentationPackage, setPresentationPackageEnabled, uninstallPresentationPackage, getPresentationSelection, selectPresentationPackage } from '$lib/api';
+  import type { PresentationInput, PresentationIntent } from '../packages/plugin-protocol/src/presentation-runtime';
+  let presentationHost: ReturnType<typeof PresentationHost>;
+  let presentationPackages = $state<PresentationPackageState>({ releases: [], active: null, themeId: null, busy: false, error: '' });
+  let externalInput = $state<PresentationInput>({ surface: 'workbench', context: { workspaceId: null, sessionId: null, revision: 0 }, data: null, theme: {} });
+  const presentationPackagesController = createPresentationPackageController({
+    list: listPresentationPackages, read: readPresentationPackage, install: installPresentationPackage,
+    enable: setPresentationPackageEnabled, uninstall: uninstallPresentationPackage,
+    selection: getPresentationSelection, persist: selectPresentationPackage,
+    prepare: (value, theme, failure, signal) => presentationHost.prepare(value, theme, failure, signal),
+    changed: state => { presentationPackages = state; },
+  });
+  const presentationOptions = $derived([...availableUiKits, ...presentationPackages.releases.filter(release => release.enabled).map(release => ({
+    id: release.digest, label: release.manifest.displayName, description: release.manifest.version,
+    defaultThemeId: release.manifest.defaultThemeId ?? '',
+    themes: (release.manifest.themes ?? []).map(theme => ({ ...theme, description: '', swatches: [] })),
+  }))]);
+  async function presentationOperation(operation: () => Promise<unknown>) {
+    try { await operation(); } catch (error) { errorMessage = toErrorMessage(error); }
+  }
+  async function installPresentationFromDirectory() {
+    const path = await open({ directory: true, multiple: false, title: '选择皮肤插件目录' });
+    if (typeof path === 'string') await presentationPackagesController.install(path);
+  }
+  async function choosePresentation(id: string) {
+    if (!desktop) { setUiKit(id); return; }
+    if (presentationPackages.releases.some(release => release.digest === id)) await presentationPackagesController.select(id);
+    else { await presentationPackagesController.select(null); setUiKit(id); }
+  }
+  async function choosePresentationTheme(id: string) {
+    if (presentationPackages.active) await presentationPackagesController.select(presentationPackages.active.release.digest, id);
+    else setUiTheme(id);
+  }
+  function externalIntent(intent: PresentationIntent) {
+    if (intent.context.workspaceId !== selectedWorkspaceId || intent.context.sessionId !== selectedSessionId) return;
+    if (intent.id !== 'draft' && intent.event !== 'click') return;
+    if (intent.id === 'draft' && intent.event === 'input' && typeof intent.value === 'string') composerText = intent.value;
+    else if (intent.id === 'send' && !busy && !sessionRunning) void sendPrompt();
+    else if (intent.id === 'stop' && sessionRunning) void abortPrompt();
+    else if (intent.id.startsWith('workspace:')) {
+      const id = intent.id.slice('workspace:'.length);
+      if (workspaces.some(workspace => workspace.id === id)) selectWorkspace(id);
+    } else if (intent.id.startsWith('session:')) {
+      const id = intent.id.slice('session:'.length);
+      if (sessions.some(session => session.id === id && session.workspaceId === selectedWorkspaceId)) selectSession(id);
+    }
+  }
+  $effect(() => {
+    const data = { workspaces: workspaces.map(({ id, label }) => ({ id, label })),
+      sessions: sessions.filter(session => session.workspaceId === selectedWorkspaceId).map(({ id, label, state }) => ({ id, label, state })),
+      timeline: timeline.map(({ id, role, content, status }) => ({ id, role, content, status })),
+      draft: composerText, busy, running: sessionRunning, selectedWorkspaceId, selectedSessionId };
+    untrack(() => { externalInput = { surface: 'workbench', context: { workspaceId: data.selectedWorkspaceId, sessionId: data.selectedSessionId, revision: externalInput.context.revision + 1 }, data: $state.snapshot(data), theme: {} }; });
+  });
+  $effect(() => {
+    if (!desktop) return;
+    void presentationOperation(() => presentationPackagesController.initialize());
+    const timer = setInterval(() => { void presentationPackagesController.refresh(); }, 2000);
+    return () => { clearInterval(timer); presentationPackagesController.dispose(); };
+  });
   const loadInstalledWorkbench = () => import('$lib/workbench/InstalledWorkbench.svelte');
   import { listSemanticContributions, cancelSemanticOpen, openSemanticContribution, actSemanticContribution, writeSemanticContribution, releaseSemanticContribution } from '$lib/api';
   import type { InstalledContribution, InstalledScope } from '$lib/presentation/installed-controller';
@@ -3045,6 +3106,21 @@
 
 </script>
 
+{#snippet presentationPackageManagement()}
+  <section class="settings-section" aria-label="皮肤插件管理">
+    <Button disabled={!desktop || presentationPackages.busy} onclick={() => void presentationOperation(installPresentationFromDirectory)}>安装皮肤插件</Button>
+    <Button onclick={() => void presentationOperation(() => desktop ? presentationPackagesController.select(null) : Promise.resolve())}>恢复内置呈现</Button>
+    {#if presentationPackages.error}<p role="alert">{presentationPackages.error}</p>{/if}
+    {#each presentationPackages.releases as release (release.digest)}
+      <div>
+        <span>{release.manifest.displayName} · {release.manifest.version}</span>
+        <Button disabled={presentationPackages.busy} onclick={() => void presentationOperation(() => presentationPackagesController.enable(release.digest, !release.enabled))}>{release.enabled ? '禁用' : '启用'}</Button>
+        <Button disabled={presentationPackages.busy} onclick={() => void presentationOperation(() => presentationPackagesController.uninstall(release.digest))}>卸载</Button>
+      </div>
+    {/each}
+  </section>
+{/snippet}
+
 {#snippet appearanceActions()}{@render presentationActions('appearance')}{/snippet}
 {#snippet diagnosticsActions()}{@render presentationActions('diagnostics')}{/snippet}
 {#snippet navigationActions()}{@render presentationActions('navigation')}{/snippet}
@@ -3086,13 +3162,14 @@
     onClose={closeAppWindow}
   />
   <SettingsPanel
+    packageManagement={presentationPackageManagement}
     presentationActions={appearanceActions}
     open={settingsOpen}
-    uiKits={availableUiKits}
-    activeUiKitName={$activeUiKitName}
-    activeThemeId={$activeTheme.id}
-    onSelectUiKit={setUiKit}
-    onSelectTheme={setUiTheme}
+    uiKits={presentationOptions}
+    activeUiKitName={presentationPackages.active?.release.digest ?? $activeUiKitName}
+    activeThemeId={presentationPackages.themeId ?? $activeTheme.id}
+    onSelectUiKit={id => void presentationOperation(() => choosePresentation(id))}
+    onSelectTheme={id => void presentationOperation(() => choosePresentationTheme(id))}
     onClose={() => (settingsOpen = false)}
   />
   <DiagnosticsPanel
@@ -3183,7 +3260,8 @@
     />
     </div>
   {/if}
-<WorkbenchPresentation bind:this={workbenchPresentation} bind:layout={presentationLayout} bind:switching={presentationSwitching} bind:gridElement={workspaceGridElement} navigationWidth={workspaceSidebarWidth} auxiliaryWidth={inspectorWidth} auxiliaryOpen={sidePanelOpen} suspended={pluginsOpen || historyOpen || sessionHistoryOpen || capabilityHistoryOpen} windowId={presentationWindowId()} snapshot={{ workspaceId: selectedWorkspaceId, sessionId: selectedSessionId, draft: composerText, navigation: sidePanelView, timelineRevision: timeline.length }}>
+<PresentationHost onRestore={() => void presentationOperation(() => presentationPackagesController.select(null))} bind:this={presentationHost} active={presentationPackages.active} themeId={presentationPackages.themeId} input={externalInput} suspended={pluginsOpen || historyOpen || sessionHistoryOpen || capabilityHistoryOpen || settingsOpen || diagnosticsOpen || commandPaletteOpen} onIntent={externalIntent}>
+<WorkbenchPresentation onRestore={() => desktop ? presentationPackagesController.select(null) : Promise.resolve()} bind:this={workbenchPresentation} bind:layout={presentationLayout} bind:switching={presentationSwitching} bind:gridElement={workspaceGridElement} navigationWidth={workspaceSidebarWidth} auxiliaryWidth={inspectorWidth} auxiliaryOpen={sidePanelOpen} suspended={pluginsOpen || historyOpen || sessionHistoryOpen || capabilityHistoryOpen} windowId={presentationWindowId()} snapshot={{ workspaceId: selectedWorkspaceId, sessionId: selectedSessionId, draft: composerText, navigation: sidePanelView, timelineRevision: timeline.length }}>
 {#snippet navigation(guard)}
     <WorkspaceSidebar
       presentationActions={navigationActions}
@@ -3483,4 +3561,5 @@
   />
 {/snippet}
 </WorkbenchPresentation>
+</PresentationHost>
 </div>

@@ -3,6 +3,8 @@
   'use strict';
   let port, worker, workerUrl, sequence = 0, current, timer, heartbeat, pongDeadline, assets = {}, themeKeys = [], disposed = false;
   const root = document.getElementById('root');
+  let editSequence = 0, acceptedEdits = 0, localInputActions = [];
+  const edits = new Map();
   const tags = new Set('div section main aside header footer nav article h1 h2 h3 p span strong em pre code ul ol li button input textarea label select option table thead tbody tr th td details summary hr img svg path circle rect line polyline polygon g'.split(' '));
   const attributes = new Set('id role title aria-label aria-labelledby aria-describedby aria-expanded aria-selected aria-pressed aria-live aria-atomic aria-hidden aria-current aria-disabled placeholder type value disabled readonly checked selected multiple name for tabindex rows cols open alt width height viewBox d fill stroke stroke-width stroke-linecap stroke-linejoin cx cy r x y x1 x2 y1 y2 points'.split(' '));
   const eventNames = new Set(['click', 'input', 'change', 'keydown']);
@@ -51,10 +53,21 @@
         element.addEventListener(event, e => {
           if (!e.isTrusted) return;
           if (event === 'click') e.stopPropagation();
-          send({ type: 'intent', intent: { id, context,
+          let edited;
+          if (event === 'input' && localInputActions.includes(id) && 'value' in element) {
+            edited = ++editSequence;
+            edits.set(value.key, { sequence: edited, value: element.value });
+          }
+          send({ type: 'intent', intent: { id, event, context,
+            ...(edited ? { editSequence: edited } : {}),
             ...('value' in element ? { value: String(element.value).slice(0, 1024 * 1024) } : {}),
             ...(event === 'keydown' ? { key: e.key } : {}) } });
         });
+      }
+      const edit = edits.get(value.key);
+      if (edit && 'value' in element) {
+        if (edit.sequence > acceptedEdits) element.value = edit.value;
+        else edits.delete(value.key);
       }
       if (value.children !== undefined) {
         if (!Array.isArray(value.children)) throw Error('invalid_presentation_children');
@@ -76,7 +89,9 @@
     }
     window.scrollTo(...windowScroll);
   }
-  function update(input) {
+  function update(input, acknowledged = 0) {
+    if (current && (current.context.workspaceId !== input.context.workspaceId || current.context.sessionId !== input.context.sessionId)) edits.clear();
+    acceptedEdits = acknowledged;
     current = input; const ticket = ++sequence;
     for (const name of themeKeys) document.documentElement.style.removeProperty(name);
     themeKeys = Object.keys(input.theme);
@@ -87,6 +102,7 @@
   }
   function start(packet) {
     assets = packet.assets;
+    localInputActions = packet.localInputActions;
     const style = document.createElement('style');
     style.textContent = 'html,body{margin:0;min-height:100%;}*{box-sizing:border-box;}' + packet.css;
     document.head.append(style);
@@ -121,11 +137,16 @@
       if (disposed) return;
       try {
         if (data.type === 'start' && !worker) start(data);
-        else if (data.type === 'update' && worker) update(data.input);
+        else if (data.type === 'update' && worker) update(data.input, data.acceptedEdits);
         else if (data.type === 'dispose') { stop(); root.replaceChildren(); disposed = true; port.close(); }
       } catch (error) { fail(error); }
     };
     port.start(); send({ type: 'connected' });
   }
   window.addEventListener('message', initialize);
+  window.addEventListener('keydown', event => {
+    if (event.isTrusted && (event.ctrlKey || event.metaKey) && event.shiftKey && event.code === 'Backspace') {
+      event.preventDefault(); event.stopImmediatePropagation(); send({ type: 'recovery' });
+    }
+  }, true);
 })();
