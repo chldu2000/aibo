@@ -52,6 +52,14 @@
         element.src = assets[value.resource];
       }
       element.dataset.presentationKey = value.key;
+      if (value.primaryEnter !== undefined) {
+        if (value.tag !== 'textarea' || typeof value.primaryEnter !== 'string' || !value.primaryEnter || value.primaryEnter.length > 256 || value.events?.keydown || value.localEvents?.keydown) throw Error('invalid_presentation_shortcut');
+        element.addEventListener('keydown', event => {
+          if (!event.isTrusted || event.isComposing || event.repeat || event.key !== 'Enter' || !(event.metaKey || event.ctrlKey) || event.altKey || element.disabled || element.readOnly) return;
+          event.preventDefault(); event.stopPropagation();
+          send({ type:'intent', intent:{ id:value.primaryEnter, event:'click', context } });
+        });
+      }
       if (value.text !== undefined) {
         if (typeof value.text !== 'string' || value.text.length > 1024 * 1024) throw Error('invalid_presentation_text');
         element.textContent = value.text;

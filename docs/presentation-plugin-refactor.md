@@ -553,3 +553,17 @@ P2/P3/P4 保持未整体退出。
 
 本批 `pnpm run verify` 通过（25 项架构检查、236 项 Node 测试、类型检查与构建）；
 保留既有构建体积提示。两项浏览器探针均通过，原生 IPC 替身的范围不变。
+
+编辑器快捷键：外置工作台通过受限 textarea `primaryEnter` 字段绑定宿主现有
+发送/立即引导令牌。普通 Enter 换行，⌘/Ctrl+Enter 提交；没有对应可用动作时
+不声明快捷键。可信桥拒绝输入法组合、自动重复、伪造事件以及禁用/只读控件，
+旧渲染版本仍被宿主门禁拒绝。未扩大动作目录或让 Worker 直接执行业务。
+
+[双皮肤实际 App 记录](baselines/presentation-p3/keyboard-browser.json) 验证 Ctrl+Enter
+发送和后续换肤草稿；[沙箱键盘记录](baselines/presentation-p3/keyboard-sandbox-browser.json)
+验证两种主修饰键、普通换行、Chromium CDP 输入法组合、伪造事件和过期意图，
+并复验原有沙箱隔离/超时/恢复检查。这不替代原生物理键盘或辅助功能验收。
+
+`pnpm run verify` 通过 25 项架构检查、237 项 Node 测试、类型检查与构建，
+保留既有构建体积提示。布局、建议列表键盘导航、完整状态映射以及剩余原生
+退出项仍待完成；P2/P3/P4 未整体退出。

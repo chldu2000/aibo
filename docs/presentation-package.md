@@ -141,6 +141,11 @@ Ctrl/Command+Shift+Backspace 是宿主保留的恢复快捷键。固定绘制桥
 事件不会转成业务动作。Worker 可以持有筛选、展开等临时状态；需要跨插件切换或
 重启恢复的状态仍需宿主状态合同，不能依赖 Worker 全局变量持久化。
 
+`PresentationNode.primaryEnter` 可在 textarea 上绑定现有宿主 click token，提供
+⌘/Ctrl+Enter 操作。可信桥只接受真实、非输入法组合、非自动重复的按键；普通
+Enter 保持换行。禁用/只读输入框不触发，不能同时声明 keydown 事件。生成的意图
+仍受宿主当前动作目录和严格版本门禁控制，不授予新的业务能力。
+
 ## 独立控件呈现
 
 声明 controls 角色后，宿主以 `surface: 'controls'` 调用同一个入口。当前公开目录

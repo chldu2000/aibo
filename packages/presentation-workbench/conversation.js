@@ -27,7 +27,10 @@ export function renderConversation(state,actions){
  }
  if(state.queue)children.push(section('conversation:queue','待处理消息',[...state.queue.steering.map((value,i)=>text('queue:steer:'+i,'引导：'+value)),...state.queue.followUp.map((value,i)=>text('queue:follow:'+i,'后续：'+value)),...controls(['clearQueue'])]));
  if(state.session){
-  const composer=[field('conversation:draft','消息',state.draft,find('draft'),true),state.draftFailed?node('p','conversation:draft-error','草稿保存失败',[],{role:'alert'}):null];
+  const draftField=field('conversation:draft','消息',state.draft,find('draft'),true);
+  const submit=find(state.running?'queueSteer':'send');
+  if(submit)draftField.children[1].primaryEnter=submit.token;
+  const composer=[draftField,text('conversation:shortcut','⌘/Ctrl+Enter '+(state.running?'立即引导':'发送')+' · Enter 换行'),state.draftFailed?node('p','conversation:draft-error','草稿保存失败',[],{role:'alert'}):null];
   composer.push(node('ul','conversation:attachments',null,state.attachments.map(item=>node('li','attachment:'+item.id,null,[renderAttachment(item,'composer:attachment:'+item.id),button('attachment:remove:'+item.id,'移除附件 '+item.path,find('removeAttachment',item.id))]))));
   composer.push(node('nav','conversation:composer-tools',null,controls(['addAttachments','addDirectory','send','stop','queueSteer','queueFollowUp'])));
   if(state.workspacePathSuggestions.length)composer.push(section('conversation:paths','路径建议',state.workspacePathSuggestions.map(item=>button('path:'+item.path,item.path+(item.isDirectory?'/':''),find('selectPath',item.path)))));

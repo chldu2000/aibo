@@ -30,6 +30,31 @@ try {
   await page.waitForFunction(()=>document.querySelector('iframe')?.dataset.presentationRevision==='3');
   assert.equal(await page.evaluate(()=>window.sandboxProbe.intents.length),count,'old rendered context cannot dispatch after host revision advances');
   evidence.push('late user event from previous rendered revision rejected');
+  const shortcutSource=`self.aiboPresentation={async render(input){if(input.data.delay)await new Promise(resolve=>setTimeout(resolve,800));return {tag:'textarea',key:'editor',attrs:{'aria-label':'Shortcut editor',value:'draft'},primaryEnter:'submit'}}};`;
+  await page.evaluate(source=>window.sandboxProbe.mount(source),shortcutSource);
+  frame=page.frameLocator('iframe');const editor=frame.getByRole('textbox',{name:'Shortcut editor'});
+  const beforeShortcut=await page.evaluate(()=>window.sandboxProbe.intents.length);
+  await editor.press('Enter');assert.equal(await editor.inputValue(),'draft\n');
+  await editor.evaluate(element=>element.dispatchEvent(new KeyboardEvent('keydown',{key:'Enter',ctrlKey:true,bubbles:true})));
+  assert.equal(await page.evaluate(()=>window.sandboxProbe.intents.length),beforeShortcut);
+  for(const modifier of ['Control','Meta']){
+    await editor.press(modifier+'+Enter');
+    await page.waitForFunction(count=>window.sandboxProbe.intents.length===count,beforeShortcut+(modifier==='Control'?1:2));
+    assert.equal(await page.evaluate(()=>window.sandboxProbe.intents.at(-1).event),'click');
+  }
+  const keyboardSession=await page.context().newCDPSession(page);
+  await keyboardSession.send('Input.imeSetComposition',{text:'拼音',selectionStart:2,selectionEnd:2});
+  await editor.press('Control+Enter');
+  assert.equal(await page.evaluate(()=>window.sandboxProbe.intents.length),beforeShortcut+2,'IME composition cannot submit');
+  await keyboardSession.send('Input.imeSetComposition',{text:'',selectionStart:0,selectionEnd:0});
+  await keyboardSession.detach();
+  const shortcutRevision=Number(await page.locator('iframe').getAttribute('data-presentation-revision'));
+  await page.evaluate(()=>window.sandboxProbe.update({delay:true}));
+  await editor.press('Control+Enter');
+  await page.waitForFunction(revision=>Number(document.querySelector('iframe')?.dataset.presentationRevision)>revision,shortcutRevision);
+  assert.equal(await page.evaluate(()=>window.sandboxProbe.intents.length),beforeShortcut+2,'stale shortcut cannot submit');
+  await assert.rejects(page.evaluate(()=>window.sandboxProbe.mount("self.aiboPresentation={render(){return {tag:'div',key:'bad',primaryEnter:'submit'}}}")),/invalid_presentation_shortcut/);
+  evidence.push('primary Enter uses click intent; ordinary Enter inserts newline; IME and stale shortcuts rejected; synthetic keys and invalid shortcut targets rejected');
   const isolated=`self.aiboPresentation={async render(){let network;try{await fetch('https://example.com');network='allowed'}catch{network='blocked'}return {tag:'p',key:'status',text:typeof document+':'+typeof localStorage+':'+typeof __TAURI_INTERNALS__+':'+network};}};`;
   await page.evaluate(source=>window.sandboxProbe.mount(source),isolated);
   assert.equal(await page.frameLocator('iframe').getByText('undefined:undefined:undefined:blocked').count(),1);

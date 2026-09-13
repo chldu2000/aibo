@@ -17,6 +17,8 @@ export type PresentationNode = {
   events?: Partial<Record<'click' | 'input' | 'change' | 'keydown', string>>;
   /** Presentation-owned interaction, delivered only to the package Worker. */
   localEvents?: Partial<Record<'click' | 'input' | 'change' | 'keydown', string>>;
+  /** Textarea-only primary-modifier Enter shortcut, using an existing host click token. */
+  primaryEnter?: string;
   children?: readonly PresentationNode[];
 };
 
