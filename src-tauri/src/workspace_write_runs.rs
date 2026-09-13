@@ -12,16 +12,28 @@ static ADMISSION: tokio::sync::Mutex<()> = tokio::sync::Mutex::const_new(());
 pub(crate) struct Request {
     id: String,
     caller: String,
+    session_policy: Option<String>,
     confirmation: Option<Arc<dyn Fn(String) -> std::pin::Pin<Box<dyn Future<Output = Result<bool, String>> + Send>> + Send + Sync>>,
 }
 impl Request {
     #[cfg(test)]
-    pub(crate) fn new(id: String, caller: String) -> Self { Self { id, caller, confirmation: None } }
+    pub(crate) fn new(id: String, caller: String) -> Self { Self { id, caller, session_policy: None, confirmation: None } }
     pub(crate) fn with_confirmation<F, Fut>(id: String, caller: String, confirm: F) -> Self
     where F: Fn(String) -> Fut + Send + Sync + 'static, Fut: Future<Output = Result<bool, String>> + Send + 'static {
-        Self { id, caller, confirmation: Some(Arc::new(move |message| Box::pin(confirm(message)))) }
+        Self { id, caller, session_policy: None, confirmation: Some(Arc::new(move |message| Box::pin(confirm(message)))) }
     }
-    pub(crate) fn child(&self, id: String) -> Self { Self { id, caller:self.caller.clone(), confirmation:self.confirmation.clone() } }
+    pub(crate) fn with_session_policy<F, Fut>(id: String, caller: String, session: String, confirm: F) -> Self
+    where F: Fn(String) -> Fut + Send + Sync + 'static, Fut: Future<Output = Result<bool, String>> + Send + 'static {
+        let mut request = Self::with_confirmation(id, caller, confirm);
+        request.session_policy = Some(session);
+        request
+    }
+    fn permits(&self, operation: &str, input: &Value, nested: bool) -> bool {
+        self.session_policy.as_ref().is_none_or(|session| !nested && operation == "capability.invoke"
+            && input["capability"] == "aibo.session.turn.write"
+            && input["scope"]["kind"] == "session" && input["scope"]["id"] == *session)
+    }
+    pub(crate) fn child(&self, id: String) -> Self { Self { id, caller:self.caller.clone(), session_policy:self.session_policy.clone(), confirmation:self.confirmation.clone() } }
     pub(crate) fn matches(&self, id: &str, caller: &str) -> bool { self.id == id && self.caller == caller && self.confirmation.is_some() }
     #[cfg(test)]
     pub(crate) fn test() -> Self { Self::new(ulid::Ulid::new().to_string(), "test".into()) }
@@ -143,6 +155,9 @@ async fn execute_in_lease<T, F, Fut, P, Prepared, Stop>(
 ) -> Result<T, CoreError>
 where T: Serialize + DeserializeOwned, F: FnOnce(Cancellation) -> Fut, Fut: Future<Output = Result<T, CoreError>>,
     P: Fn() -> Prepared, Prepared: Future<Output = Result<Value, CoreError>>, Stop: Future<Output = ()> {
+    if !request.permits(operation, &input, parent.is_some()) {
+        return Err(CoreError::InvalidWorkspacePath("Session permission cannot authorize this operation".into()));
+    }
     if workspace.trust != "trusted" { return Err(CoreError::WorkspaceTrustRequired); }
     if request.id.is_empty() || request.id.len() > 128 || !request.id.bytes().all(|c| c.is_ascii_alphanumeric() || matches!(c, b'-' | b'_')) {
         return Err(CoreError::InvalidWorkspacePath("invalid workspace write request ID".into()));
@@ -587,5 +602,22 @@ mod tests {
         tokio::time::sleep(std::time::Duration::from_millis(2200)).await;
         assert!(!root.join("late-hook").exists()); assert_eq!(git(&["rev-list", "--count", "HEAD"]), "1");
         reopened.close().await; std::fs::remove_dir_all(root).unwrap();
+    }
+}
+
+#[cfg(test)]
+mod session_policy_tests {
+    use super::*;
+    #[test]
+    fn session_policy_does_not_authorize_other_writes_or_nested_calls() {
+        let request = Request::with_session_policy("request".into(), "main".into(), "session".into(), |_| async { Ok(true) });
+        let input = serde_json::json!({"capability":"aibo.session.turn.write","scope":{"kind":"session","id":"session"}});
+        assert!(request.permits("capability.invoke", &input, false));
+        assert!(!request.permits("capability.invoke", &input, true));
+        assert!(!request.permits("git.commit", &input, false));
+        let mut other = input.clone(); other["scope"]["id"] = serde_json::json!("other-session");
+        assert!(!request.child("child".into()).permits("capability.invoke", &other, false));
+        other = input.clone(); other["capability"] = serde_json::json!("plugin.arbitrary.write");
+        assert!(!request.child("child".into()).permits("capability.invoke", &other, false));
     }
 }

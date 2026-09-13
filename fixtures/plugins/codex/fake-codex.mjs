@@ -2,14 +2,15 @@
 import readline from 'node:readline';
 const write = (message) => process.stdout.write(`${JSON.stringify({ jsonrpc: '2.0', ...message })}\n`);
 const input = readline.createInterface({ input: process.stdin, crlfDelay: Infinity });
+let nativeTurnId = 'native-turn';
 let goal = null;
 const nativeTurns = [];
 let interactiveTurn = null;
 function completeTurn(params) {
-  nativeTurns.push({id:'native-turn'});
-  write({ method: 'item/agentMessage/delta', params: { threadId: params.threadId, turnId: 'native-turn', itemId: 'message', delta: params.input[0].text } });
-  write({ method: 'item/completed', params: { threadId: params.threadId, turnId: 'native-turn', item: { id: 'message', type: 'agentMessage', text: params.input[0].text } } });
-  write({ method: 'turn/completed', params: { threadId: params.threadId, turn: { id: 'native-turn', status: 'completed', items: [] } } });
+  nativeTurns.push({id:nativeTurnId});
+  write({ method: 'item/agentMessage/delta', params: { threadId: params.threadId, turnId: nativeTurnId, itemId: 'message', delta: params.input[0].text } });
+  write({ method: 'item/completed', params: { threadId: params.threadId, turnId: nativeTurnId, item: { id: 'message', type: 'agentMessage', text: params.input[0].text } } });
+  write({ method: 'turn/completed', params: { threadId: params.threadId, turn: { id: nativeTurnId, status: 'completed', items: [] } } });
 }
 input.on('line', (line) => {
   const request = JSON.parse(line);
@@ -29,10 +30,11 @@ input.on('line', (line) => {
   else if (method === 'thread/read' && params.includeTurns && process.env.CODEX_FAKE_NO_TURNS === '1') write({id,error:{code:-32600,message:'list_turns is not supported yet'}});
   else if (method === 'thread/read') write({id,result:{thread:{id:params.threadId,title:'Native thread',cwd:process.cwd(),status:{type:'idle'},updatedAt:'2026-09-12T00:00:00Z',turns:process.env.CODEX_FAKE_NO_TURNS === '1' ? undefined : nativeTurns}}});
   else if (method === 'thread/fork') {
-    if (params.lastTurnId && params.lastTurnId !== 'native-turn') throw Error('host turn ID leaked into native fork');
+    if (params.lastTurnId && params.lastTurnId !== nativeTurnId) throw Error('host turn ID leaked into native fork');
     write({id,result:{thread:{id:process.env.CODEX_FAKE_FORK_SAME_THREAD==='1'?params.threadId:'forked-thread',parentThreadId:params.threadId}}});
   }
   else if (method === 'turn/start') {
+    nativeTurnId = params.input?.[0]?.text?.startsWith('unique turn:') ? params.input[0].text : 'native-turn';
     if (params.summary !== 'auto') {
       write({ id, error: { code: -32000, message: 'reasoning summary was not requested' } });
       return;
@@ -41,24 +43,24 @@ input.on('line', (line) => {
       write({ id, error: { code: -32000, message: 'selected model or reasoning effort missing' } });
       return;
     }
-    write({ id, result: { turn: { id: 'native-turn' } } });
-    write({ method: 'turn/started', params: { threadId: params.threadId, turn: { id: 'native-turn', status: 'inProgress' } } });
+    write({ id, result: { turn: { id: nativeTurnId } } });
+    write({ method: 'turn/started', params: { threadId: params.threadId, turn: { id: nativeTurnId, status: 'inProgress' } } });
     if (params.input[0].text === 'tool please') {
-      write({ method: 'item/agentMessage/delta', params: { threadId: params.threadId, turnId: 'native-turn', itemId: 'commentary-1', delta: 'I will inspect first.' } });
-      write({ method: 'item/completed', params: { threadId: params.threadId, turnId: 'native-turn', item: { id: 'commentary-1', type: 'agentMessage', text: 'I will inspect first.' } } });
-      write({ method: 'item/started', params: { threadId: params.threadId, turnId: 'native-turn', item: { id: 'reasoning-1', type: 'reasoning', summary: [], status: 'inProgress' } } });
-      write({ method: 'item/reasoning/summaryTextDelta', params: { threadId: params.threadId, turnId: 'native-turn', itemId: 'reasoning-1', summaryIndex: 0, delta: 'Checking the workspace.' } });
-      write({ method: 'item/completed', params: { threadId: params.threadId, turnId: 'native-turn', item: { id: 'reasoning-1', type: 'reasoning', summary: ['Checking the workspace.'], status: 'completed' } } });
-      write({ method: 'item/started', params: { threadId: params.threadId, turnId: 'native-turn', item: { id: 'command-1', type: 'commandExecution', status: 'inProgress', command: 'printf test', cwd: '/tmp' } } });
-      write({ method: 'item/commandExecution/outputDelta', params: { threadId: params.threadId, turnId: 'native-turn', itemId: 'command-1', delta: 'tool output\n' } });
-      write({ method: 'item/completed', params: { threadId: params.threadId, turnId: 'native-turn', item: { id: 'command-1', type: 'commandExecution', status: 'completed', command: 'printf test', cwd: '/tmp', aggregatedOutput: 'tool output\n', exitCode: 0 } } });
+      write({ method: 'item/agentMessage/delta', params: { threadId: params.threadId, turnId: nativeTurnId, itemId: 'commentary-1', delta: 'I will inspect first.' } });
+      write({ method: 'item/completed', params: { threadId: params.threadId, turnId: nativeTurnId, item: { id: 'commentary-1', type: 'agentMessage', text: 'I will inspect first.' } } });
+      write({ method: 'item/started', params: { threadId: params.threadId, turnId: nativeTurnId, item: { id: 'reasoning-1', type: 'reasoning', summary: [], status: 'inProgress' } } });
+      write({ method: 'item/reasoning/summaryTextDelta', params: { threadId: params.threadId, turnId: nativeTurnId, itemId: 'reasoning-1', summaryIndex: 0, delta: 'Checking the workspace.' } });
+      write({ method: 'item/completed', params: { threadId: params.threadId, turnId: nativeTurnId, item: { id: 'reasoning-1', type: 'reasoning', summary: ['Checking the workspace.'], status: 'completed' } } });
+      write({ method: 'item/started', params: { threadId: params.threadId, turnId: nativeTurnId, item: { id: 'command-1', type: 'commandExecution', status: 'inProgress', command: 'printf test', cwd: '/tmp' } } });
+      write({ method: 'item/commandExecution/outputDelta', params: { threadId: params.threadId, turnId: nativeTurnId, itemId: 'command-1', delta: 'tool output\n' } });
+      write({ method: 'item/completed', params: { threadId: params.threadId, turnId: nativeTurnId, item: { id: 'command-1', type: 'commandExecution', status: 'completed', command: 'printf test', cwd: '/tmp', aggregatedOutput: 'tool output\n', exitCode: 0 } } });
       completeTurn(params);
     } else if (params.input[0].text === 'approval please') {
       interactiveTurn = { kind: 'approval', requestId: 'provider-approval', params };
-      write({ id: interactiveTurn.requestId, method: 'item/commandExecution/requestApproval', params: { threadId: params.threadId, turnId: 'native-turn', itemId: 'tool-1', command: 'test', cwd: '/tmp' } });
+      write({ id: interactiveTurn.requestId, method: 'item/commandExecution/requestApproval', params: { threadId: params.threadId, turnId: nativeTurnId, itemId: 'tool-1', command: 'test', cwd: '/tmp' } });
     } else if (params.input[0].text === 'input please') {
       interactiveTurn = { kind: 'user-input', requestId: 'provider-input', params };
-      write({ id: interactiveTurn.requestId, method: 'item/tool/requestUserInput', params: { threadId: params.threadId, turnId: 'native-turn', itemId: 'tool-2', questions: [{ id: 'choice', header: 'Choice', question: 'Continue?', options: [] }] } });
+      write({ id: interactiveTurn.requestId, method: 'item/tool/requestUserInput', params: { threadId: params.threadId, turnId: nativeTurnId, itemId: 'tool-2', questions: [{ id: 'choice', header: 'Choice', question: 'Continue?', options: [] }] } });
     } else completeTurn(params);
   } else if (method === 'turn/interrupt') write({ id, result: {} });
   else if (method === 'thread/goal/get') write({ id, result: { goal } });

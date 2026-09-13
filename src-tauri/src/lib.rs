@@ -12,6 +12,7 @@ mod workspace_write_runs;
 mod artifact;
 mod change_set;
 mod execution_profile;
+mod session_permissions;
 mod session_models;
 mod plugin_runtime;
 mod plugin_contract;
@@ -1308,7 +1309,8 @@ async fn set_workspace_trust(
     state: State<'_, AppState>,
 ) -> Result<Workspace, CoreError> {
     let _guard = state.capability_broker.mutation_guard().await;
-    let updated = sqlx::query("UPDATE workspaces SET trusted = ?, updated_at = ? WHERE id = ?")
+    let updated = sqlx::query("UPDATE workspaces SET permission_epoch = permission_epoch + CASE WHEN trusted != ? THEN 1 ELSE 0 END, trusted = ?, updated_at = ? WHERE id = ?")
+        .bind(i64::from(trusted))
         .bind(i64::from(trusted))
         .bind(now_iso())
         .bind(&workspace_id)
@@ -1316,6 +1318,10 @@ async fn set_workspace_trust(
         .await?;
     if updated.rows_affected() == 0 {
         return Err(CoreError::WorkspaceNotFound(workspace_id));
+    }
+    if !trusted {
+        sqlx::query("DELETE FROM session_permission_grants WHERE session_id IN (SELECT id FROM sessions WHERE workspace_id=?)")
+            .bind(&workspace_id).execute(&state.db).await?;
     }
     if !trusted { state.capability_broker.stop_workspace(&workspace_id).await.map_err(|error|CoreError::Initialization(error.message))?; }
     workspace_by_id(&state.db, &workspace_id).await
@@ -1650,6 +1656,7 @@ async fn update_session_execution_profile(
     requested: ExecutionProfile,
     window: tauri::WebviewWindow, state: State<'_, AppState>,
 ) -> Result<SessionExecutionProfile, CoreError> {
+    let _admission = state.plugins.session_operation(&session_id).await;
     let session = session_by_id(&state.db, &session_id).await?;
     if session.archived {
         return Err(CoreError::SessionOperation(
@@ -1675,9 +1682,13 @@ async fn update_session_execution_profile(
     if session.plugin_installation_id.is_none() {
         return Err(CoreError::SessionOperation("history_only: old session configuration is read-only".into()));
     }
+    let installation = session.plugin_installation_id.as_deref().unwrap();
+    let consent = confirm_session_permissions(&window, &state.db, Some(&session_id), &session.workspace_id, installation, &session.agent, &resolved.enforced)
+        .await.map_err(CoreError::SessionOperation)?;
     // The next capability open captures the updated host execution profile.
-    state.plugins.close_from(window.label(), &session_id).await.map_err(CoreError::SessionOperation)?;
+    state.plugins.close_admitted(window.label(), &session_id).await.map_err(CoreError::SessionOperation)?;
     save_session_profile(&state.db, &session_id, &resolved).await?;
+    session_permissions::save(&state.db, &session_id, consent.as_ref()).await.map_err(CoreError::SessionOperation)?;
     sqlx::query("UPDATE sessions SET state = 'idle', updated_at = ? WHERE id = ?")
         .bind(now_iso())
         .bind(&session_id)
@@ -3396,6 +3407,17 @@ async fn cancel_project_action(
     project_actions::cancel_project_action(&state.db, workspace_id, run_id).await
 }
 
+async fn confirm_session_permissions(window: &tauri::WebviewWindow, db: &SqlitePool, session: Option<&str>, workspace: &str, installation: &str, agent: &str, profile: &ExecutionProfile) -> Result<Option<serde_json::Value>, String> {
+    use tauri_plugin_dialog::{DialogExt, MessageDialogButtons};
+    session_permissions::confirm(db, session, workspace, installation, agent, profile, |message| async move {
+        let (send, receive) = tokio::sync::oneshot::channel();
+        window.app_handle().dialog().message(message).parent(window).title("Aibo · 启用宽泛权限")
+            .buttons(MessageDialogButtons::OkCancelCustom("启用此权限".into(), "取消".into()))
+            .show(move |accepted| { let _ = send.send(accepted); });
+        receive.await.map_err(|_| "confirmation_unavailable".to_owned())
+    }).await
+}
+
 fn git_write_request(request_id: String, window: tauri::WebviewWindow) -> workspace_write_runs::Request {
     host_write_request(request_id, window, "Aibo · 确认 Git 写入")
 }
@@ -3608,14 +3630,18 @@ async fn create_agent_session(workspace_id: String, agent_id: String, installati
             .ok_or("provider_unavailable: no enabled installation for this contribution")?,
     };
     let profile = requested_profile.map(|requested| execution_profile::resolve(&agent_id, Some(requested), now_iso())).transpose()?;
-    state.plugins.create_with_profile_from(window.label(), &workspace_id, &installation_id, &agent_id, profile).await
+    let profile = match profile { Some(profile) => profile, None => execution_profile::resolve(&agent_id, None, now_iso())? };
+    let consent = confirm_session_permissions(&window, &state.db, None, &workspace_id, &installation_id, &agent_id, &profile.enforced).await?;
+    let session = state.plugins.create_with_profile_from(window.label(), &workspace_id, &installation_id, &agent_id, Some(profile)).await?;
+    session_permissions::save(&state.db, &session.id, consent.as_ref()).await?;
+    Ok(session)
 }
 
 #[tauri::command]
 async fn send_agent_prompt(session_id: String, input: String, window: tauri::WebviewWindow, state: State<'_, AppState>) -> Result<Session, String> {
     let session = session_by_id(&state.db, &session_id).await.map_err(|error|error.to_string())?;
     if session.plugin_installation_id.is_none() { return Err("history_only: create a new capability session".into()); }
-    state.plugins.send_from(window.label(), &session_id, &input, Some(host_write_request(ulid::Ulid::new().to_string(),window.clone(),"Aibo · 确认会话写入"))).await?;
+    state.plugins.send_configured_from(window.label(), &session_id, &input).await?;
     session_by_id(&state.db, &session_id).await.map_err(|error|error.to_string())
 }
 

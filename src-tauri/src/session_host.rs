@@ -75,7 +75,7 @@ impl SessionHost {
     pub fn new(db:SqlitePool,broker:Broker)->Self {Self {db,broker,operations:Default::default(),database_writes:Default::default(),live:Default::default(),pending_tools:Default::default(),turn_baselines:Default::default(),app:None}}
     // Serialize each session's open + operation + recovery persistence, not the
     // whole host. Weak entries disappear once callers and waiters have left.
-    async fn session_operation(&self, session_id: &str) -> OwnedMutexGuard<()> {
+    pub(crate) async fn session_operation(&self, session_id: &str) -> OwnedMutexGuard<()> {
         let gate = {
             let mut operations = self.operations.lock().await;
             operations.retain(|_, gate| gate.strong_count() > 0);
@@ -174,9 +174,18 @@ impl SessionHost {
             })
         })
     }
+    #[cfg(test)]
     pub async fn send_from(&self,caller:&str,session_id:&str,text:&str,approval:Option<crate::workspace_write_runs::Request>)->Result<(),String> {
-        if text.trim().is_empty() || text.len()>200_000 {return Err("invalid_input: prompt length".into());}
         let _guard=self.session_operation(session_id).await;
+        self.send_admitted(caller, session_id, text, approval).await
+    }
+    pub(crate) async fn send_configured_from(&self,caller:&str,session_id:&str,text:&str)->Result<(),String> {
+        let _guard=self.session_operation(session_id).await;
+        let approval = crate::session_permissions::turn_request(&self.db, session_id, caller).await?;
+        self.send_admitted(caller, session_id, text, Some(approval)).await
+    }
+    async fn send_admitted(&self,caller:&str,session_id:&str,text:&str,approval:Option<crate::workspace_write_runs::Request>)->Result<(),String> {
+        if text.trim().is_empty() || text.len()>200_000 {return Err("invalid_input: prompt length".into());}
         if self.live.lock().await.contains_key(session_id) {return Err("busy: session has an active invocation".into());}
         self.open(caller,session_id).await?;
         let (session,_)=self.metadata(session_id).await?;
@@ -339,6 +348,9 @@ impl SessionHost {
     pub async fn close_from(&self,caller:&str,session_id:&str)->Result<(),String> {
         self.cancel_from(caller,session_id).await?;
         let _guard=self.session_operation(session_id).await;
+        self.close_admitted(caller, session_id).await
+    }
+    pub(crate) async fn close_admitted(&self,caller:&str,session_id:&str)->Result<(),String> {
         // Recheck after admission: a queued send may have started in between.
         self.cancel_from(caller,session_id).await?;
         tokio::time::timeout(Duration::from_secs(7),async {while self.live.lock().await.contains_key(session_id) {tokio::time::sleep(Duration::from_millis(10)).await;}}).await.map_err(|_|"busy: session is still stopping")?;

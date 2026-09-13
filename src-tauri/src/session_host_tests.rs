@@ -133,7 +133,7 @@ async fn codex_branch_uses_native_boundary_and_copies_host_history_and_profile()
     );
     models.unwrap();
     snapshot.unwrap();
-    host.send_from("main",&source.id,"branch message",None).await.unwrap();
+    host.send_configured_from("main",&source.id,"branch message").await.unwrap();
     wait_for_turn(&host,&source.id).await;
     let (turn,native):(String,String) = sqlx::query_as("SELECT id,external_turn_id FROM turns WHERE session_id=? AND status='completed'")
         .bind(&source.id).fetch_one(&db).await.unwrap();
@@ -152,6 +152,18 @@ async fn codex_branch_uses_native_boundary_and_copies_host_history_and_profile()
         .bind(&source.id).bind(&branch.id).fetch_all(&db).await.unwrap();
     assert_eq!(profiles.len(),2);
     assert_eq!(profiles[0],profiles[1]);
+    // The fake native process keeps fork history in memory, so exercise writable
+    // turn cleanup separately from the native branch-boundary fixture above.
+    let mut requested = execution_profile::default_requested_profile("codex").unwrap();
+    requested.filesystem_policy = "workspace-write".into();
+    let profile = execution_profile::resolve("dev.aibo.codex.agent", Some(requested), crate::now_iso()).unwrap();
+    let editable = host.create_with_profile_from("main","w",&installed.id,"dev.aibo.codex.agent",Some(profile)).await.unwrap();
+    for index in 0..2 {
+        host.send_configured_from("main", &editable.id, &format!("unique turn: {index}")).await.unwrap();
+        wait_for_turn(&host, &editable.id).await;
+        assert_eq!(crate::session_by_id(&db, &editable.id).await.unwrap().state, "idle");
+    }
+    broker.stop_session(&editable.id).await.unwrap();
     broker.stop_session(&source.id).await.unwrap();
     broker.stop_session(&branch.id).await.unwrap();
     broker.stop_installation(&installed.id).await.unwrap();
@@ -160,7 +172,7 @@ async fn codex_branch_uses_native_boundary_and_copies_host_history_and_profile()
 }
 
 #[tokio::test]
-async fn capability_session_write_requires_host_confirmation_and_owned_tool_approval() {
+async fn capability_session_write_requires_host_authorization_and_owned_tool_approval() {
     let root = std::env::temp_dir().join(format!("aibo-session-write-{}", ulid::Ulid::new()));
     let package = root.join("package");
     let workspace = root.join("workspace");
@@ -198,8 +210,7 @@ async fn capability_session_write_requires_host_confirmation_and_owned_tool_appr
     assert!(!target.exists());
     assert!(host.pending_tools.lock().await.is_empty());
     for decision in ["cancel", "accept"] {
-        let approved = crate::workspace_write_runs::Request::with_confirmation(decision.into(), "main".into(), |_| async { Ok(true) });
-        host.send_from("main", &session.id, "core plugin write fixture", Some(approved)).await.unwrap();
+        host.send_configured_from("main", &session.id, "core plugin write fixture").await.unwrap();
         let request_id = tokio::time::timeout(Duration::from_secs(10), async {
             loop {
                 if let Some(id) = host.pending_tools.lock().await.keys().next().cloned() { break id; }
@@ -465,4 +476,56 @@ async fn accepted_turn_snapshot_does_not_use_unready_interaction() {
     db.close().await;
     fs::remove_dir_all(root).unwrap();
     assert!(result.is_ok(), "{}", crate::CoreError::SessionOperation(result.unwrap_err()));
+}
+
+#[tokio::test]
+async fn session_permission_consent_is_scoped_and_not_repeated_per_turn() {
+    use crate::session_permissions as permissions;
+    let (root, db, broker, host, session) = concurrent_session_fixture().await;
+    let installation = session.plugin_installation_id.as_deref().unwrap();
+    let mut profile = crate::session_execution_profile(&db, &session.id).await.unwrap().profile;
+    profile.enforced.interaction_mode = "edit".into();
+    profile.enforced.filesystem_policy = "workspace-write".into();
+    profile.enforced.approval_policy = "on-request".into();
+    assert!(!permissions::broad(&profile.enforced));
+    assert!(permissions::confirm(&db, Some(&session.id), "w", installation, &session.agent, &profile.enforced,
+        |_| async { panic!("ordinary editing must not prompt") }).await.unwrap().is_none());
+    profile.requested = profile.enforced.clone();
+    execution_profile::save_for_session(&db, &session.id, &profile).await.unwrap();
+    for _ in 0..2 {
+        host.send_configured_from("main", &session.id, "normal edit-mode message").await.unwrap();
+        wait_for_turn(&host, &session.id).await;
+        assert_eq!(crate::session_by_id(&db, &session.id).await.unwrap().state, "idle");
+    }
+    profile.enforced.approval_policy = "never".into();
+    assert!(permissions::broad(&profile.enforced));
+    let denied = permissions::confirm(&db, Some(&session.id), "w", installation, &session.agent, &profile.enforced,
+        |_| async { Ok(false) }).await;
+    assert!(denied.is_err());
+    assert_eq!(crate::session_execution_profile(&db, &session.id).await.unwrap().profile.enforced.approval_policy, "on-request");
+    let context = permissions::confirm(&db, None, "w", installation, &session.agent, &profile.enforced,
+        |message| async move { assert!(message.contains("无需逐次确认")); assert!(!message.contains("capability.invoke")); Ok(true) }).await.unwrap().unwrap();
+    profile.requested = profile.enforced.clone();
+    execution_profile::save_for_session(&db, &session.id, &profile).await.unwrap();
+    assert!(permissions::turn_request(&db, &session.id, "main").await.is_err(), "old broad profiles require consent");
+    permissions::save(&db, &session.id, Some(&context)).await.unwrap();
+    profile.enforced.model = Some("another-model".into());
+    let same = permissions::confirm(&db, Some(&session.id), "w", installation, &session.agent, &profile.enforced,
+        |_| async { panic!("model changes cannot prompt") }).await.unwrap().unwrap();
+    assert_eq!(same, context);
+    for _ in 0..2 {
+        host.send_configured_from("main", &session.id, "broad-mode message").await.unwrap();
+        wait_for_turn(&host, &session.id).await;
+        assert_eq!(crate::session_by_id(&db, &session.id).await.unwrap().state, "idle");
+    }
+    assert!(!permissions::granted(&db, "another-session", &context).await.unwrap());
+    sqlx::query("UPDATE workspaces SET permission_epoch=permission_epoch+1 WHERE id='w'").execute(&db).await.unwrap();
+    assert!(permissions::turn_request(&db, &session.id, "main").await.is_err(), "trust changes invalidate consent");
+    let refreshed = permissions::context(&db, "w", installation, &session.agent, &profile.enforced).await.unwrap();
+    permissions::save(&db, &session.id, Some(&refreshed)).await.unwrap();
+    sqlx::query("UPDATE plugin_installations SET enabled_at='new-activation' WHERE id=?").bind(installation).execute(&db).await.unwrap();
+    assert!(permissions::turn_request(&db, &session.id, "main").await.is_err(), "plugin activation changes invalidate consent");
+    permissions::save(&db, &session.id, None).await.unwrap();
+    assert!(!permissions::granted(&db, &session.id, &refreshed).await.unwrap());
+    broker.stop_session(&session.id).await.unwrap(); db.close().await; fs::remove_dir_all(root).unwrap();
 }
