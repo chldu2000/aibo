@@ -423,3 +423,8 @@ shadcn 和 Material 3 的主题定义分别归属 `packages/presentation-shadcn/
 宿主通过 `workbench-layout-storage` 按窗口保存导航/辅助列宽度、辅助面板开关与
 当前视图。记录不包含皮肤身份；默认和外置呈现更新同一状态。读取时校验字段与
 尺寸边界，存储不可用时维持内存状态；在较小桌面窗口恢复时重新计算可用列宽。
+
+独立工作台消费宿主 standard/focus/review 布局选择。focus 只装配内容区域；
+review 反转区域顺序和分栏增长方向。模式切换经宿主既有 WorkbenchPresentation
+控制器提交及持久化；外置皮肤不维护第二份布局选择。旧顺序的调整令牌在模式
+改变后失效，切换中不发布布局动作。

@@ -332,11 +332,11 @@
   const externalLayout = $derived({
     navigation: { width: workspaceSidebarWidth, min: workspaceColumnMin, max: Math.max(workspaceColumnMin, maxColumnWidth('workspace')) },
     auxiliary: { width: inspectorWidth, min: inspectorColumnMin, max: Math.max(inspectorColumnMin, maxColumnWidth('inspector')) },
-    auxiliaryOpen: sidePanelOpen,
+    auxiliaryOpen: sidePanelOpen, mode: presentationLayout === 'focus' ? 'focus' : presentationLayout === 'review' ? 'review' : 'standard', switching: presentationSwitching,
   });
   function externalIntent(intent: PresentationIntent) {
     if (intent.context.workspaceId !== selectedWorkspaceId || intent.context.sessionId !== selectedSessionId) return;
-    if (intent.id.startsWith('layout:')) { const change = layoutDirectory.resolve(externalLayout, externalInput.context, intent); if (change) setColumnWidth(change.target === 'navigation' ? 'workspace' : 'inspector', change.width); return; }
+    if (intent.id.startsWith('layout:')) { const change = layoutDirectory.resolve(externalLayout, externalInput.context, intent); if (change?.kind === 'mode') void workbenchPresentation?.switchPresentation(change.mode); else if (change) setColumnWidth(change.target === 'navigation' ? 'workspace' : 'inspector', change.width); return; }
     if (intent.id.startsWith('capability:')) { void presentationOperation(() => externalCapabilityIntent(intent)); return; }
     if (intent.id.startsWith('inspector:')) { void presentationOperation(() => externalInspectorIntent(intent)); return; }
     if (intent.id.startsWith('git:')) { void presentationOperation(() => externalGitIntent(intent)); return; }
