@@ -183,11 +183,24 @@ try {
     await inspector.getByText('待发送 · 工作区引用 · 0 字节',{exact:true}).waitFor();
     await inspector.getByText('已发送 · 内联 · 12 字节',{exact:true}).waitFor();
     await inspector.getByText('Diagnostic detail',{exact:true}).waitFor();
+    if(await frame.locator('[data-presentation-key="workbench:layout"]').getAttribute('open')!==null)await frame.getByText('布局',{exact:true}).click();
+    await frame.locator('[data-presentation-key="conversation:composer"]').evaluate(element=>{element.scrollTop=0;});
+    await frame.locator('.conversation-history').evaluate(element=>{element.scrollTop=0;});
+    const composerViewport=await frame.locator('[data-presentation-key="conversation:composer"]').boundingBox();
+    const composerBounds=await composer.boundingBox();
+    assert.ok(composerBounds&&composerBounds.y>=0&&composerBounds.y+composerBounds.height<=900,'long history does not push the editor outside the viewport');
+    assert.ok(await frame.locator('.conversation-history').evaluate(element=>element.scrollHeight>element.clientHeight),'history has an independent scroll viewport');
+    const sendBounds=await frame.getByRole('button',{name:'发送',exact:true}).boundingBox();
+    assert.ok(sendBounds&&sendBounds.y>=composerViewport.y&&sendBounds.y+sendBounds.height<=composerViewport.y+composerViewport.height,'send action remains visible before attachment details');
+    const accessibility=await frame.locator('.conversation').ariaSnapshot();
+    for(const label of ['main "会话"','region "会话历史"','textbox "消息"','button "发送"'])assert.ok(accessibility.includes(label),label);
+    await writeFile('/tmp/aibo-full-'+pkg.release.manifest.id.split('.').at(-1)+'-accessibility.txt',accessibility);
+
     await page.screenshot({path:'/tmp/aibo-full-'+pkg.release.manifest.id.split('.').at(-1)+'.png',fullPage:true});
     await composer.focus();
     await composer.evaluate(element=>element.setSelectionRange(1,3));
     await frame.locator('[data-presentation-key="message-group:tool-group-tool-message"]').evaluate(element=>{
-      const viewport=element.closest('.workbench-center');viewport.scrollTop+=element.getBoundingClientRect().top-viewport.getBoundingClientRect().top+12;
+      const viewport=element.closest('.conversation-history');viewport.scrollTop+=element.getBoundingClientRect().top-viewport.getBoundingClientRect().top+12;
     });
     await page.waitForTimeout(50);
     await page.getByRole('button',{name:'打开设置',exact:true}).click();
@@ -211,7 +224,7 @@ try {
     assert.equal(await frame.locator('.navigation').evaluate(element=>Math.round(element.getBoundingClientRect().width)),resized);
     await composer.waitFor();assert.equal(await composer.inputValue(),'换肤保留');
     await frame.locator('textarea:focus').waitFor({timeout:3000});
-    assert.ok(Math.abs(await frame.locator('[data-presentation-key="message:scroll-10"]').evaluate(element=>element.getBoundingClientRect().top-element.closest('.workbench-center').getBoundingClientRect().top)+18)<2,'default anchor maps into external center viewport');
+    assert.ok(Math.abs(await frame.locator('[data-presentation-key="message:scroll-10"]').evaluate(element=>element.getBoundingClientRect().top-element.closest('.conversation-history').getBoundingClientRect().top)+18)<2,'default anchor maps into external center viewport');
     assert.deepEqual(await composer.evaluate(element=>[element===document.activeElement,element.selectionStart,element.selectionEnd]),[true,2,4]);
     if(await frame.locator('[data-presentation-key="workbench:layout"]').getAttribute('open')===null)await frame.getByText('布局',{exact:true}).click();
     await frame.getByRole('button',{name:'审阅布局',exact:true}).click();
@@ -251,6 +264,6 @@ try {
   const approvalChecks=await probePresentationApprovalFault(page);
   await writeFile('/tmp/aibo-presentation-approval-fault-browser.json',JSON.stringify({passed:true,browser:browser.version(),nativePort:'mocked; actual App, real Worker infinite loop, Playwright pointer input',checks:approvalChecks},null,2)+'\n');
   assert.deepEqual(errors,[]);
-  const result={passed:true,nativePort:'mocked; actual App and independently built full skin Workers',browser:browser.version(),checks:[...approvalChecks,'ordinary message and tool group anchors transfer across different scroll containers','default and external composer focus and selection transfer in both directions','command category Tab and reverse Tab, mouse focus return, primary path confirmation','command and path keyboard completion, caret placement and Escape newline','answer draft reload waits for matching live request and clears after submit','focus and review modes, reversed drag, draft preservation and mode reload','reload restores both widths, panel visibility and selected view','both splitter drag directions and auxiliary keyboard resize','keyboard width adjustment and default/external width retention','primary Enter submits through host action','consecutive tool group with completion count','literal tool payloads and native reasoning disclosure in both skins','both full packages install and activate','workspace and session navigation','rich timeline headings, lists, inline and fenced code','host-bound code copy and link actions','attachment transport metadata hidden','rapid Chinese/English input and send','Git/context panel switching','requested and enforced permissions remain distinct','attachment status, strategy and size','diagnostic details remain visible','default/external switch retains host draft']};
+  const result={passed:true,nativePort:'mocked; actual App and independently built full skin Workers',browser:browser.version(),checks:[...approvalChecks,'desktop history and composer scroll independently, send remains visible, named history and editor appear in the accessibility tree','ordinary message and tool group anchors transfer across different scroll containers','default and external composer focus and selection transfer in both directions','command category Tab and reverse Tab, mouse focus return, primary path confirmation','command and path keyboard completion, caret placement and Escape newline','answer draft reload waits for matching live request and clears after submit','focus and review modes, reversed drag, draft preservation and mode reload','reload restores both widths, panel visibility and selected view','both splitter drag directions and auxiliary keyboard resize','keyboard width adjustment and default/external width retention','primary Enter submits through host action','consecutive tool group with completion count','literal tool payloads and native reasoning disclosure in both skins','both full packages install and activate','workspace and session navigation','rich timeline headings, lists, inline and fenced code','host-bound code copy and link actions','attachment transport metadata hidden','rapid Chinese/English input and send','Git/context panel switching','requested and enforced permissions remain distinct','attachment status, strategy and size','diagnostic details remain visible','default/external switch retains host draft']};
   await writeFile('/tmp/aibo-full-skins-browser.json',JSON.stringify(result,null,2)+'\n');console.log(JSON.stringify(result));
 } catch(error) {console.error(JSON.stringify({errors,body:await page.locator('body').innerText()}));throw error;} finally {await browser.close();await server.close();await built.dispose();}

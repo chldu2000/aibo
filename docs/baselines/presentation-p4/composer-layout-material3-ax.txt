@@ -1,0 +1,156 @@
+- main "会话":
+  - region "会话历史":
+    - heading "s1" [level=1]
+    - paragraph: Agent 等待你的输入…
+    - navigation:
+      - button "压缩上下文"
+    - group: 会话信息
+    - region "会话消息":
+      - article:
+        - strong: ASSISTANT
+        - paragraph: tool-name
+        - paragraph: note
+        - paragraph: 完成
+        - paragraph: Complete timeline data
+        - heading "Rich heading" [level=3]
+        - paragraph:
+          - strong: Bold message
+          - text: and
+          - code: inline
+          - link "Reference"
+        - list:
+          - listitem: Item one
+          - listitem: Item two
+        - text: js
+        - button "复制代码"
+        - code: const answer = 42;
+      - group:
+        - text: 工具调用 · 2 项 · 2/2 完成
+        - article:
+          - strong: TOOL
+          - paragraph: commandExecution
+          - paragraph: tool_call
+          - paragraph: 完成
+          - group: 命令执行 · 查看调用参数 **literal tool arguments** <script>literal</script>
+        - article:
+          - strong: TOOL
+          - paragraph: commandExecution
+          - paragraph: tool_result
+          - paragraph: 完成
+          - group: 命令执行 · 查看工具输出
+      - article:
+        - strong: THINKING
+        - paragraph: reasoning
+        - paragraph: note
+        - paragraph: 完成
+        - group:
+          - text: 思考 · 查看详情
+          - heading "Reasoning detail" [level=3]
+      - article:
+        - strong: ASSISTANT
+        - paragraph: note
+        - paragraph: 完成
+        - paragraph: Scroll message 0
+        - paragraph: Anchor paragraph. Anchor paragraph. Anchor paragraph. Anchor paragraph. Anchor paragraph. Anchor paragraph. Anchor paragraph. Anchor paragraph. Anchor paragraph. Anchor paragraph. Anchor paragraph. Anchor paragraph. Anchor paragraph. Anchor paragraph. Anchor paragraph. Anchor paragraph. Anchor paragraph. Anchor paragraph. Anchor paragraph. Anchor paragraph. Anchor paragraph. Anchor paragraph. Anchor paragraph. Anchor paragraph. Anchor paragraph. Anchor paragraph. Anchor paragraph. Anchor paragraph. Anchor paragraph. Anchor paragraph.
+      - article:
+        - strong: ASSISTANT
+        - paragraph: note
+        - paragraph: 完成
+        - paragraph: Scroll message 1
+        - paragraph: Anchor paragraph. Anchor paragraph. Anchor paragraph. Anchor paragraph. Anchor paragraph. Anchor paragraph. Anchor paragraph. Anchor paragraph. Anchor paragraph. Anchor paragraph. Anchor paragraph. Anchor paragraph. Anchor paragraph. Anchor paragraph. Anchor paragraph. Anchor paragraph. Anchor paragraph. Anchor paragraph. Anchor paragraph. Anchor paragraph. Anchor paragraph. Anchor paragraph. Anchor paragraph. Anchor paragraph. Anchor paragraph. Anchor paragraph. Anchor paragraph. Anchor paragraph. Anchor paragraph. Anchor paragraph.
+      - article:
+        - strong: ASSISTANT
+        - paragraph: note
+        - paragraph: 完成
+        - paragraph: Scroll message 2
+        - paragraph: Anchor paragraph. Anchor paragraph. Anchor paragraph. Anchor paragraph. Anchor paragraph. Anchor paragraph. Anchor paragraph. Anchor paragraph. Anchor paragraph. Anchor paragraph. Anchor paragraph. Anchor paragraph. Anchor paragraph. Anchor paragraph. Anchor paragraph. Anchor paragraph. Anchor paragraph. Anchor paragraph. Anchor paragraph. Anchor paragraph. Anchor paragraph. Anchor paragraph. Anchor paragraph. Anchor paragraph. Anchor paragraph. Anchor paragraph. Anchor paragraph. Anchor paragraph. Anchor paragraph. Anchor paragraph.
+      - article:
+        - strong: ASSISTANT
+        - paragraph: note
+        - paragraph: 完成
+        - paragraph: Scroll message 3
+        - paragraph: Anchor paragraph. Anchor paragraph. Anchor paragraph. Anchor paragraph. Anchor paragraph. Anchor paragraph. Anchor paragraph. Anchor paragraph. Anchor paragraph. Anchor paragraph. Anchor paragraph. Anchor paragraph. Anchor paragraph. Anchor paragraph. Anchor paragraph. Anchor paragraph. Anchor paragraph. Anchor paragraph. Anchor paragraph. Anchor paragraph. Anchor paragraph. Anchor paragraph. Anchor paragraph. Anchor paragraph. Anchor paragraph. Anchor paragraph. Anchor paragraph. Anchor paragraph. Anchor paragraph. Anchor paragraph.
+      - article:
+        - strong: ASSISTANT
+        - paragraph: note
+        - paragraph: 完成
+        - paragraph: Scroll message 4
+        - paragraph: Anchor paragraph. Anchor paragraph. Anchor paragraph. Anchor paragraph. Anchor paragraph. Anchor paragraph. Anchor paragraph. Anchor paragraph. Anchor paragraph. Anchor paragraph. Anchor paragraph. Anchor paragraph. Anchor paragraph. Anchor paragraph. Anchor paragraph. Anchor paragraph. Anchor paragraph. Anchor paragraph. Anchor paragraph. Anchor paragraph. Anchor paragraph. Anchor paragraph. Anchor paragraph. Anchor paragraph. Anchor paragraph. Anchor paragraph. Anchor paragraph. Anchor paragraph. Anchor paragraph. Anchor paragraph.
+      - article:
+        - strong: ASSISTANT
+        - paragraph: note
+        - paragraph: 完成
+        - paragraph: Scroll message 5
+        - paragraph: Anchor paragraph. Anchor paragraph. Anchor paragraph. Anchor paragraph. Anchor paragraph. Anchor paragraph. Anchor paragraph. Anchor paragraph. Anchor paragraph. Anchor paragraph. Anchor paragraph. Anchor paragraph. Anchor paragraph. Anchor paragraph. Anchor paragraph. Anchor paragraph. Anchor paragraph. Anchor paragraph. Anchor paragraph. Anchor paragraph. Anchor paragraph. Anchor paragraph. Anchor paragraph. Anchor paragraph. Anchor paragraph. Anchor paragraph. Anchor paragraph. Anchor paragraph. Anchor paragraph. Anchor paragraph.
+      - article:
+        - strong: ASSISTANT
+        - paragraph: note
+        - paragraph: 完成
+        - paragraph: Scroll message 6
+        - paragraph: Anchor paragraph. Anchor paragraph. Anchor paragraph. Anchor paragraph. Anchor paragraph. Anchor paragraph. Anchor paragraph. Anchor paragraph. Anchor paragraph. Anchor paragraph. Anchor paragraph. Anchor paragraph. Anchor paragraph. Anchor paragraph. Anchor paragraph. Anchor paragraph. Anchor paragraph. Anchor paragraph. Anchor paragraph. Anchor paragraph. Anchor paragraph. Anchor paragraph. Anchor paragraph. Anchor paragraph. Anchor paragraph. Anchor paragraph. Anchor paragraph. Anchor paragraph. Anchor paragraph. Anchor paragraph.
+      - article:
+        - strong: ASSISTANT
+        - paragraph: note
+        - paragraph: 完成
+        - paragraph: Scroll message 7
+        - paragraph: Anchor paragraph. Anchor paragraph. Anchor paragraph. Anchor paragraph. Anchor paragraph. Anchor paragraph. Anchor paragraph. Anchor paragraph. Anchor paragraph. Anchor paragraph. Anchor paragraph. Anchor paragraph. Anchor paragraph. Anchor paragraph. Anchor paragraph. Anchor paragraph. Anchor paragraph. Anchor paragraph. Anchor paragraph. Anchor paragraph. Anchor paragraph. Anchor paragraph. Anchor paragraph. Anchor paragraph. Anchor paragraph. Anchor paragraph. Anchor paragraph. Anchor paragraph. Anchor paragraph. Anchor paragraph.
+      - article:
+        - strong: ASSISTANT
+        - paragraph: note
+        - paragraph: 完成
+        - paragraph: Scroll message 8
+        - paragraph: Anchor paragraph. Anchor paragraph. Anchor paragraph. Anchor paragraph. Anchor paragraph. Anchor paragraph. Anchor paragraph. Anchor paragraph. Anchor paragraph. Anchor paragraph. Anchor paragraph. Anchor paragraph. Anchor paragraph. Anchor paragraph. Anchor paragraph. Anchor paragraph. Anchor paragraph. Anchor paragraph. Anchor paragraph. Anchor paragraph. Anchor paragraph. Anchor paragraph. Anchor paragraph. Anchor paragraph. Anchor paragraph. Anchor paragraph. Anchor paragraph. Anchor paragraph. Anchor paragraph. Anchor paragraph.
+      - article:
+        - strong: ASSISTANT
+        - paragraph: note
+        - paragraph: 完成
+        - paragraph: Scroll message 9
+        - paragraph: Anchor paragraph. Anchor paragraph. Anchor paragraph. Anchor paragraph. Anchor paragraph. Anchor paragraph. Anchor paragraph. Anchor paragraph. Anchor paragraph. Anchor paragraph. Anchor paragraph. Anchor paragraph. Anchor paragraph. Anchor paragraph. Anchor paragraph. Anchor paragraph. Anchor paragraph. Anchor paragraph. Anchor paragraph. Anchor paragraph. Anchor paragraph. Anchor paragraph. Anchor paragraph. Anchor paragraph. Anchor paragraph. Anchor paragraph. Anchor paragraph. Anchor paragraph. Anchor paragraph. Anchor paragraph.
+      - article:
+        - strong: ASSISTANT
+        - paragraph: note
+        - paragraph: 完成
+        - paragraph: Scroll message 10
+        - paragraph: Anchor paragraph. Anchor paragraph. Anchor paragraph. Anchor paragraph. Anchor paragraph. Anchor paragraph. Anchor paragraph. Anchor paragraph. Anchor paragraph. Anchor paragraph. Anchor paragraph. Anchor paragraph. Anchor paragraph. Anchor paragraph. Anchor paragraph. Anchor paragraph. Anchor paragraph. Anchor paragraph. Anchor paragraph. Anchor paragraph. Anchor paragraph. Anchor paragraph. Anchor paragraph. Anchor paragraph. Anchor paragraph. Anchor paragraph. Anchor paragraph. Anchor paragraph. Anchor paragraph. Anchor paragraph.
+      - article:
+        - strong: ASSISTANT
+        - paragraph: note
+        - paragraph: 完成
+        - paragraph: Scroll message 11
+        - paragraph: Anchor paragraph. Anchor paragraph. Anchor paragraph. Anchor paragraph. Anchor paragraph. Anchor paragraph. Anchor paragraph. Anchor paragraph. Anchor paragraph. Anchor paragraph. Anchor paragraph. Anchor paragraph. Anchor paragraph. Anchor paragraph. Anchor paragraph. Anchor paragraph. Anchor paragraph. Anchor paragraph. Anchor paragraph. Anchor paragraph. Anchor paragraph. Anchor paragraph. Anchor paragraph. Anchor paragraph. Anchor paragraph. Anchor paragraph. Anchor paragraph. Anchor paragraph. Anchor paragraph. Anchor paragraph.
+      - article:
+        - strong: ASSISTANT
+        - paragraph: note
+        - paragraph: 完成
+        - paragraph: Scroll message 12
+        - paragraph: Anchor paragraph. Anchor paragraph. Anchor paragraph. Anchor paragraph. Anchor paragraph. Anchor paragraph. Anchor paragraph. Anchor paragraph. Anchor paragraph. Anchor paragraph. Anchor paragraph. Anchor paragraph. Anchor paragraph. Anchor paragraph. Anchor paragraph. Anchor paragraph. Anchor paragraph. Anchor paragraph. Anchor paragraph. Anchor paragraph. Anchor paragraph. Anchor paragraph. Anchor paragraph. Anchor paragraph. Anchor paragraph. Anchor paragraph. Anchor paragraph. Anchor paragraph. Anchor paragraph. Anchor paragraph.
+      - article:
+        - strong: ASSISTANT
+        - paragraph: note
+        - paragraph: 完成
+        - paragraph: Scroll message 13
+        - paragraph: Anchor paragraph. Anchor paragraph. Anchor paragraph. Anchor paragraph. Anchor paragraph. Anchor paragraph. Anchor paragraph. Anchor paragraph. Anchor paragraph. Anchor paragraph. Anchor paragraph. Anchor paragraph. Anchor paragraph. Anchor paragraph. Anchor paragraph. Anchor paragraph. Anchor paragraph. Anchor paragraph. Anchor paragraph. Anchor paragraph. Anchor paragraph. Anchor paragraph. Anchor paragraph. Anchor paragraph. Anchor paragraph. Anchor paragraph. Anchor paragraph. Anchor paragraph. Anchor paragraph. Anchor paragraph.
+      - article:
+        - strong: ASSISTANT
+        - paragraph: note
+        - paragraph: 完成
+        - paragraph: Scroll message 14
+        - paragraph: Anchor paragraph. Anchor paragraph. Anchor paragraph. Anchor paragraph. Anchor paragraph. Anchor paragraph. Anchor paragraph. Anchor paragraph. Anchor paragraph. Anchor paragraph. Anchor paragraph. Anchor paragraph. Anchor paragraph. Anchor paragraph. Anchor paragraph. Anchor paragraph. Anchor paragraph. Anchor paragraph. Anchor paragraph. Anchor paragraph. Anchor paragraph. Anchor paragraph. Anchor paragraph. Anchor paragraph. Anchor paragraph. Anchor paragraph. Anchor paragraph. Anchor paragraph. Anchor paragraph. Anchor paragraph.
+      - article:
+        - strong: ASSISTANT
+        - paragraph: note
+        - paragraph: 完成
+        - paragraph: Scroll message 15
+        - paragraph: Anchor paragraph. Anchor paragraph. Anchor paragraph. Anchor paragraph. Anchor paragraph. Anchor paragraph. Anchor paragraph. Anchor paragraph. Anchor paragraph. Anchor paragraph. Anchor paragraph. Anchor paragraph. Anchor paragraph. Anchor paragraph. Anchor paragraph. Anchor paragraph. Anchor paragraph. Anchor paragraph. Anchor paragraph. Anchor paragraph. Anchor paragraph. Anchor paragraph. Anchor paragraph. Anchor paragraph. Anchor paragraph. Anchor paragraph. Anchor paragraph. Anchor paragraph. Anchor paragraph. Anchor paragraph.
+  - heading "撰写消息" [level=2]
+  - text: 消息
+  - textbox "消息": 换肤保留
+  - paragraph: ⌘/Ctrl+Enter 发送 · Enter 换行
+  - navigation:
+    - button "添加附件"
+    - button "添加目录"
+    - button "发送"
+  - group: 附件 · 2
+  - group: 命令
+  - group: Model A
+  - group: 访问权限

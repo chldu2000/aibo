@@ -31,8 +31,10 @@ export function renderConversation(state,actions){
   const submit=find(state.running?'queueSteer':'send');
   if(submit)draftField.children[1].primaryEnter=submit.token;
   const composer=[draftField,text('conversation:shortcut','⌘/Ctrl+Enter '+(state.running?'立即引导':'发送')+' · Enter 换行'),state.draftFailed?node('p','conversation:draft-error','草稿保存失败',[],{role:'alert'}):null];
-  composer.push(node('ul','conversation:attachments',null,state.attachments.map(item=>node('li','attachment:'+item.id,null,[renderAttachment(item,'composer:attachment:'+item.id),button('attachment:remove:'+item.id,'移除附件 '+item.path,find('removeAttachment',item.id))]))));
+
   composer.push(node('nav','conversation:composer-tools',null,controls(['addAttachments','addDirectory','send','stop','queueSteer','queueFollowUp'])));
+  const attachmentList=node('ul','conversation:attachment-list',null,state.attachments.map(item=>node('li','attachment:'+item.id,null,[renderAttachment(item,'composer:attachment:'+item.id),button('attachment:remove:'+item.id,'移除附件 '+item.path,find('removeAttachment',item.id))])));
+  if(state.attachments.length)composer.push(node('details','conversation:attachments',null,[node('summary','conversation:attachments:summary','附件 · '+state.attachments.length),attachmentList]));
   const mention=/(?:^|\s)@[^\s]*$/.test(state.draft);
   const slash=state.draft.match(/^\/([^\s]*)$/);
   const categoryOf=command=>command.category??(command.source==='skill'?'skill':command.source==='extension'||command.source==='prompt'?'extension':'agent');
@@ -54,5 +56,7 @@ export function renderConversation(state,actions){
   const branch=nodes=>nodes.map(item=>node('li','tree:'+item.id,null,[button('tree:select:'+item.id,item.label??item.summary??item.type,find('selectTreeNode',item.id),{'aria-current':state.tree?.leafId===item.id?'true':'false'}),node('ul','tree:children:'+item.id,null,branch(item.children))]));
   children.push(section('conversation:tree','会话树',[...controls(['closeTree','refreshTree']),text('tree:status',state.treeNavigationStatus),node('ul','tree:roots',null,branch(state.tree?.tree??[]))]));
  }
- return {...node('main','conversation',null,children,{'aria-label':'会话'}),className:'conversation'};
+ const composer=children.find(child=>child?.key==='conversation:composer');
+ const history={...node('section','conversation:history',null,children.filter(child=>child?.key!=='conversation:composer'),{'aria-label':'会话历史',tabindex:'0'}),className:'conversation-history'};
+ return {...node('main','conversation',null,[history,composer],{'aria-label':'会话'}),className:'conversation'};
 }

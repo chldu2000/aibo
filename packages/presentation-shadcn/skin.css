@@ -16,3 +16,13 @@ tr[aria-selected=true]{background:var(--accent)}
 .workbench [role=listbox]{display:grid;gap:4px;padding:8px;border:1px solid var(--border);border-radius:var(--radius);max-height:260px;overflow:auto}.workbench [role=listbox][hidden]{display:none}.workbench [role=option][aria-selected=true]{background:var(--accent);color:var(--accent-foreground);outline:1px solid var(--ring)}
 
 .workbench [role=tablist]{display:flex;gap:4px;flex-wrap:wrap}.workbench [role=tab][aria-selected=true]{background:var(--primary);color:var(--primary-foreground)}.workbench [role=option][hidden]{display:none}
+
+/* Keep history and composing reachable independently in desktop workbenches. */
+@media(min-width:701px){
+ .conversation-center{display:flex;flex-direction:column;min-height:0;overflow:hidden}
+ .conversation-center>nav,.conversation-center>details{flex:none;max-height:35%;overflow:auto}
+ .workbench .conversation{display:flex;flex-direction:column;flex:1;min-height:0;width:100%;overflow:hidden}
+ .conversation-history{flex:1;min-height:80px;overflow:auto;overscroll-behavior:contain}
+ .conversation>.conversation\:composer{flex:none;max-height:45vh;overflow:auto;border-top:1px solid var(--border);background:var(--background);padding-top:8px}
+ .conversation>.conversation\:composer>h2{margin-top:0}
+}
