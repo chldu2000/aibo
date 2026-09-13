@@ -22,7 +22,7 @@ Aibo 是由 **插件宿主、能力插件和呈现插件**组成的本地编程�
 ```mermaid
 flowchart TB
     user[用户] --> presentation
-    subgraph presentation[呈现插件 — 随宿主可信构建]
+    subgraph presentation[呈现层 — 宿主默认实现与隔离包]
         shell[工作台布局与语义渲染]
         kit[UI Kit — shadcn / Material 3]
         shell --> kit
@@ -58,9 +58,22 @@ flowchart TB
 校验，写入宿主历史，再更新呈现层。插件不可用时，历史仍可读取。Pi 的活动时间线
 由原生当前分支和宿主持久化的本轮消息共同组成。
 
-**当前扩展边界：**能力包支持本地安装；呈现实现目前是随宿主构建的可信代码，安装包
-不能动态向主 WebView 注入 JavaScript。旧 Agent Runtime v1 已退役，没有当前能力绑定
-的旧会话仅保留历史读取。
+**当前扩展边界：**能力包与呈现包均支持本地安装，使用独立安装入口。外部呈现代码
+在可终止 Worker 中生成受限视觉树，由可信 iframe 桥绘制，不能直接访问 DOM、网络、
+存储或 Tauri IPC。管理、审批和恢复由宿主保留，未覆盖的呈现范围继承宿主默认实现。
+旧 Agent Runtime v1 已退役，没有当前能力绑定的旧会话仅保留历史读取。
+
+## 呈现插件交付
+
+shadcn 与 Material 3 独立呈现包当前为 **0.3.0**，共享工作台模块为 **0.2.0**。
+支持三种布局、草稿与布局持久化、焦点和消息锚点恢复，以及核心语义降级；另有
+仅定制主题的 Ocean 样例。
+
+解压皮肤包，在 Aibo 设置中点击“安装皮肤插件”，选择包含 `presentation.json` 的
+目录，再选中已安装皮肤。本地 ZIP、离线 SDK tarball 和重建方式见
+[0.3.0 交付说明](docs/presentation-release-0.3.0.md)，逐项验证证据见
+[退出审计](docs/presentation-plugin-exit-audit.md)。原生验收覆盖 macOS arm64，
+不代表其他平台、物理输入或完整屏幕阅读器支持已通过。
 
 ## 本地运行
 
@@ -94,6 +107,7 @@ cargo test --manifest-path src-tauri/Cargo.toml
 | [插件协议包](packages/plugin-protocol/) | 不依赖 UI 框架的数据契约 |
 | [能力 Runtime](packages/capability-runtime/) | Node stdio helper，支持流与执行中控制 |
 | [Web 呈现类型](packages/web-presentation/) | 可信呈现实现的本地接口 |
+| [呈现包合同](docs/presentation-package.md) | 隔离包格式、Worker 入口与打包工具 |
 | [UI 架构](docs/ui-architecture.md) | UI Kit 边界与皮肤扩展规则 |
 
 SDK 目前通过本地 tarball 分发，尚未发布公共包注册表。

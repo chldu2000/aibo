@@ -9,9 +9,9 @@
 | 增加操作、外部服务或领域数据 | 能力提供者 | [独立样例](../examples/capability-plugin/) |
 | 在工作台展示插件数据与动作 | 能力提供者 + 语义视图 | 同一份样例，无需编写前端代码 |
 | 接入编程 Agent | 使用 Runtime 2.1 的会话能力提供者 | [内置提供者](../src-tauri/capability-plugins/) |
-| 改变布局、渲染或皮肤 | 随宿主可信构建集成的呈现实现 | [UI 架构](ui-architecture.md) |
+| 改变布局、渲染或皮肤 | 可安装的隔离呈现包 | [呈现包合同](presentation-package.md) |
 
-新插件使用 Manifest v2。旧 Agent Runtime v1 和归档中的旧开发指南已不适用于执行接入。
+新能力插件使用 Manifest v2。旧 Agent Runtime v1 和归档中的旧开发指南已不适用于执行接入。
 能力声明描述插件能做什么，本身不授予工作区权限。准确的协议和平台组合见[支持矩阵](plugin-platform-support-matrix.md)。
 
 ## 构建并安装可运行样例
@@ -89,8 +89,15 @@ HTML、CSS、皮肤 ID 或可执行界面代码。
 
 ## 扩展呈现
 
-呈现实现目前随宿主可信构建。清单中的 presentation 元数据不意味着支持第三方前端
-加载，当前启用检查会拒绝该贡献。需要可安装的插件视图时，应使用语义贡献。
+使用独立 `presentation.json` 包定制主题、控件、核心语义视图或整个工作台。
+从[包合同](presentation-package.md)、[打包工具](../packages/presentation-tools/)及
+[shadcn](../packages/presentation-shadcn/)、[Material 3](../packages/presentation-material3/)
+独立样例开始；安装与离线 SDK 见 [0.3.0 交付说明](presentation-release-0.3.0.md)。
+
+可执行包在可终止 Worker 中返回受限视觉树，可信 iframe 桥绘制并转发宿主验证的
+动作。包不能直接访问 DOM、网络、存储或 Tauri IPC。未提供的范围继承宿主默认实现，
+管理、审批与恢复仍归宿主。能力包 Manifest v2 的 presentation 元数据不授予此执行
+资格；能力插件声明自身数据和操作入口时仍使用语义贡献。
 
 随宿主集成呈现时，参考
 [`default-presentation.ts`](../src/lib/workbench/plugins/default-presentation.ts)、

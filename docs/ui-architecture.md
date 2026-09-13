@@ -1,17 +1,19 @@
 # UI 架构与组件库扩展
 
-## Presentation 插件重构目标
+## 当前 Presentation 架构
 
 根据 [ADR-0008](adr/0008-unified-presentation-plugins.md)，皮肤与 Presentation
 统一为一种插件，主题、控件、语义视图和工作台是可选定制范围。UiKitAdapter
-继续作为内部完整视觉合同。外部包加载尚未开放；实施与验收进度见
-[重构文档](presentation-plugin-refactor.md)。下文旧阶段中的 skin/Presentation
-分层描述不表示两种独立的产品插件。
+继续作为内部完整视觉合同。外部包已支持独立安装与隔离执行，双皮肤 0.3.0
+已完成 P0–P4 验收，见[交付说明](presentation-release-0.3.0.md)与
+[退出审计](presentation-plugin-exit-audit.md)。下文带阶段编号的内容保留实施语境，
+阶段性未完成描述以最终审计为准；旧 skin/Presentation 分层不表示两种独立产品插件。
 
 P1 外部包数据合同位于 `packages/plugin-protocol/src/presentation-package.ts`，
 对应 `contracts/presentation-package.v1.schema.json`。平台无关的包校验位于
 `src/lib/presentation-runtime/package.ts`，资源读取由调用方注入；生成验证器
-不在运行时编译 schema。新合同尚未接入 App 安装入口，不改变旧能力包的执行权限。
+不在运行时编译 schema。合同已接入 App 的“安装皮肤插件”入口，与能力包的
+安装和执行资格分开校验。
 
 P2b 可执行包使用 `presentation-runtime/sandbox.ts` 装配：静态隔离文档运行宿主
 绘制桥，包代码仅在可终止 Worker 中计算视觉树。该树有明确标签、属性、事件和

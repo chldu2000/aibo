@@ -1,7 +1,8 @@
 # Presentation 包合同 v1
 
-本合同是 [Presentation 重构 P1](presentation-plugin-refactor.md) 的实现目标。
-目前已有 schema、纯数据类型和资源验证器；App 安装与执行接入属于 P2。
+本合同已接入 App 安装、隔离执行与故障恢复。双皮肤 0.3.0 和共享工作台 0.2.0
+已交付，安装方式见[交付说明](presentation-release-0.3.0.md)，实现与验收边界见
+[退出审计](presentation-plugin-exit-audit.md)。阶段过程另见[重构记录](presentation-plugin-refactor.md)。
 
 包根目录使用 `presentation.json`。主题、控件和整窗呈现使用同一 manifest，
 同一插件 ID 的不同版本是不同 release。独立于现有能力包的 `plugin.json`，
@@ -83,7 +84,7 @@ manifest 最大 128 KiB，最多 128 个资源、单个资源最大 8 MiB、资�
 包缺失、校验失败、不兼容、初始化超时和执行故障都需要实际 App 验证。
 本合同文档不代替消息桥实现、安装事务或沙箱逃逸与可用性探针。
 
-## P2b 可执行入口
+## 可执行入口
 
 包代码运行于 Worker，定义 `self.aiboPresentation.render(input)`，同步或异步返回
 `PresentationNode`。输入与视觉树类型从 `@aibo/plugin-protocol` 导出，不需要 DOM
@@ -184,8 +185,8 @@ Enter 保持换行。禁用/只读输入框不触发，不能同时声明 keydow
 
 应用通知、归档确认和 Pi 分支导航确认固定在 PresentationHost 之外，使用可信
 默认控件。确认期间暂停工作台动作；皮肤不能覆盖或自行批准这些宿主流程。
-完整会话内容/Composer、Inspector/Git 及能力工作台数据与动作仍须后续接入，
-这个导航目录不构成整窗功能等价验收。
+会话内容/Composer、Inspector/Git 及能力工作台分别使用下文的数据与动作合同；
+导航目录本身不构成整窗功能等价验收。
 
 ## 工作台会话与 Composer
 
@@ -207,8 +208,8 @@ args 是宿主已选定的目标和选项；点击携带的 value 不能替换�
 
 回答草稿键为 `JSON.stringify([sessionId, requestId, questionId, turnId])`。
 默认 TimelinePanel 和外部呈现共用宿主草稿：切换皮肤不清空，提交失败继续保留，
-请求结束后清理。只有当前问题的草稿交付当前呈现；回答草稿目前不写入磁盘，不能
-将跨皮肤保留宣称为重启恢复。确认和审批仍位于固定宿主区域。
+请求结束后清理。回答草稿按窗口持久化，重载时仅为身份匹配的实时请求恢复，
+不会重建 Agent 待答请求。只有当前问题的草稿交付当前呈现。确认和审批仍位于固定宿主区域。
 
 ## 工作台 Git
 
@@ -225,15 +226,15 @@ reason 与提交上下文，不把裁剪结果描述为完整差异。`data.gitA
 
 默认 Git 面板与外部皮肤使用同一份 `PresentationGitDrafts`，按窗口/工作区保存
 提交信息、分支名、历史分区与选中提交。失败保留草稿，成功只清除仍对应提交值的
-草稿。切换皮肤不另外创建 Git 编辑状态。Inspector 的工程动作/产物/检查点仍由
-后续独立合同接入，Git 投影不代替它们。
+草稿。切换皮肤不另外创建 Git 编辑状态。Inspector 的工程动作/产物/检查点使用
+下文的独立合同，Git 投影不代替它们。
 
 ## 工作台 Inspector
 
 `data.inspector: PresentationInspector` 交付工作区能力、诊断、线程、执行配置、
 附件、产物、工程动作和运行记录、完整变更集、检查点、恢复记录及文件差异。
-`data.inspectorActions` 首批支持读取产物、刷新、文件/hunk 暂存和还原、整轮恢复。
-工程动作编辑与执行入口尚待后续接入，数据字段存在不代表全部操作已经开放。
+`data.inspectorActions` 支持读取产物、刷新、文件/hunk 暂存和还原、整轮恢复，
+以及下文的工程动作编辑与执行。可用操作由宿主当前状态决定。
 
 操作绑定当前会话、轮次、文件路径和 hunk 序号；宿主按当前目录重新核对，不接收
 包自行构造的写入参数。整轮恢复要求 agent 归属，整文件还原拒绝 baselineDirty，
@@ -260,7 +261,7 @@ Inspector 的 `projectEditor` 和 `runningActionId` 由宿主持有。编辑器�
 运行只为当前可信工作区的已启用动作提供，取消只绑定当前工作区仍在运行或待
 批准的记录。执行仍进入已有 project-task-controller 和原生审批流程，Presentation
 包不能指定任意 actionId/runId 或跳过批准。工程动作草稿目前不持久化磁盘，
-跨应用重启的草稿恢复仍待后续统一处理。
+不提供跨应用重启的工程动作草稿恢复。
 
 ## 已安装能力工作台
 
@@ -295,7 +296,7 @@ node /path/to/package/build.mjs presentation.source.json dist/skin-1.0.0
 
 独立双皮肤包现位于 `packages/presentation-shadcn` 和
 `packages/presentation-material3`，各自有构建入口和说明。当前发布范围是全部
-主题、四类核心语义视图、模型矩阵和状态标记；0.2.0 同时装配独立工作台模块。
+主题、四类核心语义视图、模型矩阵和状态标记；双皮肤 0.3.0 装配共享工作台 0.2.0。
 这两包的整工作台已进入 App 浏览器流程；macOS arm64 原生安装、升级、重启、
 禁用/卸载和启动/运行故障恢复已有证据。整体视觉和交互退出验收仍见
 [退出审计](presentation-plugin-exit-audit.md)。

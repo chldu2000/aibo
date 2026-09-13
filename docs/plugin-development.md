@@ -9,9 +9,9 @@
 | Add an operation, external service or domain data | Capability provider | [Standalone example](../examples/capability-plugin/) |
 | Show plugin data and actions in the workbench | Capability provider plus semantic view | The same example; no frontend code required |
 | Integrate a coding Agent | Session capability provider using Runtime 2.1 | [Built-in providers](../src-tauri/capability-plugins/) |
-| Change layout, rendering or skin | Trusted presentation integration in the host build | [UI architecture](ui-architecture.md) |
+| Change layout, rendering or skin | Installable isolated presentation package | [Presentation package contract](presentation-package.md) |
 
-Use Manifest v2. Agent Runtime v1 and its archived development guide are no longer
+For capability packages, use Manifest v2. Agent Runtime v1 and its archived development guide are no longer
 an executable extension path. A capability declaration describes behavior; it does not
 itself grant access to the workspace. See the [support matrix](plugin-platform-support-matrix.md)
 for exact accepted versions and platforms.
@@ -120,9 +120,17 @@ That shared file is an in-repository implementation reference, not a published S
 
 ## Extend presentation
 
-Presentation implementations currently ship in the trusted host build. Manifest presentation
-metadata does not enable third-party frontend loading; the current activation check rejects
-that contribution. For an installable plugin view, use semantic contributions instead.
+Create a separate `presentation.json` package to customize themes, controls, core semantic
+views or the workbench. Start with the [package contract](presentation-package.md),
+[build tools](../packages/presentation-tools/), and the independent
+[shadcn](../packages/presentation-shadcn/) or [Material 3](../packages/presentation-material3/) examples.
+The [0.3.0 release guide](presentation-release-0.3.0.md) describes installation and offline SDKs.
+
+Executable packages return restricted visual trees from a terminable Worker; a trusted
+iframe bridge renders them and forwards host-validated actions. Packages cannot directly
+access DOM, network, storage or Tauri IPC. Unprovided surfaces inherit host defaults;
+management, approvals and recovery remain with the host. Capability Manifest v2 presentation
+metadata does not grant this execution path: capability data views still use semantic contributions.
 
 For a host-integrated presentation, start with
 [`default-presentation.ts`](../src/lib/workbench/plugins/default-presentation.ts),

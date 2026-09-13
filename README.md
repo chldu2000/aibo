@@ -24,7 +24,7 @@ and [platform support matrix](docs/plugin-platform-support-matrix.md) for suppor
 ```mermaid
 flowchart TB
     user[User] --> presentation
-    subgraph presentation[Presentation plugins — trusted host build]
+    subgraph presentation[Presentation — host defaults and isolated packages]
         shell[Workbench layout and semantic renderer]
         kit[UI kit — shadcn / Material 3]
         shell --> kit
@@ -63,10 +63,24 @@ its pinned provider. Validated events update host history and flow back to the p
 The host keeps history readable when a provider is unavailable. Pi's active timeline combines
 its native branch with persisted messages from the current turn.
 
-**Current extension boundary:** capability packages can be installed locally. Presentation
-implementations are bundled trusted code; installing a package cannot dynamically load
-JavaScript into the main WebView. The old Agent Runtime v1 is retired, and sessions without
-current capability bindings remain read-only history.
+**Current extension boundary:** capability and presentation packages can be installed locally
+through separate installation paths. External presentation code runs in a terminable Worker
+and returns a restricted visual tree, drawn by a trusted iframe bridge. It has no direct DOM,
+network, storage or Tauri IPC access. The host retains management, approvals and recovery;
+unprovided presentation surfaces inherit the host defaults. The old Agent Runtime v1 is
+retired, and sessions without current capability bindings remain read-only history.
+
+## Presentation release
+
+The shadcn and Material 3 presentation packages are **0.3.0**, with shared workbench modules
+at **0.2.0**. They support three layouts, draft and layout persistence, focus and message-anchor
+restoration, and core semantic fallback. A theme-only Ocean example is also included.
+
+Unzip a skin package, choose “安装皮肤插件” in Aibo settings, select the directory containing
+`presentation.json`, then select the installed skin. See the [0.3.0 release guide](docs/presentation-release-0.3.0.md)
+for local ZIPs, offline SDK tarballs and rebuild instructions, and the [exit audit](docs/presentation-plugin-exit-audit.md)
+for verification evidence. Native acceptance covers macOS arm64; it does not establish
+other-platform, physical-input or full screen-reader support.
 
 ## Run locally
 
@@ -101,6 +115,7 @@ manifest and runtime contracts, packaging, installation, session providers, and 
 | [Plugin protocol](packages/plugin-protocol/) | Framework-independent data contracts |
 | [Capability runtime](packages/capability-runtime/) | Node stdio runtime helper, including streaming and controls |
 | [Web presentation types](packages/web-presentation/) | Local interface for trusted presentation implementations |
+| [Presentation packages](docs/presentation-package.md) | Isolated package contract, Worker entry and build tools |
 | [UI architecture](docs/ui-architecture.md) | UI kit boundaries and skin extension rules |
 
 SDKs currently ship as local tarballs, not public registry packages.

@@ -13,6 +13,13 @@
 - [插件平台支持矩阵](plugin-platform-support-matrix.md)：协议、SDK、平台和发布范围。
 - [协议合同](../contracts/README.md)、[能力 Runtime SDK](../packages/capability-runtime/README.md)。
 
+## 呈现插件与当前交付
+
+- [Presentation 0.3.0 交付](presentation-release-0.3.0.md)：版本、安装、本地 ZIP 与离线 SDK。
+- [Presentation 包合同](presentation-package.md)：manifest、Worker、视觉树、动作及状态恢复。
+- [退出审计](presentation-plugin-exit-audit.md)：P0–P4 完成结论和浏览器、原生验收边界。
+- [重构实施记录](presentation-plugin-refactor.md)：按阶段保留的过程记录；早期未完成项以最终退出审计为准。
+
 ## 仍适用的设计决定
 
 - [0002-capability-and-semantic-contract-governance](adr/0002-capability-and-semantic-contract-governance.md)
@@ -21,6 +28,8 @@
 - [0005-plugin-protocol-stability-and-compatibility](adr/0005-plugin-protocol-stability-and-compatibility.md)
 - [0006-presentation-state-and-result-ownership](adr/0006-presentation-state-and-result-ownership.md)
 - [0007-presentation-core-and-fallback](adr/0007-presentation-core-and-fallback.md)
+- [0008-unified-presentation-plugins](adr/0008-unified-presentation-plugins.md)
+- [0009-presentation-package-isolation](adr/0009-presentation-package-isolation.md)
 
 ## 历史归档
 
