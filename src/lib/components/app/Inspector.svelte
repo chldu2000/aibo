@@ -43,7 +43,12 @@
     onApplyGitHunkAction: (sessionId: string, turnId: string, path: string, hunkIndex: number, action: GitFileAction) => void;
     artifactPreview: PresentationArtifactPreview;
     onToggleArtifact: (sessionId: string, artifactId: string) => Promise<void>;
-    onSaveProjectAction: (input: { workspaceId: string; actionId?: string | null; name: string; kind: ProjectActionKind; program: string; args: string[]; cwd?: string | null; enabled?: boolean }) => Promise<void>;
+    projectEditor: import('../../../../packages/plugin-protocol/src/presentation-inspector').PresentationProjectEditor;
+    runningActionId: string | null;
+    onEditProjectAction: (id: string | null) => void;
+    onProjectField: (field: import('$lib/app/project-editor-controller').ProjectEditorField, value: string) => void;
+    onSaveProjectEditor: () => Promise<void>;
+    onCloseProjectEditor: () => void;
     onDeleteProjectAction: (actionId: string) => Promise<void>;
     onRunProjectAction: (actionId: string) => Promise<void>;
     onCancelProjectAction: (runId: string) => Promise<void>;
@@ -81,7 +86,7 @@
     onApplyGitHunkAction,
     artifactPreview,
     onToggleArtifact,
-    onSaveProjectAction,
+    projectEditor, runningActionId, onEditProjectAction, onProjectField, onSaveProjectEditor, onCloseProjectEditor,
     onDeleteProjectAction,
     onRunProjectAction,
     onCancelProjectAction,
@@ -150,7 +155,12 @@
     {projectActions}
     {projectActionRuns}
     {busy}
-    {onSaveProjectAction}
+    editor={projectEditor}
+    {runningActionId}
+    {onEditProjectAction}
+    {onProjectField}
+    {onSaveProjectEditor}
+    {onCloseProjectEditor}
     {onDeleteProjectAction}
     {onRunProjectAction}
     {onCancelProjectAction}

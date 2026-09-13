@@ -174,6 +174,8 @@ export type PresentationInspector = {
   attachments: PresentationConversation['attachments'];
   artifacts: Artifact[];
   artifactPreview: PresentationArtifactPreview;
+  projectEditor: PresentationProjectEditor;
+  runningActionId: string | null;
   projectActions: ProjectAction[];
   projectActionRuns: ProjectActionRun[];
   changeSet: TurnChangeSet | null;
@@ -191,7 +193,23 @@ export type PresentationInspector = {
 export type PresentationInspectorAction = {
   token: string;
   operation: 'selectView' | 'refresh' | 'syncThreads' | 'toggleArtifact' | 'closeArtifact'
-    | 'showDiff' | 'restoreTurn' | 'fileAction' | 'hunkAction';
-  event: 'click';
+    | 'showDiff' | 'restoreTurn' | 'fileAction' | 'hunkAction'
+    | 'newProjectAction' | 'editProjectAction' | 'projectField' | 'projectKind' | 'saveProjectAction' | 'closeProjectEditor'
+    | 'deleteProjectAction' | 'runProjectAction' | 'cancelProjectAction';
+  event: 'click' | 'input';
   args: readonly (string | null)[];
+};
+
+export type PresentationProjectEditor = {
+  generation: number;
+  open: boolean;
+  actionId: string | null;
+  name: string;
+  kind: 'test' | 'lint' | 'build' | 'custom';
+  program: string;
+  args: string;
+  cwd: string;
+  enabled: boolean;
+  saving: boolean;
+  error: string | null;
 };

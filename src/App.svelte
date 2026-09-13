@@ -6,6 +6,15 @@
   import { PresentationHost, WorkbenchPresentation, DefaultPresentationActions, Badge, Button, Card, CardHeader, CardTitle, CardContent } from '$lib/ui-kit';
   import { createPresentationPackageController, type PresentationPackageState } from '$lib/app/presentation-package-controller';
   import { listPresentationPackages, readPresentationPackage, installPresentationPackage, setPresentationPackageEnabled, uninstallPresentationPackage, getPresentationSelection, selectPresentationPackage } from '$lib/api';
+  import { createProjectEditorController, emptyProjectEditor, type ProjectEditorField } from '$lib/app/project-editor-controller';
+  import type { PresentationProjectEditor } from '../packages/plugin-protocol/src/presentation-inspector';
+  let projectEditors = $state<Record<string, PresentationProjectEditor>>({});
+  let projectRunningActions = $state<Record<string, string | null>>({});
+  const projectEditor = createProjectEditorController({
+    workspace: () => selectedWorkspaceId, actions: () => projectActions, save: saveProjectAction,
+    changed: (id, editor) => { projectEditors = { ...projectEditors, [id]: editor }; },
+    saved: (id, saved) => { if (selectedWorkspaceId === id) projectActions = projectActions.some(item => item.id === saved.id) ? projectActions.map(item => item.id === saved.id ? saved : item) : [...projectActions, saved]; },
+  });
   import { createInspectorDirectory } from '$lib/presentation-runtime/inspector';
   import { createArtifactPreviewController, emptyArtifactPreview } from '$lib/app/artifact-preview-controller';
   import type { PresentationInspector } from '../packages/plugin-protocol/src/presentation-inspector';
@@ -209,9 +218,46 @@
       case 'requestReview': await requestWorkspaceAgentReview(workspaceId); break;
     }
   }
+  async function runCurrentProjectAction(actionId: string): Promise<void> {
+    const workspaceId = selectedWorkspaceId;
+    const sessionId = selectedSessionId;
+    if (!workspaceId || projectRunningActions[workspaceId]) return;
+    projectRunningActions[workspaceId] = actionId;
+    try {
+      const result = await projectTaskController.run(workspaceId, actionId, sessionId);
+      if (selectedWorkspaceId !== workspaceId) return;
+      projectActionRuns = [result, ...projectActionRuns.filter((item) => item.id !== result.id)].slice(0, 20);
+      if (sessionId && selectedSessionId === sessionId) await refreshArtifacts(sessionId);
+      if (selectedWorkspaceId !== workspaceId) return;
+      notice = result.status === 'rejected' ? '工程动作未执行，请查看审批结果。' : result.status === 'awaiting_approval' ? '工程动作正在等待宿主批准。' : result.status === 'running' ? '工程动作正在执行。' : result.status === 'outcome_unknown' ? '工程动作结果未知，请核对实际更改后再操作。' : result.status === 'completed' ? '工程动作已完成。' : `工程动作${result.status === 'timed_out' ? '超时' : '失败'}。`;
+    } catch (error) {
+      if (selectedWorkspaceId === workspaceId) errorMessage = toErrorMessage(error);
+    } finally {
+      projectRunningActions[workspaceId] = null;
+    }
+  }
+  async function cancelCurrentProjectAction(runId: string): Promise<void> {
+    const workspaceId = selectedWorkspaceId;
+    if (!workspaceId) return;
+    try {
+      const requested = await cancelProjectAction(workspaceId, runId);
+      if (selectedWorkspaceId === workspaceId) notice = requested ? '已请求停止，正在等待执行结束；已有更改不会自动撤销。' : '该执行已结束或不属于当前工作区。';
+    } catch (error) {
+      if (selectedWorkspaceId === workspaceId) errorMessage = toErrorMessage(error);
+    }
+  }
+  async function deleteCurrentProjectAction(actionId: string): Promise<void> {
+    const id = selectedWorkspaceId;
+    if (!id || !projectActions.some(action => action.id === actionId && action.workspaceId === id)) return;
+    try {
+      await deleteProjectAction(id, actionId);
+      if (selectedWorkspaceId === id) projectActions = projectActions.filter(action => action.id !== actionId);
+    } catch(error) { if (selectedWorkspaceId === id) errorMessage = toErrorMessage(error); }
+  }
   const externalInspector = $derived<PresentationInspector>({
     workspace: selectedWorkspace, session: selectedSession, desktop, open: sidePanelOpen, activeView: sidePanelView,
     diagnostics, workspaceCapabilities, threads: codexThreads, executionProfile, attachments, artifacts, artifactPreview,
+    projectEditor: projectEditors[selectedWorkspaceId ?? ''] ?? emptyProjectEditor(), runningActionId: projectRunningActions[selectedWorkspaceId ?? ''] ?? null,
     projectActions, projectActionRuns, changeSet: turnChangeSet, checkpoints, restoreOperations, workspaceChanges,
     fileDiff: turnFileDiff, fileDiffLoading: turnFileDiffLoading, fileDiffError: turnFileDiffError,
     threadBusy, busy, running: sessionRunning, archiving: selectedSessionArchiving,
@@ -222,6 +268,15 @@
     const [target, path, detail, operation] = action.args;
     const sessionId = selectedSessionId!;
     switch (action.operation) {
+      case 'newProjectAction': projectEditor.edit(null); break;
+      case 'editProjectAction': projectEditor.edit(target!); break;
+      case 'projectField': projectEditor.change(target as ProjectEditorField, intent.value!); break;
+      case 'projectKind': projectEditor.change('kind', target!); break;
+      case 'saveProjectAction': await projectEditor.save(); break;
+      case 'closeProjectEditor': projectEditor.close(); break;
+      case 'deleteProjectAction': await deleteCurrentProjectAction(target!); break;
+      case 'runProjectAction': await runCurrentProjectAction(target!); break;
+      case 'cancelProjectAction': await cancelCurrentProjectAction(target!); break;
       case 'selectView': selectSidePanelView(target as SidePanelView); break;
       case 'refresh': await refresh(); break;
       case 'syncThreads': await syncCodexThreads(); break;
@@ -3661,51 +3716,15 @@
       onApplyGitHunkAction={guard('onApplyGitHunkAction', applyGitHunkActionFromInspector)}
       {artifactPreview}
       onToggleArtifact={guard('onToggleArtifact', (sessionId, artifactId) => artifactPreviewController.toggle(sessionId, artifactId))}
-      onSaveProjectAction={guard('onSaveProjectAction', async (input) => {
-        try {
-          const saved = await saveProjectAction(input);
-          projectActions = projectActions.some((item) => item.id === saved.id)
-            ? projectActions.map((item) => (item.id === saved.id ? saved : item))
-            : [...projectActions, saved];
-        } catch (error) {
-          errorMessage = toErrorMessage(error);
-        }
-      })}
-      onDeleteProjectAction={guard('onDeleteProjectAction', async (actionId) => {
-        try {
-          if (selectedWorkspaceId) {
-            await deleteProjectAction(selectedWorkspaceId, actionId);
-            projectActions = projectActions.filter((item) => item.id !== actionId);
-          }
-        } catch (error) {
-          errorMessage = toErrorMessage(error);
-        }
-      })}
-      onCancelProjectAction={guard('onCancelProjectAction', async (runId) => {
-        const workspaceId = selectedWorkspaceId;
-        if (!workspaceId) return;
-        try {
-          const requested = await cancelProjectAction(workspaceId, runId);
-          if (selectedWorkspaceId === workspaceId) notice = requested ? '已请求停止，正在等待执行结束；已有更改不会自动撤销。' : '该执行已结束或不属于当前工作区。';
-        } catch (error) {
-          if (selectedWorkspaceId === workspaceId) errorMessage = toErrorMessage(error);
-        }
-      })}
-      onRunProjectAction={guard('onRunProjectAction', async (actionId) => {
-        const workspaceId = selectedWorkspaceId;
-        const sessionId = selectedSessionId;
-        if (!workspaceId) return;
-        try {
-          const result = await projectTaskController.run(workspaceId, actionId, sessionId);
-          if (selectedWorkspaceId !== workspaceId) return;
-          projectActionRuns = [result, ...projectActionRuns.filter((item) => item.id !== result.id)].slice(0, 20);
-          if (sessionId && selectedSessionId === sessionId) await refreshArtifacts(sessionId);
-          if (selectedWorkspaceId !== workspaceId) return;
-          notice = result.status === 'rejected' ? '工程动作未执行，请查看审批结果。' : result.status === 'awaiting_approval' ? '工程动作正在等待宿主批准。' : result.status === 'running' ? '工程动作正在执行。' : result.status === 'outcome_unknown' ? '工程动作结果未知，请核对实际更改后再操作。' : result.status === 'completed' ? '工程动作已完成。' : `工程动作${result.status === 'timed_out' ? '超时' : '失败'}。`;
-        } catch (error) {
-          if (selectedWorkspaceId === workspaceId) errorMessage = toErrorMessage(error);
-        }
-      })}
+      projectEditor={projectEditors[selectedWorkspaceId ?? ''] ?? emptyProjectEditor()}
+      runningActionId={projectRunningActions[selectedWorkspaceId ?? ''] ?? null}
+      onEditProjectAction={guard('onEditProjectAction', (id) => projectEditor.edit(id))}
+      onProjectField={guard('onProjectField', (field, value) => projectEditor.change(field, value))}
+      onSaveProjectEditor={guard('onSaveProjectEditor', () => projectEditor.save())}
+      onCloseProjectEditor={guard('onCloseProjectEditor', () => projectEditor.close())}
+      onDeleteProjectAction={guard('onDeleteProjectAction', deleteCurrentProjectAction)}
+      onCancelProjectAction={guard('onCancelProjectAction', cancelCurrentProjectAction)}
+      onRunProjectAction={guard('onRunProjectAction', runCurrentProjectAction)}
       onRefresh={guard('onRefresh', () => void refresh())}
       onSelectView={guard('onSelectView', selectSidePanelView)}
       />
