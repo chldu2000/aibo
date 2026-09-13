@@ -12,3 +12,5 @@ export type { PresentationNavigation, PresentationNavigationAction, Presentation
 export type { PresentationConversation, PresentationConversationAction, PresentationConversationOperation } from './presentation-conversation.js';
 
 export type { PresentationGit, PresentationGitAction, PresentationGitDrafts } from './presentation-git.js';
+
+export type { PresentationInspector, PresentationInspectorAction, PresentationArtifactPreview } from './presentation-inspector.js';

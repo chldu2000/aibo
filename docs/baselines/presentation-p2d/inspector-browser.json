@@ -1,0 +1,13 @@
+{
+  "passed": true,
+  "nativePort": "mocked; actual App.svelte and default Inspector; no repository writes",
+  "browser": "153.0.8010.12",
+  "checks": [
+    "full command and verification data",
+    "pending artifact read survives external/default switch",
+    "default/external retains truncated artifact content",
+    "session switch clears artifact and rejects late diff",
+    "host binds exact hunk target",
+    "blocked restore reported by host"
+  ]
+}

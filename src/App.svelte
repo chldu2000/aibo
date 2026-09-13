@@ -6,6 +6,21 @@
   import { PresentationHost, WorkbenchPresentation, DefaultPresentationActions, Badge, Button, Card, CardHeader, CardTitle, CardContent } from '$lib/ui-kit';
   import { createPresentationPackageController, type PresentationPackageState } from '$lib/app/presentation-package-controller';
   import { listPresentationPackages, readPresentationPackage, installPresentationPackage, setPresentationPackageEnabled, uninstallPresentationPackage, getPresentationSelection, selectPresentationPackage } from '$lib/api';
+  import { createInspectorDirectory } from '$lib/presentation-runtime/inspector';
+  import { createArtifactPreviewController, emptyArtifactPreview } from '$lib/app/artifact-preview-controller';
+  import type { PresentationInspector } from '../packages/plugin-protocol/src/presentation-inspector';
+  const inspectorDirectory = createInspectorDirectory();
+  let artifactPreview = $state(emptyArtifactPreview());
+  const artifactPreviewController = createArtifactPreviewController({
+    read: readArtifact, currentSession: () => selectedSessionId,
+    available: (sessionId, artifactId) => artifacts.some(item => item.id === artifactId && item.sessionId === sessionId && item.workspaceId === selectedWorkspaceId),
+    changed: state => { artifactPreview = state; },
+  });
+  $effect(() => { selectedSessionId; untrack(() => artifactPreviewController.reset()); });
+  $effect(() => {
+    const preview = artifactPreview;
+    if (preview.artifactId && !artifacts.some(item => item.id === preview.artifactId && item.sessionId === preview.sessionId)) untrack(() => artifactPreviewController.reset());
+  });
   import { createGitDirectory } from '$lib/presentation-runtime/git';
   import type { PresentationGit } from '../packages/plugin-protocol/src/presentation-git';
   const gitDirectory = createGitDirectory();
@@ -194,8 +209,33 @@
       case 'requestReview': await requestWorkspaceAgentReview(workspaceId); break;
     }
   }
+  const externalInspector = $derived<PresentationInspector>({
+    workspace: selectedWorkspace, session: selectedSession, desktop, open: sidePanelOpen, activeView: sidePanelView,
+    diagnostics, workspaceCapabilities, threads: codexThreads, executionProfile, attachments, artifacts, artifactPreview,
+    projectActions, projectActionRuns, changeSet: turnChangeSet, checkpoints, restoreOperations, workspaceChanges,
+    fileDiff: turnFileDiff, fileDiffLoading: turnFileDiffLoading, fileDiffError: turnFileDiffError,
+    threadBusy, busy, running: sessionRunning, archiving: selectedSessionArchiving,
+  });
+  async function externalInspectorIntent(intent: PresentationIntent) {
+    const action = inspectorDirectory.resolve(externalInspector, externalInput.context, intent);
+    if (!action) return;
+    const [target, path, detail, operation] = action.args;
+    const sessionId = selectedSessionId!;
+    switch (action.operation) {
+      case 'selectView': selectSidePanelView(target as SidePanelView); break;
+      case 'refresh': await refresh(); break;
+      case 'syncThreads': await syncCodexThreads(); break;
+      case 'toggleArtifact': await artifactPreviewController.toggle(sessionId, target!); break;
+      case 'closeArtifact': artifactPreviewController.reset(); break;
+      case 'showDiff': await showTurnFileDiff(sessionId, target!, path!); break;
+      case 'restoreTurn': await restoreTurnChangeSet(sessionId, target!); break;
+      case 'fileAction': await applyGitFileActionFromInspector(sessionId, target!, path!, detail as GitFileAction); break;
+      case 'hunkAction': await applyGitHunkActionFromInspector(sessionId, target!, path!, Number(detail), operation as GitFileAction); break;
+    }
+  }
   function externalIntent(intent: PresentationIntent) {
     if (intent.context.workspaceId !== selectedWorkspaceId || intent.context.sessionId !== selectedSessionId) return;
+    if (intent.id.startsWith('inspector:')) { void presentationOperation(() => externalInspectorIntent(intent)); return; }
     if (intent.id.startsWith('git:')) { void presentationOperation(() => externalGitIntent(intent)); return; }
     if (intent.id.startsWith('conversation:')) { void presentationOperation(() => externalConversationIntent(intent)); return; }
     if (intent.id.startsWith('navigation:')) { void presentationOperation(() => externalNavigationIntent(intent)); return; }
@@ -215,6 +255,7 @@
     const data = { workspaces: workspaces.map(({ id, label }) => ({ id, label })),
       sessions: sessions.filter(session => session.workspaceId === selectedWorkspaceId).map(({ id, label, state }) => ({ id, label, state })),
       timeline: timeline.map(({ id, role, content, status }) => ({ id, role, content, status })),
+      inspector: externalInspector, inspectorActions: inspectorDirectory.project(externalInspector),
       git: externalGit, gitActions: gitDirectory.project(externalGit),
       conversation: externalConversation, conversationActions: conversationDirectory.project(externalConversation),
       navigation: externalNavigation, navigationActions: externalNavigationActions(externalNavigation),
@@ -575,6 +616,13 @@
   let workspaceGitSyncBusy = $state(false);
   let workspaceGitReviewBusy = $state(false);
   let turnFileDiff = $state<TurnFileDiff | null>(null);
+  let turnFileDiffLoading = $state(false);
+  let turnFileDiffError = $state<string | null>(null);
+  let turnFileDiffGeneration = 0;
+  $effect(() => {
+    selectedSessionId; turnChangeSet?.turnId;
+    untrack(() => { ++turnFileDiffGeneration; turnFileDiff = null; turnFileDiffLoading = false; turnFileDiffError = null; });
+  });
   let attachments = $state<ContextAttachment[]>([]);
   let artifacts = $state<Artifact[]>([]);
   let projectActions = $state<ProjectAction[]>([]);
@@ -2101,11 +2149,19 @@
   }
 
   async function showTurnFileDiff(sessionId: string, turnId: string, path: string) {
+    if (selectedSessionId !== sessionId || turnChangeSet?.turnId !== turnId || !turnChangeSet.files.some(file => file.path === path)) return;
+    const owner = ++turnFileDiffGeneration;
+    const owns = () => owner === turnFileDiffGeneration && selectedSessionId === sessionId && turnChangeSet?.turnId === turnId;
+    turnFileDiff = null; turnFileDiffError = null; turnFileDiffLoading = true;
     try {
-      turnFileDiff = await getTurnFileDiff(sessionId, turnId, path);
+      const diff = await getTurnFileDiff(sessionId, turnId, path);
+      if (!owns()) return;
+      if (diff.path !== path) throw Error('turn_diff_identity_mismatch');
+      turnFileDiff = diff;
     } catch (error) {
-      errorMessage = toErrorMessage(error);
-      turnFileDiff = null;
+      if (owns()) { turnFileDiffError = toErrorMessage(error); errorMessage = turnFileDiffError; }
+    } finally {
+      if (owns()) turnFileDiffLoading = false;
     }
   }
 
@@ -3603,7 +3659,8 @@
       onShowTurnFileDiff={guard('onShowTurnFileDiff', showTurnFileDiff)}
       onApplyGitFileAction={guard('onApplyGitFileAction', applyGitFileActionFromInspector)}
       onApplyGitHunkAction={guard('onApplyGitHunkAction', applyGitHunkActionFromInspector)}
-      onReadArtifact={guard('onReadArtifact', readArtifact)}
+      {artifactPreview}
+      onToggleArtifact={guard('onToggleArtifact', (sessionId, artifactId) => artifactPreviewController.toggle(sessionId, artifactId))}
       onSaveProjectAction={guard('onSaveProjectAction', async (input) => {
         try {
           const saved = await saveProjectAction(input);

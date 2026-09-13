@@ -360,3 +360,13 @@ GitPanelState 复用公共 PresentationGitDrafts 数据合同。App 将已有 Gi
 会话和 Git 目录共用 action-directory：在当前作用域分配不透明句柄，移除条目
 或离开作用域即撤销，回到原作用域也不复用。点击保持严格 revision，本地输入
 只对当前目录的明确 input 条目开放。业务权限仍由各目录及原生执行边界校验。
+
+### Inspector 预览生命周期
+
+Inspector 的产物预览由注入式 artifact-preview-controller 持有，默认组件通过
+props 展示并转发 toggle，不再拥有独立异步读取状态。外部工作台读写同一宿主
+预览。控制器校验当前会话、产物身份与读取代际，关闭或移除后撤销迟到结果。
+
+App 的会话差异读取核对会话、轮次、路径和请求代际；Inspector 操作目录再从
+当前变更集和已显示差异绑定文件/hunk 动作。视觉实现不能把任意路径或索引送入
+原生写入。原生审批和内容复核保持原有执行边界。

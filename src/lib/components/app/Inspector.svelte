@@ -1,5 +1,6 @@
 <script lang="ts">
   import { Badge, Button, Card, CardContent, CardHeader, CardTitle, Icon, Separator } from '$lib/ui-kit';
+  import type { PresentationArtifactPreview } from '../../../../packages/plugin-protocol/src/presentation-inspector';
   import ProjectActionsPanel from './ProjectActionsPanel.svelte';
   import SidePanelTabs from './SidePanelTabs.svelte';
   import { sessionStateLabel } from './session-utils';
@@ -40,7 +41,8 @@
     onShowTurnFileDiff: (sessionId: string, turnId: string, path: string) => void;
     onApplyGitFileAction: (sessionId: string, turnId: string, path: string, action: GitFileAction) => void;
     onApplyGitHunkAction: (sessionId: string, turnId: string, path: string, hunkIndex: number, action: GitFileAction) => void;
-    onReadArtifact: (sessionId: string, artifactId: string) => Promise<ArtifactContent>;
+    artifactPreview: PresentationArtifactPreview;
+    onToggleArtifact: (sessionId: string, artifactId: string) => Promise<void>;
     onSaveProjectAction: (input: { workspaceId: string; actionId?: string | null; name: string; kind: ProjectActionKind; program: string; args: string[]; cwd?: string | null; enabled?: boolean }) => Promise<void>;
     onDeleteProjectAction: (actionId: string) => Promise<void>;
     onRunProjectAction: (actionId: string) => Promise<void>;
@@ -77,7 +79,8 @@
     onShowTurnFileDiff,
     onApplyGitFileAction,
     onApplyGitHunkAction,
-    onReadArtifact,
+    artifactPreview,
+    onToggleArtifact,
     onSaveProjectAction,
     onDeleteProjectAction,
     onRunProjectAction,
@@ -86,28 +89,15 @@
     onSelectView,
   }: InspectorProps = $props();
 
-  let expandedArtifactId = $state<string | null>(null);
-  let artifactContent = $state<ArtifactContent | null>(null);
-  let artifactLoading = $state(false);
+  const expandedArtifactId = $derived(artifactPreview.artifactId);
+  const artifactContent = $derived(artifactPreview.content);
+  const artifactLoading = $derived(artifactPreview.loading);
   const sessionKind = $derived(sessionAgentKind(session));
   const turnFileIsRename = $derived(
     Boolean(turnChangeSet && turnFileDiff && turnChangeSet.files.find((file) => file.path === turnFileDiff.path)?.kind === 'renamed'),
   );
   async function toggleArtifact(artifact: Artifact): Promise<void> {
-    if (expandedArtifactId === artifact.id) {
-      expandedArtifactId = null;
-      artifactContent = null;
-      return;
-    }
-    if (!session) return;
-    expandedArtifactId = artifact.id;
-    artifactLoading = true;
-    artifactContent = null;
-    try {
-      artifactContent = await onReadArtifact(session.id, artifact.id);
-    } finally {
-      artifactLoading = false;
-    }
+    if (session) await onToggleArtifact(session.id, artifact.id);
   }
 
   function modeLabel(mode: string): string {
@@ -294,12 +284,13 @@
                   <small>{artifact.mediaType} · {artifact.size} bytes · {artifact.turnId ? `本轮 ${artifact.turnId.slice(0, 8)}` : '会话级'} · {artifact.contentHash.slice(0, 16)}…</small>
                 </div>
                 <Button variant="ghost" size="sm" type="button" onclick={() => void toggleArtifact(artifact)} disabled={artifactLoading && expandedArtifactId === artifact.id}>
-                  {expandedArtifactId === artifact.id ? '收起' : '查看'}
+                  {expandedArtifactId === artifact.id ? artifactPreview.error ? '重试' : '收起' : '查看'}
                 </Button>
               </div>
               {#if expandedArtifactId === artifact.id}
                 <div class="artifact-preview">
                   {#if artifactLoading}<span class="thread-empty">读取中…</span>
+                  {:else if artifactPreview.error}<p role="alert">{artifactPreview.error}</p>
                   {:else if artifactContent}<pre>{artifactContent.content}{artifactContent.truncated ? '\n…内容已截断…' : ''}</pre>
                   {:else}<span class="thread-empty">工件内容不可用。</span>{/if}
                 </div>
