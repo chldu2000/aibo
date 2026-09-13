@@ -36,7 +36,7 @@
 </script>
 
 <section class="plugin-workspace" aria-label="插件工作台">
-  <div class="plugin-toolbar"><h2>插件工作台 · {workspaceLabel ?? '请选择工作区'}</h2><Button variant="ghost" onclick={onClose}>返回会话</Button></div>
+  <p>当前工作区：{workspaceLabel ?? '请选择工作区'}</p>
   {#if !desktop}<p role="status">插件需要在 Aibo 桌面应用中运行。</p>{/if}
   {#if error}<p role="alert">{error}</p>{/if}
   <PluginManagerPanel {installations} {packagePath} {onPackagePathChange} busy={busy || !desktop} {onInstall} {onEnabledChange} {onUninstall} {onCreateSession} />

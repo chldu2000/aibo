@@ -57,13 +57,23 @@ export async function preparePresentationSandbox(
   let localInputActions = inputActions(initial);
   let acceptedEdits = 0;
   let inherited = false;
+  let suspended = Boolean(target.closest('[inert],[hidden]'));
+  const suspensionObserver = new MutationObserver(() => {
+    const next = Boolean(target.closest('[inert],[hidden]'));
+    if (next === suspended || disposed) return;
+    suspended = next;
+    channel.port1.postMessage({ type: 'suspended', value: suspended });
+  });
+  for (let ancestor: HTMLElement | null = target; ancestor; ancestor = ancestor.parentElement) {
+    suspensionObserver.observe(ancestor, { attributes: true, attributeFilter: ['inert', 'hidden'] });
+  }
   let timeout: ReturnType<typeof setTimeout>;
   let resolveReady: (value: MountedSandbox) => void;
   let rejectReady: (error: Error) => void;
   const promise = new Promise<MountedSandbox>((resolve, reject) => { resolveReady = resolve; rejectReady = reject; });
   function dispose() {
     if (disposed) return;
-    disposed = true; active = false; clearTimeout(timeout);
+    disposed = true; active = false; clearTimeout(timeout); suspensionObserver.disconnect();
     signal?.removeEventListener('abort', abort);
     channel.port1.postMessage({ type: 'dispose' });
     channel.port1.close(); frame.remove();
@@ -77,7 +87,7 @@ export async function preparePresentationSandbox(
   }
   function armTimeout() { clearTimeout(timeout); timeout = setTimeout(() => fail('presentation_sandbox_timeout'), 5000); }
   function abort() { fail('presentation_preparation_aborted'); }
-  function canRestoreFocus(){const focused=target.ownerDocument.activeElement;return focused===target.ownerDocument.body||focused===frame||Boolean(focused&&target.contains(focused));}
+  function canRestoreFocus(){if(suspended || target.closest('[inert],[hidden]'))return false;const focused=target.ownerDocument.activeElement;return focused===target.ownerDocument.body||focused===frame||Boolean(focused&&target.contains(focused));}
   const instance: MountedSandbox = {
     get inherited() { return inherited; },
     activate() { if (disposed) throw Error('presentation_disposed'); active = true; frame.hidden = inherited; channel.port1.postMessage({type:'activate',viewState:options.viewState?.read(input.context),restoreFocus:canRestoreFocus()}); },
@@ -92,7 +102,7 @@ export async function preparePresentationSandbox(
   };
   channel.port1.onmessage = ({ data }) => {
     if (disposed || !data) return;
-    if (data.type === 'connected') { channel.port1.postMessage({ type: 'start', source, css, assets, input, localInputActions, allowInheritance: options.allowInheritance === true && initial.surface === 'controls' }); }
+    if (data.type === 'connected') { channel.port1.postMessage({ type: 'suspended', value: suspended }); channel.port1.postMessage({ type: 'start', source, css, assets, input, localInputActions, allowInheritance: options.allowInheritance === true && initial.surface === 'controls' }); }
     else if ((data.type === 'rendered' || (data.type === 'inherit' && options.allowInheritance && initial.surface === 'controls')) && data.revision === input.context.revision) {
       clearTimeout(timeout);
       inherited = data.type === 'inherit';
@@ -105,7 +115,7 @@ export async function preparePresentationSandbox(
     else if (data.type === 'recovery' && active) {
       if (options.onRecover) options.onRecover(); else fail('presentation_recovery_requested');
     }
-    else if (data.type === 'intent' && active) {
+    else if (data.type === 'intent' && active && !suspended && !target.closest('[inert],[hidden]')) {
       const intent = data.intent;
       if (!intent || typeof intent.id !== 'string' || intent.id.length > 256
         || (intent.context?.revision !== input.context.revision && !(intent.event === 'input' && localInputActions.includes(intent.id)))

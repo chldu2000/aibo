@@ -1,3 +1,5 @@
+import SettingsSection from './shadcn/SettingsSection.svelte';
+import HostPanel from './shared/HostPanel.svelte';
 import SemanticView from './shadcn/SemanticView.svelte';
 import AlertDialogComponent from '$lib/components/ui/alert-dialog/alert-dialog.svelte';
 import { Badge as BadgeComponent } from '$lib/components/ui/badge';
@@ -22,6 +24,8 @@ import type { UiKitAdapter, UiKitRegistration, UiThemeRegistration } from '../co
 import metadata from '../../../../packages/presentation-shadcn/themes.json';
 
 export const shadcnUiKit: UiKitAdapter = {
+  HostPanel,
+  SettingsSection,
   SemanticView,
   AgentStatusMark: AgentStatusMarkComponent,
   AlertDialog: AlertDialogComponent,

@@ -11,11 +11,12 @@
   const viewState = createPresentationViewStateStore();
   import { externalPresentation, type ExternalPresentation } from './external-presentation';
   import { PRESENTATION_CONTROLS, type PresentationControlScope } from './control-context';
-  let { active, themeId, input, suspended = false, onIntent, onRestore, children }: {
+  let { active, themeId, input, suspended = false, hideWhenSuspended = true, onIntent, onRestore, children }: {
     active: InstalledPresentationPackage | null;
     themeId: string | null;
     input: PresentationInput;
     suspended?: boolean;
+    hideWhenSuspended?: boolean;
     onIntent(intent: PresentationIntent): void;
     onRestore(): void;
     children: Snippet;
@@ -103,7 +104,7 @@
 
 <div class="presentation-host">
   <div class="presentation-fallback" bind:this={fallback} hidden={replacesWorkbench} style={themeStyle}>{@render children()}</div>
-  <div class="presentation-external" bind:this={target} hidden={!replacesWorkbench || suspended}></div>
+  <div class="presentation-external" bind:this={target} inert={suspended} hidden={!replacesWorkbench || (suspended && hideWhenSuspended)}></div>
 </div>
 
 <style>

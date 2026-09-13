@@ -18,6 +18,7 @@
   import review from '@ktibow/iconset-material-symbols/fact-check-outline-rounded';
   import search from '@ktibow/iconset-material-symbols/search-rounded';
   import panelRight from '@ktibow/iconset-material-symbols/right-panel-open-rounded';
+  import plugins from '@ktibow/iconset-material-symbols/extension-outline-rounded';
   import send from '@ktibow/iconset-material-symbols/send-rounded';
   import settings from '@ktibow/iconset-material-symbols/tune-rounded';
   import stop from '@ktibow/iconset-material-symbols/stop-rounded';
@@ -57,6 +58,7 @@
     review,
     search,
     'panel-right': panelRight,
+    plugins,
     send,
     settings,
     stop,

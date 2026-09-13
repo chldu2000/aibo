@@ -37,7 +37,9 @@
 >
   <span class="window-title">Aibo</span>
   <div class="window-actions">
-    <Button variant="ghost" type="button" data-host-navigation="plugins" onclick={onOpenPlugins}>插件</Button>
+    <Button variant="ghost" size="icon" type="button" data-host-navigation="plugins" aria-label="插件" title="插件" onclick={onOpenPlugins}>
+      <Icon name="plugins" size={15} />
+    </Button>
     <Button variant="ghost" size="icon" type="button" aria-label="打开设置" title="设置" onclick={onOpenSettings}>
       <Icon name="settings" size={15} />
     </Button>

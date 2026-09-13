@@ -70,7 +70,7 @@
   });
   window.addEventListener('blur',endResize);
   for(const name of ['pointerup','pointercancel','lostpointercapture'])root.addEventListener(name,()=>{drag=undefined;});
-  let active = false, pendingState, lastState, stateTimer, restoring = false, renderedContext, mayRestoreFocus = false;
+  let active = false, suspended = false, pendingState, lastState, stateTimer, restoring = false, renderedContext, mayRestoreFocus = false;
   function timelineViewport() {
     let element=root.querySelector('[data-presentation-key="conversation:timeline"]');
     while(element&&element!==root){
@@ -110,7 +110,7 @@
     for(const item of state.disclosures??[]) {const element=elements.get(item.key);if(element instanceof HTMLDetailsElement)element.open=item.open;}
     for(const item of state.scroll??[]) {const element=elements.get(item.key);if(element){element.scrollLeft=item.x;element.scrollTop=item.y;}}
     const element=state.focus&&elements.get(state.focus.key);
-    if(element){if(focus)element.focus({preventScroll:true});if(state.focus.selection&&typeof element.setSelectionRange==='function')try{element.setSelectionRange(...state.focus.selection)}catch{}}
+    if(element){if(focus && !suspended)element.focus({preventScroll:true});if(state.focus.selection&&typeof element.setSelectionRange==='function')try{element.setSelectionRange(...state.focus.selection)}catch{}}
     window.scrollTo(...state.window);
     restoreTimeline(state.timeline);
     restoring=false;
@@ -308,6 +308,7 @@
       if (disposed) return;
       try {
         if (data.type === 'start' && !worker) start(data);
+        else if(data.type==='suspended'){suspended=data.value===true;if(suspended)mayRestoreFocus=false;}
         else if(data.type==='activate'){active=true;mayRestoreFocus=data.restoreFocus===true;if(data.viewState){lastState=data.viewState;restoreState(lastState,data.restoreFocus===true);}}
         else if(data.type==='restore-focus'){mayRestoreFocus=true;restoreState(lastState,true);}
         else if (data.type === 'update' && worker) { mayRestoreFocus=data.restoreFocus===true;if('viewState' in data)pendingState=data.viewState; localInputActions = data.localInputActions; update(data.input, data.acceptedEdits); }

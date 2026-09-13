@@ -17,6 +17,7 @@
   import ReviewIcon from '@lucide/svelte/icons/file-search';
   import SearchIcon from '@lucide/svelte/icons/search';
   import PanelRightIcon from '@lucide/svelte/icons/panel-right';
+  import PluginsIcon from '@lucide/svelte/icons/puzzle';
   import SendIcon from '@lucide/svelte/icons/send';
   import SettingsIcon from '@lucide/svelte/icons/settings-2';
   import StopIcon from '@lucide/svelte/icons/square';
@@ -55,6 +56,7 @@
     review: ReviewIcon,
     search: SearchIcon,
     'panel-right': PanelRightIcon,
+    plugins: PluginsIcon,
     send: SendIcon,
     settings: SettingsIcon,
     stop: StopIcon,

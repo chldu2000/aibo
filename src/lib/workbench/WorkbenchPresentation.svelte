@@ -6,13 +6,14 @@
   import type { WorkbenchSnapshot, WorkbenchAction } from '../presentation/workbench-contract';
   type Guard = (id: string, callback: (...args: any[]) => any) => (...args: any[]) => any;
   let { snapshot, windowId, navigation, navigationResize, content, auxiliaryResize, auxiliary, overlays,
-    layout = $bindable('standard'), switching = $bindable(false), gridElement = $bindable(null), navigationWidth = 260, auxiliaryWidth = 320, auxiliaryOpen = true, suspended = false, onRestore }: {
+    layout = $bindable('standard'), switching = $bindable(false), gridElement = $bindable(null), navigationWidth = 260, auxiliaryWidth = 320, auxiliaryOpen = true, suspended = false, hideWhenSuspended = true, onRestore }: {
     onRestore?: () => Promise<void>;
     layout?: string;
     switching?: boolean;
     snapshot: WorkbenchSnapshot;
     windowId: string;
     suspended?: boolean;
+    hideWhenSuspended?: boolean;
     navigation?: Snippet<[Guard, { growthDirection: 1 | -1 }]>;
     navigationResize?: Snippet<[Guard, { growthDirection: 1 | -1 }]>;
     content: Snippet<[Guard, { growthDirection: 1 | -1 }]>;
@@ -140,7 +141,7 @@
     <Button variant="ghost" onclick={restoreDefault} aria-label="恢复默认呈现" aria-keyshortcuts="Control+Shift+Backspace Meta+Shift+Backspace">恢复默认呈现</Button>
   </Card>
 {/if}
-<div bind:this={target} onfocusin={rememberFocus} class="workbench-presentation" data-presentation-focus-target={focus} data-presentation-layout={instance?.layout} data-presentation-generation={instance?.generation} inert={switching || suspended} aria-busy={switching} style:display={suspended ? 'none' : 'flex'}>
+<div bind:this={target} onfocusin={rememberFocus} class="workbench-presentation" data-presentation-focus-target={focus} data-presentation-layout={instance?.layout} data-presentation-generation={instance?.generation} inert={switching || suspended} aria-busy={switching} style:display={suspended && hideWhenSuspended ? 'none' : 'flex'}>
   {#if instance}{#key instance.generation}
       <main bind:this={gridElement} class="workspace-grid" class:inspector-hidden={!auxiliaryOpen} style:grid-template-columns={columns} style={`--workspace-sidebar-width: ${navigationWidth}px; --workspace-inspector-width: ${auxiliaryWidth}px`}>
         {#each visibleSlots as slot (slot)}

@@ -28,6 +28,10 @@
 
   let { installations, packagePath, onPackagePathChange, busy, onInstall, onEnabledChange, onUninstall, onCreateSession }: Props = $props();
   const fieldId = $props.id();
+  let selectedId = $state<string | null>(null);
+  const selected = $derived(installations.find(item => item.id === selectedId) ?? installations[0]);
+  let showingDetail = $state(false);
+
 </script>
 
 <Card aria-label="插件" aria-busy={busy}>
@@ -44,8 +48,19 @@
       {#if installations.length === 0}
         <p role="status">尚未安装外部插件。</p>
       {:else}
-        <div class="plugin-list">
+        <div class="plugin-browser" class:showing-detail={showingDetail}>
+          <nav class="plugin-navigation" aria-label="已安装插件">
+            {#each installations as installation (installation.id)}
+              <Button variant={selected?.id === installation.id ? 'secondary' : 'ghost'} aria-pressed={selected?.id === installation.id}
+                onclick={() => { selectedId = installation.id; showingDetail = true; }}>
+                {installation.manifest.displayName} · {installation.pluginVersion}
+              </Button>
+            {/each}
+          </nav>
+          <div class="plugin-detail">
+            <div class="plugin-list-back"><Button variant="ghost" onclick={() => (showingDetail = false)}>← 插件列表</Button></div>
           {#each installations as installation (installation.id)}
+            {#if selected?.id === installation.id}
             <Card aria-label={installation.manifest.displayName}>
               <CardHeader>
                 <div class="plugin-heading">
@@ -79,7 +94,9 @@
                 </div>
               </CardContent>
             </Card>
+            {/if}
           {/each}
+          </div>
         </div>
       {/if}
     </div>
@@ -87,7 +104,16 @@
 </Card>
 
 <style>
-  .plugin-manager, .plugin-install, .plugin-list, .plugin-details { display: flex; flex-direction: column; gap: 0.75rem; min-width: 0; }
+  .plugin-manager, .plugin-install, .plugin-details { display: flex; flex-direction: column; gap: 0.75rem; min-width: 0; }
   .plugin-heading, .plugin-actions { display: flex; align-items: center; flex-wrap: wrap; gap: 0.5rem; }
   .plugin-install { align-items: stretch; }
+  .plugin-browser { display: grid; grid-template-columns: minmax(180px, 240px) minmax(0, 1fr); gap: 16px; }
+  .plugin-navigation { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
+  .plugin-detail { min-width: 0; }
+  .plugin-list-back { display: none; }
+  @media (max-width: 720px) {
+    .plugin-browser { grid-template-columns: minmax(0, 1fr); }
+    .plugin-browser:not(.showing-detail) .plugin-detail, .plugin-browser.showing-detail .plugin-navigation { display: none; }
+    .plugin-list-back { display: block; margin-bottom: 8px; }
+  }
 </style>

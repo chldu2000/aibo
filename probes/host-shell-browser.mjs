@@ -22,7 +22,7 @@ try {
     assert.equal(await titlebar.getByRole('button', {name:/执行历史|会话历史/}).count(), 0);
     assert.equal(await page.locator('.presentation-controls').count(), 0);
     assert.equal(await page.getByRole('button', {name:'恢复默认呈现', exact:true}).count(), 0);
-    await page.locator('[data-ui-component="workspace-sidebar"]').getByRole('button', {name:'会话历史',exact:true}).waitFor();
+    assert.equal(await page.locator('[data-ui-component="workspace-sidebar"]').getByRole('button', {name:'会话历史',exact:true}).count(), 0);
     const focus = page.locator('.timeline-heading-actions').getByRole('button', {name:'专注会话',exact:true});
     assert.equal((await focus.innerText()).trim(), '', 'focus is an icon button');
     await focus.click();
@@ -32,7 +32,7 @@ try {
     await page.locator('[data-presentation-layout="standard"]:not([inert])').waitFor();
     await page.getByRole('button', {name:'打开设置',exact:true}).click();
     await page.getByRole('dialog', {name:'外观设置'}).getByRole('button', {name:'恢复默认呈现',exact:true}).click();
-    await page.locator('[data-presentation-layout="standard"]:not([inert])').waitFor();
+    await page.locator('[data-presentation-layout="standard"][inert]').waitFor();
     await page.evaluate(() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))));
     assert.equal(await page.getByRole('dialog', {name:'外观设置'}).evaluate(node => node.contains(document.activeElement)), true, 'layout recovery must not steal focus from settings');
     await page.getByRole('button', {name:'关闭设置',exact:true}).click();
@@ -49,7 +49,7 @@ try {
     await runCommand('恢复默认呈现');
     await page.waitForFunction(() => document.querySelector('[data-presentation-layout="standard"][aria-busy="false"]'));
     assert.equal(await page.evaluate(() => window.savedHostPanel === document.querySelector('.host-plugin-region')), true);
-    await page.getByRole('button', {name: '返回会话', exact: true}).click();
+    await page.getByRole('button', {name: '关闭插件工作台', exact: true}).click();
     await panel.waitFor({state: 'detached'});
     await page.locator('.workspace-grid').waitFor();
     const historyButton = page.getByRole('button', { name: '执行历史', exact: true });
@@ -61,7 +61,7 @@ try {
     await page.locator('#command-palette-input').waitFor();
     await page.keyboard.press('Escape');
     assert.equal(await history.isVisible(), true, 'closing the palette must not close history');
-    assert.equal(await page.locator('#execution-history-heading').evaluate(node => document.activeElement === node), true);
+    assert.equal(await page.locator('.host-panel-header h2').evaluate(node => document.activeElement === node), true);
     await page.evaluate(() => { window.savedHistory = document.querySelector('.host-history-region'); });
     await runCommand('切换专注会话');
     await page.waitForFunction(() => document.querySelector('[data-presentation-layout="focus"][aria-busy="false"]'));
@@ -71,12 +71,11 @@ try {
     await page.screenshot({ path: `/tmp/aibo-history-${kit}.png` });
     await page.getByRole('button',{name:'插件调用历史',exact:true}).click();
     const audit=page.getByRole('region',{name:'插件调用历史',exact:true});await audit.waitFor();
-    assert.equal(await page.locator('#capability-history-heading').evaluate(node=>document.activeElement===node),true);
-    await page.getByRole('button',{name:'返回执行历史',exact:true}).click();await history.waitFor();
+    assert.equal(await page.locator('.host-panel-header h2').evaluate(node=>document.activeElement===node),true);
+    await page.getByRole('button',{name:'← 执行历史',exact:true}).click();await history.waitFor();
     await page.keyboard.press('Escape'); await history.waitFor({state: 'detached'});
     assert.equal(await page.getByRole('button',{name:'打开 Agent 诊断',exact:true}).evaluate(node => document.activeElement === node), true);
-    const sessionHistoryButton = page.getByRole('button', {name:'会话历史',exact:true});
-    await sessionHistoryButton.click();
+    await runCommand('会话历史');
     const sessionHistory = page.getByRole('region',{name:'会话历史',exact:true}); await sessionHistory.waitFor();
     assert.equal(await page.locator('#session-history-heading').evaluate(node=>document.activeElement===node),true);
     await page.evaluate(()=>{window.savedSessionHistory=document.querySelector('.host-session-history-region');});
@@ -86,7 +85,7 @@ try {
     await page.waitForFunction(()=>document.querySelector('[data-presentation-layout="standard"][aria-busy="false"]'));
     assert.equal(await page.evaluate(()=>window.savedSessionHistory===document.querySelector('.host-session-history-region')),true);
     await page.keyboard.press('Escape'); await sessionHistory.waitFor({state:'detached'});
-    assert.equal(await sessionHistoryButton.evaluate(node=>document.activeElement===node),true);
+    assert.equal(await page.getByRole('button',{name:'打开设置',exact:true}).evaluate(node=>document.activeElement===node),true);
 
 
   }

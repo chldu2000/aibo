@@ -5,7 +5,7 @@
   const savedWorkbenchLayout = readWorkbenchLayout(draftStorage, presentationWindowId());
   let workbenchDrafts = $state(readWorkbenchDrafts(draftStorage, presentationWindowId()));
   $effect(() => { writeWorkbenchDrafts(draftStorage, presentationWindowId(), workbenchDrafts); });
-  import { PresentationHost, WorkbenchPresentation, DefaultPresentationActions, Badge, Button, Card, CardHeader, CardTitle, CardContent } from '$lib/ui-kit';
+  import { SettingsSection, HostPanel, PresentationHost, WorkbenchPresentation, DefaultPresentationActions, Badge, Button, Card, CardHeader, CardTitle, CardContent } from '$lib/ui-kit';
   import { createPresentationPackageController, type PresentationPackageState } from '$lib/app/presentation-package-controller';
   import { listPresentationPackages, readPresentationPackage, installPresentationPackage, setPresentationPackageEnabled, uninstallPresentationPackage, getPresentationSelection, selectPresentationPackage } from '$lib/api';
   import { createCapabilityWorkbenchDirectory } from '$lib/presentation-runtime/capability-workbench';
@@ -859,7 +859,6 @@
   let historyOpen = $state(false);
   let historyWorkspaceId = $state<string | null>(null);
   let executionHistory = $state(emptyExecutionHistory());
-  let historyTrigger: HTMLElement | null = null;
   const executionHistoryController = createExecutionHistoryController({
     readTasks: (id, before) => listProjectActionRuns(id, 21, before), readWrites: (id, before) => listWorkspaceWriteRuns(id, 21, before),
     cancelTask: cancelProjectAction, cancelWrite: cancelWorkspaceWrite,
@@ -873,15 +872,12 @@
   function openExecutionHistory(): void {
     capabilityHistoryOpen = false;
     sessionHistoryOpen = false;
-    historyTrigger = document.activeElement instanceof HTMLElement ? document.activeElement : null;
-    pluginsOpen = false; settingsOpen = false; diagnosticsOpen = false; commandPaletteOpen = false;
+    pluginsOpen = false; settingsOpen = false; commandPaletteOpen = false;
     historyWorkspaceId = selectedWorkspaceId ?? workspaces[0]?.id ?? null;
     historyOpen = true;
   }
-  async function closeExecutionHistory(): Promise<void> { historyOpen = false;
-    await tick();
-    const trigger = historyTrigger?.isConnected ? historyTrigger : document.querySelector<HTMLElement>('[aria-label="打开 Agent 诊断"]');
-    trigger?.focus(); }
+  function closeHostPanel(): void { pluginsOpen = false; diagnosticsOpen = false; historyOpen = false; capabilityHistoryOpen = false; }
+  function backToDiagnostics(): void { historyOpen = false; capabilityHistoryOpen = false; diagnosticsOpen = true; }
 
   let sessionHistoryOpen = $state(false);
   let sessionHistoryWorkspaceId = $state<string | null>(null);
@@ -918,7 +914,7 @@
     void capabilityHistoryController.open();
     return ()=>capabilityHistoryController.close();
   });
-  function openCapabilityHistory():void { historyOpen=false;sessionHistoryOpen=false;pluginsOpen=false;capabilityHistoryOpen=true; }
+  function openCapabilityHistory():void { historyOpen=true;sessionHistoryOpen=false;pluginsOpen=false;capabilityHistoryOpen=true; }
   function backFromCapabilityHistory():void { capabilityHistoryOpen=false;historyOpen=true; }
 
   let pluginInstallations = $state<PluginInstallation[]>([]);
@@ -1067,6 +1063,9 @@
   }
 
   function openDiagnosticsPanel(): void {
+    closeHostPanel();
+    sessionHistoryOpen = false;
+    commandPaletteOpen = false;
     settingsOpen = false;
     diagnosticsOpen = true;
   }
@@ -1524,20 +1523,12 @@
       if (key === 'escape') { event.preventDefault(); commandPaletteOpen = false; }
       return;
     }
-    if (capabilityHistoryOpen && !settingsOpen && !diagnosticsOpen) {
-      if (key === 'escape') {event.preventDefault();backFromCapabilityHistory();}
+    if ((pluginsOpen || diagnosticsOpen || historyOpen || capabilityHistoryOpen) && !settingsOpen) {
+      if (key === 'escape') { event.preventDefault(); closeHostPanel(); }
       return;
     }
-    if (sessionHistoryOpen && !settingsOpen && !diagnosticsOpen) {
+    if (sessionHistoryOpen && !settingsOpen) {
       if (key === 'escape') { event.preventDefault(); closeSessionHistory(); }
-      return;
-    }
-    if (historyOpen && !settingsOpen && !diagnosticsOpen) {
-      if (key === 'escape') { event.preventDefault(); closeExecutionHistory(); }
-      return;
-    }
-    if (pluginsOpen && !settingsOpen && !diagnosticsOpen) {
-      if (key === 'escape') { event.preventDefault(); pluginsOpen = false; }
       return;
     }
     if (modifier && key === 'n' && selectedWorkspaceId && !busy) {
@@ -3464,18 +3455,36 @@
 </script>
 
 {#snippet presentationPackageManagement()}
-  <section class="settings-section" aria-label="皮肤插件管理">
-    <Button disabled={!desktop || presentationPackages.busy} onclick={() => void presentationOperation(installPresentationFromDirectory)}>安装皮肤插件</Button>
-    <Button onclick={() => void presentationOperation(() => desktop ? presentationPackagesController.select(null) : Promise.resolve())}>恢复内置呈现</Button>
-    {#if presentationPackages.error}<p role="alert">{presentationPackages.error}</p>{/if}
-    {#each presentationPackages.releases as release (release.digest)}
-      <div>
-        <span>{release.manifest.displayName} · {release.manifest.version}</span>
-        <Button disabled={presentationPackages.busy} onclick={() => void presentationOperation(() => presentationPackagesController.enable(release.digest, !release.enabled))}>{release.enabled ? '禁用' : '启用'}</Button>
-        <Button disabled={presentationPackages.busy} onclick={() => void presentationOperation(() => presentationPackagesController.uninstall(release.digest))}>卸载</Button>
-      </div>
-    {/each}
-  </section>
+  <SettingsSection title="皮肤插件" error={presentationPackages.error} items={[
+    { id: 'install', title: '安装皮肤', description: '从本地目录添加新的外观插件。', icon: 'plugins',
+      actions: [{ id: 'install', label: '安装皮肤插件', intent: 'install', disabled: !desktop || presentationPackages.busy }] },
+    { id: 'builtin', title: '使用内置皮肤', description: '停用当前外部皮肤，保留工作台布局。', icon: 'undo',
+      actions: [{ id: 'restore', label: '恢复内置呈现', intent: 'restore', disabled: presentationPackages.busy }] },
+    ...presentationPackages.releases.map(release => ({ id: release.digest, title: release.manifest.displayName,
+      description: `${release.manifest.version} · ${release.enabled ? '已启用' : '已禁用'}`,
+      actions: [
+        { id: 'toggle', label: release.enabled ? '禁用' : '启用', intent: 'toggle' as const, disabled: presentationPackages.busy },
+        { id: 'uninstall', label: '卸载', intent: 'remove' as const, disabled: presentationPackages.busy },
+      ] })),
+  ]} onAction={(item, action) => {
+    if (item === 'install') void presentationOperation(installPresentationFromDirectory);
+    else if (item === 'builtin') void presentationOperation(() => desktop ? presentationPackagesController.select(null) : Promise.resolve());
+    else {
+      const release = presentationPackages.releases.find(release => release.digest === item);
+      if (!release) return;
+      if (action === 'toggle') void presentationOperation(() => presentationPackagesController.enable(release.digest, !release.enabled));
+      else if (action === 'uninstall') void presentationOperation(() => presentationPackagesController.uninstall(release.digest));
+    }
+  }} />
+{/snippet}
+
+{#snippet hostPanelActions()}
+  {#if capabilityHistoryOpen}
+    <Button variant="outline" size="sm" disabled={!desktop || capabilityHistory.loadingScopes} onclick={() => void capabilityHistoryController.open()}>刷新作用域</Button>
+  {:else if historyOpen}
+    <Button variant="outline" size="sm" disabled={!desktop || !historyWorkspaceId || executionHistory.loading} onclick={() => void executionHistoryController.refresh()}>刷新记录</Button>
+    <Button variant="outline" size="sm" onclick={openCapabilityHistory}>插件调用历史</Button>
+  {/if}
 {/snippet}
 
 {#snippet appearanceActions()}{@render presentationActions('appearance')}{/snippet}
@@ -3486,8 +3495,7 @@
   <DefaultPresentationActions {surface} layout={presentationLayout} switching={presentationSwitching}
     onSwitchLayout={(layout) => { void workbenchPresentation?.switchPresentation(layout); }}
     onRestore={() => { void workbenchPresentation?.restoreDefault(); }}
-    onOpenExecutionHistory={openExecutionHistory}
-    onOpenSessionHistory={openSessionHistory} />
+    onOpenExecutionHistory={openExecutionHistory} />
 {/snippet}
 
 <svelte:head>
@@ -3529,17 +3537,7 @@
     onSelectTheme={id => void presentationOperation(() => choosePresentationTheme(id))}
     onClose={() => (settingsOpen = false)}
   />
-  <DiagnosticsPanel
-    presentationActions={diagnosticsActions}
-    open={diagnosticsOpen}
-    diagnostics={diagnostics}
-    desktop={desktop}
-    workspaceCount={workspaces.length}
-    sessionCount={sessions.length}
-    busy={busy}
-    onRefresh={() => void refresh()}
-    onClose={() => (diagnosticsOpen = false)}
-  />
+
   {#if pendingApprovals.length > 0}
     <section class="approval-list" aria-label="宿主审批" aria-live="assertive" style="max-height: 40vh; overflow: auto; flex-shrink: 0;">
       {#each pendingApprovals as approval (JSON.stringify([approval.sessionId, approval.requestId]))}
@@ -3564,14 +3562,6 @@
       {/each}
     </section>
   {/if}
-  {#if capabilityHistoryOpen}
-    <div class="host-capability-history-region" style="order:2;display:grid;flex:1;min-height:0;overflow:auto;">
-      <CapabilityHistoryPanel state={capabilityHistory} {desktop} onSource={source=>void capabilityHistoryController.selectSource(source)} onSelect={scope=>void capabilityHistoryController.select(scope)}
-        onReload={()=>void capabilityHistoryController.open()} onMoreScopes={()=>void capabilityHistoryController.moreScopes()}
-        onRefresh={()=>void capabilityHistoryController.refresh()} onOlder={()=>void capabilityHistoryController.older()}
-        onNewer={()=>void capabilityHistoryController.newer()} onLatest={()=>void capabilityHistoryController.latest()} onBack={backFromCapabilityHistory} />
-    </div>
-  {/if}
   {#if sessionHistoryOpen}
     <div class="host-session-history-region" style="order:2; display:grid; flex:1; min-height:0; overflow:auto;">
       <SessionHistoryPanel {workspaces} workspaceId={sessionHistoryWorkspaceId} state={sessionHistory} {desktop}
@@ -3581,44 +3571,72 @@
         onReload={()=>{if (sessionHistoryWorkspaceId) void sessionHistoryController.open(sessionHistoryWorkspaceId, sessionHistory.selectedId);}} />
     </div>
   {/if}
-  {#if historyOpen}
-    <div class="host-history-region" style="order: 2; display: grid; flex: 1; min-height: 0; overflow: auto;">
-      <ExecutionHistoryPanel {workspaces} workspaceId={historyWorkspaceId} windowId={presentationWindowId()} state={executionHistory} {desktop}
-        onOpenAudit={openCapabilityHistory} onSelectWorkspace={id => { historyWorkspaceId = id; }} onRefresh={() => void executionHistoryController.refresh()}
-        onStop={key => void executionHistoryController.stop(key)} onClose={closeExecutionHistory}
-        onOlder={() => void executionHistoryController.older()} onNewer={() => void executionHistoryController.newer()} onLatest={() => void executionHistoryController.latest()} />
-    </div>
+  {#if pluginsOpen || diagnosticsOpen || historyOpen || capabilityHistoryOpen}
+    <HostPanel actions={hostPanelActions} title={pluginsOpen ? '插件工作台' : capabilityHistoryOpen ? '插件调用历史' : historyOpen ? '执行历史' : 'Agent 诊断'}
+      backLabel={capabilityHistoryOpen ? '执行历史' : historyOpen && diagnosticsOpen ? '诊断' : undefined}
+      onBack={capabilityHistoryOpen ? backFromCapabilityHistory : historyOpen && diagnosticsOpen ? backToDiagnostics : undefined}
+      onClose={closeHostPanel}>
+      <div hidden={historyOpen || capabilityHistoryOpen}>
+        <DiagnosticsPanel
+          presentationActions={diagnosticsActions}
+          open={diagnosticsOpen}
+          diagnostics={diagnostics}
+          desktop={desktop}
+          workspaceCount={workspaces.length}
+          sessionCount={sessions.length}
+          busy={busy}
+          onRefresh={() => void refresh()}
+          onClose={closeHostPanel}
+        />
+      </div>
+      {#if capabilityHistoryOpen}
+        <div class="host-capability-history-region" style="order:2;display:grid;flex:1;min-height:0;overflow:auto;">
+          <CapabilityHistoryPanel state={capabilityHistory} {desktop} onSource={source=>void capabilityHistoryController.selectSource(source)} onSelect={scope=>void capabilityHistoryController.select(scope)}
+            onReload={()=>void capabilityHistoryController.open()} onMoreScopes={()=>void capabilityHistoryController.moreScopes()}
+            onRefresh={()=>void capabilityHistoryController.refresh()} onOlder={()=>void capabilityHistoryController.older()}
+            onNewer={()=>void capabilityHistoryController.newer()} onLatest={()=>void capabilityHistoryController.latest()} />
+        </div>
+      {/if}
+      {#if historyOpen}
+        <div class="host-history-region" hidden={capabilityHistoryOpen}>
+          <ExecutionHistoryPanel {workspaces} workspaceId={historyWorkspaceId} windowId={presentationWindowId()} state={executionHistory} {desktop}
+            onSelectWorkspace={id => { historyWorkspaceId = id; }}
+            onStop={key => void executionHistoryController.stop(key)}
+            onOlder={() => void executionHistoryController.older()} onNewer={() => void executionHistoryController.newer()} onLatest={() => void executionHistoryController.latest()} />
+        </div>
+      {/if}
+      {#if pluginsOpen}
+        <div class="host-plugin-region" style="order: 2; display: grid; flex: 1; min-height: 0; overflow: auto;">
+          <PluginWorkspacePanel
+          installations={pluginManagerInstallations}
+          sessions={pluginSessions.filter((session) => session.workspaceId === selectedWorkspaceId)}
+          selectedSession={pluginSession?.workspaceId === selectedWorkspaceId ? pluginSession : null}
+          workspaceLabel={selectedWorkspace?.label ?? null}
+          packagePath={pluginPackagePath}
+          prompt={pluginSessionId ? composerText : ''}
+          timeline={timeline.filter((item) => item.sessionId === pluginSessionId)}
+          busy={pluginBusy}
+          error={pluginError || errorMessage || ''}
+          {desktop}
+          onPackagePathChange={hostGuard('onPackagePathChange', (value) => { pluginPackagePath = value; })}
+          onPromptChange={hostGuard('onPromptChange', (value) => { if (pluginSessionId) { composerText = value; handleComposerInput(value); } })}
+          onInstall={hostGuard('onInstall', () => void installPlugin())}
+          onEnabledChange={hostGuard('onEnabledChange', (id, enabled) => void enablePlugin(id, enabled))}
+          onUninstall={hostGuard('onUninstall', (id) => void uninstallPlugin(id))}
+          onCreateSession={hostGuard('onCreateSession', (installationId, agentId) => void createPluginSession(installationId, agentId))}
+          onSelectSession={hostGuard('onSelectSession', selectSession)}
+          onSend={hostGuard('onSend', () => void sendPluginPrompt())}
+          onCancel={hostGuard('onCancel', () => pluginSessionOperation(cancelAgentTurn))}
+          onResume={hostGuard('onResume', () => pluginSessionOperation(resumeAgentSession))}
+          onCloseSession={hostGuard('onCloseSession', () => pluginSessionOperation(closeAgentSession))}
+          onClose={hostGuard('onClose', closeHostPanel)}
+        />
+        </div>
+      {/if}
+    </HostPanel>
   {/if}
-  {#if pluginsOpen}
-    <div class="host-plugin-region" style="order: 2; display: grid; flex: 1; min-height: 0; overflow: auto;">
-      <PluginWorkspacePanel
-      installations={pluginManagerInstallations}
-      sessions={pluginSessions.filter((session) => session.workspaceId === selectedWorkspaceId)}
-      selectedSession={pluginSession?.workspaceId === selectedWorkspaceId ? pluginSession : null}
-      workspaceLabel={selectedWorkspace?.label ?? null}
-      packagePath={pluginPackagePath}
-      prompt={pluginSessionId ? composerText : ''}
-      timeline={timeline.filter((item) => item.sessionId === pluginSessionId)}
-      busy={pluginBusy}
-      error={pluginError || errorMessage || ''}
-      {desktop}
-      onPackagePathChange={hostGuard('onPackagePathChange', (value) => { pluginPackagePath = value; })}
-      onPromptChange={hostGuard('onPromptChange', (value) => { if (pluginSessionId) { composerText = value; handleComposerInput(value); } })}
-      onInstall={hostGuard('onInstall', () => void installPlugin())}
-      onEnabledChange={hostGuard('onEnabledChange', (id, enabled) => void enablePlugin(id, enabled))}
-      onUninstall={hostGuard('onUninstall', (id) => void uninstallPlugin(id))}
-      onCreateSession={hostGuard('onCreateSession', (installationId, agentId) => void createPluginSession(installationId, agentId))}
-      onSelectSession={hostGuard('onSelectSession', selectSession)}
-      onSend={hostGuard('onSend', () => void sendPluginPrompt())}
-      onCancel={hostGuard('onCancel', () => pluginSessionOperation(cancelAgentTurn))}
-      onResume={hostGuard('onResume', () => pluginSessionOperation(resumeAgentSession))}
-      onCloseSession={hostGuard('onCloseSession', () => pluginSessionOperation(closeAgentSession))}
-      onClose={hostGuard('onClose', () => { pluginsOpen = false; })}
-    />
-    </div>
-  {/if}
-<PresentationHost onRestore={() => void presentationOperation(() => presentationPackagesController.select(null))} bind:this={presentationHost} active={presentationPackages.active} themeId={presentationPackages.themeId} input={externalInput} suspended={pluginsOpen || historyOpen || sessionHistoryOpen || capabilityHistoryOpen || settingsOpen || diagnosticsOpen || commandPaletteOpen || archiveConfirmationSessionId !== null || piNavigationEntryId !== null} onIntent={externalIntent}>
-<WorkbenchPresentation onRestore={() => desktop ? presentationPackagesController.select(null) : Promise.resolve()} bind:this={workbenchPresentation} bind:layout={presentationLayout} bind:switching={presentationSwitching} bind:gridElement={workspaceGridElement} navigationWidth={workspaceSidebarWidth} auxiliaryWidth={inspectorWidth} auxiliaryOpen={sidePanelOpen} suspended={pluginsOpen || historyOpen || sessionHistoryOpen || capabilityHistoryOpen || archiveConfirmationSessionId !== null || piNavigationEntryId !== null} windowId={presentationWindowId()} snapshot={{ workspaceId: selectedWorkspaceId, sessionId: selectedSessionId, draft: composerText, navigation: sidePanelView, timelineRevision: timeline.length }}>
+<PresentationHost hideWhenSuspended={sessionHistoryOpen} onRestore={() => void presentationOperation(() => presentationPackagesController.select(null))} bind:this={presentationHost} active={presentationPackages.active} themeId={presentationPackages.themeId} input={externalInput} suspended={pluginsOpen || historyOpen || sessionHistoryOpen || capabilityHistoryOpen || settingsOpen || diagnosticsOpen || commandPaletteOpen || archiveConfirmationSessionId !== null || piNavigationEntryId !== null} onIntent={externalIntent}>
+<WorkbenchPresentation hideWhenSuspended={sessionHistoryOpen} onRestore={() => desktop ? presentationPackagesController.select(null) : Promise.resolve()} bind:this={workbenchPresentation} bind:layout={presentationLayout} bind:switching={presentationSwitching} bind:gridElement={workspaceGridElement} navigationWidth={workspaceSidebarWidth} auxiliaryWidth={inspectorWidth} auxiliaryOpen={sidePanelOpen} suspended={pluginsOpen || historyOpen || sessionHistoryOpen || capabilityHistoryOpen || settingsOpen || diagnosticsOpen || commandPaletteOpen || archiveConfirmationSessionId !== null || piNavigationEntryId !== null} windowId={presentationWindowId()} snapshot={{ workspaceId: selectedWorkspaceId, sessionId: selectedSessionId, draft: composerText, navigation: sidePanelView, timelineRevision: timeline.length }}>
 {#snippet navigation(guard)}
     <WorkspaceSidebar
       presentationActions={navigationActions}
