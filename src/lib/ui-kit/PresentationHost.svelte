@@ -5,6 +5,8 @@
   import { preparePresentationSandbox, type MountedSandbox } from '../presentation-runtime/sandbox';
   import type { PresentationInstance } from '../app/presentation-package-controller';
   import { get } from 'svelte/store';
+  import { createPresentationViewStateStore } from '../presentation-runtime/view-state';
+  const viewState = createPresentationViewStateStore();
   import { externalPresentation, type ExternalPresentation } from './external-presentation';
   import { PRESENTATION_CONTROLS, type PresentationControlScope } from './control-context';
   let { active, themeId, input, suspended = false, onIntent, onRestore, children }: {
@@ -50,7 +52,7 @@
     const capability = (snapshot.data as {capability?: {view?: {snapshot?: {schema: string} | null}}} | null)?.capability?.view?.snapshot;
     if (capability && !value.release.manifest.snapshotSchemas.includes(capability.schema)) throw Error('unsupported_presentation_snapshot');
     const candidate = await preparePresentationSandbox(target, value, { ...snapshot, theme },
-      intent => { if (!suspended) onIntent(intent); }, failure, signal, { localInputActions: snapshot => {
+      intent => { if (!suspended) onIntent(intent); }, failure, signal, { viewState, localInputActions: snapshot => {
         const data = snapshot.data as { navigationActions?: { token: string; event: string }[]; conversationActions?: { token: string; event: string }[]; gitActions?: { token: string; event: string }[]; inspectorActions?: { token: string; event: string }[] } | null;
         return ['draft', ...[...(data?.navigationActions ?? []), ...(data?.conversationActions ?? []), ...(data?.gitActions ?? []), ...(data?.inspectorActions ?? [])].filter(action => action.event === 'input').map(action => action.token)];
       }, onRecover: onRestore });
@@ -59,6 +61,7 @@
       dispose() { candidate.dispose(); if (mounted === candidate) mounted = null; if (get(externalPresentation) === registration) externalPresentation.set(null); },
     };
   }
+  $effect(() => { if (!suspended) mounted?.restoreFocus(); });
   $effect(() => {
     const next = $state.snapshot(input);
     if (mounted && next.context.revision > mountedRevision) {

@@ -1,10 +1,12 @@
 import type { PresentationInput, PresentationIntent } from '../../../packages/plugin-protocol/src/presentation-runtime';
 import type { InstalledPresentationPackage } from './types';
+import type { createPresentationViewStateStore } from './view-state';
 import { verifyPresentationPackage } from './package.ts';
 
 export type MountedSandbox = {
   readonly inherited?: boolean;
   activate(): void;
+  restoreFocus(): void;
   update(input: PresentationInput): void;
   dispose(): void;
 };
@@ -17,7 +19,7 @@ export async function preparePresentationSandbox(
   onIntent: (intent: PresentationIntent) => void,
   onFailure: (error: Error) => void,
   signal?: AbortSignal,
-  options: { localInputActions?: readonly string[] | ((input: PresentationInput) => readonly string[]); onRecover?: () => void; allowInheritance?: boolean; onInheritanceChange?: (inherited: boolean) => void; decorative?: boolean } = {},
+  options: { viewState?: ReturnType<typeof createPresentationViewStateStore>; localInputActions?: readonly string[] | ((input: PresentationInput) => readonly string[]); onRecover?: () => void; allowInheritance?: boolean; onInheritanceChange?: (inherited: boolean) => void; decorative?: boolean } = {},
 ): Promise<MountedSandbox> {
   const verified = await verifyPresentationPackage(JSON.stringify(installed.release.manifest), async path => {
     const value = installed.resources[path];
@@ -75,13 +77,16 @@ export async function preparePresentationSandbox(
   }
   function armTimeout() { clearTimeout(timeout); timeout = setTimeout(() => fail('presentation_sandbox_timeout'), 5000); }
   function abort() { fail('presentation_preparation_aborted'); }
+  function canRestoreFocus(){const focused=target.ownerDocument.activeElement;return focused===target.ownerDocument.body||focused===frame||Boolean(focused&&target.contains(focused));}
   const instance: MountedSandbox = {
     get inherited() { return inherited; },
-    activate() { if (disposed) throw Error('presentation_disposed'); active = true; frame.hidden = inherited; },
+    activate() { if (disposed) throw Error('presentation_disposed'); active = true; frame.hidden = inherited; channel.port1.postMessage({type:'activate',viewState:options.viewState?.read(input.context),restoreFocus:canRestoreFocus()}); },
+    restoreFocus(){if(!disposed&&active&&canRestoreFocus())channel.port1.postMessage({type:'restore-focus'});},
     update(next) {
       if (disposed) return;
       if (next.context.revision <= input.context.revision) throw Error('presentation_revision_must_increase');
-      input = structuredClone(next); localInputActions = inputActions(input); armTimeout(); channel.port1.postMessage({ type: 'update', input, acceptedEdits, localInputActions });
+      const changedScope=next.context.workspaceId!==input.context.workspaceId||next.context.sessionId!==input.context.sessionId;
+      input = structuredClone(next); localInputActions = inputActions(input); armTimeout(); channel.port1.postMessage({ type: 'update', input, acceptedEdits, localInputActions, restoreFocus:canRestoreFocus(), ...(changedScope?{viewState:options.viewState?.read(input.context)??null}:{}) });
     },
     dispose,
   };
@@ -96,6 +101,7 @@ export async function preparePresentationSandbox(
       frame.dataset.presentationRevision = String(data.revision);
       if (!ready) { ready = true; resolveReady(instance); }
     } else if (data.type === 'failure') fail(typeof data.message === 'string' ? data.message.slice(0, 512) : 'presentation_failed');
+    else if(data.type==='view-state'&&active&&data.context?.workspaceId===input.context.workspaceId&&data.context?.sessionId===input.context.sessionId&&data.context?.revision===input.context.revision){options.viewState?.write(input.context,data.state);}
     else if (data.type === 'recovery' && active) {
       if (options.onRecover) options.onRecover(); else fail('presentation_recovery_requested');
     }

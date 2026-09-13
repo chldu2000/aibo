@@ -1,0 +1,11 @@
+{
+  "passed": true,
+  "browser": "153.0.8010.12",
+  "scope": "trusted bridge and host state store; external-to-external instances",
+  "checks": [
+    "selection and focus transfer",
+    "window scroll and native disclosure transfer",
+    "fixed host focus is preserved during activation and redraw",
+    "session scopes restore independently"
+  ]
+}

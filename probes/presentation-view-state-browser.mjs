@@ -1,0 +1,35 @@
+import assert from 'node:assert/strict';
+import {writeFile} from 'node:fs/promises';
+import {createServer} from 'vite';
+import {chromium} from 'playwright';
+const server=await createServer({server:{host:'127.0.0.1',port:0,hmr:false,watch:null}});await server.listen();const browser=await chromium.launch({headless:true});const page=await browser.newPage();
+const source=`self.aiboPresentation={render(input){return {tag:'main',key:'root',children:[{tag:'h1',key:'heading',text:input.data.name},{tag:'details',key:'models',children:[{tag:'summary',key:'summary',text:'Models'},{tag:'p',key:'model',text:'Model details'}]},{tag:'textarea',key:'draft',attrs:{'aria-label':'Draft',value:'0123456789',rows:'3'}},{tag:'pre',key:'long',text:'Content\\n'.repeat(300)}]}}};`;
+try{
+ await page.goto(`http://127.0.0.1:${server.httpServer.address().port}/probes/presentation-sandbox.html`);await page.waitForFunction(()=>window.sandboxProbe);
+ await page.evaluate(({source})=>window.sandboxProbe.mount(source,{name:'First skin'}),{source});
+ let frame=page.frameLocator('iframe');await frame.getByText('Models',{exact:true}).click();
+ const draft=frame.getByRole('textbox',{name:'Draft'});await draft.focus();await draft.evaluate(element=>{element.setSelectionRange(2,7);window.scrollTo(0,450)});
+ await page.waitForFunction(()=>window.sandboxProbe.savedState?.focus?.selection?.[1]===7&&window.sandboxProbe.savedState?.window[1]===450);
+ await page.evaluate(({source})=>window.sandboxProbe.mount(source,{name:'Second skin'}),{source});
+ await frame.getByRole('heading',{name:'Second skin'}).waitFor();
+ assert.equal(await frame.locator('details').getAttribute('open'),'');
+ assert.deepEqual(await draft.evaluate(element=>[element.selectionStart,element.selectionEnd]),[2,7]);
+ assert.equal(await draft.evaluate(element=>element===document.activeElement),true);
+ assert.equal(await draft.evaluate(()=>scrollY),450);
+ await page.getByRole('button',{name:'Host recovery'}).focus();
+ await page.evaluate(({source})=>window.sandboxProbe.mount(source,{name:'Third skin'}),{source});
+ assert.equal(await page.getByRole('button',{name:'Host recovery'}).evaluate(element=>element===document.activeElement),true,'candidate cannot steal fixed host focus');
+ await page.evaluate(()=>window.sandboxProbe.update({name:'Updated third skin'}));
+ await frame.getByRole('heading',{name:'Updated third skin'}).waitFor();
+ assert.equal(await page.getByRole('button',{name:'Host recovery'}).evaluate(element=>element===document.activeElement),true,'redraw cannot steal fixed host focus');
+ await page.evaluate(()=>window.sandboxProbe.updateScope('other','other',{name:'Other session'}));
+ await frame.getByRole('heading',{name:'Other session'}).waitFor();
+ assert.equal(await frame.locator('details').getAttribute('open'),null);
+ assert.equal(await draft.evaluate(()=>scrollY),0);
+ await page.evaluate(()=>window.sandboxProbe.updateScope('workspace','session',{name:'Original session'}));
+ await frame.getByRole('heading',{name:'Original session'}).waitFor();
+ assert.equal(await frame.locator('details').getAttribute('open'),'');
+ assert.equal(await draft.evaluate(()=>scrollY),450);
+ const result={passed:true,browser:browser.version(),scope:'trusted bridge and host state store; external-to-external instances',checks:['selection and focus transfer','window scroll and native disclosure transfer','fixed host focus is preserved during activation and redraw','session scopes restore independently']};
+ await writeFile('/tmp/aibo-presentation-view-state-browser.json',JSON.stringify(result,null,2)+'\n');console.log(JSON.stringify(result));
+}finally{await browser.close();await server.close();}
