@@ -272,3 +272,18 @@ Inspector 的 `projectEditor` 和 `runningActionId` 由宿主持有。编辑器�
 工作台包也必须声明支持其接收的 semantic snapshotSchemas。候选选择时若当前
 能力视图格式不受支持，准备失败并保留当前呈现；运行中遇到未声明格式，宿主
 不向包交付该快照，并恢复默认呈现，能力实例本身继续存在。
+
+## 独立打包工具
+
+`packages/presentation-tools` 可打包为本地 npm tarball，在仓库外使用 Node.js CLI：
+
+```sh
+node /path/to/package/build.mjs presentation.source.json dist/skin-1.0.0
+```
+
+源 manifest 的资源列表提供路径和媒体类型，工具读取实际字节并生成大小与 SHA-256，
+输出正式 `presentation.json`。与宿主共用校验实现，拒绝无效格式和主题、路径穿越、
+符号链接资源及已有输出目录。完整用法见 [工具说明](../packages/presentation-tools/README.md)。
+纯主题样例见 [Ocean 源文件](../examples/presentation-theme/presentation.source.json)。
+脚本必须预先构建成 Worker 可执行单文件；此工具不转换 DOM/Svelte 组件，也不证明
+脚本能成功初始化。安装及运行验收仍通过实际 App 完成。

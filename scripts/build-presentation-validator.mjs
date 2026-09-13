@@ -13,5 +13,5 @@ export async function validatorSource() {
 }
 
 if (process.argv[1] && new URL(import.meta.url).pathname === process.argv[1]) {
-  await writeFile(new URL('../src/lib/presentation-runtime/package-validator.js', import.meta.url), await validatorSource());
+  await writeFile(new URL('../packages/presentation-tools/package-validator.js', import.meta.url), await validatorSource());
 }

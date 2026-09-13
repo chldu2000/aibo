@@ -54,6 +54,6 @@ test('integrity is checked against actual resource bytes', async () => {
 
 test('checked-in manifest validator matches schema and requires no runtime compiler', async () => {
   const generated = await validatorSource();
-  assert.equal(await readFile('src/lib/presentation-runtime/package-validator.js', 'utf8'), generated);
+  assert.equal(await readFile('packages/presentation-tools/package-validator.js', 'utf8'), generated);
   assert.doesNotMatch(generated, /require\(|\beval\(|new Function/);
 });
