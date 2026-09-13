@@ -316,3 +316,15 @@ RendererDescriptor.semanticVersion 描述必需核心语义，snapshotSchemas �
 Codex/Pi 原生管理器已删除。线程目录通过 workspace scope 的能力贡献读取，
 会话快照和分支通过会话绑定的能力调用；App 的原生兼容 API 重导出层也已删除。
 架构检查禁止重新编译旧管理器。
+
+## 外部 Presentation 控件
+
+PresentationHost 通过内部上下文限定外部控件的生效范围。ModelMatrix 与
+AgentStatusMark 的 runtime 包装层消费当前统一 Presentation 选择，经纯数据
+投影进入隔离运行时；应用层仍使用相同 UiKitAdapter 接口。宿主设置和审批没有
+此上下文，因此保留可信控件。
+
+外部控件的 null 返回、运行失败及未声明角色均继承完整默认实现。公开数据类型
+位于 plugin-protocol，不包含 Svelte、DOM 或回调。宿主保留模型动作权限校验和
+状态标记的可访问名称、父行点击与焦点行为。这个首批目录不代表所有内部控件均
+已开放外部替换。

@@ -3,6 +3,7 @@ import type { InstalledPresentationPackage } from './types';
 import { verifyPresentationPackage } from './package.ts';
 
 export type MountedSandbox = {
+  readonly inherited?: boolean;
   activate(): void;
   update(input: PresentationInput): void;
   dispose(): void;
@@ -16,7 +17,7 @@ export async function preparePresentationSandbox(
   onIntent: (intent: PresentationIntent) => void,
   onFailure: (error: Error) => void,
   signal?: AbortSignal,
-  options: { localInputActions?: readonly string[]; onRecover?: () => void } = {},
+  options: { localInputActions?: readonly string[]; onRecover?: () => void; allowInheritance?: boolean; onInheritanceChange?: (inherited: boolean) => void; decorative?: boolean } = {},
 ): Promise<MountedSandbox> {
   const verified = await verifyPresentationPackage(JSON.stringify(installed.release.manifest), async path => {
     const value = installed.resources[path];
@@ -45,11 +46,13 @@ export async function preparePresentationSandbox(
   frame.setAttribute('referrerpolicy', 'no-referrer');
   frame.setAttribute('allow', "camera 'none'; microphone 'none'; geolocation 'none'; clipboard-read 'none'; clipboard-write 'none'");
   frame.setAttribute('frameborder', '0');
+  if (options.decorative) { frame.tabIndex = -1; frame.setAttribute('aria-hidden', 'true'); }
   frame.style.width = '100%'; frame.style.height = '100%';
   frame.hidden = true;
   const channel = new MessageChannel();
   let input = structuredClone(initial), active = false, ready = false, disposed = false;
   let acceptedEdits = 0;
+  let inherited = false;
   let timeout: ReturnType<typeof setTimeout>;
   let resolveReady: (value: MountedSandbox) => void;
   let rejectReady: (error: Error) => void;
@@ -71,7 +74,8 @@ export async function preparePresentationSandbox(
   function armTimeout() { clearTimeout(timeout); timeout = setTimeout(() => fail('presentation_sandbox_timeout'), 5000); }
   function abort() { fail('presentation_preparation_aborted'); }
   const instance: MountedSandbox = {
-    activate() { if (disposed) throw Error('presentation_disposed'); active = true; frame.hidden = false; },
+    get inherited() { return inherited; },
+    activate() { if (disposed) throw Error('presentation_disposed'); active = true; frame.hidden = inherited; },
     update(next) {
       if (disposed) return;
       if (next.context.revision <= input.context.revision) throw Error('presentation_revision_must_increase');
@@ -81,9 +85,12 @@ export async function preparePresentationSandbox(
   };
   channel.port1.onmessage = ({ data }) => {
     if (disposed || !data) return;
-    if (data.type === 'connected') { channel.port1.postMessage({ type: 'start', source, css, assets, input, localInputActions: options.localInputActions ?? [] }); }
-    else if (data.type === 'rendered' && data.revision === input.context.revision) {
+    if (data.type === 'connected') { channel.port1.postMessage({ type: 'start', source, css, assets, input, localInputActions: options.localInputActions ?? [], allowInheritance: options.allowInheritance === true && initial.surface === 'controls' }); }
+    else if ((data.type === 'rendered' || (data.type === 'inherit' && options.allowInheritance && initial.surface === 'controls')) && data.revision === input.context.revision) {
       clearTimeout(timeout);
+      inherited = data.type === 'inherit';
+      frame.hidden = !active || inherited;
+      options.onInheritanceChange?.(inherited);
       frame.dataset.presentationRevision = String(data.revision);
       if (!ready) { ready = true; resolveReady(instance); }
     } else if (data.type === 'failure') fail(typeof data.message === 'string' ? data.message.slice(0, 512) : 'presentation_failed');

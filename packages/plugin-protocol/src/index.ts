@@ -5,3 +5,4 @@ export * from './capability.js';
 export * from './session.js';
 export * from './presentation-package.js';
 export * from './presentation-runtime.js';
+export * from './presentation-controls.js';

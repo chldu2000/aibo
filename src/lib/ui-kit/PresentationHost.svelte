@@ -1,11 +1,12 @@
 <script lang="ts">
-  import type { Snippet } from 'svelte';
+  import { setContext, type Snippet } from 'svelte';
   import type { PresentationInput, PresentationIntent } from '../../../packages/plugin-protocol/src/presentation-runtime';
   import type { InstalledPresentationPackage } from '../presentation-runtime/types';
   import { preparePresentationSandbox, type MountedSandbox } from '../presentation-runtime/sandbox';
   import type { PresentationInstance } from '../app/presentation-package-controller';
   import { get } from 'svelte/store';
   import { externalPresentation, type ExternalPresentation } from './external-presentation';
+  import { PRESENTATION_CONTROLS, type PresentationControlScope } from './control-context';
   let { active, themeId, input, suspended = false, onIntent, onRestore, children }: {
     active: InstalledPresentationPackage | null;
     themeId: string | null;
@@ -15,6 +16,7 @@
     onRestore(): void;
     children: Snippet;
   } = $props();
+  setContext<PresentationControlScope>(PRESENTATION_CONTROLS, { context: () => input.context, suspended: () => suspended });
   let target: HTMLDivElement;
   let mounted = $state<MountedSandbox | null>(null);
   let mountedRevision = -1;
@@ -26,7 +28,13 @@
     const theme = value.release.manifest.themes?.find(theme => theme.id === selectedTheme)?.tokens ?? {};
     const registration: ExternalPresentation = { package: value, theme, recover: onRestore };
     const surfaces = value.release.manifest.surfaces ?? [];
-    if (surfaces.includes('controls')) throw Error('当前版本尚未接入独立控件呈现');
+    if (surfaces.includes('controls')) {
+      const { controlPreflights } = await import('../presentation-runtime/controls');
+      for (const snapshot of controlPreflights()) {
+        const candidate = await preparePresentationSandbox(target, value, { ...snapshot, theme }, () => {}, failure, signal, { allowInheritance: true });
+        candidate.dispose();
+      }
+    }
     if (surfaces.includes('semantic')) {
       const { semanticInput, semanticPreflightSnapshots } = await import('../presentation-runtime/semantic');
       for (const snapshot of semanticPreflightSnapshots()) {

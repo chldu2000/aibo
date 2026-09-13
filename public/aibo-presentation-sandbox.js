@@ -3,7 +3,7 @@
   'use strict';
   let port, worker, workerUrl, sequence = 0, current, timer, heartbeat, pongDeadline, assets = {}, themeKeys = [], disposed = false;
   const root = document.getElementById('root');
-  let editSequence = 0, acceptedEdits = 0, localInputActions = [];
+  let editSequence = 0, acceptedEdits = 0, localInputActions = [], allowInheritance = false;
   const edits = new Map();
   const tags = new Set('div section main aside header footer nav article h1 h2 h3 p span strong em pre code ul ol li button input textarea label select option table thead tbody tr th td details summary hr img svg path circle rect line polyline polygon g'.split(' '));
   const attributes = new Set('id role title aria-label aria-labelledby aria-describedby aria-expanded aria-selected aria-pressed aria-live aria-atomic aria-hidden aria-current aria-disabled placeholder type value disabled readonly checked selected multiple name for tabindex rows cols open alt width height viewBox d fill stroke stroke-width stroke-linecap stroke-linejoin cx cy r x y x1 x2 y1 y2 points'.split(' '));
@@ -113,6 +113,7 @@
   function start(packet) {
     assets = packet.assets;
     localInputActions = packet.localInputActions;
+    allowInheritance = packet.allowInheritance;
     const style = document.createElement('style');
     style.textContent = 'html,body{margin:0;min-height:100%;}*{box-sizing:border-box;}' + packet.css;
     document.head.append(style);
@@ -134,6 +135,9 @@
       if (!data || data.ticket !== sequence) return;
       clearTimeout(timer);
       if (data.error) { fail(data.error); return; }
+      if (data.tree === null && allowInheritance) {
+        root.replaceChildren(); send({ type: 'inherit', revision: current.context.revision }); return;
+      }
       try { render(data.tree, current.context); send({ type: 'rendered', revision: current.context.revision }); }
       catch (error) { fail(error); }
     };

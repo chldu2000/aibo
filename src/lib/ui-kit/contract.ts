@@ -1,5 +1,11 @@
 import type { PresentationProps } from './presentation-props';
 import type { Component } from 'svelte';
+import type { PresentationModelMatrix, PresentationStatusMark } from '../../../packages/plugin-protocol/src/presentation-controls';
+export type {
+  PresentationModelCell as UiModelMatrixCell,
+  PresentationModelColumn as UiModelMatrixColumn,
+  PresentationModelRow as UiModelMatrixRow,
+} from '../../../packages/plugin-protocol/src/presentation-controls';
 
 export type UiIconName =
   | 'add'
@@ -48,31 +54,7 @@ export type UiButtonVariant =
   | 'abort'
   | 'send';
 
-export type UiModelMatrixCell = {
-  id: string;
-  label: string;
-  description: string | null;
-  available: boolean;
-  active: boolean;
-};
-
-export type UiModelMatrixColumn = Pick<UiModelMatrixCell, 'id' | 'label' | 'description'>;
-
-export type UiModelMatrixRow = {
-  reference: string;
-  label: string;
-  isDefault: boolean;
-  active: boolean;
-  defaultActive: boolean;
-  cells: readonly UiModelMatrixCell[];
-};
-
-export type UiModelMatrixProps = {
-  columns: readonly UiModelMatrixColumn[];
-  rows: readonly UiModelMatrixRow[];
-  defaultLabel: string;
-  defaultTitle: string;
-  disabled: boolean;
+export type UiModelMatrixProps = PresentationModelMatrix & {
   onSelect: (model: string, reasoningEffort: string | null) => void | Promise<void>;
 };
 
@@ -83,11 +65,7 @@ export type UiColumnSplitterProps = {
   onKeyDown: (event: KeyboardEvent) => void;
 };
 
-export type UiAgentStatusMarkProps = {
-  agent: 'codex' | 'pi' | 'plugin';
-  tone: 'idle' | 'running' | 'attention' | 'danger' | 'muted';
-  label: string;
-};
+export type UiAgentStatusMarkProps = PresentationStatusMark;
 
 /**
  * The minimum visual surface consumed by Aibo's app-level components.

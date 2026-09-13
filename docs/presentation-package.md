@@ -140,3 +140,21 @@ Ctrl/Command+Shift+Backspace 是宿主保留的恢复快捷键。固定绘制桥
 `self.aiboPresentation.handle(event, input)`，处理后调用 render 更新视图；本地
 事件不会转成业务动作。Worker 可以持有筛选、展开等临时状态；需要跨插件切换或
 重启恢复的状态仍需宿主状态合同，不能依赖 Worker 全局变量持久化。
+
+## 独立控件呈现
+
+声明 controls 角色后，宿主以 `surface: 'controls'` 调用同一个入口。当前公开目录
+包含 ModelMatrix 和 AgentStatusMark，纯数据联合类型为
+`PresentationControlData`；其他内部 UiKitAdapter 控件继续继承默认实现。
+`data.control` 标识控件，`data.props` 包含完整展示数据，业务回调不会交付 Worker。
+模型选择通过 `data.actions` 的宿主 token 绑定 click，宿主重新检查当前可用选项
+及 disabled 状态后执行。状态标记仅提供展示，没有业务动作。
+
+控件 render 可以返回 null，表示继承该控件的完整默认实现；这是 controls 专属
+协议，semantic/workbench 仍须返回有效视觉树。宿主在候选提交前预检两个目录项，
+运行时异常或超时也恢复同一份 props 的默认控件。继承实例继续接收数据更新，
+后续 render 可以提供定制。
+
+控件替换仅在 PresentationHost 的工作台上下文内生效。宿主管理与审批区域不消费
+外部控件。状态标记的可访问名称由宿主 props 提供，其 iframe 不进入 Tab 顺序，
+也不截获父行的点击。当前每个控件独立运行实例；大型列表的资源开销仍需后续验收。

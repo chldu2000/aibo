@@ -1,0 +1,15 @@
+{
+  "passed": true,
+  "browser": "153.0.8010.12",
+  "checks": [
+    "controls-only package activates",
+    "workbench matrix replaced",
+    "trusted controls remain native",
+    "valid option calls host",
+    "forged option ignored",
+    "disabled actions unavailable",
+    "null inherits complete defaults",
+    "decorative status keeps parent row clickable and skips tab focus",
+    "disposal removes control instances"
+  ]
+}
