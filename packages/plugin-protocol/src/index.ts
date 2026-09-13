@@ -6,3 +6,5 @@ export * from './session.js';
 export * from './presentation-package.js';
 export * from './presentation-runtime.js';
 export * from './presentation-controls.js';
+
+export type { PresentationNavigation, PresentationNavigationAction, PresentationNavigationOperation } from './presentation-navigation.js';

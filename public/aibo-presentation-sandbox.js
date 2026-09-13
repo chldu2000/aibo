@@ -151,7 +151,7 @@
       if (disposed) return;
       try {
         if (data.type === 'start' && !worker) start(data);
-        else if (data.type === 'update' && worker) update(data.input, data.acceptedEdits);
+        else if (data.type === 'update' && worker) { localInputActions = data.localInputActions; update(data.input, data.acceptedEdits); }
         else if (data.type === 'dispose') { stop(); root.replaceChildren(); disposed = true; port.close(); }
       } catch (error) { fail(error); }
     };

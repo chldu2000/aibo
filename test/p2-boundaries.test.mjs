@@ -8,19 +8,20 @@ test('workbench callbacks and writable bindings cross the generation gate', asyn
   const tree = parse(source, { modern: true });
   let guarded = 0;
   let hostCallbacks = 0;
-  const hostComponents = new Set(['CommandPalette', 'WindowTitlebar', 'SettingsPanel', 'DiagnosticsPanel', 'PluginWorkspacePanel', 'ExecutionHistoryPanel', 'SessionHistoryPanel', 'CapabilityHistoryPanel']);
+  const hostComponents = new Set(['AppOverlays', 'CommandPalette', 'WindowTitlebar', 'SettingsPanel', 'DiagnosticsPanel', 'PluginWorkspacePanel', 'ExecutionHistoryPanel', 'SessionHistoryPanel', 'CapabilityHistoryPanel']);
   const foundHost = new Set();
   let hostApprovalRegion = false;
   const slots = new Set(['navigation', 'navigationResize', 'content', 'auxiliaryResize', 'auxiliary', 'overlays']);
   const foundSlots = new Set();
-  function visit(node, inside = false) {
+  function visit(node, inside = false, replaceable = false) {
     if (!node || typeof node !== 'object') return;
+    if (node.type === 'Component' && ['PresentationHost', 'WorkbenchPresentation'].includes(node.name)) replaceable = true;
     if (node.type === 'RegularElement' && node.attributes?.some(attribute => attribute.name === 'aria-label' && attribute.value?.[0]?.data === '宿主审批')) {
       assert.equal(inside, false, 'approvals must remain outside replaceable presentation');
       hostApprovalRegion = true;
     }
     if (node.type === 'Component' && hostComponents.has(node.name)) {
-      assert.equal(inside, false, `${node.name} must survive renderer disposal`);
+      assert.equal(inside || replaceable, false, `${node.name} must survive renderer disposal`);
       foundHost.add(node.name);
       for (const attribute of node.attributes) {
         if (!/^on[A-Z]/.test(attribute.name) || !attribute.value?.expression) continue;
@@ -46,8 +47,8 @@ test('workbench callbacks and writable bindings cross the generation gate', asyn
       guarded++;
     }
     for (const value of Object.values(node)) {
-      if (Array.isArray(value)) value.forEach(child => visit(child, inside));
-      else if (value && typeof value === 'object') visit(value, inside);
+      if (Array.isArray(value)) value.forEach(child => visit(child, inside, replaceable));
+      else if (value && typeof value === 'object') visit(value, inside, replaceable);
     }
   }
   visit(tree.fragment);

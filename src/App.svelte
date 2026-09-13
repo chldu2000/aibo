@@ -6,6 +6,8 @@
   import { PresentationHost, WorkbenchPresentation, DefaultPresentationActions, Badge, Button, Card, CardHeader, CardTitle, CardContent } from '$lib/ui-kit';
   import { createPresentationPackageController, type PresentationPackageState } from '$lib/app/presentation-package-controller';
   import { listPresentationPackages, readPresentationPackage, installPresentationPackage, setPresentationPackageEnabled, uninstallPresentationPackage, getPresentationSelection, selectPresentationPackage } from '$lib/api';
+  import { navigationActions as externalNavigationActions, resolveNavigationIntent } from '$lib/presentation-runtime/navigation';
+  import type { PresentationNavigation } from '../packages/plugin-protocol/src/presentation-navigation';
   import type { PresentationInput, PresentationIntent } from '../packages/plugin-protocol/src/presentation-runtime';
   let presentationHost: ReturnType<typeof PresentationHost>;
   let presentationPackages = $state<PresentationPackageState>({ releases: [], active: null, themeId: null, busy: false, error: '' });
@@ -38,10 +40,45 @@
     if (presentationPackages.active) await presentationPackagesController.select(presentationPackages.active.release.digest, id);
     else setUiTheme(id);
   }
+  const externalNavigation = $derived<PresentationNavigation>({
+    workspaces: workspaceItems, sessionsByWorkspace: sessionItemsByWorkspace,
+    selectedWorkspaceId, selectedSessionId, expandedWorkspaceIds, sessionsLoadingWorkspaceIds,
+    busy, threadBusy, archivingWorkspaceId, archivingSessionId, sessionSearchOpen, sessionFilterOpen,
+    sessionSearch, sessionFilter, createSessionWorkspaceId, renamingSessionId, sessionLabelDraft,
+  });
+  async function externalNavigationIntent(intent: PresentationIntent) {
+    const action = resolveNavigationIntent(externalNavigation, externalInput.context, intent);
+    if (!action) return;
+    const id = action.targetId!;
+    switch (action.operation) {
+      case 'toggleSearch': sessionSearchOpen = !sessionSearchOpen; break;
+      case 'toggleFilter': sessionFilterOpen = !sessionFilterOpen; break;
+      case 'search': sessionSearch = intent.value!; break;
+      case 'filter': sessionFilter = intent.value as SessionFilter; await refreshExpandedSessions(); break;
+      case 'applyFilters': await refreshExpandedSessions(); break;
+      case 'addWorkspace': await chooseWorkspaceDirectory(); break;
+      case 'selectWorkspace': selectWorkspace(id); break;
+      case 'toggleSessionCreator': toggleSessionCreator(id); break;
+      case 'toggleTrust': { const workspace = workspaces.find(item => item.id === id); if (workspace) await toggleTrust(workspace); break; }
+      case 'removeWorkspace': { const workspace = workspaces.find(item => item.id === id); if (workspace) await deleteWorkspace(workspace); break; }
+      case 'openWorkspace': await openWorkspaceLocation(id); break;
+      case 'createCodex': if (id !== selectedWorkspaceId) activateWorkspace(id); await createCodex(); break;
+      case 'createPi': if (id !== selectedWorkspaceId) activateWorkspace(id); await createPi(); break;
+      case 'selectSession': installedTool = null; pluginsOpen = false; selectSession(id); break;
+      case 'unarchiveSession': await unarchiveSession(id); break;
+      case 'archiveSession': requestArchiveSession(id); break;
+      case 'syncSession': await syncCodexThread(id); break;
+      case 'renameSession': beginRenameSession(id); break;
+      case 'renameDraft': sessionLabelDraft = intent.value!; break;
+      case 'saveRename': await saveSessionRename(); break;
+      case 'cancelRename': cancelRenameSession(); break;
+    }
+  }
   function externalIntent(intent: PresentationIntent) {
     if (intent.context.workspaceId !== selectedWorkspaceId || intent.context.sessionId !== selectedSessionId) return;
+    if (intent.id.startsWith('navigation:')) { void presentationOperation(() => externalNavigationIntent(intent)); return; }
     if (intent.id !== 'draft' && intent.event !== 'click') return;
-    if (intent.id === 'draft' && intent.event === 'input' && typeof intent.value === 'string') composerText = intent.value;
+    if (intent.id === 'draft' && intent.event === 'input' && typeof intent.value === 'string') { composerText = intent.value; handleComposerInput(intent.value); }
     else if (intent.id === 'send' && !busy && !sessionRunning) void sendPrompt();
     else if (intent.id === 'stop' && sessionRunning) void abortPrompt();
     else if (intent.id.startsWith('workspace:')) {
@@ -56,6 +93,7 @@
     const data = { workspaces: workspaces.map(({ id, label }) => ({ id, label })),
       sessions: sessions.filter(session => session.workspaceId === selectedWorkspaceId).map(({ id, label, state }) => ({ id, label, state })),
       timeline: timeline.map(({ id, role, content, status }) => ({ id, role, content, status })),
+      navigation: externalNavigation, navigationActions: externalNavigationActions(externalNavigation),
       draft: composerText, busy, running: sessionRunning, selectedWorkspaceId, selectedSessionId };
     untrack(() => { externalInput = { surface: 'workbench', context: { workspaceId: data.selectedWorkspaceId, sessionId: data.selectedSessionId, revision: externalInput.context.revision + 1 }, data: $state.snapshot(data), theme: {} }; });
   });
@@ -3260,8 +3298,8 @@
     />
     </div>
   {/if}
-<PresentationHost onRestore={() => void presentationOperation(() => presentationPackagesController.select(null))} bind:this={presentationHost} active={presentationPackages.active} themeId={presentationPackages.themeId} input={externalInput} suspended={pluginsOpen || historyOpen || sessionHistoryOpen || capabilityHistoryOpen || settingsOpen || diagnosticsOpen || commandPaletteOpen} onIntent={externalIntent}>
-<WorkbenchPresentation onRestore={() => desktop ? presentationPackagesController.select(null) : Promise.resolve()} bind:this={workbenchPresentation} bind:layout={presentationLayout} bind:switching={presentationSwitching} bind:gridElement={workspaceGridElement} navigationWidth={workspaceSidebarWidth} auxiliaryWidth={inspectorWidth} auxiliaryOpen={sidePanelOpen} suspended={pluginsOpen || historyOpen || sessionHistoryOpen || capabilityHistoryOpen} windowId={presentationWindowId()} snapshot={{ workspaceId: selectedWorkspaceId, sessionId: selectedSessionId, draft: composerText, navigation: sidePanelView, timelineRevision: timeline.length }}>
+<PresentationHost onRestore={() => void presentationOperation(() => presentationPackagesController.select(null))} bind:this={presentationHost} active={presentationPackages.active} themeId={presentationPackages.themeId} input={externalInput} suspended={pluginsOpen || historyOpen || sessionHistoryOpen || capabilityHistoryOpen || settingsOpen || diagnosticsOpen || commandPaletteOpen || archiveConfirmationSessionId !== null || piNavigationEntryId !== null} onIntent={externalIntent}>
+<WorkbenchPresentation onRestore={() => desktop ? presentationPackagesController.select(null) : Promise.resolve()} bind:this={workbenchPresentation} bind:layout={presentationLayout} bind:switching={presentationSwitching} bind:gridElement={workspaceGridElement} navigationWidth={workspaceSidebarWidth} auxiliaryWidth={inspectorWidth} auxiliaryOpen={sidePanelOpen} suspended={pluginsOpen || historyOpen || sessionHistoryOpen || capabilityHistoryOpen || archiveConfirmationSessionId !== null || piNavigationEntryId !== null} windowId={presentationWindowId()} snapshot={{ workspaceId: selectedWorkspaceId, sessionId: selectedSessionId, draft: composerText, navigation: sidePanelView, timelineRevision: timeline.length }}>
 {#snippet navigation(guard)}
     <WorkspaceSidebar
       presentationActions={navigationActions}
@@ -3545,6 +3583,10 @@
     onRefresh={guard('onRefresh', (sessionId) => void refreshPiTree(sessionId))}
     onSelectNode={guard('onSelectNode', requestPiTreeNavigation)}
   />
+
+{/snippet}
+</WorkbenchPresentation>
+</PresentationHost>
   <AppOverlays
     {errorMessage}
     {notice}
@@ -3552,14 +3594,11 @@
     piNavigationOpen={piNavigationEntryId !== null}
     {piNavigationMode}
     {piNavigationCustomInstructions}
-    onConfirmArchive={guard('onConfirmArchive', () => void confirmArchiveSession())}
-    onCancelArchive={guard('onCancelArchive', () => (archiveConfirmationSessionId = null))}
-    onSetPiNavigationMode={guard('onSetPiNavigationMode', (mode) => (piNavigationMode = mode))}
-    onSetPiNavigationCustomInstructions={guard('onSetPiNavigationCustomInstructions', (value) => (piNavigationCustomInstructions = value))}
-    onConfirmPiNavigation={guard('onConfirmPiNavigation', (options) => void confirmPiTreeNavigation(options))}
-    onCancelPiNavigation={guard('onCancelPiNavigation', () => (piNavigationEntryId = null))}
+    onConfirmArchive={() => void confirmArchiveSession()}
+    onCancelArchive={() => (archiveConfirmationSessionId = null)}
+    onSetPiNavigationMode={(mode) => (piNavigationMode = mode)}
+    onSetPiNavigationCustomInstructions={(value) => (piNavigationCustomInstructions = value)}
+    onConfirmPiNavigation={(options) => void confirmPiTreeNavigation(options)}
+    onCancelPiNavigation={() => (piNavigationEntryId = null)}
   />
-{/snippet}
-</WorkbenchPresentation>
-</PresentationHost>
 </div>

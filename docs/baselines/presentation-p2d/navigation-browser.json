@@ -1,0 +1,15 @@
+{
+  "passed": true,
+  "nativePort": "mocked; actual App.svelte and sandbox runtime",
+  "browser": "153.0.8010.12",
+  "checks": [
+    "complete navigation state for multiple workspaces",
+    "search and rename keep rapid input",
+    "rename executes host lifecycle and host notification stays visible",
+    "forged archive rejected",
+    "archive confirmation remains in host and suspends external interaction",
+    "archive cancellation and confirmation",
+    "unarchive action",
+    "default UI retains renamed session after restore"
+  ]
+}

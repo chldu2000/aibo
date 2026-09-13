@@ -17,7 +17,7 @@ export async function preparePresentationSandbox(
   onIntent: (intent: PresentationIntent) => void,
   onFailure: (error: Error) => void,
   signal?: AbortSignal,
-  options: { localInputActions?: readonly string[]; onRecover?: () => void; allowInheritance?: boolean; onInheritanceChange?: (inherited: boolean) => void; decorative?: boolean } = {},
+  options: { localInputActions?: readonly string[] | ((input: PresentationInput) => readonly string[]); onRecover?: () => void; allowInheritance?: boolean; onInheritanceChange?: (inherited: boolean) => void; decorative?: boolean } = {},
 ): Promise<MountedSandbox> {
   const verified = await verifyPresentationPackage(JSON.stringify(installed.release.manifest), async path => {
     const value = installed.resources[path];
@@ -51,6 +51,8 @@ export async function preparePresentationSandbox(
   frame.hidden = true;
   const channel = new MessageChannel();
   let input = structuredClone(initial), active = false, ready = false, disposed = false;
+  const inputActions = (value: PresentationInput) => typeof options.localInputActions === 'function' ? options.localInputActions(value) : options.localInputActions ?? [];
+  let localInputActions = inputActions(initial);
   let acceptedEdits = 0;
   let inherited = false;
   let timeout: ReturnType<typeof setTimeout>;
@@ -79,13 +81,13 @@ export async function preparePresentationSandbox(
     update(next) {
       if (disposed) return;
       if (next.context.revision <= input.context.revision) throw Error('presentation_revision_must_increase');
-      input = structuredClone(next); armTimeout(); channel.port1.postMessage({ type: 'update', input, acceptedEdits });
+      input = structuredClone(next); localInputActions = inputActions(input); armTimeout(); channel.port1.postMessage({ type: 'update', input, acceptedEdits, localInputActions });
     },
     dispose,
   };
   channel.port1.onmessage = ({ data }) => {
     if (disposed || !data) return;
-    if (data.type === 'connected') { channel.port1.postMessage({ type: 'start', source, css, assets, input, localInputActions: options.localInputActions ?? [], allowInheritance: options.allowInheritance === true && initial.surface === 'controls' }); }
+    if (data.type === 'connected') { channel.port1.postMessage({ type: 'start', source, css, assets, input, localInputActions, allowInheritance: options.allowInheritance === true && initial.surface === 'controls' }); }
     else if ((data.type === 'rendered' || (data.type === 'inherit' && options.allowInheritance && initial.surface === 'controls')) && data.revision === input.context.revision) {
       clearTimeout(timeout);
       inherited = data.type === 'inherit';
@@ -100,11 +102,11 @@ export async function preparePresentationSandbox(
     else if (data.type === 'intent' && active) {
       const intent = data.intent;
       if (!intent || typeof intent.id !== 'string' || intent.id.length > 256
-        || (intent.context?.revision !== input.context.revision && !(intent.event === 'input' && options.localInputActions?.includes(intent.id)))
+        || (intent.context?.revision !== input.context.revision && !(intent.event === 'input' && localInputActions.includes(intent.id)))
         || intent.context?.workspaceId !== input.context.workspaceId || intent.context?.sessionId !== input.context.sessionId
         || (intent.value !== undefined && (typeof intent.value !== 'string' || intent.value.length > 1024 * 1024))
         || (intent.key !== undefined && (typeof intent.key !== 'string' || intent.key.length > 64))) return;
-      if (intent.event === 'input' && options.localInputActions?.includes(intent.id)) {
+      if (intent.event === 'input' && localInputActions.includes(intent.id)) {
         if (!Number.isSafeInteger(intent.editSequence) || intent.editSequence <= acceptedEdits) return;
         acceptedEdits = intent.editSequence;
       }

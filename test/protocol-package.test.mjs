@@ -16,7 +16,7 @@ test('packed protocol compiles and imports outside the repository without DOM or
     execFileSync(process.execPath,[tsc,'-p',path.join(source,'tsconfig.json'),'--outDir',path.join(staging,'dist')],{stdio:'pipe'});
     const packed = JSON.parse(execFileSync('npm',['pack','--ignore-scripts','--offline','--json','--cache',path.join(root,'cache')],{cwd:staging,encoding:'utf8'}))[0];
     assert.ok(packed.files.some(file=>file.path==='dist/semantic.d.ts'));
-    assert.ok(packed.files.every(file=>file.path==='package.json'||file.path==='README.md'||/^dist\/(?:index|semantic|presentation|renderer|capability|session|presentation-package|presentation-runtime|presentation-controls)\.(?:js|d\.ts)$/.test(file.path)), 'archive only contains public built contracts');
+    assert.ok(packed.files.every(file=>file.path==='package.json'||file.path==='README.md'||/^dist\/(?:index|semantic|presentation|renderer|capability|session|presentation-package|presentation-runtime|presentation-controls|presentation-navigation)\.(?:js|d\.ts)$/.test(file.path)), 'archive only contains public built contracts');
     assert.ok(packed.files.some(file=>file.path==='dist/presentation-package.d.ts'));
     const installed = path.join(consumer,'node_modules/@aibo/plugin-protocol');
     await mkdir(installed,{recursive:true});
@@ -39,7 +39,7 @@ test('packed protocol compiles and imports outside the repository without DOM or
 import { SEMANTIC_SCHEMA, type Snapshot } from '@aibo/plugin-protocol/semantic';
 import type { PresentationSnapshot } from '@aibo/plugin-protocol/presentation';
 import { CORE_SEMANTICS, type RendererDescriptor } from '@aibo/plugin-protocol/renderer';
-import type { JsonValue, PresentationPackageManifest, PresentationNode, PresentationInput, PresentationControlData } from '@aibo/plugin-protocol';
+import type { JsonValue, PresentationPackageManifest, PresentationNode, PresentationInput, PresentationControlData, PresentationNavigationAction } from '@aibo/plugin-protocol';
 import { createCapabilityRuntime } from '@aibo/capability-runtime';
 import { serveCapability } from '@aibo/capability-runtime/stdio';
 const runtimeOptions = {pluginId:'dev.example.echo',pluginVersion:'1.0.0',contributionId:'dev.example.echo.worker',operations:[],invoke:async()=>null};
@@ -48,6 +48,7 @@ type StdioEntry = typeof serveCapability;
 const value: JsonValue = { schema: SEMANTIC_SCHEMA };
 const visual: PresentationNode = {tag:'button',key:'send',text:'Send',events:{click:'send'}};
 const control: PresentationControlData = {control:'AgentStatusMark',props:{agent:'plugin',tone:'idle',label:'Plugin'},actions:[]};
+const navigationAction: PresentationNavigationAction = {token:'navigation:search:',operation:'search',event:'input'};
 const input: PresentationInput = {surface:'workbench',context:{workspaceId:null,sessionId:null,revision:1},data:null,theme:{}};
 const skin: PresentationPackageManifest = {schema:'aibo.presentation-package/v1',id:'dev.example.skin',version:'1.0.0',displayName:'Skin',hostApi:'1.0.0',coreSemantics:'1.0.0',snapshotSchemas:['aibo.semantic-view/v1'],resources:[],themes:[{id:'dark',label:'Dark',colorScheme:'dark',tokens:{'--primary':'#123456'}}],defaultThemeId:'dark'};
 const descriptor: RendererDescriptor = {id:'dev.example.renderer',version:'1.0.0',semanticVersion:'1.0.0',core:CORE_SEMANTICS,optional:[]};
