@@ -296,7 +296,9 @@ node /path/to/package/build.mjs presentation.source.json dist/skin-1.0.0
 独立双皮肤包现位于 `packages/presentation-shadcn` 和
 `packages/presentation-material3`，各自有构建入口和说明。当前发布范围是全部
 主题、四类核心语义视图、模型矩阵和状态标记；0.2.0 同时装配独立工作台模块。
-这两包的整工作台已进入 App 浏览器流程；完整功能/视觉等价和原生验收尚未完成。
+这两包的整工作台已进入 App 浏览器流程；macOS arm64 原生安装、升级、重启、
+禁用/卸载和启动/运行故障恢复已有证据。整体视觉和交互退出验收仍见
+[退出审计](presentation-plugin-exit-audit.md)。
 未显式选择主题时，PresentationHost 使用 manifest 的 defaultThemeId。
 
 ## 外部工作台视觉状态恢复
@@ -308,8 +310,10 @@ Worker 不能直接写入此缓存。新皮肤通过相同节点 key 恢复能�
 
 激活和更新时宿主明确决定是否允许恢复焦点，固定管理/审批控件持有焦点时不会
 被外部 iframe 抢走。换会话使用独立状态，不把原会话位置带入新会话。
-当前缓存不写盘，内置与外部视图之间的语义焦点映射尚待接齐；不同第三方皮肤的
-不相同 key 也不能被推断为同一个控件。
+当前缓存不写盘。默认 composer 与外置 `conversation:draft:input` 共享焦点和选区；
+普通消息 `message:<id>`、分组 `message-group:<group-id>` 通过可见消息及相对顶部
+偏移映射默认消息区和外置滚动祖先。消息锚点不包含正文，目标不存在时不强制定位。
+不同第三方皮肤的不相同 key 不能被推断为同一个控件。
 
 消息富文本的 copyCode/openLink 动作由宿主从当前可见消息解析生成，参数绑定
 消息 ID、块序号和实际内容。过期消息或已撤销目录不能继续复制旧代码/打开旧链接。

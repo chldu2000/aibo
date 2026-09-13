@@ -11,6 +11,7 @@ const browser=await chromium.launch({headless:true});const page=await browser.ne
 page.on('pageerror',error=>errors.push(error.message));
 try {
   await page.addInitScript(pkg=>{
+    if(window===window.top&&!localStorage.getItem('aibo.appearance.v1'))localStorage.setItem('aibo.appearance.v1',JSON.stringify({kitId:'material3',themeId:'sage'}));
     let callback=0;window.presentationCommands=[];window.presentationInstallable=pkg;
     const read=()=>JSON.parse(localStorage.getItem('probe.presentation.installed')||'null');
     const saved=()=>JSON.parse(localStorage.getItem('probe.presentation.selection')||'null');
@@ -35,10 +36,19 @@ try {
       }};
   },pkg);
   await page.goto(`http://127.0.0.1:${server.httpServer.address().port}/`);
+  const assertLegacy=async()=>{
+    assert.equal(await page.locator('.app-shell').getAttribute('data-ui-kit'),'material3');
+    assert.equal(await page.locator('.app-shell').getAttribute('data-ui-theme'),'sage');
+    assert.deepEqual(await page.evaluate(()=>JSON.parse(localStorage.getItem('aibo.appearance.v1'))),{kitId:'material3',themeId:'sage'});
+  };
+  await page.getByRole('button',{name:'打开设置',exact:true}).waitFor();
+  await assertLegacy();
   await page.getByRole('button',{name:'打开设置',exact:true}).click();
   await page.getByRole('button',{name:'安装皮肤插件',exact:true}).click();
   await page.getByRole('button',{name:'External skin 1.0.0',exact:true}).click();
   await page.waitForFunction(()=>JSON.parse(localStorage.getItem('probe.presentation.selection')||'null')!==null);
+  assert.equal(await page.locator('.appearance-kit-option[aria-pressed="true"]').count(),1);
+  assert.match(await page.locator('.appearance-kit-option[aria-pressed="true"]').textContent(),/External skin/);
   await page.getByRole('button',{name:'完成',exact:true}).click();
   const editor=page.frameLocator('iframe').getByRole('textbox',{name:'External draft'});
   await editor.fill('saved draft');
@@ -49,6 +59,7 @@ try {
   await page.getByRole('button',{name:'打开设置',exact:true}).click();
   await page.getByRole('button',{name:'恢复内置呈现',exact:true}).click();
   await page.waitForFunction(()=>document.querySelectorAll('iframe').length===0);
+  await assertLegacy();
   await page.getByRole('button',{name:'External skin 1.0.0',exact:true}).click();
   await page.getByRole('button',{name:'完成',exact:true}).click();
   await editor.waitFor();assert.equal(await editor.inputValue(),'saved draft quick typing');
@@ -84,7 +95,10 @@ try {
   assert.equal(await page.locator('iframe').count(),0);
   await page.getByRole('button',{name:'恢复内置呈现',exact:true}).click();
   await page.waitForFunction(()=>JSON.parse(localStorage.getItem('probe.presentation.selection')||'null')===null);
+  await assertLegacy();
+  assert.equal(await page.locator('.appearance-kit-option[aria-pressed="true"]').count(),1);
+  assert.match(await page.locator('.appearance-kit-option[aria-pressed="true"]').textContent(),/Material 3/);
   assert.deepEqual(errors,[]);
-  const result={passed:true,nativePort:'mocked; actual App.svelte and sandbox runtime',browser:browser.version(),checks:['install and select through settings','draft typing and restoration across switches','selection reloaded after page restart','disable enable uninstall','host controls and keyboard recovery accessible','runtime failure clears persistent selection','theme-only package inherits workbench and cannot style host shell']};
+  const result={passed:true,nativePort:'mocked; actual App.svelte and sandbox runtime',browser:browser.version(),checks:['legacy appearance selection survives startup, external selection, restart and fallback through the unified selector','install and select through settings','draft typing and restoration across switches','selection reloaded after page restart','disable enable uninstall','host controls and keyboard recovery accessible','runtime failure clears persistent selection','theme-only package inherits workbench and cannot style host shell']};
   await writeFile('/tmp/aibo-presentation-app-browser.json',JSON.stringify(result,null,2));console.log(JSON.stringify(result));
 } finally {await browser.close();await server.close();}
