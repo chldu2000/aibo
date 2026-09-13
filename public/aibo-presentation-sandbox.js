@@ -5,6 +5,23 @@
   const root = document.getElementById('root');
   let editSequence = 0, acceptedEdits = 0, localInputActions = [], allowInheritance = false;
   const edits = new Map();
+  let splitters = new Map(), drag;
+  function endResize() {
+    if(drag&&root.hasPointerCapture(drag.pointerId))root.releasePointerCapture(drag.pointerId);
+    drag=undefined;
+  }
+  function resizeInput(binding,value) {
+    if(!active||!current||!localInputActions.includes(binding.token)||binding.context.workspaceId!==current.context.workspaceId||binding.context.sessionId!==current.context.sessionId)return;
+    send({type:'intent',intent:{id:binding.token,event:'input',context:binding.context,value:String(Math.min(binding.max,Math.max(binding.min,value))),editSequence:++editSequence}});
+  }
+  root.addEventListener('pointermove',event=>{
+    if(!event.isTrusted||!drag||event.pointerId!==drag.pointerId)return;
+    const binding=splitters.get(drag.key);
+    if(!binding||binding.token!==drag.token||binding.context.workspaceId!==drag.context.workspaceId||binding.context.sessionId!==drag.context.sessionId){endResize();return;}
+    resizeInput(binding,drag.value+(event.clientX-drag.x)*drag.direction);
+  });
+  window.addEventListener('blur',endResize);
+  for(const name of ['pointerup','pointercancel','lostpointercapture'])root.addEventListener(name,()=>{drag=undefined;});
   let active = false, pendingState, lastState, stateTimer, restoring = false, renderedContext, mayRestoreFocus = false;
   function captureState() {
     const element=document.activeElement;
@@ -29,7 +46,7 @@
   }
   for(const event of ['focusin','selectionchange','scroll','input','toggle'])document.addEventListener(event,publishState,true);
   const tags = new Set('div section main aside header footer nav article h1 h2 h3 p span strong em pre code ul ol li button input textarea label select option table thead tbody tr th td details summary hr img svg path circle rect line polyline polygon g'.split(' '));
-  const attributes = new Set('id role title aria-label aria-labelledby aria-describedby aria-expanded aria-selected aria-pressed aria-live aria-busy aria-atomic aria-hidden aria-current aria-disabled placeholder type value min max step disabled readonly checked selected multiple name for tabindex rows cols open alt width height viewBox d fill stroke stroke-width stroke-linecap stroke-linejoin cx cy r x y x1 x2 y1 y2 points'.split(' '));
+  const attributes = new Set('id role title aria-label aria-labelledby aria-describedby aria-expanded aria-selected aria-pressed aria-live aria-busy aria-atomic aria-hidden aria-current aria-disabled aria-orientation aria-valuenow aria-valuemin aria-valuemax placeholder type value min max step disabled readonly checked selected multiple name for tabindex rows cols open alt width height viewBox d fill stroke stroke-width stroke-linecap stroke-linejoin cx cy r x y x1 x2 y1 y2 points'.split(' '));
   const eventNames = new Set(['click', 'input', 'change', 'keydown']);
   const send = message => { if (!disposed) port?.postMessage(message); };
   function stop() {
@@ -40,6 +57,7 @@
   function fail(message) { stop(); send({ type: 'failure', message: String(message).slice(0, 512) }); }
   function render(tree, context) {
     let count = 0; const keys = new Set();
+    const nextSplitters=new Map();
     const state=pendingState!==undefined?pendingState:captureState();
     pendingState=undefined;
     function node(value, depth) {
@@ -52,6 +70,21 @@
         element.src = assets[value.resource];
       }
       element.dataset.presentationKey = value.key;
+      if(value.resize!==undefined){
+        const resize=value.resize;
+        if(value.tag!=='button'||!resize||typeof resize.token!=='string'||!resize.token||resize.token.length>256||![1,-1].includes(resize.direction)||![resize.value,resize.min,resize.max].every(number=>Number.isFinite(number)&&number>=0&&number<=4096)||resize.min>resize.max||value.events?.keydown||value.localEvents?.keydown)throw Error('invalid_presentation_resize');
+        const binding={...resize,context};nextSplitters.set(value.key,binding);
+        element.addEventListener('pointerdown',event=>{
+          if(!event.isTrusted||event.button!==0||element.disabled||!active||!localInputActions.includes(binding.token))return;
+          event.preventDefault();element.focus({preventScroll:true});
+          drag={...binding,key:value.key,x:event.clientX,pointerId:event.pointerId};root.setPointerCapture(event.pointerId);
+        });
+        element.addEventListener('keydown',event=>{
+          if(!event.isTrusted||event.isComposing||element.disabled)return;
+          const next=event.key==='ArrowLeft'?binding.value-16*binding.direction:event.key==='ArrowRight'?binding.value+16*binding.direction:event.key==='Home'?binding.min:event.key==='End'?binding.max:null;
+          if(next===null)return;event.preventDefault();resizeInput(binding,next);
+        });
+      }
       if (value.inlineSize !== undefined) {
         if (!Number.isFinite(value.inlineSize) || value.inlineSize < 0 || value.inlineSize > 4096) throw Error('invalid_presentation_size');
         element.style.setProperty('--presentation-inline-size', value.inlineSize+'px');
@@ -117,6 +150,8 @@
       return element;
     }
     const next = node(tree, 0);
+    splitters=nextSplitters;
+    if(drag&&(!splitters.has(drag.key)||splitters.get(drag.key).token!==drag.token))endResize();
     root.replaceChildren(next);
     restoreState(state,active&&mayRestoreFocus);
     lastState=state; renderedContext=context;

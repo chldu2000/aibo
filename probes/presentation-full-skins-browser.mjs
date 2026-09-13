@@ -80,10 +80,27 @@ try {
     if(await layout.getAttribute('open')===null)await frame.getByText('布局',{exact:true}).click();
     const width=frame.getByRole('slider',{name:'导航宽度',exact:true});
     await width.focus();await width.press('ArrowRight');
-    const resized=Number(await width.inputValue());
+    let resized=Number(await width.inputValue());
     await frame.locator(`input[aria-label="导航宽度"][value="${resized}"]`).waitFor();
     assert.ok(resized>260);
+    await frame.locator('.navigation').waitFor({state:'visible'});
     assert.equal(await frame.locator('.navigation').evaluate(element=>Math.round(element.getBoundingClientRect().width)),resized);
+    const dragBoundary=async(label,delta)=>{
+      const separator=frame.getByRole('separator',{name:label,exact:true});
+      const start=Number(await separator.getAttribute('aria-valuenow')),box=await separator.boundingBox();
+      await page.mouse.move(box.x+box.width/2,box.y+80);await page.mouse.down();
+      await page.mouse.move(box.x+box.width/2+delta,box.y+80,{steps:4});await page.mouse.up();
+      const expected=start+(label==='调整导航宽度'?delta:-delta);
+      await frame.locator(`[role="separator"][aria-label="${label}"][aria-valuenow="${expected}"]`).waitFor();
+      return expected;
+    };
+    resized=await dragBoundary('调整导航宽度',32);
+    const auxiliaryWidth=await dragBoundary('调整侧边面板宽度',-24);
+    assert.equal(await frame.locator('.workbench-inspector').evaluate(element=>Math.round(element.getBoundingClientRect().width)),auxiliaryWidth);
+    const auxiliarySplitter=frame.getByRole('separator',{name:'调整侧边面板宽度',exact:true});
+    await auxiliarySplitter.focus();await auxiliarySplitter.press('ArrowRight');
+    await frame.locator(`[role="separator"][aria-label="调整侧边面板宽度"][aria-valuenow="${auxiliaryWidth-16}"]`).waitFor();
+
     const composer=frame.getByRole('textbox',{name:'消息',exact:true});await composer.waitFor();
     await frame.getByText('Complete timeline data',{exact:true}).waitFor();
     await frame.getByRole('heading',{name:'Rich heading',exact:true}).waitFor();
@@ -126,6 +143,7 @@ try {
     assert.equal(await page.getByRole('button',{name:`调整工作区与会话宽度，当前 ${resized} 像素`,exact:true}).count(),1);
     await page.getByRole('button',{name:pkg.release.manifest.displayName+' '+pkg.release.manifest.version,exact:true}).click();
     await page.getByRole('button',{name:'完成',exact:true}).click();
+    await frame.locator('.navigation').waitFor({state:'visible'});
     assert.equal(await frame.locator('.navigation').evaluate(element=>Math.round(element.getBoundingClientRect().width)),resized);
     await composer.waitFor();assert.equal(await composer.inputValue(),'换肤保留');
     await page.getByRole('button',{name:'打开设置',exact:true}).click();
@@ -133,6 +151,6 @@ try {
     await page.getByRole('button',{name:'完成',exact:true}).click();
   }
   assert.deepEqual(errors,[]);
-  const result={passed:true,nativePort:'mocked; actual App and independently built full skin Workers',browser:browser.version(),checks:['keyboard width adjustment and default/external width retention','primary Enter submits through host action','consecutive tool group with completion count','literal tool payloads and native reasoning disclosure in both skins','both full packages install and activate','workspace and session navigation','rich timeline headings, lists, inline and fenced code','host-bound code copy and link actions','attachment transport metadata hidden','rapid Chinese/English input and send','Git/context panel switching','requested and enforced permissions remain distinct','attachment status, strategy and size','diagnostic details remain visible','default/external switch retains host draft']};
+  const result={passed:true,nativePort:'mocked; actual App and independently built full skin Workers',browser:browser.version(),checks:['both splitter drag directions and auxiliary keyboard resize','keyboard width adjustment and default/external width retention','primary Enter submits through host action','consecutive tool group with completion count','literal tool payloads and native reasoning disclosure in both skins','both full packages install and activate','workspace and session navigation','rich timeline headings, lists, inline and fenced code','host-bound code copy and link actions','attachment transport metadata hidden','rapid Chinese/English input and send','Git/context panel switching','requested and enforced permissions remain distinct','attachment status, strategy and size','diagnostic details remain visible','default/external switch retains host draft']};
   await writeFile('/tmp/aibo-full-skins-browser.json',JSON.stringify(result,null,2)+'\n');console.log(JSON.stringify(result));
 } catch(error) {console.error(JSON.stringify({errors,body:await page.locator('body').innerText()}));throw error;} finally {await browser.close();await server.close();await built.dispose();}

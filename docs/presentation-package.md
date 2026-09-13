@@ -324,3 +324,9 @@ Worker 不能直接写入此缓存。新皮肤通过相同节点 key 恢复能�
 视觉树 `inlineSize` 只接受 0–4096 的有限数值，可信桥将其转换为
 `--presentation-inline-size` 像素变量；皮肤决定如何应用和在窄屏下重排。
 不允许将任意 style 或 CSS 字符串通过这个字段传入。
+
+`PresentationNode.resize` 可在 button 上声明 `{token,value,min,max,direction}`，
+尺寸必须为 0–4096 的有限数值，min 不得大于 max，direction 为 1 或 -1。
+它不能与节点 keydown 处理器并用。可信桥将真实拖动和左右方向键/Home/End 转为
+宿主 input 意图及编辑序号，只有宿主当前允许的输入令牌才能发出调整。连续拖动
+依靠稳定容器捕获指针，不依赖被重绘替换的按钮；控件消失或身份变更即终止。

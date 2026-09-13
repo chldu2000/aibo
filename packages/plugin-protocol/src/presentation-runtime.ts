@@ -12,6 +12,8 @@ export type PresentationNode = {
   className?: string;
   /** Bounded size hint exposed to skin CSS as --presentation-inline-size. */
   inlineSize?: number;
+  /** Button-only horizontal splitter bound to a host input token. */
+  resize?: { token: string; value: number; min: number; max: number; direction: 1 | -1 };
   /** An image resource path declared by the package; arbitrary URLs are not accepted. */
   resource?: string;
   attrs?: Readonly<Record<string, string | boolean>>;
