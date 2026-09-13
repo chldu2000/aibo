@@ -9,9 +9,9 @@ use crate::{capability_broker::{Binding, Broker, CapabilityControl, EventObserve
     change_set::{capture as capture_workspace, persist as persist_change_set, WorkspaceSnapshot}, execution_profile, plugin_registry, Session};
 use serde_json::{json,Value};
 use sqlx::SqlitePool;
-use std::{collections::HashMap,path::{Path,PathBuf},sync::{Arc,atomic::{AtomicBool,Ordering}},time::Duration};
+use std::{collections::HashMap,path::{Path,PathBuf},sync::{Arc,Weak,atomic::{AtomicBool,Ordering}},time::Duration};
 use tauri::{Emitter,Manager};
-use tokio::sync::Mutex;
+use tokio::sync::{Mutex, OwnedMutexGuard};
 
 #[derive(Clone,Copy,PartialEq,Eq)]
 enum EventOrigin { Plugin, CoreTool, Host }
@@ -51,12 +51,29 @@ impl SessionExecution {
 struct PendingPluginTool {runtime:SessionExecution,request_id:Value,session_id:String,workspace_id:String,generation_id:String,turn_id:Option<String>,tool:String,input:Value}
 #[derive(Clone)]
 pub(crate) struct SessionHost {
-    db:SqlitePool,broker:Broker,lifecycle:Arc<Mutex<()>>,database_writes:Arc<Mutex<()>>,
+    db:SqlitePool,broker:Broker,operations:Arc<Mutex<HashMap<String,Weak<Mutex<()>>>>>,database_writes:Arc<Mutex<()>>,
     live:Arc<Mutex<HashMap<String,LiveTurn>>>,pending_tools:Arc<Mutex<HashMap<String,PendingPluginTool>>>,
     turn_baselines:Arc<Mutex<HashMap<String,Option<WorkspaceSnapshot>>>>,app:Option<tauri::AppHandle>,
 }
 impl SessionHost {
-    pub fn new(db:SqlitePool,broker:Broker)->Self {Self {db,broker,lifecycle:Default::default(),database_writes:Default::default(),live:Default::default(),pending_tools:Default::default(),turn_baselines:Default::default(),app:None}}
+    pub fn new(db:SqlitePool,broker:Broker)->Self {Self {db,broker,operations:Default::default(),database_writes:Default::default(),live:Default::default(),pending_tools:Default::default(),turn_baselines:Default::default(),app:None}}
+    // Serialize each session's open + operation + recovery persistence, not the
+    // whole host. Weak entries disappear once callers and waiters have left.
+    async fn session_operation(&self, session_id: &str) -> OwnedMutexGuard<()> {
+        let gate = {
+            let mut operations = self.operations.lock().await;
+            operations.retain(|_, gate| gate.strong_count() > 0);
+            match operations.get(session_id).and_then(Weak::upgrade) {
+                Some(gate) => gate,
+                None => {
+                    let gate = Arc::new(Mutex::new(()));
+                    operations.insert(session_id.to_owned(), Arc::downgrade(&gate));
+                    gate
+                }
+            }
+        };
+        gate.lock_owned().await
+    }
     pub fn with_app(db:SqlitePool,broker:Broker,app:tauri::AppHandle)->Self {Self {app:Some(app),..Self::new(db,broker)}}
     pub async fn uninstall(&self,data_dir:&Path,installation:&str)->Result<(),String> {
         let ids:Vec<String>=sqlx::query_scalar("SELECT id FROM sessions WHERE plugin_installation_id=?").bind(installation).fetch_all(&self.db).await.map_err(|e|e.to_string())?;
@@ -86,10 +103,10 @@ impl SessionHost {
         }).transpose()
     }
     pub async fn create_with_profile_from(&self,caller:&str,workspace_id:&str,installation_id:&str,contribution_id:&str,profile:Option<execution_profile::ResolvedExecutionProfile>)->Result<Session,String> {
-        let _guard=self.lifecycle.lock().await;
         let workspace=crate::workspace_by_id(&self.db,workspace_id).await.map_err(|e|e.to_string())?;
         if workspace.trust!="trusted" {return Err("permission_denied: workspace trust required".into());}
         let id=ulid::Ulid::new().to_string();let now=crate::now_iso();
+        let _guard=self.session_operation(&id).await;
         sqlx::query("INSERT INTO sessions(id,workspace_id,agent,label,state,created_at,updated_at,plugin_installation_id) VALUES(?,?,?,'Session','starting',?,?,?)")
             .bind(&id).bind(workspace_id).bind(contribution_id).bind(&now).bind(&now).bind(installation_id).execute(&self.db).await.map_err(|e|e.to_string())?;
         let profile=match profile {Some(profile)=>profile,None=>execution_profile::resolve(contribution_id,None,now)?};
@@ -100,7 +117,7 @@ impl SessionHost {
         crate::session_by_id(&self.db,&id).await.map_err(|e|e.to_string())
     }
     pub async fn resume_from(&self,caller:&str,session_id:&str)->Result<(),String> {
-        let _guard=self.lifecycle.lock().await;
+        let _guard=self.session_operation(session_id).await;
         if self.live.lock().await.contains_key(session_id) {return Ok(());}
         self.open(caller,session_id).await
     }
@@ -138,7 +155,9 @@ impl SessionHost {
     }
     pub async fn send_from(&self,caller:&str,session_id:&str,text:&str,approval:Option<crate::workspace_write_runs::Request>)->Result<(),String> {
         if text.trim().is_empty() || text.len()>200_000 {return Err("invalid_input: prompt length".into());}
-        self.resume_from(caller,session_id).await?;
+        let _guard=self.session_operation(session_id).await;
+        if self.live.lock().await.contains_key(session_id) {return Err("busy: session has an active invocation".into());}
+        self.open(caller,session_id).await?;
         let (session,_)=self.metadata(session_id).await?;
         let saved=self.saved_binding(session_id).await?.ok_or("invalid_session: no native binding")?;
         let profile=crate::session_execution_profile(&self.db,session_id).await.map_err(|e|e.to_string())?.profile.enforced;
@@ -208,8 +227,17 @@ impl SessionHost {
         if updated.rows_affected()!=1 {return Err("invalid_session: recovery generation changed".into());}Ok(())
     }
     pub async fn invoke_capability_from(&self,caller:&str,session_id:&str,capability:&str,input:Value)->Result<Value,String> {
-        let running=self.live.lock().await.get(session_id).cloned();
-        if running.is_none() {self.resume_from(caller,session_id).await?;}
+        let mut running=self.live.lock().await.get(session_id).cloned();
+        let mut admission = None;
+        if running.is_none() {
+            admission = Some(self.session_operation(session_id).await);
+            // A send may have won admission while this caller was waiting.
+            running = self.live.lock().await.get(session_id).cloned();
+            if running.is_none() { self.open(caller,session_id).await?; }
+        }
+        // Live controls (queue, user input, etc.) must not wait behind an idle
+        // operation or hold admission for the duration of an Agent turn.
+        if running.is_some() { drop(admission.take()); }
         let (session,manifest)=self.metadata(session_id).await?;
         let qualified=format!("{}.{}",manifest["pluginId"].as_str().ok_or("invalid_manifest")?,capability);
         let response=if let Some(run)=running {
@@ -236,6 +264,9 @@ impl SessionHost {
     }
     pub async fn close_from(&self,caller:&str,session_id:&str)->Result<(),String> {
         self.cancel_from(caller,session_id).await?;
+        let _guard=self.session_operation(session_id).await;
+        // Recheck after admission: a queued send may have started in between.
+        self.cancel_from(caller,session_id).await?;
         tokio::time::timeout(Duration::from_secs(7),async {while self.live.lock().await.contains_key(session_id) {tokio::time::sleep(Duration::from_millis(10)).await;}}).await.map_err(|_|"busy: session is still stopping")?;
         self.broker.stop_session(session_id).await.map_err(|e|e.message)?;
         sqlx::query("UPDATE session_bindings SET generation_id=NULL WHERE session_id=?").bind(session_id).execute(&self.db).await.map_err(|e|e.to_string())?;
@@ -248,6 +279,7 @@ impl SessionHost {
         crate::session_by_id(&self.db,session_id).await.map_err(|e|e.to_string())
     }
     pub async fn unarchive(&self,session_id:&str)->Result<Session,String> {
+        let _guard=self.session_operation(session_id).await;
         sqlx::query("UPDATE sessions SET archived=0,state='interrupted',updated_at=? WHERE id=?").bind(crate::now_iso()).bind(session_id).execute(&self.db).await.map_err(|e|e.to_string())?;
         crate::session_by_id(&self.db,session_id).await.map_err(|e|e.to_string())
     }

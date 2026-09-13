@@ -564,6 +564,8 @@ pub enum CoreError {
     Database(String),
     #[error("agent probe failed: {0}")]
     AgentProbe(String),
+    #[error("session operation failed: {0}")]
+    SessionOperation(String),
     #[error("app initialization failed: {0}")]
     Initialization(String),
 }
@@ -593,6 +595,7 @@ impl Serialize for CoreError {
             Self::InvalidExecutionProfile(_) => "invalid_execution_profile",
             Self::Database(_) => "database_error",
             Self::AgentProbe(_) => "agent_probe_error",
+            Self::SessionOperation(_) => "session_operation_error",
             Self::Initialization(_) => "initialization_error",
         };
         ErrorPayload {
@@ -1324,12 +1327,12 @@ async fn remove_workspace(
     state: State<'_, AppState>,
 ) -> Result<(), CoreError> {
     let _guard = state.capability_broker.mutation_guard().await;
-    state.capability_broker.stop_workspace(&workspace_id).await.map_err(|error|CoreError::Initialization(error.message))?;
+    state.capability_broker.stop_workspace(&workspace_id).await.map_err(|error|CoreError::SessionOperation(error.message))?;
     state
         .plugins
         .close_workspace(&workspace_id)
         .await
-        .map_err(CoreError::Initialization)?;
+        .map_err(CoreError::SessionOperation)?;
     let result = sqlx::query("DELETE FROM workspaces WHERE id = ?")
         .bind(&workspace_id)
         .execute(&state.db)
@@ -1649,7 +1652,7 @@ async fn update_session_execution_profile(
 ) -> Result<SessionExecutionProfile, CoreError> {
     let session = session_by_id(&state.db, &session_id).await?;
     if session.archived {
-        return Err(CoreError::Initialization(
+        return Err(CoreError::SessionOperation(
             "archived sessions must be unarchived before changing their execution profile"
                 .to_owned(),
         ));
@@ -1670,10 +1673,10 @@ async fn update_session_execution_profile(
     require_trusted_workspace(&workspace, &resolved)?;
 
     if session.plugin_installation_id.is_none() {
-        return Err(CoreError::Initialization("history_only: old session configuration is read-only".into()));
+        return Err(CoreError::SessionOperation("history_only: old session configuration is read-only".into()));
     }
     // The next capability open captures the updated host execution profile.
-    state.plugins.close_from(window.label(), &session_id).await.map_err(CoreError::Initialization)?;
+    state.plugins.close_from(window.label(), &session_id).await.map_err(CoreError::SessionOperation)?;
     save_session_profile(&state.db, &session_id, &resolved).await?;
     sqlx::query("UPDATE sessions SET state = 'idle', updated_at = ? WHERE id = ?")
         .bind(now_iso())
@@ -1807,7 +1810,7 @@ async fn get_timeline(
         // navigation and when returning to an already-open session.
         let snapshot = state.plugins.invoke_capability_from(window.label(),
             &session_id, "session.snapshot", serde_json::json!({}),
-        ).await.map_err(CoreError::Initialization)?;
+        ).await.map_err(CoreError::SessionOperation)?;
         return Ok(pi_snapshot_timeline(&snapshot, &session_id));
     }
     let rows = sqlx::query(
@@ -3503,13 +3506,13 @@ async fn list_codex_threads(workspace_id: String, window: tauri::WebviewWindow, 
 
 #[tauri::command]
 async fn read_codex_thread(session_id: String, window: tauri::WebviewWindow, state: State<'_, AppState>) -> Result<serde_json::Value, CoreError> {
-    let result = state.plugins.invoke_capability_from(window.label(), &session_id, "session.snapshot", serde_json::json!({})).await.map_err(CoreError::Initialization)?;
+    let result = state.plugins.invoke_capability_from(window.label(), &session_id, "session.snapshot", serde_json::json!({})).await.map_err(CoreError::SessionOperation)?;
     Ok(result["thread"].clone())
 }
 
 #[tauri::command]
 async fn fork_codex_thread(session_id: String, through_turn_id: Option<String>, window: tauri::WebviewWindow, state: State<'_, AppState>) -> Result<Session, CoreError> {
-    state.plugins.fork_from(window.label(), &session_id, through_turn_id.as_deref()).await.map_err(CoreError::Initialization)
+    state.plugins.fork_from(window.label(), &session_id, through_turn_id.as_deref()).await.map_err(CoreError::SessionOperation)
 }
 
 #[tauri::command]
@@ -3524,12 +3527,12 @@ async fn unarchive_codex_thread(session_id: String, state: State<'_, AppState>) 
 
 #[tauri::command]
 async fn archive_session(session_id: String, window: tauri::WebviewWindow, state: State<'_, AppState>) -> Result<Session, CoreError> {
-    state.plugins.archive_from(window.label(), &session_id).await.map_err(CoreError::Initialization)
+    state.plugins.archive_from(window.label(), &session_id).await.map_err(CoreError::SessionOperation)
 }
 
 #[tauri::command]
 async fn unarchive_session(session_id: String, state: State<'_, AppState>) -> Result<Session, CoreError> {
-    state.plugins.unarchive(&session_id).await.map_err(CoreError::Initialization)
+    state.plugins.unarchive(&session_id).await.map_err(CoreError::SessionOperation)
 }
 
 #[tauri::command]
@@ -3668,10 +3671,10 @@ async fn resolve_agent_approval(
             .plugins
             .resolve_approval_from(window.label(), &session_id, &request_id, &decision)
             .await
-            .map_err(CoreError::Initialization)?;
+            .map_err(CoreError::SessionOperation)?;
         return Ok(());
     }
-    Err(CoreError::Initialization("history_only: old native session cannot execute".into()))
+    Err(CoreError::SessionOperation("history_only: old native session cannot execute".into()))
 }
 
 #[tauri::command]
@@ -3692,10 +3695,10 @@ async fn resolve_agent_user_input(
                 serde_json::json!({ "requestId": request_id, "answers": answers }),
             )
             .await
-            .map_err(CoreError::Initialization)?;
+            .map_err(CoreError::SessionOperation)?;
         return Ok(());
     }
-    Err(CoreError::Initialization("history_only: old native session cannot execute".into()))
+    Err(CoreError::SessionOperation("history_only: old native session cannot execute".into()))
 }
 
 
@@ -3721,18 +3724,18 @@ async fn get_session_models(
 ) -> Result<SessionModelCatalog, CoreError> {
     let session = session_by_id(&state.db, &session_id).await?;
     if session.plugin_installation_id.is_none() {
-        return Err(CoreError::Initialization("history_only: model discovery requires a capability session".into()));
+        return Err(CoreError::SessionOperation("history_only: model discovery requires a capability session".into()));
     }
-    let models = state.plugins.invoke_capability_from(window.label(), &session_id, "model.select", serde_json::json!({"action":"list"})).await.map_err(CoreError::Initialization)?;
+    let models = state.plugins.invoke_capability_from(window.label(), &session_id, "model.select", serde_json::json!({"action":"list"})).await.map_err(CoreError::SessionOperation)?;
     let reasoning = if session.capabilities.iter().any(|capability|capability == "model.reasoning") {
-        Some(state.plugins.invoke_capability_from(window.label(), &session_id, "model.reasoning", serde_json::json!({"action":"list"})).await.map_err(CoreError::Initialization)?)
+        Some(state.plugins.invoke_capability_from(window.label(), &session_id, "model.reasoning", serde_json::json!({"action":"list"})).await.map_err(CoreError::SessionOperation)?)
     } else { None };
     plugin_model_catalog(&models, reasoning.as_ref())
 }
 
 fn plugin_model_catalog(result: &serde_json::Value, reasoning: Option<&serde_json::Value>) -> Result<SessionModelCatalog, CoreError> {
     let raw_models = result.get("models").and_then(serde_json::Value::as_array)
-        .ok_or_else(|| CoreError::Initialization("plugin model catalog did not return models".to_owned()))?;
+        .ok_or_else(|| CoreError::SessionOperation("plugin model catalog did not return models".to_owned()))?;
     let models = raw_models.iter().filter_map(|item| {
         let provider = item.get("provider").and_then(serde_json::Value::as_str).map(ToOwned::to_owned);
         let id = item.get("id").and_then(serde_json::Value::as_str)
@@ -3791,9 +3794,9 @@ async fn get_pi_session_tree(
             .plugins
             .invoke_capability_from(window.label(), &session_id, "session.tree", serde_json::json!({"action":"get"}))
             .await
-            .map_err(CoreError::Initialization);
+            .map_err(CoreError::SessionOperation);
     }
-    Err(CoreError::Initialization("legacy Pi session is history-only; the session tree requires a new Pi SDK plugin session".to_owned()))
+    Err(CoreError::SessionOperation("legacy Pi session is history-only; the session tree requires a new Pi SDK plugin session".to_owned()))
 }
 
 #[tauri::command]
@@ -3814,9 +3817,9 @@ async fn navigate_pi_session_tree(
                 serde_json::json!({"action":"navigate","entryId":entry_id,"summarize":summarize,"customInstructions":custom_instructions,"replaceInstructions":replace_instructions}),
             )
             .await
-            .map_err(CoreError::Initialization);
+            .map_err(CoreError::SessionOperation);
     }
-    Err(CoreError::Initialization("legacy Pi session is history-only; tree navigation requires a new Pi SDK plugin session".to_owned()))
+    Err(CoreError::SessionOperation("legacy Pi session is history-only; tree navigation requires a new Pi SDK plugin session".to_owned()))
 }
 
 

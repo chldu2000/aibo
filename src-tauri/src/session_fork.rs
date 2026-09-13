@@ -4,11 +4,11 @@ use sqlx::Row;
 
 impl SessionHost {
     pub async fn fork_from(&self, caller: &str, session_id: &str, through_turn_id: Option<&str>) -> Result<Session, String> {
-        self.resume_from(caller, session_id).await?;
+        let _guard = self.session_operation(session_id).await;
         // Hold admission until the branch snapshot has been committed. No source turn
         // can begin between boundary selection and copying the host history.
-        let live = self.live.lock().await;
-        if live.contains_key(session_id) { return Err("busy: session must be idle before branching".into()); }
+        if self.live.lock().await.contains_key(session_id) { return Err("busy: session must be idle before branching".into()); }
+        self.open(caller, session_id).await?;
         let (source, manifest) = self.metadata(session_id).await?;
         if source.archived { return Err("invalid_session: archived session cannot branch".into()); }
         let saved = self.saved_binding(session_id).await?.ok_or("history_only: missing capability binding")?;
@@ -70,7 +70,6 @@ impl SessionHost {
             }
         }
         tx.commit().await.map_err(|e|e.to_string())?;
-        drop(live);
         // The durable branch exists even if its first open fails; it remains retryable.
         self.resume_from(caller, &new_id).await?;
         crate::session_by_id(&self.db, &new_id).await.map_err(|e|e.to_string())

@@ -127,6 +127,12 @@ async fn codex_branch_uses_native_boundary_and_copies_host_history_and_profile()
     let count:i64 = sqlx::query_scalar("SELECT COUNT(*) FROM sessions").fetch_one(&db).await.unwrap();
     assert_eq!(count,0,"workspace catalog must not create a conversation");
     let source = host.create_with_profile_from("main","w",&installed.id,"dev.aibo.codex.agent",None).await.unwrap();
+    let (models, snapshot) = tokio::join!(
+        host.invoke_capability_from("main", &source.id, "model.select", json!({"action":"list"})),
+        host.invoke_capability_from("main", &source.id, "session.snapshot", json!({})),
+    );
+    models.unwrap();
+    snapshot.unwrap();
     host.send_from("main",&source.id,"branch message",None).await.unwrap();
     wait_for_turn(&host,&source.id).await;
     let (turn,native):(String,String) = sqlx::query_as("SELECT id,external_turn_id FROM turns WHERE session_id=? AND status='completed'")
@@ -284,6 +290,111 @@ async fn capability_session_cancel_stops_an_approved_host_command() {
     tokio::time::sleep(Duration::from_millis(1200)).await;
     assert!(!workspace.join("command-finished").exists(), "cancelled shell must not run its next command");
     assert_eq!(crate::session_by_id(&db, &session.id).await.unwrap().state, "interrupted");
+    broker.stop_session(&session.id).await.unwrap();
+    db.close().await;
+    fs::remove_dir_all(root).unwrap();
+}
+
+async fn concurrent_session_fixture() -> (PathBuf, SqlitePool, Broker, SessionHost, Session) {
+    let root = std::env::temp_dir().join(format!("aibo-session-host-{}", ulid::Ulid::new()));
+    let package = root.join("package");
+    let workspace = root.join("workspace");
+    fs::create_dir_all(&package).unwrap();
+    fs::create_dir_all(&workspace).unwrap();
+    fs::write(workspace.join("read-tool.txt"), "host-owned tool data".repeat(5000)).unwrap();
+    for (name, source) in [
+        ("plugin.json", include_str!("../capability-plugins/pi/plugin.json")),
+        ("worker.mjs", include_str!("../capability-plugins/pi/worker.mjs")),
+        ("engine.mjs", include_str!("../capability-plugins/pi/engine.mjs")),
+        ("session-provider.mjs", include_str!("../capability-plugins/session-provider.mjs")),
+        ("runtime.mjs", include_str!("../../packages/capability-runtime/runtime.mjs")),
+        ("stdio.mjs", include_str!("../../packages/capability-runtime/stdio.mjs")),
+    ] { fs::write(package.join(name), source).unwrap(); }
+    let db = crate::open_database(&root.join("data/aibo.sqlite3")).await.unwrap();
+    sqlx::query("INSERT INTO workspaces(id,path,label,trusted,created_at,updated_at) VALUES('w',?,'Test',1,?,?)")
+        .bind(workspace.to_string_lossy().as_ref()).bind(crate::now_iso()).bind(crate::now_iso()).execute(&db).await.unwrap();
+    let installed = plugin_registry::install(&db, &root.join("data"), &package).await.unwrap();
+    plugin_registry::enable(&db, &installed.id, true).await.unwrap();
+    let broker = Broker::new(db.clone()).with_sdk_module(Some(PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../fixtures/pi/fake-sdk.mjs")));
+    let host = SessionHost::new(db.clone(), broker.clone());
+    let session = host.create_with_profile_from("main", "w", &installed.id, "dev.aibo.pi.agent", None).await.unwrap();
+
+    (root, db, broker, host, session)
+}
+
+#[tokio::test]
+async fn concurrent_session_context_reads_do_not_report_initialization_busy() {
+    let (root, db, broker, host, session) = concurrent_session_fixture().await;
+
+    let (models, skills) = tokio::join!(
+        host.invoke_capability_from("main", &session.id, "model.select", serde_json::json!({"action":"list"})),
+        host.invoke_capability_from("main", &session.id, "skill.list", serde_json::json!({})),
+    );
+    assert_eq!(crate::session_by_id(&db, &session.id).await.unwrap().state, "idle");
+    assert!(host.invoke_capability_from("main", &session.id, "model.select", serde_json::json!({"action":"list"})).await.is_ok());
+    assert!(host.invoke_capability_from("main", &session.id, "skill.list", serde_json::json!({})).await.is_ok());
+    broker.stop_session(&session.id).await.unwrap();
+    db.close().await;
+    fs::remove_dir_all(&root).unwrap();
+    for result in [models, skills] {
+        assert!(result.is_ok(), "{}", crate::CoreError::SessionOperation(result.unwrap_err()));
+    }
+}
+
+#[tokio::test]
+async fn session_admission_is_isolated_and_live_controls_bypass_idle_reads() {
+    let (root, db, broker, host, session) = concurrent_session_fixture().await;
+    let admission = host.session_operation(&session.id).await;
+    let second = tokio::time::timeout(Duration::from_secs(3), host.create_with_profile_from(
+        "other-window", "w", session.plugin_installation_id.as_deref().unwrap(), "dev.aibo.pi.agent", None,
+    )).await.expect("one session blocked creation of another session").unwrap();
+    tokio::time::timeout(Duration::from_secs(3), host.invoke_capability_from(
+        "other-window", &second.id, "model.select", json!({"action":"list"}),
+    )).await.expect("one session blocked another session's reads").unwrap();
+    drop(admission);
+
+    host.send_from("main", &session.id, "queue parity prompt", None).await.unwrap();
+    tokio::time::timeout(Duration::from_secs(5), async {
+        loop {
+            let count: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM capability_invocations WHERE scope_id=? AND capability_id='aibo.session.turn' AND status='running'")
+                .bind(&session.id).fetch_one(&db).await.unwrap();
+            if count > 0 {
+                let run = host.live.lock().await.get(&session.id).cloned().unwrap();
+                let generation: String = sqlx::query_scalar("SELECT generation_id FROM session_bindings WHERE session_id=?").bind(&session.id).fetch_one(&db).await.unwrap();
+                if broker.request_is_live("main", &run.request_id, &generation).await { break; }
+            }
+            tokio::time::sleep(Duration::from_millis(10)).await;
+        }
+    }).await.expect("turn did not start");
+    let admission = host.session_operation(&session.id).await;
+    let denied = tokio::time::timeout(Duration::from_secs(2), host.invoke_capability_from(
+        "other-window", &session.id, "queue.manage", json!({"action":"steer","message":"queued"}),
+    )).await.expect("ownership check was queued").unwrap_err();
+    assert!(denied.contains("permission_denied"));
+    tokio::time::timeout(Duration::from_secs(2), host.invoke_capability_from(
+        "main", &session.id, "queue.manage", json!({"action":"steer","message":"queued"}),
+    )).await.expect("live control waited for idle admission").unwrap();
+    tokio::time::timeout(Duration::from_secs(2), host.cancel_from("main", &session.id))
+        .await.expect("cancel waited for idle admission").unwrap();
+    wait_for_turn(&host, &session.id).await;
+    drop(admission);
+    host.close_from("main", &session.id).await.unwrap();
+    host.close_from("other-window", &second.id).await.unwrap();
+    db.close().await;
+    fs::remove_dir_all(root).unwrap();
+}
+
+#[tokio::test]
+async fn pending_context_read_and_send_share_session_admission() {
+    let (root, db, broker, host, session) = concurrent_session_fixture().await;
+    let (models, sent) = tokio::join!(
+        host.invoke_capability_from("main", &session.id, "model.select", json!({"action":"list"})),
+        host.send_from("main", &session.id, "hello", None),
+    );
+    models.unwrap();
+    sent.unwrap();
+    wait_for_turn(&host, &session.id).await;
+    assert_eq!(crate::session_by_id(&db, &session.id).await.unwrap().state, "idle");
     broker.stop_session(&session.id).await.unwrap();
     db.close().await;
     fs::remove_dir_all(root).unwrap();
