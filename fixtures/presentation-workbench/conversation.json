@@ -1,0 +1,159 @@
+{
+  "workspace": {
+    "id": "w",
+    "label": "Workspace",
+    "path": "/workspace",
+    "trust": "trusted"
+  },
+  "session": {
+    "id": "s",
+    "workspaceId": "w",
+    "agent": "plugin",
+    "label": "Session",
+    "state": "idle",
+    "archived": false,
+    "externalSessionId": null,
+    "pluginInstallationId": "installed",
+    "capabilities": [
+      "queue.manage",
+      "model.select",
+      "model.reasoning",
+      "session.fork",
+      "session.tree",
+      "compaction.run"
+    ],
+    "createdAt": "",
+    "updatedAt": ""
+  },
+  "goal": null,
+  "thread": null,
+  "timeline": [
+    {
+      "id": "m",
+      "turnId": "t",
+      "role": "assistant",
+      "toolName": null,
+      "entryType": null,
+      "content": "complete",
+      "status": "completed"
+    }
+  ],
+  "timelineVisibleCount": 1,
+  "usage": null,
+  "retryPrompt": "retry",
+  "retryReason": null,
+  "userInputRequests": [
+    {
+      "requestId": "request",
+      "sessionId": "s",
+      "turnId": "t",
+      "questions": [
+        {
+          "id": "q",
+          "question": "Choice?",
+          "header": null,
+          "options": [
+            {
+              "label": "Yes",
+              "description": null
+            }
+          ],
+          "isOther": true
+        }
+      ],
+      "isBlocking": true
+    }
+  ],
+  "answerDrafts": {
+    "[\"s\",\"request\",\"q\",\"t\"]": "Yes"
+  },
+  "queue": {
+    "sessionId": "s",
+    "steering": [
+      "later"
+    ],
+    "followUp": [],
+    "updatedAt": ""
+  },
+  "activityLabel": null,
+  "compacting": false,
+  "running": false,
+  "archiving": false,
+  "busy": false,
+  "attachments": [
+    {
+      "id": "pending",
+      "sessionId": "s",
+      "turnId": null,
+      "path": "pending.txt"
+    },
+    {
+      "id": "submitted",
+      "sessionId": "s",
+      "turnId": "t",
+      "path": "submitted.txt"
+    },
+    {
+      "id": "other",
+      "sessionId": "elsewhere",
+      "turnId": null,
+      "path": "other.txt"
+    }
+  ],
+  "executionProfile": null,
+  "modelConfiguration": {
+    "currentReasoningEffort": null,
+    "selectedReasoningEffort": null,
+    "defaultAction": "preserve"
+  },
+  "modelCatalog": {
+    "current": null,
+    "currentReasoningEffort": null,
+    "reasoningEfforts": [],
+    "models": [
+      {
+        "reference": "model",
+        "reasoningEfforts": [
+          {
+            "id": "high",
+            "label": "High"
+          }
+        ],
+        "label": "Example model"
+      }
+    ]
+  },
+  "modelCatalogLoading": false,
+  "modelOverride": null,
+  "workspacePathSuggestions": [
+    {
+      "path": "README.md",
+      "isDirectory": false
+    }
+  ],
+  "agentCommands": [
+    {
+      "name": "help",
+      "enabled": true
+    },
+    {
+      "name": "disabled",
+      "enabled": false
+    }
+  ],
+  "agentCommandsLoading": false,
+  "draft": "draft",
+  "draftFailed": false,
+  "tree": {
+    "sessionId": "s",
+    "tree": [
+      {
+        "id": "node",
+        "children": [],
+        "summary": "Earlier message"
+      }
+    ]
+  },
+  "treeOpen": true,
+  "treeNavigationStatus": null
+}

@@ -7,7 +7,7 @@ document.getElementById('recovery').onclick=()=>{recovered++;current?.dispose();
 async function packageOf(source) {
   const bytes=new TextEncoder().encode(source);
   const sha256=Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256',bytes)),b=>b.toString(16).padStart(2,'0')).join('');
-  return {release:{digest:'probe',enabled:true,manifest:{schema:'aibo.presentation-package/v1',id:'dev.example.probe',version:'1.0.0',displayName:'Probe skin',hostApi:'1.0.0',coreSemantics:'1.0.0',snapshotSchemas:['aibo.semantic-view/v1'],entry:'skin.js',surfaces:['workbench'],resources:[{path:'skin.js',bytes:bytes.length,sha256,mediaType:'text/javascript'}]}},resources:{'skin.js':btoa(source)}};
+  return {release:{digest:'probe',enabled:true,manifest:{schema:'aibo.presentation-package/v1',id:'dev.example.probe',version:'1.0.0',displayName:'Probe skin',hostApi:'1.0.0',coreSemantics:'1.0.0',snapshotSchemas:['aibo.semantic-view/v1'],entry:'skin.js',surfaces:['workbench'],resources:[{path:'skin.js',bytes:bytes.length,sha256,mediaType:'text/javascript'}]}},resources:{'skin.js':btoa(Array.from(bytes,byte=>String.fromCharCode(byte)).join(''))}};
 }
 const input=data=>({surface:'workbench',context:{workspaceId:'workspace',sessionId:'session',revision:++revision},data,theme:{'--primary':'#123456'}});
 window.sandboxProbe={intents,failures,get recovered(){return recovered;},

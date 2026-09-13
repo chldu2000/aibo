@@ -1,0 +1,1 @@
+{"name":"@aibo/presentation-workbench","version":"0.1.0","private":true,"type":"module","exports":{"./navigation":"./navigation.js","./conversation":"./conversation.js"},"files":["*.js","README.md"]}
