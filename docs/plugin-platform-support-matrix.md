@@ -36,9 +36,25 @@
 
 ## UI 信任与扩展边界
 
-默认 Presentation Plugin 和两套皮肤随宿主构建，属于可信代码。安装能力包不能注册 renderer 代码；v2 清单携带 presentation 描述并不授予执行资格，当前启用检查拒绝该声明。Web 本地接口包提供类型，不提供动态代码加载器或隔离设施。
+宿主保留可信默认呈现与兼容适配器。独立 Presentation 包使用
+`aibo.presentation-package/v1`，hostApi/coreSemantics 均为 1.0.0；同一个包身份
+可以提供主题、controls、semantic 和 workbench。能力包 v2 的 presentation 描述
+仍不授予 UI 执行资格，这一规则与独立 Presentation 包入口分别验证。
 
-Custom Surface 目前没有必须通过任意插件界面才能满足的实际需求，因此暂缓独立 ADR 与实现，不阻塞基础 SDK 交付。未来出现需求时，仍须先通过隔离与消息桥 ADR，再验证主题、焦点、无障碍替代、降级和崩溃恢复；当前不宣称支持任意第三方 UI。
+外部代码只在可终止 Worker 中生成受限视觉树，可信 iframe 桥负责绘制和转发
+宿主验证的动作；不能直接运行 DOM/Svelte 代码。信任设计见
+[ADR-0009](adr/0009-presentation-package-isolation.md)，包合同见
+[Presentation 包](presentation-package.md)。`@aibo/web-presentation` 仍只是可信
+本地接口类型，不是该外部加载器。
+
+shadcn/Material 3 独立包 0.2.0 已通过仓库外构建与实际 App 浏览器流程。
+[macOS arm64 原生生命周期记录](baselines/presentation-p4/native-lifecycle.json)
+验证真实安装、双包激活、0.2.1 升级、0.2.2 失败候选保留旧选择、退出进程后恢复、
+禁用/卸载回退和工作区保留。操作为原生宿主 DOM 脚本点击与真实 Tauri IPC；未宣称
+物理键盘、屏幕阅读器、其他平台、损坏包启动或全部视觉/功能等价验收通过。
+
+跨内置/外部的焦点映射、部分草稿重启恢复、完整富文本/专用视图与布局/无障碍
+仍属于 [重构退出清单](presentation-plugin-refactor.md) 的未完成项。
 
 ## 后续版本变更门
 
