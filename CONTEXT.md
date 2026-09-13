@@ -53,8 +53,8 @@ _Avoid_: Plugin UI, embedded app
 **语义贡献（Semantic Contribution）**：插件声明的业务入口、信息结构与动作含义，不指定物理布局或具体组件。
 _Avoid_：用“UI 插件”指代只声明页面内容的包。
 
-**Presentation Plugin（表现插件）**：负责工作台布局、语义渲染与视觉风格的表现实现，可组合 Shell、renderer 和 skin 角色。
-_Avoid_：用“皮肤”泛指整个 Presentation Plugin。
+**Presentation Plugin（皮肤插件）**：统一的呈现扩展，可定制主题、控件、语义视图及整个工作台；未定制的部分继承宿主默认呈现。皮肤是其面向用户的名称，与呈现插件是同一概念。
+_Avoid_：把皮肤插件与呈现插件定义为两种独立插件。
 
 **语义动作（Semantic Action）**：表达用户意图的动作，按责任分为本地交互、宿主导航和能力调用。
 

@@ -1,5 +1,13 @@
 # UI 架构与组件库扩展
 
+## Presentation 插件重构目标
+
+根据 [ADR-0008](adr/0008-unified-presentation-plugins.md)，皮肤与 Presentation
+统一为一种插件，主题、控件、语义视图和工作台是可选定制范围。UiKitAdapter
+继续作为内部完整视觉合同。外部包加载尚未开放；实施与验收进度见
+[重构文档](presentation-plugin-refactor.md)。下文旧阶段中的 skin/Presentation
+分层描述不表示两种独立的产品插件。
+
 公共语义与呈现数据定义由 `packages/plugin-protocol/src/` 持有，原
 `src/lib/presentation/{contract,renderer-contract,presentation-contract}.ts`
 为兼容导出入口。纯数据架构检查沿重导出递归进入协议包，并禁止协议包反向依赖

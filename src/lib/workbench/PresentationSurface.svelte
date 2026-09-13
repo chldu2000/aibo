@@ -6,7 +6,8 @@
   import { createPresentationController, type Renderer } from '../app/presentation-controller';
   import { resolvePresentationAdapter } from './presentation-adapters';
   import type { PresentationPreference } from '../presentation/renderer-contract';
-  import { defaultPresentation, defaultDetailPreference } from './plugins/default-presentation';
+  import { defaultDetailPreference } from './plugins/default-presentation';
+  import { activePresentationPlugin } from '../ui-kit/registry';
   let { snapshot, layout, focusTarget = null, onAction, preference = undefined }: PresentationProps & { preference?: PresentationPreference | null } = $props();
   const implementations = [{ ...defaultDetailPreference, adapter: createSveltePresentationAdapter('numbered') }];
   let target: HTMLDivElement;
@@ -17,11 +18,12 @@
   let switchTicket = 0;
   const recovery = () => ({ selection: snapshot.view.kind === 'collection' ? snapshot.view.selection : snapshot.view.itemId, detail: snapshot.view.kind === 'detail' ? snapshot.view.itemId : null, focus: focusTarget });
   function renderer(nextLayout: PresentationProps['layout'], requested: PresentationPreference | null = null): Renderer {
+    const descriptor = $activePresentationPlugin.renderer;
     return {
-      async preflight(value) { resolvePresentationAdapter(defaultPresentation, value.view, requested, SveltePresentationAdapter, implementations); },
+      async preflight(value) { resolvePresentationAdapter(descriptor, value.view, requested, SveltePresentationAdapter, implementations); },
       async mount(value, dispatch, active) {
         const container = target.ownerDocument.createElement('div');
-        const selected = resolvePresentationAdapter(defaultPresentation, value.view, requested, SveltePresentationAdapter, implementations);
+        const selected = resolvePresentationAdapter(descriptor, value.view, requested, SveltePresentationAdapter, implementations);
         container.dataset.presentationMode = selected.choice.kind;
         container.dataset.presentationGeneration = String(value.generation);
         fallbackReason = selected.choice.kind === 'core' ? selected.choice.reason : null;
@@ -44,9 +46,10 @@
   });
   $effect(() => {
     const controller = host;
+    const plugin = $activePresentationPlugin;
     const nextLayout = layout;
     const requested = preference === undefined ? (snapshot.view.kind === 'detail' ? defaultDetailPreference : null) : preference;
-    if (controller) untrack(() => {
+    if (controller && plugin) untrack(() => {
       const ticket = ++switchTicket;
       failure = ''; switching = true;
       void controller.switchRenderer(renderer(nextLayout, requested))
