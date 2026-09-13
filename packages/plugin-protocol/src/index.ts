@@ -10,3 +10,5 @@ export * from './presentation-controls.js';
 export type { PresentationNavigation, PresentationNavigationAction, PresentationNavigationOperation } from './presentation-navigation.js';
 
 export type { PresentationConversation, PresentationConversationAction, PresentationConversationOperation } from './presentation-conversation.js';
+
+export type { PresentationGit, PresentationGitAction, PresentationGitDrafts } from './presentation-git.js';

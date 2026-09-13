@@ -6,6 +6,9 @@
   import { PresentationHost, WorkbenchPresentation, DefaultPresentationActions, Badge, Button, Card, CardHeader, CardTitle, CardContent } from '$lib/ui-kit';
   import { createPresentationPackageController, type PresentationPackageState } from '$lib/app/presentation-package-controller';
   import { listPresentationPackages, readPresentationPackage, installPresentationPackage, setPresentationPackageEnabled, uninstallPresentationPackage, getPresentationSelection, selectPresentationPackage } from '$lib/api';
+  import { createGitDirectory } from '$lib/presentation-runtime/git';
+  import type { PresentationGit } from '../packages/plugin-protocol/src/presentation-git';
+  const gitDirectory = createGitDirectory();
   import { createConversationDirectory } from '$lib/presentation-runtime/conversation';
   import { userInputDraftKey, answeredRequest, clearRequestDrafts } from '$lib/app/user-input-drafts';
   import type { PresentationConversation } from '../packages/plugin-protocol/src/presentation-conversation';
@@ -145,8 +148,55 @@
       case 'selectTreeNode': requestPiTreeNavigation(target!); break;
     }
   }
+  const externalGit = $derived<PresentationGit>({
+    workspace: selectedWorkspace, sessionId: selectedSessionId, desktop, open: sidePanelOpen, activeView: sidePanelView,
+    changes: workspaceChanges, loading: workspaceChangesLoading, error: workspaceChangesError,
+    branches: workspaceGitBranches, history: workspaceGitHistory, metadataLoading: workspaceGitMetadataLoading,
+    metadataError: workspaceGitMetadataError, commitFiles: workspaceGitCommitFiles, commitFilesLoading: workspaceGitCommitFilesLoading,
+    remoteStatus: workspaceGitRemoteStatus, stashes: workspaceGitStashes, operationBusy: workspaceGitOperationBusy,
+    reviewBusy: workspaceGitReviewBusy,
+    canRequestReview: Boolean(selectedSession?.pluginInstallationId) && selectedSession?.workspaceId === selectedWorkspaceId && !selectedSession?.archived && !sessionRunning,
+    draft: workbenchDrafts.git[selectedWorkspaceId ?? ''] ?? emptyGitPanelState(),
+    preview: { fileDiff: workspaceFileDiff, loading: workspaceFileDiffLoading, error: workspaceFileDiffError,
+      selectedPath: workspaceFileDiffPath, staged: workspaceFileDiffStaged, contextLabel: workspaceFileDiffContextLabel },
+  });
+  async function externalGitIntent(intent: PresentationIntent) {
+    const action = gitDirectory.resolve(externalGit, externalInput.context, intent);
+    if (!action) return;
+    const [target, detail] = action.args;
+    const workspaceId = selectedWorkspaceId!;
+    const draft = externalGit.draft;
+    switch (action.operation) {
+      case 'togglePanel': toggleSidePanel(); break;
+      case 'selectView': selectSidePanelView(target as SidePanelView); break;
+      case 'selectSection':
+        workbenchDrafts.git[workspaceId] = { ...draft, gitSection: target as 'changes' | 'history' };
+        if (target === 'history') await refreshWorkspaceGitMetadata(workspaceId); break;
+      case 'refresh': await refreshWorkspaceChanges(workspaceId); break;
+      case 'refreshMetadata': await refreshWorkspaceGitMetadata(workspaceId); break;
+      case 'commitMessage': workbenchDrafts.git[workspaceId] = { ...draft, commitMessage: intent.value! }; break;
+      case 'branchDraft': workbenchDrafts.git[workspaceId] = { ...draft, branchDraft: intent.value! }; break;
+      case 'commit': await commitWorkspaceGitChanges(workspaceId, target!); break;
+      case 'createBranch': await createWorkspaceBranch(workspaceId, target!); break;
+      case 'checkoutBranch': await checkoutWorkspaceBranch(workspaceId, target!); break;
+      case 'stageFile': await applyWorkspaceGitAction(workspaceId, target!, 'stage'); break;
+      case 'unstageFile': await applyWorkspaceGitAction(workspaceId, target!, 'unstage'); break;
+      case 'stageAll': await applyWorkspaceGitWorkspaceAction(workspaceId, 'stage_all'); break;
+      case 'unstageAll': await applyWorkspaceGitWorkspaceAction(workspaceId, 'unstage_all'); break;
+      case 'openDiff': await openWorkspaceFileDiff(workspaceId, target!, detail === 'staged'); break;
+      case 'closeDiff': closeWorkspaceFileDiff(); break;
+      case 'selectCommit': workbenchDrafts.git[workspaceId] = { ...draft, selectedCommit: target! }; await loadWorkspaceCommitFiles(workspaceId, target!); break;
+      case 'loadMoreCommitFiles': await loadWorkspaceCommitFiles(workspaceId, target!, true); break;
+      case 'openCommitDiff': await openWorkspaceCommitFileDiff(workspaceId, target!, detail!); break;
+      case 'fetch': case 'pull': case 'push': await syncWorkspaceBranch(workspaceId, action.operation); break;
+      case 'saveStash': await saveWorkspaceStash(workspaceId); break;
+      case 'applyStash': await applyWorkspaceStash(workspaceId, target!); break;
+      case 'requestReview': await requestWorkspaceAgentReview(workspaceId); break;
+    }
+  }
   function externalIntent(intent: PresentationIntent) {
     if (intent.context.workspaceId !== selectedWorkspaceId || intent.context.sessionId !== selectedSessionId) return;
+    if (intent.id.startsWith('git:')) { void presentationOperation(() => externalGitIntent(intent)); return; }
     if (intent.id.startsWith('conversation:')) { void presentationOperation(() => externalConversationIntent(intent)); return; }
     if (intent.id.startsWith('navigation:')) { void presentationOperation(() => externalNavigationIntent(intent)); return; }
     if (intent.id !== 'draft' && intent.event !== 'click') return;
@@ -165,6 +215,7 @@
     const data = { workspaces: workspaces.map(({ id, label }) => ({ id, label })),
       sessions: sessions.filter(session => session.workspaceId === selectedWorkspaceId).map(({ id, label, state }) => ({ id, label, state })),
       timeline: timeline.map(({ id, role, content, status }) => ({ id, role, content, status })),
+      git: externalGit, gitActions: gitDirectory.project(externalGit),
       conversation: externalConversation, conversationActions: conversationDirectory.project(externalConversation),
       navigation: externalNavigation, navigationActions: externalNavigationActions(externalNavigation),
       draft: composerText, busy, running: sessionRunning, selectedWorkspaceId, selectedSessionId };

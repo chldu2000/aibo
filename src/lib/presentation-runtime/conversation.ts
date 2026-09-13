@@ -1,5 +1,6 @@
 import type { PresentationConversation, PresentationConversationAction } from '../../../packages/plugin-protocol/src/presentation-conversation';
 import type { PresentationContext, PresentationIntent } from '../../../packages/plugin-protocol/src/presentation-runtime';
+import { createActionDirectory } from './action-directory.ts';
 import { answeredRequest } from '../app/user-input-drafts.ts';
 import { sessionAgentKind } from '../app/agent-kind.ts';
 
@@ -69,34 +70,11 @@ export function conversationActions(state: PresentationConversation): Spec[] {
   return entries;
 }
 
-/** Retains only current entries. Removed actions never regain an old token, even for the same target. */
 export function createConversationDirectory() {
-  let serial = 0;
-  let owner = '';
+  const directory = createActionDirectory<Spec>('conversation');
   const scope = (state: PresentationConversation) => JSON.stringify([state.workspace?.id ?? null, state.session?.id ?? null]);
-  let current = new Map<string, PresentationConversationAction>();
-  const identity = (spec: Spec) => JSON.stringify([spec.operation, spec.event, spec.args]);
   return {
-    project(state: PresentationConversation): PresentationConversationAction[] {
-      if (owner !== scope(state)) { current.clear(); owner = scope(state); }
-      const next = new Map<string, PresentationConversationAction>();
-      for (const spec of conversationActions(state)) {
-        const key = identity(spec);
-        if (next.has(key)) continue;
-        next.set(key, current.get(key) ?? { ...spec, token: `conversation:${++serial}` });
-      }
-      current = next;
-      return [...next.values()];
-    },
-    resolve(state: PresentationConversation, context: PresentationContext, intent: PresentationIntent): PresentationConversationAction | null {
-      if (owner !== scope(state)) return null;
-      if (intent.context.workspaceId !== context.workspaceId || intent.context.sessionId !== context.sessionId) return null;
-      if (!Number.isSafeInteger(intent.context.revision) || intent.context.revision < 0 || intent.context.revision > context.revision) return null;
-      const action = [...current.values()].find(action => action.token === intent.id && action.event === intent.event);
-      if (!action || !conversationActions(state).some(spec => identity(spec) === identity(action))) return null;
-      if (action.event === 'click' && intent.context.revision !== context.revision) return null;
-      if (action.event === 'input' && (typeof intent.value !== 'string' || intent.value.length > 1024 * 1024)) return null;
-      return action;
-    },
+    project: (state: PresentationConversation) => directory.project(conversationActions(state), scope(state)),
+    resolve: (state: PresentationConversation, context: PresentationContext, intent: PresentationIntent) => directory.resolve(conversationActions(state), scope(state), context, intent),
   };
 }

@@ -1,4 +1,5 @@
-export type GitPanelState = { commitMessage: string; branchDraft: string; gitSection: 'changes' | 'history'; selectedCommit: string | null };
+import type { PresentationGitDrafts } from '../../../packages/plugin-protocol/src/presentation-git';
+export type GitPanelState = PresentationGitDrafts;
 export type WorkbenchDrafts = { git: Record<string, GitPanelState> };
 export const emptyGitPanelState = (): GitPanelState => ({ commitMessage: '', branchDraft: '', gitSection: 'changes', selectedCommit: null });
 const key = (windowId: string) => `aibo.workbench-drafts.v1.${encodeURIComponent(windowId)}`;
