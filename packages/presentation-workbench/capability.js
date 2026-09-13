@@ -6,7 +6,7 @@ export function renderCapability(state,actions,renderSemantic){
  for(const [operation,label] of [['close','关闭能力视图'],['reload','重新加载'],['toggleLayout','切换布局'],['toggleReading','切换阅读模式']]){const action=find(operation);if(action)controls.push(button('capability:'+operation,label,action));}
  const children=[node('nav','capability:catalog',null,state.catalog.map(item=>button('capability:open:'+item.installationId+':'+item.contributionId,item.title,find('open',item.installationId,item.contributionId),{title:item.issue??item.title})))];
  if(state.selected){
-  children.push(node('h2','capability:title',state.selected.title),node('nav','capability:controls',null,controls),text('capability:error',state.view.error),state.view.restoring?text('capability:restoring','正在恢复视图'):null);
+  children.push(node('h2','capability:selected-title',state.selected.title),node('nav','capability:controls',null,controls),text('capability:error',state.view.error),state.view.restoring?text('capability:restoring','正在恢复视图'):null);
   if(state.view.snapshot){
    const snapshot=state.view.snapshot;
    const semanticActions=actions.filter(action=>action.operation==='semantic').map(entry=>{const action=JSON.parse(entry.args[0]);return {token:entry.token,action,label:snapshot.actions.find(item=>item.id===action.actionId)?.label??action.actionId};});

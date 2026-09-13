@@ -5,6 +5,11 @@ import {readFile} from 'node:fs/promises';
 import {buildPresentationSkins} from '../probes/lib/build-presentation-skins.mjs';
 import {verifyPresentationPackage} from '../src/lib/presentation-runtime/package.ts';
 import {semanticInput,semanticPreflightSnapshots} from '../src/lib/presentation-runtime/semantic.ts';
+import {navigationActions} from '../src/lib/presentation-runtime/navigation.ts';
+import {createConversationDirectory} from '../src/lib/presentation-runtime/conversation.ts';
+import {createGitDirectory} from '../src/lib/presentation-runtime/git.ts';
+import {createInspectorDirectory} from '../src/lib/presentation-runtime/inspector.ts';
+import {createCapabilityWorkbenchDirectory} from '../src/lib/presentation-runtime/capability-workbench.ts';
 import {controlPreflights} from '../src/lib/presentation-runtime/controls.ts';
 const flatten=tree=>[tree,...(tree.children??[]).flatMap(flatten)];
 test('independent skin tarballs build all themes and render core semantic content and host-bound controls',async t=>{
@@ -32,6 +37,16 @@ test('independent skin tarballs build all themes and render core semantic conten
       const nodes=flatten(render(input));
       assert.ok(nodes.some(node=>node.tag==='path'&&node.attrs.d===expected));
       assert.ok(!nodes.some(node=>node.resource),'vectors need no host resource URL');
+    }
+    const data={};
+    for(const name of ['navigation','conversation','git','inspector','capability'])data[name]=JSON.parse(await readFile(`fixtures/presentation-workbench/${name}.json`,'utf8'));
+    data.navigationActions=navigationActions(data.navigation);data.conversationActions=createConversationDirectory().project(data.conversation);data.gitActions=createGitDirectory().project(data.git);data.inspectorActions=createInspectorDirectory().project(data.inspector);data.capabilityActions=createCapabilityWorkbenchDirectory().project(data.capability);
+    for(const selected of [data.capability.selected,null]){
+      data.capability.selected=selected;
+      const nodes=flatten(render({surface:'workbench',data}));
+      assert.equal(new Set(nodes.map(node=>node.key)).size,nodes.length);
+      assert.ok(nodes.some(node=>node.text==='工程动作'));
+      if(!selected)assert.ok(nodes.some(node=>node.text==='complete'));
     }
     const matrix=controlPreflights()[0];matrix.data.props.disabled=true;matrix.data.actions=[];
     assert.ok(flatten(render(matrix)).filter(n=>n.tag==='button').every(n=>n.attrs.disabled&&!n.events));

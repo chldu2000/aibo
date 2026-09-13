@@ -28,6 +28,6 @@ function semantic({snapshot,actions}) {
   }
   return {...node('section','semantic',null,children,{'aria-busy':String(state.status==='loading')}),className:'semantic'};
 }
-self.aiboPresentation={render(input){return input.surface==='semantic'?semantic(input.data):input.surface==='controls'?controls(input.data):null;}};
+self.aiboPresentation={render(input){if(input.surface==='workbench')return self.aiboWorkbench(input,semantic);return input.surface==='semantic'?semantic(input.data):input.surface==='controls'?controls(input.data):null;}};
 
 function collection(view,rows,buttons){return {...node('section','collection',null,rows.map(({item,actions})=>({...node('article','item:'+item.id,null,[...view.properties.map(p=>node('p','value:'+item.id+':'+p.key,null,[node('strong','label:'+item.id+':'+p.key,p.label+': '),node('span','text:'+item.id+':'+p.key,item.values[p.key]??'')])),node('nav','actions:'+item.id,null,buttons(actions,'item:'+item.id+':'))],{'aria-label':item.id}),className:view.selection===item.id?'item selected':'item'}))),className:'collection'};}

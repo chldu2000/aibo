@@ -290,6 +290,6 @@ node /path/to/package/build.mjs presentation.source.json dist/skin-1.0.0
 
 独立双皮肤包现位于 `packages/presentation-shadcn` 和
 `packages/presentation-material3`，各自有构建入口和说明。当前发布范围是全部
-主题、四类核心语义视图、模型矩阵和状态标记；未声明的工作台仍继承宿主。
-这两包的完整工作台和图标资源迁移尚未完成，不应当作功能/视觉等价验收完成。
+主题、四类核心语义视图、模型矩阵和状态标记；0.2.0 同时装配独立工作台模块。
+这两包的整工作台已进入 App 浏览器流程；完整功能/视觉等价和原生验收尚未完成。
 未显式选择主题时，PresentationHost 使用 manifest 的 defaultThemeId。

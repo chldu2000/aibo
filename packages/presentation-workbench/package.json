@@ -1,1 +1,20 @@
-{"name":"@aibo/presentation-workbench","version":"0.1.0","private":true,"type":"module","exports":{"./git":"./git.js","./inspector":"./inspector.js","./capability":"./capability.js","./navigation":"./navigation.js","./conversation":"./conversation.js"},"files":["*.js","README.md"]}
+{
+  "name": "@aibo/presentation-workbench",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    "./git": "./git.js",
+    "./inspector": "./inspector.js",
+    "./capability": "./capability.js",
+    "./navigation": "./navigation.js",
+    "./conversation": "./conversation.js",
+    "./bundle": "./bundle.mjs",
+    ".": "./workbench.js"
+  },
+  "files": [
+    "*.js",
+    "README.md",
+    "bundle.mjs"
+  ]
+}

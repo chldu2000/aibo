@@ -28,6 +28,6 @@ function semantic({snapshot,actions}) {
   }
   return {...node('section','semantic',null,children,{'aria-busy':String(state.status==='loading')}),className:'semantic'};
 }
-self.aiboPresentation={render(input){return input.surface==='semantic'?semantic(input.data):input.surface==='controls'?controls(input.data):null;}};
+self.aiboPresentation={render(input){if(input.surface==='workbench')return self.aiboWorkbench(input,semantic);return input.surface==='semantic'?semantic(input.data):input.surface==='controls'?controls(input.data):null;}};
 
 function collection(view,rows,buttons){return node('table','collection',null,[node('thead','head',null,[node('tr','columns',null,[...view.properties.map(p=>node('th','heading:'+p.key,p.label)),node('th','action-heading','操作')])]),node('tbody','rows',null,rows.map(({item,actions})=>node('tr','item:'+item.id,null,[...view.properties.map(p=>node('td','value:'+item.id+':'+p.key,item.values[p.key]??'')),node('td','actions:'+item.id,null,buttons(actions,'item:'+item.id+':'))],{'aria-selected':String(view.selection===item.id)})))]);}

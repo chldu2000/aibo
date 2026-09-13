@@ -395,3 +395,8 @@ shadcn 和 Material 3 的主题定义分别归属 `packages/presentation-shadcn/
 与 `packages/presentation-material3/themes.json`。内置兼容注册仅组合这些元数据
 与本地适配器，包构建读取同一数据，避免主题分叉。包当前独立实现语义视图及两项
 公开控件；完整工作台与其余视觉资源迁移仍在进行。固定宿主区域继续使用可信适配器。
+
+双皮肤 0.2.0 的 workbench 使用独立 `@aibo/presentation-workbench` 固定模块，
+皮肤拥有三栏布局样式；同包声明继续驱动主题/控件/语义视图。固定宿主区域保持
+在 PresentationHost 外。主题随更新发送前必须转成纯数据，不能把框架代理对象
+交给跨 Worker 消息桥。整窗激活不是完整功能/视觉与原生验收已完成的证据。

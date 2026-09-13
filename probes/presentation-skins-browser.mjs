@@ -3,7 +3,7 @@ import {readFile,writeFile} from 'node:fs/promises';
 import {createServer} from 'vite';
 import {chromium} from 'playwright';
 import {buildPresentationSkins} from './lib/build-presentation-skins.mjs';
-const built=await buildPresentationSkins();
+const built=await buildPresentationSkins({surfaces:'controls,semantic'});
 const server=await createServer({server:{host:'127.0.0.1',port:0,hmr:false,watch:null}});await server.listen();
 const browser=await chromium.launch({headless:true});const page=await browser.newPage();const errors=[];page.on('pageerror',error=>errors.push(error.message));
 try {

@@ -63,7 +63,7 @@
     const next = $state.snapshot(input);
     if (mounted && next.context.revision > mountedRevision) {
       mountedRevision = next.context.revision;
-      mounted.update({ ...next, theme: tokens });
+      mounted.update({ ...next, theme: $state.snapshot(tokens) });
     }
   });
 </script>
