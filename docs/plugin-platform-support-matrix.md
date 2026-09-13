@@ -63,8 +63,9 @@ shadcn/Material 3 独立包 0.2.0 已通过仓库外构建与实际 App 浏览�
 和健康包重新激活。故障仅注入独立测试应用的已确认选中包，检查结束恢复原文件。
 
 默认/外置 composer 焦点、选区及消息锚点映射已通过双皮肤浏览器验证；回答草稿
-重载只对匹配的实时请求恢复，不声称重建 Agent 待答请求。完整视觉/交互验收和
-故障呈现下固定审批的直接证据仍见 [退出审计](presentation-plugin-exit-audit.md)。
+重载只对匹配的实时请求恢复，不声称重建 Agent 待答请求。[固定审批故障记录](baselines/presentation-p4/approval-fault-browser.json) 已验证 Worker
+死循环期间可允许请求、回退后可拒绝另一请求，原生 IPC 为替身。完整视觉/交互
+验收及最终版本构建仍见 [退出审计](presentation-plugin-exit-audit.md)。
 
 ## 后续版本变更门
 

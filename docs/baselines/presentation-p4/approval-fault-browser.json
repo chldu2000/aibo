@@ -1,0 +1,11 @@
+{
+  "passed": true,
+  "browser": "153.0.8010.12",
+  "nativePort": "mocked; actual App, real Worker infinite loop, Playwright pointer input",
+  "checks": [
+    "forged package approval token is ignored",
+    "fixed approval remains clickable while Worker is blocked despite viewport-filling package CSS",
+    "fallback retains the other pending approval and permits rejection",
+    "exact host request identities and decisions reach the native IPC substitute"
+  ]
+}
