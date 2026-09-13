@@ -3,6 +3,8 @@ export function renderGit(state,actions){
  const find=(operation,...args)=>actionFor(actions,operation,...args);
  const act=(operation,label,...args)=>{const action=find(operation,...args);return action?button('git:action:'+operation+':'+JSON.stringify(args),label,action):null;};
  const children=[node('nav','git:tools',null,[act('refresh','刷新变更'),act('refreshMetadata','刷新历史'),act('requestReview','请求审查'),act('selectSection','工作区变更','changes'),act('selectSection','提交历史','history')]),text('git:branch',state.changes?.branch),text('git:error',state.error),text('git:metadata-error',state.metadataError)];
+ if(state.changes?.captureStatus&&state.changes.captureStatus!=='captured')children.push(node('p','git:capture-error',state.changes.captureError??'当前工作区无法读取 Git 状态',[],{role:'status'}));
+ if(state.changes?.captureStatus==='captured'&&!state.changes.files.length)children.push(text('git:clean','工作区干净，没有待处理的更改'));
  if(state.loading||state.metadataLoading)children.push(node('p','git:loading','正在读取 Git 信息',[],{role:'status'}));
  if(state.draft.gitSection==='changes'){
   children.push(node('ul','git:files',null,(state.changes?.files??[]).map(file=>node('li','git:file:'+file.path,null,[text('git:path:'+file.path,file.path),text('git:kind:'+file.path,`${file.kind}${file.conflicted?' · 冲突':''}${file.staged?' · 已暂存':''}${file.untracked?' · 未跟踪':''}`),act('openDiff','查看已暂存差异',file.path,'staged'),act('openDiff','查看工作区差异',file.path,'unstaged'),act('stageFile','暂存',file.path),act('unstageFile','取消暂存',file.path)]))));

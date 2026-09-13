@@ -30,6 +30,7 @@ try {
         if(command==='get_workspace_changes')return {workspaceId:args.workspaceId,head:'head',branch:'main',dirty:false,capturedAt:'now',files:[],captureStatus:'captured',captureError:null};
         if(command==='get_workspace_git_remote_status')return {branch:'main',upstream:null,ahead:0,behind:0};
         if(command==='get_turn_change_set')return null;
+        if(command==='list_session_attachments')return [{schema:'aibo.context-attachment/v1',id:'pending',workspaceId:'w1',sessionId:args.sessionId,turnId:null,path:'pending.txt',contentHash:null,size:0,mediaType:'text/plain',source:'picker',sendStrategy:'reference',createdAt:'now'},{schema:'aibo.context-attachment/v1',id:'sent',workspaceId:'w1',sessionId:args.sessionId,turnId:'turn',path:'sent.txt',contentHash:null,size:12,mediaType:'text/plain',source:'picker',sendStrategy:'inline',createdAt:'now'}];
         if(command==='get_session_models')return catalog;
         if(command==='get_timeline')return [{id:'message',sessionId:args.sessionId,turnId:'turn',externalMessageId:null,role:'assistant',toolName:'tool-name',entryType:'note',content:'Complete timeline data\n\n## Rich heading\n\n**Bold message** and `inline` [Reference](https://example.invalid)\n\n- Item one\n- Item two\n\n```js\nconst answer = 42;\n```\n[AIBO_CONTEXT_ATTACHMENTS]internal metadata[/AIBO_CONTEXT_ATTACHMENTS]',status:'completed',createdAt:'2026-09-13',updatedAt:'2026-09-13'}];
         if(command==='invoke_agent_capability'){if(args.capability==='model.reasoning')catalog.currentReasoningEffort=args.input.level;return {};}
@@ -39,7 +40,7 @@ try {
         if(command==='save_composer_draft')return {text:args.text,sendFailed:args.sendFailed,updatedAt:'2026-09-13'};
         if(command==='get_session_execution_profile'){
           const profile={schema:'aibo.execution-profile/v1',interactionMode:'ask',approvalPolicy:'on-request',filesystemPolicy:'read-only',commandPolicy:'disabled',networkPolicy:'disabled',model:null,reasoningEffort:null};
-          return {schema:profile.schema,sessionId:args.sessionId,requested:profile,enforced:profile,unsupported:[],adapterCapabilities:[],nativeSandbox:true,resolvedAt:'2026-09-13'};
+          return {schema:profile.schema,sessionId:args.sessionId,requested:{...profile,filesystemPolicy:'danger-full-access'},enforced:profile,unsupported:['network'],adapterCapabilities:['model.select'],nativeSandbox:true,resolvedAt:'2026-09-13'};
         }
         if(command==='list_workspaces')return workspaces;
         if(command==='list_sessions')return sessions.filter(session=>session.workspaceId===args.workspaceId);
@@ -59,7 +60,8 @@ try {
         if(command==='set_presentation_package_enabled'){const value=read();value.release.enabled=args.enabled;localStorage.setItem('probe.presentation.installed',JSON.stringify(value));if(!args.enabled)localStorage.removeItem('probe.presentation.selection');return;}
         if(command==='uninstall_presentation_package'){localStorage.removeItem('probe.presentation.installed');localStorage.removeItem('probe.presentation.selection');return;}
         if(command.startsWith('plugin:event|'))return 1;
-        if(command==='get_app_snapshot')return {platform:'macos',appVersion:'probe',workspaceCount:0,diagnostics:[]};
+        if(command==='probe_agents')return [{agent:'plugin',label:'Probe Agent',status:'ready',executable:'/probe/agent',version:'1.2.3',capabilities:['model.list'],authState:'ready',message:'Diagnostic detail'}];
+        if(command==='get_app_snapshot')return {platform:'macos',appVersion:'probe',workspaceCount:0,diagnostics:[{agent:'plugin',label:'Probe Agent',status:'ready',executable:'/probe/agent',version:'1.2.3',capabilities:['model.list'],authState:'ready',message:'Diagnostic detail'}]};
         return [];
       }};
   },pkg);
@@ -85,7 +87,7 @@ try {
     await composer.fill('');await composer.pressSequentially('完整皮肤 keeps draft',{delay:12});
     await page.waitForTimeout(200);assert.equal(await composer.inputValue(),'完整皮肤 keeps draft');
     await frame.getByRole('button',{name:'发送',exact:true}).click();
-    await page.waitForFunction(()=>window.navigationCalls.some(c=>c.command==='send_agent_prompt'&&c.args.input==='完整皮肤 keeps draft'));
+    await page.waitForFunction(()=>window.navigationCalls.some(c=>c.command==='send_agent_prompt'&&c.args.input.startsWith('完整皮肤 keeps draft')&&c.args.input.includes('[AIBO_CONTEXT_ATTACHMENTS]')));
     await frame.locator('textarea[aria-label="消息"][value=""]:enabled').waitFor();
     await composer.fill('换肤保留');
     await frame.locator('textarea[aria-label="消息"][value="换肤保留"]:enabled').waitFor();
@@ -93,6 +95,13 @@ try {
     await frame.getByRole('heading',{name:'Git',exact:true}).waitFor();
     await frame.getByRole('button',{name:'上下文',exact:true}).click();
     await frame.getByRole('heading',{name:'工程动作',exact:true}).waitFor();
+    const inspector=frame.locator('.workbench-inspector');
+    await inspector.getByRole('heading',{name:'执行权限',exact:true}).waitFor();
+    assert.equal(await inspector.locator('[data-presentation-key="inspector:execution-profile:requested:filesystemPolicy"]').textContent(),'完整文件访问');
+    assert.equal(await inspector.locator('[data-presentation-key="inspector:execution-profile:enforced:filesystemPolicy"]').textContent(),'只读');
+    await inspector.getByText('待发送 · 工作区引用 · 0 字节',{exact:true}).waitFor();
+    await inspector.getByText('已发送 · 内联 · 12 字节',{exact:true}).waitFor();
+    await inspector.getByText('Diagnostic detail',{exact:true}).waitFor();
     await page.screenshot({path:'/tmp/aibo-full-'+pkg.release.manifest.id.split('.').at(-1)+'.png',fullPage:true});
     await page.getByRole('button',{name:'打开设置',exact:true}).click();
     await page.getByRole('button',{name:'恢复内置呈现',exact:true}).click();
@@ -104,6 +113,6 @@ try {
     await page.getByRole('button',{name:'完成',exact:true}).click();
   }
   assert.deepEqual(errors,[]);
-  const result={passed:true,nativePort:'mocked; actual App and independently built full skin Workers',browser:browser.version(),checks:['both full packages install and activate','workspace and session navigation','rich timeline headings, lists, inline and fenced code','host-bound code copy and link actions','attachment transport metadata hidden','rapid Chinese/English input and send','Git/context panel switching','default/external switch retains host draft']};
+  const result={passed:true,nativePort:'mocked; actual App and independently built full skin Workers',browser:browser.version(),checks:['both full packages install and activate','workspace and session navigation','rich timeline headings, lists, inline and fenced code','host-bound code copy and link actions','attachment transport metadata hidden','rapid Chinese/English input and send','Git/context panel switching','requested and enforced permissions remain distinct','attachment status, strategy and size','diagnostic details remain visible','default/external switch retains host draft']};
   await writeFile('/tmp/aibo-full-skins-browser.json',JSON.stringify(result,null,2)+'\n');console.log(JSON.stringify(result));
 } catch(error) {console.error(JSON.stringify({errors,body:await page.locator('body').innerText()}));throw error;} finally {await browser.close();await server.close();await built.dispose();}
