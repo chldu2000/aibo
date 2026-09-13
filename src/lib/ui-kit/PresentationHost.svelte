@@ -1,11 +1,12 @@
 <script lang="ts">
-  import { setContext, type Snippet } from 'svelte';
+  import { setContext, tick, type Snippet } from 'svelte';
   import type { PresentationInput, PresentationIntent } from '../../../packages/plugin-protocol/src/presentation-runtime';
   import type { InstalledPresentationPackage } from '../presentation-runtime/types';
   import { preparePresentationSandbox, type MountedSandbox } from '../presentation-runtime/sandbox';
   import type { PresentationInstance } from '../app/presentation-package-controller';
   import { get } from 'svelte/store';
   import { createPresentationViewStateStore } from '../presentation-runtime/view-state';
+  import { bindDefaultPresentationFocus } from '../presentation-runtime/default-focus';
   const viewState = createPresentationViewStateStore();
   import { externalPresentation, type ExternalPresentation } from './external-presentation';
   import { PRESENTATION_CONTROLS, type PresentationControlScope } from './control-context';
@@ -20,9 +21,12 @@
   } = $props();
   setContext<PresentationControlScope>(PRESENTATION_CONTROLS, { context: () => input.context, suspended: () => suspended });
   let target: HTMLDivElement;
+  let fallback: HTMLDivElement;
+  let defaultFocus = $state<ReturnType<typeof bindDefaultPresentationFocus> | null>(null);
   let mounted = $state<MountedSandbox | null>(null);
   let mountedRevision = -1;
   const replacesWorkbench = $derived(Boolean(active?.release.manifest.surfaces?.includes('workbench')));
+  const focusScope = $derived(JSON.stringify([input.context.workspaceId, input.context.sessionId]));
   const tokens = $derived(active?.release.manifest.themes?.find(theme => theme.id === (themeId ?? active?.release.manifest.defaultThemeId))?.tokens ?? {});
   const themeStyle = $derived(Object.entries(tokens).map(([name, value]) => `${name}:${value}`).join(';'));
 
@@ -61,7 +65,28 @@
       dispose() { candidate.dispose(); if (mounted === candidate) mounted = null; if (get(externalPresentation) === registration) externalPresentation.set(null); },
     };
   }
-  $effect(() => { if (!suspended) mounted?.restoreFocus(); });
+  $effect(() => {
+    const candidate = mounted;
+    const visible = !suspended && replacesWorkbench;
+    let cancelled = false;
+    if (visible) void tick().then(() => { if (!cancelled) candidate?.restoreFocus(); });
+    return () => { cancelled = true; };
+  });
+  $effect(() => {
+    const binding = bindDefaultPresentationFocus(fallback, viewState, () => input.context, () => !suspended && !replacesWorkbench);
+    defaultFocus = binding;
+    return () => binding.dispose();
+  });
+  $effect(() => {
+    const binding = defaultFocus;
+    const visible = !suspended && !replacesWorkbench;
+    const scope = focusScope;
+    let cancelled = false;
+    if (visible) void tick().then(() => {
+      if (!cancelled && focusScope === scope) binding?.restore();
+    });
+    return () => { cancelled = true; };
+  });
   $effect(() => {
     const next = $state.snapshot(input);
     if (mounted && next.context.revision > mountedRevision) {
@@ -72,7 +97,7 @@
 </script>
 
 <div class="presentation-host">
-  <div class="presentation-fallback" hidden={replacesWorkbench} style={themeStyle}>{@render children()}</div>
+  <div class="presentation-fallback" bind:this={fallback} hidden={replacesWorkbench} style={themeStyle}>{@render children()}</div>
   <div class="presentation-external" bind:this={target} hidden={!replacesWorkbench || suspended}></div>
 </div>
 

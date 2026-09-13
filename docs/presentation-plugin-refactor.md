@@ -714,3 +714,18 @@ Shift+Tab 和鼠标筛选，每分类独立保留 24 项结果；空分类以数
 
 `pnpm run verify` 通过 25 项架构检查、246 项 Node 测试、类型检查与构建，
 保留既有构建体积提示。浏览器 IPC 为替身，本批未作新的原生交互验收。
+
+默认/外置编辑器焦点映射已接通：宿主将默认 composer 的语义标识映射到外置
+`conversation:draft:input`，按工作区/会话共享焦点与选区。只在默认工作台可用且
+编辑器实际获得焦点时采集；不复制文本、不改业务草稿、不把默认布局的像素滚动
+位置写入外置状态。关闭设置后等待界面更新再恢复，仍保护固定宿主控件的焦点。
+
+[双皮肤浏览器记录](baselines/presentation-p3/default-editor-focus-browser.json)
+覆盖外置 → 默认的选区 1–3、默认 → 外置的选区 2–4 和编辑器实际焦点；
+[隔离回归记录](baselines/presentation-p3/default-editor-focus-isolation-browser.json)
+复验固定宿主焦点保护、外置实例间滚动/展开状态和会话隔离。浏览器使用真实 App
+与独立构建 Worker，原生 IPC 仍为替身。本批仅完成 composer 的双向映射；消息
+锚点滚动映射、其他控件焦点及完整视觉/辅助功能退出审计继续保留。
+
+本批 `pnpm run verify` 通过 25 项架构检查、246 项 Node 测试、类型检查与构建；
+保留既有动态/静态导入及构建体积提示。
