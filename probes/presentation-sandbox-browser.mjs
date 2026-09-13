@@ -87,6 +87,10 @@ try {
   await suggestionEditor.press('Enter');await page.waitForFunction(()=>window.sandboxProbe.intents.at(-1)?.id==='choose');
   await assert.rejects(page.evaluate(()=>window.sandboxProbe.mount("self.aiboPresentation={render(){return {tag:'textarea',key:'bad',suggestions:{listKey:'list',keys:['duplicate','duplicate']}}}}")),/invalid_presentation_suggestions/);
   evidence.push('suggestion confirmation uses a host click token; IME and synthetic confirmation rejected; duplicate references rejected');
+  await assert.rejects(page.evaluate(()=>window.sandboxProbe.mount("self.aiboPresentation={render(){return {tag:'div',key:'root',children:[{tag:'textarea',key:'editor',suggestions:{listKey:'list',keys:['choice'],categories:[{key:'category',options:['outside']}] }},{tag:'div',key:'list',children:[{tag:'button',key:'category',text:'Category'},{tag:'button',key:'choice',text:'Choice',events:{click:'choose'}}]}]}}}")),/invalid_presentation_suggestions/);
+  await assert.rejects(page.evaluate(()=>window.sandboxProbe.mount("self.aiboPresentation={render(){return {tag:'div',key:'root',children:[{tag:'textarea',key:'editor',suggestions:{listKey:'list',keys:['choice'],categories:[{key:'category',options:['choice']}] }},{tag:'div',key:'list',children:[{tag:'button',key:'category',text:'Category',events:{click:'business'}},{tag:'button',key:'choice',text:'Choice',events:{click:'choose'}}]}]}}}")),/invalid_presentation_suggestions/);
+  evidence.push('category references cannot escape the suggestion list or reuse a business-action button');
+
   const isolated=`self.aiboPresentation={async render(){let network;try{await fetch('https://example.com');network='allowed'}catch{network='blocked'}return {tag:'p',key:'status',text:typeof document+':'+typeof localStorage+':'+typeof __TAURI_INTERNALS__+':'+network};}};`;
   await page.evaluate(source=>window.sandboxProbe.mount(source),isolated);
   assert.equal(await page.frameLocator('iframe').getByText('undefined:undefined:undefined:blocked').count(),1);

@@ -6,32 +6,48 @@
   let editSequence = 0, acceptedEdits = 0, localInputActions = [], allowInheritance = false;
   const edits = new Map();
   const suggestionStates=new Map(), completions=new Map();
-  function bindSuggestions(entry,elements,clicks,context){
+  function bindSuggestions(entry,elements,clicks,interactive,context){
     const {element,key,config,expectedValue}=entry,container=elements.get(config.listKey);
     if(!container)throw Error('invalid_presentation_suggestions');
-    const options=config.keys.map(key=>clicks.get(key)).filter(option=>option&&!option.element.disabled);
-    if(options.some(option=>!container.contains(option.element)))throw Error('invalid_presentation_suggestions');
-    const signature=JSON.stringify([context.workspaceId,context.sessionId,expectedValue,options.map(option=>option.token)]);
+    const allOptions=config.keys.map(key=>clicks.get(key)).filter(option=>option&&!option.element.disabled);
+    const categories=(config.categories??[]).map(category=>({...category,element:elements.get(category.key),options:new Set(category.options)}));
+    if(allOptions.some(option=>!container.contains(option.element))||categories.some(category=>!(category.element instanceof HTMLButtonElement)||!container.contains(category.element)||interactive.has(category.key)))throw Error('invalid_presentation_suggestions');
+    const scope=JSON.stringify([context.workspaceId,context.sessionId,config.listKey,categories.map(category=>category.key)]);
+    const signature=JSON.stringify([scope,expectedValue,allOptions.map(option=>option.token)]);
     let state=suggestionStates.get(key);
-    if(!state||state.signature!==signature){state={signature,index:0,dismissed:false};suggestionStates.set(key,state);}
+    if(!state||state.signature!==signature){state={scope,signature,index:0,dismissed:false,category:state?.scope===scope?state.category:0};suggestionStates.set(key,state);}
+    let options=[];
     container.id='aibo-suggestions-'+encodeURIComponent(config.listKey);
     element.setAttribute('aria-controls',container.id);element.setAttribute('aria-autocomplete','list');
     function paint(){
-      const visible=!state.dismissed&&options.length>0&&element.value===expectedValue;
+      options=allOptions.filter(option=>!categories.length||categories[state.category].options.has(option.key));
+      if(state.index>=options.length)state.index=0;
+      const visible=!state.dismissed&&(options.length>0||categories.length>0)&&element.value===expectedValue;
       container.hidden=!visible;element.setAttribute('aria-expanded',String(visible));element.removeAttribute('aria-activedescendant');
-      options.forEach((option,index)=>{option.element.id='aibo-option-'+encodeURIComponent(option.key);option.element.setAttribute('aria-selected',String(visible&&index===state.index));if(visible&&index===state.index)element.setAttribute('aria-activedescendant',option.element.id);});
+      categories.forEach((category,index)=>category.element.setAttribute('aria-selected',String(index===state.category)));
+      allOptions.forEach(option=>{const index=options.indexOf(option);option.element.hidden=index<0;option.element.id='aibo-option-'+encodeURIComponent(option.key);option.element.setAttribute('aria-selected',String(visible&&index>=0&&index===state.index));if(visible&&index>=0&&index===state.index)element.setAttribute('aria-activedescendant',option.element.id);});
     }
+    function complete(){completions.set(key,{value:element.value,workspaceId:context.workspaceId,sessionId:context.sessionId});element.focus({preventScroll:true});}
+    allOptions.forEach(option=>{
+      option.element.addEventListener('mousedown',event=>{if(event.isTrusted)event.preventDefault();});
+      option.element.addEventListener('click',event=>{if(event.isTrusted&&!option.element.disabled)complete();});
+    });
+    categories.forEach((category,index)=>category.element.addEventListener('click',event=>{
+      if(!event.isTrusted)return;state.category=index;state.index=0;state.dismissed=false;paint();element.focus({preventScroll:true});
+    }));
     paint();
     element.addEventListener('input',()=>{completions.delete(key);paint();});
     element.addEventListener('keydown',event=>{
-      if(!event.isTrusted||event.isComposing||event.metaKey||event.ctrlKey||event.altKey||element.disabled||element.readOnly||element.value!==expectedValue||!options.length)return;
+      if(!event.isTrusted||event.isComposing||event.altKey||element.disabled||element.readOnly||element.value!==expectedValue)return;
+      if((event.metaKey||event.ctrlKey)&&!(config.confirmWithPrimary&&event.key==='Enter'))return;
+      if(event.key==='Tab'&&categories.length){event.preventDefault();state.category=(state.category+(event.shiftKey?-1:1)+categories.length)%categories.length;state.index=0;state.dismissed=false;paint();return;}
+      if(event.key==='Escape'&&!state.dismissed){event.preventDefault();state.dismissed=true;paint();return;}
+      if(!options.length)return;
       if(event.key==='ArrowDown'||event.key==='ArrowUp'){
         event.preventDefault();state.index=state.dismissed?0:(state.index+(event.key==='ArrowDown'?1:-1)+options.length)%options.length;state.dismissed=false;paint();options[state.index].element.scrollIntoView({block:'nearest'});return;
       }
-      if(event.key==='Escape'&&!state.dismissed){event.preventDefault();state.dismissed=true;paint();return;}
       if((event.key==='Enter'||event.key==='Tab'&&config.confirmWithTab&&!event.shiftKey)&&!event.repeat&&!state.dismissed){
-        event.preventDefault();const option=options[state.index];
-        completions.set(key,{value:element.value,workspaceId:context.workspaceId,sessionId:context.sessionId});
+        event.preventDefault();const option=options[state.index];complete();
         send({type:'intent',intent:{id:option.token,event:'click',context}});
       }
     });
@@ -88,7 +104,7 @@
   function fail(message) { stop(); send({ type: 'failure', message: String(message).slice(0, 512) }); }
   function render(tree, context) {
     let count = 0; const keys = new Set();
-    const elements=new Map(),clicks=new Map(),suggestions=[];let suggestionCount=0;
+    const elements=new Map(),clicks=new Map(),interactive=new Set(),suggestions=[];let suggestionCount=0;
     const nextSplitters=new Map();
     const state=pendingState!==undefined?pendingState:captureState();
     pendingState=undefined;
@@ -103,11 +119,13 @@
       }
       element.dataset.presentationKey = value.key;
       elements.set(value.key,element);
+      if(value.events||value.localEvents)interactive.add(value.key);
       if(value.tag==='button'&&value.events?.click)clicks.set(value.key,{key:value.key,element,token:value.events.click});
       if(value.suggestions!==undefined){
         const config=value.suggestions;
         if(value.tag!=='textarea'||!config||typeof config.listKey!=='string'||config.listKey.length>256||!Array.isArray(config.keys)||config.keys.length>100||config.keys.some(key=>typeof key!=='string'||key.length>256)||new Set(config.keys).size!==config.keys.length||config.confirmWithTab!==undefined&&typeof config.confirmWithTab!=='boolean'||value.events?.keydown||value.localEvents?.keydown)throw Error('invalid_presentation_suggestions');
-        suggestionCount+=config.keys.length;if(suggestionCount>1000)throw Error('invalid_presentation_suggestions');
+        if(config.confirmWithPrimary!==undefined&&typeof config.confirmWithPrimary!=='boolean'||config.categories!==undefined&&(!Array.isArray(config.categories)||config.categories.length>8||new Set(config.categories.map(category=>category?.key)).size!==config.categories.length||config.categories.some(category=>!category||typeof category.key!=='string'||category.key.length>256||!Array.isArray(category.options)||category.options.length>100||category.options.some(key=>!config.keys.includes(key)))))throw Error('invalid_presentation_suggestions');
+        suggestionCount+=config.keys.length+(config.categories??[]).reduce((count,category)=>count+category.options.length,0);if(suggestionCount>1000)throw Error('invalid_presentation_suggestions');
         suggestions.push({element,key:value.key,config,expectedValue:String(value.attrs?.value??'')});
       }
       if(value.resize!==undefined){
@@ -133,6 +151,7 @@
         if (value.tag !== 'textarea' || typeof value.primaryEnter !== 'string' || !value.primaryEnter || value.primaryEnter.length > 256 || value.events?.keydown || value.localEvents?.keydown) throw Error('invalid_presentation_shortcut');
         element.addEventListener('keydown', event => {
           if (!event.isTrusted || event.isComposing || event.repeat || event.key !== 'Enter' || !(event.metaKey || event.ctrlKey) || event.altKey || element.disabled || element.readOnly) return;
+          if(value.suggestions?.confirmWithPrimary&&element.hasAttribute('aria-activedescendant'))return;
           event.preventDefault(); event.stopPropagation();
           send({ type:'intent', intent:{ id:value.primaryEnter, event:'click', context } });
         });
@@ -193,7 +212,7 @@
     splitters=nextSplitters;
     if(drag&&(!splitters.has(drag.key)||splitters.get(drag.key).token!==drag.token))endResize();
     root.replaceChildren(next);
-    for(const entry of suggestions)bindSuggestions(entry,elements,clicks,context);
+    for(const entry of suggestions)bindSuggestions(entry,elements,clicks,interactive,context);
     const suggestionKeys=new Set(suggestions.map(entry=>entry.key));
     for(const key of suggestionStates.keys())if(!suggestionKeys.has(key))suggestionStates.delete(key);
     restoreState(state,active&&mayRestoreFocus);

@@ -24,7 +24,7 @@ export type PresentationNode = {
   /** Textarea-only primary-modifier Enter shortcut, using an existing host click token. */
   primaryEnter?: string;
   /** Textarea suggestion list; keys reference existing host-action buttons in listKey. */
-  suggestions?: { listKey: string; keys: readonly string[]; confirmWithTab?: boolean };
+  suggestions?: { listKey: string; keys: readonly string[]; confirmWithTab?: boolean; confirmWithPrimary?: boolean; categories?: readonly { key: string; options: readonly string[] }[] };
   children?: readonly PresentationNode[];
 };
 

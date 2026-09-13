@@ -32,7 +32,7 @@ try {
         if(command==='get_turn_change_set')return null;
         if(command==='list_session_attachments')return [{schema:'aibo.context-attachment/v1',id:'pending',workspaceId:'w1',sessionId:args.sessionId,turnId:null,path:'pending.txt',contentHash:null,size:0,mediaType:'text/plain',source:'picker',sendStrategy:'reference',createdAt:'now'},{schema:'aibo.context-attachment/v1',id:'sent',workspaceId:'w1',sessionId:args.sessionId,turnId:'turn',path:'sent.txt',contentHash:null,size:12,mediaType:'text/plain',source:'picker',sendStrategy:'inline',createdAt:'now'}];
         if(command==='get_session_models')return catalog;
-        if(command==='invoke_agent_capability'&&args.capability==='command.list')return {commands:[{name:'help',description:'Help command',source:'agent'},{name:'hello',description:'Hello command',source:'agent'}]};
+        if(command==='invoke_agent_capability'&&args.capability==='command.list')return {commands:[{name:'help',description:'Help command',source:'agent'},{name:'hello',description:'Hello command',source:'agent'},{name:'heal',description:'Healing skill',source:'skill'},{name:'height',description:'Height prompt',source:'prompt'}]};
         if(command==='search_workspace_paths')return [{path:'src/one.ts',isDirectory:false},{path:'src/two.ts',isDirectory:false}];
         if(command==='get_timeline')return [{id:'message',sessionId:args.sessionId,turnId:'turn',externalMessageId:null,role:'assistant',toolName:'tool-name',entryType:'note',content:'Complete timeline data\n\n## Rich heading\n\n**Bold message** and `inline` [Reference](https://example.invalid)\n\n- Item one\n- Item two\n\n```js\nconst answer = 42;\n```\n[AIBO_CONTEXT_ATTACHMENTS]internal metadata[/AIBO_CONTEXT_ATTACHMENTS]',status:'completed',createdAt:'2026-09-13',updatedAt:'2026-09-13'},...([{id:'tool-message',role:'tool',toolName:'commandExecution',entryType:'tool_call',content:'**literal tool arguments**\n<script>literal</script>'},{id:'tool-result',role:'tool',toolName:'commandExecution',entryType:'tool_result',content:'literal tool result'},{id:'reasoning-message',role:'system',toolName:'reasoning',entryType:'note',content:'## Reasoning detail'}].map(item=>({...item,sessionId:args.sessionId,turnId:'turn',externalMessageId:null,status:'completed',createdAt:'2026-09-13',updatedAt:'2026-09-13'})))];
         if(command==='invoke_agent_capability'){if(args.capability==='model.reasoning')catalog.currentReasoningEffort=args.input.level;return {};}
@@ -109,6 +109,16 @@ try {
     await frame.locator('textarea[aria-label="消息"][value="/hello "]').waitFor();
     assert.equal(await composer.evaluate(element=>element.selectionStart),'/hello '.length);
     await composer.fill('/he');await frame.getByRole('listbox',{name:'命令建议'}).waitFor();
+    await composer.press('Tab');await composer.press('Tab');
+    await frame.getByRole('option',{name:'/heal',exact:true}).waitFor();
+    assert.equal(await frame.getByRole('option',{name:'/hello',exact:true}).isVisible(),false);
+    await composer.press('Shift+Tab');await frame.getByRole('option',{name:'/hello',exact:true}).waitFor();
+    await frame.getByRole('tab',{name:'Extension (1)',exact:true}).click();
+    await frame.getByRole('option',{name:'/height',exact:true}).click();
+    await frame.locator('textarea[aria-label="消息"][value="/height "]').waitFor();
+    assert.equal(await composer.evaluate(element=>element===document.activeElement&&element.selectionStart===element.value.length),true);
+
+    await composer.fill('/he');await frame.getByRole('listbox',{name:'命令建议'}).waitFor();
     await composer.press('Escape');await frame.getByRole('listbox',{name:'命令建议'}).waitFor({state:'hidden'});
     await composer.press('Enter');assert.equal(await composer.inputValue(),'/he\n');
     await composer.fill('@src');await frame.getByRole('listbox',{name:'路径建议'}).waitFor();
@@ -116,6 +126,12 @@ try {
     await page.waitForFunction(()=>window.navigationCalls.some(call=>call.command==='register_session_attachments'&&call.args.paths.includes('src/two.ts')));
     await frame.locator('textarea[aria-label="消息"][value="@src/two.ts "]').waitFor();
     assert.equal(await composer.evaluate(element=>element.selectionStart),'@src/two.ts '.length);
+    await composer.fill('@src');await frame.getByRole('listbox',{name:'路径建议'}).waitFor();
+    const sendsBeforePath=await page.evaluate(()=>window.navigationCalls.filter(call=>call.command==='send_agent_prompt').length);
+    await composer.press('Control+Enter');
+    await frame.locator('textarea[aria-label="消息"][value="@src/one.ts "]').waitFor();
+    assert.equal(await page.evaluate(()=>window.navigationCalls.filter(call=>call.command==='send_agent_prompt').length),sendsBeforePath);
+
 
     await composer.fill('布局保留草稿');
     await frame.locator('textarea[aria-label="消息"][value="布局保留草稿"]').waitFor();
@@ -211,6 +227,6 @@ try {
     await page.getByRole('button',{name:'完成',exact:true}).click();
   }
   assert.deepEqual(errors,[]);
-  const result={passed:true,nativePort:'mocked; actual App and independently built full skin Workers',browser:browser.version(),checks:['command and path keyboard completion, caret placement and Escape newline','answer draft reload waits for matching live request and clears after submit','focus and review modes, reversed drag, draft preservation and mode reload','reload restores both widths, panel visibility and selected view','both splitter drag directions and auxiliary keyboard resize','keyboard width adjustment and default/external width retention','primary Enter submits through host action','consecutive tool group with completion count','literal tool payloads and native reasoning disclosure in both skins','both full packages install and activate','workspace and session navigation','rich timeline headings, lists, inline and fenced code','host-bound code copy and link actions','attachment transport metadata hidden','rapid Chinese/English input and send','Git/context panel switching','requested and enforced permissions remain distinct','attachment status, strategy and size','diagnostic details remain visible','default/external switch retains host draft']};
+  const result={passed:true,nativePort:'mocked; actual App and independently built full skin Workers',browser:browser.version(),checks:['command category Tab and reverse Tab, mouse focus return, primary path confirmation','command and path keyboard completion, caret placement and Escape newline','answer draft reload waits for matching live request and clears after submit','focus and review modes, reversed drag, draft preservation and mode reload','reload restores both widths, panel visibility and selected view','both splitter drag directions and auxiliary keyboard resize','keyboard width adjustment and default/external width retention','primary Enter submits through host action','consecutive tool group with completion count','literal tool payloads and native reasoning disclosure in both skins','both full packages install and activate','workspace and session navigation','rich timeline headings, lists, inline and fenced code','host-bound code copy and link actions','attachment transport metadata hidden','rapid Chinese/English input and send','Git/context panel switching','requested and enforced permissions remain distinct','attachment status, strategy and size','diagnostic details remain visible','default/external switch retains host draft']};
   await writeFile('/tmp/aibo-full-skins-browser.json',JSON.stringify(result,null,2)+'\n');console.log(JSON.stringify(result));
 } catch(error) {console.error(JSON.stringify({errors,body:await page.locator('body').innerText()}));throw error;} finally {await browser.close();await server.close();await built.dispose();}
