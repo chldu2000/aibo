@@ -9,10 +9,11 @@ const click=async label=>(await until(()=>button(label),label)).click();
 const selection=()=>invoke('get_presentation_selection');
 const frame=()=>document.querySelector('.presentation-external iframe[data-presentation-revision]');
 const report=result=>fetch('/__presentation_native_report',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(result)});
-const storedLayout=()=>JSON.parse(localStorage.getItem('aibo.workbench-layout.v1.main')||'null');
+let layoutStorageKey;
+const storedLayout=()=>JSON.parse(localStorage.getItem(layoutStorageKey)||'null');
 const errors=[];window.addEventListener('error',event=>errors.push(event.message));
 try{
- const config=await(await fetch('/__presentation_native_config')).json();const checks=[];
+ const config=await(await fetch('/__presentation_native_config')).json();const checks=[];layoutStorageKey='aibo.workbench-layout.v1.'+encodeURIComponent(config.probeWindowId);
  if(config.phase===0){
   const workspace=await invoke('add_workspace',{path:config.workspacePath});
   const releases=[];for(const path of config.paths)releases.push(await invoke('install_presentation_package',{path}));
@@ -45,6 +46,16 @@ try{
   if((await selection())?.digest!==config.expected.digest)throw Error('restart lost selection');
   const release=await invoke('read_presentation_package',{digest:config.expected.digest});if(release.release.manifest.version!=='0.2.1')throw Error('restart loaded wrong version');
   mount(App,{target:document.getElementById('app')});await until(frame,'startup restores real Worker');checks.push('new process restores installed upgraded release');
+  const runtimeRelease=await invoke('install_presentation_package',{path:config.runtimeFault});
+  const previousFrame=frame();await click('打开设置');await click('shadcn-svelte 0.2.3');
+  await until(async()=> (await selection())?.digest===runtimeRelease.digest,'runtime candidate commits before fault');
+  await click('完成');await until(()=>frame()&&frame()!==previousFrame,'runtime candidate activates new real Worker');
+  await until(()=>!frame(),'running Worker fault restores default host');
+  await until(async()=> !(await selection()),'runtime fault clears persisted native selection');
+  checks.push('post-activation Worker infinite loop falls back and clears native selection');
+  await click('打开设置');await click('shadcn-svelte 0.2.1');await click('完成');await until(frame,'fixed settings can reactivate healthy package after runtime fault');
+  checks.push('fixed host settings remain usable and healthy release reactivates after runtime failure');
+
   await invoke('set_presentation_package_enabled',{digest:config.expected.digest,enabled:false});
   await until(()=>!frame(),'disabled active skin falls back');if(await selection())throw Error('disable retained selection');checks.push('native disable clears selection and App falls back');
   await until(()=>document.querySelector(`button[aria-label="调整工作区与会话宽度，当前 ${config.expected.layout.navigationWidth} 像素"]`),'restored navigation width in default host');
