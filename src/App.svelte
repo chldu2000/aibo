@@ -38,6 +38,7 @@
   const gitDirectory = createGitDirectory();
   import { createConversationDirectory } from '$lib/presentation-runtime/conversation';
   import { userInputDraftKey, answeredRequest, clearRequestDrafts } from '$lib/app/user-input-drafts';
+  import { createLayoutDirectory } from '$lib/presentation-runtime/layout';
   import type { PresentationConversation } from '../packages/plugin-protocol/src/presentation-conversation';
   let userInputDrafts = $state<Record<string, string>>({});
   const conversationDirectory = createConversationDirectory();
@@ -325,8 +326,15 @@
       void presentationOperation(async () => { await presentationPackagesController.select(null); notice = '皮肤不支持此能力视图格式，已恢复默认呈现。'; });
     } else incompatibleCapabilityRecovery = null;
   });
+  const layoutDirectory = createLayoutDirectory();
+  const externalLayout = $derived({
+    navigation: { width: workspaceSidebarWidth, min: workspaceColumnMin, max: Math.max(workspaceColumnMin, maxColumnWidth('workspace')) },
+    auxiliary: { width: inspectorWidth, min: inspectorColumnMin, max: Math.max(inspectorColumnMin, maxColumnWidth('inspector')) },
+    auxiliaryOpen: sidePanelOpen,
+  });
   function externalIntent(intent: PresentationIntent) {
     if (intent.context.workspaceId !== selectedWorkspaceId || intent.context.sessionId !== selectedSessionId) return;
+    if (intent.id.startsWith('layout:')) { const change = layoutDirectory.resolve(externalLayout, externalInput.context, intent); if (change) setColumnWidth(change.target === 'navigation' ? 'workspace' : 'inspector', change.width); return; }
     if (intent.id.startsWith('capability:')) { void presentationOperation(() => externalCapabilityIntent(intent)); return; }
     if (intent.id.startsWith('inspector:')) { void presentationOperation(() => externalInspectorIntent(intent)); return; }
     if (intent.id.startsWith('git:')) { void presentationOperation(() => externalGitIntent(intent)); return; }
@@ -348,6 +356,7 @@
     const data = { workspaces: workspaces.map(({ id, label }) => ({ id, label })),
       sessions: sessions.filter(session => session.workspaceId === selectedWorkspaceId).map(({ id, label, state }) => ({ id, label, state })),
       timeline: timeline.map(({ id, role, content, status }) => ({ id, role, content, status })),
+      layout: externalLayout, layoutActions: layoutDirectory.project(externalLayout),
       capability: externalCapability,
       capabilityActions: capabilityWorkbenchDirectory.project(externalCapability),
       inspector: externalInspector, inspectorActions: inspectorDirectory.project(externalInspector),
@@ -1017,6 +1026,7 @@
   const inspectorOpen = $derived(sidePanelOpen);
   let workspaceSidebarWidth = $state(260);
   let inspectorWidth = $state(320);
+  let viewportWidth = $state(1280);
   let workspaceGridElement = $state<HTMLElement | null>(null);
   type ColumnResizeTarget = 'workspace' | 'inspector';
   type ColumnResizeState = {
@@ -1073,10 +1083,10 @@
   }
 
   function maxColumnWidth(target: ColumnResizeTarget): number {
-    const totalWidth = workspaceGridElement?.clientWidth ?? 0;
+    const totalWidth = workspaceGridElement?.clientWidth || viewportWidth;
     const splitterWidth = splitterTrackWidth * (sidePanelOpen ? 2 : 1);
     const otherColumnWidth = target === 'workspace' ? (sidePanelOpen ? inspectorWidth : 0) : workspaceSidebarWidth;
-    return totalWidth - splitterWidth - otherColumnWidth - timelineColumnMin;
+    return Math.min(4096, totalWidth - splitterWidth - otherColumnWidth - timelineColumnMin);
   }
 
   function setColumnWidth(target: ColumnResizeTarget, value: number): void {
@@ -3472,7 +3482,7 @@
   <title>Aibo</title>
 </svelte:head>
 
-<svelte:window onkeydown={handleGlobalKeydown} />
+<svelte:window bind:innerWidth={viewportWidth} onkeydown={handleGlobalKeydown} />
 
 <div
   class="app-shell"

@@ -62,6 +62,8 @@ try {
   await assert.rejects(page.evaluate(()=>window.sandboxProbe.mount("self.aiboPresentation={render(){return {tag:'script',key:'escape',text:'parent.document.body.remove()'}}}")),/invalid_presentation_tree/);
   assert.equal(await page.locator('iframe').count(),1,'failed candidate preserves active frame');
   evidence.push('executable markup rejected and previous frame retained');
+  for(const inlineSize of [-1,4097,'20px'])await assert.rejects(page.evaluate(inlineSize=>window.sandboxProbe.mount(`self.aiboPresentation={render(){return {tag:'div',key:'invalid-size',inlineSize:${JSON.stringify(inlineSize)}}}}`),inlineSize),/invalid_presentation_size/);
+  evidence.push('layout size hints reject negative, excessive and CSS-string values');
   await assert.rejects(page.evaluate(()=>window.sandboxProbe.abortCandidate()),/preparation_aborted/);
   assert.equal(await page.locator('iframe').count(),1);
   evidence.push('superseded preparation abort removes candidate and preserves active frame');

@@ -76,6 +76,14 @@ try {
     await frame.getByRole('heading',{name:'工作区',exact:true}).waitFor();
     if(!await frame.getByRole('button',{name:'s1',exact:true}).count())await frame.getByRole('button',{name:'w1',exact:true}).click();
     await frame.getByRole('button',{name:'s1',exact:true}).click();
+    const layout=frame.locator('[data-presentation-key="workbench:layout"]');
+    if(await layout.getAttribute('open')===null)await frame.getByText('布局',{exact:true}).click();
+    const width=frame.getByRole('slider',{name:'导航宽度',exact:true});
+    await width.focus();await width.press('ArrowRight');
+    const resized=Number(await width.inputValue());
+    await frame.locator(`input[aria-label="导航宽度"][value="${resized}"]`).waitFor();
+    assert.ok(resized>260);
+    assert.equal(await frame.locator('.navigation').evaluate(element=>Math.round(element.getBoundingClientRect().width)),resized);
     const composer=frame.getByRole('textbox',{name:'消息',exact:true});await composer.waitFor();
     await frame.getByText('Complete timeline data',{exact:true}).waitFor();
     await frame.getByRole('heading',{name:'Rich heading',exact:true}).waitFor();
@@ -115,14 +123,16 @@ try {
     await page.screenshot({path:'/tmp/aibo-full-'+pkg.release.manifest.id.split('.').at(-1)+'.png',fullPage:true});
     await page.getByRole('button',{name:'打开设置',exact:true}).click();
     await page.getByRole('button',{name:'恢复内置呈现',exact:true}).click();
+    assert.equal(await page.getByRole('button',{name:`调整工作区与会话宽度，当前 ${resized} 像素`,exact:true}).count(),1);
     await page.getByRole('button',{name:pkg.release.manifest.displayName+' '+pkg.release.manifest.version,exact:true}).click();
     await page.getByRole('button',{name:'完成',exact:true}).click();
+    assert.equal(await frame.locator('.navigation').evaluate(element=>Math.round(element.getBoundingClientRect().width)),resized);
     await composer.waitFor();assert.equal(await composer.inputValue(),'换肤保留');
     await page.getByRole('button',{name:'打开设置',exact:true}).click();
     await page.getByRole('button',{name:'恢复内置呈现',exact:true}).click();
     await page.getByRole('button',{name:'完成',exact:true}).click();
   }
   assert.deepEqual(errors,[]);
-  const result={passed:true,nativePort:'mocked; actual App and independently built full skin Workers',browser:browser.version(),checks:['primary Enter submits through host action','consecutive tool group with completion count','literal tool payloads and native reasoning disclosure in both skins','both full packages install and activate','workspace and session navigation','rich timeline headings, lists, inline and fenced code','host-bound code copy and link actions','attachment transport metadata hidden','rapid Chinese/English input and send','Git/context panel switching','requested and enforced permissions remain distinct','attachment status, strategy and size','diagnostic details remain visible','default/external switch retains host draft']};
+  const result={passed:true,nativePort:'mocked; actual App and independently built full skin Workers',browser:browser.version(),checks:['keyboard width adjustment and default/external width retention','primary Enter submits through host action','consecutive tool group with completion count','literal tool payloads and native reasoning disclosure in both skins','both full packages install and activate','workspace and session navigation','rich timeline headings, lists, inline and fenced code','host-bound code copy and link actions','attachment transport metadata hidden','rapid Chinese/English input and send','Git/context panel switching','requested and enforced permissions remain distinct','attachment status, strategy and size','diagnostic details remain visible','default/external switch retains host draft']};
   await writeFile('/tmp/aibo-full-skins-browser.json',JSON.stringify(result,null,2)+'\n');console.log(JSON.stringify(result));
 } catch(error) {console.error(JSON.stringify({errors,body:await page.locator('body').innerText()}));throw error;} finally {await browser.close();await server.close();await built.dispose();}

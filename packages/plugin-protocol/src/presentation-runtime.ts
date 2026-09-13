@@ -10,6 +10,8 @@ export type PresentationNode = {
   key: string;
   text?: string;
   className?: string;
+  /** Bounded size hint exposed to skin CSS as --presentation-inline-size. */
+  inlineSize?: number;
   /** An image resource path declared by the package; arbitrary URLs are not accepted. */
   resource?: string;
   attrs?: Readonly<Record<string, string | boolean>>;

@@ -29,7 +29,7 @@
   }
   for(const event of ['focusin','selectionchange','scroll','input','toggle'])document.addEventListener(event,publishState,true);
   const tags = new Set('div section main aside header footer nav article h1 h2 h3 p span strong em pre code ul ol li button input textarea label select option table thead tbody tr th td details summary hr img svg path circle rect line polyline polygon g'.split(' '));
-  const attributes = new Set('id role title aria-label aria-labelledby aria-describedby aria-expanded aria-selected aria-pressed aria-live aria-busy aria-atomic aria-hidden aria-current aria-disabled placeholder type value disabled readonly checked selected multiple name for tabindex rows cols open alt width height viewBox d fill stroke stroke-width stroke-linecap stroke-linejoin cx cy r x y x1 x2 y1 y2 points'.split(' '));
+  const attributes = new Set('id role title aria-label aria-labelledby aria-describedby aria-expanded aria-selected aria-pressed aria-live aria-busy aria-atomic aria-hidden aria-current aria-disabled placeholder type value min max step disabled readonly checked selected multiple name for tabindex rows cols open alt width height viewBox d fill stroke stroke-width stroke-linecap stroke-linejoin cx cy r x y x1 x2 y1 y2 points'.split(' '));
   const eventNames = new Set(['click', 'input', 'change', 'keydown']);
   const send = message => { if (!disposed) port?.postMessage(message); };
   function stop() {
@@ -52,6 +52,10 @@
         element.src = assets[value.resource];
       }
       element.dataset.presentationKey = value.key;
+      if (value.inlineSize !== undefined) {
+        if (!Number.isFinite(value.inlineSize) || value.inlineSize < 0 || value.inlineSize > 4096) throw Error('invalid_presentation_size');
+        element.style.setProperty('--presentation-inline-size', value.inlineSize+'px');
+      }
       if (value.primaryEnter !== undefined) {
         if (value.tag !== 'textarea' || typeof value.primaryEnter !== 'string' || !value.primaryEnter || value.primaryEnter.length > 256 || value.events?.keydown || value.localEvents?.keydown) throw Error('invalid_presentation_shortcut');
         element.addEventListener('keydown', event => {
