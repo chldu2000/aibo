@@ -187,6 +187,8 @@ export type PresentationConversation = {
   thread: { id: string; turnCount: number | null } | null;
   timeline: { id: string; turnId: string | null; role: string; toolName: string | null; entryType: string | null; content: string; status: string }[];
   timelineVisibleCount: number;
+  /** Group ordinary system events; summaries and reasoning always remain separate. */
+  groupSystemItems?: boolean;
   usage: { input: number | null; output: number | null; total: number | null; contextUsed: number | null; contextLimit: number | null; contextEstimated: boolean } | null;
   retryPrompt: string | null;
   retryReason: string | null;

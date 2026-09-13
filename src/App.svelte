@@ -119,7 +119,7 @@
   const externalConversation = $derived<PresentationConversation>({
     workspace: selectedWorkspace, session: selectedSession, goal: codexGoal,
     thread: codexThreadSnapshot && { id: codexThreadSnapshot.id, turnCount: codexThreadSnapshot.turnCount },
-    timeline, timelineVisibleCount, usage: usageValues, retryPrompt, retryReason,
+    timeline, timelineVisibleCount, groupSystemItems: selectedSessionAgent === 'pi', usage: usageValues, retryPrompt, retryReason,
     userInputRequests: selectedUserInputRequests, answerDrafts: Object.fromEntries(selectedUserInputRequests.flatMap(request => request.questions.map(question => {
       const key = userInputDraftKey(request, question.id); return [key, userInputDrafts[key] ?? ''];
     }))), queue: queueSnapshot,

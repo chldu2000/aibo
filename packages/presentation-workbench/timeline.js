@@ -1,5 +1,25 @@
 import {node,button,text,actionFor} from './tree.js';
 import {renderRichText} from './rich-text.js';
+import {groupTimelineItems} from './timeline-model.js';
+
+export function renderTimeline(entries,actions,groupSystemItems=false){
+ return groupTimelineItems(entries,groupSystemItems).map(group=>{
+  if(group.kind==='entry')return renderTimelineEntry(group.item,actions);
+  const key='message-group:'+group.id;
+  const tool=group.kind==='tool-group';
+  const completed=group.items.filter(item=>item.status==='completed').length;
+  return node('details',key,null,[
+   node('summary',key+':summary',tool?`工具调用 · ${group.items.length} 项 · ${completed}/${group.items.length} 完成`:`系统消息 · ${group.items.length} 项`),
+   ...group.items.map(entry=>{
+    if(tool)return renderTimelineEntry(entry,actions);
+    return node('details','message:'+entry.id+':disclosure',null,[
+     node('summary','message:'+entry.id+':summary',(entry.content.split('\n')[0]||'系统消息')+' · 查看详情'),
+     renderTimelineEntry(entry,actions),
+    ]);
+   }),
+  ]);
+ });
+}
 
 const timelineStatusLabels={streaming:'生成中',completed:'完成',failed:'失败',queued:'排队中',interrupted:'已中断'};
 const timelineToolLabels={commandExecution:'命令执行',fileRead:'读取文件',fileChange:'修改文件',mcpToolCall:'MCP 工具',webSearch:'网页搜索'};

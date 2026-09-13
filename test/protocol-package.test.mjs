@@ -43,6 +43,8 @@ test('packed protocol compiles and imports outside the repository without DOM or
     execFileSync('tar',['-xzf',path.join(root,workbenchPacked.filename),'-C',workbenchInstalled,'--strip-components=1']);
     await writeFile(path.join(consumer,'consumer.mts'), `
 import { parseMarkdown, markdownTargets } from '@aibo/presentation-workbench/markdown';
+import { groupTimelineItems } from '@aibo/presentation-workbench/timeline-model';
+type TimelineGroups = ReturnType<typeof groupTimelineItems>;
 type MarkdownBlocks = ReturnType<typeof parseMarkdown>;
 type MarkdownTargets = ReturnType<typeof markdownTargets>;
 import { parsePresentationManifest } from '@aibo/presentation-tools/manifest';

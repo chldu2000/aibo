@@ -400,3 +400,8 @@ shadcn 和 Material 3 的主题定义分别归属 `packages/presentation-shadcn/
 皮肤拥有三栏布局样式；同包声明继续驱动主题/控件/语义视图。固定宿主区域保持
 在 PresentationHost 外。主题随更新发送前必须转成纯数据，不能把框架代理对象
 交给跨 Worker 消息桥。整窗激活不是完整功能/视觉与原生验收已完成的证据。
+
+时间线分组规则归属 `packages/presentation-workbench/timeline-model.js`，内置时间线
+通过兼容导出消费同一规则。公共会话快照的可选 `groupSystemItems` 是宿主提供的
+展示提示，缺省不分组系统消息；皮肤不根据 Agent 标识选择分组行为。规则保持
+推理、分支摘要与压缩摘要独立。架构检查继续验证这些边界并验证内置导出指向共享实现。

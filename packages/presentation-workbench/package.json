@@ -15,12 +15,17 @@
       "types": "./markdown.d.ts",
       "default": "./markdown.js"
     },
-    "./rich-text": "./rich-text.js"
+    "./rich-text": "./rich-text.js",
+    "./timeline-model": {
+      "types": "./timeline-model.d.ts",
+      "default": "./timeline-model.js"
+    }
   },
   "files": [
     "*.js",
     "README.md",
     "bundle.mjs",
-    "markdown.d.ts"
+    "markdown.d.ts",
+    "timeline-model.d.ts"
   ]
 }

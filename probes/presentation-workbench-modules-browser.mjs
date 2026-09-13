@@ -10,7 +10,7 @@ let source='';
 let tree=(await readFile('packages/presentation-workbench/tree.js','utf8')).replaceAll('export ','');
 const metadata=(await readFile('packages/presentation-workbench/metadata.js','utf8')).replace(/^import .*;\n/gm,'').replaceAll('export ','');
 tree+='\nconst {renderExecutionProfile,renderAttachment,renderSessionMetadata}=(()=>{'+metadata+';return {renderExecutionProfile,renderAttachment,renderSessionMetadata};})();';
-for(const name of ['markdown','rich-text','timeline'])tree+='\n'+(await readFile(`packages/presentation-workbench/${name}.js`,'utf8')).replace(/^import .*;\n/gm,'').replaceAll('export ','');
+for(const name of ['markdown','rich-text','timeline-model','timeline'])tree+='\n'+(await readFile(`packages/presentation-workbench/${name}.js`,'utf8')).replace(/^import .*;\n/gm,'').replaceAll('export ','');
 for(const name of ['navigation','conversation','git','inspector']){
  const code=(await readFile(`packages/presentation-workbench/${name}.js`,'utf8')).replace(/^import .*;\n/gm,'').replaceAll('export ','');
  source+=`self.render${name}=(()=>{${tree}\n${code}\nreturn render${name[0].toUpperCase()+name.slice(1)};})();\n`;
@@ -23,6 +23,7 @@ try {
  for(const kind of ['navigation','conversation','git','inspector']){
   const state=JSON.parse(await readFile(`fixtures/presentation-workbench/${kind}.json`,'utf8'));
   if(kind==='git')state.draft.gitSection='changes';
+  if(kind==='conversation'){state.groupSystemItems=true;state.timeline.push(...['First system event','Second system event'].map((content,index)=>({id:'system-'+index,role:'system',toolName:null,entryType:'note',content,status:'completed',turnId:null})));state.timelineVisibleCount=state.timeline.length;}
   const actions=kind==='navigation'?navigationActions(state):(kind==='git'?createGitDirectory():kind==='inspector'?createInspectorDirectory():createConversationDirectory()).project(state);
   await page.evaluate(({source,data})=>window.sandboxProbe.mount(source,data),{source,data:{kind,state,actions}});
   const frame=page.frameLocator('iframe');
@@ -36,6 +37,9 @@ try {
   await frame.getByRole('button',{name:({navigation:'保存名称',conversation:'发送',git:'暂存',inspector:'暂存片段'})[kind],exact:true}).click();
   await page.waitForFunction(token=>window.sandboxProbe.intents.at(-1)?.id===token,click.token);
   if(kind==='conversation'){
+   await frame.getByText('系统消息 · 2 项',{exact:true}).click();
+   await frame.getByText('First system event · 查看详情',{exact:true}).click();
+   await frame.getByText('First system event',{exact:true}).waitFor();
    await frame.getByRole('textbox',{name:'Choice?',exact:true}).fill('自定义回答');
    const answer=actions.find(action=>action.operation==='answer');
    await page.waitForFunction(token=>window.sandboxProbe.intents.at(-1)?.id===token,answer.token);
@@ -43,6 +47,6 @@ try {
   }
  }
  assert.deepEqual(errors,[]);
- const result={passed:true,browser:browser.version(),scope:'isolated navigation/conversation/Git/Inspector modules; not full App workbench',checks:['real Worker accepts module trees','rename and composer input events','save and send host tokens','answer input and full message content','Git draft input and staged file target','project field input and hunk target']};
+ const result={passed:true,browser:browser.version(),scope:'isolated navigation/conversation/Git/Inspector modules; not full App workbench',checks:['ordinary system group and nested disclosure','real Worker accepts module trees','rename and composer input events','save and send host tokens','answer input and full message content','Git draft input and staged file target','project field input and hunk target']};
  await writeFile('/tmp/aibo-workbench-modules-browser.json',JSON.stringify(result,null,2)+'\n');console.log(JSON.stringify(result));
 }finally{await browser.close();await server.close();}

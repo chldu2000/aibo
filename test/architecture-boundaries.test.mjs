@@ -191,7 +191,8 @@ test('Pi tree navigation exposes all native summary modes', async () => {
 });
 
 test('Pi timeline groups ordinary system nodes without folding summaries', async () => {
-  const utilities = await readFile(path.join(root, 'src/lib/components/app/timeline-utils.ts'), 'utf8');
+  const utilities = await readFile(path.join(root, 'packages/presentation-workbench/timeline-model.js'), 'utf8');
+  assert.match(await readFile(path.join(root, 'src/lib/components/app/timeline-utils.ts'), 'utf8'), /export \{ groupTimelineItems, toolLabel, isDiffContent \} from .*presentation-workbench\/timeline-model\.js/);
   const panel = await readFile(path.join(root, 'src/lib/components/app/TimelinePanel.svelte'), 'utf8');
   assert.match(utilities, /kind: 'system-group'/, 'consecutive system entries must have a grouped render form');
   assert.match(utilities, /entryType !== 'branch_summary'/, 'branch summaries must remain standalone');

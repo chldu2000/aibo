@@ -24,3 +24,19 @@ test('reasoning disclosure keeps its identity during streaming and prose keeps M
  assert.ok(!before.some(node=>node.events));
  assert.ok(flatten(renderTimelineEntry({...initial,role:'assistant'},[token])).some(node=>node.events?.click==='host-issued'));
 });
+
+ test('timeline groups preserve boundaries, completion counts and message keys',async()=>{
+  const {renderTimeline}=await import('../packages/presentation-workbench/timeline.js');
+  const {groupTimelineItems}=await import('../packages/presentation-workbench/timeline-model.js');
+  const make=(id,role,extra={})=>({...entry,id,role,toolName:null,entryType:'note',content:id,...extra});
+  const entries=[make('s1','system'),make('s2','system'),make('reason','system',{toolName:'reasoning'}),make('t1','tool'),make('t2','tool',{status:'failed'}),make('summary','system',{entryType:'compaction'}),make('branch','system',{entryType:'branch_summary'}),make('plain','system',{entryType:null}),make('answer','assistant')];
+  assert.deepEqual(groupTimelineItems(entries,true).map(item=>item.kind),['system-group','entry','tool-group','entry','entry','entry','entry']);
+  assert.equal(groupTimelineItems(entries).filter(item=>item.kind==='system-group').length,0);
+  const trees=renderTimeline(entries,[],true),nodes=trees.flatMap(flatten);
+  assert.equal(new Set(nodes.map(node=>node.key)).size,nodes.length);
+  assert.ok(nodes.some(node=>node.text==='工具调用 · 2 项 · 1/2 完成'));
+  assert.ok(nodes.some(node=>node.text==='系统消息 · 2 项'));
+  const extended=renderTimeline([...entries.slice(0,5),make('t3','tool'),...entries.slice(5)],[],true).flatMap(flatten);
+  assert.ok(extended.some(node=>node.key==='message-group:tool-group-t1'));
+  assert.ok(extended.some(node=>node.key==='message:t1:disclosure'));
+ });
