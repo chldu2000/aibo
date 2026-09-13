@@ -1,6 +1,8 @@
 <script lang="ts">
   import { readWorkbenchDrafts, writeWorkbenchDrafts, emptyGitPanelState } from '$lib/app/workbench-drafts';
   const draftStorage = { getItem: (key: string) => window.localStorage.getItem(key), setItem: (key: string, value: string) => window.localStorage.setItem(key, value) };
+  import { readWorkbenchLayout, writeWorkbenchLayout } from '$lib/app/workbench-layout-storage';
+  const savedWorkbenchLayout = readWorkbenchLayout(draftStorage, presentationWindowId());
   let workbenchDrafts = $state(readWorkbenchDrafts(draftStorage, presentationWindowId()));
   $effect(() => { writeWorkbenchDrafts(draftStorage, presentationWindowId(), workbenchDrafts); });
   import { PresentationHost, WorkbenchPresentation, DefaultPresentationActions, Badge, Button, Card, CardHeader, CardTitle, CardContent } from '$lib/ui-kit';
@@ -1021,13 +1023,18 @@
     return () => { disposed = true; clearInterval(timer); };
   });
   let diagnosticsOpen = $state(false);
-  let sidePanelOpen = $state(true);
-  let sidePanelView = $state<SidePanelView>('git');
+  let sidePanelOpen = $state(savedWorkbenchLayout.auxiliaryOpen);
+  let sidePanelView = $state<SidePanelView>(savedWorkbenchLayout.activeView);
   const inspectorOpen = $derived(sidePanelOpen);
-  let workspaceSidebarWidth = $state(260);
-  let inspectorWidth = $state(320);
+  let workspaceSidebarWidth = $state(savedWorkbenchLayout.navigationWidth);
+  let inspectorWidth = $state(savedWorkbenchLayout.auxiliaryWidth);
   let viewportWidth = $state(1280);
   let workspaceGridElement = $state<HTMLElement | null>(null);
+  $effect(() => { writeWorkbenchLayout(draftStorage, presentationWindowId(), { navigationWidth: workspaceSidebarWidth, auxiliaryWidth: inspectorWidth, auxiliaryOpen: sidePanelOpen, activeView: sidePanelView }); });
+  $effect(() => {
+    const width = viewportWidth; sidePanelOpen;
+    untrack(() => { if (width >= 700) { setColumnWidth('workspace', workspaceSidebarWidth); setColumnWidth('inspector', inspectorWidth); } });
+  });
   type ColumnResizeTarget = 'workspace' | 'inspector';
   type ColumnResizeState = {
     target: ColumnResizeTarget;
@@ -1083,7 +1090,8 @@
   }
 
   function maxColumnWidth(target: ColumnResizeTarget): number {
-    const totalWidth = workspaceGridElement?.clientWidth || viewportWidth;
+    const availableWidth = viewportWidth;
+    const totalWidth = workspaceGridElement?.clientWidth || availableWidth;
     const splitterWidth = splitterTrackWidth * (sidePanelOpen ? 2 : 1);
     const otherColumnWidth = target === 'workspace' ? (sidePanelOpen ? inspectorWidth : 0) : workspaceSidebarWidth;
     return Math.min(4096, totalWidth - splitterWidth - otherColumnWidth - timelineColumnMin);

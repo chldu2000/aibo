@@ -26,7 +26,7 @@ try{
   child=spawn('pnpm',['tauri','dev','--no-watch','--config',config],{stdio:['ignore','pipe','pipe'],detached:true});child.stdout.pipe(process.stdout);child.stderr.pipe(process.stderr);
   try{
    const result=await Promise.race([report,new Promise((_,reject)=>timer=setTimeout(()=>reject(Error('Native Presentation probe timeout')),240000)),new Promise((_,reject)=>child.on('exit',code=>reject(Error('Tauri exited before report: '+code))))]);
-   console.log('NATIVE_PRESENTATION_PHASE '+JSON.stringify(result));evidence.push(result);if(!result.ok)throw Error(result.error);expected=result.selection?{...result.selection,workspaceId:result.workspaceId}:expected;
+   console.log('NATIVE_PRESENTATION_PHASE '+JSON.stringify(result));evidence.push(result);if(!result.ok)throw Error(result.error);expected=result.selection?{...result.selection,workspaceId:result.workspaceId,layout:result.layout}:expected;
   }finally{clearTimeout(timer);const exited=new Promise(resolve=>child.once('exit',resolve));try{process.kill(-child.pid,'SIGTERM');}catch{}await exited;child=null;}
  }
  const result={ok:true,platform:process.platform,architecture:process.arch,identifier,evidence,interaction:'scripted native host DOM clicks and real Tauri IPC; physical input and screen reader not claimed'};

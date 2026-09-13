@@ -146,11 +146,23 @@ try {
     await frame.locator('.navigation').waitFor({state:'visible'});
     assert.equal(await frame.locator('.navigation').evaluate(element=>Math.round(element.getBoundingClientRect().width)),resized);
     await composer.waitFor();assert.equal(await composer.inputValue(),'换肤保留');
+    await frame.getByRole('button',{name:'侧边面板',exact:true}).click();
+    await page.waitForFunction(()=>JSON.parse(localStorage.getItem('aibo.workbench-layout.v1.main')||'null')?.auxiliaryOpen===false);
+    const savedLayout=await page.evaluate(()=>JSON.parse(localStorage.getItem('aibo.workbench-layout.v1.main')));
+    await page.reload();
+    await frame.locator('.navigation').waitFor({state:'visible'});
+    assert.equal(await frame.locator('.navigation').evaluate(element=>Math.round(element.getBoundingClientRect().width)),resized);
+    assert.equal(await frame.getByRole('button',{name:'侧边面板',exact:true}).getAttribute('aria-expanded'),'false');
+    assert.equal(await frame.getByRole('button',{name:'上下文',exact:true}).getAttribute('aria-pressed'),'true');
+    await frame.getByRole('button',{name:'侧边面板',exact:true}).click();
+    await frame.locator('.workbench-inspector').waitFor({state:'visible'});
+    assert.equal(await frame.locator('.workbench-inspector').evaluate(element=>Math.round(element.getBoundingClientRect().width)),savedLayout.auxiliaryWidth);
+
     await page.getByRole('button',{name:'打开设置',exact:true}).click();
     await page.getByRole('button',{name:'恢复内置呈现',exact:true}).click();
     await page.getByRole('button',{name:'完成',exact:true}).click();
   }
   assert.deepEqual(errors,[]);
-  const result={passed:true,nativePort:'mocked; actual App and independently built full skin Workers',browser:browser.version(),checks:['both splitter drag directions and auxiliary keyboard resize','keyboard width adjustment and default/external width retention','primary Enter submits through host action','consecutive tool group with completion count','literal tool payloads and native reasoning disclosure in both skins','both full packages install and activate','workspace and session navigation','rich timeline headings, lists, inline and fenced code','host-bound code copy and link actions','attachment transport metadata hidden','rapid Chinese/English input and send','Git/context panel switching','requested and enforced permissions remain distinct','attachment status, strategy and size','diagnostic details remain visible','default/external switch retains host draft']};
+  const result={passed:true,nativePort:'mocked; actual App and independently built full skin Workers',browser:browser.version(),checks:['reload restores both widths, panel visibility and selected view','both splitter drag directions and auxiliary keyboard resize','keyboard width adjustment and default/external width retention','primary Enter submits through host action','consecutive tool group with completion count','literal tool payloads and native reasoning disclosure in both skins','both full packages install and activate','workspace and session navigation','rich timeline headings, lists, inline and fenced code','host-bound code copy and link actions','attachment transport metadata hidden','rapid Chinese/English input and send','Git/context panel switching','requested and enforced permissions remain distinct','attachment status, strategy and size','diagnostic details remain visible','default/external switch retains host draft']};
   await writeFile('/tmp/aibo-full-skins-browser.json',JSON.stringify(result,null,2)+'\n');console.log(JSON.stringify(result));
 } catch(error) {console.error(JSON.stringify({errors,body:await page.locator('body').innerText()}));throw error;} finally {await browser.close();await server.close();await built.dispose();}

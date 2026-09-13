@@ -9,6 +9,7 @@ const click=async label=>(await until(()=>button(label),label)).click();
 const selection=()=>invoke('get_presentation_selection');
 const frame=()=>document.querySelector('.presentation-external iframe[data-presentation-revision]');
 const report=result=>fetch('/__presentation_native_report',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(result)});
+const storedLayout=()=>JSON.parse(localStorage.getItem('aibo.workbench-layout.v1.main')||'null');
 const errors=[];window.addEventListener('error',event=>errors.push(event.message));
 try{
  const config=await(await fetch('/__presentation_native_config')).json();const checks=[];
@@ -17,6 +18,13 @@ try{
   const releases=[];for(const path of config.paths)releases.push(await invoke('install_presentation_package',{path}));
   if(await selection())throw Error('install unexpectedly activated a skin');
   checks.push('native installs do not activate');mount(App,{target:document.getElementById('app')});
+  const navigationSplitter=await until(()=>document.querySelector('button[aria-label^="调整工作区与会话宽度"]'),'default navigation splitter');
+  navigationSplitter.dispatchEvent(new KeyboardEvent('keydown',{key:'ArrowRight',bubbles:true}));
+  await until(()=>storedLayout()?.navigationWidth===276,'host stores navigation width');
+  const auxiliarySplitter=await until(()=>document.querySelector('button[aria-label^="调整会话与侧边栏宽度"]'),'default auxiliary splitter');
+  auxiliarySplitter.dispatchEvent(new KeyboardEvent('keydown',{key:'ArrowLeft',bubbles:true}));
+  await until(()=>storedLayout()?.auxiliaryWidth===336,'host stores auxiliary width');
+  checks.push('default host resize persists both widths in native WebView storage');
   await click('打开设置');
   for(const release of releases.slice(0,3)){
    await click(release.manifest.displayName+' '+release.manifest.version);
@@ -30,13 +38,18 @@ try{
   checks.push('failed candidate preserves native selected release');
   await click('完成');await until(frame,'old workbench remains rendered');
   if(errors.length)throw Error(errors.join('\n'));
-  await report({ok:true,phase:config.phase,checks,selection:await selection(),workspaceId:workspace.id});
+  await report({ok:true,phase:config.phase,checks,selection:await selection(),workspaceId:workspace.id,layout:storedLayout()});
  }else{
+  if(JSON.stringify(storedLayout())!==JSON.stringify(config.expected.layout))throw Error('native restart lost host layout');
+  checks.push('new process retains host layout storage');
   if((await selection())?.digest!==config.expected.digest)throw Error('restart lost selection');
   const release=await invoke('read_presentation_package',{digest:config.expected.digest});if(release.release.manifest.version!=='0.2.1')throw Error('restart loaded wrong version');
   mount(App,{target:document.getElementById('app')});await until(frame,'startup restores real Worker');checks.push('new process restores installed upgraded release');
   await invoke('set_presentation_package_enabled',{digest:config.expected.digest,enabled:false});
   await until(()=>!frame(),'disabled active skin falls back');if(await selection())throw Error('disable retained selection');checks.push('native disable clears selection and App falls back');
+  await until(()=>document.querySelector(`button[aria-label="调整工作区与会话宽度，当前 ${config.expected.layout.navigationWidth} 像素"]`),'restored navigation width in default host');
+  await until(()=>document.querySelector(`button[aria-label="调整会话与侧边栏宽度，当前 ${config.expected.layout.auxiliaryWidth} 像素"]`),'restored auxiliary width in default host');
+  checks.push('fallback after restart renders persisted host column widths');
   await invoke('set_presentation_package_enabled',{digest:config.expected.digest,enabled:true});await delay(2300);await click('打开设置');await click('shadcn-svelte 0.2.1');await click('完成');await until(frame,'reenabled skin activates');
   await invoke('uninstall_presentation_package',{digest:config.expected.digest});await until(()=>!frame(),'uninstall falls back');if(await selection())throw Error('uninstall retained selection');
   const workspaces=await invoke('list_workspaces');if(!workspaces.some(workspace=>workspace.id===config.expected.workspaceId))throw Error('skin lifecycle removed workspace');
