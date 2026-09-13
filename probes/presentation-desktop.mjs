@@ -1,5 +1,5 @@
 import {createServer} from 'vite';
-import {mkdir,mkdtemp,writeFile,readFile,rm,cp} from 'node:fs/promises';
+import {mkdir,mkdtemp,writeFile,readFile,rm,cp,unlink,lstat} from 'node:fs/promises';
 import {tmpdir} from 'node:os';
 import path from 'node:path';
 import {spawn,execFileSync} from 'node:child_process';
@@ -23,17 +23,25 @@ const server=await createServer({server:{host:'127.0.0.1',port:0,hmr:false,watch
  server.middlewares.use('/__presentation_native_report',(req,res)=>{let body='';req.on('data',chunk=>body+=chunk);req.on('end',()=>{try{finish(JSON.parse(body));res.end('ok');}catch{res.statusCode=400;res.end('invalid report');}});});
 }}]});await server.listen();
 const identifier=`local.aibo.presentationprobe.${Date.now()}`;const config=path.join(root,'tauri.json');await writeFile(config,JSON.stringify({identifier,productName:'Aibo Presentation isolated probe',build:{beforeDevCommand:'',devUrl:`http://127.0.0.1:${server.httpServer.address().port}`},app:{security:{capabilities:[probeCapability]},windows:[{label:probeWindowId,title:'Aibo Presentation isolated probe',url:'probes/presentation-desktop.html',width:1280,height:900}]}}));
-const evidence=[];let child;
+const evidence=[];let child,repair;
 try{
- for(phase=0;phase<2;phase++){
+ for(phase=0;phase<4;phase++){
   console.log('NATIVE_PRESENTATION_START '+phase+' '+identifier);
   const report=new Promise(resolve=>finish=resolve);let timer;
   child=spawn('pnpm',['tauri','dev','--no-watch','--config',config],{stdio:['ignore','pipe','pipe'],detached:true});child.stdout.pipe(process.stdout);child.stderr.pipe(process.stderr);
   try{
    const result=await Promise.race([report,new Promise((_,reject)=>timer=setTimeout(()=>reject(Error('Native Presentation probe timeout')),240000)),new Promise((_,reject)=>child.on('exit',code=>reject(Error('Tauri exited before report: '+code))))]);
-   console.log('NATIVE_PRESENTATION_PHASE '+JSON.stringify(result));evidence.push(result);if(!result.ok)throw Error(result.error);expected=result.selection?{...result.selection,workspaceId:result.workspaceId,layout:result.layout}:expected;
+   console.log('NATIVE_PRESENTATION_PHASE '+JSON.stringify(result));evidence.push(result);if(!result.ok)throw Error(result.error);expected=result.selection?{...result.selection,workspaceId:result.workspaceId,layout:result.layout,dataPath:result.dataPath}:expected;
   }finally{clearTimeout(timer);const exited=child.exitCode!==null||child.signalCode!==null?Promise.resolve():new Promise(resolve=>child.once('exit',resolve));try{process.kill(-child.pid,'SIGTERM');}catch{}await exited;child=null;}
+  if(repair){await writeFile(repair.file,repair.bytes);repair=null;}
+  if(phase===1||phase===2){
+   if(path.basename(path.resolve(expected.dataPath??''))!==identifier||!/^[a-f0-9]{64}$/.test(expected.digest))throw Error('unsafe_native_fault_target');
+   const file=path.join(expected.dataPath,'presentation-packages',expected.digest,phase===1?'presentation.json':'skin.js');
+   if(!(await lstat(file)).isFile())throw Error('unsafe_native_fault_resource');
+   repair={file,bytes:await readFile(file)};
+   if(phase===1)await unlink(file);else await writeFile(file,Buffer.concat([repair.bytes,Buffer.from('\n// probe-only integrity corruption\n')]));
+  }
  }
  const result={ok:true,platform:process.platform,architecture:process.arch,identifier,windowId:probeWindowId,evidence,interaction:'scripted native host DOM clicks and real Tauri IPC; physical input and screen reader not claimed'};
  await writeFile('/tmp/aibo-presentation-native-result.json',JSON.stringify(result,null,2)+'\n');console.log('NATIVE_PRESENTATION_RESULT '+JSON.stringify(result));
-}finally{if(child)try{process.kill(-child.pid,'SIGTERM');}catch{}await server.close();await built.dispose();await rm(root,{recursive:true,force:true});console.log('Isolated application identifier: '+identifier);}
+}finally{if(child)try{process.kill(-child.pid,'SIGTERM');}catch{}if(repair)await writeFile(repair.file,repair.bytes);await server.close();await built.dispose();await rm(root,{recursive:true,force:true});console.log('Isolated application identifier: '+identifier);}

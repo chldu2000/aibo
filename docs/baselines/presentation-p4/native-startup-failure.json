@@ -1,0 +1,98 @@
+{
+  "ok": true,
+  "platform": "darwin",
+  "architecture": "arm64",
+  "identifier": "local.aibo.presentationprobe.1789312098041",
+  "windowId": "presentation-probe-1789312097414",
+  "evidence": [
+    {
+      "ok": true,
+      "phase": 0,
+      "checks": [
+        "native installs do not activate",
+        "default host resize persists both widths in native WebView storage",
+        "activate dev.aibo.presentation.shadcn@0.2.0",
+        "activate dev.aibo.presentation.material3@0.2.0",
+        "activate dev.aibo.presentation.shadcn@0.2.1",
+        "failed candidate preserves native selected release"
+      ],
+      "selection": {
+        "digest": "96176a6de72b346fb73f5e3396d7107f0e42bd7f256bea0ff8459b3ee4dc41e9",
+        "themeId": "zinc"
+      },
+      "workspaceId": "01M2DMZZRGQ0GX56FMYYFC588R",
+      "layout": {
+        "navigationWidth": 276,
+        "auxiliaryWidth": 336,
+        "auxiliaryOpen": true,
+        "activeView": "git"
+      }
+    },
+    {
+      "ok": true,
+      "phase": 1,
+      "checks": [
+        "new process retains host layout storage",
+        "new process restores installed upgraded release",
+        "post-activation Worker infinite loop falls back and clears native selection",
+        "fixed host settings remain usable and healthy release reactivates after runtime failure",
+        "native disable clears selection and App falls back",
+        "fallback after restart renders persisted host column widths",
+        "uninstall clears selection and retains workspace"
+      ],
+      "selection": {
+        "digest": "4b9c9a0bdb4685471e05125306533720735c6195055816d1d6732f97a9e73b4e",
+        "themeId": "ocean"
+      },
+      "workspaceId": "01M2DMZZRGQ0GX56FMYYFC588R",
+      "layout": {
+        "navigationWidth": 276,
+        "auxiliaryWidth": 336,
+        "auxiliaryOpen": true,
+        "activeView": "git"
+      },
+      "dataPath": "/Users/chldu/Library/Application Support/local.aibo.presentationprobe.1789312098041"
+    },
+    {
+      "ok": true,
+      "phase": 2,
+      "checks": [
+        "missing manifest startup clears selection and retains workspace",
+        "fixed settings activates a healthy package after startup recovery"
+      ],
+      "selection": {
+        "digest": "91e42e3b379d3d180a445f8d92db0ee52c478c784ee0bfc2a8f74dc72a515025",
+        "themeId": "zinc"
+      },
+      "workspaceId": "01M2DMZZRGQ0GX56FMYYFC588R",
+      "layout": {
+        "navigationWidth": 276,
+        "auxiliaryWidth": 336,
+        "auxiliaryOpen": true,
+        "activeView": "git"
+      },
+      "dataPath": "/Users/chldu/Library/Application Support/local.aibo.presentationprobe.1789312098041"
+    },
+    {
+      "ok": true,
+      "phase": 3,
+      "checks": [
+        "corrupt resource startup clears selection and retains workspace",
+        "fixed settings activates a healthy package after startup recovery"
+      ],
+      "selection": {
+        "digest": "4b9c9a0bdb4685471e05125306533720735c6195055816d1d6732f97a9e73b4e",
+        "themeId": "ocean"
+      },
+      "workspaceId": "01M2DMZZRGQ0GX56FMYYFC588R",
+      "layout": {
+        "navigationWidth": 276,
+        "auxiliaryWidth": 336,
+        "auxiliaryOpen": true,
+        "activeView": "git"
+      },
+      "dataPath": "/Users/chldu/Library/Application Support/local.aibo.presentationprobe.1789312098041"
+    }
+  ],
+  "interaction": "scripted native host DOM clicks and real Tauri IPC; physical input and screen reader not claimed"
+}

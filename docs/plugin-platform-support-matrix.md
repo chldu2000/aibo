@@ -51,12 +51,16 @@ shadcn/Material 3 独立包 0.2.0 已通过仓库外构建与实际 App 浏览�
 [macOS arm64 原生生命周期记录](baselines/presentation-p4/native-lifecycle.json)
 验证真实安装、双包激活、0.2.1 升级、0.2.2 失败候选保留旧选择、退出进程后恢复、
 禁用/卸载回退和工作区保留。操作为原生宿主 DOM 脚本点击与真实 Tauri IPC；未宣称
-物理键盘、屏幕阅读器、其他平台、损坏包启动或全部视觉/功能等价验收通过。
+物理键盘、屏幕阅读器、其他平台或全部视觉/功能等价验收通过。
 
 [原生运行故障记录](baselines/presentation-p4/native-runtime-failure.json) 进一步验证
 0.2.3 测试包成功激活后 Worker 死循环，宿主清除持久选择并回退，固定设置入口
 可重新激活健康版本。探针使用每次独立的窗口标识和主窗口等价权限，避免开发
 网址的窗口级状态缓存影响重复验证。布局列宽跨进程恢复也已复验。
+
+[原生启动故障记录](baselines/presentation-p4/native-startup-failure.json) 通过四进程
+验证选中包的 manifest 丢失及资源完整性损坏时清除选择、默认回退、工作区保留
+和健康包重新激活。故障仅注入独立测试应用的已确认选中包，检查结束恢复原文件。
 
 跨内置/外部的焦点映射、部分草稿重启恢复、剩余专用视图与键盘/无障碍
 仍属于 [重构退出清单](presentation-plugin-refactor.md) 的未完成项。

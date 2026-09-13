@@ -1,5 +1,6 @@
 import '/src/app.css';
 import {invoke} from '@tauri-apps/api/core';
+import {appDataDir} from '@tauri-apps/api/path';
 import {mount} from 'svelte';
 import App from '/src/App.svelte';
 const delay=ms=>new Promise(resolve=>setTimeout(resolve,ms));
@@ -7,7 +8,7 @@ async function until(find,label){for(let n=0;n<400;n++){const value=await find()
 const button=label=>[...document.querySelectorAll('button')].find(node=>(node.textContent.replace(/\s+/g,'')===label.replace(/\s+/g,'')||node.getAttribute('aria-label')===label)&&!node.disabled&&!node.closest('[inert]'));
 const click=async label=>(await until(()=>button(label),label)).click();
 const selection=()=>invoke('get_presentation_selection');
-const frame=()=>document.querySelector('.presentation-external iframe[data-presentation-revision]');
+const frame=()=>document.querySelector('.presentation-external iframe[data-presentation-revision]:not([hidden])');
 const report=result=>fetch('/__presentation_native_report',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(result)});
 let layoutStorageKey;
 const storedLayout=()=>JSON.parse(localStorage.getItem(layoutStorageKey)||'null');
@@ -40,7 +41,7 @@ try{
   await click('完成');await until(frame,'old workbench remains rendered');
   if(errors.length)throw Error(errors.join('\n'));
   await report({ok:true,phase:config.phase,checks,selection:await selection(),workspaceId:workspace.id,layout:storedLayout()});
- }else{
+ }else if(config.phase===1){
   if(JSON.stringify(storedLayout())!==JSON.stringify(config.expected.layout))throw Error('native restart lost host layout');
   checks.push('new process retains host layout storage');
   if((await selection())?.digest!==config.expected.digest)throw Error('restart lost selection');
@@ -65,6 +66,24 @@ try{
   await invoke('uninstall_presentation_package',{digest:config.expected.digest});await until(()=>!frame(),'uninstall falls back');if(await selection())throw Error('uninstall retained selection');
   const workspaces=await invoke('list_workspaces');if(!workspaces.some(workspace=>workspace.id===config.expected.workspaceId))throw Error('skin lifecycle removed workspace');
   checks.push('uninstall clears selection and retains workspace');if(errors.length)throw Error(errors.join('\n'));
-  await report({ok:true,phase:config.phase,checks});
+  await click('打开设置');
+  const material=(await invoke('list_presentation_packages')).find(release=>release.manifest.id==='dev.aibo.presentation.material3');
+  await click(material.manifest.displayName+' '+material.manifest.version);await until(async()=> (await selection())?.digest===material.digest,'material selection commits before exit');await click('完成');await until(frame,'healthy package selected before missing-file startup');
+  await report({ok:true,phase:config.phase,checks,selection:await selection(),workspaceId:config.expected.workspaceId,layout:storedLayout(),dataPath:await appDataDir()});
+ }else{
+  if((await selection())?.digest!==config.expected.digest)throw Error('fault fixture lost persisted selection before startup');
+  let rejected=false;try{await invoke('read_presentation_package',{digest:config.expected.digest});}catch{rejected=true;}
+  if(!rejected)throw Error('fault fixture was unexpectedly readable');
+  mount(App,{target:document.getElementById('app')});
+  await until(async()=> !(await selection()),'startup clears unavailable persisted package');
+  if(frame())throw Error('unavailable startup package remained active');
+  const workspaces=await invoke('list_workspaces');if(!workspaces.some(workspace=>workspace.id===config.expected.workspaceId))throw Error('startup recovery lost workspace');
+  checks.push(config.phase===2?'missing manifest startup clears selection and retains workspace':'corrupt resource startup clears selection and retains workspace');
+  await click('打开设置');
+  const healthy=(await invoke('list_presentation_packages')).find(release=>release.manifest.id===(config.phase===2?'dev.aibo.presentation.shadcn':'dev.aibo.presentation.material3')&&release.manifest.version==='0.2.0');
+  await click(healthy.manifest.displayName+' '+healthy.manifest.version);await until(async()=> (await selection())?.digest===healthy.digest,'healthy selection commits after startup recovery');await click('完成');await until(frame,'fixed settings activates healthy package after startup fault');
+  checks.push('fixed settings activates a healthy package after startup recovery');
+  if(errors.length)throw Error(errors.join('\n'));
+  await report({ok:true,phase:config.phase,checks,selection:await selection(),workspaceId:config.expected.workspaceId,layout:storedLayout(),dataPath:await appDataDir()});
  }
 }catch(error){await report({ok:false,error:String(error),errors,text:document.body.innerText.slice(0,4000)});}
