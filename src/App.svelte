@@ -6,6 +6,18 @@
   import { PresentationHost, WorkbenchPresentation, DefaultPresentationActions, Badge, Button, Card, CardHeader, CardTitle, CardContent } from '$lib/ui-kit';
   import { createPresentationPackageController, type PresentationPackageState } from '$lib/app/presentation-package-controller';
   import { listPresentationPackages, readPresentationPackage, installPresentationPackage, setPresentationPackageEnabled, uninstallPresentationPackage, getPresentationSelection, selectPresentationPackage } from '$lib/api';
+  import { createConversationDirectory } from '$lib/presentation-runtime/conversation';
+  import { userInputDraftKey, answeredRequest, clearRequestDrafts } from '$lib/app/user-input-drafts';
+  import type { PresentationConversation } from '../packages/plugin-protocol/src/presentation-conversation';
+  let userInputDrafts = $state<Record<string, string>>({});
+  const conversationDirectory = createConversationDirectory();
+  $effect(() => {
+    const keys = new Set(pendingUserInputs.flatMap(request => request.questions.map(question => userInputDraftKey(request, question.id))));
+    untrack(() => {
+      const entries = Object.entries(userInputDrafts).filter(([key]) => keys.has(key));
+      if (entries.length !== Object.keys(userInputDrafts).length) userInputDrafts = Object.fromEntries(entries);
+    });
+  });
   import { navigationActions as externalNavigationActions, resolveNavigationIntent } from '$lib/presentation-runtime/navigation';
   import type { PresentationNavigation } from '../packages/plugin-protocol/src/presentation-navigation';
   import type { PresentationInput, PresentationIntent } from '../packages/plugin-protocol/src/presentation-runtime';
@@ -74,8 +86,68 @@
       case 'cancelRename': cancelRenameSession(); break;
     }
   }
+  const externalConversation = $derived<PresentationConversation>({
+    workspace: selectedWorkspace, session: selectedSession, goal: codexGoal,
+    thread: codexThreadSnapshot && { id: codexThreadSnapshot.id, turnCount: codexThreadSnapshot.turnCount },
+    timeline, timelineVisibleCount, usage: usageValues, retryPrompt, retryReason,
+    userInputRequests: selectedUserInputRequests, answerDrafts: Object.fromEntries(selectedUserInputRequests.flatMap(request => request.questions.map(question => {
+      const key = userInputDraftKey(request, question.id); return [key, userInputDrafts[key] ?? ''];
+    }))), queue: queueSnapshot,
+    activityLabel: agentActivityLabel, compacting: contextCompacting, running: sessionRunning,
+    archiving: selectedSessionArchiving, busy, attachments, executionProfile,
+    modelConfiguration: modelConfigurationState(selectedSession, sessionModelCatalog, executionProfile),
+    modelCatalog: sessionModelCatalog, modelCatalogLoading: sessionModelCatalogLoading, modelOverride: sessionModelOverride,
+    workspacePathSuggestions, agentCommands: visibleAgentCommands, agentCommandsLoading,
+    draft: composerText, draftFailed: composerDraftFailed, tree: piTree?.sessionId === selectedSessionId ? piTree : null,
+    treeOpen: piTreeOpen, treeNavigationStatus: piNavigationStatus,
+  });
+  async function externalConversationIntent(intent: PresentationIntent) {
+    const action = conversationDirectory.resolve(externalConversation, externalInput.context, intent);
+    if (!action) return;
+    const [target, detail, option] = action.args;
+    switch (action.operation) {
+      case 'draft': composerText = intent.value!; handleComposerInput(composerText); break;
+      case 'send': await sendPrompt(); break;
+      case 'stop': await abortPrompt(); break;
+      case 'retry': await retryLastPrompt(); break;
+      case 'queueSteer': await queuePiPrompt('steer'); break;
+      case 'queueFollowUp': await queuePiPrompt('followUp'); break;
+      case 'clearQueue': await clearPiPromptQueue(); break;
+      case 'addAttachments': await chooseSessionAttachments(); break;
+      case 'addDirectory': await chooseSessionAttachmentDirectory(); break;
+      case 'removeAttachment': await removeAttachment(target!); break;
+      case 'selectPath':
+        composerText = composerText.replace(/(?:^|\s)@([^\s]*)$/, match => `${match.startsWith(' ') ? ' ' : ''}@${target} `);
+        handleComposerInput(composerText); selectComposerWorkspacePath(target!); break;
+      case 'selectCommand': composerText = composerText.replace(/^\/([^\s]*)$/, `/${target} `); handleComposerInput(composerText); break;
+      case 'loadOlder': loadOlderTimeline(); break;
+      case 'fork': await forkSession(selectedSessionId, target ?? undefined); break;
+      case 'loadModels': await loadSessionModels(); break;
+      case 'selectModel': await applySessionModelConfiguration(target!, detail ?? null); break;
+      case 'selectAccess': await applySessionAccess(target as SessionAccessMode); break;
+      case 'compact': await compactCurrentSession(); break;
+      case 'answer':
+      case 'chooseAnswer': {
+        const request = selectedUserInputRequests.find(request => request.requestId === target);
+        if (request) userInputDrafts = { ...userInputDrafts, [userInputDraftKey(request, detail!)]: action.operation === 'answer' ? intent.value! : option! };
+        break;
+      }
+      case 'submitAnswers': {
+        const request = selectedUserInputRequests.find(request => request.requestId === target);
+        const answers = request && answeredRequest(request, userInputDrafts);
+        if (request && answers) await resolveUserInput(request, answers);
+        break;
+      }
+      case 'cancelAnswers': await abortPrompt(); break;
+      case 'openTree': openPiTree(); break;
+      case 'closeTree': piTreeOpen = false; break;
+      case 'refreshTree': if (selectedSessionId) await refreshPiTree(selectedSessionId); break;
+      case 'selectTreeNode': requestPiTreeNavigation(target!); break;
+    }
+  }
   function externalIntent(intent: PresentationIntent) {
     if (intent.context.workspaceId !== selectedWorkspaceId || intent.context.sessionId !== selectedSessionId) return;
+    if (intent.id.startsWith('conversation:')) { void presentationOperation(() => externalConversationIntent(intent)); return; }
     if (intent.id.startsWith('navigation:')) { void presentationOperation(() => externalNavigationIntent(intent)); return; }
     if (intent.id !== 'draft' && intent.event !== 'click') return;
     if (intent.id === 'draft' && intent.event === 'input' && typeof intent.value === 'string') { composerText = intent.value; handleComposerInput(intent.value); }
@@ -93,6 +165,7 @@
     const data = { workspaces: workspaces.map(({ id, label }) => ({ id, label })),
       sessions: sessions.filter(session => session.workspaceId === selectedWorkspaceId).map(({ id, label, state }) => ({ id, label, state })),
       timeline: timeline.map(({ id, role, content, status }) => ({ id, role, content, status })),
+      conversation: externalConversation, conversationActions: conversationDirectory.project(externalConversation),
       navigation: externalNavigation, navigationActions: externalNavigationActions(externalNavigation),
       draft: composerText, busy, running: sessionRunning, selectedWorkspaceId, selectedSessionId };
     untrack(() => { externalInput = { surface: 'workbench', context: { workspaceId: data.selectedWorkspaceId, sessionId: data.selectedSessionId, revision: externalInput.context.revision + 1 }, data: $state.snapshot(data), theme: {} }; });
@@ -2394,7 +2467,7 @@
         await run(async () => {
           await agentFacade.invoke(session, 'compaction.run', { instructions: command.args });
           timeline = await getTimeline(session.id);
-          notice = 'Pi 上下文压缩已完成。';
+          notice = '上下文压缩已完成。';
         });
         return true;
       case 'thinking':
@@ -2644,19 +2717,19 @@
 
   async function compactCurrentSession(): Promise<void> {
     const session = selectedSession;
-    if (!session || sessionAgentKind(session) !== 'pi' || session.archived) return;
+    if (!session || !session.capabilities.includes('compaction.run') || session.archived) return;
     if (sessionRunning || busy) {
       errorMessage = '会话运行中不能手动压缩，请等待当前回合结束。';
       return;
     }
     busy = true;
     errorMessage = null;
-    setAgentActivity(session.id, true, 'Pi 正在压缩上下文…');
+    setAgentActivity(session.id, true, '正在压缩上下文…');
     try {
       await agentFacade.invoke(session, 'compaction.run', {});
       if (selectedSessionId === session.id) timeline = await getTimeline(session.id);
       setAgentActivity(session.id, false);
-      notice = 'Pi 上下文压缩已完成。';
+      notice = '上下文压缩已完成。';
     } catch (error) {
       errorMessage = toErrorMessage(error);
       setAgentActivity(session.id, false);
@@ -2722,6 +2795,7 @@
       pendingUserInputs = pendingUserInputs.filter(
         (item) => item.sessionId !== request.sessionId || item.requestId !== request.requestId,
       );
+      userInputDrafts = clearRequestDrafts(request, userInputDrafts);
       notice = '已提交你的回答，Agent 将继续执行。';
     } catch (error) {
       errorMessage = toErrorMessage(error);
@@ -3393,6 +3467,8 @@
       retryPrompt={retryPrompt}
       retryReason={retryReason}
       userInputRequests={selectedUserInputRequests}
+      {userInputDrafts}
+      onUserInputDraftChange={guard('onUserInputDraftChange', (value) => { userInputDrafts = value; })}
       queueSnapshot={queueSnapshot}
       agentActivityLabel={agentActivityLabel}
       contextCompacting={contextCompacting}

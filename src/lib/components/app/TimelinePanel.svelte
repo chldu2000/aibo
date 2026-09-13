@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { userInputDraftKey, answeredRequest } from '$lib/app/user-input-drafts';
   import type { Snippet } from 'svelte';
   import type { ModelConfigurationState } from '$lib/app/model-configuration';
   import { sessionAgentKind } from '$lib/app/agent-kind';
@@ -29,6 +30,8 @@
     retryPrompt: string | null;
     retryReason: string | null;
     userInputRequests: UserInputRequest[];
+    userInputDrafts: Record<string, string>;
+    onUserInputDraftChange: (value: Record<string, string>) => void;
     queueSnapshot: AgentQueueSnapshot | null;
     agentActivityLabel: string | null;
     contextCompacting: boolean;
@@ -81,6 +84,8 @@
     retryPrompt,
     retryReason,
     userInputRequests,
+    userInputDrafts,
+    onUserInputDraftChange,
     queueSnapshot,
     agentActivityLabel,
     contextCompacting,
@@ -139,33 +144,19 @@
     if (!usageValues || usageValues.contextUsed === null || !usageValues.contextLimit || usageValues.contextLimit <= 0) return null;
     return Math.min(100, Math.round((usageValues.contextUsed / usageValues.contextLimit) * 100));
   });
-  let userInputDrafts = $state<Record<string, string>>({});
-
-  function userInputKey(requestId: string, questionId: string): string {
-    return `${requestId}:${questionId}`;
+  function userInputKey(request: UserInputRequest, questionId: string): string {
+    return userInputDraftKey(request, questionId);
   }
 
-  function setUserInputDraft(requestId: string, questionId: string, value: string): void {
-    userInputDrafts = {
-      ...userInputDrafts,
-      [userInputKey(requestId, questionId)]: value,
-    };
+  function setUserInputDraft(request: UserInputRequest, questionId: string, value: string): void {
+    onUserInputDraftChange({ ...userInputDrafts, [userInputKey(request, questionId)]: value });
   }
 
   async function submitUserInput(request: UserInputRequest): Promise<void> {
-    const answers: Record<string, string[]> = {};
-    for (const question of request.questions) {
-      const value = userInputDrafts[userInputKey(request.requestId, question.id)]?.trim() ?? '';
-      if (!value) return;
-      answers[question.id] = [value];
-    }
-    try {
-      await onResolveUserInput(request, answers);
-      userInputDrafts = Object.fromEntries(
-        Object.entries(userInputDrafts).filter(([key]) => !key.startsWith(`${request.requestId}:`)),
-      );
-    } catch {
-      // Keep the answers editable when the provider rejects or loses the request.
+    const answers = answeredRequest(request, userInputDrafts);
+    if (!answers) return;
+    try { await onResolveUserInput(request, answers); } catch {
+      // The host keeps drafts when the provider rejects or loses the request.
     }
   }
 
@@ -369,12 +360,12 @@
                 {#if question.options.length > 0}
                   <div class="user-input-options">
                     {#each question.options as option (option.label)}
-                      {@const key = userInputKey(request.requestId, question.id)}
+                      {@const key = userInputKey(request, question.id)}
                       <Button
                         type="button"
                         size="sm"
                         variant={userInputDrafts[key] === option.label ? 'secondary' : 'outline'}
-                        onclick={() => setUserInputDraft(request.requestId, question.id, option.label)}
+                        onclick={() => setUserInputDraft(request, question.id, option.label)}
                       >
                         {option.label}
                       </Button>
@@ -383,10 +374,10 @@
                 {/if}
                 {#if question.options.length === 0 || question.isOther}
                   <Input
-                    value={userInputDrafts[userInputKey(request.requestId, question.id)] ?? ''}
+                    value={userInputDrafts[userInputKey(request, question.id)] ?? ''}
                     placeholder={question.isOther ? '补充其他回答…' : '输入回答…'}
                     aria-label={question.question}
-                    oninput={(event) => setUserInputDraft(request.requestId, question.id, (event.currentTarget as HTMLInputElement).value)}
+                    oninput={(event) => setUserInputDraft(request, question.id, (event.currentTarget as HTMLInputElement).value)}
                   />
                 {/if}
               </fieldset>

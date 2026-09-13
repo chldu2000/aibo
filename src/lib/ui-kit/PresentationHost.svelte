@@ -49,8 +49,8 @@
     const snapshot = $state.snapshot(input);
     const candidate = await preparePresentationSandbox(target, value, { ...snapshot, theme },
       intent => { if (!suspended) onIntent(intent); }, failure, signal, { localInputActions: snapshot => {
-        const data = snapshot.data as { navigationActions?: { token: string; event: string }[] } | null;
-        return ['draft', ...(data?.navigationActions ?? []).filter(action => action.event === 'input').map(action => action.token)];
+        const data = snapshot.data as { navigationActions?: { token: string; event: string }[]; conversationActions?: { token: string; event: string }[] } | null;
+        return ['draft', ...[...(data?.navigationActions ?? []), ...(data?.conversationActions ?? [])].filter(action => action.event === 'input').map(action => action.token)];
       }, onRecover: onRestore });
     return {
       activate() { candidate.activate(); mountedRevision = snapshot.context.revision; mounted = candidate; externalPresentation.set(registration); },

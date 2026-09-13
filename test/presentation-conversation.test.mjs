@@ -1,0 +1,57 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import { conversationActions, createConversationDirectory } from '../src/lib/presentation-runtime/conversation.ts';
+import { userInputDraftKey, answeredRequest, clearRequestDrafts } from '../src/lib/app/user-input-drafts.ts';
+const request = {requestId:'request',sessionId:'s',turnId:'t',questions:[{id:'q',question:'Choice?',header:null,options:[{label:'Yes',description:null}],isOther:true}],isBlocking:true};
+const state = {
+ workspace:{id:'w',label:'Workspace',path:'/workspace',trust:'trusted'},session:{id:'s',workspaceId:'w',agent:'plugin',label:'Session',state:'idle',archived:false,externalSessionId:null,pluginInstallationId:'installed',capabilities:['queue.manage','model.select','model.reasoning','session.fork','session.tree','compaction.run'],createdAt:'',updatedAt:''},
+ goal:null,thread:null,timeline:[{id:'m',turnId:'t',role:'assistant',toolName:null,entryType:null,content:'complete',status:'completed'}],timelineVisibleCount:0,usage:null,retryPrompt:'retry',retryReason:null,userInputRequests:[request],answerDrafts:{},queue:{sessionId:'s',steering:['later'],followUp:[],updatedAt:''},activityLabel:null,compacting:false,running:false,archiving:false,busy:false,
+ attachments:[{id:'pending',sessionId:'s',turnId:null},{id:'submitted',sessionId:'s',turnId:'t'},{id:'other',sessionId:'elsewhere',turnId:null}],executionProfile:null,modelConfiguration:{currentReasoningEffort:null,selectedReasoningEffort:null,defaultAction:'preserve'},modelCatalog:{current:null,currentReasoningEffort:null,reasoningEfforts:[],models:[{reference:'model',reasoningEfforts:[{id:'high'}]}]},modelCatalogLoading:false,modelOverride:null,workspacePathSuggestions:[{path:'README.md',isDirectory:false}],agentCommands:[{name:'help',enabled:true},{name:'disabled',enabled:false}],agentCommandsLoading:false,draft:'draft',draftFailed:false,tree:{sessionId:'s',tree:[{id:'node',children:[]}]},treeOpen:true,treeNavigationStatus:null,
+};
+const context={workspaceId:'w',sessionId:'s',revision:5};
+const operations=s=>conversationActions(s).map(action=>action.operation);
+test('conversation directory covers data-dependent operations without fabricating capability permissions',()=>{
+ const actions=conversationActions(state);
+ for(const operation of ['send','draft','retry','addAttachments','addDirectory','loadOlder','fork','compact','selectModel','loadModels','selectAccess','answer','chooseAnswer','openTree','selectTreeNode'])assert.ok(operations(state).includes(operation),operation);
+ assert.deepEqual(actions.filter(a=>a.operation==='removeAttachment').map(a=>a.args),[['pending']]);
+ assert.deepEqual(actions.filter(a=>a.operation==='selectCommand').map(a=>a.args),[['help']]);
+ assert.deepEqual(actions.filter(a=>a.operation==='selectModel').map(a=>a.args),[['model',null],['model','high']]);
+ const historical={...state,session:{...state.session,pluginInstallationId:null}};
+ assert.deepEqual(operations(historical),['loadOlder']);
+ assert.ok(!operations({...state,session:{...state.session,capabilities:[]}}).includes('compact'));
+ const active={...state,running:true};
+ for(const operation of ['send','selectModel','fork','selectAccess','compact'])assert.ok(!operations(active).includes(operation),operation);
+ for(const operation of ['draft','queueSteer','queueFollowUp','clearQueue','stop'])assert.ok(operations(active).includes(operation),operation);
+ assert.ok(!operations({...active,session:{...state.session,capabilities:[]}}).includes('draft'));
+ assert.ok(!operations({...state,busy:true}).includes('send'));
+});
+test('opaque conversation tokens retain live input but retire across removals and session reentry',()=>{
+ const directory=createConversationDirectory();const first=directory.project(state);const draft=first.find(a=>a.operation==='draft');
+ const message={id:draft.token,event:'input',value:'new',context:{...context,revision:4}};
+ assert.equal(directory.resolve(state,context,message).operation,'draft');
+ assert.equal(directory.resolve(state,context,{...message,context:{...context,revision:6}}),null);
+ assert.equal(directory.resolve(state,context,{...message,event:'click'}),null);
+ const send=first.find(a=>a.operation==='send');
+ assert.equal(directory.resolve(state,context,{...message,id:send.token,event:'click'}),null);
+ assert.equal(directory.resolve({...state,busy:true},context,{...message,id:send.token,event:'click',context}),null);
+ assert.equal(directory.resolve(state,context,{...message,id:'conversation:invented'}),null);
+ directory.project({...state,busy:true});directory.project(state);
+ assert.equal(directory.resolve(state,context,message),null);
+ const second=directory.project(state).find(a=>a.operation==='draft');
+ directory.project({...state,session:{...state.session,id:'other'}});directory.project(state);
+ assert.equal(directory.resolve(state,context,{...message,id:second.token}),null);
+ const choice=directory.project(state).find(a=>a.operation==='chooseAnswer');
+ assert.deepEqual(directory.resolve(state,context,{id:choice.token,event:'click',value:'forged',context}).args,['request','q','Yes','t']);
+});
+test('host answer drafts preserve independent sessions and only clear the completed request',()=>{
+ const other={...request,sessionId:'other'};
+ const drafts={[userInputDraftKey(request,'q')]:' Yes ',[userInputDraftKey(other,'q')]:'Keep'};
+ assert.deepEqual(answeredRequest(request,drafts),{q:['Yes']});
+ assert.equal(answeredRequest(request,{}),null);
+ assert.deepEqual(clearRequestDrafts(request,drafts),{[userInputDraftKey(other,'q')]:'Keep'});
+ const directory=createConversationDirectory();const token=directory.project({...state,answerDrafts:drafts}).find(a=>a.operation==='submitAnswers').token;
+ assert.equal(directory.resolve(state,context,{id:token,event:'click',context}),null);
+ const answer=directory.project(state).find(a=>a.operation==='answer');
+ assert.equal(directory.resolve({...state,userInputRequests:[{...request,turnId:'new-turn'}]},context,{id:answer.token,event:'input',value:'late',context}),null);
+ assert.equal(directory.resolve({...state,userInputRequests:[]},context,{id:answer.token,event:'input',value:'late',context}),null);
+});
