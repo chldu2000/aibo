@@ -32,7 +32,7 @@ try {
         if(command==='get_turn_change_set')return null;
         if(command==='list_session_attachments')return [{schema:'aibo.context-attachment/v1',id:'pending',workspaceId:'w1',sessionId:args.sessionId,turnId:null,path:'pending.txt',contentHash:null,size:0,mediaType:'text/plain',source:'picker',sendStrategy:'reference',createdAt:'now'},{schema:'aibo.context-attachment/v1',id:'sent',workspaceId:'w1',sessionId:args.sessionId,turnId:'turn',path:'sent.txt',contentHash:null,size:12,mediaType:'text/plain',source:'picker',sendStrategy:'inline',createdAt:'now'}];
         if(command==='get_session_models')return catalog;
-        if(command==='get_timeline')return [{id:'message',sessionId:args.sessionId,turnId:'turn',externalMessageId:null,role:'assistant',toolName:'tool-name',entryType:'note',content:'Complete timeline data\n\n## Rich heading\n\n**Bold message** and `inline` [Reference](https://example.invalid)\n\n- Item one\n- Item two\n\n```js\nconst answer = 42;\n```\n[AIBO_CONTEXT_ATTACHMENTS]internal metadata[/AIBO_CONTEXT_ATTACHMENTS]',status:'completed',createdAt:'2026-09-13',updatedAt:'2026-09-13'}];
+        if(command==='get_timeline')return [{id:'message',sessionId:args.sessionId,turnId:'turn',externalMessageId:null,role:'assistant',toolName:'tool-name',entryType:'note',content:'Complete timeline data\n\n## Rich heading\n\n**Bold message** and `inline` [Reference](https://example.invalid)\n\n- Item one\n- Item two\n\n```js\nconst answer = 42;\n```\n[AIBO_CONTEXT_ATTACHMENTS]internal metadata[/AIBO_CONTEXT_ATTACHMENTS]',status:'completed',createdAt:'2026-09-13',updatedAt:'2026-09-13'},...([{id:'tool-message',role:'tool',toolName:'commandExecution',entryType:'tool_call',content:'**literal tool arguments**\n<script>literal</script>'},{id:'reasoning-message',role:'system',toolName:'reasoning',entryType:'note',content:'## Reasoning detail'}].map(item=>({...item,sessionId:args.sessionId,turnId:'turn',externalMessageId:null,status:'completed',createdAt:'2026-09-13',updatedAt:'2026-09-13'})))];
         if(command==='invoke_agent_capability'){if(args.capability==='model.reasoning')catalog.currentReasoningEffort=args.input.level;return {};}
         if(command==='send_agent_prompt')return {...sessions.find(session=>session.id===args.sessionId),state:'idle'};
         if(command==='resolve_agent_user_input')return;
@@ -79,6 +79,14 @@ try {
     const composer=frame.getByRole('textbox',{name:'消息',exact:true});await composer.waitFor();
     await frame.getByText('Complete timeline data',{exact:true}).waitFor();
     await frame.getByRole('heading',{name:'Rich heading',exact:true}).waitFor();
+    for(const [id,label] of [['tool-message','命令执行 · 查看调用参数'],['reasoning-message','思考 · 查看详情']]){
+      const disclosure=frame.locator(`[data-presentation-key="message:${id}:disclosure"]`);
+      if(await disclosure.getAttribute('open')!==null)await frame.getByText(label,{exact:true}).click();
+      await frame.getByText(label,{exact:true}).click();
+      assert.equal(await disclosure.getAttribute('open'),'');
+    }
+    assert.equal(await frame.locator('pre.tool-output').textContent(),'**literal tool arguments**\n<script>literal</script>');
+    await frame.getByRole('heading',{name:'Reasoning detail',exact:true}).waitFor();
     await frame.getByRole('button',{name:'复制代码',exact:true}).click();
     await page.waitForFunction(()=>window.presentationCopies.includes('const answer = 42;'));
     await frame.getByRole('link',{name:'Reference',exact:true}).click();
@@ -113,6 +121,6 @@ try {
     await page.getByRole('button',{name:'完成',exact:true}).click();
   }
   assert.deepEqual(errors,[]);
-  const result={passed:true,nativePort:'mocked; actual App and independently built full skin Workers',browser:browser.version(),checks:['both full packages install and activate','workspace and session navigation','rich timeline headings, lists, inline and fenced code','host-bound code copy and link actions','attachment transport metadata hidden','rapid Chinese/English input and send','Git/context panel switching','requested and enforced permissions remain distinct','attachment status, strategy and size','diagnostic details remain visible','default/external switch retains host draft']};
+  const result={passed:true,nativePort:'mocked; actual App and independently built full skin Workers',browser:browser.version(),checks:['literal tool payloads and native reasoning disclosure in both skins','both full packages install and activate','workspace and session navigation','rich timeline headings, lists, inline and fenced code','host-bound code copy and link actions','attachment transport metadata hidden','rapid Chinese/English input and send','Git/context panel switching','requested and enforced permissions remain distinct','attachment status, strategy and size','diagnostic details remain visible','default/external switch retains host draft']};
   await writeFile('/tmp/aibo-full-skins-browser.json',JSON.stringify(result,null,2)+'\n');console.log(JSON.stringify(result));
 } catch(error) {console.error(JSON.stringify({errors,body:await page.locator('body').innerText()}));throw error;} finally {await browser.close();await server.close();await built.dispose();}
