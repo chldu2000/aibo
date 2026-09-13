@@ -27,6 +27,7 @@
     "generate:semantic-validator": "node scripts/build-semantic-validator.mjs",
     "generate:presentation-validator": "node scripts/build-presentation-validator.mjs",
     "probe:semantic-ui": "node probes/semantic-ui-browser.mjs",
+    "probe:presentation-sandbox": "node probes/presentation-sandbox-browser.mjs",
     "probe:session:desktop": "node probes/session-desktop.mjs",
     "probe:semantic-desktop": "node probes/semantic-desktop.mjs"
   },

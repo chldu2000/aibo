@@ -46,7 +46,7 @@
 | 声明 | 行为 |
 | --- | --- |
 | themes | 宿主默认主题上的 token 覆盖；未提供的 token 保留默认值 |
-| entry | 自包含 JavaScript bundle，路径必须对应声明为 text/javascript 的资源 |
+| entry | 自包含 Worker JavaScript bundle，路径必须对应声明为 text/javascript 的资源 |
 | surfaces: controls | 使用宿主控件消息合同定制视觉；未处理控件使用默认实现 |
 | surfaces: semantic | 实现核心 collection/detail/settings/inspector；缺失必需语义拒绝激活 |
 | surfaces: workbench | 使用宿主快照和动作组织整个工作台；管理、审批、恢复区域留在宿主 |
@@ -82,3 +82,34 @@ manifest 最大 128 KiB，最多 128 个资源、单个资源最大 8 MiB、资�
 
 包缺失、校验失败、不兼容、初始化超时和执行故障都需要实际 App 验证。
 本合同文档不代替消息桥实现、安装事务或沙箱逃逸与可用性探针。
+
+## P2b 可执行入口
+
+包代码运行于 Worker，定义 `self.aiboPresentation.render(input)`，同步或异步返回
+`PresentationNode`。输入与视觉树类型从 `@aibo/plugin-protocol` 导出，不需要 DOM
+类型。最小入口如下：
+
+```js
+self.aiboPresentation = {
+  render(input) {
+    return {
+      tag: 'button', key: 'refresh', text: '刷新',
+      className: 'toolbar-button', events: { click: 'refresh' }
+    };
+  }
+};
+```
+
+input 包含 surface、宿主 context（workspaceId/sessionId/revision）、data 和主题
+token。渲染函数不能直接调用业务操作：宿主绘制桥仅从真实用户事件构造 intent，
+主宿主再次匹配上下文并按业务权限执行。插件伪造 Worker intent 消息不会被转发。
+
+节点 key 在一棵树内唯一，稳定 key 用于恢复焦点、光标与滚动位置。节点只能使用
+已声明的标签、属性和事件；不允许 script、iframe、任意 on* 属性或 href/src URL。
+图片使用 `resource` 指向包内 PNG/WebP；SVG 图标使用受限 svg/path 等节点。
+CSS 字体或图片地址可写 `url("aibo-resource:font.woff2")`，宿主只替换已验证资源。
+
+候选 iframe 在首棵有效树绘制前隐藏，activate 前禁止 intent。初始化与更新
+具有超时，Worker 心跳发现运行中失控后终止 Worker 并移除 frame。宿主销毁旧
+实例时关闭 MessagePort、移除文档并释放 Worker URL。输入 revision 必须递增，
+旧树上的迟到用户事件不会获得新上下文权限。

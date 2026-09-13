@@ -13,6 +13,12 @@ P1 外部包数据合同位于 `packages/plugin-protocol/src/presentation-packag
 `src/lib/presentation-runtime/package.ts`，资源读取由调用方注入；生成验证器
 不在运行时编译 schema。新合同尚未接入 App 安装入口，不改变旧能力包的执行权限。
 
+P2b 可执行包使用 `presentation-runtime/sandbox.ts` 装配：静态隔离文档运行宿主
+绘制桥，包代码仅在可终止 Worker 中计算视觉树。该树有明确标签、属性、事件和
+资源范围，与能力插件的业务语义数据分离；不是将 Svelte Component 序列化到
+消息中。主 WebView 不执行包代码。Tauri CSP 的 worker-src 明确允许 blob Worker，
+隔离文档另加 connect-src none 等限制，不扩大主文档脚本或网络来源。
+
 公共语义与呈现数据定义由 `packages/plugin-protocol/src/` 持有，原
 `src/lib/presentation/{contract,renderer-contract,presentation-contract}.ts`
 为兼容导出入口。纯数据架构检查沿重导出递归进入协议包，并禁止协议包反向依赖
