@@ -10,8 +10,11 @@ const browser=await chromium.launch({headless:true});const page=await browser.ne
 try{
   await page.goto(`http://127.0.0.1:${server.httpServer.address().port}/probes/presentation-semantic.html`);
   await page.waitForFunction(()=>window.semanticPackageProbe);
+  await page.locator('[data-presentation-mode="specialized"]').waitFor();
   await page.evaluate(pkg=>window.semanticPackageProbe.select(pkg),packageOf(source));
   await page.frameLocator('.external-semantic iframe').getByRole('heading',{name:'Plugin detail'}).waitFor();
+  await page.locator('[data-presentation-mode="core"]').waitFor();
+  await page.getByRole('status').filter({hasText:'专业阅读界面不可用，已使用通用视图'}).waitFor();
   await page.frameLocator('.external-semantic iframe').getByRole('button',{name:'Toggle local detail'}).click();
   await page.frameLocator('.external-semantic iframe').getByRole('heading',{name:'Plugin detail expanded'}).waitFor();
   assert.equal(await page.evaluate(()=>window.semanticPackageProbe.result().length),0);
@@ -31,7 +34,8 @@ try{
   assert.equal(await page.locator('.external-semantic iframe').count(),0);
   assert.equal(await page.locator('textarea').inputValue(),'fail');
   await page.evaluate(()=>window.semanticPackageProbe.dispose());
+  await page.locator('[data-presentation-mode="specialized"]').waitFor();
   assert.deepEqual(errors,[]);
-  const result={passed:true,browser:browser.version(),checks:['all four core kinds preflight','actual semantic skin rendering','host action identity retained','local interaction stays inside presentation worker','incomplete candidate preserves old renderer','runtime failure preserves full default content']};
+  const result={passed:true,browser:browser.version(),checks:['local specialized reading becomes explicit core fallback under an external semantic package and returns after disposal','all four core kinds preflight','actual semantic skin rendering','host action identity retained','local interaction stays inside presentation worker','incomplete candidate preserves old renderer','runtime failure preserves full default content']};
   await writeFile('/tmp/aibo-presentation-semantic-browser.json',JSON.stringify(result,null,2));console.log(JSON.stringify(result));
 }finally{await browser.close();await server.close();}

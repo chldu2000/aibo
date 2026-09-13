@@ -786,3 +786,21 @@ Shift+Tab 和鼠标筛选，每分类独立保留 24 项结果；空分类以数
 `pnpm run verify` 通过 25 项架构检查、247 项 Node 测试、类型检查与构建，保留既有
 构建提示。一次并行浏览器启动停在初始化页；检查结束后单独重跑全流程通过。
 更广的键盘/辅助功能、可选专业视图降级及最终版本构建验收仍未结束。
+
+2026-09-14：专业阅读退出核对发现，外部 semantic 覆盖后忽略本地 numbered
+选项，但 PresentationSurface 仍标记 specialized。现仅在外部覆盖 semantic 时
+移除本地可选 adapter 的协商声明，明确显示 core 降级；停用后恢复内置协商。
+两套完整工作台共用的 capability renderer 也根据宿主 enhanced 偏好显示降级
+提示，并明确提供通用／尝试专业阅读操作。未新增独立插件身份或业务协议。
+
+[浏览器记录](baselines/presentation-p4/reading-fallback-browser.json) 验证真实
+PresentationSurface 从内置 specialized 切换为外部 core 和提示，再停用恢复
+specialized；同时复验四核心预检、动作身份、包内局部交互、失败候选保留和运行
+故障后的完整内容恢复。新增模块测试确认降级不缩减属性、正文、截断信息、上下文
+或语义动作身份。该浏览器探针不使用原生 IPC，也不等同于屏幕阅读器验收。
+
+[能力工作台回归](baselines/presentation-p4/reading-fallback-capability-browser.json)
+复验默认/外置切换保留同一能力实例、详情与布局，显式关闭才释放，未声明快照
+不交付外部包。原生 IPC 为替身。可选专业视图降级退出项现有直接证据。
+本批 `pnpm run verify` 通过 25 项架构检查、248 项 Node 测试、类型检查与构建，
+保留既有构建提示。整体键盘/辅助功能与最终发行版本验收继续保留。

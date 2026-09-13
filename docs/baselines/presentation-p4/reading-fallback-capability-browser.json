@@ -1,0 +1,15 @@
+{
+  "passed": true,
+  "nativePort": "mocked; actual App, default capability view and Worker",
+  "browser": "153.0.8010.12",
+  "checks": [
+    "open contribution and inspect semantic item",
+    "full provider detail exposed",
+    "external/default/external keeps same lease and view",
+    "layout preference survives switches",
+    "explicit close releases lease",
+    "reopen restores detail",
+    "unsupported snapshot falls back without delivering undeclared data",
+    "incompatible candidate rejected before activation"
+  ]
+}

@@ -1,5 +1,6 @@
 <script>
-  import { PresentationHost, SemanticView } from '$lib/ui-kit';
+  import { PresentationHost } from '$lib/ui-kit';
+  import PresentationSurface from '../src/lib/workbench/PresentationSurface.svelte';
   import detail from '../fixtures/semantic-git/detail.json';
   let host;
   let themeId=$state(null);
@@ -16,5 +17,5 @@
   export function dispose(){instance?.dispose();instance=null;active=null;}
 </script>
 <PresentationHost bind:this={host} {active} {themeId} {input} onIntent={()=>{}} onRestore={dispose}>
-  <SemanticView {snapshot} layout="central" onAction={action=>actions.push(action)} />
+  <PresentationSurface {snapshot} layout="central" onAction={action=>actions.push(action)} />
 </PresentationHost>
