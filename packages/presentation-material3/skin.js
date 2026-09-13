@@ -1,7 +1,12 @@
 const node=(tag,key,text,children=[],attrs={})=>({tag,key,...(text==null?{}:{text:String(text)}),children,attrs});
 const button=(key,label,token,attrs={})=>({...node('button',key,label,[],{type:'button',...attrs}),...(token?{events:{click:token}}:{})});
 function controls({control,props,actions}) {
-  if(control==='AgentStatusMark')return {...node('span','status',props.agent==='codex'?'◎':props.agent==='pi'?'π':'◇',[],{'aria-label':props.label,title:props.label}),className:'status '+props.tone};
+  if(control==='AgentStatusMark') {
+    const logo=agentPaths[props.agent]
+      ? node('svg','logo',null,[node('path','logo-path',null,[],{d:agentPaths[props.agent],fill:'currentColor'})],{viewBox:'0 0 24 24','aria-hidden':'true'})
+      : node('svg','logo',null,[node('polygon','logo-path',null,[],{points:'12,2 22,12 12,22 2,12',fill:'none',stroke:'currentColor','stroke-width':'2'})],{viewBox:'0 0 24 24','aria-hidden':'true'});
+    return {...node('span','status',null,[node('span','orbit'),logo,node('span','signal')],{'aria-label':props.label,title:props.label}),className:'status '+props.tone};
+  }
   if(control!=='ModelMatrix')return null;
   const choose=(row,cell)=>actions.find(a=>a.model===row.reference&&a.reasoningEffort===(cell?.id??null))?.token;
   return {...node('table','models',null,[node('thead','model-head',null,[node('tr','labels',null,[node('th','model-label','模型'),node('th','default-label',props.defaultLabel),...props.columns.map(c=>node('th','column:'+c.id,c.label,[],{title:c.description??c.label}))])]),node('tbody','model-body',null,props.rows.map(row=>node('tr','model:'+row.reference,null,[node('th','name:'+row.reference,row.label+(row.isDefault?' · 默认':'')),node('td','default-cell:'+row.reference,null,[button('default:'+row.reference,props.defaultLabel,choose(row),{disabled:props.disabled,'aria-pressed':String(row.defaultActive),title:props.defaultTitle})]),...row.cells.map(cell=>node('td','cell:'+row.reference+':'+cell.id,null,[button('choose:'+row.reference+':'+cell.id,cell.label,choose(row,cell),{disabled:props.disabled||!cell.available,'aria-pressed':String(cell.active),title:cell.description??cell.label})]))])))]),className:'models'};

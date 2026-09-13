@@ -1,0 +1,14 @@
+{
+  "passed": true,
+  "browser": "153.0.8010.12",
+  "nativePort": "not exercised",
+  "checks": [
+    "independent packages preserve exact OpenAI and Pi paths",
+    "all five state tones",
+    "reduced-motion disables running animation",
+    "model selection calls host and disabled blocks selection",
+    "decorative iframe does not capture parent clicks or tab focus",
+    "trusted host controls untouched",
+    "dispose removes all external controls"
+  ]
+}
