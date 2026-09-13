@@ -14,3 +14,13 @@ test('visual state rejects malformed, oversized and non-finite state without rep
  const store=createPresentationViewStateStore();store.write(context,state);
  for(const value of [null,{}, {...state,window:[NaN,0]}, {...state,focus:{key:'x'.repeat(257),selection:null}}, {...state,scroll:Array(1025).fill(state.scroll[0])}, {...state,disclosures:[{key:'models',open:'yes'}]}, {...state,focus:{key:'draft',selection:[-1,0]}}]){store.write(context,value);assert.deepEqual(store.read(context),state);}
 });
+test('message anchors are validated and copied without accepting arbitrary payloads',()=>{
+ const store=createPresentationViewStateStore();
+ const anchored={...state,timeline:{key:'message:one',offset:-25,source:'default'}};
+ store.write(context,{...anchored,timeline:{...anchored.timeline,text:'private'}});
+ assert.deepEqual(store.read(context),anchored);
+ for(const timeline of [{key:'',offset:0,source:'default'},{key:'message:one',offset:Infinity,source:'default'},{key:'message:one',offset:0,source:'plugin'}]){
+  store.write(context,{...state,timeline});assert.deepEqual(store.read(context),anchored);
+ }
+ store.write(context,{...state,timeline:null});assert.equal(store.read(context).timeline,null);
+});

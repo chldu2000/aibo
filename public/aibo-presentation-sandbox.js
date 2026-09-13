@@ -70,9 +70,35 @@
   window.addEventListener('blur',endResize);
   for(const name of ['pointerup','pointercancel','lostpointercapture'])root.addEventListener(name,()=>{drag=undefined;});
   let active = false, pendingState, lastState, stateTimer, restoring = false, renderedContext, mayRestoreFocus = false;
+  function timelineViewport() {
+    let element=root.querySelector('[data-presentation-key="conversation:timeline"]');
+    while(element&&element!==root){
+      if(/auto|scroll/.test(getComputedStyle(element).overflowY)&&element.clientHeight>0)return element;
+      element=element.parentElement;
+    }
+    return null;
+  }
+  function timelineMessages(viewport) {
+    const timeline=viewport.querySelector('[data-presentation-key="conversation:timeline"]');
+    return [...(timeline?.children??[])].filter(element=>element.matches('article,details')&&/^(message:|message-group:)/.test(element.dataset.presentationKey??''));
+  }
+  function captureTimeline() {
+    if(!root.getBoundingClientRect().width)return lastState?.timeline??null;
+    const viewport=timelineViewport();if(!viewport)return null;
+    const bounds=viewport.getBoundingClientRect();
+    const message=timelineMessages(viewport).find(element=>{const rect=element.getBoundingClientRect();return rect.height>0&&rect.bottom>bounds.top&&rect.top<bounds.bottom;});
+    return message?{key:message.dataset.presentationKey,offset:message.getBoundingClientRect().top-bounds.top,source:'external'}:null;
+  }
+  function restoreTimeline(anchor) {
+    if(!anchor||anchor.source!=='default')return;
+    const viewport=timelineViewport();if(!viewport)return;
+    const message=timelineMessages(viewport).find(element=>element.dataset.presentationKey===anchor.key);if(!message)return;
+    const rect=message.getBoundingClientRect();
+    viewport.scrollTop+=rect.top-viewport.getBoundingClientRect().top-Math.max(-Math.max(0,rect.height-24),anchor.offset);
+  }
   function captureState() {
     const element=document.activeElement;
-    return {focus:element?.dataset.presentationKey?{key:element.dataset.presentationKey,selection:(element instanceof HTMLInputElement||element instanceof HTMLTextAreaElement)&&element.selectionStart!==null?[element.selectionStart,element.selectionEnd]:null}:(lastState?.focus??null),
+    return {timeline:captureTimeline(),focus:element?.dataset.presentationKey?{key:element.dataset.presentationKey,selection:(element instanceof HTMLInputElement||element instanceof HTMLTextAreaElement)&&element.selectionStart!==null?[element.selectionStart,element.selectionEnd]:null}:(lastState?.focus??null),
       scroll:[...root.querySelectorAll('[data-presentation-key]')].filter(element=>element.scrollLeft||element.scrollTop).slice(0,1024).map(element=>({key:element.dataset.presentationKey,x:element.scrollLeft,y:element.scrollTop})),window:[scrollX,scrollY],
       disclosures:[...root.querySelectorAll('details[data-presentation-key]')].slice(0,1024).map(element=>({key:element.dataset.presentationKey,open:element.open}))};
   }
@@ -85,6 +111,7 @@
     const element=state.focus&&elements.get(state.focus.key);
     if(element){if(focus)element.focus({preventScroll:true});if(state.focus.selection&&typeof element.setSelectionRange==='function')try{element.setSelectionRange(...state.focus.selection)}catch{}}
     window.scrollTo(...state.window);
+    restoreTimeline(state.timeline);
     restoring=false;
   }
   function publishState() {

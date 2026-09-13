@@ -237,7 +237,7 @@
     {/if}
 
     {#if timeline.length > 0}
-      <div class="timeline-feed" aria-live="polite" onscroll={onTimelineScroll}>
+      <div data-presentation-timeline class="timeline-feed" aria-live="polite" onscroll={onTimelineScroll}>
         {#if hiddenTimelineCount > 0}
           <Button class="timeline-load-more" variant="ghost" size="sm" type="button" onclick={onLoadOlderTimeline}>
             加载更早的 {Math.min(hiddenTimelineCount, 80)} 条消息
@@ -245,7 +245,7 @@
         {/if}
         {#each groupTimelineItems(visibleTimeline, sessionKind === 'pi') as renderItem (renderItem.id)}
           {#if renderItem.kind === 'tool-group'}
-            <Card as="article" class="timeline-entry tool-entry tool-group-entry">
+            <Card as="article" data-presentation-message={'message-group:' + renderItem.id} class="timeline-entry tool-entry tool-group-entry">
               <details class="tool-group">
                 <summary>
                   <span class="tool-group-title">
@@ -268,7 +268,7 @@
               </details>
             </Card>
           {:else if renderItem.kind === 'system-group'}
-            <Card as="article" class="timeline-entry system-entry tool-group-entry">
+            <Card as="article" data-presentation-message={'message-group:' + renderItem.id} class="timeline-entry system-entry tool-group-entry">
               <details class="tool-group">
                 <summary>
                   <span class="tool-group-title">
@@ -293,6 +293,7 @@
             {@const item = renderItem.item}
             <Card
               as="article"
+              data-presentation-message={'message:' + item.id}
               class={`timeline-entry ${item.role === 'assistant' ? 'assistant-entry' : item.role === 'user' ? 'user-entry' : item.role === 'tool' ? 'tool-entry' : item.role === 'system' ? 'system-entry' : ''}`}
             >
               <div class="entry-meta">

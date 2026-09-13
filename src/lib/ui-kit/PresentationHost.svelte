@@ -7,6 +7,7 @@
   import { get } from 'svelte/store';
   import { createPresentationViewStateStore } from '../presentation-runtime/view-state';
   import { bindDefaultPresentationFocus } from '../presentation-runtime/default-focus';
+  import { bindDefaultPresentationScroll } from '../presentation-runtime/default-scroll';
   const viewState = createPresentationViewStateStore();
   import { externalPresentation, type ExternalPresentation } from './external-presentation';
   import { PRESENTATION_CONTROLS, type PresentationControlScope } from './control-context';
@@ -23,6 +24,7 @@
   let target: HTMLDivElement;
   let fallback: HTMLDivElement;
   let defaultFocus = $state<ReturnType<typeof bindDefaultPresentationFocus> | null>(null);
+  let defaultScroll = $state<ReturnType<typeof bindDefaultPresentationScroll> | null>(null);
   let mounted = $state<MountedSandbox | null>(null);
   let mountedRevision = -1;
   const replacesWorkbench = $derived(Boolean(active?.release.manifest.surfaces?.includes('workbench')));
@@ -75,15 +77,18 @@
   $effect(() => {
     const binding = bindDefaultPresentationFocus(fallback, viewState, () => input.context, () => !suspended && !replacesWorkbench);
     defaultFocus = binding;
-    return () => binding.dispose();
+    const scroll = bindDefaultPresentationScroll(fallback, viewState, () => input.context, () => !suspended && !replacesWorkbench);
+    defaultScroll = scroll;
+    return () => { binding.dispose(); scroll.dispose(); };
   });
   $effect(() => {
     const binding = defaultFocus;
+    const scroll = defaultScroll;
     const visible = !suspended && !replacesWorkbench;
     const scope = focusScope;
     let cancelled = false;
     if (visible) void tick().then(() => {
-      if (!cancelled && focusScope === scope) binding?.restore();
+      if (!cancelled && focusScope === scope) { binding?.restore(); scroll?.restore(); }
     });
     return () => { cancelled = true; };
   });
