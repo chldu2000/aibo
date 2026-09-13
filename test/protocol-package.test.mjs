@@ -16,7 +16,8 @@ test('packed protocol compiles and imports outside the repository without DOM or
     execFileSync(process.execPath,[tsc,'-p',path.join(source,'tsconfig.json'),'--outDir',path.join(staging,'dist')],{stdio:'pipe'});
     const packed = JSON.parse(execFileSync('npm',['pack','--ignore-scripts','--offline','--json','--cache',path.join(root,'cache')],{cwd:staging,encoding:'utf8'}))[0];
     assert.ok(packed.files.some(file=>file.path==='dist/semantic.d.ts'));
-    assert.ok(packed.files.every(file=>file.path==='package.json'||file.path==='README.md'||/^dist\/[a-z]+\.(?:js|d\.ts)$/.test(file.path)), 'archive only contains public built contracts');
+    assert.ok(packed.files.every(file=>file.path==='package.json'||file.path==='README.md'||/^dist\/(?:index|semantic|presentation|renderer|capability|session|presentation-package)\.(?:js|d\.ts)$/.test(file.path)), 'archive only contains public built contracts');
+    assert.ok(packed.files.some(file=>file.path==='dist/presentation-package.d.ts'));
     const installed = path.join(consumer,'node_modules/@aibo/plugin-protocol');
     await mkdir(installed,{recursive:true});
     execFileSync('tar',['-xzf',path.join(staging,packed.filename),'-C',installed,'--strip-components=1']);
@@ -38,13 +39,14 @@ test('packed protocol compiles and imports outside the repository without DOM or
 import { SEMANTIC_SCHEMA, type Snapshot } from '@aibo/plugin-protocol/semantic';
 import type { PresentationSnapshot } from '@aibo/plugin-protocol/presentation';
 import { CORE_SEMANTICS, type RendererDescriptor } from '@aibo/plugin-protocol/renderer';
-import type { JsonValue } from '@aibo/plugin-protocol';
+import type { JsonValue, PresentationPackageManifest } from '@aibo/plugin-protocol';
 import { createCapabilityRuntime } from '@aibo/capability-runtime';
 import { serveCapability } from '@aibo/capability-runtime/stdio';
 const runtimeOptions = {pluginId:'dev.example.echo',pluginVersion:'1.0.0',contributionId:'dev.example.echo.worker',operations:[],invoke:async()=>null};
 createCapabilityRuntime({...runtimeOptions,send(message:JsonValue){}});
 type StdioEntry = typeof serveCapability;
 const value: JsonValue = { schema: SEMANTIC_SCHEMA };
+const skin: PresentationPackageManifest = {schema:'aibo.presentation-package/v1',id:'dev.example.skin',version:'1.0.0',displayName:'Skin',hostApi:'1.0.0',coreSemantics:'1.0.0',snapshotSchemas:['aibo.semantic-view/v1'],resources:[],themes:[{id:'dark',label:'Dark',colorScheme:'dark',tokens:{'--primary':'#123456'}}],defaultThemeId:'dark'};
 const descriptor: RendererDescriptor = {id:'dev.example.renderer',version:'1.0.0',semanticVersion:'1.0.0',core:CORE_SEMANTICS,optional:[]};
 type Message = PresentationSnapshot<Snapshot>;
 // @ts-expect-error The protocol must not require or introduce DOM globals.

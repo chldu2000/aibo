@@ -8,6 +8,11 @@
 [重构文档](presentation-plugin-refactor.md)。下文旧阶段中的 skin/Presentation
 分层描述不表示两种独立的产品插件。
 
+P1 外部包数据合同位于 `packages/plugin-protocol/src/presentation-package.ts`，
+对应 `contracts/presentation-package.v1.schema.json`。平台无关的包校验位于
+`src/lib/presentation-runtime/package.ts`，资源读取由调用方注入；生成验证器
+不在运行时编译 schema。新合同尚未接入 App 安装入口，不改变旧能力包的执行权限。
+
 公共语义与呈现数据定义由 `packages/plugin-protocol/src/` 持有，原
 `src/lib/presentation/{contract,renderer-contract,presentation-contract}.ts`
 为兼容导出入口。纯数据架构检查沿重导出递归进入协议包，并禁止协议包反向依赖

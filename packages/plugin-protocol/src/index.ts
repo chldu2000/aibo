@@ -3,3 +3,4 @@ export * from './presentation.js';
 export * from './renderer.js';
 export * from './capability.js';
 export * from './session.js';
+export * from './presentation-package.js';

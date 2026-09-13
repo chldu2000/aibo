@@ -1,0 +1,203 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://aibo.local/contracts/presentation-package.v1.schema.json",
+  "title": "Aibo Presentation Package v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema",
+    "id",
+    "version",
+    "displayName",
+    "hostApi",
+    "coreSemantics",
+    "snapshotSchemas",
+    "resources"
+  ],
+  "properties": {
+    "schema": {
+      "const": "aibo.presentation-package/v1"
+    },
+    "id": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9]*(?:[.-][a-z0-9]+)+$",
+      "maxLength": 128
+    },
+    "version": {
+      "type": "string",
+      "pattern": "^(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)$",
+      "maxLength": 64
+    },
+    "displayName": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 128
+    },
+    "hostApi": {
+      "const": "1.0.0"
+    },
+    "coreSemantics": {
+      "const": "1.0.0"
+    },
+    "snapshotSchemas": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 3,
+      "uniqueItems": true,
+      "contains": {
+        "const": "aibo.semantic-view/v1"
+      },
+      "items": {
+        "enum": [
+          "aibo.semantic-view/experimental-v1",
+          "aibo.semantic-view/v1",
+          "aibo.semantic-view/v1.1"
+        ],
+        "type": "string"
+      }
+    },
+    "resources": {
+      "type": "array",
+      "maxItems": 128,
+      "items": {
+        "$ref": "#/$defs/resource"
+      }
+    },
+    "themes": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 32,
+      "items": {
+        "$ref": "#/$defs/theme"
+      }
+    },
+    "defaultThemeId": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 64
+    },
+    "entry": {
+      "$ref": "#/$defs/path"
+    },
+    "surfaces": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 3,
+      "uniqueItems": true,
+      "items": {
+        "enum": [
+          "controls",
+          "semantic",
+          "workbench"
+        ],
+        "type": "string"
+      }
+    }
+  },
+  "dependencies": {
+    "entry": [
+      "surfaces"
+    ],
+    "surfaces": [
+      "entry"
+    ],
+    "themes": [
+      "defaultThemeId"
+    ],
+    "defaultThemeId": [
+      "themes"
+    ]
+  },
+  "anyOf": [
+    {
+      "required": [
+        "themes"
+      ]
+    },
+    {
+      "required": [
+        "entry"
+      ]
+    }
+  ],
+  "$defs": {
+    "path": {
+      "type": "string",
+      "maxLength": 240,
+      "pattern": "^[a-zA-Z0-9_-]+(?:/[a-zA-Z0-9_-]+)*(?:\\.[a-zA-Z0-9_-]+)?$"
+    },
+    "resource": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "path",
+        "sha256",
+        "bytes",
+        "mediaType"
+      ],
+      "properties": {
+        "path": {
+          "$ref": "#/$defs/path"
+        },
+        "sha256": {
+          "type": "string",
+          "pattern": "^[a-f0-9]{64}$"
+        },
+        "bytes": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 8388608
+        },
+        "mediaType": {
+          "enum": [
+            "text/javascript",
+            "text/css",
+            "image/png",
+            "image/webp",
+            "font/woff2"
+          ]
+        }
+      }
+    },
+    "theme": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "label",
+        "colorScheme",
+        "tokens"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9-]{0,63}$"
+        },
+        "label": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        },
+        "colorScheme": {
+          "enum": [
+            "dark",
+            "light"
+          ]
+        },
+        "tokens": {
+          "type": "object",
+          "minProperties": 1,
+          "maxProperties": 128,
+          "propertyNames": {
+            "pattern": "^--[a-z][a-z0-9-]{0,63}$"
+          },
+          "additionalProperties": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 256
+          }
+        }
+      }
+    }
+  }
+}
