@@ -135,6 +135,7 @@ async fn codex_branch_uses_native_boundary_and_copies_host_history_and_profile()
     snapshot.unwrap();
     host.send_configured_from("main",&source.id,"branch message").await.unwrap();
     wait_for_turn(&host,&source.id).await;
+    assert_eq!(crate::session_by_id(&db, &source.id).await.unwrap().label, "branch message");
     let (turn,native):(String,String) = sqlx::query_as("SELECT id,external_turn_id FROM turns WHERE session_id=? AND status='completed'")
         .bind(&source.id).fetch_one(&db).await.unwrap();
     assert_ne!(turn,native);
@@ -528,4 +529,24 @@ async fn session_permission_consent_is_scoped_and_not_repeated_per_turn() {
     permissions::save(&db, &session.id, None).await.unwrap();
     assert!(!permissions::granted(&db, &session.id, &refreshed).await.unwrap());
     broker.stop_session(&session.id).await.unwrap(); db.close().await; fs::remove_dir_all(root).unwrap();
+}
+
+#[tokio::test]
+async fn first_prompt_names_capability_sessions_without_overwriting_manual_names() {
+    let (root, db, broker, host, session) = concurrent_session_fixture().await;
+    host.send_configured_from("main", &session.id, "  第一条消息\n用于命名  ").await.unwrap();
+    wait_for_turn(&host, &session.id).await;
+    assert_eq!(crate::session_by_id(&db, &session.id).await.unwrap().label, "第一条消息 用于命名");
+    host.send_configured_from("main", &session.id, "第二条消息").await.unwrap();
+    wait_for_turn(&host, &session.id).await;
+    assert_eq!(crate::session_by_id(&db, &session.id).await.unwrap().label, "第一条消息 用于命名");
+    let manual = host.create_with_profile_from("main", "w", session.plugin_installation_id.as_deref().unwrap(), &session.agent, None).await.unwrap();
+    sqlx::query("UPDATE sessions SET label='手动名称' WHERE id=?").bind(&manual.id).execute(&db).await.unwrap();
+    host.send_configured_from("main", &manual.id, "不能覆盖手动名称").await.unwrap();
+    wait_for_turn(&host, &manual.id).await;
+    assert_eq!(crate::session_by_id(&db, &manual.id).await.unwrap().label, "手动名称");
+    broker.stop_session(&session.id).await.unwrap();
+    broker.stop_session(&manual.id).await.unwrap();
+    db.close().await;
+    fs::remove_dir_all(root).unwrap();
 }

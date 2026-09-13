@@ -123,8 +123,8 @@ impl SessionHost {
         if workspace.trust!="trusted" {return Err("permission_denied: workspace trust required".into());}
         let id=ulid::Ulid::new().to_string();let now=crate::now_iso();
         let _guard=self.session_operation(&id).await;
-        sqlx::query("INSERT INTO sessions(id,workspace_id,agent,label,state,created_at,updated_at,plugin_installation_id) VALUES(?,?,?,'Session','starting',?,?,?)")
-            .bind(&id).bind(workspace_id).bind(contribution_id).bind(&now).bind(&now).bind(installation_id).execute(&self.db).await.map_err(|e|e.to_string())?;
+        sqlx::query("INSERT INTO sessions(id,workspace_id,agent,label,state,created_at,updated_at,plugin_installation_id) VALUES(?,?,?,?,'starting',?,?,?)")
+            .bind(&id).bind(workspace_id).bind(contribution_id).bind(crate::DEFAULT_CAPABILITY_SESSION_LABEL).bind(&now).bind(&now).bind(installation_id).execute(&self.db).await.map_err(|e|e.to_string())?;
         let profile=match profile {Some(profile)=>profile,None=>execution_profile::resolve(contribution_id,None,now)?};
         execution_profile::save_for_session(&self.db,&id,&profile).await.map_err(|e|e.to_string())?;
         if let Err(error)=self.open(caller,&id).await {

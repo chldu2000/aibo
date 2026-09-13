@@ -64,6 +64,7 @@ use ulid::Ulid;
 
 const PI_SDK_VERSION: &str = "0.84.4";
 const SESSION_AUTO_LABEL_MAX_CHARS: usize = 40;
+pub(crate) const DEFAULT_CAPABILITY_SESSION_LABEL: &str = "Session";
 const CONTEXT_ATTACHMENTS_MARKER: &str = "\n\n[AIBO_CONTEXT_ATTACHMENTS]";
 
 #[derive(Clone)]
@@ -674,6 +675,7 @@ pub(crate) async fn auto_name_session_from_first_message(
     let plugin_installation_id: Option<String> = row.try_get("plugin_installation_id")?;
     let workspace_label: String = row.try_get("workspace_label")?;
     let default_label = match agent.as_str() {
+        _ if plugin_installation_id.is_some() && current_label == DEFAULT_CAPABILITY_SESSION_LABEL => DEFAULT_CAPABILITY_SESSION_LABEL.to_owned(),
         "codex" => format!("Codex · {workspace_label}"),
         "pi" => format!("Pi · {workspace_label}"),
         _ if plugin_installation_id.is_some() => "Plugin session".to_owned(),
