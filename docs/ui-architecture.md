@@ -377,3 +377,14 @@ ProjectActionsPanel 不再持有编辑草稿或保存生命周期。Inspector �
 PresentationProjectEditor 和语义回调，App 将编辑交给注入式控制器；默认面板和
 外部呈现共用状态、校验与保存结果。编辑期间的 parse/保存错误归属该工作区，
 迟到结果不得覆盖其他工作区。运行/取消回调同样由 App 持有，不依赖皮肤实例。
+
+### 能力视图归属宿主
+
+InstalledWorkbench 是纯展示组件：接收 InstalledWorkbenchState 与语义回调，不再
+直接持有 InstalledPort、租约或恢复循环。App 按贡献/作用域创建宿主控制器，独立
+于 Presentation 生命周期；验证器及能力控制器仍按需加载。切换皮肤不会重开能力
+视图，显式关闭时释放租约。默认与外部呈现消费相同完整快照和视图偏好。
+
+外部工作台的语义动作从已验证快照构造，经过目录和原 InstalledController 两层
+上下文检查。格式兼容同时覆盖独立 semantic 角色与整窗 workbench 角色；不得因
+外部工作台存在而忽略 snapshotSchemas 声明。

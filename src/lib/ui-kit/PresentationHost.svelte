@@ -47,6 +47,8 @@
       dispose() { if (get(externalPresentation) === registration) externalPresentation.set(null); },
     };
     const snapshot = $state.snapshot(input);
+    const capability = (snapshot.data as {capability?: {view?: {snapshot?: {schema: string} | null}}} | null)?.capability?.view?.snapshot;
+    if (capability && !value.release.manifest.snapshotSchemas.includes(capability.schema)) throw Error('unsupported_presentation_snapshot');
     const candidate = await preparePresentationSandbox(target, value, { ...snapshot, theme },
       intent => { if (!suspended) onIntent(intent); }, failure, signal, { localInputActions: snapshot => {
         const data = snapshot.data as { navigationActions?: { token: string; event: string }[]; conversationActions?: { token: string; event: string }[]; gitActions?: { token: string; event: string }[]; inspectorActions?: { token: string; event: string }[] } | null;

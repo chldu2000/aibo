@@ -6,6 +6,9 @@
   import { PresentationHost, WorkbenchPresentation, DefaultPresentationActions, Badge, Button, Card, CardHeader, CardTitle, CardContent } from '$lib/ui-kit';
   import { createPresentationPackageController, type PresentationPackageState } from '$lib/app/presentation-package-controller';
   import { listPresentationPackages, readPresentationPackage, installPresentationPackage, setPresentationPackageEnabled, uninstallPresentationPackage, getPresentationSelection, selectPresentationPackage } from '$lib/api';
+  import { createCapabilityWorkbenchDirectory } from '$lib/presentation-runtime/capability-workbench';
+  import type { PresentationCapabilityWorkbench } from '../packages/plugin-protocol/src/presentation-capability';
+  const capabilityWorkbenchDirectory = createCapabilityWorkbenchDirectory();
   import { createProjectEditorController, emptyProjectEditor, type ProjectEditorField } from '$lib/app/project-editor-controller';
   import type { PresentationProjectEditor } from '../packages/plugin-protocol/src/presentation-inspector';
   let projectEditors = $state<Record<string, PresentationProjectEditor>>({});
@@ -288,8 +291,41 @@
       case 'hunkAction': await applyGitHunkActionFromInspector(sessionId, target!, path!, Number(detail), operation as GitFileAction); break;
     }
   }
+  const externalCapability = $derived<PresentationCapabilityWorkbench>({
+    catalog: installedContributions.map(item => ({...item,available:contributionAvailable(item)})),
+    selected: installedTool, scope: installedScope, view: installedWorkbenchState.snapshot && presentationPackages.active?.release.manifest.surfaces?.includes('workbench') && !presentationPackages.active.release.manifest.snapshotSchemas.includes(installedWorkbenchState.snapshot.schema)
+      ? {...installedWorkbenchState,snapshot:null,error:'unsupported_presentation_snapshot'} : installedWorkbenchState,
+  });
+  async function externalCapabilityIntent(intent: PresentationIntent) {
+    const action = capabilityWorkbenchDirectory.resolve(externalCapability, externalInput.context, intent);
+    if (!action) return;
+    switch(action.operation) {
+      case 'open': {
+        const contribution = installedContributions.find(item => item.installationId === action.args[0] && item.contributionId === action.args[1] && contributionAvailable(item));
+        if (contribution) { installedTool = contribution; pluginsOpen = false; }
+        break;
+      }
+      case 'close': installedTool = null; break;
+      case 'reload': await installedWorkbenchController?.reload(); break;
+      case 'toggleLayout': installedWorkbenchController?.toggleLayout(); break;
+      case 'toggleReading': installedWorkbenchController?.toggleReading(); break;
+      case 'semantic': await installedWorkbenchController?.act(JSON.parse(action.args[0]!)); break;
+    }
+  }
+  let incompatibleCapabilityRecovery: string | null = null;
+  $effect(() => {
+    const manifest = presentationPackages.active?.release.manifest;
+    const snapshot = installedWorkbenchState.snapshot;
+    if (manifest?.surfaces?.includes('workbench') && snapshot && !manifest.snapshotSchemas.includes(snapshot.schema)) {
+      const identity = JSON.stringify([presentationPackages.active?.release.digest, snapshot.schema]);
+      if (incompatibleCapabilityRecovery === identity) return;
+      incompatibleCapabilityRecovery = identity;
+      void presentationOperation(async () => { await presentationPackagesController.select(null); notice = '皮肤不支持此能力视图格式，已恢复默认呈现。'; });
+    } else incompatibleCapabilityRecovery = null;
+  });
   function externalIntent(intent: PresentationIntent) {
     if (intent.context.workspaceId !== selectedWorkspaceId || intent.context.sessionId !== selectedSessionId) return;
+    if (intent.id.startsWith('capability:')) { void presentationOperation(() => externalCapabilityIntent(intent)); return; }
     if (intent.id.startsWith('inspector:')) { void presentationOperation(() => externalInspectorIntent(intent)); return; }
     if (intent.id.startsWith('git:')) { void presentationOperation(() => externalGitIntent(intent)); return; }
     if (intent.id.startsWith('conversation:')) { void presentationOperation(() => externalConversationIntent(intent)); return; }
@@ -310,6 +346,8 @@
     const data = { workspaces: workspaces.map(({ id, label }) => ({ id, label })),
       sessions: sessions.filter(session => session.workspaceId === selectedWorkspaceId).map(({ id, label, state }) => ({ id, label, state })),
       timeline: timeline.map(({ id, role, content, status }) => ({ id, role, content, status })),
+      capability: externalCapability,
+      capabilityActions: capabilityWorkbenchDirectory.project(externalCapability),
       inspector: externalInspector, inspectorActions: inspectorDirectory.project(externalInspector),
       git: externalGit, gitActions: gitDirectory.project(externalGit),
       conversation: externalConversation, conversationActions: conversationDirectory.project(externalConversation),
@@ -324,6 +362,27 @@
     return () => { clearInterval(timer); presentationPackagesController.dispose(); };
   });
   const loadInstalledWorkbench = () => import('$lib/workbench/InstalledWorkbench.svelte');
+  import type { InstalledWorkbenchState, createInstalledWorkbenchController } from '$lib/app/installed-workbench-controller';
+  let installedWorkbenchState = $state<InstalledWorkbenchState>({snapshot:null,error:'',enhanced:true,layout:'central',focusTarget:null,restoring:false});
+  let installedWorkbenchController: ReturnType<typeof createInstalledWorkbenchController> | null = null;
+  $effect(() => {
+    const contribution = installedTool;
+    const scope = installedScope;
+    const workspaceId = selectedWorkspaceId ?? '';
+    const available = contribution && contributionAvailable(contribution);
+    let cancelled = false;
+    let owned: ReturnType<typeof createInstalledWorkbenchController> | null = null;
+    untrack(() => {
+      installedWorkbenchState = {snapshot:null,error:'',enhanced:true,layout:'central',focusTarget:null,restoring:true};
+      if (contribution && available) void import('$lib/app/installed-workbench-controller').then(module => {
+        if (cancelled) return;
+        owned = module.createInstalledWorkbenchController(installedPort, presentationState, state => { if (!cancelled) installedWorkbenchState = state; });
+        installedWorkbenchController = owned;
+        void owned.open(workspaceId, contribution, scope);
+      }).catch(error => { if (!cancelled) installedWorkbenchState = {...installedWorkbenchState,restoring:false,error:toErrorMessage(error)}; });
+    });
+    return () => { cancelled = true; owned?.dispose(); if (installedWorkbenchController === owned) installedWorkbenchController = null; };
+  });
   import { listSemanticContributions, cancelSemanticOpen, openSemanticContribution, actSemanticContribution, writeSemanticContribution, releaseSemanticContribution } from '$lib/api';
   import type { InstalledContribution, InstalledScope } from '$lib/presentation/installed-controller';
   const installedPort = { cancelOpen: cancelSemanticOpen, open: openSemanticContribution, act: actSemanticContribution, write: writeSemanticContribution, release: releaseSemanticContribution };
@@ -3600,7 +3659,12 @@
     {#if installedTool && contributionAvailable(installedTool)}
       {#key JSON.stringify([installedScope,installedTool.installationId,installedTool.contributionId])}
         {#await loadInstalledWorkbench() then workbench}
-          <workbench.default workspaceId={selectedWorkspaceId ?? ""} invocationScope={installedScope} contribution={installedTool} port={installedPort} stateStore={presentationState} onClose={guard('onClose', () => installedTool = null)} />
+          <workbench.default title={installedTool.title} state={installedWorkbenchState}
+            onAction={guard('onAction', (message) => void installedWorkbenchController?.act(message))}
+            onReload={guard('onReload', () => void installedWorkbenchController?.reload())}
+            onToggleLayout={guard('onToggleLayout', () => installedWorkbenchController?.toggleLayout())}
+            onToggleReading={guard('onToggleReading', () => installedWorkbenchController?.toggleReading())}
+            onClose={guard('onClose', () => installedTool = null)} />
         {/await}
       {/key}
     {:else if workspaceFileDiffPath !== null || workspaceFileDiff || workspaceFileDiffLoading || workspaceFileDiffError}

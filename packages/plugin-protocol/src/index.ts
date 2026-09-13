@@ -14,3 +14,5 @@ export type { PresentationConversation, PresentationConversationAction, Presenta
 export type { PresentationGit, PresentationGitAction, PresentationGitDrafts } from './presentation-git.js';
 
 export type { PresentationInspector, PresentationInspectorAction, PresentationArtifactPreview, PresentationProjectEditor } from './presentation-inspector.js';
+
+export type { PresentationCapabilityWorkbench, PresentationCapabilityView, PresentationCapabilityAction, PresentationCapabilityContribution, PresentationCapabilityScope } from './presentation-capability.js';

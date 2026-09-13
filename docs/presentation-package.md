@@ -256,3 +256,19 @@ Inspector 的 `projectEditor` 和 `runningActionId` 由宿主持有。编辑器�
 批准的记录。执行仍进入已有 project-task-controller 和原生审批流程，Presentation
 包不能指定任意 actionId/runId 或跳过批准。工程动作草稿目前不持久化磁盘，
 跨应用重启的草稿恢复仍待后续统一处理。
+
+## 已安装能力工作台
+
+`data.capability` 包含可用能力视图目录、当前贡献与作用域、完整语义快照、错误、
+布局、阅读方式和恢复状态。`data.capabilityActions` 提供打开/关闭/重新加载、
+布局/阅读切换，以及宿主构造的语义动作。不透明动作绑定原快照 context、条目和
+动作身份；旧快照、不可用贡献、恢复中的动作及任意替换参数均不会执行。
+
+能力视图的 open/act/write/release 生命周期由宿主控制器持有。更换 Presentation
+不会重新打开能力视图、释放其 generation 或重置当前详情；默认视图只是状态的
+消费者。显式关闭或切换贡献才释放，重新打开沿用既有选择/详情/分页/布局恢复。
+写动作继续走 InstalledController 的原生审批、未知结果处理和刷新流程。
+
+工作台包也必须声明支持其接收的 semantic snapshotSchemas。候选选择时若当前
+能力视图格式不受支持，准备失败并保留当前呈现；运行中遇到未声明格式，宿主
+不向包交付该快照，并恢复默认呈现，能力实例本身继续存在。
