@@ -17,14 +17,15 @@
     let state=suggestionStates.get(key);
     if(!state||state.signature!==signature){state={scope,signature,index:0,dismissed:false,category:state?.scope===scope?state.category:0};suggestionStates.set(key,state);}
     let options=[];
-    container.id='aibo-suggestions-'+encodeURIComponent(config.listKey);
-    element.setAttribute('aria-controls',container.id);element.setAttribute('aria-autocomplete','list');
+    const listbox=container.matches('[role=listbox]')?container:container.querySelector('[role=listbox]')??container;
+    listbox.id='aibo-suggestions-'+encodeURIComponent(config.listKey);
+    element.setAttribute('aria-controls',listbox.id);element.setAttribute('aria-autocomplete','list');
     function paint(){
       options=allOptions.filter(option=>!categories.length||categories[state.category].options.has(option.key));
       if(state.index>=options.length)state.index=0;
       const visible=!state.dismissed&&(options.length>0||categories.length>0)&&element.value===expectedValue;
       container.hidden=!visible;element.setAttribute('aria-expanded',String(visible));element.removeAttribute('aria-activedescendant');
-      categories.forEach((category,index)=>category.element.setAttribute('aria-selected',String(index===state.category)));
+      categories.forEach((category,index)=>category.element.setAttribute(category.element.getAttribute('role')==='tab'?'aria-selected':'aria-pressed',String(index===state.category)));
       allOptions.forEach(option=>{const index=options.indexOf(option);option.element.hidden=index<0;option.element.id='aibo-option-'+encodeURIComponent(option.key);option.element.setAttribute('aria-selected',String(visible&&index>=0&&index===state.index));if(visible&&index>=0&&index===state.index)element.setAttribute('aria-activedescendant',option.element.id);});
     }
     function complete(){completions.set(key,{value:element.value,workspaceId:context.workspaceId,sessionId:context.sessionId});element.focus({preventScroll:true});}

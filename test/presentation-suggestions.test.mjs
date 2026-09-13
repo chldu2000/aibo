@@ -28,6 +28,11 @@ test('command categories retain per-category limits and empty menus remain valid
  assert.deepEqual(config.categories[2].options,['command:skill-command']);
  assert.deepEqual(config.categories[3].options,['command:extension-command']);
  assert.ok(config.keys.includes('command:skill-command'),'categories do not lose entries beyond the all-category limit');
+ const list=nodes.find(node=>node.key==='conversation:command-options');
+ assert.equal(list.attrs.role,'listbox');
+ assert.ok(list.children.every(node=>node.attrs.role==='option'));
+ assert.ok(!flatten(list).some(node=>node.key.startsWith('commands:category:')));
+ assert.equal(nodes.find(node=>node.key==='commands:category:all').attrs['aria-pressed'],'true');
  state.agentCommands=[];nodes=flatten(renderConversation(state,directory.project(state)));
  assert.ok(nodes.some(node=>node.key==='conversation:commands'));
  assert.equal(nodes.find(node=>node.key==='conversation:draft:input').suggestions.keys.length,0);

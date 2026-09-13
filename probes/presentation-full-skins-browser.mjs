@@ -114,7 +114,10 @@ try {
     await frame.getByRole('option',{name:'/heal',exact:true}).waitFor();
     assert.equal(await frame.getByRole('option',{name:'/hello',exact:true}).isVisible(),false);
     await composer.press('Shift+Tab');await frame.getByRole('option',{name:'/hello',exact:true}).waitFor();
-    await frame.getByRole('tab',{name:'Extension (1)',exact:true}).click();
+    await frame.getByRole('button',{name:'Extension (1)',exact:true}).click();
+    assert.equal(await frame.getByRole('button',{name:'Extension (1)',exact:true}).getAttribute('aria-pressed'),'true');
+    assert.equal(await frame.getByRole('listbox',{name:'命令建议',exact:true}).getByRole('button').count(),0);
+    assert.equal(await composer.getAttribute('aria-controls'),await frame.getByRole('listbox',{name:'命令建议',exact:true}).getAttribute('id'));
     await frame.getByRole('option',{name:'/height',exact:true}).click();
     await frame.locator('textarea[aria-label="消息"][value="/height "]').waitFor();
     assert.equal(await composer.evaluate(element=>element===document.activeElement&&element.selectionStart===element.value.length),true);
@@ -187,6 +190,11 @@ try {
     await frame.locator('[data-presentation-key="conversation:composer"]').evaluate(element=>{element.scrollTop=0;});
     await frame.locator('.conversation-history').evaluate(element=>{element.scrollTop=0;});
     const composerViewport=await frame.locator('[data-presentation-key="conversation:composer"]').boundingBox();
+    const historyRegion=frame.getByRole('region',{name:'会话历史',exact:true});
+    await historyRegion.focus();await historyRegion.press('PageDown');
+    await page.waitForTimeout(200);
+    assert.ok(await historyRegion.evaluate(element=>element.scrollTop>0),'focused history scrolls through the keyboard');
+    await historyRegion.evaluate(element=>{element.scrollTop=0;});
     const composerBounds=await composer.boundingBox();
     assert.ok(composerBounds&&composerBounds.y>=0&&composerBounds.y+composerBounds.height<=900,'long history does not push the editor outside the viewport');
     assert.ok(await frame.locator('.conversation-history').evaluate(element=>element.scrollHeight>element.clientHeight),'history has an independent scroll viewport');
@@ -264,6 +272,6 @@ try {
   const approvalChecks=await probePresentationApprovalFault(page);
   await writeFile('/tmp/aibo-presentation-approval-fault-browser.json',JSON.stringify({passed:true,browser:browser.version(),nativePort:'mocked; actual App, real Worker infinite loop, Playwright pointer input',checks:approvalChecks},null,2)+'\n');
   assert.deepEqual(errors,[]);
-  const result={passed:true,nativePort:'mocked; actual App and independently built full skin Workers',browser:browser.version(),checks:[...approvalChecks,'desktop history and composer scroll independently, send remains visible, named history and editor appear in the accessibility tree','ordinary message and tool group anchors transfer across different scroll containers','default and external composer focus and selection transfer in both directions','command category Tab and reverse Tab, mouse focus return, primary path confirmation','command and path keyboard completion, caret placement and Escape newline','answer draft reload waits for matching live request and clears after submit','focus and review modes, reversed drag, draft preservation and mode reload','reload restores both widths, panel visibility and selected view','both splitter drag directions and auxiliary keyboard resize','keyboard width adjustment and default/external width retention','primary Enter submits through host action','consecutive tool group with completion count','literal tool payloads and native reasoning disclosure in both skins','both full packages install and activate','workspace and session navigation','rich timeline headings, lists, inline and fenced code','host-bound code copy and link actions','attachment transport metadata hidden','rapid Chinese/English input and send','Git/context panel switching','requested and enforced permissions remain distinct','attachment status, strategy and size','diagnostic details remain visible','default/external switch retains host draft']};
+  const result={passed:true,nativePort:'mocked; actual App and independently built full skin Workers',browser:browser.version(),checks:[...approvalChecks,'command filters are separate pressed buttons, editor controls only the option list, history supports PageDown','desktop history and composer scroll independently, send remains visible, named history and editor appear in the accessibility tree','ordinary message and tool group anchors transfer across different scroll containers','default and external composer focus and selection transfer in both directions','command category Tab and reverse Tab, mouse focus return, primary path confirmation','command and path keyboard completion, caret placement and Escape newline','answer draft reload waits for matching live request and clears after submit','focus and review modes, reversed drag, draft preservation and mode reload','reload restores both widths, panel visibility and selected view','both splitter drag directions and auxiliary keyboard resize','keyboard width adjustment and default/external width retention','primary Enter submits through host action','consecutive tool group with completion count','literal tool payloads and native reasoning disclosure in both skins','both full packages install and activate','workspace and session navigation','rich timeline headings, lists, inline and fenced code','host-bound code copy and link actions','attachment transport metadata hidden','rapid Chinese/English input and send','Git/context panel switching','requested and enforced permissions remain distinct','attachment status, strategy and size','diagnostic details remain visible','default/external switch retains host draft']};
   await writeFile('/tmp/aibo-full-skins-browser.json',JSON.stringify(result,null,2)+'\n');console.log(JSON.stringify(result));
 } catch(error) {console.error(JSON.stringify({errors,body:await page.locator('body').innerText()}));throw error;} finally {await browser.close();await server.close();await built.dispose();}
