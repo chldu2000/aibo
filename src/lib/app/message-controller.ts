@@ -108,6 +108,7 @@ export function createMessageController(context: MessageControllerContext) {
     context.setLastSubmittedPrompt(input);
     context.setPromptInFlight(true);
     const requestInput = withAttachmentContext(input);
+    let acceptedSession: Session | null = null;
     try {
       let session = selectedSession;
       if (!session) {
@@ -116,16 +117,20 @@ export function createMessageController(context: MessageControllerContext) {
         if (context.getSelectedWorkspace()?.id === workspace.id && !context.getSelectedSession()) context.setSelectedSessionId(session.id);
       }
       session = await context.api.sendAgentPrompt(session.id, requestInput);
+      acceptedSession = session;
+      context.consumeDraft(session.id, draftText);
+      context.setComposerDraftStatus?.(session.id, false);
       context.setWorkspaceSessionMap(upsertSession(context.getWorkspaceSessionMap(), session));
       await Promise.all([context.refreshTimeline(session.id), context.refreshAttachments(session.id)]);
-      context.consumeDraft(session.id, draftText);
-      if (session) context.setComposerDraftStatus?.(session.id, false);
-      context.updateWorkspaceSessions(session.workspaceId, (items) =>
-        items.map((item) => (item.id === session?.id ? { ...item, state: 'running' } : item)),
-      );
     } catch (error) {
-      if (draftSessionId) context.setComposerDraftStatus?.(draftSessionId, true);
-      context.setErrorMessage(toErrorMessage(error));
+      if (acceptedSession) {
+        if (context.getSelectedSession()?.id === acceptedSession.id) {
+          context.setNotice('消息已发送，但会话信息刷新失败，请刷新后查看。');
+        }
+      } else {
+        if (draftSessionId) context.setComposerDraftStatus?.(draftSessionId, true);
+        context.setErrorMessage(toErrorMessage(error));
+      }
     } finally {
       context.setPromptInFlight(false);
       context.setBusy(false);
@@ -182,12 +187,17 @@ export function createMessageController(context: MessageControllerContext) {
     context.setBusy(true);
     context.setErrorMessage(null);
     const requestInput = withAttachmentContext(input);
+    let accepted = false;
     try {
       await agent.invoke(session, 'queue.manage', { action: mode, message: requestInput });
-      await Promise.all([context.refreshTimeline(session.id), context.refreshAttachments(session.id)]);
+      accepted = true;
       context.consumeDraft(session.id, draftText);
+      context.setComposerDraftStatus?.(session.id, false);
+      await Promise.all([context.refreshTimeline(session.id), context.refreshAttachments(session.id)]);
     } catch (error) {
-      context.setErrorMessage(toErrorMessage(error));
+      if (accepted) {
+        if (context.getSelectedSession()?.id === session.id) context.setNotice('消息已加入队列，但会话信息刷新失败，请刷新后查看。');
+      } else context.setErrorMessage(toErrorMessage(error));
     } finally {
       context.setBusy(false);
     }

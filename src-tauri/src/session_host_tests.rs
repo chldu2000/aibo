@@ -399,3 +399,70 @@ async fn pending_context_read_and_send_share_session_admission() {
     db.close().await;
     fs::remove_dir_all(root).unwrap();
 }
+
+#[tokio::test]
+async fn completed_turn_snapshot_does_not_use_retired_interaction() {
+    let (root, db, broker, host, session) = concurrent_session_fixture().await;
+    host.send_from("main", &session.id, "boundary message", None).await.unwrap();
+    // Hold only finalization to deterministically expose the real interval after
+    // Broker completion and before SessionHost removes its live-turn record.
+    let finalization = host.turn_baselines.lock().await;
+    tokio::time::timeout(Duration::from_secs(5), async {
+        loop {
+            let count: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM capability_invocations WHERE scope_id=? AND capability_id='aibo.session.turn' AND status='completed'")
+                .bind(&session.id).fetch_one(&db).await.unwrap();
+            if count > 0 { break; }
+            tokio::time::sleep(Duration::from_millis(10)).await;
+        }
+    }).await.unwrap();
+    assert!(host.live.lock().await.contains_key(&session.id));
+    let messages: Vec<String> = sqlx::query_scalar("SELECT role FROM messages WHERE session_id=?")
+        .bind(&session.id).fetch_all(&db).await.unwrap();
+    assert!(messages.iter().any(|role| role=="user"));
+    assert!(messages.iter().any(|role| role=="assistant"));
+    let timeline = host.pi_timeline_from("main", &session.id).await.unwrap();
+    assert_eq!(timeline.iter().filter(|item| item.role == "user" && item.content == "boundary message").count(), 1);
+    assert!(timeline.iter().any(|item| item.role == "assistant"));
+    let stale_control = host.invoke_capability_from("main", &session.id, "queue.manage", json!({"action":"steer","message":"do not replay"})).await.unwrap_err();
+    assert!(stale_control.contains("finished accepting interactions"));
+    let pending_host = host.clone(); let id = session.id.clone();
+    let mut read = tokio::spawn(async move { pending_host.invoke_capability_from("main", &id, "session.snapshot", json!({})).await });
+    let premature = tokio::time::timeout(Duration::from_millis(50), &mut read).await;
+    drop(finalization);
+    let result = match premature { Ok(result) => result.unwrap(), Err(_) => read.await.unwrap() };
+    wait_for_turn(&host, &session.id).await;
+    broker.stop_session(&session.id).await.unwrap();
+    db.close().await;
+    fs::remove_dir_all(root).unwrap();
+    assert!(result.is_ok(), "{}", crate::CoreError::SessionOperation(result.unwrap_err()));
+}
+
+#[tokio::test]
+async fn accepted_turn_snapshot_does_not_use_unready_interaction() {
+    let (root, db, broker, host, session) = concurrent_session_fixture().await;
+    host.send_from("main", &session.id, "boundary message", None).await.unwrap();
+    let admission = broker.hold_admission_for_test().await;
+    let run = host.live.lock().await.get(&session.id).cloned().unwrap();
+    let generation: String = sqlx::query_scalar("SELECT generation_id FROM session_bindings WHERE session_id=?")
+        .bind(&session.id).fetch_one(&db).await.unwrap();
+    assert!(!broker.request_is_live("main", &run.request_id, &generation).await);
+    let count: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM messages WHERE session_id=? AND role='user'")
+        .bind(&session.id).fetch_one(&db).await.unwrap();
+    assert_eq!(count, 1);
+    sqlx::query("INSERT INTO messages(id,session_id,role,content,status,created_at,updated_at) VALUES('other-branch',?,'user','OTHER_BRANCH','completed',?,?)")
+        .bind(&session.id).bind(crate::now_iso()).bind(crate::now_iso()).execute(&db).await.unwrap();
+    let timeline = host.pi_timeline_from("main", &session.id).await.unwrap();
+    assert_eq!(timeline.iter().filter(|item| item.role == "user" && item.content == "boundary message").count(), 1);
+    assert!(!timeline.iter().any(|item| item.content == "OTHER_BRANCH"), "a native branch must not include unrelated host history");
+    let pending_host = host.clone(); let id = session.id.clone();
+    let mut read = tokio::spawn(async move { pending_host.invoke_capability_from("main", &id, "session.snapshot", json!({})).await });
+    let premature = tokio::time::timeout(Duration::from_millis(50), &mut read).await;
+    drop(admission);
+    let result = match premature { Ok(result) => result.unwrap(), Err(_) => read.await.unwrap() };
+    wait_for_turn(&host, &session.id).await;
+    assert_eq!(crate::session_by_id(&db, &session.id).await.unwrap().state, "idle");
+    broker.stop_session(&session.id).await.unwrap();
+    db.close().await;
+    fs::remove_dir_all(root).unwrap();
+    assert!(result.is_ok(), "{}", crate::CoreError::SessionOperation(result.unwrap_err()));
+}

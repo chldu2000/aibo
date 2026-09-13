@@ -11,7 +11,7 @@ use serde_json::{json,Value};
 use sqlx::SqlitePool;
 use std::{collections::HashMap,path::{Path,PathBuf},sync::{Arc,Weak,atomic::{AtomicBool,Ordering}},time::Duration};
 use tauri::{Emitter,Manager};
-use tokio::sync::{Mutex, OwnedMutexGuard};
+use tokio::sync::{watch, Mutex, OwnedMutexGuard};
 
 #[derive(Clone,Copy,PartialEq,Eq)]
 enum EventOrigin { Plugin, CoreTool, Host }
@@ -25,8 +25,24 @@ fn event_capability_required(kind:&str,origin:EventOrigin)->Option<&'static str>
         _=>None,
     }
 }
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum TurnPhase { Starting, Running, Settling, Finished }
 #[derive(Clone)]
-struct LiveTurn { caller:String,request_id:String,cancel:Arc<AtomicBool> }
+struct LiveTurn {
+    caller:String, request_id:String, cancel:Arc<AtomicBool>,
+    phase:watch::Sender<TurnPhase>, pi_branch:Option<Arc<Vec<crate::TimelineItem>>>,
+}
+
+// Only observational calls may wait for the next idle state. Never replay a
+// model change, queue operation, approval, or other interaction after a turn.
+fn passive_session_read(capability: &str, input: &Value) -> bool {
+    match capability {
+        "session.snapshot" | "command.list" | "skill.list" => true,
+        "model.select" | "model.reasoning" => input["action"] == "list",
+        "session.tree" | "goal.manage" => input["action"] == "get",
+        _ => false,
+    }
+}
 #[derive(Clone)]
 struct SessionExecution {broker:Broker,caller:String,request_id:String,generation_id:String,write_authorized:bool}
 impl SessionExecution {
@@ -144,6 +160,11 @@ impl SessionHost {
             let host=host.clone();let session=session.clone();let binding=binding.clone();let caller=caller.clone();let request_id=request_id.clone();let turn_id=turn_id.clone();
             Box::pin(async move {
                 let event=stream["event"].clone();
+                if let Some(run) = host.live.lock().await.get(&session.id) {
+                    if Some(&run.request_id) == turn_id.as_ref() && *run.phase.borrow() == TurnPhase::Starting {
+                        run.phase.send_replace(TurnPhase::Running);
+                    }
+                }
                 if !crate::session_contract::event_schema().is_valid(&event) || event["nativeSessionId"]!=binding["nativeSessionId"] || event["turnId"].as_str().is_some_and(|id|Some(id)!=turn_id.as_deref()) {return Err("invalid_output: session event identity".into());}
                 let generation=stream["generationId"].as_str().ok_or("invalid_output: generation missing")?;
                 if event["type"]=="workspace.requested" {
@@ -163,6 +184,17 @@ impl SessionHost {
         let profile=crate::session_execution_profile(&self.db,session_id).await.map_err(|e|e.to_string())?.profile.enforced;
         let write=profile.filesystem_policy!="read-only" || (profile.interaction_mode=="edit" && profile.command_policy!="disabled");
         if write && approval.is_none() {return Err("approval_required: writable turn requires a host confirmation".into());}
+        // Freeze the active Pi branch before this turn. Runtime queries are not
+        // needed to display its accepted user message or subsequent streamed rows.
+        let pi_branch = if session.agent == "dev.aibo.pi.agent" {
+            let binding = Self::binding(&session, "dev.aibo.pi.session.snapshot")?;
+            let response = self.broker.invoke_bound(caller, Request {
+                scope:binding.scope.clone(), capability:binding.capability.clone(), version:"1.0.0".into(),
+                request_id:ulid::Ulid::new().to_string(), turn_id:None, input:json!({}),
+            }, &binding).await.map_err(|e| e.message)?;
+            self.save_recovery(session_id, &response).await?;
+            Some(Arc::new(crate::pi_snapshot_timeline(&response.output, session_id)))
+        } else { None };
         let turn=ulid::Ulid::new().to_string();let message=ulid::Ulid::new().to_string();let now=crate::now_iso();
         let workspace=crate::workspace_by_id(&self.db,&session.workspace_id).await.map_err(|e|e.to_string())?;
         let baseline=capture_workspace(Path::new(&workspace.path)).await.ok();
@@ -176,7 +208,8 @@ impl SessionHost {
         let attachments:Vec<String>=sqlx::query_scalar("SELECT id FROM attachments WHERE session_id=? AND turn_id IS NULL ORDER BY created_at").bind(session_id).fetch_all(&mut *tx).await.map_err(|e|e.to_string())?;
         sqlx::query("UPDATE attachments SET turn_id=? WHERE session_id=? AND turn_id IS NULL").bind(&turn).bind(session_id).execute(&mut *tx).await.map_err(|e|e.to_string())?;
         tx.commit().await.map_err(|e|e.to_string())?;
-        let run=LiveTurn {caller:caller.into(),request_id:turn.clone(),cancel:Arc::new(AtomicBool::new(false))};live.insert(session_id.into(),run.clone());drop(live);
+        let (phase, _) = watch::channel(TurnPhase::Starting);
+        let run=LiveTurn {caller:caller.into(),request_id:turn.clone(),cancel:Arc::new(AtomicBool::new(false)),phase,pi_branch};live.insert(session_id.into(),run.clone());drop(live);
         self.turn_baselines.lock().await.insert(turn.clone(),baseline);
         let _=crate::auto_name_session_from_first_message(&self.db,session_id,&message,text).await;
         let capability=if write {"aibo.session.turn.write"}else{"aibo.session.turn"};let binding=Self::binding(&session,capability)?;
@@ -195,6 +228,7 @@ impl SessionHost {
             tokio::pin!(execution);
             let cancel=async {loop {if run.cancel.load(Ordering::Acquire) && host.broker.cancel(&caller,&turn).await {break;}tokio::time::sleep(Duration::from_millis(10)).await;}};
             let result=tokio::select! {result=&mut execution=>result,_=cancel=>execution.await};
+            run.phase.send_replace(TurnPhase::Settling);
             let result = match result {
                 Ok(response) => host.save_recovery(&session.id, &response).await,
                 Err(error) => Err(error),
@@ -215,6 +249,7 @@ impl SessionHost {
             }
             host.pending_tools.lock().await.retain(|_,pending|pending.session_id!=session.id);
             host.live.lock().await.remove(&session.id);
+            run.phase.send_replace(TurnPhase::Finished);
         });
         Ok(())
     }
@@ -226,34 +261,73 @@ impl SessionHost {
         let updated=sqlx::query("UPDATE session_bindings SET plugin_binding_json=? WHERE session_id=? AND generation_id=?").bind(binding.to_string()).bind(session_id).bind(&response.generation_id).execute(&self.db).await.map_err(|e|e.to_string())?;
         if updated.rows_affected()!=1 {return Err("invalid_session: recovery generation changed".into());}Ok(())
     }
+    pub async fn pi_timeline_from(&self, caller: &str, session_id: &str) -> Result<Vec<crate::TimelineItem>, String> {
+        let running = self.live.lock().await.get(session_id).cloned();
+        if let Some(run) = running {
+            if let Some(branch) = run.pi_branch {
+                let mut timeline = (*branch).clone();
+                let rows = sqlx::query("SELECT id,session_id,turn_id,external_message_id,role,tool_name,content,status,created_at,updated_at FROM messages WHERE session_id=? AND turn_id=? ORDER BY created_at,sequence,id")
+                    .bind(session_id).bind(&run.request_id).fetch_all(&self.db).await.map_err(|e|e.to_string())?;
+                for row in rows { timeline.push(crate::row_to_timeline_item(&row).map_err(|e|e.to_string())?); }
+                return Ok(timeline);
+            }
+        }
+        let snapshot = self.invoke_capability_from(caller, session_id, "session.snapshot", json!({})).await?;
+        Ok(crate::pi_snapshot_timeline(&snapshot, session_id))
+    }
     pub async fn invoke_capability_from(&self,caller:&str,session_id:&str,capability:&str,input:Value)->Result<Value,String> {
-        let mut running=self.live.lock().await.get(session_id).cloned();
-        let mut admission = None;
-        if running.is_none() {
-            admission = Some(self.session_operation(session_id).await);
-            // A send may have won admission while this caller was waiting.
-            running = self.live.lock().await.get(session_id).cloned();
-            if running.is_none() { self.open(caller,session_id).await?; }
+        loop {
+            let mut running=self.live.lock().await.get(session_id).cloned();
+            let mut admission = None;
+            if running.is_none() {
+                admission = Some(self.session_operation(session_id).await);
+                // A send may have won admission while this caller was waiting.
+                running = self.live.lock().await.get(session_id).cloned();
+                if running.is_none() { self.open(caller,session_id).await?; }
+            }
+            if let Some(run) = &running {
+                if passive_session_read(capability, &input) {
+                    drop(admission);
+                    let mut phase = run.phase.subscribe();
+                    while *phase.borrow_and_update() != TurnPhase::Finished {
+                        phase.changed().await.map_err(|_| "provider_unavailable: session lifecycle stopped")?;
+                    }
+                    continue;
+                }
+            }
+            // Live controls (queue, user input, etc.) must not wait behind an idle
+            // operation or hold admission for the duration of an Agent turn.
+            if running.is_some() { drop(admission.take()); }
+            let (session,manifest)=self.metadata(session_id).await?;
+            let qualified=format!("{}.{}",manifest["pluginId"].as_str().ok_or("invalid_manifest")?,capability);
+            let response=if let Some(run)=running {
+                if run.caller!=caller {return Err("permission_denied: invocation belongs to another window".into());}
+                let generation: String = sqlx::query_scalar("SELECT generation_id FROM session_bindings WHERE session_id=?")
+                    .bind(session_id).fetch_one(&self.db).await.map_err(|e|e.to_string())?;
+                let mut phase = run.phase.subscribe();
+                loop {
+                    if matches!(*phase.borrow_and_update(), TurnPhase::Settling | TurnPhase::Finished) {
+                        return Err("busy: the turn has finished accepting interactions".into());
+                    }
+                    if self.broker.request_is_live(caller, &run.request_id, &generation).await { break; }
+                    tokio::select! {
+                        _ = tokio::time::sleep(Duration::from_millis(10)) => {},
+                        changed = phase.changed() => { changed.map_err(|_| "provider_unavailable: session lifecycle stopped")?; },
+                    }
+                }
+                self.broker.control(caller,CapabilityControl {request_id:run.request_id,capability:qualified,version:"1.0.0".into(),input:input.clone()}).await.map_err(|e|e.message)?
+            } else {
+                let binding=Self::binding(&session,&qualified)?;let id=ulid::Ulid::new().to_string();
+                let saved=self.saved_binding(session_id).await?.ok_or("invalid_session")?;
+                self.broker.invoke_bound_observed(caller,Request {scope:binding.scope.clone(),capability:qualified,version:"1.0.0".into(),request_id:id.clone(),turn_id:None,input:input.clone()},&binding,Some(self.observer(session,saved,caller.into(),id,None,false))).await.map_err(|e|e.message)?
+            };
+            self.save_recovery(session_id,&response).await?;
+            if input["action"]=="set" && matches!(capability,"model.select"|"model.reasoning") {
+                let mut profile=crate::session_execution_profile(&self.db,session_id).await.map_err(|e|e.to_string())?.profile;
+                if apply_model_configuration(&mut profile,capability,&input,&response.output) {execution_profile::save_for_session(&self.db,session_id,&profile).await.map_err(|e|e.to_string())?;}
+            }
+            return Ok(response.output);
         }
-        // Live controls (queue, user input, etc.) must not wait behind an idle
-        // operation or hold admission for the duration of an Agent turn.
-        if running.is_some() { drop(admission.take()); }
-        let (session,manifest)=self.metadata(session_id).await?;
-        let qualified=format!("{}.{}",manifest["pluginId"].as_str().ok_or("invalid_manifest")?,capability);
-        let response=if let Some(run)=running {
-            if run.caller!=caller {return Err("permission_denied: invocation belongs to another window".into());}
-            self.broker.control(caller,CapabilityControl {request_id:run.request_id,capability:qualified,version:"1.0.0".into(),input:input.clone()}).await.map_err(|e|e.message)?
-        } else {
-            let binding=Self::binding(&session,&qualified)?;let id=ulid::Ulid::new().to_string();
-            let saved=self.saved_binding(session_id).await?.ok_or("invalid_session")?;
-            self.broker.invoke_bound_observed(caller,Request {scope:binding.scope.clone(),capability:qualified,version:"1.0.0".into(),request_id:id.clone(),turn_id:None,input:input.clone()},&binding,Some(self.observer(session,saved,caller.into(),id,None,false))).await.map_err(|e|e.message)?
-        };
-        self.save_recovery(session_id,&response).await?;
-        if input["action"]=="set" && matches!(capability,"model.select"|"model.reasoning") {
-            let mut profile=crate::session_execution_profile(&self.db,session_id).await.map_err(|e|e.to_string())?.profile;
-            if apply_model_configuration(&mut profile,capability,&input,&response.output) {execution_profile::save_for_session(&self.db,session_id,&profile).await.map_err(|e|e.to_string())?;}
-        }
-        Ok(response.output)
     }
     pub async fn cancel_from(&self,caller:&str,session_id:&str)->Result<(),String> {
         if let Some(run)=self.live.lock().await.get(session_id).cloned() {

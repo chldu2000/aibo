@@ -129,6 +129,10 @@ pub(crate) struct Broker {
 }
 impl Broker {
     pub fn new(db: SqlitePool) -> Self { Self { db, sdk_module:None, mutations: Default::default(), slots: Default::default(), flights: Default::default() } }
+    #[cfg(test)]
+    pub(crate) async fn hold_admission_for_test(&self) -> impl Drop {
+        self.slots.clone().lock_owned().await
+    }
     pub fn with_sdk_module(mut self,path:Option<PathBuf>)->Self {self.sdk_module=path;self}
     pub async fn request_is_live(&self,caller:&str,request_id:&str,generation:&str)->bool {
         self.flights.lock().await.get(&(caller.into(),request_id.into())).is_some_and(|flight|!*flight.cancel.borrow() && flight.interaction.as_ref().is_some_and(|active|active.runtime.generation_id==generation && !active.runtime.was_stopped() && !active.runtime.has_exited()))

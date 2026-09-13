@@ -1805,13 +1805,7 @@ async fn get_timeline(
         && session.plugin_installation_id.is_some()
         && !session.archived
     {
-        // Core messages are an append-only history across all Pi branches.
-        // Read the native active branch on every refresh, including after
-        // navigation and when returning to an already-open session.
-        let snapshot = state.plugins.invoke_capability_from(window.label(),
-            &session_id, "session.snapshot", serde_json::json!({}),
-        ).await.map_err(CoreError::SessionOperation)?;
-        return Ok(pi_snapshot_timeline(&snapshot, &session_id));
+        return state.plugins.pi_timeline_from(window.label(), &session_id).await.map_err(CoreError::SessionOperation);
     }
     let rows = sqlx::query(
         "SELECT id, session_id, turn_id, external_message_id, role, tool_name, content,
