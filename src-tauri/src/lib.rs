@@ -22,6 +22,7 @@ mod session_host;
 mod plugin_dependencies;
 mod capability_broker;
 mod plugin_registry;
+mod presentation_packages;
 mod plugin_storage;
 mod workspace_guard;
 mod semantic_git;
@@ -3594,6 +3595,35 @@ async fn list_plugin_installations(state: State<'_, AppState>) -> Result<Vec<plu
 }
 
 #[tauri::command]
+async fn list_presentation_packages(state: State<'_, AppState>) -> Result<Vec<presentation_packages::Release>, String> {
+    presentation_packages::list(&state.db).await
+}
+#[tauri::command]
+async fn install_presentation_package(path: String, state: State<'_, AppState>) -> Result<presentation_packages::Release, String> {
+    presentation_packages::install(&state.db, &state.data_dir, Path::new(&path)).await
+}
+#[tauri::command]
+async fn read_presentation_package(digest: String, state: State<'_, AppState>) -> Result<presentation_packages::Package, String> {
+    presentation_packages::package(&state.db, &state.data_dir, &digest).await
+}
+#[tauri::command]
+async fn set_presentation_package_enabled(digest: String, enabled: bool, state: State<'_, AppState>) -> Result<(), String> {
+    presentation_packages::enable(&state.db, &digest, enabled).await
+}
+#[tauri::command]
+async fn uninstall_presentation_package(digest: String, state: State<'_, AppState>) -> Result<(), String> {
+    presentation_packages::uninstall(&state.db, &digest).await
+}
+#[tauri::command]
+async fn get_presentation_selection(window: tauri::WebviewWindow, state: State<'_, AppState>) -> Result<Option<presentation_packages::Selection>, String> {
+    presentation_packages::selection(&state.db, window.label()).await
+}
+#[tauri::command]
+async fn select_presentation_package(digest: Option<String>, theme_id: Option<String>, expected_digest: Option<String>, window: tauri::WebviewWindow, state: State<'_, AppState>) -> Result<(), String> {
+    presentation_packages::select(&state.db, &state.data_dir, window.label(), digest.as_deref(), theme_id.as_deref(), expected_digest.as_deref()).await
+}
+
+#[tauri::command]
 async fn install_agent_plugin(path: String, state: State<'_, AppState>) -> Result<plugin_registry::PluginInstallation, String> {
     plugin_registry::install(&state.db, &state.data_dir, Path::new(&path)).await
 }
@@ -4235,6 +4265,13 @@ pub fn run() {
             list_capability_history_scopes,
             read_capability_history,
             list_plugin_installations,
+            list_presentation_packages,
+            install_presentation_package,
+            read_presentation_package,
+            set_presentation_package_enabled,
+            uninstall_presentation_package,
+            get_presentation_selection,
+            select_presentation_package,
             install_agent_plugin,
             set_agent_plugin_enabled,
             uninstall_agent_plugin,

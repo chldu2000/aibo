@@ -1,4 +1,5 @@
 import { createWorkspaceWriteController } from './app/workspace-write-controller';
+import type { PresentationRelease, InstalledPresentationPackage, PresentationSelection } from './presentation-runtime/types';
 import { invoke } from '@tauri-apps/api/core';
 import { listen, type UnlistenFn } from '@tauri-apps/api/event';
 import { getCurrentWindow } from '@tauri-apps/api/window';
@@ -92,6 +93,14 @@ export const invokeCapability = (request: CapabilityRequest): Promise<Capability
 export const cancelCapability = (requestId: string): Promise<boolean> => invoke('cancel_capability', { requestId });
 
 export const listPluginInstallations = (): Promise<PluginInstallation[]> => invoke('list_plugin_installations');
+export const listPresentationPackages = (): Promise<PresentationRelease[]> => invoke('list_presentation_packages');
+export const installPresentationPackage = (path: string): Promise<PresentationRelease> => invoke('install_presentation_package', { path });
+export const readPresentationPackage = (digest: string): Promise<InstalledPresentationPackage> => invoke('read_presentation_package', { digest });
+export const setPresentationPackageEnabled = (digest: string, enabled: boolean): Promise<void> => invoke('set_presentation_package_enabled', { digest, enabled });
+export const uninstallPresentationPackage = (digest: string): Promise<void> => invoke('uninstall_presentation_package', { digest });
+export const getPresentationSelection = (): Promise<PresentationSelection | null> => invoke('get_presentation_selection');
+export const selectPresentationPackage = (digest: string | null, themeId: string | null, expectedDigest: string | null): Promise<void> =>
+  invoke('select_presentation_package', { digest, themeId, expectedDigest });
 export const installAgentPlugin = (path: string): Promise<PluginInstallation> => invoke('install_agent_plugin', { path });
 export const setAgentPluginEnabled = (id: string, enabled: boolean): Promise<void> => invoke('set_agent_plugin_enabled', { id, enabled });
 export const uninstallAgentPlugin = (id: string): Promise<void> => invoke('uninstall_agent_plugin', { id });
