@@ -1,5 +1,11 @@
 # 文档索引
 
+## 入门与开发
+
+- [English README](../README.md)、[中文 README](../README_zh.md)：功能、架构图、运行与目录导航。
+- [插件开发指引](plugin-development_zh.md)、[English guide](plugin-development.md)：能力包、会话提供者与呈现扩展。
+- [原生引擎探针](native-engine-probes.md)：环境要求、运行命令与结果位置。
+
 ## 当前架构与支持范围
 
 - [会话能力架构与迁移验收](capability-session-migration.md)：宿主、能力插件和呈现插件的职责、旧数据策略及验证限制。

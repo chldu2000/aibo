@@ -29,9 +29,9 @@ after invocation completion; cancellation cannot undo side effects.
 
 Stream emission ends with the invocation. It cannot be used for detached background
 notifications. The host validates identity, sequence and size and owns durable
-history. This is migration infrastructure, not a claim that built-in Agents have
-already moved to the capability protocol. See `docs/capability-session-migration.md`
-in the host repository for the remaining integration work.
+history. Built-in Codex and Pi sessions now use this capability protocol. See
+`docs/capability-session-migration.md` in the host repository for current support
+and validation limits, and `docs/plugin-development.md` for the development guide.
 
 `serveCapabilities(options[])` lets one package declare multiple contribution configurations.
 The first capability initialization selects one declared contribution for the process generation;

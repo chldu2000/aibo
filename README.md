@@ -1,87 +1,133 @@
 # Aibo
 
-Aibo is a local coding workbench composed of a plugin host, capability plugins,
-and presentation plugins. Codex and Pi run through the shared capability Broker;
-the host owns workspace trust, sessions, approvals, and history.
+[English](README.md) | [简体中文](README_zh.md)
 
-See the [current documentation](docs/README.md) for architecture and supported
-contracts. Previous plans, designs, and phase reports are in the
-[documentation archive](docs/archive/README.md).
+Aibo is a local coding workbench built from a **plugin host, capability plugins,
+and presentation plugins**. Use Codex and Pi in one workspace, with host-owned
+sessions, permissions, timelines, and execution history.
 
-## Development
+## What it does
+
+- Manage workspaces and multiple Agent sessions; name conversations from the first message.
+- Stream replies and tool activity, restore sessions, and inspect durable history.
+- Use provider capabilities such as Codex approvals and branching, or Pi queues and tree navigation.
+- Control workspace trust and session permissions. Broad access is confirmed when enabled;
+  ordinary messages do not need a separate turn confirmation. Tool approvals follow the selected policy.
+- Switch workbench layouts and shadcn / Material 3 skins through the presentation layer.
+- Install capability plugins that expose versioned operations and declarative semantic views.
+
+Capabilities vary by provider. See the [architecture and migration record](docs/capability-session-migration.md)
+and [platform support matrix](docs/plugin-platform-support-matrix.md) for supported behavior and limits.
+
+## Architecture
+
+```mermaid
+flowchart TB
+    user[User] --> presentation
+    subgraph presentation[Presentation plugins — trusted host build]
+        shell[Workbench layout and semantic renderer]
+        kit[UI kit — shadcn / Material 3]
+        shell --> kit
+    end
+    subgraph host[Aibo plugin host]
+        actions[Semantic actions and session controllers]
+        sessions[Session identity, permissions and history projection]
+        broker[Capability Broker — binding, validation and process lifecycle]
+        gateway[Workspace tool gateway and approvals]
+        storage[(SQLite, artifacts and recovery bindings)]
+        actions --> sessions --> broker
+        sessions <--> storage
+        gateway --> storage
+    end
+    subgraph plugins[Capability plugins — supervised processes]
+        codex[Codex capability provider]
+        pi[Pi capability provider]
+        extra[Other capability providers]
+    end
+    presentation -->|User intents| actions
+    sessions -->|State and semantic views| presentation
+    broker <-->|JSON-RPC requests, streams and controls| plugins
+    broker <-->|Pi workspace tool requests and results| gateway
+    codex <--> native[Codex app-server]
+    pi <--> sdk[Pi SDK]
+```
+
+The host owns business state and authorization. Capability plugins implement operations
+and native-engine integration. Presentation plugins decide how information and actions
+are arranged and rendered; they do not grant permissions or execute business operations directly.
+Native-engine enforcement and the host tool gateway are distinct boundaries: workspace
+trust alone is not an operating-system sandbox.
+
+A message travels from the composer through the host's session admission and Broker to
+its pinned provider. Validated events update host history and flow back to the presentation.
+The host keeps history readable when a provider is unavailable. Pi's active timeline combines
+its native branch with persisted messages from the current turn.
+
+**Current extension boundary:** capability packages can be installed locally. Presentation
+implementations are bundled trusted code; installing a package cannot dynamically load
+JavaScript into the main WebView. The old Agent Runtime v1 is retired, and sessions without
+current capability bindings remain read-only history.
+
+## Run locally
+
+Requirements: Node.js 22+, pnpm, a Rust toolchain, and the platform build dependencies
+for Tauri 2. Codex sessions require `codex` on `PATH` and native authentication.
+Pi sessions use the project-locked `@earendil-works/pi-coding-agent` SDK; configure
+provider credentials for model requests. The Pi CLI is only required for its RPC probe.
 
 ```sh
 pnpm install
 pnpm tauri dev
 ```
 
-Use `pnpm dev` for browser UI preview and `pnpm run verify` for architecture,
-type, test, and frontend build checks.
+```sh
+pnpm dev          # Browser UI preview; desktop execution requires Tauri
+pnpm run verify   # Architecture, TypeScript, Node tests, frontend build
+cargo test --manifest-path src-tauri/Cargo.toml
+```
 
-## Capability sessions
+macOS arm64 has native acceptance evidence. Other architectures and operating systems
+have different validation and execution limits; consult the [support matrix](docs/plugin-platform-support-matrix.md).
 
-Codex and Pi run as v2 capability plugins through the shared Aibo Broker.
-The host owns session identity, approvals, history and recovery admission;
-plugins own their native engines. Pi uses the project-locked
-`@earendil-works/pi-coding-agent` SDK. Workspace tools return through the
-host gateway, including approved writes and commands.
+## Develop plugins
 
-The old Agent runtime and Pi JSONL host are retired. Old sessions without a
-v2 capability binding are read-only. Offline process tests cover the new
-session protocol and the Pi workflow:
+Start with the [plugin development guide](docs/plugin-development.md) or its
+[Chinese version](docs/plugin-development_zh.md). It covers the working example,
+manifest and runtime contracts, packaging, installation, session providers, and presentation extensions.
+
+| Resource | Purpose |
+| --- | --- |
+| [Capability example](examples/capability-plugin/) | Standalone TypeScript provider with a semantic view |
+| [Plugin protocol](packages/plugin-protocol/) | Framework-independent data contracts |
+| [Capability runtime](packages/capability-runtime/) | Node stdio runtime helper, including streaming and controls |
+| [Web presentation types](packages/web-presentation/) | Local interface for trusted presentation implementations |
+| [UI architecture](docs/ui-architecture.md) | UI kit boundaries and skin extension rules |
+
+SDKs currently ship as local tarballs, not public registry packages.
+
+## Validation and engine probes
 
 ```sh
-pnpm run probe:session:capabilities
-```
-
-These tests include opening the installed Pi SDK, but do not make real-model
-requests. Migration status and remaining validation are tracked in
-[the migration record](docs/capability-session-migration.md).
-
-## Native engine probes
-
-Requirements:
-
-- Node.js 22 or later
-- `codex` on `PATH` for the Codex probe
-- `pi` on `PATH` for the Pi RPC/model probe
-- project dependencies installed with `pnpm install` for the Pi SDK probe
-- Native agent authentication for a real-model smoke turn
-
-Transport and session-state checks do not call a model. The Pi SDK probe
-executes the read-only command `node --version` through the platform-native
-shell tool, then persists and reopens a Pi session. The Pi RPC probe is also
-retained to expose platform/protocol differences:
-
-```powershell
+pnpm run probe:session:capabilities # Offline provider workflows; no model requests
+pnpm run probe:session:desktop     # Isolated native desktop probe; currently macOS
 pnpm probe:codex
-pnpm probe:pi
-```
-
-The Pi paths can also be run independently:
-
-```powershell
 pnpm probe:pi:sdk
-pnpm probe:pi:rpc
 ```
 
-`pnpm probe:pi:smoke` exercises the project-locked SDK host. To exercise the
-native RPC diagnostic path with a real model turn, run `pnpm probe:pi:rpc -- --smoke`.
+Real-model smoke probes are separate and require credentials. See the
+[native engine probe guide](docs/native-engine-probes.md) for CLI requirements,
+approval probes, executable overrides, and output locations.
 
-Add `--smoke` to run a minimal model turn with all mutation tools disabled or read-only:
+## Repository map
 
-```powershell
-pnpm probe:codex:smoke
-pnpm probe:pi:smoke
-```
+| Directory | Contents |
+| --- | --- |
+| `src-tauri/src/` | Rust host, Broker, session lifecycle, permissions and persistence |
+| `src-tauri/capability-plugins/` | Built-in Codex and Pi capability packages |
+| `src/lib/app/` | Frontend business controllers |
+| `src/lib/workbench/`, `src/lib/ui-kit/` | Presentation integration and visual adapters |
+| `contracts/`, `packages/` | Versioned schemas and local SDKs |
+| `examples/`, `fixtures/`, `test/`, `probes/` | Examples, test providers and validation tools |
 
-The Codex approval probe asks the model to attempt one read-only command and has
-the probe client reject the approval request:
-
-```powershell
-pnpm probe:codex:approval
-```
-
-Probe output is written below `.aibo/probe/runs/` and is ignored by Git because raw agent events can contain local metadata. Only redacted summaries and fixtures may be committed.
-
-Executable paths can be overridden with `AIBO_CODEX_BIN` and `AIBO_PI_BIN`.
+Browse the [documentation index](docs/README.md) for current contracts and decisions.
+Earlier designs and implementation reports live in the [archive](docs/archive/README.md).

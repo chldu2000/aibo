@@ -1,5 +1,7 @@
 # 独立 Capability 插件样例
 
+完整步骤见[插件开发指引](../../docs/plugin-development_zh.md)或[English guide](../../docs/plugin-development.md)。
+
 这个目录只依赖 `@aibo/capability-runtime` 和 `@aibo/plugin-protocol`，不导入 aibo 应用源码。它声明 application 作用域的只读能力和 command 语义视图。
 
 宿主查询语义视图时发送 `{actionId,itemId,offset}`，不会传空对象。此样例只提供 refresh，因此输入 schema 明确接受 refresh、null itemId 和非负 offset。能力输出包含 state/view/actions，宿主补齐视图身份与 revision；插件不自行生成宿主上下文。
