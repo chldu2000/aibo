@@ -1,6 +1,6 @@
 {
   "name": "@aibo/presentation-material3",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "private": true,
   "type": "module",
   "files": [
@@ -16,6 +16,6 @@
   },
   "dependencies": {
     "@aibo/presentation-tools": "0.1.0",
-    "@aibo/presentation-workbench": "0.1.0"
+    "@aibo/presentation-workbench": "0.2.0"
   }
 }

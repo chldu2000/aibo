@@ -1,0 +1,101 @@
+{
+  "version": "0.3.0",
+  "packages": [
+    {
+      "id": "dev.aibo.presentation.shadcn",
+      "version": "0.3.0",
+      "directory": "shadcn-0.3.0",
+      "archive": "shadcn-0.3.0.zip",
+      "manifestSha256": "21097c0caf41e7670ffde3f8f212426d2a9a33e0fa85be7ad56f93114c072cbb",
+      "nativeReleaseDigest": "a1e76a7d8fe9501df747195c2d8d82d091c37d50377b6bbc6dd6202b92c01301",
+      "resources": [
+        {
+          "path": "skin.js",
+          "mediaType": "text/javascript",
+          "bytes": 51808,
+          "sha256": "43e2c4b260b7ef69ff97a34a4d89906dc5bee411f6d7dbc2fe0729d769f17228"
+        },
+        {
+          "path": "skin.css",
+          "mediaType": "text/css",
+          "bytes": 6852,
+          "sha256": "82f4c9ab3fb836f94923630cebf8fef206634142ef9e8fdc1b67ea81934ecd98"
+        }
+      ]
+    },
+    {
+      "id": "dev.aibo.presentation.material3",
+      "version": "0.3.0",
+      "directory": "material3-0.3.0",
+      "archive": "material3-0.3.0.zip",
+      "manifestSha256": "e5f126cb8967e4e8314dd581ad4cc8be63897f808f4438049623fadc2ffb93dd",
+      "nativeReleaseDigest": "048f1d61a0c5f633ddbe041912bb50b7fd4535948530ca405df054dea22e073c",
+      "resources": [
+        {
+          "path": "skin.js",
+          "mediaType": "text/javascript",
+          "bytes": 51797,
+          "sha256": "ff39198813bd491d94639668ffd5c1220feb8ad123091f9319f76df143f0ecc9"
+        },
+        {
+          "path": "skin.css",
+          "mediaType": "text/css",
+          "bytes": 7127,
+          "sha256": "4fdf214c1626613afb0decd1931e1205992532931b4bb8bb8683f856b913145b"
+        }
+      ]
+    }
+  ],
+  "archives": [
+    {
+      "file": "material3-0.3.0.zip",
+      "bytes": 20905,
+      "sha256": "1c81e455ba7a005eef5ad6a7dcff1ff1546127c30f333cf04d70b2dfacc86bf9"
+    },
+    {
+      "file": "ocean-theme-1.0.0.zip",
+      "bytes": 664,
+      "sha256": "a2c72b316f4b2f93e87c80ec639172723b5bf7edeb6bbf493decd4c6f44f7739"
+    },
+    {
+      "file": "shadcn-0.3.0.zip",
+      "bytes": 19854,
+      "sha256": "c5a6a1a423f6785d28eda38a250263af5b0c689c86ed61c06c58682a02561e86"
+    },
+    {
+      "file": "sdk/aibo-plugin-protocol-0.1.0.tgz",
+      "bytes": 10048,
+      "sha256": "73540849886462b33857f5ff65cb914d9b96264c5700fd0530731ddcfabbeb30"
+    },
+    {
+      "file": "sdk/aibo-presentation-material3-0.3.0.tgz",
+      "bytes": 9689,
+      "sha256": "a548e3c3d52ce747333f699d47c7f51fc37095c5ca9480be128872ce2dd68e8a"
+    },
+    {
+      "file": "sdk/aibo-presentation-shadcn-0.3.0.tgz",
+      "bytes": 8627,
+      "sha256": "0ddfb461b6845f223d54eb8e45dbf83f836c49fa8d2fea227764a111c4ca2d66"
+    },
+    {
+      "file": "sdk/aibo-presentation-tools-0.1.0.tgz",
+      "bytes": 8798,
+      "sha256": "a0c756d15b0bdc33256fe4a6e5d364f4df567d3f46c45938b604f46ad8bae9ea"
+    },
+    {
+      "file": "sdk/aibo-presentation-workbench-0.2.0.tgz",
+      "bytes": 17741,
+      "sha256": "cffb061e007655ee3dcaef6c7979a5b2c58a6e82eff9d910734de18e3830ea7e"
+    }
+  ],
+  "evidence": {
+    "browser": "release-0.3.0-browser.json",
+    "native": "release-0.3.0-native.json",
+    "nativeIdentifier": "local.aibo.presentationprobe.1789316366054"
+  },
+  "checks": [
+    "manifest SHA-256 matches final browser package",
+    "length-framed package digest matches final native healthy activation",
+    "all resource bytes revalidated by independent builder"
+  ]
+}

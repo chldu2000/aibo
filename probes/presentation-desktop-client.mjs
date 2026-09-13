@@ -45,16 +45,16 @@ try{
   if(JSON.stringify(storedLayout())!==JSON.stringify(config.expected.layout))throw Error('native restart lost host layout');
   checks.push('new process retains host layout storage');
   if((await selection())?.digest!==config.expected.digest)throw Error('restart lost selection');
-  const release=await invoke('read_presentation_package',{digest:config.expected.digest});if(release.release.manifest.version!=='0.2.1')throw Error('restart loaded wrong version');
+  const release=await invoke('read_presentation_package',{digest:config.expected.digest});if(release.release.manifest.version!=='0.3.1')throw Error('restart loaded wrong version');
   mount(App,{target:document.getElementById('app')});await until(frame,'startup restores real Worker');checks.push('new process restores installed upgraded release');
   const runtimeRelease=await invoke('install_presentation_package',{path:config.runtimeFault});
-  const previousFrame=frame();await click('打开设置');await click('shadcn-svelte 0.2.3');
+  const previousFrame=frame();await click('打开设置');await click('shadcn-svelte 0.3.3');
   await until(async()=> (await selection())?.digest===runtimeRelease.digest,'runtime candidate commits before fault');
   await click('完成');await until(()=>frame()&&frame()!==previousFrame,'runtime candidate activates new real Worker');
   await until(()=>!frame(),'running Worker fault restores default host');
   await until(async()=> !(await selection()),'runtime fault clears persisted native selection');
   checks.push('post-activation Worker infinite loop falls back and clears native selection');
-  await click('打开设置');await click('shadcn-svelte 0.2.1');await click('完成');await until(frame,'fixed settings can reactivate healthy package after runtime fault');
+  await click('打开设置');await click('shadcn-svelte 0.3.1');await click('完成');await until(frame,'fixed settings can reactivate healthy package after runtime fault');
   checks.push('fixed host settings remain usable and healthy release reactivates after runtime failure');
 
   await invoke('set_presentation_package_enabled',{digest:config.expected.digest,enabled:false});
@@ -62,7 +62,7 @@ try{
   await until(()=>document.querySelector(`button[aria-label="调整工作区与会话宽度，当前 ${config.expected.layout.navigationWidth} 像素"]`),'restored navigation width in default host');
   await until(()=>document.querySelector(`button[aria-label="调整会话与侧边栏宽度，当前 ${config.expected.layout.auxiliaryWidth} 像素"]`),'restored auxiliary width in default host');
   checks.push('fallback after restart renders persisted host column widths');
-  await invoke('set_presentation_package_enabled',{digest:config.expected.digest,enabled:true});await delay(2300);await click('打开设置');await click('shadcn-svelte 0.2.1');await click('完成');await until(frame,'reenabled skin activates');
+  await invoke('set_presentation_package_enabled',{digest:config.expected.digest,enabled:true});await delay(2300);await click('打开设置');await click('shadcn-svelte 0.3.1');await click('完成');await until(frame,'reenabled skin activates');
   await invoke('uninstall_presentation_package',{digest:config.expected.digest});await until(()=>!frame(),'uninstall falls back');if(await selection())throw Error('uninstall retained selection');
   const workspaces=await invoke('list_workspaces');if(!workspaces.some(workspace=>workspace.id===config.expected.workspaceId))throw Error('skin lifecycle removed workspace');
   checks.push('uninstall clears selection and retains workspace');if(errors.length)throw Error(errors.join('\n'));
@@ -80,7 +80,7 @@ try{
   const workspaces=await invoke('list_workspaces');if(!workspaces.some(workspace=>workspace.id===config.expected.workspaceId))throw Error('startup recovery lost workspace');
   checks.push(config.phase===2?'missing manifest startup clears selection and retains workspace':'corrupt resource startup clears selection and retains workspace');
   await click('打开设置');
-  const healthy=(await invoke('list_presentation_packages')).find(release=>release.manifest.id===(config.phase===2?'dev.aibo.presentation.shadcn':'dev.aibo.presentation.material3')&&release.manifest.version==='0.2.0');
+  const healthy=(await invoke('list_presentation_packages')).find(release=>release.manifest.id===(config.phase===2?'dev.aibo.presentation.shadcn':'dev.aibo.presentation.material3')&&release.manifest.version==='0.3.0');
   await click(healthy.manifest.displayName+' '+healthy.manifest.version);await until(async()=> (await selection())?.digest===healthy.digest,'healthy selection commits after startup recovery');await click('完成');await until(frame,'fixed settings activates healthy package after startup fault');
   checks.push('fixed settings activates a healthy package after startup recovery');
   if(errors.length)throw Error(errors.join('\n'));

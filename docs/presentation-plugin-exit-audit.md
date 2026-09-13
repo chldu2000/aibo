@@ -1,7 +1,7 @@
 # Presentation 插件退出审计
 
 本表核对 [原始目标与 P0–P4 清单](presentation-plugin-refactor.md)，不是重新定义范围。
-截至本次核对，整体目标尚未完成。浏览器证据使用真实 App 与 Worker、替身原生
+2026-09-14 最终复核：原始 P0–P4 目标已完成。浏览器证据使用真实 App 与 Worker、替身原生
 IPC；原生记录使用 macOS arm64 WebView 与真实 Tauri IPC，操作为 DOM 脚本。
 
 | 原始要求 | 当前证据与结论 |
@@ -15,12 +15,23 @@ IPC；原生记录使用 macOS arm64 WebView 与真实 Tauri IPC，操作为 DOM
 | 两套独立构建包、纯主题与完整样例、开发文档与工具 | `packages/presentation-{tools,workbench,shadcn,material3}`、`examples/presentation-theme`、[包文档](presentation-package.md)。`build-presentation-skins.mjs` 将 tarball 解包到仓库外再构建；`presentation-build.test.mjs` 与 `presentation-skins.test.mjs` 校验完整性、四主题/核心语义/控件/工作台。原生记录证明安装/展示/升级/卸载。P3 三项完成。 |
 | 实际 App 双皮肤、布局、语义、键盘、焦点、滚动、草稿、会话 | [最新双皮肤记录](baselines/presentation-p3/message-anchor-browser.json)、[隔离记录](baselines/presentation-p3/message-anchor-isolation-browser.json)、[回答重载记录](baselines/presentation-p3/answer-draft-reload-browser.json) 和原生重启记录覆盖大量交互。[桌面截图与基础辅助功能树审查](baselines/presentation-p4/composer-layout-browser.json) 已发现并修复长历史遮蔽编辑器/发送操作的问题。[键盘与基础辅助功能复核](baselines/presentation-p4/keyboard-accessibility-browser.json) 补齐独立筛选按钮/选项列表关联及历史 PageDown；结合全流程、四核心语义/控件和原生状态记录，P4 该原始交互条目完成。并非所有屏幕阅读器或其他 OS 的认证。 |
 | 必需控件与核心语义完整、可选专业视图降级 | 内部 UiKitAdapter 仍完整；外部未提供范围继承，四类核心语义预检。可选专业呈现不是第二种插件身份；[协商回归](baselines/presentation-p4/reading-fallback-browser.json) 验证外部 semantic 明确 core 降级、停用恢复 specialized；完整工作台共用 renderer 的测试验证偏好、完整数据和动作保留。[能力切换记录](baselines/presentation-p4/reading-fallback-capability-browser.json) 验证实例/详情/布局保留。该项完成。 |
-| 验证命令、UI 架构、支持矩阵 | 各阶段运行 verify，原生阶段有 Rust/真实 App 证据；本次修正包文档和矩阵的过期状态。最终退出前仍须对最终树运行 verify 并核对所有未完成项。 |
+| 验证命令、UI 架构、支持矩阵 | 各阶段运行 verify，原生阶段有 Rust/真实 App 证据；本次修正包文档和矩阵的过期状态。最终树 verify 通过 25 项架构检查、248 项 Node 测试、类型检查与构建；最终原生存储测试 4 项通过。UI 架构与支持矩阵已同步。完成。 |
 
-后续工作按剩余原始条目推进：最终包发行版本、升级与最终树的验证。
-不会将缺少物理输入或其他平台证据表述为已通过。
-兼容包版本仍为开发中的 0.2.0；原生禁止同 ID/版本不同内容，最终交付须确定新的
-发行版本并用最终构建复验升级，不能拿历史构建摘要证明最终资源已验收。
+最终交付为双皮肤 0.3.0、工作台模块 0.2.0，安装方法见
+[交付说明](presentation-release-0.3.0.md)。[最终浏览器记录](baselines/presentation-p4/release-0.3.0-browser.json)
+列出两个 manifest 摘要；[四进程原生记录](baselines/presentation-p4/release-0.3.0-native.json)
+验证最终双包、0.3.1 升级样例、0.3.2 失败候选、0.3.3 运行故障、重启、禁用/卸载、
+缺失 manifest 和损坏资源。后三个版本仅为测试，不发布。
+
+[交付收据](baselines/presentation-p4/release-0.3.0-receipt.json) 记录 zip/SDK tarball
+摘要，并将最终资源与浏览器及原生健康激活摘要逐一比对。原生整包 digest 使用
+长度分帧的 manifest/路径/资源字节，不能直接拿 manifest 文件 SHA-256 比较。
+两种口径都已验证相等。没有缺少资源、最终版本未验收或未提交的实现待办。
+不会将缺少原生物理输入或其他平台证据表述为已通过。
 
 本次核对补充旧外观兼容探针，并运行 `pnpm run verify`：25 项架构检查、247 项
 Node 测试、类型检查与构建通过，保留既有动态/静态导入及构建体积提示。
+
+最终补验：[离线 SDK 安装](baselines/presentation-p4/release-0.3.0-sdk-install.json)
+在全新目录通过 npm 安装五个实际交付 tarball，依赖全部从本地解析。两包默认
+构建的 manifest、Worker 与 CSS 均逐字节等于交付目录，开发者安装路径也已验证。

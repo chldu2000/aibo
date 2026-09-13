@@ -50,13 +50,14 @@
 
 - [x] 实际 App 验证双皮肤、布局、核心语义、键盘、焦点、滚动、草稿和会话保留。
 - [x] 验证不兼容、初始化失败、运行故障、升级失败、卸载和重启恢复。
-- [ ] 每次交付运行 `pnpm run verify`；涉及原生生命周期时补充对应 Rust 与真实 App 检查。
-- [ ] 更新 UI 架构与插件支持矩阵，注明实际平台证据，不将内置模块注册当作外部加载完成。
+- [x] 每次交付运行 `pnpm run verify`；涉及原生生命周期时补充对应 Rust 与真实 App 检查。
+- [x] 更新 UI 架构与插件支持矩阵，注明实际平台证据，不将内置模块注册当作外部加载完成。
 
 ## 当前状态
 
-逐项核对见 [退出审计](presentation-plugin-exit-audit.md)。P2 宿主生命周期与
-P3 包交付已完成，P4 整体退出验收仍未完成。
+逐项核对见 [退出审计](presentation-plugin-exit-audit.md)。2026-09-14，P0–P4 已完成；
+最终交付为双皮肤 0.3.0 与工作台模块 0.2.0。验证范围及安装方法见
+[0.3.0 交付说明](presentation-release-0.3.0.md)。
 以下保留各阶段的历史记录，不能将早期“尚未实现”描述视为最新结论。
 
 P0 已完成：`src/lib/ui-kit/presentation-plugin.ts` 提供可信本地定义与默认继承，
@@ -825,3 +826,20 @@ Escape、主修饰键、光标/选区、分隔条键盘、三布局、滚动锚�
 [沙箱回归](baselines/presentation-p4/keyboard-accessibility-sandbox-browser.json)
 确认分类不能逃出容器或复用业务按钮，IME、合成/迟到事件、Worker 隔离及故障
 恢复检查继续通过。
+
+
+2026-09-14 最终退出：两套皮肤发布目录版本 0.3.0，共享工作台包 0.2.0。
+构建默认版本从各自 package.json 读取，仓库外 tarball 构建测试同时检查依赖版本。
+[最终浏览器记录](baselines/presentation-p4/release-0.3.0-browser.json) 写入实际版本
+和 manifest 摘要，并通过完整双皮肤交互、状态、辅助功能与故障审批流程。
+[最终原生记录](baselines/presentation-p4/release-0.3.0-native.json) 在 macOS arm64
+四进程中验证最终双包、升级、失败候选、运行故障、重启、禁用/卸载及缺失/损坏
+资源恢复。0.3.1–0.3.3 为探针专用升级/故障版本，不作为交付包。
+
+[交付收据](baselines/presentation-p4/release-0.3.0-receipt.json) 将交付资源同时与
+浏览器 manifest SHA-256、原生长度分帧整包摘要比对，均相等；另列 zip/tarball
+文件摘要。交付包含两套皮肤 zip、纯主题样例和五个本地 SDK tarball。
+最终 `pnpm run verify` 通过 25 项架构检查、248 项 Node 测试、类型检查与构建；
+原生 `cargo test --manifest-path src-tauri/Cargo.toml --lib presentation_packages::tests`
+4 项通过。保留既有构建体积/导入与 Rust 警告。没有扩大到未验证 OS、原生物理
+输入或所有屏幕阅读器的认证。原始范围已完成，不留实现待办替代退出条件。

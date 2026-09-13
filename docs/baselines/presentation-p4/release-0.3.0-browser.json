@@ -1,0 +1,48 @@
+{
+  "passed": true,
+  "nativePort": "mocked; actual App and independently built full skin Workers",
+  "browser": "153.0.8010.12",
+  "packages": [
+    {
+      "id": "dev.aibo.presentation.shadcn",
+      "version": "0.3.0",
+      "digest": "21097c0caf41e7670ffde3f8f212426d2a9a33e0fa85be7ad56f93114c072cbb"
+    },
+    {
+      "id": "dev.aibo.presentation.material3",
+      "version": "0.3.0",
+      "digest": "e5f126cb8967e4e8314dd581ad4cc8be63897f808f4438049623fadc2ffb93dd"
+    }
+  ],
+  "checks": [
+    "forged package approval token is ignored",
+    "fixed approval remains clickable while Worker is blocked despite viewport-filling package CSS",
+    "fallback retains the other pending approval and permits rejection",
+    "exact host request identities and decisions reach the native IPC substitute",
+    "command filters are separate pressed buttons, editor controls only the option list, history supports PageDown",
+    "desktop history and composer scroll independently, send remains visible, named history and editor appear in the accessibility tree",
+    "ordinary message and tool group anchors transfer across different scroll containers",
+    "default and external composer focus and selection transfer in both directions",
+    "command category Tab and reverse Tab, mouse focus return, primary path confirmation",
+    "command and path keyboard completion, caret placement and Escape newline",
+    "answer draft reload waits for matching live request and clears after submit",
+    "focus and review modes, reversed drag, draft preservation and mode reload",
+    "reload restores both widths, panel visibility and selected view",
+    "both splitter drag directions and auxiliary keyboard resize",
+    "keyboard width adjustment and default/external width retention",
+    "primary Enter submits through host action",
+    "consecutive tool group with completion count",
+    "literal tool payloads and native reasoning disclosure in both skins",
+    "both full packages install and activate",
+    "workspace and session navigation",
+    "rich timeline headings, lists, inline and fenced code",
+    "host-bound code copy and link actions",
+    "attachment transport metadata hidden",
+    "rapid Chinese/English input and send",
+    "Git/context panel switching",
+    "requested and enforced permissions remain distinct",
+    "attachment status, strategy and size",
+    "diagnostic details remain visible",
+    "default/external switch retains host draft"
+  ]
+}

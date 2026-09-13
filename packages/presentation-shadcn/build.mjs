@@ -4,7 +4,8 @@ import path from 'node:path';
 import {workbenchSource} from '@aibo/presentation-workbench/bundle';
 import {buildPresentation} from '@aibo/presentation-tools/build';
 const metadata=JSON.parse(await readFile(new URL('./themes.json',import.meta.url),'utf8'));
-const version=process.argv[3]??'0.2.0';
+const packageVersion=JSON.parse(await readFile(new URL('./package.json',import.meta.url),'utf8')).version;
+const version=process.argv[3]??packageVersion;
 const output=process.argv[2]??`dist/${metadata.id}-${version}`;
 const staging=await mkdtemp(path.join(tmpdir(),'aibo-skin-source-'));
 try {

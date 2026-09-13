@@ -14,7 +14,8 @@ export async function buildPresentationSkins({surfaces='controls,semantic,workbe
     const packages=[];
     for(const skin of ['shadcn','material3']) {
       const output=path.join(root,skin);
-      execFileSync(process.execPath,[path.join(root,'node_modules/@aibo/presentation-'+skin+'/build.mjs'),output,'0.2.0',surfaces],{cwd:root,stdio:'pipe'});
+      const {version}=JSON.parse(await readFile(path.join(root,'node_modules/@aibo/presentation-'+skin+'/package.json'),'utf8'));
+      execFileSync(process.execPath,[path.join(root,'node_modules/@aibo/presentation-'+skin+'/build.mjs'),output,...(surfaces==='controls,semantic,workbench'?[]:[version,surfaces])],{cwd:root,stdio:'pipe'});
       const source=await readFile(path.join(output,'presentation.json'),'utf8'),manifest=JSON.parse(source),resources={};
       for(const resource of manifest.resources)resources[resource.path]=(await readFile(path.join(output,resource.path))).toString('base64');
       packages.push({release:{digest:createHash('sha256').update(source).digest('hex'),enabled:true,manifest},resources});

@@ -2,12 +2,13 @@
 
 独立构建的皮肤包，当前版本迁移原有全部主题、四类核心语义视图、模型矩阵和状态标记。
 0.2.0 开始同时声明 workbench，装配独立导航、会话、Git、Inspector 和能力视图。
-工作台完整视觉/功能验收仍在进行，未提供的独立控件继续继承宿主。
+0.3.0 已通过桌面工作台浏览器交互与 macOS arm64 原生生命周期验收。
+未提供的独立控件继续继承宿主；其他平台与屏幕阅读器认证不在这些证据范围内。
 
 将本包与 `@aibo/presentation-tools`、`@aibo/presentation-workbench` 本地 tarball 安装到仓库外项目后：
 
 ```sh
-node node_modules/@aibo/presentation-shadcn/build.mjs ./dist/shadcn-0.2.0 0.2.0
+node node_modules/@aibo/presentation-shadcn/build.mjs ./dist/shadcn-0.3.0 0.3.0
 ```
 
 在 App 外观设置中安装输出目录。升级使用相同包 ID 和新的版本/输出目录。
@@ -22,3 +23,6 @@ Worker 入口。运行时使用宿主允许的 SVG 视觉树，不加载宿主�
 构建的可选第四参数为逗号分隔的 surfaces，例如 `controls,semantic` 可构建
 保留宿主工作台的组合；默认是 `controls,semantic,workbench`。更改资源或角色
 必须使用新发布版本，原生安装会拒绝相同 ID/版本的不同内容。
+
+0.3.0 收敛完整工作台交互：独立历史/编辑区、建议键盘与语义、宿主布局/草稿、
+阅读降级，以及跨默认呈现的焦点和消息锚点恢复。默认构建版本读取本包 package.json。
