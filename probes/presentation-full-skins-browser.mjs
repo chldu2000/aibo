@@ -166,8 +166,19 @@ try {
     await frame.getByRole('button',{name:'侧边面板',exact:true}).click();
     await page.waitForFunction(()=>JSON.parse(localStorage.getItem('aibo.workbench-layout.v1.main')||'null')?.auxiliaryOpen===false);
     const savedLayout=await page.evaluate(()=>JSON.parse(localStorage.getItem('aibo.workbench-layout.v1.main')));
+    const answerRequest={requestId:'reload-question',isBlocking:true,questions:[{id:'answer',header:null,question:'Persistent answer?',options:[],isOther:true}]};
+    await page.evaluate(request=>window.emitAgent('user_input.requested',request),answerRequest);
+    await frame.getByRole('textbox',{name:'Persistent answer?',exact:true}).fill('尚未提交的回答');
+    await page.waitForFunction(()=>Object.values(JSON.parse(localStorage.getItem('aibo.answer-drafts.v1.main')||'{}').drafts??{}).includes('尚未提交的回答'));
     await page.reload();
     await frame.locator('.navigation').waitFor({state:'visible'});
+    assert.equal(await frame.getByRole('textbox',{name:'Persistent answer?',exact:true}).count(),0);
+    await page.evaluate(request=>window.emitAgent('user_input.requested',request),answerRequest);
+    await frame.getByRole('textbox',{name:'Persistent answer?',exact:true}).waitFor();
+    assert.equal(await frame.getByRole('textbox',{name:'Persistent answer?',exact:true}).inputValue(),'尚未提交的回答');
+    await frame.getByRole('button',{name:'提交回答',exact:true}).click();
+    await page.waitForFunction(()=>window.navigationCalls.some(call=>call.command==='resolve_agent_user_input'&&call.args.answers.answer?.[0]==='尚未提交的回答'));
+    await page.waitForFunction(()=>!Object.values(JSON.parse(localStorage.getItem('aibo.answer-drafts.v1.main')||'{}').drafts??{}).includes('尚未提交的回答'));
     assert.equal(await frame.locator('.navigation').evaluate(element=>Math.round(element.getBoundingClientRect().width)),resized);
     assert.equal(await frame.getByRole('button',{name:'侧边面板',exact:true}).getAttribute('aria-expanded'),'false');
     assert.equal(await frame.getByRole('button',{name:'上下文',exact:true}).getAttribute('aria-pressed'),'true');
@@ -185,6 +196,6 @@ try {
     await page.getByRole('button',{name:'完成',exact:true}).click();
   }
   assert.deepEqual(errors,[]);
-  const result={passed:true,nativePort:'mocked; actual App and independently built full skin Workers',browser:browser.version(),checks:['focus and review modes, reversed drag, draft preservation and mode reload','reload restores both widths, panel visibility and selected view','both splitter drag directions and auxiliary keyboard resize','keyboard width adjustment and default/external width retention','primary Enter submits through host action','consecutive tool group with completion count','literal tool payloads and native reasoning disclosure in both skins','both full packages install and activate','workspace and session navigation','rich timeline headings, lists, inline and fenced code','host-bound code copy and link actions','attachment transport metadata hidden','rapid Chinese/English input and send','Git/context panel switching','requested and enforced permissions remain distinct','attachment status, strategy and size','diagnostic details remain visible','default/external switch retains host draft']};
+  const result={passed:true,nativePort:'mocked; actual App and independently built full skin Workers',browser:browser.version(),checks:['answer draft reload waits for matching live request and clears after submit','focus and review modes, reversed drag, draft preservation and mode reload','reload restores both widths, panel visibility and selected view','both splitter drag directions and auxiliary keyboard resize','keyboard width adjustment and default/external width retention','primary Enter submits through host action','consecutive tool group with completion count','literal tool payloads and native reasoning disclosure in both skins','both full packages install and activate','workspace and session navigation','rich timeline headings, lists, inline and fenced code','host-bound code copy and link actions','attachment transport metadata hidden','rapid Chinese/English input and send','Git/context panel switching','requested and enforced permissions remain distinct','attachment status, strategy and size','diagnostic details remain visible','default/external switch retains host draft']};
   await writeFile('/tmp/aibo-full-skins-browser.json',JSON.stringify(result,null,2)+'\n');console.log(JSON.stringify(result));
 } catch(error) {console.error(JSON.stringify({errors,body:await page.locator('body').innerText()}));throw error;} finally {await browser.close();await server.close();await built.dispose();}

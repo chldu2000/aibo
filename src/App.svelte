@@ -42,13 +42,17 @@
   import { userInputDraftKey, answeredRequest, clearRequestDrafts } from '$lib/app/user-input-drafts';
   import { createLayoutDirectory } from '$lib/presentation-runtime/layout';
   import type { PresentationConversation } from '../packages/plugin-protocol/src/presentation-conversation';
-  let userInputDrafts = $state<Record<string, string>>({});
+  import { readUserInputDrafts, writeUserInputDrafts } from '$lib/app/user-input-draft-storage';
+  let userInputDrafts = $state<Record<string, string>>(readUserInputDrafts(draftStorage, presentationWindowId()));
+  let knownUserInputKeys = new Set<string>();
+  $effect(() => { writeUserInputDrafts(draftStorage, presentationWindowId(), userInputDrafts); });
   const conversationDirectory = createConversationDirectory();
   $effect(() => {
     const keys = new Set(pendingUserInputs.flatMap(request => request.questions.map(question => userInputDraftKey(request, question.id))));
     untrack(() => {
-      const entries = Object.entries(userInputDrafts).filter(([key]) => keys.has(key));
+      const entries = Object.entries(userInputDrafts).filter(([key]) => !knownUserInputKeys.has(key) || keys.has(key));
       if (entries.length !== Object.keys(userInputDrafts).length) userInputDrafts = Object.fromEntries(entries);
+      knownUserInputKeys = keys;
     });
   });
   import { navigationActions as externalNavigationActions, resolveNavigationIntent } from '$lib/presentation-runtime/navigation';
