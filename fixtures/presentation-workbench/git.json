@@ -1,0 +1,115 @@
+{
+  "workspace": {
+    "id": "w",
+    "label": "Workspace",
+    "path": "/repo",
+    "trust": "trusted"
+  },
+  "sessionId": "s",
+  "desktop": true,
+  "open": true,
+  "activeView": "git",
+  "changes": {
+    "workspaceId": "w",
+    "head": "head",
+    "branch": "main",
+    "dirty": true,
+    "capturedAt": "now",
+    "captureStatus": "captured",
+    "captureError": null,
+    "files": [
+      {
+        "path": "staged",
+        "previousPath": null,
+        "kind": "modified",
+        "staged": true,
+        "unstaged": false,
+        "untracked": false,
+        "conflicted": false
+      },
+      {
+        "path": "changed",
+        "previousPath": null,
+        "kind": "modified",
+        "staged": false,
+        "unstaged": true,
+        "untracked": false,
+        "conflicted": false
+      }
+    ]
+  },
+  "loading": false,
+  "error": null,
+  "branches": [
+    {
+      "name": "main",
+      "current": true,
+      "commit": "head"
+    },
+    {
+      "name": "topic",
+      "current": false,
+      "commit": "commit"
+    }
+  ],
+  "history": [
+    {
+      "hash": "commit",
+      "shortHash": "commit",
+      "subject": "Subject",
+      "author": "Author",
+      "authoredAt": "now"
+    }
+  ],
+  "metadataLoading": false,
+  "metadataError": null,
+  "commitFiles": {
+    "commit": "commit",
+    "files": [
+      {
+        "path": "historical",
+        "previousPath": null,
+        "kind": "modified"
+      }
+    ],
+    "total": 2
+  },
+  "commitFilesLoading": false,
+  "remoteStatus": {
+    "branch": "main",
+    "upstream": "origin/main",
+    "ahead": 1,
+    "behind": 1
+  },
+  "stashes": [
+    {
+      "reference": "stash@{0}",
+      "message": "stash"
+    }
+  ],
+  "operationBusy": false,
+  "reviewBusy": false,
+  "canRequestReview": true,
+  "draft": {
+    "commitMessage": "message",
+    "branchDraft": "new-branch",
+    "gitSection": "history",
+    "selectedCommit": "commit"
+  },
+  "preview": {
+    "selectedPath": "changed",
+    "loading": false,
+    "error": null,
+    "staged": false,
+    "contextLabel": "Workspace diff",
+    "fileDiff": {
+      "path": "changed",
+      "staged": false,
+      "available": true,
+      "truncated": true,
+      "diff": "Full Git diff",
+      "hunks": [],
+      "reason": null
+    }
+  }
+}

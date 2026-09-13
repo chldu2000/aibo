@@ -1,0 +1,13 @@
+{
+  "passed": true,
+  "browser": "153.0.8010.12",
+  "scope": "isolated navigation/conversation/Git/Inspector modules; not full App workbench",
+  "checks": [
+    "real Worker accepts module trees",
+    "rename and composer input events",
+    "save and send host tokens",
+    "answer input and full message content",
+    "Git draft input and staged file target",
+    "project field input and hunk target"
+  ]
+}

@@ -1,0 +1,151 @@
+{
+  "projectEditor": {
+    "open": true,
+    "saving": false,
+    "generation": 1,
+    "actionId": null,
+    "name": "Build",
+    "kind": "build",
+    "program": "pnpm",
+    "args": "[\"build\"]",
+    "cwd": ".",
+    "enabled": true,
+    "error": null
+  },
+  "runningActionId": null,
+  "workspace": {
+    "id": "w",
+    "trust": "trusted"
+  },
+  "session": {
+    "id": "s",
+    "workspaceId": "w",
+    "archived": false
+  },
+  "desktop": true,
+  "open": true,
+  "activeView": "context",
+  "diagnostics": [],
+  "workspaceCapabilities": null,
+  "threads": [],
+  "executionProfile": null,
+  "attachments": [],
+  "artifacts": [
+    {
+      "id": "a",
+      "sessionId": "s",
+      "workspaceId": "w",
+      "source": "tool",
+      "mediaType": "text/plain",
+      "size": 12
+    }
+  ],
+  "artifactPreview": {
+    "sessionId": "s",
+    "artifactId": "a",
+    "content": {
+      "artifact": {
+        "id": "a",
+        "sessionId": "s",
+        "workspaceId": "w",
+        "source": "tool",
+        "mediaType": "text/plain",
+        "size": 12
+      },
+      "content": "Full artifact",
+      "truncated": true
+    },
+    "loading": false,
+    "error": null
+  },
+  "projectActions": [
+    {
+      "id": "build",
+      "workspaceId": "w",
+      "name": "Build",
+      "kind": "build",
+      "program": "pnpm",
+      "args": [
+        "build"
+      ],
+      "cwd": ".",
+      "enabled": true
+    }
+  ],
+  "projectActionRuns": [
+    {
+      "id": "run",
+      "workspaceId": "w",
+      "actionId": "build",
+      "actionName": "Build",
+      "status": "running",
+      "exitCode": null,
+      "output": "Build output"
+    }
+  ],
+  "changeSet": {
+    "sessionId": "s",
+    "workspaceId": "w",
+    "turnId": "t",
+    "attribution": "agent",
+    "files": [
+      {
+        "path": "clean",
+        "kind": "modified",
+        "baselineDirty": false
+      },
+      {
+        "path": "dirty",
+        "kind": "modified",
+        "baselineDirty": true
+      },
+      {
+        "path": "renamed",
+        "kind": "renamed",
+        "baselineDirty": false
+      }
+    ],
+    "captureStatus": "captured",
+    "captureError": null,
+    "commands": [
+      {
+        "id": "command",
+        "command": "pnpm test",
+        "status": "completed",
+        "output": "Test output"
+      }
+    ],
+    "verification": [
+      {
+        "id": "verify",
+        "status": "passed",
+        "output": "Verification output"
+      }
+    ]
+  },
+  "checkpoints": [],
+  "restoreOperations": [],
+  "workspaceChanges": {
+    "workspaceId": "w",
+    "captureStatus": "captured"
+  },
+  "fileDiff": {
+    "path": "clean",
+    "available": true,
+    "hunks": [
+      {
+        "index": 0,
+        "header": "@@",
+        "content": "diff"
+      }
+    ],
+    "diff": "Full diff",
+    "reason": null
+  },
+  "fileDiffLoading": false,
+  "fileDiffError": null,
+  "threadBusy": false,
+  "busy": false,
+  "running": false,
+  "archiving": false
+}
