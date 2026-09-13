@@ -13,3 +13,5 @@ button{border-radius:9999px;border-color:transparent;padding:10px 20px}.collecti
 .workbench .workbench-splitter{flex:0 0 14px;width:14px;align-self:stretch;padding:0;border:0;border-radius:0;background:transparent;cursor:col-resize;touch-action:none}.workbench-splitter::after{content:'';display:block;width:2px;height:100%;margin:auto;background:var(--border)}.workbench-splitter:hover::after,.workbench-splitter:focus-visible::after{background:var(--primary)}@media(max-width:700px){.workbench .workbench-splitter{display:none}}
 
 @media(min-width:701px){.workbench-review>.navigation{border-right:0;border-left:1px solid var(--border)}.workbench-review>.workbench-inspector{border-left:0;border-right:1px solid var(--border)}}
+
+.workbench [role=listbox]{display:grid;gap:4px;padding:8px;border:1px solid var(--border);border-radius:var(--radius);max-height:260px;overflow:auto}.workbench [role=listbox][hidden]{display:none}.workbench [role=option][aria-selected=true]{background:var(--accent);color:var(--accent-foreground);outline:1px solid var(--ring)}

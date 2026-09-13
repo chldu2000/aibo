@@ -335,3 +335,10 @@ Worker 不能直接写入此缓存。新皮肤通过相同节点 key 恢复能�
 宿主布局切换中。`selectMode` click 令牌调用现有宿主布局控制器并沿用其持久化。
 focus 不提供列宽动作；resize 身份包含布局模式，避免左右交换后继续接受旧方向
 的拖动。review 交换导航/辅助区域并反转对应分栏的增长方向。
+
+`PresentationNode.suggestions` 仅用于 textarea：`listKey` 指向列表容器，`keys`
+引用容器内已有宿主 click 动作的按钮，`confirmWithTab` 可启用 Tab 确认。每个
+列表最多 100 个键，整棵树最多 1000 个引用；不能与节点 keydown 处理器并用。
+可信桥处理上下键、Enter、Escape 和可选 Tab，拒绝合成事件与输入法组合确认。
+普通主修饰键 Enter 仍走 primaryEnter。建议确认复用当前点击令牌，不新增权限。
+输入尚未得到宿主快照确认时隐藏旧列表；完成后将光标移到新文本末尾。

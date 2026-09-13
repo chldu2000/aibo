@@ -5,6 +5,37 @@
   const root = document.getElementById('root');
   let editSequence = 0, acceptedEdits = 0, localInputActions = [], allowInheritance = false;
   const edits = new Map();
+  const suggestionStates=new Map(), completions=new Map();
+  function bindSuggestions(entry,elements,clicks,context){
+    const {element,key,config,expectedValue}=entry,container=elements.get(config.listKey);
+    if(!container)throw Error('invalid_presentation_suggestions');
+    const options=config.keys.map(key=>clicks.get(key)).filter(option=>option&&!option.element.disabled);
+    if(options.some(option=>!container.contains(option.element)))throw Error('invalid_presentation_suggestions');
+    const signature=JSON.stringify([context.workspaceId,context.sessionId,expectedValue,options.map(option=>option.token)]);
+    let state=suggestionStates.get(key);
+    if(!state||state.signature!==signature){state={signature,index:0,dismissed:false};suggestionStates.set(key,state);}
+    container.id='aibo-suggestions-'+encodeURIComponent(config.listKey);
+    element.setAttribute('aria-controls',container.id);element.setAttribute('aria-autocomplete','list');
+    function paint(){
+      const visible=!state.dismissed&&options.length>0&&element.value===expectedValue;
+      container.hidden=!visible;element.setAttribute('aria-expanded',String(visible));element.removeAttribute('aria-activedescendant');
+      options.forEach((option,index)=>{option.element.id='aibo-option-'+encodeURIComponent(option.key);option.element.setAttribute('aria-selected',String(visible&&index===state.index));if(visible&&index===state.index)element.setAttribute('aria-activedescendant',option.element.id);});
+    }
+    paint();
+    element.addEventListener('input',()=>{completions.delete(key);paint();});
+    element.addEventListener('keydown',event=>{
+      if(!event.isTrusted||event.isComposing||event.metaKey||event.ctrlKey||event.altKey||element.disabled||element.readOnly||element.value!==expectedValue||!options.length)return;
+      if(event.key==='ArrowDown'||event.key==='ArrowUp'){
+        event.preventDefault();state.index=state.dismissed?0:(state.index+(event.key==='ArrowDown'?1:-1)+options.length)%options.length;state.dismissed=false;paint();options[state.index].element.scrollIntoView({block:'nearest'});return;
+      }
+      if(event.key==='Escape'&&!state.dismissed){event.preventDefault();state.dismissed=true;paint();return;}
+      if((event.key==='Enter'||event.key==='Tab'&&config.confirmWithTab&&!event.shiftKey)&&!event.repeat&&!state.dismissed){
+        event.preventDefault();const option=options[state.index];
+        completions.set(key,{value:element.value,workspaceId:context.workspaceId,sessionId:context.sessionId});
+        send({type:'intent',intent:{id:option.token,event:'click',context}});
+      }
+    });
+  }
   let splitters = new Map(), drag;
   function endResize() {
     if(drag&&root.hasPointerCapture(drag.pointerId))root.releasePointerCapture(drag.pointerId);
@@ -57,6 +88,7 @@
   function fail(message) { stop(); send({ type: 'failure', message: String(message).slice(0, 512) }); }
   function render(tree, context) {
     let count = 0; const keys = new Set();
+    const elements=new Map(),clicks=new Map(),suggestions=[];let suggestionCount=0;
     const nextSplitters=new Map();
     const state=pendingState!==undefined?pendingState:captureState();
     pendingState=undefined;
@@ -70,6 +102,14 @@
         element.src = assets[value.resource];
       }
       element.dataset.presentationKey = value.key;
+      elements.set(value.key,element);
+      if(value.tag==='button'&&value.events?.click)clicks.set(value.key,{key:value.key,element,token:value.events.click});
+      if(value.suggestions!==undefined){
+        const config=value.suggestions;
+        if(value.tag!=='textarea'||!config||typeof config.listKey!=='string'||config.listKey.length>256||!Array.isArray(config.keys)||config.keys.length>100||config.keys.some(key=>typeof key!=='string'||key.length>256)||new Set(config.keys).size!==config.keys.length||config.confirmWithTab!==undefined&&typeof config.confirmWithTab!=='boolean'||value.events?.keydown||value.localEvents?.keydown)throw Error('invalid_presentation_suggestions');
+        suggestionCount+=config.keys.length;if(suggestionCount>1000)throw Error('invalid_presentation_suggestions');
+        suggestions.push({element,key:value.key,config,expectedValue:String(value.attrs?.value??'')});
+      }
       if(value.resize!==undefined){
         const resize=value.resize;
         if(value.tag!=='button'||!resize||typeof resize.token!=='string'||!resize.token||resize.token.length>256||![1,-1].includes(resize.direction)||![resize.value,resize.min,resize.max].every(number=>Number.isFinite(number)&&number>=0&&number<=4096)||resize.min>resize.max||value.events?.keydown||value.localEvents?.keydown)throw Error('invalid_presentation_resize');
@@ -153,7 +193,19 @@
     splitters=nextSplitters;
     if(drag&&(!splitters.has(drag.key)||splitters.get(drag.key).token!==drag.token))endResize();
     root.replaceChildren(next);
+    for(const entry of suggestions)bindSuggestions(entry,elements,clicks,context);
+    const suggestionKeys=new Set(suggestions.map(entry=>entry.key));
+    for(const key of suggestionStates.keys())if(!suggestionKeys.has(key))suggestionStates.delete(key);
     restoreState(state,active&&mayRestoreFocus);
+    for(const [key,completion] of completions){
+      const element=elements.get(key);
+      if(!(element instanceof HTMLTextAreaElement)||completion.workspaceId!==context.workspaceId||completion.sessionId!==context.sessionId){completions.delete(key);continue;}
+      if(element.value!==completion.value){
+        if(typeof element.setSelectionRange==='function')element.setSelectionRange(element.value.length,element.value.length);
+        if(state?.focus?.key===key)state.focus.selection=[element.value.length,element.value.length];
+        completions.delete(key);
+      }
+    }
     lastState=state; renderedContext=context;
 
   }
