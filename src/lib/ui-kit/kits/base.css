@@ -151,6 +151,7 @@ h2 { font-size: 16px; letter-spacing: -0.02em; }
 .session-item-row:hover .session-updated, .session-item-row:focus-within .session-updated { opacity: 0; }
 .session-filter-empty { padding: 8px 10px; color: var(--aibo-subtle); font-size: 10px; }
 .timeline-feed { flex: 1; min-height: 0; overflow-y: auto; overscroll-behavior: contain; padding: 18px 20px 24px; }
+.timeline-feed-content { display: flow-root; }
 .timeline-load-more { width: 100%; margin-bottom: 12px; border: 1px dashed var(--aibo-border-strong); color: var(--aibo-muted); }
 .timeline-entry { max-width: 86%; margin-bottom: 14px; padding: 14px 16px; }
 .timeline-entry { content-visibility: auto; contain-intrinsic-size: 0 84px; }

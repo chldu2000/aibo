@@ -1,5 +1,7 @@
 <script lang="ts">
+  import { tick } from 'svelte';
   import { userInputDraftKey, answeredRequest } from '$lib/app/user-input-drafts';
+  import { createTimelineStickiness } from '$lib/app/timeline-stickiness';
   import type { Snippet } from 'svelte';
   import type { ModelConfigurationState } from '$lib/app/model-configuration';
   import { sessionAgentKind } from '$lib/app/agent-kind';
@@ -130,6 +132,36 @@
     onSelectWorkspacePath,
   }: TimelinePanelProps = $props();
   const sessionKind = $derived(sessionAgentKind(session));
+  const timelineStickiness = createTimelineStickiness();
+  let timelineFeed: HTMLElement | null = $state(null);
+  let timelineContent: HTMLElement | null = $state(null);
+
+  function scrollTimelineToBottom(): void {
+    if (timelineFeed) timelineStickiness.scrollToBottom(timelineFeed);
+  }
+
+  function handleTimelineViewportScroll(event: Event): void {
+    const viewport = event.currentTarget as HTMLElement;
+    timelineStickiness.updateFromScroll(viewport);
+    onTimelineScroll(event);
+  }
+
+  $effect(() => {
+    selectedSessionId;
+    const viewport = timelineFeed;
+    timelineStickiness.reset();
+    if (viewport) void tick().then(scrollTimelineToBottom);
+  });
+
+  $effect(() => {
+    const viewport = timelineFeed;
+    const content = timelineContent;
+    if (!viewport || !content || typeof ResizeObserver === 'undefined') return;
+    const observer = new ResizeObserver(() => scrollTimelineToBottom());
+    observer.observe(viewport);
+    observer.observe(content);
+    return () => observer.disconnect();
+  });
 
   const visibleTimeline = $derived(
     timeline.slice(Math.max(0, timeline.length - timelineVisibleCount)),
@@ -234,7 +266,8 @@
     {/if}
 
     {#if timeline.length > 0}
-      <div data-presentation-timeline class="timeline-feed" aria-live="polite" onscroll={onTimelineScroll}>
+      <div bind:this={timelineFeed} data-presentation-timeline class="timeline-feed" aria-live="polite" onscroll={handleTimelineViewportScroll}>
+        <div bind:this={timelineContent} class="timeline-feed-content">
         {#if hiddenTimelineCount > 0}
           <Button class="timeline-load-more" variant="ghost" size="sm" type="button" onclick={onLoadOlderTimeline}>
             加载更早的 {Math.min(hiddenTimelineCount, 80)} 条消息
@@ -334,6 +367,7 @@
             </Card>
           {/if}
         {/each}
+        </div>
       </div>
     {:else if session}
       <div class="timeline-empty compact-empty">
