@@ -4,9 +4,10 @@
   import type { ModelConfigurationState } from '$lib/app/model-configuration';
   import { sessionAgentKind } from '$lib/app/agent-kind';
   import { Badge, Button, Card, CardContent, CardHeader, CardTitle, Icon, Input, Separator } from '$lib/ui-kit';
-  import type { AgentCommand, AgentGoal, AgentQueueSnapshot, ContextAttachment, SessionAccessMode, SessionExecutionProfile, SessionModelCatalog, UserInputRequest, WorkspacePathSuggestion } from '$lib/types';
+  import type { AgentCommand, AgentGoal, AgentQueueSnapshot, ContextAttachment, SessionAccessMode, SessionExecutionProfile, SessionModelCatalog, Session, UserInputRequest, WorkspacePathSuggestion } from '$lib/types';
   import type { UsageValues } from './view-models';
   import Composer from './Composer.svelte';
+  import { splitSessionReferences } from '../../../../packages/presentation-workbench/session-references.js';
   import MarkdownContent from './MarkdownContent.svelte';
   import { sessionStateLabel } from './session-utils';
   import { groupTimelineItems, isDiffContent, toolLabel } from './timeline-utils';
@@ -45,6 +46,8 @@
     modelCatalogLoading: boolean;
     modelOverride?: string | null;
     workspacePathSuggestions: WorkspacePathSuggestion[];
+    sessionSuggestions?: Session[];
+    onSelectSessionReference?: (id: string) => void | Promise<void>;
     agentCommands: AgentCommand[];
     agentCommandsLoading: boolean;
     composerText?: string;
@@ -99,6 +102,8 @@
     modelCatalogLoading,
     modelOverride = null,
     workspacePathSuggestions,
+    sessionSuggestions = [],
+    onSelectSessionReference,
     agentCommands,
     agentCommandsLoading,
     composerText = $bindable(''),
@@ -321,7 +326,18 @@
                   <pre class:diff-content={isDiffContent(item.content)}>{item.content || '…'}</pre>
                 </details>
               {:else}
-                <div class="entry-content">{#if item.content}<MarkdownContent content={item.content} />{:else}…{/if}</div>
+                {@const message = item.role === 'user' ? splitSessionReferences(item.content) : { body: item.content, references: [] }}
+                <div class="entry-content">{#if message.body}<MarkdownContent content={message.body} />{:else if !message.references.length}…{/if}</div>
+                {#each message.references as reference, index (`${reference.id}-${index}`)}
+                  <details class="tool-output">
+                    <summary>引用会话 · {reference.title}</summary>
+                    <p>{reference.agent} · {reference.note}{reference.omitted === null ? '' : ` · 已省略 ${reference.omitted} 条消息`}</p>
+                    {#each reference.excerpts as excerpt}
+                      <p>{excerpt.role === 'user' ? '用户' : '助手'}{excerpt.truncated ? ' · 已截取' : ''}</p>
+                      <pre>{excerpt.text}</pre>
+                    {/each}
+                  </details>
+                {/each}
               {/if}
             </Card>
           {/if}
@@ -434,6 +450,8 @@
     modelCatalogLoading={modelCatalogLoading}
     {modelOverride}
     workspacePathSuggestions={workspacePathSuggestions}
+    {sessionSuggestions}
+    {onSelectSessionReference}
     agentCommands={agentCommands}
     agentCommandsLoading={agentCommandsLoading}
     bind:text={composerText}

@@ -2,7 +2,7 @@
   import type { ModelConfigurationState } from '$lib/app/model-configuration';
   import { Button, Card, Icon, ModelMatrix, Textarea } from '$lib/ui-kit';
   import type { UiModelMatrixRow } from '$lib/ui-kit';
-  import type { AgentCommand, AgentCommandCategory, ContextAttachment, SessionAccessMode, SessionExecutionProfile, SessionModelCatalog, WorkspacePathSuggestion } from '$lib/types';
+  import type { AgentCommand, AgentCommandCategory, ContextAttachment, SessionAccessMode, SessionExecutionProfile, SessionModelCatalog, Session, WorkspacePathSuggestion } from '$lib/types';
 
   type SlashCategory = 'all' | AgentCommandCategory;
 
@@ -21,6 +21,8 @@
     modelCatalogLoading: boolean;
     modelOverride?: string | null;
     workspacePathSuggestions: WorkspacePathSuggestion[];
+    sessionSuggestions?: Session[];
+    onSelectSessionReference?: (id: string) => void | Promise<void>;
     agentCommands: AgentCommand[];
     agentCommandsLoading: boolean;
     text?: string;
@@ -52,6 +54,8 @@
     modelCatalogLoading,
     modelOverride = null,
     workspacePathSuggestions,
+    sessionSuggestions = [],
+    onSelectSessionReference,
     agentCommands,
     agentCommandsLoading,
     text = $bindable(''),
@@ -118,8 +122,19 @@
     { id: 'skill', label: 'Skills' },
     { id: 'extension', label: 'Extension' },
   ];
+  const mentionSuggestions = $derived([
+    ...sessionSuggestions.map(session => ({ kind: 'session' as const, session })),
+    ...workspacePathSuggestions.slice(0, 8).map(path => ({ kind: 'path' as const, path })),
+  ]);
+  function selectMention(index: number): void {
+    const item = mentionSuggestions[index];
+    if (!item) return;
+    mentionActiveIndex = -1;
+    if (item.kind === 'session') void onSelectSessionReference?.(item.session.id);
+    else selectWorkspacePath(item.path);
+  }
   const showMentionSuggestions = $derived(
-    activeMentionQuery !== null && workspacePathSuggestions.length > 0,
+    activeMentionQuery !== null && mentionActiveIndex >= 0 && mentionSuggestions.length > 0,
   );
   const showSlashMenu = $derived(
     activeSlashQuery !== null && selectedAgent !== null && slashActiveIndex >= 0,
@@ -279,13 +294,13 @@
         {#each pendingAttachments as attachment (attachment.id)}
           <span class="composer-attachment" title={attachment.path}>
             <Icon name="folder" size={12} />
-            <span>{attachmentName(attachment.path)}</span>
+            <span>{(attachment.mediaType === 'application/vnd.aibo.session-reference+json' ? attachment.path : attachmentName(attachment.path))}</span>
             <Button
               variant="toolbar"
               size="icon"
               type="button"
               class="composer-attachment-remove"
-              aria-label={`移除附件 ${attachmentName(attachment.path)}`}
+              aria-label={`移除附件 ${(attachment.mediaType === 'application/vnd.aibo.session-reference+json' ? attachment.path : attachmentName(attachment.path))}`}
               onclick={() => onRemoveAttachment(attachment.id)}
               disabled={busy}
             >
@@ -309,18 +324,17 @@
         if (showMentionSuggestions) {
           if (event.key === 'ArrowDown') {
             event.preventDefault();
-            mentionActiveIndex = (mentionActiveIndex + 1) % workspacePathSuggestions.length;
+            mentionActiveIndex = (mentionActiveIndex + 1) % mentionSuggestions.length;
             return;
           }
           if (event.key === 'ArrowUp') {
             event.preventDefault();
-            mentionActiveIndex = (mentionActiveIndex - 1 + workspacePathSuggestions.length) % workspacePathSuggestions.length;
+            mentionActiveIndex = (mentionActiveIndex - 1 + mentionSuggestions.length) % mentionSuggestions.length;
             return;
           }
           if (event.key === 'Enter' || event.key === 'Tab') {
             event.preventDefault();
-            const suggestion = workspacePathSuggestions[mentionActiveIndex];
-            if (suggestion) selectWorkspacePath(suggestion);
+            selectMention(mentionActiveIndex);
             return;
           }
           if (event.key === 'Escape') {
@@ -371,19 +385,19 @@
       oninput={(event) => updateComposerInput((event.currentTarget as HTMLTextAreaElement).value)}
     ></Textarea>
     {#if showMentionSuggestions && mentionActiveIndex >= 0}
-      <div class="composer-suggestions" role="listbox" aria-label="工作区路径">
-        {#each workspacePathSuggestions.slice(0, 8) as suggestion, index (`mention-${suggestion.path}`)}
+      <div class="composer-suggestions" role="listbox" aria-label="引用会话或工作区路径">
+        {#each mentionSuggestions as suggestion, index (suggestion.kind === 'session' ? `session-${suggestion.session.id}` : `path-${suggestion.path.path}`)}
           <button
             type="button"
             class:active={index === mentionActiveIndex}
             role="option"
             aria-selected={index === mentionActiveIndex}
-            onclick={() => selectWorkspacePath(suggestion)}
+            onclick={() => selectMention(index)}
             onmousedown={(event) => event.preventDefault()}
           >
-            <Icon name={suggestion.isDirectory ? 'folder' : 'file'} size={13} />
-            <span>{suggestion.path}</span>
-            <small>{suggestion.isDirectory ? '目录' : '文件'}</small>
+            <Icon name={suggestion.kind === 'session' || suggestion.path.isDirectory ? 'folder' : 'file'} size={13} />
+            <span>{suggestion.kind === 'session' ? suggestion.session.label : suggestion.path.path}</span>
+            <small>{suggestion.kind === 'session' ? `会话 · ${suggestion.session.agent}${suggestion.session.archived ? ' · 已归档' : ''}` : suggestion.path.isDirectory ? '目录' : '文件'}</small>
           </button>
         {/each}
       </div>

@@ -391,6 +391,9 @@ export const applyGitHunkAction = (
     action,
   }, requestId);
 
+export const referenceSession = (sessionId: string, sourceSessionId: string): Promise<ContextAttachment> =>
+  invoke<ContextAttachment>('reference_session', { sessionId, sourceSessionId });
+
 export const registerSessionAttachments = (
   sessionId: string,
   paths: string[],

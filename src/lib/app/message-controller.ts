@@ -1,4 +1,5 @@
 import type { ApprovalRequest, ContextAttachment, ContextAttachmentValidation, Session, Workspace } from '$lib/types';
+import { withSessionReferenceContext } from './session-references';
 import { createAgentFacade } from './agent-facade';
 import { toErrorMessage } from './error-utils';
 import { upsertSession } from './session-transitions';
@@ -44,9 +45,17 @@ export type MessageControllerContext = {
 
 export function createMessageController(context: MessageControllerContext) {
   const agent = createAgentFacade(context.api);
-  function withAttachmentContext(input: string): string {
-    const attachments = context.getAttachments().filter((attachment) => attachment.turnId === null);
-    if (attachments.length === 0) return input;
+  function withAttachmentContext(input: string, sessionId: string | null): string {
+    input = withSessionReferenceContext(input, context.getAttachments(), sessionId);
+    const attachments = context.getAttachments().filter((attachment) => attachment.sessionId === sessionId && attachment.turnId === null && attachment.mediaType !== 'application/vnd.aibo.session-reference+json');
+    const request = attachments.length === 0 ? input : appendFileReferences(input, attachments);
+    if (new TextEncoder().encode(request).length > 200_000 || new TextEncoder().encode(JSON.stringify({ text: request })).length > 240_000) {
+      throw new Error('消息与引用上下文超过发送上限，请缩短消息或减少引用。');
+    }
+    return request;
+  }
+
+  function appendFileReferences(input: string, attachments: ContextAttachment[]): string {
     const references = attachments
       .map((attachment) => {
         const metadata = [attachment.mediaType, attachment.size === null ? null : `${attachment.size} bytes`, attachment.contentHash]
@@ -89,6 +98,9 @@ export function createMessageController(context: MessageControllerContext) {
       return;
     }
 
+    let requestInput: string;
+    try { requestInput = withAttachmentContext(input, draftSessionId); }
+    catch (error) { context.setErrorMessage(toErrorMessage(error)); return; }
     if (selectedSession) {
       const unsupported = unsupportedAttachmentPaths();
       if (unsupported.length > 0) {
@@ -107,7 +119,6 @@ export function createMessageController(context: MessageControllerContext) {
     context.setErrorMessage(null);
     context.setLastSubmittedPrompt(input);
     context.setPromptInFlight(true);
-    const requestInput = withAttachmentContext(input);
     let acceptedSession: Session | null = null;
     try {
       let session = selectedSession;
@@ -173,6 +184,9 @@ export function createMessageController(context: MessageControllerContext) {
     const input = draftText.trim();
     const session = context.getSelectedSession();
     if (!input || !session || !session.capabilities.includes('queue.manage') || !context.getDesktop()) return;
+    let requestInput: string;
+    try { requestInput = withAttachmentContext(input, session.id); }
+    catch (error) { context.setErrorMessage(toErrorMessage(error)); return; }
     const unsupported = unsupportedAttachmentPaths();
     if (unsupported.length > 0) {
       context.setErrorMessage(`当前 Agent 不支持图片上下文：${unsupported.join('、')}`);
@@ -186,7 +200,6 @@ export function createMessageController(context: MessageControllerContext) {
     }
     context.setBusy(true);
     context.setErrorMessage(null);
-    const requestInput = withAttachmentContext(input);
     let accepted = false;
     try {
       await agent.invoke(session, 'queue.manage', { action: mode, message: requestInput });

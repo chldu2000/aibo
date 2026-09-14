@@ -55,3 +55,14 @@ test('host answer drafts preserve independent sessions and only clear the comple
  assert.equal(directory.resolve({...state,userInputRequests:[{...request,turnId:'new-turn'}]},context,{id:answer.token,event:'input',value:'late',context}),null);
  assert.equal(directory.resolve({...state,userInputRequests:[]},context,{id:answer.token,event:'input',value:'late',context}),null);
 });
+
+test('session reference actions reject foreign sessions and retire after selection or navigation',()=>{
+ const candidate={...state.session,id:'source',archived:true};
+ const referencing={...state,draft:'@',sessionSuggestions:[candidate,{...candidate,id:'foreign',workspaceId:'elsewhere'},state.session]};
+ const directory=createConversationDirectory();
+ const actions=directory.project(referencing).filter(a=>a.operation==='selectSessionReference');
+ assert.deepEqual(actions.map(a=>a.args),[['source']]);
+ const intent={id:actions[0].token,event:'click',context};
+ assert.equal(directory.resolve({...referencing,sessionSuggestions:[]},context,intent),null);
+ assert.equal(directory.resolve({...referencing,busy:true},context,intent),null);
+});

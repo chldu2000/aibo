@@ -134,7 +134,7 @@
     archiving: selectedSessionArchiving, busy, attachments, executionProfile,
     modelConfiguration: modelConfigurationState(selectedSession, sessionModelCatalog, executionProfile),
     modelCatalog: sessionModelCatalog, modelCatalogLoading: sessionModelCatalogLoading, modelOverride: sessionModelOverride,
-    workspacePathSuggestions, agentCommands: visibleAgentCommands, agentCommandsLoading,
+    workspacePathSuggestions, sessionSuggestions, agentCommands: visibleAgentCommands, agentCommandsLoading,
     draft: composerText, draftFailed: composerDraftFailed, tree: piTree?.sessionId === selectedSessionId ? piTree : null,
     treeOpen: piTreeOpen, treeNavigationStatus: piNavigationStatus,
   });
@@ -155,6 +155,7 @@
       case 'addAttachments': await chooseSessionAttachments(); break;
       case 'addDirectory': await chooseSessionAttachmentDirectory(); break;
       case 'removeAttachment': await removeAttachment(target!); break;
+      case 'selectSessionReference': await selectComposerSessionReference(target!); break;
       case 'selectPath':
         composerText = composerText.replace(/(?:^|\s)@([^\s]*)$/, match => `${match.startsWith(' ') ? ' ' : ''}@${target} `);
         handleComposerInput(composerText); selectComposerWorkspacePath(target!); break;
@@ -463,6 +464,8 @@
   import { createSessionHistoryController, emptySessionHistory } from '$lib/app/session-history-controller';
   import { createCapabilityHistoryController, emptyCapabilityHistory } from '$lib/app/capability-history-controller';
   import { listCapabilityHistoryScopes, readCapabilityHistory } from '$lib/api';
+  import { sessionMentionSuggestions } from '$lib/app/session-references';
+  import { referenceSession } from '$lib/api';
   import { listWorkspaceWriteRuns, cancelWorkspaceWrite, readSessionHistory } from '$lib/api';
   import { createProjectTaskController, observeProjectTaskHistory } from '$lib/app/project-task-controller';
   import { createApprovalController } from '$lib/app/approval-controller';
@@ -775,6 +778,7 @@
   let sessionsLoadingWorkspaceIds = $state<string[]>([]);
   let composerText = $state('');
   let workspacePathSuggestions = $state<WorkspacePathSuggestion[]>([]);
+  let sessionSuggestions = $state<Session[]>([]);
   let agentCommands = $state<AgentCommand[]>([]);
   let agentCommandsLoading = $state(false);
   let pathSearchGeneration = 0;
@@ -1743,6 +1747,7 @@
     retryReason = null;
     lastSubmittedPrompt = null;
     workspacePathSuggestions = [];
+    sessionSuggestions = [];
     agentCommands = [];
     agentCommandsLoading = false;
   }
@@ -1757,6 +1762,7 @@
       composerDrafts = next;
       writePersistedComposerDrafts(next);
     }
+    sessionSuggestions = [];
     const match = value.match(/(?:^|\s)@([^\s]*)$/);
     const workspaceId = selectedSession?.workspaceId ?? selectedWorkspaceId;
     if (!desktop || !workspaceId || !selectedSession || selectedSession.archived || !match) {
@@ -1767,10 +1773,18 @@
       return;
     }
     const query = match[1] ?? '';
+    const targetSessionId = selectedSession.id;
     const generation = ++pathSearchGeneration;
     if (pathSearchTimer) clearTimeout(pathSearchTimer);
     pathSearchTimer = setTimeout(() => {
       pathSearchTimer = undefined;
+      void listAllSessions(workspaceId, { statusFilter: 'all' }).then(sessions => {
+        if (generation === pathSearchGeneration && selectedSessionId === targetSessionId) {
+          sessionSuggestions = sessionMentionSuggestions(sessions, workspaceId, targetSessionId, query);
+        }
+      }).catch(() => {
+        if (generation === pathSearchGeneration) sessionSuggestions = [];
+      });
       void searchWorkspacePaths(workspaceId, query)
         .then((suggestions) => {
           if (generation === pathSearchGeneration && selectedSession?.workspaceId === workspaceId) {
@@ -1781,6 +1795,25 @@
           if (generation === pathSearchGeneration) workspacePathSuggestions = [];
         });
     }, 120);
+  }
+
+  async function selectComposerSessionReference(sourceSessionId: string): Promise<void> {
+    const session = selectedSession;
+    if (!session || !desktop || busy || session.archived) return;
+    const draft = composerText;
+    busy = true;
+    errorMessage = null;
+    try {
+      const attachment = await referenceSession(session.id, sourceSessionId);
+      if (selectedSessionId !== session.id) return;
+      attachments = [...attachments, attachment];
+      if (composerText === draft) {
+        composerText = draft.replace(/(^|\s)@([^\s]*)$/, '$1');
+        handleComposerInput(composerText);
+      }
+      notice = '已添加会话引用：将传递对话摘录，不包含工具输出正文。';
+    } catch (error) { errorMessage = toErrorMessage(error); }
+    finally { busy = false; }
   }
 
   function selectComposerWorkspacePath(path: string): void {
@@ -3750,6 +3783,8 @@
       modelCatalogLoading={sessionModelCatalogLoading}
       modelOverride={sessionModelOverride}
       workspacePathSuggestions={workspacePathSuggestions}
+      sessionSuggestions={sessionSuggestions}
+      onSelectSessionReference={guard('onSelectSessionReference', selectComposerSessionReference)}
       agentCommands={visibleAgentCommands}
       agentCommandsLoading={agentCommandsLoading}
       composerDraftFailed={composerDraftFailed}

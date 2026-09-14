@@ -5,6 +5,7 @@ mod core_turn_git;
 mod turn_restore;
 mod execution_history;
 mod session_history;
+mod session_context;
 mod capability_history;
 mod workspace_git_approval;
 mod workspace_writes;
@@ -468,6 +469,7 @@ pub struct ContextAttachment {
     pub(crate) media_type: String,
     pub(crate) source: String,
     pub(crate) send_strategy: String,
+    pub(crate) inline_context: Option<String>,
     pub(crate) created_at: String,
 }
 
@@ -3041,6 +3043,11 @@ async fn apply_git_file_action(
 }
 
 #[tauri::command]
+async fn reference_session(session_id: String, source_session_id: String, state: State<'_, AppState>) -> Result<ContextAttachment, CoreError> {
+    session_context::capture(&state.db, &session_id, &source_session_id).await
+}
+
+#[tauri::command]
 async fn register_session_attachments(
     session_id: String,
     paths: Vec<String>,
@@ -3110,6 +3117,7 @@ async fn register_session_attachments(
             media_type: attachment_media_type(&target, is_dir),
             source: "picker".to_owned(),
             send_strategy: "reference".to_owned(),
+            inline_context: None,
             created_at: now.clone(),
         });
     }
@@ -3124,7 +3132,7 @@ async fn list_session_attachments(
     session_by_id(&state.db, &session_id).await?;
     let rows = sqlx::query(
         "SELECT id, schema_version, workspace_id, session_id, turn_id, path, content_hash, size,
-                media_type, source, send_strategy, created_at
+                media_type, source, send_strategy, created_at, inline_context
          FROM attachments WHERE session_id = ? ORDER BY created_at ASC",
     )
     .bind(&session_id)
@@ -3144,6 +3152,7 @@ async fn list_session_attachments(
                 media_type: row.try_get("media_type")?,
                 source: row.try_get("source")?,
                 send_strategy: row.try_get("send_strategy")?,
+                inline_context: row.try_get("inline_context")?,
                 created_at: row.try_get("created_at")?,
             })
         })
@@ -3190,7 +3199,7 @@ async fn validate_session_attachments(
         .map_err(|error| CoreError::InvalidWorkspacePath(error.to_string()))?;
     let rows = sqlx::query(
         "SELECT id, path, content_hash, size FROM attachments
-         WHERE session_id = ? AND turn_id IS NULL ORDER BY created_at ASC",
+         WHERE session_id = ? AND turn_id IS NULL AND inline_context IS NULL ORDER BY created_at ASC",
     )
     .bind(&session_id)
     .fetch_all(&state.db)
@@ -4320,6 +4329,7 @@ pub fn run() {
             apply_git_hunk_action,
             apply_git_file_action,
             register_session_attachments,
+            reference_session,
             list_session_attachments,
             remove_session_attachment,
             validate_session_attachments,

@@ -40,3 +40,18 @@ test('reasoning disclosure keeps its identity during streaming and prose keeps M
   assert.ok(extended.some(node=>node.key==='message-group:tool-group-t1'));
   assert.ok(extended.some(node=>node.key==='message:t1:disclosure'));
  });
+
+test('references render inside collapsed disclosures with readable excerpts, including old snapshots',async()=>{
+ const {splitSessionReferences}=await import('../packages/presentation-workbench/session-references.js');
+ for(const version of ['v1','v2']){
+  const payload=JSON.stringify([{snapshotId:'r',snapshot:{schema:'aibo.session-reference/'+version,sourceSessionId:'s',sourceLabel:'设计讨论',messages:[{role:'user',content:'要解决的问题'},{role:'tool',content:'SECRET_LOG'},{role:'assistant',content:'设计结论'}]}}]);
+  const content='请参考\n\n[AIBO_SESSION_REFERENCES]\ntransport description\n'+payload+'\n[/AIBO_SESSION_REFERENCES]';
+  assert.equal(splitSessionReferences(content).body,'请参考');
+  const tree=renderTimelineEntry({...entry,role:'user',toolName:null,content},[]);const nodes=flatten(tree);
+  const disclosure=nodes.find(n=>n.tag==='details');assert.ok(disclosure);assert.ok(!disclosure.attrs?.open);
+  assert.ok(nodes.some(n=>n.text==='引用会话 · 设计讨论'));assert.ok(nodes.some(n=>n.text==='设计结论'));
+  assert.ok(!JSON.stringify(tree).includes('SECRET_LOG'));assert.ok(!JSON.stringify(tree).includes('AIBO_SESSION_REFERENCES'));assert.ok(!JSON.stringify(tree).includes('transport description'));
+ }
+ const broken='text\n[AIBO_SESSION_REFERENCES]\nnotice\n[invalid]\n[/AIBO_SESSION_REFERENCES]';
+ assert.equal(splitSessionReferences(broken).body,broken);assert.deepEqual(splitSessionReferences(broken).references,[]);
+});

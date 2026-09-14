@@ -309,6 +309,9 @@ impl SessionHost {
             if running.is_some() { drop(admission.take()); }
             let (session,manifest)=self.metadata(session_id).await?;
             let qualified=format!("{}.{}",manifest["pluginId"].as_str().ok_or("invalid_manifest")?,capability);
+            let reference_turn = running.as_ref().filter(|_| capability == "queue.manage"
+                && matches!(input["action"].as_str(), Some("steer" | "followUp")))
+                .map(|run| run.request_id.clone());
             let response=if let Some(run)=running {
                 if run.caller!=caller {return Err("permission_denied: invocation belongs to another window".into());}
                 let generation: String = sqlx::query_scalar("SELECT generation_id FROM session_bindings WHERE session_id=?")
@@ -330,6 +333,9 @@ impl SessionHost {
                 let saved=self.saved_binding(session_id).await?.ok_or("invalid_session")?;
                 self.broker.invoke_bound_observed(caller,Request {scope:binding.scope.clone(),capability:qualified,version:"1.0.0".into(),request_id:id.clone(),turn_id:None,input:input.clone()},&binding,Some(self.observer(session,saved,caller.into(),id,None,false))).await.map_err(|e|e.message)?
             };
+            if let Some(turn) = reference_turn {
+                crate::session_context::consume_queued(&self.db, session_id, &turn, input["message"].as_str().unwrap_or_default()).await.map_err(|e|e.to_string())?;
+            }
             self.save_recovery(session_id,&response).await?;
             if input["action"]=="set" && matches!(capability,"model.select"|"model.reasoning") {
                 let mut profile=crate::session_execution_profile(&self.db,session_id).await.map_err(|e|e.to_string())?.profile;

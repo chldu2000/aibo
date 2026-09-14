@@ -43,6 +43,8 @@ export function renderConversation(state,actions){
   const commands=slash?[...new Map(groups.flatMap(group=>group.commands).map(command=>[command.name,command])).values()]:matches;
   const pathButtons=state.workspacePathSuggestions.slice(0,8).map(item=>button('path:'+item.path,item.path+(item.isDirectory?'/':''),find('selectPath',item.path),{role:'option'}));
   const commandButtons=commands.map(command=>button('command:'+command.name,'/'+command.name,find('selectCommand',command.name),{title:command.description??command.name,role:slash?'option':'button'}));
+  const sessionButtons=(state.sessionSuggestions??[]).map(item=>button('session-reference:'+item.id,'会话 · '+item.label+' · '+item.agent+(item.archived?' · 已归档':''),find('selectSessionReference',item.id),{role:'option'}));
+  if(mention&&sessionButtons.length)composer.push(node('div','conversation:session-references',null,sessionButtons,{role:'listbox','aria-label':'引用会话'}));
   if(mention&&pathButtons.length)composer.push(node('div','conversation:paths',null,pathButtons,{role:'listbox','aria-label':'路径建议'}));
   if(slash||state.agentCommands.length)composer.push(slash?node('div','conversation:commands',null,[node('div','commands:categories',null,groups.map(group=>node('button','commands:category:'+group.id,group.label+' ('+group.commands.length+')',[],{type:'button','aria-pressed':String(group.id==='all')})),{role:'group','aria-label':'命令分类'}),node('div','conversation:command-options',null,commandButtons,{role:'listbox','aria-label':'命令建议'})],{role:'group','aria-label':'命令补全'}):node('details','conversation:commands',null,[node('summary','commands:title','命令'),...commandButtons]));
   const suggestionButtons=mention?pathButtons:slash?commandButtons:[];

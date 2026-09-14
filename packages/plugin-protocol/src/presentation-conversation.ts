@@ -130,6 +130,7 @@ interface ContextAttachment {
   mediaType: string;
   source: 'picker' | 'drop' | 'manual' | string;
   sendStrategy: 'reference' | 'inline' | string;
+  inlineContext?: string | null;
   createdAt: string;
 }
 
@@ -207,6 +208,7 @@ export type PresentationConversation = {
   modelCatalogLoading: boolean;
   modelOverride: string | null;
   workspacePathSuggestions: WorkspacePathSuggestion[];
+  sessionSuggestions?: Session[];
   agentCommands: AgentCommand[];
   agentCommandsLoading: boolean;
   draft: string;
@@ -217,7 +219,7 @@ export type PresentationConversation = {
 };
 
 export type PresentationConversationOperation = 'copyCode' | 'openLink' | 'draft' | 'send' | 'stop' | 'retry' | 'queueSteer' | 'queueFollowUp' | 'clearQueue'
-  | 'addAttachments' | 'addDirectory' | 'removeAttachment' | 'selectPath' | 'selectCommand'
+  | 'addAttachments' | 'addDirectory' | 'removeAttachment' | 'selectPath' | 'selectSessionReference' | 'selectCommand'
   | 'loadOlder' | 'fork' | 'loadModels' | 'selectModel' | 'selectAccess' | 'compact'
   | 'answer' | 'chooseAnswer' | 'submitAnswers' | 'cancelAnswers'
   | 'openTree' | 'closeTree' | 'refreshTree' | 'selectTreeNode';

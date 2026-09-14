@@ -1,3 +1,4 @@
+import {splitSessionReferences} from './session-references.js';
 import {node,button,text,actionFor} from './tree.js';
 import {renderRichText} from './rich-text.js';
 import {groupTimelineItems} from './timeline-model.js';
@@ -43,7 +44,14 @@ export function renderTimelineEntry(entry,actions){
    {...node('pre','message:content:'+entry.id,entry.content||'…'),className:diff?'tool-output diff-content':'tool-output'},
   ]);
  }else{
-  content=renderRichText(entry.content||'…','message:content:'+entry.id,entry.id,actions);
+  const message=entry.role==='user'?splitSessionReferences(entry.content):{body:entry.content,references:[]};
+  content=node('div',key+':body',null,[message.body?renderRichText(message.body,'message:content:'+entry.id,entry.id,actions):message.references.length?null:text(key+':empty','…'),
+   ...message.references.map((reference,index)=>{const refKey=key+':reference:'+index;return node('details',refKey,null,[
+    node('summary',refKey+':title','引用会话 · '+reference.title),
+    text(refKey+':note',reference.agent+' · '+reference.note+(reference.omitted===null?'':' · 已省略 '+reference.omitted+' 条消息')),
+    ...reference.excerpts.flatMap((excerpt,i)=>[text(refKey+':role:'+i,(excerpt.role==='user'?'用户':'助手')+(excerpt.truncated?' · 已截取':'')),node('pre',refKey+':text:'+i,excerpt.text)]),
+   ]);}),
+  ]);
   if(reasoning)content=node('details',key+':disclosure',null,[node('summary',key+':summary','思考 · 查看详情'),content]);
  }
  const fork=entry.role==='assistant'&&entry.turnId&&actionFor(actions,'fork',entry.turnId);

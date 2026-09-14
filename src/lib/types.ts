@@ -384,6 +384,7 @@ export interface ContextAttachment {
   mediaType: string;
   source: 'picker' | 'drop' | 'manual' | string;
   sendStrategy: 'reference' | 'inline' | string;
+  inlineContext?: string | null;
   createdAt: string;
 }
 

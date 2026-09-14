@@ -22,7 +22,9 @@ const MAX_ACTIVE: usize = 32;
 const MAX_INPUT: usize = 65_536;
 fn input_limit(capability: &str) -> usize {
     match capability {
-        "aibo.session.turn" | "aibo.session.turn.write" => 262_144,
+        "aibo.session.turn" | "aibo.session.turn.write"
+        // Queue messages carry the same quoted session context as turn sends.
+        | "dev.aibo.pi.queue.manage" => 262_144,
         // A host tool reply may contain a base64-encoded read of up to 512 KiB.
         // Reserve space below the transport's 1 MiB frame limit for its envelope.
         "aibo.session.tool.respond" => 786_432,
