@@ -161,7 +161,7 @@ impl PluginRuntime {
                                 if !matches!(message.get("id"), Some(Value::String(_) | Value::Number(_))) || !message["params"].is_object() {
                                     break 'runtime "invalid_request: malformed Core tool request";
                                 }
-                                if notification_tx.try_send(message).is_err() { break 'runtime "busy: plugin notification backpressure"; }
+                                if notification_tx.send(message).await.is_err() { break 'runtime "cancelled: plugin notification receiver closed"; }
                                 continue;
                             }
                             if let Some(id) = message.get("id").and_then(Value::as_str) {
@@ -179,8 +179,9 @@ impl PluginRuntime {
                                 if message.get("id").is_some() || !allowed || !message["params"].is_object() {
                                     break 'runtime "invalid_request: unknown plugin notification";
                                 }
-                                // Bounded queue: fail this generation rather than silently drop durable events.
-                                if notification_tx.try_send(message).is_err() { break 'runtime "busy: plugin notification backpressure"; }
+                                // Preserve every durable event while bounding memory usage by applying
+                                // backpressure to the plugin's stdout reader.
+                                if notification_tx.send(message).await.is_err() { break 'runtime "cancelled: plugin notification receiver closed"; }
                             }
                         }
                     }
@@ -230,7 +231,13 @@ impl PluginRuntime {
     pub async fn stop_and_wait(&self) -> bool {
         tokio::time::timeout(Duration::from_secs(6), async {
             self.stop().await;
-            while !self.cleanup_complete.load(Ordering::Acquire) { tokio::time::sleep(Duration::from_millis(10)).await; }
+            while !self.cleanup_complete.load(Ordering::Acquire) {
+                // A bounded notification send may be applying stdout backpressure.
+                // Once the invocation consumer has stopped, drain those queued frames
+                // so the transport task can observe Stop and finish process cleanup.
+                while self.notifications.lock().await.try_recv().is_ok() {}
+                tokio::time::sleep(Duration::from_millis(10)).await;
+            }
         }).await.is_ok()
     }
 
@@ -306,6 +313,30 @@ mod tests {
         assert!(second.notifications.lock().await.try_recv().is_err());
         assert!(first.stop_and_wait().await);
         assert!(second.stop_and_wait().await);
+    }
+
+    #[tokio::test]
+    async fn burst_streams_apply_backpressure_without_terminating_the_runtime() {
+        let root = Path::new(env!("CARGO_MANIFEST_DIR")).parent().unwrap();
+        let script = r#"
+            import {serveCapability} from './packages/capability-runtime/stdio.mjs';
+            serveCapability({protocol:'2.1',pluginId:'dev.test',pluginVersion:'1.0.0',contributionId:'dev.test.stream',
+              operations:[{capability:'dev.test.burst',version:'1.0.0',operationId:'burst'}],
+              invoke:async (_p,tools)=>{for(let i=0;i<600;i++)tools.emit({type:'delta',index:i});return {count:600};}
+            });
+        "#;
+        let runtime = PluginRuntime::spawn_interactive(Path::new("node"), &["--input-type=module".into(),"--eval".into(),script.into()], root, None).unwrap();
+        runtime.request("capability.initialize",json!({"protocol":"2.1","instanceId":"instance","generationId":runtime.generation_id,"pluginId":"dev.test","pluginVersion":"1.0.0","contributionId":"dev.test.stream"}),Duration::from_secs(5)).await.unwrap();
+        let active = runtime.clone();
+        let request = tokio::spawn(async move {active.request("capability.invoke",json!({"invocationId":"burst","instanceId":"instance","generationId":active.generation_id,"contributionId":"dev.test.stream","capability":"dev.test.burst","contractVersion":"1.0.0","operationId":"burst","scope":{"kind":"application"},"deadlineUnixMs":(time::OffsetDateTime::now_utc().unix_timestamp_nanos()/1_000_000) as i64+5000,"context":{},"input":{}}),Duration::from_secs(5)).await});
+        let mut received=0;
+        while received<600 {
+            runtime.notifications.lock().await.recv().await.unwrap();
+            received+=1;
+            if received%50==0 {tokio::time::sleep(Duration::from_millis(5)).await;}
+        }
+        assert_eq!(request.await.unwrap().unwrap()["output"]["count"],600);
+        assert!(runtime.stop_and_wait().await);
     }
 
     #[tokio::test]
