@@ -190,7 +190,17 @@ export type PresentationConversation = {
   timelineVisibleCount: number;
   /** Group ordinary system events; summaries and reasoning always remain separate. */
   groupSystemItems?: boolean;
-  usage: { input: number | null; output: number | null; total: number | null; contextUsed: number | null; contextLimit: number | null; contextEstimated: boolean } | null;
+  usage: {
+    input: number | null;
+    output: number | null;
+    total: number | null;
+    contextUsed: number | null;
+    contextLimit: number | null;
+    contextEstimated: boolean;
+    plan?: string | null;
+    limits?: { id: string; label: string | null; usedPercent: number; windowMinutes: number | null; resetsAt: number | null }[];
+    credits?: { balance: string | null; unlimited: boolean } | null;
+  } | null;
   retryPrompt: string | null;
   retryReason: string | null;
   userInputRequests: UserInputRequest[];

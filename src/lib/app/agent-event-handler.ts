@@ -22,7 +22,7 @@ export type AgentEventHandlerContext = {
   ) => void;
   setPendingApprovals: (approvals: ApprovalRequest[]) => void;
   setPendingUserInputs: (requests: UserInputRequest[]) => void;
-  setUsageSnapshot: (usage: Record<string, unknown> | null) => void;
+  setUsageSnapshot: (sessionId: string, usage: Record<string, unknown> | null) => void;
   setQueueSnapshot: (queue: AgentQueueSnapshot | null) => void;
   setTimeline: (timeline: TimelineItem[]) => void;
   refreshTimeline?: (sessionId: string) => void | Promise<void>;
@@ -244,6 +244,7 @@ export function handleAgentEvent(event: AgentEvent, context: AgentEventHandlerCo
   if (event.sessionId === selectedSessionId && event.type === 'usage.updated') {
     const usage = event.payload.usage;
     context.setUsageSnapshot(
+      event.sessionId,
       usage && typeof usage === 'object' && !Array.isArray(usage)
         ? (usage as Record<string, unknown>)
         : null,

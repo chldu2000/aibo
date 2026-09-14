@@ -454,6 +454,8 @@
     toWorkspaceListItems,
     toolLabel,
   } from '$lib/components/app';
+  import { cacheSessionUsage, usageForSession } from '$lib/app/session-usage-cache';
+  import type { SessionUsageCache } from '$lib/app/session-usage-cache';
   import type { SidePanelView } from '$lib/components/app';
   import {
     readPersistedSelection as readSelectionFromStorage,
@@ -853,7 +855,7 @@
   let renamingSessionId = $state<string | null>(null);
   let sessionLabelDraft = $state('');
   let timelineVisibleCount = $state(80);
-  let usageSnapshot = $state<Record<string, unknown> | null>(null);
+  let usageSnapshotsBySession = $state<SessionUsageCache>({});
   let retryPrompt = $state<string | null>(null);
   let retryReason = $state<string | null>(null);
   let lastSubmittedPrompt = $state<string | null>(null);
@@ -1162,7 +1164,7 @@
     toSessionListItemsByWorkspace(workspaceSessionMap),
   );
 
-  const usageValues = $derived(toUsageValues(usageSnapshot));
+  const usageValues = $derived(toUsageValues(usageForSession(usageSnapshotsBySession, selectedSessionId)));
   const composerDraftFailed = $derived(
     selectedSessionId ? composerDrafts[selectedSessionId]?.sendFailed === true : false,
   );
@@ -1742,7 +1744,6 @@
     attachments = [];
     artifacts = [];
     piNavigationEntryId = null;
-    usageSnapshot = null;
     retryPrompt = null;
     retryReason = null;
     lastSubmittedPrompt = null;
@@ -2402,7 +2403,7 @@
       updateWorkspaceSessions,
       setPendingApprovals: (approvals) => (pendingApprovals = approvals),
       setPendingUserInputs: (requests) => (pendingUserInputs = requests),
-      setUsageSnapshot: (usage) => (usageSnapshot = usage),
+      setUsageSnapshot: (sessionId, usage) => (usageSnapshotsBySession = cacheSessionUsage(usageSnapshotsBySession, sessionId, usage)),
       setQueueSnapshot: (queue) => (queueSnapshot = queue),
       setTimeline: (nextTimeline) => (timeline = nextTimeline),
       refreshTimeline,
@@ -3254,7 +3255,6 @@
     setWorkspaceSessionMap: (value) => (workspaceSessionMap = value),
     setSelectedSessionId: (value) => (selectedSessionId = value),
     setTimeline: (value) => (timeline = value),
-    setUsageSnapshot: (value) => (usageSnapshot = value),
     setQueueSnapshot: (value) => (queueSnapshot = value),
     setCheckpoints: (value) => (checkpoints = value),
     setRetry: (prompt, reason) => {

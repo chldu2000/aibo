@@ -6,10 +6,17 @@ const profile={interactionMode:'ask',filesystemPolicy:'read-only',commandPolicy:
 test('Codex capability provider streams turns, controls native requests and restores native recovery',async t=>{
   const f=await sessionCapability(t,'codex');
   await assert.rejects(f.rpc('aibo.initialize',{}),/Unsupported/);
+  const initialUsageReady=f.wait('usage.updated');
   const opened=await f.invoke('aibo.session.open',{mode:'create',executionProfile:profile});
   assert.equal(opened.nativeSessionId,'native-thread');
   assert.ok(opened.capabilities.includes('approval.respond'));
+  const initialUsage=await initialUsageReady;
+  assert.equal(initialUsage.payload.usage.plan,'plus');
+  assert.equal(initialUsage.payload.usage.limits[0].usedPercent,20);
   assert.equal((await f.invoke('aibo.session.turn',{text:'hello plugin'},'first')).status,'completed');
+  const combinedUsage=f.events.filter(e=>e.event.type==='usage.updated').at(-1).event.payload.usage;
+  assert.equal(combinedUsage.total.totalTokens,1234);
+  assert.equal(combinedUsage.plan,'plus');
   assert.equal(f.events.filter(e=>e.event.type==='message.delta').map(e=>e.event.payload.delta).join(''),'hello plugin');
   assert.equal((await f.invoke('dev.aibo.codex.model.select',{action:'set',reference:'gpt-fake'})).current,'gpt-fake');
   assert.equal((await f.invoke('dev.aibo.codex.model.reasoning',{action:'set',level:'high'})).current,'high');

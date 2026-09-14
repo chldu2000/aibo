@@ -16,7 +16,6 @@ export type AgentSessionControllerContext = {
   setWorkspaceSessionMap: (value: Record<string, Session[]>) => void;
   setSelectedSessionId: (value: string | null) => void;
   setTimeline: (value: TimelineItem[]) => void;
-  setUsageSnapshot: (value: Record<string, unknown> | null) => void;
   setQueueSnapshot: (value: AgentQueueSnapshot | null) => void;
   setCheckpoints: (value: CheckpointFile[]) => void;
   setRetry: (prompt: string | null, reason: string | null) => void;

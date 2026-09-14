@@ -9,7 +9,6 @@ export function renderConversation(state,actions){
  const children=[node('header','conversation:header',null,[node('h1','conversation:title',state.session?.label??'选择或创建会话'),text('conversation:activity',state.activityLabel),node('nav','conversation:tools',null,controls(['fork','compact','openTree']))])];
  children.push(renderSessionMetadata(state.session,'conversation:session-metadata'));
  if(state.goal)children.push(section('conversation:goal','目标',[text('goal:objective',state.goal.objective),text('goal:status',state.goal.status),text('goal:budget',state.goal.tokenBudget===null?null:`Token：${state.goal.tokensUsed??0} / ${state.goal.tokenBudget}`)]));
- if(state.usage)children.push(text('conversation:usage',`输入 ${state.usage.input??'—'} · 输出 ${state.usage.output??'—'} · 合计 ${state.usage.total??'—'} · 上下文 ${state.usage.contextUsed??'—'} / ${state.usage.contextLimit??'—'}${state.usage.contextEstimated?'（估算）':''}`));
  const messages=renderTimeline(state.timelineVisibleCount>0?state.timeline.slice(-state.timelineVisibleCount):[],actions,state.groupSystemItems===true);
  children.push({...node('section','conversation:timeline',null,[...controls(['loadOlder']),...messages],{'aria-label':'会话消息'}),className:'timeline'});
  if(state.retryReason||state.retryPrompt)children.push(section('conversation:retry','重试',[text('retry:reason',state.retryReason),text('retry:prompt',state.retryPrompt),...controls(['retry'])]));
@@ -52,6 +51,13 @@ export function renderConversation(state,actions){
   const models=(state.modelCatalog?.models??[]).map(model=>section('model:'+model.reference,model.label,[text('model:description:'+model.reference,model.description),button('model:default:'+model.reference,'默认推理强度',find('selectModel',model.reference,null),{'aria-pressed':String(state.modelCatalog?.current?.reference===model.reference&&!state.modelConfiguration.selectedReasoningEffort)}),...model.reasoningEfforts.map(effort=>button('model:effort:'+model.reference+':'+effort.id,effort.label,find('selectModel',model.reference,effort.id),{'aria-pressed':String(state.modelCatalog?.current?.reference===model.reference&&state.modelConfiguration.selectedReasoningEffort===effort.id),title:effort.description??effort.label}))]));
   composer.push(node('details','conversation:models',null,[node('summary','models:title',state.modelCatalog?.current?.label??'模型'),...controls(['loadModels']),state.modelCatalogLoading?text('models:loading','正在加载模型'):null,...models]));
   composer.push(node('details','conversation:access',null,[node('summary','access:title','访问权限'),...actions.filter(a=>a.operation==='selectAccess').map(action=>button('access:'+action.args[0],accessLabels[action.args[0]]??action.args[0],action)),renderExecutionProfile(state.executionProfile,'conversation:execution-profile')]));
+  if(state.usage){
+   const usage=state.usage;
+   const percent=usage.contextUsed!==null&&usage.contextLimit?Math.min(100,Math.round(usage.contextUsed/usage.contextLimit*100)):null;
+   const limits=(usage.limits??[]).map(limit=>(limit.label??(limit.windowMinutes?limit.windowMinutes+' 分钟':'套餐'))+'剩余 '+Math.max(0,100-Math.round(limit.usedPercent))+'%');
+   const credits=usage.credits?.unlimited?'Credits 不限量':usage.credits?.balance?'Credits '+usage.credits.balance:null;
+   composer.push(node('p','conversation:usage',[percent===null?usage.contextUsed===null?null:'上下文 '+usage.contextUsed:'上下文 '+percent+'%'+(usage.contextEstimated?'（估算）':''),usage.total===null?null:'Token '+usage.total,usage.plan?.toUpperCase(),...limits,credits].filter(Boolean).join(' · '),[],{'aria-label':'会话用量与套餐余量'}));
+  }
   children.push(section('conversation:composer','撰写消息',composer));
  }
  if(state.treeOpen){

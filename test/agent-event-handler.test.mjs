@@ -59,3 +59,24 @@ test('a terminal plugin turn immediately makes the conversation composer editabl
     await server.close();
   }
 });
+
+test('usage events retain their session identity at the host state seam', async () => {
+  const server = await createServer({ server: { middlewareMode: true, ws: false, watch: null }, appType: 'custom' });
+  try {
+    const { handleAgentEvent } = await server.ssrLoadModule('/src/lib/app/agent-event-handler.ts');
+    let received = null;
+    handleAgentEvent({
+      eventId: 'usage-event', workspaceId: 'workspace', sessionId: 'session-a', turnId: 'turn',
+      type: 'usage.updated', occurredAt: '2026-09-14T00:00:00.000Z', source: {}, correlation: null,
+      payload: { usage: { total: 1200 } },
+    }, {
+      selectedSessionId: 'session-a', selectedAgent: 'codex', timeline: [], pendingApprovals: [], pendingUserInputs: [], lastSubmittedPrompt: null,
+      setAgentActivity() {}, updateWorkspaceSessions() {}, setPendingApprovals() {}, setPendingUserInputs() {},
+      setUsageSnapshot(sessionId, usage) { received = { sessionId, usage }; },
+      setQueueSnapshot() {}, setTimeline() {}, setRetry() {}, setNotice() {}, refreshSessions() {},
+    });
+    assert.deepEqual(received, { sessionId: 'session-a', usage: { total: 1200 } });
+  } finally {
+    await server.close();
+  }
+});

@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { conversationActions, createConversationDirectory } from '../src/lib/presentation-runtime/conversation.ts';
 import { userInputDraftKey, answeredRequest, clearRequestDrafts } from '../src/lib/app/user-input-drafts.ts';
+import { renderConversation } from '../packages/presentation-workbench/conversation.js';
 const request = {requestId:'request',sessionId:'s',turnId:'t',questions:[{id:'q',question:'Choice?',header:null,options:[{label:'Yes',description:null}],isOther:true}],isBlocking:true};
 const state = {
  workspace:{id:'w',label:'Workspace',path:'/workspace',trust:'trusted'},session:{id:'s',workspaceId:'w',agent:'plugin',label:'Session',state:'idle',archived:false,externalSessionId:null,pluginInstallationId:'installed',capabilities:['queue.manage','model.select','model.reasoning','session.fork','session.tree','compaction.run'],createdAt:'',updatedAt:''},
@@ -24,6 +25,16 @@ test('conversation directory covers data-dependent operations without fabricatin
  for(const operation of ['draft','queueSteer','queueFollowUp','clearQueue','stop'])assert.ok(operations(active).includes(operation),operation);
  assert.ok(!operations({...active,session:{...state.session,capabilities:[]}}).includes('draft'));
  assert.ok(!operations({...state,busy:true}).includes('send'));
+});
+test('presentation plugins render usage inside the composer with optional quota facts',()=>{
+ const usage={input:1200,output:34,total:1234,contextUsed:1200,contextLimit:10000,contextEstimated:true,plan:'plus',limits:[{id:'primary',label:'5 小时',usedPercent:20,windowMinutes:300,resetsAt:null}],credits:{balance:'12.5',unlimited:false}};
+ const tree=renderConversation({...state,usage},[]);
+ const composer=tree.children.find(child=>child.key==='conversation:composer');
+ const row=composer.children.find(child=>child.key==='conversation:usage');
+ assert.match(row.text,/上下文 12%/);
+ assert.match(row.text,/PLUS/);
+ assert.match(row.text,/5 小时剩余 80%/);
+ assert.match(row.text,/Credits 12.5/);
 });
 test('opaque conversation tokens retain live input but retire across removals and session reentry',()=>{
  const directory=createConversationDirectory();const first=directory.project(state);const draft=first.find(a=>a.operation==='draft');

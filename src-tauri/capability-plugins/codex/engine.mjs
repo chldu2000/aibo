@@ -18,6 +18,36 @@ const fail = (kind, message = kind) => { throw Object.assign(new Error(message),
 const emit = (type, payload, turnId = null, correlation = null) => publish({
   nativeSessionId: session.threadId, turnId, type, correlation, payload,
 });
+function rateLimitUsage(result) {
+  const snapshot = result?.rateLimits;
+  if (!snapshot || typeof snapshot !== 'object') return null;
+  const limits = ['primary', 'secondary'].flatMap((kind) => {
+    const window = snapshot[kind];
+    if (!window || typeof window.usedPercent !== 'number') return [];
+    return [{ id: `${snapshot.limitId ?? 'default'}-${kind}`, label: kind === 'primary' ? snapshot.limitName ?? null : null,
+      usedPercent: window.usedPercent, windowMinutes: typeof window.windowDurationMins === 'number' ? window.windowDurationMins : null,
+      resetsAt: typeof window.resetsAt === 'number' ? window.resetsAt : null }];
+  });
+  const credits = snapshot.credits && typeof snapshot.credits === 'object'
+    ? { balance: typeof snapshot.credits.balance === 'string' ? snapshot.credits.balance : null, unlimited: snapshot.credits.unlimited === true }
+    : null;
+  return { plan: typeof snapshot.planType === 'string' ? snapshot.planType : null, limits, credits };
+}
+function publishUsage() {
+  if (!session) return;
+  const usage = { ...(session.tokenUsage ?? {}), ...(session.rateLimitUsage ?? {}) };
+  if (Object.keys(usage).length) emit('usage.updated', { usage }, session.turn?.id ?? null);
+}
+async function refreshRateLimits() {
+  try {
+    const result = await rpc('account/rateLimits/read', {});
+    if (!session) return;
+    session.rateLimitUsage = rateLimitUsage(result);
+    publishUsage();
+  } catch {
+    // Account metadata is optional; token usage remains available without it.
+  }
+}
 
 function recovery() {
   return { schema: 'dev.aibo.codex.recovery', version: 1, data: {
@@ -116,6 +146,11 @@ function onCodex(message) {
       if (turn.itemId) turn.itemTexts.set(turn.itemId, `${turn.itemTexts.get(turn.itemId) ?? ''}${delta}`);
       emit('message.delta', { itemId: turn.itemId, delta }, turn.id, { requestId: turn.requestId, itemId: turn.itemId });
     }
+  } else if (message.method === 'thread/tokenUsage/updated' && turn && p.threadId === session.threadId) {
+    session.tokenUsage = p.tokenUsage && typeof p.tokenUsage === 'object' ? p.tokenUsage : null;
+    publishUsage();
+  } else if (message.method === 'account/rateLimits/updated') {
+    void refreshRateLimits();
   } else if (message.method === 'item/reasoning/summaryTextDelta' && turn && typeof p.itemId === 'string' && typeof p.delta === 'string' && p.delta) {
     turn.reasoningItems.add(p.itemId);
     emit('reasoning.updated', { itemId: p.itemId, delta: boundedText(p.delta) }, turn.id, { requestId: turn.requestId, itemId: p.itemId });
@@ -210,8 +245,9 @@ export async function execute(action, p) {
     }
     session = { id: p.sessionId, threadId, cwd: p.workspace.path,
       model, reasoningEffort,
-      revision: 0, turn: null };
+      revision: 0, turn: null, tokenUsage: null, rateLimitUsage: null };
     emit('session.started', { state: 'idle' });
+    await refreshRateLimits();
     return { nativeSessionId: threadId, recovery: recovery() };
   }
   if (!session || p.sessionId !== session.id) fail('invalid_session');

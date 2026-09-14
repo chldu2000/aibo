@@ -203,6 +203,8 @@ h2 { font-size: 16px; letter-spacing: -0.02em; }
 .usage-strip, .timeline-retry { display: flex; align-items: center; gap: 12px; margin: 0 16px 10px; border: 1px solid var(--aibo-border); border-radius: 7px; padding: 7px 10px; color: var(--aibo-muted); background: var(--aibo-bg); font-size: 10px; }
 .usage-strip span:first-child { color: var(--aibo-text); font-weight: 600; }
 .usage-strip .usage-estimated { color: var(--aibo-subtle); font-style: italic; }
+.composer-usage-strip { flex-wrap: wrap; margin-top: -8px; }
+.composer-usage-strip > span + span::before { margin-right: 12px; color: var(--aibo-border-strong); content: '·'; }
 .usage-compact-button { margin-left: auto; padding-inline: 7px !important; color: var(--aibo-muted) !important; font-size: 10px !important; }
 .usage-compact-button:hover { color: var(--aibo-text) !important; }
 .timeline-retry { justify-content: space-between; gap: 12px; border-color: var(--aibo-warning-border); color: var(--aibo-warning-text); background: var(--aibo-warning-surface); }

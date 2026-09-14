@@ -10,6 +10,7 @@ function completeTurn(params) {
   nativeTurns.push({id:nativeTurnId});
   write({ method: 'item/agentMessage/delta', params: { threadId: params.threadId, turnId: nativeTurnId, itemId: 'message', delta: params.input[0].text } });
   write({ method: 'item/completed', params: { threadId: params.threadId, turnId: nativeTurnId, item: { id: 'message', type: 'agentMessage', text: params.input[0].text } } });
+  write({ method: 'thread/tokenUsage/updated', params: { threadId: params.threadId, turnId: nativeTurnId, tokenUsage: { total: { inputTokens: 1200, outputTokens: 34, totalTokens: 1234, modelContextWindow: 10000 } } } });
   write({ method: 'turn/completed', params: { threadId: params.threadId, turn: { id: nativeTurnId, status: 'completed', items: [] } } });
 }
 input.on('line', (line) => {
@@ -23,6 +24,7 @@ input.on('line', (line) => {
   const { id, method, params = {} } = request;
   const policy = {approvalPolicy:params.approvalPolicy,model:params.model,sandbox:{type:process.env.CODEX_FAKE_SANDBOX ?? ({'read-only':'readOnly','workspace-write':'workspaceWrite','danger-full-access':'dangerFullAccess'}[params.sandbox])}};
   if (method === 'initialize') write({ id, result: { userAgent: 'fake-codex/1.0.0' } });
+  else if (method === 'account/rateLimits/read') write({ id, result: { rateLimits: { limitId: 'codex', limitName: '5 小时', planType: 'plus', primary: { usedPercent: 20, windowDurationMins: 300, resetsAt: 1900000000 }, secondary: { usedPercent: 40, windowDurationMins: 10080, resetsAt: 1900500000 }, credits: { balance: '12.5', hasCredits: true, unlimited: false } } } });
   else if (method === 'thread/start') write({ id, result: { thread: { id: process.env.CODEX_FAKE_THREAD_ID ?? 'native-thread' }, ...policy } });
   else if (method === 'thread/resume' && process.env.CODEX_FAKE_MISSING_ROLLOUT === '1') write({ id, error: { code: -32600, message: `no rollout found for thread id ${params.threadId}` } });
   else if (method === 'thread/resume') write({ id, result: { thread: { id: params.threadId }, ...policy } });

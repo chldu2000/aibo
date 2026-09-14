@@ -178,6 +178,17 @@
               ? '已中断'
               : status;
   }
+
+  function compactNumber(value: number): string {
+    return new Intl.NumberFormat('zh-CN', { notation: 'compact', maximumFractionDigits: 1 }).format(value);
+  }
+
+  function limitLabel(limit: UsageValues['limits'][number]): string {
+    if (limit.label) return limit.label;
+    if (limit.windowMinutes && limit.windowMinutes % 1440 === 0) return `${limit.windowMinutes / 1440} 天`;
+    if (limit.windowMinutes && limit.windowMinutes % 60 === 0) return `${limit.windowMinutes / 60} 小时`;
+    return limit.windowMinutes ? `${limit.windowMinutes} 分钟` : '套餐';
+  }
 </script>
 
 <Card as="section" class="timeline" data-ui-component="timeline-panel" aria-label="会话时间线">
@@ -214,25 +225,6 @@
   </CardHeader>
   {#if workspace}
     <Separator />
-
-    {#if usageValues}
-      <div class="usage-strip" aria-label="Token 使用量">
-        <span>Token</span>
-        {#if usageValues.input !== null}<span>输入 {usageValues.input}</span>{/if}
-        {#if usageValues.output !== null}<span>输出 {usageValues.output}</span>{/if}
-        {#if usageValues.total !== null}<span>总计 {usageValues.total}</span>{/if}
-        {#if usageValues.contextUsed !== null}
-          <span class:usage-estimated={usageValues.contextEstimated}>
-            上下文 {usageValues.contextLimit ? `${contextPercent ?? 0}%` : '已用'}{usageValues.contextEstimated ? ' · 估算' : ''}
-          </span>
-        {/if}
-        {#if sessionKind === 'pi' && !sessionRunning && !sessionArchived && usageValues.contextUsed !== null}
-          <Button class="usage-compact-button" variant="ghost" size="sm" type="button" onclick={onCompact} disabled={busy || contextCompacting}>
-            {contextCompacting ? '压缩中…' : '压缩上下文'}
-          </Button>
-        {/if}
-      </div>
-    {/if}
 
     {#if retryPrompt && session && !sessionRunning && !sessionArchived}
       <div class="timeline-retry" role="status">
@@ -468,4 +460,24 @@
     onSelectWorkspacePath={onSelectWorkspacePath}
   />
   {/key}
+  {#if usageValues}
+    <div class="usage-strip composer-usage-strip" aria-label="会话用量与套餐余量">
+      {#if usageValues.contextUsed !== null}
+        <span class:usage-estimated={usageValues.contextEstimated} title={usageValues.contextLimit ? `${usageValues.contextUsed} / ${usageValues.contextLimit} tokens` : `${usageValues.contextUsed} tokens`}>
+          上下文 {usageValues.contextLimit ? `${contextPercent ?? 0}%` : compactNumber(usageValues.contextUsed)}{usageValues.contextEstimated ? ' · 估算' : ''}
+        </span>
+      {/if}
+      {#if usageValues.total !== null}<span title={`输入 ${usageValues.input ?? '—'} · 输出 ${usageValues.output ?? '—'}`}>Token {compactNumber(usageValues.total)}</span>{/if}
+      {#if usageValues.plan}<span>{usageValues.plan.toUpperCase()}</span>{/if}
+      {#each usageValues.limits as limit (limit.id)}
+        <span title={limit.resetsAt ? `重置于 ${new Date(limit.resetsAt * 1000).toLocaleString()}` : undefined}>{limitLabel(limit)}剩余 {Math.max(0, 100 - Math.round(limit.usedPercent))}%</span>
+      {/each}
+      {#if usageValues.credits?.unlimited}<span>Credits 不限量</span>{:else if usageValues.credits?.balance}<span>Credits {usageValues.credits.balance}</span>{/if}
+      {#if sessionKind === 'pi' && !sessionRunning && !sessionArchived && usageValues.contextUsed !== null}
+        <Button class="usage-compact-button" variant="ghost" size="sm" type="button" onclick={onCompact} disabled={busy || contextCompacting}>
+          {contextCompacting ? '压缩中…' : '压缩上下文'}
+        </Button>
+      {/if}
+    </div>
+  {/if}
 </Card>
