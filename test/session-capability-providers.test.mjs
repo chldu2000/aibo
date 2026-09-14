@@ -20,7 +20,9 @@ test('Codex capability provider streams turns, controls native requests and rest
   assert.equal(f.events.filter(e=>e.event.type==='message.delta').map(e=>e.event.payload.delta).join(''),'hello plugin');
   assert.equal((await f.invoke('dev.aibo.codex.model.select',{action:'set',reference:'gpt-fake'})).current,'gpt-fake');
   assert.equal((await f.invoke('dev.aibo.codex.model.reasoning',{action:'set',level:'high'})).current,'high');
-  assert.equal((await f.invoke('dev.aibo.codex.skill.list')).skills[0].name,'review');
+  const skill=(await f.invoke('dev.aibo.codex.skill.list')).skills[0];
+  assert.deepEqual({name:skill.name,description:skill.description,source:skill.source,category:skill.category,execution:skill.execution},
+    {name:'review',description:'Review code',source:'skill',category:'skill',execution:'prompt'});
   assert.equal((await f.invoke('dev.aibo.codex.goal.manage',{action:'set',objective:'Migrate',tokenBudget:2000})).goal.objective,'Migrate');
   assert.equal((await f.invoke('dev.aibo.codex.goal.manage',{action:'clear'})).goal,null);
   await f.invoke('aibo.session.turn',{text:'tool please'},'tools');

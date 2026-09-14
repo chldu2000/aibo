@@ -1,5 +1,6 @@
 <script lang="ts">
   import { tick } from 'svelte';
+  import { commandComposerInsertion } from '$lib/app/agent-commands';
   import type { ModelConfigurationState } from '$lib/app/model-configuration';
   import { Button, Card, Icon, ModelMatrix, Textarea } from '$lib/ui-kit';
   import type { UiModelMatrixRow } from '$lib/ui-kit';
@@ -271,7 +272,7 @@
   }
 
   function selectAgentCommand(command: AgentCommand): void {
-    text = text.replace(/^\/([^\s]*)$/, `/${command.name} `);
+    text = text.replace(/^\/([^\s]*)$/, commandComposerInsertion(selectedAgent, command));
     slashActiveIndex = -1;
     onComposerInput(text);
   }

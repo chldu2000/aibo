@@ -1,4 +1,5 @@
 import type { AgentCommand } from '$lib/types';
+import type { AgentKind } from './agent-kind';
 
 /**
  * Commands handled by Aibo itself for embedded Pi sessions.
@@ -39,6 +40,27 @@ export const AIBO_CODEX_COMMANDS: AgentCommand[] = [
   { name: 'goal', description: '查看、设置或清除当前目标', source: 'builtin', category: 'agent', execution: 'adapter', agent: 'codex' },
   { name: 'skills', description: '刷新当前工作区 Skills', source: 'builtin', category: 'agent', execution: 'adapter', agent: 'codex' },
 ];
+
+export function visibleSessionCommands(
+  agent: AgentKind,
+  builtinCommands: AgentCommand[],
+  discoveredCommands: AgentCommand[],
+): AgentCommand[] {
+  const seen = new Set<string>();
+  return [...builtinCommands, ...discoveredCommands].filter((command) => {
+    if (command.enabled === false) return false;
+    if (command.agent && command.agent !== 'both' && command.agent !== agent) return false;
+    const name = command.name.toLocaleLowerCase();
+    if (seen.has(name)) return false;
+    seen.add(name);
+    return true;
+  });
+}
+
+export function commandComposerInsertion(agent: AgentKind | null, command: AgentCommand): string {
+  const skill = command.category === 'skill' || command.source === 'skill';
+  return agent === 'codex' && skill ? '$' + command.name + ' ' : '/' + command.name + ' ';
+}
 
 export type ParsedAgentCommand = {
   name: string;

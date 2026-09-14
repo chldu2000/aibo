@@ -317,7 +317,13 @@ export async function execute(action, p) {
   }
   if (action === 'operation' && p.operationId === 'ext.dev.aibo.codex.skills') {
     const result = await rpc('skills/list', { cwds: [session.cwd], forceReload: false });
-    const skills = (result?.data ?? []).flatMap((item) => item?.skills ?? []);
+    const skills = (result?.data ?? []).flatMap((item) => item?.skills ?? []).map((skill) => ({
+      ...skill,
+      description: skill.description ?? skill.interface?.shortDescription ?? null,
+      source: 'skill',
+      category: 'skill',
+      execution: 'prompt',
+    }));
     return { skills };
   }
   if (action === 'operation' && (p.operationId === 'ext.dev.aibo.codex.approval' || p.operationId === 'ext.dev.aibo.codex.user-input')) {

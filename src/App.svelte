@@ -159,7 +159,12 @@
       case 'selectPath':
         composerText = composerText.replace(/(?:^|\s)@([^\s]*)$/, match => `${match.startsWith(' ') ? ' ' : ''}@${target} `);
         handleComposerInput(composerText); selectComposerWorkspacePath(target!); break;
-      case 'selectCommand': composerText = composerText.replace(/^\/([^\s]*)$/, `/${target} `); handleComposerInput(composerText); break;
+      case 'selectCommand': {
+        const command = visibleAgentCommands.find((item) => item.name === target);
+        if (command) composerText = composerText.replace(/^\/([^\s]*)$/, commandComposerInsertion(sessionAgentKind(selectedSession), command));
+        handleComposerInput(composerText);
+        break;
+      }
       case 'loadOlder': loadOlderTimeline(); break;
       case 'fork': await forkSession(selectedSessionId, target ?? undefined); break;
       case 'loadModels': await loadSessionModels(); break;
@@ -488,7 +493,9 @@
   import {
     AIBO_CODEX_COMMANDS,
     AIBO_PI_COMMANDS,
+    commandComposerInsertion,
     parseAgentCommand,
+    visibleSessionCommands,
   } from '$lib/app/agent-commands';
   import { upsertSession, workspaceIdsForRefresh } from '$lib/app/session-transitions';
   import type { PersistedSelection } from '$lib/app/selection-storage';
@@ -822,16 +829,7 @@
     if (!selectedSession) return [];
     const selectedKind = sessionAgentKind(selectedSession);
     const builtinCommands = selectedKind === 'pi' ? AIBO_PI_COMMANDS : selectedKind === 'codex' ? AIBO_CODEX_COMMANDS : [];
-    const commands = [...builtinCommands, ...(selectedKind !== 'codex' ? agentCommands : [])];
-    const seen = new Set<string>();
-    return commands.filter((command) => {
-      if (command.enabled === false) return false;
-      if (command.agent && command.agent !== 'both' && command.agent !== selectedKind) return false;
-      const name = command.name.toLocaleLowerCase();
-      if (seen.has(name)) return false;
-      seen.add(name);
-      return true;
-    });
+    return visibleSessionCommands(selectedKind, builtinCommands, agentCommands);
   });
   let commandSearchGeneration = 0;
   let busy = $state(false);
