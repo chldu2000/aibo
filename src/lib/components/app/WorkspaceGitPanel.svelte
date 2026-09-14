@@ -1,4 +1,5 @@
 <script lang="ts">
+  import type { GitPanelState } from '$lib/app/workbench-drafts';
   import { Badge, Button, Card, CardHeader, CardTitle, Icon, Input, Separator } from '$lib/ui-kit';
   import SidePanelTabs from './SidePanelTabs.svelte';
   import type {
@@ -16,6 +17,8 @@
   import type { WorkspaceListItem } from './view-types';
 
   type WorkspaceGitPanelProps = {
+    draftState: GitPanelState;
+    onDraftChange: (state: GitPanelState) => void;
     workspace: WorkspaceListItem | null;
     desktop: boolean;
     changes: WorkspaceChanges | null;
@@ -54,6 +57,7 @@
   };
 
   let {
+    draftState, onDraftChange,
     workspace,
     desktop,
     changes,
@@ -97,18 +101,29 @@
   const untrackedFiles = $derived(changes?.files.filter((file) => file.untracked && !file.conflicted) ?? []);
   const headLabel = $derived(changes?.head ? changes.head.slice(0, 8) : null);
   const stagedCount = $derived(stagedFiles.length);
-  let commitMessage = $state('');
-  let gitSection = $state<'changes' | 'history'>('changes');
   let branchMenuOpen = $state(false);
-  let branchDraft = $state('');
   let stashMenuOpen = $state(false);
-  let selectedCommit = $state<string | null>(null);
   type ChangeGroupKey = 'conflicted' | 'staged' | 'changed' | 'untracked';
   let expandedChangeGroups = $state<Record<ChangeGroupKey, boolean>>({
     conflicted: true,
     staged: true,
     changed: true,
     untracked: true,
+  });
+
+  let restoredCommitTarget: string | null = null;
+  $effect(() => {
+    const target = draftState.selectedCommit;
+    if (!workspace || !target || gitMetadataLoading || history.length === 0) return;
+    if (!history.some(commit => commit.hash === target)) onDraftChange({ ...draftState, selectedCommit: null });
+    else if (draftState.gitSection === 'history' && commitFiles?.commit !== target && !commitFilesLoading) {
+      const restoreKey = `${workspace.id}:${target}`;
+      // A failed restore remains retryable by clicking; do not start a request loop.
+      if (restoredCommitTarget !== restoreKey) {
+        restoredCommitTarget = restoreKey;
+        onSelectCommit(workspace.id, target);
+      }
+    }
   });
 
   function toggleChangeGroup(group: ChangeGroupKey): void {
@@ -168,7 +183,7 @@
   }
 
   function selectCommit(commit: string): void {
-    selectedCommit = commit;
+    onDraftChange({ ...draftState, selectedCommit: commit });
     onSelectCommit(workspace!.id, commit);
   }
 
@@ -184,22 +199,20 @@
   }
 
   async function submitCommit(): Promise<void> {
-    if (!workspace || workspace.trust !== 'trusted' || operationBusy || !commitMessage.trim()) return;
-    const committed = await onCommit(workspace.id, commitMessage.trim());
-    if (committed) commitMessage = '';
+    if (!workspace || workspace.trust !== 'trusted' || operationBusy || !draftState.commitMessage.trim()) return;
+    await onCommit(workspace.id, draftState.commitMessage.trim());
   }
 
   function selectGitSection(section: 'changes' | 'history'): void {
-    gitSection = section;
+    onDraftChange({ ...draftState, gitSection: section });
     branchMenuOpen = false;
     stashMenuOpen = false;
     if (section === 'history' && workspace) onRefreshGitMetadata(workspace.id);
   }
 
   function submitBranch(): void {
-    if (!workspace || workspace.trust !== 'trusted' || !branchDraft.trim()) return;
-    onCreateBranch(workspace.id, branchDraft.trim());
-    branchDraft = '';
+    if (!workspace || workspace.trust !== 'trusted' || !draftState.branchDraft.trim()) return;
+    onCreateBranch(workspace.id, draftState.branchDraft.trim());
     branchMenuOpen = false;
   }
 </script>
@@ -312,7 +325,7 @@
         type="button"
         role="tab"
         aria-controls="git-view-content"
-        aria-selected={gitSection === 'changes'}
+        aria-selected={draftState.gitSection === 'changes'}
         onclick={() => selectGitSection('changes')}
       >变更</Button>
       <Button
@@ -322,7 +335,7 @@
         type="button"
         role="tab"
         aria-controls="git-view-content"
-        aria-selected={gitSection === 'history'}
+        aria-selected={draftState.gitSection === 'history'}
         onclick={() => selectGitSection('history')}
       >历史</Button>
     </div>
@@ -343,7 +356,7 @@
   <div
     id="git-view-content"
     role="tabpanel"
-    aria-labelledby={gitSection === 'changes' ? 'git-changes-tab' : 'git-history-tab'}
+    aria-labelledby={draftState.gitSection === 'changes' ? 'git-changes-tab' : 'git-history-tab'}
     aria-live="polite"
   >
     {#if !workspace}
@@ -381,7 +394,7 @@
             <Badge variant={workspace.trust === 'trusted' ? 'outline' : 'warning'}>
               {workspace.trust === 'trusted' ? '可操作' : '只读'}
             </Badge>
-            {#if gitSection === 'changes' && changes.files.some((file) => file.unstaged || file.untracked)}
+            {#if draftState.gitSection === 'changes' && changes.files.some((file) => file.unstaged || file.untracked)}
               <Button
                 variant="ghost"
                 size="icon"
@@ -394,7 +407,7 @@
                 <Icon name="add" size={13} />
               </Button>
             {/if}
-            {#if gitSection === 'changes' && stagedCount > 0}
+            {#if draftState.gitSection === 'changes' && stagedCount > 0}
               <Button
                 variant="ghost"
                 size="icon"
@@ -436,8 +449,8 @@
             {/each}
           {/if}
           <form class="git-branch-create" onsubmit={(event) => { event.preventDefault(); submitBranch(); }}>
-            <Input bind:value={branchDraft} aria-label="新分支名称" placeholder="新分支名称" disabled={workspace.trust !== 'trusted' || operationBusy} />
-            <Button variant="ghost" size="sm" type="submit" disabled={!branchDraft.trim() || workspace.trust !== 'trusted' || operationBusy}>创建</Button>
+            <Input value={draftState.branchDraft} oninput={(event) => onDraftChange({ ...draftState, branchDraft: event.currentTarget.value })} aria-label="新分支名称" placeholder="新分支名称" disabled={workspace.trust !== 'trusted' || operationBusy} />
+            <Button variant="ghost" size="sm" type="submit" disabled={!draftState.branchDraft.trim() || workspace.trust !== 'trusted' || operationBusy}>创建</Button>
           </form>
         </section>
       {/if}
@@ -453,7 +466,7 @@
         </div>
       {/if}
 
-      {#if gitSection === 'changes'}
+      {#if draftState.gitSection === 'changes'}
         <section class="git-stash-section">
           <Button variant="ghost" size="sm" type="button" class="git-stash-trigger" onclick={() => (stashMenuOpen = !stashMenuOpen)}>
             <span>暂存栈</span><Badge variant="secondary">{stashes.length}</Badge>
@@ -474,7 +487,7 @@
         {#if stagedCount > 0}
           <form class="git-commit-form" onsubmit={(event) => { event.preventDefault(); void submitCommit(); }}>
             <Input
-              bind:value={commitMessage}
+              value={draftState.commitMessage} oninput={(event) => onDraftChange({ ...draftState, commitMessage: event.currentTarget.value })}
               aria-label="提交信息"
               placeholder={`提交 ${stagedCount} 项更改…`}
               disabled={workspace.trust !== 'trusted' || operationBusy}
@@ -483,7 +496,7 @@
               variant="default"
               size="sm"
               type="submit"
-              disabled={workspace.trust !== 'trusted' || operationBusy || !commitMessage.trim()}
+              disabled={workspace.trust !== 'trusted' || operationBusy || !draftState.commitMessage.trim()}
             >
               提交
             </Button>
@@ -491,7 +504,7 @@
         {/if}
       {/if}
 
-      {#if gitSection === 'changes'}
+      {#if draftState.gitSection === 'changes'}
         {@render fileGroup('conflicted', '合并冲突', conflictedFiles, 'stage')}
         {@render fileGroup('staged', '已暂存的更改', stagedFiles, 'unstage')}
         {@render fileGroup('changed', '更改', changedFiles, 'stage')}
@@ -514,11 +527,11 @@
             {#each history as commit (commit.hash)}
               <div class="git-history-entry">
                 <Button
-                  variant={selectedCommit === commit.hash ? 'secondary' : 'ghost'}
+                  variant={draftState.selectedCommit === commit.hash ? 'secondary' : 'ghost'}
                   size="sm"
                   type="button"
                   class="git-history-item"
-                  aria-expanded={selectedCommit === commit.hash}
+                  aria-expanded={draftState.selectedCommit === commit.hash}
                   aria-label={`查看提交 ${commit.shortHash} 的文件：${commit.subject}`}
                   title={commit.subject}
                   onclick={() => selectCommit(commit.hash)}
@@ -532,7 +545,7 @@
                     </small>
                   </span>
                 </Button>
-                {#if selectedCommit === commit.hash}
+                {#if draftState.selectedCommit === commit.hash}
                   <div class="git-commit-files" aria-label={`提交 ${commit.shortHash} 更改的文件`}>
                     {#if commitFilesLoading && commitFiles?.commit !== commit.hash}
                       <div class="git-diff-message">正在读取文件列表…</div>

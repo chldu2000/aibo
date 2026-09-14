@@ -1,0 +1,60 @@
+{
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "context",
+    "actionId",
+    "itemId"
+  ],
+  "properties": {
+    "context": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "workspaceId",
+        "contributionId",
+        "generation",
+        "revision"
+      ],
+      "properties": {
+        "workspaceId": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        },
+        "contributionId": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9]*(?:[.-][a-z0-9]+)+$",
+          "maxLength": 128
+        },
+        "generation": {
+          "type": "string",
+          "maxLength": 128
+        },
+        "revision": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991
+        }
+      }
+    },
+    "actionId": {
+      "enum": [
+        "refresh",
+        "open-diff",
+        "back",
+        "next",
+        "previous"
+      ]
+    },
+    "itemId": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "maxLength": 8192
+    }
+  },
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://aibo.dev/contracts/semantic-action.experimental-v1.schema.json"
+}

@@ -1,0 +1,14 @@
+{
+  "sessions": 0,
+  "agentEvents": 0,
+  "runningInvocations": 0,
+  "invocationStatuses": {
+    "completed": 42
+  },
+  "capabilityEventTypes": {
+    "admitted": 42,
+    "finished": 42,
+    "started": 42
+  },
+  "instanceCount": 4
+}

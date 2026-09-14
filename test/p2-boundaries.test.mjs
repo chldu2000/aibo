@@ -1,0 +1,106 @@
+import assert from 'node:assert/strict';
+import { readFile } from 'node:fs/promises';
+import test from 'node:test';
+import { parse } from 'svelte/compiler';
+
+test('workbench callbacks and writable bindings cross the generation gate', async () => {
+  const source = await readFile('src/App.svelte', 'utf8');
+  const tree = parse(source, { modern: true });
+  let guarded = 0;
+  let hostCallbacks = 0;
+  const hostComponents = new Set(['HostPanel', 'AppOverlays', 'CommandPalette', 'WindowTitlebar', 'SettingsPanel', 'DiagnosticsPanel', 'PluginWorkspacePanel', 'ExecutionHistoryPanel', 'SessionHistoryPanel', 'CapabilityHistoryPanel']);
+  const foundHost = new Set();
+  let hostApprovalRegion = false;
+  const slots = new Set(['navigation', 'navigationResize', 'content', 'auxiliaryResize', 'auxiliary', 'overlays']);
+  const foundSlots = new Set();
+  function visit(node, inside = false, replaceable = false) {
+    if (!node || typeof node !== 'object') return;
+    if (node.type === 'Component' && ['PresentationHost', 'WorkbenchPresentation'].includes(node.name)) replaceable = true;
+    if (node.type === 'RegularElement' && node.attributes?.some(attribute => attribute.name === 'aria-label' && attribute.value?.[0]?.data === '宿主审批')) {
+      assert.equal(inside, false, 'approvals must remain outside replaceable presentation');
+      hostApprovalRegion = true;
+    }
+    if (node.type === 'Component' && hostComponents.has(node.name)) {
+      assert.equal(inside || replaceable, false, `${node.name} must survive renderer disposal`);
+      foundHost.add(node.name);
+      for (const attribute of node.attributes) {
+        if (!/^on[A-Z]/.test(attribute.name) || !attribute.value?.expression) continue;
+        const expression = attribute.value.expression;
+        if (node.name === 'PluginWorkspacePanel') {
+          assert.equal(expression.type, 'CallExpression');
+          assert.equal(expression.callee.name, 'hostGuard', 'host plugin actions retain context checks');
+        } else {
+          assert.notEqual(expression.callee?.name, 'guard', 'host controls cannot depend on renderer generation');
+        }
+        hostCallbacks++;
+      }
+    }
+    if (node.type === 'SnippetBlock' && slots.has(node.expression?.name)) { inside = true; foundSlots.add(node.expression.name); }
+    if (inside && node.type === 'Attribute' && /^on[A-Z]/.test(node.name) && node.value?.expression) {
+      assert.equal(node.value.expression.type, 'CallExpression', node.name);
+      assert.equal(node.value.expression.callee.name, 'guard', node.name);
+      guarded++;
+    }
+    if (inside && node.type === 'BindDirective' && node.name !== 'this') {
+      assert.equal(node.expression.type, 'SequenceExpression');
+      assert.equal(node.expression.expressions[1].callee.name, 'guard');
+      guarded++;
+    }
+    for (const value of Object.values(node)) {
+      if (Array.isArray(value)) value.forEach(child => visit(child, inside, replaceable));
+      else if (value && typeof value === 'object') visit(value, inside, replaceable);
+    }
+  }
+  visit(tree.fragment);
+  assert.deepEqual(foundSlots, slots, 'all named workbench slots retain generation guards');
+  assert.equal(hostApprovalRegion, true);
+  assert.deepEqual(foundHost, hostComponents);
+  const timeline = await readFile('src/lib/components/app/TimelinePanel.svelte', 'utf8');
+  assert.doesNotMatch(timeline, /onResolveApproval|availableDecisions/, 'presentation cannot own approval controls');
+  assert.ok(guarded + hostCallbacks >= 100, 'all workbench and independent host callbacks must be covered');
+  assert.match(source, /listenToAgentEvents/);
+  const shell = await readFile('src/lib/workbench/WorkbenchPresentation.svelte', 'utf8');
+  assert.doesNotMatch(shell, /listenToAgentEvents|sendAgentPrompt|resumeAgentSession|cancelAgentTurn|pluginInstallationId/);
+});
+
+test('generic host routing requires capability sessions and rejects unbound history', async () => {
+  const source = await readFile('src-tauri/src/lib.rs', 'utf8');
+  for (const method of ['send_agent_prompt', 'cancel_agent_turn', 'resume_agent_session', 'close_agent_session']) {
+    const code = source.slice(source.indexOf(`async fn ${method}(`)).split('#[tauri::command]')[0];
+    assert.match(code, /plugin_installation_id/);
+    assert.match(code, /history_only:/);
+    assert.match(code, /window\.label\(\)/);
+    assert.doesNotMatch(code, /compatibility::|state\.codex/);
+    assert.doesNotMatch(code, /session_agent\(|\.agent\s*==|"codex"|"pi"/);
+  }
+  for (const method of ['create_codex_session','create_pi_session','send_codex_prompt','send_pi_prompt','abort_codex_turn','abort_pi_turn','close_codex_session','close_pi_session']) {
+    assert.ok(!source.includes(`async fn ${method}(`), `${method} is retired; use the shared capability session route`);
+  }
+  const create = source.slice(source.indexOf('async fn create_agent_session(')).split('#[tauri::command]')[0];
+  assert.match(create, /requested_profile/);
+  assert.match(create, /create_with_profile/);
+  assert.doesNotMatch(create, /create_codex_session|create_pi_session/);
+  const app = await readFile('src/App.svelte', 'utf8');
+  assert.doesNotMatch(app, /\b(?:sendCodexPrompt|sendPiPrompt|abortCodexTurn|abortPiTurn|setPiModel|setPiThinkingLevel|sessionModelBackend)\b/);
+});
+
+test('independent persisted session history never activates an Agent runtime', async () => {
+  const [host, service] = await Promise.all([
+    readFile('src-tauri/src/lib.rs', 'utf8'), readFile('src-tauri/src/session_history.rs', 'utf8'),
+  ]);
+  const command = host.slice(host.indexOf('async fn read_session_history(')).split('#[tauri::command]')[0];
+  assert.match(command, /session_history::read\(&state\.db/);
+  assert.doesNotMatch(command, /state\.(?!db\b)\w+/, 'the recovery command may only access the database port');
+  assert.doesNotMatch(service, /use tauri|PluginHost|PiManager|CodexManager|invoke_capability|resume_session/, 'persisted reads must not depend on a live runtime');
+});
+
+test('host capability audit reads inject the window and access only persisted data',async()=>{
+ const host=await readFile('src-tauri/src/lib.rs','utf8');
+ for(const name of ['list_capability_history_scopes','read_capability_history']){
+  const command=host.slice(host.indexOf(`async fn ${name}(`)).split('#[tauri::command]')[0];
+  assert.match(command,/window: tauri::WebviewWindow/);assert.match(command,/window\.label\(\)/);
+  assert.doesNotMatch(command,/state\.(?!db\b)\w+/);
+ }
+ const service=await readFile('src-tauri/src/capability_history.rs','utf8');
+ assert.doesNotMatch(service,/invoke_capability|PluginHost|workspace_by_id|session_by_id/,'historical scopes must not require a live resource or runtime');
+});

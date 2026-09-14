@@ -1,0 +1,201 @@
+{
+  "baselineCommit": "ce518a2e8c437e0f0e7c9baad5757069def3d95b",
+  "date": "2026-09-10",
+  "note": "Source inventory and existing synthetic Echo samples; not new live Provider evidence. Hashes pin the pre-migration baseline and are not updated automatically.",
+  "sources": [
+    {
+      "path": "contracts/agent-event.v1.schema.json",
+      "sha256": "43b5d07f250d35806e027d04735a4db57814d3073327a42879c797231016e135"
+    },
+    {
+      "path": "contracts/agent-event.v2.schema.json",
+      "sha256": "b40f267e6f15467e39c10041746275d64bbca642326b9ce8d8d6701693b6e304"
+    },
+    {
+      "path": "contracts/plugin-session-binding.v1.schema.json",
+      "sha256": "7368e155822838bb6fb937084b73af7b826017d7570669795b8ffe1ec4772216"
+    },
+    {
+      "path": "contracts/plugin-view-protocol.v1.schema.json",
+      "sha256": "e9c1d433c9a12a7c7fd4317cf1208e21e438445fd0f335b80b339a7deb87a4a6"
+    },
+    {
+      "path": "contracts/agent-runtime-protocol.v1.schema.json",
+      "sha256": "bea2b0fc8e97b8b55b89b03c84b9a380bc0c52f93a2c06f4d1824d49d69eca63"
+    },
+    {
+      "path": "contracts/plugin-manifest.v1.schema.json",
+      "sha256": "19baafaac0c8fefe23c9360bca9695af2e2e7e1a8931a57b6ad98acce551508e"
+    },
+    {
+      "path": "fixtures/plugins/echo-agent.lifecycle.jsonl",
+      "sha256": "36cef0aa28cfb2d74474d22424fcb4fab7da26b03c123d01f552a7ca4e0d2d6b"
+    },
+    {
+      "path": "fixtures/plugins/echo-agent/plugin.json",
+      "sha256": "2bcf39ec7211375aa359f0fdacabc2fe41df4e3bc6890fef067df6bc826f439b"
+    },
+    {
+      "path": "fixtures/plugins/echo-agent/echo-agent.mjs",
+      "sha256": "cf9429f27500543dad6458f80e04adfb2ddc1f03bc29f2b7e439c5a719241e62"
+    },
+    {
+      "path": "fixtures/codex/events.redacted.jsonl",
+      "sha256": "7ad94ee565a558d8201209cd714821d2237e5890be69ef6cd138936f9efac336"
+    },
+    {
+      "path": "fixtures/codex/events.recovery.redacted.jsonl",
+      "sha256": "eb992354fbf317d69697cdb9679372723f485084f8f9cb4cc65ddf2e0bada4db"
+    },
+    {
+      "path": "fixtures/codex/events.user-input.redacted.jsonl",
+      "sha256": "93d8782fd6ab653f18dd2fd5f0000db6b2604fcf0b85c08f0b08fc07cab1e558"
+    },
+    {
+      "path": "fixtures/codex/lifecycle.redacted.jsonl",
+      "sha256": "24ef8b37bd650a60e854d7cb3518edb578a44b0bbb3e8a78373d7a51b8090301"
+    },
+    {
+      "path": "fixtures/pi/events.redacted.jsonl",
+      "sha256": "004fad289aaa818c74fbdca6501d1e677e2c78ba2d87eed43b46dd1fda24992b"
+    },
+    {
+      "path": "fixtures/pi/session.redacted.jsonl",
+      "sha256": "cd28fdb88b56d688223ee59e4ae17e7d7d1bdb3bf0493fe516a6d79547f9c006"
+    },
+    {
+      "path": "fixtures/pi/sdk-host.lifecycle.macos.redacted.jsonl",
+      "sha256": "53b4066768aa2c2d88c7958d6405c5f3e002ce2abe8f1e18bb6a39a84a8aee9b"
+    },
+    {
+      "path": "src-tauri/builtin-plugins/codex/plugin.json",
+      "sha256": "bec5d7b0ccf54376f9f0a299d4db64928db29c21637d6a64ae7225e59567bb2d"
+    },
+    {
+      "path": "src-tauri/builtin-plugins/pi/plugin.json",
+      "sha256": "447444e3504a7dd8d92f48bafe02d015a64a48f0c39335460cdf996d27f6f762"
+    },
+    {
+      "path": "test/codex-builtin-plugin.test.mjs",
+      "sha256": "30be0781ffba45a909f72af68af5592cd595b92ecef71dc1840fe1608fc30939"
+    },
+    {
+      "path": "test/pi-builtin-plugin.test.mjs",
+      "sha256": "f4061b6a91be6846792116c7ce4b6b825153ee8b93dc4b52a2949bfdbe15f252"
+    },
+    {
+      "path": "test/echo-plugin-process.test.mjs",
+      "sha256": "5e33bdaff87e6850315717d3faecd9e92c74806dae05dc07f63d2245e3c3d246"
+    },
+    {
+      "path": "test/adapter-contract.test.mjs",
+      "sha256": "5083390e2e5e545ce6312051db3dc9087c73312c57799988ada583c3a42ab8e9"
+    },
+    {
+      "path": "test/plugin-contract.test.mjs",
+      "sha256": "43533065539eded634ddfdee524c5e88213bfe65add975336c078d0f21d6827e"
+    },
+    {
+      "path": "src-tauri/src/plugin_host.rs",
+      "sha256": "cfef553579f29102bb0e53606013d9d1f7d3907921ebc7066bc8b0886aa64fe8"
+    }
+  ],
+  "echoSamples": {
+    "source": "fixtures/plugins/echo-agent.lifecycle.jsonl",
+    "binding": {
+      "schema": "aibo.plugin-session-binding/v1",
+      "sessionId": "session-1",
+      "pluginInstallationId": "installation-echo-1",
+      "pluginId": "dev.aibo.echo",
+      "pluginVersion": "1.0.0",
+      "agentId": "dev.aibo.echo.agent",
+      "nativeSessionId": "echo-native-1",
+      "runtimeProtocolVersion": "1.0",
+      "recovery": {
+        "schema": "dev.aibo.echo.recovery",
+        "version": 1,
+        "data": {
+          "cursor": 2
+        }
+      },
+      "createdAt": "2026-09-08T00:00:00.000Z",
+      "updatedAt": "2026-09-08T00:01:00.000Z"
+    },
+    "view": {
+      "schema": "aibo.plugin-view/v1",
+      "viewId": "dev.aibo.echo.tasks",
+      "revision": 1,
+      "title": "Echo tasks",
+      "data": {
+        "status": "complete"
+      },
+      "bindings": [
+        {
+          "nodeId": "status-badge",
+          "property": "label",
+          "dataPath": "/status"
+        }
+      ],
+      "actions": [
+        {
+          "id": "run-again",
+          "capability": "turn.send",
+          "inputSchema": {
+            "type": "object",
+            "additionalProperties": false
+          },
+          "confirmation": "never"
+        }
+      ],
+      "resources": [],
+      "root": {
+        "id": "root",
+        "type": "stack",
+        "props": {
+          "gap": "md",
+          "density": "comfortable"
+        },
+        "children": [
+          {
+            "id": "summary-panel",
+            "type": "panel",
+            "props": {
+              "title": "Latest echo",
+              "tone": "neutral"
+            },
+            "children": [
+              {
+                "id": "result-text",
+                "type": "text",
+                "props": {
+                  "text": "hello",
+                  "emphasis": "strong"
+                },
+                "children": []
+              },
+              {
+                "id": "status-badge",
+                "type": "badge",
+                "props": {
+                  "label": "complete",
+                  "tone": "success"
+                },
+                "children": []
+              },
+              {
+                "id": "run-button",
+                "type": "button",
+                "props": {
+                  "label": "Run again",
+                  "actionId": "run-again",
+                  "icon": "refresh"
+                },
+                "children": []
+              }
+            ]
+          }
+        ]
+      }
+    }
+  }
+}

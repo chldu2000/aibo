@@ -222,7 +222,7 @@ export interface CodexThreadSummary {
 }
 
 export interface CodexThreadSnapshot extends CodexThreadSummary {
-  turnCount: number;
+  turnCount: number | null;
 }
 
 export interface TimelineItem {
@@ -384,6 +384,7 @@ export interface ContextAttachment {
   mediaType: string;
   source: 'picker' | 'drop' | 'manual' | string;
   sendStrategy: 'reference' | 'inline' | string;
+  inlineContext?: string | null;
   createdAt: string;
 }
 
@@ -432,10 +433,30 @@ export interface ProjectAction {
   updatedAt: string;
 }
 
+export interface WorkspaceWriteRun {
+  parentWriteRunId?: string | null;
+  rootWriteRunId?: string | null;
+  cancelRequestedAt?: string | null;
+  schema: 'aibo.workspace-write-run/v1' | 'aibo.workspace-write-run/v2';
+  id: string;
+  requestId?: string | null;
+  callerWindow?: string | null;
+  workspaceId: string;
+  operation: string;
+  status: 'awaiting_approval' | 'rejected' | 'running' | 'completed' | 'failed' | 'outcome_unknown';
+  approvalOutcome?: 'approved' | 'denied' | 'cancelled' | 'expired' | 'stale' | 'unavailable' | 'recovered' | null;
+  approvalDecidedAt?: string | null;
+  snapshot: { schema: 'aibo.workspace-write-intent/v1'; origin: 'host'; workspaceId: string; workspacePath: string; operation: string; input: Record<string, unknown>; approvalContext?: Record<string, unknown> | null };
+  result: { ok: true; output: unknown } | { ok: false; error: { code: string; message: string } } | null;
+  startedAt: string;
+  completedAt: string | null;
+}
+
 export interface ProjectActionRun {
-  schema: 'aibo.project-action-run/v1';
+  schema: 'aibo.project-action-run/v1' | 'aibo.project-action-run/v2' | 'aibo.project-action-run/v3';
   id: string;
   actionId: string;
+  actionName?: string | null;
   workspaceId: string;
   sessionId: string | null;
   status: 'completed' | 'failed' | 'timed_out' | string;
@@ -443,7 +464,7 @@ export interface ProjectActionRun {
   output: string;
   artifactId: string | null;
   startedAt: string;
-  completedAt: string;
+  completedAt: string | null;
 }
 
 export type GitFileAction = 'stage' | 'unstage' | 'revert';
@@ -633,4 +654,28 @@ export interface AgentEvent {
   correlation: Record<string, string | number | null> | null;
   payload: Record<string, unknown>;
   rawRef: string | null;
+}
+
+export interface ExecutionCursor {
+  schema: 'aibo.execution-cursor/v1'; workspaceId: string; startedAt: string; kind: 'task' | 'git'; id: string;
+}
+
+export interface SessionHistoryCursor {
+  schema: 'aibo.session-history-cursor/v1'; workspaceId: string; sessionId: string;
+  createdAt: string; sequence: string; id: string;
+}
+export interface SessionHistoryPage {
+  schema: 'aibo.session-history-page/v1'; source: 'persisted-core'; session: Session;
+  items: TimelineItem[]; nextBefore: SessionHistoryCursor | null;
+}
+
+export type CapabilityHistorySource = 'events' | 'legacy';
+export type CapabilityHistoryScope = {kind:'application'} | {kind:'workspace'|'session';id:string};
+export type CapabilityHistoryScopeItem = {scope:CapabilityHistoryScope;label:string|null};
+export interface CapabilityHistoryScopes {
+  schema:'aibo.capability-history-scopes/v1'; source?:CapabilityHistorySource; items:CapabilityHistoryScopeItem[]; nextBefore:string|null;
+}
+export interface CapabilityHistoryEvents {
+  schema:'aibo.capability-history-events/v1'; source?:CapabilityHistorySource; scope:CapabilityHistoryScope;
+  events:{sequence:string;payload:Record<string,unknown>}[]; nextBefore:string|null;
 }

@@ -1,0 +1,14 @@
+{
+  "identifier": "local.aibo.p2probe.1789098965624",
+  "source": "read-only isolated native probe SQLite after second app process exit",
+  "results": [
+    {
+      "agent": "codex",
+      "lastTurnStatus": "interrupted"
+    },
+    {
+      "agent": "pi",
+      "lastTurnStatus": "interrupted"
+    }
+  ]
+}

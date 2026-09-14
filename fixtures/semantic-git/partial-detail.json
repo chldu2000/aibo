@@ -1,0 +1,48 @@
+{
+  "schema": "aibo.semantic-view/experimental-v1",
+  "context": {
+    "workspaceId": "fixture-workspace",
+    "contributionId": "dev.aibo.git.changes",
+    "generation": "fixture-generation",
+    "revision": 2
+  },
+  "contribution": {
+    "id": "dev.aibo.git.changes",
+    "extensionPoint": "workspace.tool",
+    "title": "工作区变更"
+  },
+  "state": {
+    "status": "ready",
+    "message": ""
+  },
+  "view": {
+    "kind": "detail",
+    "itemId": "worktree:src/App.svelte",
+    "properties": [
+      {
+        "label": "文件",
+        "value": "src/App.svelte"
+      },
+      {
+        "label": "范围",
+        "value": "工作区"
+      }
+    ],
+    "content": "--- a/src/App.svelte\n+++ b/src/App.svelte\n@@ -1 +1 @@\n-old\n+new\n",
+    "truncated": true
+  },
+  "actions": [
+    {
+      "id": "back",
+      "label": "返回变更列表",
+      "intent": "navigate",
+      "enabled": true
+    },
+    {
+      "id": "refresh",
+      "label": "刷新",
+      "intent": "refresh",
+      "enabled": true
+    }
+  ]
+}

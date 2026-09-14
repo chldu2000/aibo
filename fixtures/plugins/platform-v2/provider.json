@@ -1,0 +1,85 @@
+{
+  "schema": "aibo.plugin-manifest/v2",
+  "pluginId": "dev.aibo.git",
+  "version": "1.0.0",
+  "displayName": "Git read capability",
+  "host": {
+    "min": "0.1.0",
+    "maxExclusive": "0.2.0"
+  },
+  "platforms": [
+    "darwin-arm64",
+    "darwin-x64",
+    "windows-x64",
+    "linux-x64",
+    "linux-arm64"
+  ],
+  "protocols": {
+    "runtime": {
+      "min": "2.0",
+      "max": "2.0"
+    }
+  },
+  "contributions": [
+    {
+      "kind": "capabilityProvider",
+      "id": "dev.aibo.git.read",
+      "scope": "workspace",
+      "required": true,
+      "displayName": "Git read",
+      "operations": [
+        {
+          "id": "dev.aibo.git.changes",
+          "capability": {
+            "id": "dev.aibo.git.changes",
+            "version": "1.0.0"
+          },
+          "inputSchema": {
+            "type": "object",
+            "properties": {},
+            "additionalProperties": false
+          },
+          "outputSchema": {
+            "type": "object",
+            "required": [
+              "files"
+            ],
+            "properties": {
+              "files": {
+                "type": "array",
+                "maxItems": 200,
+                "items": {
+                  "type": "string",
+                  "maxLength": 4096
+                }
+              }
+            },
+            "additionalProperties": false
+          },
+          "effect": "read",
+          "permissions": [
+            "workspace.read"
+          ],
+          "timeoutMs": 10000,
+          "idempotent": true
+        }
+      ]
+    }
+  ],
+  "entrypoint": {
+    "executable": "git-worker.mjs"
+  },
+  "executableDependencies": [
+    {
+      "kind": "runtime",
+      "name": "node",
+      "versionRange": ">=22",
+      "required": true
+    },
+    {
+      "kind": "executable",
+      "name": "git",
+      "required": true
+    }
+  ]
+}

@@ -1,0 +1,15 @@
+{
+  "passed": true,
+  "nativePort": "mocked; actual App.svelte and Worker, no repository operations performed",
+  "browser": "153.0.8010.12",
+  "checks": [
+    "complete Git metadata and truncated hunk preview",
+    "stage targets host-selected file",
+    "forged action rejected",
+    "commit draft survives external/default/external switch",
+    "rejected commit keeps draft and successful commit clears it",
+    "branch draft and creation",
+    "history file paging and commit preview",
+    "fetch dispatch through existing host controller"
+  ]
+}

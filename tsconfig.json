@@ -11,6 +11,7 @@
     "lib": ["ES2022", "DOM", "DOM.Iterable"],
     "baseUrl": ".",
     "paths": {
+      "@aibo/plugin-protocol": ["./packages/plugin-protocol/src/index.ts"],
       "$lib": ["./src/lib"],
       "$lib/*": ["./src/lib/*"]
     },

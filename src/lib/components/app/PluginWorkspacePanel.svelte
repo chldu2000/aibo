@@ -1,10 +1,9 @@
 <script lang="ts">
-  import { Button, Card, CardContent, CardHeader, CardTitle, Label, PluginView, Textarea } from '$lib/ui-kit';
-  import type { UiPluginViewDocument } from '$lib/ui-kit';
+  import { Button, Card, CardContent, CardHeader, CardTitle, Label, Textarea } from '$lib/ui-kit';
   import PluginManagerPanel from './PluginManagerPanel.svelte';
   import type { Session, TimelineItem } from '$lib/types';
 
-  type Installation = { id: string; pluginId: string; pluginVersion: string; enabled: boolean; installed: boolean; runnable: boolean; dependencies: { kind: string; name: string; required: boolean; available: boolean; versionRange: string | null; detectedVersion?: string | null; issue?: string | null }[]; manifest: { displayName: string; agents: { agentId: string; displayName: string }[] } };
+  type Installation = { id: string; pluginId: string; pluginVersion: string; enabled: boolean; installed: boolean; runnable: boolean; dependencies: { kind: string; name: string; required: boolean; available: boolean; versionRange: string | null; detectedVersion?: string | null; issue?: string | null }[]; sessionProviders: { id: string; displayName: string }[]; manifest: { displayName: string } };
   type PluginSession = Omit<Session, 'agent'> & { agent: string };
   type Props = {
     installations: Installation[];
@@ -14,7 +13,6 @@
     packagePath: string;
     prompt: string;
     timeline: TimelineItem[];
-    views: UiPluginViewDocument[];
     busy: boolean;
     error: string;
     desktop: boolean;
@@ -29,17 +27,16 @@
     onCancel: () => void;
     onResume: () => void;
     onCloseSession: () => void;
-    onViewAction: (viewId: string, actionId: string, input: Record<string, unknown>) => void;
     onClose: () => void;
   };
-  let { installations, sessions, selectedSession, workspaceLabel, packagePath, prompt, timeline, views, busy, error, desktop, onPackagePathChange, onPromptChange, onInstall, onEnabledChange, onUninstall, onCreateSession, onSelectSession, onSend, onCancel, onResume, onCloseSession, onViewAction, onClose }: Props = $props();
+  let { installations, sessions, selectedSession, workspaceLabel, packagePath, prompt, timeline, busy, error, desktop, onPackagePathChange, onPromptChange, onInstall, onEnabledChange, onUninstall, onCreateSession, onSelectSession, onSend, onCancel, onResume, onCloseSession, onClose }: Props = $props();
   const promptId = $props.id();
-  const running = $derived(selectedSession?.state === 'running' || selectedSession?.state === 'starting');
+  const running = $derived(['starting', 'running', 'waiting_approval', 'waiting_user', 'compacting'].includes(selectedSession?.state ?? ''));
   const resumable = $derived(selectedSession?.state === 'interrupted' || selectedSession?.state === 'failed');
 </script>
 
 <section class="plugin-workspace" aria-label="插件工作台">
-  <div class="plugin-toolbar"><h2>插件工作台 · {workspaceLabel ?? '请选择工作区'}</h2><Button variant="ghost" onclick={onClose}>返回会话</Button></div>
+  <p>当前工作区：{workspaceLabel ?? '请选择工作区'}</p>
   {#if !desktop}<p role="status">插件需要在 Aibo 桌面应用中运行。</p>{/if}
   {#if error}<p role="alert">{error}</p>{/if}
   <PluginManagerPanel {installations} {packagePath} {onPackagePathChange} busy={busy || !desktop} {onInstall} {onEnabledChange} {onUninstall} {onCreateSession} />
@@ -68,11 +65,8 @@
               <Card><CardHeader><CardTitle>{item.role} · {item.status}</CardTitle></CardHeader><CardContent>{item.content}</CardContent></Card>
             {/each}
           </div>
-          {#each views as view (view.viewId)}
-            <PluginView document={view} sessionId={selectedSession.id} disabled={busy} onAction={(actionId, input) => onViewAction(view.viewId, actionId, input)} />
-          {/each}
           <form class="plugin-prompt" onsubmit={(event) => { event.preventDefault(); if (!busy && !running && prompt.trim()) onSend(); }}>
-            <Label for={promptId}>发送给插件 Agent</Label>
+            <Label for={promptId}>发送给能力会话</Label>
             <Textarea id={promptId} value={prompt} disabled={busy || running} oninput={(event: Event) => onPromptChange((event.currentTarget as HTMLTextAreaElement).value)} />
             <Button type="submit" disabled={busy || running || !prompt.trim()}>发送</Button>
           </form>

@@ -1,0 +1,13 @@
+{
+  "passed": true,
+  "nativePort": "mocked; actual App and independently built full skin Workers",
+  "browser": "153.0.8010.12",
+  "checks": [
+    "both full packages install and activate",
+    "workspace and session navigation",
+    "full timeline content",
+    "rapid Chinese/English input and send",
+    "Git/context panel switching",
+    "default/external switch retains host draft"
+  ]
+}

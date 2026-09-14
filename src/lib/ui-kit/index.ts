@@ -7,13 +7,16 @@
  * and native attributes) and can be wired here without touching business code.
  */
 export * from './primitives';
-export type { UiPluginViewProps, UiPluginViewDocument, UiPluginViewNode, UiPluginViewInteraction } from './plugin-view';
 export type {
   AppearanceSelection,
   UiAgentStatusMarkProps,
   UiButtonVariant,
   UiColumnSplitterProps,
   UiIconName,
+  UiHostPanelProps,
+  UiSettingsAction,
+  UiSettingsItem,
+  UiSettingsSectionProps,
   UiKitAdapter,
   UiKitOption,
   UiKitRegistration,
@@ -34,3 +37,9 @@ export {
   setUiTheme,
 } from './registry';
 export type { UiKitName } from './registry';
+
+// Trusted local lifecycle shell; visuals continue to use the active kit.
+export { default as WorkbenchPresentation } from '../workbench/WorkbenchPresentation.svelte';
+export { default as PresentationHost } from './PresentationHost.svelte';
+
+export { default as DefaultPresentationActions } from '../workbench/plugins/DefaultPresentationActions.svelte';

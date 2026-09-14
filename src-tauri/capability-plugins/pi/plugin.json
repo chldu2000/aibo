@@ -1,0 +1,799 @@
+{
+  "schema": "aibo.plugin-manifest/v2",
+  "pluginId": "dev.aibo.pi",
+  "version": "2.0.0",
+  "displayName": "Pi",
+  "description": "Pi session capabilities.",
+  "host": {
+    "min": "0.1.0",
+    "maxExclusive": "0.2.0"
+  },
+  "platforms": [
+    "darwin-arm64",
+    "darwin-x64",
+    "windows-x64",
+    "linux-x64",
+    "linux-arm64"
+  ],
+  "protocols": {
+    "runtime": {
+      "min": "2.1",
+      "max": "2.1"
+    }
+  },
+  "entrypoint": {
+    "executable": "worker.mjs"
+  },
+  "executableDependencies": [
+    {
+      "kind": "runtime",
+      "name": "node",
+      "versionRange": ">=22",
+      "required": true
+    }
+  ],
+  "contributions": [
+    {
+      "kind": "capabilityProvider",
+      "id": "dev.aibo.pi.agent",
+      "scope": "session",
+      "required": true,
+      "displayName": "Pi",
+      "operations": [
+        {
+          "id": "dev.aibo.pi.session.open",
+          "capability": {
+            "id": "aibo.session.open",
+            "version": "1.0.0"
+          },
+          "inputSchema": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "mode",
+              "executionProfile"
+            ],
+            "properties": {
+              "mode": {
+                "enum": [
+                  "create",
+                  "resume"
+                ]
+              },
+              "executionProfile": {
+                "type": "object",
+                "additionalProperties": false,
+                "properties": {
+                  "interactionMode": {
+                    "enum": [
+                      "ask",
+                      "plan",
+                      "edit"
+                    ]
+                  },
+                  "approvalPolicy": {
+                    "type": "string"
+                  },
+                  "filesystemPolicy": {
+                    "type": "string"
+                  },
+                  "commandPolicy": {
+                    "type": "string"
+                  },
+                  "networkPolicy": {
+                    "type": "string"
+                  },
+                  "model": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "reasoningEffort": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "schema": {
+                    "type": "string"
+                  }
+                }
+              },
+              "recovery": {
+                "type": [
+                  "object",
+                  "null"
+                ]
+              }
+            }
+          },
+          "outputSchema": {
+            "type": "object",
+            "required": [
+              "nativeSessionId",
+              "recovery",
+              "capabilities"
+            ],
+            "properties": {
+              "nativeSessionId": {
+                "type": "string",
+                "minLength": 1
+              },
+              "recovery": {
+                "type": "object"
+              },
+              "capabilities": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "effect": "read",
+          "permissions": [
+            "workspace.read"
+          ],
+          "timeoutMs": 15000,
+          "idempotent": false
+        },
+        {
+          "id": "dev.aibo.pi.session.turn",
+          "capability": {
+            "id": "aibo.session.turn",
+            "version": "1.0.0"
+          },
+          "inputSchema": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "text"
+            ],
+            "properties": {
+              "text": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 200000
+              },
+              "attachments": {
+                "type": "array",
+                "maxItems": 100,
+                "items": {
+                  "type": "object"
+                }
+              }
+            }
+          },
+          "outputSchema": {
+            "type": "object",
+            "required": [
+              "status",
+              "recovery"
+            ],
+            "properties": {
+              "status": {
+                "enum": [
+                  "completed",
+                  "interrupted",
+                  "failed"
+                ]
+              },
+              "recovery": {
+                "type": [
+                  "object",
+                  "null"
+                ]
+              }
+            }
+          },
+          "effect": "read",
+          "permissions": [
+            "workspace.read"
+          ],
+          "timeoutMs": 43200000,
+          "idempotent": false
+        },
+        {
+          "id": "dev.aibo.pi.session.close",
+          "capability": {
+            "id": "aibo.session.close",
+            "version": "1.0.0"
+          },
+          "inputSchema": {
+            "type": "object",
+            "additionalProperties": false
+          },
+          "outputSchema": {
+            "type": "object",
+            "required": [
+              "accepted"
+            ],
+            "properties": {
+              "accepted": {
+                "const": true
+              }
+            }
+          },
+          "effect": "read",
+          "permissions": [
+            "workspace.read"
+          ],
+          "timeoutMs": 15000,
+          "idempotent": false
+        },
+        {
+          "id": "dev.aibo.pi.session.cancel",
+          "capability": {
+            "id": "aibo.session.cancel",
+            "version": "1.0.0"
+          },
+          "inputSchema": {
+            "type": "object",
+            "additionalProperties": false
+          },
+          "outputSchema": {
+            "type": "object",
+            "required": [
+              "accepted"
+            ],
+            "properties": {
+              "accepted": {
+                "const": true
+              }
+            }
+          },
+          "effect": "read",
+          "permissions": [
+            "workspace.read"
+          ],
+          "timeoutMs": 15000,
+          "idempotent": false
+        },
+        {
+          "id": "dev.aibo.pi.session.tool.respond",
+          "capability": {
+            "id": "aibo.session.tool.respond",
+            "version": "1.0.0"
+          },
+          "inputSchema": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "requestId"
+            ],
+            "properties": {
+              "requestId": {
+                "type": "string",
+                "minLength": 1
+              },
+              "result": {},
+              "error": {
+                "type": "string"
+              }
+            },
+            "oneOf": [
+              {
+                "required": [
+                  "result"
+                ],
+                "not": {
+                  "required": [
+                    "error"
+                  ]
+                }
+              },
+              {
+                "required": [
+                  "error"
+                ],
+                "not": {
+                  "required": [
+                    "result"
+                  ]
+                }
+              }
+            ]
+          },
+          "outputSchema": {
+            "type": "object",
+            "required": [
+              "resolved"
+            ],
+            "properties": {
+              "resolved": {
+                "const": true
+              }
+            }
+          },
+          "effect": "read",
+          "permissions": [
+            "workspace.read"
+          ],
+          "timeoutMs": 15000,
+          "idempotent": false
+        },
+        {
+          "id": "dev.aibo.pi.session.turn.write",
+          "capability": {
+            "id": "aibo.session.turn.write",
+            "version": "1.0.0"
+          },
+          "inputSchema": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "text"
+            ],
+            "properties": {
+              "text": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 200000
+              },
+              "attachments": {
+                "type": "array",
+                "maxItems": 100,
+                "items": {
+                  "type": "object"
+                }
+              }
+            }
+          },
+          "outputSchema": {
+            "type": "object",
+            "required": [
+              "status",
+              "recovery"
+            ],
+            "properties": {
+              "status": {
+                "enum": [
+                  "completed",
+                  "interrupted",
+                  "failed"
+                ]
+              },
+              "recovery": {
+                "type": [
+                  "object",
+                  "null"
+                ]
+              }
+            }
+          },
+          "effect": "write",
+          "permissions": [
+            "workspace.read",
+            "workspace.write"
+          ],
+          "timeoutMs": 43200000,
+          "idempotent": false
+        },
+        {
+          "id": "dev.aibo.pi.operation.model",
+          "capability": {
+            "id": "dev.aibo.pi.model.select",
+            "version": "1.0.0"
+          },
+          "inputSchema": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "action"
+            ],
+            "properties": {
+              "action": {
+                "enum": [
+                  "list",
+                  "set"
+                ]
+              },
+              "provider": {
+                "type": "string",
+                "minLength": 1
+              },
+              "modelId": {
+                "type": "string",
+                "minLength": 1
+              }
+            }
+          },
+          "outputSchema": {
+            "type": "object",
+            "properties": {
+              "recovery": {
+                "type": [
+                  "object",
+                  "null"
+                ]
+              },
+              "capabilities": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              }
+            },
+            "required": [
+              "recovery",
+              "capabilities"
+            ]
+          },
+          "effect": "read",
+          "permissions": [
+            "workspace.read"
+          ],
+          "timeoutMs": 120000,
+          "idempotent": false
+        },
+        {
+          "id": "dev.aibo.pi.operation.reasoning",
+          "capability": {
+            "id": "dev.aibo.pi.model.reasoning",
+            "version": "1.0.0"
+          },
+          "inputSchema": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "action"
+            ],
+            "properties": {
+              "action": {
+                "enum": [
+                  "list",
+                  "set"
+                ]
+              },
+              "level": {
+                "type": "string",
+                "minLength": 1
+              }
+            }
+          },
+          "outputSchema": {
+            "type": "object",
+            "properties": {
+              "recovery": {
+                "type": [
+                  "object",
+                  "null"
+                ]
+              },
+              "capabilities": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              }
+            },
+            "required": [
+              "recovery",
+              "capabilities"
+            ]
+          },
+          "effect": "read",
+          "permissions": [
+            "workspace.read"
+          ],
+          "timeoutMs": 120000,
+          "idempotent": false
+        },
+        {
+          "id": "dev.aibo.pi.operation.commands",
+          "capability": {
+            "id": "dev.aibo.pi.command.list",
+            "version": "1.0.0"
+          },
+          "inputSchema": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "action": {
+                "const": "get"
+              }
+            }
+          },
+          "outputSchema": {
+            "type": "object",
+            "properties": {
+              "recovery": {
+                "type": [
+                  "object",
+                  "null"
+                ]
+              },
+              "capabilities": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              }
+            },
+            "required": [
+              "recovery",
+              "capabilities"
+            ]
+          },
+          "effect": "read",
+          "permissions": [
+            "workspace.read"
+          ],
+          "timeoutMs": 120000,
+          "idempotent": false
+        },
+        {
+          "id": "dev.aibo.pi.operation.skills",
+          "capability": {
+            "id": "dev.aibo.pi.skill.list",
+            "version": "1.0.0"
+          },
+          "inputSchema": {
+            "type": "object",
+            "additionalProperties": false
+          },
+          "outputSchema": {
+            "type": "object",
+            "properties": {
+              "recovery": {
+                "type": [
+                  "object",
+                  "null"
+                ]
+              },
+              "capabilities": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              }
+            },
+            "required": [
+              "recovery",
+              "capabilities"
+            ]
+          },
+          "effect": "read",
+          "permissions": [
+            "workspace.read"
+          ],
+          "timeoutMs": 120000,
+          "idempotent": false
+        },
+        {
+          "id": "dev.aibo.pi.operation.queue",
+          "capability": {
+            "id": "dev.aibo.pi.queue.manage",
+            "version": "1.0.0"
+          },
+          "inputSchema": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "action"
+            ],
+            "properties": {
+              "action": {
+                "enum": [
+                  "steer",
+                  "followUp",
+                  "clear"
+                ]
+              },
+              "message": {
+                "type": "string",
+                "minLength": 1
+              }
+            }
+          },
+          "outputSchema": {
+            "type": "object",
+            "properties": {
+              "recovery": {
+                "type": [
+                  "object",
+                  "null"
+                ]
+              },
+              "capabilities": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              }
+            },
+            "required": [
+              "recovery",
+              "capabilities"
+            ]
+          },
+          "effect": "read",
+          "permissions": [
+            "workspace.read"
+          ],
+          "timeoutMs": 120000,
+          "idempotent": false
+        },
+        {
+          "id": "dev.aibo.pi.operation.compact",
+          "capability": {
+            "id": "dev.aibo.pi.compaction.run",
+            "version": "1.0.0"
+          },
+          "inputSchema": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "instructions": {
+                "type": "string"
+              }
+            }
+          },
+          "outputSchema": {
+            "type": "object",
+            "properties": {
+              "recovery": {
+                "type": [
+                  "object",
+                  "null"
+                ]
+              },
+              "capabilities": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              }
+            },
+            "required": [
+              "recovery",
+              "capabilities"
+            ]
+          },
+          "effect": "read",
+          "permissions": [
+            "workspace.read"
+          ],
+          "timeoutMs": 120000,
+          "idempotent": false
+        },
+        {
+          "id": "dev.aibo.pi.operation.tree",
+          "capability": {
+            "id": "dev.aibo.pi.session.tree",
+            "version": "1.0.0"
+          },
+          "inputSchema": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "action": {
+                "enum": [
+                  "get",
+                  "navigate"
+                ]
+              },
+              "entryId": {
+                "type": "string",
+                "minLength": 1
+              },
+              "summarize": {
+                "type": "boolean"
+              },
+              "customInstructions": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              }
+            }
+          },
+          "outputSchema": {
+            "type": "object",
+            "properties": {
+              "recovery": {
+                "type": [
+                  "object",
+                  "null"
+                ]
+              },
+              "capabilities": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              }
+            },
+            "required": [
+              "recovery",
+              "capabilities"
+            ]
+          },
+          "effect": "read",
+          "permissions": [
+            "workspace.read"
+          ],
+          "timeoutMs": 120000,
+          "idempotent": false
+        },
+        {
+          "id": "dev.aibo.pi.operation.snapshot",
+          "capability": {
+            "id": "dev.aibo.pi.session.snapshot",
+            "version": "1.0.0"
+          },
+          "inputSchema": {
+            "type": "object",
+            "additionalProperties": false
+          },
+          "outputSchema": {
+            "type": "object",
+            "properties": {
+              "recovery": {
+                "type": [
+                  "object",
+                  "null"
+                ]
+              },
+              "capabilities": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              }
+            },
+            "required": [
+              "recovery",
+              "capabilities"
+            ]
+          },
+          "effect": "read",
+          "permissions": [
+            "workspace.read"
+          ],
+          "timeoutMs": 120000,
+          "idempotent": false
+        },
+        {
+          "id": "dev.aibo.pi.operation.reload",
+          "capability": {
+            "id": "dev.aibo.pi.session.reload",
+            "version": "1.0.0"
+          },
+          "inputSchema": {
+            "type": "object",
+            "additionalProperties": false
+          },
+          "outputSchema": {
+            "type": "object",
+            "properties": {
+              "recovery": {
+                "type": [
+                  "object",
+                  "null"
+                ]
+              },
+              "capabilities": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              }
+            },
+            "required": [
+              "recovery",
+              "capabilities"
+            ]
+          },
+          "effect": "read",
+          "permissions": [
+            "workspace.read"
+          ],
+          "timeoutMs": 120000,
+          "idempotent": false
+        }
+      ]
+    }
+  ]
+}

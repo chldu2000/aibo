@@ -1,0 +1,20 @@
+{
+  "results": [
+    {
+      "kit": "shadcn",
+      "normalAnimation": true,
+      "normalTransitions": true,
+      "checkedStyles": 444,
+      "reducedMotionComputed": true,
+      "layoutRecovery": true
+    },
+    {
+      "kit": "material3",
+      "normalAnimation": true,
+      "normalTransitions": true,
+      "checkedStyles": 363,
+      "reducedMotionComputed": true,
+      "layoutRecovery": true
+    }
+  ]
+}

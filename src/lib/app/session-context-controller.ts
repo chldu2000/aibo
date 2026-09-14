@@ -16,6 +16,7 @@ import type {
 } from '$lib/types';
 import { toErrorMessage } from './error-utils';
 import { sessionAgentKind } from './agent-kind';
+import { createAgentFacade } from './agent-facade';
 
 export type SessionContextControllerContext = {
   api: {
@@ -60,6 +61,7 @@ export type SessionContextControllerContext = {
 
 /** Reads selected-session context and normalizes refresh feedback for the UI. */
 export function createSessionContextController(context: SessionContextControllerContext) {
+  const agent = createAgentFacade(context.api);
   async function refreshCodexThreads(
     workspaceId: string,
     announce = false,
@@ -99,7 +101,7 @@ export function createSessionContextController(context: SessionContextController
       if (sessionId === context.getSelectedSessionId()) {
         context.setCodexThreadSnapshot(snapshot);
       }
-      if (announce) context.setNotice(`已读取远端线程，共 ${snapshot.turnCount} 轮。`);
+      if (announce) context.setNotice(snapshot.turnCount === null ? '已读取远端线程，原生引擎未提供轮次统计。' : `已读取远端线程，共 ${snapshot.turnCount} 轮。`);
     } catch (error) {
       if (sessionId === context.getSelectedSessionId()) {
         context.setCodexThreadSnapshot(null);
@@ -222,20 +224,18 @@ export function createSessionContextController(context: SessionContextController
   async function refreshPiTree(sessionId: string): Promise<void> {
     if (sessionId === context.getArchivingSessionId()) return;
     const session = context.findSession(sessionId);
-    if (!context.getDesktop() || !session || (sessionAgentKind(session) !== 'pi' && !session.capabilities.includes('session.tree'))) {
+    if (!context.getDesktop() || !session || !session.capabilities.includes('session.tree')) {
       if (sessionId === context.getSelectedSessionId()) context.setPiTree(null);
       return;
     }
     try {
-      const result = session.pluginInstallationId
-        ? await context.api.invokeAgentCapability(sessionId, 'session.tree', { action: 'get' })
-        : await context.api.getPiSessionTree(sessionId);
-      const snapshot: PiSessionTreeSnapshot = session.pluginInstallationId ? {
+      const result = await agent.invoke(session, 'session.tree', { action: 'get' });
+      const snapshot: PiSessionTreeSnapshot = {
         sessionId,
         externalSessionId: typeof result.externalSessionId === 'string' ? result.externalSessionId : null,
         leafId: typeof result.leafId === 'string' ? result.leafId : null,
         tree: Array.isArray(result.tree) ? result.tree as PiSessionTreeSnapshot['tree'] : [],
-      } : result as PiSessionTreeSnapshot;
+      };
       if (sessionId === context.getSelectedSessionId()) context.setPiTree(snapshot);
     } catch (error) {
       if (sessionId === context.getSelectedSessionId()) {

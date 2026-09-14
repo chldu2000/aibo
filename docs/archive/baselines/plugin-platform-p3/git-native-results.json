@@ -1,0 +1,71 @@
+{
+  "results": [
+    {
+      "ok": true,
+      "stage": 0,
+      "evidence": {
+        "backgroundGitWithoutUi": true,
+        "installedCommands": [
+          {
+            "kit": "shadcn",
+            "title": "Git 工作区变更",
+            "commandDiscovered": true,
+            "collection": true,
+            "realDiff": true
+          },
+          {
+            "kit": "material3",
+            "title": "Git 工作区变更",
+            "commandDiscovered": true,
+            "collection": true,
+            "realDiff": true
+          },
+          {
+            "kit": "material3",
+            "title": "Git 变更（独立声明包）",
+            "commandDiscovered": true,
+            "collection": true,
+            "realDiff": true
+          }
+        ],
+        "disablingViewClosesSurface": true,
+        "noAgentSession": true
+      }
+    },
+    {
+      "ok": true,
+      "stage": 1,
+      "evidence": {
+        "backgroundGitWithoutUi": true,
+        "installedCommands": [
+          {
+            "kit": "shadcn",
+            "title": "Git 工作区变更",
+            "commandDiscovered": true,
+            "collection": true,
+            "realDiff": true
+          },
+          {
+            "kit": "material3",
+            "title": "Git 工作区变更",
+            "commandDiscovered": true,
+            "collection": true,
+            "realDiff": true
+          },
+          {
+            "kit": "material3",
+            "title": "Git 变更（独立声明包）",
+            "commandDiscovered": true,
+            "collection": true,
+            "realDiff": true
+          }
+        ],
+        "disablingViewClosesSurface": true,
+        "noAgentSession": true,
+        "actualAppRestart": true,
+        "persistedCapabilityBinding": true,
+        "uninstallInvalidatesBothForms": true
+      }
+    }
+  ]
+}

@@ -1,0 +1,31 @@
+{
+  "ok": true,
+  "results": [
+    {
+      "kit": "shadcn",
+      "runId": "01M28ZWBCYJ2RKGND46K9NEDRK",
+      "status": "outcome_unknown",
+      "stopButton": true,
+      "history": true
+    },
+    {
+      "kit": "material3",
+      "runId": "01M28ZWC3NW4C1XKHK2VPXTYHV",
+      "status": "outcome_unknown",
+      "stopButton": true,
+      "history": true
+    }
+  ],
+  "denialPreventedExecution": true,
+  "workspaceWriteHistory": true,
+  "duplicateWriteReused": true,
+  "writeRunId": "01M28ZWAP1JGM26QM88ATP63C7",
+  "nativeClicks": [
+    "clicked isolated dialog: 取消",
+    "clicked isolated dialog: 允许本次执行",
+    "clicked isolated dialog: 允许本次执行"
+  ],
+  "platform": "darwin",
+  "earlierEffectsPreserved": true,
+  "descendantEffectsStopped": true
+}

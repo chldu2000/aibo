@@ -22,7 +22,7 @@ export type AgentEventHandlerContext = {
   ) => void;
   setPendingApprovals: (approvals: ApprovalRequest[]) => void;
   setPendingUserInputs: (requests: UserInputRequest[]) => void;
-  setUsageSnapshot: (usage: Record<string, unknown> | null) => void;
+  setUsageSnapshot: (sessionId: string, usage: Record<string, unknown> | null) => void;
   setQueueSnapshot: (queue: AgentQueueSnapshot | null) => void;
   setTimeline: (timeline: TimelineItem[]) => void;
   refreshTimeline?: (sessionId: string) => void | Promise<void>;
@@ -41,7 +41,17 @@ export function eventTimelineItemId(event: Pick<AgentEvent, 'turnId'>, itemId: s
 
 export function handleAgentEvent(event: AgentEvent, context: AgentEventHandlerContext): void {
   const selectedSessionId = context.selectedSessionId;
-  const state = event.type === 'session.state_changed' ? event.payload.state : undefined;
+  const state = event.type === 'session.state_changed'
+    ? event.payload.state
+    : event.type === 'turn.failed'
+      ? 'failed'
+      : event.type === 'turn.completed'
+        ? event.payload.status === 'interrupted'
+          ? 'interrupted'
+          : event.payload.status === 'failed'
+            ? 'failed'
+            : 'idle'
+        : undefined;
 
   // A turn can spend time between two streamed items (for example, after a
   // tool completes and before Pi starts its next response). Keep that phase
@@ -234,6 +244,7 @@ export function handleAgentEvent(event: AgentEvent, context: AgentEventHandlerCo
   if (event.sessionId === selectedSessionId && event.type === 'usage.updated') {
     const usage = event.payload.usage;
     context.setUsageSnapshot(
+      event.sessionId,
       usage && typeof usage === 'object' && !Array.isArray(usage)
         ? (usage as Record<string, unknown>)
         : null,

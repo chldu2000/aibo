@@ -10,6 +10,10 @@
     disabled,
     onSelect,
   }: UiModelMatrixProps = $props();
+
+  function effortIntensity(index: number, count: number): number {
+    return Math.max(1, Math.ceil(((index + 1) / Math.max(count, 1)) * 4));
+  }
 </script>
 
 <div class="m3-model-matrix-wrap">
@@ -18,8 +22,8 @@
       <tr>
         <th scope="col">模型</th>
         <th scope="col" title={defaultTitle}>{defaultLabel}</th>
-        {#each columns as column (column.id)}
-          <th scope="col" title={column.description ?? column.label}>{column.label}</th>
+        {#each columns as column, columnIndex (column.id)}
+          <th scope="col" data-intensity={effortIntensity(columnIndex, columns.length)} title={column.description ?? column.label}>{column.label}</th>
         {/each}
       </tr>
     </thead>
@@ -40,17 +44,23 @@
               onclick={() => onSelect(row.reference, null)}
             >{#if row.defaultActive}<Icon name="check" size={12} />{:else}<span aria-hidden="true">—</span>{/if}</button>
           </td>
-          {#each row.cells as cell (cell.id)}
+          {#each row.cells as cell, cellIndex (cell.id)}
             <td>
               <button
                 type="button"
                 class:active={cell.active}
+                data-intensity={effortIntensity(cellIndex, columns.length)}
                 aria-label={`${row.label}，${cell.label}`}
                 aria-pressed={cell.active}
                 disabled={!cell.available || disabled}
                 title={cell.available ? `${row.label} · ${cell.label}` : `${row.label} 不支持 ${cell.label}`}
                 onclick={() => onSelect(row.reference, cell.id)}
-              >{#if cell.active}<Icon name="check" size={12} />{:else}<span aria-hidden="true">{cell.available ? '○' : '—'}</span>{/if}</button>
+              >
+                <span class="effort-orbit" aria-hidden="true"></span>
+                <span class="effort-spark effort-spark-a" aria-hidden="true"></span>
+                <span class="effort-spark effort-spark-b" aria-hidden="true"></span>
+                <span class="effort-mark">{#if cell.active}<Icon name="check" size={12} />{:else}<span aria-hidden="true">{cell.available ? '○' : '—'}</span>{/if}</span>
+              </button>
             </td>
           {/each}
         </tr>
@@ -107,6 +117,9 @@
     white-space: nowrap;
   }
 
+  .m3-model-matrix thead th[data-intensity="3"] { color: color-mix(in srgb, var(--m3c-on-surface-variant) 68%, var(--m3c-primary)); }
+  .m3-model-matrix thead th[data-intensity="4"] { color: var(--m3c-primary); }
+
   .m3-model-matrix thead th:first-child {
     z-index: 2;
     left: 0;
@@ -152,6 +165,7 @@
   }
 
   .m3-model-matrix td button {
+    position: relative;
     display: inline-flex;
     width: 100%;
     height: 32px;
@@ -166,7 +180,15 @@
     line-height: var(--m3-body-medium-line-height);
     text-align: center;
     transition: background-color var(--m3-easing-fast), color var(--m3-easing-fast);
+    isolation: isolate;
   }
+
+  .effort-mark { position: relative; z-index: 2; display: inline-flex; }
+  .effort-orbit, .effort-spark { position: absolute; pointer-events: none; }
+  .effort-orbit { z-index: 0; inset: 3px; border: 1px solid transparent; border-radius: inherit; opacity: 0; }
+  .effort-spark { z-index: 1; width: 3px; height: 3px; border-radius: 50%; background: var(--m3c-on-primary-container); opacity: 0; }
+  .effort-spark-a { top: 5px; right: 8px; }
+  .effort-spark-b { bottom: 5px; left: 8px; }
 
   .m3-model-matrix td button:hover:not(:disabled),
   .m3-model-matrix td button:focus-visible {
@@ -180,6 +202,22 @@
     color: var(--m3c-on-primary-container);
     background: var(--m3c-primary-container);
   }
+
+  .m3-model-matrix td button.active[data-intensity="2"] { box-shadow: 0 1px 5px color-mix(in srgb, var(--m3c-primary) 24%, transparent); }
+  .m3-model-matrix td button.active[data-intensity="3"] { box-shadow: 0 2px 9px color-mix(in srgb, var(--m3c-primary) 36%, transparent); transform: translateY(-1px); }
+  .m3-model-matrix td button.active[data-intensity="4"] { box-shadow: 0 3px 14px color-mix(in srgb, var(--m3c-primary) 50%, transparent); transform: translateY(-1px) scale(1.03); }
+
+  @media (prefers-reduced-motion: no-preference) {
+    .m3-model-matrix td button.active[data-intensity="3"] .effort-orbit,
+    .m3-model-matrix td button.active[data-intensity="4"] .effort-orbit { border-color: color-mix(in srgb, var(--m3c-primary) 42%, transparent); opacity: .8; animation: m3-effort-orbit 2.4s cubic-bezier(.2, 0, 0, 1) infinite; }
+    .m3-model-matrix td button.active[data-intensity="4"] { animation: m3-effort-bloom 2s cubic-bezier(.2, 0, 0, 1) infinite; }
+    .m3-model-matrix td button.active[data-intensity="4"] .effort-spark { animation: m3-effort-spark 1.5s ease-in-out infinite; }
+    .m3-model-matrix td button.active[data-intensity="4"] .effort-spark-b { animation-delay: -.75s; }
+  }
+
+  @keyframes m3-effort-orbit { 0% { opacity: 0; transform: scale(.7); } 35% { opacity: .85; } 75%, 100% { opacity: 0; transform: scale(1.18); } }
+  @keyframes m3-effort-bloom { 0%, 100% { filter: saturate(1); } 50% { filter: saturate(1.25) brightness(1.06); } }
+  @keyframes m3-effort-spark { 0%, 100% { opacity: 0; transform: scale(.4); } 45% { opacity: 1; transform: scale(1.45); } 70% { opacity: 0; transform: translateY(-4px) scale(.7); } }
 
   .m3-model-matrix td button:disabled {
     cursor: not-allowed;

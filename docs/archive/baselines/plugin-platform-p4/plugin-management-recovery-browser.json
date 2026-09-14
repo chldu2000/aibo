@@ -1,0 +1,18 @@
+{
+  "results": [
+    {
+      "kit": "shadcn",
+      "diagnosticVisible": true,
+      "brokenEnabledPluginCanBeDisabled": true,
+      "brokenDisabledPluginCannotBeEnabled": true,
+      "uninstallAvailable": true
+    },
+    {
+      "kit": "material3",
+      "diagnosticVisible": true,
+      "brokenEnabledPluginCanBeDisabled": true,
+      "brokenDisabledPluginCannotBeEnabled": true,
+      "uninstallAvailable": true
+    }
+  ]
+}

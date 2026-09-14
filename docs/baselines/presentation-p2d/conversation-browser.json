@@ -1,0 +1,14 @@
+{
+  "passed": true,
+  "nativePort": "mocked; actual App.svelte, default components and Worker",
+  "browser": "153.0.8010.12",
+  "checks": [
+    "complete timeline metadata",
+    "rapid composer input and host send",
+    "model selection resolves host arguments",
+    "capability-based compaction",
+    "answer drafts survive external/default/external switch",
+    "host submits current request answers",
+    "running queue and stop dispatch through host"
+  ]
+}

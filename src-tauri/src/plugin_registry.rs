@@ -1,4 +1,5 @@
-use crate::plugin_contract::contracts;
+use crate::plugin_manifest::{self, Contribution};
+use crate::plugin_dependencies::{self, Report as DependencyReport};
 use serde::Serialize;
 use serde_json::Value;
 use sha2::{Digest, Sha256};
@@ -33,10 +34,13 @@ pub(crate) struct PluginInstallation {
     pub installed: bool,
     pub runnable: bool,
     pub dependencies: Vec<PluginDependencyDiagnostic>,
+    pub contributions: Vec<Contribution>,
+    pub activation_issues: Vec<String>,
+    pub package_dependencies: DependencyReport,
     pub manifest: Value,
 }
 
-fn parse_dependency_version(output: &str) -> Option<semver::Version> {
+pub(crate) fn parse_dependency_version(output: &str) -> Option<semver::Version> {
     output.split_whitespace().find_map(|token| {
         let token = token.trim_matches(|character: char| !character.is_ascii_alphanumeric() && !matches!(character, '.' | '-' | '+')).trim_start_matches('v');
         if !token.chars().next().is_some_and(|character|character.is_ascii_digit()) { return None; }
@@ -69,7 +73,10 @@ fn executable_version(path: &Path) -> Result<semver::Version, &'static str> {
 }
 
 pub(crate) fn dependency_diagnostics(manifest: &Value) -> Vec<PluginDependencyDiagnostic> {
-    manifest["dependencies"].as_array().into_iter().flatten().map(|dependency| {
+    let normalized = plugin_manifest::normalize(manifest).ok();
+    let dependencies = normalized.as_ref().map(|model| model.executable_dependencies.as_slice())
+        .unwrap_or_else(|| manifest["dependencies"].as_array().map(Vec::as_slice).unwrap_or_default());
+    dependencies.iter().map(|dependency| {
         let name = dependency["name"].as_str().unwrap().to_owned();
         let executable = crate::find_executable(&name).map(|path|path.to_string_lossy().into_owned());
         let version_range = dependency["versionRange"].as_str().map(ToOwned::to_owned);
@@ -147,18 +154,18 @@ pub(crate) fn inspect(root: &Path) -> Result<(Value, Vec<PathBuf>, String), Stri
     let manifest_path = package_path(root, "plugin.json")?;
     if fs::metadata(&manifest_path).map_err(io_error)?.len() > 1_048_576 { return Err("invalid_request: manifest too large".into()); }
     let manifest: Value = serde_json::from_slice(&fs::read(manifest_path).map_err(io_error)?).map_err(io_error)?;
-    if !contracts().manifest.is_valid(&manifest) { return Err("invalid_request: manifest schema validation failed".into()); }
+    let normalized = plugin_manifest::normalize(&manifest)?;
     if !manifest["platforms"].as_array().unwrap().iter().any(|p| p == &platform()) { return Err("protocol_incompatible: package platform".into()); }
-    for name in ["runtime", "view"] {
+    for name in if normalized.version == 1 { vec!["runtime", "view"] } else { vec![] } {
         let range = &manifest["protocols"][name];
         if range.is_null() && name == "view" { continue; }
         // Initial host implements exactly v1.0; reject unsupported major/minor bounds.
         if range["min"] != "1.0" || range["max"] != "1.0" { return Err("protocol_incompatible: supported protocol is 1.0".into()); }
     }
-    package_path(root, manifest["entrypoint"]["executable"].as_str().unwrap())?;
+    if let Some(executable) = manifest["entrypoint"]["executable"].as_str() { package_path(root, executable)?; }
     let mut ids = HashSet::new();
-    for agent in manifest["agents"].as_array().unwrap() {
-        if !ids.insert(agent["agentId"].as_str().unwrap()) { return Err("manifest_mismatch: duplicate Agent ID".into()); }
+    for agent in normalized.session_agents(manifest["pluginId"].as_str().unwrap()) {
+        if !ids.insert(agent["agentId"].as_str().unwrap().to_owned()) { return Err("manifest_mismatch: duplicate Agent ID".into()); }
     }
     if let Some(resources) = manifest["resources"].as_array() {
         for resource in resources {
@@ -203,14 +210,19 @@ pub(crate) async fn list(db: &SqlitePool) -> Result<Vec<PluginInstallation>, Str
          ORDER BY p.created_at, p.id",
     )
         .fetch_all(db).await.map_err(|e| e.to_string())?;
-    rows.into_iter().map(|row| {
+    let mut installations = Vec::new();
+    for row in rows {
         let manifest: Value = serde_json::from_str(row.get::<&str, _>("manifest_json")).map_err(io_error)?;
+        let normalized = plugin_manifest::normalize(&manifest)?;
+        let activation_issues = plugin_manifest::activation_issues(&manifest)?;
+        let package_dependencies = plugin_dependencies::resolve(db, row.get("id"), false).await?;
         let dependencies = dependency_diagnostics(&manifest);
         let installed = row.get::<i64, _>("installed") != 0;
-        Ok(PluginInstallation { id: row.get("id"), plugin_id: row.get("plugin_id"), plugin_version: row.get("plugin_version"),
+        installations.push(PluginInstallation { id: row.get("id"), plugin_id: row.get("plugin_id"), plugin_version: row.get("plugin_version"),
             package_digest: row.get("package_digest"), enabled: row.get::<i64, _>("enabled") != 0, installed,
-            runnable: installed && dependencies.iter().all(|dependency|!dependency.required || dependency.available), dependencies, manifest })
-    }).collect()
+            runnable: installed && package_dependencies.ready() && activation_issues.is_empty() && dependencies.iter().all(|dependency|!dependency.required || dependency.available), dependencies, contributions: normalized.contributions, activation_issues, package_dependencies, manifest });
+    }
+    Ok(installations)
 }
 
 pub(crate) async fn install(db: &SqlitePool, data_dir: &Path, source: &Path) -> Result<PluginInstallation, String> {
@@ -221,6 +233,7 @@ pub(crate) async fn install(db: &SqlitePool, data_dir: &Path, source: &Path) -> 
     let registry = registry.canonicalize().map_err(io_error)?;
     if source.starts_with(&registry) || registry.starts_with(&source) { return Err("invalid_request: package and registry must be separate".into()); }
     let (manifest, entries, expected_digest) = inspect(&source)?;
+    let normalized = plugin_manifest::normalize(&manifest)?;
     let existing: Option<String> = sqlx::query_scalar("SELECT id FROM plugin_installations WHERE plugin_id=? AND plugin_version=? AND package_digest=? AND installed=0")
         .bind(manifest["pluginId"].as_str().unwrap()).bind(manifest["version"].as_str().unwrap()).bind(&expected_digest)
         .fetch_optional(db).await.map_err(io_error)?;
@@ -241,7 +254,7 @@ pub(crate) async fn install(db: &SqlitePool, data_dir: &Path, source: &Path) -> 
     if let Err(error) = copy_result { let _ = fs::remove_dir_all(&staging); return Err(error); }
     let persist = async {
         let mut transaction = db.begin().await.map_err(io_error)?;
-        for agent in manifest["agents"].as_array().unwrap() {
+        for agent in normalized.session_agents(manifest["pluginId"].as_str().unwrap()) {
             let conflict: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM agent_contributions a JOIN plugin_installations p ON a.installation_id = p.id WHERE a.agent_id = ? AND p.plugin_id <> ?")
                 .bind(agent["agentId"].as_str().unwrap()).bind(manifest["pluginId"].as_str().unwrap()).fetch_one(&mut *transaction).await.map_err(io_error)?;
             if conflict != 0 { return Err("manifest_mismatch: Agent ID belongs to another plugin".into()); }
@@ -254,7 +267,7 @@ pub(crate) async fn install(db: &SqlitePool, data_dir: &Path, source: &Path) -> 
                 .bind(&id).bind(manifest["pluginId"].as_str().unwrap()).bind(manifest["version"].as_str().unwrap()).bind(&expected_digest)
                 .bind(source.to_string_lossy().as_ref()).bind(destination.to_string_lossy().as_ref()).bind(manifest.to_string()).bind(crate::now_iso())
                 .execute(&mut *transaction).await.map_err(io_error)?;
-            for agent in manifest["agents"].as_array().unwrap() {
+            for agent in normalized.session_agents(manifest["pluginId"].as_str().unwrap()) {
                 sqlx::query("INSERT INTO agent_contributions (installation_id, agent_id, metadata_json) VALUES (?, ?, ?)")
                     .bind(&id).bind(agent["agentId"].as_str().unwrap()).bind(agent.to_string()).execute(&mut *transaction).await.map_err(io_error)?;
             }
@@ -264,16 +277,23 @@ pub(crate) async fn install(db: &SqlitePool, data_dir: &Path, source: &Path) -> 
         Ok::<(), String>(())
     }.await;
     if let Err(error) = persist { let _ = fs::remove_dir_all(&staging); let _ = fs::remove_dir_all(&destination); return Err(error); }
+    let retained = registry.join(format!(".retained-{id}"));
+    if retained.exists() { fs::remove_dir_all(retained).map_err(io_error)?; }
     let dependencies = dependency_diagnostics(&manifest);
-    let runnable = dependencies.iter().all(|dependency|!dependency.required || dependency.available);
+    let activation_issues = plugin_manifest::activation_issues(&manifest)?;
+    let package_dependencies = plugin_dependencies::resolve(db, &id, false).await?;
+    let runnable = package_dependencies.ready() && activation_issues.is_empty() && dependencies.iter().all(|dependency|!dependency.required || dependency.available);
     Ok(PluginInstallation { id, plugin_id: manifest["pluginId"].as_str().unwrap().into(), plugin_version: manifest["version"].as_str().unwrap().into(),
-        package_digest: expected_digest, enabled: false, installed: true, runnable, dependencies, manifest })
+        package_digest: expected_digest, enabled: false, installed: true, runnable, dependencies, contributions: normalized.contributions, activation_issues, package_dependencies, manifest })
 }
 
 pub(crate) async fn install_builtins(db: &SqlitePool, data_dir: &Path) -> Result<(), String> {
+    // Keep retired package metadata for history, but never advertise it as enabled.
+    sqlx::query("UPDATE plugin_installations SET enabled=0 WHERE json_extract(manifest_json,'$.schema')='aibo.plugin-manifest/v1'")
+        .execute(db).await.map_err(io_error)?;
     for (directory, files) in [
-        ("codex-1.0.0", vec![("plugin.json", include_bytes!("../builtin-plugins/codex/plugin.json").as_slice()), ("codex-plugin.mjs", include_bytes!("../builtin-plugins/codex/codex-plugin.mjs").as_slice())]),
-        ("pi-1.0.0", vec![("plugin.json", include_bytes!("../builtin-plugins/pi/plugin.json").as_slice()), ("pi-plugin.mjs", include_bytes!("../builtin-plugins/pi/pi-plugin.mjs").as_slice())]),
+        ("codex-2.0.0", vec![("plugin.json", include_bytes!("../capability-plugins/codex/plugin.json").as_slice()), ("engine.mjs", include_bytes!("../capability-plugins/codex/engine.mjs").as_slice()), ("worker.mjs", include_bytes!("../capability-plugins/codex/worker.mjs").as_slice()), ("session-provider.mjs", include_bytes!("../capability-plugins/session-provider.mjs").as_slice()), ("runtime.mjs", include_bytes!("../../packages/capability-runtime/runtime.mjs").as_slice()), ("stdio.mjs", include_bytes!("../../packages/capability-runtime/stdio.mjs").as_slice())]),
+        ("pi-2.0.0", vec![("plugin.json", include_bytes!("../capability-plugins/pi/plugin.json").as_slice()), ("engine.mjs", include_bytes!("../capability-plugins/pi/engine.mjs").as_slice()), ("worker.mjs", include_bytes!("../capability-plugins/pi/worker.mjs").as_slice()), ("session-provider.mjs", include_bytes!("../capability-plugins/session-provider.mjs").as_slice()), ("runtime.mjs", include_bytes!("../../packages/capability-runtime/runtime.mjs").as_slice()), ("stdio.mjs", include_bytes!("../../packages/capability-runtime/stdio.mjs").as_slice())]),
     ] {
         let source = data_dir.join("bundled-plugin-sources").join(directory);
         fs::create_dir_all(&source).map_err(io_error)?;
@@ -288,15 +308,67 @@ pub(crate) async fn install_builtins(db: &SqlitePool, data_dir: &Path) -> Result
             .bind(manifest["pluginId"].as_str().unwrap()).bind(manifest["version"].as_str().unwrap()).bind(digest)
             .fetch_optional(db).await.map_err(io_error)?;
         let id = match existing { Some(id) => id, None => install(db, data_dir, &source).await?.id };
-        enable(db, &id, true).await?;
+        if let Err(error) = enable(db, &id, true).await {
+            if error.starts_with("protocol_incompatible:") || error.starts_with("dependency_missing:") {
+                tracing::error!(plugin_id=manifest["pluginId"].as_str().unwrap_or("unknown"),installation_id=%id,%error,"bundled plugin was installed but could not be enabled");
+                continue;
+            }
+            return Err(error);
+        }
     }
     Ok(())
 }
 
 pub(crate) async fn enable(db: &SqlitePool, id: &str, enabled: bool) -> Result<(), String> {
+    if enabled {
+        let raw: String = sqlx::query_scalar("SELECT manifest_json FROM plugin_installations WHERE id=? AND installed=1")
+            .bind(id).fetch_optional(db).await.map_err(io_error)?.ok_or("invalid_request: installation not found")?;
+        let manifest: Value = serde_json::from_str(&raw).map_err(io_error)?;
+        let issues = plugin_manifest::activation_issues(&manifest)?;
+        if !issues.is_empty() { return Err(format!("protocol_incompatible: {}", issues.join(" "))); }
+        if manifest["schema"] == "aibo.plugin-manifest/v2" && dependency_diagnostics(&manifest).iter().any(|dependency|dependency.required && !dependency.available) {
+            return Err("dependency_missing: required executable dependency is unavailable".into());
+        }
+    }
+    if enabled {
+        let report = plugin_dependencies::resolve(db, id, true).await?;
+        if !report.ready() {
+            let problem = report.dependencies.iter().find(|dependency|dependency.required && !dependency.available).unwrap();
+            return Err(format!("{}: {}",problem.plugin_id,problem.issue.as_deref().unwrap_or("dependency unavailable")));
+        }
+    }
     let changed = sqlx::query("UPDATE plugin_installations SET enabled = ?, enabled_at = ? WHERE id = ? AND installed=1")
         .bind(enabled).bind(if enabled { Some(crate::now_iso()) } else { None }).bind(id).execute(db).await.map_err(io_error)?;
     if changed.rows_affected() != 1 { return Err("invalid_request: installation not found".into()); }
+    Ok(())
+}
+
+// Recovery references outlive active processes. Closed sessions retain their exact release.
+async fn recovery_references(db: &SqlitePool, id: &str) -> Result<i64,String> {
+    sqlx::query_scalar("WITH RECURSIVE retained(id) AS (
+        SELECT id FROM plugin_installations WHERE installed=1 AND id<>?
+        UNION SELECT plugin_installation_id FROM sessions WHERE plugin_installation_id IS NOT NULL
+        UNION SELECT installation_id FROM capability_invocations WHERE status='running'
+        UNION SELECT installation_id FROM capability_provider_bindings
+        UNION SELECT installation_id FROM capability_binding_candidates
+        UNION SELECT d.dependency_installation_id FROM plugin_dependency_bindings d JOIN retained r ON r.id=d.installation_id
+    ) SELECT COUNT(*) FROM retained WHERE id=?")
+        .bind(id).bind(id).fetch_one(db).await.map_err(io_error)
+}
+
+/// Reclaim only tombstoned releases whose exact-release recovery references are gone.
+pub(crate) async fn collect_retired(db: &SqlitePool, data_dir: &Path) -> Result<(),String> {
+    let _lock = INSTALL_LOCK.lock().await;
+    let registry=data_dir.join("plugins");
+    if !registry.exists() { return Ok(()); }
+    let registry=registry.canonicalize().map_err(io_error)?;
+    let rows=sqlx::query("SELECT id,install_path FROM plugin_installations WHERE installed=0").fetch_all(db).await.map_err(io_error)?;
+    for row in rows {
+        let id: String=row.get("id");
+        let path=PathBuf::from(row.get::<String,_>("install_path"));
+        if path != registry.join(format!(".retained-{id}")) || recovery_references(db,&id).await? != 0 {continue;}
+        if path.exists() {fs::remove_dir_all(path).map_err(io_error)?;}
+    }
     Ok(())
 }
 
@@ -312,13 +384,16 @@ pub(crate) async fn uninstall(db: &SqlitePool, data_dir: &Path, id: &str) -> Res
     if parent != registry || path.file_name().and_then(|name|name.to_str()) != Some(id) {
         return Err("invalid_request: installation path escapes registry".into());
     }
-    let trash = parent.join(format!(".removing-{id}"));
+    let active:i64=sqlx::query_scalar("SELECT COUNT(*) FROM capability_invocations WHERE installation_id=? AND status='running'").bind(id).fetch_one(db).await.map_err(io_error)?;
+    if active != 0 {return Err("busy: capability invocations must drain before uninstall".into());}
+    let retained = recovery_references(db,id).await? > 0;
+    let trash = parent.join(format!(".retained-{id}"));
     if path.exists() { fs::rename(&path, &trash).map_err(io_error)?; }
-    let result = sqlx::query("UPDATE plugin_installations SET installed=0,enabled=0,enabled_at=NULL,removed_at=? WHERE id=? AND installed=1")
-        .bind(crate::now_iso()).bind(id).execute(db).await.map_err(io_error);
+    let result = sqlx::query("UPDATE plugin_installations SET installed=0,enabled=0,enabled_at=NULL,removed_at=?,install_path=? WHERE id=? AND installed=1")
+        .bind(crate::now_iso()).bind(trash.to_string_lossy().as_ref()).bind(id).execute(db).await.map_err(io_error);
     match result {
         Ok(changed) if changed.rows_affected() == 1 => {
-            if trash.exists() { fs::remove_dir_all(trash).map_err(io_error)?; }
+            if !retained && trash.exists() { fs::remove_dir_all(trash).map_err(io_error)?; }
             Ok(())
         }
         _ => {
@@ -332,6 +407,62 @@ pub(crate) async fn uninstall(db: &SqlitePool, data_dir: &Path, id: &str) -> Res
 mod tests {
     use super::*;
     use sqlx::Connection;
+
+    #[tokio::test]
+    async fn installs_declarative_v2_without_an_entrypoint_but_requires_its_dependency() {
+        let root = std::env::temp_dir().join(format!("aibo-v2-registry-{}", ulid::Ulid::new()));
+        let package = root.join("package");
+        fs::create_dir_all(&package).unwrap();
+        let original: Value = serde_json::from_str(include_str!("../../fixtures/plugins/platform-v2/declarative.json")).unwrap();
+        fs::write(package.join("plugin.json"), original.to_string()).unwrap();
+        let data = root.join("data");
+        let db = crate::open_database(&data.join("aibo.sqlite3")).await.unwrap();
+        let installed = install(&db, &data, &package).await.unwrap();
+        assert_eq!(installed.manifest, original);
+        assert!(installed.installed && !installed.enabled && !installed.runnable);
+        assert!(installed.dependencies.is_empty(), "package dependencies are not local executable probes");
+        assert_eq!(installed.contributions.len(), 1);
+        assert_eq!(installed.contributions[0].kind, "semanticView");
+        assert!(installed.activation_issues.is_empty());
+        assert!(!installed.package_dependencies.ready());
+        assert!(enable(&db, &installed.id, true).await.unwrap_err().contains("dependency"));
+        assert!(!list(&db).await.unwrap()[0].enabled);
+        let sessions: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM sessions").fetch_one(&db).await.unwrap();
+        assert_eq!(sessions, 0);
+        let agents: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM agent_contributions").fetch_one(&db).await.unwrap();
+        assert_eq!(agents, 0);
+        uninstall(&db, &data, &installed.id).await.unwrap();
+        let reinstalled = install(&db, &data, &package).await.unwrap();
+        assert_eq!(reinstalled.id, installed.id);
+        assert_eq!(reinstalled.manifest, original);
+        db.close().await;
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[tokio::test]
+    async fn retired_release_is_retained_until_recovery_references_disappear() {
+        let root=std::env::temp_dir().join(format!("aibo-release-{}",ulid::Ulid::new()));
+        let db=crate::open_database(&root.join("aibo.sqlite3")).await.unwrap();
+        let source=Path::new(env!("CARGO_MANIFEST_DIR")).join("../fixtures/plugins/capability-echo");
+        let release=install(&db,&root,&source).await.unwrap();
+        sqlx::query("INSERT INTO capability_provider_bindings(scope_kind,scope_id,capability_id,contract_version,installation_id,contribution_id,updated_at) VALUES('application','application','test','1.0.0',?,'test',?)")
+            .bind(&release.id).bind(crate::now_iso()).execute(&db).await.unwrap();
+        let data=crate::plugin_storage::directory(&root.join("plugins").join(&release.id),&release.plugin_id,&release.id,"instance").unwrap();
+        fs::write(data.join("cache"),"retained").unwrap();
+        uninstall(&db,&root,&release.id).await.unwrap();
+        let retained=root.join("plugins").join(format!(".retained-{}",release.id));
+        collect_retired(&db,&root).await.unwrap();assert!(retained.is_dir());
+        assert!(!list(&db).await.unwrap()[0].installed);
+        let restored=install(&db,&root,&source).await.unwrap();
+        assert_eq!(restored.id,release.id);
+        assert!(!retained.exists());
+        assert_eq!(fs::read_to_string(data.join("cache")).unwrap(),"retained");
+        uninstall(&db,&root,&release.id).await.unwrap();
+        sqlx::query("DELETE FROM capability_provider_bindings WHERE installation_id=?").bind(&release.id).execute(&db).await.unwrap();
+        collect_retired(&db,&root).await.unwrap();assert!(!retained.exists());
+        assert!(data.join("cache").exists(),"package collection never cleans private data");
+        db.close().await;fs::remove_dir_all(root).unwrap();
+    }
 
     #[test]
     fn rejects_escaping_and_ambiguous_package_paths() {
@@ -368,13 +499,16 @@ mod tests {
 
     #[tokio::test]
     async fn session_migration_preserves_old_history_and_allows_external_identity() {
-        let mut connection = sqlx::SqliteConnection::connect_with(&sqlx::sqlite::SqliteConnectOptions::new().in_memory(true).foreign_keys(false)).await.unwrap();
+        let root = std::env::temp_dir().join(format!("aibo-history-upgrade-{}", ulid::Ulid::new()));
+        let old = root.join("migrations");
+        fs::create_dir_all(&old).unwrap();
         let migrations = sqlx::migrate!("./migrations");
-        for migration in migrations.iter().filter(|m|m.version < 20) {
-            let mut transaction = connection.begin().await.unwrap();
-            sqlx::raw_sql(&migration.sql).execute(&mut *transaction).await.unwrap();
-            transaction.commit().await.unwrap();
+        for migration in migrations.iter().filter(|m| m.version < 20) {
+            fs::write(old.join(format!("{:04}_fixture.sql", migration.version)), migration.sql.as_bytes()).unwrap();
         }
+        let path = root.join("host.db");
+        let mut connection = sqlx::SqliteConnection::connect_with(&sqlx::sqlite::SqliteConnectOptions::new().filename(&path).create_if_missing(true).foreign_keys(false)).await.unwrap();
+        sqlx::migrate::Migrator::new(old.as_path()).await.unwrap().run(&mut connection).await.unwrap();
         sqlx::raw_sql("INSERT INTO workspaces(id,path,label,created_at,updated_at) VALUES('w','/old','old','2026','2026');
             INSERT INTO sessions(id,workspace_id,agent,label,state,created_at,updated_at) VALUES('s','w','codex','history','idle','2026','2026');
             INSERT INTO session_bindings(session_id,external_session_id,bound_at) VALUES('s','native-old','2026');
@@ -383,11 +517,28 @@ mod tests {
             INSERT INTO agent_events(event_id,session_id,generation_id,sequence,occurred_at,event_type,payload_json) VALUES('e','s','g',0,'2026','session.started','{\"historical\":true}');
             INSERT INTO process_runs(id,session_id,agent,generation_id,state,started_at) VALUES('p','s','codex','g','exited','2026');")
             .execute(&mut connection).await.unwrap();
-        for migration in migrations.iter().filter(|m|m.version >= 20) {
-            let mut transaction = connection.begin().await.unwrap();
-            sqlx::raw_sql(&migration.sql).execute(&mut *transaction).await.unwrap();
-            transaction.commit().await.unwrap();
+        // First cross the event-version boundary, then upgrade this real database
+        // through the application's normal migrator. Preserve both event formats.
+        for migration in migrations.iter().filter(|m| m.version >= 20 && m.version <= 27) {
+            fs::write(old.join(format!("{:04}_fixture.sql", migration.version)), migration.sql.as_bytes()).unwrap();
         }
+        sqlx::migrate::Migrator::new(old.as_path()).await.unwrap().run(&mut connection).await.unwrap();
+        sqlx::query("INSERT INTO agent_events(event_id,session_id,generation_id,sequence,occurred_at,event_type,payload_json,schema_version) VALUES('e2','s','g',1,'2026','session.started','{\"historicalV2\":true}','2.0')").execute(&mut connection).await.unwrap();
+        connection.close().await.unwrap();
+        for _ in 0..2 {
+            let db = crate::open_database(&path).await.unwrap();
+            let events: Vec<(String, String)> = sqlx::query_as("SELECT payload_json,schema_version FROM agent_events ORDER BY sequence").fetch_all(&db).await.unwrap();
+            assert_eq!(events, vec![("{\"historical\":true}".into(), "1.0".into()), ("{\"historicalV2\":true}".into(), "2.0".into())]);
+            assert_eq!(sqlx::query_scalar::<_, i64>("SELECT COUNT(*) FROM messages WHERE id='m'").fetch_one(&db).await.unwrap(), 1);
+            let history = serde_json::to_value(crate::session_history::read(&db, "w".into(), "s".into(), None).await.unwrap()).unwrap();
+            assert_eq!(history["source"], "persisted-core");
+            assert_eq!(history["items"][0]["content"], "preserve me");
+            assert_eq!(sqlx::query_scalar::<_, String>("SELECT external_session_id FROM session_bindings WHERE session_id='s'").fetch_one(&db).await.unwrap(), "native-old");
+            assert_eq!(sqlx::query_scalar::<_, String>("SELECT external_turn_id FROM turns WHERE id='t'").fetch_one(&db).await.unwrap(), "native-turn");
+            assert_eq!(sqlx::query_scalar::<_, String>("SELECT generation_id FROM process_runs WHERE id='p'").fetch_one(&db).await.unwrap(), "g");
+            db.close().await;
+        }
+        let mut connection = sqlx::SqliteConnection::connect_with(&sqlx::sqlite::SqliteConnectOptions::new().filename(&path)).await.unwrap();
         sqlx::query("PRAGMA foreign_keys=ON").execute(&mut connection).await.unwrap();
         assert!(sqlx::query("PRAGMA foreign_key_check").fetch_all(&mut connection).await.unwrap().is_empty());
         let message: String = sqlx::query_scalar("SELECT content FROM messages WHERE id='m' AND session_id='s'").fetch_one(&mut connection).await.unwrap();
@@ -396,6 +547,8 @@ mod tests {
         assert_eq!(event,("{\"historical\":true}".into(),"1.0".into()));
         sqlx::query("INSERT INTO sessions(id,workspace_id,agent,label,state,created_at,updated_at) VALUES('external','w','dev.example.agent','external','idle','2026','2026')").execute(&mut connection).await.unwrap();
         assert!(sqlx::query("INSERT INTO sessions(id,workspace_id,agent,label,state,created_at,updated_at) VALUES('bad','missing','dev.example.agent','bad','idle','2026','2026')").execute(&mut connection).await.is_err());
+        connection.close().await.unwrap();
+        fs::remove_dir_all(root).unwrap();
     }
 
     #[tokio::test]

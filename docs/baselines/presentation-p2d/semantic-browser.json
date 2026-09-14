@@ -1,0 +1,12 @@
+{
+  "passed": true,
+  "browser": "153.0.8010.12",
+  "checks": [
+    "all four core kinds preflight",
+    "actual semantic skin rendering",
+    "host action identity retained",
+    "local interaction stays inside presentation worker",
+    "incomplete candidate preserves old renderer",
+    "runtime failure preserves full default content"
+  ]
+}

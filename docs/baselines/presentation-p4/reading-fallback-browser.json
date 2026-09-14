@@ -1,0 +1,13 @@
+{
+  "passed": true,
+  "browser": "153.0.8010.12",
+  "checks": [
+    "local specialized reading becomes explicit core fallback under an external semantic package and returns after disposal",
+    "all four core kinds preflight",
+    "actual semantic skin rendering",
+    "host action identity retained",
+    "local interaction stays inside presentation worker",
+    "incomplete candidate preserves old renderer",
+    "runtime failure preserves full default content"
+  ]
+}

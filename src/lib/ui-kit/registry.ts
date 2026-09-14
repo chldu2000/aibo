@@ -2,10 +2,17 @@ import { derived, get, writable } from 'svelte/store';
 import type { AppearanceSelection, UiKitOption, UiKitRegistration } from './contract';
 import { material3UiKitRegistration } from './kits/material3';
 import { shadcnUiKitRegistration } from './kits/shadcn';
+import { defaultPresentation } from '../workbench/plugins/default-presentation';
+import { resolvePresentationPlugin } from './presentation-plugin';
 
 const STORAGE_KEY = 'aibo.appearance.v1';
 
-const registrations = [shadcnUiKitRegistration, material3UiKitRegistration] as const;
+const builtInDefault = { ...shadcnUiKitRegistration, renderer: defaultPresentation };
+const presentationRegistrations = [shadcnUiKitRegistration, material3UiKitRegistration].map(
+  ({ adapter, ...metadata }) => resolvePresentationPlugin({ ...metadata, components: adapter }, builtInDefault),
+);
+// Compatibility projection: existing appearance consumers keep their current interface.
+const registrations = presentationRegistrations;
 
 export type UiKitName = 'shadcn' | 'material3';
 
@@ -49,10 +56,13 @@ function persistSelection(next: AppearanceSelection) {
 const selection = writable<AppearanceSelection>(readInitialSelection());
 
 export const appearanceSelection = { subscribe: selection.subscribe };
-export const availableUiKits: readonly UiKitOption[] = registrations.map(({ adapter: _adapter, ...registration }) => registration);
+export const availableUiKits: readonly UiKitOption[] = registrations.map(({ adapter: _adapter, renderer: _renderer, ...registration }) => registration);
 export const activeUiKitName = derived(selection, ($selection) => $selection.kitId as UiKitName);
 export const activeUiKitRegistration = derived(selection, ($selection) => registrationMap.get($selection.kitId) ?? registrations[0]);
 export const activeUiKit = derived(activeUiKitRegistration, ($registration) => $registration.adapter);
+export const activePresentationPlugin = derived(selection, ($selection) =>
+  presentationRegistrations.find(plugin => plugin.id === $selection.kitId) ?? presentationRegistrations[0],
+);
 export const activeTheme = derived(
   [selection, activeUiKitRegistration],
   ([$selection, $registration]) =>

@@ -3,19 +3,13 @@ import { toErrorMessage } from './error-utils';
 
 export type ApprovalControllerContext = {
   api: {
-    resolveCodexApproval: (
-      sessionId: string,
-      requestId: string,
-      decision: ApprovalDecision,
-    ) => Promise<void>;
-    resolvePiApproval: (
+    resolveAgentApproval: (
       sessionId: string,
       requestId: string,
       decision: ApprovalDecision,
     ) => Promise<void>;
   };
   getDesktop: () => boolean;
-  getSessionAgent: (sessionId: string) => 'codex' | 'pi' | null;
   getPendingApprovals: () => ApprovalRequest[];
   setPendingApprovals: (value: ApprovalRequest[]) => void;
   setBusy: (value: boolean) => void;
@@ -25,6 +19,11 @@ export type ApprovalControllerContext = {
 
 /** Coordinates approval resolution without depending on Svelte state or UI. */
 export function createApprovalController(context: ApprovalControllerContext) {
+  const resolving = new Set<string>();
+  const sameRequest = (left: ApprovalRequest, right: ApprovalRequest) =>
+    left.sessionId === right.sessionId && left.requestId === right.requestId
+    && left.turnId === right.turnId && left.kind === right.kind
+    && left.command === right.command && left.cwd === right.cwd;
   async function resolveApproval(
     approval: ApprovalRequest,
     decision: ApprovalDecision,
@@ -33,32 +32,30 @@ export function createApprovalController(context: ApprovalControllerContext) {
       context.setNotice('当前是 Web 预览；审批操作需要在 Tauri 桌面模式中执行。');
       return;
     }
-    if (!approval.availableDecisions.includes(decision)) return;
+    const key = JSON.stringify([approval.sessionId, approval.requestId]);
+    const current = context.getPendingApprovals().find(item =>
+      item.sessionId === approval.sessionId && item.requestId === approval.requestId);
+    // A detached card cannot approve a replaced request or change its advertised choices.
+    if (!current || resolving.has(key) || !current.availableDecisions.includes(decision)) return;
+    if (!sameRequest(current, approval)) return;
+    resolving.add(key);
 
     context.setBusy(true);
     context.setErrorMessage(null);
     try {
-      // The approval kind comes from adapter payload data and may be absent
-      // on an event restored from an older stream. The session agent is the
-      // authoritative boundary, so never send a Pi approval to Codex merely
-      // because its kind was normalized to the generic fallback.
-      const isPiApproval =
-        context.getSessionAgent(approval.sessionId) === 'pi' || approval.kind === 'pi_tool';
-      const resolve = isPiApproval
-        ? context.api.resolvePiApproval
-        : context.api.resolveCodexApproval;
-      await resolve(approval.sessionId, approval.requestId, decision);
+      await context.api.resolveAgentApproval(approval.sessionId, approval.requestId, decision);
       context.setPendingApprovals(
         context.getPendingApprovals().filter(
           (item) =>
-            item.sessionId !== approval.sessionId || item.requestId !== approval.requestId,
+            !sameRequest(item, current),
         ),
       );
       context.setNotice(decision === 'accept' ? '已允许本次操作。' : '已拒绝本次操作。');
     } catch (error) {
       context.setErrorMessage(toErrorMessage(error));
     } finally {
-      context.setBusy(false);
+      resolving.delete(key);
+      context.setBusy(resolving.size > 0);
     }
   }
 

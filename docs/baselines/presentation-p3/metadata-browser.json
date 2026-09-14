@@ -1,0 +1,18 @@
+{
+  "passed": true,
+  "nativePort": "mocked; actual App and independently built full skin Workers",
+  "browser": "153.0.8010.12",
+  "checks": [
+    "both full packages install and activate",
+    "workspace and session navigation",
+    "rich timeline headings, lists, inline and fenced code",
+    "host-bound code copy and link actions",
+    "attachment transport metadata hidden",
+    "rapid Chinese/English input and send",
+    "Git/context panel switching",
+    "requested and enforced permissions remain distinct",
+    "attachment status, strategy and size",
+    "diagnostic details remain visible",
+    "default/external switch retains host draft"
+  ]
+}

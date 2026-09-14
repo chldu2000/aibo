@@ -1,7 +1,8 @@
+import { createWorkspaceWriteController } from './app/workspace-write-controller';
+import type { PresentationRelease, InstalledPresentationPackage, PresentationSelection } from './presentation-runtime/types';
 import { invoke } from '@tauri-apps/api/core';
 import { listen, type UnlistenFn } from '@tauri-apps/api/event';
 import { getCurrentWindow } from '@tauri-apps/api/window';
-import type { UiPluginViewDocument } from './ui-kit/contract';
 import type {
   AgentDiagnostic,
   WorkspaceCapabilityInventory,
@@ -13,7 +14,6 @@ import type {
   CodexThreadSummary,
   PiSessionTreeNavigation,
   PiTreeNavigationOptions,
-  PiSessionSnapshot,
   PiSessionTreeSnapshot,
   SessionListOptions,
   ExecutionProfile,
@@ -50,9 +50,13 @@ import type {
   ProjectActionRun,
   Workspace,
   WorkspacePathSuggestion,
-  AgentCommand,
   ComposerDraft,
 } from './types';
+
+const workspaceWrites = createWorkspaceWriteController({
+  requestId: () => crypto.randomUUID(),
+  execute: <T>(command: import('./app/workspace-write-controller').WorkspaceWriteCommand, input: Record<string, unknown>, requestId: string) => invoke<T>(command, { ...input, requestId }),
+});
 
 export const isTauri = (): boolean =>
   typeof window !== 'undefined' && '__TAURI_INTERNALS__' in window;
@@ -66,20 +70,48 @@ export interface PluginInstallation {
   installed: boolean;
   runnable: boolean;
   dependencies: { kind: string; name: string; required: boolean; available: boolean; executable: string | null; versionRange: string | null; detectedVersion: string | null; issue: string | null }[];
-  manifest: { displayName: string; agents: { agentId: string; displayName: string }[]; [key: string]: unknown };
+  packageDependencies?: { dependencies: { pluginId: string; required: boolean; available: boolean; installationId: string | null; version: string | null; issue: string | null; contributionIds: string[] }[]; unavailableContributions: string[] };
+  activationIssues?: string[];
+  contributions?: { id: string; kind: string; scope: string; required: boolean; metadata: Record<string, unknown> }[];
+  manifest: { displayName: string; agents?: { agentId: string; displayName: string }[]; [key: string]: unknown };
 }
+// Caller identity and workspace paths are injected by the desktop host.
+import type { JsonValue as CapabilityValue, CapabilityScope, CapabilityRequest, CapabilityResult } from '../../packages/plugin-protocol/src/index';
+export type { CapabilityValue, CapabilityScope, CapabilityRequest, CapabilityResult };
+export type CapabilityProvider = { installationId: string; contributionId: string; pluginId: string; version: string };
+export type CapabilityEvent = {
+  schemaVersion: '1.0'; sequence: number; type: 'admitted' | 'started' | 'finished';
+  invocationId: string; instanceId: string | null; installationId: string; contributionId: string;
+  capability: string; contractVersion: string; scope: CapabilityScope;
+  turnId: string | null; parentInvocationId: string | null; rootInvocationId: string;
+  generationId: string | null; status: string; occurredAt: string;
+};
+export const listCapabilityEvents = (scope: CapabilityScope, afterSequence = 0, limit = 100): Promise<CapabilityEvent[]> => invoke('list_capability_events', { scope, afterSequence, limit });
+export const listCapabilityProviders = (scope: CapabilityScope, capability: string, version: string): Promise<CapabilityProvider[]> => invoke('list_capability_providers', { scope, capability, version });
+export const bindCapabilityProvider = (scope: CapabilityScope, capability: string, version: string, provider: CapabilityProvider): Promise<void> => invoke('bind_capability_provider', { binding: { scope, capability, version, installationId: provider.installationId, contributionId: provider.contributionId } });
+export const invokeCapability = (request: CapabilityRequest): Promise<CapabilityResult> => invoke('invoke_capability', { request });
+export const cancelCapability = (requestId: string): Promise<boolean> => invoke('cancel_capability', { requestId });
+
 export const listPluginInstallations = (): Promise<PluginInstallation[]> => invoke('list_plugin_installations');
+export const listPresentationPackages = (): Promise<PresentationRelease[]> => invoke('list_presentation_packages');
+export const installPresentationPackage = (path: string): Promise<PresentationRelease> => invoke('install_presentation_package', { path });
+export const readPresentationPackage = (digest: string): Promise<InstalledPresentationPackage> => invoke('read_presentation_package', { digest });
+export const setPresentationPackageEnabled = (digest: string, enabled: boolean): Promise<void> => invoke('set_presentation_package_enabled', { digest, enabled });
+export const uninstallPresentationPackage = (digest: string): Promise<void> => invoke('uninstall_presentation_package', { digest });
+export const getPresentationSelection = (): Promise<PresentationSelection | null> => invoke('get_presentation_selection');
+export const selectPresentationPackage = (digest: string | null, themeId: string | null, expectedDigest: string | null): Promise<void> =>
+  invoke('select_presentation_package', { digest, themeId, expectedDigest });
 export const installAgentPlugin = (path: string): Promise<PluginInstallation> => invoke('install_agent_plugin', { path });
 export const setAgentPluginEnabled = (id: string, enabled: boolean): Promise<void> => invoke('set_agent_plugin_enabled', { id, enabled });
 export const uninstallAgentPlugin = (id: string): Promise<void> => invoke('uninstall_agent_plugin', { id });
-export const createAgentSession = (workspaceId: string, agentId: string, installationId?: string): Promise<Session> => invoke('create_agent_session', { workspaceId, agentId, installationId });
+export const createAgentSession = (workspaceId: string, agentId: string, installationId?: string, requestedProfile?: ExecutionProfile | null): Promise<Session> => invoke('create_agent_session', { workspaceId, agentId, installationId, requestedProfile });
 export const sendAgentPrompt = (sessionId: string, input: string): Promise<Session> => invoke('send_agent_prompt', { sessionId, input });
 export const cancelAgentTurn = (sessionId: string): Promise<void> => invoke('cancel_agent_turn', { sessionId });
 export const resumeAgentSession = (sessionId: string): Promise<void> => invoke('resume_agent_session', { sessionId });
 export const closeAgentSession = (sessionId: string): Promise<void> => invoke('close_agent_session', { sessionId });
-export const getPluginViews = (sessionId: string): Promise<UiPluginViewDocument[]> => invoke('get_plugin_views', { sessionId });
-export const invokePluginViewAction = (sessionId: string, viewId: string, actionId: string, input: Record<string, unknown>): Promise<Record<string, unknown>> => invoke('invoke_plugin_view_action', { sessionId, viewId, actionId, input });
 export const invokeAgentCapability = (sessionId: string, capability: string, input: Record<string, unknown>): Promise<Record<string, unknown>> => invoke('invoke_agent_capability', { sessionId, capability, input });
+
+export const presentationWindowId = (): string => isTauri() ? getCurrentWindow().label : 'preview';
 
 export const toggleWindowMaximize = (): Promise<void> => getCurrentWindow().toggleMaximize();
 
@@ -106,67 +138,18 @@ export const saveComposerDraft = (
 ): Promise<ComposerDraft | null> =>
   invoke<ComposerDraft | null>('save_composer_draft', { sessionId, text, sendFailed });
 
-export const listPiCommands = (sessionId: string): Promise<AgentCommand[]> =>
-  invoke<AgentCommand[]>('list_pi_commands', { sessionId });
 
-export const compactPiSession = (
-  sessionId: string,
-  instructions?: string,
-): Promise<Record<string, unknown>> =>
-  invoke<Record<string, unknown>>('compact_pi_session', {
-    sessionId,
-    instructions: instructions?.trim() || null,
-  });
 
-export const setPiThinkingLevel = (
-  sessionId: string,
-  level?: string,
-): Promise<Record<string, unknown>> =>
-  invoke<Record<string, unknown>>('set_pi_thinking_level', {
-    sessionId,
-    level: level?.trim() || null,
-  });
 
-export const setPiModel = (
-  sessionId: string,
-  reference?: string,
-): Promise<Record<string, unknown>> =>
-  invoke<Record<string, unknown>>('set_pi_model', {
-    sessionId,
-    reference: reference?.trim() || null,
-  });
 
 export const getSessionModels = (sessionId: string): Promise<SessionModelCatalog> =>
   invoke<SessionModelCatalog>('get_session_models', { sessionId });
 
-export const listCodexSkills = (sessionId: string): Promise<AgentCommand[]> =>
-  invoke<AgentCommand[]>('list_codex_skills', { sessionId });
 
-export const getCodexGoal = (sessionId: string): Promise<Record<string, unknown>> =>
-  invoke<Record<string, unknown>>('get_codex_goal', { sessionId });
 
-export const setCodexGoal = (
-  sessionId: string,
-  objective: string,
-  tokenBudget?: number,
-): Promise<Record<string, unknown>> =>
-  invoke<Record<string, unknown>>('set_codex_goal', {
-    sessionId,
-    objective,
-    tokenBudget: tokenBudget ?? null,
-  });
 
-export const clearCodexGoal = (sessionId: string): Promise<Record<string, unknown>> =>
-  invoke<Record<string, unknown>>('clear_codex_goal', { sessionId });
 
-export const resolveCodexUserInput = (
-  sessionId: string,
-  requestId: string,
-  answers: Record<string, string[]>,
-): Promise<void> => invoke('resolve_codex_user_input', { sessionId, requestId, answers });
 
-export const reloadPiSession = (sessionId: string): Promise<Record<string, unknown>> =>
-  invoke<Record<string, unknown>>('reload_pi_session', { sessionId });
 
 export const addWorkspace = (path: string): Promise<Workspace> =>
   invoke<Workspace>('add_workspace', { path });
@@ -253,8 +236,9 @@ export const getTurnChangeSet = (
 export const restoreTurnChangeSet = (
   sessionId: string,
   turnId: string,
+  requestId?: string,
 ): Promise<RestoreTurnChangeSetResult> =>
-  invoke<RestoreTurnChangeSetResult>('restore_turn_change_set', { sessionId, turnId });
+  workspaceWrites.invoke<RestoreTurnChangeSetResult>('restore_turn_change_set', { sessionId, turnId }, requestId);
 
 export const listTurnCheckpoints = (
   sessionId: string,
@@ -288,20 +272,23 @@ export const applyWorkspaceGitFileAction = (
   workspaceId: string,
   path: string,
   action: Extract<GitFileAction, 'stage' | 'unstage'>,
+  requestId?: string,
 ): Promise<GitFileActionResult> =>
-  invoke<GitFileActionResult>('apply_workspace_git_file_action', { workspaceId, path, action });
+  workspaceWrites.invoke<GitFileActionResult>('apply_workspace_git_file_action', { workspaceId, path, action }, requestId);
 
 export const applyWorkspaceGitAction = (
   workspaceId: string,
   action: GitWorkspaceAction,
+  requestId?: string,
 ): Promise<GitWorkspaceActionResult> =>
-  invoke<GitWorkspaceActionResult>('apply_workspace_git_action', { workspaceId, action });
+  workspaceWrites.invoke<GitWorkspaceActionResult>('apply_workspace_git_action', { workspaceId, action }, requestId);
 
 export const commitWorkspaceChanges = (
   workspaceId: string,
   message: string,
+  requestId?: string,
 ): Promise<GitCommitResult> =>
-  invoke<GitCommitResult>('commit_workspace_changes', { workspaceId, message });
+  workspaceWrites.invoke<GitCommitResult>('commit_workspace_changes', { workspaceId, message }, requestId);
 
 export const listWorkspaceGitBranches = (workspaceId: string): Promise<GitBranch[]> =>
   invoke<GitBranch[]>('list_workspace_git_branches', { workspaceId });
@@ -309,14 +296,16 @@ export const listWorkspaceGitBranches = (workspaceId: string): Promise<GitBranch
 export const checkoutWorkspaceGitBranch = (
   workspaceId: string,
   branch: string,
+  requestId?: string,
 ): Promise<GitWorkspaceActionResult> =>
-  invoke<GitWorkspaceActionResult>('checkout_workspace_git_branch', { workspaceId, branch });
+  workspaceWrites.invoke<GitWorkspaceActionResult>('checkout_workspace_git_branch', { workspaceId, branch }, requestId);
 
 export const createWorkspaceGitBranch = (
   workspaceId: string,
   branch: string,
+  requestId?: string,
 ): Promise<GitWorkspaceActionResult> =>
-  invoke<GitWorkspaceActionResult>('create_workspace_git_branch', { workspaceId, branch });
+  workspaceWrites.invoke<GitWorkspaceActionResult>('create_workspace_git_branch', { workspaceId, branch }, requestId);
 
 export const listWorkspaceGitHistory = (
   workspaceId: string,
@@ -345,8 +334,9 @@ export const getWorkspaceGitRemoteStatus = (workspaceId: string): Promise<GitRem
 export const syncWorkspaceGit = (
   workspaceId: string,
   action: GitSyncAction,
+  requestId?: string,
 ): Promise<GitWorkspaceActionResult> =>
-  invoke<GitWorkspaceActionResult>('sync_workspace_git', { workspaceId, action });
+  workspaceWrites.invoke<GitWorkspaceActionResult>('sync_workspace_git', { workspaceId, action }, requestId);
 
 export const listWorkspaceGitStashes = (workspaceId: string): Promise<GitStashEntry[]> =>
   invoke<GitStashEntry[]>('list_workspace_git_stashes', { workspaceId });
@@ -354,14 +344,16 @@ export const listWorkspaceGitStashes = (workspaceId: string): Promise<GitStashEn
 export const applyWorkspaceGitStash = (
   workspaceId: string,
   reference: string,
+  requestId?: string,
 ): Promise<GitWorkspaceActionResult> =>
-  invoke<GitWorkspaceActionResult>('apply_workspace_git_stash', { workspaceId, reference });
+  workspaceWrites.invoke<GitWorkspaceActionResult>('apply_workspace_git_stash', { workspaceId, reference }, requestId);
 
 export const stashWorkspaceGit = (
   workspaceId: string,
   message?: string,
+  requestId?: string,
 ): Promise<GitWorkspaceActionResult> =>
-  invoke<GitWorkspaceActionResult>('stash_workspace_git', { workspaceId, message: message ?? null });
+  workspaceWrites.invoke<GitWorkspaceActionResult>('stash_workspace_git', { workspaceId, message: message ?? null }, requestId);
 
 export const getTurnFileDiff = (
   sessionId: string,
@@ -374,13 +366,14 @@ export const applyGitFileAction = (
   path: string,
   action: GitFileAction,
   turnId?: string | null,
+  requestId?: string,
 ): Promise<GitFileActionResult> =>
-  invoke<GitFileActionResult>('apply_git_file_action', {
+  workspaceWrites.invoke<GitFileActionResult>('apply_git_file_action', {
     sessionId,
     path,
     action,
     turnId: turnId ?? null,
-  });
+  }, requestId);
 
 export const applyGitHunkAction = (
   sessionId: string,
@@ -388,14 +381,18 @@ export const applyGitHunkAction = (
   path: string,
   hunkIndex: number,
   action: GitFileAction,
+  requestId?: string,
 ): Promise<GitHunkActionResult> =>
-  invoke<GitHunkActionResult>('apply_git_hunk_action', {
+  workspaceWrites.invoke<GitHunkActionResult>('apply_git_hunk_action', {
     sessionId,
     turnId,
     path,
     hunkIndex,
     action,
-  });
+  }, requestId);
+
+export const referenceSession = (sessionId: string, sourceSessionId: string): Promise<ContextAttachment> =>
+  invoke<ContextAttachment>('reference_session', { sessionId, sourceSessionId });
 
 export const registerSessionAttachments = (
   sessionId: string,
@@ -454,18 +451,27 @@ export const runProjectAction = (
   workspaceId: string,
   actionId: string,
   sessionId?: string | null,
+  requestId = crypto.randomUUID(),
 ): Promise<ProjectActionRun> =>
   invoke<ProjectActionRun>('run_project_action', {
+    requestId,
     workspaceId,
     actionId,
     sessionId: sessionId ?? null,
   });
 
+export const cancelProjectAction = (workspaceId: string, runId: string): Promise<boolean> =>
+  invoke('cancel_project_action', { workspaceId, runId });
+
+export const listWorkspaceWriteRuns = (workspaceId: string, limit = 20, before: import('./types').ExecutionCursor | null = null): Promise<import('./types').WorkspaceWriteRun[]> =>
+  invoke('list_workspace_write_runs', { workspaceId, limit, before });
+
 export const listProjectActionRuns = (
   workspaceId: string,
   limit = 10,
+  before: import('./types').ExecutionCursor | null = null,
 ): Promise<ProjectActionRun[]> =>
-  invoke<ProjectActionRun[]>('list_project_action_runs', { workspaceId, limit });
+  invoke<ProjectActionRun[]>('list_project_action_runs', { workspaceId, limit, before });
 
 export const listCodexThreads = (workspaceId: string): Promise<CodexThreadSummary[]> =>
   invoke<CodexThreadSummary[]>('list_codex_threads', { workspaceId });
@@ -485,56 +491,18 @@ export const archiveCodexThread = (sessionId: string): Promise<Session> =>
 export const unarchiveCodexThread = (sessionId: string): Promise<Session> =>
   invoke<Session>('unarchive_codex_thread', { sessionId });
 
-export const createCodexSession = (
-  workspaceId: string,
-  _requestedProfile?: ExecutionProfile | null,
-): Promise<Session> =>
-  createAgentSession(workspaceId, 'dev.aibo.codex.agent');
 
-export const sendCodexPrompt = (sessionId: string, input: string): Promise<Session> =>
-  invoke<Session>('send_codex_prompt', { sessionId, input });
 
-export const abortCodexTurn = (sessionId: string): Promise<void> =>
-  invoke('abort_codex_turn', { sessionId });
 
-export const resolveCodexApproval = (
-  sessionId: string,
-  requestId: string,
-  decision: ApprovalDecision,
-): Promise<void> => invoke('resolve_codex_approval', { sessionId, requestId, decision });
 
-export const resolvePiApproval = (
-  sessionId: string,
-  requestId: string,
-  decision: ApprovalDecision,
-): Promise<void> => invoke('resolve_pi_approval', { sessionId, requestId, decision });
 
-export const closeCodexSession = (sessionId: string): Promise<void> =>
-  invoke('close_codex_session', { sessionId });
 
-export const createPiSession = (
-  workspaceId: string,
-  _requestedProfile?: ExecutionProfile | null,
-): Promise<Session> =>
-  createAgentSession(workspaceId, 'dev.aibo.pi.agent');
 
-export const sendPiPrompt = (sessionId: string, input: string): Promise<Session> =>
-  invoke<Session>('send_pi_prompt', { sessionId, input });
 
-export const abortPiTurn = (sessionId: string): Promise<void> =>
-  invoke('abort_pi_turn', { sessionId });
 
-export const closePiSession = (sessionId: string): Promise<void> =>
-  invoke('close_pi_session', { sessionId });
 
-export const steerPiPrompt = (sessionId: string, input: string): Promise<void> =>
-  invoke('steer_pi_prompt', { sessionId, input });
 
-export const followUpPiPrompt = (sessionId: string, input: string): Promise<void> =>
-  invoke('follow_up_pi_prompt', { sessionId, input });
 
-export const clearPiQueue = (sessionId: string): Promise<void> =>
-  invoke('clear_pi_queue', { sessionId });
 
 export const getPiSessionTree = (sessionId: string): Promise<PiSessionTreeSnapshot> =>
   invoke<PiSessionTreeSnapshot>('get_pi_session_tree', { sessionId });
@@ -552,9 +520,43 @@ export const navigatePiSessionTree = (
     replaceInstructions: false,
   });
 
-export const getPiSessionSnapshot = (sessionId: string): Promise<PiSessionSnapshot> =>
-  invoke<PiSessionSnapshot>('get_pi_session_snapshot', { sessionId });
 
 export const listenToAgentEvents = (
   handler: (event: AgentEvent) => void,
 ): Promise<UnlistenFn> => listen<AgentEvent>('agent-event', (event) => handler(event.payload));
+
+// Trusted P1 Git read port. No session is created for workspace inspection.
+export const openSemanticGit = (workspaceId: string): Promise<import('./presentation/git').GitPage> => invoke('open_semantic_git', { workspaceId });
+export const actSemanticGit = (action: import('./presentation/contract').ActionMessage): Promise<import('./presentation/git').GitPage> => invoke('act_semantic_git', { action });
+export const releaseSemanticGit = (generation: string): Promise<void> => invoke('release_semantic_git', { generation });
+
+export const resolveAgentApproval = (
+  sessionId: string,
+  requestId: string,
+  decision: ApprovalDecision,
+): Promise<void> => invoke('resolve_agent_approval', { sessionId, requestId, decision });
+
+export const resolveAgentUserInput = (
+  sessionId: string,
+  requestId: string,
+  answers: Record<string, string[]>,
+): Promise<void> => invoke('resolve_agent_user_input', { sessionId, requestId, answers });
+
+export const listSemanticContributions = (): Promise<import('./presentation/installed-controller').InstalledContribution[]> => invoke('list_semantic_contributions');
+export const openSemanticContribution = (workspaceId: string, installationId: string, contributionId: string, requestId: string, scope?: CapabilityScope): Promise<import('./presentation/contract').Snapshot> => invoke('open_semantic_contribution', { workspaceId, installationId, contributionId, requestId, scope });
+export const writeSemanticContribution = (action: import('./presentation/contract').ActionMessage, requestId: string): Promise<CapabilityResult> => invoke('write_semantic_contribution', { action, requestId });
+export const actSemanticContribution = (action: import('./presentation/contract').ActionMessage): Promise<import('./presentation/contract').Snapshot> => invoke('act_semantic_contribution', { action });
+export const releaseSemanticContribution = (generation: string): Promise<void> => invoke('release_semantic_contribution', { generation });
+
+export const cancelSemanticOpen = (requestId: string): Promise<void> => invoke('cancel_semantic_open', { requestId });
+
+export const cancelWorkspaceWrite = (workspaceId: string, runId: string): Promise<boolean> =>
+  invoke("cancel_workspace_write", { workspaceId, runId });
+
+export const readSessionHistory = (workspaceId: string, sessionId: string, before: import('./types').SessionHistoryCursor | null = null): Promise<import('./types').SessionHistoryPage> =>
+  invoke('read_session_history', { workspaceId, sessionId, before });
+
+export const listCapabilityHistoryScopes = (before: string | null = null, source: import('./types').CapabilityHistorySource = 'events'): Promise<import('./types').CapabilityHistoryScopes> =>
+  invoke('list_capability_history_scopes', {before,legacy:source === 'legacy'});
+export const readCapabilityHistory = (scope: import('./types').CapabilityHistoryScope, before: string | null = null, source: import('./types').CapabilityHistorySource = 'events'): Promise<import('./types').CapabilityHistoryEvents> =>
+  invoke('read_capability_history', {scope,before,legacy:source === 'legacy'});

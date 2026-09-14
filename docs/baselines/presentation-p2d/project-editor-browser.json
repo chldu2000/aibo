@@ -1,0 +1,14 @@
+{
+  "passed": true,
+  "nativePort": "mocked; actual App.svelte, default editor and Worker; no process executed",
+  "browser": "153.0.8010.12",
+  "checks": [
+    "rapid project draft input",
+    "external/default/external editor preservation",
+    "default save failure retains draft and error",
+    "successful save preserves argv and closes editor",
+    "forged run rejected",
+    "host run and cancellation targets",
+    "edit and delete through host directory"
+  ]
+}

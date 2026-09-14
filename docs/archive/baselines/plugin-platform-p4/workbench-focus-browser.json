@@ -1,0 +1,18 @@
+{
+  "removedControlFocusRecovered": true,
+  "disabledControlSkipped": true,
+  "hiddenControlSkipped": true,
+  "tabContinues": true,
+  "namedSlotsBothSkins": true,
+  "focusOmitsNavigationAndAuxiliary": true,
+  "overlaysReachable": true,
+  "pluginFormSurvivesRemount": true,
+  "pluginFormSessionIsolation": true,
+  "failedMountFallback": true,
+  "streamContinues": true,
+  "draft": true,
+  "semanticFocus": true,
+  "oldGenerationRejected": true,
+  "oldSessionRejected": true,
+  "currentActions": true
+}

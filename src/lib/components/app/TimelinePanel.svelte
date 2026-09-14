@@ -1,14 +1,19 @@
 <script lang="ts">
+  import { tick } from 'svelte';
+  import { userInputDraftKey, answeredRequest } from '$lib/app/user-input-drafts';
+  import { createTimelineStickiness } from '$lib/app/timeline-stickiness';
+  import type { Snippet } from 'svelte';
+  import type { ModelConfigurationState } from '$lib/app/model-configuration';
   import { sessionAgentKind } from '$lib/app/agent-kind';
   import { Badge, Button, Card, CardContent, CardHeader, CardTitle, Icon, Input, Separator } from '$lib/ui-kit';
-  import type { AgentCommand, AgentGoal, AgentQueueSnapshot, ApprovalDecision, ContextAttachment, SessionAccessMode, SessionExecutionProfile, SessionModelCatalog, UserInputRequest, WorkspacePathSuggestion } from '$lib/types';
+  import type { AgentCommand, AgentGoal, AgentQueueSnapshot, ContextAttachment, SessionAccessMode, SessionExecutionProfile, SessionModelCatalog, Session, UserInputRequest, WorkspacePathSuggestion } from '$lib/types';
   import type { UsageValues } from './view-models';
   import Composer from './Composer.svelte';
+  import { splitSessionReferences } from '../../../../packages/presentation-workbench/session-references.js';
   import MarkdownContent from './MarkdownContent.svelte';
   import { sessionStateLabel } from './session-utils';
   import { groupTimelineItems, isDiffContent, toolLabel } from './timeline-utils';
   import type {
-    ApprovalView,
     CodexThreadView,
     SessionPanelView,
     TimelineViewItem,
@@ -16,6 +21,7 @@
   } from './view-types';
 
   type TimelinePanelProps = {
+    presentationActions?: Snippet;
     workspace: WorkspaceListItem | null;
     session: SessionPanelView | null;
     selectedSessionId: string | null;
@@ -26,8 +32,9 @@
     usageValues: UsageValues | null;
     retryPrompt: string | null;
     retryReason: string | null;
-    approvals: ApprovalView[];
     userInputRequests: UserInputRequest[];
+    userInputDrafts: Record<string, string>;
+    onUserInputDraftChange: (value: Record<string, string>) => void;
     queueSnapshot: AgentQueueSnapshot | null;
     agentActivityLabel: string | null;
     contextCompacting: boolean;
@@ -36,10 +43,13 @@
     busy: boolean;
     attachments: ContextAttachment[];
     executionProfile: SessionExecutionProfile | null;
+    modelConfiguration: ModelConfigurationState;
     modelCatalog: SessionModelCatalog | null;
     modelCatalogLoading: boolean;
     modelOverride?: string | null;
     workspacePathSuggestions: WorkspacePathSuggestion[];
+    sessionSuggestions?: Session[];
+    onSelectSessionReference?: (id: string) => void | Promise<void>;
     agentCommands: AgentCommand[];
     agentCommandsLoading: boolean;
     composerText?: string;
@@ -52,7 +62,6 @@
     onOpenPiTree: () => void;
     onTimelineScroll: (event: Event) => void;
     onRetry: () => void;
-    onResolveApproval: (requestId: string, decision: ApprovalDecision) => void;
     onResolveUserInput: (request: UserInputRequest, answers: Record<string, string[]>) => void | Promise<void>;
     onCancelUserInput: (request: UserInputRequest) => void;
     onSend: () => void;
@@ -68,6 +77,7 @@
   };
 
   let {
+    presentationActions,
     workspace,
     session,
     selectedSessionId,
@@ -78,8 +88,9 @@
     usageValues,
     retryPrompt,
     retryReason,
-    approvals,
     userInputRequests,
+    userInputDrafts,
+    onUserInputDraftChange,
     queueSnapshot,
     agentActivityLabel,
     contextCompacting,
@@ -88,10 +99,13 @@
     busy,
     attachments,
     executionProfile,
+    modelConfiguration,
     modelCatalog,
     modelCatalogLoading,
     modelOverride = null,
     workspacePathSuggestions,
+    sessionSuggestions = [],
+    onSelectSessionReference,
     agentCommands,
     agentCommandsLoading,
     composerText = $bindable(''),
@@ -101,7 +115,6 @@
     onOpenPiTree,
     onTimelineScroll,
     onRetry,
-    onResolveApproval,
     onResolveUserInput,
     onCancelUserInput,
     onSend,
@@ -119,6 +132,36 @@
     onSelectWorkspacePath,
   }: TimelinePanelProps = $props();
   const sessionKind = $derived(sessionAgentKind(session));
+  const timelineStickiness = createTimelineStickiness();
+  let timelineFeed: HTMLElement | null = $state(null);
+  let timelineContent: HTMLElement | null = $state(null);
+
+  function scrollTimelineToBottom(): void {
+    if (timelineFeed) timelineStickiness.scrollToBottom(timelineFeed);
+  }
+
+  function handleTimelineViewportScroll(event: Event): void {
+    const viewport = event.currentTarget as HTMLElement;
+    timelineStickiness.updateFromScroll(viewport);
+    onTimelineScroll(event);
+  }
+
+  $effect(() => {
+    selectedSessionId;
+    const viewport = timelineFeed;
+    timelineStickiness.reset();
+    if (viewport) void tick().then(scrollTimelineToBottom);
+  });
+
+  $effect(() => {
+    const viewport = timelineFeed;
+    const content = timelineContent;
+    if (!viewport || !content || typeof ResizeObserver === 'undefined') return;
+    const observer = new ResizeObserver(() => scrollTimelineToBottom());
+    observer.observe(viewport);
+    observer.observe(content);
+    return () => observer.disconnect();
+  });
 
   const visibleTimeline = $derived(
     timeline.slice(Math.max(0, timeline.length - timelineVisibleCount)),
@@ -138,33 +181,19 @@
     if (!usageValues || usageValues.contextUsed === null || !usageValues.contextLimit || usageValues.contextLimit <= 0) return null;
     return Math.min(100, Math.round((usageValues.contextUsed / usageValues.contextLimit) * 100));
   });
-  let userInputDrafts = $state<Record<string, string>>({});
-
-  function userInputKey(requestId: string, questionId: string): string {
-    return `${requestId}:${questionId}`;
+  function userInputKey(request: UserInputRequest, questionId: string): string {
+    return userInputDraftKey(request, questionId);
   }
 
-  function setUserInputDraft(requestId: string, questionId: string, value: string): void {
-    userInputDrafts = {
-      ...userInputDrafts,
-      [userInputKey(requestId, questionId)]: value,
-    };
+  function setUserInputDraft(request: UserInputRequest, questionId: string, value: string): void {
+    onUserInputDraftChange({ ...userInputDrafts, [userInputKey(request, questionId)]: value });
   }
 
   async function submitUserInput(request: UserInputRequest): Promise<void> {
-    const answers: Record<string, string[]> = {};
-    for (const question of request.questions) {
-      const value = userInputDrafts[userInputKey(request.requestId, question.id)]?.trim() ?? '';
-      if (!value) return;
-      answers[question.id] = [value];
-    }
-    try {
-      await onResolveUserInput(request, answers);
-      userInputDrafts = Object.fromEntries(
-        Object.entries(userInputDrafts).filter(([key]) => !key.startsWith(`${request.requestId}:`)),
-      );
-    } catch {
-      // Keep the answers editable when the provider rejects or loses the request.
+    const answers = answeredRequest(request, userInputDrafts);
+    if (!answers) return;
+    try { await onResolveUserInput(request, answers); } catch {
+      // The host keeps drafts when the provider rejects or loses the request.
     }
   }
 
@@ -181,12 +210,24 @@
               ? '已中断'
               : status;
   }
+
+  function compactNumber(value: number): string {
+    return new Intl.NumberFormat('zh-CN', { notation: 'compact', maximumFractionDigits: 1 }).format(value);
+  }
+
+  function limitLabel(limit: UsageValues['limits'][number]): string {
+    if (limit.label) return limit.label;
+    if (limit.windowMinutes && limit.windowMinutes % 1440 === 0) return `${limit.windowMinutes / 1440} 天`;
+    if (limit.windowMinutes && limit.windowMinutes % 60 === 0) return `${limit.windowMinutes / 60} 小时`;
+    return limit.windowMinutes ? `${limit.windowMinutes} 分钟` : '套餐';
+  }
 </script>
 
 <Card as="section" class="timeline" data-ui-component="timeline-panel" aria-label="会话时间线">
   <CardHeader class="panel-heading timeline-heading">
     <CardTitle>{session?.label ?? workspace?.label ?? '选择工作区'}</CardTitle>
     <div class="timeline-heading-actions">
+          {@render presentationActions?.()}
       {#if codexGoal?.objective}
         <Badge variant="outline" title={codexGoal.objective}>目标 · {codexGoal.status}</Badge>
       {/if}
@@ -204,7 +245,7 @@
           {selectedSessionArchiving ? '归档中' : sessionStateLabel(session)}
         </Badge>
         {#if codexThreadSnapshot && codexThreadSnapshot.id === session.externalSessionId}
-          <Badge variant="outline">远端 {codexThreadSnapshot.turnCount} 轮</Badge>
+          <Badge variant="outline">{codexThreadSnapshot.turnCount === null ? '远端轮次未知' : `远端 ${codexThreadSnapshot.turnCount} 轮`}</Badge>
         {/if}
       {/if}
       {#if workspace}
@@ -217,25 +258,6 @@
   {#if workspace}
     <Separator />
 
-    {#if usageValues}
-      <div class="usage-strip" aria-label="Token 使用量">
-        <span>Token</span>
-        {#if usageValues.input !== null}<span>输入 {usageValues.input}</span>{/if}
-        {#if usageValues.output !== null}<span>输出 {usageValues.output}</span>{/if}
-        {#if usageValues.total !== null}<span>总计 {usageValues.total}</span>{/if}
-        {#if usageValues.contextUsed !== null}
-          <span class:usage-estimated={usageValues.contextEstimated}>
-            上下文 {usageValues.contextLimit ? `${contextPercent ?? 0}%` : '已用'}{usageValues.contextEstimated ? ' · 估算' : ''}
-          </span>
-        {/if}
-        {#if sessionKind === 'pi' && !sessionRunning && !sessionArchived && usageValues.contextUsed !== null}
-          <Button class="usage-compact-button" variant="ghost" size="sm" type="button" onclick={onCompact} disabled={busy || contextCompacting}>
-            {contextCompacting ? '压缩中…' : '压缩上下文'}
-          </Button>
-        {/if}
-      </div>
-    {/if}
-
     {#if retryPrompt && session && !sessionRunning && !sessionArchived}
       <div class="timeline-retry" role="status">
         <span>{retryReason ?? '上一回合未完成，可以重试。'}</span>
@@ -244,7 +266,8 @@
     {/if}
 
     {#if timeline.length > 0}
-      <div class="timeline-feed" aria-live="polite" onscroll={onTimelineScroll}>
+      <div bind:this={timelineFeed} data-presentation-timeline class="timeline-feed" aria-live="polite" onscroll={handleTimelineViewportScroll}>
+        <div bind:this={timelineContent} class="timeline-feed-content">
         {#if hiddenTimelineCount > 0}
           <Button class="timeline-load-more" variant="ghost" size="sm" type="button" onclick={onLoadOlderTimeline}>
             加载更早的 {Math.min(hiddenTimelineCount, 80)} 条消息
@@ -252,7 +275,7 @@
         {/if}
         {#each groupTimelineItems(visibleTimeline, sessionKind === 'pi') as renderItem (renderItem.id)}
           {#if renderItem.kind === 'tool-group'}
-            <Card as="article" class="timeline-entry tool-entry tool-group-entry">
+            <Card as="article" data-presentation-message={'message-group:' + renderItem.id} class="timeline-entry tool-entry tool-group-entry">
               <details class="tool-group">
                 <summary>
                   <span class="tool-group-title">
@@ -275,7 +298,7 @@
               </details>
             </Card>
           {:else if renderItem.kind === 'system-group'}
-            <Card as="article" class="timeline-entry system-entry tool-group-entry">
+            <Card as="article" data-presentation-message={'message-group:' + renderItem.id} class="timeline-entry system-entry tool-group-entry">
               <details class="tool-group">
                 <summary>
                   <span class="tool-group-title">
@@ -300,6 +323,7 @@
             {@const item = renderItem.item}
             <Card
               as="article"
+              data-presentation-message={'message:' + item.id}
               class={`timeline-entry ${item.role === 'assistant' ? 'assistant-entry' : item.role === 'user' ? 'user-entry' : item.role === 'tool' ? 'tool-entry' : item.role === 'system' ? 'system-entry' : ''}`}
             >
               <div class="entry-meta">
@@ -327,11 +351,23 @@
                   <pre class:diff-content={isDiffContent(item.content)}>{item.content || '…'}</pre>
                 </details>
               {:else}
-                <div class="entry-content">{#if item.content}<MarkdownContent content={item.content} />{:else}…{/if}</div>
+                {@const message = item.role === 'user' ? splitSessionReferences(item.content) : { body: item.content, references: [] }}
+                <div class="entry-content">{#if message.body}<MarkdownContent content={message.body} />{:else if !message.references.length}…{/if}</div>
+                {#each message.references as reference, index (`${reference.id}-${index}`)}
+                  <details class="tool-output">
+                    <summary>引用会话 · {reference.title}</summary>
+                    <p>{reference.agent} · {reference.note}{reference.omitted === null ? '' : ` · 已省略 ${reference.omitted} 条消息`}</p>
+                    {#each reference.excerpts as excerpt}
+                      <p>{excerpt.role === 'user' ? '用户' : '助手'}{excerpt.truncated ? ' · 已截取' : ''}</p>
+                      <pre>{excerpt.text}</pre>
+                    {/each}
+                  </details>
+                {/each}
               {/if}
             </Card>
           {/if}
         {/each}
+        </div>
       </div>
     {:else if session}
       <div class="timeline-empty compact-empty">
@@ -367,12 +403,12 @@
                 {#if question.options.length > 0}
                   <div class="user-input-options">
                     {#each question.options as option (option.label)}
-                      {@const key = userInputKey(request.requestId, question.id)}
+                      {@const key = userInputKey(request, question.id)}
                       <Button
                         type="button"
                         size="sm"
                         variant={userInputDrafts[key] === option.label ? 'secondary' : 'outline'}
-                        onclick={() => setUserInputDraft(request.requestId, question.id, option.label)}
+                        onclick={() => setUserInputDraft(request, question.id, option.label)}
                       >
                         {option.label}
                       </Button>
@@ -381,10 +417,10 @@
                 {/if}
                 {#if question.options.length === 0 || question.isOther}
                   <Input
-                    value={userInputDrafts[userInputKey(request.requestId, question.id)] ?? ''}
+                    value={userInputDrafts[userInputKey(request, question.id)] ?? ''}
                     placeholder={question.isOther ? '补充其他回答…' : '输入回答…'}
                     aria-label={question.question}
-                    oninput={(event) => setUserInputDraft(request.requestId, question.id, (event.currentTarget as HTMLInputElement).value)}
+                    oninput={(event) => setUserInputDraft(request, question.id, (event.currentTarget as HTMLInputElement).value)}
                   />
                 {/if}
               </fieldset>
@@ -392,31 +428,6 @@
             <div class="user-input-actions">
               <Button type="button" size="sm" variant="ghost" onclick={() => onCancelUserInput(request)} disabled={busy}>停止并取消</Button>
               <Button type="button" size="sm" onclick={() => submitUserInput(request)} disabled={busy}>提交回答</Button>
-            </div>
-          </CardContent>
-        </Card>
-      {/each}
-    </div>
-  {/if}
-
-  {#if approvals.length > 0}
-    <div class="approval-list" aria-live="assertive">
-      {#each approvals as approval (approval.requestId)}
-        <Card class="approval-card">
-          <CardHeader class="approval-card-heading">
-            <CardTitle>需要确认</CardTitle>
-            <Badge variant="warning">{approval.kind}</Badge>
-          </CardHeader>
-          <CardContent class="approval-card-content">
-            {#if approval.command}<code>{approval.command}</code>{/if}
-            {#if approval.cwd}<small>{approval.cwd}</small>{/if}
-            <div class="approval-actions">
-              {#if approval.availableDecisions.includes('cancel')}
-                <Button variant="ghost" size="sm" type="button" onclick={() => onResolveApproval(approval.requestId, 'cancel')} disabled={busy}>拒绝</Button>
-              {/if}
-              {#if approval.availableDecisions.includes('accept')}
-                <Button size="sm" type="button" onclick={() => onResolveApproval(approval.requestId, 'accept')} disabled={busy}>允许</Button>
-              {/if}
             </div>
           </CardContent>
         </Card>
@@ -460,10 +471,13 @@
     busy={busy}
     attachments={attachments}
     executionProfile={executionProfile}
+    {modelConfiguration}
     modelCatalog={modelCatalog}
     modelCatalogLoading={modelCatalogLoading}
     {modelOverride}
     workspacePathSuggestions={workspacePathSuggestions}
+    {sessionSuggestions}
+    {onSelectSessionReference}
     agentCommands={agentCommands}
     agentCommandsLoading={agentCommandsLoading}
     bind:text={composerText}
@@ -480,4 +494,24 @@
     onSelectWorkspacePath={onSelectWorkspacePath}
   />
   {/key}
+  {#if usageValues}
+    <div class="usage-strip composer-usage-strip" aria-label="会话用量与套餐余量">
+      {#if usageValues.contextUsed !== null}
+        <span class:usage-estimated={usageValues.contextEstimated} title={usageValues.contextLimit ? `${usageValues.contextUsed} / ${usageValues.contextLimit} tokens` : `${usageValues.contextUsed} tokens`}>
+          上下文 {usageValues.contextLimit ? `${contextPercent ?? 0}%` : compactNumber(usageValues.contextUsed)}{usageValues.contextEstimated ? ' · 估算' : ''}
+        </span>
+      {/if}
+      {#if usageValues.total !== null}<span title={`输入 ${usageValues.input ?? '—'} · 输出 ${usageValues.output ?? '—'}`}>Token {compactNumber(usageValues.total)}</span>{/if}
+      {#if usageValues.plan}<span>{usageValues.plan.toUpperCase()}</span>{/if}
+      {#each usageValues.limits as limit (limit.id)}
+        <span title={limit.resetsAt ? `重置于 ${new Date(limit.resetsAt * 1000).toLocaleString()}` : undefined}>{limitLabel(limit)}剩余 {Math.max(0, 100 - Math.round(limit.usedPercent))}%</span>
+      {/each}
+      {#if usageValues.credits?.unlimited}<span>Credits 不限量</span>{:else if usageValues.credits?.balance}<span>Credits {usageValues.credits.balance}</span>{/if}
+      {#if sessionKind === 'pi' && !sessionRunning && !sessionArchived && usageValues.contextUsed !== null}
+        <Button class="usage-compact-button" variant="ghost" size="sm" type="button" onclick={onCompact} disabled={busy || contextCompacting}>
+          {contextCompacting ? '压缩中…' : '压缩上下文'}
+        </Button>
+      {/if}
+    </div>
+  {/if}
 </Card>

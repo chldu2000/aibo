@@ -1,73 +1,79 @@
+mod project_actions;
+mod controlled_process;
+mod workspace_git;
+mod core_turn_git;
+mod turn_restore;
+mod execution_history;
+mod session_history;
+mod session_context;
+mod capability_history;
+mod workspace_git_approval;
+mod workspace_writes;
+mod workspace_write_runs;
 mod artifact;
 mod change_set;
-mod codex;
 mod execution_profile;
-mod pi;
+mod session_permissions;
+mod session_models;
 mod plugin_runtime;
 mod plugin_contract;
+mod plugin_manifest;
+mod session_contract;
+mod session_host;
+mod plugin_dependencies;
+mod capability_broker;
 mod plugin_registry;
-mod plugin_host;
+mod presentation_packages;
+mod plugin_storage;
 mod workspace_guard;
+mod semantic_git;
+mod semantic_plugins;
+mod git_capability_guard;
 
 use change_set::{
     capture as capture_workspace, checkpoint_file_path, persist as persist_change_set,
-    restore as restore_change_set, workspace_changes, FileState, RestoreReport, WorkspaceSnapshot,
+    workspace_changes, FileState, WorkspaceSnapshot,
 };
-use codex::{CodexManager, CodexThreadSnapshot, CodexThreadSummary};
 use execution_profile::{
-    default_requested_profile, from_row as profile_from_row, resolve as resolve_profile,
+    from_row as profile_from_row, resolve as resolve_profile,
     save_for_session as save_session_profile, ExecutionProfile, ResolvedExecutionProfile,
     SessionExecutionProfile,
 };
-use serde::Serialize;
+use serde::{Serialize, Deserialize};
 use sha2::{Digest, Sha256};
 use sqlx::{
     sqlite::{SqliteConnectOptions, SqliteJournalMode, SqlitePoolOptions},
     Connection, Row, SqlitePool,
 };
 use std::{
-    collections::{BTreeSet, HashMap},
+    collections::BTreeSet,
     env,
     error::Error,
     fs,
     io::{self, Read},
     path::{Path, PathBuf},
     process::{Command, ExitStatus, Stdio},
-    sync::Arc,
     thread,
     time::Duration,
 };
 use tauri::{Manager, State};
 use time::{format_description::well_known::Rfc3339, OffsetDateTime};
-use tokio::sync::Mutex;
-use tokio::{io::AsyncReadExt, process::Command as TokioCommand, time as tokio_time};
+use tokio::{io::AsyncReadExt, process::Command as TokioCommand};
 use tracing::{info, warn};
 use ulid::Ulid;
 
 const PI_SDK_VERSION: &str = "0.84.4";
 const SESSION_AUTO_LABEL_MAX_CHARS: usize = 40;
+pub(crate) const DEFAULT_CAPABILITY_SESSION_LABEL: &str = "Session";
 const CONTEXT_ATTACHMENTS_MARKER: &str = "\n\n[AIBO_CONTEXT_ATTACHMENTS]";
-
-async fn clone_cached_runtime<T>(
-    runtimes: &Mutex<HashMap<String, Arc<T>>>,
-    session_id: &str,
-) -> Option<Arc<T>> {
-    let runtimes = runtimes.lock().await;
-    runtimes.get(session_id).cloned()
-}
-
-async fn remove_cached_runtime<T>(
-    runtimes: &Mutex<HashMap<String, Arc<T>>>,
-    session_id: &str,
-) -> Option<Arc<T>> {
-    runtimes.lock().await.remove(session_id)
-}
 
 #[derive(Clone)]
 pub struct AppState {
     db: SqlitePool,
-    codex: CodexManager,
-    plugins: plugin_host::PluginHost,
+    plugins: session_host::SessionHost,
+    semantic_git: semantic_git::GitPresentation,
+    semantic_plugins: semantic_plugins::SemanticPlugins,
+    capability_broker: capability_broker::Broker,
     data_dir: PathBuf,
 }
 
@@ -283,7 +289,7 @@ pub struct CheckpointFile {
     pub(crate) created_at: String,
 }
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct RestoreTurnChangeSetResult {
     pub(crate) applied: bool,
@@ -412,7 +418,7 @@ pub struct TurnDiffHunk {
     pub(crate) content: String,
 }
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct GitFileActionResult {
     pub(crate) path: String,
@@ -421,7 +427,7 @@ pub struct GitFileActionResult {
     pub(crate) message: String,
 }
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct GitWorkspaceActionResult {
     pub(crate) action: String,
@@ -429,7 +435,7 @@ pub struct GitWorkspaceActionResult {
     pub(crate) message: String,
 }
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct GitCommitResult {
     pub(crate) committed: bool,
@@ -437,7 +443,7 @@ pub struct GitCommitResult {
     pub(crate) message: String,
 }
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct GitHunkActionResult {
     pub(crate) path: String,
@@ -461,6 +467,7 @@ pub struct ContextAttachment {
     pub(crate) media_type: String,
     pub(crate) source: String,
     pub(crate) send_strategy: String,
+    pub(crate) inline_context: Option<String>,
     pub(crate) created_at: String,
 }
 
@@ -521,6 +528,7 @@ pub struct ProjectActionRun {
     pub(crate) schema: String,
     pub(crate) id: String,
     pub(crate) action_id: String,
+    pub(crate) action_name: Option<String>,
     pub(crate) workspace_id: String,
     pub(crate) session_id: Option<String>,
     pub(crate) status: String,
@@ -528,7 +536,7 @@ pub struct ProjectActionRun {
     pub(crate) output: String,
     pub(crate) artifact_id: Option<String>,
     pub(crate) started_at: String,
-    pub(crate) completed_at: String,
+    pub(crate) completed_at: Option<String>,
 }
 
 #[derive(Debug, thiserror::Error)]
@@ -539,6 +547,12 @@ pub enum CoreError {
     WorkspaceNotFound(String),
     #[error("workspace trust is required for the requested execution profile")]
     WorkspaceTrustRequired,
+    #[error("workspace has an unfinished write; wait for it to settle before submitting another operation")]
+    WorkspaceWriteBusy,
+    #[error("写入结果未知，请核对实际更改后再操作：{0}")]
+    WriteOutcomeUnknown(String),
+    #[error("{message}")]
+    WriteReplay { code: String, message: String },
     #[error("session not found: {0}")]
     SessionNotFound(String),
     #[error("session must be idle before its execution profile can change")]
@@ -553,10 +567,8 @@ pub enum CoreError {
     Database(String),
     #[error("agent probe failed: {0}")]
     AgentProbe(String),
-    #[error("codex adapter error: {0}")]
-    Codex(String),
-    #[error("Pi adapter error: {0}")]
-    Pi(String),
+    #[error("session operation failed: {0}")]
+    SessionOperation(String),
     #[error("app initialization failed: {0}")]
     Initialization(String),
 }
@@ -568,7 +580,7 @@ impl Serialize for CoreError {
     {
         #[derive(Serialize)]
         struct ErrorPayload<'a> {
-            code: &'static str,
+            code: &'a str,
             message: &'a str,
         }
 
@@ -576,6 +588,9 @@ impl Serialize for CoreError {
             Self::InvalidWorkspacePath(_) => "invalid_workspace_path",
             Self::WorkspaceNotFound(_) => "workspace_not_found",
             Self::WorkspaceTrustRequired => "workspace_trust_required",
+            Self::WorkspaceWriteBusy => "workspace_write_busy",
+            Self::WriteOutcomeUnknown(_) => "outcome_unknown",
+            Self::WriteReplay { code, .. } => code.as_str(),
             Self::SessionNotFound(_) => "session_not_found",
             Self::SessionBusy => "session_busy",
             Self::InvalidSessionLabel(_) => "invalid_session_label",
@@ -583,8 +598,7 @@ impl Serialize for CoreError {
             Self::InvalidExecutionProfile(_) => "invalid_execution_profile",
             Self::Database(_) => "database_error",
             Self::AgentProbe(_) => "agent_probe_error",
-            Self::Codex(_) => "codex_error",
-            Self::Pi(_) => "pi_error",
+            Self::SessionOperation(_) => "session_operation_error",
             Self::Initialization(_) => "initialization_error",
         };
         ErrorPayload {
@@ -604,12 +618,6 @@ impl From<sqlx::Error> for CoreError {
 impl From<sqlx::migrate::MigrateError> for CoreError {
     fn from(error: sqlx::migrate::MigrateError) -> Self {
         Self::Database(format!("migration failed: {error}"))
-    }
-}
-
-impl From<codex::CodexError> for CoreError {
-    fn from(error: codex::CodexError) -> Self {
-        Self::Codex(error.to_string())
     }
 }
 
@@ -668,6 +676,7 @@ pub(crate) async fn auto_name_session_from_first_message(
     let plugin_installation_id: Option<String> = row.try_get("plugin_installation_id")?;
     let workspace_label: String = row.try_get("workspace_label")?;
     let default_label = match agent.as_str() {
+        _ if plugin_installation_id.is_some() && current_label == DEFAULT_CAPABILITY_SESSION_LABEL => DEFAULT_CAPABILITY_SESSION_LABEL.to_owned(),
         "codex" => format!("Codex · {workspace_label}"),
         "pi" => format!("Pi · {workspace_label}"),
         _ if plugin_installation_id.is_some() => "Plugin session".to_owned(),
@@ -1302,7 +1311,9 @@ async fn set_workspace_trust(
     trusted: bool,
     state: State<'_, AppState>,
 ) -> Result<Workspace, CoreError> {
-    let updated = sqlx::query("UPDATE workspaces SET trusted = ?, updated_at = ? WHERE id = ?")
+    let _guard = state.capability_broker.mutation_guard().await;
+    let updated = sqlx::query("UPDATE workspaces SET permission_epoch = permission_epoch + CASE WHEN trusted != ? THEN 1 ELSE 0 END, trusted = ?, updated_at = ? WHERE id = ?")
+        .bind(i64::from(trusted))
         .bind(i64::from(trusted))
         .bind(now_iso())
         .bind(&workspace_id)
@@ -1311,6 +1322,11 @@ async fn set_workspace_trust(
     if updated.rows_affected() == 0 {
         return Err(CoreError::WorkspaceNotFound(workspace_id));
     }
+    if !trusted {
+        sqlx::query("DELETE FROM session_permission_grants WHERE session_id IN (SELECT id FROM sessions WHERE workspace_id=?)")
+            .bind(&workspace_id).execute(&state.db).await?;
+    }
+    if !trusted { state.capability_broker.stop_workspace(&workspace_id).await.map_err(|error|CoreError::Initialization(error.message))?; }
     workspace_by_id(&state.db, &workspace_id).await
 }
 
@@ -1319,12 +1335,13 @@ async fn remove_workspace(
     workspace_id: String,
     state: State<'_, AppState>,
 ) -> Result<(), CoreError> {
-    state.codex.close_workspace(&workspace_id).await?;
+    let _guard = state.capability_broker.mutation_guard().await;
+    state.capability_broker.stop_workspace(&workspace_id).await.map_err(|error|CoreError::SessionOperation(error.message))?;
     state
         .plugins
         .close_workspace(&workspace_id)
         .await
-        .map_err(CoreError::Initialization)?;
+        .map_err(CoreError::SessionOperation)?;
     let result = sqlx::query("DELETE FROM workspaces WHERE id = ?")
         .bind(&workspace_id)
         .execute(&state.db)
@@ -1559,26 +1576,6 @@ async fn session_agent(db: &SqlitePool, session_id: &str) -> Result<String, Core
         .ok_or_else(|| CoreError::SessionNotFound(session_id.to_owned()))
 }
 
-fn execution_profile_agent(agent: &str, capabilities: &[String]) -> String {
-    if agent == "codex"
-        || agent == "dev.aibo.codex.agent"
-        || capabilities
-            .iter()
-            .any(|capability| capability == "permissions.nativeSandbox")
-    {
-        "codex".to_owned()
-    } else if agent == "pi"
-        || agent == "dev.aibo.pi.agent"
-        || capabilities
-            .iter()
-            .any(|capability| capability == "session.tree" || capability == "queue.manage")
-    {
-        "pi".to_owned()
-    } else {
-        agent.to_owned()
-    }
-}
-
 fn require_trusted_workspace(
     workspace: &Workspace,
     profile: &ResolvedExecutionProfile,
@@ -1598,40 +1595,38 @@ async fn session_execution_profile(
 ) -> Result<SessionExecutionProfile, CoreError> {
     let row = sqlx::query(
         "SELECT session_id, schema_version, requested_json, enforced_json, unsupported_json,
-                adapter_capabilities_json, native_sandbox, resolved_at
+                adapter_capabilities_json, native_sandbox, resolved_at, enforcement_backend
          FROM session_execution_profiles WHERE session_id = ?",
     )
     .bind(session_id)
     .fetch_optional(db)
     .await?;
     let session = session_by_id(db, session_id).await?;
-    let profile_agent = execution_profile_agent(&session.agent, &session.capabilities);
+    let backend = execution_profile::EnforcementBackend::legacy_agent(&session.agent);
     if let Some(row) = row {
         let mut stored = profile_from_row(&row, session_id.to_owned())
             .map_err(CoreError::InvalidExecutionProfile)?;
         if session.plugin_installation_id.is_some() {
-            let mut resolved = resolve_profile(
-                &profile_agent,
+            let mut resolved = execution_profile::resolve_with_backend(
+                stored.profile.enforcement_backend,
                 Some(stored.profile.requested.clone()),
                 stored.profile.resolved_at.clone(),
             )
             .map_err(CoreError::InvalidExecutionProfile)?;
             resolved.adapter_capabilities = session.capabilities;
-            resolved.native_sandbox = profile_agent == "codex";
             stored.profile = resolved;
         }
         return Ok(stored);
     }
 
-    let mut resolved = resolve_profile(
-        &profile_agent,
-        default_requested_profile(&profile_agent).ok(),
+    let mut resolved = execution_profile::resolve_with_backend(
+        backend,
+        None,
         now_iso(),
     )
     .map_err(CoreError::InvalidExecutionProfile)?;
     if session.plugin_installation_id.is_some() {
         resolved.adapter_capabilities = session.capabilities;
-        resolved.native_sandbox = profile_agent == "codex";
     }
     resolved
         .unsupported
@@ -1662,11 +1657,12 @@ async fn get_session_execution_profile(
 async fn update_session_execution_profile(
     session_id: String,
     requested: ExecutionProfile,
-    state: State<'_, AppState>,
+    window: tauri::WebviewWindow, state: State<'_, AppState>,
 ) -> Result<SessionExecutionProfile, CoreError> {
+    let _admission = state.plugins.session_operation(&session_id).await;
     let session = session_by_id(&state.db, &session_id).await?;
     if session.archived {
-        return Err(CoreError::Initialization(
+        return Err(CoreError::SessionOperation(
             "archived sessions must be unarchived before changing their execution profile"
                 .to_owned(),
         ));
@@ -1677,39 +1673,20 @@ async fn update_session_execution_profile(
     ) {
         return Err(CoreError::SessionBusy);
     }
-    let profile_agent = execution_profile_agent(&session.agent, &session.capabilities);
-    let mut resolved = resolve_profile(&profile_agent, Some(requested), now_iso())
+    let backend = session_execution_profile(&state.db, &session_id).await?.profile.enforcement_backend;
+    let mut resolved = execution_profile::resolve_with_backend(backend, Some(requested), now_iso())
         .map_err(CoreError::InvalidExecutionProfile)?;
     if session.plugin_installation_id.is_some() {
         resolved.adapter_capabilities = session.capabilities.clone();
-        resolved.native_sandbox = profile_agent == "codex";
     }
     let workspace = workspace_by_id(&state.db, &session.workspace_id).await?;
     require_trusted_workspace(&workspace, &resolved)?;
 
-    // A runtime captures the resolved profile when it is created. Close an
-    // idle runtime so the next prompt reopens it with the updated profile.
-    if session.plugin_installation_id.is_some() {
-        state
-            .plugins
-            .close(&session_id)
-            .await
-            .map_err(CoreError::Initialization)?;
-    } else {
-        match session.agent.as_str() {
-        "codex" => state
-            .codex
-            .close(&session_id)
-            .await
-            .map_err(CoreError::from)?,
-        "pi" => return Err(CoreError::Initialization("legacy Pi session is history-only; create a new Pi SDK plugin session before changing its execution profile".to_owned())),
-        agent => {
-            return Err(CoreError::Initialization(format!(
-                "unsupported session agent: {agent}"
-            )))
-        }
+    if session.plugin_installation_id.is_none() {
+        return Err(CoreError::SessionOperation("history_only: old session configuration is read-only".into()));
     }
-    }
+    // The next capability open captures the updated host execution profile.
+    state.plugins.close_admitted(window.label(), &session_id).await.map_err(CoreError::SessionOperation)?;
     save_session_profile(&state.db, &session_id, &resolved).await?;
     sqlx::query("UPDATE sessions SET state = 'idle', updated_at = ? WHERE id = ?")
         .bind(now_iso())
@@ -1824,22 +1801,21 @@ async fn rename_session(
 }
 
 #[tauri::command]
+async fn read_session_history(workspace_id: String, session_id: String, before: Option<session_history::Cursor>, state: State<'_, AppState>) -> Result<session_history::Page, CoreError> {
+    session_history::read(&state.db, workspace_id, session_id, before).await
+}
+
+#[tauri::command]
 async fn get_timeline(
     session_id: String,
-    state: State<'_, AppState>,
+    window: tauri::WebviewWindow, state: State<'_, AppState>,
 ) -> Result<Vec<TimelineItem>, CoreError> {
     let session = session_by_id(&state.db, &session_id).await?;
     if session.agent == "dev.aibo.pi.agent"
         && session.plugin_installation_id.is_some()
         && !session.archived
     {
-        // Core messages are an append-only history across all Pi branches.
-        // Read the native active branch on every refresh, including after
-        // navigation and when returning to an already-open session.
-        let snapshot = state.plugins.invoke_capability(
-            &session_id, "session.snapshot", serde_json::json!({}),
-        ).await.map_err(CoreError::Initialization)?;
-        return Ok(pi_snapshot_timeline(&snapshot, &session_id));
+        return state.plugins.pi_timeline_from(window.label(), &session_id).await.map_err(CoreError::SessionOperation);
     }
     let rows = sqlx::query(
         "SELECT id, session_id, turn_id, external_message_id, role, tool_name, content,
@@ -2021,12 +1997,13 @@ async fn list_turn_checkpoints(
         .map_err(Into::into)
 }
 
+#[cfg(test)]
 async fn persist_restore_operation(
     db: &SqlitePool,
     workspace_id: &str,
     session_id: &str,
     turn_id: &str,
-    report: &RestoreReport,
+    report: &crate::change_set::RestoreReport,
     status_override: Option<&str>,
 ) -> Result<RestoreOperation, CoreError> {
     let id = Ulid::new().to_string();
@@ -2083,86 +2060,12 @@ async fn persist_restore_operation(
 async fn restore_turn_change_set(
     session_id: String,
     turn_id: String,
+    request_id: String,
+    window: tauri::WebviewWindow,
     state: State<'_, AppState>,
 ) -> Result<RestoreTurnChangeSetResult, CoreError> {
-    let session = session_by_id(&state.db, &session_id).await?;
-    let workspace = workspace_by_id(&state.db, &session.workspace_id).await?;
-    if workspace.trust != "trusted" {
-        return Err(CoreError::WorkspaceTrustRequired);
-    }
-    let report = match restore_change_set(
-        &state.db,
-        &state.data_dir.join("checkpoints"),
-        Path::new(&workspace.path),
-        &session_id,
-        &turn_id,
-    )
-    .await
-    {
-        Ok(report) => report,
-        Err(error) => {
-            let failure = RestoreReport {
-                unsupported: vec![error.clone()],
-                ..RestoreReport::default()
-            };
-            persist_restore_operation(
-                &state.db,
-                &session.workspace_id,
-                &session_id,
-                &turn_id,
-                &failure,
-                Some("failed"),
-            )
-            .await?;
-            return Err(CoreError::Database(error));
-        }
-    };
-    let _operation = persist_restore_operation(
-        &state.db,
-        &session.workspace_id,
-        &session_id,
-        &turn_id,
-        &report,
-        None,
-    )
-    .await?;
-    let audit_id = Ulid::new().to_string();
-    let now = now_iso();
-    let audit_message = if report.applied {
-        format!(
-            "已恢复本轮 Agent 变更（{} 个文件）；恢复动作已记录。",
-            report.restored.len()
-        )
-    } else if !report.conflicts.is_empty() {
-        format!(
-            "恢复已阻止：{} 个文件在本轮后发生了变化；未覆盖用户修改。",
-            report.conflicts.len()
-        )
-    } else if !report.unsupported.is_empty() {
-        format!("恢复已阻止：{}", report.unsupported.join("、"))
-    } else {
-        "恢复未执行：没有可恢复的变更。".to_owned()
-    };
-    sqlx::query(
-        "INSERT INTO messages
-         (id, session_id, turn_id, external_message_id, role, content, status, sequence, created_at, updated_at)
-         VALUES (?, ?, ?, ?, 'system', ?, 'completed', 0, ?, ?)",
-    )
-    .bind(&audit_id)
-    .bind(&session_id)
-    .bind(&turn_id)
-    .bind(format!("restore:{audit_id}"))
-    .bind(audit_message)
-    .bind(&now)
-    .bind(&now)
-    .execute(&state.db)
-    .await?;
-    Ok(RestoreTurnChangeSetResult {
-        applied: report.applied,
-        restored: report.restored,
-        conflicts: report.conflicts,
-        unsupported: report.unsupported,
-    })
+    let request = host_write_request(request_id, window, "Aibo · 确认恢复本轮变更");
+    turn_restore::restore_requested(&state.db, &state.data_dir, &session_id, &turn_id, &request).await
 }
 
 #[tauri::command]
@@ -2608,6 +2511,15 @@ enum TurnDiffSourceError {
     Failed(String),
 }
 
+async fn read_turn_diff_file(path: &Path) -> Result<Vec<u8>, std::io::Error> {
+    tokio::time::timeout(std::time::Duration::from_secs(15), async {
+        let mut bytes = Vec::new();
+        tokio::fs::File::open(path).await?.take(10 * 1024 * 1024 + 1).read_to_end(&mut bytes).await?;
+        if bytes.len() > 10 * 1024 * 1024 { return Err(std::io::Error::other("turn diff file exceeds 10 MiB")); }
+        Ok(bytes)
+    }).await.map_err(|_| std::io::Error::other("turn diff file read timed out"))?
+}
+
 async fn load_turn_diff_sources(
     db: &SqlitePool,
     data_dir: &Path,
@@ -2618,7 +2530,7 @@ async fn load_turn_diff_sources(
     require_text: bool,
 ) -> Result<TurnDiffSources, TurnDiffSourceError> {
     let row = sqlx::query(
-        "SELECT previous_path, change_kind, baseline_exists, baseline_hash, baseline_dirty,
+        "SELECT previous_path, change_kind, baseline_exists, baseline_hash, file_changes.baseline_dirty,
                 result_exists, result_hash, baseline_head, attribution
          FROM file_changes
          JOIN turn_change_sets ON turn_change_sets.id = file_changes.change_set_id
@@ -2693,25 +2605,19 @@ async fn load_turn_diff_sources(
             baseline_path,
         );
         if checkpoint.is_file() {
-            fs::read(checkpoint)
+            read_turn_diff_file(&checkpoint).await
                 .map_err(|error| TurnDiffSourceError::Failed(format!("read checkpoint: {error}")))?
         } else if baseline_dirty {
             return Err(TurnDiffSourceError::Unavailable(
                 "本轮前已有修改，且 baseline checkpoint 不可用".to_owned(),
             ));
         } else if let Some(head) = baseline_head.as_deref() {
-            let output = Command::new("git")
-                .args([
-                    "-C",
-                    workspace_path,
-                    "show",
-                    &format!("{head}:{baseline_path}"),
-                ])
-                .output()
+            let command = crate::workspace_git_approval::read_command(workspace_path, &["show", &format!("{head}:{baseline_path}")]);
+            let output = crate::controlled_process::execute(command, std::time::Duration::from_secs(15), 10 * 1024 * 1024 + 1).await
                 .map_err(|error| {
                     TurnDiffSourceError::Failed(format!("read Git baseline: {error}"))
                 })?;
-            if !output.status.success() {
+            if !output.success || output.timed_out || output.stdout.len() > 10 * 1024 * 1024 || output.stderr.len() > 10 * 1024 * 1024 {
                 return Err(TurnDiffSourceError::Unavailable(
                     "Git baseline 不可用".to_owned(),
                 ));
@@ -2734,7 +2640,7 @@ async fn load_turn_diff_sources(
         }
     }
     let result = if result_exists {
-        let bytes = fs::read(&target)
+        let bytes = read_turn_diff_file(&target).await
             .map_err(|error| TurnDiffSourceError::Failed(format!("read current file: {error}")))?;
         let current_hash = {
             let mut digest = Sha256::new();
@@ -2957,259 +2863,12 @@ async fn apply_git_hunk_action(
     path: String,
     hunk_index: i64,
     action: String,
+    request_id: String,
+    window: tauri::WebviewWindow,
     state: State<'_, AppState>,
 ) -> Result<GitHunkActionResult, CoreError> {
-    let session = session_by_id(&state.db, &session_id).await?;
-    let workspace = workspace_by_id(&state.db, &session.workspace_id).await?;
-    if workspace.trust != "trusted" {
-        return Err(CoreError::WorkspaceTrustRequired);
-    }
-    if !matches!(action.as_str(), "stage" | "unstage" | "revert") {
-        return Err(CoreError::InvalidWorkspacePath(
-            "unsupported Git hunk action".to_owned(),
-        ));
-    }
-    if hunk_index < 0 {
-        return Err(CoreError::InvalidWorkspacePath(
-            "hunk index must not be negative".to_owned(),
-        ));
-    }
-    let sources = match load_turn_diff_sources(
-        &state.db,
-        &state.data_dir,
-        &workspace.path,
-        &session_id,
-        &turn_id,
-        &path,
-        true,
-    )
-    .await
-    {
-        Ok(sources) => sources,
-        Err(TurnDiffSourceError::NotChanged) => {
-            return Err(CoreError::Database(
-                "requested file is not in the turn change set".to_owned(),
-            ));
-        }
-        Err(TurnDiffSourceError::UnsafePath(error)) => {
-            return Err(CoreError::InvalidWorkspacePath(error));
-        }
-        Err(TurnDiffSourceError::Unavailable(reason)) => {
-            return Ok(GitHunkActionResult {
-                path,
-                hunk_index,
-                action,
-                applied: false,
-                message: reason,
-            });
-        }
-        Err(TurnDiffSourceError::Failed(error)) => return Err(CoreError::Database(error)),
-    };
-    if sources.baseline_dirty {
-        return Ok(GitHunkActionResult {
-            path,
-            hunk_index,
-            action,
-            applied: false,
-            message: "本轮前已有修改，拒绝执行 hunk 级 Git 操作".to_owned(),
-        });
-    }
-    let git = Command::new("git")
-        .args(["-C", &workspace.path, "rev-parse", "--is-inside-work-tree"])
-        .output()
-        .map_err(|error| CoreError::Database(format!("probe Git workspace: {error}")))?;
-    if !git.status.success() || String::from_utf8_lossy(&git.stdout).trim() != "true" {
-        return Ok(GitHunkActionResult {
-            path,
-            hunk_index,
-            action,
-            applied: false,
-            message: "非 Git 工作区不支持 hunk 级操作".to_owned(),
-        });
-    }
-    let full_diff = run_unified_text_diff(&path, &sources.baseline, &sources.result)
-        .map_err(CoreError::Database)?;
-    let patch =
-        select_unified_hunk(&full_diff, hunk_index as usize).map_err(CoreError::Database)?;
-    let patch_path = env::temp_dir().join(format!("aibo-hunk-{id}.patch", id = Ulid::new()));
-    fs::write(&patch_path, patch.as_bytes())
-        .map_err(|error| CoreError::Database(format!("write hunk patch: {error}")))?;
-    let mut check_args = vec![
-        "-C".to_owned(),
-        workspace.path.clone(),
-        "apply".to_owned(),
-        "--check".to_owned(),
-        "--whitespace=nowarn".to_owned(),
-    ];
-    if action == "stage" || action == "unstage" {
-        check_args.push("--cached".to_owned());
-    }
-    if action == "unstage" || action == "revert" {
-        check_args.push("--reverse".to_owned());
-    }
-    check_args.push(patch_path.to_string_lossy().into_owned());
-    let check = Command::new("git")
-        .args(&check_args)
-        .output()
-        .map_err(|error| CoreError::Database(format!("check hunk patch: {error}")))?;
-    if !check.status.success() {
-        let _ = fs::remove_file(&patch_path);
-        let message = String::from_utf8_lossy(&check.stderr).trim().to_owned();
-        return Ok(GitHunkActionResult {
-            path,
-            hunk_index,
-            action,
-            applied: false,
-            message: if message.is_empty() {
-                format!("git apply --check exited with {}", check.status)
-            } else {
-                message
-            },
-        });
-    }
-    let mut apply_args = check_args;
-    if let Some(check_index) = apply_args.iter().position(|value| value == "--check") {
-        apply_args.remove(check_index);
-    }
-    let output = Command::new("git")
-        .args(&apply_args)
-        .output()
-        .map_err(|error| CoreError::Database(format!("apply hunk patch: {error}")))?;
-    let _ = fs::remove_file(&patch_path);
-    let message = String::from_utf8_lossy(if output.status.success() {
-        &output.stdout
-    } else {
-        &output.stderr
-    })
-    .trim()
-    .to_owned();
-    Ok(GitHunkActionResult {
-        path,
-        hunk_index,
-        action,
-        applied: output.status.success(),
-        message: if message.is_empty() {
-            if output.status.success() {
-                "Git hunk 操作已完成".to_owned()
-            } else {
-                format!("git exited with {}", output.status)
-            }
-        } else {
-            message
-        },
-    })
-}
-
-async fn restore_git_file_baseline(
-    workspace_path: &str,
-    path: &str,
-    target: &Path,
-    sources: &TurnDiffSources,
-) -> Result<(), String> {
-    if sources.baseline_exists {
-        if let Some(parent) = target.parent() {
-            tokio::fs::create_dir_all(parent)
-                .await
-                .map_err(|error| format!("create restore directory: {error}"))?;
-        }
-        tokio::fs::write(target, &sources.baseline)
-            .await
-            .map_err(|error| format!("restore file baseline: {error}"))?;
-    } else if sources.result_exists {
-        tokio::fs::remove_file(target)
-            .await
-            .map_err(|error| format!("remove added file: {error}"))?;
-    }
-
-    // Keep the index consistent with the exact recorded baseline. Using
-    // `git restore` here would restore from the current index and can both
-    // lose post-turn edits and leave staged Agent changes untouched.
-    let output = if sources.baseline_exists {
-        Command::new("git")
-            .args(["-C", workspace_path, "add", "--", path])
-            .output()
-    } else {
-        Command::new("git")
-            .args([
-                "-C",
-                workspace_path,
-                "rm",
-                "--cached",
-                "--ignore-unmatch",
-                "--",
-                path,
-            ])
-            .output()
-    }
-    .map_err(|error| format!("update Git restore state: {error}"))?;
-    if output.status.success() {
-        return Ok(());
-    }
-
-    if sources.result_exists {
-        let _ = tokio::fs::write(target, &sources.result).await;
-    } else {
-        let _ = tokio::fs::remove_file(target).await;
-    }
-    let message = String::from_utf8_lossy(&output.stderr).trim().to_owned();
-    Err(if message.is_empty() {
-        format!("git exited with {}", output.status)
-    } else {
-        message
-    })
-}
-
-fn apply_git_index_action(
-    workspace_path: &str,
-    path: &str,
-    action: &str,
-) -> Result<GitFileActionResult, CoreError> {
-    crate::workspace_guard::canonicalize_target(Path::new(workspace_path), Path::new(path))
-        .map_err(CoreError::InvalidWorkspacePath)?;
-    if !matches!(action, "stage" | "unstage") {
-        return Err(CoreError::InvalidWorkspacePath(
-            "unsupported Git index action".to_owned(),
-        ));
-    }
-    let mut command = Command::new("git");
-    command.args(["-C", workspace_path]);
-    if action == "stage" {
-        command.args(["add", "--", path]);
-    } else {
-        let has_head = Command::new("git")
-            .args(["-C", workspace_path, "rev-parse", "--verify", "HEAD"])
-            .output()
-            .is_ok_and(|output| output.status.success());
-        if has_head {
-            command.args(["restore", "--staged", "--", path]);
-        } else {
-            command.args(["rm", "--cached", "--ignore-unmatch", "--", path]);
-        }
-    }
-    let output = command
-        .output()
-        .map_err(|error| CoreError::Database(format!("run Git file action: {error}")))?;
-    let message = String::from_utf8_lossy(if output.status.success() {
-        &output.stdout
-    } else {
-        &output.stderr
-    })
-    .trim()
-    .to_owned();
-    Ok(GitFileActionResult {
-        path: path.to_owned(),
-        action: action.to_owned(),
-        applied: output.status.success(),
-        message: if message.is_empty() {
-            if output.status.success() {
-                "Git 操作已完成".to_owned()
-            } else {
-                format!("git exited with {}", output.status)
-            }
-        } else {
-            message
-        },
-    })
+    let request = git_write_request(request_id, window);
+    core_turn_git::apply_hunk(&state.db, &state.data_dir, &session_id, &turn_id, &path, hunk_index, &action, &request).await
 }
 
 #[tauri::command]
@@ -3217,185 +2876,36 @@ async fn apply_workspace_git_file_action(
     workspace_id: String,
     path: String,
     action: String,
+    request_id: String,
+    window: tauri::WebviewWindow,
     state: State<'_, AppState>,
 ) -> Result<GitFileActionResult, CoreError> {
-    let workspace = workspace_by_id(&state.db, &workspace_id).await?;
-    if workspace.trust != "trusted" {
-        return Err(CoreError::WorkspaceTrustRequired);
-    }
-    apply_git_index_action(&workspace.path, &path, &action)
-}
-
-fn run_git_workspace_action(
-    workspace_path: &str,
-    action: &str,
-) -> Result<GitWorkspaceActionResult, CoreError> {
-    let mut command = Command::new("git");
-    command.args(["-C", workspace_path]);
-    match action {
-        "stage_all" => {
-            command.args(["add", "-A", "--", "."]);
-        }
-        "unstage_all" => {
-            let has_head = Command::new("git")
-                .args(["-C", workspace_path, "rev-parse", "--verify", "HEAD"])
-                .output()
-                .is_ok_and(|output| output.status.success());
-            if has_head {
-                command.args(["restore", "--staged", "--", "."]);
-            } else {
-                command.args(["rm", "--cached", "-r", "--ignore-unmatch", "--", "."]);
-            }
-        }
-        _ => {
-            return Err(CoreError::InvalidWorkspacePath(
-                "unsupported Git workspace action".to_owned(),
-            ));
-        }
-    }
-    let output = command
-        .output()
-        .map_err(|error| CoreError::Database(format!("run Git workspace action: {error}")))?;
-    let message = String::from_utf8_lossy(if output.status.success() {
-        &output.stdout
-    } else {
-        &output.stderr
-    })
-    .trim()
-    .to_owned();
-    Ok(GitWorkspaceActionResult {
-        action: action.to_owned(),
-        applied: output.status.success(),
-        message: if message.is_empty() {
-            if output.status.success() {
-                "Git 操作已完成".to_owned()
-            } else {
-                format!("git exited with {}", output.status)
-            }
-        } else {
-            message
-        },
-    })
+    let request = git_write_request(request_id, window);
+    workspace_git::apply_workspace_git_file_action_requested(&state.db, workspace_id, path, action, &request).await
 }
 
 #[tauri::command]
 async fn apply_workspace_git_action(
     workspace_id: String,
     action: String,
+    request_id: String,
+    window: tauri::WebviewWindow,
     state: State<'_, AppState>,
 ) -> Result<GitWorkspaceActionResult, CoreError> {
-    let workspace = workspace_by_id(&state.db, &workspace_id).await?;
-    if workspace.trust != "trusted" {
-        return Err(CoreError::WorkspaceTrustRequired);
-    }
-    run_git_workspace_action(&workspace.path, &action)
-}
-
-fn commit_workspace(workspace_path: &str, message: &str) -> Result<GitCommitResult, CoreError> {
-    let trimmed = message.trim();
-    if trimmed.is_empty() {
-        return Err(CoreError::Database("提交信息不能为空".to_owned()));
-    }
-    let staged = Command::new("git")
-        .args(["-C", workspace_path, "diff", "--cached", "--quiet"])
-        .output()
-        .map_err(|error| CoreError::Database(format!("check staged Git changes: {error}")))?;
-    if staged.status.success() {
-        return Ok(GitCommitResult {
-            committed: false,
-            hash: None,
-            message: "没有已暂存的更改可提交".to_owned(),
-        });
-    }
-    let output = Command::new("git")
-        .args(["-C", workspace_path, "commit", "-m", trimmed])
-        .output()
-        .map_err(|error| CoreError::Database(format!("create Git commit: {error}")))?;
-    if !output.status.success() {
-        let message = String::from_utf8_lossy(&output.stderr).trim().to_owned();
-        return Ok(GitCommitResult {
-            committed: false,
-            hash: None,
-            message: if message.is_empty() {
-                format!("git commit exited with {}", output.status)
-            } else {
-                message
-            },
-        });
-    }
-    let hash = Command::new("git")
-        .args(["-C", workspace_path, "rev-parse", "HEAD"])
-        .output()
-        .ok()
-        .filter(|value| value.status.success())
-        .map(|value| String::from_utf8_lossy(&value.stdout).trim().to_owned())
-        .filter(|value| !value.is_empty());
-    Ok(GitCommitResult {
-        committed: true,
-        hash,
-        message: String::from_utf8_lossy(&output.stdout).trim().to_owned(),
-    })
+    let request = git_write_request(request_id, window);
+    workspace_git::apply_workspace_git_action_requested(&state.db, workspace_id, action, &request).await
 }
 
 #[tauri::command]
 async fn commit_workspace_changes(
     workspace_id: String,
     message: String,
+    request_id: String,
+    window: tauri::WebviewWindow,
     state: State<'_, AppState>,
 ) -> Result<GitCommitResult, CoreError> {
-    let workspace = workspace_by_id(&state.db, &workspace_id).await?;
-    if workspace.trust != "trusted" {
-        return Err(CoreError::WorkspaceTrustRequired);
-    }
-    commit_workspace(&workspace.path, &message)
-}
-
-fn list_git_branches(workspace_path: &str) -> Result<Vec<GitBranch>, CoreError> {
-    let output = Command::new("git")
-        .args([
-            "-C",
-            workspace_path,
-            "for-each-ref",
-            "--format=%(refname:short)%09%(HEAD)%09%(objectname)",
-            "refs/heads",
-        ])
-        .output()
-        .map_err(|error| CoreError::Database(format!("list Git branches: {error}")))?;
-    if !output.status.success() {
-        let message = String::from_utf8_lossy(&output.stderr).trim().to_owned();
-        return Err(CoreError::Database(if message.is_empty() {
-            format!("git branch listing exited with {}", output.status)
-        } else {
-            message
-        }));
-    }
-    let mut branches = String::from_utf8_lossy(&output.stdout)
-        .lines()
-        .filter_map(|line| {
-            let mut fields = line.split('\t');
-            let name = fields.next()?.trim();
-            if name.is_empty() {
-                return None;
-            }
-            let marker = fields.next().unwrap_or_default().trim();
-            let commit = fields
-                .next()
-                .map(str::trim)
-                .filter(|value| !value.is_empty());
-            Some(GitBranch {
-                name: name.to_owned(),
-                current: marker == "*",
-                commit: commit.map(ToOwned::to_owned),
-            })
-        })
-        .collect::<Vec<_>>();
-    branches.sort_by(|left, right| {
-        right
-            .current
-            .cmp(&left.current)
-            .then_with(|| left.name.cmp(&right.name))
-    });
-    Ok(branches)
+    let request = git_write_request(request_id, window);
+    workspace_git::commit_workspace_changes_requested(&state.db, workspace_id, message, &request).await
 }
 
 #[tauri::command]
@@ -3403,135 +2913,31 @@ async fn list_workspace_git_branches(
     workspace_id: String,
     state: State<'_, AppState>,
 ) -> Result<Vec<GitBranch>, CoreError> {
-    let workspace = workspace_by_id(&state.db, &workspace_id).await?;
-    list_git_branches(&workspace.path)
-}
-
-fn validate_git_ref_name(name: &str) -> Result<(), CoreError> {
-    if name.trim().is_empty() || name.starts_with('-') || name.contains('\n') || name.contains('\r')
-    {
-        return Err(CoreError::InvalidWorkspacePath(
-            "无效的 Git 分支名称".to_owned(),
-        ));
-    }
-    Ok(())
+    workspace_git::list_workspace_git_branches(&state.db, workspace_id).await
 }
 
 #[tauri::command]
 async fn checkout_workspace_git_branch(
     workspace_id: String,
     branch: String,
+    request_id: String,
+    window: tauri::WebviewWindow,
     state: State<'_, AppState>,
 ) -> Result<GitWorkspaceActionResult, CoreError> {
-    validate_git_ref_name(&branch)?;
-    let workspace = workspace_by_id(&state.db, &workspace_id).await?;
-    if workspace.trust != "trusted" {
-        return Err(CoreError::WorkspaceTrustRequired);
-    }
-    let output = Command::new("git")
-        .args(["-C", &workspace.path, "switch", "--", &branch])
-        .output()
-        .map_err(|error| CoreError::Database(format!("switch Git branch: {error}")))?;
-    let message = String::from_utf8_lossy(if output.status.success() {
-        &output.stdout
-    } else {
-        &output.stderr
-    })
-    .trim()
-    .to_owned();
-    Ok(GitWorkspaceActionResult {
-        action: "checkout".to_owned(),
-        applied: output.status.success(),
-        message: if message.is_empty() {
-            if output.status.success() {
-                format!("已切换到 {branch}")
-            } else {
-                format!("git switch exited with {}", output.status)
-            }
-        } else {
-            message
-        },
-    })
+    let request = git_write_request(request_id, window);
+    workspace_git::checkout_workspace_git_branch_requested(&state.db, workspace_id, branch, &request).await
 }
 
 #[tauri::command]
 async fn create_workspace_git_branch(
     workspace_id: String,
     branch: String,
+    request_id: String,
+    window: tauri::WebviewWindow,
     state: State<'_, AppState>,
 ) -> Result<GitWorkspaceActionResult, CoreError> {
-    validate_git_ref_name(&branch)?;
-    let workspace = workspace_by_id(&state.db, &workspace_id).await?;
-    if workspace.trust != "trusted" {
-        return Err(CoreError::WorkspaceTrustRequired);
-    }
-    let output = Command::new("git")
-        .args(["-C", &workspace.path, "switch", "-c", &branch])
-        .output()
-        .map_err(|error| CoreError::Database(format!("create Git branch: {error}")))?;
-    let message = String::from_utf8_lossy(if output.status.success() {
-        &output.stdout
-    } else {
-        &output.stderr
-    })
-    .trim()
-    .to_owned();
-    Ok(GitWorkspaceActionResult {
-        action: "create_branch".to_owned(),
-        applied: output.status.success(),
-        message: if message.is_empty() {
-            if output.status.success() {
-                format!("已创建并切换到 {branch}")
-            } else {
-                format!("git switch -c exited with {}", output.status)
-            }
-        } else {
-            message
-        },
-    })
-}
-
-fn list_git_history(workspace_path: &str, limit: u32) -> Result<Vec<GitCommit>, CoreError> {
-    let limit = limit.clamp(1, 100);
-    let output = Command::new("git")
-        .args([
-            "-C",
-            workspace_path,
-            "log",
-            &format!("-{limit}"),
-            "--date=iso-strict",
-            "--format=%H%x09%h%x09%s%x09%an%x09%aI",
-        ])
-        .output()
-        .map_err(|error| CoreError::Database(format!("read Git history: {error}")))?;
-    if !output.status.success() {
-        let message = String::from_utf8_lossy(&output.stderr).trim().to_owned();
-        if message.contains("does not have any commits") || message.contains("bad default revision")
-        {
-            return Ok(Vec::new());
-        }
-        return Err(CoreError::Database(if message.is_empty() {
-            format!("git log exited with {}", output.status)
-        } else {
-            message
-        }));
-    }
-    Ok(String::from_utf8_lossy(&output.stdout)
-        .lines()
-        .filter_map(|line| {
-            let fields = line.split('\t').collect::<Vec<_>>();
-            if fields.len() < 5 || fields[0].is_empty() {
-                return None;
-            }
-            Some(GitCommit {
-                hash: fields[0].to_owned(),
-                short_hash: fields[1].to_owned(),
-                subject: fields[2].to_owned(),
-                author: fields[3].to_owned(),
-                authored_at: fields[4].to_owned(),
-            })
-        })
-        .collect())
+    let request = git_write_request(request_id, window);
+    workspace_git::create_workspace_git_branch_requested(&state.db, workspace_id, branch, &request).await
 }
 
 #[tauri::command]
@@ -3540,70 +2946,7 @@ async fn list_workspace_git_history(
     limit: Option<u32>,
     state: State<'_, AppState>,
 ) -> Result<Vec<GitCommit>, CoreError> {
-    let workspace = workspace_by_id(&state.db, &workspace_id).await?;
-    list_git_history(&workspace.path, limit.unwrap_or(30))
-}
-
-fn git_commit_files(workspace_path: &str, commit: &str) -> Result<Vec<GitCommitFile>, CoreError> {
-    let output = Command::new("git")
-        .args([
-            "-C",
-            workspace_path,
-            "diff-tree",
-            "--root",
-            "--no-commit-id",
-            "--name-status",
-            "-r",
-            "-z",
-            "-M",
-            commit,
-        ])
-        .output()
-        .map_err(|error| CoreError::Database(format!("read Git commit files: {error}")))?;
-    if !output.status.success() {
-        return Err(CoreError::Database(
-            String::from_utf8_lossy(&output.stderr).trim().to_owned(),
-        ));
-    }
-
-    let fields = output
-        .stdout
-        .split(|byte| *byte == 0)
-        .filter(|field| !field.is_empty())
-        .collect::<Vec<_>>();
-    let mut files = Vec::new();
-    let mut index = 0;
-    while index < fields.len() {
-        let status = String::from_utf8_lossy(fields[index]);
-        index += 1;
-        let Some(path) = fields.get(index) else { break };
-        index += 1;
-        let code = status.chars().next().unwrap_or('M');
-        let (previous_path, path) = if matches!(code, 'R' | 'C') {
-            let Some(new_path) = fields.get(index) else {
-                break;
-            };
-            index += 1;
-            (
-                Some(String::from_utf8_lossy(path).into_owned()),
-                String::from_utf8_lossy(new_path).into_owned(),
-            )
-        } else {
-            (None, String::from_utf8_lossy(path).into_owned())
-        };
-        files.push(GitCommitFile {
-            path,
-            previous_path,
-            kind: match code {
-                'A' => "added",
-                'D' => "deleted",
-                'R' | 'C' => "renamed",
-                _ => "modified",
-            }
-            .to_owned(),
-        });
-    }
-    Ok(files)
+    workspace_git::list_workspace_git_history(&state.db, workspace_id, limit).await
 }
 
 #[tauri::command]
@@ -3614,17 +2957,7 @@ async fn list_workspace_git_commit_files(
     limit: Option<usize>,
     state: State<'_, AppState>,
 ) -> Result<GitCommitFileList, CoreError> {
-    validate_git_ref_name(&commit)?;
-    let workspace = workspace_by_id(&state.db, &workspace_id).await?;
-    let files = git_commit_files(&workspace.path, &commit)?;
-    let total = files.len();
-    let offset = offset.unwrap_or(0).min(total);
-    let limit = limit.unwrap_or(10).clamp(1, 100);
-    Ok(GitCommitFileList {
-        commit,
-        files: files.into_iter().skip(offset).take(limit).collect(),
-        total,
-    })
+    workspace_git::list_workspace_git_commit_files(&state.db, workspace_id, commit, offset, limit).await
 }
 
 #[tauri::command]
@@ -3634,118 +2967,7 @@ async fn get_workspace_git_commit_file_diff(
     path: String,
     state: State<'_, AppState>,
 ) -> Result<WorkspaceFileDiff, CoreError> {
-    validate_git_ref_name(&commit)?;
-    if Path::new(&path).is_absolute()
-        || Path::new(&path)
-            .components()
-            .any(|part| matches!(part, std::path::Component::ParentDir))
-    {
-        return Err(CoreError::InvalidWorkspacePath(
-            "无效的提交文件路径".to_owned(),
-        ));
-    }
-    let workspace = workspace_by_id(&state.db, &workspace_id).await?;
-    let mut command = Command::new("git");
-    let output = command_output_bounded(
-        command.args([
-            "-C",
-            &workspace.path,
-            "show",
-            "--no-ext-diff",
-            "--no-color",
-            "--format=",
-            "--unified=3",
-            &commit,
-            "--",
-            &path,
-        ]),
-        WORKSPACE_DIFF_MAX_BYTES + 1,
-    )
-    .map_err(|error| CoreError::Database(format!("read Git commit diff: {error}")))?;
-    if !output.status.success() {
-        return Err(CoreError::Database(
-            String::from_utf8_lossy(&output.stderr).trim().to_owned(),
-        ));
-    }
-    let truncated = output.stdout_truncated;
-    let diff = if truncated {
-        truncate_diff_with_marker(
-            &String::from_utf8_lossy(&output.stdout),
-            WORKSPACE_DIFF_MAX_BYTES,
-        )
-    } else {
-        String::from_utf8_lossy(&output.stdout).into_owned()
-    };
-    Ok(WorkspaceFileDiff {
-        path,
-        staged: false,
-        available: !diff.is_empty(),
-        truncated,
-        hunks: parse_unified_hunks(&diff),
-        diff,
-        reason: Some("该提交中的文件没有可展示的文本差异".to_owned())
-            .filter(|_| output.stdout.is_empty()),
-    })
-}
-
-fn git_remote_status(workspace_path: &str) -> Result<GitRemoteStatus, CoreError> {
-    let branch = Command::new("git")
-        .args(["-C", workspace_path, "branch", "--show-current"])
-        .output()
-        .map_err(|error| CoreError::Database(format!("read Git branch: {error}")))?;
-    let branch = String::from_utf8_lossy(&branch.stdout).trim().to_owned();
-    let branch = (!branch.is_empty()).then_some(branch);
-    let upstream = Command::new("git")
-        .args([
-            "-C",
-            workspace_path,
-            "rev-parse",
-            "--abbrev-ref",
-            "--symbolic-full-name",
-            "@{upstream}",
-        ])
-        .output()
-        .ok()
-        .filter(|value| value.status.success())
-        .map(|value| String::from_utf8_lossy(&value.stdout).trim().to_owned())
-        .filter(|value| !value.is_empty());
-    let Some(upstream_name) = upstream.clone() else {
-        return Ok(GitRemoteStatus {
-            branch,
-            upstream: None,
-            ahead: 0,
-            behind: 0,
-        });
-    };
-    let counts = Command::new("git")
-        .args([
-            "-C",
-            workspace_path,
-            "rev-list",
-            "--left-right",
-            "--count",
-            "HEAD...@{upstream}",
-        ])
-        .output()
-        .map_err(|error| CoreError::Database(format!("read Git remote status: {error}")))?;
-    if !counts.status.success() {
-        return Ok(GitRemoteStatus {
-            branch,
-            upstream: Some(upstream_name),
-            ahead: 0,
-            behind: 0,
-        });
-    }
-    let values = String::from_utf8_lossy(&counts.stdout)
-        .split_whitespace()
-        .filter_map(|value| value.parse::<u32>().ok())
-        .collect::<Vec<_>>();
-    Ok(GitRemoteStatus {
-        branch,
-        upstream: Some(upstream_name),
-        ahead: values.first().copied().unwrap_or(0),
-        behind: values.get(1).copied().unwrap_or(0),
-    })
+    workspace_git::get_workspace_git_commit_file_diff(&state.db, workspace_id, commit, path).await
 }
 
 #[tauri::command]
@@ -3753,61 +2975,19 @@ async fn get_workspace_git_remote_status(
     workspace_id: String,
     state: State<'_, AppState>,
 ) -> Result<GitRemoteStatus, CoreError> {
-    let workspace = workspace_by_id(&state.db, &workspace_id).await?;
-    git_remote_status(&workspace.path)
+    workspace_git::get_workspace_git_remote_status(&state.db, workspace_id).await
 }
 
 #[tauri::command]
 async fn sync_workspace_git(
     workspace_id: String,
     action: String,
+    request_id: String,
+    window: tauri::WebviewWindow,
     state: State<'_, AppState>,
 ) -> Result<GitWorkspaceActionResult, CoreError> {
-    let workspace = workspace_by_id(&state.db, &workspace_id).await?;
-    if workspace.trust != "trusted" {
-        return Err(CoreError::WorkspaceTrustRequired);
-    }
-    let args: &[&str] = match action.as_str() {
-        "fetch" => &["fetch", "--all", "--prune"],
-        "pull" => &["pull", "--ff-only"],
-        "push" => &["push"],
-        _ => {
-            return Err(CoreError::InvalidWorkspacePath(
-                "unsupported Git sync action".to_owned(),
-            ));
-        }
-    };
-    let mut command = TokioCommand::new("git");
-    command
-        .args(["-C", &workspace.path])
-        .args(args)
-        .env("GIT_TERMINAL_PROMPT", "0")
-        .env("GCM_INTERACTIVE", "Never")
-        .kill_on_drop(true);
-    let output = tokio_time::timeout(Duration::from_secs(120), command.output())
-        .await
-        .map_err(|_| CoreError::Database(format!("Git {action} timed out after 120 seconds")))?
-        .map_err(|error| CoreError::Database(format!("run Git {action}: {error}")))?;
-    let message = String::from_utf8_lossy(if output.status.success() {
-        &output.stdout
-    } else {
-        &output.stderr
-    })
-    .trim()
-    .to_owned();
-    Ok(GitWorkspaceActionResult {
-        action,
-        applied: output.status.success(),
-        message: if message.is_empty() {
-            if output.status.success() {
-                "Git 同步已完成".to_owned()
-            } else {
-                format!("git exited with {}", output.status)
-            }
-        } else {
-            message
-        },
-    })
+    let request = git_write_request(request_id, window);
+    workspace_git::sync_workspace_git_requested(&state.db, workspace_id, action, &request).await
 }
 
 #[tauri::command]
@@ -3815,106 +2995,31 @@ async fn list_workspace_git_stashes(
     workspace_id: String,
     state: State<'_, AppState>,
 ) -> Result<Vec<GitStashEntry>, CoreError> {
-    let workspace = workspace_by_id(&state.db, &workspace_id).await?;
-    let output = Command::new("git")
-        .args([
-            "-C",
-            &workspace.path,
-            "stash",
-            "list",
-            "--format=%gd%x09%gs",
-        ])
-        .output()
-        .map_err(|error| CoreError::Database(format!("list Git stashes: {error}")))?;
-    if !output.status.success() {
-        return Err(CoreError::Database(
-            String::from_utf8_lossy(&output.stderr).trim().to_owned(),
-        ));
-    }
-    Ok(String::from_utf8_lossy(&output.stdout)
-        .lines()
-        .filter_map(|line| {
-            let (reference, message) = line.split_once('\t')?;
-            Some(GitStashEntry {
-                reference: reference.to_owned(),
-                message: message.to_owned(),
-            })
-        })
-        .collect())
+    workspace_git::list_workspace_git_stashes(&state.db, workspace_id).await
 }
 
 #[tauri::command]
 async fn apply_workspace_git_stash(
     workspace_id: String,
     reference: String,
+    request_id: String,
+    window: tauri::WebviewWindow,
     state: State<'_, AppState>,
 ) -> Result<GitWorkspaceActionResult, CoreError> {
-    validate_git_ref_name(&reference)?;
-    let workspace = workspace_by_id(&state.db, &workspace_id).await?;
-    if workspace.trust != "trusted" {
-        return Err(CoreError::WorkspaceTrustRequired);
-    }
-    let output = Command::new("git")
-        .args(["-C", &workspace.path, "stash", "apply", &reference])
-        .output()
-        .map_err(|error| CoreError::Database(format!("apply Git stash: {error}")))?;
-    let message = String::from_utf8_lossy(if output.status.success() {
-        &output.stdout
-    } else {
-        &output.stderr
-    })
-    .trim()
-    .to_owned();
-    Ok(GitWorkspaceActionResult {
-        action: "stash_apply".to_owned(),
-        applied: output.status.success(),
-        message: if message.is_empty() {
-            if output.status.success() {
-                "已应用暂存栈".to_owned()
-            } else {
-                format!("git stash apply exited with {}", output.status)
-            }
-        } else {
-            message
-        },
-    })
+    let request = git_write_request(request_id, window);
+    workspace_git::apply_workspace_git_stash_requested(&state.db, workspace_id, reference, &request).await
 }
 
 #[tauri::command]
 async fn stash_workspace_git(
     workspace_id: String,
     message: Option<String>,
+    request_id: String,
+    window: tauri::WebviewWindow,
     state: State<'_, AppState>,
 ) -> Result<GitWorkspaceActionResult, CoreError> {
-    let workspace = workspace_by_id(&state.db, &workspace_id).await?;
-    if workspace.trust != "trusted" {
-        return Err(CoreError::WorkspaceTrustRequired);
-    }
-    let message = message.unwrap_or_else(|| "aibo workspace changes".to_owned());
-    let output = Command::new("git")
-        .args(["-C", &workspace.path, "stash", "push", "-u", "-m", &message])
-        .output()
-        .map_err(|error| CoreError::Database(format!("create Git stash: {error}")))?;
-    let text = String::from_utf8_lossy(if output.status.success() {
-        &output.stdout
-    } else {
-        &output.stderr
-    })
-    .trim()
-    .to_owned();
-    Ok(GitWorkspaceActionResult {
-        action: "stash_push".to_owned(),
-        applied: output.status.success(),
-        message: if text.is_empty() {
-            if output.status.success() {
-                "已保存暂存栈".to_owned()
-            } else {
-                format!("git stash push exited with {}", output.status)
-            }
-        } else {
-            text
-        },
-    })
+    let request = git_write_request(request_id, window);
+    workspace_git::stash_workspace_git_requested(&state.db, workspace_id, message, &request).await
 }
 
 #[tauri::command]
@@ -3923,90 +3028,17 @@ async fn apply_git_file_action(
     path: String,
     action: String,
     turn_id: Option<String>,
+    request_id: String,
+    window: tauri::WebviewWindow,
     state: State<'_, AppState>,
 ) -> Result<GitFileActionResult, CoreError> {
-    let session = session_by_id(&state.db, &session_id).await?;
-    let workspace = workspace_by_id(&state.db, &session.workspace_id).await?;
-    if workspace.trust != "trusted" {
-        return Err(CoreError::WorkspaceTrustRequired);
-    }
-    if !matches!(action.as_str(), "stage" | "unstage" | "revert") {
-        return Err(CoreError::InvalidWorkspacePath(
-            "unsupported Git file action".to_owned(),
-        ));
-    }
-    let root = Path::new(&workspace.path);
-    let target = crate::workspace_guard::canonicalize_target(root, Path::new(&path))
-        .map_err(CoreError::InvalidWorkspacePath)?;
-    if action == "revert" {
-        let Some(turn_id) = turn_id.as_deref() else {
-            return Ok(GitFileActionResult {
-                path,
-                action,
-                applied: false,
-                message: "整文件还原需要明确的本轮变更记录".to_owned(),
-            });
-        };
-        let sources = match load_turn_diff_sources(
-            &state.db,
-            &state.data_dir,
-            &workspace.path,
-            &session_id,
-            turn_id,
-            &path,
-            false,
-        )
-        .await
-        {
-            Ok(sources) => sources,
-            Err(TurnDiffSourceError::NotChanged) => {
-                return Ok(GitFileActionResult {
-                    path,
-                    action,
-                    applied: false,
-                    message: "该文件不在本轮变更记录中".to_owned(),
-                });
-            }
-            Err(TurnDiffSourceError::UnsafePath(error)) => {
-                return Err(CoreError::InvalidWorkspacePath(error));
-            }
-            Err(TurnDiffSourceError::Unavailable(message)) => {
-                return Ok(GitFileActionResult {
-                    path,
-                    action,
-                    applied: false,
-                    message,
-                });
-            }
-            Err(TurnDiffSourceError::Failed(error)) => return Err(CoreError::Database(error)),
-        };
-        if sources.baseline_dirty {
-            return Ok(GitFileActionResult {
-                path,
-                action,
-                applied: false,
-                message: "本轮前已有修改，禁止整文件还原；请审阅后处理".to_owned(),
-            });
-        }
+    let request = git_write_request(request_id, window);
+    core_turn_git::apply_file(&state.db, &state.data_dir, &session_id, &path, &action, turn_id.as_deref(), &request).await
+}
 
-        if let Err(message) =
-            restore_git_file_baseline(&workspace.path, &path, &target, &sources).await
-        {
-            return Ok(GitFileActionResult {
-                path,
-                action,
-                applied: false,
-                message,
-            });
-        }
-        return Ok(GitFileActionResult {
-            path,
-            action,
-            applied: true,
-            message: "已恢复到本轮开始前的文件内容".to_owned(),
-        });
-    }
-    apply_git_index_action(&workspace.path, &path, &action)
+#[tauri::command]
+async fn reference_session(session_id: String, source_session_id: String, state: State<'_, AppState>) -> Result<ContextAttachment, CoreError> {
+    session_context::capture(&state.db, &session_id, &source_session_id).await
 }
 
 #[tauri::command]
@@ -4079,6 +3111,7 @@ async fn register_session_attachments(
             media_type: attachment_media_type(&target, is_dir),
             source: "picker".to_owned(),
             send_strategy: "reference".to_owned(),
+            inline_context: None,
             created_at: now.clone(),
         });
     }
@@ -4093,7 +3126,7 @@ async fn list_session_attachments(
     session_by_id(&state.db, &session_id).await?;
     let rows = sqlx::query(
         "SELECT id, schema_version, workspace_id, session_id, turn_id, path, content_hash, size,
-                media_type, source, send_strategy, created_at
+                media_type, source, send_strategy, created_at, inline_context
          FROM attachments WHERE session_id = ? ORDER BY created_at ASC",
     )
     .bind(&session_id)
@@ -4113,6 +3146,7 @@ async fn list_session_attachments(
                 media_type: row.try_get("media_type")?,
                 source: row.try_get("source")?,
                 send_strategy: row.try_get("send_strategy")?,
+                inline_context: row.try_get("inline_context")?,
                 created_at: row.try_get("created_at")?,
             })
         })
@@ -4159,7 +3193,7 @@ async fn validate_session_attachments(
         .map_err(|error| CoreError::InvalidWorkspacePath(error.to_string()))?;
     let rows = sqlx::query(
         "SELECT id, path, content_hash, size FROM attachments
-         WHERE session_id = ? AND turn_id IS NULL ORDER BY created_at ASC",
+         WHERE session_id = ? AND turn_id IS NULL AND inline_context IS NULL ORDER BY created_at ASC",
     )
     .bind(&session_id)
     .fetch_all(&state.db)
@@ -4319,59 +3353,12 @@ async fn read_artifact(
     })
 }
 
-fn project_action_from_row(row: &sqlx::sqlite::SqliteRow) -> Result<ProjectAction, CoreError> {
-    let args_json: String = row.try_get("args_json")?;
-    let args = serde_json::from_str(&args_json).map_err(|error| {
-        CoreError::InvalidWorkspacePath(format!("invalid project action args: {error}"))
-    })?;
-    Ok(ProjectAction {
-        schema: row.try_get("schema_version")?,
-        id: row.try_get("id")?,
-        workspace_id: row.try_get("workspace_id")?,
-        name: row.try_get("name")?,
-        kind: row.try_get("kind")?,
-        program: row.try_get("program")?,
-        args,
-        cwd: row.try_get("cwd")?,
-        enabled: row.try_get::<i64, _>("enabled")? != 0,
-        created_at: row.try_get("created_at")?,
-        updated_at: row.try_get("updated_at")?,
-    })
-}
-
-async fn project_action_by_id(
-    db: &SqlitePool,
-    workspace_id: &str,
-    action_id: &str,
-) -> Result<ProjectAction, CoreError> {
-    let row = sqlx::query(
-        "SELECT id, workspace_id, schema_version, name, kind, program, args_json,
-                cwd, enabled, created_at, updated_at
-         FROM project_actions WHERE id = ? AND workspace_id = ?",
-    )
-    .bind(action_id)
-    .bind(workspace_id)
-    .fetch_optional(db)
-    .await?
-    .ok_or_else(|| CoreError::SessionNotFound(format!("project action {action_id}")))?;
-    project_action_from_row(&row)
-}
-
 #[tauri::command]
 async fn list_project_actions(
     workspace_id: String,
     state: State<'_, AppState>,
 ) -> Result<Vec<ProjectAction>, CoreError> {
-    workspace_by_id(&state.db, &workspace_id).await?;
-    let rows = sqlx::query(
-        "SELECT id, workspace_id, schema_version, name, kind, program, args_json,
-                cwd, enabled, created_at, updated_at
-         FROM project_actions WHERE workspace_id = ? ORDER BY enabled DESC, kind ASC, name ASC",
-    )
-    .bind(&workspace_id)
-    .fetch_all(&state.db)
-    .await?;
-    rows.iter().map(project_action_from_row).collect()
+    project_actions::list_project_actions(&state.db, workspace_id).await
 }
 
 #[tauri::command]
@@ -4387,95 +3374,7 @@ async fn save_project_action(
     enabled: Option<bool>,
     state: State<'_, AppState>,
 ) -> Result<ProjectAction, CoreError> {
-    let workspace = workspace_by_id(&state.db, &workspace_id).await?;
-    let name = name.trim();
-    let kind = kind.trim();
-    let program = program.trim();
-    if name.is_empty() || name.len() > 80 {
-        return Err(CoreError::InvalidWorkspacePath(
-            "project action name must be 1-80 characters".to_owned(),
-        ));
-    }
-    if !matches!(kind, "test" | "lint" | "build" | "custom") {
-        return Err(CoreError::InvalidWorkspacePath(
-            "unsupported project action kind".to_owned(),
-        ));
-    }
-    if program.is_empty() || program.len() > 255 || program.as_bytes().contains(&0) {
-        return Err(CoreError::InvalidWorkspacePath(
-            "project action program is invalid".to_owned(),
-        ));
-    }
-    if args.len() > 32
-        || args
-            .iter()
-            .any(|arg| arg.len() > 4096 || arg.as_bytes().contains(&0))
-    {
-        return Err(CoreError::InvalidWorkspacePath(
-            "project action args exceed limits".to_owned(),
-        ));
-    }
-    let root = fs::canonicalize(&workspace.path)
-        .map_err(|error| CoreError::InvalidWorkspacePath(error.to_string()))?;
-    let action_cwd = cwd.as_deref().unwrap_or(".");
-    let canonical_cwd = crate::workspace_guard::canonicalize_target(&root, Path::new(action_cwd))
-        .map_err(CoreError::InvalidWorkspacePath)?;
-    if !canonical_cwd.is_dir() {
-        return Err(CoreError::InvalidWorkspacePath(
-            "project action cwd is not a directory".to_owned(),
-        ));
-    }
-    let cwd = canonical_cwd
-        .strip_prefix(&root)
-        .map(|path| {
-            let value = path.to_string_lossy().replace('\\', "/");
-            if value.is_empty() {
-                ".".to_owned()
-            } else {
-                value
-            }
-        })
-        .map_err(|error| CoreError::InvalidWorkspacePath(error.to_string()))?;
-    let args_json = serde_json::to_string(&args).map_err(|error| {
-        CoreError::InvalidWorkspacePath(format!("serialize project action args: {error}"))
-    })?;
-    let id = action_id
-        .filter(|value| !value.trim().is_empty())
-        .unwrap_or_else(|| Ulid::new().to_string());
-    if let Some(existing) =
-        sqlx::query_scalar::<_, String>("SELECT workspace_id FROM project_actions WHERE id = ?")
-            .bind(&id)
-            .fetch_optional(&state.db)
-            .await?
-    {
-        if existing != workspace_id {
-            return Err(CoreError::InvalidWorkspacePath(
-                "project action belongs to another workspace".to_owned(),
-            ));
-        }
-    }
-    let now = now_iso();
-    sqlx::query(
-        "INSERT INTO project_actions
-         (id, workspace_id, schema_version, name, kind, program, args_json, cwd, enabled, created_at, updated_at)
-         VALUES (?, ?, 'aibo.project-action/v1', ?, ?, ?, ?, ?, ?, ?, ?)
-         ON CONFLICT(id) DO UPDATE SET name = excluded.name, kind = excluded.kind,
-           program = excluded.program, args_json = excluded.args_json, cwd = excluded.cwd,
-           enabled = excluded.enabled, updated_at = excluded.updated_at",
-    )
-    .bind(&id)
-    .bind(&workspace_id)
-    .bind(name)
-    .bind(kind)
-    .bind(program)
-    .bind(args_json)
-    .bind(cwd)
-    .bind(enabled.unwrap_or(true) as i64)
-    .bind(&now)
-    .bind(&now)
-    .execute(&state.db)
-    .await?;
-    project_action_by_id(&state.db, &workspace_id, &id).await
+    project_actions::save_project_action(&state.db, workspace_id, action_id, name, kind, program, args, cwd, enabled).await
 }
 
 #[tauri::command]
@@ -4484,13 +3383,72 @@ async fn delete_project_action(
     action_id: String,
     state: State<'_, AppState>,
 ) -> Result<(), CoreError> {
-    workspace_by_id(&state.db, &workspace_id).await?;
-    sqlx::query("DELETE FROM project_actions WHERE id = ? AND workspace_id = ?")
-        .bind(action_id)
-        .bind(workspace_id)
-        .execute(&state.db)
-        .await?;
-    Ok(())
+    project_actions::delete_project_action(&state.db, workspace_id, action_id).await
+}
+
+#[tauri::command]
+async fn run_project_action(
+    workspace_id: String,
+    action_id: String,
+    session_id: Option<String>,
+    request_id: String,
+    window: tauri::WebviewWindow,
+    state: State<'_, AppState>,
+) -> Result<ProjectActionRun, CoreError> {
+    use tauri_plugin_dialog::{DialogExt, MessageDialogButtons};
+    let caller = window.label().to_owned();
+    project_actions::run_project_action_with_confirmation(&state.db, &state.data_dir, workspace_id, action_id, session_id, request_id, caller, |message| async move {
+        let (send, receive) = tokio::sync::oneshot::channel();
+        window.app_handle().dialog().message(message).parent(&window).title("Aibo · 确认工程动作")
+            .buttons(MessageDialogButtons::OkCancelCustom("允许本次执行".into(), "取消".into()))
+            .show(move |accepted| { let _ = send.send(accepted); });
+        receive.await.map_err(|_| "confirmation_unavailable".to_owned())
+    }).await
+}
+
+#[tauri::command]
+async fn cancel_project_action(
+    workspace_id: String, run_id: String, state: State<'_, AppState>,
+) -> Result<bool, CoreError> {
+    project_actions::cancel_project_action(&state.db, workspace_id, run_id).await
+}
+
+fn git_write_request(request_id: String, window: tauri::WebviewWindow) -> workspace_write_runs::Request {
+    host_write_request(request_id, window, "Aibo · 确认 Git 写入")
+}
+
+fn host_write_request(request_id: String, window: tauri::WebviewWindow, title: &'static str) -> workspace_write_runs::Request {
+    use tauri_plugin_dialog::{DialogExt, MessageDialogButtons};
+    workspace_write_runs::Request::with_confirmation(request_id, window.label().into(), move |message| {
+        let window = window.clone();
+        async move {
+            let (send, receive) = tokio::sync::oneshot::channel();
+            window.app_handle().dialog().message(message).parent(&window).title(title)
+                .buttons(MessageDialogButtons::OkCancelCustom("允许本次执行".into(), "取消".into()))
+                .show(move |accepted| { let _ = send.send(accepted); });
+            receive.await.map_err(|_| "confirmation_unavailable".to_owned())
+        }
+    })
+}
+
+#[tauri::command]
+async fn cancel_workspace_write(workspace_id: String, run_id: String, window: tauri::WebviewWindow, state: State<'_, AppState>) -> Result<bool, CoreError> {
+    workspace_write_runs::cancel(&state.db, &workspace_id, &run_id, window.label()).await
+}
+
+#[tauri::command]
+async fn list_workspace_write_runs(workspace_id: String, limit: Option<i64>, before: Option<execution_history::Cursor>, state: State<'_, AppState>) -> Result<Vec<workspace_write_runs::WriteRun>, CoreError> {
+    workspace_write_runs::list_page(&state.db, workspace_id, limit, before.as_ref()).await
+}
+
+#[tauri::command]
+async fn list_project_action_runs(
+    workspace_id: String,
+    limit: Option<i64>,
+    before: Option<execution_history::Cursor>,
+    state: State<'_, AppState>,
+) -> Result<Vec<ProjectActionRun>, CoreError> {
+    project_actions::list_project_action_runs_page(&state.db, workspace_id, limit, before.as_ref()).await
 }
 
 pub(crate) async fn read_process_output<R: tokio::io::AsyncRead + Unpin>(reader: R) -> Vec<u8> {
@@ -4541,298 +3499,120 @@ pub(crate) async fn terminate_process_tree(child: &mut tokio::process::Child) {
 }
 
 #[tauri::command]
-async fn run_project_action(
-    workspace_id: String,
-    action_id: String,
-    session_id: Option<String>,
-    state: State<'_, AppState>,
-) -> Result<ProjectActionRun, CoreError> {
-    let workspace = workspace_by_id(&state.db, &workspace_id).await?;
-    if workspace.trust != "trusted" {
-        return Err(CoreError::WorkspaceTrustRequired);
-    }
-    let action = project_action_by_id(&state.db, &workspace_id, &action_id).await?;
-    if !action.enabled {
-        return Err(CoreError::InvalidWorkspacePath(
-            "project action is disabled".to_owned(),
-        ));
-    }
-    if let Some(session_id) = session_id.as_deref() {
-        let session = session_by_id(&state.db, session_id).await?;
-        if session.workspace_id != workspace_id {
-            return Err(CoreError::InvalidWorkspacePath(
-                "session does not belong to workspace".to_owned(),
-            ));
+async fn list_codex_threads(workspace_id: String, window: tauri::WebviewWindow, state: State<'_, AppState>) -> Result<serde_json::Value, CoreError> {
+    let request = capability_broker::Request {scope:capability_broker::Scope::Workspace(workspace_id),capability:"dev.aibo.codex.thread.list".into(),version:"1.0.0".into(),request_id:Ulid::new().to_string(),turn_id:None,input:serde_json::json!({})};
+    let response = match state.capability_broker.invoke(window.label(),request.clone()).await {
+        Ok(response) => response,
+        Err(error) if error.code == "provider_selection_required" => {
+            let providers = state.capability_broker.providers(&request.scope,&request.capability,&request.version).await.map_err(|e|CoreError::Initialization(e.message))?;
+            if providers.len()!=1 { return Err(CoreError::Initialization("provider_selection_required: choose a Codex catalog release".into())); }
+            let provider = &providers[0];
+            state.capability_broker.bind(capability_broker::Binding {scope:request.scope.clone(),capability:request.capability.clone(),version:request.version.clone(),installation_id:provider.installation_id.clone(),contribution_id:provider.contribution_id.clone()}).await.map_err(|e|CoreError::Initialization(e.message))?;
+            state.capability_broker.invoke(window.label(),request).await.map_err(|e|CoreError::Initialization(e.message))?
         }
-    }
-    let root = fs::canonicalize(&workspace.path)
-        .map_err(|error| CoreError::InvalidWorkspacePath(error.to_string()))?;
-    let cwd = crate::workspace_guard::canonicalize_target(&root, Path::new(&action.cwd))
-        .map_err(CoreError::InvalidWorkspacePath)?;
-    let started_at = now_iso();
-    let mut command = TokioCommand::new(&action.program);
-    command
-        .args(&action.args)
-        .current_dir(&cwd)
-        .stdout(std::process::Stdio::piped())
-        .stderr(std::process::Stdio::piped());
-    isolate_process_tree(&mut command);
-    let mut child = command
-        .kill_on_drop(true)
-        .spawn()
-        .map_err(|error| CoreError::Initialization(format!("start project action: {error}")))?;
-    let stdout = child
-        .stdout
-        .take()
-        .ok_or_else(|| CoreError::Initialization("project action stdout unavailable".to_owned()))?;
-    let stderr = child
-        .stderr
-        .take()
-        .ok_or_else(|| CoreError::Initialization("project action stderr unavailable".to_owned()))?;
-    let stdout_task = tauri::async_runtime::spawn(read_process_output(stdout));
-    let stderr_task = tauri::async_runtime::spawn(read_process_output(stderr));
-    let wait_result = tokio_time::timeout(Duration::from_secs(300), child.wait()).await;
-    let (status, exit_code) = match wait_result {
-        Ok(result) => {
-            let status = result.map_err(|error| {
-                CoreError::Initialization(format!("wait for project action: {error}"))
-            })?;
-            (
-                if status.success() {
-                    "completed"
-                } else {
-                    "failed"
-                },
-                status.code().map(i64::from),
-            )
-        }
-        Err(_) => {
-            terminate_process_tree(&mut child).await;
-            ("timed_out", None)
-        }
+        Err(error) => return Err(CoreError::Initialization(error.message)),
     };
-    let mut output = String::from_utf8_lossy(&stdout_task.await.unwrap_or_default()).to_string();
-    let stderr = String::from_utf8_lossy(&stderr_task.await.unwrap_or_default()).to_string();
-    if !stderr.is_empty() {
-        if !output.is_empty() {
-            output.push('\n');
-        }
-        output.push_str(&stderr);
-    }
-    let output = crate::artifact::truncate_utf8(
-        &crate::artifact::sanitize_content("project-action.command", &output),
-        1024 * 1024,
-        "\n… 工程动作输出已截断",
-    );
-    let completed_at = now_iso();
-    let run_id = Ulid::new().to_string();
-    let artifact_id = if let Some(session_id) = session_id.as_deref() {
-        crate::artifact::persist_text(
-            &state.db,
-            &state.data_dir,
-            &workspace_id,
-            session_id,
-            None,
-            &format!("project-action.{}", action.kind),
-            "text/plain",
-            &output,
-        )
-        .await
-        .ok()
-    } else {
-        None
-    };
-    sqlx::query(
-        "INSERT INTO project_action_runs
-         (id, schema_version, action_id, workspace_id, session_id, status, exit_code, output, artifact_id, started_at, completed_at)
-         VALUES (?, 'aibo.project-action-run/v1', ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-    )
-    .bind(&run_id)
-    .bind(&action_id)
-    .bind(&workspace_id)
-    .bind(&session_id)
-    .bind(status)
-    .bind(exit_code)
-    .bind(&output)
-    .bind(&artifact_id)
-    .bind(&started_at)
-    .bind(&completed_at)
-    .execute(&state.db)
-    .await?;
-    Ok(ProjectActionRun {
-        schema: "aibo.project-action-run/v1".to_owned(),
-        id: run_id,
-        action_id,
-        workspace_id,
-        session_id,
-        status: status.to_owned(),
-        exit_code,
-        output,
-        artifact_id,
-        started_at,
-        completed_at,
-    })
-}
-
-fn project_action_run_from_row(
-    row: &sqlx::sqlite::SqliteRow,
-) -> Result<ProjectActionRun, CoreError> {
-    Ok(ProjectActionRun {
-        schema: row.try_get("schema_version")?,
-        id: row.try_get("id")?,
-        action_id: row.try_get("action_id")?,
-        workspace_id: row.try_get("workspace_id")?,
-        session_id: row.try_get("session_id")?,
-        status: row.try_get("status")?,
-        exit_code: row.try_get("exit_code")?,
-        output: row.try_get("output")?,
-        artifact_id: row.try_get("artifact_id")?,
-        started_at: row.try_get("started_at")?,
-        completed_at: row.try_get("completed_at")?,
-    })
+    Ok(response.output["threads"].clone())
 }
 
 #[tauri::command]
-async fn list_project_action_runs(
-    workspace_id: String,
-    limit: Option<i64>,
-    state: State<'_, AppState>,
-) -> Result<Vec<ProjectActionRun>, CoreError> {
-    workspace_by_id(&state.db, &workspace_id).await?;
-    let limit = limit.unwrap_or(10).clamp(1, 50);
-    let rows = sqlx::query(
-        "SELECT id, schema_version, action_id, workspace_id, session_id, status,
-                exit_code, output, artifact_id, started_at, completed_at
-         FROM project_action_runs WHERE workspace_id = ?
-         ORDER BY completed_at DESC LIMIT ?",
-    )
-    .bind(&workspace_id)
-    .bind(limit)
-    .fetch_all(&state.db)
-    .await?;
-    rows.iter().map(project_action_run_from_row).collect()
+async fn read_codex_thread(session_id: String, window: tauri::WebviewWindow, state: State<'_, AppState>) -> Result<serde_json::Value, CoreError> {
+    let result = state.plugins.invoke_capability_from(window.label(), &session_id, "session.snapshot", serde_json::json!({})).await.map_err(CoreError::SessionOperation)?;
+    Ok(result["thread"].clone())
 }
 
 #[tauri::command]
-async fn list_codex_threads(
-    workspace_id: String,
-    state: State<'_, AppState>,
-) -> Result<Vec<CodexThreadSummary>, CoreError> {
-    state
-        .codex
-        .list_threads(&workspace_id)
-        .await
-        .map_err(Into::into)
+async fn fork_codex_thread(session_id: String, through_turn_id: Option<String>, window: tauri::WebviewWindow, state: State<'_, AppState>) -> Result<Session, CoreError> {
+    state.plugins.fork_from(window.label(), &session_id, through_turn_id.as_deref()).await.map_err(CoreError::SessionOperation)
 }
 
 #[tauri::command]
-async fn read_codex_thread(
-    session_id: String,
-    state: State<'_, AppState>,
-) -> Result<CodexThreadSnapshot, CoreError> {
-    state
-        .codex
-        .read_thread(&session_id)
-        .await
-        .map_err(Into::into)
+async fn archive_codex_thread(session_id: String, window: tauri::WebviewWindow, state: State<'_, AppState>) -> Result<Session, CoreError> {
+    archive_session(session_id, window, state).await
 }
 
 #[tauri::command]
-async fn fork_codex_thread(
-    session_id: String,
-    through_turn_id: Option<String>,
-    state: State<'_, AppState>,
-) -> Result<Session, CoreError> {
-    let source = session_by_id(&state.db, &session_id).await?;
-    if source.plugin_installation_id.is_some() {
-        let forked = state
-            .codex
-            .fork_plugin_codex_session(&session_id, through_turn_id.as_deref())
-            .await
-            .map_err(CoreError::from)?;
-        state
-            .plugins
-            .resume(&forked.id)
-            .await
-            .map_err(CoreError::Initialization)?;
-        return session_by_id(&state.db, &forked.id).await;
-    }
-    let source_profile = session_execution_profile(&state.db, &session_id).await?;
-    let forked = state
-        .codex
-        .fork(&session_id, through_turn_id.as_deref())
-        .await
-        .map_err(CoreError::from)?;
-    save_session_profile(&state.db, &forked.id, &source_profile.profile).await?;
-    Ok(forked)
+async fn unarchive_codex_thread(session_id: String, state: State<'_, AppState>) -> Result<Session, CoreError> {
+    unarchive_session(session_id, state).await
 }
 
 #[tauri::command]
-async fn archive_codex_thread(
-    session_id: String,
-    state: State<'_, AppState>,
-) -> Result<Session, CoreError> {
-    state.codex.archive(&session_id).await.map_err(Into::into)
+async fn archive_session(session_id: String, window: tauri::WebviewWindow, state: State<'_, AppState>) -> Result<Session, CoreError> {
+    state.plugins.archive_from(window.label(), &session_id).await.map_err(CoreError::SessionOperation)
 }
 
 #[tauri::command]
-async fn unarchive_codex_thread(
-    session_id: String,
-    state: State<'_, AppState>,
-) -> Result<Session, CoreError> {
-    state.codex.unarchive(&session_id).await.map_err(Into::into)
+async fn unarchive_session(session_id: String, state: State<'_, AppState>) -> Result<Session, CoreError> {
+    state.plugins.unarchive(&session_id).await.map_err(CoreError::SessionOperation)
 }
 
 #[tauri::command]
-async fn archive_session(
-    session_id: String,
-    state: State<'_, AppState>,
-) -> Result<Session, CoreError> {
-    let session = session_by_id(&state.db, &session_id).await?;
-    if session.plugin_installation_id.is_some() {
-        return state.plugins.archive(&session_id).await.map_err(CoreError::Initialization);
-    }
-    match session.agent.as_str() {
-        "codex" => state.codex.archive(&session_id).await.map_err(Into::into),
-        "pi" => {
-            if matches!(session.state.as_str(), "starting" | "running" | "waiting_approval" | "waiting_user" | "compacting") {
-                return Err(CoreError::SessionBusy);
-            }
-            sqlx::query("UPDATE sessions SET archived=1,state='closed',updated_at=? WHERE id=?")
-                .bind(now_iso()).bind(&session_id).execute(&state.db).await?;
-            session_by_id(&state.db, &session_id).await
-        },
-        agent => Err(CoreError::Initialization(format!(
-            "unsupported session agent: {agent}"
-        ))),
-    }
+async fn list_capability_providers(scope: capability_broker::Scope, capability: String, version: String, state: State<'_, AppState>) -> Result<Vec<capability_broker::Provider>, capability_broker::Failure> {
+    state.capability_broker.providers(&scope, &capability, &version).await
+}
+#[tauri::command]
+async fn bind_capability_provider(binding: capability_broker::Binding, state: State<'_, AppState>) -> Result<(), capability_broker::Failure> {
+    state.capability_broker.bind(binding).await
+}
+#[tauri::command]
+async fn invoke_capability(request: capability_broker::Request, window: tauri::WebviewWindow, state: State<'_, AppState>) -> Result<capability_broker::Response, capability_broker::Failure> {
+    let broker = state.capability_broker.clone();
+    let caller = window.label().to_owned();
+    let approval = host_write_request(request.request_id.clone(), window, "Aibo · 确认能力写入");
+    // Execution belongs to Core even if the calling view disappears.
+    tokio::spawn(async move { broker.invoke_authorized(&caller, request, &approval).await }).await.map_err(|_| capability_broker::Failure { code: "provider_unavailable".into(), message: "Capability task stopped".into(), invocation_id: None })?
+}
+#[tauri::command]
+async fn list_capability_history_scopes(before: Option<String>, legacy: Option<bool>, window: tauri::WebviewWindow, state: State<'_, AppState>) -> Result<capability_history::ScopePage, CoreError> {
+    capability_history::scopes_from(&state.db, window.label(), before, legacy.unwrap_or(false)).await
+}
+#[tauri::command]
+async fn read_capability_history(scope: capability_broker::Scope, before: Option<String>, legacy: Option<bool>, window: tauri::WebviewWindow, state: State<'_, AppState>) -> Result<capability_history::EventPage, CoreError> {
+    capability_history::events_from(&state.db, window.label(), scope, before, legacy.unwrap_or(false)).await
 }
 
 #[tauri::command]
-async fn unarchive_session(
-    session_id: String,
-    state: State<'_, AppState>,
-) -> Result<Session, CoreError> {
-    let session = session_by_id(&state.db, &session_id).await?;
-    if session.plugin_installation_id.is_some() {
-        return state.plugins.unarchive(&session_id).await.map_err(CoreError::Initialization);
-    }
-    match session.agent.as_str() {
-        "codex" => state.codex.unarchive(&session_id).await.map_err(Into::into),
-        "pi" => {
-            sqlx::query("UPDATE sessions SET archived=0,state='interrupted',updated_at=? WHERE id=?")
-                .bind(now_iso()).bind(&session_id).execute(&state.db).await?;
-            session_by_id(&state.db, &session_id).await
-        },
-        agent => Err(CoreError::Initialization(format!(
-            "unsupported session agent: {agent}"
-        ))),
-    }
+async fn list_capability_events(scope: capability_broker::Scope, after_sequence: i64, limit: u32, window: tauri::WebviewWindow, state: State<'_, AppState>) -> Result<Vec<serde_json::Value>, capability_broker::Failure> {
+    state.capability_broker.events(window.label(), &scope, after_sequence, limit).await
+}
+
+#[tauri::command]
+async fn cancel_capability(request_id: String, window: tauri::WebviewWindow, state: State<'_, AppState>) -> Result<bool, String> {
+    Ok(state.capability_broker.cancel(window.label(), &request_id).await)
 }
 
 #[tauri::command]
 async fn list_plugin_installations(state: State<'_, AppState>) -> Result<Vec<plugin_registry::PluginInstallation>, String> {
     plugin_registry::list(&state.db).await
+}
+
+#[tauri::command]
+async fn list_presentation_packages(state: State<'_, AppState>) -> Result<Vec<presentation_packages::Release>, String> {
+    presentation_packages::list(&state.db).await
+}
+#[tauri::command]
+async fn install_presentation_package(path: String, state: State<'_, AppState>) -> Result<presentation_packages::Release, String> {
+    presentation_packages::install(&state.db, &state.data_dir, Path::new(&path)).await
+}
+#[tauri::command]
+async fn read_presentation_package(digest: String, state: State<'_, AppState>) -> Result<presentation_packages::Package, String> {
+    presentation_packages::package(&state.db, &state.data_dir, &digest).await
+}
+#[tauri::command]
+async fn set_presentation_package_enabled(digest: String, enabled: bool, state: State<'_, AppState>) -> Result<(), String> {
+    presentation_packages::enable(&state.db, &digest, enabled).await
+}
+#[tauri::command]
+async fn uninstall_presentation_package(digest: String, state: State<'_, AppState>) -> Result<(), String> {
+    presentation_packages::uninstall(&state.db, &digest).await
+}
+#[tauri::command]
+async fn get_presentation_selection(window: tauri::WebviewWindow, state: State<'_, AppState>) -> Result<Option<presentation_packages::Selection>, String> {
+    presentation_packages::selection(&state.db, window.label()).await
+}
+#[tauri::command]
+async fn select_presentation_package(digest: Option<String>, theme_id: Option<String>, expected_digest: Option<String>, window: tauri::WebviewWindow, state: State<'_, AppState>) -> Result<(), String> {
+    presentation_packages::select(&state.db, &state.data_dir, window.label(), digest.as_deref(), theme_id.as_deref(), expected_digest.as_deref()).await
 }
 
 #[tauri::command]
@@ -4842,443 +3622,162 @@ async fn install_agent_plugin(path: String, state: State<'_, AppState>) -> Resul
 
 #[tauri::command]
 async fn set_agent_plugin_enabled(id: String, enabled: bool, state: State<'_, AppState>) -> Result<(), String> {
-    plugin_registry::enable(&state.db, &id, enabled).await
-}
-
-#[tauri::command]
-async fn uninstall_agent_plugin(id: String, state: State<'_, AppState>) -> Result<(), String> {
-    state.plugins.uninstall(&state.data_dir, &id).await
-}
-
-#[tauri::command]
-async fn create_agent_session(workspace_id: String, agent_id: String, installation_id: Option<String>, state: State<'_, AppState>) -> Result<Session, String> {
-    if let Some(installation_id) = installation_id {
-        return state.plugins.create(&workspace_id, &installation_id, &agent_id).await;
+    let _guard = state.capability_broker.mutation_guard().await;
+    plugin_registry::enable(&state.db, &id, enabled).await?;
+    if !enabled {
+        for (installation,contributions) in plugin_dependencies::invalidations(&state.db,&id).await? {
+            state.semantic_plugins.invalidate(&state.capability_broker,&installation,contributions.as_deref()).await;
+            state.capability_broker.stop_contributions(&installation,contributions.as_deref()).await.map_err(|error|error.message)?;
+        }
     }
-    let contributed_installation: Option<String> = sqlx::query_scalar(
-        "SELECT p.id FROM agent_contributions a JOIN plugin_installations p ON p.id=a.installation_id
-         WHERE a.agent_id=? AND p.installed=1 AND p.enabled=1 ORDER BY p.enabled_at DESC, p.created_at DESC LIMIT 1",
-    ).bind(&agent_id).fetch_optional(&state.db).await.map_err(|error|error.to_string())?;
-    if let Some(installation_id) = contributed_installation {
-        return state.plugins.create(&workspace_id, &installation_id, &agent_id).await;
-    }
-    // Temporary P4.7B compatibility seam. C replaces these managers with Plugin Releases.
-    match agent_id.as_str() {
-        "codex" => create_codex_session(workspace_id, None, state).await.map_err(|e|e.to_string()),
-        "pi" => create_pi_session(workspace_id, None, state).await.map_err(|e|e.to_string()),
-        _ => Err("invalid_request: installation ID required".into()),
-    }
-}
-
-#[tauri::command]
-async fn send_agent_prompt(session_id: String, input: String, state: State<'_, AppState>) -> Result<Session, String> {
-    match session_agent(&state.db, &session_id).await.map_err(|e|e.to_string())?.as_str() {
-        "codex" => send_codex_prompt(session_id, input, state).await.map_err(|e|e.to_string()),
-        "pi" => send_pi_prompt(session_id, input, state).await.map_err(|e|e.to_string()),
-        _ => { state.plugins.send(&session_id, &input).await?; session_by_id(&state.db,&session_id).await.map_err(|e|e.to_string()) }
-    }
-}
-
-#[tauri::command]
-async fn cancel_agent_turn(session_id: String, state: State<'_, AppState>) -> Result<(), String> {
-    match session_agent(&state.db, &session_id).await.map_err(|e|e.to_string())?.as_str() {
-        "codex" => abort_codex_turn(session_id, state).await.map_err(|e|e.to_string()),
-        "pi" => abort_pi_turn(session_id, state).await.map_err(|e|e.to_string()),
-        _ => state.plugins.cancel(&session_id).await,
-    }
-}
-
-#[tauri::command]
-async fn resume_agent_session(session_id: String, state: State<'_, AppState>) -> Result<(), String> {
-    let session = session_by_id(&state.db, &session_id).await.map_err(|error| error.to_string())?;
-    if session.plugin_installation_id.is_some() {
-        state.plugins.resume(&session_id).await
-    } else if session.agent == "pi" {
-        Err("dependency_missing: this legacy Pi session is history-only; create a new Pi SDK plugin session to resume it".to_owned())
-    } else {
-        Err("invalid_request: session is not plugin-backed".to_owned())
-    }
-}
-
-#[tauri::command]
-async fn close_agent_session(session_id: String, state: State<'_, AppState>) -> Result<(), String> {
-    match session_agent(&state.db, &session_id).await.map_err(|e|e.to_string())?.as_str() {
-        "codex" => close_codex_session(session_id, state).await.map_err(|e|e.to_string()),
-        "pi" => close_pi_session(session_id, state).await.map_err(|e|e.to_string()),
-        _ => state.plugins.close(&session_id).await,
-    }
-}
-
-#[tauri::command]
-async fn get_plugin_views(session_id: String, state: State<'_, AppState>) -> Result<Vec<serde_json::Value>, String> {
-    let documents: Vec<String> = sqlx::query_scalar("SELECT document_json FROM plugin_views WHERE session_id=? ORDER BY view_id").bind(session_id).fetch_all(&state.db).await.map_err(|e|e.to_string())?;
-    documents.iter().map(|document| serde_json::from_str(document).map_err(|_|"invalid_request: stored view".into())).collect()
-}
-
-#[tauri::command]
-async fn invoke_plugin_view_action(session_id: String, view_id: String, action_id: String, input: serde_json::Value, state: State<'_, AppState>) -> Result<serde_json::Value, String> {
-    state.plugins.invoke(&session_id, &view_id, &action_id, input).await
-}
-
-#[tauri::command]
-async fn invoke_agent_capability(session_id: String, capability: String, input: serde_json::Value, state: State<'_, AppState>) -> Result<serde_json::Value, String> {
-    state.plugins.invoke_capability(&session_id, &capability, input).await
-}
-
-#[tauri::command]
-async fn create_codex_session(
-    workspace_id: String,
-    requested_profile: Option<ExecutionProfile>,
-    state: State<'_, AppState>,
-) -> Result<Session, CoreError> {
-    let profile = resolve_profile("codex", requested_profile, now_iso())
-        .map_err(CoreError::InvalidExecutionProfile)?;
-    let session = state
-        .codex
-        .create_session(&workspace_id, &profile)
-        .await
-        .map_err(CoreError::from)?;
-    save_session_profile(&state.db, &session.id, &profile).await?;
-    Ok(session)
-}
-
-#[tauri::command]
-async fn send_codex_prompt(
-    session_id: String,
-    input: String,
-    state: State<'_, AppState>,
-) -> Result<Session, CoreError> {
-    state
-        .codex
-        .send_prompt(&session_id, &input)
-        .await
-        .map_err(CoreError::from)?;
-    session_by_id(&state.db, &session_id).await
-}
-
-#[tauri::command]
-async fn abort_codex_turn(session_id: String, state: State<'_, AppState>) -> Result<(), CoreError> {
-    state.codex.abort(&session_id).await.map_err(Into::into)
-}
-
-#[tauri::command]
-async fn resolve_codex_approval(
-    session_id: String,
-    request_id: String,
-    decision: String,
-    state: State<'_, AppState>,
-) -> Result<(), CoreError> {
-    let session = session_by_id(&state.db, &session_id).await?;
-    if session.plugin_installation_id.is_some() {
-        state
-            .plugins
-            .invoke_capability(
-                &session_id,
-                "approval.respond",
-                serde_json::json!({ "requestId": request_id, "decision": decision }),
-            )
-            .await
-            .map_err(CoreError::Initialization)?;
-        return Ok(());
-    }
-    state
-        .codex
-        .resolve_approval(&session_id, &request_id, &decision)
-        .await
-        .map_err(Into::into)
-}
-
-#[tauri::command]
-async fn resolve_codex_user_input(
-    session_id: String,
-    request_id: String,
-    answers: serde_json::Value,
-    state: State<'_, AppState>,
-) -> Result<(), CoreError> {
-    let session = session_by_id(&state.db, &session_id).await?;
-    if session.plugin_installation_id.is_some() {
-        state
-            .plugins
-            .invoke_capability(
-                &session_id,
-                "user-input.respond",
-                serde_json::json!({ "requestId": request_id, "answers": answers }),
-            )
-            .await
-            .map_err(CoreError::Initialization)?;
-        return Ok(());
-    }
-    state
-        .codex
-        .resolve_user_input(&session_id, &request_id, answers)
-        .await
-        .map_err(Into::into)
-}
-
-#[tauri::command]
-async fn close_codex_session(
-    session_id: String,
-    state: State<'_, AppState>,
-) -> Result<(), CoreError> {
-    state.codex.close(&session_id).await.map_err(Into::into)
-}
-
-#[tauri::command]
-async fn create_pi_session(
-    workspace_id: String,
-    requested_profile: Option<ExecutionProfile>,
-    state: State<'_, AppState>,
-) -> Result<Session, CoreError> {
-    let profile = resolve_profile("pi", requested_profile, now_iso())
-        .map_err(CoreError::InvalidExecutionProfile)?;
-    let workspace = workspace_by_id(&state.db, &workspace_id).await?;
-    require_trusted_workspace(&workspace, &profile)?;
-    let installation_id: String = sqlx::query_scalar(
-        "SELECT id FROM plugin_installations WHERE plugin_id='dev.aibo.pi' AND installed=1 AND enabled=1 ORDER BY enabled_at DESC, created_at DESC LIMIT 1",
-    )
-    .fetch_optional(&state.db)
-    .await?
-    .ok_or_else(|| CoreError::Initialization(
-        "dependency_missing: the built-in Pi SDK plugin is not installed or enabled".to_owned(),
-    ))?;
-    let session = state
-        .plugins
-        .create_with_profile(&workspace_id, &installation_id, "dev.aibo.pi.agent", Some(profile.clone()))
-        .await
-        .map_err(CoreError::Initialization)?;
-    Ok(session)
-}
-
-#[tauri::command]
-async fn send_pi_prompt(
-    session_id: String,
-    input: String,
-    state: State<'_, AppState>,
-) -> Result<Session, CoreError> {
-    if session_by_id(&state.db, &session_id).await?.plugin_installation_id.is_some() {
-        state
-            .plugins
-            .send(&session_id, &input)
-            .await
-            .map_err(CoreError::Initialization)?;
-        return session_by_id(&state.db, &session_id).await;
-    }
-    Err(CoreError::Initialization("legacy Pi session is history-only; create a new Pi SDK plugin session before sending messages".to_owned()))
-}
-
-#[tauri::command]
-async fn abort_pi_turn(session_id: String, state: State<'_, AppState>) -> Result<(), CoreError> {
-    if session_by_id(&state.db, &session_id).await?.plugin_installation_id.is_some() {
-        return state.plugins.cancel(&session_id).await.map_err(CoreError::Initialization);
-    }
-    Err(CoreError::Initialization("legacy Pi session is history-only and has no active SDK runtime; create a new Pi SDK plugin session".to_owned()))
-}
-
-#[tauri::command]
-async fn resolve_pi_approval(
-    session_id: String,
-    request_id: String,
-    decision: String,
-    state: State<'_, AppState>,
-) -> Result<(), CoreError> {
-    let session = session_by_id(&state.db, &session_id).await?;
-    if session.plugin_installation_id.is_some() {
-        state
-            .plugins
-            .resolve_pi_approval(&session_id, &request_id, &decision)
-            .await
-            .map_err(CoreError::Initialization)?;
-        return Ok(());
-    }
-    Err(CoreError::Initialization("legacy Pi session is history-only; approval requests require a new Pi SDK plugin session".to_owned()))
-}
-
-#[tauri::command]
-async fn close_pi_session(session_id: String, state: State<'_, AppState>) -> Result<(), CoreError> {
-    if session_by_id(&state.db, &session_id).await?.plugin_installation_id.is_some() {
-        return state.plugins.close(&session_id).await.map_err(CoreError::Initialization);
-    }
-    let updated = sqlx::query("UPDATE sessions SET state='closed',updated_at=? WHERE id=?")
-        .bind(now_iso()).bind(&session_id).execute(&state.db).await?;
-    if updated.rows_affected() == 0 { return Err(CoreError::SessionNotFound(session_id)); }
     Ok(())
 }
 
 #[tauri::command]
-async fn steer_pi_prompt(
+async fn uninstall_agent_plugin(id: String, state: State<'_, AppState>) -> Result<(), String> {
+    let _guard = state.capability_broker.mutation_guard().await;
+    plugin_registry::enable(&state.db, &id, false).await?;
+    for (installation,contributions) in plugin_dependencies::invalidations(&state.db,&id).await? {
+        state.semantic_plugins.invalidate(&state.capability_broker,&installation,contributions.as_deref()).await;
+            state.capability_broker.stop_contributions(&installation,contributions.as_deref()).await.map_err(|error|error.message)?;
+    }
+    state.plugins.uninstall(&state.data_dir, &id).await
+}
+
+#[tauri::command]
+async fn create_agent_session(workspace_id: String, agent_id: String, installation_id: Option<String>, requested_profile: Option<ExecutionProfile>, window: tauri::WebviewWindow, state: State<'_, AppState>) -> Result<Session, String> {
+    let installation_id = match installation_id {
+        Some(id) => id,
+        None => sqlx::query_scalar(
+            "SELECT p.id FROM agent_contributions a JOIN plugin_installations p ON p.id=a.installation_id WHERE a.agent_id=? AND p.installed=1 AND p.enabled=1 ORDER BY p.enabled_at DESC, p.created_at DESC LIMIT 1",
+        ).bind(&agent_id).fetch_optional(&state.db).await.map_err(|error|error.to_string())?
+            .ok_or("provider_unavailable: no enabled installation for this contribution")?,
+    };
+    let profile = requested_profile.map(|requested| execution_profile::resolve(&agent_id, Some(requested), now_iso())).transpose()?;
+    let profile = match profile { Some(profile) => profile, None => execution_profile::resolve(&agent_id, None, now_iso())? };
+    let session = state.plugins.create_with_profile_from(window.label(), &workspace_id, &installation_id, &agent_id, Some(profile)).await?;
+    Ok(session)
+}
+
+#[tauri::command]
+async fn send_agent_prompt(session_id: String, input: String, window: tauri::WebviewWindow, state: State<'_, AppState>) -> Result<Session, String> {
+    let session = session_by_id(&state.db, &session_id).await.map_err(|error|error.to_string())?;
+    if session.plugin_installation_id.is_none() { return Err("history_only: create a new capability session".into()); }
+    state.plugins.send_configured_from(window.label(), &session_id, &input).await?;
+    session_by_id(&state.db, &session_id).await.map_err(|error|error.to_string())
+}
+
+#[tauri::command]
+async fn cancel_agent_turn(session_id: String, window: tauri::WebviewWindow, state: State<'_, AppState>) -> Result<(), String> {
+    let session = session_by_id(&state.db, &session_id).await.map_err(|error|error.to_string())?;
+    if session.plugin_installation_id.is_none() { return Err("history_only: create a new capability session".into()); }
+    state.plugins.cancel_from(window.label(), &session_id).await?;
+    Ok(())
+}
+
+#[tauri::command]
+async fn resume_agent_session(session_id: String, window: tauri::WebviewWindow, state: State<'_, AppState>) -> Result<(), String> {
+    let session = session_by_id(&state.db, &session_id).await.map_err(|error|error.to_string())?;
+    if session.plugin_installation_id.is_none() { return Err("history_only: create a new capability session".into()); }
+    state.plugins.resume_from(window.label(), &session_id).await?;
+    Ok(())
+}
+
+#[tauri::command]
+async fn close_agent_session(session_id: String, window: tauri::WebviewWindow, state: State<'_, AppState>) -> Result<(), String> {
+    let session = session_by_id(&state.db, &session_id).await.map_err(|error|error.to_string())?;
+    if session.plugin_installation_id.is_none() { return Err("history_only: create a new capability session".into()); }
+    state.plugins.close_from(window.label(), &session_id).await?;
+    Ok(())
+}
+
+#[tauri::command]
+async fn invoke_agent_capability(session_id: String, capability: String, input: serde_json::Value, window: tauri::WebviewWindow, state: State<'_, AppState>) -> Result<serde_json::Value, String> {
+    state.plugins.invoke_capability_from(window.label(), &session_id, &capability, input).await
+}
+
+
+
+
+#[tauri::command]
+async fn resolve_agent_approval(
     session_id: String,
-    input: String,
+    request_id: String,
+    decision: String,
+    window: tauri::WebviewWindow,
     state: State<'_, AppState>,
 ) -> Result<(), CoreError> {
-    if session_by_id(&state.db, &session_id).await?.plugin_installation_id.is_some() {
+    let session = session_by_id(&state.db, &session_id).await?;
+    if session.plugin_installation_id.is_some() {
         state
             .plugins
-            .invoke_capability(&session_id, "queue.manage", serde_json::json!({"action":"steer","message":input}))
+            .resolve_approval_from(window.label(), &session_id, &request_id, &decision)
             .await
-            .map_err(CoreError::Initialization)?;
+            .map_err(CoreError::SessionOperation)?;
         return Ok(());
     }
-    Err(CoreError::Initialization("legacy Pi session is history-only; queue operations require a new Pi SDK plugin session".to_owned()))
+    Err(CoreError::SessionOperation("history_only: old native session cannot execute".into()))
 }
 
 #[tauri::command]
-async fn follow_up_pi_prompt(
+async fn resolve_agent_user_input(
     session_id: String,
-    input: String,
+    request_id: String,
+    answers: serde_json::Value,
+    window: tauri::WebviewWindow,
     state: State<'_, AppState>,
 ) -> Result<(), CoreError> {
-    if session_by_id(&state.db, &session_id).await?.plugin_installation_id.is_some() {
+    let session = session_by_id(&state.db, &session_id).await?;
+    if session.plugin_installation_id.is_some() {
         state
             .plugins
-            .invoke_capability(&session_id, "queue.manage", serde_json::json!({"action":"followUp","message":input}))
-            .await
-            .map_err(CoreError::Initialization)?;
-        return Ok(());
-    }
-    Err(CoreError::Initialization("legacy Pi session is history-only; queue operations require a new Pi SDK plugin session".to_owned()))
-}
-
-#[tauri::command]
-async fn clear_pi_queue(session_id: String, state: State<'_, AppState>) -> Result<(), CoreError> {
-    if session_by_id(&state.db, &session_id).await?.plugin_installation_id.is_some() {
-        state
-            .plugins
-            .invoke_capability(&session_id, "queue.manage", serde_json::json!({"action":"clear"}))
-            .await
-            .map_err(CoreError::Initialization)?;
-        return Ok(());
-    }
-    Err(CoreError::Initialization("legacy Pi session is history-only; queue operations require a new Pi SDK plugin session".to_owned()))
-}
-
-#[tauri::command]
-async fn list_pi_commands(
-    session_id: String,
-    state: State<'_, AppState>,
-) -> Result<serde_json::Value, CoreError> {
-    if session_by_id(&state.db, &session_id).await?.plugin_installation_id.is_some() {
-        return state
-            .plugins
-            .invoke_capability(&session_id, "command.list", serde_json::json!({"action":"get"}))
-            .await
-            .map_err(CoreError::Initialization);
-    }
-    Err(CoreError::Initialization("legacy Pi session is history-only; command discovery requires a new Pi SDK plugin session".to_owned()))
-}
-
-#[tauri::command]
-async fn compact_pi_session(
-    session_id: String,
-    instructions: Option<String>,
-    state: State<'_, AppState>,
-) -> Result<serde_json::Value, CoreError> {
-    if session_by_id(&state.db, &session_id).await?.plugin_installation_id.is_some() {
-        return state
-            .plugins
-            .invoke_capability(&session_id, "compaction.run", serde_json::json!({"instructions":instructions}))
-            .await
-            .map_err(CoreError::Initialization);
-    }
-    Err(CoreError::Initialization("legacy Pi session is history-only; compaction requires a new Pi SDK plugin session".to_owned()))
-}
-
-#[tauri::command]
-async fn set_pi_thinking_level(
-    session_id: String,
-    level: Option<String>,
-    state: State<'_, AppState>,
-) -> Result<serde_json::Value, CoreError> {
-    if session_by_id(&state.db, &session_id).await?.plugin_installation_id.is_some() {
-        let result = state
-            .plugins
-            .invoke_capability(
-                &session_id,
-                "model.reasoning",
-                serde_json::json!({"action":"set","level":level.clone().unwrap_or_default()}),
+            .invoke_capability_from(
+                window.label(), &session_id,
+                "user-input.respond",
+                serde_json::json!({ "requestId": request_id, "answers": answers }),
             )
             .await
-            .map_err(CoreError::Initialization)?;
-        if let Some(current_level) = result.get("level").and_then(serde_json::Value::as_str) {
-            let current = session_execution_profile(&state.db, &session_id).await?;
-            let mut requested = current.profile.requested;
-            requested.reasoning_effort = Some(current_level.to_owned());
-            let resolved = resolve_profile("pi", Some(requested), now_iso())
-                .map_err(CoreError::InvalidExecutionProfile)?;
-            save_session_profile(&state.db, &session_id, &resolved).await?;
-        }
-        return Ok(result);
+            .map_err(CoreError::SessionOperation)?;
+        return Ok(());
     }
-    Err(CoreError::Initialization("legacy Pi session is history-only; reasoning configuration requires a new Pi SDK plugin session".to_owned()))
+    Err(CoreError::SessionOperation("history_only: old native session cannot execute".into()))
 }
 
-#[tauri::command]
-async fn set_pi_model(
-    session_id: String,
-    reference: Option<String>,
-    state: State<'_, AppState>,
-) -> Result<serde_json::Value, CoreError> {
-    if session_by_id(&state.db, &session_id).await?.plugin_installation_id.is_some() {
-        let (provider, model_id) = reference
-            .as_deref()
-            .and_then(|value| value.split_once('/'))
-            .map(|(provider, model_id)| (provider.to_owned(), model_id.to_owned()))
-            .ok_or_else(|| CoreError::Initialization("Pi model reference must be provider/model".to_owned()))?;
-        let result = state
-            .plugins
-            .invoke_capability(
-                &session_id,
-                "model.select",
-                serde_json::json!({"action":"set","provider":provider,"modelId":model_id}),
-            )
-            .await
-            .map_err(CoreError::Initialization)?;
-        if let (Some(provider), Some(model_id)) = (
-            result.get("provider").and_then(serde_json::Value::as_str),
-            result.get("id").and_then(serde_json::Value::as_str),
-        ) {
-            let current = session_execution_profile(&state.db, &session_id).await?;
-            let mut requested = current.profile.requested;
-            requested.model = Some(format!("{provider}/{model_id}"));
-            let resolved = resolve_profile("pi", Some(requested), now_iso())
-                .map_err(CoreError::InvalidExecutionProfile)?;
-            save_session_profile(&state.db, &session_id, &resolved).await?;
-        }
-        return Ok(result);
-    }
-    Err(CoreError::Initialization("legacy Pi session is history-only; model configuration requires a new Pi SDK plugin session".to_owned()))
-}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 #[tauri::command]
 async fn get_session_models(
     session_id: String,
+    window: tauri::WebviewWindow,
     state: State<'_, AppState>,
 ) -> Result<SessionModelCatalog, CoreError> {
     let session = session_by_id(&state.db, &session_id).await?;
-    if session.plugin_installation_id.is_some() {
-        let models = state.plugins.invoke_capability(&session_id, "model.select", serde_json::json!({"action":"list"})).await
-            .map_err(CoreError::Initialization)?;
-        let reasoning = if session.capabilities.iter().any(|capability|capability == "model.reasoning") {
-            Some(state.plugins.invoke_capability(&session_id, "model.reasoning", serde_json::json!({"action":"list"})).await
-                .map_err(CoreError::Initialization)?)
-        } else { None };
-        return plugin_model_catalog(&models, reasoning.as_ref());
+    if session.plugin_installation_id.is_none() {
+        return Err(CoreError::SessionOperation("history_only: model discovery requires a capability session".into()));
     }
-    match session.agent.as_str() {
-        "codex" => state
-            .codex
-            .list_models(&session_id)
-            .await
-            .map_err(Into::into),
-        "pi" => Err(CoreError::Initialization("legacy Pi session is history-only; model discovery requires a new Pi SDK plugin session".to_owned())),
-        agent => Err(CoreError::Initialization(format!(
-            "unsupported session agent: {agent}"
-        ))),
-    }
+    let models = state.plugins.invoke_capability_from(window.label(), &session_id, "model.select", serde_json::json!({"action":"list"})).await.map_err(CoreError::SessionOperation)?;
+    let reasoning = if session.capabilities.iter().any(|capability|capability == "model.reasoning") {
+        Some(state.plugins.invoke_capability_from(window.label(), &session_id, "model.reasoning", serde_json::json!({"action":"list"})).await.map_err(CoreError::SessionOperation)?)
+    } else { None };
+    plugin_model_catalog(&models, reasoning.as_ref())
 }
 
 fn plugin_model_catalog(result: &serde_json::Value, reasoning: Option<&serde_json::Value>) -> Result<SessionModelCatalog, CoreError> {
     let raw_models = result.get("models").and_then(serde_json::Value::as_array)
-        .ok_or_else(|| CoreError::Initialization("plugin model catalog did not return models".to_owned()))?;
+        .ok_or_else(|| CoreError::SessionOperation("plugin model catalog did not return models".to_owned()))?;
     let models = raw_models.iter().filter_map(|item| {
         let provider = item.get("provider").and_then(serde_json::Value::as_str).map(ToOwned::to_owned);
         let id = item.get("id").and_then(serde_json::Value::as_str)
@@ -5298,7 +3797,7 @@ fn plugin_model_catalog(result: &serde_json::Value, reasoning: Option<&serde_jso
             && item.get("reasoningEfforts").is_none()
             && item.get("reasoning").and_then(serde_json::Value::as_bool).is_some()
         {
-            reasoning_efforts = pi::pi_model_reasoning_efforts(item);
+            reasoning_efforts = session_models::reasoning_options(item);
         }
         Some(SessionModelOption { label: item.get("displayName").or_else(||item.get("name")).and_then(serde_json::Value::as_str).unwrap_or(&reference).to_owned(),
             description: item.get("description").and_then(serde_json::Value::as_str).map(ToOwned::to_owned), is_default: item.get("isDefault").and_then(serde_json::Value::as_bool).unwrap_or(false),
@@ -5322,80 +3821,24 @@ fn plugin_model_catalog(result: &serde_json::Value, reasoning: Option<&serde_jso
     Ok(SessionModelCatalog { current, models, current_reasoning_effort, reasoning_efforts })
 }
 
-#[tauri::command]
-async fn list_codex_skills(
-    session_id: String,
-    state: State<'_, AppState>,
-) -> Result<serde_json::Value, CoreError> {
-    state
-        .codex
-        .list_skills(&session_id)
-        .await
-        .map_err(Into::into)
-}
 
-#[tauri::command]
-async fn get_codex_goal(
-    session_id: String,
-    state: State<'_, AppState>,
-) -> Result<serde_json::Value, CoreError> {
-    state.codex.get_goal(&session_id).await.map_err(Into::into)
-}
 
-#[tauri::command]
-async fn set_codex_goal(
-    session_id: String,
-    objective: String,
-    token_budget: Option<u64>,
-    state: State<'_, AppState>,
-) -> Result<serde_json::Value, CoreError> {
-    state
-        .codex
-        .set_goal(&session_id, &objective, token_budget)
-        .await
-        .map_err(Into::into)
-}
 
-#[tauri::command]
-async fn clear_codex_goal(
-    session_id: String,
-    state: State<'_, AppState>,
-) -> Result<serde_json::Value, CoreError> {
-    state
-        .codex
-        .clear_goal(&session_id)
-        .await
-        .map_err(Into::into)
-}
 
-#[tauri::command]
-async fn reload_pi_session(
-    session_id: String,
-    state: State<'_, AppState>,
-) -> Result<serde_json::Value, CoreError> {
-    if session_by_id(&state.db, &session_id).await?.plugin_installation_id.is_some() {
-        return state
-            .plugins
-            .invoke_capability(&session_id, "session.reload", serde_json::json!({}))
-            .await
-            .map_err(CoreError::Initialization);
-    }
-    Err(CoreError::Initialization("legacy Pi session is history-only; reload requires a new Pi SDK plugin session".to_owned()))
-}
 
 #[tauri::command]
 async fn get_pi_session_tree(
     session_id: String,
-    state: State<'_, AppState>,
+    window: tauri::WebviewWindow, state: State<'_, AppState>,
 ) -> Result<serde_json::Value, CoreError> {
     if session_by_id(&state.db, &session_id).await?.plugin_installation_id.is_some() {
         return state
             .plugins
-            .invoke_capability(&session_id, "session.tree", serde_json::json!({"action":"get"}))
+            .invoke_capability_from(window.label(), &session_id, "session.tree", serde_json::json!({"action":"get"}))
             .await
-            .map_err(CoreError::Initialization);
+            .map_err(CoreError::SessionOperation);
     }
-    Err(CoreError::Initialization("legacy Pi session is history-only; the session tree requires a new Pi SDK plugin session".to_owned()))
+    Err(CoreError::SessionOperation("legacy Pi session is history-only; the session tree requires a new Pi SDK plugin session".to_owned()))
 }
 
 #[tauri::command]
@@ -5405,36 +3848,22 @@ async fn navigate_pi_session_tree(
     summarize: bool,
     custom_instructions: Option<String>,
     replace_instructions: bool,
-    state: State<'_, AppState>,
+    window: tauri::WebviewWindow, state: State<'_, AppState>,
 ) -> Result<serde_json::Value, CoreError> {
     if session_by_id(&state.db, &session_id).await?.plugin_installation_id.is_some() {
         return state
             .plugins
-            .invoke_capability(
+            .invoke_capability_from(window.label(),
                 &session_id,
                 "session.tree",
                 serde_json::json!({"action":"navigate","entryId":entry_id,"summarize":summarize,"customInstructions":custom_instructions,"replaceInstructions":replace_instructions}),
             )
             .await
-            .map_err(CoreError::Initialization);
+            .map_err(CoreError::SessionOperation);
     }
-    Err(CoreError::Initialization("legacy Pi session is history-only; tree navigation requires a new Pi SDK plugin session".to_owned()))
+    Err(CoreError::SessionOperation("legacy Pi session is history-only; tree navigation requires a new Pi SDK plugin session".to_owned()))
 }
 
-#[tauri::command]
-async fn get_pi_session_snapshot(
-    session_id: String,
-    state: State<'_, AppState>,
-) -> Result<serde_json::Value, CoreError> {
-    if session_by_id(&state.db, &session_id).await?.plugin_installation_id.is_some() {
-        return state
-            .plugins
-            .invoke_capability(&session_id, "session.snapshot", serde_json::json!({}))
-            .await
-            .map_err(CoreError::Initialization);
-    }
-    Err(CoreError::Initialization("legacy Pi session is history-only; snapshots require a new Pi SDK plugin session".to_owned()))
-}
 
 fn find_executable(name: &str) -> Option<PathBuf> {
     let path_var = env::var_os("PATH")?;
@@ -5786,18 +4215,53 @@ pub fn run() {
                     "recover interrupted sessions: {error}"
                 ))) as Box<dyn Error>
             })?;
+            tauri::async_runtime::block_on(project_actions::recover(&db))
+                .map_err(|error| Box::new(CoreError::Initialization(format!("recover project tasks: {error}"))) as Box<dyn Error>)?;
+            tauri::async_runtime::block_on(workspace_write_runs::recover(&db))
+                .map_err(|error| Box::new(CoreError::Initialization(format!("recover workspace writes: {error}"))) as Box<dyn Error>)?;
+            tauri::async_runtime::block_on(capability_broker::Broker::recover(&db))
+                .map_err(|error| Box::new(CoreError::Initialization(error)) as Box<dyn Error>)?;
+            if let Err(error) = tauri::async_runtime::block_on(plugin_registry::collect_retired(&db, &data_dir)) {
+                warn!(%error, "retired plugin collection deferred");
+            }
             info!(path = %db_path.display(), "aibo core initialized");
-            let codex = CodexManager::new(app.handle().clone(), db.clone(), data_dir.clone());
+            let sdk_module=[app.path().resource_dir().ok().map(|dir|dir.join("pi-sdk-bundle/index.js")),Some(PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../node_modules/@earendil-works/pi-coding-agent/dist/bundle/index.js"))].into_iter().flatten().find(|path|path.is_file());
+            let broker=capability_broker::Broker::new(db.clone()).with_sdk_module(sdk_module);
             app.manage(AppState {
-                plugins: plugin_host::PluginHost::with_app(db.clone(), app.handle().clone()),
+                capability_broker: broker.clone(),
+                semantic_git: semantic_git::GitPresentation::default(),
+                semantic_plugins: semantic_plugins::SemanticPlugins::default(),
+                plugins: session_host::SessionHost::with_app(db.clone(),broker,app.handle().clone()),
                 db,
-                codex,
                 data_dir,
             });
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
+            semantic_plugins::cancel_semantic_open,
+            semantic_plugins::list_semantic_contributions,
+            semantic_plugins::open_semantic_contribution,
+            semantic_plugins::act_semantic_contribution,
+            semantic_plugins::writes::write_semantic_contribution,
+            semantic_plugins::release_semantic_contribution,
+            semantic_git::open_semantic_git,
+            semantic_git::act_semantic_git,
+            semantic_git::release_semantic_git,
+            list_capability_providers,
+            bind_capability_provider,
+            invoke_capability,
+            cancel_capability,
+            list_capability_events,
+            list_capability_history_scopes,
+            read_capability_history,
             list_plugin_installations,
+            list_presentation_packages,
+            install_presentation_package,
+            read_presentation_package,
+            set_presentation_package_enabled,
+            uninstall_presentation_package,
+            get_presentation_selection,
+            select_presentation_package,
             install_agent_plugin,
             set_agent_plugin_enabled,
             uninstall_agent_plugin,
@@ -5806,8 +4270,6 @@ pub fn run() {
             cancel_agent_turn,
             resume_agent_session,
             close_agent_session,
-            get_plugin_views,
-            invoke_plugin_view_action,
             invoke_agent_capability,
             list_workspaces,
             search_workspace_paths,
@@ -5823,6 +4285,7 @@ pub fn run() {
             update_session_execution_profile,
             list_sessions,
             get_timeline,
+            read_session_history,
             get_turn_change_set,
             list_turn_checkpoints,
             list_restore_operations,
@@ -5847,6 +4310,7 @@ pub fn run() {
             apply_git_hunk_action,
             apply_git_file_action,
             register_session_attachments,
+            reference_session,
             list_session_attachments,
             remove_session_attachment,
             validate_session_attachments,
@@ -5858,7 +4322,10 @@ pub fn run() {
             save_project_action,
             delete_project_action,
             run_project_action,
+            cancel_project_action,
             list_project_action_runs,
+            list_workspace_write_runs,
+            cancel_workspace_write,
             rename_session,
             list_codex_threads,
             read_codex_thread,
@@ -5867,33 +4334,11 @@ pub fn run() {
             unarchive_codex_thread,
             archive_session,
             unarchive_session,
-            create_codex_session,
-            send_codex_prompt,
-            abort_codex_turn,
-            resolve_codex_approval,
-            resolve_codex_user_input,
-            close_codex_session,
-            create_pi_session,
-            send_pi_prompt,
-            abort_pi_turn,
-            resolve_pi_approval,
-            close_pi_session,
-            steer_pi_prompt,
-            follow_up_pi_prompt,
-            clear_pi_queue,
-            list_pi_commands,
-            compact_pi_session,
-            set_pi_thinking_level,
-            set_pi_model,
+            resolve_agent_approval,
+            resolve_agent_user_input,
             get_session_models,
-            list_codex_skills,
-            get_codex_goal,
-            set_codex_goal,
-            clear_codex_goal,
-            reload_pi_session,
             get_pi_session_tree,
             navigate_pi_session_tree,
-            get_pi_session_snapshot
         ])
         .run(tauri::generate_context!())
         .expect("error while running Aibo");
@@ -5903,12 +4348,12 @@ pub fn run() {
 mod tests {
     use super::{
         auto_name_session_from_first_message, bind_pending_attachments_to_turn,
-        canonical_workspace_path, clone_cached_runtime, collect_workspace_capabilities,
-        execution_profile_agent, find_executable, mark_turn_interrupted, normalize_session_filter, now_iso, open_database,
+        canonical_workspace_path, collect_workspace_capabilities,
+        find_executable, mark_turn_interrupted, normalize_session_filter, now_iso, open_database,
         persist_restore_operation, pi_snapshot_timeline, plugin_model_catalog, recover_interrupted_sessions,
-        recover_interrupted_turn_changes, remove_cached_runtime, require_trusted_workspace,
-        restore_git_file_baseline, session_execution_profile, session_label_from_first_message,
-        workspace_label, CoreError, SessionListFilter, TurnDiffSources, Workspace,
+        recover_interrupted_turn_changes, require_trusted_workspace,
+        session_execution_profile, session_label_from_first_message,
+        workspace_label, CoreError, SessionListFilter, Workspace,
     };
     use crate::change_set::{
         capture as capture_workspace, persist_baseline_checkpoint, persist_checkpoint_metadata,
@@ -5916,9 +4361,8 @@ mod tests {
     };
     use crate::execution_profile;
     use sqlx::Row;
-    use std::{collections::HashMap, fs, path::PathBuf, sync::Arc, time::Duration};
+    use std::{collections::HashMap, fs, path::PathBuf, time::Duration};
     use tokio::io::AsyncWriteExt;
-    use tokio::sync::Mutex;
     use ulid::Ulid;
 
     fn test_directory() -> PathBuf {
@@ -6125,8 +4569,8 @@ mod tests {
         assert!(diff.ends_with("diff 已截断"));
     }
 
-    #[test]
-    fn workspace_git_index_actions_stage_and_unstage_files() {
+    #[tokio::test]
+    async fn workspace_git_index_actions_stage_and_unstage_files() {
         let root = test_directory();
         let root_path = root.to_str().unwrap();
         fs::write(root.join("tracked.txt"), "baseline").expect("tracked file");
@@ -6158,7 +4602,7 @@ mod tests {
         fs::write(root.join("tracked.txt"), "changed").expect("modified file");
 
         assert!(
-            super::apply_git_index_action(root_path, "tracked.txt", "stage")
+            crate::workspace_git::apply_git_index_action(root_path, "tracked.txt", "stage", None).await
                 .expect("stage")
                 .applied
         );
@@ -6169,7 +4613,7 @@ mod tests {
         assert!(String::from_utf8_lossy(&staged.stdout).starts_with("M "));
 
         assert!(
-            super::apply_git_index_action(root_path, "tracked.txt", "unstage")
+            crate::workspace_git::apply_git_index_action(root_path, "tracked.txt", "unstage", None).await
                 .expect("unstage")
                 .applied
         );
@@ -6179,87 +4623,6 @@ mod tests {
             .expect("unstaged status");
         assert!(String::from_utf8_lossy(&unstaged.stdout).starts_with(" M"));
         fs::remove_dir_all(root).expect("cleanup");
-    }
-
-    #[test]
-    fn whole_file_restore_uses_turn_baseline_even_when_agent_result_is_staged() {
-        let root = test_directory();
-        let target = root.join("tracked.txt");
-        fs::write(&target, "baseline").expect("baseline file");
-        assert!(std::process::Command::new("git")
-            .args(["-C", root.to_str().unwrap(), "init", "-q"])
-            .status()
-            .unwrap()
-            .success());
-        assert!(std::process::Command::new("git")
-            .args(["-C", root.to_str().unwrap(), "add", "tracked.txt"])
-            .status()
-            .unwrap()
-            .success());
-        assert!(std::process::Command::new("git")
-            .args([
-                "-C",
-                root.to_str().unwrap(),
-                "-c",
-                "user.name=Aibo",
-                "-c",
-                "user.email=aibo@example.invalid",
-                "commit",
-                "-qm",
-                "initial",
-            ])
-            .status()
-            .unwrap()
-            .success());
-        fs::write(&target, "agent result").expect("agent result");
-        assert!(std::process::Command::new("git")
-            .args(["-C", root.to_str().unwrap(), "add", "tracked.txt"])
-            .status()
-            .unwrap()
-            .success());
-
-        tauri::async_runtime::block_on(restore_git_file_baseline(
-            root.to_str().unwrap(),
-            "tracked.txt",
-            &target,
-            &TurnDiffSources {
-                baseline: b"baseline".to_vec(),
-                result: b"agent result".to_vec(),
-                baseline_exists: true,
-                result_exists: true,
-                baseline_dirty: false,
-            },
-        ))
-        .expect("restore turn baseline");
-        assert_eq!(fs::read_to_string(&target).unwrap(), "baseline");
-        assert!(std::process::Command::new("git")
-            .args(["-C", root.to_str().unwrap(), "diff", "--cached", "--quiet"])
-            .status()
-            .unwrap()
-            .success());
-        fs::remove_dir_all(root).expect("cleanup");
-    }
-
-    #[test]
-    fn runtime_cache_access_releases_the_mutex_before_follow_up_work() {
-        tauri::async_runtime::block_on(async {
-            let runtime = Arc::new(7_u8);
-            let runtimes = Mutex::new(HashMap::from([("session".to_owned(), runtime.clone())]));
-
-            let cached = clone_cached_runtime(&runtimes, "session")
-                .await
-                .expect("cached runtime");
-            let removed = tokio::time::timeout(
-                Duration::from_millis(100),
-                remove_cached_runtime(&runtimes, "session"),
-            )
-            .await
-            .expect("runtime cache mutex should not remain locked")
-            .expect("removed runtime");
-
-            assert!(Arc::ptr_eq(&cached, &removed));
-            assert!(runtimes.lock().await.is_empty());
-        });
     }
 
     #[test]
@@ -6809,19 +5172,6 @@ mod tests {
         let _ = fs::remove_file(database_path.with_extension("sqlite3-wal"));
         let _ = fs::remove_file(database_path.with_extension("sqlite3-shm"));
         fs::remove_dir_all(directory).expect("remove test directory");
-    }
-
-    #[test]
-    fn bundled_plugin_agents_keep_their_semantic_execution_profile() {
-        assert_eq!(
-            execution_profile_agent("dev.aibo.codex.agent", &[]),
-            "codex"
-        );
-        assert_eq!(execution_profile_agent("dev.aibo.pi.agent", &[]), "pi");
-        assert_eq!(
-            execution_profile_agent("dev.example.agent", &["queue.manage".to_owned()]),
-            "pi"
-        );
     }
 
     #[test]

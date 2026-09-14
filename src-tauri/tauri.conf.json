@@ -25,13 +25,12 @@
       }
     ],
     "security": {
-      "csp": "default-src 'self'; connect-src 'self' ipc: http://ipc.localhost; style-src 'self' 'unsafe-inline'"
+      "csp": "default-src 'self'; connect-src 'self' ipc: http://ipc.localhost; style-src 'self' 'unsafe-inline'; worker-src 'self' blob:"
     }
   },
   "bundle": {
     "active": true,
     "resources": {
-      "pi-sdk-host.mjs": "pi-sdk-host.mjs",
       "../node_modules/@earendil-works/pi-coding-agent/dist/bundle/": "pi-sdk-bundle/"
     },
     "icon": ["icons/icon.png"]

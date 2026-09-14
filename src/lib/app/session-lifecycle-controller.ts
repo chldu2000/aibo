@@ -14,8 +14,7 @@ import { sessionAgentKind } from './agent-kind';
 export type SessionLifecycleControllerContext = {
   api: {
     renameSession: (sessionId: string, label: string) => Promise<Session>;
-    closeCodexSession: (sessionId: string) => Promise<void>;
-    closePiSession: (sessionId: string) => Promise<void>;
+    closeAgentSession: (sessionId: string) => Promise<void>;
     forkCodexThread: (sessionId: string, throughTurnId?: string | null) => Promise<Session>;
     archiveSession: (sessionId: string) => Promise<Session>;
     unarchiveSession: (sessionId: string) => Promise<Session>;
@@ -95,8 +94,7 @@ export function createSessionLifecycleController(
     context.setErrorMessage(null);
     try {
       const closingId = target.id;
-      if (sessionAgentKind(target) === 'pi') await context.api.closePiSession(closingId);
-      else await context.api.closeCodexSession(closingId);
+      await context.api.closeAgentSession(closingId);
       context.setWorkspaceSessionMap(removeSession(
         context.getWorkspaceSessionMap(),
         target.workspaceId,
@@ -104,7 +102,7 @@ export function createSessionLifecycleController(
       ));
       if (context.getSelectedSessionId() === closingId) context.clearSelectedSessionContext();
       context.setNotice(
-        `${sessionAgentKind(target) === 'pi' ? 'Pi' : 'Codex'} 会话已关闭；已保存的时间线仍可在下次启动时读取。`,
+        '会话已关闭；已保存的时间线仍可在下次启动时读取。',
       );
     } catch (error) {
       context.setErrorMessage(toErrorMessage(error));

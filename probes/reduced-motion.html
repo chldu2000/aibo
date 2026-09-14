@@ -1,0 +1,9 @@
+<!doctype html><html lang="zh"><head><meta charset="UTF-8"><title>Motion policy probe</title></head><body><div id="app"></div><div id="running-status"></div><script type="module">
+import '/src/app.css';
+import { mount } from 'svelte';
+import App from '/src/App.svelte';
+import { AgentStatusMark, setUiKit } from '/src/lib/ui-kit';
+mount(App, {target:document.getElementById('app')});
+mount(AgentStatusMark, {target:document.getElementById('running-status'), props:{agent:'plugin',tone:'running',label:'正在运行的插件'}});
+window.motionProbe = { setUiKit };
+</script></body></html>

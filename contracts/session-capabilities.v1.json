@@ -1,0 +1,268 @@
+{
+  "version": "1.0.0",
+  "capabilities": {
+    "aibo.session.open": {
+      "inputSchema": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "mode",
+          "executionProfile"
+        ],
+        "properties": {
+          "mode": {
+            "enum": [
+              "create",
+              "resume"
+            ]
+          },
+          "executionProfile": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "interactionMode": {
+                "enum": [
+                  "ask",
+                  "plan",
+                  "edit"
+                ]
+              },
+              "approvalPolicy": {
+                "type": "string"
+              },
+              "filesystemPolicy": {
+                "type": "string"
+              },
+              "commandPolicy": {
+                "type": "string"
+              },
+              "networkPolicy": {
+                "type": "string"
+              },
+              "model": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "reasoningEffort": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "schema": {
+                "type": "string"
+              }
+            }
+          },
+          "recovery": {
+            "type": [
+              "object",
+              "null"
+            ]
+          }
+        }
+      },
+      "outputSchema": {
+        "type": "object",
+        "required": [
+          "nativeSessionId",
+          "recovery",
+          "capabilities"
+        ],
+        "properties": {
+          "nativeSessionId": {
+            "type": "string",
+            "minLength": 1
+          },
+          "recovery": {
+            "type": "object"
+          },
+          "capabilities": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        }
+      }
+    },
+    "aibo.session.turn": {
+      "inputSchema": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "text"
+        ],
+        "properties": {
+          "text": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 200000
+          },
+          "attachments": {
+            "type": "array",
+            "maxItems": 100,
+            "items": {
+              "type": "object"
+            }
+          }
+        }
+      },
+      "outputSchema": {
+        "type": "object",
+        "required": [
+          "status",
+          "recovery"
+        ],
+        "properties": {
+          "status": {
+            "enum": [
+              "completed",
+              "interrupted",
+              "failed"
+            ]
+          },
+          "recovery": {
+            "type": [
+              "object",
+              "null"
+            ]
+          }
+        }
+      }
+    },
+    "aibo.session.close": {
+      "inputSchema": {
+        "type": "object",
+        "additionalProperties": false
+      },
+      "outputSchema": {
+        "type": "object",
+        "required": [
+          "accepted"
+        ],
+        "properties": {
+          "accepted": {
+            "const": true
+          }
+        }
+      }
+    },
+    "aibo.session.cancel": {
+      "inputSchema": {
+        "type": "object",
+        "additionalProperties": false
+      },
+      "outputSchema": {
+        "type": "object",
+        "required": [
+          "accepted"
+        ],
+        "properties": {
+          "accepted": {
+            "const": true
+          }
+        }
+      }
+    },
+    "aibo.session.tool.respond": {
+      "inputSchema": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "requestId"
+        ],
+        "properties": {
+          "requestId": {
+            "type": "string",
+            "minLength": 1
+          },
+          "result": {},
+          "error": {
+            "type": "string"
+          }
+        },
+        "oneOf": [
+          {
+            "required": [
+              "result"
+            ],
+            "not": {
+              "required": [
+                "error"
+              ]
+            }
+          },
+          {
+            "required": [
+              "error"
+            ],
+            "not": {
+              "required": [
+                "result"
+              ]
+            }
+          }
+        ]
+      },
+      "outputSchema": {
+        "type": "object",
+        "required": [
+          "resolved"
+        ],
+        "properties": {
+          "resolved": {
+            "const": true
+          }
+        }
+      }
+    },
+    "aibo.session.turn.write": {
+      "inputSchema": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "text"
+        ],
+        "properties": {
+          "text": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 200000
+          },
+          "attachments": {
+            "type": "array",
+            "maxItems": 100,
+            "items": {
+              "type": "object"
+            }
+          }
+        }
+      },
+      "outputSchema": {
+        "type": "object",
+        "required": [
+          "status",
+          "recovery"
+        ],
+        "properties": {
+          "status": {
+            "enum": [
+              "completed",
+              "interrupted",
+              "failed"
+            ]
+          },
+          "recovery": {
+            "type": [
+              "object",
+              "null"
+            ]
+          }
+        }
+      }
+    }
+  }
+}

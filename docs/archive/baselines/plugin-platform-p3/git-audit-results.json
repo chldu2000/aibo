@@ -1,0 +1,18 @@
+{
+  "invocations": [
+    {
+      "capability": "dev.aibo.git.changes",
+      "status": "completed",
+      "count": 2
+    },
+    {
+      "capability": "dev.aibo.git.view",
+      "status": "completed",
+      "count": 16
+    }
+  ],
+  "generations": 2,
+  "sessions": 0,
+  "agentEvents": 0,
+  "running": 0
+}

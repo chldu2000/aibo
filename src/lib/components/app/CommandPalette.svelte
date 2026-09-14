@@ -1,5 +1,7 @@
 <script lang="ts">
+  import { tick } from 'svelte';
   import { Button, Card, Icon, Input } from '$lib/ui-kit';
+  import { scrollActiveOptionIntoView } from './active-option-scroll';
   import type { CommandPaletteCommand } from './command-palette';
 
   type CommandPaletteProps = {
@@ -11,6 +13,7 @@
   let { open, commands, onClose }: CommandPaletteProps = $props();
   let query = $state('');
   let activeIndex = $state(0);
+  let commandList: HTMLElement | null = $state(null);
 
   const filteredCommands = $derived.by(() => {
     const normalized = query.trim().toLocaleLowerCase();
@@ -42,6 +45,11 @@
     await command.run();
   }
 
+  async function scrollToActiveCommand(): Promise<void> {
+    await tick();
+    scrollActiveOptionIntoView(commandList);
+  }
+
   function handleKeydown(event: KeyboardEvent): void {
     if (event.key === 'Escape') {
       event.preventDefault();
@@ -51,6 +59,7 @@
     if (event.key === 'ArrowDown') {
       event.preventDefault();
       activeIndex = filteredCommands.length === 0 ? 0 : (activeIndex + 1) % filteredCommands.length;
+      void scrollToActiveCommand();
       return;
     }
     if (event.key === 'ArrowUp') {
@@ -58,6 +67,7 @@
       activeIndex = filteredCommands.length === 0
         ? 0
         : (activeIndex - 1 + filteredCommands.length) % filteredCommands.length;
+      void scrollToActiveCommand();
       return;
     }
     if (event.key === 'Enter') {
@@ -96,7 +106,7 @@
           <Icon name="close" size={14} />
         </Button>
       </div>
-      <div class="command-palette-list" role="listbox" aria-label="可用操作">
+      <div bind:this={commandList} class="command-palette-list" role="listbox" aria-label="可用操作">
         {#if filteredCommands.length === 0}
           <p class="command-palette-empty">没有匹配的操作。</p>
         {:else}

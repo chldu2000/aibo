@@ -1,0 +1,173 @@
+{
+  "schema": "aibo.plugin-manifest/v2",
+  "pluginId": "dev.aibo.semantic-write",
+  "version": "1.0.0",
+  "displayName": "Semantic write fixture",
+  "host": {
+    "min": "0.1.0",
+    "maxExclusive": "0.2.0"
+  },
+  "platforms": [
+    "darwin-arm64",
+    "darwin-x64",
+    "linux-x64",
+    "linux-arm64"
+  ],
+  "protocols": {
+    "runtime": {
+      "min": "2.0",
+      "max": "2.0"
+    },
+    "semanticView": {
+      "min": "1.1",
+      "max": "1.1"
+    }
+  },
+  "contributions": [
+    {
+      "kind": "capabilityProvider",
+      "id": "dev.aibo.semantic-write.writer",
+      "scope": "workspace",
+      "required": true,
+      "displayName": "Append a workspace fixture",
+      "operations": [
+        {
+          "id": "dev.aibo.semantic-write.append",
+          "capability": {
+            "id": "dev.aibo.semantic-write.append",
+            "version": "1.0.0"
+          },
+          "inputSchema": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "value"
+            ],
+            "properties": {
+              "value": {
+                "type": "string",
+                "maxLength": 128
+              },
+              "mode": {
+                "enum": [
+                  "normal",
+                  "slow",
+                  "crash",
+                  "invalid-output",
+                  "delayed"
+                ]
+              }
+            }
+          },
+          "outputSchema": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "value",
+              "caller",
+              "permissions",
+              "chainLength"
+            ],
+            "properties": {
+              "value": {
+                "type": "string",
+                "maxLength": 128
+              },
+              "caller": {
+                "type": "string"
+              },
+              "permissions": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "chainLength": {
+                "type": "integer",
+                "minimum": 1
+              }
+            }
+          },
+          "effect": "write",
+          "permissions": [
+            "workspace.read",
+            "workspace.write"
+          ],
+          "timeoutMs": 2000,
+          "idempotent": false
+        }
+      ]
+    },
+    {
+      "kind": "capabilityProvider",
+      "id": "dev.aibo.semantic-write.reader",
+      "scope": "workspace",
+      "required": true,
+      "displayName": "Read semantic page",
+      "operations": [
+        {
+          "id": "dev.aibo.semantic-write.view",
+          "capability": {
+            "id": "dev.aibo.semantic-write.view",
+            "version": "1.0.0"
+          },
+          "inputSchema": {
+            "type": "object"
+          },
+          "outputSchema": {
+            "type": "object"
+          },
+          "effect": "read",
+          "permissions": [
+            "workspace.read"
+          ],
+          "timeoutMs": 2000,
+          "idempotent": true
+        }
+      ]
+    },
+    {
+      "kind": "semanticView",
+      "id": "dev.aibo.semantic-write.page",
+      "scope": "workspace",
+      "required": true,
+      "title": "Semantic write fixture",
+      "extensionPoint": "workspace.tool",
+      "semanticType": "detail",
+      "contractVersion": "1.1.0",
+      "visibility": "workspaceSelected",
+      "provider": {
+        "capability": "dev.aibo.semantic-write.view",
+        "operation": "dev.aibo.semantic-write.view",
+        "version": {
+          "min": "1.0.0",
+          "maxExclusive": "2.0.0"
+        }
+      },
+      "writeActions": [
+        {
+          "id": "dev.aibo.semantic-write.append",
+          "provider": {
+            "capability": "dev.aibo.semantic-write.append",
+            "operation": "dev.aibo.semantic-write.append",
+            "version": {
+              "min": "1.0.0",
+              "maxExclusive": "2.0.0"
+            }
+          }
+        }
+      ]
+    }
+  ],
+  "entrypoint": {
+    "executable": "worker.mjs"
+  },
+  "executableDependencies": [
+    {
+      "kind": "runtime",
+      "name": "node",
+      "versionRange": ">=22",
+      "required": true
+    }
+  ]
+}

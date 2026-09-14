@@ -1,0 +1,15 @@
+{
+  "passed": true,
+  "nativePort": "mocked; actual App.svelte and sandbox runtime",
+  "browser": "153.0.8010.12",
+  "checks": [
+    "legacy appearance selection survives startup, external selection, restart and fallback through the unified selector",
+    "install and select through settings",
+    "draft typing and restoration across switches",
+    "selection reloaded after page restart",
+    "disable enable uninstall",
+    "host controls and keyboard recovery accessible",
+    "runtime failure clears persistent selection",
+    "theme-only package inherits workbench and cannot style host shell"
+  ]
+}

@@ -1,0 +1,57 @@
+{
+  "schema": "aibo.plugin-manifest/v2",
+  "pluginId": "dev.aibo.git-view",
+  "version": "1.0.0",
+  "displayName": "Git changes contribution",
+  "host": {
+    "min": "0.1.0",
+    "maxExclusive": "0.2.0"
+  },
+  "platforms": [
+    "darwin-arm64",
+    "darwin-x64",
+    "windows-x64",
+    "linux-x64",
+    "linux-arm64"
+  ],
+  "protocols": {
+    "semanticView": {
+      "min": "1.0",
+      "max": "1.0"
+    }
+  },
+  "packageDependencies": [
+    {
+      "pluginId": "dev.aibo.git",
+      "version": {
+        "min": "1.0.0",
+        "maxExclusive": "2.0.0"
+      },
+      "required": true,
+      "contributionIds": [
+        "dev.aibo.git-view.changes"
+      ]
+    }
+  ],
+  "contributions": [
+    {
+      "kind": "semanticView",
+      "id": "dev.aibo.git-view.changes",
+      "scope": "workspace",
+      "required": true,
+      "title": "Git changes",
+      "extensionPoint": "workspace.tool",
+      "semanticType": "collection",
+      "contractVersion": "1.0.0",
+      "visibility": "workspaceSelected",
+      "provider": {
+        "capability": "dev.aibo.git.changes",
+        "version": {
+          "min": "1.0.0",
+          "maxExclusive": "2.0.0"
+        },
+        "operation": "dev.aibo.git.changes"
+      }
+    }
+  ]
+}

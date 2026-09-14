@@ -46,8 +46,8 @@
         "stream.text",
         "view.standard",
         "command.list",
-        "approval.respond",
-        "queue.manage",
+        "model.select",
+        "model.reasoning",
         "ext.dev.aibo.echo.refresh"
       ],
       "requestedPermissions": [
@@ -58,6 +58,24 @@
         }
       ],
       "operations": [
+        {
+          "id": "ext.dev.aibo.echo.model",
+          "capability": "model.select",
+          "inputSchema": {
+            "type": "object", "additionalProperties": false, "required": ["action"],
+            "properties": { "action": { "enum": ["list", "set"] }, "reference": { "type": "string" }, "provider": { "type": "string" }, "modelId": { "type": "string" } }
+          },
+          "outputSchema": { "type": "object", "required": ["current", "models"], "properties": { "current": { "type": "string" }, "models": { "type": "array" } }, "additionalProperties": false }
+        },
+        {
+          "id": "ext.dev.aibo.echo.reasoning",
+          "capability": "model.reasoning",
+          "inputSchema": {
+            "type": "object", "additionalProperties": false, "required": ["action"],
+            "properties": { "action": { "enum": ["list", "set"] }, "level": { "enum": ["low", "high"] } }
+          },
+          "outputSchema": { "type": "object", "required": ["current", "levels"], "properties": { "current": { "type": "string" }, "levels": { "type": "array" } }, "additionalProperties": false }
+        },
         {
           "id": "ext.dev.aibo.echo.commands",
           "capability": "command.list",

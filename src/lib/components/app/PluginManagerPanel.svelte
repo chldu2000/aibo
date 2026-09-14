@@ -9,7 +9,10 @@
     installed: boolean;
     runnable: boolean;
     dependencies: { kind: string; name: string; required: boolean; available: boolean; versionRange: string | null; detectedVersion?: string | null; issue?: string | null }[];
-    manifest: { displayName: string; agents: { agentId: string; displayName: string }[] };
+    packageDependencies?: { dependencies: { pluginId: string; required: boolean; available: boolean; version: string | null; issue: string | null }[]; unavailableContributions: string[] };
+    activationIssues?: string[];
+    sessionProviders: { id: string; displayName: string }[];
+    manifest: { displayName: string };
   };
 
   type Props = {
@@ -25,10 +28,14 @@
 
   let { installations, packagePath, onPackagePathChange, busy, onInstall, onEnabledChange, onUninstall, onCreateSession }: Props = $props();
   const fieldId = $props.id();
+  let selectedId = $state<string | null>(null);
+  const selected = $derived(installations.find(item => item.id === selectedId) ?? installations[0]);
+  let showingDetail = $state(false);
+
 </script>
 
-<Card aria-label="Agent 插件" aria-busy={busy}>
-  <CardHeader><CardTitle>Agent 插件</CardTitle></CardHeader>
+<Card aria-label="插件" aria-busy={busy}>
+  <CardHeader><CardTitle>插件</CardTitle></CardHeader>
   <CardContent>
     <div class="plugin-manager">
       <p>从本地解包目录安装插件，安装后默认禁用。启用前请确认来源可信：插件在独立进程运行，但不等于系统沙箱。</p>
@@ -39,11 +46,22 @@
       </form>
 
       {#if installations.length === 0}
-        <p role="status">尚未安装外部 Agent 插件。</p>
+        <p role="status">尚未安装外部插件。</p>
       {:else}
-        <div class="plugin-list">
+        <div class="plugin-browser" class:showing-detail={showingDetail}>
+          <nav class="plugin-navigation" aria-label="已安装插件">
+            {#each installations as installation (installation.id)}
+              <Button variant={selected?.id === installation.id ? 'secondary' : 'ghost'} aria-pressed={selected?.id === installation.id}
+                onclick={() => { selectedId = installation.id; showingDetail = true; }}>
+                {installation.manifest.displayName} · {installation.pluginVersion}
+              </Button>
+            {/each}
+          </nav>
+          <div class="plugin-detail">
+            <div class="plugin-list-back"><Button variant="ghost" onclick={() => (showingDetail = false)}>← 插件列表</Button></div>
           {#each installations as installation (installation.id)}
-            <Card>
+            {#if selected?.id === installation.id}
+            <Card aria-label={installation.manifest.displayName}>
               <CardHeader>
                 <div class="plugin-heading">
                   <CardTitle>{installation.manifest.displayName}</CardTitle>
@@ -58,19 +76,27 @@
                       {dependency.kind} · {dependency.name}{dependency.versionRange ? ` ${dependency.versionRange}` : ''}{dependency.detectedVersion ? `（检测到 ${dependency.detectedVersion}）` : ''} · {dependency.available ? '可用' : dependency.required ? `不可用（必需${dependency.issue ? `：${dependency.issue}` : ''}）` : `不可用（可选${dependency.issue ? `：${dependency.issue}` : ''}）`}
                     </p>
                   {/each}
+                  {#each installation.packageDependencies?.dependencies ?? [] as dependency (dependency.pluginId)}
+                    <p role={dependency.required && !dependency.available ? 'alert' : 'status'}>
+                      插件依赖 {dependency.pluginId}{dependency.version ? ` · ${dependency.version}` : ''}：{dependency.available ? '可用' : dependency.required ? '必需依赖不可用' : '可选依赖不可用，相关功能已停用'}{dependency.issue ? `（${dependency.issue}）` : ''}
+                    </p>
+                  {/each}
+                  {#each installation.activationIssues ?? [] as issue}<p role="status">{issue}</p>{/each}
                   <div class="plugin-actions">
                     {#if installation.installed}
-                      <Button type="button" variant="outline" disabled={busy} onclick={() => onEnabledChange(installation.id, !installation.enabled)}>{installation.enabled ? '禁用插件' : '启用插件'}</Button>
+                      <Button type="button" variant="outline" disabled={busy || (!installation.enabled && !installation.runnable)} onclick={() => onEnabledChange(installation.id, !installation.enabled)}>{installation.enabled ? '禁用插件' : '启用插件'}</Button>
                       <Button type="button" variant="outline" disabled={busy} onclick={() => onUninstall(installation.id)}>卸载插件</Button>
                     {/if}
-                    {#each installation.manifest.agents as agent (agent.agentId)}
-                      <Button type="button" disabled={busy || !installation.installed || !installation.enabled || !installation.runnable} onclick={() => onCreateSession(installation.id, agent.agentId)}>新建 {agent.displayName} 会话</Button>
+                    {#each installation.sessionProviders as provider (provider.id)}
+                      <Button type="button" disabled={busy || !installation.installed || !installation.enabled || !installation.runnable} onclick={() => onCreateSession(installation.id, provider.id)}>新建 {provider.displayName} 会话</Button>
                     {/each}
                   </div>
                 </div>
               </CardContent>
             </Card>
+            {/if}
           {/each}
+          </div>
         </div>
       {/if}
     </div>
@@ -78,7 +104,16 @@
 </Card>
 
 <style>
-  .plugin-manager, .plugin-install, .plugin-list, .plugin-details { display: flex; flex-direction: column; gap: 0.75rem; min-width: 0; }
+  .plugin-manager, .plugin-install, .plugin-details { display: flex; flex-direction: column; gap: 0.75rem; min-width: 0; }
   .plugin-heading, .plugin-actions { display: flex; align-items: center; flex-wrap: wrap; gap: 0.5rem; }
   .plugin-install { align-items: stretch; }
+  .plugin-browser { display: grid; grid-template-columns: minmax(180px, 240px) minmax(0, 1fr); gap: 16px; }
+  .plugin-navigation { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
+  .plugin-detail { min-width: 0; }
+  .plugin-list-back { display: none; }
+  @media (max-width: 720px) {
+    .plugin-browser { grid-template-columns: minmax(0, 1fr); }
+    .plugin-browser:not(.showing-detail) .plugin-detail, .plugin-browser.showing-detail .plugin-navigation { display: none; }
+    .plugin-list-back { display: block; margin-bottom: 8px; }
+  }
 </style>

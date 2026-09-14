@@ -1,7 +1,7 @@
 // Standalone protocol fixture: no Aibo imports, database, workspace or network access.
 const pluginId = 'dev.aibo.echo';
 const agentId = `${pluginId}.agent`;
-const capabilities = ['session.create', 'session.resume', 'session.close', 'turn.send', 'turn.cancel', 'stream.text', 'view.standard', 'command.list', 'approval.respond', 'queue.manage', 'ext.dev.aibo.echo.refresh'];
+const capabilities = ['session.create', 'session.resume', 'session.close', 'turn.send', 'turn.cancel', 'stream.text', 'view.standard', 'command.list', 'model.select', 'model.reasoning', 'ext.dev.aibo.echo.refresh'];
 const sessions = new Map();
 const pendingCoreTools = new Map();
 let initialized = false;
@@ -74,6 +74,8 @@ function handle({ id, method, params: p }) {
       cursor = b.recovery.data.cursor; nativeId = b.nativeSessionId;
     }
     const session = { id: p.sessionId, nativeId, cursor, revision: 0, turn: null };
+    session.model = p.executionProfile?.model ?? 'echo/model';
+    session.reasoningEffort = p.executionProfile?.reasoningEffort ?? 'low';
     sessions.set(session.id, session);
     respond({ kind: 'session', agentId, sessionId: session.id, nativeSessionId: nativeId, recovery: recovery(session) });
     event(session, 'session.started', { state: 'idle' }); view(session); return;
@@ -197,6 +199,21 @@ function handle({ id, method, params: p }) {
     turn.timer = setTimeout(tick, 10); return;
   }
   if (method === 'operation.invoke') {
+    if (p.operationId === 'ext.dev.aibo.echo.model') {
+      if (p.input?.action === 'set') {
+        const reference = p.input.reference ?? (p.input.provider && p.input.modelId ? `${p.input.provider}/${p.input.modelId}` : null);
+        if (!reference) fail('invalid_request');
+        session.model = reference;
+      }
+      respond({ kind: 'operation', operationId: p.operationId, output: { current: session.model, models: [{ id: session.model, reference: session.model, reasoningEfforts: ['low', 'high'] }] } }); return;
+    }
+    if (p.operationId === 'ext.dev.aibo.echo.reasoning') {
+      if (p.input?.action === 'set') {
+        if (!['low', 'high'].includes(p.input.level)) fail('invalid_request');
+        session.reasoningEffort = p.input.level;
+      }
+      respond({ kind: 'operation', operationId: p.operationId, output: { current: session.reasoningEffort, levels: ['low', 'high'] } }); return;
+    }
     if (p.operationId === 'ext.dev.aibo.echo.commands') {
       respond({ kind: 'operation', operationId: p.operationId, output: { commands: [] } }); return;
     }

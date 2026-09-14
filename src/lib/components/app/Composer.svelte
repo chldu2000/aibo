@@ -1,7 +1,11 @@
 <script lang="ts">
+  import { tick } from 'svelte';
+  import { commandComposerInsertion } from '$lib/app/agent-commands';
+  import type { ModelConfigurationState } from '$lib/app/model-configuration';
   import { Button, Card, Icon, ModelMatrix, Textarea } from '$lib/ui-kit';
   import type { UiModelMatrixRow } from '$lib/ui-kit';
-  import type { AgentCommand, AgentCommandCategory, ContextAttachment, SessionAccessMode, SessionExecutionProfile, SessionModelCatalog, WorkspacePathSuggestion } from '$lib/types';
+  import type { AgentCommand, AgentCommandCategory, ContextAttachment, SessionAccessMode, SessionExecutionProfile, SessionModelCatalog, Session, WorkspacePathSuggestion } from '$lib/types';
+  import { scrollActiveOptionIntoView } from './active-option-scroll';
 
   type SlashCategory = 'all' | AgentCommandCategory;
 
@@ -15,10 +19,13 @@
     busy: boolean;
     attachments: ContextAttachment[];
     executionProfile: SessionExecutionProfile | null;
+    modelConfiguration: ModelConfigurationState;
     modelCatalog: SessionModelCatalog | null;
     modelCatalogLoading: boolean;
     modelOverride?: string | null;
     workspacePathSuggestions: WorkspacePathSuggestion[];
+    sessionSuggestions?: Session[];
+    onSelectSessionReference?: (id: string) => void | Promise<void>;
     agentCommands: AgentCommand[];
     agentCommandsLoading: boolean;
     text?: string;
@@ -45,10 +52,13 @@
     busy,
     attachments,
     executionProfile,
+    modelConfiguration,
     modelCatalog,
     modelCatalogLoading,
     modelOverride = null,
     workspacePathSuggestions,
+    sessionSuggestions = [],
+    onSelectSessionReference,
     agentCommands,
     agentCommandsLoading,
     text = $bindable(''),
@@ -76,6 +86,7 @@
   let attachmentMenuOpen = $state(false);
   let sessionMenuOpen = $state(false);
   let modelMenuOpen = $state(false);
+  let suggestionList: HTMLElement | null = $state(null);
 
   $effect(() => {
     // The category is a view preference for the current command list. A new
@@ -115,8 +126,19 @@
     { id: 'skill', label: 'Skills' },
     { id: 'extension', label: 'Extension' },
   ];
+  const mentionSuggestions = $derived([
+    ...sessionSuggestions.map(session => ({ kind: 'session' as const, session })),
+    ...workspacePathSuggestions.slice(0, 8).map(path => ({ kind: 'path' as const, path })),
+  ]);
+  function selectMention(index: number): void {
+    const item = mentionSuggestions[index];
+    if (!item) return;
+    mentionActiveIndex = -1;
+    if (item.kind === 'session') void onSelectSessionReference?.(item.session.id);
+    else selectWorkspacePath(item.path);
+  }
   const showMentionSuggestions = $derived(
-    activeMentionQuery !== null && workspacePathSuggestions.length > 0,
+    activeMentionQuery !== null && mentionActiveIndex >= 0 && mentionSuggestions.length > 0,
   );
   const showSlashMenu = $derived(
     activeSlashQuery !== null && selectedAgent !== null && slashActiveIndex >= 0,
@@ -173,17 +195,9 @@
   const modelLabel = $derived(
     modelOverride || modelCatalog?.current?.label || activeProfile?.model || (modelCatalogLoading ? '正在读取模型…' : '模型未读取'),
   );
-  const currentReasoningEffort = $derived(
-    modelCatalog?.currentReasoningEffort
-      || activeProfile?.reasoningEffort
-      || modelCatalog?.current?.defaultReasoningEffort
-      || null,
-  );
+  const currentReasoningEffort = $derived(modelConfiguration.currentReasoningEffort);
   const reasoningLabel = $derived(currentReasoningEffort ? ` · ${currentReasoningEffort}` : '');
-  const selectedReasoningEffort = $derived(
-    activeProfile?.reasoningEffort
-      ?? (selectedAgent === 'pi' ? currentReasoningEffort : null),
-  );
+  const selectedReasoningEffort = $derived(modelConfiguration.selectedReasoningEffort);
   const reasoningOptions = $derived(
     modelCatalog?.current?.reasoningEfforts?.length
       ? modelCatalog.current.reasoningEfforts
@@ -196,7 +210,7 @@
     ];
     return [...new Map(options.map((option) => [option.id, option])).values()];
   });
-  const matrixDefaultLabel = $derived(selectedAgent === 'codex' ? '默认' : '保留');
+  const matrixDefaultLabel = $derived(modelConfiguration.defaultAction === 'reset' ? '默认' : '保留');
   const matrixRows = $derived.by((): UiModelMatrixRow[] =>
     (modelCatalog?.models ?? []).map((option) => ({
       reference: option.reference,
@@ -222,7 +236,7 @@
   function modelConfigurationIsActive(model: { reference: string }, reasoningEffort: string | null): boolean {
     return model.reference === modelCatalog?.current?.reference
       && (reasoningEffort === null
-        ? selectedAgent === 'codex' && selectedReasoningEffort === null
+        ? modelConfiguration.defaultAction === 'reset' && selectedReasoningEffort === null
         : reasoningEffort === selectedReasoningEffort);
   }
 
@@ -242,6 +256,11 @@
     onComposerInput(value);
   }
 
+  async function scrollToActiveSuggestion(): Promise<void> {
+    await tick();
+    scrollActiveOptionIntoView(suggestionList);
+  }
+
   function selectWorkspacePath(suggestion: WorkspacePathSuggestion): void {
     text = text.replace(/(?:^|\s)@([^\s]*)$/, (match) => {
       const prefix = match.startsWith(' ') ? ' ' : '';
@@ -253,7 +272,7 @@
   }
 
   function selectAgentCommand(command: AgentCommand): void {
-    text = text.replace(/^\/([^\s]*)$/, `/${command.name} `);
+    text = text.replace(/^\/([^\s]*)$/, commandComposerInsertion(selectedAgent, command));
     slashActiveIndex = -1;
     onComposerInput(text);
   }
@@ -284,13 +303,13 @@
         {#each pendingAttachments as attachment (attachment.id)}
           <span class="composer-attachment" title={attachment.path}>
             <Icon name="folder" size={12} />
-            <span>{attachmentName(attachment.path)}</span>
+            <span>{(attachment.mediaType === 'application/vnd.aibo.session-reference+json' ? attachment.path : attachmentName(attachment.path))}</span>
             <Button
               variant="toolbar"
               size="icon"
               type="button"
               class="composer-attachment-remove"
-              aria-label={`移除附件 ${attachmentName(attachment.path)}`}
+              aria-label={`移除附件 ${(attachment.mediaType === 'application/vnd.aibo.session-reference+json' ? attachment.path : attachmentName(attachment.path))}`}
               onclick={() => onRemoveAttachment(attachment.id)}
               disabled={busy}
             >
@@ -303,7 +322,7 @@
         上下文 · {pendingAttachments.length} 项 · 约 {formatBytes(pendingAttachmentBytes)}
       </small>
     {/if}
-    <Textarea
+    <Textarea data-presentation-focus="composer"
       class="composer-textarea"
       data-composer-input="true"
       bind:value={text}
@@ -314,18 +333,19 @@
         if (showMentionSuggestions) {
           if (event.key === 'ArrowDown') {
             event.preventDefault();
-            mentionActiveIndex = (mentionActiveIndex + 1) % workspacePathSuggestions.length;
+            mentionActiveIndex = (mentionActiveIndex + 1) % mentionSuggestions.length;
+            void scrollToActiveSuggestion();
             return;
           }
           if (event.key === 'ArrowUp') {
             event.preventDefault();
-            mentionActiveIndex = (mentionActiveIndex - 1 + workspacePathSuggestions.length) % workspacePathSuggestions.length;
+            mentionActiveIndex = (mentionActiveIndex - 1 + mentionSuggestions.length) % mentionSuggestions.length;
+            void scrollToActiveSuggestion();
             return;
           }
           if (event.key === 'Enter' || event.key === 'Tab') {
             event.preventDefault();
-            const suggestion = workspacePathSuggestions[mentionActiveIndex];
-            if (suggestion) selectWorkspacePath(suggestion);
+            selectMention(mentionActiveIndex);
             return;
           }
           if (event.key === 'Escape') {
@@ -341,6 +361,7 @@
             const nextIndex = (currentIndex + (event.shiftKey ? -1 : 1) + slashCategories.length) % slashCategories.length;
             slashCategory = slashCategories[nextIndex]?.id ?? 'all';
             slashActiveIndex = 0;
+            void scrollToActiveSuggestion();
             return;
           }
         }
@@ -348,11 +369,13 @@
           if (event.key === 'ArrowDown') {
             event.preventDefault();
             slashActiveIndex = (slashActiveIndex + 1) % filteredAgentCommands.length;
+            void scrollToActiveSuggestion();
             return;
           }
           if (event.key === 'ArrowUp') {
             event.preventDefault();
             slashActiveIndex = (slashActiveIndex - 1 + filteredAgentCommands.length) % filteredAgentCommands.length;
+            void scrollToActiveSuggestion();
             return;
           }
           if (event.key === 'Enter' && !event.metaKey && !event.ctrlKey) {
@@ -376,24 +399,24 @@
       oninput={(event) => updateComposerInput((event.currentTarget as HTMLTextAreaElement).value)}
     ></Textarea>
     {#if showMentionSuggestions && mentionActiveIndex >= 0}
-      <div class="composer-suggestions" role="listbox" aria-label="工作区路径">
-        {#each workspacePathSuggestions.slice(0, 8) as suggestion, index (`mention-${suggestion.path}`)}
+      <div bind:this={suggestionList} class="composer-suggestions" role="listbox" aria-label="引用会话或工作区路径">
+        {#each mentionSuggestions as suggestion, index (suggestion.kind === 'session' ? `session-${suggestion.session.id}` : `path-${suggestion.path.path}`)}
           <button
             type="button"
             class:active={index === mentionActiveIndex}
             role="option"
             aria-selected={index === mentionActiveIndex}
-            onclick={() => selectWorkspacePath(suggestion)}
+            onclick={() => selectMention(index)}
             onmousedown={(event) => event.preventDefault()}
           >
-            <Icon name={suggestion.isDirectory ? 'folder' : 'file'} size={13} />
-            <span>{suggestion.path}</span>
-            <small>{suggestion.isDirectory ? '目录' : '文件'}</small>
+            <Icon name={suggestion.kind === 'session' || suggestion.path.isDirectory ? 'folder' : 'file'} size={13} />
+            <span>{suggestion.kind === 'session' ? suggestion.session.label : suggestion.path.path}</span>
+            <small>{suggestion.kind === 'session' ? `会话 · ${suggestion.session.agent}${suggestion.session.archived ? ' · 已归档' : ''}` : suggestion.path.isDirectory ? '目录' : '文件'}</small>
           </button>
         {/each}
       </div>
     {:else if showSlashMenu}
-      <div class="composer-suggestions" role="listbox" aria-label="Agent 命令">
+      <div bind:this={suggestionList} class="composer-suggestions" role="listbox" aria-label="Agent 命令">
         <div class="composer-command-categories" role="tablist" aria-label="命令分类">
           {#each slashCategories as category (`slash-category-${category.id}`)}
             <button
@@ -530,6 +553,9 @@
             <div class="composer-menu composer-model-menu" role="menu" aria-label="模型设置">
               <div class="composer-menu-heading">模型与推理</div>
               <div class="composer-menu-detail">当前：{modelLabel}{reasoningLabel}</div>
+              {#if sessionRunning}
+                <div class="composer-menu-detail">会话运行中，模型与推理强度暂不可修改。</div>
+              {/if}
               {#if modelCatalogLoading}
                 <div class="composer-suggestions-empty">正在读取可用模型…</div>
               {:else if modelCatalog && modelCatalog.models.length > 0}
@@ -537,13 +563,15 @@
                   columns={matrixReasoningOptions}
                   rows={matrixRows}
                   defaultLabel={matrixDefaultLabel}
-                  defaultTitle={selectedAgent === 'codex' ? '使用该模型的默认推理强度' : '切换模型，保留当前推理强度'}
+                  defaultTitle={modelConfiguration.defaultAction === 'reset' ? '使用该模型的默认推理强度' : '切换模型，保留当前推理强度'}
                   disabled={matrixDisabled}
                   onSelect={(model, reasoningEffort) => {
                     modelMenuOpen = false;
                     void onSelectModelConfiguration(model, reasoningEffort);
                   }}
                 />
+              {:else if sessionRunning}
+                <div class="composer-suggestions-empty">尚无已确认的模型配置，回合结束后将自动读取。</div>
               {:else}
                 <div class="composer-suggestions-empty">未获取到可用模型，请稍后重试。</div>
               {/if}

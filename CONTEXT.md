@@ -43,3 +43,34 @@ _Avoid_: Native history, recovery data
 **Plugin View**:
 A validated declarative view document rendered by Aibo through the active UI kit. It contains no executable WebView code or visual skin instructions.
 _Avoid_: Plugin UI, embedded app
+
+## Plugin Platform Evolution
+
+**能力插件（Capability Plugin）**：提供领域行为、业务数据和可选语义贡献的插件。Agent 插件是能力插件的一种。
+
+**能力契约（Capability Contract）**：对一种业务能力的身份、输入、输出和行为语义的版本化约定。它不代表调用者已经获得执行权限。
+
+**语义贡献（Semantic Contribution）**：插件声明的业务入口、信息结构与动作含义，不指定物理布局或具体组件。
+_Avoid_：用“UI 插件”指代只声明页面内容的包。
+
+**Presentation Plugin（皮肤插件）**：统一的呈现扩展，可定制主题、控件、语义视图及整个工作台；未定制的部分继承宿主默认呈现。皮肤是其面向用户的名称，与呈现插件是同一概念。
+_Avoid_：把皮肤插件与呈现插件定义为两种独立插件。
+
+**语义动作（Semantic Action）**：表达用户意图的动作，按责任分为本地交互、宿主导航和能力调用。
+
+**宿主导航（Host Navigation）**：以业务目标描述的当前位置、详情目标与返回关系，不指定侧栏、中央面板等物理位置。
+
+**能力作用域（Capability Scope）**：能力调用所关联的身份与资源边界，包括 application、workspace 和 session。作用域不等于运行实例或进程。
+
+**核心语义（Core Semantic）**：每个兼容表现插件都必须保留的信息结构和操作含义，由宿主治理其版本。
+
+**专业呈现（Specialized Presentation）**：针对已知语义提供的可选展示方式；它不拥有业务事实，也不替代权限或审批。
+
+**语义降级（Semantic Fallback）**：专业呈现不可用时，使用仍保留必要信息与操作的核心视图表达同一功能。
+_Avoid_：用“降级”指代隐藏必需数据或禁掉必需操作。
+
+**核心语义版本（Core Semantic Version）**：界定兼容表现插件必须保留的信息结构与操作含义；不代表它能读取所有快照格式。
+_Avoid_：用单一“UI 版本”混指语义、快照与实现版本。
+
+**快照协议版本（Snapshot Protocol Version）**：界定宿主与呈现之间传递的视图数据和动作格式。新增格式需要接收方明确支持，不能从核心语义兼容推断。
+_Avoid_：把快照版本等同于表现插件的发布版本。

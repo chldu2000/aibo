@@ -1,0 +1,57 @@
+{
+  "identifier": "local.aibo.externalsdk.1789202828221",
+  "platform": "darwin",
+  "build": {
+    "externalDirectory": true,
+    "offlineSdkTarballs": true,
+    "compiledWithoutDom": true,
+    "bundledRuntime": true,
+    "files": [
+      "README.md",
+      "dist/worker.js",
+      "node_modules/@aibo/capability-runtime/package.json",
+      "node_modules/@aibo/capability-runtime/README.md",
+      "node_modules/@aibo/capability-runtime/runtime.d.ts",
+      "node_modules/@aibo/capability-runtime/runtime.mjs",
+      "node_modules/@aibo/capability-runtime/stdio.d.ts",
+      "node_modules/@aibo/capability-runtime/stdio.mjs",
+      "node_modules/@aibo/plugin-protocol/dist/capability.d.ts",
+      "node_modules/@aibo/plugin-protocol/dist/capability.js",
+      "node_modules/@aibo/plugin-protocol/dist/index.d.ts",
+      "node_modules/@aibo/plugin-protocol/dist/index.js",
+      "node_modules/@aibo/plugin-protocol/dist/presentation.d.ts",
+      "node_modules/@aibo/plugin-protocol/dist/presentation.js",
+      "node_modules/@aibo/plugin-protocol/dist/renderer.d.ts",
+      "node_modules/@aibo/plugin-protocol/dist/renderer.js",
+      "node_modules/@aibo/plugin-protocol/dist/semantic.d.ts",
+      "node_modules/@aibo/plugin-protocol/dist/semantic.js",
+      "node_modules/@aibo/plugin-protocol/package.json",
+      "node_modules/@aibo/plugin-protocol/README.md",
+      "package.json",
+      "plugin.json"
+    ]
+  },
+  "ok": true,
+  "installed": true,
+  "candidateFailureReported": true,
+  "confirmedReleaseRecovered": true,
+  "capabilityWithoutUi": true,
+  "skins": [
+    {
+      "kit": "shadcn",
+      "genericEntry": true,
+      "rendered": true,
+      "refreshInvoked": true
+    },
+    {
+      "kit": "material3",
+      "genericEntry": true,
+      "rendered": true,
+      "refreshInvoked": true
+    }
+  ],
+  "uninstalled": true,
+  "activeViewClosed": true,
+  "newInvocationRejected": true,
+  "noAgentSession": true
+}

@@ -1,0 +1,547 @@
+{
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema",
+    "context",
+    "contribution",
+    "state",
+    "view",
+    "actions"
+  ],
+  "properties": {
+    "schema": {
+      "const": "aibo.semantic-view/v1.1"
+    },
+    "context": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "workspaceId",
+        "contributionId",
+        "generation",
+        "revision"
+      ],
+      "properties": {
+        "workspaceId": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "minLength": 1,
+          "maxLength": 128
+        },
+        "contributionId": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9]*(?:[.-][a-z0-9]+)+$",
+          "maxLength": 128
+        },
+        "generation": {
+          "type": "string",
+          "maxLength": 128
+        },
+        "revision": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991
+        },
+        "sessionId": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        }
+      }
+    },
+    "contribution": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "extensionPoint",
+        "title"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9]*(?:[.-][a-z0-9]+)+$",
+          "maxLength": 128
+        },
+        "extensionPoint": {
+          "enum": [
+            "workspace.tool",
+            "session.context",
+            "session.action",
+            "settings.page",
+            "command"
+          ]
+        },
+        "title": {
+          "type": "string",
+          "maxLength": 8192
+        }
+      }
+    },
+    "state": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "status",
+        "message"
+      ],
+      "properties": {
+        "status": {
+          "enum": [
+            "ready",
+            "loading",
+            "empty",
+            "error",
+            "unavailable"
+          ]
+        },
+        "message": {
+          "type": "string",
+          "maxLength": 8192
+        }
+      }
+    },
+    "view": {
+      "oneOf": [
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "kind",
+            "properties",
+            "items",
+            "selection",
+            "page"
+          ],
+          "properties": {
+            "kind": {
+              "const": "collection"
+            },
+            "properties": {
+              "type": "array",
+              "maxItems": 16,
+              "items": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "key",
+                  "label",
+                  "type",
+                  "values"
+                ],
+                "properties": {
+                  "key": {
+                    "type": "string",
+                    "pattern": "^[a-z][a-zA-Z0-9]*$",
+                    "maxLength": 64
+                  },
+                  "label": {
+                    "type": "string",
+                    "maxLength": 8192
+                  },
+                  "type": {
+                    "enum": [
+                      "text",
+                      "enum"
+                    ]
+                  },
+                  "values": {
+                    "type": "array",
+                    "maxItems": 32,
+                    "items": {
+                      "type": "string",
+                      "maxLength": 8192
+                    }
+                  }
+                }
+              }
+            },
+            "items": {
+              "type": "array",
+              "maxItems": 50,
+              "items": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "id",
+                  "values"
+                ],
+                "properties": {
+                  "id": {
+                    "type": "string",
+                    "maxLength": 8192
+                  },
+                  "values": {
+                    "type": "object",
+                    "maxProperties": 16,
+                    "propertyNames": {
+                      "pattern": "^[a-z][a-zA-Z0-9]*$"
+                    },
+                    "additionalProperties": {
+                      "type": "string",
+                      "maxLength": 8192
+                    }
+                  }
+                }
+              }
+            },
+            "selection": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "maxLength": 8192
+            },
+            "page": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "offset",
+                "size",
+                "total",
+                "truncated"
+              ],
+              "properties": {
+                "offset": {
+                  "type": "integer",
+                  "minimum": 0,
+                  "maximum": 10000
+                },
+                "size": {
+                  "const": 50
+                },
+                "total": {
+                  "type": "integer",
+                  "minimum": 0,
+                  "maximum": 10000
+                },
+                "truncated": {
+                  "type": "boolean"
+                }
+              }
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "kind",
+            "itemId",
+            "properties",
+            "content",
+            "truncated"
+          ],
+          "properties": {
+            "kind": {
+              "const": "detail"
+            },
+            "itemId": {
+              "type": "string",
+              "maxLength": 8192
+            },
+            "properties": {
+              "type": "array",
+              "maxItems": 16,
+              "items": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "label",
+                  "value"
+                ],
+                "properties": {
+                  "label": {
+                    "type": "string",
+                    "maxLength": 8192
+                  },
+                  "value": {
+                    "type": "string",
+                    "maxLength": 8192
+                  }
+                }
+              }
+            },
+            "content": {
+              "type": "string",
+              "maxLength": 210000
+            },
+            "truncated": {
+              "type": "boolean"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "kind",
+            "itemId",
+            "properties",
+            "content",
+            "truncated"
+          ],
+          "properties": {
+            "kind": {
+              "const": "settings"
+            },
+            "itemId": {
+              "type": "string",
+              "maxLength": 8192
+            },
+            "properties": {
+              "type": "array",
+              "maxItems": 16,
+              "items": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "label",
+                  "value"
+                ],
+                "properties": {
+                  "label": {
+                    "type": "string",
+                    "maxLength": 8192
+                  },
+                  "value": {
+                    "type": "string",
+                    "maxLength": 8192
+                  }
+                }
+              }
+            },
+            "content": {
+              "type": "string",
+              "maxLength": 210000
+            },
+            "truncated": {
+              "type": "boolean"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "kind",
+            "itemId",
+            "properties",
+            "content",
+            "truncated"
+          ],
+          "properties": {
+            "kind": {
+              "const": "inspector"
+            },
+            "itemId": {
+              "type": "string",
+              "maxLength": 8192
+            },
+            "properties": {
+              "type": "array",
+              "maxItems": 16,
+              "items": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "label",
+                  "value"
+                ],
+                "properties": {
+                  "label": {
+                    "type": "string",
+                    "maxLength": 8192
+                  },
+                  "value": {
+                    "type": "string",
+                    "maxLength": 8192
+                  }
+                }
+              }
+            },
+            "content": {
+              "type": "string",
+              "maxLength": 210000
+            },
+            "truncated": {
+              "type": "boolean"
+            }
+          }
+        }
+      ]
+    },
+    "actions": {
+      "type": "array",
+      "maxItems": 16,
+      "items": {
+        "oneOf": [
+          {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "id",
+              "label",
+              "intent",
+              "enabled"
+            ],
+            "properties": {
+              "id": {
+                "enum": [
+                  "refresh",
+                  "open-diff",
+                  "back",
+                  "next",
+                  "previous",
+                  "inspect"
+                ]
+              },
+              "label": {
+                "type": "string",
+                "maxLength": 8192
+              },
+              "intent": {
+                "enum": [
+                  "refresh",
+                  "inspect",
+                  "navigate"
+                ]
+              },
+              "enabled": {
+                "type": "boolean"
+              }
+            }
+          },
+          {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "id",
+              "label",
+              "intent",
+              "enabled",
+              "input"
+            ],
+            "properties": {
+              "id": {
+                "type": "string",
+                "pattern": "^[a-z][a-z0-9]*(?:[.-][a-z0-9]+)+$",
+                "maxLength": 128
+              },
+              "label": {
+                "type": "string",
+                "maxLength": 8192
+              },
+              "intent": {
+                "const": "execute"
+              },
+              "enabled": {
+                "type": "boolean"
+              },
+              "input": {
+                "type": "object",
+                "maxProperties": 64
+              }
+            }
+          }
+        ]
+      }
+    }
+  },
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://aibo.dev/contracts/semantic-view.v1.1.schema.json",
+  "title": "Aibo core semantic views 1.1 with host-approved actions",
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "contribution": {
+            "properties": {
+              "extensionPoint": {
+                "const": "settings.page"
+              }
+            }
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "context": {
+            "properties": {
+              "workspaceId": {
+                "type": "null"
+              }
+            },
+            "not": {
+              "required": [
+                "sessionId"
+              ]
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "contribution": {
+            "properties": {
+              "extensionPoint": {
+                "const": "workspace.tool"
+              }
+            }
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "context": {
+            "properties": {
+              "workspaceId": {
+                "type": "string"
+              }
+            },
+            "not": {
+              "required": [
+                "sessionId"
+              ]
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "contribution": {
+            "properties": {
+              "extensionPoint": {
+                "enum": [
+                  "session.context",
+                  "session.action"
+                ]
+              }
+            }
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "context": {
+            "required": [
+              "sessionId"
+            ],
+            "properties": {
+              "workspaceId": {
+                "type": "string"
+              }
+            }
+          }
+        }
+      }
+    }
+  ]
+}

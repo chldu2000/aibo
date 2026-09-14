@@ -1,10 +1,12 @@
 import type { ApprovalRequest, ContextAttachment, ContextAttachmentValidation, Session, Workspace } from '$lib/types';
+import { withSessionReferenceContext } from './session-references';
+import { createAgentFacade } from './agent-facade';
 import { toErrorMessage } from './error-utils';
 import { upsertSession } from './session-transitions';
 
 export type MessageControllerContext = {
   api: {
-    createCodexSession: (workspaceId: string) => Promise<Session>;
+    createDefaultSession: (workspaceId: string) => Promise<Session>;
     sendAgentPrompt: (sessionId: string, input: string) => Promise<Session>;
     cancelAgentTurn: (sessionId: string) => Promise<void>;
     invokeAgentCapability: (sessionId: string, capability: string, input: Record<string, unknown>) => Promise<Record<string, unknown>>;
@@ -17,6 +19,7 @@ export type MessageControllerContext = {
   getSessionRunning: () => boolean;
   getComposerText: () => string;
   setComposerText: (value: string) => void;
+  consumeDraft: (sessionId: string, submitted: string) => void;
   setComposerDraftStatus?: (sessionId: string, sendFailed: boolean) => void;
   getAttachments: () => ContextAttachment[];
   setAttachments: (value: ContextAttachment[]) => void;
@@ -41,9 +44,18 @@ export type MessageControllerContext = {
 };
 
 export function createMessageController(context: MessageControllerContext) {
-  function withAttachmentContext(input: string): string {
-    const attachments = context.getAttachments().filter((attachment) => attachment.turnId === null);
-    if (attachments.length === 0) return input;
+  const agent = createAgentFacade(context.api);
+  function withAttachmentContext(input: string, sessionId: string | null): string {
+    input = withSessionReferenceContext(input, context.getAttachments(), sessionId);
+    const attachments = context.getAttachments().filter((attachment) => attachment.sessionId === sessionId && attachment.turnId === null && attachment.mediaType !== 'application/vnd.aibo.session-reference+json');
+    const request = attachments.length === 0 ? input : appendFileReferences(input, attachments);
+    if (new TextEncoder().encode(request).length > 200_000 || new TextEncoder().encode(JSON.stringify({ text: request })).length > 240_000) {
+      throw new Error('消息与引用上下文超过发送上限，请缩短消息或减少引用。');
+    }
+    return request;
+  }
+
+  function appendFileReferences(input: string, attachments: ContextAttachment[]): string {
     const references = attachments
       .map((attachment) => {
         const metadata = [attachment.mediaType, attachment.size === null ? null : `${attachment.size} bytes`, attachment.contentHash]
@@ -63,7 +75,8 @@ export function createMessageController(context: MessageControllerContext) {
   }
 
   async function sendPrompt(): Promise<void> {
-    const input = context.getComposerText().trim();
+    const draftText = context.getComposerText();
+    const input = draftText.trim();
     if (!input) return;
     const workspace = context.getSelectedWorkspace();
     if (!workspace) {
@@ -85,6 +98,9 @@ export function createMessageController(context: MessageControllerContext) {
       return;
     }
 
+    let requestInput: string;
+    try { requestInput = withAttachmentContext(input, draftSessionId); }
+    catch (error) { context.setErrorMessage(toErrorMessage(error)); return; }
     if (selectedSession) {
       const unsupported = unsupportedAttachmentPaths();
       if (unsupported.length > 0) {
@@ -103,25 +119,29 @@ export function createMessageController(context: MessageControllerContext) {
     context.setErrorMessage(null);
     context.setLastSubmittedPrompt(input);
     context.setPromptInFlight(true);
-    const requestInput = withAttachmentContext(input);
+    let acceptedSession: Session | null = null;
     try {
       let session = selectedSession;
       if (!session) {
-        session = await context.api.createCodexSession(workspace.id);
+        session = await context.api.createDefaultSession(workspace.id);
         context.setWorkspaceSessionMap(upsertSession(context.getWorkspaceSessionMap(), session));
-        context.setSelectedSessionId(session.id);
+        if (context.getSelectedWorkspace()?.id === workspace.id && !context.getSelectedSession()) context.setSelectedSessionId(session.id);
       }
       session = await context.api.sendAgentPrompt(session.id, requestInput);
+      acceptedSession = session;
+      context.consumeDraft(session.id, draftText);
+      context.setComposerDraftStatus?.(session.id, false);
       context.setWorkspaceSessionMap(upsertSession(context.getWorkspaceSessionMap(), session));
       await Promise.all([context.refreshTimeline(session.id), context.refreshAttachments(session.id)]);
-      context.setComposerText('');
-      if (session) context.setComposerDraftStatus?.(session.id, false);
-      context.updateWorkspaceSessions(session.workspaceId, (items) =>
-        items.map((item) => (item.id === session?.id ? { ...item, state: 'running' } : item)),
-      );
     } catch (error) {
-      if (draftSessionId) context.setComposerDraftStatus?.(draftSessionId, true);
-      context.setErrorMessage(toErrorMessage(error));
+      if (acceptedSession) {
+        if (context.getSelectedSession()?.id === acceptedSession.id) {
+          context.setNotice('消息已发送，但会话信息刷新失败，请刷新后查看。');
+        }
+      } else {
+        if (draftSessionId) context.setComposerDraftStatus?.(draftSessionId, true);
+        context.setErrorMessage(toErrorMessage(error));
+      }
     } finally {
       context.setPromptInFlight(false);
       context.setBusy(false);
@@ -160,9 +180,13 @@ export function createMessageController(context: MessageControllerContext) {
   }
 
   async function queuePiPrompt(mode: 'steer' | 'followUp'): Promise<void> {
-    const input = context.getComposerText().trim();
+    const draftText = context.getComposerText();
+    const input = draftText.trim();
     const session = context.getSelectedSession();
     if (!input || !session || !session.capabilities.includes('queue.manage') || !context.getDesktop()) return;
+    let requestInput: string;
+    try { requestInput = withAttachmentContext(input, session.id); }
+    catch (error) { context.setErrorMessage(toErrorMessage(error)); return; }
     const unsupported = unsupportedAttachmentPaths();
     if (unsupported.length > 0) {
       context.setErrorMessage(`当前 Agent 不支持图片上下文：${unsupported.join('、')}`);
@@ -176,13 +200,17 @@ export function createMessageController(context: MessageControllerContext) {
     }
     context.setBusy(true);
     context.setErrorMessage(null);
-    const requestInput = withAttachmentContext(input);
+    let accepted = false;
     try {
-      await context.api.invokeAgentCapability(session.id, 'queue.manage', { action: mode, message: requestInput });
+      await agent.invoke(session, 'queue.manage', { action: mode, message: requestInput });
+      accepted = true;
+      context.consumeDraft(session.id, draftText);
+      context.setComposerDraftStatus?.(session.id, false);
       await Promise.all([context.refreshTimeline(session.id), context.refreshAttachments(session.id)]);
-      context.setComposerText('');
     } catch (error) {
-      context.setErrorMessage(toErrorMessage(error));
+      if (accepted) {
+        if (context.getSelectedSession()?.id === session.id) context.setNotice('消息已加入队列，但会话信息刷新失败，请刷新后查看。');
+      } else context.setErrorMessage(toErrorMessage(error));
     } finally {
       context.setBusy(false);
     }

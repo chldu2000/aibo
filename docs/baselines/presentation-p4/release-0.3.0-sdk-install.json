@@ -1,0 +1,8 @@
+{
+  "passed": true,
+  "scope": "fresh directory, offline npm install of all five SDK tarballs, default build without version override",
+  "checks": [
+    "all dependencies resolved from local tarballs",
+    "both rebuilt manifests, Worker scripts and styles are byte-identical to delivery"
+  ]
+}

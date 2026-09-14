@@ -1,0 +1,156 @@
+<script lang="ts">
+  import { onMount, tick, untrack, type Snippet } from 'svelte';
+  import { Button, Card } from '$lib/ui-kit';
+  import { preflightDefaultPresentation, defaultWorkbenchSlots, defaultLayouts } from './plugins/default-presentation';
+  import { createPresentationController, type Renderer } from '../app/presentation-controller';
+  import type { WorkbenchSnapshot, WorkbenchAction } from '../presentation/workbench-contract';
+  type Guard = (id: string, callback: (...args: any[]) => any) => (...args: any[]) => any;
+  let { snapshot, windowId, navigation, navigationResize, content, auxiliaryResize, auxiliary, overlays,
+    layout = $bindable('standard'), switching = $bindable(false), gridElement = $bindable(null), navigationWidth = 260, auxiliaryWidth = 320, auxiliaryOpen = true, suspended = false, hideWhenSuspended = true, onRestore }: {
+    onRestore?: () => Promise<void>;
+    layout?: string;
+    switching?: boolean;
+    snapshot: WorkbenchSnapshot;
+    windowId: string;
+    suspended?: boolean;
+    hideWhenSuspended?: boolean;
+    navigation?: Snippet<[Guard, { growthDirection: 1 | -1 }]>;
+    navigationResize?: Snippet<[Guard, { growthDirection: 1 | -1 }]>;
+    content: Snippet<[Guard, { growthDirection: 1 | -1 }]>;
+    auxiliaryResize?: Snippet<[Guard, { growthDirection: 1 | -1 }]>;
+    auxiliary?: Snippet<[Guard, { growthDirection: 1 | -1 }]>;
+    overlays?: Snippet<[Guard, { growthDirection: 1 | -1 }]>;
+    gridElement?: HTMLElement | null;
+    navigationWidth?: number;
+    auxiliaryWidth?: number;
+    auxiliaryOpen?: boolean;
+  } = $props();
+  const slots = $derived({ navigation, navigationResize, content, auxiliaryResize, auxiliary });
+  let target: HTMLDivElement;
+  let host = $state<ReturnType<typeof createPresentationController<WorkbenchSnapshot, WorkbenchAction>> | null>(null);
+  let failure = $state('');
+  let switchTicket = 0;
+  let instance = $state<{ generation: number; layout: string; guard: (id: string, callback: (...args: any[]) => any) => (...args: any[]) => any } | null>(null);
+  const visibleSlots = $derived(instance ? defaultWorkbenchSlots(instance.layout).filter(slot => slots[slot] && (auxiliaryOpen || (slot !== 'auxiliary' && slot !== 'auxiliaryResize'))) : []);
+  const columns = $derived(visibleSlots.map(slot => slot === 'content' ? 'minmax(0, 1fr)' : slot === 'navigation' ? `minmax(0, ${navigationWidth}px)` : slot === 'auxiliary' ? `minmax(0, ${auxiliaryWidth}px)` : '14px').join(' '));
+  const storageKey = $derived(`aibo.workbench-presentation.v1.${encodeURIComponent(windowId)}`);
+  let focus = $state<string | null>(null);
+  let allowedActions = new Set<string>();
+  let hadWorkbenchFocus = false;
+  function rememberFocus(event?: FocusEvent) {
+    const element = (event?.target ?? target?.ownerDocument.activeElement) as HTMLElement | null;
+    if (element && target.contains(element)) {
+      hadWorkbenchFocus = true;
+      focus = element.dataset.presentationFocus ?? element.getAttribute('aria-label') ?? (element.id || null);
+    }
+  }
+  function restoreFocus() {
+    if ((!focus && !hadWorkbenchFocus) || suspended) return;
+    // Settings and other host controls keep focus while the workbench remounts.
+    const active = target.ownerDocument.activeElement;
+    if (active && active !== target.ownerDocument.body && active.isConnected && !target.contains(active)) return;
+    const remembered = focus ? [...target.querySelectorAll<HTMLElement>('[data-presentation-focus], [aria-label], [id]')]
+      .find(item => (item.dataset.presentationFocus ?? item.getAttribute('aria-label') ?? item.id) === focus) : null;
+    const candidates = [remembered, ...target.querySelectorAll<HTMLElement>('textarea,button,input:not([type="hidden"]),select,a[href],[tabindex]')];
+    for (const element of candidates) {
+      if (!element || element.matches(':disabled,[aria-disabled="true"]') || element.closest('[hidden],[inert],[aria-hidden="true"]') || !element.getClientRects().length || getComputedStyle(element).visibility === 'hidden') continue;
+      element.focus();
+      if (target.ownerDocument.activeElement === element) return;
+    }
+  }
+  const recovery = () => ({ selection: snapshot.sessionId, detail: snapshot.navigation, focus });
+  function renderer(layout: string, failMount = false): Renderer<WorkbenchSnapshot, WorkbenchAction> {
+    return {
+      async preflight(value) { JSON.stringify(value); preflightDefaultPresentation(layout); },
+      async mount(value, dispatch, active) {
+        if (failMount) throw Error('测试呈现挂载失败');
+        if (!active()) throw Error('presentation_superseded');
+        const owner = value.generation;
+        allowedActions = new Set();
+        const guard = (id: string, callback: (...args: any[]) => any) => {
+          allowedActions.add(id);
+          // Capture the context visible when this callback is rendered. A late control
+          // from another session is rejected even within the same renderer instance.
+          const context = { workspaceId: snapshot.workspaceId, sessionId: snapshot.sessionId };
+          return (...args: any[]) => {
+            if (!dispatch({ schema: 'aibo.presentation-action/experimental-v1', generation: owner, action: { id, ...context } })) return;
+            return callback(...args);
+          };
+        };
+        instance = { generation: owner, layout, guard };
+        await tick();
+        if (!active()) {
+          if (instance?.generation === owner) instance = null;
+          throw Error('presentation_superseded');
+        }
+        restoreFocus();
+        try { localStorage.setItem(storageKey, layout); } catch { /* Memory-only navigation remains usable. */ }
+        return {
+          update() {},
+          async dispose() { if (instance?.generation === owner) instance = null; await tick(); },
+        };
+      },
+    };
+  }
+  async function switchLayout(layout: string, failMount = false, recover = false) {
+    if (!host || (switching && !recover)) return;
+    const ticket = ++switchTicket;
+    rememberFocus();
+    switching = true; failure = '';
+    host.update($state.snapshot(snapshot), recovery());
+    try { await host.switchRenderer(renderer(layout, failMount)); }
+    catch (error) { if (ticket === switchTicket) failure = String(error); }
+    finally {
+      if (ticket === switchTicket) {
+        switching = false;
+        await tick();
+        await new Promise<void>(resolve => requestAnimationFrame(() => resolve()));
+        if (ticket === switchTicket) restoreFocus();
+      }
+    }
+  }
+  export async function restoreDefault() { await onRestore?.(); return switchLayout('standard', false, true); }
+  function handleRecoveryKey(event: KeyboardEvent) {
+    if ((event.metaKey || event.ctrlKey) && event.shiftKey && event.code === 'Backspace') {
+      event.preventDefault();
+      event.stopImmediatePropagation();
+      void restoreDefault();
+    }
+  }
+  onMount(() => {
+    // Capture phase keeps this host command independent of renderer key handlers.
+    window.addEventListener('keydown', handleRecoveryKey, true);
+    host = createPresentationController<WorkbenchSnapshot, WorkbenchAction>({
+      view: $state.snapshot(snapshot), recovery: recovery(), fallback: renderer('standard'),
+      validateAction: (current, action) => Boolean(!suspended && action && allowedActions.has(action.id) && action.workspaceId === current.workspaceId && action.sessionId === current.sessionId),
+      onAction() {}, onError: error => { failure = String(error); },
+    });
+    let layout = 'standard';
+    try { const saved = localStorage.getItem(storageKey); layout = defaultLayouts.find(candidate => candidate === saved) ?? 'standard'; } catch {}
+    void switchLayout(layout);
+    const controller = host;
+    return () => { window.removeEventListener('keydown', handleRecoveryKey, true); void controller.dispose(); };
+  });
+  $effect(() => { if (instance) layout = instance.layout; });
+  $effect(() => { if (host) host.update($state.snapshot(snapshot), untrack(recovery)); });
+  // Local diagnostics use the same lifecycle path; no remote renderer code is loaded.
+  export function switchPresentation(layout: string, failMount = false) { return switchLayout(layout, failMount); }
+</script>
+{#if failure}
+  <Card><p role="alert">呈现错误：{failure}</p>
+    <Button variant="ghost" onclick={restoreDefault} aria-label="恢复默认呈现" aria-keyshortcuts="Control+Shift+Backspace Meta+Shift+Backspace">恢复默认呈现</Button>
+  </Card>
+{/if}
+<div bind:this={target} onfocusin={rememberFocus} class="workbench-presentation" data-presentation-focus-target={focus} data-presentation-layout={instance?.layout} data-presentation-generation={instance?.generation} inert={switching || suspended} aria-busy={switching} style:display={suspended && hideWhenSuspended ? 'none' : 'flex'}>
+  {#if instance}{#key instance.generation}
+      <main bind:this={gridElement} class="workspace-grid" class:inspector-hidden={!auxiliaryOpen} style:grid-template-columns={columns} style={`--workspace-sidebar-width: ${navigationWidth}px; --workspace-inspector-width: ${auxiliaryWidth}px`}>
+        {#each visibleSlots as slot (slot)}
+          {@render slots[slot]?.(instance.guard, { growthDirection: visibleSlots.indexOf(slot) < visibleSlots.indexOf('content') ? 1 : -1 })}
+        {/each}
+      </main>
+      {@render overlays?.(instance.guard, { growthDirection: 1 })}
+  {/key}{/if}
+</div>
+<style>
+  .workbench-presentation { order: 2; display: flex; flex-direction: column; flex: 1; min-width: 0; min-height: 0; }
+</style>

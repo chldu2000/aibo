@@ -1,0 +1,21 @@
+{
+  "name": "@aibo/presentation-shadcn",
+  "version": "0.3.0",
+  "private": true,
+  "type": "module",
+  "files": [
+    "themes.json",
+    "assets",
+    "skin.js",
+    "skin.css",
+    "build.mjs",
+    "README.md"
+  ],
+  "scripts": {
+    "build": "node build.mjs"
+  },
+  "dependencies": {
+    "@aibo/presentation-tools": "0.1.0",
+    "@aibo/presentation-workbench": "0.2.0"
+  }
+}

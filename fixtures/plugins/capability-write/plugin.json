@@ -1,0 +1,108 @@
+{
+  "schema": "aibo.plugin-manifest/v2",
+  "pluginId": "dev.aibo.capability-write",
+  "version": "1.0.0",
+  "displayName": "Capability write fixture",
+  "host": {
+    "min": "0.1.0",
+    "maxExclusive": "0.2.0"
+  },
+  "platforms": [
+    "darwin-arm64",
+    "darwin-x64",
+    "linux-x64",
+    "linux-arm64"
+  ],
+  "protocols": {
+    "runtime": {
+      "min": "2.0",
+      "max": "2.0"
+    }
+  },
+  "contributions": [
+    {
+      "kind": "capabilityProvider",
+      "id": "dev.aibo.capability-write.writer",
+      "scope": "workspace",
+      "required": true,
+      "displayName": "Append a workspace fixture",
+      "operations": [
+        {
+          "id": "dev.aibo.capability-write.append",
+          "capability": {
+            "id": "dev.aibo.capability-write.append",
+            "version": "1.0.0"
+          },
+          "inputSchema": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "value"
+            ],
+            "properties": {
+              "value": {
+                "type": "string",
+                "maxLength": 128
+              },
+              "mode": {
+                "enum": [
+                  "normal",
+                  "slow",
+                  "crash",
+                  "invalid-output"
+                ]
+              }
+            }
+          },
+          "outputSchema": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "value",
+              "caller",
+              "permissions",
+              "chainLength"
+            ],
+            "properties": {
+              "value": {
+                "type": "string",
+                "maxLength": 128
+              },
+              "caller": {
+                "type": "string"
+              },
+              "permissions": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "chainLength": {
+                "type": "integer",
+                "minimum": 1
+              }
+            }
+          },
+          "effect": "write",
+          "permissions": [
+            "workspace.read",
+            "workspace.write"
+          ],
+          "timeoutMs": 2000,
+          "idempotent": false
+        }
+      ]
+    }
+  ],
+  "entrypoint": {
+    "executable": "worker.mjs"
+  },
+  "executableDependencies": [
+    {
+      "kind": "runtime",
+      "name": "node",
+      "versionRange": ">=22",
+      "required": true
+    }
+  ]
+}

@@ -1,0 +1,17 @@
+[
+  {
+    "command": "node probes/codex-app-server.mjs --smoke",
+    "agent": "codex",
+    "transportPassed": true,
+    "smokePassed": true,
+    "resumePassed": true,
+    "failure": null
+  },
+  {
+    "command": "node probes/pi-plugin-smoke.mjs",
+    "agent": "pi-plugin-smoke",
+    "provider": "real",
+    "completedText": "AIBO_PI_PLUGIN_SMOKE_OK",
+    "failure": null
+  }
+]

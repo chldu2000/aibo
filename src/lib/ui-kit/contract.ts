@@ -1,6 +1,11 @@
-import type { Component } from 'svelte';
-import type { UiPluginViewProps } from './plugin-view';
-export type { UiPluginViewDocument, UiPluginViewProps } from './plugin-view';
+import type { PresentationProps } from './presentation-props';
+import type { Component, Snippet } from 'svelte';
+import type { PresentationModelMatrix, PresentationStatusMark } from '../../../packages/plugin-protocol/src/presentation-controls';
+export type {
+  PresentationModelCell as UiModelMatrixCell,
+  PresentationModelColumn as UiModelMatrixColumn,
+  PresentationModelRow as UiModelMatrixRow,
+} from '../../../packages/plugin-protocol/src/presentation-controls';
 
 export type UiIconName =
   | 'add'
@@ -15,9 +20,11 @@ export type UiIconName =
   | 'edit'
   | 'filter'
   | 'file'
+  | 'focus'
   | 'folder'
   | 'folder-add'
   | 'panel-right'
+  | 'plugins'
   | 'refresh'
   | 'review'
   | 'search'
@@ -48,31 +55,7 @@ export type UiButtonVariant =
   | 'abort'
   | 'send';
 
-export type UiModelMatrixCell = {
-  id: string;
-  label: string;
-  description: string | null;
-  available: boolean;
-  active: boolean;
-};
-
-export type UiModelMatrixColumn = Pick<UiModelMatrixCell, 'id' | 'label' | 'description'>;
-
-export type UiModelMatrixRow = {
-  reference: string;
-  label: string;
-  isDefault: boolean;
-  active: boolean;
-  defaultActive: boolean;
-  cells: readonly UiModelMatrixCell[];
-};
-
-export type UiModelMatrixProps = {
-  columns: readonly UiModelMatrixColumn[];
-  rows: readonly UiModelMatrixRow[];
-  defaultLabel: string;
-  defaultTitle: string;
-  disabled: boolean;
+export type UiModelMatrixProps = PresentationModelMatrix & {
   onSelect: (model: string, reasoningEffort: string | null) => void | Promise<void>;
 };
 
@@ -83,11 +66,7 @@ export type UiColumnSplitterProps = {
   onKeyDown: (event: KeyboardEvent) => void;
 };
 
-export type UiAgentStatusMarkProps = {
-  agent: 'codex' | 'pi' | 'plugin';
-  tone: 'idle' | 'running' | 'attention' | 'danger' | 'muted';
-  label: string;
-};
+export type UiAgentStatusMarkProps = PresentationStatusMark;
 
 /**
  * The minimum visual surface consumed by Aibo's app-level components.
@@ -96,8 +75,43 @@ export type UiAgentStatusMarkProps = {
  * follows the app's semantic props: open/title/description, confirmText,
  * cancelText, onConfirm and onCancel.
  */
+export type UiSettingsAction = {
+  id: string;
+  label: string;
+  intent: 'install' | 'restore' | 'navigate' | 'toggle' | 'remove' | 'layout';
+  disabled?: boolean;
+  ariaLabel?: string;
+  keyShortcuts?: string;
+};
+export type UiSettingsItem = {
+  id: string;
+  title: string;
+  description?: string;
+  icon?: UiIconName;
+  shortcut?: string;
+  actions: readonly UiSettingsAction[];
+};
+export type UiSettingsSectionProps = {
+  title: string;
+  description?: string;
+  items: readonly UiSettingsItem[];
+  error?: string | null;
+  onAction: (itemId: string, actionId: string) => void;
+};
+
+export type UiHostPanelProps = {
+  title: string;
+  backLabel?: string;
+  onBack?: () => void;
+  onClose: () => void;
+  children: Snippet;
+  actions?: Snippet;
+};
+
 export type UiKitAdapter = {
-  PluginView: Component<UiPluginViewProps>;
+  SettingsSection: Component<UiSettingsSectionProps>;
+  HostPanel: Component<UiHostPanelProps>;
+  SemanticView: Component<PresentationProps>;
   AgentStatusMark: Component<UiAgentStatusMarkProps>;
   AlertDialog: Component;
   Badge: Component;

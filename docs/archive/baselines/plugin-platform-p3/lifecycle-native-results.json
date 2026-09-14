@@ -1,0 +1,35 @@
+{
+  "date": "2026-09-12",
+  "command": "node probes/capability-native.mjs",
+  "platform": "macOS",
+  "results": [
+    {
+      "stage": 0,
+      "ok": true,
+      "evidence": {
+        "realCapabilityProcess": true,
+        "explicitBinding": true,
+        "hostWorkspacePath": true,
+        "forgedCallerRejected": true,
+        "cancellation": true,
+        "workspaceIsolation": true,
+        "noAgentSession": true,
+        "lifecycleEvents": true
+      }
+    },
+    {
+      "stage": 1,
+      "ok": true,
+      "evidence": {
+        "actualAppRestart": true,
+        "persistedBinding": true,
+        "newGeneration": true,
+        "stableInstance": true,
+        "persistedEventCursor": true,
+        "disabledBindingRejected": true,
+        "reenabledRelease": true,
+        "uninstall": true
+      }
+    }
+  ]
+}

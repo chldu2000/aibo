@@ -1,0 +1,12 @@
+{
+  "schema": "aibo.presentation-package/v1",
+  "id": "dev.aibo.example.ocean",
+  "version": "1.0.0",
+  "displayName": "Ocean theme example",
+  "hostApi": "1.0.0",
+  "coreSemantics": "1.0.0",
+  "snapshotSchemas": ["aibo.semantic-view/v1"],
+  "resources": [],
+  "defaultThemeId": "ocean",
+  "themes": [{"id":"ocean","label":"Ocean","colorScheme":"dark","tokens":{"--background":"#071b2a","--foreground":"#e0f2fe","--primary":"#38bdf8","--primary-foreground":"#071b2a"}}]
+}

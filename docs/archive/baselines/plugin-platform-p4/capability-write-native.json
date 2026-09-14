@@ -1,0 +1,38 @@
+{
+  "identifier": "local.aibo.capabilitywrite.1789165362803",
+  "platform": "darwin",
+  "results": [
+    {
+      "ok": true,
+      "saved": {
+        "workspaceId": "01M2991XTH6T9AT4S1BXC36BYK",
+        "installationId": "01M2991XTW3Q1GMA3AYED498FZ",
+        "invocationId": "01M2991Z6EXFNZBMZ41ZDY0WC2"
+      },
+      "nativeDenial": true,
+      "approvedWrite": true,
+      "durableReplay": true,
+      "cancellationAfterTrustRevocation": true,
+      "independentHistory": true
+    },
+    {
+      "ok": true,
+      "saved": {
+        "workspaceId": "01M2991XTH6T9AT4S1BXC36BYK",
+        "installationId": "01M2991XTW3Q1GMA3AYED498FZ",
+        "invocationId": "01M2991Z6EXFNZBMZ41ZDY0WC2"
+      },
+      "actualRestart": true,
+      "replayAfterUninstall": true,
+      "historyAfterTrustRevocation": true
+    }
+  ],
+  "nativeClicks": [
+    "clicked isolated dialog: 取消",
+    "clicked isolated dialog: 允许本次执行",
+    "clicked isolated dialog: 允许本次执行"
+  ],
+  "actualEffectsVerified": true,
+  "descendantStopped": true,
+  "noReplayExecution": true
+}

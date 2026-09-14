@@ -1,0 +1,20 @@
+{
+  "passed": true,
+  "browser": "153.0.8010.12",
+  "evidence": [
+    "render, trusted user events and state update",
+    "untrusted synthetic events rejected; keyed focus survives update",
+    "late user event from previous rendered revision rejected",
+    "primary Enter uses click intent; ordinary Enter inserts newline; IME and stale shortcuts rejected; synthetic keys and invalid shortcut targets rejected",
+    "splitter drag survives redraw; synthetic gestures and events after splitter removal cannot resize",
+    "no DOM, storage, Tauri global or network in executable worker",
+    "executable markup rejected and previous frame retained",
+    "layout size hints reject negative, excessive and CSS-string values",
+    "splitter descriptors reject invalid direction, bounds and CSS-string sizes",
+    "superseded preparation abort removes candidate and preserves active frame",
+    "inline handlers and arbitrary resource URLs rejected",
+    "infinite worker terminated; host recovery remains usable",
+    "post-activation infinite loop detected by heartbeat and frame removed",
+    "subsequent mount succeeds and disposal removes frames"
+  ]
+}

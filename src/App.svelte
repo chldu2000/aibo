@@ -1,5 +1,442 @@
 <script lang="ts">
-  import { onDestroy, onMount, untrack } from 'svelte';
+  import { readWorkbenchDrafts, writeWorkbenchDrafts, emptyGitPanelState } from '$lib/app/workbench-drafts';
+  const draftStorage = { getItem: (key: string) => window.localStorage.getItem(key), setItem: (key: string, value: string) => window.localStorage.setItem(key, value) };
+  import { readWorkbenchLayout, writeWorkbenchLayout } from '$lib/app/workbench-layout-storage';
+  const savedWorkbenchLayout = readWorkbenchLayout(draftStorage, presentationWindowId());
+  let workbenchDrafts = $state(readWorkbenchDrafts(draftStorage, presentationWindowId()));
+  $effect(() => { writeWorkbenchDrafts(draftStorage, presentationWindowId(), workbenchDrafts); });
+  import { SettingsSection, HostPanel, PresentationHost, WorkbenchPresentation, DefaultPresentationActions, Badge, Button, Card, CardHeader, CardTitle, CardContent } from '$lib/ui-kit';
+  import { createPresentationPackageController, type PresentationPackageState } from '$lib/app/presentation-package-controller';
+  import { listPresentationPackages, readPresentationPackage, installPresentationPackage, setPresentationPackageEnabled, uninstallPresentationPackage, getPresentationSelection, selectPresentationPackage } from '$lib/api';
+  import { createCapabilityWorkbenchDirectory } from '$lib/presentation-runtime/capability-workbench';
+  import type { PresentationCapabilityWorkbench } from '../packages/plugin-protocol/src/presentation-capability';
+  const capabilityWorkbenchDirectory = createCapabilityWorkbenchDirectory();
+  import { createProjectEditorController, emptyProjectEditor, type ProjectEditorField } from '$lib/app/project-editor-controller';
+  import type { PresentationProjectEditor } from '../packages/plugin-protocol/src/presentation-inspector';
+  let projectEditors = $state<Record<string, PresentationProjectEditor>>({});
+  let projectRunningActions = $state<Record<string, string | null>>({});
+  const projectEditor = createProjectEditorController({
+    workspace: () => selectedWorkspaceId, actions: () => projectActions, save: saveProjectAction,
+    changed: (id, editor) => { projectEditors = { ...projectEditors, [id]: editor }; },
+    saved: (id, saved) => { if (selectedWorkspaceId === id) projectActions = projectActions.some(item => item.id === saved.id) ? projectActions.map(item => item.id === saved.id ? saved : item) : [...projectActions, saved]; },
+  });
+  import { createInspectorDirectory } from '$lib/presentation-runtime/inspector';
+  import { createArtifactPreviewController, emptyArtifactPreview } from '$lib/app/artifact-preview-controller';
+  import type { PresentationInspector } from '../packages/plugin-protocol/src/presentation-inspector';
+  const inspectorDirectory = createInspectorDirectory();
+  let artifactPreview = $state(emptyArtifactPreview());
+  const artifactPreviewController = createArtifactPreviewController({
+    read: readArtifact, currentSession: () => selectedSessionId,
+    available: (sessionId, artifactId) => artifacts.some(item => item.id === artifactId && item.sessionId === sessionId && item.workspaceId === selectedWorkspaceId),
+    changed: state => { artifactPreview = state; },
+  });
+  $effect(() => { selectedSessionId; untrack(() => artifactPreviewController.reset()); });
+  $effect(() => {
+    const preview = artifactPreview;
+    if (preview.artifactId && !artifacts.some(item => item.id === preview.artifactId && item.sessionId === preview.sessionId)) untrack(() => artifactPreviewController.reset());
+  });
+  import { createGitDirectory } from '$lib/presentation-runtime/git';
+  import type { PresentationGit } from '../packages/plugin-protocol/src/presentation-git';
+  const gitDirectory = createGitDirectory();
+  import { createConversationDirectory } from '$lib/presentation-runtime/conversation';
+  import { userInputDraftKey, answeredRequest, clearRequestDrafts } from '$lib/app/user-input-drafts';
+  import { createLayoutDirectory } from '$lib/presentation-runtime/layout';
+  import type { PresentationConversation } from '../packages/plugin-protocol/src/presentation-conversation';
+  import { readUserInputDrafts, writeUserInputDrafts } from '$lib/app/user-input-draft-storage';
+  let userInputDrafts = $state<Record<string, string>>(readUserInputDrafts(draftStorage, presentationWindowId()));
+  let knownUserInputKeys = new Set<string>();
+  $effect(() => { writeUserInputDrafts(draftStorage, presentationWindowId(), userInputDrafts); });
+  const conversationDirectory = createConversationDirectory();
+  $effect(() => {
+    const keys = new Set(pendingUserInputs.flatMap(request => request.questions.map(question => userInputDraftKey(request, question.id))));
+    untrack(() => {
+      const entries = Object.entries(userInputDrafts).filter(([key]) => !knownUserInputKeys.has(key) || keys.has(key));
+      if (entries.length !== Object.keys(userInputDrafts).length) userInputDrafts = Object.fromEntries(entries);
+      knownUserInputKeys = keys;
+    });
+  });
+  import { navigationActions as externalNavigationActions, resolveNavigationIntent } from '$lib/presentation-runtime/navigation';
+  import type { PresentationNavigation } from '../packages/plugin-protocol/src/presentation-navigation';
+  import type { PresentationInput, PresentationIntent } from '../packages/plugin-protocol/src/presentation-runtime';
+  let presentationHost: ReturnType<typeof PresentationHost>;
+  let presentationPackages = $state<PresentationPackageState>({ releases: [], active: null, themeId: null, busy: false, error: '' });
+  let externalInput = $state<PresentationInput>({ surface: 'workbench', context: { workspaceId: null, sessionId: null, revision: 0 }, data: null, theme: {} });
+  const presentationPackagesController = createPresentationPackageController({
+    list: listPresentationPackages, read: readPresentationPackage, install: installPresentationPackage,
+    enable: setPresentationPackageEnabled, uninstall: uninstallPresentationPackage,
+    selection: getPresentationSelection, persist: selectPresentationPackage,
+    prepare: (value, theme, failure, signal) => presentationHost.prepare(value, theme, failure, signal),
+    changed: state => { presentationPackages = state; },
+  });
+  const presentationOptions = $derived([...availableUiKits, ...presentationPackages.releases.filter(release => release.enabled).map(release => ({
+    id: release.digest, label: release.manifest.displayName, description: release.manifest.version,
+    defaultThemeId: release.manifest.defaultThemeId ?? '',
+    themes: (release.manifest.themes ?? []).map(theme => ({ ...theme, description: '', swatches: [] })),
+  }))]);
+  async function presentationOperation(operation: () => Promise<unknown>) {
+    try { await operation(); } catch (error) { errorMessage = toErrorMessage(error); }
+  }
+  async function installPresentationFromDirectory() {
+    const path = await open({ directory: true, multiple: false, title: '选择皮肤插件目录' });
+    if (typeof path === 'string') await presentationPackagesController.install(path);
+  }
+  async function choosePresentation(id: string) {
+    if (!desktop) { setUiKit(id); return; }
+    if (presentationPackages.releases.some(release => release.digest === id)) await presentationPackagesController.select(id);
+    else { await presentationPackagesController.select(null); setUiKit(id); }
+  }
+  async function choosePresentationTheme(id: string) {
+    if (presentationPackages.active) await presentationPackagesController.select(presentationPackages.active.release.digest, id);
+    else setUiTheme(id);
+  }
+  const externalNavigation = $derived<PresentationNavigation>({
+    workspaces: workspaceItems, sessionsByWorkspace: sessionItemsByWorkspace,
+    selectedWorkspaceId, selectedSessionId, expandedWorkspaceIds, sessionsLoadingWorkspaceIds,
+    busy, threadBusy, archivingWorkspaceId, archivingSessionId, sessionSearchOpen, sessionFilterOpen,
+    sessionSearch, sessionFilter, createSessionWorkspaceId, renamingSessionId, sessionLabelDraft,
+  });
+  async function externalNavigationIntent(intent: PresentationIntent) {
+    const action = resolveNavigationIntent(externalNavigation, externalInput.context, intent);
+    if (!action) return;
+    const id = action.targetId!;
+    switch (action.operation) {
+      case 'toggleSearch': sessionSearchOpen = !sessionSearchOpen; break;
+      case 'toggleFilter': sessionFilterOpen = !sessionFilterOpen; break;
+      case 'search': sessionSearch = intent.value!; break;
+      case 'filter': sessionFilter = intent.value as SessionFilter; await refreshExpandedSessions(); break;
+      case 'applyFilters': await refreshExpandedSessions(); break;
+      case 'addWorkspace': await chooseWorkspaceDirectory(); break;
+      case 'selectWorkspace': selectWorkspace(id); break;
+      case 'toggleSessionCreator': toggleSessionCreator(id); break;
+      case 'toggleTrust': { const workspace = workspaces.find(item => item.id === id); if (workspace) await toggleTrust(workspace); break; }
+      case 'removeWorkspace': { const workspace = workspaces.find(item => item.id === id); if (workspace) await deleteWorkspace(workspace); break; }
+      case 'openWorkspace': await openWorkspaceLocation(id); break;
+      case 'createCodex': if (id !== selectedWorkspaceId) activateWorkspace(id); await createCodex(); break;
+      case 'createPi': if (id !== selectedWorkspaceId) activateWorkspace(id); await createPi(); break;
+      case 'selectSession': installedTool = null; pluginsOpen = false; selectSession(id); break;
+      case 'unarchiveSession': await unarchiveSession(id); break;
+      case 'archiveSession': requestArchiveSession(id); break;
+      case 'syncSession': await syncCodexThread(id); break;
+      case 'renameSession': beginRenameSession(id); break;
+      case 'renameDraft': sessionLabelDraft = intent.value!; break;
+      case 'saveRename': await saveSessionRename(); break;
+      case 'cancelRename': cancelRenameSession(); break;
+    }
+  }
+  const externalConversation = $derived<PresentationConversation>({
+    workspace: selectedWorkspace, session: selectedSession, goal: codexGoal,
+    thread: codexThreadSnapshot && { id: codexThreadSnapshot.id, turnCount: codexThreadSnapshot.turnCount },
+    timeline, timelineVisibleCount, groupSystemItems: selectedSessionAgent === 'pi', usage: usageValues, retryPrompt, retryReason,
+    userInputRequests: selectedUserInputRequests, answerDrafts: Object.fromEntries(selectedUserInputRequests.flatMap(request => request.questions.map(question => {
+      const key = userInputDraftKey(request, question.id); return [key, userInputDrafts[key] ?? ''];
+    }))), queue: queueSnapshot,
+    activityLabel: agentActivityLabel, compacting: contextCompacting, running: sessionRunning,
+    archiving: selectedSessionArchiving, busy, attachments, executionProfile,
+    modelConfiguration: modelConfigurationState(selectedSession, sessionModelCatalog, executionProfile),
+    modelCatalog: sessionModelCatalog, modelCatalogLoading: sessionModelCatalogLoading, modelOverride: sessionModelOverride,
+    workspacePathSuggestions, sessionSuggestions, agentCommands: visibleAgentCommands, agentCommandsLoading,
+    draft: composerText, draftFailed: composerDraftFailed, tree: piTree?.sessionId === selectedSessionId ? piTree : null,
+    treeOpen: piTreeOpen, treeNavigationStatus: piNavigationStatus,
+  });
+  async function externalConversationIntent(intent: PresentationIntent) {
+    const action = conversationDirectory.resolve(externalConversation, externalInput.context, intent);
+    if (!action) return;
+    const [target, detail, option] = action.args;
+    switch (action.operation) {
+      case 'draft': composerText = intent.value!; handleComposerInput(composerText); break;
+      case 'copyCode': await navigator.clipboard.writeText(action.args[2]!); notice = '代码已复制'; break;
+      case 'openLink': window.open(action.args[2]!, '_blank', 'noopener,noreferrer'); break;
+      case 'send': await sendPrompt(); break;
+      case 'stop': await abortPrompt(); break;
+      case 'retry': await retryLastPrompt(); break;
+      case 'queueSteer': await queuePiPrompt('steer'); break;
+      case 'queueFollowUp': await queuePiPrompt('followUp'); break;
+      case 'clearQueue': await clearPiPromptQueue(); break;
+      case 'addAttachments': await chooseSessionAttachments(); break;
+      case 'addDirectory': await chooseSessionAttachmentDirectory(); break;
+      case 'removeAttachment': await removeAttachment(target!); break;
+      case 'selectSessionReference': await selectComposerSessionReference(target!); break;
+      case 'selectPath':
+        composerText = composerText.replace(/(?:^|\s)@([^\s]*)$/, match => `${match.startsWith(' ') ? ' ' : ''}@${target} `);
+        handleComposerInput(composerText); selectComposerWorkspacePath(target!); break;
+      case 'selectCommand': {
+        const command = visibleAgentCommands.find((item) => item.name === target);
+        if (command) composerText = composerText.replace(/^\/([^\s]*)$/, commandComposerInsertion(sessionAgentKind(selectedSession), command));
+        handleComposerInput(composerText);
+        break;
+      }
+      case 'loadOlder': loadOlderTimeline(); break;
+      case 'fork': await forkSession(selectedSessionId, target ?? undefined); break;
+      case 'loadModels': await loadSessionModels(); break;
+      case 'selectModel': await applySessionModelConfiguration(target!, detail ?? null); break;
+      case 'selectAccess': await applySessionAccess(target as SessionAccessMode); break;
+      case 'compact': await compactCurrentSession(); break;
+      case 'answer':
+      case 'chooseAnswer': {
+        const request = selectedUserInputRequests.find(request => request.requestId === target);
+        if (request) userInputDrafts = { ...userInputDrafts, [userInputDraftKey(request, detail!)]: action.operation === 'answer' ? intent.value! : option! };
+        break;
+      }
+      case 'submitAnswers': {
+        const request = selectedUserInputRequests.find(request => request.requestId === target);
+        const answers = request && answeredRequest(request, userInputDrafts);
+        if (request && answers) await resolveUserInput(request, answers);
+        break;
+      }
+      case 'cancelAnswers': await abortPrompt(); break;
+      case 'openTree': openPiTree(); break;
+      case 'closeTree': piTreeOpen = false; break;
+      case 'refreshTree': if (selectedSessionId) await refreshPiTree(selectedSessionId); break;
+      case 'selectTreeNode': requestPiTreeNavigation(target!); break;
+    }
+  }
+  const externalGit = $derived<PresentationGit>({
+    workspace: selectedWorkspace, sessionId: selectedSessionId, desktop, open: sidePanelOpen, activeView: sidePanelView,
+    changes: workspaceChanges, loading: workspaceChangesLoading, error: workspaceChangesError,
+    branches: workspaceGitBranches, history: workspaceGitHistory, metadataLoading: workspaceGitMetadataLoading,
+    metadataError: workspaceGitMetadataError, commitFiles: workspaceGitCommitFiles, commitFilesLoading: workspaceGitCommitFilesLoading,
+    remoteStatus: workspaceGitRemoteStatus, stashes: workspaceGitStashes, operationBusy: workspaceGitOperationBusy,
+    reviewBusy: workspaceGitReviewBusy,
+    canRequestReview: Boolean(selectedSession?.pluginInstallationId) && selectedSession?.workspaceId === selectedWorkspaceId && !selectedSession?.archived && !sessionRunning,
+    draft: workbenchDrafts.git[selectedWorkspaceId ?? ''] ?? emptyGitPanelState(),
+    preview: { fileDiff: workspaceFileDiff, loading: workspaceFileDiffLoading, error: workspaceFileDiffError,
+      selectedPath: workspaceFileDiffPath, staged: workspaceFileDiffStaged, contextLabel: workspaceFileDiffContextLabel },
+  });
+  async function externalGitIntent(intent: PresentationIntent) {
+    const action = gitDirectory.resolve(externalGit, externalInput.context, intent);
+    if (!action) return;
+    const [target, detail] = action.args;
+    const workspaceId = selectedWorkspaceId!;
+    const draft = externalGit.draft;
+    switch (action.operation) {
+      case 'togglePanel': toggleSidePanel(); break;
+      case 'selectView': selectSidePanelView(target as SidePanelView); break;
+      case 'selectSection':
+        workbenchDrafts.git[workspaceId] = { ...draft, gitSection: target as 'changes' | 'history' };
+        if (target === 'history') await refreshWorkspaceGitMetadata(workspaceId); break;
+      case 'refresh': await refreshWorkspaceChanges(workspaceId); break;
+      case 'refreshMetadata': await refreshWorkspaceGitMetadata(workspaceId); break;
+      case 'commitMessage': workbenchDrafts.git[workspaceId] = { ...draft, commitMessage: intent.value! }; break;
+      case 'branchDraft': workbenchDrafts.git[workspaceId] = { ...draft, branchDraft: intent.value! }; break;
+      case 'commit': await commitWorkspaceGitChanges(workspaceId, target!); break;
+      case 'createBranch': await createWorkspaceBranch(workspaceId, target!); break;
+      case 'checkoutBranch': await checkoutWorkspaceBranch(workspaceId, target!); break;
+      case 'stageFile': await applyWorkspaceGitAction(workspaceId, target!, 'stage'); break;
+      case 'unstageFile': await applyWorkspaceGitAction(workspaceId, target!, 'unstage'); break;
+      case 'stageAll': await applyWorkspaceGitWorkspaceAction(workspaceId, 'stage_all'); break;
+      case 'unstageAll': await applyWorkspaceGitWorkspaceAction(workspaceId, 'unstage_all'); break;
+      case 'openDiff': await openWorkspaceFileDiff(workspaceId, target!, detail === 'staged'); break;
+      case 'closeDiff': closeWorkspaceFileDiff(); break;
+      case 'selectCommit': workbenchDrafts.git[workspaceId] = { ...draft, selectedCommit: target! }; await loadWorkspaceCommitFiles(workspaceId, target!); break;
+      case 'loadMoreCommitFiles': await loadWorkspaceCommitFiles(workspaceId, target!, true); break;
+      case 'openCommitDiff': await openWorkspaceCommitFileDiff(workspaceId, target!, detail!); break;
+      case 'fetch': case 'pull': case 'push': await syncWorkspaceBranch(workspaceId, action.operation); break;
+      case 'saveStash': await saveWorkspaceStash(workspaceId); break;
+      case 'applyStash': await applyWorkspaceStash(workspaceId, target!); break;
+      case 'requestReview': await requestWorkspaceAgentReview(workspaceId); break;
+    }
+  }
+  async function runCurrentProjectAction(actionId: string): Promise<void> {
+    const workspaceId = selectedWorkspaceId;
+    const sessionId = selectedSessionId;
+    if (!workspaceId || projectRunningActions[workspaceId]) return;
+    projectRunningActions[workspaceId] = actionId;
+    try {
+      const result = await projectTaskController.run(workspaceId, actionId, sessionId);
+      if (selectedWorkspaceId !== workspaceId) return;
+      projectActionRuns = [result, ...projectActionRuns.filter((item) => item.id !== result.id)].slice(0, 20);
+      if (sessionId && selectedSessionId === sessionId) await refreshArtifacts(sessionId);
+      if (selectedWorkspaceId !== workspaceId) return;
+      notice = result.status === 'rejected' ? '工程动作未执行，请查看审批结果。' : result.status === 'awaiting_approval' ? '工程动作正在等待宿主批准。' : result.status === 'running' ? '工程动作正在执行。' : result.status === 'outcome_unknown' ? '工程动作结果未知，请核对实际更改后再操作。' : result.status === 'completed' ? '工程动作已完成。' : `工程动作${result.status === 'timed_out' ? '超时' : '失败'}。`;
+    } catch (error) {
+      if (selectedWorkspaceId === workspaceId) errorMessage = toErrorMessage(error);
+    } finally {
+      projectRunningActions[workspaceId] = null;
+    }
+  }
+  async function cancelCurrentProjectAction(runId: string): Promise<void> {
+    const workspaceId = selectedWorkspaceId;
+    if (!workspaceId) return;
+    try {
+      const requested = await cancelProjectAction(workspaceId, runId);
+      if (selectedWorkspaceId === workspaceId) notice = requested ? '已请求停止，正在等待执行结束；已有更改不会自动撤销。' : '该执行已结束或不属于当前工作区。';
+    } catch (error) {
+      if (selectedWorkspaceId === workspaceId) errorMessage = toErrorMessage(error);
+    }
+  }
+  async function deleteCurrentProjectAction(actionId: string): Promise<void> {
+    const id = selectedWorkspaceId;
+    if (!id || !projectActions.some(action => action.id === actionId && action.workspaceId === id)) return;
+    try {
+      await deleteProjectAction(id, actionId);
+      if (selectedWorkspaceId === id) projectActions = projectActions.filter(action => action.id !== actionId);
+    } catch(error) { if (selectedWorkspaceId === id) errorMessage = toErrorMessage(error); }
+  }
+  const externalInspector = $derived<PresentationInspector>({
+    workspace: selectedWorkspace, session: selectedSession, desktop, open: sidePanelOpen, activeView: sidePanelView,
+    diagnostics, workspaceCapabilities, threads: codexThreads, executionProfile, attachments, artifacts, artifactPreview,
+    projectEditor: projectEditors[selectedWorkspaceId ?? ''] ?? emptyProjectEditor(), runningActionId: projectRunningActions[selectedWorkspaceId ?? ''] ?? null,
+    projectActions, projectActionRuns, changeSet: turnChangeSet, checkpoints, restoreOperations, workspaceChanges,
+    fileDiff: turnFileDiff, fileDiffLoading: turnFileDiffLoading, fileDiffError: turnFileDiffError,
+    threadBusy, busy, running: sessionRunning, archiving: selectedSessionArchiving,
+  });
+  async function externalInspectorIntent(intent: PresentationIntent) {
+    const action = inspectorDirectory.resolve(externalInspector, externalInput.context, intent);
+    if (!action) return;
+    const [target, path, detail, operation] = action.args;
+    const sessionId = selectedSessionId!;
+    switch (action.operation) {
+      case 'newProjectAction': projectEditor.edit(null); break;
+      case 'editProjectAction': projectEditor.edit(target!); break;
+      case 'projectField': projectEditor.change(target as ProjectEditorField, intent.value!); break;
+      case 'projectKind': projectEditor.change('kind', target!); break;
+      case 'saveProjectAction': await projectEditor.save(); break;
+      case 'closeProjectEditor': projectEditor.close(); break;
+      case 'deleteProjectAction': await deleteCurrentProjectAction(target!); break;
+      case 'runProjectAction': await runCurrentProjectAction(target!); break;
+      case 'cancelProjectAction': await cancelCurrentProjectAction(target!); break;
+      case 'selectView': selectSidePanelView(target as SidePanelView); break;
+      case 'refresh': await refresh(); break;
+      case 'syncThreads': await syncCodexThreads(); break;
+      case 'toggleArtifact': await artifactPreviewController.toggle(sessionId, target!); break;
+      case 'closeArtifact': artifactPreviewController.reset(); break;
+      case 'showDiff': await showTurnFileDiff(sessionId, target!, path!); break;
+      case 'restoreTurn': await restoreTurnChangeSet(sessionId, target!); break;
+      case 'fileAction': await applyGitFileActionFromInspector(sessionId, target!, path!, detail as GitFileAction); break;
+      case 'hunkAction': await applyGitHunkActionFromInspector(sessionId, target!, path!, Number(detail), operation as GitFileAction); break;
+    }
+  }
+  const externalCapability = $derived<PresentationCapabilityWorkbench>({
+    catalog: installedContributions.map(item => ({...item,available:contributionAvailable(item)})),
+    selected: installedTool, scope: installedScope, view: installedWorkbenchState.snapshot && presentationPackages.active?.release.manifest.surfaces?.includes('workbench') && !presentationPackages.active.release.manifest.snapshotSchemas.includes(installedWorkbenchState.snapshot.schema)
+      ? {...installedWorkbenchState,snapshot:null,error:'unsupported_presentation_snapshot'} : installedWorkbenchState,
+  });
+  async function externalCapabilityIntent(intent: PresentationIntent) {
+    const action = capabilityWorkbenchDirectory.resolve(externalCapability, externalInput.context, intent);
+    if (!action) return;
+    switch(action.operation) {
+      case 'open': {
+        const contribution = installedContributions.find(item => item.installationId === action.args[0] && item.contributionId === action.args[1] && contributionAvailable(item));
+        if (contribution) { installedTool = contribution; pluginsOpen = false; }
+        break;
+      }
+      case 'close': installedTool = null; break;
+      case 'reload': await installedWorkbenchController?.reload(); break;
+      case 'toggleLayout': installedWorkbenchController?.toggleLayout(); break;
+      case 'toggleReading': installedWorkbenchController?.toggleReading(); break;
+      case 'semantic': await installedWorkbenchController?.act(JSON.parse(action.args[0]!)); break;
+    }
+  }
+  let incompatibleCapabilityRecovery: string | null = null;
+  $effect(() => {
+    const manifest = presentationPackages.active?.release.manifest;
+    const snapshot = installedWorkbenchState.snapshot;
+    if (manifest?.surfaces?.includes('workbench') && snapshot && !manifest.snapshotSchemas.includes(snapshot.schema)) {
+      const identity = JSON.stringify([presentationPackages.active?.release.digest, snapshot.schema]);
+      if (incompatibleCapabilityRecovery === identity) return;
+      incompatibleCapabilityRecovery = identity;
+      void presentationOperation(async () => { await presentationPackagesController.select(null); notice = '皮肤不支持此能力视图格式，已恢复默认呈现。'; });
+    } else incompatibleCapabilityRecovery = null;
+  });
+  const layoutDirectory = createLayoutDirectory();
+  const externalLayout = $derived({
+    navigation: { width: workspaceSidebarWidth, min: workspaceColumnMin, max: Math.max(workspaceColumnMin, maxColumnWidth('workspace')) },
+    auxiliary: { width: inspectorWidth, min: inspectorColumnMin, max: Math.max(inspectorColumnMin, maxColumnWidth('inspector')) },
+    auxiliaryOpen: sidePanelOpen, mode: presentationLayout === 'focus' ? 'focus' : presentationLayout === 'review' ? 'review' : 'standard', switching: presentationSwitching,
+  });
+  function externalIntent(intent: PresentationIntent) {
+    if (intent.context.workspaceId !== selectedWorkspaceId || intent.context.sessionId !== selectedSessionId) return;
+    if (intent.id.startsWith('layout:')) { const change = layoutDirectory.resolve(externalLayout, externalInput.context, intent); if (change?.kind === 'mode') void workbenchPresentation?.switchPresentation(change.mode); else if (change) setColumnWidth(change.target === 'navigation' ? 'workspace' : 'inspector', change.width); return; }
+    if (intent.id.startsWith('capability:')) { void presentationOperation(() => externalCapabilityIntent(intent)); return; }
+    if (intent.id.startsWith('inspector:')) { void presentationOperation(() => externalInspectorIntent(intent)); return; }
+    if (intent.id.startsWith('git:')) { void presentationOperation(() => externalGitIntent(intent)); return; }
+    if (intent.id.startsWith('conversation:')) { void presentationOperation(() => externalConversationIntent(intent)); return; }
+    if (intent.id.startsWith('navigation:')) { void presentationOperation(() => externalNavigationIntent(intent)); return; }
+    if (intent.id !== 'draft' && intent.event !== 'click') return;
+    if (intent.id === 'draft' && intent.event === 'input' && typeof intent.value === 'string') { composerText = intent.value; handleComposerInput(intent.value); }
+    else if (intent.id === 'send' && !busy && !sessionRunning) void sendPrompt();
+    else if (intent.id === 'stop' && sessionRunning) void abortPrompt();
+    else if (intent.id.startsWith('workspace:')) {
+      const id = intent.id.slice('workspace:'.length);
+      if (workspaces.some(workspace => workspace.id === id)) selectWorkspace(id);
+    } else if (intent.id.startsWith('session:')) {
+      const id = intent.id.slice('session:'.length);
+      if (sessions.some(session => session.id === id && session.workspaceId === selectedWorkspaceId)) selectSession(id);
+    }
+  }
+  $effect(() => {
+    const data = { workspaces: workspaces.map(({ id, label }) => ({ id, label })),
+      sessions: sessions.filter(session => session.workspaceId === selectedWorkspaceId).map(({ id, label, state }) => ({ id, label, state })),
+      timeline: timeline.map(({ id, role, content, status }) => ({ id, role, content, status })),
+      layout: externalLayout, layoutActions: layoutDirectory.project(externalLayout),
+      capability: externalCapability,
+      capabilityActions: capabilityWorkbenchDirectory.project(externalCapability),
+      inspector: externalInspector, inspectorActions: inspectorDirectory.project(externalInspector),
+      git: externalGit, gitActions: gitDirectory.project(externalGit),
+      conversation: externalConversation, conversationActions: conversationDirectory.project(externalConversation),
+      navigation: externalNavigation, navigationActions: externalNavigationActions(externalNavigation),
+      draft: composerText, busy, running: sessionRunning, selectedWorkspaceId, selectedSessionId };
+    untrack(() => { externalInput = { surface: 'workbench', context: { workspaceId: data.selectedWorkspaceId, sessionId: data.selectedSessionId, revision: externalInput.context.revision + 1 }, data: $state.snapshot(data), theme: {} }; });
+  });
+  $effect(() => {
+    if (!desktop) return;
+    void presentationOperation(() => presentationPackagesController.initialize());
+    const timer = setInterval(() => { void presentationPackagesController.refresh(); }, 2000);
+    return () => { clearInterval(timer); presentationPackagesController.dispose(); };
+  });
+  const loadInstalledWorkbench = () => import('$lib/workbench/InstalledWorkbench.svelte');
+  import type { InstalledWorkbenchState, createInstalledWorkbenchController } from '$lib/app/installed-workbench-controller';
+  let installedWorkbenchState = $state<InstalledWorkbenchState>({snapshot:null,error:'',enhanced:true,layout:'central',focusTarget:null,restoring:false});
+  let installedWorkbenchController: ReturnType<typeof createInstalledWorkbenchController> | null = null;
+  $effect(() => {
+    const contribution = installedTool;
+    const scope = installedScope;
+    const workspaceId = selectedWorkspaceId ?? '';
+    const available = contribution && contributionAvailable(contribution);
+    let cancelled = false;
+    let owned: ReturnType<typeof createInstalledWorkbenchController> | null = null;
+    untrack(() => {
+      installedWorkbenchState = {snapshot:null,error:'',enhanced:true,layout:'central',focusTarget:null,restoring:true};
+      if (contribution && available) void import('$lib/app/installed-workbench-controller').then(module => {
+        if (cancelled) return;
+        owned = module.createInstalledWorkbenchController(installedPort, presentationState, state => { if (!cancelled) installedWorkbenchState = state; });
+        installedWorkbenchController = owned;
+        void owned.open(workspaceId, contribution, scope);
+      }).catch(error => { if (!cancelled) installedWorkbenchState = {...installedWorkbenchState,restoring:false,error:toErrorMessage(error)}; });
+    });
+    return () => { cancelled = true; owned?.dispose(); if (installedWorkbenchController === owned) installedWorkbenchController = null; };
+  });
+  import { listSemanticContributions, cancelSemanticOpen, openSemanticContribution, actSemanticContribution, writeSemanticContribution, releaseSemanticContribution } from '$lib/api';
+  import type { InstalledContribution, InstalledScope } from '$lib/presentation/installed-controller';
+  const installedPort = { cancelOpen: cancelSemanticOpen, open: openSemanticContribution, act: actSemanticContribution, write: writeSemanticContribution, release: releaseSemanticContribution };
+  let installedContributions = $state<InstalledContribution[]>([]);
+  let installedTool = $state<InstalledContribution | null>(null);
+  const installedScope = $derived<InstalledScope>(installedTool?.scope === 'application' ? {kind:'application'} : installedTool?.scope === 'session' ? {kind:'session',id:selectedSessionId ?? ''} : {kind:'workspace',id:selectedWorkspaceId ?? ''});
+  function contributionAvailable(item: InstalledContribution) {
+    return desktop && item.available
+      && (item.scope !== 'workspace' && item.scope !== undefined || !!selectedWorkspaceId)
+      && (item.scope !== 'session' || !!selectedSessionId)
+      && (item.visibility !== 'workspaceSelected' || !!selectedWorkspaceId)
+      && (item.visibility !== 'sessionSelected' || !!selectedSessionId);
+  }
+  let catalogBusy = false;
+  async function refreshInstalledTools() {
+    if (!desktop || catalogBusy) return;
+    catalogBusy = true;
+    try {
+      installedContributions = await listSemanticContributions();
+      if (installedTool && !installedContributions.some(item => item.installationId === installedTool?.installationId && item.contributionId === installedTool?.contributionId && item.available)) installedTool = null;
+    } catch { installedContributions = []; installedTool = null; }
+    finally { catalogBusy = false; }
+  }
+  onMount(() => { void refreshInstalledTools(); const timer = setInterval(() => { void refreshInstalledTools(); }, 2000); return () => clearInterval(timer); });
+  $effect(() => { pluginInstallations; untrack(() => { void refreshInstalledTools(); }); });
+
+  const presentationState = createViewStateStore({
+    getItem: key => window.localStorage.getItem(key),
+    setItem: (key, value) => window.localStorage.setItem(key, value),
+  }, presentationWindowId());
+  import { onDestroy, onMount, tick, untrack } from 'svelte';
   import { open } from '@tauri-apps/plugin-dialog';
   import {
     AppOverlays,
@@ -10,6 +447,9 @@
     SettingsPanel,
     TimelinePanel,
     WindowTitlebar,
+    ExecutionHistoryPanel,
+    SessionHistoryPanel,
+    CapabilityHistoryPanel,
     WorkspaceFileDiffPreview,
     WorkspaceGitPanel,
     WorkspaceSidebar,
@@ -19,18 +459,33 @@
     toWorkspaceListItems,
     toolLabel,
   } from '$lib/components/app';
+  import { cacheSessionUsage, usageForSession } from '$lib/app/session-usage-cache';
+  import type { SessionUsageCache } from '$lib/app/session-usage-cache';
   import type { SidePanelView } from '$lib/components/app';
   import {
     readPersistedSelection as readSelectionFromStorage,
     writePersistedSelection as writeSelectionToStorage,
   } from '$lib/app/selection-storage';
   import { handleAgentEvent as processAgentEvent } from '$lib/app/agent-event-handler';
+  import { createExecutionHistoryController, emptyExecutionHistory } from '$lib/app/execution-history-controller';
+  import { createSessionHistoryController, emptySessionHistory } from '$lib/app/session-history-controller';
+  import { createCapabilityHistoryController, emptyCapabilityHistory } from '$lib/app/capability-history-controller';
+  import { listCapabilityHistoryScopes, readCapabilityHistory } from '$lib/api';
+  import { sessionMentionSuggestions } from '$lib/app/session-references';
+  import { referenceSession } from '$lib/api';
+  import { listWorkspaceWriteRuns, cancelWorkspaceWrite, readSessionHistory } from '$lib/api';
+  import { createProjectTaskController, observeProjectTaskHistory } from '$lib/app/project-task-controller';
   import { createApprovalController } from '$lib/app/approval-controller';
   import { toErrorMessage } from '$lib/app/error-utils';
   import { createSessionLifecycleController } from '$lib/app/session-lifecycle-controller';
   import { createAgentSessionController } from '$lib/app/agent-session-controller';
   import { createSessionContextController } from '$lib/app/session-context-controller';
   import { createRefreshController } from '$lib/app/refresh-controller';
+  import { createModelConfigurationService, modelConfigurationState } from '$lib/app/model-configuration';
+  import type { ModelConfigurationChange } from '$lib/app/model-configuration';
+  import { listCodexThreads, readCodexThread, forkCodexThread, getPiSessionTree, navigatePiSessionTree } from '$lib/api';
+  import { createAgentFacade } from '$lib/app/agent-facade';
+  import { createViewStateStore } from '$lib/app/view-state-storage';
   import { createMessageController } from '$lib/app/message-controller';
   import { createNavigationController } from '$lib/app/navigation-controller';
   import { createPiTreeController } from '$lib/app/pi-tree-controller';
@@ -38,7 +493,9 @@
   import {
     AIBO_CODEX_COMMANDS,
     AIBO_PI_COMMANDS,
+    commandComposerInsertion,
     parseAgentCommand,
+    visibleSessionCommands,
   } from '$lib/app/agent-commands';
   import { upsertSession, workspaceIdsForRefresh } from '$lib/app/session-transitions';
   import type { PersistedSelection } from '$lib/app/selection-storage';
@@ -48,16 +505,11 @@
   } from '$lib/app/composer-draft-storage';
   import type { ComposerDrafts } from '$lib/app/composer-draft-storage';
   import { isSessionRunning } from '$lib/app/session-state';
-  import { sessionAgentKind, sessionModelBackend } from '$lib/app/agent-kind';
+  import { dispatchBuiltinCommand } from '$lib/app/compatibility/command-dispatch';
+  import { sessionAgentKind } from '$lib/app/agent-kind';
   import {
     addWorkspace,
-    abortCodexTurn,
     archiveSession as archiveSessionApi,
-    createCodexSession,
-    createPiSession,
-    closeCodexSession,
-    closePiSession,
-    forkCodexThread,
     getSessionExecutionProfile,
     getTurnChangeSet,
     listRestoreOperations,
@@ -86,6 +538,7 @@
     readArtifact,
     listProjectActions,
     listProjectActionRuns,
+    cancelProjectAction,
     saveProjectAction,
     deleteProjectAction,
     runProjectAction,
@@ -94,24 +547,13 @@
     validateSessionAttachments,
     restoreTurnChangeSet as restoreTurnChangeSetApi,
     getTimeline,
-    getPiSessionTree,
     isTauri,
-    listCodexThreads,
     listWorkspaces,
     searchWorkspacePaths,
     getComposerDraft,
     saveComposerDraft,
-    listPiCommands,
-    compactPiSession,
-    setPiThinkingLevel,
-    setPiModel,
     getSessionModels,
-    listCodexSkills,
-    getCodexGoal,
-    setCodexGoal,
-    clearCodexGoal,
     updateSessionExecutionProfile,
-    reloadPiSession,
     listSessions as listAllSessions,
     listPluginInstallations,
     installAgentPlugin,
@@ -122,34 +564,24 @@
     cancelAgentTurn,
     resumeAgentSession,
     closeAgentSession,
-    getPluginViews,
-    invokePluginViewAction,
     invokeAgentCapability,
     listenToAgentEvents,
-    navigatePiSessionTree,
     probeAgents,
     inspectWorkspaceCapabilities,
-    readCodexThread,
     renameSession as renameSessionApi,
     removeWorkspace,
     openWorkspaceLocation as openWorkspaceLocationApi,
-    resolveCodexApproval,
-    resolveCodexUserInput,
-    resolvePiApproval,
-    sendCodexPrompt,
-    sendPiPrompt,
-    steerPiPrompt,
-    followUpPiPrompt,
-    abortPiTurn,
-    clearPiQueue,
+    resolveAgentApproval,
+    resolveAgentUserInput,
     setWorkspaceTrust,
+    presentationWindowId,
     toggleWindowMaximize,
     minimizeWindow,
     closeWindow,
     unarchiveSession as unarchiveSessionApi,
   } from './lib/api';
   import type { PluginInstallation } from './lib/api';
-  import type { UiPluginViewDocument } from '$lib/ui-kit';
+  import { sessionProviders } from '$lib/app/session-providers';
   import type {
     AgentQueueSnapshot,
     AgentCommand,
@@ -244,7 +676,7 @@
   function readPersistedSelection(): PersistedSelection | null {
     if (typeof window === 'undefined') return null;
     try {
-      return readSelectionFromStorage(window.localStorage);
+      return readSelectionFromStorage(window.localStorage, presentationWindowId());
     } catch {
       return null;
     }
@@ -253,7 +685,7 @@
   function writePersistedSelection(selection: PersistedSelection | null) {
     if (typeof window === 'undefined') return;
     try {
-      writeSelectionToStorage(window.localStorage, selection);
+      writeSelectionToStorage(window.localStorage, selection, presentationWindowId());
     } catch {
       // The WebView may reject localStorage access altogether.
     }
@@ -291,6 +723,8 @@
   let executionProfile = $state<SessionExecutionProfile | null>(null);
   let sessionModelOverride = $state<string | null>(null);
   let sessionModelCatalog = $state<SessionModelCatalog | null>(null);
+  // Confirmed catalogs belong to sessions, not the currently selected pane.
+  const sessionModelCatalogs = new Map<string, SessionModelCatalog>();
   let sessionModelCatalogLoading = $state(false);
   let codexGoal = $state<AgentGoal | null>(null);
   let sessionModelRequestGeneration = 0;
@@ -325,6 +759,13 @@
   let workspaceGitSyncBusy = $state(false);
   let workspaceGitReviewBusy = $state(false);
   let turnFileDiff = $state<TurnFileDiff | null>(null);
+  let turnFileDiffLoading = $state(false);
+  let turnFileDiffError = $state<string | null>(null);
+  let turnFileDiffGeneration = 0;
+  $effect(() => {
+    selectedSessionId; turnChangeSet?.turnId;
+    untrack(() => { ++turnFileDiffGeneration; turnFileDiff = null; turnFileDiffLoading = false; turnFileDiffError = null; });
+  });
   let attachments = $state<ContextAttachment[]>([]);
   let artifacts = $state<Artifact[]>([]);
   let projectActions = $state<ProjectAction[]>([]);
@@ -346,6 +787,7 @@
   let sessionsLoadingWorkspaceIds = $state<string[]>([]);
   let composerText = $state('');
   let workspacePathSuggestions = $state<WorkspacePathSuggestion[]>([]);
+  let sessionSuggestions = $state<Session[]>([]);
   let agentCommands = $state<AgentCommand[]>([]);
   let agentCommandsLoading = $state(false);
   let pathSearchGeneration = 0;
@@ -386,17 +828,8 @@
   const visibleAgentCommands = $derived.by(() => {
     if (!selectedSession) return [];
     const selectedKind = sessionAgentKind(selectedSession);
-    const builtinCommands = selectedKind === 'pi' ? AIBO_PI_COMMANDS : AIBO_CODEX_COMMANDS;
-    const commands = [...builtinCommands, ...(selectedKind === 'pi' ? agentCommands : [])];
-    const seen = new Set<string>();
-    return commands.filter((command) => {
-      if (command.enabled === false) return false;
-      if (command.agent && command.agent !== 'both' && command.agent !== selectedKind) return false;
-      const name = command.name.toLocaleLowerCase();
-      if (seen.has(name)) return false;
-      seen.add(name);
-      return true;
-    });
+    const builtinCommands = selectedKind === 'pi' ? AIBO_PI_COMMANDS : selectedKind === 'codex' ? AIBO_CODEX_COMMANDS : [];
+    return visibleSessionCommands(selectedKind, builtinCommands, agentCommands);
   });
   let commandSearchGeneration = 0;
   let busy = $state(false);
@@ -420,25 +853,81 @@
   let renamingSessionId = $state<string | null>(null);
   let sessionLabelDraft = $state('');
   let timelineVisibleCount = $state(80);
-  let usageSnapshot = $state<Record<string, unknown> | null>(null);
+  let usageSnapshotsBySession = $state<SessionUsageCache>({});
   let retryPrompt = $state<string | null>(null);
   let retryReason = $state<string | null>(null);
   let lastSubmittedPrompt = $state<string | null>(null);
   let settingsOpen = $state(false);
-  type PluginSession = Session;
   const listSessions: typeof listAllSessions = listAllSessions;
   let pluginsOpen = $state(false);
+  let historyOpen = $state(false);
+  let historyWorkspaceId = $state<string | null>(null);
+  let executionHistory = $state(emptyExecutionHistory());
+  const executionHistoryController = createExecutionHistoryController({
+    readTasks: (id, before) => listProjectActionRuns(id, 21, before), readWrites: (id, before) => listWorkspaceWriteRuns(id, 21, before),
+    cancelTask: cancelProjectAction, cancelWrite: cancelWorkspaceWrite,
+    publish: value => { executionHistory = value; },
+  });
+  $effect(() => {
+    if (!historyOpen || !desktop || !historyWorkspaceId) return;
+    executionHistoryController.open(historyWorkspaceId, presentationWindowId());
+    return () => executionHistoryController.close();
+  });
+  function openExecutionHistory(): void {
+    capabilityHistoryOpen = false;
+    sessionHistoryOpen = false;
+    pluginsOpen = false; settingsOpen = false; commandPaletteOpen = false;
+    historyWorkspaceId = selectedWorkspaceId ?? workspaces[0]?.id ?? null;
+    historyOpen = true;
+  }
+  function closeHostPanel(): void { pluginsOpen = false; diagnosticsOpen = false; historyOpen = false; capabilityHistoryOpen = false; }
+  function backToDiagnostics(): void { historyOpen = false; capabilityHistoryOpen = false; diagnosticsOpen = true; }
+
+  let sessionHistoryOpen = $state(false);
+  let sessionHistoryWorkspaceId = $state<string | null>(null);
+  let sessionHistory = $state(emptySessionHistory());
+  let sessionHistoryTrigger: HTMLElement | null = null;
+  const sessionHistoryController = createSessionHistoryController({
+    list: id => listAllSessions(id, { statusFilter: 'all' }), read: readSessionHistory,
+    publish: value => { sessionHistory = value; },
+  });
+  $effect(() => {
+    if (!sessionHistoryOpen || !desktop || !sessionHistoryWorkspaceId) return;
+    void sessionHistoryController.open(sessionHistoryWorkspaceId, untrack(() => selectedSessionId));
+    return () => sessionHistoryController.close();
+  });
+  function openSessionHistory(): void {
+    capabilityHistoryOpen = false;
+    sessionHistoryTrigger = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    historyOpen = false; pluginsOpen = false; settingsOpen = false; diagnosticsOpen = false; commandPaletteOpen = false;
+    sessionHistoryWorkspaceId = selectedWorkspaceId ?? workspaces[0]?.id ?? null;
+    sessionHistoryOpen = true;
+  }
+  async function closeSessionHistory(): Promise<void> {
+    sessionHistoryOpen = false;
+    await tick();
+    const trigger = sessionHistoryTrigger?.isConnected ? sessionHistoryTrigger : document.querySelector<HTMLElement>('[aria-label="会话历史"]') ?? document.querySelector<HTMLElement>('[aria-label="打开设置"]');
+    trigger?.focus();
+  }
+
+  let capabilityHistoryOpen = $state(false);
+  let capabilityHistory = $state(emptyCapabilityHistory());
+  const capabilityHistoryController = createCapabilityHistoryController({list:listCapabilityHistoryScopes,read:readCapabilityHistory,publish:value=>{capabilityHistory=value;}});
+  $effect(()=>{
+    if(!capabilityHistoryOpen||!desktop)return;
+    void capabilityHistoryController.open();
+    return ()=>capabilityHistoryController.close();
+  });
+  function openCapabilityHistory():void { historyOpen=true;sessionHistoryOpen=false;pluginsOpen=false;capabilityHistoryOpen=true; }
+  function backFromCapabilityHistory():void { capabilityHistoryOpen=false;historyOpen=true; }
+
   let pluginInstallations = $state<PluginInstallation[]>([]);
-  let pluginSessions = $state<PluginSession[]>([]);
-  let pluginSelection = $state<Record<string, string>>({});
-  let pluginDrafts = $state<Record<string, string>>({});
-  let pluginTimeline = $state<TimelineItem[]>([]);
-  let pluginViews = $state<UiPluginViewDocument[]>([]);
-  let pluginViewSessionId = $state<string | null>(null);
+  const pluginSessions = $derived((workspaceSessionMap[selectedWorkspaceId ?? ''] ?? []).filter(session => Boolean(session.pluginInstallationId)));
+  const pluginManagerInstallations = $derived(pluginInstallations.map(installation => ({ ...installation, sessionProviders: sessionProviders(installation) })));
   let pluginPackagePath = $state('');
   let pluginBusy = $state(false);
   let pluginError = $state('');
-  const pluginSessionId = $derived(pluginSelection[selectedWorkspaceId ?? ''] ?? null);
+  const pluginSessionId = $derived(pluginSessions.some(session => session.id === selectedSessionId) ? selectedSessionId : null);
   const pluginSession = $derived(pluginSessions.find((session) => session.id === pluginSessionId) ?? null);
 
   async function pluginOperation(operation: () => Promise<void>): Promise<void> {
@@ -450,10 +939,24 @@
     finally { pluginBusy = false; }
   }
 
+  // Host controls survive renderer generations, but never a workspace/session change.
+  function hostGuard(_id: string, callback: (...args: any[]) => any) {
+    const workspaceId = selectedWorkspaceId;
+    const sessionId = selectedSessionId;
+    return (...args: any[]) => {
+      if (workspaceId !== selectedWorkspaceId || sessionId !== selectedSessionId) return;
+      return callback(...args);
+    };
+  }
+
   function openPluginPanel(): void {
+    capabilityHistoryOpen = false;
+    sessionHistoryOpen = false;
+    historyOpen = false;
     settingsOpen = false;
     diagnosticsOpen = false;
     commandPaletteOpen = false;
+    installedTool = null;
     pluginsOpen = true;
     void pluginOperation(async () => { pluginInstallations = await listPluginInstallations(); });
   }
@@ -477,7 +980,7 @@
     await pluginOperation(async () => {
       await uninstallAgentPlugin(id);
       pluginInstallations = await listPluginInstallations();
-    pluginSessions = (await listAllSessions()).filter((session) => sessionAgentKind(session) === 'plugin');
+      if (selectedWorkspaceId) await refreshSessions(selectedWorkspaceId);
     });
   }
 
@@ -486,41 +989,27 @@
     if (!workspaceId) { pluginError = '请先选择工作区。'; return; }
     await pluginOperation(async () => {
       const session = await createAgentSession(workspaceId, agentId, installationId);
-      if (selectedWorkspaceId !== workspaceId) return;
-      pluginSessions = [...pluginSessions.filter((item) => item.id !== session.id), session];
-      pluginSelection[workspaceId] = session.id;
+      workspaceSessionMap = upsertSession(workspaceSessionMap, session);
+      if (selectedWorkspaceId === workspaceId) navigationController.selectSession(session.id);
     });
   }
 
   async function sendPluginPrompt(): Promise<void> {
-    const id = pluginSessionId;
-    if (!id) return;
-    const input = pluginDrafts[id] ?? '';
-    if (!input.trim()) return;
-    await pluginOperation(async () => {
-      const session = await sendAgentPrompt(id, input);
-      pluginSessions = pluginSessions.map((item) => item.id === id ? session : item);
-      if (pluginDrafts[id] === input) pluginDrafts[id] = '';
-    });
+    if (!pluginSessionId) return;
+    await pluginOperation(() => messageController.sendPrompt());
   }
 
   function pluginSessionOperation(operation: (sessionId: string) => Promise<void>): void {
     const id = pluginSessionId;
-    if (id) void pluginOperation(() => operation(id));
-  }
-
-  async function invokePluginAction(viewId: string, actionId: string, input: Record<string, unknown>): Promise<void> {
-    const sessionId = pluginSessionId;
-    if (!sessionId) return;
-    await pluginOperation(async () => {
-      await invokePluginViewAction(sessionId, viewId, actionId, input);
-      if (pluginSessionId === sessionId) pluginViews = await getPluginViews(sessionId);
+    if (id) void pluginOperation(async () => {
+      await operation(id);
+      const session = findSession(id);
+      if (session) await refreshSessions(session.workspaceId);
     });
   }
 
   $effect(() => {
     const workspaceId = selectedWorkspaceId;
-    const sessionId = pluginSessionId;
     if (!pluginsOpen || !desktop || !workspaceId) return;
     let disposed = false;
     let polling = false;
@@ -528,18 +1017,7 @@
       if (polling || disposed) return;
       polling = true;
       try {
-        const [allSessions, items, views] = await Promise.allSettled([
-          listAllSessions(workspaceId!),
-          sessionId ? getTimeline(sessionId) : Promise.resolve([]),
-          sessionId ? getPluginViews(sessionId) : Promise.resolve([]),
-        ]);
-        if (disposed) return;
-        if (allSessions.status === 'fulfilled') pluginSessions = allSessions.value.filter((session) => sessionAgentKind(session) === 'plugin');
-        if (items.status === 'fulfilled') pluginTimeline = items.value;
-        pluginViews = views.status === 'fulfilled' ? views.value : [];
-        pluginViewSessionId = sessionId;
-        const failed = [allSessions, items, views].find((result) => result.status === 'rejected');
-        if (failed?.status === 'rejected') pluginError = toErrorMessage(failed.reason);
+        await refreshSessions(workspaceId!, false);
       } catch (error) {
         if (!disposed) pluginError = toErrorMessage(error);
       } finally { polling = false; }
@@ -549,19 +1027,27 @@
     return () => { disposed = true; clearInterval(timer); };
   });
   let diagnosticsOpen = $state(false);
-  let sidePanelOpen = $state(true);
-  let sidePanelView = $state<SidePanelView>('git');
+  let sidePanelOpen = $state(savedWorkbenchLayout.auxiliaryOpen);
+  let sidePanelView = $state<SidePanelView>(savedWorkbenchLayout.activeView);
   const inspectorOpen = $derived(sidePanelOpen);
-  let workspaceSidebarWidth = $state(260);
-  let inspectorWidth = $state(320);
+  let workspaceSidebarWidth = $state(savedWorkbenchLayout.navigationWidth);
+  let inspectorWidth = $state(savedWorkbenchLayout.auxiliaryWidth);
+  let viewportWidth = $state(1280);
   let workspaceGridElement = $state<HTMLElement | null>(null);
+  $effect(() => { writeWorkbenchLayout(draftStorage, presentationWindowId(), { navigationWidth: workspaceSidebarWidth, auxiliaryWidth: inspectorWidth, auxiliaryOpen: sidePanelOpen, activeView: sidePanelView }); });
+  $effect(() => {
+    const width = viewportWidth; sidePanelOpen;
+    untrack(() => { if (width >= 700) { setColumnWidth('workspace', workspaceSidebarWidth); setColumnWidth('inspector', inspectorWidth); } });
+  });
   type ColumnResizeTarget = 'workspace' | 'inspector';
   type ColumnResizeState = {
     target: ColumnResizeTarget;
     startX: number;
     startWidth: number;
+    growthDirection: 1 | -1;
   };
   let columnResizeState: ColumnResizeState | null = null;
+  $effect(() => { workspaceGridElement; untrack(endColumnResize); });
   const workspaceColumnMin = 180;
   const timelineColumnMin = 320;
   const inspectorColumnMin = 220;
@@ -581,6 +1067,9 @@
   }
 
   function openDiagnosticsPanel(): void {
+    closeHostPanel();
+    sessionHistoryOpen = false;
+    commandPaletteOpen = false;
     settingsOpen = false;
     diagnosticsOpen = true;
   }
@@ -608,10 +1097,11 @@
   }
 
   function maxColumnWidth(target: ColumnResizeTarget): number {
-    const totalWidth = workspaceGridElement?.clientWidth ?? 0;
+    const availableWidth = viewportWidth;
+    const totalWidth = workspaceGridElement?.clientWidth || availableWidth;
     const splitterWidth = splitterTrackWidth * (sidePanelOpen ? 2 : 1);
-    const otherColumnWidth = target === 'workspace' ? inspectorWidth : workspaceSidebarWidth;
-    return totalWidth - splitterWidth - otherColumnWidth - timelineColumnMin;
+    const otherColumnWidth = target === 'workspace' ? (sidePanelOpen ? inspectorWidth : 0) : workspaceSidebarWidth;
+    return Math.min(4096, totalWidth - splitterWidth - otherColumnWidth - timelineColumnMin);
   }
 
   function setColumnWidth(target: ColumnResizeTarget, value: number): void {
@@ -622,12 +1112,13 @@
     }
   }
 
-  function beginColumnResize(target: ColumnResizeTarget, event: PointerEvent): void {
+  function beginColumnResize(target: ColumnResizeTarget, event: PointerEvent, growthDirection: 1 | -1): void {
     if (event.button !== 0 || !workspaceGridElement) return;
     event.preventDefault();
     columnResizeState = {
       target,
       startX: event.clientX,
+      growthDirection,
       startWidth: target === 'workspace' ? workspaceSidebarWidth : inspectorWidth,
     };
     window.addEventListener('pointermove', handleColumnResize);
@@ -639,9 +1130,7 @@
     const state = columnResizeState;
     if (!state) return;
     const delta = event.clientX - state.startX;
-    const width = state.target === 'workspace'
-      ? state.startWidth + delta
-      : state.startWidth - delta;
+    const width = state.startWidth + delta * state.growthDirection;
     setColumnWidth(state.target, width);
   }
 
@@ -652,11 +1141,11 @@
     window.removeEventListener('pointercancel', endColumnResize);
   }
 
-  function handleSplitterKeydown(target: ColumnResizeTarget, event: KeyboardEvent): void {
+  function handleSplitterKeydown(target: ColumnResizeTarget, event: KeyboardEvent, growthDirection: 1 | -1): void {
     if (event.key !== 'ArrowLeft' && event.key !== 'ArrowRight') return;
     event.preventDefault();
     const direction = event.key === 'ArrowRight' ? 1 : -1;
-    const delta = target === 'workspace' ? direction : -direction;
+    const delta = direction * growthDirection;
     const currentWidth = target === 'workspace' ? workspaceSidebarWidth : inspectorWidth;
     setColumnWidth(target, currentWidth + delta * 16);
   }
@@ -673,7 +1162,7 @@
     toSessionListItemsByWorkspace(workspaceSessionMap),
   );
 
-  const usageValues = $derived(toUsageValues(usageSnapshot));
+  const usageValues = $derived(toUsageValues(usageForSession(usageSnapshotsBySession, selectedSessionId)));
   const composerDraftFailed = $derived(
     selectedSessionId ? composerDrafts[selectedSessionId]?.sendFailed === true : false,
   );
@@ -722,12 +1211,12 @@
     const id = selectedSessionId;
     const agent = selectedSessionAgent;
     const archived = selectedSessionArchived;
-    if (!desktop || agent !== 'codex' || archived || !id) {
+    if (!desktop || !selectedSession?.capabilities.includes('goal.manage') || archived || !id) {
       codexGoal = null;
       return;
     }
     codexGoal = null;
-    void getCodexGoal(id)
+    void agentFacade.invoke(selectedSession!, 'goal.manage', { action: 'get' })
       .then((value) => {
         if (selectedSessionId === id) codexGoal = normalizeCodexGoal(value);
       })
@@ -919,6 +1408,13 @@
     }
     return withActivityAge(`${agentLabel} 等待模型响应（可能正在思考）…`);
   });
+  async function loadSessionCommands(session: Session): Promise<AgentCommand[]> {
+    const capability = session.capabilities.includes('command.list') ? 'command.list' : session.capabilities.includes('skill.list') ? 'skill.list' : null;
+    if (!capability) return [];
+    const result = await agentFacade.invoke(session, capability);
+    return (Array.isArray(result.commands) ? result.commands : Array.isArray(result.skills) ? result.skills : []) as AgentCommand[];
+  }
+
   const contextCompacting = $derived(agentActivityLabel?.includes('压缩上下文') ?? false);
 
   $effect(() => {
@@ -930,7 +1426,7 @@
     }
     agentCommandsLoading = true;
     const generation = ++commandSearchGeneration;
-    const loadCommands = sessionAgentKind(session) === 'pi' ? listPiCommands(session.id) : listCodexSkills(session.id);
+    const loadCommands = loadSessionCommands(session);
     void loadCommands
       .then((commands) => {
         if (generation === commandSearchGeneration && selectedSessionId === session.id) {
@@ -946,7 +1442,17 @@
       });
   });
 
+  let workbenchPresentation: { switchPresentation: (layout: string) => Promise<void>; restoreDefault: () => Promise<void> } | undefined = $state();
+  let presentationLayout = $state('standard');
+  let presentationSwitching = $state(false);
+
   const commandPaletteCommands = $derived.by((): CommandPaletteCommand[] => [
+    { id: 'focus-presentation', label: '切换专注会话', description: '显示或收起工作台侧边区域', run: () => { void workbenchPresentation?.switchPresentation(presentationLayout === 'focus' ? 'standard' : 'focus'); } },
+    { id: 'restore-presentation', label: '恢复默认呈现', description: '恢复标准工作台布局', shortcut: '⌘⇧⌫', run: () => { void workbenchPresentation?.restoreDefault(); } },
+    { id: 'execution-history', label: '执行历史', description: '查看执行记录', run: openExecutionHistory },
+    { id: 'session-history', label: '会话历史', description: '查找与恢复历史会话', run: openSessionHistory },
+    ...installedContributions.map(item => ({ id: `installed:${item.installationId}:${item.contributionId}`, label: item.title, description: item.issue ?? '已安装的插件视图', disabled: !contributionAvailable(item),
+      run: () => { installedTool = item; pluginsOpen = false; commandPaletteOpen = false; } })),
     {
       id: 'new-session',
       label: '新建会话',
@@ -997,9 +1503,9 @@
     },
     {
       id: 'clear-pi-queue',
-      label: '清空 Pi 队列',
-      description: '移除当前 Pi 会话中尚未发送的消息',
-      disabled: sessionAgentKind(selectedSession) !== 'pi'
+      label: '清空待处理队列',
+      description: '移除当前会话中尚未发送的消息',
+      disabled: !selectedSession?.capabilities.includes('queue.manage')
         || queueSnapshot === null
         || (queueSnapshot.steering.length === 0 && queueSnapshot.followUp.length === 0)
         || busy,
@@ -1008,15 +1514,25 @@
   ]);
 
   function handleGlobalKeydown(event: KeyboardEvent): void {
+    if (event.defaultPrevented) return;
     const key = event.key.toLocaleLowerCase();
     const modifier = event.metaKey || event.ctrlKey;
-    if (pluginsOpen && !settingsOpen && !diagnosticsOpen) {
-      if (key === 'escape') { event.preventDefault(); pluginsOpen = false; }
-      return;
-    }
     if (modifier && key === 'k') {
       event.preventDefault();
       commandPaletteOpen = !commandPaletteOpen;
+      return;
+    }
+
+    if (commandPaletteOpen) {
+      if (key === 'escape') { event.preventDefault(); commandPaletteOpen = false; }
+      return;
+    }
+    if ((pluginsOpen || diagnosticsOpen || historyOpen || capabilityHistoryOpen) && !settingsOpen) {
+      if (key === 'escape') { event.preventDefault(); closeHostPanel(); }
+      return;
+    }
+    if (sessionHistoryOpen && !settingsOpen) {
+      if (key === 'escape') { event.preventDefault(); closeSessionHistory(); }
       return;
     }
     if (modifier && key === 'n' && selectedWorkspaceId && !busy) {
@@ -1040,10 +1556,7 @@
       return;
     }
     if (event.key === 'Escape') {
-      if (commandPaletteOpen) {
-        event.preventDefault();
-        commandPaletteOpen = false;
-      } else if (settingsOpen) {
+      if (settingsOpen) {
         event.preventDefault();
         settingsOpen = false;
       } else if (diagnosticsOpen) {
@@ -1162,8 +1675,8 @@
     await refreshController.refresh();
   }
 
-  async function refreshSessions(workspaceId: string) {
-    await refreshController.refreshSessions(workspaceId);
+  async function refreshSessions(workspaceId: string, hydrate = true) {
+    await refreshController.refreshSessions(workspaceId, hydrate);
   }
 
   async function refreshExpandedSessions() {
@@ -1229,11 +1742,11 @@
     attachments = [];
     artifacts = [];
     piNavigationEntryId = null;
-    usageSnapshot = null;
     retryPrompt = null;
     retryReason = null;
     lastSubmittedPrompt = null;
     workspacePathSuggestions = [];
+    sessionSuggestions = [];
     agentCommands = [];
     agentCommandsLoading = false;
   }
@@ -1248,6 +1761,7 @@
       composerDrafts = next;
       writePersistedComposerDrafts(next);
     }
+    sessionSuggestions = [];
     const match = value.match(/(?:^|\s)@([^\s]*)$/);
     const workspaceId = selectedSession?.workspaceId ?? selectedWorkspaceId;
     if (!desktop || !workspaceId || !selectedSession || selectedSession.archived || !match) {
@@ -1258,10 +1772,18 @@
       return;
     }
     const query = match[1] ?? '';
+    const targetSessionId = selectedSession.id;
     const generation = ++pathSearchGeneration;
     if (pathSearchTimer) clearTimeout(pathSearchTimer);
     pathSearchTimer = setTimeout(() => {
       pathSearchTimer = undefined;
+      void listAllSessions(workspaceId, { statusFilter: 'all' }).then(sessions => {
+        if (generation === pathSearchGeneration && selectedSessionId === targetSessionId) {
+          sessionSuggestions = sessionMentionSuggestions(sessions, workspaceId, targetSessionId, query);
+        }
+      }).catch(() => {
+        if (generation === pathSearchGeneration) sessionSuggestions = [];
+      });
       void searchWorkspacePaths(workspaceId, query)
         .then((suggestions) => {
           if (generation === pathSearchGeneration && selectedSession?.workspaceId === workspaceId) {
@@ -1272,6 +1794,25 @@
           if (generation === pathSearchGeneration) workspacePathSuggestions = [];
         });
     }, 120);
+  }
+
+  async function selectComposerSessionReference(sourceSessionId: string): Promise<void> {
+    const session = selectedSession;
+    if (!session || !desktop || busy || session.archived) return;
+    const draft = composerText;
+    busy = true;
+    errorMessage = null;
+    try {
+      const attachment = await referenceSession(session.id, sourceSessionId);
+      if (selectedSessionId !== session.id) return;
+      attachments = [...attachments, attachment];
+      if (composerText === draft) {
+        composerText = draft.replace(/(^|\s)@([^\s]*)$/, '$1');
+        handleComposerInput(composerText);
+      }
+      notice = '已添加会话引用：将传递对话摘录，不包含工具输出正文。';
+    } catch (error) { errorMessage = toErrorMessage(error); }
+    finally { busy = false; }
   }
 
   function selectComposerWorkspacePath(path: string): void {
@@ -1451,6 +1992,8 @@
         errorMessage = result.message;
         return;
       }
+      const draft = workbenchDrafts.git[workspaceId];
+      if (draft?.branchDraft.trim() === branch.trim()) workbenchDrafts.git[workspaceId] = { ...draft, branchDraft: '' };
       notice = `已创建并切换到 ${branch}。`;
       await Promise.all([refreshWorkspaceChanges(workspaceId), refreshWorkspaceGitMetadata(workspaceId)]);
       closeWorkspaceFileDiff();
@@ -1564,15 +2107,11 @@
       diffLength >= maxReviewDiffLength ? '\n\n部分 diff 因长度限制已截断。' : '',
     ].join('\n');
     try {
-      let reviewSession = sessionAgentKind(session) === 'codex'
-        ? await createCodexSession(workspaceId, reviewProfile)
-        : await createPiSession(workspaceId, reviewProfile);
+      let reviewSession = await createAgentSession(workspaceId, session.agent, session.pluginInstallationId ?? undefined, reviewProfile);
       workspaceSessionMap = upsertSession(workspaceSessionMap, reviewSession);
       clearSelectedSessionContext();
       selectedSessionId = reviewSession.id;
-      reviewSession = sessionAgentKind(session) === 'codex'
-        ? await sendCodexPrompt(reviewSession.id, prompt)
-        : await sendPiPrompt(reviewSession.id, prompt);
+      reviewSession = await sendAgentPrompt(reviewSession.id, prompt);
       workspaceSessionMap = upsertSession(workspaceSessionMap, reviewSession);
       void refreshTimeline(reviewSession.id);
       void refreshExecutionProfile(reviewSession.id);
@@ -1699,6 +2238,8 @@
         errorMessage = result.message;
         return false;
       }
+      const draft = workbenchDrafts.git[workspaceId];
+      if (draft?.commitMessage.trim() === message.trim()) workbenchDrafts.git[workspaceId] = { ...draft, commitMessage: '' };
       notice = result.hash ? `已创建提交 ${result.hash.slice(0, 8)}。` : '已创建提交。';
       await refreshWorkspaceChanges(workspaceId);
       await refreshWorkspaceGitMetadata(workspaceId);
@@ -1769,16 +2310,23 @@
   }
 
   async function showTurnFileDiff(sessionId: string, turnId: string, path: string) {
+    if (selectedSessionId !== sessionId || turnChangeSet?.turnId !== turnId || !turnChangeSet.files.some(file => file.path === path)) return;
+    const owner = ++turnFileDiffGeneration;
+    const owns = () => owner === turnFileDiffGeneration && selectedSessionId === sessionId && turnChangeSet?.turnId === turnId;
+    turnFileDiff = null; turnFileDiffError = null; turnFileDiffLoading = true;
     try {
-      turnFileDiff = await getTurnFileDiff(sessionId, turnId, path);
+      const diff = await getTurnFileDiff(sessionId, turnId, path);
+      if (!owns()) return;
+      if (diff.path !== path) throw Error('turn_diff_identity_mismatch');
+      turnFileDiff = diff;
     } catch (error) {
-      errorMessage = toErrorMessage(error);
-      turnFileDiff = null;
+      if (owns()) { turnFileDiffError = toErrorMessage(error); errorMessage = turnFileDiffError; }
+    } finally {
+      if (owns()) turnFileDiffLoading = false;
     }
   }
 
   async function applyGitFileActionFromInspector(sessionId: string, turnId: string, path: string, action: GitFileAction) {
-    if (action === 'revert' && !window.confirm(`确认撤销文件变更：${path}？此操作不可撤销。`)) return;
     try {
       const result = await applyGitFileAction(sessionId, path, action, turnId);
       if (result.applied) {
@@ -1800,7 +2348,6 @@
     hunkIndex: number,
     action: GitFileAction,
   ) {
-    if (action === 'revert' && !window.confirm(`确认撤销第 ${hunkIndex + 1} 个 hunk：${path}？此操作不可撤销。`)) return;
     try {
       const result = await applyGitHunkAction(sessionId, turnId, path, hunkIndex, action);
       if (result.applied) {
@@ -1817,7 +2364,6 @@
 
   async function restoreTurnChangeSet(sessionId: string, turnId: string) {
     if (!desktop) return;
-    if (!window.confirm('确认恢复本轮 Agent 变更？只有当前文件未被后续修改时才会执行。')) return;
     try {
       const result = await restoreTurnChangeSetApi(sessionId, turnId);
       if (result.applied) {
@@ -1855,7 +2401,7 @@
       updateWorkspaceSessions,
       setPendingApprovals: (approvals) => (pendingApprovals = approvals),
       setPendingUserInputs: (requests) => (pendingUserInputs = requests),
-      setUsageSnapshot: (usage) => (usageSnapshot = usage),
+      setUsageSnapshot: (sessionId, usage) => (usageSnapshotsBySession = cacheSessionUsage(usageSnapshotsBySession, sessionId, usage)),
       setQueueSnapshot: (queue) => (queueSnapshot = queue),
       setTimeline: (nextTimeline) => (timeline = nextTimeline),
       refreshTimeline,
@@ -1992,13 +2538,15 @@
       // error from that expected transition.
       untrack(() => {
         ++sessionModelRequestGeneration;
+        sessionModelCatalog = sessionModelCatalogs.get(session.id) ?? null;
+        sessionModelOverride = null;
         sessionModelCatalogLoading = false;
       });
       return;
     }
     untrack(() => {
       ++sessionModelRequestGeneration;
-      sessionModelCatalog = null;
+      sessionModelCatalog = session ? sessionModelCatalogs.get(session.id) ?? null : null;
       sessionModelOverride = null;
       sessionModelCatalogLoading = false;
       if (enabled && session && !session.archived) void loadSessionModels();
@@ -2014,6 +2562,7 @@
     try {
       const catalog = await getSessionModels(session.id);
       if (generation === sessionModelRequestGeneration && selectedSessionId === session.id) {
+        sessionModelCatalogs.set(session.id, catalog);
         sessionModelCatalog = catalog;
         sessionModelOverride = null;
       }
@@ -2026,276 +2575,56 @@
     }
   }
 
-  async function applySessionModel(model: string | null): Promise<void> {
+  async function applyModelChange(change: ModelConfigurationChange): Promise<void> {
     const session = selectedSession;
     if (!session) return;
     if (!desktop) {
       errorMessage = '当前是 Web 预览；请在 Tauri 桌面模式中调整会话模型。';
       return;
     }
-    if (sessionRunning || selectedSessionArchiving) {
-      errorMessage = '会话运行中不能切换模型，请等待当前回合结束。';
+    if (busy || sessionRunning || selectedSessionArchiving) {
+      errorMessage = '会话忙碌时不能切换模型或推理强度，请稍候重试。';
       return;
     }
     busy = true;
     errorMessage = null;
-    // An earlier catalog read must not overwrite the result of a switch.
-    ++sessionModelRequestGeneration;
+    const generation = ++sessionModelRequestGeneration;
     sessionModelCatalogLoading = false;
+    const ownsSelection = () => selectedSessionId === session.id && generation === sessionModelRequestGeneration;
     try {
-      if (sessionModelBackend(session) === 'plugin') {
-        if (!session.capabilities.includes('model.select')) {
-          errorMessage = '此插件未声明模型选择能力。';
-          return;
-        }
-        if (!model) {
-          errorMessage = '此插件未提供恢复默认模型的能力。';
-          return;
-        }
-        const selected = sessionModelCatalog?.models.find((option) => option.reference === model);
-        await invokeAgentCapability(session.id, 'model.select', selected?.provider
-          ? { action: 'set', provider: selected.provider, modelId: selected.id }
-          : { action: 'set', reference: selected?.id ?? model });
-        if (selectedSessionId !== session.id) return;
-        await loadSessionModels();
-        notice = `模型已切换为 ${selected?.label ?? model}。`;
-      } else if (sessionModelBackend(session) === 'pi') {
-        const result = await setPiModel(session.id, model ?? undefined);
-        if (selectedSessionId !== session.id) return;
-        const current = result.current && typeof result.current === 'object'
-          ? result.current as { provider?: unknown; id?: unknown }
-          : result;
-        const provider = typeof current.provider === 'string' ? current.provider : '';
-        const id = typeof current.id === 'string' ? current.id : null;
-        const selectedModelLabel = id ? `${provider ? `${provider}/` : ''}${id}` : model;
-        sessionModelOverride = selectedModelLabel;
-        if (sessionModelCatalog && selectedModelLabel) {
-          const selected = sessionModelCatalog.models.find(
-            (option) => option.reference === selectedModelLabel,
-          );
-          sessionModelCatalog = {
-            ...sessionModelCatalog,
-            current: selected ?? {
-              reference: selectedModelLabel,
-              label: selectedModelLabel,
-              provider: provider || null,
-              id: id ?? selectedModelLabel,
-              description: null,
-              isDefault: false,
-              defaultReasoningEffort: null,
-              reasoningEfforts: [],
-            },
-          };
-        }
-        executionProfile = await getSessionExecutionProfile(session.id);
-        await loadSessionModels();
-        notice = selectedModelLabel ? `Pi 模型已切换为 ${selectedModelLabel}。` : '已读取 Pi 当前模型。';
-      } else {
-        const current = executionProfile?.requested;
-        if (!current) {
-          errorMessage = '当前会话配置尚未加载，请稍候重试。';
-          return;
-        }
-        if ((current.model ?? null) === model) {
-          notice = model ? `Codex 当前已使用 ${model}。` : 'Codex 当前已使用默认模型。';
-          return;
-        }
-        const selected = model
-          ? sessionModelCatalog?.models.find((option) => option.reference === model)
-          : sessionModelCatalog?.models.find((option) => option.isDefault);
-        const supportedReasoning = selected?.reasoningEfforts ?? [];
-        const reasoningEffort = supportedReasoning.length > 0 &&
-          (!current.reasoningEffort || !supportedReasoning.some((option) => option.id === current.reasoningEffort))
-          ? selected?.defaultReasoningEffort ?? supportedReasoning[0]?.id ?? null
-          : current.reasoningEffort;
-        const updatedProfile = await updateSessionExecutionProfile(session.id, {
-          ...current,
-          model,
-          reasoningEffort,
-        });
-        markSessionIdle(session);
-        if (selectedSessionId !== session.id) return;
-        executionProfile = updatedProfile;
-        if (sessionModelCatalog) {
-          const selected = model
-            ? sessionModelCatalog.models.find((option) => option.reference === model)
-            : sessionModelCatalog.models.find((option) => option.isDefault);
-          sessionModelCatalog = {
-            ...sessionModelCatalog,
-            current: selected ?? (model
-              ? {
-                  reference: model,
-                  label: model,
-                  provider: null,
-                  id: model,
-                  description: null,
-                  isDefault: false,
-                  defaultReasoningEffort: null,
-                  reasoningEfforts: [],
-                }
-              : null),
-            currentReasoningEffort: updatedProfile.enforced.reasoningEffort
-              ?? selected?.defaultReasoningEffort
-              ?? null,
-          };
-        }
-        notice = model ? `Codex 模型已切换为 ${model}。` : 'Codex 将使用默认模型。';
-      }
+      const result = await modelConfigurationService.apply(session, change, sessionModelCatalog, executionProfile);
+      if (result.profile && !session.pluginInstallationId) markSessionIdle(session);
+      if (!ownsSelection()) return;
+      if (result.profile) executionProfile = result.profile;
+      sessionModelCatalogs.set(session.id, result.catalog);
+      sessionModelCatalog = result.catalog;
+      sessionModelOverride = null;
+      notice = `当前模型：${result.catalog.current?.label ?? '默认'} · ${result.catalog.currentReasoningEffort ?? '模型默认'}。`;
     } catch (error) {
-      errorMessage = toErrorMessage(error);
+      // A model update may have succeeded before a reasoning update failed.
+      // Re-read the owner so the matrix does not pretend the combined operation rolled back.
+      if (ownsSelection()) {
+        errorMessage = toErrorMessage(error);
+        try {
+          const catalog = await getSessionModels(session.id);
+          if (ownsSelection()) { sessionModelCatalogs.set(session.id, catalog); sessionModelCatalog = catalog; sessionModelOverride = null; }
+        } catch { /* Keep the original operation error; a later refresh can retry. */ }
+      }
     } finally {
       busy = false;
     }
+  }
+
+  async function applySessionModel(model: string | null): Promise<void> {
+    await applyModelChange({ kind: 'model', model });
   }
 
   async function applySessionReasoningEffort(reasoningEffort: string | null): Promise<void> {
-    const session = selectedSession;
-    if (!session) return;
-    if (!desktop) {
-      errorMessage = '当前是 Web 预览；请在 Tauri 桌面模式中调整推理强度。';
-      return;
-    }
-    if (sessionRunning || selectedSessionArchiving) {
-      errorMessage = '会话运行中不能切换推理强度，请等待当前回合结束。';
-      return;
-    }
-    busy = true;
-    errorMessage = null;
-    ++sessionModelRequestGeneration;
-    try {
-      if (sessionModelBackend(session) === 'plugin') {
-        if (!session.capabilities.includes('model.reasoning')) {
-          errorMessage = '此插件未声明推理强度能力。';
-          return;
-        }
-        if (!reasoningEffort) {
-          errorMessage = '此插件未提供恢复默认推理强度的能力。';
-          return;
-        }
-        await invokeAgentCapability(session.id, 'model.reasoning', { action: 'set', level: reasoningEffort });
-        if (selectedSessionId !== session.id) return;
-        await loadSessionModels();
-        notice = `推理强度已切换为 ${reasoningEffort}。`;
-      } else if (sessionModelBackend(session) === 'pi') {
-        const result = await setPiThinkingLevel(session.id, reasoningEffort ?? undefined);
-        if (selectedSessionId !== session.id) return;
-        executionProfile = await getSessionExecutionProfile(session.id);
-        const level = typeof result.level === 'string' ? result.level : reasoningEffort;
-        sessionModelCatalog = sessionModelCatalog
-          ? { ...sessionModelCatalog, currentReasoningEffort: level ?? null }
-          : sessionModelCatalog;
-        notice = level ? `Pi 推理强度已切换为 ${level}。` : '已读取 Pi 当前推理强度。';
-      } else {
-        const current = executionProfile?.requested;
-        if (!current) {
-          errorMessage = '当前会话配置尚未加载，请稍候重试。';
-          return;
-        }
-        if ((current.reasoningEffort ?? null) === reasoningEffort) {
-          notice = reasoningEffort ? `Codex 当前已使用 ${reasoningEffort} 推理强度。` : 'Codex 将使用模型默认推理强度。';
-          return;
-        }
-        const updatedProfile = await updateSessionExecutionProfile(session.id, {
-          ...current,
-          reasoningEffort,
-        });
-        markSessionIdle(session);
-        if (selectedSessionId !== session.id) return;
-        executionProfile = updatedProfile;
-        sessionModelCatalog = sessionModelCatalog
-          ? {
-              ...sessionModelCatalog,
-              currentReasoningEffort: updatedProfile.enforced.reasoningEffort ?? null,
-            }
-          : sessionModelCatalog;
-        notice = updatedProfile.enforced.reasoningEffort
-          ? `Codex 推理强度已切换为 ${updatedProfile.enforced.reasoningEffort}。`
-          : 'Codex 将使用模型默认推理强度。';
-      }
-    } catch (error) {
-      errorMessage = toErrorMessage(error);
-    } finally {
-      busy = false;
-    }
+    await applyModelChange({ kind: 'reasoning', reasoningEffort });
   }
 
   async function applySessionModelConfiguration(model: string, reasoningEffort: string | null): Promise<void> {
-    const session = selectedSession;
-    if (!session) return;
-    if (!desktop) {
-      errorMessage = '当前是 Web 预览；请在 Tauri 桌面模式中调整会话模型。';
-      return;
-    }
-    if (sessionRunning || selectedSessionArchiving) {
-      errorMessage = '会话运行中不能切换模型或推理强度，请等待当前回合结束。';
-      return;
-    }
-    busy = true;
-    errorMessage = null;
-    ++sessionModelRequestGeneration;
-    sessionModelCatalogLoading = false;
-    try {
-      if (sessionModelBackend(session) === 'plugin') {
-        if (!session.capabilities.includes('model.select')) {
-          errorMessage = '此插件未声明模型选择能力。';
-          return;
-        }
-        const selected = sessionModelCatalog?.models.find((option) => option.reference === model);
-        await invokeAgentCapability(session.id, 'model.select', selected?.provider
-          ? { action: 'set', provider: selected.provider, modelId: selected.id }
-          : { action: 'set', reference: selected?.id ?? model });
-        if (reasoningEffort && session.capabilities.includes('model.reasoning')) {
-          await invokeAgentCapability(session.id, 'model.reasoning', { action: 'set', level: reasoningEffort });
-        }
-        if (selectedSessionId !== session.id) return;
-        await loadSessionModels();
-        notice = reasoningEffort
-          ? `模型已切换为 ${selected?.label ?? model} · ${reasoningEffort}。`
-          : `模型已切换为 ${selected?.label ?? model}。`;
-      } else if (sessionModelBackend(session) === 'pi') {
-        const result = await setPiModel(session.id, model);
-        if (selectedSessionId !== session.id) return;
-        const current = result.current && typeof result.current === 'object'
-          ? result.current as { provider?: unknown; id?: unknown }
-          : result;
-        const provider = typeof current.provider === 'string' ? current.provider : '';
-        const id = typeof current.id === 'string' ? current.id : null;
-        const selectedModelLabel = id ? `${provider ? `${provider}/` : ''}${id}` : model;
-        sessionModelOverride = selectedModelLabel;
-        if (reasoningEffort !== null) await setPiThinkingLevel(session.id, reasoningEffort);
-        if (selectedSessionId !== session.id) return;
-        executionProfile = await getSessionExecutionProfile(session.id);
-        await loadSessionModels();
-        notice = reasoningEffort ? `Pi 已切换为 ${selectedModelLabel} · ${reasoningEffort}。` : `Pi 模型已切换为 ${selectedModelLabel}。`;
-      } else {
-        const current = executionProfile?.requested;
-        if (!current) {
-          errorMessage = '当前会话配置尚未加载，请稍候重试。';
-          return;
-        }
-        const updatedProfile = await updateSessionExecutionProfile(session.id, {
-          ...current,
-          model,
-          reasoningEffort,
-        });
-        markSessionIdle(session);
-        if (selectedSessionId !== session.id) return;
-        executionProfile = updatedProfile;
-        if (sessionModelCatalog) {
-          const selected = sessionModelCatalog.models.find((option) => option.reference === model);
-          sessionModelCatalog = {
-            ...sessionModelCatalog,
-            current: selected ?? sessionModelCatalog.current,
-            currentReasoningEffort: updatedProfile.enforced.reasoningEffort ?? null,
-          };
-        }
-        notice = `Codex 已切换为 ${model} · ${updatedProfile.enforced.reasoningEffort ?? '模型默认'}。`;
-      }
-    } catch (error) {
-      errorMessage = toErrorMessage(error);
-    } finally {
-      busy = false;
-    }
+    await applyModelChange({ kind: 'configuration', model, reasoningEffort });
   }
 
   async function executePiBuiltinCommand(input: string): Promise<boolean> {
@@ -2404,51 +2733,26 @@
         return true;
       case 'compact':
         await run(async () => {
-          await compactPiSession(session.id, command.args);
+          await agentFacade.invoke(session, 'compaction.run', { instructions: command.args });
           timeline = await getTimeline(session.id);
-          notice = 'Pi 上下文压缩已完成。';
+          notice = '上下文压缩已完成。';
         });
         return true;
       case 'thinking':
-        await run(async () => {
-          const result = await setPiThinkingLevel(session.id, command.args || undefined);
-          executionProfile = await getSessionExecutionProfile(session.id);
-          const level = typeof result.level === 'string' ? result.level : null;
-          const available = Array.isArray(result.availableLevels)
-            ? result.availableLevels.filter((item): item is string => typeof item === 'string')
-            : [];
-          notice = command.args
-            ? `推理强度已设置为 ${level ?? command.args}。`
-            : `当前推理强度：${level ?? '未知'}${available.length > 0 ? `（可选：${available.join('、')}）` : ''}`;
-        });
+        if (command.args) await applySessionReasoningEffort(command.args);
+        else {
+          await loadSessionModels();
+          if (selectedSessionId === session.id && !errorMessage) notice = `当前推理强度：${sessionModelCatalog?.currentReasoningEffort ?? '模型默认'}。`;
+        }
+        if (selectedSessionId === session.id && composerText === input) composerText = '';
         return true;
       case 'model':
-        await run(async () => {
-          const result = await setPiModel(session.id, command.args || undefined);
-          if (command.args) {
-            const provider = typeof result.provider === 'string' ? result.provider : '';
-            const id = typeof result.id === 'string' ? result.id : command.args;
-            sessionModelOverride = `${provider ? `${provider}/` : ''}${id}`;
-            notice = `当前模型已切换为 ${provider ? `${provider}/` : ''}${id}。`;
-          } else {
-            const current = result.current && typeof result.current === 'object'
-              ? result.current as { provider?: unknown; id?: unknown }
-              : null;
-            const models = Array.isArray(result.models)
-              ? result.models.filter((item): item is { provider?: unknown; id?: unknown } => Boolean(item && typeof item === 'object'))
-              : [];
-            const currentLabel = current && typeof current.provider === 'string' && typeof current.id === 'string'
-              ? `${current.provider}/${current.id}`
-              : '未选择';
-            sessionModelOverride = currentLabel === '未选择' ? null : currentLabel;
-            notice = `当前模型：${currentLabel}${models.length > 0 ? ` · 可用 ${models.length} 个` : ''}`;
-          }
-          executionProfile = await getSessionExecutionProfile(session.id);
-          // Keep the composer model button in sync with a model changed through
-          // the slash command, so opening it immediately still shows the
-          // session's actual model and the latest catalog.
+        if (command.args) await applySessionModel(command.args);
+        else {
           await loadSessionModels();
-        });
+          if (selectedSessionId === session.id && !errorMessage) notice = `当前模型：${sessionModelCatalog?.current?.label ?? '默认'}。`;
+        }
+        if (selectedSessionId === session.id && composerText === input) composerText = '';
         return true;
       case 'reload':
         if (command.args) {
@@ -2456,7 +2760,7 @@
           return true;
         }
         await run(async () => {
-          const result = await reloadPiSession(session.id);
+          const result = await agentFacade.invoke(session, 'session.reload', {});
           if (Array.isArray(result.commands)) {
             agentCommands = result.commands.filter((item): item is AgentCommand => Boolean(item && typeof item === 'object' && typeof item.name === 'string'));
           }
@@ -2624,20 +2928,20 @@
       case 'goal':
         await run(async () => {
           if (command.args.toLocaleLowerCase() === 'clear') {
-            await clearCodexGoal(session.id);
+            await agentFacade.invoke(session, 'goal.manage', { action: 'clear' });
             codexGoal = null;
             notice = 'Codex 当前目标已清除。';
             return;
           }
           if (!command.args) {
-            const result = await getCodexGoal(session.id);
+            const result = await agentFacade.invoke(session, 'goal.manage', { action: 'get' });
             const goal = normalizeCodexGoal(result);
             notice = goal?.objective
               ? `当前目标：${goal.objective}${goal.status ? ` · ${goal.status}` : ''}`
               : '当前会话没有目标。';
             return;
           }
-          const result = await setCodexGoal(session.id, command.args);
+          const result = await agentFacade.invoke(session, 'goal.manage', { action: 'set', objective: command.args });
           codexGoal = normalizeCodexGoal(result) ?? {
             objective: command.args,
             status: 'active',
@@ -2654,7 +2958,7 @@
           return true;
         }
         await run(async () => {
-          agentCommands = await listCodexSkills(session.id);
+          agentCommands = await loadSessionCommands(session);
           notice = `已刷新 Codex Skills（${agentCommands.length} 项）。`;
         });
         return true;
@@ -2664,8 +2968,7 @@
   }
 
   async function sendPrompt() {
-    if (sessionAgentKind(selectedSession) === 'codex' && await executeCodexBuiltinCommand(composerText)) return;
-    if (sessionAgentKind(selectedSession) === 'pi' && await executePiBuiltinCommand(composerText)) return;
+    if (await dispatchBuiltinCommand(selectedSession, composerText, { codex: executeCodexBuiltinCommand, pi: executePiBuiltinCommand })) return;
     await messageController.sendPrompt();
   }
 
@@ -2682,19 +2985,19 @@
 
   async function compactCurrentSession(): Promise<void> {
     const session = selectedSession;
-    if (!session || sessionAgentKind(session) !== 'pi' || session.archived) return;
+    if (!session || !session.capabilities.includes('compaction.run') || session.archived) return;
     if (sessionRunning || busy) {
       errorMessage = '会话运行中不能手动压缩，请等待当前回合结束。';
       return;
     }
     busy = true;
     errorMessage = null;
-    setAgentActivity(session.id, true, 'Pi 正在压缩上下文…');
+    setAgentActivity(session.id, true, '正在压缩上下文…');
     try {
-      await compactPiSession(session.id);
+      await agentFacade.invoke(session, 'compaction.run', {});
       if (selectedSessionId === session.id) timeline = await getTimeline(session.id);
       setAgentActivity(session.id, false);
-      notice = 'Pi 上下文压缩已完成。';
+      notice = '上下文压缩已完成。';
     } catch (error) {
       errorMessage = toErrorMessage(error);
       setAgentActivity(session.id, false);
@@ -2709,14 +3012,17 @@
   }
 
   async function clearPiPromptQueue() {
-    if (!selectedSession || sessionAgentKind(selectedSession) !== 'pi') return;
+    const session = selectedSession;
+    if (!session || !session.capabilities.includes('queue.manage')) return;
     try {
-      await clearPiQueue(selectedSession.id);
+      await agentFacade.invoke(session, 'queue.manage', { action: 'clear' });
+      const loadedTimeline = await getTimeline(session.id);
+      if (selectedSessionId !== session.id) return;
       queueSnapshot = null;
-      timeline = await getTimeline(selectedSession.id);
-      notice = '已清空 Pi 待处理消息。';
+      timeline = loadedTimeline;
+      notice = '已清空待处理消息。';
     } catch (error) {
-      errorMessage = toErrorMessage(error);
+      if (selectedSessionId === session.id) errorMessage = toErrorMessage(error);
     }
   }
 
@@ -2727,7 +3033,7 @@
   }
 
   function openPiTree(): void {
-    if (!selectedSession || (sessionAgentKind(selectedSession) !== 'pi' && !selectedSession.capabilities.includes('session.tree'))) return;
+    if (!selectedSession || !selectedSession.capabilities.includes('session.tree')) return;
     piTreeOpen = true;
     void refreshPiTree(selectedSession.id);
   }
@@ -2753,10 +3059,11 @@
     busy = true;
     errorMessage = null;
     try {
-      await resolveCodexUserInput(request.sessionId, request.requestId, answers);
+      await resolveAgentUserInput(request.sessionId, request.requestId, answers);
       pendingUserInputs = pendingUserInputs.filter(
         (item) => item.sessionId !== request.sessionId || item.requestId !== request.requestId,
       );
+      userInputDrafts = clearRequestDrafts(request, userInputDrafts);
       notice = '已提交你的回答，Agent 将继续执行。';
     } catch (error) {
       errorMessage = toErrorMessage(error);
@@ -2826,11 +3133,9 @@
 
   const sessionContextController = createSessionContextController({
     api: {
-      listCodexThreads,
-      readCodexThread,
-      getTimeline,
-      getPiSessionTree,
-      invokeAgentCapability,
+      listCodexThreads, readCodexThread, getPiSessionTree,
+          getTimeline,
+        invokeAgentCapability,
       getSessionExecutionProfile,
       getTurnChangeSet,
       listRestoreOperations,
@@ -2899,11 +3204,10 @@
 
   const sessionLifecycle = createSessionLifecycleController({
     api: {
-      renameSession: renameSessionApi,
-      closeCodexSession,
-      closePiSession,
       forkCodexThread,
-      archiveSession: archiveSessionApi,
+      closeAgentSession,
+      renameSession: renameSessionApi,
+        archiveSession: archiveSessionApi,
       unarchiveSession: unarchiveSessionApi,
       getTimeline,
     },
@@ -2940,16 +3244,15 @@
   });
 
   const agentSessionController = createAgentSessionController({
+    getSelectedWorkspaceId: () => selectedWorkspaceId,
     api: {
-      createCodexSession,
-      createPiSession,
+      createSession: (workspaceId, agentId, profile) => createAgentSession(workspaceId, agentId, undefined, profile),
     },
     getDesktop: () => desktop,
     getWorkspaceSessionMap: () => workspaceSessionMap,
     setWorkspaceSessionMap: (value) => (workspaceSessionMap = value),
     setSelectedSessionId: (value) => (selectedSessionId = value),
     setTimeline: (value) => (timeline = value),
-    setUsageSnapshot: (value) => (usageSnapshot = value),
     setQueueSnapshot: (value) => (queueSnapshot = value),
     setCheckpoints: (value) => (checkpoints = value),
     setRetry: (prompt, reason) => {
@@ -3072,9 +3375,16 @@
     setPiNavigationEntryId: (value) => (piNavigationEntryId = value),
   });
 
+  const agentFacade = createAgentFacade({ invokeAgentCapability });
+  const modelConfigurationService = createModelConfigurationService({
+    facade: agentFacade,
+    getSessionModels,
+    getSessionExecutionProfile,
+  });
+
   const messageController = createMessageController({
     api: {
-      createCodexSession,
+      createDefaultSession: (workspaceId) => createAgentSession(workspaceId, 'dev.aibo.codex.agent'),
       sendAgentPrompt,
       cancelAgentTurn,
       invokeAgentCapability,
@@ -3087,6 +3397,16 @@
     getSessionRunning: () => sessionRunning,
     getComposerText: () => composerText,
     setComposerText: (value) => (composerText = value),
+    consumeDraft: (sessionId, submitted) => {
+      if (selectedSessionId === sessionId && composerText === submitted) composerText = '';
+      if (composerDrafts[sessionId]?.text === submitted) {
+        const next = { ...composerDrafts };
+        delete next[sessionId];
+        composerDrafts = next;
+        writePersistedComposerDrafts(next);
+        scheduleComposerDraftWrite(sessionId, '', false, true);
+      }
+    },
     setComposerDraftStatus: (sessionId, sendFailed) => {
       const draft = composerDrafts[sessionId];
       if (!draft) return;
@@ -3116,10 +3436,28 @@
     setNotice: (value) => (notice = value),
   });
 
+  $effect(() => {
+    const workspaceId = selectedWorkspaceId;
+    if (!desktop || !workspaceId || !inspectorOpen || sidePanelView !== 'context') return;
+    return observeProjectTaskHistory({
+      read: () => listProjectActionRuns(workspaceId),
+      publish: (runs) => {
+        // A read started before settlement must not regress a known terminal run.
+        projectActionRuns = runs.map((run) => {
+          const existing = projectActionRuns.find((item) => item.id === run.id);
+          const rank = (status: string) => status === 'awaiting_approval' ? 0 : status === 'running' ? 1 : 2;
+          return existing && rank(existing.status) > rank(run.status) ? existing : run;
+        });
+      },
+      error: (error) => console.warn('unable to observe project task history', error),
+    });
+  });
+
+  const projectTaskController = createProjectTaskController({ requestId: () => crypto.randomUUID(), execute: runProjectAction });
+
   const approvalController = createApprovalController({
-    api: { resolveCodexApproval, resolvePiApproval },
+    api: { resolveAgentApproval },
     getDesktop: () => desktop,
-    getSessionAgent: (sessionId) => findSession(sessionId)?.agent ?? null,
     getPendingApprovals: () => pendingApprovals,
     setPendingApprovals: (value) => (pendingApprovals = value),
     setBusy: (value) => (busy = value),
@@ -3128,7 +3466,8 @@
   });
 
   const piTreeController = createPiTreeController({
-    api: { navigatePiSessionTree, invokeAgentCapability, getTimeline },
+    api: {
+      navigatePiSessionTree, invokeAgentCapability, getTimeline },
     getDesktop: () => desktop,
     getSelectedSession: () => selectedSession,
     getSelectedSessionId: () => selectedSessionId,
@@ -3146,11 +3485,55 @@
 
 </script>
 
+{#snippet presentationPackageManagement()}
+  <SettingsSection title="皮肤插件" error={presentationPackages.error} items={[
+    { id: 'install', title: '安装皮肤', description: '从本地目录添加新的外观插件。', icon: 'plugins',
+      actions: [{ id: 'install', label: '安装皮肤插件', intent: 'install', disabled: !desktop || presentationPackages.busy }] },
+    { id: 'builtin', title: '使用内置皮肤', description: '停用当前外部皮肤，保留工作台布局。', icon: 'undo',
+      actions: [{ id: 'restore', label: '恢复内置呈现', intent: 'restore', disabled: presentationPackages.busy }] },
+    ...presentationPackages.releases.map(release => ({ id: release.digest, title: release.manifest.displayName,
+      description: `${release.manifest.version} · ${release.enabled ? '已启用' : '已禁用'}`,
+      actions: [
+        { id: 'toggle', label: release.enabled ? '禁用' : '启用', intent: 'toggle' as const, disabled: presentationPackages.busy },
+        { id: 'uninstall', label: '卸载', intent: 'remove' as const, disabled: presentationPackages.busy },
+      ] })),
+  ]} onAction={(item, action) => {
+    if (item === 'install') void presentationOperation(installPresentationFromDirectory);
+    else if (item === 'builtin') void presentationOperation(() => desktop ? presentationPackagesController.select(null) : Promise.resolve());
+    else {
+      const release = presentationPackages.releases.find(release => release.digest === item);
+      if (!release) return;
+      if (action === 'toggle') void presentationOperation(() => presentationPackagesController.enable(release.digest, !release.enabled));
+      else if (action === 'uninstall') void presentationOperation(() => presentationPackagesController.uninstall(release.digest));
+    }
+  }} />
+{/snippet}
+
+{#snippet hostPanelActions()}
+  {#if capabilityHistoryOpen}
+    <Button variant="outline" size="sm" disabled={!desktop || capabilityHistory.loadingScopes} onclick={() => void capabilityHistoryController.open()}>刷新作用域</Button>
+  {:else if historyOpen}
+    <Button variant="outline" size="sm" disabled={!desktop || !historyWorkspaceId || executionHistory.loading} onclick={() => void executionHistoryController.refresh()}>刷新记录</Button>
+    <Button variant="outline" size="sm" onclick={openCapabilityHistory}>插件调用历史</Button>
+  {/if}
+{/snippet}
+
+{#snippet appearanceActions()}{@render presentationActions('appearance')}{/snippet}
+{#snippet diagnosticsActions()}{@render presentationActions('diagnostics')}{/snippet}
+{#snippet navigationActions()}{@render presentationActions('navigation')}{/snippet}
+{#snippet conversationActions()}{@render presentationActions('conversation')}{/snippet}
+{#snippet presentationActions(surface: 'conversation' | 'navigation' | 'diagnostics' | 'appearance')}
+  <DefaultPresentationActions {surface} layout={presentationLayout} switching={presentationSwitching}
+    onSwitchLayout={(layout) => { void workbenchPresentation?.switchPresentation(layout); }}
+    onRestore={() => { void workbenchPresentation?.restoreDefault(); }}
+    onOpenExecutionHistory={openExecutionHistory} />
+{/snippet}
+
 <svelte:head>
   <title>Aibo</title>
 </svelte:head>
 
-<svelte:window onkeydown={handleGlobalKeydown} />
+<svelte:window bind:innerWidth={viewportWidth} onkeydown={handleGlobalKeydown} />
 
 <div
   class="app-shell"
@@ -3159,6 +3542,11 @@
   data-color-scheme={$activeTheme.colorScheme}
   style={$activeThemeStyle}
 >
+  <CommandPalette
+    open={commandPaletteOpen}
+    commands={commandPaletteCommands}
+    onClose={() => (commandPaletteOpen = false)}
+  />
   <WindowTitlebar
     onOpenPlugins={openPluginPanel}
     onOpenSettings={openSettingsPanel}
@@ -3169,14 +3557,120 @@
     onMinimize={minimizeAppWindow}
     onClose={closeAppWindow}
   />
+  <SettingsPanel
+    packageManagement={presentationPackageManagement}
+    presentationActions={appearanceActions}
+    open={settingsOpen}
+    uiKits={presentationOptions}
+    activeUiKitName={presentationPackages.active?.release.digest ?? $activeUiKitName}
+    activeThemeId={presentationPackages.themeId ?? $activeTheme.id}
+    onSelectUiKit={id => void presentationOperation(() => choosePresentation(id))}
+    onSelectTheme={id => void presentationOperation(() => choosePresentationTheme(id))}
+    onClose={() => (settingsOpen = false)}
+  />
 
-  <main
-    bind:this={workspaceGridElement}
-    class:inspector-hidden={!inspectorOpen}
-    class="workspace-grid"
-    style={`--workspace-sidebar-width: ${workspaceSidebarWidth}px; --workspace-inspector-width: ${inspectorWidth}px`}
-  >
+  {#if pendingApprovals.length > 0}
+    <section class="approval-list" aria-label="宿主审批" aria-live="assertive" style="max-height: 40vh; overflow: auto; flex-shrink: 0;">
+      {#each pendingApprovals as approval (JSON.stringify([approval.sessionId, approval.requestId]))}
+        <Card class="approval-card">
+          <CardHeader class="approval-card-heading">
+            <CardTitle>需要确认 · {sessions.find(session => session.id === approval.sessionId)?.label ?? approval.sessionId}</CardTitle>
+            <Badge variant="warning">{approval.kind}</Badge>
+          </CardHeader>
+          <CardContent class="approval-card-content">
+            {#if approval.command}<code>{approval.command}</code>{/if}
+            {#if approval.cwd}<small>{approval.cwd}</small>{/if}
+            <div class="approval-actions">
+              {#if approval.availableDecisions.includes('cancel')}
+                <Button variant="ghost" size="sm" onclick={() => void resolveApproval(approval, 'cancel')} disabled={busy}>拒绝</Button>
+              {/if}
+              {#if approval.availableDecisions.includes('accept')}
+                <Button size="sm" onclick={() => void resolveApproval(approval, 'accept')} disabled={busy}>允许</Button>
+              {/if}
+            </div>
+          </CardContent>
+        </Card>
+      {/each}
+    </section>
+  {/if}
+  {#if sessionHistoryOpen}
+    <div class="host-session-history-region" style="order:2; display:grid; flex:1; min-height:0; overflow:auto;">
+      <SessionHistoryPanel {workspaces} workspaceId={sessionHistoryWorkspaceId} state={sessionHistory} {desktop}
+        onWorkspace={id=>{sessionHistoryWorkspaceId=id;}} onSession={id=>void sessionHistoryController.select(id)}
+        onRefresh={()=>void sessionHistoryController.refresh()} onOlder={()=>void sessionHistoryController.older()}
+        onNewer={()=>void sessionHistoryController.newer()} onLatest={()=>void sessionHistoryController.latest()} onClose={closeSessionHistory}
+        onReload={()=>{if (sessionHistoryWorkspaceId) void sessionHistoryController.open(sessionHistoryWorkspaceId, sessionHistory.selectedId);}} />
+    </div>
+  {/if}
+  {#if pluginsOpen || diagnosticsOpen || historyOpen || capabilityHistoryOpen}
+    <HostPanel actions={hostPanelActions} title={pluginsOpen ? '插件工作台' : capabilityHistoryOpen ? '插件调用历史' : historyOpen ? '执行历史' : 'Agent 诊断'}
+      backLabel={capabilityHistoryOpen ? '执行历史' : historyOpen && diagnosticsOpen ? '诊断' : undefined}
+      onBack={capabilityHistoryOpen ? backFromCapabilityHistory : historyOpen && diagnosticsOpen ? backToDiagnostics : undefined}
+      onClose={closeHostPanel}>
+      <div hidden={historyOpen || capabilityHistoryOpen}>
+        <DiagnosticsPanel
+          presentationActions={diagnosticsActions}
+          open={diagnosticsOpen}
+          diagnostics={diagnostics}
+          desktop={desktop}
+          workspaceCount={workspaces.length}
+          sessionCount={sessions.length}
+          busy={busy}
+          onRefresh={() => void refresh()}
+          onClose={closeHostPanel}
+        />
+      </div>
+      {#if capabilityHistoryOpen}
+        <div class="host-capability-history-region" style="order:2;display:grid;flex:1;min-height:0;overflow:auto;">
+          <CapabilityHistoryPanel state={capabilityHistory} {desktop} onSource={source=>void capabilityHistoryController.selectSource(source)} onSelect={scope=>void capabilityHistoryController.select(scope)}
+            onReload={()=>void capabilityHistoryController.open()} onMoreScopes={()=>void capabilityHistoryController.moreScopes()}
+            onRefresh={()=>void capabilityHistoryController.refresh()} onOlder={()=>void capabilityHistoryController.older()}
+            onNewer={()=>void capabilityHistoryController.newer()} onLatest={()=>void capabilityHistoryController.latest()} />
+        </div>
+      {/if}
+      {#if historyOpen}
+        <div class="host-history-region" hidden={capabilityHistoryOpen}>
+          <ExecutionHistoryPanel {workspaces} workspaceId={historyWorkspaceId} windowId={presentationWindowId()} state={executionHistory} {desktop}
+            onSelectWorkspace={id => { historyWorkspaceId = id; }}
+            onStop={key => void executionHistoryController.stop(key)}
+            onOlder={() => void executionHistoryController.older()} onNewer={() => void executionHistoryController.newer()} onLatest={() => void executionHistoryController.latest()} />
+        </div>
+      {/if}
+      {#if pluginsOpen}
+        <div class="host-plugin-region" style="order: 2; display: grid; flex: 1; min-height: 0; overflow: auto;">
+          <PluginWorkspacePanel
+          installations={pluginManagerInstallations}
+          sessions={pluginSessions.filter((session) => session.workspaceId === selectedWorkspaceId)}
+          selectedSession={pluginSession?.workspaceId === selectedWorkspaceId ? pluginSession : null}
+          workspaceLabel={selectedWorkspace?.label ?? null}
+          packagePath={pluginPackagePath}
+          prompt={pluginSessionId ? composerText : ''}
+          timeline={timeline.filter((item) => item.sessionId === pluginSessionId)}
+          busy={pluginBusy}
+          error={pluginError || errorMessage || ''}
+          {desktop}
+          onPackagePathChange={hostGuard('onPackagePathChange', (value) => { pluginPackagePath = value; })}
+          onPromptChange={hostGuard('onPromptChange', (value) => { if (pluginSessionId) { composerText = value; handleComposerInput(value); } })}
+          onInstall={hostGuard('onInstall', () => void installPlugin())}
+          onEnabledChange={hostGuard('onEnabledChange', (id, enabled) => void enablePlugin(id, enabled))}
+          onUninstall={hostGuard('onUninstall', (id) => void uninstallPlugin(id))}
+          onCreateSession={hostGuard('onCreateSession', (installationId, agentId) => void createPluginSession(installationId, agentId))}
+          onSelectSession={hostGuard('onSelectSession', selectSession)}
+          onSend={hostGuard('onSend', () => void sendPluginPrompt())}
+          onCancel={hostGuard('onCancel', () => pluginSessionOperation(cancelAgentTurn))}
+          onResume={hostGuard('onResume', () => pluginSessionOperation(resumeAgentSession))}
+          onCloseSession={hostGuard('onCloseSession', () => pluginSessionOperation(closeAgentSession))}
+          onClose={hostGuard('onClose', closeHostPanel)}
+        />
+        </div>
+      {/if}
+    </HostPanel>
+  {/if}
+<PresentationHost hideWhenSuspended={sessionHistoryOpen} onRestore={() => void presentationOperation(() => presentationPackagesController.select(null))} bind:this={presentationHost} active={presentationPackages.active} themeId={presentationPackages.themeId} input={externalInput} suspended={pluginsOpen || historyOpen || sessionHistoryOpen || capabilityHistoryOpen || settingsOpen || diagnosticsOpen || commandPaletteOpen || archiveConfirmationSessionId !== null || piNavigationEntryId !== null} onIntent={externalIntent}>
+<WorkbenchPresentation hideWhenSuspended={sessionHistoryOpen} onRestore={() => desktop ? presentationPackagesController.select(null) : Promise.resolve()} bind:this={workbenchPresentation} bind:layout={presentationLayout} bind:switching={presentationSwitching} bind:gridElement={workspaceGridElement} navigationWidth={workspaceSidebarWidth} auxiliaryWidth={inspectorWidth} auxiliaryOpen={sidePanelOpen} suspended={pluginsOpen || historyOpen || sessionHistoryOpen || capabilityHistoryOpen || settingsOpen || diagnosticsOpen || commandPaletteOpen || archiveConfirmationSessionId !== null || piNavigationEntryId !== null} windowId={presentationWindowId()} snapshot={{ workspaceId: selectedWorkspaceId, sessionId: selectedSessionId, draft: composerText, navigation: sidePanelView, timelineRevision: timeline.length }}>
+{#snippet navigation(guard)}
     <WorkspaceSidebar
+      presentationActions={navigationActions}
       workspaces={workspaceItems}
       sessionsByWorkspace={sessionItemsByWorkspace}
       selectedWorkspaceId={selectedWorkspaceId}
@@ -3189,75 +3683,63 @@
       archivingSessionId={archivingSessionId}
       sessionSearchOpen={sessionSearchOpen}
       sessionFilterOpen={sessionFilterOpen}
-      bind:sessionSearch
-      bind:sessionFilter
+      bind:sessionSearch={() => sessionSearch, guard('bind:sessionSearch', (value) => { sessionSearch = value; })}
+      bind:sessionFilter={() => sessionFilter, guard('bind:sessionFilter', (value) => { sessionFilter = value; })}
       createSessionWorkspaceId={createSessionWorkspaceId}
       renamingSessionId={renamingSessionId}
-      bind:sessionLabelDraft
-      onToggleSearch={() => (sessionSearchOpen = !sessionSearchOpen)}
-      onToggleFilter={() => (sessionFilterOpen = !sessionFilterOpen)}
-      onApplyFilters={() => void refreshExpandedSessions()}
-      onChooseWorkspaceDirectory={() => void chooseWorkspaceDirectory()}
-      onSelectWorkspace={selectWorkspace}
-      onToggleSessionCreator={toggleSessionCreator}
-      onToggleTrust={(workspaceId) => {
+      bind:sessionLabelDraft={() => sessionLabelDraft, guard('bind:sessionLabelDraft', (value) => { sessionLabelDraft = value; })}
+      onToggleSearch={guard('onToggleSearch', () => (sessionSearchOpen = !sessionSearchOpen))}
+      onToggleFilter={guard('onToggleFilter', () => (sessionFilterOpen = !sessionFilterOpen))}
+      onApplyFilters={guard('onApplyFilters', () => void refreshExpandedSessions())}
+      onChooseWorkspaceDirectory={guard('onChooseWorkspaceDirectory', () => void chooseWorkspaceDirectory())}
+      onSelectWorkspace={guard('onSelectWorkspace', selectWorkspace)}
+      onToggleSessionCreator={guard('onToggleSessionCreator', toggleSessionCreator)}
+      onToggleTrust={guard('onToggleTrust', (workspaceId) => {
         const workspace = workspaces.find((item) => item.id === workspaceId);
         if (workspace) void toggleTrust(workspace);
-      }}
-      onDeleteWorkspace={(workspaceId) => {
+      })}
+      onDeleteWorkspace={guard('onDeleteWorkspace', (workspaceId) => {
         const workspace = workspaces.find((item) => item.id === workspaceId);
         if (workspace) void deleteWorkspace(workspace);
-      }}
-      onOpenWorkspaceLocation={(workspaceId) => void openWorkspaceLocation(workspaceId)}
-      onCreateCodex={(workspaceId) => {
+      })}
+      onOpenWorkspaceLocation={guard('onOpenWorkspaceLocation', (workspaceId) => void openWorkspaceLocation(workspaceId))}
+      onCreateCodex={guard('onCreateCodex', (workspaceId) => {
         if (workspaceId !== selectedWorkspaceId) activateWorkspace(workspaceId);
         void createCodex();
-      }}
-      onCreatePi={(workspaceId) => {
+      })}
+      onCreatePi={guard('onCreatePi', (workspaceId) => {
         if (workspaceId !== selectedWorkspaceId) activateWorkspace(workspaceId);
         void createPi();
-      }}
-      onSelectSession={(id) => { pluginsOpen = false; selectSession(id); }}
-      onUnarchiveSession={(sessionId) => void unarchiveSession(sessionId)}
-      onRequestArchiveSession={requestArchiveSession}
-      onSyncCodexThread={(sessionId) => void syncCodexThread(sessionId)}
-      onBeginRenameSession={beginRenameSession}
-      onSaveSessionRename={() => void saveSessionRename()}
-      onCancelRenameSession={cancelRenameSession}
+      })}
+      onSelectSession={guard('onSelectSession', (id) => { installedTool = null; pluginsOpen = false; selectSession(id); })}
+      onUnarchiveSession={guard('onUnarchiveSession', (sessionId) => void unarchiveSession(sessionId))}
+      onRequestArchiveSession={guard('onRequestArchiveSession', requestArchiveSession)}
+      onSyncCodexThread={guard('onSyncCodexThread', (sessionId) => void syncCodexThread(sessionId))}
+      onBeginRenameSession={guard('onBeginRenameSession', beginRenameSession)}
+      onSaveSessionRename={guard('onSaveSessionRename', () => void saveSessionRename())}
+      onCancelRenameSession={guard('onCancelRenameSession', cancelRenameSession)}
     />
+{/snippet}
+{#snippet navigationResize(guard, slot)}
     <ColumnSplitter
       label="调整工作区与会话宽度"
       width={workspaceSidebarWidth}
-      onPointerDown={(event) => beginColumnResize('workspace', event)}
-      onKeyDown={(event) => handleSplitterKeydown('workspace', event)}
+      onPointerDown={guard('onPointerDown', (event) => beginColumnResize('workspace', event, slot.growthDirection))}
+      onKeyDown={guard('onKeyDown', (event) => handleSplitterKeydown('workspace', event, slot.growthDirection))}
     />
-    {#if pluginsOpen}
-    <PluginWorkspacePanel
-      installations={pluginInstallations}
-      sessions={pluginSessions.filter((session) => session.workspaceId === selectedWorkspaceId)}
-      selectedSession={pluginSession?.workspaceId === selectedWorkspaceId ? pluginSession : null}
-      workspaceLabel={selectedWorkspace?.label ?? null}
-      packagePath={pluginPackagePath}
-      prompt={pluginDrafts[pluginSessionId ?? ''] ?? ''}
-      timeline={pluginTimeline.filter((item) => item.sessionId === pluginSessionId)}
-      views={pluginViewSessionId === pluginSessionId ? pluginViews : []}
-      busy={pluginBusy}
-      error={pluginError}
-      {desktop}
-      onPackagePathChange={(value) => { pluginPackagePath = value; }}
-      onPromptChange={(value) => { if (pluginSessionId) pluginDrafts[pluginSessionId] = value; }}
-      onInstall={() => void installPlugin()}
-      onEnabledChange={(id, enabled) => void enablePlugin(id, enabled)}
-      onUninstall={(id) => void uninstallPlugin(id)}
-      onCreateSession={(installationId, agentId) => void createPluginSession(installationId, agentId)}
-      onSelectSession={(id) => { if (selectedWorkspaceId) pluginSelection[selectedWorkspaceId] = id; }}
-      onSend={() => void sendPluginPrompt()}
-      onCancel={() => pluginSessionOperation(cancelAgentTurn)}
-      onResume={() => pluginSessionOperation(resumeAgentSession)}
-      onCloseSession={() => pluginSessionOperation(closeAgentSession)}
-      onViewAction={(viewId, actionId, input) => void invokePluginAction(viewId, actionId, input)}
-      onClose={() => { pluginsOpen = false; }}
-    />
+{/snippet}
+{#snippet content(guard)}
+    {#if installedTool && contributionAvailable(installedTool)}
+      {#key JSON.stringify([installedScope,installedTool.installationId,installedTool.contributionId])}
+        {#await loadInstalledWorkbench() then workbench}
+          <workbench.default title={installedTool.title} state={installedWorkbenchState}
+            onAction={guard('onAction', (message) => void installedWorkbenchController?.act(message))}
+            onReload={guard('onReload', () => void installedWorkbenchController?.reload())}
+            onToggleLayout={guard('onToggleLayout', () => installedWorkbenchController?.toggleLayout())}
+            onToggleReading={guard('onToggleReading', () => installedWorkbenchController?.toggleReading())}
+            onClose={guard('onClose', () => installedTool = null)} />
+        {/await}
+      {/key}
     {:else if workspaceFileDiffPath !== null || workspaceFileDiff || workspaceFileDiffLoading || workspaceFileDiffError}
     <WorkspaceFileDiffPreview
       fileDiff={workspaceFileDiff}
@@ -3266,10 +3748,13 @@
       selectedPath={workspaceFileDiffPath}
       selectedStaged={workspaceFileDiffStaged}
       contextLabel={workspaceFileDiffContextLabel}
-      onClose={closeWorkspaceFileDiff}
+      onClose={guard('onClose', closeWorkspaceFileDiff)}
     />
     {:else}
+    <!-- Input callbacks refresh their session guard; a function-binding setter
+         is initialized once and would reject edits after session navigation. -->
     <TimelinePanel
+      presentationActions={conversationActions}
       workspace={selectedWorkspace}
       session={selectedSession}
       selectedSessionId={selectedSessionId}
@@ -3280,8 +3765,9 @@
       usageValues={usageValues}
       retryPrompt={retryPrompt}
       retryReason={retryReason}
-      approvals={selectedApprovals}
       userInputRequests={selectedUserInputRequests}
+      {userInputDrafts}
+      onUserInputDraftChange={guard('onUserInputDraftChange', (value) => { userInputDrafts = value; })}
       queueSnapshot={queueSnapshot}
       agentActivityLabel={agentActivityLabel}
       contextCompacting={contextCompacting}
@@ -3290,49 +3776,54 @@
       busy={busy}
       attachments={attachments}
       executionProfile={executionProfile}
+      modelConfiguration={modelConfigurationState(selectedSession, sessionModelCatalog, executionProfile)}
       modelCatalog={sessionModelCatalog}
       modelCatalogLoading={sessionModelCatalogLoading}
       modelOverride={sessionModelOverride}
       workspacePathSuggestions={workspacePathSuggestions}
+      sessionSuggestions={sessionSuggestions}
+      onSelectSessionReference={guard('onSelectSessionReference', selectComposerSessionReference)}
       agentCommands={visibleAgentCommands}
       agentCommandsLoading={agentCommandsLoading}
       composerDraftFailed={composerDraftFailed}
-      bind:composerText
-      onComposerInput={handleComposerInput}
-      onSelectWorkspacePath={selectComposerWorkspacePath}
-      onAddAttachments={() => void chooseSessionAttachments()}
-      onAddDirectory={() => void chooseSessionAttachmentDirectory()}
-      onRemoveAttachment={(attachmentId) => void removeAttachment(attachmentId)}
-      onLoadOlderTimeline={loadOlderTimeline}
-      onForkSession={(throughTurnId) => void forkSession(selectedSessionId, throughTurnId)}
-      onOpenPiTree={openPiTree}
-      onTimelineScroll={handleTimelineScroll}
-      onRetry={() => void retryLastPrompt()}
-      onResolveApproval={(requestId, decision) => {
-        const approval = selectedApprovals.find((item) => item.requestId === requestId);
-        if (approval) void resolveApproval(approval, decision);
-      }}
-      onResolveUserInput={(request, answers) => resolveUserInput(request, answers)}
-      onCancelUserInput={(request) => {
+      composerText={composerText}
+      onComposerInput={guard('onComposerInput', (value) => { composerText = value; handleComposerInput(value); })}
+      onSelectWorkspacePath={guard('onSelectWorkspacePath', selectComposerWorkspacePath)}
+      onAddAttachments={guard('onAddAttachments', () => void chooseSessionAttachments())}
+      onAddDirectory={guard('onAddDirectory', () => void chooseSessionAttachmentDirectory())}
+      onRemoveAttachment={guard('onRemoveAttachment', (attachmentId) => void removeAttachment(attachmentId))}
+      onLoadOlderTimeline={guard('onLoadOlderTimeline', loadOlderTimeline)}
+      onForkSession={guard('onForkSession', (throughTurnId) => void forkSession(selectedSessionId, throughTurnId))}
+      onOpenPiTree={guard('onOpenPiTree', openPiTree)}
+      onTimelineScroll={guard('onTimelineScroll', handleTimelineScroll)}
+      onRetry={guard('onRetry', () => void retryLastPrompt())}
+      onResolveUserInput={guard('onResolveUserInput', (request, answers) => resolveUserInput(request, answers))}
+      onCancelUserInput={guard('onCancelUserInput', (request) => {
         if (request.sessionId === selectedSessionId) void abortPrompt();
-      }}
-      onSend={() => void sendPrompt()}
-      onQueue={(mode) => void queuePiPrompt(mode)}
-      onClearQueue={() => void clearPiPromptQueue()}
-      onAbort={() => void abortPrompt()}
-      onSelectAccess={(mode) => void applySessionAccess(mode)}
-      onLoadModels={() => void loadSessionModels()}
-      onSelectModelConfiguration={(model, reasoningEffort) => void applySessionModelConfiguration(model, reasoningEffort)}
-      onCompact={() => void compactCurrentSession()}
+      })}
+      onSend={guard('onSend', () => void sendPrompt())}
+      onQueue={guard('onQueue', (mode) => void queuePiPrompt(mode))}
+      onClearQueue={guard('onClearQueue', () => void clearPiPromptQueue())}
+      onAbort={guard('onAbort', () => void abortPrompt())}
+      onSelectAccess={guard('onSelectAccess', (mode) => void applySessionAccess(mode))}
+      onLoadModels={guard('onLoadModels', () => void loadSessionModels())}
+      onSelectModelConfiguration={guard('onSelectModelConfiguration', (model, reasoningEffort) => void applySessionModelConfiguration(model, reasoningEffort))}
+      onCompact={guard('onCompact', () => void compactCurrentSession())}
     />
     {/if}
+{/snippet}
+{#snippet auxiliaryResize(guard, slot)}
     {#if sidePanelOpen}
       <ColumnSplitter
         label="调整会话与侧边栏宽度"
         width={inspectorWidth}
-        onPointerDown={(event) => beginColumnResize('inspector', event)}
-        onKeyDown={(event) => handleSplitterKeydown('inspector', event)}
+        onPointerDown={guard('onPointerDown', (event) => beginColumnResize('inspector', event, slot.growthDirection))}
+        onKeyDown={guard('onKeyDown', (event) => handleSplitterKeydown('inspector', event, slot.growthDirection))}
       />
+    {/if}
+{/snippet}
+{#snippet auxiliary(guard)}
+    {#if sidePanelOpen}
       {#if sidePanelView === 'context'}
       <Inspector
       visible={true}
@@ -3357,49 +3848,28 @@
       busy={busy}
       sessionRunning={sessionRunning}
       selectedSessionArchiving={selectedSessionArchiving}
-      onSyncCodexThreads={() => void syncCodexThreads()}
-      onRestoreTurnChangeSet={restoreTurnChangeSet}
-      onShowTurnFileDiff={showTurnFileDiff}
-      onApplyGitFileAction={applyGitFileActionFromInspector}
-      onApplyGitHunkAction={applyGitHunkActionFromInspector}
-      onReadArtifact={readArtifact}
-      onSaveProjectAction={async (input) => {
-        try {
-          const saved = await saveProjectAction(input);
-          projectActions = projectActions.some((item) => item.id === saved.id)
-            ? projectActions.map((item) => (item.id === saved.id ? saved : item))
-            : [...projectActions, saved];
-        } catch (error) {
-          errorMessage = toErrorMessage(error);
-        }
-      }}
-      onDeleteProjectAction={async (actionId) => {
-        try {
-          if (selectedWorkspaceId) {
-            await deleteProjectAction(selectedWorkspaceId, actionId);
-            projectActions = projectActions.filter((item) => item.id !== actionId);
-          }
-        } catch (error) {
-          errorMessage = toErrorMessage(error);
-        }
-      }}
-      onRunProjectAction={async (actionId) => {
-        try {
-          if (!selectedWorkspaceId) return;
-          const result = await runProjectAction(selectedWorkspaceId, actionId, selectedSessionId);
-          projectActionRuns = [result, ...projectActionRuns.filter((item) => item.id !== result.id)].slice(0, 20);
-          if (selectedSessionId) await refreshArtifacts(selectedSessionId);
-          notice = result.status === 'completed' ? '工程动作已完成。' : `工程动作${result.status === 'timed_out' ? '超时' : '失败'}。`;
-        } catch (error) {
-          errorMessage = toErrorMessage(error);
-        }
-      }}
-      onRefresh={() => void refresh()}
-      onSelectView={selectSidePanelView}
+      onSyncCodexThreads={guard('onSyncCodexThreads', () => void syncCodexThreads())}
+      onRestoreTurnChangeSet={guard('onRestoreTurnChangeSet', restoreTurnChangeSet)}
+      onShowTurnFileDiff={guard('onShowTurnFileDiff', showTurnFileDiff)}
+      onApplyGitFileAction={guard('onApplyGitFileAction', applyGitFileActionFromInspector)}
+      onApplyGitHunkAction={guard('onApplyGitHunkAction', applyGitHunkActionFromInspector)}
+      {artifactPreview}
+      onToggleArtifact={guard('onToggleArtifact', (sessionId, artifactId) => artifactPreviewController.toggle(sessionId, artifactId))}
+      projectEditor={projectEditors[selectedWorkspaceId ?? ''] ?? emptyProjectEditor()}
+      runningActionId={projectRunningActions[selectedWorkspaceId ?? ''] ?? null}
+      onEditProjectAction={guard('onEditProjectAction', (id) => projectEditor.edit(id))}
+      onProjectField={guard('onProjectField', (field, value) => projectEditor.change(field, value))}
+      onSaveProjectEditor={guard('onSaveProjectEditor', () => projectEditor.save())}
+      onCloseProjectEditor={guard('onCloseProjectEditor', () => projectEditor.close())}
+      onDeleteProjectAction={guard('onDeleteProjectAction', deleteCurrentProjectAction)}
+      onCancelProjectAction={guard('onCancelProjectAction', cancelCurrentProjectAction)}
+      onRunProjectAction={guard('onRunProjectAction', runCurrentProjectAction)}
+      onRefresh={guard('onRefresh', () => void refresh())}
+      onSelectView={guard('onSelectView', selectSidePanelView)}
       />
       {:else if sidePanelView === 'git'}
         {#key selectedWorkspaceId}
-        <WorkspaceGitPanel
+        <WorkspaceGitPanel draftState={workbenchDrafts.git[selectedWorkspaceId ?? ''] ?? emptyGitPanelState()} onDraftChange={guard('onDraftChange', (value) => { if (selectedWorkspaceId) workbenchDrafts.git[selectedWorkspaceId] = value; })}
           workspace={selectedWorkspace}
           desktop={desktop}
           changes={workspaceChanges}
@@ -3419,66 +3889,46 @@
           reviewBusy={workspaceGitReviewBusy}
           canRequestReview={selectedSession !== null && selectedSession.workspaceId === selectedWorkspaceId && !selectedSession.archived && !sessionRunning}
           activeView={sidePanelView}
-          onRefresh={() => selectedWorkspaceId && void refreshWorkspaceChanges(selectedWorkspaceId)}
-          onApplyFileAction={(workspaceId, path, action) => void applyWorkspaceGitAction(workspaceId, path, action)}
-          onApplyWorkspaceAction={(workspaceId, action) => void applyWorkspaceGitWorkspaceAction(workspaceId, action)}
-          onCommit={(workspaceId, message) => commitWorkspaceGitChanges(workspaceId, message)}
-          onOpenDiff={(workspaceId, path, staged) => void openWorkspaceFileDiff(workspaceId, path, staged)}
-          onRefreshGitMetadata={(workspaceId) => void refreshWorkspaceGitMetadata(workspaceId)}
-          onCheckoutBranch={(workspaceId, branch) => void checkoutWorkspaceBranch(workspaceId, branch)}
-          onCreateBranch={(workspaceId, branch) => void createWorkspaceBranch(workspaceId, branch)}
-          onSelectCommit={(workspaceId, commit) => void loadWorkspaceCommitFiles(workspaceId, commit)}
-          onLoadMoreCommitFiles={(workspaceId, commit) => void loadWorkspaceCommitFiles(workspaceId, commit, true)}
-          onOpenCommitFileDiff={(workspaceId, commit, path) => void openWorkspaceCommitFileDiff(workspaceId, commit, path)}
-          onSync={(workspaceId, action) => void syncWorkspaceBranch(workspaceId, action)}
-          onSaveStash={(workspaceId) => void saveWorkspaceStash(workspaceId)}
-          onApplyStash={(workspaceId, reference) => void applyWorkspaceStash(workspaceId, reference)}
-          onRequestReview={(workspaceId) => void requestWorkspaceAgentReview(workspaceId)}
-          onSelectView={selectSidePanelView}
+          onRefresh={guard('onRefresh', () => selectedWorkspaceId && void refreshWorkspaceChanges(selectedWorkspaceId))}
+          onApplyFileAction={guard('onApplyFileAction', (workspaceId, path, action) => void applyWorkspaceGitAction(workspaceId, path, action))}
+          onApplyWorkspaceAction={guard('onApplyWorkspaceAction', (workspaceId, action) => void applyWorkspaceGitWorkspaceAction(workspaceId, action))}
+          onCommit={guard('onCommit', (workspaceId, message) => commitWorkspaceGitChanges(workspaceId, message))}
+          onOpenDiff={guard('onOpenDiff', (workspaceId, path, staged) => void openWorkspaceFileDiff(workspaceId, path, staged))}
+          onRefreshGitMetadata={guard('onRefreshGitMetadata', (workspaceId) => void refreshWorkspaceGitMetadata(workspaceId))}
+          onCheckoutBranch={guard('onCheckoutBranch', (workspaceId, branch) => void checkoutWorkspaceBranch(workspaceId, branch))}
+          onCreateBranch={guard('onCreateBranch', (workspaceId, branch) => void createWorkspaceBranch(workspaceId, branch))}
+          onSelectCommit={guard('onSelectCommit', (workspaceId, commit) => void loadWorkspaceCommitFiles(workspaceId, commit))}
+          onLoadMoreCommitFiles={guard('onLoadMoreCommitFiles', (workspaceId, commit) => void loadWorkspaceCommitFiles(workspaceId, commit, true))}
+          onOpenCommitFileDiff={guard('onOpenCommitFileDiff', (workspaceId, commit, path) => void openWorkspaceCommitFileDiff(workspaceId, commit, path))}
+          onSync={guard('onSync', (workspaceId, action) => void syncWorkspaceBranch(workspaceId, action))}
+          onSaveStash={guard('onSaveStash', (workspaceId) => void saveWorkspaceStash(workspaceId))}
+          onApplyStash={guard('onApplyStash', (workspaceId, reference) => void applyWorkspaceStash(workspaceId, reference))}
+          onRequestReview={guard('onRequestReview', (workspaceId) => void requestWorkspaceAgentReview(workspaceId))}
+          onSelectView={guard('onSelectView', selectSidePanelView)}
         />
         {/key}
       {/if}
     {/if}
-  </main>
-
-  <SettingsPanel
-    open={settingsOpen}
-    uiKits={availableUiKits}
-    activeUiKitName={$activeUiKitName}
-    activeThemeId={$activeTheme.id}
-    onSelectUiKit={setUiKit}
-    onSelectTheme={setUiTheme}
-    onClose={() => (settingsOpen = false)}
-  />
-  <DiagnosticsPanel
-    open={diagnosticsOpen}
-    diagnostics={diagnostics}
-    desktop={desktop}
-    workspaceCount={workspaces.length}
-    sessionCount={sessions.length}
-    busy={busy}
-    onRefresh={() => void refresh()}
-    onClose={() => (diagnosticsOpen = false)}
-  />
-  <CommandPalette
-    open={commandPaletteOpen}
-    commands={commandPaletteCommands}
-    onClose={() => (commandPaletteOpen = false)}
-  />
+{/snippet}
+{#snippet overlays(guard)}
   <PiSessionTreeOverlay
-    open={piTreeOpen && (sessionAgentKind(selectedSession) === 'pi' || selectedSession?.capabilities.includes('session.tree'))}
+    open={piTreeOpen && selectedSession?.capabilities.includes('session.tree')}
     session={selectedSession}
     tree={piTree?.sessionId === selectedSessionId ? piTree : null}
     {busy}
     {sessionRunning}
     {selectedSessionArchiving}
     navigationStatus={piNavigationStatus}
-    onClose={() => {
+    onClose={guard('onClose', () => {
       if (!piNavigationStatus) piTreeOpen = false;
-    }}
-    onRefresh={(sessionId) => void refreshPiTree(sessionId)}
-    onSelectNode={requestPiTreeNavigation}
+    })}
+    onRefresh={guard('onRefresh', (sessionId) => void refreshPiTree(sessionId))}
+    onSelectNode={guard('onSelectNode', requestPiTreeNavigation)}
   />
+
+{/snippet}
+</WorkbenchPresentation>
+</PresentationHost>
   <AppOverlays
     {errorMessage}
     {notice}

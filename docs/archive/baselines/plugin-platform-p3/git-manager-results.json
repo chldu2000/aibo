@@ -1,0 +1,22 @@
+[
+  {
+    "kit": "shadcn",
+    "declarativeWithoutAgents": true,
+    "activationReasonVisible": true,
+    "enableBlocked": true,
+    "v1CreationPreserved": true,
+    "uninstallAvailable": true,
+    "optionalDependencyDiagnostic": true,
+    "unrelatedFeaturesEnableable": true
+  },
+  {
+    "kit": "material3",
+    "declarativeWithoutAgents": true,
+    "activationReasonVisible": true,
+    "enableBlocked": true,
+    "v1CreationPreserved": true,
+    "uninstallAvailable": true,
+    "optionalDependencyDiagnostic": true,
+    "unrelatedFeaturesEnableable": true
+  }
+]

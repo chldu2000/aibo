@@ -37,9 +37,11 @@ test('Pi navigation reloads the active timeline and ignores results for another 
     assert.deepEqual(timeline, [{ id: 'branch-b' }]);
 
     pending = 'branch-b';
-    context.api.getTimeline = () => new Promise((resolve) => { release = resolve; });
+    let started;
+    const timelineStarted = new Promise((resolve) => { started = resolve; });
+    context.api.getTimeline = () => new Promise((resolve) => { release = resolve; started(); });
     const navigation = controller.confirmNavigation({ mode: 'none' });
-    await Promise.resolve();
+    await timelineStarted;
     assert.ok(release);
     selected = 'other-session';
     timeline = [{ id: 'other-session-message' }];

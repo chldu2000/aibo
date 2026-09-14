@@ -1,0 +1,39 @@
+import assert from 'node:assert/strict';
+import { createServer } from 'vite';
+import { chromium } from 'playwright';
+const server = await createServer({ server: { host: '127.0.0.1', port: 0, hmr: false, watch: null } });
+await server.listen();
+const browser = await chromium.launch({ headless: true });
+try {
+  const page = await browser.newPage();
+  const errors = [];
+  page.on('pageerror', error => errors.push(String(error)));
+  await page.goto(`http://127.0.0.1:${server.httpServer.address().port}/probes/semantic-ui.html`);
+  await page.waitForFunction(() => Boolean(window.semanticProbe));
+  await page.evaluate(async () => {
+    await window.semanticProbe.dispose();
+    await import('/probes/workbench-recovery-client.mjs');
+  });
+  for (const kit of ['shadcn', 'material3']) {
+    await page.evaluate(async kit => (await import('/src/lib/ui-kit/registry.ts')).setUiKit(kit), kit);
+    const standard = page.locator('[data-presentation-layout="standard"]:not([inert])');
+    await standard.waitFor();
+    const restore = page.getByRole('button', { name: '恢复默认呈现', exact: true });
+    assert.equal(await restore.count(), 0, 'recovery does not occupy the healthy workbench');
+    await page.evaluate(() => window.recoveryWorkbench.switchPresentation('focus'));
+    await page.locator('[data-presentation-layout="focus"]:not([inert])').waitFor({timeout: 5000}).catch(async error => { console.log(await page.locator('body').innerText(), errors); throw error; });
+    await page.getByRole('textbox', { name: 'draft' }).focus();
+    await page.keyboard.press('Control+Shift+Backspace');
+    await standard.waitFor();
+    assert.equal(await page.getByRole('textbox', { name: 'draft' }).inputValue(), 'keep');
+    await page.evaluate(() => window.recoveryWorkbench.switchPresentation('focus', true));
+    await standard.waitFor();
+    await page.getByRole('alert').filter({hasText:'测试呈现挂载失败'}).waitFor();
+    assert.equal(await page.getByRole('textbox', { name: 'draft' }).inputValue(), 'keep');
+    await restore.click();
+    await standard.waitFor();
+    assert.equal(await page.getByRole('alert').count(), 0);
+  }
+  assert.deepEqual(errors, []);
+  console.log('Workbench capture shortcut and independent mount-failure recovery passed');
+} finally { await browser.close(); await server.close(); }

@@ -1,0 +1,119 @@
+{
+  "schema": "aibo.plugin-manifest/v2",
+  "pluginId": "dev.aibo.chain-parent",
+  "version": "1.0.0",
+  "displayName": "Capability Chain Parent",
+  "host": {
+    "min": "0.1.0",
+    "maxExclusive": "0.2.0"
+  },
+  "platforms": [
+    "darwin-arm64",
+    "darwin-x64",
+    "windows-x64",
+    "linux-x64",
+    "linux-arm64"
+  ],
+  "protocols": {
+    "runtime": {
+      "min": "2.0",
+      "max": "2.0"
+    }
+  },
+  "contributions": [
+    {
+      "kind": "capabilityProvider",
+      "id": "dev.aibo.chain-parent.read",
+      "scope": "workspace",
+      "required": true,
+      "displayName": "Read fixture",
+      "operations": [
+        {
+          "id": "dev.aibo.chain-parent.echo",
+          "capability": {
+            "id": "dev.aibo.chain-parent.echo",
+            "version": "1.0.0"
+          },
+          "inputSchema": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "value"
+            ],
+            "properties": {
+              "value": {
+                "type": "string",
+                "maxLength": 1024
+              },
+              "delayMs": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 5000
+              },
+              "mode": {
+                "enum": [
+                  "normal",
+                  "stale",
+                  "undeclared",
+                  "scope",
+                  "parent-crash"
+                ]
+              }
+            }
+          },
+          "outputSchema": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "value",
+              "workspacePath"
+            ],
+            "properties": {
+              "value": {
+                "type": "string",
+                "maxLength": 8192
+              },
+              "workspacePath": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "maxLength": 4096
+              }
+            }
+          },
+          "effect": "read",
+          "permissions": [
+            "workspace.read"
+          ],
+          "timeoutMs": 5000,
+          "idempotent": true
+        }
+      ]
+    }
+  ],
+  "entrypoint": {
+    "executable": "worker.mjs"
+  },
+  "executableDependencies": [
+    {
+      "kind": "runtime",
+      "name": "node",
+      "versionRange": ">=22",
+      "required": true
+    }
+  ],
+  "packageDependencies": [
+    {
+      "pluginId": "dev.aibo.chain-leaf",
+      "version": {
+        "min": "1.0.0",
+        "maxExclusive": "2.0.0"
+      },
+      "required": true,
+      "contributionIds": [
+        "dev.aibo.chain-parent.read"
+      ]
+    }
+  ]
+}

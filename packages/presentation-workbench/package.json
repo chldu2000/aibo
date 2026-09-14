@@ -1,0 +1,31 @@
+{
+  "name": "@aibo/presentation-workbench",
+  "version": "0.2.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    "./git": "./git.js",
+    "./inspector": "./inspector.js",
+    "./capability": "./capability.js",
+    "./navigation": "./navigation.js",
+    "./conversation": "./conversation.js",
+    "./bundle": "./bundle.mjs",
+    ".": "./workbench.js",
+    "./markdown": {
+      "types": "./markdown.d.ts",
+      "default": "./markdown.js"
+    },
+    "./rich-text": "./rich-text.js",
+    "./timeline-model": {
+      "types": "./timeline-model.d.ts",
+      "default": "./timeline-model.js"
+    }
+  },
+  "files": [
+    "*.js",
+    "README.md",
+    "bundle.mjs",
+    "markdown.d.ts",
+    "timeline-model.d.ts"
+  ]
+}

@@ -1,0 +1,51 @@
+{
+  "context": {
+    "workspaceId": "fixture-workspace",
+    "contributionId": "dev.aibo.git.changes",
+    "generation": "fixture-generation",
+    "revision": 1
+  },
+  "status": "ready",
+  "message": "",
+  "items": [
+    {
+      "id": "worktree:src/App.svelte",
+      "path": "src/App.svelte",
+      "previousPath": null,
+      "status": "modified",
+      "staged": false
+    },
+    {
+      "id": "index:docs/README.md",
+      "path": "docs/README.md",
+      "previousPath": "README.md",
+      "status": "renamed",
+      "staged": true
+    },
+    {
+      "id": "worktree:new.txt",
+      "path": "new.txt",
+      "previousPath": null,
+      "status": "untracked",
+      "staged": false
+    },
+    {
+      "id": "worktree:deleted.txt",
+      "path": "deleted.txt",
+      "previousPath": null,
+      "status": "deleted",
+      "staged": false
+    },
+    {
+      "id": "worktree:conflict.txt",
+      "path": "conflict.txt",
+      "previousPath": null,
+      "status": "conflicted",
+      "staged": false
+    }
+  ],
+  "offset": 0,
+  "total": 5,
+  "truncated": false,
+  "detail": null
+}

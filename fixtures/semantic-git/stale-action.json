@@ -1,0 +1,10 @@
+{
+  "context": {
+    "workspaceId": "fixture-workspace",
+    "contributionId": "dev.aibo.git.changes",
+    "generation": "expired-generation",
+    "revision": 1
+  },
+  "actionId": "open-diff",
+  "itemId": "worktree:src/App.svelte"
+}

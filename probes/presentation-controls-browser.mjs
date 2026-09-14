@@ -1,0 +1,34 @@
+import assert from 'node:assert/strict';
+import {createHash} from 'node:crypto';
+import {writeFile} from 'node:fs/promises';
+import {createServer} from 'vite';
+import {chromium} from 'playwright';
+const source="self.aiboPresentation={render(input){if(input.data.control==='AgentStatusMark')return null;return {tag:'section',key:'matrix',children:[{tag:'h2',key:'title',text:'External matrix'},...input.data.actions.map(action=>({tag:'button',key:action.token,text:action.reasoningEffort||'Default',events:{click:action.token}})),{tag:'button',key:'forged',text:'Forged option',events:{click:'model:999'}}]}}};";
+const packageOf=source=>({release:{digest:createHash('sha256').update(source).digest('hex'),enabled:true,manifest:{schema:'aibo.presentation-package/v1',id:'dev.example.controls',displayName:'Controls',version:'1.0.0',hostApi:'1.0.0',coreSemantics:'1.0.0',snapshotSchemas:['aibo.semantic-view/v1'],entry:'skin.js',surfaces:['controls'],resources:[{path:'skin.js',bytes:Buffer.byteLength(source),sha256:createHash('sha256').update(source).digest('hex'),mediaType:'text/javascript'}]}},resources:{'skin.js':Buffer.from(source).toString('base64')}});
+const server=await createServer({server:{host:'127.0.0.1',port:0,hmr:false,watch:null}});await server.listen();const browser=await chromium.launch({headless:true});const page=await browser.newPage();const errors=[];page.on('pageerror',e=>errors.push(e.message));
+try{
+ await page.goto(`http://127.0.0.1:${server.httpServer.address().port}/probes/presentation-controls.html`);await page.waitForFunction(()=>window.controlPackageProbe);
+ await page.evaluate(pkg=>window.controlPackageProbe.select(pkg),packageOf(source));
+ const frame=page.frameLocator('#replaceable .external-control:not([hidden]) iframe');
+ await frame.getByRole('heading',{name:'External matrix'}).waitFor();
+ assert.equal(await page.locator('#trusted iframe').count(),0);
+ assert.equal(await page.locator('#trusted').getByRole('table',{name:'模型与推理强度'}).count(),1);
+ await frame.getByRole('button',{name:'high',exact:true}).click();await page.waitForFunction(()=>window.controlPackageProbe.result().length===1);
+ assert.deepEqual(await page.evaluate(()=>window.controlPackageProbe.result()),[['model-a','high']]);
+ await frame.getByRole('button',{name:'Forged option',exact:true}).click();assert.equal(await page.evaluate(()=>window.controlPackageProbe.result().length),1);
+ await page.locator('#replaceable').getByRole('img',{name:'Inherited mark'}).waitFor();
+ await page.evaluate(()=>window.controlPackageProbe.setDisabled(true));
+ await frame.getByRole('button',{name:'high',exact:true}).waitFor({state:'detached'});
+ assert.equal(await page.evaluate(()=>window.controlPackageProbe.result().length),1);
+ await page.evaluate(pkg=>window.controlPackageProbe.select(pkg),packageOf('self.aiboPresentation={render(){return null}};'));
+ await page.locator('#replaceable').getByRole('table',{name:'模型与推理强度'}).waitFor();
+ await page.evaluate(pkg=>window.controlPackageProbe.select(pkg),packageOf("self.aiboPresentation={render(input){return input.data.control==='AgentStatusMark'?{tag:'span',key:'mark',text:'X'}:null}};"));
+ await page.locator('#replaceable .status-mark:not([hidden]) iframe').waitFor();
+ assert.equal(await page.locator('#replaceable .status-mark iframe').getAttribute('tabindex'),'-1');
+ await page.getByRole('button',{name:'Select row'}).click();
+ assert.deepEqual(await page.evaluate(()=>window.controlPackageProbe.result().at(-1)),['row']);
+ await page.evaluate(()=>window.controlPackageProbe.dispose());
+ assert.equal(await page.locator('iframe').count(),0);assert.deepEqual(errors,[]);
+ const result={passed:true,browser:browser.version(),checks:['controls-only package activates','workbench matrix replaced','trusted controls remain native','valid option calls host','forged option ignored','disabled actions unavailable','null inherits complete defaults','decorative status keeps parent row clickable and skips tab focus','disposal removes control instances']};
+ await writeFile('/tmp/aibo-presentation-controls-browser.json',JSON.stringify(result,null,2));console.log(JSON.stringify(result));
+}finally{await browser.close();await server.close();}

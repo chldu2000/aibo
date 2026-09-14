@@ -1,5 +1,5 @@
 /** Runtime primitive proxies. Their implementations follow the active kit. */
-export { default as PluginView } from './runtime/PluginView.svelte';
+export { default as HostPanel } from './runtime/HostPanel.svelte';
 export { default as AgentStatusMark } from './runtime/AgentStatusMark.svelte';
 export { default as AlertDialog } from './runtime/AlertDialog.svelte';
 export { default as Badge } from './runtime/Badge.svelte';
@@ -16,3 +16,7 @@ export { default as Label } from './runtime/Label.svelte';
 export { default as ModelMatrix } from './runtime/ModelMatrix.svelte';
 export { default as Separator } from './runtime/Separator.svelte';
 export { default as Textarea } from './runtime/Textarea.svelte';
+
+export { default as SemanticView } from './runtime/SemanticView.svelte';
+
+export { default as SettingsSection } from './runtime/SettingsSection.svelte';

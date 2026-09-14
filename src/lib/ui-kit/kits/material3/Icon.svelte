@@ -11,12 +11,14 @@
   import edit from '@ktibow/iconset-material-symbols/edit-outline-rounded';
   import filter from '@ktibow/iconset-material-symbols/filter-list-rounded';
   import file from '@ktibow/iconset-material-symbols/article-outline-rounded';
+  import focus from '@ktibow/iconset-material-symbols/fullscreen-rounded';
   import folder from '@ktibow/iconset-material-symbols/folder-outline-rounded';
   import folderAdd from '@ktibow/iconset-material-symbols/create-new-folder-outline-rounded';
   import refresh from '@ktibow/iconset-material-symbols/refresh-rounded';
   import review from '@ktibow/iconset-material-symbols/fact-check-outline-rounded';
   import search from '@ktibow/iconset-material-symbols/search-rounded';
   import panelRight from '@ktibow/iconset-material-symbols/right-panel-open-rounded';
+  import plugins from '@ktibow/iconset-material-symbols/extension-outline-rounded';
   import send from '@ktibow/iconset-material-symbols/send-rounded';
   import settings from '@ktibow/iconset-material-symbols/tune-rounded';
   import stop from '@ktibow/iconset-material-symbols/stop-rounded';
@@ -49,12 +51,14 @@
     edit,
     filter,
     file,
+    focus,
     folder,
     'folder-add': folderAdd,
     refresh,
     review,
     search,
     'panel-right': panelRight,
+    plugins,
     send,
     settings,
     stop,

@@ -1,0 +1,284 @@
+{
+  "schema": "aibo.plugin-manifest/v2",
+  "pluginId": "dev.aibo.catalog",
+  "version": "1.0.0",
+  "displayName": "Semantic catalog",
+  "host": {
+    "min": "0.1.0",
+    "maxExclusive": "0.2.0"
+  },
+  "platforms": [
+    "darwin-arm64",
+    "darwin-x64",
+    "windows-x64",
+    "linux-x64",
+    "linux-arm64"
+  ],
+  "protocols": {
+    "runtime": {
+      "min": "2.0",
+      "max": "2.0"
+    },
+    "semanticView": {
+      "min": "1.0",
+      "max": "1.0"
+    }
+  },
+  "contributions": [
+    {
+      "kind": "capabilityProvider",
+      "id": "dev.aibo.catalog.tool.provider",
+      "scope": "workspace",
+      "required": true,
+      "operations": [
+        {
+          "id": "dev.aibo.catalog.tool.read",
+          "capability": {
+            "id": "dev.aibo.catalog.tool",
+            "version": "1.0.0"
+          },
+          "effect": "read",
+          "permissions": [],
+          "timeoutMs": 3000,
+          "inputSchema": {
+            "type": "object"
+          },
+          "outputSchema": {
+            "type": "object"
+          },
+          "idempotent": true
+        }
+      ],
+      "displayName": "dev.aibo.catalog.tool.provider"
+    },
+    {
+      "kind": "semanticView",
+      "id": "dev.aibo.catalog.tool.view",
+      "scope": "workspace",
+      "required": true,
+      "title": "Catalog tool",
+      "extensionPoint": "workspace.tool",
+      "semanticType": "inspector",
+      "contractVersion": "1.0.0",
+      "visibility": "workspaceSelected",
+      "provider": {
+        "capability": "dev.aibo.catalog.tool",
+        "version": {
+          "min": "1.0.0",
+          "maxExclusive": "2.0.0"
+        },
+        "operation": "dev.aibo.catalog.tool.read"
+      }
+    },
+    {
+      "kind": "capabilityProvider",
+      "id": "dev.aibo.catalog.context.provider",
+      "scope": "session",
+      "required": true,
+      "operations": [
+        {
+          "id": "dev.aibo.catalog.context.read",
+          "capability": {
+            "id": "dev.aibo.catalog.context",
+            "version": "1.0.0"
+          },
+          "effect": "read",
+          "permissions": [],
+          "timeoutMs": 3000,
+          "inputSchema": {
+            "type": "object"
+          },
+          "outputSchema": {
+            "type": "object"
+          },
+          "idempotent": true
+        }
+      ],
+      "displayName": "dev.aibo.catalog.context.provider"
+    },
+    {
+      "kind": "semanticView",
+      "id": "dev.aibo.catalog.context.view",
+      "scope": "session",
+      "required": true,
+      "title": "Catalog context",
+      "extensionPoint": "session.context",
+      "semanticType": "inspector",
+      "contractVersion": "1.0.0",
+      "visibility": "sessionSelected",
+      "provider": {
+        "capability": "dev.aibo.catalog.context",
+        "version": {
+          "min": "1.0.0",
+          "maxExclusive": "2.0.0"
+        },
+        "operation": "dev.aibo.catalog.context.read"
+      }
+    },
+    {
+      "kind": "capabilityProvider",
+      "id": "dev.aibo.catalog.action.provider",
+      "scope": "session",
+      "required": true,
+      "operations": [
+        {
+          "id": "dev.aibo.catalog.action.read",
+          "capability": {
+            "id": "dev.aibo.catalog.action",
+            "version": "1.0.0"
+          },
+          "effect": "read",
+          "permissions": [],
+          "timeoutMs": 3000,
+          "inputSchema": {
+            "type": "object"
+          },
+          "outputSchema": {
+            "type": "object"
+          },
+          "idempotent": true
+        }
+      ],
+      "displayName": "dev.aibo.catalog.action.provider"
+    },
+    {
+      "kind": "semanticView",
+      "id": "dev.aibo.catalog.action.view",
+      "scope": "session",
+      "required": true,
+      "title": "Catalog action",
+      "extensionPoint": "session.action",
+      "semanticType": "detail",
+      "contractVersion": "1.0.0",
+      "visibility": "sessionSelected",
+      "provider": {
+        "capability": "dev.aibo.catalog.action",
+        "version": {
+          "min": "1.0.0",
+          "maxExclusive": "2.0.0"
+        },
+        "operation": "dev.aibo.catalog.action.read"
+      }
+    },
+    {
+      "kind": "capabilityProvider",
+      "id": "dev.aibo.catalog.settings.provider",
+      "scope": "application",
+      "required": true,
+      "operations": [
+        {
+          "id": "dev.aibo.catalog.settings.read",
+          "capability": {
+            "id": "dev.aibo.catalog.settings",
+            "version": "1.0.0"
+          },
+          "effect": "read",
+          "permissions": [],
+          "timeoutMs": 3000,
+          "inputSchema": {
+            "type": "object"
+          },
+          "outputSchema": {
+            "type": "object"
+          },
+          "idempotent": true
+        }
+      ],
+      "displayName": "dev.aibo.catalog.settings.provider"
+    },
+    {
+      "kind": "semanticView",
+      "id": "dev.aibo.catalog.settings.view",
+      "scope": "application",
+      "required": true,
+      "title": "Catalog settings",
+      "extensionPoint": "settings.page",
+      "semanticType": "settings",
+      "contractVersion": "1.0.0",
+      "visibility": "always",
+      "provider": {
+        "capability": "dev.aibo.catalog.settings",
+        "version": {
+          "min": "1.0.0",
+          "maxExclusive": "2.0.0"
+        },
+        "operation": "dev.aibo.catalog.settings.read"
+      }
+    },
+    {
+      "kind": "capabilityProvider",
+      "id": "dev.aibo.catalog.command.provider",
+      "scope": "application",
+      "required": true,
+      "operations": [
+        {
+          "id": "dev.aibo.catalog.command.read",
+          "capability": {
+            "id": "dev.aibo.catalog.command",
+            "version": "1.0.0"
+          },
+          "effect": "read",
+          "permissions": [],
+          "timeoutMs": 3000,
+          "inputSchema": {
+            "type": "object"
+          },
+          "outputSchema": {
+            "type": "object"
+          },
+          "idempotent": true
+        }
+      ],
+      "displayName": "dev.aibo.catalog.command.provider"
+    },
+    {
+      "kind": "semanticView",
+      "id": "dev.aibo.catalog.command.view",
+      "scope": "application",
+      "required": true,
+      "title": "Catalog command",
+      "extensionPoint": "command",
+      "semanticType": "detail",
+      "contractVersion": "1.0.0",
+      "visibility": "always",
+      "provider": {
+        "capability": "dev.aibo.catalog.command",
+        "version": {
+          "min": "1.0.0",
+          "maxExclusive": "2.0.0"
+        },
+        "operation": "dev.aibo.catalog.command.read"
+      }
+    },
+    {
+      "kind": "semanticView",
+      "id": "dev.aibo.catalog.future",
+      "scope": "application",
+      "required": false,
+      "title": "Future optional view",
+      "extensionPoint": "command",
+      "semanticType": "detail",
+      "contractVersion": "2.0.0",
+      "visibility": "always",
+      "provider": {
+        "capability": "dev.aibo.catalog.command",
+        "version": {
+          "min": "1.0.0",
+          "maxExclusive": "2.0.0"
+        },
+        "operation": "dev.aibo.catalog.command.read"
+      }
+    }
+  ],
+  "entrypoint": {
+    "executable": "worker.mjs"
+  },
+  "executableDependencies": [
+    {
+      "kind": "runtime",
+      "name": "node",
+      "versionRange": ">=22",
+      "required": true
+    }
+  ]
+}
