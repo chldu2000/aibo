@@ -179,7 +179,7 @@ pub(crate) fn contribution_supported(entry: &Contribution, manifest: &Value) -> 
             && entry.metadata["operations"].as_array().unwrap().iter().all(|operation| {
                 let permissions = operation["permissions"].as_array().unwrap();
                 if operation["effect"] == "write" {
-                    cfg!(unix) && entry.scope != "application" && permissions.iter().any(|permission|permission == "workspace.write")
+                    entry.scope != "application" && permissions.iter().any(|permission|permission == "workspace.write")
                         && permissions.iter().all(|permission|permission == "workspace.read" || permission == "workspace.write")
                 } else { permissions.iter().all(|permission|permission == "workspace.read") }
             }),
@@ -197,8 +197,16 @@ pub(crate) fn activation_issues(manifest: &Value) -> Result<Vec<String>, String>
     let min = semver::Version::parse(manifest["host"]["min"].as_str().unwrap()).unwrap();
     let max = semver::Version::parse(manifest["host"]["maxExclusive"].as_str().unwrap()).unwrap();
     if host < min || host >= max { issues.push("当前宿主版本不在插件要求的范围内。".into()); }
-    if model.contributions.iter().any(|entry|entry.required && !contribution_supported(entry,manifest)) || manifest.get("presentation").is_some() {
-        issues.push("插件已登记；必需贡献要求尚未支持的协议、语义版本或权限。当前支持只读能力、经宿主批准的工作区写入和语义视图 1.0/1.1。".into());
+    for entry in model.contributions.iter().filter(|entry|entry.required && !contribution_supported(entry,manifest)) {
+        let operation = entry.metadata["operations"].as_array().and_then(|operations|operations.iter().find(|operation| {
+            let permissions = operation["permissions"].as_array().unwrap();
+            operation["effect"] == "write" && (entry.scope == "application" || !permissions.iter().any(|permission|permission == "workspace.write") || permissions.iter().any(|permission|permission != "workspace.read" && permission != "workspace.write"))
+                || operation["effect"] != "write" && permissions.iter().any(|permission|permission != "workspace.read")
+        })).and_then(|operation|operation["id"].as_str());
+        issues.push(format!("必需贡献 {} 不受支持（类型：{}，操作：{}）；请检查 runtime 协议、语义版本、作用域和权限。",entry.id,entry.kind,operation.unwrap_or("无具体操作")));
+    }
+    if let Some(presentation) = manifest.get("presentation") {
+        issues.push(format!("呈现贡献 {} 尚不能通过能力插件清单启用；请安装独立 presentation package。",presentation["id"].as_str().unwrap_or("未知")));
     }
     Ok(issues)
 }
@@ -251,6 +259,23 @@ mod tests {
         assert!(normalize(&bad).is_err());
         let mut bad = view(); bad["dependencies"] = json!([]);
         assert!(normalize(&bad).is_err(), "v1 dependency name must not be reinterpreted");
+    }
+
+    #[test]
+    fn host_approved_workspace_writes_are_platform_independent() {
+        for source in [include_str!("../capability-plugins/codex/plugin.json"),include_str!("../capability-plugins/pi/plugin.json")] {
+            let manifest: Value = serde_json::from_str(source).unwrap();
+            assert!(activation_issues(&manifest).unwrap().is_empty());
+        }
+    }
+
+    #[test]
+    fn unsupported_required_contribution_identifies_the_contribution_and_operation() {
+        let mut manifest = provider();
+        manifest["contributions"][0]["operations"][0]["effect"] = json!("write");
+        manifest["contributions"][0]["operations"][0]["permissions"] = json!(["network.write"]);
+        let issues = activation_issues(&manifest).unwrap();
+        assert!(issues.iter().any(|issue|issue.contains("dev.aibo.git.read") && issue.contains("dev.aibo.git.changes")));
     }
 
     #[test]

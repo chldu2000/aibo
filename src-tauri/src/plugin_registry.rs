@@ -308,7 +308,13 @@ pub(crate) async fn install_builtins(db: &SqlitePool, data_dir: &Path) -> Result
             .bind(manifest["pluginId"].as_str().unwrap()).bind(manifest["version"].as_str().unwrap()).bind(digest)
             .fetch_optional(db).await.map_err(io_error)?;
         let id = match existing { Some(id) => id, None => install(db, data_dir, &source).await?.id };
-        enable(db, &id, true).await?;
+        if let Err(error) = enable(db, &id, true).await {
+            if error.starts_with("protocol_incompatible:") || error.starts_with("dependency_missing:") {
+                tracing::error!(plugin_id=manifest["pluginId"].as_str().unwrap_or("unknown"),installation_id=%id,%error,"bundled plugin was installed but could not be enabled");
+                continue;
+            }
+            return Err(error);
+        }
     }
     Ok(())
 }

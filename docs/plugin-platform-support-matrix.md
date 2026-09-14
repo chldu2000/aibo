@@ -29,7 +29,7 @@
 | macOS arm64 | darwin-arm64；Unix 写入路径可用 | 本轮真实 App 的外部插件、双皮肤、审批、恢复和原生 AX 验收环境 |
 | macOS x64 | darwin-x64；样例清单允许安装 | 尚无本轮该架构真实运行证据，不扩展 arm64 的验收结论 |
 | Linux arm64 / x64 | linux-arm64 / linux-x64；Unix 写入实现存在 | 尚未完成原生运行、进程清理、路径、审批和桌面交互验收 |
-| Windows arm64 / x64 | windows-arm64 / windows-x64 | 尚未完成原生验收；当前 Capability 写入被 `cfg!(unix)` 支持检查拒绝 |
+| Windows arm64 / x64 | windows-arm64 / windows-x64；经宿主批准的工作区写入可激活 | 已覆盖清单激活与跨平台宿主写入实现；尚未完成完整原生运行、junction/reparse point、进程清理、审批和桌面交互验收，不据此作正式发布支持承诺 |
 
 清单必须显式包含当前平台，宿主不会将纯数据协议跨平台等同于插件执行跨平台。表中 Linux/Windows 是代码识别范围，不是已经通过的发行支持承诺；外部样例仅声明两个 darwin 平台。其他 OS/架构未列入支持范围。
 
