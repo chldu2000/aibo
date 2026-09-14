@@ -1,8 +1,10 @@
 <script lang="ts">
+  import { tick } from 'svelte';
   import type { ModelConfigurationState } from '$lib/app/model-configuration';
   import { Button, Card, Icon, ModelMatrix, Textarea } from '$lib/ui-kit';
   import type { UiModelMatrixRow } from '$lib/ui-kit';
   import type { AgentCommand, AgentCommandCategory, ContextAttachment, SessionAccessMode, SessionExecutionProfile, SessionModelCatalog, Session, WorkspacePathSuggestion } from '$lib/types';
+  import { scrollActiveOptionIntoView } from './active-option-scroll';
 
   type SlashCategory = 'all' | AgentCommandCategory;
 
@@ -83,6 +85,7 @@
   let attachmentMenuOpen = $state(false);
   let sessionMenuOpen = $state(false);
   let modelMenuOpen = $state(false);
+  let suggestionList: HTMLElement | null = $state(null);
 
   $effect(() => {
     // The category is a view preference for the current command list. A new
@@ -252,6 +255,11 @@
     onComposerInput(value);
   }
 
+  async function scrollToActiveSuggestion(): Promise<void> {
+    await tick();
+    scrollActiveOptionIntoView(suggestionList);
+  }
+
   function selectWorkspacePath(suggestion: WorkspacePathSuggestion): void {
     text = text.replace(/(?:^|\s)@([^\s]*)$/, (match) => {
       const prefix = match.startsWith(' ') ? ' ' : '';
@@ -325,11 +333,13 @@
           if (event.key === 'ArrowDown') {
             event.preventDefault();
             mentionActiveIndex = (mentionActiveIndex + 1) % mentionSuggestions.length;
+            void scrollToActiveSuggestion();
             return;
           }
           if (event.key === 'ArrowUp') {
             event.preventDefault();
             mentionActiveIndex = (mentionActiveIndex - 1 + mentionSuggestions.length) % mentionSuggestions.length;
+            void scrollToActiveSuggestion();
             return;
           }
           if (event.key === 'Enter' || event.key === 'Tab') {
@@ -350,6 +360,7 @@
             const nextIndex = (currentIndex + (event.shiftKey ? -1 : 1) + slashCategories.length) % slashCategories.length;
             slashCategory = slashCategories[nextIndex]?.id ?? 'all';
             slashActiveIndex = 0;
+            void scrollToActiveSuggestion();
             return;
           }
         }
@@ -357,11 +368,13 @@
           if (event.key === 'ArrowDown') {
             event.preventDefault();
             slashActiveIndex = (slashActiveIndex + 1) % filteredAgentCommands.length;
+            void scrollToActiveSuggestion();
             return;
           }
           if (event.key === 'ArrowUp') {
             event.preventDefault();
             slashActiveIndex = (slashActiveIndex - 1 + filteredAgentCommands.length) % filteredAgentCommands.length;
+            void scrollToActiveSuggestion();
             return;
           }
           if (event.key === 'Enter' && !event.metaKey && !event.ctrlKey) {
@@ -385,7 +398,7 @@
       oninput={(event) => updateComposerInput((event.currentTarget as HTMLTextAreaElement).value)}
     ></Textarea>
     {#if showMentionSuggestions && mentionActiveIndex >= 0}
-      <div class="composer-suggestions" role="listbox" aria-label="引用会话或工作区路径">
+      <div bind:this={suggestionList} class="composer-suggestions" role="listbox" aria-label="引用会话或工作区路径">
         {#each mentionSuggestions as suggestion, index (suggestion.kind === 'session' ? `session-${suggestion.session.id}` : `path-${suggestion.path.path}`)}
           <button
             type="button"
@@ -402,7 +415,7 @@
         {/each}
       </div>
     {:else if showSlashMenu}
-      <div class="composer-suggestions" role="listbox" aria-label="Agent 命令">
+      <div bind:this={suggestionList} class="composer-suggestions" role="listbox" aria-label="Agent 命令">
         <div class="composer-command-categories" role="tablist" aria-label="命令分类">
           {#each slashCategories as category (`slash-category-${category.id}`)}
             <button
