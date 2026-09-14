@@ -46,20 +46,18 @@ use sqlx::{
     Connection, Row, SqlitePool,
 };
 use std::{
-    collections::{BTreeSet, HashMap},
+    collections::BTreeSet,
     env,
     error::Error,
     fs,
     io::{self, Read},
     path::{Path, PathBuf},
     process::{Command, ExitStatus, Stdio},
-    sync::Arc,
     thread,
     time::Duration,
 };
 use tauri::{Manager, State};
 use time::{format_description::well_known::Rfc3339, OffsetDateTime};
-use tokio::sync::Mutex;
 use tokio::{io::AsyncReadExt, process::Command as TokioCommand};
 use tracing::{info, warn};
 use ulid::Ulid;
@@ -1687,13 +1685,9 @@ async fn update_session_execution_profile(
     if session.plugin_installation_id.is_none() {
         return Err(CoreError::SessionOperation("history_only: old session configuration is read-only".into()));
     }
-    let installation = session.plugin_installation_id.as_deref().unwrap();
-    let consent = confirm_session_permissions(&window, &state.db, Some(&session_id), &session.workspace_id, installation, &session.agent, &resolved.enforced)
-        .await.map_err(CoreError::SessionOperation)?;
     // The next capability open captures the updated host execution profile.
     state.plugins.close_admitted(window.label(), &session_id).await.map_err(CoreError::SessionOperation)?;
     save_session_profile(&state.db, &session_id, &resolved).await?;
-    session_permissions::save(&state.db, &session_id, consent.as_ref()).await.map_err(CoreError::SessionOperation)?;
     sqlx::query("UPDATE sessions SET state = 'idle', updated_at = ? WHERE id = ?")
         .bind(now_iso())
         .bind(&session_id)
@@ -3419,17 +3413,6 @@ async fn cancel_project_action(
     project_actions::cancel_project_action(&state.db, workspace_id, run_id).await
 }
 
-async fn confirm_session_permissions(window: &tauri::WebviewWindow, db: &SqlitePool, session: Option<&str>, workspace: &str, installation: &str, agent: &str, profile: &ExecutionProfile) -> Result<Option<serde_json::Value>, String> {
-    use tauri_plugin_dialog::{DialogExt, MessageDialogButtons};
-    session_permissions::confirm(db, session, workspace, installation, agent, profile, |message| async move {
-        let (send, receive) = tokio::sync::oneshot::channel();
-        window.app_handle().dialog().message(message).parent(window).title("Aibo · 启用宽泛权限")
-            .buttons(MessageDialogButtons::OkCancelCustom("启用此权限".into(), "取消".into()))
-            .show(move |accepted| { let _ = send.send(accepted); });
-        receive.await.map_err(|_| "confirmation_unavailable".to_owned())
-    }).await
-}
-
 fn git_write_request(request_id: String, window: tauri::WebviewWindow) -> workspace_write_runs::Request {
     host_write_request(request_id, window, "Aibo · 确认 Git 写入")
 }
@@ -3672,9 +3655,7 @@ async fn create_agent_session(workspace_id: String, agent_id: String, installati
     };
     let profile = requested_profile.map(|requested| execution_profile::resolve(&agent_id, Some(requested), now_iso())).transpose()?;
     let profile = match profile { Some(profile) => profile, None => execution_profile::resolve(&agent_id, None, now_iso())? };
-    let consent = confirm_session_permissions(&window, &state.db, None, &workspace_id, &installation_id, &agent_id, &profile.enforced).await?;
     let session = state.plugins.create_with_profile_from(window.label(), &workspace_id, &installation_id, &agent_id, Some(profile)).await?;
-    session_permissions::save(&state.db, &session.id, consent.as_ref()).await?;
     Ok(session)
 }
 
@@ -4380,9 +4361,8 @@ mod tests {
     };
     use crate::execution_profile;
     use sqlx::Row;
-    use std::{collections::HashMap, fs, path::PathBuf, sync::Arc, time::Duration};
+    use std::{collections::HashMap, fs, path::PathBuf, time::Duration};
     use tokio::io::AsyncWriteExt;
-    use tokio::sync::Mutex;
     use ulid::Ulid;
 
     fn test_directory() -> PathBuf {

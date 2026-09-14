@@ -480,54 +480,30 @@ async fn accepted_turn_snapshot_does_not_use_unready_interaction() {
 }
 
 #[tokio::test]
-async fn session_permission_consent_is_scoped_and_not_repeated_per_turn() {
+async fn selected_session_permissions_survive_restart_without_secondary_consent() {
     use crate::session_permissions as permissions;
     let (root, db, broker, host, session) = concurrent_session_fixture().await;
-    let installation = session.plugin_installation_id.as_deref().unwrap();
     let mut profile = crate::session_execution_profile(&db, &session.id).await.unwrap().profile;
     profile.enforced.interaction_mode = "edit".into();
     profile.enforced.filesystem_policy = "workspace-write".into();
-    profile.enforced.approval_policy = "on-request".into();
-    assert!(!permissions::broad(&profile.enforced));
-    assert!(permissions::confirm(&db, Some(&session.id), "w", installation, &session.agent, &profile.enforced,
-        |_| async { panic!("ordinary editing must not prompt") }).await.unwrap().is_none());
-    profile.requested = profile.enforced.clone();
-    execution_profile::save_for_session(&db, &session.id, &profile).await.unwrap();
-    for _ in 0..2 {
-        host.send_configured_from("main", &session.id, "normal edit-mode message").await.unwrap();
-        wait_for_turn(&host, &session.id).await;
-        assert_eq!(crate::session_by_id(&db, &session.id).await.unwrap().state, "idle");
-    }
+    profile.enforced.command_policy = "trusted".into();
     profile.enforced.approval_policy = "never".into();
-    assert!(permissions::broad(&profile.enforced));
-    let denied = permissions::confirm(&db, Some(&session.id), "w", installation, &session.agent, &profile.enforced,
-        |_| async { Ok(false) }).await;
-    assert!(denied.is_err());
-    assert_eq!(crate::session_execution_profile(&db, &session.id).await.unwrap().profile.enforced.approval_policy, "on-request");
-    let context = permissions::confirm(&db, None, "w", installation, &session.agent, &profile.enforced,
-        |message| async move { assert!(message.contains("无需逐次确认")); assert!(!message.contains("capability.invoke")); Ok(true) }).await.unwrap().unwrap();
     profile.requested = profile.enforced.clone();
     execution_profile::save_for_session(&db, &session.id, &profile).await.unwrap();
-    assert!(permissions::turn_request(&db, &session.id, "main").await.is_err(), "old broad profiles require consent");
-    permissions::save(&db, &session.id, Some(&context)).await.unwrap();
-    profile.enforced.model = Some("another-model".into());
-    let same = permissions::confirm(&db, Some(&session.id), "w", installation, &session.agent, &profile.enforced,
-        |_| async { panic!("model changes cannot prompt") }).await.unwrap().unwrap();
-    assert_eq!(same, context);
+
     for _ in 0..2 {
-        host.send_configured_from("main", &session.id, "broad-mode message").await.unwrap();
+        host.send_configured_from("main", &session.id, "selected broad-mode message").await.unwrap();
         wait_for_turn(&host, &session.id).await;
         assert_eq!(crate::session_by_id(&db, &session.id).await.unwrap().state, "idle");
     }
-    assert!(!permissions::granted(&db, "another-session", &context).await.unwrap());
+
+    broker.stop_session(&session.id).await.unwrap();
+    host.send_configured_from("main", &session.id, "after runtime restart").await.unwrap();
+    wait_for_turn(&host, &session.id).await;
+
     sqlx::query("UPDATE workspaces SET permission_epoch=permission_epoch+1 WHERE id='w'").execute(&db).await.unwrap();
-    assert!(permissions::turn_request(&db, &session.id, "main").await.is_err(), "trust changes invalidate consent");
-    let refreshed = permissions::context(&db, "w", installation, &session.agent, &profile.enforced).await.unwrap();
-    permissions::save(&db, &session.id, Some(&refreshed)).await.unwrap();
-    sqlx::query("UPDATE plugin_installations SET enabled_at='new-activation' WHERE id=?").bind(installation).execute(&db).await.unwrap();
-    assert!(permissions::turn_request(&db, &session.id, "main").await.is_err(), "plugin activation changes invalidate consent");
-    permissions::save(&db, &session.id, None).await.unwrap();
-    assert!(!permissions::granted(&db, &session.id, &refreshed).await.unwrap());
+    assert!(permissions::turn_request(&db, &session.id, "main").await.is_ok(), "a new turn uses the currently selected profile and trust context");
+
     broker.stop_session(&session.id).await.unwrap(); db.close().await; fs::remove_dir_all(root).unwrap();
 }
 

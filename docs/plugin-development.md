@@ -71,9 +71,9 @@ A semantic view references a declared provider operation. The greeting query rec
 views express content and intent, without HTML, CSS, skin IDs or executable UI code.
 
 For writes, declare a write effect and the required permissions. The host owns approval,
-workspace admission and durable outcomes. Session permission consent only authorizes the
-bound session's top-level turn; it is not general authorization for arbitrary plugin or
-nested dependency writes. Reference [write](../fixtures/plugins/capability-write/) and
+workspace admission and durable outcomes. The execution profile selected for a session
+authorizes that session's top-level turns without a second broad-permission prompt; it is
+not general authorization for arbitrary plugin or nested dependency writes. Reference [write](../fixtures/plugins/capability-write/) and
 [semantic write](../fixtures/plugins/semantic-write/) fixtures alongside the contracts.
 
 ## Package your own changes
