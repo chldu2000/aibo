@@ -10,6 +10,10 @@
     disabled,
     onSelect,
   }: UiModelMatrixProps = $props();
+
+  function effortIntensity(index: number, count: number): number {
+    return Math.max(1, Math.ceil(((index + 1) / Math.max(count, 1)) * 4));
+  }
 </script>
 
 <div class="shadcn-model-matrix-wrap">
@@ -18,8 +22,8 @@
       <tr>
         <th scope="col">模型</th>
         <th scope="col" title={defaultTitle}>{defaultLabel}</th>
-        {#each columns as column (column.id)}
-          <th scope="col" title={column.description ?? column.label}>{column.label}</th>
+        {#each columns as column, columnIndex (column.id)}
+          <th scope="col" data-intensity={effortIntensity(columnIndex, columns.length)} title={column.description ?? column.label}>{column.label}</th>
         {/each}
       </tr>
     </thead>
@@ -40,17 +44,23 @@
               onclick={() => onSelect(row.reference, null)}
             >{#if row.defaultActive}<Icon name="check" size={13} />{:else}<span aria-hidden="true">—</span>{/if}</button>
           </td>
-          {#each row.cells as cell (cell.id)}
+          {#each row.cells as cell, cellIndex (cell.id)}
             <td>
               <button
                 type="button"
                 class:active={cell.active}
+                data-intensity={effortIntensity(cellIndex, columns.length)}
                 aria-label={`${row.label}，${cell.label}`}
                 aria-pressed={cell.active}
                 disabled={!cell.available || disabled}
                 title={cell.available ? `${row.label} · ${cell.label}` : `${row.label} 不支持 ${cell.label}`}
                 onclick={() => onSelect(row.reference, cell.id)}
-              >{#if cell.active}<Icon name="check" size={13} />{:else}<span aria-hidden="true">{cell.available ? '○' : '—'}</span>{/if}</button>
+              >
+                <span class="effort-aura" aria-hidden="true"></span>
+                <span class="effort-spark effort-spark-a" aria-hidden="true"></span>
+                <span class="effort-spark effort-spark-b" aria-hidden="true"></span>
+                <span class="effort-mark">{#if cell.active}<Icon name="check" size={13} />{:else}<span aria-hidden="true">{cell.available ? '○' : '—'}</span>{/if}</span>
+              </button>
             </td>
           {/each}
         </tr>
@@ -102,6 +112,9 @@
     white-space: nowrap;
   }
 
+  .shadcn-model-matrix thead th[data-intensity="3"] { color: color-mix(in srgb, var(--muted-foreground) 70%, var(--primary)); }
+  .shadcn-model-matrix thead th[data-intensity="4"] { color: var(--primary); }
+
   .shadcn-model-matrix thead th:first-child {
     z-index: 2;
     left: 0;
@@ -147,6 +160,7 @@
   }
 
   .shadcn-model-matrix td button {
+    position: relative;
     display: inline-flex;
     width: 100%;
     height: 26px;
@@ -159,7 +173,16 @@
     background: transparent;
     font-size: 13px;
     text-align: center;
+    isolation: isolate;
+    transition: color 160ms ease, background-color 160ms ease, box-shadow 220ms ease, transform 160ms ease;
   }
+
+  .effort-mark { position: relative; z-index: 2; display: inline-flex; }
+  .effort-aura, .effort-spark { position: absolute; pointer-events: none; }
+  .effort-aura { z-index: 0; inset: 3px; border-radius: inherit; opacity: 0; }
+  .effort-spark { z-index: 1; width: 3px; height: 3px; border-radius: 999px; background: var(--primary-foreground); opacity: 0; }
+  .effort-spark-a { top: 4px; right: 7px; }
+  .effort-spark-b { bottom: 4px; left: 7px; }
 
   .shadcn-model-matrix td button:hover:not(:disabled),
   .shadcn-model-matrix td button:focus-visible {
@@ -173,6 +196,22 @@
     color: var(--primary-foreground);
     background: var(--primary);
   }
+
+  .shadcn-model-matrix td button.active[data-intensity="2"] { box-shadow: 0 0 0 1px color-mix(in srgb, var(--primary) 35%, transparent), 0 0 8px color-mix(in srgb, var(--primary) 28%, transparent); }
+  .shadcn-model-matrix td button.active[data-intensity="3"] { box-shadow: 0 0 0 1px color-mix(in srgb, var(--primary) 48%, transparent), 0 0 13px color-mix(in srgb, var(--primary) 42%, transparent); transform: translateY(-1px); }
+  .shadcn-model-matrix td button.active[data-intensity="4"] { box-shadow: 0 0 0 1px color-mix(in srgb, var(--primary) 65%, transparent), 0 0 18px color-mix(in srgb, var(--primary) 58%, transparent); transform: translateY(-1px) scale(1.03); }
+
+  @media (prefers-reduced-motion: no-preference) {
+    .shadcn-model-matrix td button.active[data-intensity="3"] .effort-aura,
+    .shadcn-model-matrix td button.active[data-intensity="4"] .effort-aura { background: linear-gradient(110deg, transparent 25%, color-mix(in srgb, var(--primary-foreground) 42%, transparent) 48%, transparent 70%); opacity: .7; animation: shadcn-effort-sheen 1.8s ease-in-out infinite; }
+    .shadcn-model-matrix td button.active[data-intensity="4"] { animation: shadcn-effort-pulse 2.2s ease-in-out infinite; }
+    .shadcn-model-matrix td button.active[data-intensity="4"] .effort-spark { animation: shadcn-effort-spark 1.4s ease-in-out infinite; }
+    .shadcn-model-matrix td button.active[data-intensity="4"] .effort-spark-b { animation-delay: -.7s; }
+  }
+
+  @keyframes shadcn-effort-sheen { 0%, 30% { transform: translateX(-45%); opacity: 0; } 55% { opacity: .8; } 80%, 100% { transform: translateX(45%); opacity: 0; } }
+  @keyframes shadcn-effort-pulse { 0%, 100% { filter: saturate(1); } 50% { filter: saturate(1.3) brightness(1.08); } }
+  @keyframes shadcn-effort-spark { 0%, 100% { opacity: 0; transform: scale(.4); } 45% { opacity: .95; transform: scale(1.35); } 70% { opacity: 0; transform: translateY(-4px) scale(.7); } }
 
   .shadcn-model-matrix td button:disabled {
     cursor: not-allowed;
