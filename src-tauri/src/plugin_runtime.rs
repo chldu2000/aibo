@@ -2,6 +2,7 @@
 //! Policy, operation validation and persistence remain in Core.
 use serde_json::{json, Value};
 use std::{
+    borrow::Cow,
     collections::HashMap,
     path::Path,
     sync::{atomic::{AtomicBool, Ordering}, Arc},
@@ -16,6 +17,23 @@ use tokio::{
 const MAX_MESSAGE: usize = 1_048_576;
 const MAX_PENDING: usize = 64;
 type Reply = oneshot::Sender<Result<Value, String>>;
+
+fn process_argument(value: &str) -> Cow<'_, str> {
+    #[cfg(windows)]
+    {
+        if let Some(path) = value.strip_prefix(r"\\?\UNC\") { return Cow::Owned(format!(r"\\{path}")); }
+        if let Some(path) = value.strip_prefix(r"\\?\") { return Cow::Borrowed(path); }
+    }
+    Cow::Borrowed(value)
+}
+
+fn process_path(path: &Path) -> Cow<'_, Path> {
+    let value = path.to_string_lossy();
+    match process_argument(&value) {
+        Cow::Borrowed(_) => Cow::Borrowed(path),
+        Cow::Owned(path) => Cow::Owned(path.into()),
+    }
+}
 
 enum CommandMessage {
     Request { id: String, method: String, params: Value, reply: Reply },
@@ -43,15 +61,17 @@ impl PluginRuntime {
     }
 
     fn spawn_transport(executable: &Path, args: &[String], directory: &Path, sdk_module: Option<&Path>, interactive: bool) -> Result<Self, String> {
-        let mut command = Command::new(executable);
+        let executable = process_path(executable);
+        let directory = process_path(directory);
+        let mut command = Command::new(executable.as_ref());
         command.env_clear();
         for name in ["SystemRoot", "WINDIR", "TEMP", "TMP", "PATH", "LANG", "LC_ALL"] {
             if let Some(value) = std::env::var_os(name) { command.env(name, value); }
         }
         if let Some(sdk_module) = sdk_module {
-            command.env("AIBO_PI_SDK_MODULE", sdk_module);
+            command.env("AIBO_PI_SDK_MODULE", process_path(sdk_module).as_ref());
         }
-        command.args(args).current_dir(directory).kill_on_drop(true)
+        command.args(args.iter().map(|arg|process_argument(arg).into_owned())).current_dir(directory.as_ref()).kill_on_drop(true)
             .stdin(std::process::Stdio::piped())
             .stdout(std::process::Stdio::piped())
             .stderr(std::process::Stdio::piped());
@@ -223,6 +243,18 @@ impl PluginRuntime {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[cfg(windows)]
+    #[tokio::test]
+    async fn node_accepts_verbatim_plugin_paths_at_the_process_boundary() {
+        let root = Path::new(env!("CARGO_MANIFEST_DIR")).parent().unwrap().canonicalize().unwrap();
+        assert!(root.to_string_lossy().starts_with(r"\\?\"), "Windows canonical paths should exercise the verbatim-prefix boundary");
+        let script = root.join("fixtures/plugins/capability-echo/worker.mjs");
+        let runtime = PluginRuntime::spawn_capability(Path::new("node"), &[script.to_string_lossy().into_owned()], &root).unwrap();
+        let result = runtime.request("capability.initialize",json!({"protocol":"2.0","generationId":runtime.generation_id,"pluginId":"dev.aibo.capability-echo","pluginVersion":"1.0.0","contributionId":"dev.aibo.capability-echo.read"}),Duration::from_secs(5)).await.unwrap();
+        assert_eq!(result["protocol"],"2.0");
+        assert!(runtime.stop_and_wait().await);
+    }
 
     #[tokio::test]
     async fn interactive_capability_stream_and_control_share_one_generation() {
