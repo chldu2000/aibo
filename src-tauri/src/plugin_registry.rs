@@ -292,8 +292,8 @@ pub(crate) async fn install_builtins(db: &SqlitePool, data_dir: &Path) -> Result
     sqlx::query("UPDATE plugin_installations SET enabled=0 WHERE json_extract(manifest_json,'$.schema')='aibo.plugin-manifest/v1'")
         .execute(db).await.map_err(io_error)?;
     for (directory, files) in [
-        ("codex-2.0.0", vec![("plugin.json", include_bytes!("../capability-plugins/codex/plugin.json").as_slice()), ("engine.mjs", include_bytes!("../capability-plugins/codex/engine.mjs").as_slice()), ("worker.mjs", include_bytes!("../capability-plugins/codex/worker.mjs").as_slice()), ("session-provider.mjs", include_bytes!("../capability-plugins/session-provider.mjs").as_slice()), ("runtime.mjs", include_bytes!("../../packages/capability-runtime/runtime.mjs").as_slice()), ("stdio.mjs", include_bytes!("../../packages/capability-runtime/stdio.mjs").as_slice())]),
-        ("pi-2.0.0", vec![("plugin.json", include_bytes!("../capability-plugins/pi/plugin.json").as_slice()), ("engine.mjs", include_bytes!("../capability-plugins/pi/engine.mjs").as_slice()), ("worker.mjs", include_bytes!("../capability-plugins/pi/worker.mjs").as_slice()), ("session-provider.mjs", include_bytes!("../capability-plugins/session-provider.mjs").as_slice()), ("runtime.mjs", include_bytes!("../../packages/capability-runtime/runtime.mjs").as_slice()), ("stdio.mjs", include_bytes!("../../packages/capability-runtime/stdio.mjs").as_slice())]),
+        ("codex-2.0.1", vec![("plugin.json", include_bytes!("../capability-plugins/codex/plugin.json").as_slice()), ("engine.mjs", include_bytes!("../capability-plugins/codex/engine.mjs").as_slice()), ("worker.mjs", include_bytes!("../capability-plugins/codex/worker.mjs").as_slice()), ("session-provider.mjs", include_bytes!("../capability-plugins/session-provider.mjs").as_slice()), ("runtime.mjs", include_bytes!("../../packages/capability-runtime/runtime.mjs").as_slice()), ("stdio.mjs", include_bytes!("../../packages/capability-runtime/stdio.mjs").as_slice())]),
+        ("pi-2.0.1", vec![("plugin.json", include_bytes!("../capability-plugins/pi/plugin.json").as_slice()), ("engine.mjs", include_bytes!("../capability-plugins/pi/engine.mjs").as_slice()), ("worker.mjs", include_bytes!("../capability-plugins/pi/worker.mjs").as_slice()), ("session-provider.mjs", include_bytes!("../capability-plugins/session-provider.mjs").as_slice()), ("runtime.mjs", include_bytes!("../../packages/capability-runtime/runtime.mjs").as_slice()), ("stdio.mjs", include_bytes!("../../packages/capability-runtime/stdio.mjs").as_slice())]),
     ] {
         let source = data_dir.join("bundled-plugin-sources").join(directory);
         fs::create_dir_all(&source).map_err(io_error)?;
@@ -560,6 +560,7 @@ mod tests {
         let installed = list(&db).await.unwrap();
         assert_eq!(installed.len(), 2);
         assert_eq!(installed.iter().map(|plugin|plugin.plugin_id.as_str()).collect::<std::collections::HashSet<_>>(), std::collections::HashSet::from(["dev.aibo.codex", "dev.aibo.pi"]));
+        assert!(installed.iter().all(|plugin| plugin.plugin_version == "2.0.1"));
         assert!(installed.iter().all(|plugin|plugin.enabled && plugin.installed));
         db.close().await;
         fs::remove_dir_all(root).unwrap();

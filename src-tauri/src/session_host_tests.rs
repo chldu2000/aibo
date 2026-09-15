@@ -487,14 +487,20 @@ async fn selected_session_permissions_survive_restart_without_secondary_consent(
     profile.enforced.interaction_mode = "edit".into();
     profile.enforced.filesystem_policy = "workspace-write".into();
     profile.enforced.command_policy = "trusted".into();
-    profile.enforced.approval_policy = "never".into();
+    profile.enforced.approval_policy = "on-request".into();
+    profile.enforced.approval_reviewer = "auto-review".into();
     profile.requested = profile.enforced.clone();
     execution_profile::save_for_session(&db, &session.id, &profile).await.unwrap();
+    sqlx::raw_sql("CREATE TRIGGER reject_redundant_turn_binding BEFORE INSERT ON capability_provider_bindings WHEN NEW.capability_id='aibo.session.turn.write' BEGIN SELECT RAISE(ABORT, 'turn binding storage unavailable'); END;")
+        .execute(&db).await.unwrap();
 
     for _ in 0..2 {
         host.send_configured_from("main", &session.id, "selected broad-mode message").await.unwrap();
         wait_for_turn(&host, &session.id).await;
         assert_eq!(crate::session_by_id(&db, &session.id).await.unwrap().state, "idle");
+        let failures: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM agent_events WHERE session_id=? AND event_type='adapter.crashed' AND json_extract(payload_json,'$.payload.reason')='Capability storage is unavailable'")
+            .bind(&session.id).fetch_one(&db).await.unwrap();
+        assert_eq!(failures, 0, "Approve for me must not fail in host capability storage");
     }
 
     broker.stop_session(&session.id).await.unwrap();

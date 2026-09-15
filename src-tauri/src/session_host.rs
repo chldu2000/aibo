@@ -228,10 +228,12 @@ impl SessionHost {
         tokio::spawn(async move {
             let execution=async {
                 if run.cancel.load(Ordering::Acquire) {return Err("cancelled: turn cancelled before dispatch".into());}
-                host.broker.bind(binding.clone()).await.map_err(|e|e.message)?;
                 let result=if let Some(approval)=approval.filter(|_|write) {
-                    host.broker.invoke_authorized_observed(&caller,request,&approval.child(turn.clone()),Some(observer)).await
-                } else {host.broker.invoke_bound_observed(&caller,request,&binding,Some(observer)).await};
+                    host.broker.invoke_bound_authorized_observed(&caller,request,&binding,&approval.child(turn.clone()),Some(observer)).await
+                } else {
+                    host.broker.bind(binding.clone()).await.map_err(|e|e.message)?;
+                    host.broker.invoke_bound_observed(&caller,request,&binding,Some(observer)).await
+                };
                 result.map_err(|e|format!("{}: {}",e.code,e.message))
             };
             tokio::pin!(execution);

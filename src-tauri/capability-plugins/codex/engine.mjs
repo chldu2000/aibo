@@ -2,7 +2,7 @@ import { spawn } from 'node:child_process';
 import readline from 'node:readline';
 
 const pluginId = 'dev.aibo.codex';
-const pluginVersion = '2.0.0';
+const pluginVersion = '2.0.1';
 
 export const capabilities = ['session.create', 'session.resume', 'session.close', 'turn.send', 'turn.cancel', 'stream.text', 'goal.manage', 'model.select', 'model.reasoning', 'skill.list', 'approval.respond', 'user-input.respond', 'session.snapshot', 'session.fork'];
 let child = null;

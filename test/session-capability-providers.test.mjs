@@ -133,7 +133,7 @@ test('Codex workspace catalog is a separate pinned contribution and cannot switc
   assert.equal(result.threads[0].cwd, f.directory);
   assert.equal(result.threads[0].status, 'idle');
   assert.equal(f.events.length, 0, 'catalog reads do not start conversations');
-  await assert.rejects(f.rpc('capability.initialize', {...f.identity,contributionId:'dev.aibo.codex.agent',protocol:'2.1',pluginId:'dev.aibo.codex',pluginVersion:'2.0.0'}), /initialization/);
+  await assert.rejects(f.rpc('capability.initialize', {...f.identity,contributionId:'dev.aibo.codex.agent',protocol:'2.1',pluginId:'dev.aibo.codex',pluginVersion:'2.0.1'}), /initialization/);
   assert.equal((await f.invoke('dev.aibo.codex.thread.list')).threads.length, 1);
 });
 

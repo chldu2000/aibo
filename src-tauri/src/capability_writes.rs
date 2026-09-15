@@ -91,6 +91,43 @@ impl Broker {
             }).await.map_err(failure)
     }
 
+    /// Session turns already carry an immutable installation binding. Execute
+    /// that exact release without first persisting a second, dynamic provider
+    /// selection for the same turn.
+    pub(crate) async fn invoke_bound_authorized_observed(&self, caller: &str, request: Request, binding: &Binding,
+        approval: &workspace_write_runs::Request, observer: Option<EventObserver>) -> Result<Response, Failure> {
+        Self::identity(&request.scope, &request.capability, &request.version)?;
+        if request.scope != binding.scope || request.capability != binding.capability || request.version != binding.version
+            || !approval.matches(&request.request_id, caller) || request.request_id.is_empty()
+            || request.request_id.len() > 160 || request.input.to_string().len() > input_limit(&request.capability) {
+            return Err(fail("invalid_input", "Invalid bound capability request or host approval identity"));
+        }
+        let workspace_id: Option<String> = match &request.scope {
+            Scope::Application => None,
+            Scope::Workspace(id) => Some(id.clone()),
+            Scope::Session(id) => sqlx::query_scalar("SELECT workspace_id FROM sessions WHERE id=?").bind(id).fetch_optional(&self.db).await.map_err(database)?,
+        };
+        let identity = input(&request);
+        if let Some(workspace) = &workspace_id {
+            if let Some(result) = workspace_write_runs::replay_requested(&self.db, workspace, OPERATION, &identity, approval).await.map_err(failure)? { return result.map_err(failure); }
+        }
+        let provider = self.offers(&request.scope, &request.capability, &request.version, Some(&binding.installation_id)).await?
+            .into_iter().find(|offer|offer.contribution_id == binding.contribution_id)
+            .ok_or_else(||fail("provider_unavailable", "Bound contribution provider is unavailable"))?;
+        if provider.operation["effect"] != "write" { return Err(fail("invalid_input", "Bound authorized invocation must be a write operation")); }
+        let workspace = self.workspace(&request.scope).await?.ok_or_else(||fail("permission_denied", "Capability writes require a workspace"))?;
+        self.validate_turn(&request).await?;
+        if !jsonschema::options().build(&provider.operation["inputSchema"]).map_err(database)?.is_valid(&request.input) { return Err(fail("invalid_input", "Input does not match the capability contract")); }
+        workspace_write_runs::execute_with_context(&self.db, &workspace, OPERATION, identity, approval,
+            || self.prepare_write(&request, &provider, &workspace, None, Some(binding)),
+            |cancel| async {
+                if cancel.is_requested().await { return Err(CoreError::WriteReplay { code:"cancelled".into(),message:"Capability was cancelled before dispatch".into() }); }
+                self.invoke_selected_observed(caller, request.clone(), provider.clone(), None, Some(WriteContext { cancellation:cancel, approval:approval.clone(), uncertain:Default::default() }),observer.clone()).await.map_err(|error| {
+                    CoreError::WriteOutcomeUnknown(format!("{}; invocation {}", error.message, error.invocation_id.as_deref().unwrap_or("not assigned")))
+                })
+            }).await.map_err(failure)
+    }
+
     pub(super) async fn dependency_provider(&self, request: &Request, owner: &Provider, plugin: &str, contribution: &str, persist: bool) -> Result<Provider,Failure> {
         let current: Option<(String,String)> = sqlx::query_as("SELECT manifest_json,package_digest FROM plugin_installations WHERE id=? AND installed=1 AND enabled=1").bind(&owner.installation_id).fetch_optional(&self.db).await.map_err(database)?;
         if !current.is_some_and(|(manifest,digest)|digest == owner.digest && serde_json::from_str::<Value>(&manifest).ok().as_ref() == Some(&owner.manifest)) { return Err(fail("provider_unavailable", "Calling release changed")); }
