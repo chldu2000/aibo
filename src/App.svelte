@@ -507,6 +507,7 @@
   import { isSessionRunning } from '$lib/app/session-state';
   import { dispatchBuiltinCommand } from '$lib/app/compatibility/command-dispatch';
   import { sessionAgentKind } from '$lib/app/agent-kind';
+  import { sessionAccessProfile } from '$lib/app/session-access-profile';
   import {
     addWorkspace,
     archiveSession as archiveSessionApi,
@@ -2045,6 +2046,7 @@
       schema: 'aibo.execution-profile/v1',
       interactionMode: 'ask',
       approvalPolicy: 'never',
+      approvalReviewer: 'none',
       filesystemPolicy: 'read-only',
       commandPolicy: 'disabled',
       networkPolicy: 'disabled',
@@ -2414,52 +2416,7 @@
   }
 
   function profileForAccess(mode: SessionAccessMode): ExecutionProfile {
-    const session = selectedSession;
-    const agentKind = sessionAgentKind(session);
-    const current = executionProfile?.requested ?? {
-      schema: 'aibo.execution-profile/v1' as const,
-      interactionMode: 'ask' as const,
-      approvalPolicy: agentKind === 'pi' ? 'never' as const : 'on-request' as const,
-      filesystemPolicy: 'read-only' as const,
-      commandPolicy: 'disabled' as const,
-      networkPolicy: 'disabled' as const,
-      model: null,
-      reasoningEffort: null,
-    };
-    if (agentKind === 'codex') {
-      if (mode === 'full-access') {
-        return { ...current, interactionMode: 'edit', approvalPolicy: 'never', filesystemPolicy: 'danger-full-access', commandPolicy: 'trusted', networkPolicy: 'agent-managed' };
-      }
-      if (mode === 'approve-for-me') {
-        return { ...current, interactionMode: 'edit', approvalPolicy: 'never', filesystemPolicy: 'workspace-write', commandPolicy: 'trusted', networkPolicy: 'disabled' };
-      }
-      return { ...current, interactionMode: 'ask', approvalPolicy: 'untrusted', filesystemPolicy: 'workspace-write', commandPolicy: 'approved', networkPolicy: 'disabled' };
-    }
-    if (mode === 'workspace-write') {
-      return {
-        ...current,
-        interactionMode: 'edit',
-        approvalPolicy: 'on-request',
-        filesystemPolicy: 'workspace-write',
-        commandPolicy: 'approved',
-      };
-    }
-    if (mode === 'plan') {
-      return {
-        ...current,
-        interactionMode: 'plan',
-        approvalPolicy: 'never',
-        filesystemPolicy: 'read-only',
-        commandPolicy: 'disabled',
-      };
-    }
-    return {
-      ...current,
-      interactionMode: 'ask',
-      approvalPolicy: 'never',
-      filesystemPolicy: 'read-only',
-      commandPolicy: 'disabled',
-    };
+    return sessionAccessProfile(sessionAgentKind(selectedSession), mode, executionProfile?.requested);
   }
 
   async function applySessionAccess(mode: SessionAccessMode): Promise<void> {

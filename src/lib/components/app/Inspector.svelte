@@ -322,6 +322,7 @@
           {#if sessionKind === 'codex'}
             <dl>
               <div><dt>审批</dt><dd>{executionProfile.enforced.approvalPolicy}</dd></div>
+              <div><dt>审核者</dt><dd>{executionProfile.enforced.approvalReviewer}</dd></div>
               <div><dt>沙箱</dt><dd>{executionProfile.enforced.filesystemPolicy}</dd></div>
               {#if executionProfile.enforced.model}<div><dt>模型</dt><dd>{executionProfile.enforced.model}</dd></div>{/if}
               {#if executionProfile.enforced.reasoningEffort}<div><dt>推理</dt><dd>{executionProfile.enforced.reasoningEffort}</dd></div>{/if}

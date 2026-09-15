@@ -24,6 +24,7 @@ test("Execution Profile v1 schema keeps requested and enforced policy separate",
   );
   assert.equal(schema.properties.schema.const, "aibo.execution-profile/v1");
   assert.deepEqual(schema.properties.interactionMode.enum, ["ask", "plan", "edit"]);
+  assert.deepEqual(schema.properties.approvalReviewer.enum, ["user", "auto-review", "none"]);
   assert.deepEqual(schema.$defs.resolved.required.slice(0, 3), [
     "schema",
     "requested",

@@ -2,7 +2,12 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {sessionCapability} from './helpers/session-capability.mjs';
 
-const profile={interactionMode:'ask',filesystemPolicy:'read-only',commandPolicy:'disabled',networkPolicy:'disabled',approvalPolicy:'untrusted'};
+const profile={interactionMode:'ask',filesystemPolicy:'read-only',commandPolicy:'disabled',networkPolicy:'disabled',approvalPolicy:'on-request',approvalReviewer:'user'};
+
+test('Codex auto-review profile uses the native approve-for-me reviewer',async t=>{
+  const f=await sessionCapability(t,'codex',{CODEX_FAKE_EXPECT_REVIEWER:'auto_review'});
+  await f.invoke('aibo.session.open',{mode:'create',executionProfile:{...profile,interactionMode:'edit',filesystemPolicy:'workspace-write',commandPolicy:'trusted',approvalReviewer:'auto-review'}});
+});
 test('Codex capability provider streams turns, controls native requests and restores native recovery',async t=>{
   const f=await sessionCapability(t,'codex');
   await assert.rejects(f.rpc('aibo.initialize',{}),/Unsupported/);
@@ -38,6 +43,12 @@ test('Codex capability provider streams turns, controls native requests and rest
   const approval=await waiting;
   assert.equal((await f.control(turn,'dev.aibo.codex.approval.respond',{requestId:approval.payload.requestId,decision:'accept'})).resolved,true);
   assert.equal((await turn.done).status,'completed');
+  const permissionWaiting=f.wait('approval.requested');const permissionTurn=f.startTurn('permissions please','permissions');
+  const permissionApproval=await permissionWaiting;
+  assert.equal(permissionApproval.payload.kind,'permissions');
+  assert.match(permissionApproval.payload.command,/\.git/);
+  assert.equal((await f.control(permissionTurn,'dev.aibo.codex.approval.respond',{requestId:permissionApproval.payload.requestId,decision:'accept'})).resolved,true);
+  assert.equal((await permissionTurn.done).status,'completed');
   const input=f.wait('user_input.requested');const question=f.startTurn('input please','question');
   await input;
   assert.equal((await f.control(question,'dev.aibo.codex.user-input.respond',{requestId:'provider-input',answers:{choice:['yes']}})).resolved,true);

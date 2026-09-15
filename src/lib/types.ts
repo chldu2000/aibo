@@ -4,6 +4,7 @@ export type AgentName = 'codex' | 'pi';
 export type InteractionMode = 'ask' | 'plan' | 'edit';
 export type SessionAccessMode = 'read-only' | 'plan' | 'workspace-write' | 'ask-for-approval' | 'approve-for-me' | 'full-access';
 export type ApprovalPolicy = 'never' | 'untrusted' | 'on-request' | 'trusted';
+export type ApprovalReviewer = 'user' | 'auto-review' | 'none';
 export type FilesystemPolicy = 'read-only' | 'workspace-write' | 'danger-full-access';
 export type CommandPolicy = 'disabled' | 'approved' | 'trusted';
 export type NetworkPolicy = 'disabled' | 'agent-managed';
@@ -12,6 +13,7 @@ export interface ExecutionProfile {
   schema: 'aibo.execution-profile/v1';
   interactionMode: InteractionMode;
   approvalPolicy: ApprovalPolicy;
+  approvalReviewer: ApprovalReviewer;
   filesystemPolicy: FilesystemPolicy;
   commandPolicy: CommandPolicy;
   networkPolicy: NetworkPolicy;

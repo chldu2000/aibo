@@ -30,6 +30,9 @@
               "approvalPolicy": {
                 "type": "string"
               },
+              "approvalReviewer": {
+                "enum": ["user", "auto-review", "none"]
+              },
               "filesystemPolicy": {
                 "type": "string"
               },

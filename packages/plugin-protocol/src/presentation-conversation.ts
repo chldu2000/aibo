@@ -5,6 +5,7 @@ type InteractionMode = 'ask' | 'plan' | 'edit';
 type SessionAccessMode = 'read-only' | 'plan' | 'workspace-write' | 'ask-for-approval' | 'approve-for-me' | 'full-access';
 
 type ApprovalPolicy = 'never' | 'untrusted' | 'on-request' | 'trusted';
+type ApprovalReviewer = 'user' | 'auto-review' | 'none';
 
 type FilesystemPolicy = 'read-only' | 'workspace-write' | 'danger-full-access';
 
@@ -16,6 +17,7 @@ interface ExecutionProfile {
   schema: 'aibo.execution-profile/v1';
   interactionMode: InteractionMode;
   approvalPolicy: ApprovalPolicy;
+  approvalReviewer: ApprovalReviewer;
   filesystemPolicy: FilesystemPolicy;
   commandPolicy: CommandPolicy;
   networkPolicy: NetworkPolicy;

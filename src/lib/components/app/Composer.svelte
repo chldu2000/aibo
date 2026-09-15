@@ -156,9 +156,9 @@
   const codexPermissionMode = $derived<'ask-for-approval' | 'approve-for-me' | 'full-access' | null>(
     activeProfile?.filesystemPolicy === 'danger-full-access'
       ? 'full-access'
-      : activeProfile?.filesystemPolicy === 'workspace-write' && activeProfile?.approvalPolicy === 'never'
+      : activeProfile?.filesystemPolicy === 'workspace-write' && activeProfile?.approvalPolicy === 'on-request' && activeProfile?.approvalReviewer === 'auto-review'
         ? 'approve-for-me'
-        : activeProfile?.filesystemPolicy === 'workspace-write' && activeProfile?.approvalPolicy === 'untrusted'
+        : activeProfile?.filesystemPolicy === 'workspace-write' && activeProfile?.approvalPolicy === 'on-request' && activeProfile?.approvalReviewer === 'user'
           ? 'ask-for-approval'
           : null,
   );

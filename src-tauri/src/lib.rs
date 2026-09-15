@@ -5249,6 +5249,7 @@ mod tests {
                 schema: execution_profile::EXECUTION_PROFILE_SCHEMA.to_owned(),
                 interaction_mode: "edit".to_owned(),
                 approval_policy: "on-request".to_owned(),
+                approval_reviewer: "user".to_owned(),
                 filesystem_policy: "workspace-write".to_owned(),
                 command_policy: "approved".to_owned(),
                 network_policy: "disabled".to_owned(),

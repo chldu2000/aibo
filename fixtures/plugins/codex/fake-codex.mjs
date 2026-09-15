@@ -18,11 +18,15 @@ input.on('line', (line) => {
   if (request.id === undefined) return;
   if (request.method === undefined && interactiveTurn && String(request.id) === interactiveTurn.requestId) {
     if (interactiveTurn.kind === 'approval' && !['accept', 'cancel'].includes(request.result?.decision)) throw new Error('invalid approval response');
+    if (interactiveTurn.kind === 'permissions' && request.result?.permissions?.fileSystem?.write?.[0] !== '.git') throw new Error('invalid permissions response');
     if (interactiveTurn.kind === 'user-input' && typeof request.result?.answers !== 'object') throw new Error('invalid user input response');
     completeTurn(interactiveTurn.params); interactiveTurn = null; return;
   }
   const { id, method, params = {} } = request;
-  const policy = {approvalPolicy:params.approvalPolicy,model:params.model,sandbox:{type:process.env.CODEX_FAKE_SANDBOX ?? ({'read-only':'readOnly','workspace-write':'workspaceWrite','danger-full-access':'dangerFullAccess'}[params.sandbox])}};
+  if ((method === 'thread/start' || method === 'thread/resume') && process.env.CODEX_FAKE_EXPECT_REVIEWER && params.approvalsReviewer !== process.env.CODEX_FAKE_EXPECT_REVIEWER) {
+    write({id,error:{code:-32000,message:'expected native approvals reviewer'}}); return;
+  }
+  const policy = {approvalPolicy:params.approvalPolicy,approvalsReviewer:params.approvalsReviewer,model:params.model,sandbox:{type:process.env.CODEX_FAKE_SANDBOX ?? ({'read-only':'readOnly','workspace-write':'workspaceWrite','danger-full-access':'dangerFullAccess'}[params.sandbox])}};
   if (method === 'initialize') write({ id, result: { userAgent: 'fake-codex/1.0.0' } });
   else if (method === 'account/rateLimits/read') write({ id, result: { rateLimits: { limitId: 'codex', limitName: '5 小时', planType: 'plus', primary: { usedPercent: 20, windowDurationMins: 300, resetsAt: 1900000000 }, secondary: { usedPercent: 40, windowDurationMins: 10080, resetsAt: 1900500000 }, credits: { balance: '12.5', hasCredits: true, unlimited: false } } } });
   else if (method === 'thread/start') write({ id, result: { thread: { id: process.env.CODEX_FAKE_THREAD_ID ?? 'native-thread' }, ...policy } });
@@ -60,6 +64,9 @@ input.on('line', (line) => {
     } else if (params.input[0].text === 'approval please') {
       interactiveTurn = { kind: 'approval', requestId: 'provider-approval', params };
       write({ id: interactiveTurn.requestId, method: 'item/commandExecution/requestApproval', params: { threadId: params.threadId, turnId: nativeTurnId, itemId: 'tool-1', command: 'test', cwd: '/tmp' } });
+    } else if (params.input[0].text === 'permissions please') {
+      interactiveTurn = { kind: 'permissions', requestId: 'provider-permissions', params };
+      write({ id: interactiveTurn.requestId, method: 'item/permissions/requestApproval', params: { threadId: params.threadId, turnId: nativeTurnId, itemId: 'tool-permissions', cwd: process.cwd(), startedAtMs: Date.now(), permissions: { fileSystem: { write: ['.git'] } } } });
     } else if (params.input[0].text === 'input please') {
       interactiveTurn = { kind: 'user-input', requestId: 'provider-input', params };
       write({ id: interactiveTurn.requestId, method: 'item/tool/requestUserInput', params: { threadId: params.threadId, turnId: nativeTurnId, itemId: 'tool-2', questions: [{ id: 'choice', header: 'Choice', question: 'Continue?', options: [] }] } });

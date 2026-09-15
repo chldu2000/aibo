@@ -7,6 +7,7 @@
     "schema",
     "interactionMode",
     "approvalPolicy",
+    "approvalReviewer",
     "filesystemPolicy",
     "commandPolicy",
     "networkPolicy"
@@ -14,8 +15,9 @@
   "properties": {
     "schema": { "const": "aibo.execution-profile/v1" },
     "interactionMode": { "enum": ["ask", "plan", "edit"] },
-    "approvalPolicy": { "enum": ["never", "on-request", "trusted"] },
-    "filesystemPolicy": { "enum": ["read-only", "workspace-write"] },
+    "approvalPolicy": { "enum": ["never", "untrusted", "on-request", "trusted"] },
+    "approvalReviewer": { "enum": ["user", "auto-review", "none"] },
+    "filesystemPolicy": { "enum": ["read-only", "workspace-write", "danger-full-access"] },
     "commandPolicy": { "enum": ["disabled", "approved", "trusted"] },
     "networkPolicy": { "enum": ["disabled", "agent-managed"] },
     "model": { "type": ["string", "null"] },

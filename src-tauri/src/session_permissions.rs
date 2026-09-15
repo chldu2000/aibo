@@ -13,7 +13,7 @@ pub(crate) async fn context(db: &SqlitePool, workspace: &str, installation: &str
     let (digest, activation) = enabled.ok_or("provider_unavailable: installation is disabled")?;
     Ok(json!({"workspace":workspace.id,"trustEpoch":epoch,"path":workspace.path,"installation":installation,"digest":digest,"activation":activation,"agent":agent,
         "interaction":profile.interaction_mode,"filesystem":profile.filesystem_policy,"commands":profile.command_policy,
-        "approval":profile.approval_policy,"network":profile.network_policy}))
+        "approval":profile.approval_policy,"approvalReviewer":profile.approval_reviewer,"network":profile.network_policy}))
 }
 
 async fn check(db: &SqlitePool, session_id: &str) -> Result<Value, String> {

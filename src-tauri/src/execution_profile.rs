@@ -30,6 +30,8 @@ pub(crate) struct ExecutionProfile {
     pub(crate) schema: String,
     pub(crate) interaction_mode: String,
     pub(crate) approval_policy: String,
+    #[serde(default = "default_approval_reviewer")]
+    pub(crate) approval_reviewer: String,
     pub(crate) filesystem_policy: String,
     pub(crate) command_policy: String,
     pub(crate) network_policy: String,
@@ -38,6 +40,8 @@ pub(crate) struct ExecutionProfile {
     #[serde(default)]
     pub(crate) reasoning_effort: Option<String>,
 }
+
+fn default_approval_reviewer() -> String { "user".to_owned() }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
@@ -66,10 +70,11 @@ fn default_profile(agent: &str) -> ExecutionProfile {
         schema: EXECUTION_PROFILE_SCHEMA.to_owned(),
         interaction_mode: "ask".to_owned(),
         approval_policy: if agent == "codex" {
-            "untrusted".to_owned()
+            "on-request".to_owned()
         } else {
             "never".to_owned()
         },
+        approval_reviewer: if agent == "codex" { "user" } else { "none" }.to_owned(),
         filesystem_policy: "read-only".to_owned(),
         command_policy: if agent == "codex" {
             "approved".to_owned()
@@ -111,6 +116,7 @@ fn validate_profile(profile: &ExecutionProfile) -> Result<(), String> {
         &profile.approval_policy,
         &["never", "untrusted", "on-request", "trusted"],
     )?;
+    validate_choice("approvalReviewer", &profile.approval_reviewer, &["user", "auto-review", "none"])?;
     validate_choice(
         "filesystemPolicy",
         &profile.filesystem_policy,
@@ -329,6 +335,7 @@ mod tests {
             schema: EXECUTION_PROFILE_SCHEMA.to_owned(),
             interaction_mode: "edit".to_owned(),
             approval_policy: "on-request".to_owned(),
+            approval_reviewer: "user".to_owned(),
             filesystem_policy: "workspace-write".to_owned(),
             command_policy: "approved".to_owned(),
             network_policy: "disabled".to_owned(),
@@ -420,7 +427,7 @@ mod tests {
     fn defaults_keep_codex_native_permissions_and_pi_mediated() {
         let codex = resolve("codex", None, "now".to_owned()).expect("codex default");
         assert_eq!(codex.requested, default_requested_profile("codex").unwrap());
-        assert_eq!(codex.enforced.approval_policy, "untrusted");
+        assert_eq!(codex.enforced.approval_policy, "on-request");
         assert_eq!(codex.enforced.filesystem_policy, "read-only");
         assert!(codex
             .adapter_capabilities
@@ -448,6 +455,9 @@ mod tests {
     fn rejects_unknown_profile_values() {
         let mut profile = editable_profile();
         profile.command_policy = "anything".to_owned();
+        assert!(resolve("codex", Some(profile), "now".to_owned()).is_err());
+        let mut profile = editable_profile();
+        profile.approval_reviewer = "anything".to_owned();
         assert!(resolve("codex", Some(profile), "now".to_owned()).is_err());
     }
 

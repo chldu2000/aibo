@@ -59,6 +59,8 @@ HTML、CSS、皮肤 ID 或可执行界面代码。
 写操作必须声明 write effect 和需要的权限，由宿主管理审批、工作区准入与持久化结果。
 用户为会话选择的执行配置直接授权该会话的顶层轮次，不再弹出第二次宽泛权限确认；
 它不是任意插件写入或嵌套依赖写入的通行证。
+宿主持久化语义化的 `approvalReviewer`（`user`、`auto-review` 或 `none`）；原生
+Adapter 负责将它转换为提供者特有的审核路由与权限授权。
 可结合契约阅读[能力写入夹具](../fixtures/plugins/capability-write/)和[语义写入夹具](../fixtures/plugins/semantic-write/)。
 
 ## 打包自己的改动

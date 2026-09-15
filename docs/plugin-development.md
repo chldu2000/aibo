@@ -75,6 +75,8 @@ workspace admission and durable outcomes. The execution profile selected for a s
 authorizes that session's top-level turns without a second broad-permission prompt; it is
 not general authorization for arbitrary plugin or nested dependency writes. Reference [write](../fixtures/plugins/capability-write/) and
 [semantic write](../fixtures/plugins/semantic-write/) fixtures alongside the contracts.
+The host persists the semantic `approvalReviewer` (`user`, `auto-review`, or `none`);
+native adapters translate it to provider-specific review routing and permission grants.
 
 ## Package your own changes
 

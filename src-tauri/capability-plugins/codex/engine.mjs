@@ -97,20 +97,24 @@ function isMissingRolloutError(error) {
     || normalized.includes('thread not loaded')
     || normalized.includes('thread not found');
 }
-function validateThreadPolicy(result, approvalPolicy, sandbox, model) {
+function nativeApprovalReviewer(reviewer) {
+  return reviewer === 'auto-review' ? 'auto_review' : reviewer === 'user' ? 'user' : null;
+}
+function validateThreadPolicy(result, approvalPolicy, approvalsReviewer, sandbox, model) {
   const sandboxType = {'read-only':'readOnly','workspace-write':'workspaceWrite','danger-full-access':'dangerFullAccess'}[sandbox];
-  if (result?.approvalPolicy !== approvalPolicy || !sandboxType || result?.sandbox?.type !== sandboxType) fail('invalid_output','Codex did not enforce the requested approval and sandbox policy');
+  if (result?.approvalPolicy !== approvalPolicy || (approvalsReviewer && result?.approvalsReviewer !== approvalsReviewer) || !sandboxType || result?.sandbox?.type !== sandboxType) fail('invalid_output','Codex did not enforce the requested approval and sandbox policy');
   if (model && result.model !== model) fail('invalid_output','Codex did not select the requested model');
 }
-async function startThread(cwd, approvalPolicy, sandbox, model) {
+async function startThread(cwd, approvalPolicy, approvalsReviewer, sandbox, model) {
   const result = await rpc('thread/start', {
     cwd,
     approvalPolicy,
+    ...(approvalsReviewer ? {approvalsReviewer} : {}),
     sandbox,
     serviceName: 'aibo_codex_plugin',
     ...(model ? {model} : {}),
   });
-  validateThreadPolicy(result, approvalPolicy, sandbox, model);
+  validateThreadPolicy(result, approvalPolicy, approvalsReviewer, sandbox, model);
   const threadId = result?.thread?.id;
   if (!threadId) fail('invalid_session', 'Codex did not return a thread id');
   return threadId;
@@ -122,8 +126,9 @@ function onCodex(message) {
     return;
   }
   if (message.id !== undefined && message.method?.endsWith('/requestApproval')) {
-    const requestId = String(message.id); providerRequests.set(requestId, { rawId: message.id, kind: 'approval' });
-    emit('approval.requested', { requestId, kind: message.params?.kind ?? null, command: message.params?.command ?? null,
+    const requestId = String(message.id); const permissions = message.method === 'item/permissions/requestApproval' ? message.params?.permissions ?? {} : null;
+    providerRequests.set(requestId, { rawId: message.id, kind: 'approval', permissions });
+    emit('approval.requested', { requestId, kind: permissions ? 'permissions' : message.params?.kind ?? null, command: permissions ? boundedText(JSON.stringify(permissions), 4_000) : message.params?.command ?? null,
       cwd: message.params?.cwd ?? null, availableDecisions: ['accept', 'cancel'] }, session?.turn?.id ?? null,
       { requestId, itemId: message.params?.itemId ?? null, approvalId: message.id }); return;
   }
@@ -216,6 +221,7 @@ export async function execute(action, p) {
     const approvalPolicy = typeof p.executionProfile?.approvalPolicy === 'string'
       ? p.executionProfile.approvalPolicy
       : 'untrusted';
+    const approvalsReviewer = nativeApprovalReviewer(p.executionProfile?.approvalReviewer);
     const sandbox = typeof p.executionProfile?.filesystemPolicy === 'string'
       ? p.executionProfile.filesystemPolicy
       : 'read-only';
@@ -227,8 +233,8 @@ export async function execute(action, p) {
       if (p.binding?.pluginId !== pluginId || recovery?.schema !== 'dev.aibo.codex.recovery' || recovery?.version !== 1 || typeof recovery.data?.threadId !== 'string') fail('invalid_recovery_data');
       threadId = recovery.data.threadId;
       try {
-        const result = await rpc('thread/resume', { threadId, approvalPolicy, sandbox, ...(model ? {model} : {}) });
-        validateThreadPolicy(result, approvalPolicy, sandbox, model);
+        const result = await rpc('thread/resume', { threadId, approvalPolicy, ...(approvalsReviewer ? {approvalsReviewer} : {}), sandbox, ...(model ? {model} : {}) });
+        validateThreadPolicy(result, approvalPolicy, approvalsReviewer, sandbox, model);
         threadId = result?.thread?.id ?? threadId;
       } catch (error) {
         // Codex creates the thread record before its first rollout. If Aibo
@@ -238,10 +244,10 @@ export async function execute(action, p) {
         // this session response, while the selected model/reasoning values
         // remain in the recovery payload below.
         if (!isMissingRolloutError(error)) throw error;
-        threadId = await startThread(p.workspace.path, approvalPolicy, sandbox, model);
+        threadId = await startThread(p.workspace.path, approvalPolicy, approvalsReviewer, sandbox, model);
       }
     } else {
-      threadId = await startThread(p.workspace.path, approvalPolicy, sandbox, model);
+      threadId = await startThread(p.workspace.path, approvalPolicy, approvalsReviewer, sandbox, model);
     }
     session = { id: p.sessionId, threadId, cwd: p.workspace.path,
       model, reasoningEffort,
@@ -331,7 +337,9 @@ export async function execute(action, p) {
     const expected = p.operationId.endsWith('.approval') ? 'approval' : 'user-input';
     if (!request || request.kind !== expected) fail('invalid_request', 'request is no longer pending');
     const result = expected === 'approval'
-      ? { decision: p.input.decision }
+      ? request.permissions
+        ? { permissions: p.input.decision === 'accept' ? request.permissions : {}, scope: 'turn' }
+        : { decision: p.input.decision }
       : { answers: Object.fromEntries(Object.entries(p.input.answers).map(([key, values]) => [key, { answers: Array.isArray(values) ? values : [values] }])) };
     child.stdin.write(`${JSON.stringify({ jsonrpc: '2.0', id: request.rawId, result })}\n`);
     providerRequests.delete(p.input.requestId);
