@@ -1,8 +1,10 @@
 <script lang="ts">
   import { tick } from 'svelte';
   import { commandComposerInsertion } from '$lib/app/agent-commands';
+  import { sessionAgentKind } from '$lib/app/agent-kind';
+  import { filterMentionSuggestions, type MentionCategory } from '$lib/app/mention-suggestions';
   import type { ModelConfigurationState } from '$lib/app/model-configuration';
-  import { Button, Card, Icon, ModelMatrix, Textarea } from '$lib/ui-kit';
+  import { AgentStatusMark, Button, Card, Icon, ModelMatrix, Textarea } from '$lib/ui-kit';
   import type { UiModelMatrixRow } from '$lib/ui-kit';
   import type { AgentCommand, AgentCommandCategory, ContextAttachment, SessionAccessMode, SessionExecutionProfile, SessionModelCatalog, Session, WorkspacePathSuggestion } from '$lib/types';
   import { scrollActiveOptionIntoView } from './active-option-scroll';
@@ -81,6 +83,7 @@
   );
 
   let mentionActiveIndex = $state(0);
+  let mentionCategory = $state<MentionCategory>('all');
   let slashActiveIndex = $state(0);
   let slashCategory = $state<SlashCategory>('all');
   let attachmentMenuOpen = $state(false);
@@ -93,6 +96,8 @@
     // session can expose a completely different set of commands, so do not
     // carry a stale filter across the session boundary.
     selectedSessionId;
+    mentionCategory = 'all';
+    mentionActiveIndex = 0;
     slashCategory = 'all';
     slashActiveIndex = 0;
   });
@@ -126,10 +131,13 @@
     { id: 'skill', label: 'Skills' },
     { id: 'extension', label: 'Extension' },
   ];
-  const mentionSuggestions = $derived([
-    ...sessionSuggestions.map(session => ({ kind: 'session' as const, session })),
-    ...workspacePathSuggestions.slice(0, 8).map(path => ({ kind: 'path' as const, path })),
-  ]);
+  const mentionCategories: Array<{ id: MentionCategory; label: string }> = [
+    { id: 'all', label: 'All' },
+    { id: 'files', label: 'Files' },
+    { id: 'folders', label: 'Folders' },
+    { id: 'sessions', label: 'Sessions' },
+  ];
+  const mentionSuggestions = $derived(filterMentionSuggestions(sessionSuggestions, workspacePathSuggestions, mentionCategory));
   function selectMention(index: number): void {
     const item = mentionSuggestions[index];
     if (!item) return;
@@ -138,7 +146,7 @@
     else selectWorkspacePath(item.path);
   }
   const showMentionSuggestions = $derived(
-    activeMentionQuery !== null && mentionActiveIndex >= 0 && mentionSuggestions.length > 0,
+    activeMentionQuery !== null && mentionActiveIndex >= 0,
   );
   const showSlashMenu = $derived(
     activeSlashQuery !== null && selectedAgent !== null && slashActiveIndex >= 0,
@@ -331,6 +339,17 @@
       disabled={!selectedSession || sessionArchived || selectedSessionArchiving || (sessionRunning && selectedAgent === 'codex') || busy}
       onkeydown={(event) => {
         if (showMentionSuggestions) {
+          if (event.key === 'Tab') {
+            event.preventDefault();
+            const currentIndex = mentionCategories.findIndex((category) => category.id === mentionCategory);
+            const nextIndex = (currentIndex + (event.shiftKey ? -1 : 1) + mentionCategories.length) % mentionCategories.length;
+            mentionCategory = mentionCategories[nextIndex]?.id ?? 'all';
+            mentionActiveIndex = 0;
+            void scrollToActiveSuggestion();
+            return;
+          }
+        }
+        if (showMentionSuggestions && mentionSuggestions.length > 0) {
           if (event.key === 'ArrowDown') {
             event.preventDefault();
             mentionActiveIndex = (mentionActiveIndex + 1) % mentionSuggestions.length;
@@ -400,6 +419,21 @@
     ></Textarea>
     {#if showMentionSuggestions && mentionActiveIndex >= 0}
       <div bind:this={suggestionList} class="composer-suggestions" role="listbox" aria-label="引用会话或工作区路径">
+        <div class="composer-command-categories" role="tablist" aria-label="引用分类">
+          {#each mentionCategories as category (`mention-category-${category.id}`)}
+            <button
+              type="button"
+              role="tab"
+              aria-selected={mentionCategory === category.id}
+              class:active={mentionCategory === category.id}
+              onclick={() => { mentionCategory = category.id; mentionActiveIndex = 0; }}
+              onmousedown={(event) => event.preventDefault()}
+            >{category.label}</button>
+          {/each}
+        </div>
+        {#if mentionSuggestions.length === 0}
+          <div class="composer-suggestions-empty">没有匹配的引用</div>
+        {/if}
         {#each mentionSuggestions as suggestion, index (suggestion.kind === 'session' ? `session-${suggestion.session.id}` : `path-${suggestion.path.path}`)}
           <button
             type="button"
@@ -409,9 +443,13 @@
             onclick={() => selectMention(index)}
             onmousedown={(event) => event.preventDefault()}
           >
-            <Icon name={suggestion.kind === 'session' || suggestion.path.isDirectory ? 'folder' : 'file'} size={13} />
+            {#if suggestion.kind === 'session'}
+              <AgentStatusMark agent={sessionAgentKind(suggestion.session)} tone="idle" label={`${suggestion.session.agent} 会话`} />
+            {:else}
+              <Icon name={suggestion.kind === 'folder' ? 'folder' : 'file'} size={13} />
+            {/if}
             <span>{suggestion.kind === 'session' ? suggestion.session.label : suggestion.path.path}</span>
-            <small>{suggestion.kind === 'session' ? `会话 · ${suggestion.session.agent}${suggestion.session.archived ? ' · 已归档' : ''}` : suggestion.path.isDirectory ? '目录' : '文件'}</small>
+            <small>{suggestion.kind === 'session' ? `会话 · ${suggestion.session.agent}${suggestion.session.archived ? ' · 已归档' : ''}` : suggestion.kind === 'folder' ? '目录' : '文件'}</small>
           </button>
         {/each}
       </div>
