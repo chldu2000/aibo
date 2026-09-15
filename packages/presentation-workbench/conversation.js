@@ -38,7 +38,7 @@ export function renderConversation(state,actions){
   const slash=state.draft.match(/^\/([^\s]*)$/);
   const categoryOf=command=>command.category??(command.source==='skill'?'skill':command.source==='extension'||command.source==='prompt'?'extension':'agent');
   const matches=slash?state.agentCommands.filter(command=>command.enabled!==false&&[command.name,...(command.aliases??[]),command.description??''].join(' ').toLocaleLowerCase().includes(slash[1].toLocaleLowerCase())):state.agentCommands;
-  const groups=slash?[['all','全部'],['agent','Agent'],['skill','Skills'],['extension','Extension']].map(([id,label])=>({id,label,commands:matches.filter(command=>id==='all'||categoryOf(command)===id).slice(0,24)})):[];
+  const groups=slash?[['all','All'],['agent','Agent'],['skill','Skills'],['extension','Extension']].map(([id,label])=>({id,label,commands:matches.filter(command=>id==='all'||categoryOf(command)===id).slice(0,24)})):[];
   const commands=slash?[...new Map(groups.flatMap(group=>group.commands).map(command=>[command.name,command])).values()]:matches;
   const pathButtons=state.workspacePathSuggestions.slice(0,24).map(item=>button('path:'+item.path,item.path+(item.isDirectory?'/':''),find('selectPath',item.path),{role:'option'}));
   const commandButtons=commands.map(command=>button('command:'+command.name,'/'+command.name,find('selectCommand',command.name),{title:command.description??command.name,role:slash?'option':'button'}));

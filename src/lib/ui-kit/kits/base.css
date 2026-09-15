@@ -242,7 +242,8 @@ h2 { font-size: 16px; letter-spacing: -0.02em; }
 .composer-attachment-remove { width: 18px !important; height: 18px !important; flex: none; color: var(--aibo-subtle); }
 .composer-textarea { min-width: 0; min-height: 74px; resize: vertical; border-color: transparent; padding: 1px 4px 0; background: transparent; box-shadow: none; font-size: 14px; line-height: 1.55; }
 .composer-textarea:focus-visible { border-color: transparent; box-shadow: none; }
-.composer-suggestions { position: absolute; z-index: 30; right: 0; bottom: calc(100% + 8px); left: 0; display: grid; max-height: 236px; overflow-y: auto; border: 1px solid var(--aibo-border-strong); border-radius: 8px; padding: 4px; background: var(--aibo-surface); box-shadow: 0 12px 28px rgb(0 0 0 / 28%); }
+.composer-suggestions { position: absolute; z-index: 30; right: 0; bottom: calc(100% + 8px); left: 0; display: grid; grid-template-rows: auto minmax(0, 1fr); max-height: 236px; overflow: hidden; border: 1px solid var(--aibo-border-strong); border-radius: 8px; padding: 4px; background: var(--aibo-surface); box-shadow: 0 12px 28px rgb(0 0 0 / 28%); }
+.composer-suggestion-options { display: grid; min-height: 0; overflow-y: auto; }
 .composer-suggestions button { display: flex; min-width: 0; align-items: center; gap: 8px; border: 0; border-radius: 5px; padding: 7px 8px; color: var(--aibo-muted); background: transparent; text-align: left; font-size: 11px; }
 .composer-suggestions button:hover, .composer-suggestions button.active { color: var(--aibo-text); background: var(--aibo-surface-hover); }
 .composer-suggestions-empty { padding: 8px; color: var(--aibo-subtle); font-size: 10px; }

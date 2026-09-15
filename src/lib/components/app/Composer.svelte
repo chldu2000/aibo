@@ -126,7 +126,7 @@
       .slice(0, 24);
   });
   const slashCategories: Array<{ id: SlashCategory; label: string }> = [
-    { id: 'all', label: '全部' },
+    { id: 'all', label: 'All' },
     { id: 'agent', label: 'Agent' },
     { id: 'skill', label: 'Skills' },
     { id: 'extension', label: 'Extension' },
@@ -418,7 +418,7 @@
       oninput={(event) => updateComposerInput((event.currentTarget as HTMLTextAreaElement).value)}
     ></Textarea>
     {#if showMentionSuggestions && mentionActiveIndex >= 0}
-      <div bind:this={suggestionList} class="composer-suggestions" role="listbox" aria-label="引用会话或工作区路径">
+      <div class="composer-suggestions" role="group" aria-label="引用会话或工作区路径">
         <div class="composer-command-categories" role="tablist" aria-label="引用分类">
           {#each mentionCategories as category (`mention-category-${category.id}`)}
             <button
@@ -431,30 +431,32 @@
             >{category.label}</button>
           {/each}
         </div>
-        {#if mentionSuggestions.length === 0}
-          <div class="composer-suggestions-empty">没有匹配的引用</div>
-        {/if}
-        {#each mentionSuggestions as suggestion, index (suggestion.kind === 'session' ? `session-${suggestion.session.id}` : `path-${suggestion.path.path}`)}
-          <button
-            type="button"
-            class:active={index === mentionActiveIndex}
-            role="option"
-            aria-selected={index === mentionActiveIndex}
-            onclick={() => selectMention(index)}
-            onmousedown={(event) => event.preventDefault()}
-          >
-            {#if suggestion.kind === 'session'}
-              <AgentStatusMark agent={sessionAgentKind(suggestion.session)} tone="idle" label={`${suggestion.session.agent} 会话`} />
-            {:else}
-              <Icon name={suggestion.kind === 'folder' ? 'folder' : 'file'} size={13} />
-            {/if}
-            <span>{suggestion.kind === 'session' ? suggestion.session.label : suggestion.path.path}</span>
-            <small>{suggestion.kind === 'session' ? `会话 · ${suggestion.session.agent}${suggestion.session.archived ? ' · 已归档' : ''}` : suggestion.kind === 'folder' ? '目录' : '文件'}</small>
-          </button>
-        {/each}
+        <div bind:this={suggestionList} class="composer-suggestion-options" role="listbox" aria-label="引用建议">
+          {#if mentionSuggestions.length === 0}
+            <div class="composer-suggestions-empty">没有匹配的引用</div>
+          {/if}
+          {#each mentionSuggestions as suggestion, index (suggestion.kind === 'session' ? `session-${suggestion.session.id}` : `path-${suggestion.path.path}`)}
+            <button
+              type="button"
+              class:active={index === mentionActiveIndex}
+              role="option"
+              aria-selected={index === mentionActiveIndex}
+              onclick={() => selectMention(index)}
+              onmousedown={(event) => event.preventDefault()}
+            >
+              {#if suggestion.kind === 'session'}
+                <AgentStatusMark agent={sessionAgentKind(suggestion.session)} tone="idle" label={`${suggestion.session.agent} 会话`} />
+              {:else}
+                <Icon name={suggestion.kind === 'folder' ? 'folder' : 'file'} size={13} />
+              {/if}
+              <span>{suggestion.kind === 'session' ? suggestion.session.label : suggestion.path.path}</span>
+              <small>{suggestion.kind === 'session' ? `会话 · ${suggestion.session.agent}${suggestion.session.archived ? ' · 已归档' : ''}` : suggestion.kind === 'folder' ? '目录' : '文件'}</small>
+            </button>
+          {/each}
+        </div>
       </div>
     {:else if showSlashMenu}
-      <div bind:this={suggestionList} class="composer-suggestions" role="listbox" aria-label="Agent 命令">
+      <div class="composer-suggestions" role="group" aria-label="Agent 命令">
         <div class="composer-command-categories" role="tablist" aria-label="命令分类">
           {#each slashCategories as category (`slash-category-${category.id}`)}
             <button
@@ -467,28 +469,30 @@
             >{category.label}</button>
           {/each}
         </div>
-        {#if agentCommandsLoading && filteredAgentCommands.length === 0}
-          <div class="composer-suggestions-empty">正在加载 Agent 命令…</div>
-        {:else if filteredAgentCommands.length === 0}
-          <div class="composer-suggestions-empty">
-            {agentCommands.length === 0 ? '当前会话暂无可用 Agent 命令' : '没有匹配的 Agent 命令'}
-          </div>
-        {:else}
-          {#each filteredAgentCommands as command, index (`slash-${command.source}-${command.name}`)}
-            <button
-              type="button"
-              class:active={index === slashActiveIndex}
-              role="option"
-              aria-selected={index === slashActiveIndex}
-              onclick={() => selectAgentCommand(command)}
-              onmousedown={(event) => event.preventDefault()}
-            >
-              <span class="composer-command-prefix">/{command.name}</span>
-              <span class="composer-command-description">{command.description ?? (command.source === 'skill' ? 'Skill' : command.source)}</span>
-              <small>{command.category === 'skill' || command.source === 'skill' ? 'Skill' : command.category === 'extension' || command.source === 'extension' || command.source === 'prompt' ? 'Extension' : 'Agent'}</small>
-            </button>
-          {/each}
-        {/if}
+        <div bind:this={suggestionList} class="composer-suggestion-options" role="listbox" aria-label="命令建议">
+          {#if agentCommandsLoading && filteredAgentCommands.length === 0}
+            <div class="composer-suggestions-empty">正在加载 Agent 命令…</div>
+          {:else if filteredAgentCommands.length === 0}
+            <div class="composer-suggestions-empty">
+              {agentCommands.length === 0 ? '当前会话暂无可用 Agent 命令' : '没有匹配的 Agent 命令'}
+            </div>
+          {:else}
+            {#each filteredAgentCommands as command, index (`slash-${command.source}-${command.name}`)}
+              <button
+                type="button"
+                class:active={index === slashActiveIndex}
+                role="option"
+                aria-selected={index === slashActiveIndex}
+                onclick={() => selectAgentCommand(command)}
+                onmousedown={(event) => event.preventDefault()}
+              >
+                <span class="composer-command-prefix">/{command.name}</span>
+                <span class="composer-command-description">{command.description ?? (command.source === 'skill' ? 'Skill' : command.source)}</span>
+                <small>{command.category === 'skill' || command.source === 'skill' ? 'Skill' : command.category === 'extension' || command.source === 'extension' || command.source === 'prompt' ? 'Extension' : 'Agent'}</small>
+              </button>
+            {/each}
+          {/if}
+        </div>
       </div>
     {/if}
   </div>
