@@ -65,9 +65,10 @@ impl PluginRuntime {
         let directory = process_path(directory);
         let mut command = Command::new(executable.as_ref());
         command.env_clear();
-        for name in ["SystemRoot", "WINDIR", "TEMP", "TMP", "PATH", "LANG", "LC_ALL"] {
+        for name in ["SystemRoot", "WINDIR", "TEMP", "TMP", "LANG", "LC_ALL"] {
             if let Some(value) = std::env::var_os(name) { command.env(name, value); }
         }
+        command.env("PATH", crate::executable_search_path());
         if let Some(sdk_module) = sdk_module {
             command.env("AIBO_PI_SDK_MODULE", process_path(sdk_module).as_ref());
         }

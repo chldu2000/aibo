@@ -3866,8 +3866,7 @@ async fn navigate_pi_session_tree(
 
 
 fn find_executable(name: &str) -> Option<PathBuf> {
-    let path_var = env::var_os("PATH")?;
-    for directory in env::split_paths(&path_var) {
+    for directory in env::split_paths(&executable_search_path()) {
         let candidate = directory.join(name);
         if is_executable(&candidate) {
             return Some(candidate);
@@ -3881,6 +3880,59 @@ fn find_executable(name: &str) -> Option<PathBuf> {
         }
     }
     None
+}
+
+pub(crate) fn executable_search_path() -> std::ffi::OsString {
+    executable_search_path_from(env::var_os("PATH"), env::var_os("HOME"))
+}
+
+fn executable_search_path_from(
+    inherited: Option<std::ffi::OsString>,
+    home: Option<std::ffi::OsString>,
+) -> std::ffi::OsString {
+    let mut directories: Vec<PathBuf> = inherited
+        .as_ref()
+        .map(|path| env::split_paths(path).collect())
+        .unwrap_or_default();
+    let mut append = |path: PathBuf| {
+        if !directories.contains(&path) {
+            directories.push(path);
+        }
+    };
+
+    #[cfg(target_os = "macos")]
+    {
+        append(PathBuf::from("/opt/homebrew/bin"));
+        append(PathBuf::from("/usr/local/bin"));
+    }
+    if let Some(home) = home {
+        let home = PathBuf::from(home);
+        for relative in [
+            ".local/bin",
+            ".volta/bin",
+            ".asdf/shims",
+            ".local/share/fnm/aliases/default/bin",
+        ] {
+            append(home.join(relative));
+        }
+        if let Ok(versions) = fs::read_dir(home.join(".nvm/versions/node")) {
+            let mut versions: Vec<_> = versions
+                .flatten()
+                .filter_map(|entry| {
+                    let version = entry.file_name();
+                    let version = version.to_string_lossy();
+                    semver::Version::parse(version.trim_start_matches('v'))
+                        .ok()
+                        .map(|version| (version, entry.path()))
+                })
+                .collect();
+            versions.sort_by(|left, right| right.0.cmp(&left.0));
+            for (_, version) in versions {
+                append(version.join("bin"));
+            }
+        }
+    }
+    env::join_paths(directories).unwrap_or_else(|_| inherited.unwrap_or_default())
 }
 
 fn is_executable(path: &Path) -> bool {
@@ -4349,7 +4401,8 @@ mod tests {
     use super::{
         auto_name_session_from_first_message, bind_pending_attachments_to_turn,
         canonical_workspace_path, collect_workspace_capabilities,
-        find_executable, mark_turn_interrupted, normalize_session_filter, now_iso, open_database,
+        executable_search_path_from, find_executable, mark_turn_interrupted,
+        normalize_session_filter, now_iso, open_database,
         persist_restore_operation, pi_snapshot_timeline, plugin_model_catalog, recover_interrupted_sessions,
         recover_interrupted_turn_changes, require_trusted_workspace,
         session_execution_profile, session_label_from_first_message,
@@ -4361,7 +4414,7 @@ mod tests {
     };
     use crate::execution_profile;
     use sqlx::Row;
-    use std::{collections::HashMap, fs, path::PathBuf, time::Duration};
+    use std::{collections::HashMap, env, fs, path::PathBuf, time::Duration};
     use tokio::io::AsyncWriteExt;
     use ulid::Ulid;
 
@@ -4510,6 +4563,20 @@ mod tests {
     #[test]
     fn finds_a_known_executable_without_shelling_out() {
         assert!(find_executable("sh").is_some() || cfg!(windows));
+    }
+
+    #[test]
+    fn executable_search_path_adds_gui_missing_user_tool_directories() {
+        let path = executable_search_path_from(
+            Some(std::ffi::OsString::from("/usr/bin:/bin")),
+            Some(std::ffi::OsString::from("/Users/aibo-test")),
+        );
+        let directories: Vec<_> = env::split_paths(&path).collect();
+        assert_eq!(directories[0], PathBuf::from("/usr/bin"));
+        assert!(directories.contains(&PathBuf::from("/Users/aibo-test/.local/bin")));
+        assert!(directories.contains(&PathBuf::from("/Users/aibo-test/.volta/bin")));
+        #[cfg(target_os = "macos")]
+        assert!(directories.contains(&PathBuf::from("/opt/homebrew/bin")));
     }
 
     #[test]
