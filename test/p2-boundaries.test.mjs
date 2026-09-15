@@ -8,7 +8,7 @@ test('workbench callbacks and writable bindings cross the generation gate', asyn
   const tree = parse(source, { modern: true });
   let guarded = 0;
   let hostCallbacks = 0;
-  const hostComponents = new Set(['HostPanel', 'AppOverlays', 'CommandPalette', 'WindowTitlebar', 'SettingsPanel', 'DiagnosticsPanel', 'PluginWorkspacePanel', 'ExecutionHistoryPanel', 'SessionHistoryPanel', 'CapabilityHistoryPanel']);
+  const hostComponents = new Set(['HostPanel', 'AppOverlays', 'CommandPalette', 'WindowTitlebar', 'SettingsPanel', 'DiagnosticsPanel', 'PluginManagerPanel', 'ExecutionHistoryPanel', 'SessionHistoryPanel', 'CapabilityHistoryPanel']);
   const foundHost = new Set();
   let hostApprovalRegion = false;
   const slots = new Set(['navigation', 'navigationResize', 'content', 'auxiliaryResize', 'auxiliary', 'overlays']);
@@ -26,7 +26,7 @@ test('workbench callbacks and writable bindings cross the generation gate', asyn
       for (const attribute of node.attributes) {
         if (!/^on[A-Z]/.test(attribute.name) || !attribute.value?.expression) continue;
         const expression = attribute.value.expression;
-        if (node.name === 'PluginWorkspacePanel') {
+        if (node.name === 'PluginManagerPanel') {
           assert.equal(expression.type, 'CallExpression');
           assert.equal(expression.callee.name, 'hostGuard', 'host plugin actions retain context checks');
         } else {

@@ -36,9 +36,10 @@ test('external sessions use the unified production session controller after the 
   assert.doesNotMatch(controller, /session\.agent === 'pi'/);
 });
 
-test('App plugin controls forward every lifecycle callback and surface recoverable failures', async () => {
+test('management center owns plugin administration while plugin sessions stay in the main workbench', async () => {
   const app = await readFile(new URL('../src/App.svelte', import.meta.url), 'utf8');
-  const panel = await readFile(new URL('../src/lib/components/app/PluginWorkspacePanel.svelte', import.meta.url), 'utf8');
+  const titlebar = await readFile(new URL('../src/lib/components/app/WindowTitlebar.svelte', import.meta.url), 'utf8');
+  const settings = await readFile(new URL('../src/lib/components/app/SettingsPanel.svelte', import.meta.url), 'utf8');
   const manager = await readFile(new URL('../src/lib/components/app/PluginManagerPanel.svelte', import.meta.url), 'utf8');
 
   for (const callback of [
@@ -54,17 +55,15 @@ test('App plugin controls forward every lifecycle callback and surface recoverab
     assert.match(app, new RegExp(`\\b${callback}\\b`), `${callback} must be wired through App`);
   }
   assert.doesNotMatch(app, /pluginViews|invokePluginViewAction|getPluginViews/);
-  assert.match(app, /onOpenPlugins=\{openPluginPanel\}/);
+  assert.match(app, /onOpenManagement=\{\(\) => openManagementCenter\('appearance'\)\}/);
+  assert.doesNotMatch(app, /<PluginWorkspacePanel/);
+  assert.match(app, /<PluginManagerPanel/);
+  assert.match(titlebar, /打开管理中心/);
+  assert.doesNotMatch(titlebar, /打开 Agent 诊断|data-host-navigation="plugins"/);
+  assert.match(settings, />外观<.*>扩展<.*>运行状态</s);
   assert.match(app, /catch \(error\) \{ pluginError = toErrorMessage\(error\); \}/);
   assert.match(app, /finally \{ pluginBusy = false; \}/);
-  assert.match(app, /onCancel=\{hostGuard\('onCancel', \(\) => pluginSessionOperation\(cancelAgentTurn\)\)\}/);
-  assert.match(app, /onResume=\{hostGuard\('onResume', \(\) => pluginSessionOperation\(resumeAgentSession\)\)\}/);
-  assert.match(app, /onCloseSession=\{hostGuard\('onCloseSession', \(\) => pluginSessionOperation\(closeAgentSession\)\)\}/);
-
-  assert.match(panel, /role="alert"/, 'plugin errors must be announced');
-  assert.match(panel, /aria-label="插件消息"/, 'plugin timeline must remain readable');
-  assert.match(panel, /const resumable = \$derived\(selectedSession\?\.state === 'interrupted' \|\| selectedSession\?\.state === 'failed'\)/);
-  assert.match(panel, /disabled=\{busy \|\| !resumable\}/, 'closed or idle sessions must not offer resume');
+  assert.match(app, /settingsOpen = false;/, 'creating an extension session returns to the main workbench');
   assert.match(manager, /!installation\.installed \|\| !installation\.enabled/, 'uninstalled plugins cannot create sessions');
   assert.match(manager, /installation\.sessionProviders as provider/);
   assert.match(manager, /!installation\.runnable/, 'plugins with missing required dependencies cannot create sessions');

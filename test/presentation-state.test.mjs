@@ -33,14 +33,13 @@ test('window selection migrates the main window only and cleared selection canno
   assert.deepEqual(readPersistedSelection(disk, 'secondary'), selection);
 });
 
-test('draft persistence does not discard older drafts and plugin panels share Core state', async () => {
+test('draft persistence does not discard older drafts and extension sessions use the main workbench', async () => {
   const disk = storage();
   const drafts = Object.fromEntries(Array.from({ length: 70 }, (_, id) => [String(id), { text: `draft ${id}`, updatedAt: '2000-01-01' }]));
   writeComposerDrafts(disk, drafts);
   assert.deepEqual(readComposerDrafts(disk), drafts);
   const app = await readFile(new URL('../src/App.svelte', import.meta.url), 'utf8');
-  assert.doesNotMatch(app, /pluginDrafts|pluginTimeline|pluginSelection/);
-  assert.match(app, /prompt=\{pluginSessionId \? composerText/);
-  assert.match(app, /timeline=\{timeline\.filter/);
-  assert.match(app, /onSelectSession=\{hostGuard\('onSelectSession', selectSession\)\}/);
+  assert.doesNotMatch(app, /pluginDrafts|pluginTimeline|pluginSelection|pluginSessionId|<PluginWorkspacePanel/);
+  assert.match(app, /navigationController\.selectSession\(session\.id\);\s+settingsOpen = false;/);
+  assert.match(app, /<PluginManagerPanel/);
 });

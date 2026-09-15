@@ -6,6 +6,7 @@
   type DiagnosticsPanelProps = {
     presentationActions?: Snippet;
     open: boolean;
+    embedded?: boolean;
     diagnostics: AgentDiagnosticView[];
     desktop: boolean;
     workspaceCount: number;
@@ -18,6 +19,7 @@
   let {
     presentationActions,
     open,
+    embedded = false,
     diagnostics,
     desktop,
     workspaceCount,
@@ -31,8 +33,8 @@
 </script>
 
 {#if open}
-  <div class="settings-content">
-    <div id="diagnostics-panel-content" class="settings-tab-panel" role="tabpanel">
+  <div class:settings-content={!embedded}>
+    <div id="diagnostics-panel-content" class="settings-tab-panel" role="tabpanel" aria-label="运行状态">
       {@render presentationActions?.()}
       <section class="settings-section" aria-labelledby="agent-diagnostics-title">
         <div class="settings-section-heading">
@@ -79,10 +81,12 @@
     </div>
   </div>
 
+  {#if !embedded}
   <div class="settings-footer">
     <Button variant="outline" size="sm" type="button" onclick={onRefresh} disabled={busy}>
       <Icon name="refresh" size={13} /> 刷新诊断
     </Button>
     <Button size="sm" type="button" onclick={onClose}>完成</Button>
   </div>
+  {/if}
 {/if}

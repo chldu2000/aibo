@@ -2,9 +2,8 @@
   import { Button, Icon } from '$lib/ui-kit';
 
   type WindowTitlebarProps = {
-    onOpenSettings: () => void;
-    onOpenDiagnostics: () => void;
-    onOpenPlugins: () => void;
+    onOpenManagement: () => void;
+    managementNeedsAttention: boolean;
     sidePanelOpen: boolean;
     onToggleSidePanel: () => void;
     onToggleMaximize: () => void;
@@ -13,9 +12,8 @@
   };
 
   let {
-    onOpenSettings,
-    onOpenDiagnostics,
-    onOpenPlugins,
+    onOpenManagement,
+    managementNeedsAttention,
     sidePanelOpen,
     onToggleSidePanel,
     onToggleMaximize,
@@ -37,14 +35,8 @@
 >
   <span class="window-title">Aibo</span>
   <div class="window-actions">
-    <Button variant="ghost" size="icon" type="button" data-host-navigation="plugins" aria-label="插件" title="插件" onclick={onOpenPlugins}>
-      <Icon name="plugins" size={15} />
-    </Button>
-    <Button variant="ghost" size="icon" type="button" aria-label="打开设置" title="设置" onclick={onOpenSettings}>
+    <Button variant={managementNeedsAttention ? 'secondary' : 'ghost'} size="icon" type="button" data-host-navigation="management" aria-label={managementNeedsAttention ? '打开管理中心，有项目需要处理' : '打开管理中心'} title={managementNeedsAttention ? '管理中心 · 需要处理' : '管理中心'} onclick={onOpenManagement}>
       <Icon name="settings" size={15} />
-    </Button>
-    <Button variant="ghost" size="icon" type="button" aria-label="打开 Agent 诊断" title="Agent 诊断" onclick={onOpenDiagnostics}>
-      <Icon name="diagnostics" size={15} />
     </Button>
     <Button
       variant={sidePanelOpen ? 'secondary' : 'ghost'}

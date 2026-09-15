@@ -113,7 +113,7 @@
       case 'openWorkspace': await openWorkspaceLocation(id); break;
       case 'createCodex': if (id !== selectedWorkspaceId) activateWorkspace(id); await createCodex(); break;
       case 'createPi': if (id !== selectedWorkspaceId) activateWorkspace(id); await createPi(); break;
-      case 'selectSession': installedTool = null; pluginsOpen = false; selectSession(id); break;
+      case 'selectSession': installedTool = null; selectSession(id); break;
       case 'unarchiveSession': await unarchiveSession(id); break;
       case 'archiveSession': requestArchiveSession(id); break;
       case 'syncSession': await syncCodexThread(id); break;
@@ -317,7 +317,7 @@
     switch(action.operation) {
       case 'open': {
         const contribution = installedContributions.find(item => item.installationId === action.args[0] && item.contributionId === action.args[1] && contributionAvailable(item));
-        if (contribution) { installedTool = contribution; pluginsOpen = false; }
+        if (contribution) { installedTool = contribution; }
         break;
       }
       case 'close': installedTool = null; break;
@@ -453,7 +453,7 @@
     WorkspaceFileDiffPreview,
     WorkspaceGitPanel,
     WorkspaceSidebar,
-    PluginWorkspacePanel,
+    PluginManagerPanel,
     toSessionListItemsByWorkspace,
     toUsageValues,
     toWorkspaceListItems,
@@ -858,8 +858,8 @@
   let retryReason = $state<string | null>(null);
   let lastSubmittedPrompt = $state<string | null>(null);
   let settingsOpen = $state(false);
+  let managementSection = $state<'appearance' | 'extensions' | 'runtime'>('appearance');
   const listSessions: typeof listAllSessions = listAllSessions;
-  let pluginsOpen = $state(false);
   let historyOpen = $state(false);
   let historyWorkspaceId = $state<string | null>(null);
   let executionHistory = $state(emptyExecutionHistory());
@@ -876,13 +876,11 @@
   function openExecutionHistory(): void {
     capabilityHistoryOpen = false;
     sessionHistoryOpen = false;
-    pluginsOpen = false; settingsOpen = false; commandPaletteOpen = false;
+    settingsOpen = false; commandPaletteOpen = false;
     historyWorkspaceId = selectedWorkspaceId ?? workspaces[0]?.id ?? null;
     historyOpen = true;
   }
-  function closeHostPanel(): void { pluginsOpen = false; diagnosticsOpen = false; historyOpen = false; capabilityHistoryOpen = false; }
-  function backToDiagnostics(): void { historyOpen = false; capabilityHistoryOpen = false; diagnosticsOpen = true; }
-
+  function closeHostPanel(): void { historyOpen = false; capabilityHistoryOpen = false; }
   let sessionHistoryOpen = $state(false);
   let sessionHistoryWorkspaceId = $state<string | null>(null);
   let sessionHistory = $state(emptySessionHistory());
@@ -899,7 +897,7 @@
   function openSessionHistory(): void {
     capabilityHistoryOpen = false;
     sessionHistoryTrigger = document.activeElement instanceof HTMLElement ? document.activeElement : null;
-    historyOpen = false; pluginsOpen = false; settingsOpen = false; diagnosticsOpen = false; commandPaletteOpen = false;
+    historyOpen = false; settingsOpen = false; commandPaletteOpen = false;
     sessionHistoryWorkspaceId = selectedWorkspaceId ?? workspaces[0]?.id ?? null;
     sessionHistoryOpen = true;
   }
@@ -918,17 +916,14 @@
     void capabilityHistoryController.open();
     return ()=>capabilityHistoryController.close();
   });
-  function openCapabilityHistory():void { historyOpen=true;sessionHistoryOpen=false;pluginsOpen=false;capabilityHistoryOpen=true; }
+  function openCapabilityHistory():void { historyOpen=true;sessionHistoryOpen=false;settingsOpen=false;capabilityHistoryOpen=true; }
   function backFromCapabilityHistory():void { capabilityHistoryOpen=false;historyOpen=true; }
 
   let pluginInstallations = $state<PluginInstallation[]>([]);
-  const pluginSessions = $derived((workspaceSessionMap[selectedWorkspaceId ?? ''] ?? []).filter(session => Boolean(session.pluginInstallationId)));
   const pluginManagerInstallations = $derived(pluginInstallations.map(installation => ({ ...installation, sessionProviders: sessionProviders(installation) })));
   let pluginPackagePath = $state('');
   let pluginBusy = $state(false);
   let pluginError = $state('');
-  const pluginSessionId = $derived(pluginSessions.some(session => session.id === selectedSessionId) ? selectedSessionId : null);
-  const pluginSession = $derived(pluginSessions.find((session) => session.id === pluginSessionId) ?? null);
 
   async function pluginOperation(operation: () => Promise<void>): Promise<void> {
     if (pluginBusy || !desktop) return;
@@ -949,16 +944,15 @@
     };
   }
 
-  function openPluginPanel(): void {
+  function openManagementCenter(section: 'appearance' | 'extensions' | 'runtime' = 'appearance'): void {
     capabilityHistoryOpen = false;
     sessionHistoryOpen = false;
     historyOpen = false;
-    settingsOpen = false;
-    diagnosticsOpen = false;
     commandPaletteOpen = false;
     installedTool = null;
-    pluginsOpen = true;
-    void pluginOperation(async () => { pluginInstallations = await listPluginInstallations(); });
+    managementSection = section;
+    settingsOpen = true;
+    if (section === 'extensions') void pluginOperation(async () => { pluginInstallations = await listPluginInstallations(); });
   }
 
   async function installPlugin(): Promise<void> {
@@ -990,43 +984,22 @@
     await pluginOperation(async () => {
       const session = await createAgentSession(workspaceId, agentId, installationId);
       workspaceSessionMap = upsertSession(workspaceSessionMap, session);
-      if (selectedWorkspaceId === workspaceId) navigationController.selectSession(session.id);
+      if (selectedWorkspaceId === workspaceId) {
+        navigationController.selectSession(session.id);
+        settingsOpen = false;
+      }
     });
   }
 
-  async function sendPluginPrompt(): Promise<void> {
-    if (!pluginSessionId) return;
-    await pluginOperation(() => messageController.sendPrompt());
-  }
-
-  function pluginSessionOperation(operation: (sessionId: string) => Promise<void>): void {
-    const id = pluginSessionId;
-    if (id) void pluginOperation(async () => {
-      await operation(id);
-      const session = findSession(id);
-      if (session) await refreshSessions(session.workspaceId);
-    });
-  }
+  const managementNeedsAttention = $derived(
+    diagnostics.some(agent => agent.status !== 'ready')
+      || pluginInstallations.some(installation => !installation.runnable || (installation.activationIssues?.length ?? 0) > 0)
+  );
 
   $effect(() => {
-    const workspaceId = selectedWorkspaceId;
-    if (!pluginsOpen || !desktop || !workspaceId) return;
-    let disposed = false;
-    let polling = false;
-    async function poll(): Promise<void> {
-      if (polling || disposed) return;
-      polling = true;
-      try {
-        await refreshSessions(workspaceId!, false);
-      } catch (error) {
-        if (!disposed) pluginError = toErrorMessage(error);
-      } finally { polling = false; }
-    }
-    untrack(() => { void poll(); });
-    const timer = setInterval(() => { void poll(); }, 750);
-    return () => { disposed = true; clearInterval(timer); };
+    if (!settingsOpen || managementSection !== 'extensions' || !desktop) return;
+    untrack(() => { void pluginOperation(async () => { pluginInstallations = await listPluginInstallations(); }); });
   });
-  let diagnosticsOpen = $state(false);
   let sidePanelOpen = $state(savedWorkbenchLayout.auxiliaryOpen);
   let sidePanelView = $state<SidePanelView>(savedWorkbenchLayout.activeView);
   const inspectorOpen = $derived(sidePanelOpen);
@@ -1062,16 +1035,11 @@
   let errorTimer: ReturnType<typeof setTimeout> | undefined;
 
   function openSettingsPanel(): void {
-    diagnosticsOpen = false;
-    settingsOpen = true;
+    openManagementCenter('appearance');
   }
 
   function openDiagnosticsPanel(): void {
-    closeHostPanel();
-    sessionHistoryOpen = false;
-    commandPaletteOpen = false;
-    settingsOpen = false;
-    diagnosticsOpen = true;
+    openManagementCenter('runtime');
   }
 
   function toggleMaximizeWindow(): void {
@@ -1452,7 +1420,7 @@
     { id: 'execution-history', label: '执行历史', description: '查看执行记录', run: openExecutionHistory },
     { id: 'session-history', label: '会话历史', description: '查找与恢复历史会话', run: openSessionHistory },
     ...installedContributions.map(item => ({ id: `installed:${item.installationId}:${item.contributionId}`, label: item.title, description: item.issue ?? '已安装的插件视图', disabled: !contributionAvailable(item),
-      run: () => { installedTool = item; pluginsOpen = false; commandPaletteOpen = false; } })),
+      run: () => { installedTool = item; settingsOpen = false; commandPaletteOpen = false; } })),
     {
       id: 'new-session',
       label: '新建会话',
@@ -1483,10 +1451,16 @@
     },
     {
       id: 'settings',
-      label: '打开设置',
-      description: '外观与主题设置',
+      label: '打开管理中心',
+      description: '外观、扩展与运行状态',
       shortcut: '⌘,',
       run: openSettingsPanel,
+    },
+    {
+      id: 'extensions',
+      label: '管理扩展',
+      description: '安装、启用或移除插件',
+      run: () => openManagementCenter('extensions'),
     },
     {
       id: 'diagnostics',
@@ -1527,7 +1501,7 @@
       if (key === 'escape') { event.preventDefault(); commandPaletteOpen = false; }
       return;
     }
-    if ((pluginsOpen || diagnosticsOpen || historyOpen || capabilityHistoryOpen) && !settingsOpen) {
+    if ((historyOpen || capabilityHistoryOpen) && !settingsOpen) {
       if (key === 'escape') { event.preventDefault(); closeHostPanel(); }
       return;
     }
@@ -1559,9 +1533,6 @@
       if (settingsOpen) {
         event.preventDefault();
         settingsOpen = false;
-      } else if (diagnosticsOpen) {
-        event.preventDefault();
-        diagnosticsOpen = false;
       }
     }
   }
@@ -3509,6 +3480,40 @@
   }} />
 {/snippet}
 
+{#snippet extensionManagement()}
+  <PluginManagerPanel
+    installations={pluginManagerInstallations}
+    packagePath={pluginPackagePath}
+    onPackagePathChange={hostGuard('onPackagePathChange', (value) => { pluginPackagePath = value; })}
+    busy={pluginBusy || !desktop}
+    onInstall={hostGuard('onInstall', () => void installPlugin())}
+    onEnabledChange={hostGuard('onEnabledChange', (id, enabled) => void enablePlugin(id, enabled))}
+    onUninstall={hostGuard('onUninstall', (id) => void uninstallPlugin(id))}
+    onCreateSession={hostGuard('onCreateSession', (installationId, agentId) => void createPluginSession(installationId, agentId))}
+  />
+  {#if pluginError}<p role="alert">{pluginError}</p>{/if}
+{/snippet}
+
+{#snippet runtimeStatus()}
+  <div class="management-runtime-actions">
+    <Button variant="outline" size="sm" type="button" onclick={() => void refresh()} disabled={busy}>
+      刷新运行状态
+    </Button>
+  </div>
+  <DiagnosticsPanel
+    presentationActions={diagnosticsActions}
+    open={true}
+    embedded={true}
+    diagnostics={diagnostics}
+    desktop={desktop}
+    workspaceCount={workspaces.length}
+    sessionCount={sessions.length}
+    busy={busy}
+    onRefresh={() => void refresh()}
+    onClose={() => (settingsOpen = false)}
+  />
+{/snippet}
+
 {#snippet hostPanelActions()}
   {#if capabilityHistoryOpen}
     <Button variant="outline" size="sm" disabled={!desktop || capabilityHistory.loadingScopes} onclick={() => void capabilityHistoryController.open()}>刷新作用域</Button>
@@ -3548,9 +3553,8 @@
     onClose={() => (commandPaletteOpen = false)}
   />
   <WindowTitlebar
-    onOpenPlugins={openPluginPanel}
-    onOpenSettings={openSettingsPanel}
-    onOpenDiagnostics={openDiagnosticsPanel}
+    onOpenManagement={() => openManagementCenter('appearance')}
+    {managementNeedsAttention}
     sidePanelOpen={sidePanelOpen}
     onToggleSidePanel={toggleSidePanel}
     onToggleMaximize={toggleMaximizeWindow}
@@ -3560,12 +3564,16 @@
   <SettingsPanel
     packageManagement={presentationPackageManagement}
     presentationActions={appearanceActions}
+    extensions={extensionManagement}
+    runtime={runtimeStatus}
     open={settingsOpen}
+    activeSection={managementSection}
     uiKits={presentationOptions}
     activeUiKitName={presentationPackages.active?.release.digest ?? $activeUiKitName}
     activeThemeId={presentationPackages.themeId ?? $activeTheme.id}
     onSelectUiKit={id => void presentationOperation(() => choosePresentation(id))}
     onSelectTheme={id => void presentationOperation(() => choosePresentationTheme(id))}
+    onSelectSection={section => { managementSection = section; }}
     onClose={() => (settingsOpen = false)}
   />
 
@@ -3602,24 +3610,11 @@
         onReload={()=>{if (sessionHistoryWorkspaceId) void sessionHistoryController.open(sessionHistoryWorkspaceId, sessionHistory.selectedId);}} />
     </div>
   {/if}
-  {#if pluginsOpen || diagnosticsOpen || historyOpen || capabilityHistoryOpen}
-    <HostPanel actions={hostPanelActions} title={pluginsOpen ? '插件工作台' : capabilityHistoryOpen ? '插件调用历史' : historyOpen ? '执行历史' : 'Agent 诊断'}
-      backLabel={capabilityHistoryOpen ? '执行历史' : historyOpen && diagnosticsOpen ? '诊断' : undefined}
-      onBack={capabilityHistoryOpen ? backFromCapabilityHistory : historyOpen && diagnosticsOpen ? backToDiagnostics : undefined}
+  {#if historyOpen || capabilityHistoryOpen}
+    <HostPanel actions={hostPanelActions} title={capabilityHistoryOpen ? '插件调用历史' : '执行历史'}
+      backLabel={capabilityHistoryOpen ? '执行历史' : undefined}
+      onBack={capabilityHistoryOpen ? backFromCapabilityHistory : undefined}
       onClose={closeHostPanel}>
-      <div hidden={historyOpen || capabilityHistoryOpen}>
-        <DiagnosticsPanel
-          presentationActions={diagnosticsActions}
-          open={diagnosticsOpen}
-          diagnostics={diagnostics}
-          desktop={desktop}
-          workspaceCount={workspaces.length}
-          sessionCount={sessions.length}
-          busy={busy}
-          onRefresh={() => void refresh()}
-          onClose={closeHostPanel}
-        />
-      </div>
       {#if capabilityHistoryOpen}
         <div class="host-capability-history-region" style="order:2;display:grid;flex:1;min-height:0;overflow:auto;">
           <CapabilityHistoryPanel state={capabilityHistory} {desktop} onSource={source=>void capabilityHistoryController.selectSource(source)} onSelect={scope=>void capabilityHistoryController.select(scope)}
@@ -3636,38 +3631,10 @@
             onOlder={() => void executionHistoryController.older()} onNewer={() => void executionHistoryController.newer()} onLatest={() => void executionHistoryController.latest()} />
         </div>
       {/if}
-      {#if pluginsOpen}
-        <div class="host-plugin-region" style="order: 2; display: grid; flex: 1; min-height: 0; overflow: auto;">
-          <PluginWorkspacePanel
-          installations={pluginManagerInstallations}
-          sessions={pluginSessions.filter((session) => session.workspaceId === selectedWorkspaceId)}
-          selectedSession={pluginSession?.workspaceId === selectedWorkspaceId ? pluginSession : null}
-          workspaceLabel={selectedWorkspace?.label ?? null}
-          packagePath={pluginPackagePath}
-          prompt={pluginSessionId ? composerText : ''}
-          timeline={timeline.filter((item) => item.sessionId === pluginSessionId)}
-          busy={pluginBusy}
-          error={pluginError || errorMessage || ''}
-          {desktop}
-          onPackagePathChange={hostGuard('onPackagePathChange', (value) => { pluginPackagePath = value; })}
-          onPromptChange={hostGuard('onPromptChange', (value) => { if (pluginSessionId) { composerText = value; handleComposerInput(value); } })}
-          onInstall={hostGuard('onInstall', () => void installPlugin())}
-          onEnabledChange={hostGuard('onEnabledChange', (id, enabled) => void enablePlugin(id, enabled))}
-          onUninstall={hostGuard('onUninstall', (id) => void uninstallPlugin(id))}
-          onCreateSession={hostGuard('onCreateSession', (installationId, agentId) => void createPluginSession(installationId, agentId))}
-          onSelectSession={hostGuard('onSelectSession', selectSession)}
-          onSend={hostGuard('onSend', () => void sendPluginPrompt())}
-          onCancel={hostGuard('onCancel', () => pluginSessionOperation(cancelAgentTurn))}
-          onResume={hostGuard('onResume', () => pluginSessionOperation(resumeAgentSession))}
-          onCloseSession={hostGuard('onCloseSession', () => pluginSessionOperation(closeAgentSession))}
-          onClose={hostGuard('onClose', closeHostPanel)}
-        />
-        </div>
-      {/if}
     </HostPanel>
   {/if}
-<PresentationHost hideWhenSuspended={sessionHistoryOpen} onRestore={() => void presentationOperation(() => presentationPackagesController.select(null))} bind:this={presentationHost} active={presentationPackages.active} themeId={presentationPackages.themeId} input={externalInput} suspended={pluginsOpen || historyOpen || sessionHistoryOpen || capabilityHistoryOpen || settingsOpen || diagnosticsOpen || commandPaletteOpen || archiveConfirmationSessionId !== null || piNavigationEntryId !== null} onIntent={externalIntent}>
-<WorkbenchPresentation hideWhenSuspended={sessionHistoryOpen} onRestore={() => desktop ? presentationPackagesController.select(null) : Promise.resolve()} bind:this={workbenchPresentation} bind:layout={presentationLayout} bind:switching={presentationSwitching} bind:gridElement={workspaceGridElement} navigationWidth={workspaceSidebarWidth} auxiliaryWidth={inspectorWidth} auxiliaryOpen={sidePanelOpen} suspended={pluginsOpen || historyOpen || sessionHistoryOpen || capabilityHistoryOpen || settingsOpen || diagnosticsOpen || commandPaletteOpen || archiveConfirmationSessionId !== null || piNavigationEntryId !== null} windowId={presentationWindowId()} snapshot={{ workspaceId: selectedWorkspaceId, sessionId: selectedSessionId, draft: composerText, navigation: sidePanelView, timelineRevision: timeline.length }}>
+<PresentationHost hideWhenSuspended={sessionHistoryOpen} onRestore={() => void presentationOperation(() => presentationPackagesController.select(null))} bind:this={presentationHost} active={presentationPackages.active} themeId={presentationPackages.themeId} input={externalInput} suspended={historyOpen || sessionHistoryOpen || capabilityHistoryOpen || settingsOpen || commandPaletteOpen || archiveConfirmationSessionId !== null || piNavigationEntryId !== null} onIntent={externalIntent}>
+<WorkbenchPresentation hideWhenSuspended={sessionHistoryOpen} onRestore={() => desktop ? presentationPackagesController.select(null) : Promise.resolve()} bind:this={workbenchPresentation} bind:layout={presentationLayout} bind:switching={presentationSwitching} bind:gridElement={workspaceGridElement} navigationWidth={workspaceSidebarWidth} auxiliaryWidth={inspectorWidth} auxiliaryOpen={sidePanelOpen} suspended={historyOpen || sessionHistoryOpen || capabilityHistoryOpen || settingsOpen || commandPaletteOpen || archiveConfirmationSessionId !== null || piNavigationEntryId !== null} windowId={presentationWindowId()} snapshot={{ workspaceId: selectedWorkspaceId, sessionId: selectedSessionId, draft: composerText, navigation: sidePanelView, timelineRevision: timeline.length }}>
 {#snippet navigation(guard)}
     <WorkspaceSidebar
       presentationActions={navigationActions}
@@ -3711,7 +3678,7 @@
         if (workspaceId !== selectedWorkspaceId) activateWorkspace(workspaceId);
         void createPi();
       })}
-      onSelectSession={guard('onSelectSession', (id) => { installedTool = null; pluginsOpen = false; selectSession(id); })}
+      onSelectSession={guard('onSelectSession', (id) => { installedTool = null; selectSession(id); })}
       onUnarchiveSession={guard('onUnarchiveSession', (sessionId) => void unarchiveSession(sessionId))}
       onRequestArchiveSession={guard('onRequestArchiveSession', requestArchiveSession)}
       onSyncCodexThread={guard('onSyncCodexThread', (sessionId) => void syncCodexThread(sessionId))}
