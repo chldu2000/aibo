@@ -128,8 +128,8 @@ h2 { font-size: 16px; letter-spacing: -0.02em; }
 .session-agent-pi { border-color: var(--aibo-accent-border); color: var(--aibo-text); }
 .agent-status-mark { position: relative; display: grid; width: 20px; height: 20px; flex: none; place-items: center; color: var(--aibo-subtle); }
 .agent-status-logo { position: relative; z-index: 1; width: 13px; height: 13px; background: currentColor; mask: center / contain no-repeat; }
-.agent-status-mark.agent-codex .agent-status-logo { mask-image: url('../assets/openai.svg'); }
-.agent-status-mark.agent-pi .agent-status-logo { mask-image: url('../assets/pi.svg'); }
+.agent-status-mark.agent-codex .agent-status-logo { mask-image: url('../assets/openai.svg?no-inline'); }
+.agent-status-mark.agent-pi .agent-status-logo { mask-image: url('../assets/pi.svg?no-inline'); }
 .agent-status-orbit { position: absolute; inset: 0; border: 1.5px solid color-mix(in srgb, currentColor 28%, transparent); }
 .agent-status-signal { position: absolute; z-index: 2; right: -1px; bottom: -1px; display: none; width: 6px; height: 6px; border: 1.5px solid var(--aibo-surface); background: currentColor; }
 .agent-status-mark.tone-running { color: var(--aibo-success-text); }

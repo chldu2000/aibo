@@ -77,3 +77,14 @@ test('app stylesheet keeps visual declarations inside the UI kit layer', async (
     'src/app.css must remain an entrypoint/layout stylesheet; visual CSS belongs to ui-kit skins',
   );
 });
+
+test('agent icon masks remain same-origin assets in packaged builds', async () => {
+  const source = await readFile(path.join(root, 'src/lib/ui-kit/kits/base.css'), 'utf8');
+  for (const icon of ['openai.svg', 'pi.svg']) {
+    assert.match(
+      source,
+      new RegExp(`url\\(['\"]?\\.\\./assets/${icon.replace('.', '\\.')}\\?no-inline['\"]?\\)`),
+      `${icon} must not become a data URL rejected by the desktop CSP`,
+    );
+  }
+});
