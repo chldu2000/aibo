@@ -468,6 +468,13 @@ aria-pressed 按钮，编辑器关联真实 listbox；可信桥继续校验动�
 返回统一主工作台，不维护第二套消息时间线。Agent 或插件不可用时，标题栏入口可显示
 宿主计算的需要处理状态，但具体视觉反馈仍由当前 UI Kit 决定。
 
+默认工作台的列顺序、列宽、滚动和恢复仍由可信 Presentation 管理；三栏表面、区域
+分隔、导航选中层级、时间线容器和 Composer 外形由必需的
+`UiKitAdapter.WorkbenchChrome` 管理。shadcn 使用紧凑密度、细分隔和扁平内容流；
+Material 3 使用 tonal surfaces、圆角容器和 state/elevation 层级。该组合控件只接收
+布局语义和既有工作台 children，不接收业务状态或皮肤专用 class，因而切换皮肤不会
+重建会话、草稿或 Presentation generation。
+
 暂停交互与隐藏布局分别控制：打开面板时默认及外部工作台保持挂载、可见且 inert，
 动作仍受原有暂停校验约束。历史页进入调用历史时保留执行历史实例及页码；返回时
 恢复该页滚动。关闭恢复触发焦点，Esc 关闭面板，返回按钮在面板内部导航。

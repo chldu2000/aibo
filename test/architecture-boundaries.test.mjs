@@ -270,6 +270,20 @@ test('management center layout is owned independently by both UI kits', async ()
   assert.doesNotMatch(settings, /data-ui-kit|data-ui-theme|shadcn|material3/, 'app settings must not branch on a skin');
 });
 
+test('workbench visual character belongs to both UI kits without duplicating layout behavior', async () => {
+  const [contract, host, shadcn, material] = await Promise.all([
+    readFile(path.join(root, 'src/lib/ui-kit/contract.ts'), 'utf8'),
+    readFile(path.join(root, 'src/lib/workbench/WorkbenchPresentation.svelte'), 'utf8'),
+    readFile(path.join(root, 'src/lib/ui-kit/kits/shadcn/WorkbenchChrome.svelte'), 'utf8'),
+    readFile(path.join(root, 'src/lib/ui-kit/kits/material3/WorkbenchChrome.svelte'), 'utf8'),
+  ]);
+  assert.match(contract, /WorkbenchChrome: Component<UiWorkbenchChromeProps>/);
+  assert.match(host, /<WorkbenchChrome layout=\{instance\.layout\}>/);
+  assert.match(shadcn, /session-item-row\.selected/);
+  assert.match(material, /--m3c-secondary-container/);
+  for (const skin of [shadcn, material]) assert.doesNotMatch(skin, /onSelectSession|workspaceId|sessionId/, 'skin chrome receives no business behavior');
+});
+
 test('TimelinePanel forwards every required Composer callback from App', async () => {
   const [app, panel, composer] = await Promise.all([
     readFile(path.join(root, 'src/App.svelte'), 'utf8'),

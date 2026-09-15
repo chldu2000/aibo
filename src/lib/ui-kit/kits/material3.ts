@@ -1,6 +1,7 @@
 import SettingsSection from './material3/SettingsSection.svelte';
 import HostPanel from './shared/HostPanel.svelte';
 import ManagementCenter from './material3/ManagementCenter.svelte';
+import WorkbenchChrome from './material3/WorkbenchChrome.svelte';
 import SemanticView from './material3/SemanticView.svelte';
 import AlertDialog from './material3/AlertDialog.svelte';
 import Badge from './material3/Badge.svelte';
@@ -25,6 +26,7 @@ import metadata from '../../../../packages/presentation-material3/themes.json';
 export const material3UiKit: UiKitAdapter = {
   HostPanel,
   ManagementCenter,
+  WorkbenchChrome,
   SettingsSection,
   SemanticView,
   AgentStatusMark,

@@ -1,6 +1,7 @@
 /** Runtime primitive proxies. Their implementations follow the active kit. */
 export { default as HostPanel } from './runtime/HostPanel.svelte';
 export { default as ManagementCenter } from './runtime/ManagementCenter.svelte';
+export { default as WorkbenchChrome } from './runtime/WorkbenchChrome.svelte';
 export { default as AgentStatusMark } from './runtime/AgentStatusMark.svelte';
 export { default as AlertDialog } from './runtime/AlertDialog.svelte';
 export { default as Badge } from './runtime/Badge.svelte';

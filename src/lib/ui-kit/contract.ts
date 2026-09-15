@@ -119,8 +119,13 @@ export type UiManagementCenterProps = {
   runtime: Snippet;
   footer?: Snippet;
 };
+export type UiWorkbenchChromeProps = {
+  layout: string;
+  children: Snippet;
+};
 
 export type UiKitAdapter = {
+  WorkbenchChrome: Component<UiWorkbenchChromeProps>;
   ManagementCenter: Component<UiManagementCenterProps>;
   SettingsSection: Component<UiSettingsSectionProps>;
   HostPanel: Component<UiHostPanelProps>;

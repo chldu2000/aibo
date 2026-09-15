@@ -1,6 +1,6 @@
 <script lang="ts">
   import { onMount, tick, untrack, type Snippet } from 'svelte';
-  import { Button, Card } from '$lib/ui-kit';
+  import { Button, Card, WorkbenchChrome } from '$lib/ui-kit';
   import { preflightDefaultPresentation, defaultWorkbenchSlots, defaultLayouts } from './plugins/default-presentation';
   import { createPresentationController, type Renderer } from '../app/presentation-controller';
   import type { WorkbenchSnapshot, WorkbenchAction } from '../presentation/workbench-contract';
@@ -143,12 +143,14 @@
 {/if}
 <div bind:this={target} onfocusin={rememberFocus} class="workbench-presentation" data-presentation-focus-target={focus} data-presentation-layout={instance?.layout} data-presentation-generation={instance?.generation} inert={switching || suspended} aria-busy={switching} style:display={suspended && hideWhenSuspended ? 'none' : 'flex'}>
   {#if instance}{#key instance.generation}
+    <WorkbenchChrome layout={instance.layout}>
       <main bind:this={gridElement} class="workspace-grid" class:inspector-hidden={!auxiliaryOpen} style:grid-template-columns={columns} style={`--workspace-sidebar-width: ${navigationWidth}px; --workspace-inspector-width: ${auxiliaryWidth}px`}>
         {#each visibleSlots as slot (slot)}
           {@render slots[slot]?.(instance.guard, { growthDirection: visibleSlots.indexOf(slot) < visibleSlots.indexOf('content') ? 1 : -1 })}
         {/each}
       </main>
       {@render overlays?.(instance.guard, { growthDirection: 1 })}
+    </WorkbenchChrome>
   {/key}{/if}
 </div>
 <style>

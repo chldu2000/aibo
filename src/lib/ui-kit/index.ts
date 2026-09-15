@@ -27,6 +27,7 @@ export type {
   UiModelMatrixProps,
   UiModelMatrixRow,
   UiThemeRegistration,
+  UiWorkbenchChromeProps,
 } from './contract';
 export {
   activeTheme,
