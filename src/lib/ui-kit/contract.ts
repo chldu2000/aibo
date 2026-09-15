@@ -108,7 +108,20 @@ export type UiHostPanelProps = {
   actions?: Snippet;
 };
 
+export type UiManagementSection = 'appearance' | 'extensions' | 'runtime';
+export type UiManagementCenterProps = {
+  title: string;
+  activeSection: UiManagementSection;
+  onSelectSection: (section: UiManagementSection) => void;
+  onClose: () => void;
+  appearance: Snippet;
+  extensions: Snippet;
+  runtime: Snippet;
+  footer?: Snippet;
+};
+
 export type UiKitAdapter = {
+  ManagementCenter: Component<UiManagementCenterProps>;
   SettingsSection: Component<UiSettingsSectionProps>;
   HostPanel: Component<UiHostPanelProps>;
   SemanticView: Component<PresentationProps>;

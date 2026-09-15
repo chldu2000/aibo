@@ -256,6 +256,20 @@ test('business modules do not depend on Svelte, UI, or API implementations', asy
   }
 });
 
+test('management center layout is owned independently by both UI kits', async () => {
+  const [contract, shadcn, material, settings] = await Promise.all([
+    readFile(path.join(root, 'src/lib/ui-kit/contract.ts'), 'utf8'),
+    readFile(path.join(root, 'src/lib/ui-kit/kits/shadcn/ManagementCenter.svelte'), 'utf8'),
+    readFile(path.join(root, 'src/lib/ui-kit/kits/material3/ManagementCenter.svelte'), 'utf8'),
+    readFile(path.join(root, 'src/lib/components/app/SettingsPanel.svelte'), 'utf8'),
+  ]);
+  assert.match(contract, /ManagementCenter: Component<UiManagementCenterProps>/);
+  assert.match(shadcn, /grid-template-columns: 13\.5rem minmax\(0, 1fr\)/, 'shadcn owns its sidebar layout');
+  assert.match(material, /border-radius: 1\.5rem/, 'Material 3 owns its navigation container shape');
+  assert.match(settings, /<ManagementCenter/);
+  assert.doesNotMatch(settings, /data-ui-kit|data-ui-theme|shadcn|material3/, 'app settings must not branch on a skin');
+});
+
 test('TimelinePanel forwards every required Composer callback from App', async () => {
   const [app, panel, composer] = await Promise.all([
     readFile(path.join(root, 'src/App.svelte'), 'utf8'),

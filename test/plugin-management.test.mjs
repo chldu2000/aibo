@@ -40,6 +40,7 @@ test('management center owns plugin administration while plugin sessions stay in
   const app = await readFile(new URL('../src/App.svelte', import.meta.url), 'utf8');
   const titlebar = await readFile(new URL('../src/lib/components/app/WindowTitlebar.svelte', import.meta.url), 'utf8');
   const settings = await readFile(new URL('../src/lib/components/app/SettingsPanel.svelte', import.meta.url), 'utf8');
+  const management = await readFile(new URL('../src/lib/ui-kit/kits/shadcn/ManagementCenter.svelte', import.meta.url), 'utf8');
   const manager = await readFile(new URL('../src/lib/components/app/PluginManagerPanel.svelte', import.meta.url), 'utf8');
 
   for (const callback of [
@@ -60,7 +61,8 @@ test('management center owns plugin administration while plugin sessions stay in
   assert.match(app, /<PluginManagerPanel/);
   assert.match(titlebar, /打开管理中心/);
   assert.doesNotMatch(titlebar, /打开 Agent 诊断|data-host-navigation="plugins"/);
-  assert.match(settings, />外观<.*>扩展<.*>运行状态</s);
+  assert.match(settings, /<ManagementCenter/);
+  assert.match(management, /label: '外观'.*label: '扩展'.*label: '运行状态'/s);
   assert.match(app, /catch \(error\) \{ pluginError = toErrorMessage\(error\); \}/);
   assert.match(app, /finally \{ pluginBusy = false; \}/);
   assert.match(app, /settingsOpen = false;/, 'creating an extension session returns to the main workbench');

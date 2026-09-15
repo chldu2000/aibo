@@ -14,6 +14,8 @@ export type {
   UiColumnSplitterProps,
   UiIconName,
   UiHostPanelProps,
+  UiManagementCenterProps,
+  UiManagementSection,
   UiSettingsAction,
   UiSettingsItem,
   UiSettingsSectionProps,
