@@ -15,7 +15,7 @@ test('suggestions filter commands and bind only available host buttons while pla
  assert.deepEqual(editor(render('/he')).suggestions.keys,['command:help','command:hello']);
  assert.equal(editor(render('ordinary text')).suggestions,undefined);
  const paths=editor(render('@src')).suggestions;
- assert.equal(paths.confirmWithTab,true);assert.ok(paths.keys.every(key=>key.startsWith('path:')));
+ assert.equal(paths.confirmWithTab,false);assert.ok(paths.keys.every(key=>key.startsWith('path:')));
 });
 
 test('command categories retain per-category limits and empty menus remain valid',async()=>{
@@ -36,4 +36,21 @@ test('command categories retain per-category limits and empty menus remain valid
  state.agentCommands=[];nodes=flatten(renderConversation(state,directory.project(state)));
  assert.ok(nodes.some(node=>node.key==='conversation:commands'));
  assert.equal(nodes.find(node=>node.key==='conversation:draft:input').suggestions.keys.length,0);
+});
+
+test('mention suggestions expose All, Files, Folders and Sessions categories',async()=>{
+ const state=JSON.parse(await readFile('fixtures/presentation-workbench/conversation.json','utf8'));
+ state.draft='@';
+ state.workspacePathSuggestions=[{path:'src',isDirectory:true},{path:'README.md',isDirectory:false}];
+ state.sessionSuggestions=[{...state.session,id:'other',label:'Other session',agent:'codex'}];
+ const directory=createConversationDirectory();
+ const value={...state};
+ const nodes=flatten(renderConversation(value,directory.project(value)));
+ const config=nodes.find(node=>node.key==='conversation:draft:input').suggestions;
+ assert.deepEqual(config.categories.map(category=>category.key),[
+  'mentions:category:all','mentions:category:files','mentions:category:folders','mentions:category:sessions',
+ ]);
+ assert.deepEqual(config.categories[1].options,['path:README.md']);
+ assert.deepEqual(config.categories[2].options,['path:src']);
+ assert.deepEqual(config.categories[3].options,['session-reference:other']);
 });
