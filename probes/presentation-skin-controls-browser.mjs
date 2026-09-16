@@ -20,7 +20,7 @@ try {
   await matrix.getByRole('button',{name:'High',exact:true}).evaluate(element=>new Promise(resolve=>{const check=()=>element.disabled?resolve():requestAnimationFrame(check);check()}));
   const mark=page.frameLocator('#replaceable .status-mark:not([hidden]) iframe');
   for(const agent of ['codex','pi']) {
-   const expected=(await readFile(`src/lib/ui-kit/assets/${agent==='codex'?'openai':'pi'}.svg`,'utf8')).match(/<path d="([^"]+)"/u)[1];
+   const expected=JSON.parse(await readFile(`src-tauri/capability-plugins/${agent}/plugin.json`,'utf8')).contributions[0].icon.path;
    for(const tone of ['idle','running','attention','danger','muted']) {
     await page.evaluate(({agent,tone})=>window.controlPackageProbe.setMark(agent,tone),{agent,tone});
     await mark.locator('.status.'+tone).waitFor();

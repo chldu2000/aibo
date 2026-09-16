@@ -79,6 +79,14 @@ Adapter 负责将它转换为提供者特有的审核路由与权限授权。
 
 ## 接入会话型 Agent
 
+新建会话轮盘自动发现已启用且依赖就绪的 session scope `aibo.session.open` 提供者。请在该 `capabilityProvider` contribution 上声明 `displayName` 和可选的 `icon`：
+
+```json
+"icon": { "path": "M12 2L22 12L12 22L2 12Z" }
+```
+
+图标是 24 × 24 坐标系中的单色 SVG path 数据，可包含多个子路径，最长 8192 字符。宿主验证数据，皮肤负责颜色和状态效果；不支持完整 SVG、图片 URL、脚本或样式。未提供图标时显示通用菱形。插件安装后还需启用并满足运行依赖，入口才会出现在轮盘中；禁用或卸载后入口消失。一个插件可以声明多个会话提供者，各自拥有名称和图标。
+
 从当前 [Codex worker](../src-tauri/capability-plugins/codex/worker.mjs)、
 [Pi worker](../src-tauri/capability-plugins/pi/worker.mjs)及其共用的
 [session provider](../src-tauri/capability-plugins/session-provider.mjs)入手。

@@ -35,9 +35,9 @@ test('independent skin tarballs build all themes and render core semantic conten
       for(const action of input.data.actions)assert.ok(nodes.some(n=>n.events?.click===action.token));
     }
     for(const agent of ['codex','pi']) {
-      const svg=await readFile(`src/lib/ui-kit/assets/${agent==='codex'?'openai':'pi'}.svg`,'utf8');
-      const expected=svg.match(/<path d="([^"]+)"/u)[1];
-      const input=controlPreflights()[1];input.data.props.agent=agent;
+      const manifest=JSON.parse(await readFile(`src-tauri/capability-plugins/${agent}/plugin.json`,'utf8'));
+      const expected=manifest.contributions[0].icon.path;
+      const input=controlPreflights()[1];input.data.props.agent=agent;input.data.props.icon=manifest.contributions[0].icon;
       const nodes=flatten(render(input));
       assert.ok(nodes.some(node=>node.tag==='path'&&node.attrs.d===expected));
       assert.ok(!nodes.some(node=>node.resource),'vectors need no host resource URL');

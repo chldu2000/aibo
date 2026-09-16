@@ -10,7 +10,13 @@ export function renderNavigation(state,actions){
  for(const workspace of state.workspaces){
   const expanded=state.expandedWorkspaceIds.includes(workspace.id);
   const rows=[button('workspace:'+workspace.id,workspace.label,find('selectWorkspace',workspace.id),{'aria-expanded':String(expanded),'aria-current':state.selectedWorkspaceId===workspace.id?'page':'false',title:workspace.path}),text('workspace:trust:'+workspace.id,workspace.trust==='trusted'?'已信任':'未信任'),node('nav','workspace:tools:'+workspace.id,null,buttons(['toggleSessionCreator','openWorkspace','toggleTrust','removeWorkspace'],workspace.id))];
-  if(state.createSessionWorkspaceId===workspace.id)rows.push(node('nav','workspace:create:'+workspace.id,null,buttons(['createCodex','createPi'],workspace.id)));
+  if(state.createSessionWorkspaceId===workspace.id)rows.push(node('nav','workspace:create:'+workspace.id,null,(state.agentChoices??[]).map(choice=>{
+   const key='workspace:create:'+workspace.id+':'+choice.id;
+   const action=actions.find(action=>action.operation==='createAgent'&&action.targetId===workspace.id&&action.choiceId===choice.id);
+   const control=button(key,null,action,{'aria-label':'使用 '+choice.label+' 创建会话',title:choice.label});
+   control.children=[node('svg',key+':icon',null,[node('path',key+':path',null,[],{d:choice.icon?.path??'M12 2 22 12 12 22 2 12Z',fill:'currentColor'})],{viewBox:'0 0 24 24',width:'16',height:'16','aria-hidden':'true'}),node('span',key+':label',choice.label)];
+   return control;
+  })));
   if(expanded){
    if(state.sessionsLoadingWorkspaceIds.includes(workspace.id))rows.push(node('p','workspace:loading:'+workspace.id,'正在加载会话',[],{role:'status'}));
    for(const session of state.sessionsByWorkspace[workspace.id]??[]){

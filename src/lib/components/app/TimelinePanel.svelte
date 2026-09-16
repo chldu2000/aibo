@@ -49,6 +49,7 @@
     modelOverride?: string | null;
     workspacePathSuggestions: WorkspacePathSuggestion[];
     sessionSuggestions?: Session[];
+    sessionIcons?: Record<string, import('../../../../packages/plugin-protocol/src/agent-icon').AgentIcon | undefined>;
     onSelectSessionReference?: (id: string) => void | Promise<void>;
     agentCommands: AgentCommand[];
     agentCommandsLoading: boolean;
@@ -105,6 +106,7 @@
     modelOverride = null,
     workspacePathSuggestions,
     sessionSuggestions = [],
+    sessionIcons = {},
     onSelectSessionReference,
     agentCommands,
     agentCommandsLoading,
@@ -477,6 +479,7 @@
     {modelOverride}
     workspacePathSuggestions={workspacePathSuggestions}
     {sessionSuggestions}
+    {sessionIcons}
     {onSelectSessionReference}
     agentCommands={agentCommands}
     agentCommandsLoading={agentCommandsLoading}

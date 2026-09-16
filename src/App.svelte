@@ -90,9 +90,10 @@
     else setUiTheme(id);
   }
   const externalNavigation = $derived<PresentationNavigation>({
+    agentChoices,
     workspaces: workspaceItems, sessionsByWorkspace: sessionItemsByWorkspace,
     selectedWorkspaceId, selectedSessionId, expandedWorkspaceIds, sessionsLoadingWorkspaceIds,
-    busy, threadBusy, archivingWorkspaceId, archivingSessionId, sessionSearchOpen, sessionFilterOpen,
+    busy: busy || pluginBusy, threadBusy, archivingWorkspaceId, archivingSessionId, sessionSearchOpen, sessionFilterOpen,
     sessionSearch, sessionFilter, createSessionWorkspaceId, renamingSessionId, sessionLabelDraft,
   });
   async function externalNavigationIntent(intent: PresentationIntent) {
@@ -111,8 +112,7 @@
       case 'toggleTrust': { const workspace = workspaces.find(item => item.id === id); if (workspace) await toggleTrust(workspace); break; }
       case 'removeWorkspace': { const workspace = workspaces.find(item => item.id === id); if (workspace) await deleteWorkspace(workspace); break; }
       case 'openWorkspace': await openWorkspaceLocation(id); break;
-      case 'createCodex': if (id !== selectedWorkspaceId) activateWorkspace(id); await createCodex(); break;
-      case 'createPi': if (id !== selectedWorkspaceId) activateWorkspace(id); await createPi(); break;
+      case 'createAgent': await createWheelSession(id, action.choiceId!); break;
       case 'selectSession': installedTool = null; selectSession(id); break;
       case 'unarchiveSession': await unarchiveSession(id); break;
       case 'archiveSession': requestArchiveSession(id); break;
@@ -582,7 +582,7 @@
     unarchiveSession as unarchiveSessionApi,
   } from './lib/api';
   import type { PluginInstallation } from './lib/api';
-  import { sessionProviders } from '$lib/app/session-providers';
+  import { sessionProviders, readySessionProviders, sessionProviderIcon } from '$lib/app/session-providers';
   import type {
     AgentQueueSnapshot,
     AgentCommand,
@@ -921,6 +921,22 @@
   function backFromCapabilityHistory():void { capabilityHistoryOpen=false;historyOpen=true; }
 
   let pluginInstallations = $state<PluginInstallation[]>([]);
+  const agentChoices = $derived(readySessionProviders(pluginInstallations));
+  let pluginRefreshRevision = 0;
+  async function refreshPluginInstallations(): Promise<void> {
+    if (!desktop) return;
+    const revision = ++pluginRefreshRevision;
+    const installations = await listPluginInstallations();
+    if (revision === pluginRefreshRevision) pluginInstallations = installations;
+  }
+  $effect(() => {
+    if (!desktop) return;
+    const refresh = () => { void refreshPluginInstallations().catch(error => { pluginError = toErrorMessage(error); }); };
+    refresh();
+    const timer = window.setInterval(() => { if (createSessionWorkspaceId && document.visibilityState === 'visible') refresh(); }, 5000);
+    window.addEventListener('focus', refresh);
+    return () => { clearInterval(timer); window.removeEventListener('focus', refresh); ++pluginRefreshRevision; };
+  });
   const pluginManagerInstallations = $derived(pluginInstallations.map(installation => ({ ...installation, sessionProviders: sessionProviders(installation) })));
   let pluginPackagePath = $state('');
   let pluginBusy = $state(false);
@@ -953,13 +969,13 @@
     installedTool = null;
     managementSection = section;
     settingsOpen = true;
-    if (section === 'extensions') void pluginOperation(async () => { pluginInstallations = await listPluginInstallations(); });
+    if (section === 'extensions') void pluginOperation(refreshPluginInstallations);
   }
 
   async function installPlugin(): Promise<void> {
     await pluginOperation(async () => {
       await installAgentPlugin(pluginPackagePath.trim());
-      pluginInstallations = await listPluginInstallations();
+      await refreshPluginInstallations();
       pluginPackagePath = '';
     });
   }
@@ -967,20 +983,19 @@
   async function enablePlugin(id: string, enabled: boolean): Promise<void> {
     await pluginOperation(async () => {
       await setAgentPluginEnabled(id, enabled);
-      pluginInstallations = await listPluginInstallations();
+      await refreshPluginInstallations();
     });
   }
 
   async function uninstallPlugin(id: string): Promise<void> {
     await pluginOperation(async () => {
       await uninstallAgentPlugin(id);
-      pluginInstallations = await listPluginInstallations();
+      await refreshPluginInstallations();
       if (selectedWorkspaceId) await refreshSessions(selectedWorkspaceId);
     });
   }
 
-  async function createPluginSession(installationId: string, agentId: string): Promise<void> {
-    const workspaceId = selectedWorkspaceId;
+  async function createPluginSession(installationId: string, agentId: string, workspaceId = selectedWorkspaceId): Promise<void> {
     if (!workspaceId) { pluginError = '请先选择工作区。'; return; }
     await pluginOperation(async () => {
       const session = await createAgentSession(workspaceId, agentId, installationId);
@@ -988,8 +1003,18 @@
       if (selectedWorkspaceId === workspaceId) {
         navigationController.selectSession(session.id);
         settingsOpen = false;
+        createSessionWorkspaceId = null;
       }
     });
+  }
+
+  async function createWheelSession(workspaceId: string, choiceId: string): Promise<void> {
+    if (busy || pluginBusy || !workspaces.some(workspace => workspace.id === workspaceId)) return;
+    const choice = agentChoices.find(choice => choice.id === choiceId);
+    if (!choice) return;
+    if (workspaceId !== selectedWorkspaceId) activateWorkspace(workspaceId);
+    await createPluginSession(choice.installationId, choice.contributionId, workspaceId);
+    if (pluginError) errorMessage = pluginError;
   }
 
   const managementNeedsAttention = $derived(
@@ -999,7 +1024,7 @@
 
   $effect(() => {
     if (!settingsOpen || managementSection !== 'extensions' || !desktop) return;
-    untrack(() => { void pluginOperation(async () => { pluginInstallations = await listPluginInstallations(); }); });
+    untrack(() => { void pluginOperation(refreshPluginInstallations); });
   });
   let sidePanelOpen = $state(savedWorkbenchLayout.auxiliaryOpen);
   let sidePanelView = $state<SidePanelView>(savedWorkbenchLayout.activeView);
@@ -1128,7 +1153,7 @@
   const workspaceItems = $derived<WorkspaceListItem[]>(toWorkspaceListItems(workspaces));
 
   const sessionItemsByWorkspace = $derived(
-    toSessionListItemsByWorkspace(workspaceSessionMap),
+    toSessionListItemsByWorkspace(workspaceSessionMap, pluginInstallations),
   );
 
   const usageValues = $derived(toUsageValues(usageForSession(usageSnapshotsBySession, selectedSessionId)));
@@ -3057,6 +3082,7 @@
 
   function toggleSessionCreator(workspaceId: string) {
     navigationController.toggleSessionCreator(workspaceId);
+    if (createSessionWorkspaceId) void refreshPluginInstallations().catch(error => { errorMessage = toErrorMessage(error); });
   }
 
   const sessionContextController = createSessionContextController({
@@ -3601,7 +3627,7 @@
       expandedWorkspaceIds={expandedWorkspaceIds}
       selectedSessionId={selectedSessionId}
       sessionsLoadingWorkspaceIds={sessionsLoadingWorkspaceIds}
-      busy={busy}
+      busy={busy || pluginBusy}
       threadBusy={threadBusy}
       archivingWorkspaceId={archivingWorkspaceId}
       archivingSessionId={archivingSessionId}
@@ -3627,14 +3653,8 @@
         if (workspace) void deleteWorkspace(workspace);
       })}
       onOpenWorkspaceLocation={guard('onOpenWorkspaceLocation', (workspaceId) => void openWorkspaceLocation(workspaceId))}
-      onCreateCodex={guard('onCreateCodex', (workspaceId) => {
-        if (workspaceId !== selectedWorkspaceId) activateWorkspace(workspaceId);
-        void createCodex();
-      })}
-      onCreatePi={guard('onCreatePi', (workspaceId) => {
-        if (workspaceId !== selectedWorkspaceId) activateWorkspace(workspaceId);
-        void createPi();
-      })}
+      {agentChoices}
+      onCreateAgent={guard('onCreateAgent', (workspaceId, choiceId) => void createWheelSession(workspaceId, choiceId))}
       onSelectSession={guard('onSelectSession', (id) => { installedTool = null; selectSession(id); })}
       onUnarchiveSession={guard('onUnarchiveSession', (sessionId) => void unarchiveSession(sessionId))}
       onRequestArchiveSession={guard('onRequestArchiveSession', requestArchiveSession)}
@@ -3706,6 +3726,7 @@
       modelOverride={sessionModelOverride}
       workspacePathSuggestions={workspacePathSuggestions}
       sessionSuggestions={sessionSuggestions}
+      sessionIcons={Object.fromEntries(sessionSuggestions.map(session => [session.id, sessionProviderIcon(pluginInstallations, session)]))}
       onSelectSessionReference={guard('onSelectSessionReference', selectComposerSessionReference)}
       agentCommands={visibleAgentCommands}
       agentCommandsLoading={agentCommandsLoading}

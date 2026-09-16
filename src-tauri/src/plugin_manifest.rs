@@ -199,7 +199,7 @@ pub(crate) fn activation_issues(manifest: &Value) -> Result<Vec<String>, String>
     if host < min || host >= max { issues.push("当前宿主版本不在插件要求的范围内。".into()); }
     for entry in model.contributions.iter().filter(|entry|entry.required && !contribution_supported(entry,manifest)) {
         let operation = entry.metadata["operations"].as_array().and_then(|operations|operations.iter().find(|operation| {
-            let permissions = operation["permissions"].as_array().unwrap();
+            let Some(permissions) = operation["permissions"].as_array() else { return false; };
             operation["effect"] == "write" && (entry.scope == "application" || !permissions.iter().any(|permission|permission == "workspace.write") || permissions.iter().any(|permission|permission != "workspace.read" && permission != "workspace.write"))
                 || operation["effect"] != "write" && permissions.iter().any(|permission|permission != "workspace.read")
         })).and_then(|operation|operation["id"].as_str());
@@ -229,6 +229,20 @@ mod tests {
             assert_eq!(model.executable_dependencies, manifest["dependencies"].as_array().cloned().unwrap_or_default());
             assert_eq!(manifest, before, "wire manifest must not be rewritten");
             assert!(activation_issues(&manifest).unwrap().iter().any(|issue| issue.contains("已退役")));
+        }
+    }
+
+    #[test]
+    fn session_icons_survive_normalization_and_reject_active_content() {
+        for source in [include_str!("../capability-plugins/codex/plugin.json"), include_str!("../capability-plugins/pi/plugin.json")] {
+            let manifest: Value = serde_json::from_str(source).unwrap();
+            let normalized = normalize(&manifest).unwrap();
+            assert_eq!(normalized.contributions[0].metadata["icon"], manifest["contributions"][0]["icon"]);
+            for icon in [json!({"path":"<svg onload='alert(1)'>"}), json!({"path":"https://example.com/icon.svg"}), json!({"path":"M0 0Z", "fill":"red"}), json!({"path":format!("M{}", "0".repeat(8192))})] {
+                let mut invalid = manifest.clone();
+                invalid["contributions"][0]["icon"] = icon;
+                assert!(normalize(&invalid).is_err());
+            }
         }
     }
 

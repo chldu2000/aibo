@@ -1,6 +1,7 @@
 import type { Session, Workspace } from '$lib/types';
 import type { SessionListItem, WorkspaceListItem } from './view-types';
 import { sessionAgentKind } from '$lib/app/agent-kind';
+import { sessionProviderIcon, type SessionProviderInstallation } from '$lib/app/session-providers';
 export { readUsageValue, toUsageValues } from '$lib/app/session-usage';
 export type { UsageLimitValue, UsageSnapshot, UsageValues } from '$lib/app/session-usage';
 
@@ -30,11 +31,12 @@ export function toSessionListItems(sessions: Session[]): SessionListItem[] {
 
 export function toSessionListItemsByWorkspace(
   sessionsByWorkspace: Record<string, Session[]>,
+  installations: SessionProviderInstallation[] = [],
 ): Record<string, SessionListItem[]> {
   return Object.fromEntries(
     Object.entries(sessionsByWorkspace).map(([workspaceId, sessions]) => [
       workspaceId,
-      toSessionListItems(sessions),
+      sessions.map(session => ({ ...toSessionListItem(session), icon: sessionProviderIcon(installations, session) })),
     ]),
   );
 }

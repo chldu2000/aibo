@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import test from 'node:test';
-import { sessionProviders } from '../src/lib/app/session-providers.ts';
+import { sessionProviders, readySessionProviders, sessionProviderIcon } from '../src/lib/app/session-providers.ts';
 
 test('desktop bundle and host validators exclude the retired executable protocols', async () => {
   const config = JSON.parse(await readFile(new URL('../src-tauri/tauri.conf.json', import.meta.url), 'utf8'));
@@ -25,6 +25,29 @@ test('session creation discovers capability contributions and ignores legacy age
     {id:'external.old',kind:'agent',scope:'session',metadata},
   ]}),[{id:'external.session',displayName:'External session'}]);
   assert.deepEqual(sessionProviders({}),[]);
+});
+
+test('wheel discovers ready releases and follows install, enable, dependency readiness and removal', () => {
+  const icon = { path: 'M2 2L22 22Z' };
+  const contribution = { id: 'external.agent', kind: 'capabilityProvider', scope: 'session', metadata: {
+    displayName: 'External Agent', icon, operations: [{capability: {id: 'aibo.session.open'}}],
+  } };
+  const installation = { id: 'release-1', installed: true, enabled: true, runnable: true, contributions: [contribution] };
+  const choices = readySessionProviders([installation]);
+  assert.equal(choices.length, 1);
+  assert.deepEqual(choices[0].icon, icon);
+  assert.equal(choices[0].installationId, 'release-1');
+  assert.equal(choices[0].contributionId, contribution.id);
+  for (const patch of [{installed: false}, {enabled: false}, {runnable: false}, {activationIssues: ['incompatible']}, {packageDependencies: {unavailableContributions: [contribution.id]}}]) {
+    assert.deepEqual(readySessionProviders([{...installation, ...patch}]), []);
+  }
+  assert.deepEqual(readySessionProviders([]), []);
+  const multiple = readySessionProviders(Array.from({length: 8}, (_, i) => ({...installation, id: `release-${i}`})));
+  assert.equal(new Set(multiple.map(choice => choice.id)).size, 8);
+  assert.deepEqual(sessionProviderIcon([{...installation, enabled: false}], {agent: contribution.id, pluginInstallationId: installation.id}), icon);
+  assert.equal(sessionProviderIcon([installation], {agent: contribution.id, pluginInstallationId: 'other-release'}), undefined);
+  const missingIcon = {...installation, contributions: [{...contribution, metadata: {...contribution.metadata, icon: undefined}}]};
+  assert.equal(readySessionProviders([missingIcon])[0].icon, undefined);
 });
 
 test('external sessions use the unified production session controller after the C transition', async () => {

@@ -1,3 +1,4 @@
+import type { AgentIcon } from './agent-icon.js';
 /** Data-only control customization contract; callbacks remain in the host UI kit. */
 export type PresentationModelCell = {
   id: string;
@@ -24,6 +25,7 @@ export type PresentationModelMatrix = {
 };
 export type PresentationStatusMark = {
   agent: 'codex' | 'pi' | 'plugin';
+  icon?: AgentIcon;
   tone: 'idle' | 'running' | 'attention' | 'danger' | 'muted';
   label: string;
 };

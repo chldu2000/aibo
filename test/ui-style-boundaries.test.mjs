@@ -78,13 +78,15 @@ test('app stylesheet keeps visual declarations inside the UI kit layer', async (
   );
 });
 
-test('agent icon masks remain same-origin assets in packaged builds', async () => {
+test('agent icons come from plugin path data, without skin-owned brand maps or URL loading', async () => {
   const source = await readFile(path.join(root, 'src/lib/ui-kit/kits/base.css'), 'utf8');
-  for (const icon of ['openai.svg', 'pi.svg']) {
-    assert.match(
-      source,
-      new RegExp(`url\\(['\"]?\\.\\./assets/${icon.replace('.', '\\.')}\\?no-inline['\"]?\\)`),
-      `${icon} must not become a data URL rejected by the desktop CSP`,
-    );
+  assert.doesNotMatch(source, /mask-image|assets\/(?:openai|pi)\.svg/);
+  for (const skin of ['shadcn', 'material3']) {
+    const component = await readFile(path.join(root, `src/lib/ui-kit/kits/${skin}/AgentStatusMark.svelte`), 'utf8');
+    assert.match(component, /d=\{icon\.path\}/);
+    assert.doesNotMatch(component, /@html|<image|<img|href=|src=/);
+    const external = await readFile(path.join(root, `packages/presentation-${skin}/skin.js`), 'utf8');
+    assert.match(external, /d:props\.icon\.path/);
+    assert.doesNotMatch(external, /agentPaths/);
   }
 });

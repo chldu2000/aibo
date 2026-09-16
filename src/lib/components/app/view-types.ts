@@ -23,6 +23,7 @@ export interface WorkspaceListItem {
 }
 
 export interface SessionListItem {
+  icon?: import('../../../../packages/plugin-protocol/src/agent-icon').AgentIcon;
   id: string;
   workspaceId: string;
   agent: 'codex' | 'pi' | 'plugin';

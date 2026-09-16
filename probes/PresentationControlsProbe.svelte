@@ -3,7 +3,9 @@
  let host,active=$state(null),disabled=$state(false),instance;
  const actions=[];
  let mark=$state({agent:'plugin',tone:'idle',label:'Inherited mark'});
- export function setMark(agent,tone){mark={agent,tone,label:agent+' '+tone};}
+ import codex from '../src-tauri/capability-plugins/codex/plugin.json';
+ import pi from '../src-tauri/capability-plugins/pi/plugin.json';
+ export function setMark(agent,tone){mark={agent,tone,label:agent+' '+tone,icon:({codex,pi})[agent]?.contributions[0].icon};}
  const input={surface:'workbench',context:{workspaceId:'workspace',sessionId:'session',revision:1},data:null,theme:{}};
  const matrix=$derived({columns:[{id:'high',label:'High',description:null}],rows:[{reference:'model-a',label:'Model A',isDefault:true,active:true,defaultActive:true,cells:[{id:'high',label:'High',description:null,available:true,active:false}]}],defaultLabel:'Default',defaultTitle:'Default',disabled,onSelect:(...selection)=>actions.push(selection)});
  export async function select(value){const next=await host.prepare(value,null,()=>{},new AbortController().signal);next.activate();instance?.dispose();instance=next;active=value;}

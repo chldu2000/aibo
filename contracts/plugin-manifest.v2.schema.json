@@ -614,6 +614,20 @@
         }
       }
     },
+    "agentIcon": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["path"],
+      "properties": {
+        "path": {
+          "type": "string",
+          "minLength": 2,
+          "maxLength": 8192,
+          "pattern": "^[Mm][0-9MmZzLlHhVvCcSsQqTtAaEe.,+\\s-]+$"
+        }
+      },
+      "description": "Monochrome SVG path in a 24 by 24 viewBox, rendered with the active skin color."
+    },
     "providerV2": {
       "type": "object",
       "additionalProperties": false,
@@ -637,6 +651,9 @@
         },
         "kind": {
           "const": "capabilityProvider"
+        },
+        "icon": {
+          "$ref": "#/$defs/agentIcon"
         },
         "displayName": {
           "type": "string",

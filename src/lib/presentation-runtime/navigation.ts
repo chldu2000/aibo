@@ -15,7 +15,11 @@ export function navigationActions(state: PresentationNavigation): PresentationNa
   for (const workspace of state.workspaces) {
     add('selectWorkspace', workspace.id);
     if (!state.busy) {
-      for (const operation of ['toggleSessionCreator', 'toggleTrust', 'openWorkspace', 'createCodex', 'createPi'] as const) add(operation, workspace.id);
+      for (const operation of ['toggleSessionCreator', 'toggleTrust', 'openWorkspace'] as const) add(operation, workspace.id);
+      for (const choice of state.agentChoices ?? []) actions.push({
+        token: `navigation:createAgent:${JSON.stringify([workspace.id, choice.id])}`,
+        operation: 'createAgent', targetId: workspace.id, choiceId: choice.id, event: 'click',
+      });
       if (state.archivingWorkspaceId !== workspace.id) add('removeWorkspace', workspace.id);
     }
     for (const session of state.sessionsByWorkspace[workspace.id] ?? []) {

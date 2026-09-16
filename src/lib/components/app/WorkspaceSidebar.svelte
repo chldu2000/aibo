@@ -4,6 +4,7 @@
   import type { SessionFilter } from '$lib/types';
   import { relativeTimeLabel, sessionStateLabel, sessionStatusTone, isSessionRunning } from './session-utils';
   import type { SessionListItem, WorkspaceListItem } from './view-types';
+  import type { SessionProviderChoice } from '$lib/app/session-providers';
 
   type WorkspaceSidebarProps = {
     presentationActions?: Snippet;
@@ -33,8 +34,8 @@
     onToggleTrust: (workspaceId: string) => void;
     onDeleteWorkspace: (workspaceId: string) => void;
     onOpenWorkspaceLocation: (workspaceId: string) => void;
-    onCreateCodex: (workspaceId: string) => void;
-    onCreatePi: (workspaceId: string) => void;
+    agentChoices: SessionProviderChoice[];
+    onCreateAgent: (workspaceId: string, choiceId: string) => void;
     onSelectSession: (sessionId: string) => void;
     onUnarchiveSession: (sessionId: string) => void;
     onRequestArchiveSession: (sessionId: string) => void;
@@ -72,8 +73,8 @@
     onToggleTrust,
     onDeleteWorkspace,
     onOpenWorkspaceLocation,
-    onCreateCodex,
-    onCreatePi,
+    agentChoices,
+    onCreateAgent,
     onSelectSession,
     onUnarchiveSession,
     onRequestArchiveSession,
@@ -87,15 +88,11 @@
     : navigator.platform.startsWith('Win')
       ? '文件资源管理器'
       : '文件管理器';
-  const agentChoices = [
-    { id: 'codex', label: 'Codex', detail: '只读' },
-    { id: 'pi', label: 'Pi', detail: '最低权限' },
-  ] as const;
   const AGENTS_PER_RING = 6;
   const FIRST_RING_RADIUS = 30;
   const RING_GAP = 34;
-  const agentRingCount = Math.ceil(agentChoices.length / AGENTS_PER_RING);
-  const agentWheelBackdropSize = (FIRST_RING_RADIUS + (agentRingCount - 1) * RING_GAP + 18) * 2;
+  const agentRingCount = $derived(Math.max(1, Math.ceil(agentChoices.length / AGENTS_PER_RING)));
+  const agentWheelBackdropSize = $derived((FIRST_RING_RADIUS + (agentRingCount - 1) * RING_GAP + 18) * 2);
   const agentLaunchers = new Map<string, HTMLElement>();
   let agentWheelPosition = $state<{ left: number; top: number } | null>(null);
 
@@ -146,10 +143,6 @@
     return `--agent-angle: ${angle}deg; --agent-radius: ${FIRST_RING_RADIUS + ring * RING_GAP}px`;
   }
 
-  function createAgentSession(agent: (typeof agentChoices)[number]['id'], workspaceId: string): void {
-    if (agent === 'codex') onCreateCodex(workspaceId);
-    else onCreatePi(workspaceId);
-  }
 
 </script>
 
@@ -362,6 +355,7 @@
                           disabled={archivingSessionId === session.id}
                         >
                           <AgentStatusMark
+                            icon={session.icon}
                             agent={session.agent}
                             tone={sessionStatusTone(session)}
                             label={`${agentLabel}，${sessionStateLabel(session)}`}
@@ -412,7 +406,7 @@
       id={`session-agent-wheel-${createSessionWorkspaceId}`}
       class="session-agent-wheel"
       role="group"
-      aria-label="选择 Agent 创建最低权限会话"
+      aria-label="选择 Agent 创建会话"
       style={`--agent-wheel-left: ${agentWheelPosition.left}px; --agent-wheel-top: ${agentWheelPosition.top}px; --agent-wheel-backdrop-size: ${agentWheelBackdropSize}px`}
     >
       <Button
@@ -433,9 +427,9 @@
           size="icon"
           type="button"
           style={agentWheelStyle(index)}
-          aria-label={`使用 ${agent.label} 创建${agent.detail}会话`}
-          title={`${agent.label} · ${agent.detail}`}
-          onclick={() => createAgentSession(agent.id, createSessionWorkspaceId!)}
+          aria-label={`使用 ${agent.label} 创建会话`}
+          title={agent.label}
+          onclick={() => onCreateAgent(createSessionWorkspaceId!, agent.id)}
           onkeydown={(event) => {
             if (event.key === 'Escape') {
               event.preventDefault();
@@ -444,9 +438,12 @@
           }}
           disabled={busy}
         >
-          <AgentStatusMark agent={agent.id} tone="idle" label={agent.label} />
+          <AgentStatusMark agent="plugin" icon={agent.icon} tone="idle" label={agent.label} />
         </Button>
       {/each}
+      {#if agentChoices.length === 0}
+        <span class="session-agent-empty" role="status">暂无就绪的 Agent，请在扩展中安装并启用。</span>
+      {/if}
     </div>
   {/if}
 </Card>

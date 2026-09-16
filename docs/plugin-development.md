@@ -103,6 +103,8 @@ before treating an upgrade as supported.
 
 ## Implement a session provider
 
+The new-session wheel discovers enabled, runnable session-scoped `aibo.session.open` providers whose contribution dependencies are ready. Each `capabilityProvider` supplies its `displayName` and optional `icon`, for example `"icon": { "path": "M12 2L22 12L12 22L2 12Z" }`. The icon is monochrome SVG path data in a fixed 24 × 24 viewBox, limited to 8192 characters; multiple subpaths are supported. The host validates the data and the skin owns color and status effects. Full SVG markup, URLs, scripts and styles are not accepted. Missing icons use a generic diamond. Disabling or uninstalling a provider removes its launcher. Multiple session providers in one package may each declare their own name and icon.
+
 Start with the current [Codex](../src-tauri/capability-plugins/codex/worker.mjs) or
 [Pi](../src-tauri/capability-plugins/pi/worker.mjs) provider, plus their shared
 [session provider implementation](../src-tauri/capability-plugins/session-provider.mjs).

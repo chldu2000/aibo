@@ -27,6 +27,7 @@
     modelOverride?: string | null;
     workspacePathSuggestions: WorkspacePathSuggestion[];
     sessionSuggestions?: Session[];
+    sessionIcons?: Record<string, import('../../../../packages/plugin-protocol/src/agent-icon').AgentIcon | undefined>;
     onSelectSessionReference?: (id: string) => void | Promise<void>;
     agentCommands: AgentCommand[];
     agentCommandsLoading: boolean;
@@ -60,6 +61,7 @@
     modelOverride = null,
     workspacePathSuggestions,
     sessionSuggestions = [],
+    sessionIcons = {},
     onSelectSessionReference,
     agentCommands,
     agentCommandsLoading,
@@ -445,7 +447,7 @@
               onmousedown={(event) => event.preventDefault()}
             >
               {#if suggestion.kind === 'session'}
-                <AgentStatusMark agent={sessionAgentKind(suggestion.session)} tone="idle" label={`${suggestion.session.agent} 会话`} />
+                <AgentStatusMark agent={sessionAgentKind(suggestion.session)} icon={sessionIcons[suggestion.session.id]} tone="idle" label={`${suggestion.session.agent} 会话`} />
               {:else}
                 <Icon name={suggestion.kind === 'folder' ? 'folder' : 'file'} size={13} />
               {/if}

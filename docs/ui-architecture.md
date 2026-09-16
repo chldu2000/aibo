@@ -122,6 +122,10 @@ macOS 的拖动和双击缩放均交给原生标题栏处理，页面不能再�
 
 插件管理面板的新建会话入口从 session scope 的 aibo.session.open 能力贡献发现，不读取旧 manifest.agents。皮肤不拥有能力选择、会话状态或执行权。test/plugin-management.test.mjs 检查旧视图入口缺席及能力贡献发现，现有语义呈现测试继续检查合同、降级和动作权限。
 
+侧栏新建会话轮盘和外置工作台同样从该贡献目录发现 Agent，只显示已安装、已启用、可运行且贡献依赖就绪的提供者。创建动作携带安装实例和 contribution ID，宿主在执行时再次校验；安装、启用、卸载、窗口聚焦和打开轮盘时刷新目录，轮盘打开期间每五秒检查依赖就绪状态。轮盘每圈最多六项，新增 Agent 无需修改页面或皮肤。
+
+Agent 品牌图标属于能力插件：Manifest v2 的 capabilityProvider 可声明 `icon: { path: "M…" }`，坐标固定为 24 × 24、长度不超过 8192 字符，仅接受 SVG path 命令和数字，不接受 SVG 文档、URL、脚本或样式。宿主校验后将纯数据传入 `AgentStatusMark.icon` 及导航合同，所有皮肤用 currentColor 渲染；缺省图标使用通用菱形。Codex、Pi 的路径与版权说明由各自插件持有，UI kit 和外置呈现包不维护品牌映射。会话列表和会话引用使用对应安装实例的图标。`test/ui-style-boundaries.test.mjs` 检查此边界，manifest 和会话提供者测试覆盖校验、就绪过滤与失效动作。
+
 ## Agent 与 CI 硬约束
 
 仓库根目录和各层目录的 `AGENTS.md` 提供给 Agent 的工作规则，但真正的

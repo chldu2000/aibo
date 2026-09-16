@@ -2,8 +2,8 @@ const node=(tag,key,text,children=[],attrs={})=>({tag,key,...(text==null?{}:{tex
 const button=(key,label,token,attrs={})=>({...node('button',key,label,[],{type:'button',...attrs}),...(token?{events:{click:token}}:{})});
 function controls({control,props,actions}) {
   if(control==='AgentStatusMark') {
-    const logo=agentPaths[props.agent]
-      ? node('svg','logo',null,[node('path','logo-path',null,[],{d:agentPaths[props.agent],fill:'currentColor'})],{viewBox:'0 0 24 24','aria-hidden':'true'})
+    const logo=props.icon
+      ? node('svg','logo',null,[node('path','logo-path',null,[],{d:props.icon.path,fill:'currentColor'})],{viewBox:'0 0 24 24','aria-hidden':'true'})
       : node('svg','logo',null,[node('polygon','logo-path',null,[],{points:'12,2 22,12 12,22 2,12',fill:'none',stroke:'currentColor','stroke-width':'2'})],{viewBox:'0 0 24 24','aria-hidden':'true'});
     return {...node('span','status',null,[node('span','orbit'),logo,node('span','signal')],{'aria-label':props.label,title:props.label}),className:'status '+props.tone};
   }
