@@ -141,6 +141,12 @@ impl SessionHost {
         let (session,manifest)=self.metadata(session_id).await?;
         if session.archived || session.state=="closed" {return Err("invalid_session: session is closed".into());}
         let previous=self.saved_binding(session_id).await?;
+        if previous.is_some() {
+            let saved_generation:String=sqlx::query_scalar("SELECT generation_id FROM session_bindings WHERE session_id=?")
+                .bind(session_id).fetch_one(&self.db).await.map_err(|e|e.to_string())?;
+            let installation=session.plugin_installation_id.as_deref().ok_or("history_only")?;
+            if self.broker.session_runtime_generation(installation,&session.agent,session_id).await.as_deref()==Some(saved_generation.as_str()) {return Ok(());}
+        }
         let profile=crate::session_execution_profile(&self.db,session_id).await.map_err(|e|e.to_string())?.profile;
         let binding=Self::binding(&session,"aibo.session.open")?;
         let request=Request {scope:binding.scope.clone(),capability:binding.capability.clone(),version:binding.version.clone(),request_id:ulid::Ulid::new().to_string(),turn_id:None,input:json!({"mode":if previous.is_some(){"resume"}else{"create"},"executionProfile":profile.enforced,"recovery":previous.as_ref().map(|b|&b["recovery"])})};

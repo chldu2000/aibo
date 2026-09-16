@@ -139,6 +139,13 @@ impl Broker {
     pub async fn request_is_live(&self,caller:&str,request_id:&str,generation:&str)->bool {
         self.flights.lock().await.get(&(caller.into(),request_id.into())).is_some_and(|flight|!*flight.cancel.borrow() && flight.interaction.as_ref().is_some_and(|active|active.runtime.generation_id==generation && !active.runtime.was_stopped() && !active.runtime.has_exited()))
     }
+    pub async fn session_runtime_generation(&self, installation:&str, contribution:&str, session:&str)->Option<String> {
+        let key=(installation.into(),contribution.into(),Scope::Session(session.into()));
+        let slot=self.slots.lock().await.get(&key).cloned()?;
+        if slot.permit.available_permits()==1 && slot.touched.lock().await.elapsed()>IDLE_TTL {return None;}
+        let runtime=slot.runtime.lock().await.clone()?;
+        (!runtime.was_stopped() && !runtime.has_exited()).then(||runtime.generation_id.clone())
+    }
     pub async fn stop_session(&self,session:&str)->Result<(),Failure> {
         let scope=Scope::Session(session.into());
         for flight in self.flights.lock().await.values().filter(|flight|flight.scope==scope) {let _=flight.cancel.send(true);}
