@@ -72,6 +72,7 @@
     onSelectAccess: (mode: SessionAccessMode) => void | Promise<void>;
     onLoadModels: () => void | Promise<void>;
     onSelectModelConfiguration: (model: string, reasoningEffort: string | null) => void | Promise<void>;
+    onSelectServiceTier: (serviceTier: string) => void | Promise<void>;
     onCompact: () => void | Promise<void>;
     onComposerInput: (text: string) => void;
     onSelectWorkspacePath: (path: string) => void | Promise<void>;
@@ -126,6 +127,7 @@
     onSelectAccess,
     onLoadModels,
     onSelectModelConfiguration,
+    onSelectServiceTier,
     onCompact,
     onAddAttachments,
     onAddDirectory,
@@ -466,6 +468,7 @@
   <Composer
     selectedAgent={sessionKind === 'plugin' ? null : sessionKind}
     selectedSession={session !== null}
+    sessionCapabilities={session?.capabilities ?? []}
     {selectedSessionId}
     sessionArchived={sessionArchived}
     sessionRunning={sessionRunning}
@@ -493,6 +496,7 @@
     onSelectAccess={onSelectAccess}
     onLoadModels={onLoadModels}
     onSelectModelConfiguration={onSelectModelConfiguration}
+    onSelectServiceTier={onSelectServiceTier}
     onComposerInput={onComposerInput}
     onSelectWorkspacePath={onSelectWorkspacePath}
   />

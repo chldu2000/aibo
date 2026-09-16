@@ -14,6 +14,7 @@
   type ComposerProps = {
     selectedAgent: 'codex' | 'pi' | null;
     selectedSession: boolean;
+    sessionCapabilities: string[];
     selectedSessionId: string | null;
     sessionArchived: boolean;
     sessionRunning: boolean;
@@ -41,6 +42,7 @@
     onSelectAccess: (mode: SessionAccessMode) => void | Promise<void>;
     onLoadModels: () => void | Promise<void>;
     onSelectModelConfiguration: (model: string, reasoningEffort: string | null) => void | Promise<void>;
+    onSelectServiceTier: (serviceTier: string) => void | Promise<void>;
     onComposerInput: (text: string) => void;
     onSelectWorkspacePath: (path: string) => void | Promise<void>;
   };
@@ -48,6 +50,7 @@
   let {
     selectedAgent,
     selectedSession,
+    sessionCapabilities,
     selectedSessionId,
     sessionArchived,
     sessionRunning,
@@ -75,6 +78,7 @@
     onSelectAccess,
     onLoadModels,
     onSelectModelConfiguration,
+    onSelectServiceTier,
     onComposerInput,
     onSelectWorkspacePath,
   }: ComposerProps = $props();
@@ -238,6 +242,11 @@
     })),
   );
   const matrixDisabled = $derived(busy || sessionArchived || selectedSessionArchiving || sessionRunning);
+  const matrixFastTier = $derived.by(() => {
+    if (!sessionCapabilities.includes('model.service-tier')) return null;
+    const tier = modelCatalog?.current?.serviceTiers.find((option) => option.label.trim().toLowerCase() === 'fast') ?? null;
+    return tier ? { ...tier, active: modelCatalog?.currentServiceTier === tier.id } : null;
+  });
 
   function supportsReasoningEffort(model: { reasoningEfforts: Array<{ id: string }> }, reasoningEffort: string | null): boolean {
     return reasoningEffort === null || model.reasoningEfforts.some((option) => option.id === reasoningEffort);
@@ -588,15 +597,37 @@
             onclick={(event) => { event.stopPropagation(); openModelMenu(); }}
             aria-haspopup="menu"
             aria-expanded={modelMenuOpen}
-            title={`${modelLabel}${reasoningLabel}`}
+            title={`${modelLabel}${reasoningLabel}${matrixFastTier?.active ? ' · Fast 已开启' : ''}`}
+            aria-label={`${modelLabel}${reasoningLabel}${matrixFastTier?.active ? '，Fast 已开启' : ''}`}
           >
+            {#if matrixFastTier?.active}
+              <Icon name="bolt" size={15} />
+            {/if}
             <span class="composer-model-label">{modelLabel}{reasoningLabel}</span>
             <Icon name="chevron-down" size={15} />
           </Button>
           {#if modelMenuOpen}
             <div class="composer-menu composer-model-menu" role="menu" aria-label="模型设置">
-              <div class="composer-menu-heading">模型与推理</div>
-              <div class="composer-menu-detail">当前：{modelLabel}{reasoningLabel}</div>
+              <div class="composer-model-header">
+                <div class="composer-model-header-labels">
+                  <div class="composer-menu-heading">模型与推理</div>
+                  <div class="composer-menu-detail">当前：{modelLabel}{reasoningLabel}</div>
+                </div>
+                {#if matrixFastTier && !modelCatalogLoading}
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant={matrixFastTier.active ? 'default' : 'outline'}
+                    disabled={matrixDisabled}
+                    aria-pressed={matrixFastTier.active}
+                    title={matrixFastTier.description ?? matrixFastTier.label}
+                    onclick={() => void onSelectServiceTier(matrixFastTier.active ? 'default' : matrixFastTier.id)}
+                  >
+                    <Icon name="bolt" size={15} />
+                    {matrixFastTier.label}
+                  </Button>
+                {/if}
+              </div>
               {#if sessionRunning}
                 <div class="composer-menu-detail">会话运行中，模型与推理强度暂不可修改。</div>
               {/if}
@@ -608,11 +639,13 @@
                   rows={matrixRows}
                   defaultLabel={matrixDefaultLabel}
                   defaultTitle={modelConfiguration.defaultAction === 'reset' ? '使用该模型的默认推理强度' : '切换模型，保留当前推理强度'}
+                  fastTier={null}
                   disabled={matrixDisabled}
                   onSelect={(model, reasoningEffort) => {
                     modelMenuOpen = false;
                     void onSelectModelConfiguration(model, reasoningEffort);
                   }}
+                  onSelectServiceTier={(serviceTier) => void onSelectServiceTier(serviceTier)}
                 />
               {:else if sessionRunning}
                 <div class="composer-suggestions-empty">尚无已确认的模型配置，回合结束后将自动读取。</div>
@@ -640,3 +673,17 @@
     </div>
   </div>
 </Card>
+
+<style>
+  .composer-model-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    padding-right: 8px;
+  }
+
+  .composer-model-header-labels {
+    min-width: 0;
+  }
+</style>

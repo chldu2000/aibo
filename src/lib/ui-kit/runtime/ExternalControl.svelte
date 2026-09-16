@@ -33,7 +33,9 @@
         if (intent.context.workspaceId !== context.workspaceId || intent.context.sessionId !== context.sessionId) return;
         const matrix = props as UiModelMatrixProps;
         const action = modelSelections(matrix).find(action => action.token === intent.id);
-        if (action) void Promise.resolve().then(() => matrix.onSelect(action.model, action.reasoningEffort)).catch(fail);
+        if (action) void Promise.resolve().then(() => action.kind === 'serviceTier'
+          ? matrix.onSelectServiceTier(action.serviceTier)
+          : matrix.onSelect(action.model, action.reasoningEffort)).catch(fail);
       }, fail, abort.signal, { allowInheritance: true, onInheritanceChange: value => { inherited = value; }, onRecover: registration.recover, decorative: kind === 'AgentStatusMark' }).then(instance => {
         if (abort.signal.aborted) { instance.dispose(); return; }
         candidate = instance; mounted = instance; instance.activate();

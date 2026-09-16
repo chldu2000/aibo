@@ -3,6 +3,7 @@
   import archive from '@ktibow/iconset-material-symbols/archive-outline-rounded';
   import archiveRestore from '@ktibow/iconset-material-symbols/unarchive-outline-rounded';
   import branch from '@ktibow/iconset-material-symbols/account-tree-outline-rounded';
+  import bolt from '@ktibow/iconset-material-symbols/bolt-rounded';
   import check from '@ktibow/iconset-material-symbols/check-rounded';
   import chevronDown from '@ktibow/iconset-material-symbols/keyboard-arrow-down-rounded';
   import close from '@ktibow/iconset-material-symbols/close-rounded';
@@ -43,6 +44,7 @@
     archive,
     'archive-restore': archiveRestore,
     branch,
+    bolt,
     check,
     'chevron-down': chevronDown,
     close,

@@ -196,6 +196,7 @@
             "stream.text",
             "model.select",
             "model.reasoning",
+            "model.service-tier",
             "command.list",
             "command.execute",
             "approval.respond",

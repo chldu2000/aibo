@@ -45,7 +45,7 @@ input.on('line', (line) => {
       write({ id, error: { code: -32000, message: 'reasoning summary was not requested' } });
       return;
     }
-    if (params.input?.[0]?.text === 'selected config' && (params.model !== 'gpt-fake' || params.reasoningEffort !== 'high')) {
+    if (params.input?.[0]?.text === 'selected config' && (params.model !== 'gpt-fake' || params.reasoningEffort !== 'high' || params.serviceTier !== 'fast')) {
       write({ id, error: { code: -32000, message: 'selected model or reasoning effort missing' } });
       return;
     }
@@ -79,6 +79,6 @@ input.on('line', (line) => {
   } else if (method === 'thread/goal/clear') {
     goal = null;
     write({ id, result: { goal } });
-  } else if (method === 'model/list') write({ id, result: { data: [{ id: 'gpt-fake', model: 'gpt-fake', displayName: 'GPT Fake', isDefault: true, supportedReasoningEfforts: [{ reasoningEffort: 'low' }, { reasoningEffort: 'high' }] }] } });
+  } else if (method === 'model/list') write({ id, result: { data: [{ id: 'gpt-fake', model: 'gpt-fake', displayName: 'GPT Fake', isDefault: true, supportedReasoningEfforts: [{ reasoningEffort: 'low' }, { reasoningEffort: 'high' }], serviceTiers: [{ id: 'priority', name: 'Fast', description: 'Faster responses' }] }] } });
   else if (method === 'skills/list') write({ id, result: { data: [{ cwd: params.cwds[0], skills: [{ name: 'review', interface: { shortDescription: 'Review code' } }] }] } });
 });

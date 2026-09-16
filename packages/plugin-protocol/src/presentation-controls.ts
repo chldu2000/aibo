@@ -21,6 +21,7 @@ export type PresentationModelMatrix = {
   rows: readonly PresentationModelRow[];
   defaultLabel: string;
   defaultTitle: string;
+  fastTier: { id: string; label: string; description: string | null; active: boolean } | null;
   disabled: boolean;
 };
 export type PresentationStatusMark = {
@@ -30,5 +31,5 @@ export type PresentationStatusMark = {
   label: string;
 };
 export type PresentationControlData =
-  | { control: 'ModelMatrix'; props: PresentationModelMatrix; actions: readonly { token: string; model: string; reasoningEffort: string | null }[] }
+  | { control: 'ModelMatrix'; props: PresentationModelMatrix; actions: readonly ({ token: string; kind: 'model'; model: string; reasoningEffort: string | null } | { token: string; kind: 'serviceTier'; serviceTier: string })[] }
   | { control: 'AgentStatusMark'; props: PresentationStatusMark; actions: readonly [] };

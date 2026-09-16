@@ -38,7 +38,7 @@ struct LiveTurn {
 fn passive_session_read(capability: &str, input: &Value) -> bool {
     match capability {
         "session.snapshot" | "command.list" | "skill.list" => true,
-        "model.select" | "model.reasoning" => input["action"] == "list",
+        "model.select" | "model.reasoning" | "model.service-tier" => input["action"] == "list",
         "session.tree" | "goal.manage" => input["action"] == "get",
         _ => false,
     }

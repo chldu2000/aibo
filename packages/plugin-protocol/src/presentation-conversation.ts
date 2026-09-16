@@ -74,9 +74,16 @@ interface SessionModelOption {
   isDefault: boolean;
   defaultReasoningEffort: string | null;
   reasoningEfforts: SessionReasoningOption[];
+  serviceTiers: SessionServiceTierOption[];
 }
 
 interface SessionReasoningOption {
+  id: string;
+  label: string;
+  description: string | null;
+}
+
+interface SessionServiceTierOption {
   id: string;
   label: string;
   description: string | null;
@@ -87,6 +94,7 @@ interface SessionModelCatalog {
   models: SessionModelOption[];
   currentReasoningEffort: string | null;
   reasoningEfforts: SessionReasoningOption[];
+  currentServiceTier: string | null;
 }
 
 interface AgentGoal {
@@ -232,7 +240,7 @@ export type PresentationConversation = {
 
 export type PresentationConversationOperation = 'copyCode' | 'openLink' | 'draft' | 'send' | 'stop' | 'retry' | 'queueSteer' | 'queueFollowUp' | 'clearQueue'
   | 'addAttachments' | 'addDirectory' | 'removeAttachment' | 'selectPath' | 'selectSessionReference' | 'selectCommand'
-  | 'loadOlder' | 'fork' | 'loadModels' | 'selectModel' | 'selectAccess' | 'compact'
+  | 'loadOlder' | 'fork' | 'loadModels' | 'selectModel' | 'selectServiceTier' | 'selectAccess' | 'compact'
   | 'answer' | 'chooseAnswer' | 'submitAnswers' | 'cancelAnswers'
   | 'openTree' | 'closeTree' | 'refreshTree' | 'selectTreeNode';
 

@@ -4,7 +4,8 @@ import type { CapabilitySession, createAgentFacade } from './agent-facade';
 export type ModelConfigurationChange =
   | { kind: 'model'; model: string | null }
   | { kind: 'reasoning'; reasoningEffort: string | null }
-  | { kind: 'configuration'; model: string; reasoningEffort: string | null };
+  | { kind: 'configuration'; model: string; reasoningEffort: string | null }
+  | { kind: 'serviceTier'; serviceTier: string };
 
 export type ModelConfigurationState = {
   currentReasoningEffort: string | null;
@@ -44,16 +45,25 @@ export function createModelConfigurationService(ports: {
       if (!session.pluginInstallationId) {
         throw new Error("history_only: old session configuration is read-only");
       }
-      const changesModel = change.kind !== 'reasoning';
-      const level = change.kind === 'model' ? null : change.reasoningEffort;
+      const changesTier = change.kind === 'serviceTier';
+      const changesModel = !changesTier && change.kind !== 'reasoning';
+      const level = change.kind === 'model' || changesTier ? null : change.reasoningEffort;
       // Check the whole intent before the first mutation. A combined operation is not atomic.
       if (changesModel && !session.capabilities.includes('model.select')) throw new Error('capability_unsupported: model.select');
       if ((level !== null || change.kind === 'reasoning') && !session.capabilities.includes('model.reasoning')) {
         throw new Error('capability_unsupported: model.reasoning');
       }
+      if (changesTier && !session.capabilities.includes('model.service-tier')) throw new Error('capability_unsupported: model.service-tier');
       if (change.kind === 'reasoning' && level === null) throw new Error('此插件未提供恢复默认推理强度的能力。');
       if (changesModel && !change.model) throw new Error('此插件未提供恢复默认模型的能力。');
       const available = catalog ?? await ports.getSessionModels(session.id);
+      if (changesTier) {
+        const supported = change.serviceTier === 'default'
+          || available.current?.serviceTiers.some(option => option.id === change.serviceTier);
+        if (!supported) throw new Error('当前模型不支持此服务层级。');
+        await ports.facade.invoke(session, 'model.service-tier', { action: 'set', tier: change.serviceTier });
+        return { catalog: await ports.getSessionModels(session.id), profile: await ports.getSessionExecutionProfile(session.id) };
+      }
       const selected = changesModel ? available.models.find(option => option.reference === change.model) : available.current;
       if (changesModel && !selected) throw new Error('所选模型不在当前模型目录中，请刷新后重试。');
       if (level !== null && !(selected?.reasoningEfforts ?? available.reasoningEfforts).some(option => option.id === level)) {

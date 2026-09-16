@@ -7,8 +7,10 @@
     rows,
     defaultLabel,
     defaultTitle,
+    fastTier,
     disabled,
     onSelect,
+    onSelectServiceTier,
   }: UiModelMatrixProps = $props();
 
   function effortIntensity(index: number, count: number): number {
@@ -17,6 +19,13 @@
 </script>
 
 <div class="shadcn-model-matrix-wrap">
+  {#if fastTier}
+    <div class="shadcn-model-matrix-tools">
+      <button type="button" class:active={fastTier.active} aria-label={fastTier.label} aria-pressed={fastTier.active}
+        disabled={disabled} title={fastTier.description ?? fastTier.label}
+        onclick={() => onSelectServiceTier(fastTier.active ? 'default' : fastTier.id)}><Icon name="bolt" size={15} /><span>{fastTier.label}</span></button>
+    </div>
+  {/if}
   <table class="shadcn-model-matrix" aria-label="模型与推理强度">
     <thead>
       <tr>
@@ -70,6 +79,9 @@
 </div>
 
 <style>
+  .shadcn-model-matrix-tools { display: flex; padding: 7px; border-bottom: 1px solid var(--border); background: var(--card); }
+  .shadcn-model-matrix-tools button { display: inline-flex; align-items: center; gap: 5px; border: 1px solid var(--border); border-radius: var(--radius); padding: 5px 8px; color: var(--muted-foreground); background: transparent; font-size: 10px; }
+  .shadcn-model-matrix-tools button.active { border-color: var(--primary); color: var(--primary); background: color-mix(in srgb, var(--primary) 10%, transparent); }
   .shadcn-model-matrix-wrap {
     max-height: 250px;
     overflow: auto;

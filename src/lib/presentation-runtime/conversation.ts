@@ -33,6 +33,8 @@ export function conversationActions(state: PresentationConversation): Spec[] {
       add('selectModel', [model.reference, null]);
       if (capable('model.reasoning')) for (const effort of model.reasoningEfforts) add('selectModel', [model.reference, effort.id]);
     }
+    const fastTier = state.modelCatalog?.current?.serviceTiers.find(tier => tier.label.trim().toLowerCase() === 'fast');
+    if (capable('model.service-tier') && fastTier) add('selectServiceTier', [state.modelCatalog?.currentServiceTier === fastTier.id ? 'default' : fastTier.id]);
     const access = sessionAgentKind(session) === 'codex' ? ['ask-for-approval', 'approve-for-me', 'full-access'] : ['read-only', 'plan', 'workspace-write'];
     for (const mode of access) add('selectAccess', [mode]);
     if (capable('compaction.run') && !state.compacting) add('compact');

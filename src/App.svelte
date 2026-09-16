@@ -169,6 +169,7 @@
       case 'fork': await forkSession(selectedSessionId, target ?? undefined); break;
       case 'loadModels': await loadSessionModels(); break;
       case 'selectModel': await applySessionModelConfiguration(target!, detail ?? null); break;
+      case 'selectServiceTier': await applySessionServiceTier(target!); break;
       case 'selectAccess': await applySessionAccess(target as SessionAccessMode); break;
       case 'compact': await compactCurrentSession(); break;
       case 'answer':
@@ -2580,6 +2581,10 @@
     await applyModelChange({ kind: 'configuration', model, reasoningEffort });
   }
 
+  async function applySessionServiceTier(serviceTier: string): Promise<void> {
+    await applyModelChange({ kind: 'serviceTier', serviceTier });
+  }
+
   async function executePiBuiltinCommand(input: string): Promise<boolean> {
     const command = parseAgentCommand(input);
     if (!command || sessionAgentKind(selectedSession) !== 'pi') return false;
@@ -3753,6 +3758,7 @@
       onSelectAccess={guard('onSelectAccess', (mode) => void applySessionAccess(mode))}
       onLoadModels={guard('onLoadModels', () => void loadSessionModels())}
       onSelectModelConfiguration={guard('onSelectModelConfiguration', (model, reasoningEffort) => void applySessionModelConfiguration(model, reasoningEffort))}
+      onSelectServiceTier={guard('onSelectServiceTier', (serviceTier) => void applySessionServiceTier(serviceTier))}
       onCompact={guard('onCompact', () => void compactCurrentSession())}
     />
     {/if}

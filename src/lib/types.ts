@@ -144,9 +144,16 @@ export interface SessionModelOption {
   isDefault: boolean;
   defaultReasoningEffort: string | null;
   reasoningEfforts: SessionReasoningOption[];
+  serviceTiers: SessionServiceTierOption[];
 }
 
 export interface SessionReasoningOption {
+  id: string;
+  label: string;
+  description: string | null;
+}
+
+export interface SessionServiceTierOption {
   id: string;
   label: string;
   description: string | null;
@@ -157,6 +164,7 @@ export interface SessionModelCatalog {
   models: SessionModelOption[];
   currentReasoningEffort: string | null;
   reasoningEfforts: SessionReasoningOption[];
+  currentServiceTier: string | null;
 }
 
 export interface AgentGoal {

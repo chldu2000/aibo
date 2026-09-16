@@ -173,6 +173,14 @@ pub(crate) struct SessionReasoningOption {
 
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
+pub(crate) struct SessionServiceTierOption {
+    pub(crate) id: String,
+    pub(crate) label: String,
+    pub(crate) description: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
 pub(crate) struct SessionModelOption {
     pub(crate) reference: String,
     pub(crate) label: String,
@@ -182,6 +190,7 @@ pub(crate) struct SessionModelOption {
     pub(crate) is_default: bool,
     pub(crate) default_reasoning_effort: Option<String>,
     pub(crate) reasoning_efforts: Vec<SessionReasoningOption>,
+    pub(crate) service_tiers: Vec<SessionServiceTierOption>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -191,6 +200,7 @@ pub(crate) struct SessionModelCatalog {
     pub(crate) models: Vec<SessionModelOption>,
     pub(crate) current_reasoning_effort: Option<String>,
     pub(crate) reasoning_efforts: Vec<SessionReasoningOption>,
+    pub(crate) current_service_tier: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -3799,9 +3809,13 @@ fn plugin_model_catalog(result: &serde_json::Value, reasoning: Option<&serde_jso
         {
             reasoning_efforts = session_models::reasoning_options(item);
         }
+        let service_tiers = item.get("serviceTiers").and_then(serde_json::Value::as_array).into_iter().flatten().filter_map(|tier| {
+            let id = tier.as_str().or_else(||tier.get("id").and_then(serde_json::Value::as_str))?.to_owned();
+            Some(SessionServiceTierOption { label: tier.get("name").or_else(||tier.get("label")).and_then(serde_json::Value::as_str).unwrap_or(&id).to_owned(), description: tier.get("description").and_then(serde_json::Value::as_str).map(ToOwned::to_owned), id })
+        }).collect();
         Some(SessionModelOption { label: item.get("displayName").or_else(||item.get("name")).and_then(serde_json::Value::as_str).unwrap_or(&reference).to_owned(),
             description: item.get("description").and_then(serde_json::Value::as_str).map(ToOwned::to_owned), is_default: item.get("isDefault").and_then(serde_json::Value::as_bool).unwrap_or(false),
-            default_reasoning_effort: item.get("defaultReasoningEffort").and_then(serde_json::Value::as_str).map(ToOwned::to_owned), reference, provider, id, reasoning_efforts })
+            default_reasoning_effort: item.get("defaultReasoningEffort").and_then(serde_json::Value::as_str).map(ToOwned::to_owned), reference, provider, id, reasoning_efforts, service_tiers })
     }).collect::<Vec<_>>();
     let current_reference = result.get("current").and_then(serde_json::Value::as_str).map(ToOwned::to_owned)
         .or_else(|| result.get("current").and_then(|current| {
@@ -3818,7 +3832,8 @@ fn plugin_model_catalog(result: &serde_json::Value, reasoning: Option<&serde_jso
         let id = level.as_str().or_else(||level.get("id").and_then(serde_json::Value::as_str)).or_else(||level.get("reasoningEffort").and_then(serde_json::Value::as_str))?.to_owned();
         Some(SessionReasoningOption { label: level.get("label").and_then(serde_json::Value::as_str).unwrap_or(&id).to_owned(), description: level.get("description").and_then(serde_json::Value::as_str).map(ToOwned::to_owned), id })
     }).collect::<Vec<_>>();
-    Ok(SessionModelCatalog { current, models, current_reasoning_effort, reasoning_efforts })
+    let current_service_tier = result.get("currentServiceTier").and_then(serde_json::Value::as_str).map(ToOwned::to_owned);
+    Ok(SessionModelCatalog { current, models, current_reasoning_effort, reasoning_efforts, current_service_tier })
 }
 
 
@@ -5429,8 +5444,10 @@ mod tests {
                     "id": "gpt-5",
                     "displayName": "GPT-5",
                     "isDefault": true,
-                    "supportedReasoningEfforts": ["low", {"id": "high", "label": "High"}]
-                }]
+                    "supportedReasoningEfforts": ["low", {"id": "high", "label": "High"}],
+                    "serviceTiers": [{"id": "priority", "name": "Fast", "description": "Faster responses"}]
+                }],
+                "currentServiceTier": "priority"
             }),
             Some(&serde_json::json!({"current": "high", "levels": ["low", "high"]})),
         )
@@ -5440,6 +5457,8 @@ mod tests {
         assert_eq!(catalog.models[0].reasoning_efforts[1].label, "High");
         assert_eq!(catalog.current_reasoning_effort.as_deref(), Some("high"));
         assert_eq!(catalog.reasoning_efforts.len(), 2);
+        assert_eq!(catalog.models[0].service_tiers[0].id, "priority");
+        assert_eq!(catalog.current_service_tier.as_deref(), Some("priority"));
     }
 
     #[test]
@@ -5467,5 +5486,6 @@ mod tests {
         assert_eq!(catalog.current.as_ref().unwrap().reference, "test/plain");
         assert_eq!(catalog.current.as_ref().unwrap().reasoning_efforts[0].id, "off");
         assert_eq!(catalog.current_reasoning_effort.as_deref(), Some("off"));
+        assert!(catalog.models.iter().all(|model| model.service_tiers.is_empty()), "Pi does not advertise undiscoverable service tiers");
     }
 }

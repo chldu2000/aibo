@@ -3,9 +3,9 @@ import test from 'node:test';
 import { createServer } from 'vite';
 
 const option = { reference: 'model', id: 'model', provider: null, label: 'Model', defaultReasoningEffort: 'medium',
-  reasoningEfforts: ['low', 'medium', 'high'].map(id => ({ id, label: id })) };
-const initialCatalog = { current: option, models: [option], currentReasoningEffort: 'high', reasoningEfforts: option.reasoningEfforts };
-const session = { id: 'session', agent: 'dev.aibo.codex.agent', pluginInstallationId: 'release', capabilities: ['model.select', 'model.reasoning'] };
+  reasoningEfforts: ['low', 'medium', 'high'].map(id => ({ id, label: id })), serviceTiers: [{id:'priority',label:'Fast',description:null}] };
+const initialCatalog = { current: option, models: [option], currentReasoningEffort: 'high', reasoningEfforts: option.reasoningEfforts, currentServiceTier:null };
+const session = { id: 'session', agent: 'dev.aibo.codex.agent', pluginInstallationId: 'release', capabilities: ['model.select', 'model.reasoning', 'model.service-tier'] };
 
 async function withModule(run) {
   const server = await createServer({ server: { middlewareMode: true, ws: false, watch: null }, appType: 'custom' });
@@ -36,6 +36,19 @@ test('plugin matrix follows confirmed reasoning through set, reread and reopen e
   assert.equal(calls.filter(([, cap]) => cap === 'model.reasoning').length, 1);
   assert.equal(modelConfigurationState(session, catalog, staleProfile).defaultAction, 'preserve');
   assert.equal(modelConfigurationState(session, null, staleProfile).selectedReasoningEffort, null, 'unloaded plugin data cannot borrow an old profile');
+}));
+
+test('service tier changes use an independent capability and reject unsupported tiers', () => withModule(async ({ createModelConfigurationService }) => {
+  const calls = [];
+  let catalog = structuredClone(initialCatalog);
+  const service = createModelConfigurationService({ getSessionExecutionProfile: async () => ({ requested: {}, enforced: {} }),
+    facade: { invoke: async (_session, capability, input) => { calls.push([capability,input]); if(capability==='model.service-tier')catalog.currentServiceTier=input.tier; } },
+    getSessionModels: async () => structuredClone(catalog) });
+  const result = await service.apply(session,{kind:'serviceTier',serviceTier:'priority'},catalog,null);
+  assert.equal(result.catalog.currentServiceTier,'priority');
+  assert.deepEqual(calls,[['model.service-tier',{action:'set',tier:'priority'}]]);
+  await assert.rejects(service.apply(session,{kind:'serviceTier',serviceTier:'ultrafast'},catalog,null),/不支持/);
+  await assert.rejects(service.apply({...session,capabilities:['model.select']},{kind:'serviceTier',serviceTier:'priority'},catalog,null),/model.service-tier/);
 }));
 
 test('combined model changes validate all capabilities and levels before any mutation', () => withModule(async ({ createModelConfigurationService }) => {

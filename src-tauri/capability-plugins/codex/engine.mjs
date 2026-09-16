@@ -2,9 +2,9 @@ import { spawn } from 'node:child_process';
 import readline from 'node:readline';
 
 const pluginId = 'dev.aibo.codex';
-const pluginVersion = '2.0.1';
+const pluginVersion = '2.0.4';
 
-export const capabilities = ['session.create', 'session.resume', 'session.close', 'turn.send', 'turn.cancel', 'stream.text', 'goal.manage', 'model.select', 'model.reasoning', 'skill.list', 'approval.respond', 'user-input.respond', 'session.snapshot', 'session.fork'];
+export const capabilities = ['session.create', 'session.resume', 'session.close', 'turn.send', 'turn.cancel', 'stream.text', 'goal.manage', 'model.select', 'model.reasoning', 'model.service-tier', 'skill.list', 'approval.respond', 'user-input.respond', 'session.snapshot', 'session.fork'];
 let child = null;
 let childLines = null;
 let nextId = 1;
@@ -54,6 +54,7 @@ function recovery() {
     threadId: session.threadId,
     model: session.model,
     reasoningEffort: session.reasoningEffort,
+    serviceTier: session.serviceTier,
   } };
 }
 function publishRecovery() { emit('session.info_changed', { recovery: recovery() }); }
@@ -227,6 +228,7 @@ export async function execute(action, p) {
       : 'read-only';
     const model = typeof p.executionProfile?.model === 'string' ? p.executionProfile.model : p.binding?.recovery?.data?.model ?? null;
     const reasoningEffort = typeof p.executionProfile?.reasoningEffort === 'string' ? p.executionProfile.reasoningEffort : p.binding?.recovery?.data?.reasoningEffort ?? null;
+    const serviceTier = typeof p.binding?.recovery?.data?.serviceTier === 'string' ? p.binding.recovery.data.serviceTier : null;
     let threadId;
     if (action === 'resume') {
       const recovery = p.binding?.recovery;
@@ -250,7 +252,7 @@ export async function execute(action, p) {
       threadId = await startThread(p.workspace.path, approvalPolicy, approvalsReviewer, sandbox, model);
     }
     session = { id: p.sessionId, threadId, cwd: p.workspace.path,
-      model, reasoningEffort,
+      model, reasoningEffort, serviceTier,
       revision: 0, turn: null, tokenUsage: null, rateLimitUsage: null };
     emit('session.started', { state: 'idle' });
     await refreshRateLimits();
@@ -264,6 +266,7 @@ export async function execute(action, p) {
     const turnParams = { threadId: session.threadId, input: [{ type: 'text', text: p.input.text }], summary: 'auto' };
     if (session.model) turnParams.model = session.model;
     if (session.reasoningEffort) turnParams.reasoningEffort = session.reasoningEffort;
+    if (session.serviceTier) turnParams.serviceTier = session.serviceTier;
     const result = await rpc('turn/start', turnParams);
     if (session.turn === turn) turn.nativeId = result?.turn?.id ?? turn.nativeId;
     return { accepted: true };
@@ -306,10 +309,26 @@ export async function execute(action, p) {
     if (p.input?.action === 'set') {
       if (typeof p.input.reference !== 'string' || !p.input.reference.trim()) fail('invalid_request', 'reference is required when selecting a model');
       session.model = p.input.reference;
-      publishRecovery();
     } else if (p.input?.action !== 'list') fail('invalid_request', 'unknown model action');
     const result = await rpc('model/list', { limit: 100, includeHidden: false });
-    return { current: session.model, models: result?.data ?? [] };
+    if (p.input?.action === 'set' && session.serviceTier && session.serviceTier !== 'default') {
+      const selected = (result?.data ?? []).find((item) => item.model === session.model || item.id === session.model);
+      if (!selected?.serviceTiers?.some((tier) => tier?.id === session.serviceTier)) session.serviceTier = 'default';
+    }
+    if (p.input?.action === 'set') publishRecovery();
+    return { current: session.model, currentServiceTier: session.serviceTier, models: result?.data ?? [] };
+  }
+  if (action === 'operation' && p.operationId === 'ext.dev.aibo.codex.service-tier') {
+    if (p.input?.action === 'set') {
+      if (typeof p.input.tier !== 'string' || !p.input.tier.trim()) fail('invalid_request', 'tier is required when selecting a service tier');
+      const result = await rpc('model/list', { limit: 100, includeHidden: false });
+      const model = (result?.data ?? []).find((item) => item.model === session.model || item.id === session.model) ?? (result?.data ?? []).find((item) => item.isDefault) ?? null;
+      const supported = p.input.tier === 'default' || model?.serviceTiers?.some((tier) => tier?.id === p.input.tier);
+      if (!supported) fail('invalid_request', 'service tier is not supported by the current model');
+      session.serviceTier = p.input.tier;
+      publishRecovery();
+    } else if (p.input?.action !== 'list') fail('invalid_request', 'unknown service tier action');
+    return { current: session.serviceTier };
   }
   if (action === 'operation' && p.operationId === 'ext.dev.aibo.codex.reasoning') {
     if (p.input?.action === 'set') {

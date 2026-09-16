@@ -2,14 +2,17 @@ import type { UiAgentStatusMarkProps, UiModelMatrixProps } from '../ui-kit/contr
 import type { PresentationContext, PresentationInput } from '../../../packages/plugin-protocol/src/presentation-runtime';
 
 export type PresentationControl = 'ModelMatrix' | 'AgentStatusMark';
-export type ModelSelection = { token: string; model: string; reasoningEffort: string | null };
+export type ModelSelection =
+  | { token: string; kind: 'model'; model: string; reasoningEffort: string | null }
+  | { token: string; kind: 'serviceTier'; serviceTier: string };
 
 export function modelSelections(props: UiModelMatrixProps): ModelSelection[] {
   if (props.disabled) return [];
   const entries: ModelSelection[] = [];
+  if (props.fastTier) entries.push({ token: `model:${entries.length}`, kind: 'serviceTier', serviceTier: props.fastTier.active ? 'default' : props.fastTier.id });
   for (const row of props.rows) {
-    entries.push({ token: `model:${entries.length}`, model: row.reference, reasoningEffort: null });
-    for (const cell of row.cells) if (cell.available) entries.push({ token: `model:${entries.length}`, model: row.reference, reasoningEffort: cell.id });
+    entries.push({ token: `model:${entries.length}`, kind: 'model', model: row.reference, reasoningEffort: null });
+    for (const cell of row.cells) if (cell.available) entries.push({ token: `model:${entries.length}`, kind: 'model', model: row.reference, reasoningEffort: cell.id });
   }
   return entries;
 }
@@ -17,7 +20,7 @@ export function modelSelections(props: UiModelMatrixProps): ModelSelection[] {
 export function controlInput(control: PresentationControl, props: UiModelMatrixProps | UiAgentStatusMarkProps,
   context: PresentationContext, theme: Readonly<Record<string, string>> = {}): PresentationInput {
   const data = control === 'ModelMatrix'
-    ? (() => { const { onSelect: _callback, ...data } = props as UiModelMatrixProps; return { control, props: data, actions: modelSelections(props as UiModelMatrixProps) }; })()
+    ? (() => { const { onSelect: _select, onSelectServiceTier: _tier, ...data } = props as UiModelMatrixProps; return { control, props: data, actions: modelSelections(props as UiModelMatrixProps) }; })()
     : { control, props, actions: [] };
   return { surface: 'controls', context, data: JSON.parse(JSON.stringify(data)), theme };
 }
@@ -28,7 +31,7 @@ export function controlPreflights(): PresentationInput[] {
     controlInput('ModelMatrix', { columns: [{ id: 'medium', label: 'Medium', description: null }],
       rows: [{ reference: 'model', label: 'Model', isDefault: true, active: true, defaultActive: true,
         cells: [{ id: 'medium', label: 'Medium', description: null, available: true, active: false }] }],
-      defaultLabel: 'Default', defaultTitle: 'Default reasoning', disabled: false, onSelect() {} }, context),
+      defaultLabel: 'Default', defaultTitle: 'Default reasoning', fastTier: null, disabled: false, onSelect() {}, onSelectServiceTier() {} }, context),
     controlInput('AgentStatusMark', { agent: 'plugin', tone: 'idle', label: 'Plugin' }, context),
   ];
 }

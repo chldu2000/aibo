@@ -7,8 +7,10 @@
     rows,
     defaultLabel,
     defaultTitle,
+    fastTier,
     disabled,
     onSelect,
+    onSelectServiceTier,
   }: UiModelMatrixProps = $props();
 
   function effortIntensity(index: number, count: number): number {
@@ -17,6 +19,13 @@
 </script>
 
 <div class="m3-model-matrix-wrap">
+  {#if fastTier}
+    <div class="m3-model-matrix-tools">
+      <button type="button" class:active={fastTier.active} aria-label={fastTier.label} aria-pressed={fastTier.active}
+        disabled={disabled} title={fastTier.description ?? fastTier.label}
+        onclick={() => onSelectServiceTier(fastTier.active ? 'default' : fastTier.id)}><Icon name="bolt" size={17} /><span>{fastTier.label}</span></button>
+    </div>
+  {/if}
   <table class="m3-model-matrix" aria-label="模型与推理强度">
     <thead>
       <tr>
@@ -70,6 +79,9 @@
 </div>
 
 <style>
+  .m3-model-matrix-tools { display: flex; padding: 8px; border-bottom: 1px solid var(--m3c-outline-variant); background: var(--m3c-surface-container); }
+  .m3-model-matrix-tools button { display: inline-flex; align-items: center; gap: 5px; border: 1px solid var(--m3c-outline); border-radius: var(--m3-shape-small); padding: 5px 9px; color: var(--m3c-on-surface-variant); background: transparent; font: inherit; }
+  .m3-model-matrix-tools button.active { border-color: var(--m3c-primary); color: var(--m3c-primary); background: var(--m3c-primary-container); }
   .m3-model-matrix-wrap {
     max-height: 224px;
     overflow: auto;

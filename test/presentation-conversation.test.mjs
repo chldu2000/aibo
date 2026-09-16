@@ -36,6 +36,15 @@ test('presentation plugins render usage inside the composer with optional quota 
  assert.match(row.text,/5 小时剩余 80%/);
  assert.match(row.text,/Credits 12.5/);
 });
+test('Codex priority service tier is presented as the Fast action',()=>{
+ const fastState={...state,
+  session:{...state.session,capabilities:[...state.session.capabilities,'model.service-tier']},
+  modelCatalog:{current:{reference:'gpt-6-astra',label:'GPT-6-Astra',serviceTiers:[{id:'priority',label:'Fast',description:'2x speed'}]},currentServiceTier:null,currentReasoningEffort:null,reasoningEfforts:[],models:[]}};
+ const action=conversationActions(fastState).find(candidate=>candidate.operation==='selectServiceTier');
+ assert.deepEqual(action?.args,['priority']);
+ const models=renderConversation(fastState,[action]).children.find(child=>child.key==='conversation:composer').children.find(child=>child.key==='conversation:models');
+ assert.ok(models.children.some(child=>child.key==='models:fast'&&child.text==='⚡ Fast'));
+});
 test('opaque conversation tokens retain live input but retire across removals and session reentry',()=>{
  const directory=createConversationDirectory();const first=directory.project(state);const draft=first.find(a=>a.operation==='draft');
  const message={id:draft.token,event:'input',value:'new',context:{...context,revision:4}};

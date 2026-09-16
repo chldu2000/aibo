@@ -15,6 +15,7 @@ test('Codex capability provider streams turns, controls native requests and rest
   const opened=await f.invoke('aibo.session.open',{mode:'create',executionProfile:profile});
   assert.equal(opened.nativeSessionId,'native-thread');
   assert.ok(opened.capabilities.includes('approval.respond'));
+  assert.ok(opened.capabilities.includes('model.service-tier'), 'Fast must be advertised to the host before the UI can invoke it');
   const initialUsage=await initialUsageReady;
   assert.equal(initialUsage.payload.usage.plan,'plus');
   assert.equal(initialUsage.payload.usage.limits[0].usedPercent,20);
@@ -25,6 +26,7 @@ test('Codex capability provider streams turns, controls native requests and rest
   assert.equal(f.events.filter(e=>e.event.type==='message.delta').map(e=>e.event.payload.delta).join(''),'hello plugin');
   assert.equal((await f.invoke('dev.aibo.codex.model.select',{action:'set',reference:'gpt-fake'})).current,'gpt-fake');
   assert.equal((await f.invoke('dev.aibo.codex.model.reasoning',{action:'set',level:'high'})).current,'high');
+  assert.equal((await f.invoke('dev.aibo.codex.model.service-tier',{action:'set',tier:'priority'})).current,'priority');
   const skill=(await f.invoke('dev.aibo.codex.skill.list')).skills[0];
   assert.deepEqual({name:skill.name,description:skill.description,source:skill.source,category:skill.category,execution:skill.execution},
     {name:'review',description:'Review code',source:'skill',category:'skill',execution:'prompt'});

@@ -3,6 +3,7 @@
   import ArchiveIcon from '@lucide/svelte/icons/archive';
   import ArchiveRestoreIcon from '@lucide/svelte/icons/archive-restore';
   import BranchIcon from '@lucide/svelte/icons/git-branch';
+  import BoltIcon from '@lucide/svelte/icons/zap';
   import CheckIcon from '@lucide/svelte/icons/check';
   import ChevronDownIcon from '@lucide/svelte/icons/chevron-down';
   import CloseIcon from '@lucide/svelte/icons/x';
@@ -41,6 +42,7 @@
     archive: ArchiveIcon,
     'archive-restore': ArchiveRestoreIcon,
     branch: BranchIcon,
+    bolt: BoltIcon,
     check: CheckIcon,
     'chevron-down': ChevronDownIcon,
     close: CloseIcon,

@@ -12,6 +12,7 @@ export type UiIconName =
   | 'archive'
   | 'archive-restore'
   | 'branch'
+  | 'bolt'
   | 'check'
   | 'chevron-down'
   | 'close'
@@ -57,6 +58,7 @@ export type UiButtonVariant =
 
 export type UiModelMatrixProps = PresentationModelMatrix & {
   onSelect: (model: string, reasoningEffort: string | null) => void | Promise<void>;
+  onSelectServiceTier: (serviceTier: string) => void | Promise<void>;
 };
 
 export type UiColumnSplitterProps = {
