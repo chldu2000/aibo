@@ -42,10 +42,12 @@ export function readUsageValue(snapshot: UsageSnapshot | null | undefined, key: 
 export function toUsageValues(snapshot: UsageSnapshot | null | undefined): UsageValues | null {
   if (!snapshot) return null;
   const explicitContext = firstNumber(snapshot, ['contextTokens', 'contextUsedTokens', 'usedContextTokens']);
+  const lastContext = numberFromRecord(snapshot.last, 'totalTokens');
   const contextLimit = firstNumber(snapshot, ['contextWindow', 'contextLimit', 'modelContextWindow']);
   return {
     input: readUsageValue(snapshot, 'input'), output: readUsageValue(snapshot, 'output'), total: readUsageValue(snapshot, 'total'),
-    contextUsed: explicitContext ?? readUsageValue(snapshot, 'input'), contextLimit, contextEstimated: explicitContext === null,
+    contextUsed: explicitContext ?? lastContext ?? readUsageValue(snapshot, 'input'), contextLimit,
+    contextEstimated: explicitContext === null && lastContext === null,
     plan: typeof snapshot.plan === 'string' ? snapshot.plan : null,
     limits: readUsageLimits(snapshot.limits), credits: readCredits(snapshot.credits),
   };
@@ -82,4 +84,9 @@ function firstNumber(snapshot: UsageSnapshot, keys: string[]): number | null {
 
 function finiteNumber(value: unknown): number | null {
   return typeof value === 'number' && Number.isFinite(value) ? value : null;
+}
+
+function numberFromRecord(value: unknown, key: string): number | null {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
+  return finiteNumber((value as Record<string, unknown>)[key]);
 }

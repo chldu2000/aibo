@@ -28,3 +28,16 @@ test('malformed optional account usage cannot hide valid token usage', () => {
   assert.deepEqual(usage?.limits, []);
   assert.equal(usage?.credits, null);
 });
+
+test('Codex cumulative thread usage is not treated as the live context size', () => {
+  const usage = toUsageValues({
+    total: { inputTokens: 903_727, outputTokens: 20_000, totalTokens: 923_727 },
+    last: { inputTokens: 78_000, outputTokens: 2_000, totalTokens: 80_000 },
+    modelContextWindow: 258_400,
+  });
+
+  assert.equal(usage?.total, 923_727);
+  assert.equal(usage?.contextUsed, 80_000);
+  assert.equal(usage?.contextLimit, 258_400);
+  assert.equal(usage?.contextEstimated, false);
+});
