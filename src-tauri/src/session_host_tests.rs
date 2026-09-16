@@ -345,9 +345,15 @@ async fn concurrent_session_context_reads_do_not_report_initialization_busy() {
     assert_eq!(crate::session_by_id(&db, &session.id).await.unwrap().state, "idle");
     assert!(host.invoke_capability_from("main", &session.id, "model.select", serde_json::json!({"action":"list"})).await.is_ok());
     assert!(host.invoke_capability_from("main", &session.id, "skill.list", serde_json::json!({})).await.is_ok());
+    assert!(host.invoke_capability_from("main", &session.id, "model.reasoning", serde_json::json!({"action":"list"})).await.is_ok());
+    assert!(host.invoke_capability_from("main", &session.id, "command.list", serde_json::json!({})).await.is_ok());
     let opens: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM capability_invocations WHERE scope_id=? AND capability_id='aibo.session.open'")
         .bind(&session.id).fetch_one(&db).await.unwrap();
     assert_eq!(opens, 1, "warm session metadata reads must reuse the existing native binding");
+    broker.fail_next_dynamic_binding_for_test();
+    host.send_from("main", &session.id, "warm Pi session turn", None).await.unwrap();
+    wait_for_turn(&host, &session.id).await;
+    assert_eq!(crate::session_by_id(&db, &session.id).await.unwrap().state, "idle");
     broker.stop_session(&session.id).await.unwrap();
     assert!(host.invoke_capability_from("main", &session.id, "skill.list", serde_json::json!({})).await.is_ok());
     let reopened: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM capability_invocations WHERE scope_id=? AND capability_id='aibo.session.open'")

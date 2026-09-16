@@ -237,7 +237,6 @@ impl SessionHost {
                 let result=if let Some(approval)=approval.filter(|_|write) {
                     host.broker.invoke_bound_authorized_observed(&caller,request,&binding,&approval.child(turn.clone()),Some(observer)).await
                 } else {
-                    host.broker.bind(binding.clone()).await.map_err(|e|e.message)?;
                     host.broker.invoke_bound_observed(&caller,request,&binding,Some(observer)).await
                 };
                 result.map_err(|e|format!("{}: {}",e.code,e.message))

@@ -15,6 +15,8 @@ use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use sqlx::{Row, SqlitePool};
 use std::{collections::HashMap, path::PathBuf, sync::Arc, time::{Duration, Instant}};
+#[cfg(test)]
+use std::sync::atomic::{AtomicBool,Ordering};
 use tokio::sync::{watch, Mutex, Semaphore};
 
 const MAX_INSTANCES: usize = 32;
@@ -128,13 +130,16 @@ pub(crate) struct Broker {
     mutations: Arc<Mutex<()>>,
     slots: Arc<Mutex<HashMap<RuntimeKey, Arc<Slot>>>>,
     flights: Arc<Mutex<HashMap<(String, String), Flight>>>,
+    #[cfg(test)] fail_next_dynamic_binding:Arc<AtomicBool>,
 }
 impl Broker {
-    pub fn new(db: SqlitePool) -> Self { Self { db, sdk_module:None, mutations: Default::default(), slots: Default::default(), flights: Default::default() } }
+    pub fn new(db: SqlitePool) -> Self { Self { db, sdk_module:None, mutations: Default::default(), slots: Default::default(), flights: Default::default(), #[cfg(test)] fail_next_dynamic_binding:Default::default() } }
     #[cfg(test)]
     pub(crate) async fn hold_admission_for_test(&self) -> impl Drop {
         self.slots.clone().lock_owned().await
     }
+    #[cfg(test)]
+    pub(crate) fn fail_next_dynamic_binding_for_test(&self) {self.fail_next_dynamic_binding.store(true,Ordering::Release);}
     pub fn with_sdk_module(mut self,path:Option<PathBuf>)->Self {self.sdk_module=path;self}
     pub async fn request_is_live(&self,caller:&str,request_id:&str,generation:&str)->bool {
         self.flights.lock().await.get(&(caller.into(),request_id.into())).is_some_and(|flight|!*flight.cancel.borrow() && flight.interaction.as_ref().is_some_and(|active|active.runtime.generation_id==generation && !active.runtime.was_stopped() && !active.runtime.has_exited()))
@@ -231,6 +236,8 @@ impl Broker {
         Ok(providers)
     }
     pub async fn bind(&self, binding: Binding) -> Result<(), Failure> {
+        #[cfg(test)]
+        if self.fail_next_dynamic_binding.swap(false,Ordering::AcqRel) {return Err(database("injected dynamic binding storage failure"));}
         let offers = self.providers(&binding.scope, &binding.capability, &binding.version).await?;
         if !offers.iter().any(|provider|provider.installation_id == binding.installation_id && provider.contribution_id == binding.contribution_id) {
             return Err(fail("provider_unavailable", "Selected provider is unavailable"));
