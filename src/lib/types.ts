@@ -645,6 +645,8 @@ export interface AgentEvent {
     | 'message.completed'
     | 'reasoning.updated'
     | 'reasoning.completed'
+    | 'subagent.updated'
+    | 'subagent.message'
     | 'tool.started'
     | 'tool.updated'
     | 'tool.completed'

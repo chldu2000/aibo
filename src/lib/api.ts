@@ -564,3 +564,5 @@ export const readCapabilityHistory = (scope: import('./types').CapabilityHistory
 import type { AgentSettingsTarget, AgentSettingsSnapshot, AgentSettingsSave } from '../../packages/plugin-protocol/src/settings';
 export const readAgentSettings = (target: AgentSettingsTarget): Promise<AgentSettingsSnapshot> => invoke('read_agent_settings', { target });
 export const saveAgentSettings = (request: AgentSettingsSave): Promise<AgentSettingsSnapshot> => invoke('save_agent_settings', { request });
+
+export const getSubagentHistory = (sessionId: string, agentId: string): Promise<import('./app/subagents').SubagentEntry[]> => invoke('get_subagent_history', { sessionId, agentId });

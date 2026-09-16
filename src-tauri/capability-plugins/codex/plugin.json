@@ -1,7 +1,7 @@
 {
   "schema": "aibo.plugin-manifest/v2",
   "pluginId": "dev.aibo.codex",
-  "version": "2.0.6",
+  "version": "2.0.7",
   "displayName": "Codex",
   "description": "Codex session capabilities.",
   "host": {

@@ -88,6 +88,8 @@
         "user_input.requested",
         "user_input.resolved",
         "goal.updated",
+        "subagent.updated",
+        "subagent.message",
         "usage.updated",
         "queue.updated",
         "compaction.started",
@@ -118,5 +120,154 @@
       "type": "string",
       "pattern": "^(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)(?:-[0-9A-Za-z.-]+)?(?:\\+[0-9A-Za-z.-]+)?$"
     }
-  }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "type": {
+            "const": "subagent.updated"
+          }
+        },
+        "required": [
+          "type"
+        ]
+      },
+      "then": {
+        "properties": {
+          "turnId": {
+            "type": "null"
+          },
+          "payload": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "id",
+              "parentId",
+              "rootTurnId",
+              "name",
+              "task",
+              "status",
+              "activity"
+            ],
+            "properties": {
+              "id": {
+                "type": "string",
+                "minLength": 1
+              },
+              "parentId": {
+                "type": "string",
+                "minLength": 1
+              },
+              "rootTurnId": {
+                "type": "string",
+                "minLength": 1
+              },
+              "name": {
+                "type": "string"
+              },
+              "task": {
+                "type": "string"
+              },
+              "activity": {
+                "type": "string"
+              },
+              "status": {
+                "enum": [
+                  "pending",
+                  "running",
+                  "waiting",
+                  "completed",
+                  "failed",
+                  "interrupted",
+                  "closed",
+                  "unavailable"
+                ]
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "type": {
+            "const": "subagent.message"
+          }
+        },
+        "required": [
+          "type"
+        ]
+      },
+      "then": {
+        "properties": {
+          "turnId": {
+            "type": "null"
+          },
+          "payload": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "agentId",
+              "rootTurnId",
+              "entry"
+            ],
+            "properties": {
+              "agentId": {
+                "type": "string",
+                "minLength": 1
+              },
+              "rootTurnId": {
+                "type": "string",
+                "minLength": 1
+              },
+              "entry": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "id",
+                  "role",
+                  "toolName",
+                  "content",
+                  "status"
+                ],
+                "properties": {
+                  "id": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "role": {
+                    "enum": [
+                      "user",
+                      "assistant",
+                      "system",
+                      "tool"
+                    ]
+                  },
+                  "toolName": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "content": {
+                    "type": "string"
+                  },
+                  "status": {
+                    "enum": [
+                      "streaming",
+                      "completed",
+                      "failed",
+                      "interrupted"
+                    ]
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  ]
 }

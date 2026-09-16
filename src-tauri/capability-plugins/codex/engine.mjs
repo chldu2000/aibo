@@ -2,7 +2,7 @@ import { spawn } from 'node:child_process';
 import readline from 'node:readline';
 
 const pluginId = 'dev.aibo.codex';
-const pluginVersion = '2.0.6';
+const pluginVersion = '2.0.7';
 
 export const capabilities = ['session.create', 'session.resume', 'session.close', 'turn.send', 'turn.cancel', 'stream.text', 'goal.manage', 'goal.pause', 'goal.resume', 'model.select', 'model.reasoning', 'model.service-tier', 'skill.list', 'approval.respond', 'user-input.respond', 'session.snapshot', 'session.fork'];
 let child = null;
@@ -63,6 +63,144 @@ const boundedText = (value, max = 4_000) => {
   const chars = Array.from(value);
   return chars.length > max ? `${chars.slice(0, max).join('')}…` : value;
 };
+// Child work belongs to the parent session, but has its own lifecycle and item IDs.
+const subagents = new Map();
+let subagentTimer = null;
+const activeSubagent = agent => ['running', 'pending', 'waiting'].includes(agent.status);
+function publishSubagent(agent) {
+  const {entries, reading, failures, revision, published, nativeTurnId, ...metadata} = agent;
+  const serialized = JSON.stringify(metadata);
+  if (serialized === agent.published) return;
+  agent.published = serialized;
+  emit('subagent.updated', metadata);
+}
+function registerSubagent(id, parentId, details = {}) {
+  if (!session?.turn || !id || id === session.threadId || (parentId !== session.threadId && !subagents.has(parentId))) return null;
+  let agent = subagents.get(id);
+  if (!agent) {
+    agent = {id, parentId, rootTurnId:session.turn?.id ?? null, name:details.name || '子 Agent', task:details.task || '',
+      status:'pending', activity:'正在启动…', entries:new Map(), failures:0, revision:0};
+    subagents.set(id, agent);
+  }
+  if (details.name) agent.name = details.name;
+  if (details.task) agent.task = boundedText(details.task, 12000);
+  publishSubagent(agent);
+  scheduleSubagents();
+  return agent;
+}
+function setSubagentStatus(agent, status, message) {
+  const mapped = {pendingInit:'pending',running:'running',completed:'completed',errored:'failed',failed:'failed',interrupted:'interrupted',shutdown:'closed',notFound:'unavailable'}[status];
+  if (mapped) { agent.status = mapped; agent.revision++; }
+  if (mapped && !activeSubagent(agent)) for (const [id, entry] of agent.entries) if (entry.status === 'streaming') {
+    const updated = {...entry, status:mapped === 'completed' ? 'completed' : mapped === 'failed' ? 'failed' : 'interrupted'};
+    agent.entries.set(id, updated);
+    emit('subagent.message', {agentId:agent.id, rootTurnId:agent.rootTurnId, entry:updated});
+  }
+  if (message) agent.activity = boundedText(message, 12000);
+  publishSubagent(agent);
+}
+function childItem(agent, turnId, item, completed = false, delta = null) {
+  if (!item?.id || item.type === 'collabAgentToolCall') return;
+  const id = `${turnId ?? 'thread'}:${item.id}`;
+  const previous = agent.entries.get(id);
+  const role = item.type === 'agentMessage' ? 'assistant' : item.type === 'userMessage' ? 'user' : item.type === 'reasoning' ? 'system' : 'tool';
+  let content = item.type === 'reasoning' ? (item.summary ?? []).map(part => typeof part === 'string' ? part : part.text ?? '').join('\n')
+    : item.type === 'userMessage' ? (item.content ?? []).map(part => part.text ?? '').join('\n')
+    : item.text ?? item.aggregatedOutput ?? item.output ?? item.command ?? item.description;
+  if (typeof content !== 'string') content = content ? JSON.stringify(content) : previous?.content ?? '';
+  if (delta !== null) content = (previous?.content ?? '') + delta;
+  const entry = {id, role:previous?.role ?? role, toolName:previous?.toolName ?? (role === 'system' ? 'reasoning' : role === 'tool' ? item.type : null),
+    content:boundedText(content, 48000) ?? '', status: ['failed','error','declined'].includes(item.status) ? 'failed' : completed || previous?.status === 'completed' ? 'completed' : 'streaming'};
+  if (JSON.stringify(entry) === JSON.stringify(previous)) return;
+  agent.entries.set(id, entry); agent.revision++;
+  emit('subagent.message', {agentId:agent.id, rootTurnId:agent.rootTurnId, entry});
+  agent.activity = boundedText(content.trim().split('\n').filter(Boolean).at(-1) || (role === 'system' ? '正在思考…' : `正在执行 ${item.type}…`), 240);
+  publishSubagent(agent);
+}
+function collabItem(item, parentId) {
+  if (item?.type === 'subAgentActivity') {
+    const agent = subagents.get(item.agentThreadId) ?? registerSubagent(item.agentThreadId, parentId, {name:item.agentPath});
+    if (agent) void readSubagent(agent);
+    return true;
+  }
+  if (!['collabAgentToolCall','collabToolCall'].includes(item?.type)) return false;
+  const ids = item.receiverThreadIds ?? [item.newThreadId ?? item.receiverThreadId].filter(Boolean);
+  if (!ids.length && item.status === 'failed') return false; // Preserve a failed dispatch in the normal tool timeline.
+  for (const id of ids) {
+    let agent = subagents.get(id);
+    if (!agent && ['spawnAgent','spawn_agent'].includes(item.tool)) agent = registerSubagent(id, parentId, {task:item.prompt});
+    if (!agent) continue;
+    const state = item.agentsStates?.[id] ?? item.agentStatus;
+    if (state) setSubagentStatus(agent, typeof state === 'string' ? state : state.status, state.message);
+    // A completed spawn only acknowledges dispatch; it does not finish the child.
+    if (item.tool === 'closeAgent' && item.status === 'completed' && activeSubagent(agent)) setSubagentStatus(agent,'shutdown');
+    void readSubagent(agent);
+  }
+  return true;
+}
+async function readSubagent(agent) {
+  if (agent.reading || !session?.turn) return;
+  agent.reading = true;
+  const currentSession = session;
+  const revision = agent.revision;
+  try {
+    const result = await rpc('thread/read', {threadId:agent.id, includeTurns:true}, 5000);
+    if (session !== currentSession || !session.turn) return;
+    const thread = result?.thread;
+    if (thread?.id !== agent.id || !Array.isArray(thread.turns)) throw new Error('Child history unavailable');
+    agent.failures = 0;
+    if (revision !== agent.revision) return; // Live notifications supersede an in-flight snapshot.
+    if (thread.agentNickname) agent.name = thread.agentNickname;
+    for (const turn of thread.turns) for (const item of turn.items ?? []) {
+      if (!collabItem(item, agent.id)) childItem(agent, turn.id, item, turn.status !== 'inProgress' || item.status === 'completed');
+    }
+    const last = thread.turns.at(-1);
+    agent.nativeTurnId = last?.status === 'inProgress' ? last.id : null;
+    if (last?.status === 'inProgress') agent.status = thread.status?.activeFlags?.length ? 'waiting' : 'running';
+    else if (last?.status && !['closed','failed'].includes(agent.status)) setSubagentStatus(agent, last.status, last.error?.message);
+    publishSubagent(agent);
+  } catch {
+    if (session === currentSession && session.turn && ++agent.failures >= 3) {
+      agent.status = 'unavailable'; agent.activity = '暂时无法读取子 Agent 的过程，已保留收到的记录。'; publishSubagent(agent);
+    }
+  } finally { agent.reading = false; }
+}
+function scheduleSubagents() {
+  if (subagentTimer || !session?.turn) return;
+  subagentTimer = setTimeout(async () => {
+    subagentTimer = null;
+    await Promise.all([...subagents.values()].filter(activeSubagent).map(readSubagent));
+    const turn = session?.turn;
+    if (turn?.childCompletion && ![...subagents.values()].some(agent => activeSubagent(agent) || agent.reading)) finishTurn(turn,turn.childCompletion);
+    else if ([...subagents.values()].some(activeSubagent)) scheduleSubagents();
+  }, 700);
+}
+function childNotification(method, p) {
+  if (method === 'thread/started') {
+    const thread = p.thread;
+    const source = thread?.source?.subAgent?.thread_spawn;
+    registerSubagent(thread?.id, thread?.parentThreadId ?? source?.parent_thread_id, {name:thread?.agentNickname ?? source?.agent_nickname, task:thread?.preview});
+  }
+  const agent = subagents.get(p.threadId);
+  if (!agent) return false;
+  if (!session.turn) return true;
+  if (collabItem(p.item, agent.id)) return true;
+  if (method === 'turn/started') { agent.nativeTurnId = p.turn?.id; setSubagentStatus(agent,'running'); }
+  else if (method === 'turn/completed') {
+    for (const item of p.turn?.items ?? []) childItem(agent,p.turn.id,item,true);
+    setSubagentStatus(agent,p.turn?.status,p.turn?.error?.message);
+    void readSubagent(agent);
+  } else if (method === 'thread/status/changed') {
+    if (p.status?.type === 'systemError') setSubagentStatus(agent,'errored');
+    else if (p.status?.type === 'active') { agent.status = p.status.activeFlags?.length ? 'waiting' : 'running'; publishSubagent(agent); }
+  } else if (method === 'item/started' || method === 'item/completed') childItem(agent,p.turnId,p.item,method === 'item/completed');
+  else if (['item/agentMessage/delta','item/reasoning/summaryTextDelta','item/commandExecution/outputDelta'].includes(method)) {
+    childItem(agent,p.turnId,{id:p.itemId,type:method.includes('agentMessage')?'agentMessage':method.includes('reasoning')?'reasoning':'commandExecution'},false,p.delta ?? '');
+  }
+  scheduleSubagents();
+  return true;
+}
+
 function toolEventType(method) {
   if (method === 'item/started') return 'tool.started';
   if (['item/updated', 'item/commandExecution/outputDelta', 'item/fileChange/outputDelta', 'item/mcpToolCall/progress'].includes(method)) return 'tool.updated';
@@ -80,7 +218,7 @@ function toolProjection(method, params) {
   const cwd = boundedText(item.cwd ?? params.cwd);
   const output = boundedText(item.aggregatedOutput ?? item.output ?? item.stdout ?? item.stderr, 12_000);
   const delta = boundedText(params.delta);
-  const primary = item.command ?? item.path ?? item.filePath ?? item.toolName ?? item.name ?? item.description ?? item.text;
+  const primary = item.command ?? item.path ?? item.filePath ?? item.toolName ?? item.name ?? item.description ?? item.text ?? item.error?.message ?? item.prompt ?? item.tool;
   const summary = boundedText([primary, output].filter((value) => typeof value === 'string' && value).join('\n'), 12_000) ?? itemType;
   return { type, payload: { itemId, itemType, status: item.status ?? (type === 'tool.completed' ? 'completed' : 'inProgress'),
     summary, delta, output, command, cwd, exitCode: item.exitCode ?? item.exit_code ?? item.returnCode ?? params.exitCode ?? null } };
@@ -143,6 +281,11 @@ function newTurn(p) {
 }
 function finishTurn(turn, status) {
   if (session.turn !== turn) return;
+  if (status === 'completed' && [...subagents.values()].some(agent => activeSubagent(agent) || agent.reading)) {
+    turn.childCompletion = status; scheduleSubagents(); return;
+  }
+  if (status !== 'completed') for (const agent of subagents.values()) if (activeSubagent(agent)) setSubagentStatus(agent,'interrupted','父任务已结束，过程记录已保留。');
+  clearTimeout(subagentTimer); subagentTimer = null;
   clearTimeout(turn.timer);
   session.turn = null;
   providerRequests.clear();
@@ -217,10 +360,12 @@ function onCodex(message) {
   }
   if (!session || !message.method) return;
   let p = message.params ?? {};
+  if (childNotification(message.method, p)) return;
   if (p.threadId && p.threadId !== session.threadId) return;
   if (message.method === 'thread/goal/updated') { updateGoal(p.goal ?? null); return; }
   if (message.method === 'thread/goal/cleared') { updateGoal(null); return; }
   const turn = session.turn;
+  if (turn && collabItem(p.item, session.threadId)) return;
   if (turn && p.turnId && turn.nativeId && p.turnId !== turn.nativeId) return;
   if (turn?.nativeSequence > 1 && message.method.startsWith('item/')) {
     const scoped = id => id ? `${turn.nativeId}:${id}` : id;
@@ -292,6 +437,7 @@ async function startCodex(cwd) {
     if (child !== startedChild) return;
     for (const request of pending.values()) request.reject(new Error('Codex exited'));
     pending.clear();
+    if (session?.turn) finishTurn(session.turn, 'failed');
   });
   childLines = readline.createInterface({ input: child.stdout, crlfDelay: Infinity });
   childLines.on('line', (line) => { try { onCodex(JSON.parse(line)); } catch (error) { process.stderr.write(`Invalid Codex frame: ${error}\n`); } });
@@ -299,6 +445,7 @@ async function startCodex(cwd) {
   notify('initialized', {});
 }
 async function stopCodex() {
+  clearTimeout(subagentTimer); subagentTimer = null; subagents.clear();
   if (!child) return;
   clearTimeout(session?.turn?.timer);
   childLines?.close(); child.kill(); child = null;
@@ -381,6 +528,10 @@ export async function execute(action, p) {
     finally { if (session.goalStarting === starting) session.goalStarting = null; }
   }
   if (action === 'cancel') {
+    if (session.turn?.id === p.turnId) {
+      await Promise.all([...subagents.values()].filter(agent => activeSubagent(agent) && agent.nativeTurnId).map(agent => rpc('turn/interrupt', {threadId:agent.id,turnId:agent.nativeTurnId}, 5000)));
+      if (session.turn && !session.turn.nativeId) finishTurn(session.turn, 'interrupted');
+    }
     if (session.turn && session.turn.id === p.turnId && session.turn.nativeId) await rpc('turn/interrupt', { threadId: session.threadId, turnId: session.turn.nativeId });
     return { accepted: true };
   }

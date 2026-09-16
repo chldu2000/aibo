@@ -22,7 +22,10 @@ export function groupTimelineItems(items, groupSystemItems = false) {
   };
 
   for (const item of items) {
-    if (item.role === 'tool') {
+    if (item.toolName === 'subagent') {
+      flushTools(); flushSystems();
+      grouped.push({ kind: 'entry', id: item.id, item });
+    } else if (item.role === 'tool') {
       flushSystems();
       toolItems.push(item);
     } else if (groupSystemItems && isGroupableSystemItem(item)) {

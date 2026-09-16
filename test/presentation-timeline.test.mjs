@@ -55,3 +55,12 @@ test('references render inside collapsed disclosures with readable excerpts, inc
  const broken='text\n[AIBO_SESSION_REFERENCES]\nnotice\n[invalid]\n[/AIBO_SESSION_REFERENCES]';
  assert.equal(splitSessionReferences(broken).body,broken);assert.deepEqual(splitSessionReferences(broken).references,[]);
 });
+
+test('subagent cards expose a scoped history action instead of rendering their internal JSON',()=>{
+ const task={id:'child',parentId:'parent',rootTurnId:'turn',name:'Reader',task:'Read the code',status:'completed',activity:'Found the cause'};
+ const nodes=flatten(renderTimelineEntry({...entry,role:'system',toolName:'subagent',content:JSON.stringify(task)},[{operation:'openSubagent',args:['child'],event:'click',token:'child-history'}]));
+ assert.ok(nodes.some(node=>node.text==='Reader'));
+ assert.ok(nodes.some(node=>node.text==='已完成'));
+ assert.ok(nodes.some(node=>node.events?.click==='child-history'));
+ assert.ok(!nodes.some(node=>node.text===JSON.stringify(task)));
+});

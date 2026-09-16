@@ -68,6 +68,20 @@ impl SessionHost {
                     .bind(ulid::Ulid::new().to_string()).bind(&new_id).bind(&turn_id).bind(message.get::<String,_>("id"))
                     .execute(&mut *tx).await.map_err(|e|e.to_string())?;
             }
+            // A branch retains the child history belonging to its copied parent turns.
+            sqlx::query("UPDATE messages SET content=json_set(content,'$.rootTurnId',?) WHERE session_id=? AND turn_id=? AND tool_name='subagent'")
+                .bind(&turn_id).bind(&new_id).bind(&turn_id).execute(&mut *tx).await.map_err(|e|e.to_string())?;
+            let child_events = sqlx::query("SELECT generation_id,sequence,occurred_at,payload_json FROM agent_events WHERE session_id=? AND event_type='subagent.message' AND json_extract(payload_json,'$.payload.rootTurnId')=? ORDER BY occurred_at,sequence")
+                .bind(session_id).bind(&old_id).fetch_all(&mut *tx).await.map_err(|e|e.to_string())?;
+            for child in child_events {
+                let event_id = ulid::Ulid::new().to_string();
+                let generation = format!("fork:{}",child.get::<String,_>("generation_id"));
+                let mut event: Value = serde_json::from_str(&child.get::<String,_>("payload_json")).map_err(|e|e.to_string())?;
+                event["eventId"] = json!(event_id); event["sessionId"] = json!(new_id); event["nativeSessionId"] = json!(native);
+                event["generationId"] = json!(generation); event["payload"]["rootTurnId"] = json!(turn_id);
+                sqlx::query("INSERT INTO agent_events(event_id,session_id,generation_id,sequence,occurred_at,event_type,turn_id,payload_json,schema_version) VALUES(?,?,?,?,?,'subagent.message',NULL,?,'2.0')")
+                    .bind(event_id).bind(&new_id).bind(generation).bind(child.get::<i64,_>("sequence")).bind(child.get::<String,_>("occurred_at")).bind(event.to_string()).execute(&mut *tx).await.map_err(|e|e.to_string())?;
+            }
         }
         tx.commit().await.map_err(|e|e.to_string())?;
         // The durable branch exists even if its first open fails; it remains retryable.

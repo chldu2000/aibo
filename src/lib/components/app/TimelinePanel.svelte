@@ -1,4 +1,6 @@
 <script lang="ts">
+  import { parseSubagent, subagentStatusLabels } from '$lib/app/subagents';
+  import { SubagentCard } from '$lib/ui-kit';
   import { tick } from 'svelte';
   import { userInputDraftKey, answeredRequest } from '$lib/app/user-input-drafts';
   import { createTimelineStickiness } from '$lib/app/timeline-stickiness';
@@ -22,6 +24,7 @@
   } from './view-types';
 
   type TimelinePanelProps = {
+    onOpenSubagent?: (id: string) => void;
     presentationActions?: Snippet;
     workspace: WorkspaceListItem | null;
     session: SessionPanelView | null;
@@ -84,6 +87,7 @@
   };
 
   let {
+    onOpenSubagent,
     presentationActions,
     workspace,
     session,
@@ -331,6 +335,10 @@
             </Card>
           {:else}
             {@const item = renderItem.item}
+            {@const child = item.toolName === 'subagent' ? parseSubagent(item.content) : null}
+            {#if child}
+              <div data-presentation-message={'message:' + item.id}><SubagentCard name={child.name} task={child.task} statusLabel={subagentStatusLabels[child.status]} activity={child.activity} failed={['failed','unavailable'].includes(child.status)} onOpen={() => onOpenSubagent?.(child.id)} /></div>
+            {:else}
             <Card
               as="article"
               data-presentation-message={'message:' + item.id}
@@ -375,6 +383,7 @@
                 {/each}
               {/if}
             </Card>
+            {/if}
           {/if}
         {/each}
         </div>

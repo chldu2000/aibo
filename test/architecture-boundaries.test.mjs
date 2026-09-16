@@ -317,3 +317,19 @@ test('composer goals use a semantic control implemented by every built-in kit', 
     assert.match(component, /aria-label="恢复目标"/);
   }
 });
+
+test('subagent cards and detail dialogs remain skin-owned semantic controls', async () => {
+  const contract = await readFile(path.join(root, 'src/lib/ui-kit/contract.ts'), 'utf8');
+  const timeline = await readFile(path.join(root, 'src/lib/components/app/TimelinePanel.svelte'), 'utf8');
+  assert.match(timeline, /<SubagentCard/);
+  for (const name of ['SubagentCard', 'SubagentDialog']) {
+    assert.ok(contract.includes(`${name}: Component<Ui${name}Props>`));
+    const proxy = await readFile(path.join(root, `src/lib/ui-kit/runtime/${name}.svelte`), 'utf8');
+    assert.ok(proxy.includes(`$activeUiKit.${name}`));
+    for (const skin of ['shadcn', 'material3']) {
+      const registration = await readFile(path.join(root, `src/lib/ui-kit/kits/${skin}.ts`), 'utf8');
+      assert.ok(registration.includes(`\n  ${name},`));
+      assert.ok((await readFile(path.join(root, `src/lib/ui-kit/kits/${skin}/${name}.svelte`), 'utf8')).length);
+    }
+  }
+});

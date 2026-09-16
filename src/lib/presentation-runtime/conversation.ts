@@ -2,6 +2,7 @@ import type { PresentationConversation, PresentationConversationAction } from '.
 import type { PresentationContext, PresentationIntent } from '../../../packages/plugin-protocol/src/presentation-runtime';
 import { createActionDirectory } from './action-directory.ts';
 import { answeredRequest } from '../app/user-input-drafts.ts';
+import { parseSubagent } from '../app/subagents.ts';
 import { sessionAgentKind } from '../app/agent-kind.ts';
 
 import {splitSessionReferences} from '../../../packages/presentation-workbench/session-references.js';
@@ -12,6 +13,10 @@ export function conversationActions(state: PresentationConversation): Spec[] {
   const entries: Spec[] = [];
   const add = (operation: Spec['operation'], args: Spec['args'] = [], event: Spec['event'] = 'click') => entries.push({ operation, args, event });
   for(const entry of state.timelineVisibleCount>0?state.timeline.slice(-state.timelineVisibleCount):[])for(const target of markdownTargets(entry.role === 'user' ? splitSessionReferences(entry.content).body : entry.content))add(target.kind==='code'?'copyCode':'openLink',[entry.id,String(target.index),target.value]);
+  for (const entry of state.timeline) {
+    const child = entry.toolName === 'subagent' ? parseSubagent(entry.content) : null;
+    if (child) add('openSubagent', [child.id]);
+  }
   const session = state.session;
   if (state.timeline.length > state.timelineVisibleCount) add('loadOlder');
   if (!session) return entries;

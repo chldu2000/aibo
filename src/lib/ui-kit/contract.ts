@@ -147,7 +147,18 @@ export type UiGoalBarProps = {
   onResume?: () => void;
 };
 
+export type UiSubagentCardProps = {
+  name: string; task: string; statusLabel: string; activity: string;
+  failed: boolean; onOpen: () => void;
+};
+export type UiSubagentDialogProps = {
+  open: boolean; title: string; task: string; statusLabel: string;
+  onClose: () => void; children?: Snippet;
+};
+
 export type UiKitAdapter = {
+  SubagentCard: Component<UiSubagentCardProps>;
+  SubagentDialog: Component<UiSubagentDialogProps>;
   GoalBar: Component<UiGoalBarProps>;
   AgentSettingsForm: Component<UiAgentSettingsFormProps>;
   WorkbenchChrome: Component<UiWorkbenchChromeProps>;

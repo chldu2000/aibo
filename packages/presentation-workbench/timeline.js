@@ -28,6 +28,14 @@ const timelineToolLabels={commandExecution:'命令执行',fileRead:'读取文件
 /** Tool payloads are literal text; only conversational prose uses Markdown. */
 export function renderTimelineEntry(entry,actions){
  const key='message:'+entry.id;
+ if(entry.toolName==='subagent') {
+  try {
+   const child=JSON.parse(entry.content);
+   const labels={pending:'正在启动',running:'运行中',waiting:'等待输入',completed:'已完成',failed:'失败',interrupted:'已中断',closed:'已关闭',unavailable:'过程暂不可用'};
+   return node('article',key,null,[node('strong',key+':name',child.name),text(key+':status',labels[child.status]??child.status),text(key+':task',child.task),text(key+':activity',child.activity),button(key+':open','查看工作过程',actionFor(actions,'openSubagent',child.id))]);
+  } catch { /* Retain a readable fallback for older malformed history. */ }
+ }
+
  const reasoning=entry.role==='system'&&entry.toolName==='reasoning';
  const header=node('header','message:header:'+entry.id,null,[
   node('strong','message:role:'+entry.id,reasoning?'THINKING':entry.role.toUpperCase()),

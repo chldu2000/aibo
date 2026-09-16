@@ -242,7 +242,7 @@ export type PresentationConversation = {
 
 export type PresentationConversationOperation = 'copyCode' | 'openLink' | 'draft' | 'send' | 'stop' | 'retry' | 'queueSteer' | 'queueFollowUp' | 'clearQueue' | 'clearGoal' | 'pauseGoal' | 'resumeGoal'
   | 'addAttachments' | 'addDirectory' | 'removeAttachment' | 'selectPath' | 'selectSessionReference' | 'selectCommand'
-  | 'loadOlder' | 'fork' | 'loadModels' | 'selectModel' | 'selectServiceTier' | 'selectAccess' | 'compact'
+  | 'openSubagent' | 'loadOlder' | 'fork' | 'loadModels' | 'selectModel' | 'selectServiceTier' | 'selectAccess' | 'compact'
   | 'answer' | 'chooseAnswer' | 'submitAnswers' | 'cancelAnswers'
   | 'openTree' | 'closeTree' | 'refreshTree' | 'selectTreeNode';
 

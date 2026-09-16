@@ -1,3 +1,5 @@
+import SubagentDialog from './shadcn/SubagentDialog.svelte';
+import SubagentCard from './shadcn/SubagentCard.svelte';
 import GoalBar from './shadcn/GoalBar.svelte';
 import AgentSettingsForm from './shadcn/AgentSettingsForm.svelte';
 import SettingsSection from './shadcn/SettingsSection.svelte';
@@ -28,6 +30,8 @@ import type { UiKitAdapter, UiKitRegistration, UiThemeRegistration } from '../co
 import metadata from '../../../../packages/presentation-shadcn/themes.json';
 
 export const shadcnUiKit: UiKitAdapter = {
+  SubagentDialog,
+  SubagentCard,
   GoalBar,
   HostPanel,
   ManagementCenter,

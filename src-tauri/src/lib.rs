@@ -1468,6 +1468,16 @@ fn row_to_session(row: &sqlx::sqlite::SqliteRow) -> Result<Session, CoreError> {
 }
 
 fn row_to_timeline_item(row: &sqlx::sqlite::SqliteRow) -> Result<TimelineItem, CoreError> {
+    let mut content: String = row.try_get("content")?;
+    if row.try_get::<Option<String>, _>("tool_name")?.as_deref() == Some("subagent") && row.try_get::<String, _>("status")? == "failed" {
+        if let Ok(mut task) = serde_json::from_str::<serde_json::Value>(&content) {
+            if ["pending", "running", "waiting"].contains(&task["status"].as_str().unwrap_or_default()) {
+                task["status"] = serde_json::json!("interrupted");
+                task["activity"] = serde_json::json!("执行已中断，已保留收到的过程记录。");
+                content = task.to_string();
+            }
+        }
+    }
     Ok(TimelineItem {
         id: row.try_get("id")?,
         session_id: row.try_get("session_id")?,
@@ -1476,7 +1486,7 @@ fn row_to_timeline_item(row: &sqlx::sqlite::SqliteRow) -> Result<TimelineItem, C
         role: row.try_get("role")?,
         tool_name: row.try_get("tool_name")?,
         entry_type: None,
-        content: row.try_get("content")?,
+        content,
         status: row.try_get("status")?,
         created_at: row.try_get("created_at")?,
         updated_at: row.try_get("updated_at")?,
@@ -1814,6 +1824,12 @@ async fn rename_session(
 #[tauri::command]
 async fn read_session_history(workspace_id: String, session_id: String, before: Option<session_history::Cursor>, state: State<'_, AppState>) -> Result<session_history::Page, CoreError> {
     session_history::read(&state.db, workspace_id, session_id, before).await
+}
+
+/// Child history is read from persisted events without starting an Agent process.
+#[tauri::command]
+async fn get_subagent_history(session_id: String, agent_id: String, state: State<'_, AppState>) -> Result<Vec<serde_json::Value>, CoreError> {
+    session_history::read_subagent(&state.db, &session_id, &agent_id).await
 }
 
 #[tauri::command]
@@ -4365,6 +4381,7 @@ pub fn run() {
             update_session_execution_profile,
             list_sessions,
             get_timeline,
+            get_subagent_history,
             read_session_history,
             get_turn_change_set,
             list_turn_checkpoints,

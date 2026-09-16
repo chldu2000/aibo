@@ -624,3 +624,10 @@ dd { max-width: 68%; overflow: hidden; margin: 0; color: var(--aibo-muted); font
   .host-panel-overlay { padding: 8px; }
   .host-panel { height: 100%; border-radius: 8px; }
 }
+
+.subagent-feed { flex:1; min-height:0; overflow:auto; padding:16px 20px; overscroll-behavior:contain; }
+.subagent-entry { padding:14px 0; border-bottom:1px solid var(--aibo-border); }
+.subagent-entry .entry-meta { justify-content:space-between; }
+.subagent-entry pre { white-space:pre-wrap; overflow-wrap:anywhere; }
+.subagent-feedback { display:flex; align-items:center; gap:12px; padding:12px 20px; color:var(--aibo-muted); font-size:13px; }
+.subagent-new { padding:8px 20px; text-align:center; }

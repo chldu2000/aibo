@@ -26,3 +26,7 @@ export { default as SettingsSection } from './runtime/SettingsSection.svelte';
 export { default as AgentSettingsForm } from './runtime/AgentSettingsForm.svelte';
 
 export { default as GoalBar } from './runtime/GoalBar.svelte';
+
+export { default as SubagentCard } from './runtime/SubagentCard.svelte';
+
+export { default as SubagentDialog } from './runtime/SubagentDialog.svelte';

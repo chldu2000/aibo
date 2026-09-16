@@ -18,7 +18,7 @@ impl SessionHost {
                 "workspaceId":workspace_id,"sessionId":session_id,"nativeSessionId":p["nativeSessionId"],"turnId":p["turnId"],"type":p["type"],"correlation":p["correlation"],"payload":p["payload"],"rawRef":null});
             let emitted_event = event.clone();
             let kind = p["type"].as_str().unwrap();
-            if !["session.started","session.info_changed","goal.updated","turn.started","message.delta","message.completed","reasoning.updated","reasoning.completed","tool.started","tool.updated","tool.completed","turn.completed","turn.failed","approval.requested","approval.resolved","user_input.requested","user_input.resolved","usage.updated","queue.updated","compaction.started","compaction.completed","retry.started","retry.completed","extension.updated","adapter.crashed"].contains(&kind) {
+            if !["subagent.updated","subagent.message","session.started","session.info_changed","goal.updated","turn.started","message.delta","message.completed","reasoning.updated","reasoning.completed","tool.started","tool.updated","tool.completed","turn.completed","turn.failed","approval.requested","approval.resolved","user_input.requested","user_input.resolved","usage.updated","queue.updated","compaction.started","compaction.completed","retry.started","retry.completed","extension.updated","adapter.crashed"].contains(&kind) {
                 return Err("capability_unsupported: event outside minimal lifecycle".into());
             }
             let negotiated: Value = serde_json::from_str(&active.1).map_err(|_|"manifest_mismatch: negotiated capabilities missing")?;
@@ -35,6 +35,23 @@ impl SessionHost {
                 current["updatedAt"] = json!(now);
                 if !crate::session_contract::binding_schema().is_valid(&current) { return Err("invalid_recovery_data: recovery update".into()); }
                 sqlx::query("UPDATE session_bindings SET plugin_binding_json=? WHERE session_id=?").bind(current.to_string()).bind(session_id).execute(&mut *tx).await.map_err(|e|e.to_string())?;
+            }
+            if kind.starts_with("subagent.") {
+                let payload = &p["payload"];
+                let root_turn = payload["rootTurnId"].as_str().ok_or("invalid_output: child parent turn")?;
+                let exists: i64 = sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM turns WHERE id=? AND session_id=?)").bind(root_turn).bind(session_id).fetch_one(&mut *tx).await.map_err(|e|e.to_string())?;
+                if exists == 0 { return Err("invalid_session: child parent turn".into()); }
+                if kind == "subagent.updated" {
+                    let id = payload["id"].as_str().filter(|id|!id.is_empty()).ok_or("invalid_output: child id")?;
+                    let status = match payload["status"].as_str().unwrap_or_default() {
+                        "pending" | "running" | "waiting" => "streaming", "failed" | "unavailable" => "failed", "interrupted" => "interrupted", _ => "completed"
+                    };
+                    let message_id = format!("{session_id}:subagent:{id}");
+                    sqlx::query("INSERT INTO messages(id,session_id,turn_id,external_message_id,role,tool_name,content,status,sequence,created_at,updated_at) VALUES(?,?,?,?,'system','subagent',?,?,?,?,?) ON CONFLICT(id) DO UPDATE SET content=excluded.content,status=excluded.status,updated_at=excluded.updated_at")
+                        .bind(message_id).bind(session_id).bind(root_turn).bind(format!("subagent:{id}")).bind(payload.to_string()).bind(status).bind(sequence).bind(&now).bind(&now).execute(&mut *tx).await.map_err(|e|e.to_string())?;
+                } else if !payload["agentId"].is_string() || !payload["entry"]["id"].is_string() || !payload["entry"]["content"].is_string() {
+                    return Err("invalid_output: child message".into());
+                }
             }
             if let Some(turn) = turn_id {
                 let state: Option<String> = sqlx::query_scalar("SELECT status FROM turns WHERE id=? AND session_id=?").bind(turn).bind(session_id).fetch_optional(&mut *tx).await.map_err(|e|e.to_string())?;

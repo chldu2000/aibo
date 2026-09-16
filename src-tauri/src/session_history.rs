@@ -36,6 +36,27 @@ pub(crate) async fn read(db: &SqlitePool, workspace_id: String, session_id: Stri
     Ok(Page { schema: "aibo.session-history-page/v1", source: "persisted-core", session, items, next_before })
 }
 
+pub(crate) async fn read_subagent(db: &SqlitePool, session_id: &str, agent_id: &str) -> Result<Vec<serde_json::Value>, CoreError> {
+    crate::session_by_id(db, session_id).await?;
+    // Fetch only the latest snapshot of each item, retaining first-seen order.
+    let rows: Vec<String> = sqlx::query_scalar("SELECT payload_json FROM (SELECT payload_json, ROW_NUMBER() OVER (PARTITION BY json_extract(payload_json,'$.payload.entry.id') ORDER BY occurred_at DESC,sequence DESC) AS latest, MIN(occurred_at) OVER (PARTITION BY json_extract(payload_json,'$.payload.entry.id')) AS first_at, MIN(sequence) OVER (PARTITION BY json_extract(payload_json,'$.payload.entry.id')) AS first_sequence FROM agent_events WHERE session_id=? AND event_type='subagent.message' AND json_extract(payload_json,'$.payload.agentId')=?) WHERE latest=1 ORDER BY first_at,first_sequence")
+        .bind(session_id).bind(agent_id).fetch_all(db).await?;
+    let mut entries: Vec<serde_json::Value> = Vec::new();
+    for row in rows {
+        let event: serde_json::Value = serde_json::from_str(&row).map_err(|error| CoreError::SessionOperation(error.to_string()))?;
+        let mut entry = event["payload"]["entry"].clone();
+        if entry["status"] == "streaming" {
+            let status: Option<String> = sqlx::query_scalar("SELECT status FROM turns WHERE id=? AND session_id=?")
+                .bind(event["payload"]["rootTurnId"].as_str()).bind(session_id).fetch_optional(db).await?;
+            if status.as_deref().is_some_and(|status| ["interrupted", "failed"].contains(&status)) {
+                entry["status"] = serde_json::json!("interrupted");
+            }
+        }
+        entries.push(entry);
+    }
+    Ok(entries)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

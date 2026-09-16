@@ -1,4 +1,30 @@
 <script lang="ts">
+  import { SubagentDetails } from '$lib/components/app';
+  import { getSubagentHistory } from '$lib/api';
+  import { parseSubagent, mergeSubagentEntries, type SubagentEntry } from '$lib/app/subagents';
+  let subagentSelection = $state<{sessionId:string; id:string} | null>(null);
+  let subagentOpen = $state(false);
+  let subagentEntries = $state<SubagentEntry[]>([]);
+  let subagentLoading = $state(false);
+  let subagentError = $state<string | null>(null);
+  let subagentGeneration = 0;
+  let subagentLive: SubagentEntry[] = [];
+  const selectedSubagent = $derived(subagentSelection?.sessionId === selectedSessionId
+    ? timeline.filter(item => item.toolName === 'subagent').map(item => parseSubagent(item.content)).find(agent => agent?.id === subagentSelection?.id) ?? null : null);
+  async function openSubagent(id: string) {
+    if (!selectedSessionId) return;
+    const sessionId = selectedSessionId;
+    const generation = ++subagentGeneration;
+    if (subagentSelection?.id !== id || subagentSelection?.sessionId !== sessionId) subagentEntries = [];
+    subagentSelection = {sessionId,id}; subagentOpen = true; subagentLoading = true; subagentError = null; subagentLive = [];
+    try {
+      const history = await getSubagentHistory(sessionId,id);
+      if (generation === subagentGeneration && selectedSessionId === sessionId) subagentEntries = mergeSubagentEntries(history,subagentLive);
+    } catch (error) { if (generation === subagentGeneration) subagentError = toErrorMessage(error); }
+    finally { if (generation === subagentGeneration) subagentLoading = false; }
+  }
+  $effect(() => { if (subagentSelection && subagentSelection.sessionId !== selectedSessionId) { subagentOpen = false; subagentSelection = null; subagentEntries = []; ++subagentGeneration; } });
+
   import { AgentSettingsForm } from '$lib/ui-kit';
   import { readAgentSettings, saveAgentSettings } from './lib/api';
   import { createAgentSettingsController, type AgentSettingsState } from './lib/app/agent-settings-controller';
@@ -193,6 +219,7 @@
         break;
       }
       case 'loadOlder': loadOlderTimeline(); break;
+      case 'openSubagent': if (target) await openSubagent(target); break;
       case 'fork': await forkSession(selectedSessionId, target ?? undefined); break;
       case 'loadModels': await loadSessionModels(); break;
       case 'selectModel': await applySessionModelConfiguration(target!, detail ?? null); break;
@@ -2418,6 +2445,13 @@
   }
 
   function handleAgentEvent(event: AgentEvent) {
+    if (event.type === 'subagent.message' && event.sessionId === subagentSelection?.sessionId && event.payload.agentId === subagentSelection.id) {
+      const entry = event.payload.entry as SubagentEntry;
+      if (entry && typeof entry.id === 'string' && typeof entry.content === 'string') {
+        subagentEntries = mergeSubagentEntries(subagentEntries,[entry]);
+        if (subagentLoading) subagentLive = mergeSubagentEntries(subagentLive,[entry]);
+      }
+    }
     if (event.sessionId === selectedSessionId && event.type === 'goal.updated') {
       ++goalRequestGeneration;
       codexGoal = normalizeAgentGoal(event.payload);
@@ -3770,6 +3804,7 @@
       usageValues={usageValues}
       retryPrompt={retryPrompt}
       retryReason={retryReason}
+      onOpenSubagent={guard('onOpenSubagent', (id) => void openSubagent(id))}
       userInputRequests={selectedUserInputRequests}
       {userInputDrafts}
       onUserInputDraftChange={guard('onUserInputDraftChange', (value) => { userInputDrafts = value; })}
@@ -3950,4 +3985,10 @@
     onConfirmPiNavigation={(options) => void confirmPiTreeNavigation(options)}
     onCancelPiNavigation={() => (piNavigationEntryId = null)}
   />
+
+{#if selectedSubagent}
+  <SubagentDetails open={subagentOpen} agent={selectedSubagent} entries={subagentEntries} loading={subagentLoading} error={subagentError}
+    onClose={() => subagentOpen = false} onRetry={() => void openSubagent(selectedSubagent!.id)} />
+{/if}
+
 </div>

@@ -7,6 +7,7 @@ let nativeTurnId = 'native-turn';
 const goalFile = process.env.CODEX_FAKE_GOAL_FILE;
 let goal = goalFile && existsSync(goalFile) ? JSON.parse(readFileSync(goalFile,'utf8')) : null;
 const nativeTurns = [];
+const childThreads = new Map();
 let interactiveTurn = null;
 function completeTurn(params) {
   nativeTurns.push({id:nativeTurnId});
@@ -53,6 +54,8 @@ input.on('line', (line) => {
   else if (method === 'thread/resume' && process.env.CODEX_FAKE_MISSING_ROLLOUT === '1') write({ id, error: { code: -32600, message: `no rollout found for thread id ${params.threadId}` } });
   else if (method === 'thread/resume') write({ id, result: { thread: { id: params.threadId }, ...policy } });
   else if (method === 'thread/list') write({id,result:{data:[{id:'catalog-thread',title:'Catalog entry',cwd:params.cwd,status:{type:'idle'}}]}});
+  else if (method === 'thread/read' && childThreads.has(params.threadId) && process.env.CODEX_FAKE_SUBAGENT_READ_FAIL === '1') write({id,error:{code:-32000,message:'Child history unavailable'}});
+  else if (method === 'thread/read' && childThreads.has(params.threadId)) write({id,result:{thread:childThreads.get(params.threadId)}});
   else if (method === 'thread/read' && params.includeTurns && process.env.CODEX_FAKE_NO_TURNS === '1') write({id,error:{code:-32600,message:'list_turns is not supported yet'}});
   else if (method === 'thread/read') write({id,result:{thread:{id:params.threadId,title:'Native thread',cwd:process.cwd(),status:{type:'idle'},updatedAt:'2026-09-12T00:00:00Z',turns:process.env.CODEX_FAKE_NO_TURNS === '1' ? undefined : nativeTurns}}});
   else if (method === 'thread/fork') {
@@ -71,7 +74,41 @@ input.on('line', (line) => {
     }
     write({ id, result: { turn: { id: nativeTurnId } } });
     write({ method: 'turn/started', params: { threadId: params.threadId, turn: { id: nativeTurnId, status: 'inProgress' } } });
-    if (params.input[0].text === 'tool please') {
+    if (params.input[0].text === 'subagent spawn fails') {
+      write({method:'item/completed',params:{threadId:params.threadId,turnId:nativeTurnId,item:{type:'collabAgentToolCall',id:'failed-spawn',tool:'spawnAgent',status:'failed',receiverThreadIds:[],error:{message:'Agent limit reached'}}}});
+      completeTurn(params);
+    } else if (params.input[0].text === 'subagents please') {
+      for (const [index,name] of ['Reader','Tester'].entries()) {
+        const childId = `child-${index}`;
+        const childTurn = {id:`child-turn-${index}`,status:'inProgress',items:[]};
+        const thread = {id:childId,parentThreadId:params.threadId,agentNickname:name,preview:`Task ${name}`,status:{type:'active',activeFlags:[]},turns:[childTurn]};
+        childThreads.set(childId,thread);
+        if (process.env.CODEX_FAKE_SUBAGENT_POLL_ONLY !== '1') write({method:'thread/started',params:{thread}});
+        write({method:'item/completed',params:{threadId:params.threadId,turnId:nativeTurnId,item:{type:'collabAgentToolCall',id:`spawn-${index}`,tool:'spawnAgent',status:'completed',senderThreadId:params.threadId,receiverThreadIds:[childId],prompt:`Task ${name}`,agentsStates:{[childId]:{status:'running',message:null}}}}});
+        const childParams = {threadId:childId,turnId:childTurn.id};
+        const thinking = {id:'thinking',type:'reasoning',summary:['Checking files.']};
+        const command = {id:'command',type:'commandExecution',command:'ls',aggregatedOutput:'src\ntest',status:'completed'};
+        if (process.env.CODEX_FAKE_SUBAGENT_POLL_ONLY !== '1') {
+        write({method:'item/started',params:{...childParams,item:{...command,status:'inProgress'}}});
+        write({method:'item/completed',params:{...childParams,item:command}});
+        write({method:'item/completed',params:{...childParams,item:thinking}});
+        write({method:'item/agentMessage/delta',params:{...childParams,itemId:'reply',delta:`${name} is working`}});
+        }
+        childTurn.items.push(command,thinking);
+        setTimeout(() => {
+          const reply = {id:'reply',type:'agentMessage',text:index ? 'Tests failed.' : 'Review complete.'};
+          childTurn.items.push(reply); childTurn.status = index ? 'failed' : 'completed';
+          if(index) childTurn.error = {message:'Test runner failed'};
+          thread.status = {type:'idle'};
+          if (process.env.CODEX_FAKE_SUBAGENT_POLL_ONLY !== '1') {
+          write({method:'item/completed',params:{...childParams,item:reply}});
+          write({method:'turn/completed',params:{threadId:childId,turn:childTurn}});
+          }
+        },50 + index*30);
+      }
+      write({method:'item/agentMessage/delta',params:{threadId:'unrelated',turnId:'foreign',itemId:'reply',delta:'foreign secret'}});
+      completeTurn(params);
+    } else if (params.input[0].text === 'tool please') {
       write({ method: 'item/agentMessage/delta', params: { threadId: params.threadId, turnId: nativeTurnId, itemId: 'commentary-1', delta: 'I will inspect first.' } });
       write({ method: 'item/completed', params: { threadId: params.threadId, turnId: nativeTurnId, item: { id: 'commentary-1', type: 'agentMessage', text: 'I will inspect first.' } } });
       write({ method: 'item/started', params: { threadId: params.threadId, turnId: nativeTurnId, item: { id: 'reasoning-1', type: 'reasoning', summary: [], status: 'inProgress' } } });

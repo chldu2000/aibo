@@ -632,3 +632,59 @@ async fn goal_resume_and_pause_use_host_execution_ownership_and_policy() {
     fs::remove_dir_all(root).unwrap();
     }
 }
+
+#[tokio::test]
+async fn subagent_history_survives_restart_without_a_running_provider() {
+    let root = std::env::temp_dir().join(format!("aibo-host-subagents-{}",ulid::Ulid::new()));
+    let package = root.join("package");
+    let workspace = root.join("workspace");
+    fs::create_dir_all(&package).unwrap();
+    fs::create_dir_all(&workspace).unwrap();
+    let mut manifest: Value = serde_json::from_str(include_str!("../capability-plugins/codex/plugin.json")).unwrap();
+    manifest["executableDependencies"] = json!([{"kind":"runtime","name":"node","versionRange":">=22","required":true}]);
+    fs::write(package.join("plugin.json"),manifest.to_string()).unwrap();
+    let engine = include_str!("../capability-plugins/codex/engine.mjs");
+    let native_start = "spawn('codex', ['app-server', '--stdio']";
+    assert!(engine.contains(native_start));
+    fs::write(package.join("engine.mjs"),engine.replace(native_start,"spawn(process.execPath, [new URL('./fake-codex.mjs', import.meta.url).pathname]")).unwrap();
+    for (name, source) in [
+        ("worker.mjs",include_str!("../capability-plugins/codex/worker.mjs")),
+        ("fake-codex.mjs",include_str!("../../fixtures/plugins/codex/fake-codex.mjs")),
+        ("session-provider.mjs",include_str!("../capability-plugins/session-provider.mjs")),
+        ("runtime.mjs",include_str!("../../packages/capability-runtime/runtime.mjs")),
+        ("stdio.mjs",include_str!("../../packages/capability-runtime/stdio.mjs")),
+    ] {fs::write(package.join(name),source).unwrap();}
+    let db = crate::open_database(&root.join("data/aibo.sqlite3")).await.unwrap();
+    sqlx::query("INSERT INTO workspaces(id,path,label,trusted,created_at,updated_at) VALUES('w',?,'Test',1,?,?)")
+        .bind(workspace.to_string_lossy().as_ref()).bind(crate::now_iso()).bind(crate::now_iso()).execute(&db).await.unwrap();
+    let installed = plugin_registry::install(&db,&root.join("data"),&package).await.unwrap();
+    plugin_registry::enable(&db,&installed.id,true).await.unwrap();
+    let broker = Broker::new(db.clone());
+    let host = SessionHost::new(db.clone(),broker.clone());
+    broker.bind(Binding {scope:Scope::Workspace("w".into()),capability:"dev.aibo.codex.thread.list".into(),version:"1.0.0".into(),installation_id:installed.id.clone(),contribution_id:"dev.aibo.codex.catalog".into()}).await.unwrap();
+    let catalog = broker.invoke("main",Request {scope:Scope::Workspace("w".into()),capability:"dev.aibo.codex.thread.list".into(),version:"1.0.0".into(),request_id:"catalog".into(),turn_id:None,input:json!({})}).await.unwrap();
+    assert_eq!(catalog.output["threads"][0]["id"],"catalog-thread");
+    let count:i64 = sqlx::query_scalar("SELECT COUNT(*) FROM sessions").fetch_one(&db).await.unwrap();
+    assert_eq!(count,0,"workspace catalog must not create a conversation");
+    let source = host.create_with_profile_from("main","w",&installed.id,"dev.aibo.codex.agent",None).await.unwrap();
+
+    host.send_configured_from("main",&source.id,"subagents please").await.unwrap();
+    wait_for_turn(&host,&source.id).await;
+    let cards: Vec<String> = sqlx::query_scalar("SELECT content FROM messages WHERE session_id=? AND tool_name='subagent' ORDER BY sequence")
+        .bind(&source.id).fetch_all(&db).await.unwrap();
+    assert_eq!(cards.len(),2);
+    let states: Vec<Value> = cards.iter().map(|value|serde_json::from_str::<Value>(value).unwrap()["status"].clone()).collect();
+    assert_eq!(states,vec![json!("completed"),json!("failed")]);
+    let entries = crate::session_history::read_subagent(&db,&source.id,"child-0").await.unwrap();
+    assert_eq!(entries.len(),3);
+    assert_eq!(entries.last().unwrap()["content"],"Review complete.");
+    assert!(crate::session_history::read_subagent(&db,&source.id,"unrelated").await.unwrap().is_empty());
+    let branch = host.fork_from("main",&source.id,None).await.unwrap();
+    assert_eq!(crate::session_history::read_subagent(&db,&branch.id,"child-0").await.unwrap(),entries);
+    sqlx::query("UPDATE sessions SET archived=1 WHERE id=?").bind(&source.id).execute(&db).await.unwrap();
+    db.close().await;
+    let reopened = crate::open_database(&root.join("data/aibo.sqlite3")).await.unwrap();
+    assert_eq!(crate::session_history::read_subagent(&reopened,&source.id,"child-0").await.unwrap(),entries);
+    reopened.close().await;
+    fs::remove_dir_all(root).unwrap();
+}

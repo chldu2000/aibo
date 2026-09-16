@@ -1,3 +1,4 @@
+import { parseSubagent } from './subagents.ts';
 import type {
   AgentQueueSnapshot,
   AgentEvent,
@@ -41,6 +42,22 @@ export function eventTimelineItemId(event: Pick<AgentEvent, 'turnId'>, itemId: s
 
 export function handleAgentEvent(event: AgentEvent, context: AgentEventHandlerContext): void {
   const selectedSessionId = context.selectedSessionId;
+  if (event.type === 'subagent.message') return;
+  if (event.type === 'subagent.updated') {
+    const content = JSON.stringify(event.payload);
+    const agent = parseSubagent(content);
+    if (!agent || event.sessionId !== selectedSessionId) return;
+    const externalMessageId = `subagent:${agent.id}`;
+    const existing = context.timeline.find(item => item.externalMessageId === externalMessageId);
+    const status: TimelineItem['status'] = ['pending','running','waiting'].includes(agent.status) ? 'streaming'
+      : ['failed','unavailable'].includes(agent.status) ? 'failed' : agent.status === 'interrupted' ? 'interrupted' : 'completed';
+    const item: TimelineItem = {...existing, id:existing?.id ?? `${event.sessionId}:subagent:${agent.id}`, sessionId:event.sessionId,
+      turnId:agent.rootTurnId, externalMessageId, role:'system', toolName:'subagent', entryType:null, content, status,
+      createdAt:existing?.createdAt ?? event.occurredAt, updatedAt:event.occurredAt};
+    context.setTimeline(existing ? context.timeline.map(old => old === existing ? item : old) : [...context.timeline,item]);
+    return;
+  }
+
   const state = event.type === 'session.state_changed'
     ? event.payload.state
     : event.type === 'turn.failed'
