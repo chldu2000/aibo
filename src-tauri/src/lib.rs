@@ -1451,9 +1451,23 @@ async fn open_workspace_location(
 }
 
 fn row_to_session(row: &sqlx::sqlite::SqliteRow) -> Result<Session, CoreError> {
-    let capabilities = row.try_get::<Option<String>, _>("plugin_capabilities_json")?
+    let mut capabilities = row.try_get::<Option<String>, _>("plugin_capabilities_json")?
         .and_then(|value| serde_json::from_str::<Vec<String>>(&value).ok())
         .unwrap_or_default();
+    let manifest = row.try_get::<Option<String>, _>("queue_manifest_json")?
+        .and_then(|raw| serde_json::from_str::<serde_json::Value>(&raw).ok());
+    let binding = row.try_get::<Option<String>, _>("plugin_binding_json")?
+        .and_then(|raw| serde_json::from_str::<serde_json::Value>(&raw).ok());
+    let contribution: String = row.try_get("agent")?;
+    let (queue, steering) = match (manifest, binding) {
+        (Some(manifest), Some(binding)) if session_contract::binding_schema().is_valid(&binding) =>
+            session_contract::queue_capabilities(&manifest, &contribution, &capabilities),
+        _ => (false, false),
+    };
+    // These UI capabilities are host projections, not provider negotiation data.
+    capabilities.retain(|capability| capability != "queue.manage" && capability != "queue.steer");
+    if queue { capabilities.push("queue.manage".into()); }
+    if steering { capabilities.push("queue.steer".into()); }
     Ok(Session {
         id: row.try_get("id")?,
         workspace_id: row.try_get("workspace_id")?,
@@ -1578,10 +1592,12 @@ fn pi_snapshot_timeline(snapshot: &serde_json::Value, session_id: &str) -> Vec<T
 async fn session_by_id(db: &SqlitePool, id: &str) -> Result<Session, CoreError> {
     let row = sqlx::query(
         "SELECT s.id, s.workspace_id, s.agent, s.label, s.state, s.archived,
-                b.external_session_id, s.plugin_installation_id, b.plugin_capabilities_json,
+                b.external_session_id, s.plugin_installation_id, b.plugin_capabilities_json, b.plugin_binding_json,
+                p.manifest_json AS queue_manifest_json,
                 s.created_at, s.updated_at
          FROM sessions s
          LEFT JOIN session_bindings b ON b.session_id = s.id
+         LEFT JOIN plugin_installations p ON p.id = s.plugin_installation_id
          WHERE s.id = ?",
     )
     .bind(id)
@@ -1761,10 +1777,12 @@ async fn list_sessions(
         .map(|value| format!("%{}%", value.to_lowercase()));
     let mut query_text = String::from(
         "SELECT s.id, s.workspace_id, s.agent, s.label, s.state, s.archived,
-                b.external_session_id, s.plugin_installation_id, b.plugin_capabilities_json,
+                b.external_session_id, s.plugin_installation_id, b.plugin_capabilities_json, b.plugin_binding_json,
+                p.manifest_json AS queue_manifest_json,
                 s.created_at, s.updated_at
          FROM sessions s
          LEFT JOIN session_bindings b ON b.session_id = s.id
+         LEFT JOIN plugin_installations p ON p.id = s.plugin_installation_id
          WHERE s.workspace_id = ?",
     );
     if search.is_some() {

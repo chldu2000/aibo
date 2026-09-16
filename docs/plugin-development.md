@@ -165,3 +165,7 @@ unredacted provider logs in a package, fixture or bug report.
 
 Session providers can contribute editable, scoped settings through the host-owned
 `aibo.agent-settings/v1` descriptor. See the [protocol and working built-in examples](agent-plugin-settings.md).
+
+## Host waiting queue and optional steering
+
+Standard Runtime 2.1 providers declaring open/turn/cancel/close receive a host-owned durable waiting queue without a native queue implementation. Running delivery requires separately negotiated steering. Host-projected capabilities never replace provider negotiation data; uncertain delivery is never automatically retried. See [message queue](message-queue.md) for the contract and compatibility rules.

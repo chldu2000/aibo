@@ -534,3 +534,13 @@ Codex 插件把父子线程关联转换为 `subagent.updated` 和 `subagent.mess
 任务卡片存入主时间线，过程消息独立保存在事件历史中。`get_subagent_history` 只读取本地持久化历史，合并相同子线程 item 的最新内容，因此归档、重启或插件不可用时仍可回看。分叉会话保留分叉边界内的子任务过程。单条过程内容沿用有界输出策略，超过 48,000 个字符以省略号标记；界面展示提供方公开的思考摘要。
 
 第一版接入 Codex 的结构化子 Agent 协议，其他提供方可以通过相同事件契约接入。普通文本中的“子 Agent”描述不会被推测成真实任务。协议字段以本机 `codex app-server generate-ts --experimental` 和 [App Server 官方文档](https://learn.chatgpt.com/docs/app-server) 为依据。
+
+### Host waiting queue and optional steering
+
+Session queue eligibility follows the pinned Runtime 2.1 lifecycle contract, not
+Agent IDs. Public session `queue.manage` is host-projected; `queue.steer` separately
+requires negotiated native steering. Composer and both local/external timelines
+hide running send-now without it. External conversation action directories apply
+the same gate, and the native host rechecks before accepting or claiming a message.
+Provider queue events cannot replace host-owned durable snapshots. No UI kit or
+skin owns queue persistence, delivery, attachment identity or uncertain recovery.

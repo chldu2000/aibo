@@ -137,3 +137,7 @@ pnpm run probe:session:capabilities
 
 会话能力提供者可通过 `aibo.agent-settings/v1` 声明可编辑的分层设置。
 参见[协议、接入方式与内置示例](agent-plugin-settings.md)。
+
+## 宿主持久队列与可选 steering
+
+标准 Runtime 2.1 会话提供者声明 open/turn/cancel/close 后，由宿主提供持久等待队列，无需原生队列实现。运行中追加输入单独协商：宿主公开的 `queue.steer` 要求提供者协商 `queue.manage` 且清单同名操作明确包含 steer。宿主添加的能力不回写提供者协商数据。投递不确定时仍禁止自动重发。完整合同和兼容规则见 [消息队列](message-queue.md)。

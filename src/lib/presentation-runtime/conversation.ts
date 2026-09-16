@@ -57,7 +57,7 @@ export function conversationActions(state: PresentationConversation): Spec[] {
   if (bound && state.running && !state.busy && !state.archiving) {
     add('stop');
     if (capable('queue.manage')) {
-      if (state.draft.trim()) { add('queueSteer'); add('queueFollowUp'); }
+      if (state.draft.trim()) { if (capable('queue.steer')) add('queueSteer'); add('queueFollowUp'); }
 
     }
   }
@@ -68,7 +68,7 @@ export function conversationActions(state: PresentationConversation): Spec[] {
     for (const item of items) {
       if (item.status === 'sending') continue;
       add('removeQueuedMessage', [item.id]);
-      if (item.status !== 'uncertain') add('sendQueuedMessage', [item.id]);
+      if (item.status !== 'uncertain' && (!state.running || capable('queue.steer'))) add('sendQueuedMessage', [item.id]);
     }
   }
   for (const request of state.userInputRequests) {

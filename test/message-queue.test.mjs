@@ -42,3 +42,21 @@ test('Codex steering appends to the active native turn without starting another 
  assert.ok(f.events.some(e=>e.event.type==='message.delta'&&e.event.payload.delta==='focus on tests'));
  await assert.rejects(f.invoke('dev.aibo.codex.queue.manage',{action:'steer',message:'too late'}),/no_active_turn/);
 });
+
+test('waiting-only providers can enqueue but cannot steer a running turn', async () => {
+ const state=JSON.parse(await readFile('fixtures/presentation-workbench/conversation.json','utf8'));
+ state.session.capabilities=['queue.manage']; state.running=true; state.busy=false; state.draft='next';
+ state.queue=normalizeMessageQueue({items:[{id:'pending',text:'next',status:'pending'}]},state.session.id);
+ const actions=conversationActions(state);
+ assert.ok(actions.some(a=>a.operation==='queueFollowUp'));
+ assert.ok(actions.some(a=>a.operation==='removeQueuedMessage'));
+ assert.ok(!actions.some(a=>['queueSteer','sendQueuedMessage'].includes(a.operation)));
+ const nodes=[];const visit=node=>{if(!node)return;nodes.push(node);node.children?.forEach(visit);};
+ visit(renderConversation(state,actions.map((a,i)=>({...a,token:String(i)}))));
+ assert.ok(!nodes.some(node=>node.key==='queue:send:pending'));
+ state.session.capabilities.push('queue.steer');
+ assert.ok(conversationActions(state).some(a=>a.operation==='queueSteer'));
+ assert.ok(conversationActions(state).some(a=>a.operation==='sendQueuedMessage'));
+ state.session.capabilities=['queue.manage']; state.running=false;
+ assert.ok(conversationActions(state).some(a=>a.operation==='sendQueuedMessage'));
+});

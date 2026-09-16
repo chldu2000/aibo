@@ -322,6 +322,10 @@ async fn capability_session_cancel_stops_an_approved_host_command() {
 }
 
 async fn concurrent_session_fixture() -> (PathBuf, SqlitePool, Broker, SessionHost, Session) {
+    session_queue_fixture(false).await
+}
+
+async fn session_queue_fixture(external: bool) -> (PathBuf, SqlitePool, Broker, SessionHost, Session) {
     let root = std::env::temp_dir().join(format!("aibo-session-host-{}", ulid::Ulid::new()));
     let package = root.join("package");
     let workspace = root.join("workspace");
@@ -336,6 +340,16 @@ async fn concurrent_session_fixture() -> (PathBuf, SqlitePool, Broker, SessionHo
         ("runtime.mjs", include_str!("../../packages/capability-runtime/runtime.mjs")),
         ("stdio.mjs", include_str!("../../packages/capability-runtime/stdio.mjs")),
     ] { fs::write(package.join(name), source).unwrap(); }
+    if external {
+        // A separately installed provider with no native queue or steering operation.
+        for name in ["plugin.json", "worker.mjs", "engine.mjs"] {
+            let text = fs::read_to_string(package.join(name)).unwrap().replace("dev.aibo.pi", "dev.example.waiting");
+            fs::write(package.join(name), text.replace("'queue.manage', ", "")).unwrap();
+        }
+        let mut manifest: Value = serde_json::from_str(&fs::read_to_string(package.join("plugin.json")).unwrap()).unwrap();
+        manifest["contributions"][0]["operations"].as_array_mut().unwrap().retain(|op| op["capability"]["id"] != "dev.example.waiting.queue.manage");
+        fs::write(package.join("plugin.json"), manifest.to_string()).unwrap();
+    }
     let db = crate::open_database(&root.join("data/aibo.sqlite3")).await.unwrap();
     sqlx::query("INSERT INTO workspaces(id,path,label,trusted,created_at,updated_at) VALUES('w',?,'Test',1,?,?)")
         .bind(workspace.to_string_lossy().as_ref()).bind(crate::now_iso()).bind(crate::now_iso()).execute(&db).await.unwrap();
@@ -343,7 +357,7 @@ async fn concurrent_session_fixture() -> (PathBuf, SqlitePool, Broker, SessionHo
     plugin_registry::enable(&db, &installed.id, true).await.unwrap();
     let broker = Broker::new(db.clone()).with_sdk_module(Some(PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../fixtures/pi/fake-sdk.mjs")));
     let host = SessionHost::new(db.clone(), broker.clone());
-    let session = host.create_with_profile_from("main", "w", &installed.id, "dev.aibo.pi.agent", None).await.unwrap();
+    let session = host.create_with_profile_from("main", "w", &installed.id, if external {"dev.example.waiting.agent"} else {"dev.aibo.pi.agent"}, None).await.unwrap();
 
     (root, db, broker, host, session)
 }
@@ -742,7 +756,7 @@ async fn durable_queue_survives_stop_and_restart_until_explicit_resume() {
 }
 #[tokio::test]
 async fn durable_queue_freezes_attachments_and_retains_changed_files() {
-    let (root, db, broker, host, session) = concurrent_session_fixture().await;
+    let (root, db, broker, host, session) = session_queue_fixture(true).await;
     let workspace=crate::workspace_by_id(&db,&session.workspace_id).await.unwrap();
     fs::write(Path::new(&workspace.path).join("queued.txt"),"original").unwrap();
     sqlx::query("INSERT INTO attachments(id,workspace_id,session_id,path,size,media_type,source,send_strategy,created_at) VALUES('queued-file','w',?,'queued.txt',8,'text/plain','manual','reference','now')").bind(&session.id).execute(&db).await.unwrap();
@@ -783,4 +797,53 @@ async fn queued_send_now_waits_for_finishing_turn_then_starts_exactly_once() {
     let prompts:Vec<String>=sqlx::query_scalar("SELECT input_text FROM turns WHERE session_id=? ORDER BY started_at,id").bind(&session.id).fetch_all(&db).await.unwrap();
     assert_eq!(prompts,vec!["boundary message","after boundary"]);
     broker.stop_session(&session.id).await.unwrap();db.close().await;fs::remove_dir_all(root).unwrap();
+}
+
+#[tokio::test]
+async fn external_provider_without_native_queue_gets_durable_fifo_but_not_steering() {
+    let (root, db, broker, host, session) = session_queue_fixture(true).await;
+    assert!(session.capabilities.contains(&"queue.manage".into()));
+    assert!(!session.capabilities.contains(&"queue.steer".into()));
+    let raw: String = sqlx::query_scalar("SELECT plugin_capabilities_json FROM session_bindings WHERE session_id=?").bind(&session.id).fetch_one(&db).await.unwrap();
+    assert!(!raw.contains("queue.manage"), "host flags must not become provider capabilities");
+    host.send_from("main", &session.id, "host queue delay", None).await.unwrap();
+    for text in ["first", "second"] { host.send_configured_from("main", &session.id, text).await.unwrap(); }
+    let before = queue_state(&host, &session.id).await;
+    assert_eq!(before["items"].as_array().unwrap().len(), 2);
+    for input in [json!({"action":"steer","message":"must stay in draft"}), json!({"action":"sendNow","id":before["items"][0]["id"]})] {
+        assert!(host.invoke_capability_from("main", &session.id, "queue.manage", input).await.unwrap_err().contains("queue.steer"));
+    }
+    assert_eq!(queue_state(&host, &session.id).await["items"], before["items"], "rejected steering must not claim, duplicate or fail items");
+    wait_for_queue_idle(&host, &session.id).await;
+    let prompts: Vec<String> = sqlx::query_scalar("SELECT input_text FROM turns WHERE session_id=? ORDER BY started_at,id").bind(&session.id).fetch_all(&db).await.unwrap();
+    assert_eq!(prompts, vec!["host queue delay", "first", "second"]);
+    broker.stop_session(&session.id).await.unwrap(); db.close().await; fs::remove_dir_all(root).unwrap();
+}
+
+#[tokio::test]
+async fn external_queue_survives_restart_and_never_retries_uncertain_delivery() {
+    let (root, db, broker, host, session) = session_queue_fixture(true).await;
+    host.send_from("main", &session.id, "host queue delay", None).await.unwrap();
+    host.send_configured_from("main", &session.id, "retained",).await.unwrap();
+    host.cancel_from("main", &session.id).await.unwrap(); wait_for_turn(&host, &session.id).await;
+    let before = queue_state(&host, &session.id).await;
+    assert_eq!(before["paused"], true);
+    // Simulate a process exit after durable claim but before an acknowledgement.
+    sqlx::query("UPDATE queued_messages SET status='sending' WHERE session_id=?").bind(&session.id).execute(&db).await.unwrap();
+    broker.stop_session(&session.id).await.unwrap();
+    crate::recover_interrupted_sessions(&db).await.unwrap();
+    let restored = SessionHost::new(db.clone(), broker.clone());
+    let snapshot = queue_state(&restored, &session.id).await;
+    assert_eq!(snapshot["items"][0]["id"], before["items"][0]["id"]);
+    assert_eq!(snapshot["items"][0]["status"], "uncertain");
+    for input in [json!({"action":"resume"}), json!({"action":"sendNow","id":snapshot["items"][0]["id"]})] {
+        assert!(restored.invoke_capability_from("main", &session.id, "queue.manage", input).await.is_err());
+    }
+    restored.invoke_capability_from("main", &session.id, "queue.manage", json!({"action":"remove","id":snapshot["items"][0]["id"]})).await.unwrap();
+    restored.invoke_capability_from("main", &session.id, "queue.manage", json!({"action":"followUp","message":"after recovery"})).await.unwrap();
+    restored.invoke_capability_from("main", &session.id, "queue.manage", json!({"action":"resume"})).await.unwrap();
+    wait_for_queue_idle(&restored, &session.id).await;
+    let prompts: Vec<String> = sqlx::query_scalar("SELECT input_text FROM turns WHERE session_id=? ORDER BY started_at,id").bind(&session.id).fetch_all(&db).await.unwrap();
+    assert_eq!(prompts, vec!["host queue delay", "after recovery"]);
+    broker.stop_session(&session.id).await.unwrap(); db.close().await; fs::remove_dir_all(root).unwrap();
 }

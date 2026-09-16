@@ -659,7 +659,9 @@
 
       {#if sessionRunning}
         {#if sessionCapabilities.includes('queue.manage')}
-          <Button variant="queue" class="composer-action composer-action-queue" size="sm" type="button" onclick={() => onQueue('steer')} disabled={busy || !text.trim()}>立即发送</Button>
+          {#if sessionCapabilities.includes('queue.steer')}
+            <Button variant="queue" class="composer-action composer-action-queue" size="sm" type="button" onclick={() => onQueue('steer')} disabled={busy || !text.trim()}>立即发送</Button>
+          {/if}
           <Button variant="queue" class="composer-action composer-action-queue" size="sm" type="button" onclick={() => onQueue('followUp')} disabled={busy || !text.trim()}>排队发送</Button>
         {/if}
         <Button variant="abort" class="composer-action composer-action-abort" size="icon" type="button" onclick={onAbort} disabled={busy} aria-label="中止">

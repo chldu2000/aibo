@@ -190,6 +190,7 @@ export function createMessageController(context: MessageControllerContext) {
     const session = context.getSelectedSession();
     if (!input || !session || !session.capabilities.includes('queue.manage') || !context.getDesktop()) return;
     if (session.archived || context.getSelectedSessionArchiving()) return;
+    if (mode === 'steer' && context.getSessionRunning() && !session.capabilities.includes('queue.steer')) return;
     let requestInput: string;
     try { requestInput = withAttachmentContext(input, session.id); }
     catch (error) { context.setErrorMessage(toErrorMessage(error)); return; }

@@ -4,13 +4,19 @@ use super::*;
 use sqlx::Row;
 use sha2::{Digest, Sha256};
 
-pub(super) fn builtin_queue(agent: &str) -> bool {
-    matches!(agent, "dev.aibo.codex.agent" | "dev.aibo.pi.agent")
+// Only explicit protocol rejection markers establish that delivery never happened.
+// Diagnostic text mentioning a native parameter is not an acknowledgement.
+fn steering_rejection(error: &str) -> (bool, bool) {
+    let no_turn = error == "no_active_turn" || error.starts_with("no_active_turn:")
+        || error == "busy: the turn has finished accepting interactions";
+    let rejected = error == "steer_rejected" || error.starts_with("steer_rejected:");
+    (no_turn, rejected)
 }
+
 impl SessionHost {
     pub(super) async fn host_queue_supported(&self, session_id: &str) -> Result<bool, String> {
         let session = crate::session_by_id(&self.db, session_id).await.map_err(|e|e.to_string())?;
-        Ok(builtin_queue(&session.agent) && session.plugin_installation_id.is_some())
+        Ok(session.capabilities.iter().any(|capability| capability == "queue.manage"))
     }
     async fn queue_snapshot(&self, session_id: &str) -> Result<Value, String> {
         let mut tx = self.db.begin_with("BEGIN IMMEDIATE").await.map_err(|e|e.to_string())?;
@@ -83,6 +89,11 @@ impl SessionHost {
         if action == "get" { return self.queue_snapshot(session_id).await; }
         let session = crate::session_by_id(&self.db, session_id).await.map_err(|e|e.to_string())?;
         if session.archived || session.state == "closed" { return Err("invalid_session: session is closed".into()); }
+        // Reject unsupported steering before accepting a draft or claiming an item.
+        if matches!(action, "steer" | "sendNow") && self.live.lock().await.contains_key(session_id)
+            && !session.capabilities.iter().any(|capability| capability == "queue.steer") {
+            return Err("capability_unsupported: queue.steer".into());
+        }
         match action {
             "followUp" | "steer" => {
                 let text = input["message"].as_str().ok_or("invalid_input: message required")?;
@@ -173,6 +184,10 @@ impl SessionHost {
         }
         if let Some(run) = running {
             if !immediate { return Ok(()); }
+            let session = crate::session_by_id(&self.db, session_id).await.map_err(|e|e.to_string())?;
+            if !session.capabilities.iter().any(|capability| capability == "queue.steer") {
+                return Err("capability_unsupported: queue.steer".into());
+            }
             if run.cancel.load(Ordering::Acquire) { return Err("busy: session is stopping".into()); }
             sqlx::query("UPDATE queued_messages SET status='sending',delivery='steer',turn_id=?,error=NULL WHERE id=?")
                 .bind(&run.request_id).bind(id).execute(&self.db).await.map_err(|e|e.to_string())?;
@@ -190,7 +205,7 @@ impl SessionHost {
                 Err(error) => {
                     // Only an explicit pre-dispatch or stale-turn rejection is
                     // safe to retry. A timeout may have reached the provider.
-                    let stale = error.contains("no_active_turn") || error.contains("expectedTurnId") || error.contains("finished accepting interactions");
+                    let (stale, rejected) = steering_rejection(&error);
                     if stale {
                         sqlx::query("UPDATE queued_messages SET status='pending',turn_id=NULL WHERE id=?").bind(id).execute(&self.db).await.map_err(|e|e.to_string())?;
                         let mut phase = run.phase.subscribe();
@@ -199,7 +214,7 @@ impl SessionHost {
                             Ok::<_,String>(())
                         }).await.map_err(|_|"busy: session is still finishing")??;
                         if !run.cancel.load(Ordering::Acquire) { self.start_queued(caller, session_id, id, &text, immediate).await?; }
-                    } else { self.fail_queued(session_id, id, &error, !error.contains("steer_rejected")).await?; }
+                    } else { self.fail_queued(session_id, id, &error, !rejected).await?; }
                 }
             }
         } else { self.start_queued(caller, session_id, id, &text, immediate).await?; }
@@ -248,5 +263,21 @@ impl SessionHost {
             if let Err(error) = result { eprintln!("queue dispatch failed: {error}"); let _ = host.pause_queue(&session_id).await; }
         });
         tokio::spawn(future);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::steering_rejection;
+
+    #[test]
+    fn ambiguous_errors_never_authorize_resending_a_steering_message() {
+        for message in ["timeout: expectedTurnId acknowledgement lost", "transport closed after no_active_turn diagnostic", "timeout after steer_rejected response was lost"] {
+            assert_eq!(steering_rejection(message), (false, false));
+        }
+        assert_eq!(steering_rejection("no_active_turn"), (true, false));
+        assert_eq!(steering_rejection("no_active_turn: native turn already ended"), (true, false));
+        assert_eq!(steering_rejection("busy: the turn has finished accepting interactions"), (true, false));
+        assert_eq!(steering_rejection("steer_rejected: invalid native input"), (false, true));
     }
 }

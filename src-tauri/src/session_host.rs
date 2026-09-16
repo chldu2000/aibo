@@ -180,8 +180,8 @@ impl SessionHost {
                     let runtime=SessionExecution {broker:host.broker.clone(),caller,request_id,generation_id:generation.into(),write_authorized};
                     host.handle_tool_request(&session.id,&session.workspace_id,&runtime,&binding,event).await
                 } else {
-                    // The editable waiting queue belongs to the host, not Pi's steering buffer.
-                    if event["type"] == "queue.updated" && queue::builtin_queue(&session.agent) { return Ok(()); }
+                    // Provider buffers must never overwrite the host's durable waiting queue.
+                    if event["type"] == "queue.updated" && host.host_queue_supported(&session.id).await? { return Ok(()); }
                     let started = event["type"] == "turn.started";
                     host.project_event(&session.id,&session.workspace_id,generation,&binding,event,EventOrigin::Plugin).await?;
                     if started { if let Some(turn) = turn_id { host.acknowledge_queued_turn(&session.id, &turn).await?; } }

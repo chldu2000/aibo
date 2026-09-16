@@ -29,7 +29,7 @@ export function renderConversation(state,actions){
   ...(state.queue.items?.length?state.queue.items.map(item=>section('queue:item:'+item.id,item.status==='sending'?'正在发送':item.status==='uncertain'?'投递结果未知':item.status==='failed'?'发送失败':'等待发送',[
    text('queue:text:'+item.id,splitSessionReferences(item.text).body.split('[AIBO_CONTEXT_ATTACHMENTS]')[0].trim()),
    item.error?text('queue:error:'+item.id,item.error):null,
-   button('queue:send:'+item.id,'立即发送',find('sendQueuedMessage',item.id)),
+   (!state.running || state.session?.capabilities.includes('queue.steer')) ? button('queue:send:'+item.id,'立即发送',find('sendQueuedMessage',item.id)) : null,
    button('queue:remove:'+item.id,'删除',find('removeQueuedMessage',item.id)),
   ])):[...state.queue.steering.map((value,i)=>text('queue:steer:'+i,'引导：'+value)),...state.queue.followUp.map((value,i)=>text('queue:follow:'+i,'后续：'+value))]),
   ...controls(['resumeQueue','clearQueue'])]));
