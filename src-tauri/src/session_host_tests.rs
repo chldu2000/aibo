@@ -560,3 +560,75 @@ async fn first_prompt_names_capability_sessions_without_overwriting_manual_names
     db.close().await;
     fs::remove_dir_all(root).unwrap();
 }
+
+#[tokio::test]
+async fn goal_resume_and_pause_use_host_execution_ownership_and_policy() {
+    for mode in ["hold", "complete"] {
+    let root = std::env::temp_dir().join(format!("aibo-host-goal-{}",ulid::Ulid::new()));
+    let package = root.join("package");
+    let workspace = root.join("workspace");
+    fs::create_dir_all(&package).unwrap();
+    fs::create_dir_all(&workspace).unwrap();
+    let mut manifest: Value = serde_json::from_str(include_str!("../capability-plugins/codex/plugin.json")).unwrap();
+    manifest["executableDependencies"] = json!([{"kind":"runtime","name":"node","versionRange":">=22","required":true}]);
+    fs::write(package.join("plugin.json"),manifest.to_string()).unwrap();
+    let engine = include_str!("../capability-plugins/codex/engine.mjs");
+    let native_start = "spawn('codex', ['app-server', '--stdio']";
+    assert!(engine.contains(native_start));
+    fs::write(package.join("engine.mjs"),engine.replace(native_start,"spawn(process.execPath, [new URL('./fake-codex.mjs', import.meta.url).pathname]")).unwrap();
+    for (name, source) in [
+        ("worker.mjs",include_str!("../capability-plugins/codex/worker.mjs")),
+        ("fake-codex.mjs",include_str!("../../fixtures/plugins/codex/fake-codex.mjs")),
+        ("session-provider.mjs",include_str!("../capability-plugins/session-provider.mjs")),
+        ("runtime.mjs",include_str!("../../packages/capability-runtime/runtime.mjs")),
+        ("stdio.mjs",include_str!("../../packages/capability-runtime/stdio.mjs")),
+    ] {let source = if name == "fake-codex.mjs" {source.replace("let nativeTurnId", &format!("process.env.CODEX_FAKE_GOAL_MODE = '{mode}'; process.env.CODEX_FAKE_GOAL_FILE = {};\nlet nativeTurnId", serde_json::to_string(&root.join("goal.json")).unwrap()))} else {source.to_owned()};
+        fs::write(package.join(name),source).unwrap();}
+    let db = crate::open_database(&root.join("data/aibo.sqlite3")).await.unwrap();
+    sqlx::query("INSERT INTO workspaces(id,path,label,trusted,created_at,updated_at) VALUES('w',?,'Test',1,?,?)")
+        .bind(workspace.to_string_lossy().as_ref()).bind(crate::now_iso()).bind(crate::now_iso()).execute(&db).await.unwrap();
+    let installed = plugin_registry::install(&db,&root.join("data"),&package).await.unwrap();
+    plugin_registry::enable(&db,&installed.id,true).await.unwrap();
+    let broker = Broker::new(db.clone());
+    let host = SessionHost::new(db.clone(),broker.clone());
+
+    let mut requested = execution_profile::default_requested_profile("codex").unwrap();
+    requested.filesystem_policy = "workspace-write".into();
+    let profile = execution_profile::resolve("dev.aibo.codex.agent", Some(requested), crate::now_iso()).unwrap();
+    let session = host.create_with_profile_from("main","w",&installed.id,"dev.aibo.codex.agent",Some(profile)).await.unwrap();
+    host.invoke_capability_from("main",&session.id,"goal.manage",json!({"action":"set","objective":"Keep the goal","tokenBudget":2000})).await.unwrap();
+    let initial = host.invoke_capability_from("main",&session.id,"goal.manage",json!({"action":"get"})).await.unwrap();
+    assert_eq!(initial["goal"]["status"],"paused");
+    host.invoke_capability_from("main",&session.id,"goal.resume",json!({})).await.unwrap();
+    assert!(host.live.lock().await.contains_key(&session.id));
+    assert!(host.invoke_capability_from("main",&session.id,"goal.resume",json!({})).await.unwrap_err().contains("busy"));
+    if mode == "hold" {
+        let during = host.invoke_capability_from("main",&session.id,"goal.manage",json!({"action":"get"})).await.unwrap();
+        assert_eq!(during["goal"]["status"],"active");
+        assert!(host.invoke_capability_from("other-window",&session.id,"goal.manage",json!({"action":"pause"})).await.unwrap_err().contains("permission_denied"));
+        let paused = host.invoke_capability_from("main",&session.id,"goal.manage",json!({"action":"pause"})).await.unwrap();
+        assert_eq!(paused["goal"]["status"],"paused");
+        wait_for_turn(&host,&session.id).await;
+        let after = crate::session_by_id(&db,&session.id).await.unwrap();
+        assert!(["idle","interrupted"].contains(&after.state.as_str()));
+        host.invoke_capability_from("main",&session.id,"goal.resume",json!({})).await.unwrap();
+        host.invoke_capability_from("main",&session.id,"goal.manage",json!({"action":"pause"})).await.unwrap();
+    }
+    wait_for_turn(&host,&session.id).await;
+    let final_goal = host.invoke_capability_from("main",&session.id,"goal.manage",json!({"action":"get"})).await.unwrap();
+    assert_eq!(final_goal["goal"]["objective"],"Keep the goal");
+    assert_eq!(final_goal["goal"]["tokenBudget"],2000);
+    if mode == "complete" {
+        assert_eq!(final_goal["goal"]["status"],"complete");
+        assert_eq!(final_goal["goal"]["tokensUsed"],100);
+        let contents:Vec<String> = sqlx::query_scalar("SELECT content FROM messages WHERE session_id=? AND role='assistant' ORDER BY sequence")
+            .bind(&session.id).fetch_all(&db).await.unwrap();
+        assert_eq!(contents,vec!["Goal step 1","Goal step 2"]);
+        assert_eq!(crate::session_by_id(&db,&session.id).await.unwrap().state,"idle");
+    }
+    broker.stop_session(&session.id).await.unwrap();
+    broker.stop_installation(&installed.id).await.unwrap();
+    db.close().await;
+    fs::remove_dir_all(root).unwrap();
+    }
+}

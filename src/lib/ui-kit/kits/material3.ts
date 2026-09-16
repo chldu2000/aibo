@@ -1,3 +1,4 @@
+import GoalBar from './material3/GoalBar.svelte';
 import AgentSettingsForm from './material3/AgentSettingsForm.svelte';
 import SettingsSection from './material3/SettingsSection.svelte';
 import HostPanel from './shared/HostPanel.svelte';
@@ -25,6 +26,7 @@ import type { UiKitAdapter, UiKitRegistration, UiThemeRegistration } from '../co
 import metadata from '../../../../packages/presentation-material3/themes.json';
 
 export const material3UiKit: UiKitAdapter = {
+  GoalBar,
   HostPanel,
   ManagementCenter,
   WorkbenchChrome,

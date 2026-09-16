@@ -18,7 +18,7 @@ pub(crate) fn binding_schema()->&'static jsonschema::Validator {
 pub(crate) fn validates_operation(operation: &Value, scope: &str, manifest: &Value) -> bool {
     let Some(id) = operation["capability"]["id"].as_str() else { return false; };
     let Some(contract) = contracts()["capabilities"].get(id) else { return false; };
-    let write = id == "aibo.session.turn.write";
+    let write = matches!(id, "aibo.session.turn.write" | "aibo.session.goal.resume.write");
     scope == "session" && operation["capability"]["version"] == "1.0.0"
         && manifest["protocols"]["runtime"]["min"] == "2.1" && manifest["protocols"]["runtime"]["max"] == "2.1"
         && operation["inputSchema"] == contract["inputSchema"] && operation["outputSchema"] == contract["outputSchema"]

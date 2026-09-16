@@ -531,7 +531,9 @@
                   "id": {
                     "enum": [
                       "aibo.session.turn",
-                      "aibo.session.turn.write"
+                      "aibo.session.turn.write",
+                      "aibo.session.goal.resume",
+                      "aibo.session.goal.resume.write"
                     ]
                   }
                 }

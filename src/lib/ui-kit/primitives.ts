@@ -24,3 +24,5 @@ export { default as SemanticView } from './runtime/SemanticView.svelte';
 export { default as SettingsSection } from './runtime/SettingsSection.svelte';
 
 export { default as AgentSettingsForm } from './runtime/AgentSettingsForm.svelte';
+
+export { default as GoalBar } from './runtime/GoalBar.svelte';

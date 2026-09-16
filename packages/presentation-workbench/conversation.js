@@ -1,14 +1,13 @@
 import {node,button,field,section,text,actionFor} from './tree.js';
 import {renderExecutionProfile,renderAttachment,renderSessionMetadata} from './metadata.js';
 import {renderTimeline} from './timeline.js';
-const labels={send:'发送',stop:'停止',retry:'重试',queueSteer:'立即引导',queueFollowUp:'排队发送',clearQueue:'清空队列',addAttachments:'添加附件',addDirectory:'添加目录',loadOlder:'加载更早消息',fork:'分叉会话',loadModels:'刷新模型',compact:'压缩上下文',openTree:'会话树',closeTree:'关闭会话树',refreshTree:'刷新会话树',submitAnswers:'提交回答',cancelAnswers:'取消回答'};
+const labels={pauseGoal:'暂停目标',resumeGoal:'恢复目标',clearGoal:'清除目标',send:'发送',stop:'停止',retry:'重试',queueSteer:'立即引导',queueFollowUp:'排队发送',clearQueue:'清空队列',addAttachments:'添加附件',addDirectory:'添加目录',loadOlder:'加载更早消息',fork:'分叉会话',loadModels:'刷新模型',compact:'压缩上下文',openTree:'会话树',closeTree:'关闭会话树',refreshTree:'刷新会话树',submitAnswers:'提交回答',cancelAnswers:'取消回答'};
 const accessLabels={'read-only':'只读',plan:'计划','workspace-write':'工作区写入','ask-for-approval':'请求审批','approve-for-me':'自动审批','full-access':'完整访问'};
 export function renderConversation(state,actions){
  const find=(operation,...args)=>actionFor(actions,operation,...args);
  const controls=(operations)=>operations.flatMap(operation=>{const action=actions.find(a=>a.operation===operation&&!a.args.length);return action?[button('conversation:action:'+operation,labels[operation],action)]:[]});
  const children=[node('header','conversation:header',null,[node('h1','conversation:title',state.session?.label??'选择或创建会话'),text('conversation:activity',state.activityLabel),node('nav','conversation:tools',null,controls(['fork','compact','openTree']))])];
  children.push(renderSessionMetadata(state.session,'conversation:session-metadata'));
- if(state.goal)children.push(section('conversation:goal','目标',[text('goal:objective',state.goal.objective),text('goal:status',state.goal.status),text('goal:budget',state.goal.tokenBudget===null?null:`Token：${state.goal.tokensUsed??0} / ${state.goal.tokenBudget}`)]));
  const messages=renderTimeline(state.timelineVisibleCount>0?state.timeline.slice(-state.timelineVisibleCount):[],actions,state.groupSystemItems===true);
  children.push({...node('section','conversation:timeline',null,[...controls(['loadOlder']),...messages],{'aria-label':'会话消息'}),className:'timeline'});
  if(state.retryReason||state.retryPrompt)children.push(section('conversation:retry','重试',[text('retry:reason',state.retryReason),text('retry:prompt',state.retryPrompt),...controls(['retry'])]));
@@ -29,7 +28,13 @@ export function renderConversation(state,actions){
   const draftField=field('conversation:draft','消息',state.draft,find('draft'),true);
   const submit=find(state.running?'queueSteer':'send');
   if(submit)draftField.children[1].primaryEnter=submit.token;
-  const composer=[draftField,text('conversation:shortcut','⌘/Ctrl+Enter '+(state.running?'立即引导':'发送')+' · Enter 换行'),state.draftFailed?node('p','conversation:draft-error','草稿保存失败',[],{role:'alert'}):null];
+  const goal = state.goal && state.goal.status !== 'cleared' ? {...node('details','conversation:goal',null,[
+   node('summary','goal:summary',state.goal.objective),
+   text('goal:status',state.goal.status === 'active' ? (state.running ? '目标进行中' : '目标待继续') : state.goal.status === 'paused' && state.running ? '目标已暂停，当前回合尚未结束' : ({paused:'目标已暂停',completed:'目标已完成',blocked:'目标受阻',usageLimited:'额度受限',budgetLimited:'目标预算已耗尽'})[state.goal.status] ?? '目标状态未知'),
+   text('goal:budget',state.goal.tokenBudget == null ? null : `Token：${state.goal.tokensUsed??0} / ${state.goal.tokenBudget}`),
+   ...controls(['pauseGoal','resumeGoal','clearGoal']),
+  ],{open:true,'aria-label':'当前目标'}),className:'goal-bar'} : null;
+  const composer=[goal,draftField,text('conversation:shortcut','⌘/Ctrl+Enter '+(state.running?'立即引导':'发送')+' · Enter 换行'),state.draftFailed?node('p','conversation:draft-error','草稿保存失败',[],{role:'alert'}):null];
 
   composer.push(node('nav','conversation:composer-tools',null,controls(['addAttachments','addDirectory','send','stop','queueSteer','queueFollowUp'])));
   const attachmentList=node('ul','conversation:attachment-list',null,state.attachments.map(item=>node('li','attachment:'+item.id,null,[renderAttachment(item,'composer:attachment:'+item.id),button('attachment:remove:'+item.id,'移除附件 '+item.path,find('removeAttachment',item.id))])));

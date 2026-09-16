@@ -1,3 +1,4 @@
+import GoalBar from './shadcn/GoalBar.svelte';
 import AgentSettingsForm from './shadcn/AgentSettingsForm.svelte';
 import SettingsSection from './shadcn/SettingsSection.svelte';
 import HostPanel from './shared/HostPanel.svelte';
@@ -27,6 +28,7 @@ import type { UiKitAdapter, UiKitRegistration, UiThemeRegistration } from '../co
 import metadata from '../../../../packages/presentation-shadcn/themes.json';
 
 export const shadcnUiKit: UiKitAdapter = {
+  GoalBar,
   HostPanel,
   ManagementCenter,
   WorkbenchChrome,

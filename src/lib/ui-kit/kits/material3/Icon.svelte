@@ -1,4 +1,6 @@
 <script lang="ts">
+  import pause from '@ktibow/iconset-material-symbols/pause-rounded';
+  import play from '@ktibow/iconset-material-symbols/play-circle-outline-rounded';
   import add from '@ktibow/iconset-material-symbols/add-rounded';
   import archive from '@ktibow/iconset-material-symbols/archive-outline-rounded';
   import archiveRestore from '@ktibow/iconset-material-symbols/unarchive-outline-rounded';
@@ -63,6 +65,8 @@
     plugins,
     send,
     settings,
+    pause,
+    play,
     stop,
     trust,
     undo,

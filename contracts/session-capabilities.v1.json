@@ -31,7 +31,11 @@
                 "type": "string"
               },
               "approvalReviewer": {
-                "enum": ["user", "auto-review", "none"]
+                "enum": [
+                  "user",
+                  "auto-review",
+                  "none"
+                ]
               },
               "filesystemPolicy": {
                 "type": "string"
@@ -243,6 +247,62 @@
             }
           }
         }
+      },
+      "outputSchema": {
+        "type": "object",
+        "required": [
+          "status",
+          "recovery"
+        ],
+        "properties": {
+          "status": {
+            "enum": [
+              "completed",
+              "interrupted",
+              "failed"
+            ]
+          },
+          "recovery": {
+            "type": [
+              "object",
+              "null"
+            ]
+          }
+        }
+      }
+    },
+    "aibo.session.goal.resume": {
+      "inputSchema": {
+        "type": "object",
+        "additionalProperties": false
+      },
+      "outputSchema": {
+        "type": "object",
+        "required": [
+          "status",
+          "recovery"
+        ],
+        "properties": {
+          "status": {
+            "enum": [
+              "completed",
+              "interrupted",
+              "failed"
+            ]
+          },
+          "recovery": {
+            "type": [
+              "object",
+              "null"
+            ]
+          }
+        }
+      }
+    },
+    "aibo.session.goal.resume.write": {
+      "inputSchema": {
+        "type": "object",
+        "additionalProperties": false
       },
       "outputSchema": {
         "type": "object",

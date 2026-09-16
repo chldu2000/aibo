@@ -2,9 +2,9 @@ import { spawn } from 'node:child_process';
 import readline from 'node:readline';
 
 const pluginId = 'dev.aibo.codex';
-const pluginVersion = '2.0.4';
+const pluginVersion = '2.0.6';
 
-export const capabilities = ['session.create', 'session.resume', 'session.close', 'turn.send', 'turn.cancel', 'stream.text', 'goal.manage', 'model.select', 'model.reasoning', 'model.service-tier', 'skill.list', 'approval.respond', 'user-input.respond', 'session.snapshot', 'session.fork'];
+export const capabilities = ['session.create', 'session.resume', 'session.close', 'turn.send', 'turn.cancel', 'stream.text', 'goal.manage', 'goal.pause', 'goal.resume', 'model.select', 'model.reasoning', 'model.service-tier', 'skill.list', 'approval.respond', 'user-input.respond', 'session.snapshot', 'session.fork'];
 let child = null;
 let childLines = null;
 let nextId = 1;
@@ -85,10 +85,13 @@ function toolProjection(method, params) {
   return { type, payload: { itemId, itemType, status: item.status ?? (type === 'tool.completed' ? 'completed' : 'inProgress'),
     summary, delta, output, command, cwd, exitCode: item.exitCode ?? item.exit_code ?? item.returnCode ?? params.exitCode ?? null } };
 }
-function rpc(method, params) {
+function rpc(method, params, timeoutMs = 0) {
   const id = `codex-${nextId++}`;
   child.stdin.write(`${JSON.stringify({ jsonrpc: '2.0', id, method, params })}\n`);
-  return new Promise((resolve, reject) => pending.set(id, { resolve, reject }));
+  return new Promise((resolve, reject) => {
+    const timer = timeoutMs ? setTimeout(() => { pending.delete(id); reject(new Error(`Codex ${method} timed out`)); }, timeoutMs) : null;
+    pending.set(id, {resolve: value => {clearTimeout(timer); resolve(value);}, reject: error => {clearTimeout(timer); reject(error);}});
+  });
 }
 function notify(method, params) { child.stdin.write(`${JSON.stringify({ jsonrpc: '2.0', method, params })}\n`); }
 function isMissingRolloutError(error) {
@@ -120,6 +123,80 @@ async function startThread(cwd, approvalPolicy, approvalsReviewer, sandbox, mode
   if (!threadId) fail('invalid_session', 'Codex did not return a thread id');
   return threadId;
 }
+function updateGoal(goal) {
+  if (JSON.stringify(session.goal) === JSON.stringify(goal)) return;
+  session.goal = goal;
+  session.goalRevision = (session.goalRevision ?? 0) + 1;
+  emit('goal.updated', { goal });
+  const turn = session.turn;
+  if (turn?.waitingForGoal && goal?.status !== 'active') finishTurn(turn, turn.lastStatus ?? 'completed');
+}
+async function readGoal() {
+  const revision = session.goalRevision;
+  const result = await rpc('thread/goal/get', { threadId: session.threadId }, 10000);
+  if (session.goalRevision === revision) updateGoal(result?.goal ?? null);
+  return session.goal;
+}
+function newTurn(p) {
+  return { id:p.turnId, requestId:p.requestId, nativeId:null, nativeSequence:0, itemId:null, text:'',
+    reasoningItems:new Set(), itemTexts:new Map(), completedMessages:new Set(), waitingForGoal:false, timer:null };
+}
+function finishTurn(turn, status) {
+  if (session.turn !== turn) return;
+  clearTimeout(turn.timer);
+  session.turn = null;
+  providerRequests.clear();
+  emit(status === 'failed' ? 'turn.failed' : 'turn.completed', status === 'failed' ? { message:'Codex turn failed' } : { status }, turn.id,
+    { requestId:turn.requestId, itemId:null });
+}
+function waitForGoalTurn(turn) {
+  if (session.turn !== turn || turn.nativeId) return;
+  turn.waitingForGoal = true;
+  clearTimeout(turn.timer);
+  // Never leave the host claiming execution forever if the native runtime did not start.
+  turn.timer = setTimeout(async () => {
+    if (session.turn !== turn || turn.nativeId) return;
+    turn.lastStatus = 'failed';
+    try { updateGoal((await rpc('thread/goal/set', {threadId:session.threadId,status:'paused'}, 5000))?.goal ?? null); }
+    catch { /* The terminal event still releases host execution ownership. */ }
+    finishTurn(turn, 'failed');
+  }, 30000);
+}
+async function finishNativeTurn(turn, nativeId, status) {
+  if (session.turn !== turn || turn.nativeId !== nativeId) return;
+  turn.nativeId = null;
+  turn.lastStatus = status;
+  if (status !== 'completed') { finishTurn(turn,status); return; }
+  try { await readGoal(); }
+  catch {
+    if (session.turn === turn && !turn.nativeId) {
+      if (session.goal?.status === 'active') waitForGoalTurn(turn);
+      else finishTurn(turn,status);
+    }
+    return;
+  }
+  if (session.turn !== turn || turn.nativeId) return;
+  if (session.goal?.status === 'active') waitForGoalTurn(turn);
+  else finishTurn(turn,status);
+}
+async function pauseGoal() {
+  await session.goalStarting;
+  // Persist pause first, so an interrupt cannot trigger another goal continuation.
+  const result = await rpc('thread/goal/set', {threadId:session.threadId,status:'paused'}, 5000);
+  updateGoal(result?.goal ?? null);
+  const turn = session.turn;
+  if (turn?.nativeId) {
+    const nativeId = turn.nativeId;
+    try { await rpc('turn/interrupt', {threadId:session.threadId,turnId:nativeId}, 5000); }
+    catch (error) {
+      // Completion/continuation may race the first interrupt. Retry only a new live turn.
+      if (session.turn === turn && turn.nativeId && turn.nativeId !== nativeId) {
+        await rpc('turn/interrupt', {threadId:session.threadId,turnId:turn.nativeId}, 5000);
+      } else if (session.turn === turn && turn.nativeId) throw error;
+    }
+  } else if (turn) finishTurn(turn,'interrupted');
+  return result;
+}
 function onCodex(message) {
   if (message.id !== undefined && pending.has(String(message.id))) {
     const request = pending.get(String(message.id)); pending.delete(String(message.id));
@@ -139,10 +216,22 @@ function onCodex(message) {
       { requestId, itemId: message.params?.itemId ?? null }); return;
   }
   if (!session || !message.method) return;
-  const p = message.params ?? {};
+  let p = message.params ?? {};
+  if (p.threadId && p.threadId !== session.threadId) return;
+  if (message.method === 'thread/goal/updated') { updateGoal(p.goal ?? null); return; }
+  if (message.method === 'thread/goal/cleared') { updateGoal(null); return; }
   const turn = session.turn;
+  if (turn && p.turnId && turn.nativeId && p.turnId !== turn.nativeId) return;
+  if (turn?.nativeSequence > 1 && message.method.startsWith('item/')) {
+    const scoped = id => id ? `${turn.nativeId}:${id}` : id;
+    p = {...p, itemId:scoped(p.itemId), ...(p.item ? {item:{...p.item,id:scoped(p.item.id)}} : {})};
+  }
   if (message.method === 'turn/started' && turn) {
+    clearTimeout(turn.timer);
+    turn.waitingForGoal = false;
+    turn.nativeSequence++;
     turn.nativeId = p.turn?.id ?? null;
+    turn.itemId = null; turn.text = ''; turn.itemTexts.clear(); turn.completedMessages.clear(); turn.reasoningItems.clear();
     emit('turn.started', { nativeTurnId: turn.nativeId }, turn.id, { requestId: turn.requestId, itemId: null });
   } else if (message.method === 'item/agentMessage/delta' && turn) {
     const delta = typeof p.delta === 'string' ? p.delta : '';
@@ -175,21 +264,21 @@ function onCodex(message) {
       turn.completedMessages.add(p.item.id);
       emit('message.completed', { itemId: p.item.id, text }, turn.id, { requestId: turn.requestId, itemId: p.item.id });
     }
-  } else if (message.method === 'turn/completed' && turn) {
+  } else if (message.method === 'turn/completed' && turn && p.turn?.id === turn.nativeId) {
     const nativeStatus = p.turn?.status;
     const status = nativeStatus === 'completed' ? 'completed' : nativeStatus === 'interrupted' ? 'interrupted' : 'failed';
     for (const item of p.turn?.items?.filter((candidate) => candidate?.type === 'agentMessage') ?? []) {
-      if (item.id && typeof item.text === 'string' && item.text && !turn.completedMessages.has(item.id)) {
-        turn.completedMessages.add(item.id);
-        emit('message.completed', { itemId: item.id, text: item.text }, turn.id, { requestId: turn.requestId, itemId: item.id });
+      const itemId = turn.nativeSequence > 1 ? `${turn.nativeId}:${item.id}` : item.id;
+      if (item.id && typeof item.text === 'string' && item.text && !turn.completedMessages.has(itemId)) {
+        turn.completedMessages.add(itemId);
+        emit('message.completed', { itemId, text: item.text }, turn.id, { requestId: turn.requestId, itemId });
       }
     }
     if (turn.completedMessages.size === 0 && turn.text) {
-      const itemId = turn.itemId ?? `assistant-${turn.id}`;
+      const itemId = turn.itemId ?? `assistant-${turn.nativeId}`;
       emit('message.completed', { itemId, text: turn.text }, turn.id, { requestId: turn.requestId, itemId });
     }
-    emit(status === 'failed' ? 'turn.failed' : 'turn.completed', status === 'failed' ? { message: 'Codex turn failed' } : { status }, turn.id, { requestId: turn.requestId, itemId: null });
-    session.turn = null;
+    void finishNativeTurn(turn, p.turn.id, status);
   }
 }
 async function startCodex(cwd) {
@@ -211,11 +300,11 @@ async function startCodex(cwd) {
 }
 async function stopCodex() {
   if (!child) return;
+  clearTimeout(session?.turn?.timer);
   childLines?.close(); child.kill(); child = null;
   for (const request of pending.values()) request.reject(new Error('Codex stopped')); pending.clear();
 }
 export async function execute(action, p) {
-  const id = p.requestId;
   if (action === 'create' || action === 'resume') {
     if (session || !p.workspace?.path) fail('permission_denied');
     await startCodex(p.workspace.path);
@@ -253,7 +342,7 @@ export async function execute(action, p) {
     }
     session = { id: p.sessionId, threadId, cwd: p.workspace.path,
       model, reasoningEffort, serviceTier,
-      revision: 0, turn: null, tokenUsage: null, rateLimitUsage: null };
+      revision: 0, turn: null, goal: null, tokenUsage: null, rateLimitUsage: null };
     emit('session.started', { state: 'idle' });
     await refreshRateLimits();
     return { nativeSessionId: threadId, recovery: recovery() };
@@ -261,15 +350,35 @@ export async function execute(action, p) {
   if (!session || p.sessionId !== session.id) fail('invalid_session');
   if (action === 'send') {
     if (session.turn) fail('busy');
-    const turn = { id: p.turnId, requestId: id, nativeId: null, itemId: null, text: '', reasoningItems: new Set(), itemTexts: new Map(), completedMessages: new Set() };
+    const turn = newTurn(p);
     session.turn = turn;
     const turnParams = { threadId: session.threadId, input: [{ type: 'text', text: p.input.text }], summary: 'auto' };
     if (session.model) turnParams.model = session.model;
     if (session.reasoningEffort) turnParams.reasoningEffort = session.reasoningEffort;
     if (session.serviceTier) turnParams.serviceTier = session.serviceTier;
     const result = await rpc('turn/start', turnParams);
-    if (session.turn === turn) turn.nativeId = result?.turn?.id ?? turn.nativeId;
+    if (session.turn === turn && turn.nativeSequence === 0) turn.nativeId = result?.turn?.id ?? turn.nativeId;
     return { accepted: true };
+  }
+  if (action === 'resumeGoal') {
+    if (session.turn) fail('busy');
+    const turn = newTurn(p);
+    session.turn = turn;
+    const starting = (async () => {
+      const goal = await readGoal();
+      if (!goal || !['active','paused','blocked','usageLimited'].includes(goal.status)) fail('invalid_request','Goal cannot be resumed; a completed or budget-limited goal requires an explicit goal update');
+      const revision = session.goalRevision;
+      const result = await rpc('thread/goal/set', {threadId:session.threadId,status:'active'}, 10000);
+      if (session.goalRevision === revision) updateGoal(result?.goal ?? null);
+      if (session.turn === turn && !turn.nativeId) {
+        if (session.goal?.status !== 'active') finishTurn(turn,'completed');
+        else waitForGoalTurn(turn);
+      }
+    })();
+    session.goalStarting = starting;
+    try { await starting; return {accepted:true}; }
+    catch (error) { clearTimeout(turn.timer); if (session.turn === turn) session.turn = null; throw error; }
+    finally { if (session.goalStarting === starting) session.goalStarting = null; }
   }
   if (action === 'cancel') {
     if (session.turn && session.turn.id === p.turnId && session.turn.nativeId) await rpc('turn/interrupt', { threadId: session.threadId, turnId: session.turn.nativeId });
@@ -296,13 +405,15 @@ export async function execute(action, p) {
   }
   if (action === 'operation' && p.operationId === 'ext.dev.aibo.codex.goal') {
     let goal;
-    if (p.input?.action === 'get') goal = await rpc('thread/goal/get', { threadId: session.threadId });
+    if (p.input?.action === 'get') return {goal:await readGoal()};
+    else if (p.input?.action === 'pause') goal = await pauseGoal();
     else if (p.input?.action === 'clear') goal = await rpc('thread/goal/clear', { threadId: session.threadId });
     else if (p.input?.action === 'set') {
       if (typeof p.input.objective !== 'string' || !p.input.objective.trim()) fail('invalid_request', 'objective is required when setting a goal');
-      goal = await rpc('thread/goal/set', { threadId: session.threadId, objective: p.input.objective, tokenBudget: p.input.tokenBudget ?? null });
+      goal = await rpc('thread/goal/set', { threadId: session.threadId, objective: p.input.objective, status:'paused', ...(p.input.tokenBudget !== undefined ? {tokenBudget:p.input.tokenBudget} : {}) });
     } else fail('invalid_request', 'unknown goal action');
     const normalized = goal && Object.prototype.hasOwnProperty.call(goal, 'goal') ? goal.goal : goal ?? null;
+    updateGoal(normalized);
     return { goal: normalized };
   }
   if (action === 'operation' && p.operationId === 'ext.dev.aibo.codex.model') {

@@ -148,7 +148,7 @@
     }
   }
   const externalConversation = $derived<PresentationConversation>({
-    workspace: selectedWorkspace, session: selectedSession, goal: codexGoal,
+    workspace: selectedWorkspace, session: selectedSession, goal: codexGoal, goalBusy,
     thread: codexThreadSnapshot && { id: codexThreadSnapshot.id, turnCount: codexThreadSnapshot.turnCount },
     timeline, timelineVisibleCount, groupSystemItems: selectedSessionAgent === 'pi', usage: usageValues, retryPrompt, retryReason,
     userInputRequests: selectedUserInputRequests, answerDrafts: Object.fromEntries(selectedUserInputRequests.flatMap(request => request.questions.map(question => {
@@ -175,6 +175,9 @@
       case 'retry': await retryLastPrompt(); break;
       case 'queueSteer': await queuePiPrompt('steer'); break;
       case 'queueFollowUp': await queuePiPrompt('followUp'); break;
+      case 'pauseGoal': await changeGoal('pause'); break;
+      case 'resumeGoal': await changeGoal('resume'); break;
+      case 'clearGoal': await changeGoal('clear'); break;
       case 'clearQueue': await clearPiPromptQueue(); break;
       case 'addAttachments': await chooseSessionAttachments(); break;
       case 'addDirectory': await chooseSessionAttachmentDirectory(); break;
@@ -491,6 +494,7 @@
     readPersistedSelection as readSelectionFromStorage,
     writePersistedSelection as writeSelectionToStorage,
   } from '$lib/app/selection-storage';
+  import { normalizeAgentGoal, goalCanResume } from '$lib/app/session-goal';
   import { handleAgentEvent as processAgentEvent } from '$lib/app/agent-event-handler';
   import { createExecutionHistoryController, emptyExecutionHistory } from '$lib/app/execution-history-controller';
   import { createSessionHistoryController, emptySessionHistory } from '$lib/app/session-history-controller';
@@ -1207,41 +1211,45 @@
     }
   });
 
-  function normalizeCodexGoal(value: Record<string, unknown>): AgentGoal | null {
-    const candidate = value.goal && typeof value.goal === 'object'
-      ? value.goal as Record<string, unknown>
-      : value;
-    const objective = typeof candidate.objective === 'string' ? candidate.objective.trim() : '';
-    if (!objective) return null;
-    const rawStatus = typeof candidate.status === 'string' ? candidate.status : 'unknown';
-    const status: AgentGoal['status'] = ['active', 'paused', 'completed', 'cleared'].includes(rawStatus)
-      ? rawStatus as AgentGoal['status']
-      : 'unknown';
-    return {
-      objective,
-      status,
-      tokenBudget: typeof candidate.tokenBudget === 'number' ? candidate.tokenBudget : null,
-      tokensUsed: typeof candidate.tokensUsed === 'number' ? candidate.tokensUsed : null,
-      updatedAt: typeof candidate.updatedAt === 'string' ? candidate.updatedAt : null,
-    };
-  }
-
-  $effect(() => {
-    const id = selectedSessionId;
-    const agent = selectedSessionAgent;
-    const archived = selectedSessionArchived;
-    if (!desktop || !selectedSession?.capabilities.includes('goal.manage') || archived || !id) {
+  let goalRequestGeneration = 0;
+  let goalBusy = $state(false);
+  async function refreshGoal() {
+    if (goalBusy) return;
+    const session = selectedSession;
+    const generation = ++goalRequestGeneration;
+    if (!desktop || !session?.capabilities.includes('goal.manage') || session.archived) {
       codexGoal = null;
       return;
     }
+    try {
+      const value = await agentFacade.invoke(session, 'goal.manage', { action: 'get' });
+      if (generation === goalRequestGeneration && selectedSessionId === session.id) codexGoal = normalizeAgentGoal(value);
+    } catch {
+      // A transient refresh failure must not erase a known goal.
+    }
+  }
+  async function changeGoal(action: 'clear' | 'pause' | 'resume') {
+    const session = selectedSession;
+    if (!session?.capabilities.includes('goal.manage') || session.archived || selectedSessionArchiving || goalBusy) return;
+    if (action === 'resume' && (!session.capabilities.includes('goal.resume') || sessionRunning || !goalCanResume(codexGoal))) return;
+    if (action === 'pause' && (!session.capabilities.includes('goal.pause') || !codexGoal || !['active','paused'].includes(codexGoal.status))) return;
+    if (action === 'clear' && sessionRunning) return;
+    goalBusy = true;
+    ++goalRequestGeneration;
+    try {
+      const result = await agentFacade.invoke(session, action === 'resume' ? 'goal.resume' : 'goal.manage', action === 'resume' ? {} : { action });
+      if (selectedSessionId === session.id && action !== 'resume') codexGoal = normalizeAgentGoal(result);
+      await refreshSessions(session.workspaceId);
+      if (selectedSessionId === session.id) await refreshTimeline(session.id);
+    } catch (error) { errorMessage = toErrorMessage(error); }
+    finally { goalBusy = false; if (selectedSessionId === session.id) void refreshGoal(); }
+  }
+  $effect(() => {
+    const id = selectedSessionId;
     codexGoal = null;
-    void agentFacade.invoke(selectedSession!, 'goal.manage', { action: 'get' })
-      .then((value) => {
-        if (selectedSessionId === id) codexGoal = normalizeCodexGoal(value);
-      })
-      .catch(() => {
-        if (selectedSessionId === id) codexGoal = null;
-      });
+    untrack(() => { void refreshGoal(); });
+    const timer = setInterval(() => { if (!goalBusy) void refreshGoal(); }, 5000);
+    return () => { clearInterval(timer); ++goalRequestGeneration; };
   });
 
   $effect(() => {
@@ -1390,14 +1398,11 @@
     ) {
       return null;
     }
-    // Keep the activity indicator visible while a tool or assistant message
-    // is still streaming, even if the durable session state has already
-    // transitioned to idle and the timeline refresh is still in flight.
+    // Historical streaming rows do not establish live execution.
     if (
       !sessionRunning &&
       !promptInFlight &&
-      !activeAgentSession &&
-      !streamingTimelineItem
+      !activeAgentSession
     ) return null;
     if (selectedSession.state === 'waiting_approval' || selectedApprovals.length > 0) {
       return withActivityAge('等待你的确认…');
@@ -2413,6 +2418,11 @@
   }
 
   function handleAgentEvent(event: AgentEvent) {
+    if (event.sessionId === selectedSessionId && event.type === 'goal.updated') {
+      ++goalRequestGeneration;
+      codexGoal = normalizeAgentGoal(event.payload);
+    }
+    if (event.sessionId === selectedSessionId && ['turn.completed', 'turn.failed', 'session.state_changed'].includes(event.type)) void refreshGoal();
     processAgentEvent(event, {
       selectedSessionId,
       selectedAgent: selectedSessionAgent,
@@ -2917,20 +2927,24 @@
           }
           if (!command.args) {
             const result = await agentFacade.invoke(session, 'goal.manage', { action: 'get' });
-            const goal = normalizeCodexGoal(result);
+            const goal = normalizeAgentGoal(result);
             notice = goal?.objective
               ? `当前目标：${goal.objective}${goal.status ? ` · ${goal.status}` : ''}`
               : '当前会话没有目标。';
             return;
           }
           const result = await agentFacade.invoke(session, 'goal.manage', { action: 'set', objective: command.args });
-          codexGoal = normalizeCodexGoal(result) ?? {
+          codexGoal = normalizeAgentGoal(result) ?? {
             objective: command.args,
             status: 'active',
             tokenBudget: null,
             tokensUsed: null,
             updatedAt: null,
           };
+          if (session.capabilities.includes('goal.resume')) {
+            await agentFacade.invoke(session, 'goal.resume', {});
+            await refreshSessions(session.workspaceId);
+          }
           notice = `Codex 目标已设置：${command.args}`;
         });
         return true;
@@ -3746,6 +3760,10 @@
       session={selectedSession}
       selectedSessionId={selectedSessionId}
       {codexGoal}
+      goalBusy={goalBusy}
+      onClearGoal={guard('onClearGoal', () => void changeGoal('clear'))}
+      onPauseGoal={guard('onPauseGoal', () => void changeGoal('pause'))}
+      onResumeGoal={guard('onResumeGoal', () => void changeGoal('resume'))}
       codexThreadSnapshot={codexThreadSnapshot}
       timeline={timeline}
       timelineVisibleCount={timelineVisibleCount}

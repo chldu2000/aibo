@@ -300,3 +300,20 @@ test('TimelinePanel forwards every required Composer callback from App', async (
     assert.match(panelElement, new RegExp(`${callback}=\\{`), `${callback} must be supplied by App`);
   }
 });
+
+test('composer goals use a semantic control implemented by every built-in kit', async () => {
+  const source = await readFile(path.join(root, 'src/lib/components/app/TimelinePanel.svelte'), 'utf8');
+  assert.ok(source.indexOf('<GoalBar') < source.indexOf('<Composer'));
+  assert.ok(source.indexOf('<GoalBar') > source.indexOf('</CardHeader>'));
+  const contract = await readFile(path.join(root, 'src/lib/ui-kit/contract.ts'), 'utf8');
+  assert.match(contract, /GoalBar: Component<UiGoalBarProps>/);
+  for (const kit of ['shadcn', 'material3']) {
+    const registration = await readFile(path.join(root, `src/lib/ui-kit/kits/${kit}.ts`), 'utf8');
+    assert.match(registration, /\n  GoalBar,/);
+    const component = await readFile(path.join(root, `src/lib/ui-kit/kits/${kit}/GoalBar.svelte`), 'utf8');
+    assert.match(component, /aria-expanded/);
+    assert.match(component, /aria-label="清除目标"/);
+    assert.match(component, /aria-label="暂停目标"/);
+    assert.match(component, /aria-label="恢复目标"/);
+  }
+});

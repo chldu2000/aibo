@@ -99,9 +99,10 @@ interface SessionModelCatalog {
 
 interface AgentGoal {
   objective: string;
-  status: 'active' | 'paused' | 'completed' | 'cleared' | 'unknown';
+  status: 'active' | 'paused' | 'completed' | 'cleared' | 'blocked' | 'usageLimited' | 'budgetLimited' | 'unknown';
   tokenBudget: number | null;
   tokensUsed: number | null;
+  timeUsedSeconds?: number | null;
   updatedAt: string | null;
 }
 
@@ -195,6 +196,7 @@ export type PresentationConversation = {
   workspace: { id: string; label: string; path: string; trust: string } | null;
   session: Session | null;
   goal: AgentGoal | null;
+  goalBusy?: boolean;
   thread: { id: string; turnCount: number | null } | null;
   timeline: { id: string; turnId: string | null; role: string; toolName: string | null; entryType: string | null; content: string; status: string }[];
   timelineVisibleCount: number;
@@ -238,7 +240,7 @@ export type PresentationConversation = {
   treeNavigationStatus: string | null;
 };
 
-export type PresentationConversationOperation = 'copyCode' | 'openLink' | 'draft' | 'send' | 'stop' | 'retry' | 'queueSteer' | 'queueFollowUp' | 'clearQueue'
+export type PresentationConversationOperation = 'copyCode' | 'openLink' | 'draft' | 'send' | 'stop' | 'retry' | 'queueSteer' | 'queueFollowUp' | 'clearQueue' | 'clearGoal' | 'pauseGoal' | 'resumeGoal'
   | 'addAttachments' | 'addDirectory' | 'removeAttachment' | 'selectPath' | 'selectSessionReference' | 'selectCommand'
   | 'loadOlder' | 'fork' | 'loadModels' | 'selectModel' | 'selectServiceTier' | 'selectAccess' | 'compact'
   | 'answer' | 'chooseAnswer' | 'submitAnswers' | 'cancelAnswers'

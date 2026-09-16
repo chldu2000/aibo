@@ -25,7 +25,12 @@ export function conversationActions(state: PresentationConversation): Spec[] {
     for (const item of state.workspacePathSuggestions) add('selectPath', [item.path]);
     for (const command of state.agentCommands) if (command.enabled !== false) add('selectCommand', [command.name]);
   }
+  if (available && !state.goalBusy && state.goal) {
+    if (capable('goal.pause') && (state.goal.status === 'active' || state.goal.status === 'paused' && state.running)) add('pauseGoal');
+    if (!state.running && capable('goal.resume') && ['active','paused','blocked','usageLimited'].includes(state.goal.status)) add('resumeGoal');
+  }
   if (available && !state.running) {
+    if (!state.goalBusy && capable('goal.manage') && state.goal && state.goal.status !== 'cleared') add('clearGoal');
     if (state.draft.trim()) add('send');
     if (state.retryPrompt) add('retry');
     if (!state.modelCatalogLoading) add('loadModels');

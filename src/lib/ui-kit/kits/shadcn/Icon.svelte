@@ -1,4 +1,6 @@
 <script lang="ts">
+  import PauseIcon from '@lucide/svelte/icons/pause';
+  import PlayIcon from '@lucide/svelte/icons/circle-play';
   import AddIcon from '@lucide/svelte/icons/plus';
   import ArchiveIcon from '@lucide/svelte/icons/archive';
   import ArchiveRestoreIcon from '@lucide/svelte/icons/archive-restore';
@@ -61,6 +63,8 @@
     plugins: PluginsIcon,
     send: SendIcon,
     settings: SettingsIcon,
+    pause: PauseIcon,
+    play: PlayIcon,
     stop: StopIcon,
     trust: TrustIcon,
     undo: UndoIcon,

@@ -167,3 +167,70 @@ test('Codex metadata snapshot does not require native turn-list support',async t
   assert.equal(snapshot.thread.turnCount,null,'unavailable turn count must remain unknown');
   await assert.rejects(f.invoke('dev.aibo.codex.session.fork',{nativeTurnId:'missing'}),/list_turns/);
 });
+
+test('Codex goal resume owns all native continuations until the goal completes', async t => {
+  const f = await sessionCapability(t, 'codex', {CODEX_FAKE_GOAL_MODE:'complete'});
+  const opened = await f.invoke('aibo.session.open', {mode:'create',executionProfile:profile});
+  assert.ok(opened.capabilities.includes('goal.resume'));
+  assert.ok(opened.capabilities.includes('goal.pause'));
+  const initial = await f.invoke('dev.aibo.codex.goal.manage',{action:'set',objective:'Migrate safely',tokenBudget:2000});
+  assert.equal(initial.goal.status,'paused', 'creating a goal cannot start execution outside an admitted run');
+  assert.equal((await f.invoke('aibo.session.goal.resume',{},'goal-run')).status,'completed');
+  const events = f.events.map(e=>e.event).filter(e=>e.turnId==='goal-run');
+  assert.equal(events.filter(e=>e.type==='turn.started').length,2);
+  assert.equal(events.filter(e=>e.type==='turn.completed').length,1);
+  const messages = events.filter(e=>e.type==='message.completed');
+  assert.deepEqual(messages.map(e=>e.payload.text),['Goal step 1','Goal step 2']);
+  assert.equal(new Set(messages.map(e=>e.payload.itemId)).size,2,'native item reuse must not overwrite earlier steps');
+  const final = (await f.invoke('dev.aibo.codex.goal.manage',{action:'get'})).goal;
+  assert.equal(final.objective,'Migrate safely'); assert.equal(final.tokenBudget,2000);
+  assert.equal(final.tokensUsed,100); assert.equal(final.status,'complete');
+  await assert.rejects(f.invoke('aibo.session.goal.resume',{},'finished'),/cannot be resumed/);
+});
+
+test('Codex pauses the persisted goal before interrupting, then resumes the same goal', async t => {
+  const f = await sessionCapability(t, 'codex', {CODEX_FAKE_GOAL_MODE:'hold'});
+  await f.invoke('aibo.session.open',{mode:'create',executionProfile:profile});
+  await f.invoke('dev.aibo.codex.goal.manage',{action:'set',objective:'Keep working',tokenBudget:250});
+  for (const turnId of ['first-goal-run','resumed-goal-run']) {
+    const started = f.wait('turn.started');
+    const request = f.request('aibo.session.goal.resume',{},turnId);
+    const run = {request,done:f.rpc('capability.invoke',request)};
+    await started;
+    const reading = await f.control(run,'dev.aibo.codex.goal.manage',{action:'get'});
+    assert.equal(reading.goal.status,'active','goal reads remain available during execution');
+    const result = await f.control(run,'dev.aibo.codex.goal.manage',{action:'pause'});
+    assert.equal(result.goal.status,'paused'); assert.equal(result.goal.objective,'Keep working');
+    assert.equal(result.goal.tokenBudget,250); assert.equal(result.goal.tokensUsed,0);
+    assert.equal((await run.done).output.status,'interrupted');
+    const stream=f.events.map(e=>e.event);
+    const pauseIndex=stream.findLastIndex(e=>e.type==='goal.updated'&&e.payload.goal?.status==='paused');
+    const endIndex=stream.findLastIndex(e=>e.type==='turn.completed');
+    assert.ok(pauseIndex>=0 && endIndex>pauseIndex);
+  }
+});
+
+test('goal resume preserves write admission and surfaces native errors without starting a turn', async t => {
+  const f = await sessionCapability(t,'codex',{CODEX_FAKE_GOAL_RESUME_FAIL:'1'});
+  await f.invoke('aibo.session.open',{mode:'create',executionProfile:{...profile,filesystemPolicy:'workspace-write'}});
+  await f.invoke('dev.aibo.codex.goal.manage',{action:'set',objective:'Protected goal'});
+  await assert.rejects(f.invoke('aibo.session.goal.resume',{},'unsafe'),/approved write/);
+  await assert.rejects(f.invoke('aibo.session.goal.resume.write',{},'rejected',['workspace.read','workspace.write']),/resume rejected/);
+  assert.equal(f.events.some(e=>e.event.type==='turn.started'),false);
+  assert.equal((await f.invoke('dev.aibo.codex.goal.manage',{action:'get'})).goal.status,'paused');
+});
+
+test('a failed native interrupt reports failure while retaining pause and the live run', async t => {
+  const f=await sessionCapability(t,'codex',{CODEX_FAKE_GOAL_MODE:'hold',CODEX_FAKE_INTERRUPT_FAIL:'1'});
+  await f.invoke('aibo.session.open',{mode:'create',executionProfile:profile});
+  await f.invoke('dev.aibo.codex.goal.manage',{action:'set',objective:'Pause safely'});
+  const started=f.wait('turn.started');
+  const request=f.request('aibo.session.goal.resume',{},'pause-failure');
+  const run={request,done:f.rpc('capability.invoke',request)};
+  run.done.catch(()=>{});
+  await started;
+  await assert.rejects(f.control(run,'dev.aibo.codex.goal.manage',{action:'pause'}),/interrupt failed/);
+  const goal=(await f.control(run,'dev.aibo.codex.goal.manage',{action:'get'})).goal;
+  assert.equal(goal.status,'paused');
+  assert.equal(f.events.some(e=>e.event.turnId==='pause-failure'&&e.event.type==='turn.completed'),false,'failed interrupt must not fabricate terminal execution');
+});

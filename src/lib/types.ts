@@ -169,9 +169,10 @@ export interface SessionModelCatalog {
 
 export interface AgentGoal {
   objective: string;
-  status: 'active' | 'paused' | 'completed' | 'cleared' | 'unknown';
+  status: 'active' | 'paused' | 'completed' | 'cleared' | 'blocked' | 'usageLimited' | 'budgetLimited' | 'unknown';
   tokenBudget: number | null;
   tokensUsed: number | null;
+  timeUsedSeconds?: number | null;
   updatedAt: string | null;
 }
 
@@ -651,6 +652,7 @@ export interface AgentEvent {
     | 'approval.resolved'
     | 'user_input.requested'
     | 'user_input.resolved'
+    | 'goal.updated'
     | 'usage.updated'
     | 'queue.updated'
     | 'compaction.started'

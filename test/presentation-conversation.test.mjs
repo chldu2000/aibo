@@ -86,3 +86,35 @@ test('session reference actions reject foreign sessions and retire after selecti
  assert.equal(directory.resolve({...referencing,sessionSuggestions:[]},context,intent),null);
  assert.equal(directory.resolve({...referencing,busy:true},context,intent),null);
 });
+
+test('goals remain above the draft and distinguish idle goals from executing turns', () => {
+ const goalState = {...state, session:{...state.session,capabilities:['goal.manage']},goal:{objective:'Finish the migration',status:'active',tokenBudget:2000,tokensUsed:100}};
+ const actions = conversationActions(goalState);
+ assert.ok(actions.some(action => action.operation === 'clearGoal'));
+ assert.ok(!conversationActions({...goalState,running:true}).some(action => action.operation === 'clearGoal'));
+ assert.ok(!conversationActions({...goalState,session:{...goalState.session,capabilities:[]}}).some(action => action.operation === 'clearGoal'));
+ const tree = renderConversation(goalState,actions);
+ const composer = tree.children.find(child => child.key === 'conversation:composer');
+ const goal = composer.children.find(child => child.key === 'conversation:goal');
+ assert.ok(composer.children.indexOf(goal) < composer.children.findIndex(child => child.key === 'conversation:draft'));
+ assert.equal(goal.children.find(child => child.key === 'goal:status').text,'目标待继续');
+ assert.equal(tree.children[0].children.some(child => child.key === 'conversation:goal'),false);
+ for (const [status,label] of [['paused','目标已暂停'],['completed','目标已完成'],['blocked','目标受阻']]) {
+  const rendered = renderConversation({...goalState,goal:{...goalState.goal,status}},actions).children.find(child => child.key === 'conversation:composer');
+  assert.equal(rendered.children.find(child => child.key === 'conversation:goal').children.find(child => child.key === 'goal:status').text,label);
+ }
+});
+
+test('goal pause and resume actions depend on capability, goal status and live execution', () => {
+ const goalState={...state,session:{...state.session,capabilities:['goal.manage','goal.pause','goal.resume']},goal:{objective:'Finish',status:'active',tokenBudget:2000,tokensUsed:100}};
+ const goalActions=value=>operations(value).filter(op=>['clearGoal','pauseGoal','resumeGoal'].includes(op));
+ assert.deepEqual(goalActions({...goalState,running:true}),['pauseGoal']);
+ assert.deepEqual(goalActions({...goalState,goal:{...goalState.goal,status:'paused'}}),['resumeGoal','clearGoal']);
+ assert.deepEqual(goalActions({...goalState,goalBusy:true}),[]);
+ assert.deepEqual(goalActions({...goalState,session:{...goalState.session,archived:true}}),[]);
+ assert.deepEqual(goalActions({...goalState,session:{...goalState.session,capabilities:['goal.manage']}}),['clearGoal']);
+ for (const status of ['completed','budgetLimited','unknown']) assert.deepEqual(goalActions({...goalState,goal:{...goalState.goal,status}}),['clearGoal']);
+ const directory=createConversationDirectory();
+ const action=directory.project(goalState).find(action=>action.operation==='resumeGoal');
+ assert.equal(directory.resolve({...goalState,running:true},context,{id:action.token,event:'click',context}),null,'an idle resume token cannot restart a running goal');
+});

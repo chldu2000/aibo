@@ -21,6 +21,7 @@ fn event_capability_required(kind:&str,origin:EventOrigin)->Option<&'static str>
         "approval.requested"|"approval.resolved"=>Some("approval.respond"),
         "user_input.requested"|"user_input.resolved"=>Some("user-input.respond"),
         "queue.updated"=>Some("queue.manage"),
+        "goal.updated"=>Some("goal.manage"),
         "compaction.started"|"compaction.completed"=>Some("compaction.run"),
         _=>None,
     }
@@ -39,7 +40,7 @@ fn passive_session_read(capability: &str, input: &Value) -> bool {
     match capability {
         "session.snapshot" | "command.list" | "skill.list" => true,
         "model.select" | "model.reasoning" | "model.service-tier" => input["action"] == "list",
-        "session.tree" | "goal.manage" => input["action"] == "get",
+        "session.tree" => input["action"] == "get",
         _ => false,
     }
 }
@@ -191,14 +192,23 @@ impl SessionHost {
         self.send_admitted(caller, session_id, text, Some(approval)).await
     }
     async fn send_admitted(&self,caller:&str,session_id:&str,text:&str,approval:Option<crate::workspace_write_runs::Request>)->Result<(),String> {
+        self.run_admitted(caller, session_id, text, approval, false).await
+    }
+    async fn run_admitted(&self,caller:&str,session_id:&str,text:&str,approval:Option<crate::workspace_write_runs::Request>,goal_resume:bool)->Result<(),String> {
         if text.trim().is_empty() || text.len()>200_000 {return Err("invalid_input: prompt length".into());}
         if self.live.lock().await.contains_key(session_id) {return Err("busy: session has an active invocation".into());}
         self.open(caller,session_id).await?;
         let (session,_)=self.metadata(session_id).await?;
+        if goal_resume && !session.capabilities.iter().any(|capability| capability == "goal.resume") {return Err("capability_unsupported: goal.resume".into());}
         let saved=self.saved_binding(session_id).await?.ok_or("invalid_session: no native binding")?;
         let profile=crate::session_execution_profile(&self.db,session_id).await.map_err(|e|e.to_string())?.profile.enforced;
         let write=profile.filesystem_policy!="read-only" || (profile.interaction_mode=="edit" && profile.command_policy!="disabled");
         if write && approval.is_none() {return Err("approval_required: writable turn requires a host confirmation".into());}
+        let capability=match (goal_resume,write) {
+            (true,true)=>"aibo.session.goal.resume.write", (true,false)=>"aibo.session.goal.resume",
+            (false,true)=>"aibo.session.turn.write", (false,false)=>"aibo.session.turn",
+        };
+        let binding=Self::binding(&session,capability)?;
         // Freeze the active Pi branch before this turn. Runtime queries are not
         // needed to display its accepted user message or subsequent streamed rows.
         let pi_branch = if session.agent == "dev.aibo.pi.agent" {
@@ -220,15 +230,14 @@ impl SessionHost {
         if changed.rows_affected()!=1 {return Err("busy: session is not idle".into());}
         sqlx::query("INSERT INTO turns(id,session_id,external_turn_id,status,input_text,started_at) VALUES(?,?,?,'running',?,?)").bind(&turn).bind(session_id).bind(&turn).bind(text).bind(&now).execute(&mut *tx).await.map_err(|e|e.to_string())?;
         sqlx::query("INSERT INTO messages(id,session_id,turn_id,role,content,status,created_at,updated_at) VALUES(?,?,?,'user',?,'completed',?,?)").bind(&message).bind(session_id).bind(&turn).bind(text).bind(&now).bind(&now).execute(&mut *tx).await.map_err(|e|e.to_string())?;
-        let attachments:Vec<String>=sqlx::query_scalar("SELECT id FROM attachments WHERE session_id=? AND turn_id IS NULL ORDER BY created_at").bind(session_id).fetch_all(&mut *tx).await.map_err(|e|e.to_string())?;
-        sqlx::query("UPDATE attachments SET turn_id=? WHERE session_id=? AND turn_id IS NULL").bind(&turn).bind(session_id).execute(&mut *tx).await.map_err(|e|e.to_string())?;
+        let attachments:Vec<String>=if goal_resume {vec![]} else {sqlx::query_scalar("SELECT id FROM attachments WHERE session_id=? AND turn_id IS NULL ORDER BY created_at").bind(session_id).fetch_all(&mut *tx).await.map_err(|e|e.to_string())?};
+        if !goal_resume {sqlx::query("UPDATE attachments SET turn_id=? WHERE session_id=? AND turn_id IS NULL").bind(&turn).bind(session_id).execute(&mut *tx).await.map_err(|e|e.to_string())?;}
         tx.commit().await.map_err(|e|e.to_string())?;
         let (phase, _) = watch::channel(TurnPhase::Starting);
         let run=LiveTurn {caller:caller.into(),request_id:turn.clone(),cancel:Arc::new(AtomicBool::new(false)),phase,pi_branch};live.insert(session_id.into(),run.clone());drop(live);
         self.turn_baselines.lock().await.insert(turn.clone(),baseline);
         let _=crate::auto_name_session_from_first_message(&self.db,session_id,&message,text).await;
-        let capability=if write {"aibo.session.turn.write"}else{"aibo.session.turn"};let binding=Self::binding(&session,capability)?;
-        let request=Request {scope:binding.scope.clone(),capability:capability.into(),version:"1.0.0".into(),request_id:turn.clone(),turn_id:Some(turn.clone()),input:json!({"text":text,"attachments":attachments.into_iter().map(|id|json!({"attachmentId":id})).collect::<Vec<_>>()})};
+        let request=Request {scope:binding.scope.clone(),capability:capability.into(),version:"1.0.0".into(),request_id:turn.clone(),turn_id:Some(turn.clone()),input:if goal_resume {json!({})} else {json!({"text":text,"attachments":attachments.into_iter().map(|id|json!({"attachmentId":id})).collect::<Vec<_>>()})}};
         let observer=self.observer(session.clone(),saved.clone(),caller.into(),turn.clone(),Some(turn.clone()),write);
         let host=self.clone();let caller=caller.to_owned();
         tokio::spawn(async move {
@@ -292,6 +301,13 @@ impl SessionHost {
         Ok(crate::pi_snapshot_timeline(&snapshot, session_id))
     }
     pub async fn invoke_capability_from(&self,caller:&str,session_id:&str,capability:&str,input:Value)->Result<Value,String> {
+        if capability == "goal.resume" {
+            if input.as_object().is_none_or(|value| !value.is_empty()) {return Err("invalid_input: goal.resume takes no parameters".into());}
+            let _guard=self.session_operation(session_id).await;
+            let approval=crate::session_permissions::turn_request(&self.db,session_id,caller).await?;
+            self.run_admitted(caller,session_id,"继续执行当前目标",Some(approval),true).await?;
+            return Ok(json!({"accepted":true}));
+        }
         loop {
             let mut running=self.live.lock().await.get(session_id).cloned();
             let mut admission = None;

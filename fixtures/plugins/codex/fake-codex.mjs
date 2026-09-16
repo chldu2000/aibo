@@ -1,9 +1,11 @@
 #!/usr/bin/env node
 import readline from 'node:readline';
+import {existsSync,readFileSync,writeFileSync} from 'node:fs';
 const write = (message) => process.stdout.write(`${JSON.stringify({ jsonrpc: '2.0', ...message })}\n`);
 const input = readline.createInterface({ input: process.stdin, crlfDelay: Infinity });
 let nativeTurnId = 'native-turn';
-let goal = null;
+const goalFile = process.env.CODEX_FAKE_GOAL_FILE;
+let goal = goalFile && existsSync(goalFile) ? JSON.parse(readFileSync(goalFile,'utf8')) : null;
 const nativeTurns = [];
 let interactiveTurn = null;
 function completeTurn(params) {
@@ -12,6 +14,24 @@ function completeTurn(params) {
   write({ method: 'item/completed', params: { threadId: params.threadId, turnId: nativeTurnId, item: { id: 'message', type: 'agentMessage', text: params.input[0].text } } });
   write({ method: 'thread/tokenUsage/updated', params: { threadId: params.threadId, turnId: nativeTurnId, tokenUsage: { total: { inputTokens: 1200, outputTokens: 34, totalTokens: 1234, modelContextWindow: 10000 } } } });
   write({ method: 'turn/completed', params: { threadId: params.threadId, turn: { id: nativeTurnId, status: 'completed', items: [] } } });
+}
+let goalTurnActive = false;
+let goalTurnCount = 0;
+function publishGoal(threadId) { if (goalFile) writeFileSync(goalFile,JSON.stringify(goal)); write({method:'thread/goal/updated',params:{threadId,goal}}); }
+function startGoalTurn(threadId) {
+  if (goal?.status !== 'active' || goalTurnActive) return;
+  goalTurnActive = true;
+  nativeTurnId = `goal-turn-${++goalTurnCount}`;
+  write({method:'turn/started',params:{threadId,turn:{id:nativeTurnId,status:'inProgress'}}});
+  if (process.env.CODEX_FAKE_GOAL_MODE === 'hold') return;
+  setTimeout(() => {
+    if (!goalTurnActive) return;
+    goal.tokensUsed += 50; goal.timeUsedSeconds += 2;
+    if (goalTurnCount % 2 === 0) { goal.status = 'complete'; publishGoal(threadId); }
+    completeTurn({threadId,input:[{text:`Goal step ${goalTurnCount}`}]});
+    goalTurnActive = false;
+    if (goal.status === 'active') setTimeout(() => startGoalTurn(threadId), 20);
+  }, 10);
 }
 input.on('line', (line) => {
   const request = JSON.parse(line);
@@ -71,13 +91,26 @@ input.on('line', (line) => {
       interactiveTurn = { kind: 'user-input', requestId: 'provider-input', params };
       write({ id: interactiveTurn.requestId, method: 'item/tool/requestUserInput', params: { threadId: params.threadId, turnId: nativeTurnId, itemId: 'tool-2', questions: [{ id: 'choice', header: 'Choice', question: 'Continue?', options: [] }] } });
     } else completeTurn(params);
-  } else if (method === 'turn/interrupt') write({ id, result: {} });
+  } else if (method === 'turn/interrupt') {
+    if (process.env.CODEX_FAKE_INTERRUPT_FAIL === '1') {write({id,error:{code:-32000,message:'interrupt failed'}});return;}
+    write({id,result:{}});
+    goalTurnActive = false; interactiveTurn = null;
+    write({method:'turn/completed',params:{threadId:params.threadId,turn:{id:params.turnId,status:'interrupted',items:[]}}});
+  }
   else if (method === 'thread/goal/get') write({ id, result: { goal } });
   else if (method === 'thread/goal/set') {
-    goal = { objective: params.objective, tokenBudget: params.tokenBudget, status: 'active' };
+    if (process.env.CODEX_FAKE_GOAL_RESUME_FAIL === '1' && params.status === 'active') {write({id,error:{code:-32000,message:'resume rejected'}});return;}
+    if (params.objective !== undefined && params.objective !== goal?.objective) {
+      goal = {threadId:params.threadId,objective:params.objective,tokenBudget:params.tokenBudget ?? null,status:params.status ?? 'active',tokensUsed:0,timeUsedSeconds:0};
+    } else if (!goal) {write({id,error:{code:-32600,message:'goal missing'}});return;}
+    if (params.status !== undefined) goal.status = params.status;
+    if (params.tokenBudget !== undefined) goal.tokenBudget = params.tokenBudget;
     write({ id, result: { goal } });
+    publishGoal(params.threadId);
+    if (params.status === 'active' && process.env.CODEX_FAKE_GOAL_MODE) setTimeout(() => startGoalTurn(params.threadId), 5);
   } else if (method === 'thread/goal/clear') {
     goal = null;
+    if (goalFile) writeFileSync(goalFile,JSON.stringify(goal));
     write({ id, result: { goal } });
   } else if (method === 'model/list') write({ id, result: { data: [{ id: 'gpt-fake', model: 'gpt-fake', displayName: 'GPT Fake', isDefault: true, supportedReasoningEfforts: [{ reasoningEffort: 'low' }, { reasoningEffort: 'high' }], serviceTiers: [{ id: 'priority', name: 'Fast', description: 'Faster responses' }] }] } });
   else if (method === 'skills/list') write({ id, result: { data: [{ cwd: params.cwds[0], skills: [{ name: 'review', interface: { shortDescription: 'Review code' } }] }] } });

@@ -80,3 +80,25 @@ test('usage events retain their session identity at the host state seam', async 
     await server.close();
   }
 });
+
+for (const type of ['turn.completed', 'session.state_changed']) {
+  test(`${type} clears stale tool execution when the composer becomes idle`, async () => {
+    const server = await createServer({ server: { middlewareMode: true, ws: false, watch: null }, appType: 'custom' });
+    try {
+      const { handleAgentEvent } = await server.ssrLoadModule('/src/lib/app/agent-event-handler.ts');
+      let active = true;
+      let timeline = [{ id: 'tool', sessionId: 'session', turnId: 'turn', role: 'tool', status: 'streaming' }];
+      handleAgentEvent({
+        eventId: 'end', workspaceId: 'workspace', sessionId: 'session', turnId: 'turn',
+        type, occurredAt: '2026-09-16T00:00:00.000Z', source: {}, correlation: null,
+        payload: type === 'turn.completed' ? { status: 'completed' } : { state: 'idle' },
+      }, {
+        selectedSessionId: 'session', selectedAgent: 'codex', timeline, pendingApprovals: [], pendingUserInputs: [], lastSubmittedPrompt: null,
+        setAgentActivity(id, value) { active = value; }, updateWorkspaceSessions() {}, setPendingApprovals() {}, setPendingUserInputs() {},
+        setUsageSnapshot() {}, setQueueSnapshot() {}, setTimeline(value) { timeline = value; }, setRetry() {}, setNotice() {}, refreshSessions() {},
+      });
+      assert.equal(active, false, 'idle composer must not retain an execution activity override');
+      assert.equal(timeline.some(item => item.status === 'streaming'), false, 'ended turn must not retain a streaming tool indicator');
+    } finally { await server.close(); }
+  });
+}

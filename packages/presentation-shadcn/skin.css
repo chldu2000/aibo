@@ -26,3 +26,6 @@ tr[aria-selected=true]{background:var(--accent)}
  .conversation>.conversation\:composer{flex:none;max-height:45vh;overflow:auto;border-top:1px solid var(--border);background:var(--background);padding-top:8px}
  .conversation>.conversation\:composer>h2{margin-top:0}
 }
+
+/* Goal stays attached to the composer instead of scrolling with history. */
+.goal-bar { padding: 12px 16px; border: 1px solid var(--border); border-radius: 16px 16px 0 0; }

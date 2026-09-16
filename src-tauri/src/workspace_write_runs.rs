@@ -30,7 +30,7 @@ impl Request {
     }
     fn permits(&self, operation: &str, input: &Value, nested: bool) -> bool {
         self.session_policy.as_ref().is_none_or(|session| !nested && operation == "capability.invoke"
-            && input["capability"] == "aibo.session.turn.write"
+            && matches!(input["capability"].as_str(), Some("aibo.session.turn.write" | "aibo.session.goal.resume.write"))
             && input["scope"]["kind"] == "session" && input["scope"]["id"] == *session)
     }
     pub(crate) fn child(&self, id: String) -> Self { Self { id, caller:self.caller.clone(), session_policy:self.session_policy.clone(), confirmation:self.confirmation.clone() } }
@@ -613,6 +613,9 @@ mod session_policy_tests {
         let request = Request::with_session_policy("request".into(), "main".into(), "session".into(), |_| async { Ok(true) });
         let input = serde_json::json!({"capability":"aibo.session.turn.write","scope":{"kind":"session","id":"session"}});
         assert!(request.permits("capability.invoke", &input, false));
+        let resume = serde_json::json!({"capability":"aibo.session.goal.resume.write","scope":{"kind":"session","id":"session"}});
+        assert!(request.permits("capability.invoke", &resume, false));
+        assert!(!request.permits("capability.invoke", &resume, true));
         assert!(!request.permits("capability.invoke", &input, true));
         assert!(!request.permits("git.commit", &input, false));
         let mut other = input.clone(); other["scope"]["id"] = serde_json::json!("other-session");

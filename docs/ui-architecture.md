@@ -508,3 +508,19 @@ Material 3 使用 tonal surfaces、圆角容器和 state/elevation 层级。该�
 草稿、加载和保存。配置权限、字段校验、作用域解析和原子保存均由 Rust 宿主负责。
 参见 [Agent 设置协议](agent-plugin-settings.md)。这增加内部必需控件，外部呈现包未
 提供定制时继承完整默认 adapter，不要求现有外部包增加控件声明。
+
+### Composer goal bar
+
+`UiKitAdapter.GoalBar` receives an objective, localized status/usage labels and an
+optional clear callback. Both built-in skins own its appearance and expandable
+text. The app places it immediately above the composer, based on `goal.manage`
+capability data. A goal's lifecycle is separate from turn execution: an active
+goal on an idle session is awaiting continuation, not evidence of a running tool.
+Installed presentation workbenches render the same goal inside the composer.
+
+Goal controls are capability-gated: `goal.pause` exposes pause through
+`goal.manage { action: "pause" }`, and `goal.resume` exposes the host-owned resume
+intent. The goal bar emits semantic callbacks; neither skin calls the provider.
+A completed, cleared, unknown, or budget-limited goal has no resume action.
+An explicit resume may retry a blocked or usage-limited goal; the provider still
+enforces the native limits. Pending operations disable duplicate controls.

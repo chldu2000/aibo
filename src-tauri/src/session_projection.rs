@@ -18,7 +18,7 @@ impl SessionHost {
                 "workspaceId":workspace_id,"sessionId":session_id,"nativeSessionId":p["nativeSessionId"],"turnId":p["turnId"],"type":p["type"],"correlation":p["correlation"],"payload":p["payload"],"rawRef":null});
             let emitted_event = event.clone();
             let kind = p["type"].as_str().unwrap();
-            if !["session.started","session.info_changed","turn.started","message.delta","message.completed","reasoning.updated","reasoning.completed","tool.started","tool.updated","tool.completed","turn.completed","turn.failed","approval.requested","approval.resolved","user_input.requested","user_input.resolved","usage.updated","queue.updated","compaction.started","compaction.completed","retry.started","retry.completed","extension.updated","adapter.crashed"].contains(&kind) {
+            if !["session.started","session.info_changed","goal.updated","turn.started","message.delta","message.completed","reasoning.updated","reasoning.completed","tool.started","tool.updated","tool.completed","turn.completed","turn.failed","approval.requested","approval.resolved","user_input.requested","user_input.resolved","usage.updated","queue.updated","compaction.started","compaction.completed","retry.started","retry.completed","extension.updated","adapter.crashed"].contains(&kind) {
                 return Err("capability_unsupported: event outside minimal lifecycle".into());
             }
             let negotiated: Value = serde_json::from_str(&active.1).map_err(|_|"manifest_mismatch: negotiated capabilities missing")?;

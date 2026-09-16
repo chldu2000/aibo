@@ -4,8 +4,9 @@
   import { createTimelineStickiness } from '$lib/app/timeline-stickiness';
   import type { Snippet } from 'svelte';
   import type { ModelConfigurationState } from '$lib/app/model-configuration';
+  import { goalStatusLabel, goalCanResume } from '$lib/app/session-goal';
   import { sessionAgentKind } from '$lib/app/agent-kind';
-  import { Badge, Button, Card, CardContent, CardHeader, CardTitle, Icon, Input, Separator } from '$lib/ui-kit';
+  import { GoalBar, Badge, Button, Card, CardContent, CardHeader, CardTitle, Icon, Input, Separator } from '$lib/ui-kit';
   import type { AgentCommand, AgentGoal, AgentQueueSnapshot, ContextAttachment, SessionAccessMode, SessionExecutionProfile, SessionModelCatalog, Session, UserInputRequest, WorkspacePathSuggestion } from '$lib/types';
   import type { UsageValues } from './view-models';
   import Composer from './Composer.svelte';
@@ -26,6 +27,10 @@
     session: SessionPanelView | null;
     selectedSessionId: string | null;
     codexGoal: AgentGoal | null;
+    goalBusy?: boolean;
+    onClearGoal?: () => void;
+    onPauseGoal?: () => void;
+    onResumeGoal?: () => void;
     codexThreadSnapshot: CodexThreadView | null;
     timeline: TimelineViewItem[];
     timelineVisibleCount: number;
@@ -84,6 +89,10 @@
     session,
     selectedSessionId,
     codexGoal,
+    goalBusy = false,
+    onClearGoal,
+    onPauseGoal,
+    onResumeGoal,
     codexThreadSnapshot,
     timeline,
     timelineVisibleCount,
@@ -232,9 +241,6 @@
     <CardTitle>{session?.label ?? workspace?.label ?? '选择工作区'}</CardTitle>
     <div class="timeline-heading-actions">
           {@render presentationActions?.()}
-      {#if codexGoal?.objective}
-        <Badge variant="outline" title={codexGoal.objective}>目标 · {codexGoal.status}</Badge>
-      {/if}
       {#if session}
         {#if sessionKind === 'codex' && !sessionArchived}
           <Button variant="ghost" size="sm" type="button" onclick={() => onForkSession()} disabled={busy || sessionRunning || selectedSessionArchiving} title="从最新完成的回复创建分支">
@@ -464,6 +470,15 @@
   {#key session?.id}
   {#if composerDraftFailed}
     <div class="composer-draft-status" role="status">上次发送未完成，草稿已保留，可修改后重试。</div>
+  {/if}
+  {#if codexGoal?.objective && codexGoal.status !== 'cleared'}
+    <GoalBar objective={codexGoal.objective}
+      statusLabel={goalStatusLabel(codexGoal, sessionRunning)}
+      usageLabel={codexGoal.tokenBudget !== null ? `Token ${codexGoal.tokensUsed ?? 0} / ${codexGoal.tokenBudget}` : codexGoal.tokensUsed !== null ? `Token ${codexGoal.tokensUsed}` : null}
+      busy={goalBusy || selectedSessionArchiving}
+      onPause={!sessionArchived && session?.capabilities.includes('goal.pause') && (codexGoal.status === 'active' || codexGoal.status === 'paused' && sessionRunning) ? onPauseGoal : undefined}
+      onResume={!sessionArchived && !sessionRunning && session?.capabilities.includes('goal.resume') && goalCanResume(codexGoal) ? onResumeGoal : undefined}
+      onClear={sessionArchived || sessionRunning ? undefined : onClearGoal} />
   {/if}
   <Composer
     selectedAgent={sessionKind === 'plugin' ? null : sessionKind}

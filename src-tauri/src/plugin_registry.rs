@@ -560,7 +560,7 @@ mod tests {
         let installed = list(&db).await.unwrap();
         assert_eq!(installed.len(), 2);
         assert_eq!(installed.iter().map(|plugin|plugin.plugin_id.as_str()).collect::<std::collections::HashSet<_>>(), std::collections::HashSet::from(["dev.aibo.codex", "dev.aibo.pi"]));
-        assert_eq!(installed.iter().find(|plugin| plugin.plugin_id == "dev.aibo.codex").unwrap().plugin_version, "2.0.5");
+        assert_eq!(installed.iter().find(|plugin| plugin.plugin_id == "dev.aibo.codex").unwrap().plugin_version, "2.0.6");
         assert_eq!(installed.iter().find(|plugin| plugin.plugin_id == "dev.aibo.pi").unwrap().plugin_version, "2.0.3");
         assert!(installed.iter().all(|plugin|plugin.enabled && plugin.installed));
         db.close().await;

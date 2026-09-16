@@ -63,15 +63,16 @@ export function sessionProvider({engine, pluginId, actions}) {
       return snapshot(result);
     }
     if (!nativeSessionId) reject('Session must be opened in this runtime generation');
-    if (['aibo.session.turn','aibo.session.turn.write'].includes(request.capability)) {
-      if (!p.turnId || typeof request.input.text!=='string' || !request.input.text.trim()) reject('Turn identity and text are required');
+    if (['aibo.session.turn','aibo.session.turn.write','aibo.session.goal.resume','aibo.session.goal.resume.write'].includes(request.capability)) {
+      const resumeGoal = request.capability.startsWith('aibo.session.goal.resume');
+      if (!p.turnId || (!resumeGoal && (typeof request.input.text!=='string' || !request.input.text.trim()))) reject('Turn identity and text are required');
       if (request.capability.endsWith('.write') && !request.context.permissions.includes('workspace.write')) reject('Write turn requires host write authority');
       if (executionProfile?.filesystemPolicy && executionProfile.filesystemPolicy!=='read-only' && !request.context.permissions.includes('workspace.write')) reject('Writable session requires an approved write invocation');
       const instructions = request.context.settings?.values?.additionalInstructions;
-      if (typeof instructions === 'string' && instructions.trim()) {
+      if (!resumeGoal && typeof instructions === 'string' && instructions.trim()) {
         p.input = {...p.input, text:`${instructions}\n\n${p.input.text}`};
       }
-      await engine.execute('send',p);
+      await engine.execute(resumeGoal ? 'resumeGoal' : 'send',p);
       return snapshot(await owner.done);
     }
     if (request.capability==='aibo.session.close') {

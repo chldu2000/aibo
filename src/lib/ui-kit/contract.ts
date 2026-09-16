@@ -32,6 +32,8 @@ export type UiIconName =
   | 'search'
   | 'send'
   | 'settings'
+  | 'pause'
+  | 'play'
   | 'stop'
   | 'trust'
   | 'undo'
@@ -135,7 +137,18 @@ export type UiAgentSettingsFormProps = {
   onSave: () => void; onReset: () => void; onReload: () => void;
 };
 
+export type UiGoalBarProps = {
+  objective: string;
+  statusLabel: string;
+  usageLabel?: string | null;
+  busy?: boolean;
+  onClear?: () => void;
+  onPause?: () => void;
+  onResume?: () => void;
+};
+
 export type UiKitAdapter = {
+  GoalBar: Component<UiGoalBarProps>;
   AgentSettingsForm: Component<UiAgentSettingsFormProps>;
   WorkbenchChrome: Component<UiWorkbenchChromeProps>;
   ManagementCenter: Component<UiManagementCenterProps>;

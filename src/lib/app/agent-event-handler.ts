@@ -133,11 +133,18 @@ export function handleAgentEvent(event: AgentEvent, context: AgentEventHandlerCo
     event.type === 'turn.completed' ||
     event.type === 'turn.failed' ||
     event.type === 'adapter.crashed' ||
+    state === 'idle' ||
     state === 'failed' ||
     state === 'interrupted' ||
     state === 'closed'
   ) {
     context.setAgentActivity(event.sessionId, false);
+    if (event.sessionId === selectedSessionId) {
+      context.setTimeline(context.timeline.map((item) =>
+        item.status === 'streaming' && (!event.turnId || item.turnId === event.turnId)
+          ? { ...item, status: state === 'failed' ? 'failed' : state === 'idle' ? 'completed' : 'interrupted', updatedAt: event.occurredAt }
+          : item));
+    }
   }
 
   if (typeof state === 'string') {

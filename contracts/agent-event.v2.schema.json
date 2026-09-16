@@ -87,6 +87,7 @@
         "approval.resolved",
         "user_input.requested",
         "user_input.resolved",
+        "goal.updated",
         "usage.updated",
         "queue.updated",
         "compaction.started",
