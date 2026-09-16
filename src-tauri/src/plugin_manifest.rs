@@ -142,6 +142,12 @@ pub(crate) fn normalize(manifest: &Value) -> Result<ManifestModel, String> {
             operation_schema(&operation["inputSchema"])?;
             operation_schema(&operation["outputSchema"])?;
         }
+        if let Some(settings) = entry.get("settings") {
+            if kind != "capabilityProvider" || entry["scope"] != "session" || !entry["operations"].as_array().unwrap().iter().any(|op| op["capability"]["id"] == "aibo.session.open") {
+                return Err(invalid("settings require a session Agent provider"));
+            }
+            crate::agent_settings::validate_descriptor(settings).map_err(|_| invalid("invalid Agent settings descriptor"))?;
+        }
         let mut metadata = entry.clone();
         if kind == "agent" {
             let object = metadata.as_object_mut().unwrap();

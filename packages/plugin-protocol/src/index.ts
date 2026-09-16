@@ -19,3 +19,5 @@ export type { PresentationInspector, PresentationInspectorAction, PresentationAr
 export type { PresentationCapabilityWorkbench, PresentationCapabilityView, PresentationCapabilityAction, PresentationCapabilityContribution, PresentationCapabilityScope } from './presentation-capability.js';
 
 export type { PresentationLayout, PresentationLayoutAction } from './presentation-layout.js';
+
+export type { AgentSettingValue, AgentSettingField, AgentSettingsDescriptor, AgentSettingsTarget, AgentSettingsSnapshot, AgentSettingsSave, AgentSettingsContext } from './settings.js';

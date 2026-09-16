@@ -1,3 +1,4 @@
+mod agent_settings;
 mod project_actions;
 mod controlled_process;
 mod workspace_git;
@@ -3592,6 +3593,16 @@ async fn cancel_capability(request_id: String, window: tauri::WebviewWindow, sta
 }
 
 #[tauri::command]
+async fn read_agent_settings(target: agent_settings::Target, state: State<'_, AppState>) -> Result<serde_json::Value, String> {
+    agent_settings::read(&state.db, &target).await
+}
+#[tauri::command]
+async fn save_agent_settings(request: agent_settings::Save, state: State<'_, AppState>) -> Result<serde_json::Value, String> {
+    let _guard = state.capability_broker.mutation_guard().await;
+    agent_settings::save(&state.db, request).await
+}
+
+#[tauri::command]
 async fn list_plugin_installations(state: State<'_, AppState>) -> Result<Vec<plugin_registry::PluginInstallation>, String> {
     plugin_registry::list(&state.db).await
 }
@@ -4322,6 +4333,8 @@ pub fn run() {
             list_capability_history_scopes,
             read_capability_history,
             list_plugin_installations,
+            read_agent_settings,
+            save_agent_settings,
             list_presentation_packages,
             install_presentation_package,
             read_presentation_package,

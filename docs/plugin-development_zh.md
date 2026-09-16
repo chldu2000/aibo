@@ -132,3 +132,8 @@ pnpm run probe:session:capabilities
 `verify` 包含协议打包与架构检查。会话工作流测试使用模拟引擎，不能代替真实模型兼容性
 验证。相关原生探针需单独运行，见[探针说明](native-engine-probes.md)。插件包、测试夹具
 和问题报告中不要包含凭据或未脱敏的提供者日志。
+
+## Agent 设置面板
+
+会话能力提供者可通过 `aibo.agent-settings/v1` 声明可编辑的分层设置。
+参见[协议、接入方式与内置示例](agent-plugin-settings.md)。

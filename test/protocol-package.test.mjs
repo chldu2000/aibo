@@ -16,8 +16,9 @@ test('packed protocol compiles and imports outside the repository without DOM or
     execFileSync(process.execPath,[tsc,'-p',path.join(source,'tsconfig.json'),'--outDir',path.join(staging,'dist')],{stdio:'pipe'});
     const packed = JSON.parse(execFileSync('npm',['pack','--ignore-scripts','--offline','--json','--cache',path.join(root,'cache')],{cwd:staging,encoding:'utf8'}))[0];
     assert.ok(packed.files.some(file=>file.path==='dist/semantic.d.ts'));
-    assert.ok(packed.files.every(file=>file.path==='package.json'||file.path==='README.md'||/^dist\/(?:index|semantic|presentation|renderer|capability|session|agent-icon|presentation-package|presentation-runtime|presentation-controls|presentation-navigation|presentation-conversation|presentation-git|presentation-inspector|presentation-capability|presentation-layout)\.(?:js|d\.ts)$/.test(file.path)), 'archive only contains public built contracts');
+    assert.ok(packed.files.every(file=>file.path==='package.json'||file.path==='README.md'||/^dist\/(?:index|semantic|presentation|renderer|capability|session|settings|agent-icon|presentation-package|presentation-runtime|presentation-controls|presentation-navigation|presentation-conversation|presentation-git|presentation-inspector|presentation-capability|presentation-layout)\.(?:js|d\.ts)$/.test(file.path)), 'archive only contains public built contracts');
     assert.ok(packed.files.some(file=>file.path==='dist/agent-icon.d.ts'));
+    assert.ok(packed.files.some(file=>file.path==='dist/settings.d.ts'));
     assert.ok(packed.files.some(file=>file.path==='dist/presentation-package.d.ts'));
     const installed = path.join(consumer,'node_modules/@aibo/plugin-protocol');
     await mkdir(installed,{recursive:true});
@@ -54,6 +55,9 @@ import { SEMANTIC_SCHEMA, type Snapshot } from '@aibo/plugin-protocol/semantic';
 import type { PresentationSnapshot } from '@aibo/plugin-protocol/presentation';
 import { CORE_SEMANTICS, type RendererDescriptor } from '@aibo/plugin-protocol/renderer';
 import type { JsonValue, PresentationPackageManifest, PresentationNode, PresentationInput, PresentationControlData, PresentationNavigationAction, PresentationConversationAction, PresentationGitAction, PresentationInspectorAction, PresentationCapabilityAction } from '@aibo/plugin-protocol';
+import type { AgentSettingsSave, AgentSettingsContext } from '@aibo/plugin-protocol/settings';
+const settingsSave: AgentSettingsSave = {installationId:'test',contributionId:'dev.example.agent',scope:{kind:'application'},version:1,expectedRevision:0,values:{enabled:true}};
+const settingsContext: AgentSettingsContext = {schema:'aibo.agent-settings/v1',version:1,values:{enabled:true}};
 import { createCapabilityRuntime } from '@aibo/capability-runtime';
 import { serveCapability } from '@aibo/capability-runtime/stdio';
 const runtimeOptions = {pluginId:'dev.example.echo',pluginVersion:'1.0.0',contributionId:'dev.example.echo.worker',operations:[],invoke:async()=>null};
@@ -96,6 +100,7 @@ const adapter: WebPresentationAdapter = { async mount(target, props) {
       import '@aibo/plugin-protocol/presentation';
       import '@aibo/plugin-protocol/semantic';
       import '@aibo/plugin-protocol/renderer';
+      import '@aibo/plugin-protocol/settings';
       import { createCapabilityRuntime } from '@aibo/capability-runtime';
       import { serveCapability } from '@aibo/capability-runtime/stdio';
       if(typeof createCapabilityRuntime !== 'function' || typeof serveCapability !== 'function') throw Error('Missing SDK exports');

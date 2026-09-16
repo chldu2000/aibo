@@ -12,6 +12,7 @@
     packageDependencies?: { dependencies: { pluginId: string; required: boolean; available: boolean; version: string | null; issue: string | null }[]; unavailableContributions: string[] };
     activationIssues?: string[];
     sessionProviders: { id: string; displayName: string }[];
+    contributions?: { id: string; metadata: Record<string, unknown> }[];
     manifest: { displayName: string };
   };
 
@@ -23,10 +24,11 @@
     onInstall: () => void;
     onEnabledChange: (id: string, enabled: boolean) => void;
     onUninstall: (id: string) => void;
+    onConfigure: (installationId: string, contributionId: string) => void;
     onCreateSession: (installationId: string, agentId: string) => void;
   };
 
-  let { installations, packagePath, onPackagePathChange, busy, onInstall, onEnabledChange, onUninstall, onCreateSession }: Props = $props();
+  let { installations, packagePath, onPackagePathChange, busy, onInstall, onEnabledChange, onUninstall, onCreateSession, onConfigure }: Props = $props();
   const fieldId = $props.id();
   let selectedId = $state<string | null>(null);
   const selected = $derived(installations.find(item => item.id === selectedId) ?? installations[0]);
@@ -87,6 +89,9 @@
                       <Button type="button" variant="outline" disabled={busy || (!installation.enabled && !installation.runnable)} onclick={() => onEnabledChange(installation.id, !installation.enabled)}>{installation.enabled ? '禁用插件' : '启用插件'}</Button>
                       <Button type="button" variant="outline" disabled={busy} onclick={() => onUninstall(installation.id)}>卸载插件</Button>
                     {/if}
+                    {#each installation.contributions?.filter(entry => entry.metadata.settings) ?? [] as entry (entry.id)}
+                      <Button type="button" variant="outline" disabled={busy || !installation.installed} onclick={() => onConfigure(installation.id, entry.id)}>设置 · {String(entry.metadata.displayName ?? entry.id)}</Button>
+                    {/each}
                     {#each installation.sessionProviders as provider (provider.id)}
                       <Button type="button" disabled={busy || !installation.installed || !installation.enabled || !installation.runnable} onclick={() => onCreateSession(installation.id, provider.id)}>新建 {provider.displayName} 会话</Button>
                     {/each}

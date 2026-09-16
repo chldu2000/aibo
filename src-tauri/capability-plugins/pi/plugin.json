@@ -1,7 +1,7 @@
 {
   "schema": "aibo.plugin-manifest/v2",
   "pluginId": "dev.aibo.pi",
-  "version": "2.0.2",
+  "version": "2.0.3",
   "displayName": "Pi",
   "description": "Pi session capabilities.",
   "host": {
@@ -40,6 +40,27 @@
       "required": true,
       "displayName": "Pi",
       "icon": { "path": "M3 5.25h18v2.5h-3.15c-.72 3.18-.82 6.43-.3 9.75.13.82.62 1.25 1.45 1.25h1.25V21h-1.8c-1.92 0-3.08-.98-3.47-2.94-.67-3.37-.58-6.8.27-10.31H9.5V21H6.75V7.75H3v-2.5Z" },
+      "settings": {
+        "schema": "aibo.agent-settings/v1",
+        "version": 1,
+        "title": "Agent 设置",
+        "description": "每次发送消息时应用；会话设置覆盖项目设置，项目设置覆盖全局设置。",
+        "scopes": [
+          "application",
+          "workspace",
+          "session"
+        ],
+        "fields": [
+          {
+            "key": "additionalInstructions",
+            "label": "附加指令",
+            "description": "在发送给 Agent 的每条消息前附加这些指令。留空表示不附加。",
+            "type": "multiline",
+            "default": "",
+            "maxLength": 8000
+          }
+        ]
+      },
       "operations": [
         {
           "id": "dev.aibo.pi.session.open",

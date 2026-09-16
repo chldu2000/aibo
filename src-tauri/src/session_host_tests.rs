@@ -35,6 +35,20 @@ async fn capability_session_projects_tools_and_recovers_after_process_restart() 
     for event in events { let event: Value = serde_json::from_str(&event).unwrap(); assert_eq!(event["source"]["runtimeProtocolVersion"], "2.1"); }
     let messages: Vec<String> = sqlx::query_scalar("SELECT content FROM messages WHERE session_id=? AND role='assistant'").bind(&session.id).fetch_all(&db).await.unwrap();
     assert!(messages.iter().any(|message| message == "Core read completed"));
+    crate::agent_settings::save(&db, crate::agent_settings::Save {
+        installation_id:installed.id.clone(), contribution_id:"dev.aibo.pi.agent".into(),
+        scope:Scope::Application, version:1, expected_revision:0,
+        values:serde_json::json!({"additionalInstructions":"Use concise answers."}),
+    }).await.unwrap();
+    host.send_from("main", &session.id, "settings delivery", None).await.unwrap();
+    wait_for_turn(&host, &session.id).await;
+    let configured: Vec<String> = sqlx::query_scalar("SELECT content FROM messages WHERE session_id=? AND role='assistant'")
+        .bind(&session.id).fetch_all(&db).await.unwrap();
+    assert!(configured.iter().any(|message| message == "Use concise answers.\n\nsettings delivery"), "{configured:?}");
+    crate::agent_settings::save(&db, crate::agent_settings::Save {
+        installation_id:installed.id.clone(), contribution_id:"dev.aibo.pi.agent".into(),
+        scope:Scope::Application, version:1, expected_revision:1, values:serde_json::json!({}),
+    }).await.unwrap();
     broker.stop_session(&session.id).await.unwrap();
     let host = SessionHost::new(db.clone(), broker.clone());
     host.resume_from("main", &session.id).await.unwrap();

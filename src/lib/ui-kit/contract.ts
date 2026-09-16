@@ -1,3 +1,4 @@
+import type { AgentSettingsSnapshot, AgentSettingValue } from '../../../packages/plugin-protocol/src/settings';
 import type { PresentationProps } from './presentation-props';
 import type { Component, Snippet } from 'svelte';
 import type { PresentationModelMatrix, PresentationStatusMark } from '../../../packages/plugin-protocol/src/presentation-controls';
@@ -126,7 +127,16 @@ export type UiWorkbenchChromeProps = {
   children: Snippet;
 };
 
+export type UiAgentSettingsFormProps = {
+  snapshot: AgentSettingsSnapshot;
+  draft: Record<string, AgentSettingValue>;
+  busy: boolean; error: string | null; notice: string | null;
+  onChange: (key: string, value: AgentSettingValue | undefined) => void;
+  onSave: () => void; onReset: () => void; onReload: () => void;
+};
+
 export type UiKitAdapter = {
+  AgentSettingsForm: Component<UiAgentSettingsFormProps>;
   WorkbenchChrome: Component<UiWorkbenchChromeProps>;
   ManagementCenter: Component<UiManagementCenterProps>;
   SettingsSection: Component<UiSettingsSectionProps>;

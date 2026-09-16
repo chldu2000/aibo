@@ -1,3 +1,4 @@
+import AgentSettingsForm from './material3/AgentSettingsForm.svelte';
 import SettingsSection from './material3/SettingsSection.svelte';
 import HostPanel from './shared/HostPanel.svelte';
 import ManagementCenter from './material3/ManagementCenter.svelte';
@@ -28,6 +29,7 @@ export const material3UiKit: UiKitAdapter = {
   ManagementCenter,
   WorkbenchChrome,
   SettingsSection,
+  AgentSettingsForm,
   SemanticView,
   AgentStatusMark,
   AlertDialog,

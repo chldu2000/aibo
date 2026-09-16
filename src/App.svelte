@@ -1,4 +1,28 @@
 <script lang="ts">
+  import { AgentSettingsForm } from '$lib/ui-kit';
+  import { readAgentSettings, saveAgentSettings } from './lib/api';
+  import { createAgentSettingsController, type AgentSettingsState } from './lib/app/agent-settings-controller';
+  import type { CapabilityScope } from '../packages/plugin-protocol/src/capability';
+  let agentSettings = $state<AgentSettingsState>({target:null,snapshot:null,draft:{},loading:false,saving:false,error:null,notice:null});
+  const agentSettingsController = createAgentSettingsController({read:readAgentSettings,save:saveAgentSettings,changed:state => { agentSettings = state; }});
+  function configureAgent(installationId: string, contributionId: string) {
+    const entry = pluginInstallations.find(item => item.id === installationId)?.contributions?.find(item => item.id === contributionId);
+    const scopes = (entry?.metadata.settings as {scopes?: string[]} | undefined)?.scopes ?? [];
+    const scope: CapabilityScope | null = scopes.includes('application') ? {kind:'application'}
+      : scopes.includes('workspace') && selectedWorkspaceId ? {kind:'workspace',id:selectedWorkspaceId}
+      : scopes.includes('session') && selectedSession?.pluginInstallationId === installationId && selectedSession.agent === contributionId ? {kind:'session',id:selectedSession.id} : null;
+    if (!scope) { pluginError = '请先选择此 Agent 支持的项目或会话作用域。'; return; }
+    void agentSettingsController.select({installationId,contributionId,scope});
+  }
+  function agentSettingsScopeLabel(scope: CapabilityScope): string {
+    if (scope.kind === 'application') return '全局设置';
+    if (scope.kind === 'workspace') return `项目：${workspaces.find(item => item.id === scope.id)?.label ?? '已不可用'}`;
+    return `会话：${Object.values(workspaceSessionMap).flat().find(item => item.id === scope.id)?.label ?? '已不可用'}`;
+  }
+  function selectAgentSettingsScope(scope: CapabilityScope) {
+    if (agentSettings.target) void agentSettingsController.select({...agentSettings.target,scope});
+  }
+
   import { readWorkbenchDrafts, writeWorkbenchDrafts, emptyGitPanelState } from '$lib/app/workbench-drafts';
   const draftStorage = { getItem: (key: string) => window.localStorage.getItem(key), setItem: (key: string, value: string) => window.localStorage.setItem(key, value) };
   import { readWorkbenchLayout, writeWorkbenchLayout } from '$lib/app/workbench-layout-storage';
@@ -3477,8 +3501,22 @@
     onInstall={hostGuard('onInstall', () => void installPlugin())}
     onEnabledChange={hostGuard('onEnabledChange', (id, enabled) => void enablePlugin(id, enabled))}
     onUninstall={hostGuard('onUninstall', (id) => void uninstallPlugin(id))}
+    onConfigure={hostGuard('onConfigure', configureAgent)}
     onCreateSession={hostGuard('onCreateSession', (installationId, agentId) => void createPluginSession(installationId, agentId))}
   />
+  {#if agentSettings.target}
+    <section aria-label="Agent 插件设置">
+      <p>{pluginInstallations.find(item => item.id === agentSettings.target?.installationId)?.manifest.displayName ?? 'Agent'} · {agentSettingsScopeLabel(agentSettings.target.scope)}</p>
+      {#if agentSettings.snapshot}
+        {#if agentSettings.snapshot.descriptor.scopes.includes('application')}<Button type="button" variant="outline" onclick={() => selectAgentSettingsScope({kind:'application'})}>全局</Button>{/if}
+        {#if agentSettings.snapshot.descriptor.scopes.includes('workspace')}<Button type="button" variant="outline" disabled={!selectedWorkspaceId} onclick={() => selectedWorkspaceId && selectAgentSettingsScope({kind:'workspace',id:selectedWorkspaceId})}>当前项目</Button>{/if}
+        {#if agentSettings.snapshot.descriptor.scopes.includes('session')}<Button type="button" variant="outline" disabled={!selectedSession || selectedSession.pluginInstallationId !== agentSettings.target.installationId || selectedSession.agent !== agentSettings.target.contributionId || selectedSession.archived} onclick={() => selectedSession && selectAgentSettingsScope({kind:'session',id:selectedSession.id})}>当前会话</Button>{/if}
+        <AgentSettingsForm snapshot={agentSettings.snapshot} draft={agentSettings.draft} busy={agentSettings.loading || agentSettings.saving} error={agentSettings.error} notice={agentSettings.notice} onChange={agentSettingsController.change} onSave={() => void agentSettingsController.save()} onReset={agentSettingsController.reset} onReload={() => void agentSettingsController.reload()} />
+      {:else if agentSettings.loading}<p role="status">正在读取 Agent 设置…</p>
+      {:else if agentSettings.error}<p role="alert">{agentSettings.error}</p><Button type="button" onclick={() => void agentSettingsController.reload()}>重试</Button>{/if}
+      <Button type="button" variant="ghost" onclick={() => void agentSettingsController.select(null)}>收起设置</Button>
+    </section>
+  {/if}
   {#if pluginError}<p role="alert">{pluginError}</p>{/if}
 {/snippet}
 

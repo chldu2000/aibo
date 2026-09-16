@@ -1,3 +1,4 @@
+import AgentSettingsForm from './shadcn/AgentSettingsForm.svelte';
 import SettingsSection from './shadcn/SettingsSection.svelte';
 import HostPanel from './shared/HostPanel.svelte';
 import ManagementCenter from './shadcn/ManagementCenter.svelte';
@@ -30,6 +31,7 @@ export const shadcnUiKit: UiKitAdapter = {
   ManagementCenter,
   WorkbenchChrome,
   SettingsSection,
+  AgentSettingsForm,
   SemanticView,
   AgentStatusMark: AgentStatusMarkComponent,
   AlertDialog: AlertDialogComponent,

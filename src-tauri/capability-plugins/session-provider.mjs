@@ -67,6 +67,10 @@ export function sessionProvider({engine, pluginId, actions}) {
       if (!p.turnId || typeof request.input.text!=='string' || !request.input.text.trim()) reject('Turn identity and text are required');
       if (request.capability.endsWith('.write') && !request.context.permissions.includes('workspace.write')) reject('Write turn requires host write authority');
       if (executionProfile?.filesystemPolicy && executionProfile.filesystemPolicy!=='read-only' && !request.context.permissions.includes('workspace.write')) reject('Writable session requires an approved write invocation');
+      const instructions = request.context.settings?.values?.additionalInstructions;
+      if (typeof instructions === 'string' && instructions.trim()) {
+        p.input = {...p.input, text:`${instructions}\n\n${p.input.text}`};
+      }
       await engine.execute('send',p);
       return snapshot(await owner.done);
     }

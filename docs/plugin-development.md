@@ -160,3 +160,8 @@ pnpm run probe:session:capabilities
 fake engines and do not establish real-model compatibility. Run relevant native probes
 separately; see the [probe guide](native-engine-probes.md). Never publish raw credentials or
 unredacted provider logs in a package, fixture or bug report.
+
+## Agent settings
+
+Session providers can contribute editable, scoped settings through the host-owned
+`aibo.agent-settings/v1` descriptor. See the [protocol and working built-in examples](agent-plugin-settings.md).

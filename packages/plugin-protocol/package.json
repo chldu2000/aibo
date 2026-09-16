@@ -9,7 +9,8 @@
     ".": {"types": "./dist/index.d.ts", "import": "./dist/index.js"},
     "./semantic": {"types": "./dist/semantic.d.ts", "import": "./dist/semantic.js"},
     "./presentation": {"types": "./dist/presentation.d.ts", "import": "./dist/presentation.js"},
-    "./renderer": {"types": "./dist/renderer.d.ts", "import": "./dist/renderer.js"}
+    "./renderer": {"types": "./dist/renderer.d.ts", "import": "./dist/renderer.js"},
+    "./settings": {"types": "./dist/settings.d.ts", "import": "./dist/settings.js"}
   },
   "scripts": {"build": "tsc -p tsconfig.json"}
 }

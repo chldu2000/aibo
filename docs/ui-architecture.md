@@ -498,3 +498,13 @@ Material 3 使用 tonal surfaces、圆角容器和 state/elevation 层级。该�
 分组表面、前导图标与文本/tonal 操作。两者自行处理窄窗口换行。
 外部包未覆盖的宿主管理区域继续继承可信 UI Kit；外部 CSS 不能跨隔离边界
 覆盖管理或恢复入口。新增可信皮肤可以替换此适配器而保持相同数据与操作合同。
+
+## Agent 设置表单
+
+`UiKitAdapter.AgentSettingsForm` 接收协议描述、当前作用域草稿、继承值和语义回调。
+`runtime/AgentSettingsForm.svelte` 跟随当前皮肤，两个皮肤分别拥有表单表面、字体、
+选择器和焦点反馈；共享字段结构位于 `kits/shared/AgentSettingsForm.svelte`。
+应用层只选择目标和转发动作，`agent-settings-controller.ts` 通过注入的读写端口管理
+草稿、加载和保存。配置权限、字段校验、作用域解析和原子保存均由 Rust 宿主负责。
+参见 [Agent 设置协议](agent-plugin-settings.md)。这增加内部必需控件，外部呈现包未
+提供定制时继承完整默认 adapter，不要求现有外部包增加控件声明。

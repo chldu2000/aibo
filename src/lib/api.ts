@@ -560,3 +560,7 @@ export const listCapabilityHistoryScopes = (before: string | null = null, source
   invoke('list_capability_history_scopes', {before,legacy:source === 'legacy'});
 export const readCapabilityHistory = (scope: import('./types').CapabilityHistoryScope, before: string | null = null, source: import('./types').CapabilityHistorySource = 'events'): Promise<import('./types').CapabilityHistoryEvents> =>
   invoke('read_capability_history', {scope,before,legacy:source === 'legacy'});
+
+import type { AgentSettingsTarget, AgentSettingsSnapshot, AgentSettingsSave } from '../../packages/plugin-protocol/src/settings';
+export const readAgentSettings = (target: AgentSettingsTarget): Promise<AgentSettingsSnapshot> => invoke('read_agent_settings', { target });
+export const saveAgentSettings = (request: AgentSettingsSave): Promise<AgentSettingsSnapshot> => invoke('save_agent_settings', { request });
