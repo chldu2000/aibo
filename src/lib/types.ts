@@ -590,7 +590,18 @@ export interface UserInputRequest {
 }
 
 /** Adapter-neutral view of work queued while an Agent is busy. */
+export interface QueuedMessage {
+  id: string;
+  text: string;
+  status: 'pending' | 'sending' | 'failed' | 'uncertain';
+  error: string | null;
+  createdAt: string;
+}
+
 export interface AgentQueueSnapshot {
+  items?: QueuedMessage[];
+  paused?: boolean;
+  revision?: number;
   sessionId: string;
   steering: string[];
   followUp: string[];

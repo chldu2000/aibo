@@ -347,7 +347,7 @@
       bind:value={text}
       rows="2"
       placeholder={sessionArchived ? '该会话已归档，请取消归档或创建分支继续…' : selectedSession ? '输入消息，⌘/Ctrl + Enter 发送…' : '先新建或选择一个 Agent 会话…'}
-      disabled={!selectedSession || sessionArchived || selectedSessionArchiving || (sessionRunning && selectedAgent === 'codex') || busy}
+      disabled={!selectedSession || sessionArchived || selectedSessionArchiving || (sessionRunning && !sessionCapabilities.includes('queue.manage')) || busy}
       onkeydown={(event) => {
         if (showMentionSuggestions) {
           if (event.key === 'Tab') {
@@ -422,7 +422,7 @@
         }
         if ((event.metaKey || event.ctrlKey) && event.key === 'Enter') {
           event.preventDefault();
-          if (sessionRunning && selectedAgent === 'pi') onQueue('steer');
+          if (sessionRunning && sessionCapabilities.includes('queue.manage')) onQueue('followUp');
           else onSend();
         }
       }}
@@ -658,9 +658,9 @@
       {/if}
 
       {#if sessionRunning}
-        {#if selectedAgent === 'pi'}
-          <Button variant="queue" class="composer-action composer-action-queue" size="sm" type="button" onclick={() => onQueue('steer')} disabled={busy || !text.trim()}>插入</Button>
-          <Button variant="queue" class="composer-action composer-action-queue" size="sm" type="button" onclick={() => onQueue('followUp')} disabled={busy || !text.trim()}>跟进</Button>
+        {#if sessionCapabilities.includes('queue.manage')}
+          <Button variant="queue" class="composer-action composer-action-queue" size="sm" type="button" onclick={() => onQueue('steer')} disabled={busy || !text.trim()}>立即发送</Button>
+          <Button variant="queue" class="composer-action composer-action-queue" size="sm" type="button" onclick={() => onQueue('followUp')} disabled={busy || !text.trim()}>排队发送</Button>
         {/if}
         <Button variant="abort" class="composer-action composer-action-abort" size="icon" type="button" onclick={onAbort} disabled={busy} aria-label="中止">
           <Icon name="stop" size={13} />

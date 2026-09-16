@@ -1,7 +1,8 @@
 import {node,button,field,section,text,actionFor} from './tree.js';
 import {renderExecutionProfile,renderAttachment,renderSessionMetadata} from './metadata.js';
+import {splitSessionReferences} from './session-references.js';
 import {renderTimeline} from './timeline.js';
-const labels={pauseGoal:'暂停目标',resumeGoal:'恢复目标',clearGoal:'清除目标',send:'发送',stop:'停止',retry:'重试',queueSteer:'立即引导',queueFollowUp:'排队发送',clearQueue:'清空队列',addAttachments:'添加附件',addDirectory:'添加目录',loadOlder:'加载更早消息',fork:'分叉会话',loadModels:'刷新模型',compact:'压缩上下文',openTree:'会话树',closeTree:'关闭会话树',refreshTree:'刷新会话树',submitAnswers:'提交回答',cancelAnswers:'取消回答'};
+const labels={pauseGoal:'暂停目标',resumeGoal:'恢复目标',clearGoal:'清除目标',send:'发送',stop:'停止',retry:'重试',queueSteer:'立即发送',queueFollowUp:'排队发送',clearQueue:'清空队列',resumeQueue:'继续队列',addAttachments:'添加附件',addDirectory:'添加目录',loadOlder:'加载更早消息',fork:'分叉会话',loadModels:'刷新模型',compact:'压缩上下文',openTree:'会话树',closeTree:'关闭会话树',refreshTree:'刷新会话树',submitAnswers:'提交回答',cancelAnswers:'取消回答'};
 const accessLabels={'read-only':'只读',plan:'计划','workspace-write':'工作区写入','ask-for-approval':'请求审批','approve-for-me':'自动审批','full-access':'完整访问'};
 export function renderConversation(state,actions){
  const find=(operation,...args)=>actionFor(actions,operation,...args);
@@ -23,10 +24,18 @@ export function renderConversation(state,actions){
   });
   children.push(section('request:'+request.requestId,'需要你的回答',[...questions,...['submitAnswers','cancelAnswers'].map(operation=>{const action=find(operation,request.requestId);return action?button('request:'+request.requestId+':'+operation,labels[operation],action):null;})]));
  }
- if(state.queue)children.push(section('conversation:queue','待处理消息',[...state.queue.steering.map((value,i)=>text('queue:steer:'+i,'引导：'+value)),...state.queue.followUp.map((value,i)=>text('queue:follow:'+i,'后续：'+value)),...controls(['clearQueue'])]));
+ if(state.queue && (state.queue.items?.length || state.queue.steering.length || state.queue.followUp.length))children.push(section('conversation:queue','待处理消息',[
+  state.queue.paused?text('queue:paused','自动发送已暂停'):null,
+  ...(state.queue.items?.length?state.queue.items.map(item=>section('queue:item:'+item.id,item.status==='sending'?'正在发送':item.status==='uncertain'?'投递结果未知':item.status==='failed'?'发送失败':'等待发送',[
+   text('queue:text:'+item.id,splitSessionReferences(item.text).body.split('[AIBO_CONTEXT_ATTACHMENTS]')[0].trim()),
+   item.error?text('queue:error:'+item.id,item.error):null,
+   button('queue:send:'+item.id,'立即发送',find('sendQueuedMessage',item.id)),
+   button('queue:remove:'+item.id,'删除',find('removeQueuedMessage',item.id)),
+  ])):[...state.queue.steering.map((value,i)=>text('queue:steer:'+i,'引导：'+value)),...state.queue.followUp.map((value,i)=>text('queue:follow:'+i,'后续：'+value))]),
+  ...controls(['resumeQueue','clearQueue'])]));
  if(state.session){
   const draftField=field('conversation:draft','消息',state.draft,find('draft'),true);
-  const submit=find(state.running?'queueSteer':'send');
+  const submit=find(state.running?'queueFollowUp':'send');
   if(submit)draftField.children[1].primaryEnter=submit.token;
   const goal = state.goal && state.goal.status !== 'cleared' ? {...node('details','conversation:goal',null,[
    node('summary','goal:summary',state.goal.objective),
@@ -34,7 +43,7 @@ export function renderConversation(state,actions){
    text('goal:budget',state.goal.tokenBudget == null ? null : `Token：${state.goal.tokensUsed??0} / ${state.goal.tokenBudget}`),
    ...controls(['pauseGoal','resumeGoal','clearGoal']),
   ],{open:true,'aria-label':'当前目标'}),className:'goal-bar'} : null;
-  const composer=[goal,draftField,text('conversation:shortcut','⌘/Ctrl+Enter '+(state.running?'立即引导':'发送')+' · Enter 换行'),state.draftFailed?node('p','conversation:draft-error','草稿保存失败',[],{role:'alert'}):null];
+  const composer=[goal,draftField,text('conversation:shortcut','⌘/Ctrl+Enter '+(state.running?'排队发送':'发送')+' · Enter 换行'),state.draftFailed?node('p','conversation:draft-error','草稿保存失败',[],{role:'alert'}):null];
 
   composer.push(node('nav','conversation:composer-tools',null,controls(['addAttachments','addDirectory','send','stop','queueSteer','queueFollowUp'])));
   const attachmentList=node('ul','conversation:attachment-list',null,state.attachments.map(item=>node('li','attachment:'+item.id,null,[renderAttachment(item,'composer:attachment:'+item.id),button('attachment:remove:'+item.id,'移除附件 '+item.path,find('removeAttachment',item.id))])));

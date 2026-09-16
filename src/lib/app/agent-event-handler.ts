@@ -1,3 +1,4 @@
+import { normalizeMessageQueue } from './message-queue.ts';
 import { parseSubagent } from './subagents.ts';
 import type {
   AgentQueueSnapshot,
@@ -58,7 +59,7 @@ export function handleAgentEvent(event: AgentEvent, context: AgentEventHandlerCo
     return;
   }
 
-  const state = event.type === 'session.state_changed'
+  const state = event.type === 'turn.started' ? 'running' : event.type === 'session.state_changed'
     ? event.payload.state
     : event.type === 'turn.failed'
       ? 'failed'
@@ -75,6 +76,7 @@ export function handleAgentEvent(event: AgentEvent, context: AgentEventHandlerCo
   // observable instead of deriving activity only from the last timeline row.
   if (event.type === 'turn.started') {
     context.setAgentActivity(event.sessionId, true, agentLabel(event, '正在准备响应…'));
+    if (event.sessionId === selectedSessionId) void context.refreshTimeline?.(event.sessionId);
   }
   if (event.type === 'message.delta') {
     context.setAgentActivity(event.sessionId, true, agentLabel(event, '正在生成回复…'));
@@ -238,7 +240,6 @@ export function handleAgentEvent(event: AgentEvent, context: AgentEventHandlerCo
     context.setPendingUserInputs(
       context.pendingUserInputs.filter((request) => request.sessionId !== event.sessionId),
     );
-    if (event.sessionId === selectedSessionId) context.setQueueSnapshot(null);
   }
 
   if (
@@ -416,12 +417,7 @@ export function handleAgentEvent(event: AgentEvent, context: AgentEventHandlerCo
 }
 
 function queueFromEvent(event: AgentEvent): AgentQueueSnapshot {
-  return {
-    sessionId: event.sessionId,
-    steering: queueItems(event.payload.steering),
-    followUp: queueItems(event.payload.followUp),
-    updatedAt: event.occurredAt,
-  };
+  return normalizeMessageQueue(event.payload, event.sessionId, event.occurredAt);
 }
 
 function agentLabel(event: AgentEvent, label: string): string {
@@ -433,21 +429,6 @@ function eventAgentLabel(event: AgentEvent): string {
   if (agent === 'pi' || agent === 'dev.aibo.pi.agent') return 'Pi';
   if (agent === 'codex' || agent === 'dev.aibo.codex.agent') return 'Codex';
   return 'Agent';
-}
-
-function queueItems(value: unknown): string[] {
-  if (!Array.isArray(value)) return [];
-  return value
-    .map((item) => {
-      if (typeof item === 'string') return item.trim();
-      if (!item || typeof item !== 'object') return '';
-      const record = item as Record<string, unknown>;
-      for (const key of ['text', 'message', 'content', 'prompt', 'input']) {
-        if (typeof record[key] === 'string' && record[key].trim()) return record[key].trim();
-      }
-      return '';
-    })
-    .filter(Boolean);
 }
 
 export function approvalFromEvent(event: AgentEvent): ApprovalRequest | null {

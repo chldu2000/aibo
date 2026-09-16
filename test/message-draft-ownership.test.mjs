@@ -19,7 +19,7 @@ test('late send completion consumes only the submitted session draft', async () 
         },
       },
       getDesktop: () => true, getSelectedWorkspace: () => ({ id: 'workspace' }),
-      getSelectedSession: () => selected, getSelectedSessionArchiving: () => false,
+      getSelectedSession: () => selected, getSelectedSessionArchiving: () => false, getSessionRunning: () => false,
       getComposerText: () => composer, setComposerText: () => assert.fail('send cannot clear the current editor without checking ownership'),
       consumeDraft: (id, text) => { consumed.push([id, text]); },
       getAttachments: () => [], getWorkspaceSessionMap: () => ({ workspace: [original] }),
@@ -50,7 +50,7 @@ test('accepted sends and queued messages stay accepted when the following refres
           invokeAgentCapability: async () => { sends++; return {}; },
         },
         getDesktop: () => true, getSelectedWorkspace: () => ({ id: 'workspace' }),
-        getSelectedSession: () => session, getSelectedSessionArchiving: () => false,
+        getSelectedSession: () => session, getSelectedSessionArchiving: () => false, getSessionRunning: () => false,
         getComposerText: () => composer, consumeDraft: () => { composer = ''; },
         getAttachments: () => [], getWorkspaceSessionMap: () => ({ workspace: [session] }),
         setWorkspaceSessionMap() {}, setBusy() {}, setLastSubmittedPrompt() {}, setPromptInFlight() {}, updateWorkspaceSessions() {},
@@ -59,7 +59,7 @@ test('accepted sends and queued messages stay accepted when the following refres
         refreshTimeline: async () => { throw Error('timeline temporarily unavailable'); },
         refreshAttachments: async () => {},
       });
-      if (queue) await controller.queuePiPrompt('steer'); else await controller.sendPrompt();
+      if (queue) await controller.queuePrompt('steer'); else await controller.sendPrompt();
       assert.equal(sends, 1);
       assert.equal(composer, '', 'accepted draft must be consumed despite refresh failure');
       assert.ok(!failed.includes(true), 'a refresh error cannot label the send failed');
@@ -67,4 +67,24 @@ test('accepted sends and queued messages stay accepted when the following refres
       assert.ok(notices.some(notice => notice.includes('刷新')));
     }
   } finally { await server.close(); }
+});
+
+test('sending while running queues once even when validation has not finished', async () => {
+  const server = await createServer({ server: { middlewareMode: true, ws: false, watch: null }, appType: 'custom' });
+  try {
+    const { createMessageController } = await server.ssrLoadModule('/src/lib/app/message-controller.ts');
+    const session = {id:'s',workspaceId:'w',pluginInstallationId:'plugin',capabilities:['queue.manage'],archived:false};
+    let resolveValidation; const validation = new Promise(resolve => {resolveValidation=resolve;});
+    const calls=[]; let consumed=0;
+    const controller=createMessageController({
+      api:{validateSessionAttachments:()=>validation,sendAgentPrompt:()=>assert.fail('running sends must enter the queue'),invokeAgentCapability:async(...args)=>{calls.push(args);return {}; }},
+      getDesktop:()=>true,getSelectedWorkspace:()=>({id:'w'}),getSelectedSession:()=>session,getSelectedSessionArchiving:()=>false,getSessionRunning:()=>true,
+      getComposerText:()=> 'next message', getAttachments:()=>[], consumeDraft:()=>{consumed++;},
+      setBusy(){},setErrorMessage(error){assert.equal(error,null);},refreshTimeline:async()=>{},refreshAttachments:async()=>{},
+    });
+    const first=controller.sendPrompt(); await controller.sendPrompt(); await controller.queuePrompt('steer');
+    resolveValidation([]); await first;
+    assert.deepEqual(calls,[['s','queue.manage',{action:'followUp',message:'next message'}]]);
+    assert.equal(consumed,1);
+  } finally {await server.close();}
 });

@@ -62,6 +62,12 @@ input.on('line', (line) => {
     if (params.lastTurnId && params.lastTurnId !== nativeTurnId) throw Error('host turn ID leaked into native fork');
     write({id,result:{thread:{id:process.env.CODEX_FAKE_FORK_SAME_THREAD==='1'?params.threadId:'forked-thread',parentThreadId:params.threadId}}});
   }
+  else if (method === 'turn/steer') {
+    if (params.expectedTurnId !== nativeTurnId) { write({id,error:{code:-32600,message:'expectedTurnId mismatch'}}); return; }
+    if (params.input?.[0]?.text === 'reject steering') { write({id,error:{code:-32600,message:'steering rejected'}}); return; }
+    write({id,result:{turnId:nativeTurnId}});
+    write({method:'item/agentMessage/delta',params:{threadId:params.threadId,turnId:nativeTurnId,itemId:'steered',delta:params.input[0].text}});
+  }
   else if (method === 'turn/start') {
     nativeTurnId = params.input?.[0]?.text?.startsWith('unique turn:') ? params.input[0].text : 'native-turn';
     if (params.summary !== 'auto') {
@@ -74,7 +80,8 @@ input.on('line', (line) => {
     }
     write({ id, result: { turn: { id: nativeTurnId } } });
     write({ method: 'turn/started', params: { threadId: params.threadId, turn: { id: nativeTurnId, status: 'inProgress' } } });
-    if (params.input[0].text === 'subagent spawn fails') {
+    if (params.input[0].text === 'host queue delay') { setTimeout(()=>completeTurn(params), 600); }
+    else if (params.input[0].text === 'subagent spawn fails') {
       write({method:'item/completed',params:{threadId:params.threadId,turnId:nativeTurnId,item:{type:'collabAgentToolCall',id:'failed-spawn',tool:'spawnAgent',status:'failed',receiverThreadIds:[],error:{message:'Agent limit reached'}}}});
       completeTurn(params);
     } else if (params.input[0].text === 'subagents please') {

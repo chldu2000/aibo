@@ -29,10 +29,10 @@ test('send and both queue modes freeze reference context before async validation
    const accept=async(id,input)=>{assert.equal(id,'target');assert.ok(input.includes('source original'));assert.ok(!input.includes('wrong session'));if(fail)throw Error('send rejected');return target;};
    const controller=createMessageController({
     api:{validateSessionAttachments:async()=>{selected={...target,id:'other'};attachments=[{...reference,sessionId:'other',inlineContext:'"wrong session"'}];return [];},sendAgentPrompt:accept,invokeAgentCapability:async(id,_cap,input)=>accept(id,input.message)},
-    getDesktop:()=>true,getSelectedWorkspace:()=>({id:'w'}),getSelectedSession:()=>selected,getSelectedSessionArchiving:()=>false,getComposerText:()=> 'continue',getAttachments:()=>attachments,
+    getDesktop:()=>true,getSelectedWorkspace:()=>({id:'w'}),getSelectedSession:()=>selected,getSelectedSessionArchiving:()=>false,getSessionRunning:()=>false,getComposerText:()=> 'continue',getAttachments:()=>attachments,
     consumeDraft:(id)=>{assert.equal(id,'target');consumed=true;},getWorkspaceSessionMap:()=>({w:[target]}),setWorkspaceSessionMap(){},setBusy(){},setErrorMessage:e=>errors.push(e),setLastSubmittedPrompt(){},setPromptInFlight(){},refreshTimeline:async()=>{},refreshAttachments:async()=>{},
    });
-   if(mode==='send')await controller.sendPrompt();else await controller.queuePiPrompt(mode);
+   if(mode==='send')await controller.sendPrompt();else await controller.queuePrompt(mode);
    assert.equal(consumed,!fail);assert.equal(errors.some(e=>e?.includes('send rejected')),fail);
   }
  } finally {await server.close();}

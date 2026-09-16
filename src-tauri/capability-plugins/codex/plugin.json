@@ -1,7 +1,7 @@
 {
   "schema": "aibo.plugin-manifest/v2",
   "pluginId": "dev.aibo.codex",
-  "version": "2.0.7",
+  "version": "2.0.8",
   "displayName": "Codex",
   "description": "Codex session capabilities.",
   "host": {
@@ -964,6 +964,58 @@
             "workspace.write"
           ],
           "timeoutMs": 43200000,
+          "idempotent": false
+        },
+        {
+          "id": "dev.aibo.codex.operation.queue",
+          "capability": {
+            "id": "dev.aibo.codex.queue.manage",
+            "version": "1.0.0"
+          },
+          "inputSchema": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "action"
+            ],
+            "properties": {
+              "action": {
+                "enum": [
+                  "steer"
+                ]
+              },
+              "message": {
+                "type": "string",
+                "minLength": 1
+              }
+            }
+          },
+          "outputSchema": {
+            "type": "object",
+            "properties": {
+              "recovery": {
+                "type": [
+                  "object",
+                  "null"
+                ]
+              },
+              "capabilities": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              }
+            },
+            "required": [
+              "recovery",
+              "capabilities"
+            ]
+          },
+          "effect": "read",
+          "permissions": [
+            "workspace.read"
+          ],
+          "timeoutMs": 120000,
           "idempotent": false
         }
       ]

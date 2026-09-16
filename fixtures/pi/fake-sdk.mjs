@@ -162,6 +162,7 @@ class FakeSession {
     }
     await new Promise((resolve) => setImmediate(resolve));
     this.emit({ type: 'agent_start' });
+    if (text === 'host queue delay') await new Promise(resolve => setTimeout(resolve, 1200));
     if (this.abortRequested) {
       const aborted = textMessage('assistant', '');
       aborted.stopReason = 'aborted';

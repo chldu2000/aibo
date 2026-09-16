@@ -720,6 +720,8 @@ pub(crate) async fn auto_name_session_from_first_message(
 /// durable running state before exposing the database to the UI so a stale
 /// session is recoverable instead of appearing to be actively executing.
 async fn recover_interrupted_sessions(db: &SqlitePool) -> Result<u64, sqlx::Error> {
+    sqlx::query("UPDATE session_queues SET paused=1").execute(db).await?;
+    sqlx::query("UPDATE queued_messages SET status='uncertain',error='应用已重启，投递结果未知，请核对会话记录。' WHERE status='sending'").execute(db).await?;
     let now = now_iso();
     sqlx::query(
         "UPDATE process_runs SET state = 'crashed', ended_at = ?
@@ -3154,7 +3156,7 @@ async fn list_session_attachments(
     let rows = sqlx::query(
         "SELECT id, schema_version, workspace_id, session_id, turn_id, path, content_hash, size,
                 media_type, source, send_strategy, created_at, inline_context
-         FROM attachments WHERE session_id = ? ORDER BY created_at ASC",
+         FROM attachments WHERE session_id = ? AND queued_message_id IS NULL ORDER BY created_at ASC",
     )
     .bind(&session_id)
     .fetch_all(&state.db)
@@ -3188,7 +3190,7 @@ async fn remove_session_attachment(
     state: State<'_, AppState>,
 ) -> Result<(), CoreError> {
     session_by_id(&state.db, &session_id).await?;
-    sqlx::query("DELETE FROM attachments WHERE id = ? AND session_id = ?")
+    sqlx::query("DELETE FROM attachments WHERE id = ? AND session_id = ? AND queued_message_id IS NULL")
         .bind(attachment_id)
         .bind(session_id)
         .execute(&state.db)
@@ -3220,7 +3222,7 @@ async fn validate_session_attachments(
         .map_err(|error| CoreError::InvalidWorkspacePath(error.to_string()))?;
     let rows = sqlx::query(
         "SELECT id, path, content_hash, size FROM attachments
-         WHERE session_id = ? AND turn_id IS NULL AND inline_context IS NULL ORDER BY created_at ASC",
+         WHERE session_id = ? AND turn_id IS NULL AND queued_message_id IS NULL AND inline_context IS NULL ORDER BY created_at ASC",
     )
     .bind(&session_id)
     .fetch_all(&state.db)

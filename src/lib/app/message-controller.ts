@@ -74,7 +74,7 @@ export function createMessageController(context: MessageControllerContext) {
       .map((attachment) => attachment.path);
   }
 
-  async function sendPrompt(): Promise<void> {
+  async function sendPromptOnce(): Promise<void> {
     const draftText = context.getComposerText();
     const input = draftText.trim();
     if (!input) return;
@@ -95,6 +95,11 @@ export function createMessageController(context: MessageControllerContext) {
     }
     if (!context.getDesktop()) {
       context.setNotice('当前是 Web 预览；请在 Tauri 桌面模式中发送真实 Codex 请求。');
+      return;
+    }
+
+    if (selectedSession && context.getSessionRunning() && selectedSession.capabilities.includes('queue.manage')) {
+      await queuePromptOnce('followUp');
       return;
     }
 
@@ -179,11 +184,12 @@ export function createMessageController(context: MessageControllerContext) {
     }
   }
 
-  async function queuePiPrompt(mode: 'steer' | 'followUp'): Promise<void> {
+  async function queuePromptOnce(mode: 'steer' | 'followUp'): Promise<void> {
     const draftText = context.getComposerText();
     const input = draftText.trim();
     const session = context.getSelectedSession();
     if (!input || !session || !session.capabilities.includes('queue.manage') || !context.getDesktop()) return;
+    if (session.archived || context.getSelectedSessionArchiving()) return;
     let requestInput: string;
     try { requestInput = withAttachmentContext(input, session.id); }
     catch (error) { context.setErrorMessage(toErrorMessage(error)); return; }
@@ -216,5 +222,18 @@ export function createMessageController(context: MessageControllerContext) {
     }
   }
 
-  return { sendPrompt, retryLastPrompt, abortPrompt, queuePiPrompt };
+  // Admission starts before async attachment validation so repeated clicks
+  // cannot submit the same captured draft twice.
+  let submitting = false;
+  async function sendPrompt(): Promise<void> {
+    if (submitting) return;
+    submitting = true;
+    try { await sendPromptOnce(); } finally { submitting = false; }
+  }
+  async function queuePrompt(mode: 'steer' | 'followUp'): Promise<void> {
+    if (submitting) return;
+    submitting = true;
+    try { await queuePromptOnce(mode); } finally { submitting = false; }
+  }
+  return { sendPrompt, retryLastPrompt, abortPrompt, queuePrompt };
 }

@@ -76,6 +76,9 @@
     onSend: () => void;
     onQueue: (mode: 'steer' | 'followUp') => void;
     onClearQueue: () => void;
+    onRemoveQueuedMessage: (id: string) => void;
+    onSendQueuedMessage: (id: string) => void;
+    onResumeQueue: () => void;
     onAbort: () => void;
     onSelectAccess: (mode: SessionAccessMode) => void | Promise<void>;
     onLoadModels: () => void | Promise<void>;
@@ -136,6 +139,9 @@
     onSend,
     onQueue,
     onClearQueue,
+    onRemoveQueuedMessage,
+    onSendQueuedMessage,
+    onResumeQueue,
     onAbort,
     onSelectAccess,
     onLoadModels,
@@ -461,18 +467,33 @@
     </div>
   {/if}
 
-  {#if queueSnapshot && (queueSnapshot.steering.length > 0 || queueSnapshot.followUp.length > 0)}
+  {#if queueSnapshot && (queueSnapshot.items?.length || queueSnapshot.steering.length > 0 || queueSnapshot.followUp.length > 0)}
     <div class="agent-queue" role="status" aria-label="待处理消息队列">
       <div class="agent-queue-heading">
-        <span>队列 · {queueSnapshot.steering.length + queueSnapshot.followUp.length}</span>
-        <Button variant="ghost" size="sm" type="button" onclick={onClearQueue} disabled={busy || !sessionRunning}>清空</Button>
+        <span>队列 · {queueSnapshot.items?.length || queueSnapshot.steering.length + queueSnapshot.followUp.length}</span>
+        <Button variant="ghost" size="sm" type="button" onclick={onClearQueue} disabled={busy || sessionArchived || selectedSessionArchiving}>清空</Button>
       </div>
-      {#each queueSnapshot.steering as item, index}
-        <div class="agent-queue-item"><Badge variant="secondary">插入</Badge><span>{item}</span><small>#{index + 1}</small></div>
-      {/each}
-      {#each queueSnapshot.followUp as item, index}
-        <div class="agent-queue-item"><Badge variant="outline">跟进</Badge><span>{item}</span><small>#{index + 1}</small></div>
-      {/each}
+      {#if queueSnapshot.paused}
+        <div class="agent-queue-item"><span>自动发送已暂停</span><Button variant="ghost" size="sm" onclick={onResumeQueue} disabled={busy || sessionArchived || selectedSessionArchiving || queueSnapshot.items?.some(item => item.status === 'uncertain')}>继续队列</Button></div>
+      {/if}
+      {#if queueSnapshot.items?.length}
+        {#each queueSnapshot.items as item (item.id)}
+          <div class="agent-queue-item">
+            <Badge variant="outline">{item.status === 'sending' ? '发送中' : item.status === 'uncertain' ? '结果未知' : item.status === 'failed' ? '发送失败' : '等待'}</Badge>
+            <span title={item.text}>{item.text.split('[AIBO_SESSION_REFERENCES]')[0].split('[AIBO_CONTEXT_ATTACHMENTS]')[0].trim()}</span>
+            <Button variant="ghost" size="sm" onclick={() => onSendQueuedMessage(item.id)} disabled={busy || sessionArchived || selectedSessionArchiving || item.status === 'sending' || item.status === 'uncertain'}>立即发送</Button>
+            <Button variant="ghost" size="sm" onclick={() => onRemoveQueuedMessage(item.id)} disabled={busy || sessionArchived || selectedSessionArchiving || item.status === 'sending'}>删除</Button>
+          </div>
+          {#if item.error}<div role="status">{item.error}</div>{/if}
+        {/each}
+      {:else}
+        {#each queueSnapshot.steering as item, index}
+          <div class="agent-queue-item"><Badge variant="secondary">插入</Badge><span>{item}</span><small>#{index + 1}</small></div>
+        {/each}
+        {#each queueSnapshot.followUp as item, index}
+          <div class="agent-queue-item"><Badge variant="outline">跟进</Badge><span>{item}</span><small>#{index + 1}</small></div>
+        {/each}
+      {/if}
     </div>
   {/if}
 

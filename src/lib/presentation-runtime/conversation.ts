@@ -58,7 +58,17 @@ export function conversationActions(state: PresentationConversation): Spec[] {
     add('stop');
     if (capable('queue.manage')) {
       if (state.draft.trim()) { add('queueSteer'); add('queueFollowUp'); }
-      if (state.queue?.sessionId === session.id && (state.queue.steering.length || state.queue.followUp.length)) add('clearQueue');
+
+    }
+  }
+  if (available && capable('queue.manage') && state.queue?.sessionId === session.id) {
+    const items = state.queue.items ?? [];
+    if (items.some(item => item.status !== 'sending') || state.queue.steering.length || state.queue.followUp.length) add('clearQueue');
+    if (state.queue.paused && items.length && !items.some(item => item.status === 'uncertain')) add('resumeQueue');
+    for (const item of items) {
+      if (item.status === 'sending') continue;
+      add('removeQueuedMessage', [item.id]);
+      if (item.status !== 'uncertain') add('sendQueuedMessage', [item.id]);
     }
   }
   for (const request of state.userInputRequests) {

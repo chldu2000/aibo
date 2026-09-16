@@ -5,6 +5,8 @@ mod projection;
 mod fork;
 #[path = "session_tools.rs"]
 mod tools;
+#[path = "session_queue.rs"]
+mod queue;
 use crate::{capability_broker::{Binding, Broker, CapabilityControl, EventObserver, Request, Response, Scope},
     change_set::{capture as capture_workspace, persist as persist_change_set, WorkspaceSnapshot}, execution_profile, plugin_registry, Session};
 use serde_json::{json,Value};
@@ -177,7 +179,14 @@ impl SessionHost {
                 if event["type"]=="workspace.requested" {
                     let runtime=SessionExecution {broker:host.broker.clone(),caller,request_id,generation_id:generation.into(),write_authorized};
                     host.handle_tool_request(&session.id,&session.workspace_id,&runtime,&binding,event).await
-                } else {host.project_event(&session.id,&session.workspace_id,generation,&binding,event,EventOrigin::Plugin).await}
+                } else {
+                    // The editable waiting queue belongs to the host, not Pi's steering buffer.
+                    if event["type"] == "queue.updated" && queue::builtin_queue(&session.agent) { return Ok(()); }
+                    let started = event["type"] == "turn.started";
+                    host.project_event(&session.id,&session.workspace_id,generation,&binding,event,EventOrigin::Plugin).await?;
+                    if started { if let Some(turn) = turn_id { host.acknowledge_queued_turn(&session.id, &turn).await?; } }
+                    Ok(())
+                }
             })
         })
     }
@@ -187,14 +196,21 @@ impl SessionHost {
         self.send_admitted(caller, session_id, text, approval).await
     }
     pub(crate) async fn send_configured_from(&self,caller:&str,session_id:&str,text:&str)->Result<(),String> {
+        let _queue_guard = self.session_operation(&format!("queue:{session_id}")).await;
         let _guard=self.session_operation(session_id).await;
+        let queued: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM queued_messages WHERE session_id=?").bind(session_id).fetch_one(&self.db).await.map_err(|e|e.to_string())?;
+        if self.live.lock().await.contains_key(session_id) || queued > 0 {
+            self.enqueue_admitted(caller, session_id, text).await?;
+            self.schedule_queue(session_id.into());
+            return Ok(());
+        }
         let approval = crate::session_permissions::turn_request(&self.db, session_id, caller).await?;
         self.send_admitted(caller, session_id, text, Some(approval)).await
     }
     async fn send_admitted(&self,caller:&str,session_id:&str,text:&str,approval:Option<crate::workspace_write_runs::Request>)->Result<(),String> {
-        self.run_admitted(caller, session_id, text, approval, false).await
+        self.run_admitted(caller, session_id, text, approval, false, None).await
     }
-    async fn run_admitted(&self,caller:&str,session_id:&str,text:&str,approval:Option<crate::workspace_write_runs::Request>,goal_resume:bool)->Result<(),String> {
+    async fn run_admitted(&self,caller:&str,session_id:&str,text:&str,approval:Option<crate::workspace_write_runs::Request>,goal_resume:bool,queue_id:Option<&str>)->Result<(),String> {
         if text.trim().is_empty() || text.len()>200_000 {return Err("invalid_input: prompt length".into());}
         if self.live.lock().await.contains_key(session_id) {return Err("busy: session has an active invocation".into());}
         self.open(caller,session_id).await?;
@@ -230,8 +246,16 @@ impl SessionHost {
         if changed.rows_affected()!=1 {return Err("busy: session is not idle".into());}
         sqlx::query("INSERT INTO turns(id,session_id,external_turn_id,status,input_text,started_at) VALUES(?,?,?,'running',?,?)").bind(&turn).bind(session_id).bind(&turn).bind(text).bind(&now).execute(&mut *tx).await.map_err(|e|e.to_string())?;
         sqlx::query("INSERT INTO messages(id,session_id,turn_id,role,content,status,created_at,updated_at) VALUES(?,?,?,'user',?,'completed',?,?)").bind(&message).bind(session_id).bind(&turn).bind(text).bind(&now).bind(&now).execute(&mut *tx).await.map_err(|e|e.to_string())?;
-        let attachments:Vec<String>=if goal_resume {vec![]} else {sqlx::query_scalar("SELECT id FROM attachments WHERE session_id=? AND turn_id IS NULL ORDER BY created_at").bind(session_id).fetch_all(&mut *tx).await.map_err(|e|e.to_string())?};
-        if !goal_resume {sqlx::query("UPDATE attachments SET turn_id=? WHERE session_id=? AND turn_id IS NULL").bind(&turn).bind(session_id).execute(&mut *tx).await.map_err(|e|e.to_string())?;}
+        let attachments:Vec<String>=if goal_resume {vec![]} else {sqlx::query_scalar("SELECT id FROM attachments WHERE session_id=? AND turn_id IS NULL AND queued_message_id IS ? ORDER BY created_at").bind(session_id).bind(queue_id).fetch_all(&mut *tx).await.map_err(|e|e.to_string())?};
+        if !goal_resume {sqlx::query("UPDATE attachments SET turn_id=? WHERE session_id=? AND turn_id IS NULL AND queued_message_id IS ?").bind(&turn).bind(session_id).bind(queue_id).execute(&mut *tx).await.map_err(|e|e.to_string())?;}
+        if queue_id.is_none() && !goal_resume {
+            sqlx::query("UPDATE session_queues SET paused=0 WHERE session_id=? AND NOT EXISTS(SELECT 1 FROM queued_messages WHERE session_id=?)")
+                .bind(session_id).bind(session_id).execute(&mut *tx).await.map_err(|e|e.to_string())?;
+        }
+        if let Some(id) = queue_id {
+            sqlx::query("UPDATE queued_messages SET status='sending',delivery='turn',turn_id=?,error=NULL WHERE id=? AND session_id=?")
+                .bind(&turn).bind(id).bind(session_id).execute(&mut *tx).await.map_err(|e|e.to_string())?;
+        }
         tx.commit().await.map_err(|e|e.to_string())?;
         let (phase, _) = watch::channel(TurnPhase::Starting);
         let run=LiveTurn {caller:caller.into(),request_id:turn.clone(),cancel:Arc::new(AtomicBool::new(false)),phase,pi_branch};live.insert(session_id.into(),run.clone());drop(live);
@@ -273,8 +297,12 @@ impl SessionHost {
                 eprintln!("session change set persistence failed: {error}");
             }
             host.pending_tools.lock().await.retain(|_,pending|pending.session_id!=session.id);
+            if let Err(error) = host.settle_queue_turn(&session.id, &turn, run.cancel.load(Ordering::Acquire)).await {
+                eprintln!("queue settlement failed: {error}");
+            }
             host.live.lock().await.remove(&session.id);
             run.phase.send_replace(TurnPhase::Finished);
+            host.schedule_queue(session.id.clone());
         });
         Ok(())
     }
@@ -301,11 +329,17 @@ impl SessionHost {
         Ok(crate::pi_snapshot_timeline(&snapshot, session_id))
     }
     pub async fn invoke_capability_from(&self,caller:&str,session_id:&str,capability:&str,input:Value)->Result<Value,String> {
+        if capability == "queue.manage" && self.host_queue_supported(session_id).await? {
+            return self.queue_operation(caller, session_id, input).await;
+        }
+        self.invoke_provider_capability(caller, session_id, capability, input).await
+    }
+    async fn invoke_provider_capability(&self,caller:&str,session_id:&str,capability:&str,input:Value)->Result<Value,String> {
         if capability == "goal.resume" {
             if input.as_object().is_none_or(|value| !value.is_empty()) {return Err("invalid_input: goal.resume takes no parameters".into());}
             let _guard=self.session_operation(session_id).await;
             let approval=crate::session_permissions::turn_request(&self.db,session_id,caller).await?;
-            self.run_admitted(caller,session_id,"继续执行当前目标",Some(approval),true).await?;
+            self.run_admitted(caller,session_id,"继续执行当前目标",Some(approval),true,None).await?;
             return Ok(json!({"accepted":true}));
         }
         loop {
@@ -368,10 +402,17 @@ impl SessionHost {
         }
     }
     pub async fn cancel_from(&self,caller:&str,session_id:&str)->Result<(),String> {
+        if self.live.lock().await.contains_key(session_id) { return self.cancel_admitted(caller, session_id).await; }
+        let _guard = self.session_operation(session_id).await;
+        self.cancel_admitted(caller, session_id).await
+    }
+    async fn cancel_admitted(&self,caller:&str,session_id:&str)->Result<(),String> {
         if let Some(run)=self.live.lock().await.get(session_id).cloned() {
             if run.caller!=caller {return Err("permission_denied: invocation belongs to another window".into());}
+            self.pause_queue(session_id).await?;
             run.cancel.store(true,Ordering::Release);self.broker.cancel(caller,&run.request_id).await;
         }
+        self.pause_queue(session_id).await?;
         Ok(())
     }
     pub async fn close_from(&self,caller:&str,session_id:&str)->Result<(),String> {
@@ -381,7 +422,7 @@ impl SessionHost {
     }
     pub(crate) async fn close_admitted(&self,caller:&str,session_id:&str)->Result<(),String> {
         // Recheck after admission: a queued send may have started in between.
-        self.cancel_from(caller,session_id).await?;
+        self.cancel_admitted(caller,session_id).await?;
         tokio::time::timeout(Duration::from_secs(7),async {while self.live.lock().await.contains_key(session_id) {tokio::time::sleep(Duration::from_millis(10)).await;}}).await.map_err(|_|"busy: session is still stopping")?;
         self.broker.stop_session(session_id).await.map_err(|e|e.message)?;
         sqlx::query("UPDATE session_bindings SET generation_id=NULL WHERE session_id=?").bind(session_id).execute(&self.db).await.map_err(|e|e.to_string())?;

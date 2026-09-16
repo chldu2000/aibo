@@ -275,6 +275,7 @@ async function sdkRequest(startedProvider, type, fields) {
   if (type === 'set_thinking_level') { sdkSession.setThinkingLevel(fields.level); return { success: true, data: { level: sdkSession.thinkingLevel } }; }
   if (type === 'get_commands') return { success: true, data: { commands: sdkCommands(sdkSession) } };
   if (type === 'get_skills') return { success: true, data: { skills: sdkSkills(sdkSession) } };
+  if (type === 'steer' && (!session?.turn || !sdkSession.isStreaming)) fail('no_active_turn', 'no_active_turn');
   if (type === 'steer' || type === 'follow_up') { await sdkSession[type === 'steer' ? 'steer' : 'followUp'](fields.message); return { success: true, data: { queued: fields.message } }; }
   if (type === 'clear_queue') { const queue = sdkSession.clearQueue(); return { success: true, data: queue }; }
   if (type === 'compact') return { success: true, data: { ...(await sdkSession.compact(fields.customInstructions || undefined)) } };

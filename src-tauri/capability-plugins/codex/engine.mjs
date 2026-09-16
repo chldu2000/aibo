@@ -2,9 +2,9 @@ import { spawn } from 'node:child_process';
 import readline from 'node:readline';
 
 const pluginId = 'dev.aibo.codex';
-const pluginVersion = '2.0.7';
+const pluginVersion = '2.0.8';
 
-export const capabilities = ['session.create', 'session.resume', 'session.close', 'turn.send', 'turn.cancel', 'stream.text', 'goal.manage', 'goal.pause', 'goal.resume', 'model.select', 'model.reasoning', 'model.service-tier', 'skill.list', 'approval.respond', 'user-input.respond', 'session.snapshot', 'session.fork'];
+export const capabilities = ['session.create', 'session.resume', 'session.close', 'turn.send', 'turn.cancel', 'queue.manage', 'stream.text', 'goal.manage', 'goal.pause', 'goal.resume', 'model.select', 'model.reasoning', 'model.service-tier', 'skill.list', 'approval.respond', 'user-input.respond', 'session.snapshot', 'session.fork'];
 let child = null;
 let childLines = null;
 let nextId = 1;
@@ -343,7 +343,7 @@ async function pauseGoal() {
 function onCodex(message) {
   if (message.id !== undefined && pending.has(String(message.id))) {
     const request = pending.get(String(message.id)); pending.delete(String(message.id));
-    message.error ? request.reject(new Error(message.error.message ?? 'Codex request failed')) : request.resolve(message.result);
+    message.error ? request.reject(Object.assign(new Error(message.error.message ?? 'Codex request failed'), {nativeRejected:true})) : request.resolve(message.result);
     return;
   }
   if (message.id !== undefined && message.method?.endsWith('/requestApproval')) {
@@ -553,6 +553,21 @@ export async function execute(action, p) {
     if (typeof forked?.id !== 'string' || !forked.id || forked.id===session.threadId || (forked.parentThreadId && forked.parentThreadId!==session.threadId)) fail('invalid_output','Invalid fork identity');
     const binding = recovery(); binding.data.threadId = forked.id;
     return {fork:{nativeSessionId:forked.id,recovery:binding}};
+  }
+  if (action === 'operation' && p.operationId === 'ext.dev.aibo.codex.queue') {
+    if (p.input?.action !== 'steer' || typeof p.input.message !== 'string' || !p.input.message.trim()) fail('invalid_request', 'steer message required');
+    const turn = session.turn;
+    if (!turn?.nativeId) fail('no_active_turn', 'no_active_turn');
+    try {
+      const result = await rpc('turn/steer', {threadId:session.threadId, expectedTurnId:turn.nativeId, input:[{type:'text',text:p.input.message}]});
+      return {accepted:true,turnId:result.turnId};
+    } catch (error) {
+      if (error.nativeRejected) {
+        if (!session.turn?.nativeId || /no active turn|no turn in progress|expectedTurnId|turn.*mismatch/i.test(error.message)) fail('no_active_turn', `no_active_turn: ${error.message}`);
+        fail('steer_rejected', `steer_rejected: ${error.message}`);
+      }
+      throw error;
+    }
   }
   if (action === 'operation' && p.operationId === 'ext.dev.aibo.codex.goal') {
     let goal;

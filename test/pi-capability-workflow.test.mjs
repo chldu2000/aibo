@@ -14,8 +14,8 @@ test('Pi capability workflow preserves commands, queue, retries, tree navigation
   assert.equal((await f.invoke('dev.aibo.pi.model.reasoning',{action:'list'})).current,'high');
   const turn=f.startTurn('queue parity prompt','queue');
   await f.control(turn,'dev.aibo.pi.queue.manage',{action:'followUp',message:'follow-up parity'});
-  await f.control(turn,'dev.aibo.pi.queue.manage',{action:'clear'});
   await f.control(turn,'dev.aibo.pi.queue.manage',{action:'steer',message:'steer parity'});
+  await f.control(turn,'dev.aibo.pi.queue.manage',{action:'clear'});
   assert.equal((await turn.done).status,'completed');
   const queues=f.events.filter(e=>e.event.type==='queue.updated').map(e=>e.event.payload);
   assert.ok(queues.some(queue=>queue.followUp.includes('follow-up parity')));

@@ -199,12 +199,15 @@
       case 'send': await sendPrompt(); break;
       case 'stop': await abortPrompt(); break;
       case 'retry': await retryLastPrompt(); break;
-      case 'queueSteer': await queuePiPrompt('steer'); break;
-      case 'queueFollowUp': await queuePiPrompt('followUp'); break;
+      case 'queueSteer': await queuePrompt('steer'); break;
+      case 'queueFollowUp': await queuePrompt('followUp'); break;
       case 'pauseGoal': await changeGoal('pause'); break;
       case 'resumeGoal': await changeGoal('resume'); break;
       case 'clearGoal': await changeGoal('clear'); break;
-      case 'clearQueue': await clearPiPromptQueue(); break;
+      case 'clearQueue': await clearPromptQueue(); break;
+      case 'removeQueuedMessage': await managePromptQueue('remove', target!); break;
+      case 'sendQueuedMessage': await managePromptQueue('sendNow', target!); break;
+      case 'resumeQueue': await managePromptQueue('resume'); break;
       case 'addAttachments': await chooseSessionAttachments(); break;
       case 'addDirectory': await chooseSessionAttachmentDirectory(); break;
       case 'removeAttachment': await removeAttachment(target!); break;
@@ -544,6 +547,7 @@
   import { createViewStateStore } from '$lib/app/view-state-storage';
   import { createMessageController } from '$lib/app/message-controller';
   import { createNavigationController } from '$lib/app/navigation-controller';
+  import { normalizeMessageQueue, newerMessageQueue } from '$lib/app/message-queue';
   import { createPiTreeController } from '$lib/app/pi-tree-controller';
   import { createWorkspaceController } from '$lib/app/workspace-controller';
   import {
@@ -1559,14 +1563,14 @@
       run: () => requestArchiveSession(),
     },
     {
-      id: 'clear-pi-queue',
+      id: 'clear-message-queue',
       label: '清空待处理队列',
       description: '移除当前会话中尚未发送的消息',
       disabled: !selectedSession?.capabilities.includes('queue.manage')
         || queueSnapshot === null
         || (queueSnapshot.steering.length === 0 && queueSnapshot.followUp.length === 0)
         || busy,
-      run: () => void clearPiPromptQueue(),
+      run: () => void clearPromptQueue(),
     },
   ]);
 
@@ -2469,7 +2473,7 @@
       setPendingApprovals: (approvals) => (pendingApprovals = approvals),
       setPendingUserInputs: (requests) => (pendingUserInputs = requests),
       setUsageSnapshot: (sessionId, usage) => (usageSnapshotsBySession = cacheSessionUsage(usageSnapshotsBySession, sessionId, usage)),
-      setQueueSnapshot: (queue) => (queueSnapshot = queue),
+      setQueueSnapshot: applyPromptQueue,
       setTimeline: (nextTimeline) => (timeline = nextTimeline),
       refreshTimeline,
       setRetry: (prompt, reason) => {
@@ -3000,6 +3004,7 @@
   async function sendPrompt() {
     if (await dispatchBuiltinCommand(selectedSession, composerText, { codex: executeCodexBuiltinCommand, pi: executePiBuiltinCommand })) return;
     await messageController.sendPrompt();
+    await refreshPromptQueue();
   }
 
   async function retryLastPrompt() {
@@ -3008,6 +3013,7 @@
 
   async function abortPrompt() {
     await messageController.abortPrompt();
+    await refreshPromptQueue();
     if (!errorMessage && selectedSessionId) {
       pendingUserInputs = pendingUserInputs.filter((request) => request.sessionId !== selectedSessionId);
     }
@@ -3036,25 +3042,49 @@
     }
   }
 
-  async function queuePiPrompt(mode: 'steer' | 'followUp') {
-    if (sessionAgentKind(selectedSession) === 'pi' && await executePiBuiltinCommand(composerText)) return;
-    await messageController.queuePiPrompt(mode);
+  async function queuePrompt(mode: 'steer' | 'followUp') {
+    if (await dispatchBuiltinCommand(selectedSession, composerText, { codex: executeCodexBuiltinCommand, pi: executePiBuiltinCommand })) return;
+    await messageController.queuePrompt(mode);
+    await refreshPromptQueue();
   }
 
-  async function clearPiPromptQueue() {
+  function applyPromptQueue(value: AgentQueueSnapshot | null) {
+    if (!value) { queueSnapshot = null; return; }
+    if (value.sessionId === selectedSessionId) queueSnapshot = newerMessageQueue(queueSnapshot, value);
+  }
+
+  async function refreshPromptQueue() {
     const session = selectedSession;
-    if (!session || !session.capabilities.includes('queue.manage')) return;
+    if (!desktop || !session?.capabilities.includes('queue.manage')) return;
     try {
-      await agentFacade.invoke(session, 'queue.manage', { action: 'clear' });
-      const loadedTimeline = await getTimeline(session.id);
-      if (selectedSessionId !== session.id) return;
-      queueSnapshot = null;
-      timeline = loadedTimeline;
-      notice = '已清空待处理消息。';
+      const result = await agentFacade.invoke(session, 'queue.manage', { action: 'get' });
+      if (selectedSessionId === session.id) applyPromptQueue(normalizeMessageQueue(result, session.id));
     } catch (error) {
       if (selectedSessionId === session.id) errorMessage = toErrorMessage(error);
     }
   }
+
+  $effect(() => {
+    const id = selectedSessionId;
+    const enabled = desktop && selectedSession?.capabilities.includes('queue.manage');
+    untrack(() => { queueSnapshot = null; if (enabled && id) void refreshPromptQueue(); });
+  });
+
+  async function managePromptQueue(action: 'clear' | 'remove' | 'sendNow' | 'resume', id?: string) {
+    const session = selectedSession;
+    if (!session?.capabilities.includes('queue.manage') || busy) return;
+    busy = true;
+    errorMessage = null;
+    try {
+      const result = await agentFacade.invoke(session, 'queue.manage', { action, ...(id ? { id } : {}) });
+      if (selectedSessionId === session.id) applyPromptQueue(normalizeMessageQueue(result, session.id));
+      await Promise.all([refreshTimeline(session.id), refreshAttachments(session.id), refreshSessions(session.workspaceId)]);
+    } catch (error) {
+      if (selectedSessionId === session.id) errorMessage = toErrorMessage(error);
+    } finally { busy = false; }
+  }
+
+  async function clearPromptQueue() { await managePromptQueue('clear'); }
 
   function requestPiTreeNavigation(entryId: string) {
     piNavigationMode = 'none';
@@ -3284,7 +3314,7 @@
     setWorkspaceSessionMap: (value) => (workspaceSessionMap = value),
     setSelectedSessionId: (value) => (selectedSessionId = value),
     setTimeline: (value) => (timeline = value),
-    setQueueSnapshot: (value) => (queueSnapshot = value),
+    setQueueSnapshot: applyPromptQueue,
     setCheckpoints: (value) => (checkpoints = value),
     setRetry: (prompt, reason) => {
       retryPrompt = prompt;
@@ -3843,8 +3873,11 @@
         if (request.sessionId === selectedSessionId) void abortPrompt();
       })}
       onSend={guard('onSend', () => void sendPrompt())}
-      onQueue={guard('onQueue', (mode) => void queuePiPrompt(mode))}
-      onClearQueue={guard('onClearQueue', () => void clearPiPromptQueue())}
+      onQueue={guard('onQueue', (mode) => void queuePrompt(mode))}
+      onClearQueue={guard('onClearQueue', () => void clearPromptQueue())}
+      onRemoveQueuedMessage={guard('onRemoveQueuedMessage', (id) => void managePromptQueue('remove', id))}
+      onSendQueuedMessage={guard('onSendQueuedMessage', (id) => void managePromptQueue('sendNow', id))}
+      onResumeQueue={guard('onResumeQueue', () => void managePromptQueue('resume'))}
       onAbort={guard('onAbort', () => void abortPrompt())}
       onSelectAccess={guard('onSelectAccess', (mode) => void applySessionAccess(mode))}
       onLoadModels={guard('onLoadModels', () => void loadSessionModels())}

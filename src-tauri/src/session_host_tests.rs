@@ -463,7 +463,7 @@ async fn completed_turn_snapshot_does_not_use_retired_interaction() {
     let timeline = host.pi_timeline_from("main", &session.id).await.unwrap();
     assert_eq!(timeline.iter().filter(|item| item.role == "user" && item.content == "boundary message").count(), 1);
     assert!(timeline.iter().any(|item| item.role == "assistant"));
-    let stale_control = host.invoke_capability_from("main", &session.id, "queue.manage", json!({"action":"steer","message":"do not replay"})).await.unwrap_err();
+    let stale_control = host.invoke_provider_capability("main", &session.id, "queue.manage", json!({"action":"steer","message":"do not replay"})).await.unwrap_err();
     assert!(stale_control.contains("finished accepting interactions"));
     let pending_host = host.clone(); let id = session.id.clone();
     let mut read = tokio::spawn(async move { pending_host.invoke_capability_from("main", &id, "session.snapshot", json!({})).await });
@@ -687,4 +687,100 @@ async fn subagent_history_survives_restart_without_a_running_provider() {
     assert_eq!(crate::session_history::read_subagent(&reopened,&source.id,"child-0").await.unwrap(),entries);
     reopened.close().await;
     fs::remove_dir_all(root).unwrap();
+}
+
+async fn queue_state(host: &SessionHost, session: &str) -> Value {
+    host.invoke_capability_from("main", session, "queue.manage", json!({"action":"get"})).await.unwrap()
+}
+async fn wait_for_queue_idle(host: &SessionHost, session: &str) {
+    tokio::time::timeout(Duration::from_secs(20), async {
+        loop {
+            if !host.live.lock().await.contains_key(session) && queue_state(host,session).await["items"].as_array().unwrap().is_empty() { break; }
+            tokio::time::sleep(Duration::from_millis(20)).await;
+        }
+    }).await.expect("queue did not drain");
+}
+#[tokio::test]
+async fn durable_queue_preserves_fifo_removes_by_identity_and_steers_once() {
+    let (root, db, broker, host, session) = concurrent_session_fixture().await;
+    host.send_from("main", &session.id, "host queue delay", None).await.unwrap();
+    for text in ["duplicate", "duplicate", "last"] {
+        host.send_configured_from("main", &session.id, text).await.unwrap();
+    }
+    let queued = queue_state(&host, &session.id).await;
+    let items = queued["items"].as_array().unwrap();
+    assert_eq!(items.len(),3);
+    assert_ne!(items[0]["id"],items[1]["id"]);
+    host.invoke_capability_from("main",&session.id,"queue.manage",json!({"action":"remove","id":items[0]["id"]})).await.unwrap();
+    host.invoke_capability_from("main",&session.id,"queue.manage",json!({"action":"sendNow","id":items[2]["id"]})).await.unwrap();
+    assert_eq!(queue_state(&host,&session.id).await["items"].as_array().unwrap().len(),1);
+    wait_for_queue_idle(&host,&session.id).await;
+    let messages: Vec<String> = sqlx::query_scalar("SELECT content FROM messages WHERE session_id=? AND role='user' ORDER BY created_at,id").bind(&session.id).fetch_all(&db).await.unwrap();
+    assert_eq!(messages,vec!["host queue delay","last","duplicate"]);
+    let turns: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM turns WHERE session_id=?").bind(&session.id).fetch_one(&db).await.unwrap();
+    assert_eq!(turns,2,"steering must not create a new turn");
+    broker.stop_session(&session.id).await.unwrap(); db.close().await; fs::remove_dir_all(root).unwrap();
+}
+#[tokio::test]
+async fn durable_queue_survives_stop_and_restart_until_explicit_resume() {
+    let (root, db, broker, host, session) = concurrent_session_fixture().await;
+    host.send_from("main",&session.id,"host queue delay",None).await.unwrap();
+    host.send_configured_from("main",&session.id,"after stop").await.unwrap();
+    host.cancel_from("main",&session.id).await.unwrap();
+    wait_for_turn(&host,&session.id).await;
+    let snapshot=queue_state(&host,&session.id).await;
+    assert_eq!(snapshot["paused"],true); assert_eq!(snapshot["items"][0]["text"],"after stop");
+    broker.stop_session(&session.id).await.unwrap();
+    crate::recover_interrupted_sessions(&db).await.unwrap();
+    let restored=SessionHost::new(db.clone(),broker.clone());
+    assert_eq!(queue_state(&restored,&session.id).await["items"][0]["id"],snapshot["items"][0]["id"]);
+    restored.invoke_capability_from("main",&session.id,"queue.manage",json!({"action":"resume"})).await.unwrap();
+    wait_for_queue_idle(&restored,&session.id).await;
+    let count: i64=sqlx::query_scalar("SELECT COUNT(*) FROM messages WHERE session_id=? AND role='user' AND content='after stop'").bind(&session.id).fetch_one(&db).await.unwrap();
+    assert_eq!(count,1);
+    broker.stop_session(&session.id).await.unwrap(); db.close().await; fs::remove_dir_all(root).unwrap();
+}
+#[tokio::test]
+async fn durable_queue_freezes_attachments_and_retains_changed_files() {
+    let (root, db, broker, host, session) = concurrent_session_fixture().await;
+    let workspace=crate::workspace_by_id(&db,&session.workspace_id).await.unwrap();
+    fs::write(Path::new(&workspace.path).join("queued.txt"),"original").unwrap();
+    sqlx::query("INSERT INTO attachments(id,workspace_id,session_id,path,size,media_type,source,send_strategy,created_at) VALUES('queued-file','w',?,'queued.txt',8,'text/plain','manual','reference','now')").bind(&session.id).execute(&db).await.unwrap();
+    host.send_from("main",&session.id,"host queue delay",None).await.unwrap();
+    // A freshly added draft attachment belongs only to the queued message.
+    sqlx::query("UPDATE attachments SET turn_id=NULL WHERE id='queued-file'").execute(&db).await.unwrap();
+    host.send_configured_from("main",&session.id,"use file [attachment:queued-file]").await.unwrap();
+    let queued=queue_state(&host,&session.id).await;
+    sqlx::query("INSERT INTO attachments(id,workspace_id,session_id,path,media_type,source,send_strategy,created_at) VALUES('next-draft','w',?,'next.txt','text/plain','manual','reference','now')").bind(&session.id).execute(&db).await.unwrap();
+    fs::write(Path::new(&workspace.path).join("queued.txt"),"changed length").unwrap();
+    tokio::time::timeout(Duration::from_secs(10),async {
+        loop { if queue_state(&host,&session.id).await["items"][0]["status"]=="failed" {break;} tokio::time::sleep(Duration::from_millis(20)).await; }
+    }).await.unwrap();
+    let failed=queue_state(&host,&session.id).await;
+    assert_eq!(failed["paused"],true); assert_eq!(failed["items"][0]["id"],queued["items"][0]["id"]);
+    let draft: (Option<String>,Option<String>)=sqlx::query_as("SELECT turn_id,queued_message_id FROM attachments WHERE id='next-draft'").fetch_one(&db).await.unwrap();
+    assert_eq!(draft,(None,None));
+    host.invoke_capability_from("main",&session.id,"queue.manage",json!({"action":"remove","id":queued["items"][0]["id"]})).await.unwrap();
+    let count:i64=sqlx::query_scalar("SELECT COUNT(*) FROM attachments WHERE id='queued-file'").fetch_one(&db).await.unwrap(); assert_eq!(count,0);
+    broker.stop_session(&session.id).await.unwrap(); db.close().await; fs::remove_dir_all(root).unwrap();
+}
+
+#[tokio::test]
+async fn queued_send_now_waits_for_finishing_turn_then_starts_exactly_once() {
+    let (root, db, broker, host, session) = concurrent_session_fixture().await;
+    host.send_from("main",&session.id,"boundary message",None).await.unwrap();
+    let finalization=host.turn_baselines.lock().await;
+    tokio::time::timeout(Duration::from_secs(5),async {
+        loop { if host.live.lock().await.get(&session.id).is_some_and(|run|*run.phase.borrow()==TurnPhase::Settling) {break;} tokio::time::sleep(Duration::from_millis(10)).await; }
+    }).await.unwrap();
+    host.send_configured_from("main",&session.id,"after boundary").await.unwrap();
+    let queued=queue_state(&host,&session.id).await;
+    let sending_host=host.clone(); let id=session.id.clone(); let message_id=queued["items"][0]["id"].clone();
+    let mut pending=tokio::spawn(async move {sending_host.invoke_capability_from("main",&id,"queue.manage",json!({"action":"sendNow","id":message_id})).await});
+    assert!(tokio::time::timeout(Duration::from_millis(30),&mut pending).await.is_err());
+    drop(finalization); pending.await.unwrap().unwrap();
+    wait_for_queue_idle(&host,&session.id).await;
+    let prompts:Vec<String>=sqlx::query_scalar("SELECT input_text FROM turns WHERE session_id=? ORDER BY started_at,id").bind(&session.id).fetch_all(&db).await.unwrap();
+    assert_eq!(prompts,vec!["boundary message","after boundary"]);
+    broker.stop_session(&session.id).await.unwrap();db.close().await;fs::remove_dir_all(root).unwrap();
 }

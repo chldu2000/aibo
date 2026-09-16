@@ -166,7 +166,18 @@ interface UserInputRequest {
   isBlocking: boolean;
 }
 
+interface QueuedMessage {
+  id: string;
+  text: string;
+  status: 'pending' | 'sending' | 'failed' | 'uncertain';
+  error: string | null;
+  createdAt: string;
+}
+
 interface AgentQueueSnapshot {
+  items?: QueuedMessage[];
+  paused?: boolean;
+  revision?: number;
   sessionId: string;
   steering: string[];
   followUp: string[];
@@ -240,7 +251,7 @@ export type PresentationConversation = {
   treeNavigationStatus: string | null;
 };
 
-export type PresentationConversationOperation = 'copyCode' | 'openLink' | 'draft' | 'send' | 'stop' | 'retry' | 'queueSteer' | 'queueFollowUp' | 'clearQueue' | 'clearGoal' | 'pauseGoal' | 'resumeGoal'
+export type PresentationConversationOperation = 'copyCode' | 'openLink' | 'draft' | 'send' | 'stop' | 'retry' | 'queueSteer' | 'queueFollowUp' | 'clearQueue' | 'removeQueuedMessage' | 'sendQueuedMessage' | 'resumeQueue' | 'clearGoal' | 'pauseGoal' | 'resumeGoal'
   | 'addAttachments' | 'addDirectory' | 'removeAttachment' | 'selectPath' | 'selectSessionReference' | 'selectCommand'
   | 'openSubagent' | 'loadOlder' | 'fork' | 'loadModels' | 'selectModel' | 'selectServiceTier' | 'selectAccess' | 'compact'
   | 'answer' | 'chooseAnswer' | 'submitAnswers' | 'cancelAnswers'

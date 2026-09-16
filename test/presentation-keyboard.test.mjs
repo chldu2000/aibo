@@ -11,7 +11,7 @@ test('composer shortcut uses current host send or queue authority and disappears
  for(const variant of [{...state,running:false},{...state,running:true},{...state,busy:true},{...state,draft:''}]){
   const actions=directory.project(variant),nodes=flatten(renderConversation(variant,actions));
   const editor=nodes.find(node=>node.key==='conversation:draft:input');
-  const action=actions.find(action=>action.operation===(variant.running?'queueSteer':'send'));
+  const action=actions.find(action=>action.operation===(variant.running?'queueFollowUp':'send'));
   assert.equal(editor.primaryEnter,action?.token);
   if(action)assert.equal(action.event,'click');
  }
