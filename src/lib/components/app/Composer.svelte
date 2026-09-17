@@ -157,7 +157,7 @@
     activeMentionQuery !== null && mentionActiveIndex >= 0,
   );
   const showSlashMenu = $derived(
-    activeSlashQuery !== null && selectedAgent !== null && slashActiveIndex >= 0,
+    activeSlashQuery !== null && selectedSession && slashActiveIndex >= 0,
   );
 
   const activeProfile = $derived(executionProfile?.enforced ?? executionProfile?.requested ?? null);
