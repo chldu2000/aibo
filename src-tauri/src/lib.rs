@@ -182,6 +182,15 @@ pub(crate) struct SessionServiceTierOption {
 
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
+pub(crate) struct SessionContextWindowOption {
+    pub(crate) id: String,
+    pub(crate) label: String,
+    pub(crate) description: Option<String>,
+    pub(crate) tokens: Option<u64>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
 pub(crate) struct SessionModelOption {
     pub(crate) reference: String,
     pub(crate) label: String,
@@ -192,6 +201,7 @@ pub(crate) struct SessionModelOption {
     pub(crate) default_reasoning_effort: Option<String>,
     pub(crate) reasoning_efforts: Vec<SessionReasoningOption>,
     pub(crate) service_tiers: Vec<SessionServiceTierOption>,
+    pub(crate) context_windows: Vec<SessionContextWindowOption>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -202,6 +212,7 @@ pub(crate) struct SessionModelCatalog {
     pub(crate) current_reasoning_effort: Option<String>,
     pub(crate) reasoning_efforts: Vec<SessionReasoningOption>,
     pub(crate) current_service_tier: Option<String>,
+    pub(crate) current_context_window: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -3860,9 +3871,18 @@ fn plugin_model_catalog(result: &serde_json::Value, reasoning: Option<&serde_jso
             let id = tier.as_str().or_else(||tier.get("id").and_then(serde_json::Value::as_str))?.to_owned();
             Some(SessionServiceTierOption { label: tier.get("name").or_else(||tier.get("label")).and_then(serde_json::Value::as_str).unwrap_or(&id).to_owned(), description: tier.get("description").and_then(serde_json::Value::as_str).map(ToOwned::to_owned), id })
         }).collect();
+        let context_windows = item.get("contextWindows").and_then(serde_json::Value::as_array).into_iter().flatten().filter_map(|option| {
+            let id = option.get("id")?.as_str()?.to_owned();
+            if id.is_empty() { return None; }
+            Some(SessionContextWindowOption {
+                label: option.get("label").or_else(|| option.get("name")).and_then(serde_json::Value::as_str).unwrap_or(&id).to_owned(),
+                description: option.get("description").and_then(serde_json::Value::as_str).map(ToOwned::to_owned),
+                tokens: option.get("tokens").and_then(serde_json::Value::as_u64).filter(|value| *value > 0 && *value <= 9_007_199_254_740_991), id,
+            })
+        }).collect();
         Some(SessionModelOption { label: item.get("displayName").or_else(||item.get("name")).and_then(serde_json::Value::as_str).unwrap_or(&reference).to_owned(),
             description: item.get("description").and_then(serde_json::Value::as_str).map(ToOwned::to_owned), is_default: item.get("isDefault").and_then(serde_json::Value::as_bool).unwrap_or(false),
-            default_reasoning_effort: item.get("defaultReasoningEffort").and_then(serde_json::Value::as_str).map(ToOwned::to_owned), reference, provider, id, reasoning_efforts, service_tiers })
+            default_reasoning_effort: item.get("defaultReasoningEffort").and_then(serde_json::Value::as_str).map(ToOwned::to_owned), reference, provider, id, reasoning_efforts, service_tiers, context_windows })
     }).collect::<Vec<_>>();
     let current_reference = result.get("current").and_then(serde_json::Value::as_str).map(ToOwned::to_owned)
         .or_else(|| result.get("current").and_then(|current| {
@@ -3880,7 +3900,8 @@ fn plugin_model_catalog(result: &serde_json::Value, reasoning: Option<&serde_jso
         Some(SessionReasoningOption { label: level.get("label").and_then(serde_json::Value::as_str).unwrap_or(&id).to_owned(), description: level.get("description").and_then(serde_json::Value::as_str).map(ToOwned::to_owned), id })
     }).collect::<Vec<_>>();
     let current_service_tier = result.get("currentServiceTier").and_then(serde_json::Value::as_str).map(ToOwned::to_owned);
-    Ok(SessionModelCatalog { current, models, current_reasoning_effort, reasoning_efforts, current_service_tier })
+    let current_context_window = result.get("currentContextWindow").and_then(serde_json::Value::as_str).map(ToOwned::to_owned);
+    Ok(SessionModelCatalog { current, models, current_reasoning_effort, reasoning_efforts, current_service_tier, current_context_window })
 }
 
 
@@ -5483,6 +5504,26 @@ mod tests {
         assert_ne!(timeline[0].id, timeline[1].id);
         assert_ne!(timeline[1].id, timeline[2].id);
         assert!(timeline.iter().all(|item| item.created_at == "2026-09-10T00:00:00Z"));
+    }
+
+    #[test]
+    fn plugin_model_catalog_context_windows_are_optional_and_model_specific() {
+        let catalog = plugin_model_catalog(&serde_json::json!({
+            "models":[{"id":"model","contextWindows":[
+                {"id":"standard","label":"128K","tokens":128000},
+                {"id":"long","label":"1M","description":"Extended context","tokens":1000000},
+                {"id":"unknown","tokens":-1}, {"id":""}
+            ]},{"id":"legacy"}], "current":"model", "currentContextWindow":"long"
+        }), None).unwrap();
+        assert_eq!(catalog.current_context_window.as_deref(), Some("long"));
+        assert_eq!(catalog.models[0].context_windows.len(), 3);
+        assert_eq!(catalog.models[0].context_windows[1].tokens, Some(1000000));
+        assert_eq!(catalog.models[0].context_windows[1].label, "1M");
+        assert_eq!(catalog.models[0].context_windows[2].tokens, None);
+        assert!(catalog.models[1].context_windows.is_empty());
+        let old = plugin_model_catalog(&serde_json::json!({"models":[{"id":"old"}]}), None).unwrap();
+        assert_eq!(old.current_context_window, None);
+        assert!(old.models[0].context_windows.is_empty());
     }
 
     #[test]

@@ -14,7 +14,7 @@ const {
 } = sdkModule;
 
 
-export const capabilities = ['session.create', 'session.resume', 'session.close', 'session.reload', 'turn.send', 'turn.cancel', 'stream.text', 'model.select', 'model.reasoning', 'command.list', 'skill.list', 'approval.respond', 'queue.manage', 'compaction.run', 'session.tree', 'session.snapshot', 'ext.dev.aibo.pi.usage', 'ext.dev.aibo.pi.retry', 'ext.dev.aibo.pi.extension'];
+export const capabilities = ['session.create', 'session.resume', 'session.close', 'session.reload', 'turn.send', 'turn.cancel', 'stream.text', 'model.select', 'model.reasoning', 'model.context-window', 'command.list', 'skill.list', 'approval.respond', 'queue.manage', 'compaction.run', 'session.tree', 'session.snapshot', 'ext.dev.aibo.pi.usage', 'ext.dev.aibo.pi.retry', 'ext.dev.aibo.pi.extension'];
 let provider = null;
 let session = null;
 let publish;
@@ -216,9 +216,48 @@ function coreLsOperations() {
     },
   };
 }
-function sdkModelDescriptor(model) {
+// pi-coding-agent 0.84.4 docs/models.md explicitly documents this opt-in.
+// These are direct OpenAI Responses limits, NOT Codex subscription limits.
+function sdkContextOptions(model) {
+  if (!model || model.provider !== 'openai' || model.api !== 'openai-responses'
+    || model.baseUrl !== 'https://api.openai.com/v1'
+    || !['gpt-5.6-sol', 'gpt-5.6-terra', 'gpt-5.6-luna'].includes(model.id)
+    || ![272000, 1050000].includes(model.contextWindow)) return [];
+  return [272000, 1050000].map(tokens => ({id:String(tokens),tokens,
+    label:tokens === 272000 ? '272K' : '1.05M',
+    description:tokens === 272000 ? 'Pi SDK 默认窗口' : 'OpenAI 官方长上下文窗口（可能使用长上下文计费）'}));
+}
+async function sdkVerifiedContextOptions(startedProvider, model) {
+  const options = sdkContextOptions(model);
+  if (!options.length) return [];
+  try {
+    const auth = await startedProvider.modelRuntime.getAuth(model);
+    if (!auth || (auth.auth?.baseUrl && auth.auth.baseUrl !== 'https://api.openai.com/v1')) return [];
+    return options;
+  } catch { return []; }
+}
+async function sdkSetContext(startedProvider, id) {
+  const sdkSession = startedProvider.sdkSession;
+  const before = sdkSession.model;
+  const base = before && startedProvider.modelRuntime.getModel(before.provider, before.id);
+  const option = (await sdkVerifiedContextOptions(startedProvider, base)).find(option => option.id === id);
+  if (!option) fail('invalid_request', 'Context window is not supported by this provider/model');
+  if (before.contextWindow === option.tokens) return id;
+  const thinking = sdkSession.thinkingLevel;
+  try {
+    await sdkSession.setModel({...base, contextWindow:option.tokens});
+    if (sdkSession.model?.id !== base.id || sdkSession.model?.provider !== base.provider || sdkSession.model?.contextWindow !== option.tokens) fail('invalid_output', 'Pi did not apply the context window');
+    sdkSession.setThinkingLevel(thinking);
+  } catch (error) {
+    await sdkSession.setModel(before);
+    sdkSession.setThinkingLevel(thinking);
+    throw error;
+  }
+  return id;
+}
+function sdkModelDescriptor(model, contextWindows = []) {
   return { provider: model.provider, id: model.id, name: model.name ?? null, reasoning: model.reasoning === true,
-    thinkingLevelMap: model.thinkingLevelMap ?? null };
+    thinkingLevelMap: model.thinkingLevelMap ?? null, contextWindows };
 }
 function sdkEvent(message) {
   const type = message?.type;
@@ -250,6 +289,11 @@ async function sdkRequest(startedProvider, type, fields) {
       thinkingLevel: sdkSession.thinkingLevel ?? null,
     } };
   }
+  if (type === 'prompt' && session?.contextWindow) {
+    const model = sdkSession.model;
+    if (model?.provider !== session.model?.provider || model?.id !== session.model?.modelId) session.contextWindow = null;
+    else await sdkSetContext(startedProvider, session.contextWindow);
+  }
   if (type === 'prompt') {
     void sdkSession.prompt(String(fields.message ?? '')).catch((error) => {
       onPi(sdkEvent({ type: 'agent_error', error: error.message }), startedProvider);
@@ -258,10 +302,15 @@ async function sdkRequest(startedProvider, type, fields) {
     return { success: true };
   }
   if (type === 'abort') return { success: true, data: await sdkSession.abort() };
-  if (type === 'get_available_models') return { success: true, data: {
-    models: startedProvider.modelRuntime.getAvailableSnapshot().map(sdkModelDescriptor),
-    current: sdkSession.model ? sdkModelDescriptor(sdkSession.model) : null,
-  } };
+  if (type === 'get_available_models') {
+    const currentOptions = await sdkVerifiedContextOptions(startedProvider, sdkSession.model);
+    return {success:true, data:{
+      models:await Promise.all(startedProvider.modelRuntime.getAvailableSnapshot().map(async model =>
+        sdkModelDescriptor(model, await sdkVerifiedContextOptions(startedProvider, model)))),
+      current:sdkSession.model ? sdkModelDescriptor(sdkSession.model, currentOptions) : null,
+      currentContextWindow:currentOptions.find(option => option.tokens === sdkSession.model?.contextWindow)?.id ?? null,
+    }};
+  }
   if (type === 'set_model') {
     const model = startedProvider.modelRuntime.getModel(fields.provider, fields.modelId);
     if (!model) throw new Error(`Model not found: ${fields.provider}/${fields.modelId}`);
@@ -285,7 +334,7 @@ async function sdkRequest(startedProvider, type, fields) {
       customInstructions: fields.customInstructions || undefined, replaceInstructions: fields.replaceInstructions === true });
     return { success: true, data: { ...result, tree: sdkTree(startedProvider), leafId: startedProvider.manager.getLeafId() } };
   }
-  if (type === 'reload') { await sdkSession.reload(); return { success: true, data: { commands: sdkCommands(sdkSession) } }; }
+  if (type === 'reload') { await sdkSession.reload(); if (session?.contextWindow) await sdkSetContext(startedProvider, session.contextWindow); return { success: true, data: { commands: sdkCommands(sdkSession) } }; }
   throw new Error(`Unknown Pi SDK request: ${type}`);
 }
 function dispatch(type, fields = {}) {
@@ -358,6 +407,7 @@ function recovery() {
     sessionFile: session.sessionFile,
     model: session.model,
     thinkingLevel: session.thinkingLevel,
+    contextWindow: session.contextWindow,
   } };
 }
 async function updateRecovery(metadata = {}) {
@@ -590,11 +640,15 @@ export async function execute(action, p) {
       thinkingLevel: typeof thinkingLevel === 'string'
         ? thinkingLevel
         : null,
-      revision: 0, turn: null };
+      contextWindow:null, revision: 0, turn: null };
     try {
       const currentModel = state.data?.model;
       if (session.model && (currentModel?.provider !== session.model.provider || currentModel?.modelId !== session.model.modelId)) {
         await dispatch('set_model', session.model);
+      }
+      const restoredWindow = previous?.data?.contextWindow;
+      if (restoredWindow && previous.data.model?.provider === session.model?.provider && previous.data.model?.modelId === session.model?.modelId) {
+        session.contextWindow = await sdkSetContext(provider, restoredWindow);
       }
       if (session.thinkingLevel && state.data?.thinkingLevel !== session.thinkingLevel) {
         await dispatch('set_thinking_level', { level: session.thinkingLevel });
@@ -609,7 +663,7 @@ export async function execute(action, p) {
   }
   if (!session || p.sessionId !== session.id) fail('invalid_session');
   if (action === 'send') {
-    if (session.turn) fail('busy');
+    if (session.turn || session.changingContext) fail('busy');
     const turn = { id: p.turnId, requestId: id, text: '', finalText: '', aborted: false, failed: false,
       nextItemNumber: 1, items: new Map(), nativeItems: new Map(), messageObjects: new WeakMap(),
       itemOrder: [], currentItem: null, agentMessages: [], toolItems: new Map() };
@@ -639,12 +693,21 @@ export async function execute(action, p) {
   }
   if (action === 'operation') {
     let result;
-    if (p.operationId === 'ext.dev.aibo.pi.model') {
+    if (p.operationId === 'ext.dev.aibo.pi.context-window') {
+      if (p.input?.action === 'set') {
+        if (session.turn || session.changingContext) fail('busy');
+        session.changingContext = true;
+        try { session.contextWindow = await sdkSetContext(provider, p.input.contextWindow); await updateRecovery(); }
+        finally { session.changingContext = false; }
+      } else if (p.input?.action !== 'list') fail('invalid_request', 'unknown context window action');
+      result = await dispatch('get_available_models');
+    } else if (p.operationId === 'ext.dev.aibo.pi.model') {
       if (p.input?.action === 'list') result = await dispatch('get_available_models');
       else if (p.input?.action === 'set' && p.input.provider && p.input.modelId) {
         const requestedModel = { provider: p.input.provider, modelId: p.input.modelId };
         result = await dispatch('set_model', requestedModel);
         session.model = requestedModel;
+        session.contextWindow = null;
       }
       else fail('invalid_request', 'provider and modelId are required when selecting a model');
     } else if (p.operationId === 'ext.dev.aibo.pi.reasoning') {

@@ -41,7 +41,7 @@ struct LiveTurn {
 fn passive_session_read(capability: &str, input: &Value) -> bool {
     match capability {
         "session.snapshot" | "command.list" | "skill.list" => true,
-        "model.select" | "model.reasoning" | "model.service-tier" => input["action"] == "list",
+        "model.select" | "model.reasoning" | "model.service-tier" | "model.context-window" => input["action"] == "list",
         "session.tree" => input["action"] == "get",
         _ => false,
     }
@@ -369,6 +369,7 @@ impl SessionHost {
             let reference_turn = running.as_ref().filter(|_| capability == "queue.manage"
                 && matches!(input["action"].as_str(), Some("steer" | "followUp")))
                 .map(|run| run.request_id.clone());
+            if capability == "model.context-window" && running.is_some() { return Err("busy: context window changes require an idle session".into()); }
             let response=if let Some(run)=running {
                 if run.caller!=caller {return Err("permission_denied: invocation belongs to another window".into());}
                 let generation: String = sqlx::query_scalar("SELECT generation_id FROM session_bindings WHERE session_id=?")

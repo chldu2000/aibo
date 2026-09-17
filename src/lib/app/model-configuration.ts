@@ -5,7 +5,8 @@ export type ModelConfigurationChange =
   | { kind: 'model'; model: string | null }
   | { kind: 'reasoning'; reasoningEffort: string | null }
   | { kind: 'configuration'; model: string; reasoningEffort: string | null }
-  | { kind: 'serviceTier'; serviceTier: string };
+  | { kind: 'serviceTier'; serviceTier: string }
+  | { kind: 'contextWindow'; contextWindow: string; modelReference: string };
 
 export type ModelConfigurationState = {
   currentReasoningEffort: string | null;
@@ -44,6 +45,17 @@ export function createModelConfigurationService(ports: {
       catalog: SessionModelCatalog | null, profile: SessionExecutionProfile | null) {
       if (!session.pluginInstallationId) {
         throw new Error("history_only: old session configuration is read-only");
+      }
+      if (change.kind === 'contextWindow') {
+        if (!session.capabilities.includes('model.context-window')) throw new Error('capability_unsupported: model.context-window');
+        // Refresh before applying: the open selector may belong to an older model.
+        const latest = await ports.getSessionModels(session.id);
+        if (latest.current?.reference !== change.modelReference) throw new Error('当前模型已变化，请重新选择上下文大小。');
+        if (!latest.current.contextWindows?.some(option => option.id === change.contextWindow)) throw new Error('当前模型不支持此上下文大小。');
+        await ports.facade.invoke(session, 'model.context-window', { action: 'set', contextWindow: change.contextWindow });
+        const updated = await ports.getSessionModels(session.id);
+        if (updated.current?.reference !== change.modelReference || updated.currentContextWindow !== change.contextWindow) throw new Error('插件未确认所选上下文大小，请刷新模型配置。');
+        return { catalog: updated, profile: await ports.getSessionExecutionProfile(session.id) };
       }
       const changesTier = change.kind === 'serviceTier';
       const changesModel = !changesTier && change.kind !== 'reasoning';

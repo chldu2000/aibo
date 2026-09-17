@@ -1,7 +1,7 @@
 {
   "schema": "aibo.plugin-manifest/v2",
   "pluginId": "dev.aibo.pi",
-  "version": "2.0.4",
+  "version": "2.0.5",
   "displayName": "Pi",
   "description": "Pi session capabilities.",
   "host": {
@@ -39,7 +39,9 @@
       "scope": "session",
       "required": true,
       "displayName": "Pi",
-      "icon": { "path": "M3 5.25h18v2.5h-3.15c-.72 3.18-.82 6.43-.3 9.75.13.82.62 1.25 1.45 1.25h1.25V21h-1.8c-1.92 0-3.08-.98-3.47-2.94-.67-3.37-.58-6.8.27-10.31H9.5V21H6.75V7.75H3v-2.5Z" },
+      "icon": {
+        "path": "M3 5.25h18v2.5h-3.15c-.72 3.18-.82 6.43-.3 9.75.13.82.62 1.25 1.45 1.25h1.25V21h-1.8c-1.92 0-3.08-.98-3.47-2.94-.67-3.37-.58-6.8.27-10.31H9.5V21H6.75V7.75H3v-2.5Z"
+      },
       "settings": {
         "schema": "aibo.agent-settings/v1",
         "version": 1,
@@ -97,7 +99,11 @@
                     "type": "string"
                   },
                   "approvalReviewer": {
-                    "enum": ["user", "auto-review", "none"]
+                    "enum": [
+                      "user",
+                      "auto-review",
+                      "none"
+                    ]
                   },
                   "filesystemPolicy": {
                     "type": "string"
@@ -789,6 +795,59 @@
           "inputSchema": {
             "type": "object",
             "additionalProperties": false
+          },
+          "outputSchema": {
+            "type": "object",
+            "properties": {
+              "recovery": {
+                "type": [
+                  "object",
+                  "null"
+                ]
+              },
+              "capabilities": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              }
+            },
+            "required": [
+              "recovery",
+              "capabilities"
+            ]
+          },
+          "effect": "read",
+          "permissions": [
+            "workspace.read"
+          ],
+          "timeoutMs": 120000,
+          "idempotent": false
+        },
+        {
+          "id": "dev.aibo.pi.operation.context-window",
+          "capability": {
+            "id": "dev.aibo.pi.model.context-window",
+            "version": "1.0.0"
+          },
+          "inputSchema": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "action"
+            ],
+            "properties": {
+              "action": {
+                "enum": [
+                  "list",
+                  "set"
+                ]
+              },
+              "contextWindow": {
+                "type": "string",
+                "minLength": 1
+              }
+            }
           },
           "outputSchema": {
             "type": "object",

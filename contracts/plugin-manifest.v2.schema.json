@@ -197,6 +197,7 @@
             "model.select",
             "model.reasoning",
             "model.service-tier",
+            "model.context-window",
             "command.list",
             "command.execute",
             "approval.respond",

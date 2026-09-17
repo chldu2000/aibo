@@ -1,6 +1,6 @@
 import type { PresentationContext, PresentationIntent } from '../../../packages/plugin-protocol/src/presentation-runtime';
 
-export type PresentationActionSpec = { operation: string; event: 'click' | 'input'; args: readonly (string | null)[] };
+export type PresentationActionSpec = { operation: string; event: 'click' | 'input' | 'change'; args: readonly (string | null)[] };
 /** Only current entries survive. Reappearing operations and reentered scopes receive fresh tokens. */
 export function createActionDirectory<Spec extends PresentationActionSpec>(prefix: string) {
   let serial = 0, owner = '';
@@ -22,8 +22,8 @@ export function createActionDirectory<Spec extends PresentationActionSpec>(prefi
       if (!Number.isSafeInteger(intent.context.revision) || intent.context.revision < 0 || intent.context.revision > context.revision) return null;
       const action = [...current.values()].find(action => action.token === intent.id && action.event === intent.event);
       if (!action || !specs.some(spec => identity(spec) === identity(action))) return null;
-      if (action.event === 'click' && intent.context.revision !== context.revision) return null;
-      if (action.event === 'input' && (typeof intent.value !== 'string' || intent.value.length > 1024 * 1024)) return null;
+      if (action.event !== 'input' && intent.context.revision !== context.revision) return null;
+      if (action.event !== 'click' && (typeof intent.value !== 'string' || intent.value.length > 1024 * 1024)) return null;
       return action;
     },
   };

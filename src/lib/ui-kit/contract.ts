@@ -59,6 +59,13 @@ export type UiButtonVariant =
   | 'abort'
   | 'send';
 
+export type UiModelContextSelectProps = {
+  options: readonly { id: string; label: string; description: string | null; tokens?: number | null }[];
+  current: string | null;
+  disabled: boolean;
+  onSelect: (id: string) => void | Promise<void>;
+};
+
 export type UiModelMatrixProps = PresentationModelMatrix & {
   onSelect: (model: string, reasoningEffort: string | null) => void | Promise<void>;
   onSelectServiceTier: (serviceTier: string) => void | Promise<void>;
@@ -180,6 +187,7 @@ export type UiKitAdapter = {
   Input: Component;
   Label: Component;
   ModelMatrix: Component<UiModelMatrixProps>;
+  ModelContextSelect: Component<UiModelContextSelectProps>;
   Separator: Component;
   Textarea: Component;
 };

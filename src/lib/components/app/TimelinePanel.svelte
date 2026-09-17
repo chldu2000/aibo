@@ -84,6 +84,7 @@
     onLoadModels: () => void | Promise<void>;
     onSelectModelConfiguration: (model: string, reasoningEffort: string | null) => void | Promise<void>;
     onSelectServiceTier: (serviceTier: string) => void | Promise<void>;
+    onSelectContextWindow: (contextWindow: string, modelReference: string) => void | Promise<void>;
     onCompact: () => void | Promise<void>;
     onComposerInput: (text: string) => void;
     onSelectWorkspacePath: (path: string) => void | Promise<void>;
@@ -147,6 +148,7 @@
     onLoadModels,
     onSelectModelConfiguration,
     onSelectServiceTier,
+    onSelectContextWindow,
     onCompact,
     onAddAttachments,
     onAddDirectory,
@@ -544,6 +546,7 @@
     onLoadModels={onLoadModels}
     onSelectModelConfiguration={onSelectModelConfiguration}
     onSelectServiceTier={onSelectServiceTier}
+    onSelectContextWindow={onSelectContextWindow}
     onComposerInput={onComposerInput}
     onSelectWorkspacePath={onSelectWorkspacePath}
   />

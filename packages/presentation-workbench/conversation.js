@@ -66,7 +66,15 @@ export function renderConversation(state,actions){
   const models=(state.modelCatalog?.models??[]).map(model=>section('model:'+model.reference,model.label,[text('model:description:'+model.reference,model.description),button('model:default:'+model.reference,'默认推理强度',find('selectModel',model.reference,null),{'aria-pressed':String(state.modelCatalog?.current?.reference===model.reference&&!state.modelConfiguration.selectedReasoningEffort)}),...model.reasoningEfforts.map(effort=>button('model:effort:'+model.reference+':'+effort.id,effort.label,find('selectModel',model.reference,effort.id),{'aria-pressed':String(state.modelCatalog?.current?.reference===model.reference&&state.modelConfiguration.selectedReasoningEffort===effort.id),title:effort.description??effort.label}))]));
   const fastTier=state.modelCatalog?.current?.serviceTiers?.find(tier=>tier.label?.trim().toLowerCase()==='fast');
   const fastAction=fastTier?find('selectServiceTier',state.modelCatalog?.currentServiceTier===fastTier.id?'default':fastTier.id):null;
-  composer.push(node('details','conversation:models',null,[node('summary','models:title',state.modelCatalog?.current?.label??'模型'),...controls(['loadModels']),fastAction?button('models:fast','⚡ '+fastTier.label,fastAction,{'aria-pressed':String(state.modelCatalog?.currentServiceTier===fastTier.id),title:fastTier.description??fastTier.label}):null,state.modelCatalogLoading?text('models:loading','正在加载模型'):null,...models]));
+  const contextAction=actions.find(action=>action.operation==='selectContextWindow');
+  const contextOptions=state.modelCatalog?.current?.contextWindows??[];
+  const contextCurrent=state.modelCatalog?.currentContextWindow;
+  const contextKnown=contextOptions.some(option=>option.id===contextCurrent);
+  const contextSelect=node('label','models:context-label',null,[text('models:context-title','上下文'),{
+    ...node('select','models:context',null,[...(!contextKnown?[node('option','models:context:unknown',contextOptions.length?'未提供当前值':'不支持',[],{value:'',disabled:true,selected:true})]:[]),...contextOptions.map(option=>node('option','models:context:'+option.id,option.label,[],{value:option.id,selected:option.id===contextCurrent}))],{'aria-label':'模型上下文大小',disabled:!contextAction,value:contextKnown?contextCurrent:''}),
+    ...(contextAction?{events:{change:contextAction.token}}:{}),
+  }]);
+  composer.push(node('details','conversation:models' ,null,[node('summary','models:title',state.modelCatalog?.current?.label??'模型'),...controls(['loadModels']),fastAction?button('models:fast','⚡ '+fastTier.label,fastAction,{'aria-pressed':String(state.modelCatalog?.currentServiceTier===fastTier.id),title:fastTier.description??fastTier.label}):null,contextSelect,state.modelCatalogLoading?text('models:loading','正在加载模型'):null,...models]));
   composer.push(node('details','conversation:access',null,[node('summary','access:title','访问权限'),...actions.filter(a=>a.operation==='selectAccess').map(action=>button('access:'+action.args[0],accessLabels[action.args[0]]??action.args[0],action)),renderExecutionProfile(state.executionProfile,'conversation:execution-profile')]));
   if(state.usage){
    const usage=state.usage;

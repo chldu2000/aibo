@@ -1,3 +1,4 @@
+import ModelContextSelect from './shadcn/ModelContextSelect.svelte';
 import SubagentDialog from './shadcn/SubagentDialog.svelte';
 import SubagentCard from './shadcn/SubagentCard.svelte';
 import GoalBar from './shadcn/GoalBar.svelte';
@@ -52,6 +53,7 @@ export const shadcnUiKit: UiKitAdapter = {
   Icon: IconComponent,
   Input: InputComponent,
   Label: LabelComponent,
+  ModelContextSelect,
   ModelMatrix: ModelMatrixComponent,
   Separator: SeparatorComponent,
   Textarea: TextareaComponent,

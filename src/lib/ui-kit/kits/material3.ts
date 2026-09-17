@@ -1,3 +1,4 @@
+import ModelContextSelect from './material3/ModelContextSelect.svelte';
 import SubagentDialog from './material3/SubagentDialog.svelte';
 import SubagentCard from './material3/SubagentCard.svelte';
 import GoalBar from './material3/GoalBar.svelte';
@@ -50,6 +51,7 @@ export const material3UiKit: UiKitAdapter = {
   Icon,
   Input,
   Label,
+  ModelContextSelect,
   ModelMatrix,
   Separator,
   Textarea,

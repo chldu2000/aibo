@@ -4,7 +4,7 @@
   import { sessionAgentKind } from '$lib/app/agent-kind';
   import { filterMentionSuggestions, type MentionCategory } from '$lib/app/mention-suggestions';
   import type { ModelConfigurationState } from '$lib/app/model-configuration';
-  import { AgentStatusMark, Button, Card, Icon, ModelMatrix, Textarea } from '$lib/ui-kit';
+  import { AgentStatusMark, Button, Card, Icon, ModelContextSelect, ModelMatrix, Textarea } from '$lib/ui-kit';
   import type { UiModelMatrixRow } from '$lib/ui-kit';
   import type { AgentCommand, AgentCommandCategory, ContextAttachment, SessionAccessMode, SessionExecutionProfile, SessionModelCatalog, Session, WorkspacePathSuggestion } from '$lib/types';
   import { scrollActiveOptionIntoView } from './active-option-scroll';
@@ -43,6 +43,7 @@
     onLoadModels: () => void | Promise<void>;
     onSelectModelConfiguration: (model: string, reasoningEffort: string | null) => void | Promise<void>;
     onSelectServiceTier: (serviceTier: string) => void | Promise<void>;
+    onSelectContextWindow: (contextWindow: string, modelReference: string) => void | Promise<void>;
     onComposerInput: (text: string) => void;
     onSelectWorkspacePath: (path: string) => void | Promise<void>;
   };
@@ -79,6 +80,7 @@
     onLoadModels,
     onSelectModelConfiguration,
     onSelectServiceTier,
+    onSelectContextWindow,
     onComposerInput,
     onSelectWorkspacePath,
   }: ComposerProps = $props();
@@ -613,6 +615,7 @@
                   <div class="composer-menu-heading">模型与推理</div>
                   <div class="composer-menu-detail">当前：{modelLabel}{reasoningLabel}</div>
                 </div>
+                <div class="composer-model-options">
                 {#if matrixFastTier && !modelCatalogLoading}
                   <Button
                     type="button"
@@ -627,6 +630,13 @@
                     {matrixFastTier.label}
                   </Button>
                 {/if}
+                <ModelContextSelect
+                  options={modelCatalog?.current?.contextWindows ?? []}
+                  current={modelCatalog?.currentContextWindow ?? null}
+                  disabled={matrixDisabled || modelCatalogLoading || !sessionCapabilities.includes('model.context-window')}
+                  onSelect={(id) => { if (modelCatalog?.current) void onSelectContextWindow(id, modelCatalog.current.reference); }}
+                />
+                </div>
               </div>
               {#if sessionRunning}
                 <div class="composer-menu-detail">会话运行中，模型与推理强度暂不可修改。</div>
@@ -683,6 +693,12 @@
     justify-content: space-between;
     gap: 12px;
     padding-right: 8px;
+  }
+
+  .composer-model-options {
+    display: flex;
+    align-items: center;
+    gap: 12px;
   }
 
   .composer-model-header-labels {

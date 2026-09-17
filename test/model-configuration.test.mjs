@@ -73,3 +73,31 @@ test('bound Pi uses the capability facade and unbound sessions reject configurat
   await assert.rejects(service.apply(legacy, { kind: "configuration", model: "model", reasoningEffort: null }, initialCatalog, { requested: { reasoningEffort: "high" } }), /history_only/);
   await assert.rejects(service.apply({ ...legacy, agent: 'external' }, { kind: 'model', model: 'model' }, initialCatalog, null), /history_only/);
 }));
+
+
+test('context windows use a separate capability, revalidate the model, and require backend confirmation', () => withModule(async ({ createModelConfigurationService }) => {
+  const calls = [];
+  const windows = [{ id: 'standard', label: '128K', tokens: 128000 }, { id: 'long', label: '1M', tokens: 1000000 }];
+  let catalog = { ...initialCatalog, current: { ...option, contextWindows: windows }, currentContextWindow: 'standard' };
+  const capable = { ...session, capabilities: [...session.capabilities, 'model.context-window'] };
+  let fail = false, confirm = true;
+  const service = createModelConfigurationService({ getSessionModels: async () => structuredClone(catalog), getSessionExecutionProfile: async () => null,
+    facade: { invoke: async (_session, capability, input) => { calls.push([capability, input]); if (fail) throw Error('Backend rejected context'); if (confirm) catalog.currentContextWindow = input.contextWindow; } } });
+  const change = { kind: 'contextWindow', contextWindow: 'long', modelReference: 'model' };
+  const result = await service.apply(capable, change, initialCatalog, null);
+  assert.equal(result.catalog.currentContextWindow, 'long');
+  assert.deepEqual(calls, [['model.context-window', { action: 'set', contextWindow: 'long' }]]);
+  assert.equal(result.catalog.currentReasoningEffort, 'high');
+  assert.equal(result.catalog.currentServiceTier, null);
+  await assert.rejects(service.apply(session, change, catalog, null), /model.context-window/);
+  await assert.rejects(service.apply(capable, { ...change, contextWindow: 'invented' }, catalog, null), /不支持/);
+  await assert.rejects(service.apply(capable, { ...change, modelReference: 'previous' }, catalog, null), /模型已变化/);
+  assert.equal(calls.length, 1);
+  fail = true;
+  await assert.rejects(service.apply(capable, change, catalog, null), /Backend rejected/);
+  fail = false; confirm = false; catalog.currentContextWindow = 'standard';
+  await assert.rejects(service.apply(capable, change, catalog, null), /未确认/);
+  assert.equal(catalog.currentContextWindow, 'standard');
+  catalog = { ...catalog, current: { ...option, contextWindows: [] } };
+  await assert.rejects(service.apply(capable, change, catalog, null), /不支持/);
+}));

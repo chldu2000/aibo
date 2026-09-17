@@ -118,3 +118,28 @@ test('goal pause and resume actions depend on capability, goal status and live e
  const action=directory.project(goalState).find(action=>action.operation==='resumeGoal');
  assert.equal(directory.resolve({...goalState,running:true},context,{id:action.token,event:'click',context}),null,'an idle resume token cannot restart a running goal');
 });
+
+
+test('context window dropdown is capability gated and rejects stale or invented selection intents', () => {
+  const model = { reference: 'model', serviceTiers: [], contextWindows: [{ id: 'standard', label: '128K' }, { id: 'long', label: '1M' }] };
+  const configured = { ...state, session: { ...state.session, capabilities: [...state.session.capabilities, 'model.context-window'] }, modelCatalog: { ...state.modelCatalog, current: model, currentContextWindow: 'standard' } };
+  const directory = createConversationDirectory();
+  const actions = directory.project(configured);
+  const action = actions.find(action => action.operation === 'selectContextWindow');
+  assert.equal(action.event, 'change');
+  const intent = { id: action.token, event: 'change', value: 'long', context };
+  assert.ok(directory.resolve(configured, context, intent));
+  assert.equal(directory.resolve(configured, context, { ...intent, value: 'invented' }), null);
+  assert.equal(directory.resolve(configured, context, { ...intent, context: { ...context, revision: 4 } }), null);
+  const flatten = node => [node, ...(node.children ?? []).flatMap(flatten)];
+  const select = flatten(renderConversation(configured, actions)).find(node => node.key === 'models:context');
+  assert.equal(select.tag, 'select'); assert.equal(select.attrs.disabled, false);
+  assert.equal(select.events.change, action.token);
+  assert.deepEqual(select.children.map(option => option.text), ['128K', '1M']);
+  for (const changed of [{ ...configured, running: true }, { ...configured, busy: true }, { ...configured, modelCatalogLoading: true }, { ...configured, session: { ...configured.session, capabilities: [] } }, { ...configured, modelCatalog: { ...configured.modelCatalog, current: { ...model, reference: 'different' } } }]) {
+    assert.equal(directory.resolve(changed, context, intent), null);
+  }
+  const unsupported = { ...configured, session: { ...configured.session, capabilities: [] } };
+  const disabled = flatten(renderConversation(unsupported, conversationActions(unsupported))).find(node => node.key === 'models:context');
+  assert.equal(disabled.attrs.disabled, true); assert.equal(disabled.events, undefined);
+});

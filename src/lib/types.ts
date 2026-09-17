@@ -145,12 +145,20 @@ export interface SessionModelOption {
   defaultReasoningEffort: string | null;
   reasoningEfforts: SessionReasoningOption[];
   serviceTiers: SessionServiceTierOption[];
+  contextWindows?: SessionContextWindowOption[];
 }
 
 export interface SessionReasoningOption {
   id: string;
   label: string;
   description: string | null;
+}
+
+export interface SessionContextWindowOption {
+  id: string;
+  label: string;
+  description: string | null;
+  tokens?: number | null;
 }
 
 export interface SessionServiceTierOption {
@@ -165,6 +173,7 @@ export interface SessionModelCatalog {
   currentReasoningEffort: string | null;
   reasoningEfforts: SessionReasoningOption[];
   currentServiceTier: string | null;
+  currentContextWindow?: string | null;
 }
 
 export interface AgentGoal {

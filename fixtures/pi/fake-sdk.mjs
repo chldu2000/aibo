@@ -21,7 +21,11 @@ const MODELS = [{
   reasoning: true,
   input: [],
   thinkingLevelMap: { off: 'off', high: 'high' },
-}];
+}, ...['openai', 'openai-codex', 'proxy'].map(provider => ({
+  provider, id:'gpt-5.6-sol', name:'Context test', reasoning:true, input:[],
+  api:'openai-responses', baseUrl:provider === 'proxy' ? 'https://proxy.example/v1' : 'https://api.openai.com/v1',
+  contextWindow:272000,
+}))];
 
 function textMessage(role, text) {
   return { role, content: [{ type: 'text', text }], stopReason: role === 'assistant' ? 'stop' : undefined };
@@ -122,6 +126,7 @@ class FakeModelRuntime {
   getAvailableSnapshot() { return MODELS.slice(); }
   getModel(provider, id) { return MODELS.find((model) => model.provider === provider && model.id === id); }
   hasConfiguredAuth() { return true; }
+  async getAuth() { return {auth:{baseUrl:process.env.PI_FAKE_AUTH_BASE_URL}}; }
 }
 
 class FakeSession {
@@ -154,6 +159,7 @@ class FakeSession {
   }
 
   async prompt(text) {
+    if (text.startsWith('context:') && this.model.contextWindow !== Number(text.slice(8))) throw Error('Running Pi model context mismatch');
     this.isStreaming = true;
     this.abortRequested = false;
     if (text === 'queue parity prompt') {
@@ -272,7 +278,10 @@ class FakeSession {
 
   getAvailableThinkingLevels() { return ['off', 'high']; }
   setThinkingLevel(level) { this.thinkingLevel = this.getAvailableThinkingLevels().includes(level) ? level : 'off'; }
-  async setModel(model) { this.model = model; }
+  async setModel(model) {
+    if (process.env.PI_FAKE_REJECT_CONTEXT === '1' && model.contextWindow === 1050000) throw Error('Native context rejected');
+    this.model = model;
+  }
   async reload() { return undefined; }
   async navigateTree(entryId) { this.sessionManager.leafId = entryId; return { cancelled: false, editorText: null }; }
   dispose() { this.listeners.clear(); }

@@ -169,3 +169,72 @@ Session providers can contribute editable, scoped settings through the host-owne
 ## Host waiting queue and optional steering
 
 Standard Runtime 2.1 providers declaring open/turn/cancel/close receive a host-owned durable waiting queue without a native queue implementation. Running delivery requires separately negotiated steering. Host-projected capabilities never replace provider negotiation data; uncertain delivery is never automatically retried. See [message queue](message-queue.md) for the contract and compatibility rules.
+
+
+## 模型上下文大小选择
+
+宿主支持独立会话能力 `model.context-window`。插件在自己的命名空间声明操作（如 `<pluginId>.model.context-window`），并仅在真正实现时将 `model.context-window` 加入会话 capabilities。Cursor 插件不因本次宿主变更自动获得此能力。
+
+模型目录（`model.select` 的 `action: "list"` 返回值）新增可选字段：
+
+```json
+{
+  "models": [{
+    "id": "example-model",
+    "displayName": "Example",
+    "contextWindows": [
+      { "id": "standard", "label": "128K", "tokens": 128000 },
+      { "id": "long", "label": "1M", "tokens": 1000000, "description": "Extended context" }
+    ]
+  }],
+  "current": "example-model",
+  "currentContextWindow": "standard"
+}
+```
+
+`id` 是后端不透明选项值，不根据显示标签反推 token 数。`label` 为显示文字，`description`、`tokens` 可选；`tokens` 若提供应为安全范围内正整数。选项必须按模型提供，不能将当前模型的列表复制给所有模型。旧目录缺失字段会归一化为空列表和空当前值，不影响既有模型、推理、Fast 功能。
+
+设置通过绑定插件调用 `<pluginId>.model.context-window`（版本 `1.0.0`），输入为 `{ "action": "set", "contextWindow": "long" }`。操作可参照模型设置声明 `effect: "read"`、`permissions: ["workspace.read"]`；实际参数由插件验证，不允许利用配置操作绕过工作区写入审批。插件应返回确认结果及更新后的 `recovery`，将选项应用于后续真实请求并在恢复时重放。宿主沿用既有 recovery 持久化机制；随后重新读取模型目录，以 `currentContextWindow` 确认成功，不在通用 execution profile 中假造配置。
+
+Fast 旁的上下文下拉框只有在会话声明能力、当前模型提供非空选项、目录加载完成且会话可修改时才启用。设置前重新读取目录，拒绝已经切换模型的旧选择；设置失败或未确认时读取真实状态并显示错误。运行中宿主拒绝上下文修改。外部呈现的 `selectContextWindow` 是带当前模型与允许值的 `change` 动作，拒绝旧 revision、已移除选项和伪造值。
+
+
+### 内置 Codex / Pi 的上下文规格来源
+
+`model.context-window` 表示选择经过来源核对的运行窗口，不表示插件能够提升服务端的硬上限。
+内置实现不会根据模型名称相似性为其他服务商推导长上下文规格，也不修改用户全局配置。
+
+- **Codex 2.0.9**：先通过 `model/list` 获取当前目录，再读取同一 `CODEX_HOME` 下原生维护的
+  `models_cache.json`，按精确 `slug` 匹配 `context_window` / `max_context_window`。
+  仅提供默认和最大两个不同的正整数窗口；缓存超过 24 小时、缺失、格式不支持、使用自定义
+  provider/endpoint 或 `model_catalog_json` 时关闭该模型的选择。没有硬编码 1M 或 API 产品页上限。
+  当前 app-server 的公开 `model/list` 不包含窗口字段，因此该缓存格式属于有保护的版本兼容依赖。
+- **Codex 应用路径**：对已加载线程的 `thread/resume.config` 实测会忽略窗口变更，因此停止该会话
+  专用进程，以 `-c model_context_window=...` 和窗口 90% 的自动压缩阈值重新启动，然后恢复线程。
+  读取运行进程的 `config/read` 核验结果，失败尝试恢复旧运行配置。恢复前重新核验目录；切换模型会
+  清掉上个模型的选择。尚无首条 rollout 的空线程沿用原有重建逻辑，当前宿主绑定的事件身份保持稳定。
+- **Pi 2.0.5**：默认规格来自 SDK `ModelRuntime` 的实际模型目录（内置数据、远程目录及用户覆盖的
+  合成结果）。额外档位只针对当前 SDK 0.84.4 的 `docs/models.md` 明确记录的
+  `openai/gpt-5.6-sol`、`openai/gpt-5.6-terra`、`openai/gpt-5.6-luna`：272K / 1.05M。
+  同时要求 API 为 `openai-responses`、模型地址和认证解析后的地址均为官方 OpenAI v1 地址。
+  OpenAI 官方模型页面确认三者支持 1,050,000 tokens。Codex 订阅、代理、其他服务商和不匹配的
+  自定义窗口不继承该档位；未知模型不猜测上限。
+- **Pi 应用路径**：调用真实 `AgentSession.setModel`，将窗口应用到运行中 Agent 使用的模型对象，
+  保留推理强度、目录原始定价和请求参数；确认后再发布状态和恢复信息。SDK 的压缩决策和请求管线
+  使用该模型对象。原生 API 没有单独的“申请 1M”参数，服务端根据实际输入执行已有窗口限制。
+  选择长窗口意味着允许 SDK 保留更多上下文，并不改变 API 服务端规格或账号权限。
+  会话恢复、资源重载和发送前均检查已选配置；模型切换时清除旧选择。
+
+验证：Codex CLI 0.153.4 实际短请求中，872K→272K 切换对应原生
+`tokenUsage.modelContextWindow` 828,400→258,400（95% 有效窗口）。Pi 使用真实 SDK 和模型目录的
+离线传输截获测试验证 1.05M→272K 进入请求管线并保留历史；未发送百万 token 的付费请求，
+这些测试不证明账号拥有额外权限。协议测试覆盖规格缺失、过期、自定义端点、认证地址重定向、
+失败回滚、跨进程恢复、运行中拒绝修改及切换模型隔离。
+
+来源：[Codex 配置参考](https://learn.chatgpt.com/docs/config-file/config-reference)、
+[Codex App Server](https://learn.chatgpt.com/docs/app-server)、
+[GPT-5.6 Sol](https://developers.openai.com/api/docs/models/gpt-5.6-sol)、
+[Terra](https://developers.openai.com/api/docs/models/gpt-5.6-terra)、
+[Luna](https://developers.openai.com/api/docs/models/gpt-5.6-luna)、
+本仓库锁定的 `@earendil-works/pi-coding-agent@0.84.4` 的 `docs/models.md` 与
+`dist/core/{agent-session,sdk,model-runtime}.js`。

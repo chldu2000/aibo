@@ -847,3 +847,18 @@ async fn external_queue_survives_restart_and_never_retries_uncertain_delivery() 
     assert_eq!(prompts, vec!["host queue delay", "after recovery"]);
     broker.stop_session(&session.id).await.unwrap(); db.close().await; fs::remove_dir_all(root).unwrap();
 }
+
+
+#[tokio::test]
+async fn context_window_changes_cannot_bypass_live_turn_admission() {
+    let (root, db, broker, host, session) = concurrent_session_fixture().await;
+    host.send_from("main", &session.id, "queue parity prompt", None).await.unwrap();
+    assert!(host.live.lock().await.contains_key(&session.id));
+    let error = host.invoke_capability_from("main", &session.id, "model.context-window", json!({"action":"set","contextWindow":"long"})).await.unwrap_err();
+    assert!(error.starts_with("busy:"), "{error}");
+    host.cancel_from("main", &session.id).await.unwrap();
+    wait_for_turn(&host, &session.id).await;
+    broker.stop_session(&session.id).await.unwrap();
+    db.close().await;
+    fs::remove_dir_all(root).unwrap();
+}

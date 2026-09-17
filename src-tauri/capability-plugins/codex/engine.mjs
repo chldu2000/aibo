@@ -1,10 +1,13 @@
 import { spawn } from 'node:child_process';
 import readline from 'node:readline';
+import { readFile } from 'node:fs/promises';
+import { homedir } from 'node:os';
+import path from 'node:path';
 
 const pluginId = 'dev.aibo.codex';
-const pluginVersion = '2.0.8';
+const pluginVersion = '2.0.9';
 
-export const capabilities = ['session.create', 'session.resume', 'session.close', 'turn.send', 'turn.cancel', 'queue.manage', 'stream.text', 'goal.manage', 'goal.pause', 'goal.resume', 'model.select', 'model.reasoning', 'model.service-tier', 'skill.list', 'approval.respond', 'user-input.respond', 'session.snapshot', 'session.fork'];
+export const capabilities = ['session.create', 'session.resume', 'session.close', 'turn.send', 'turn.cancel', 'queue.manage', 'stream.text', 'goal.manage', 'goal.pause', 'goal.resume', 'model.select', 'model.reasoning', 'model.service-tier', 'model.context-window', 'skill.list', 'approval.respond', 'user-input.respond', 'session.snapshot', 'session.fork'];
 let child = null;
 let childLines = null;
 let nextId = 1;
@@ -16,7 +19,7 @@ let publish;
 export function configure(callbacks) { publish = callbacks.emit; }
 const fail = (kind, message = kind) => { throw Object.assign(new Error(message), { kind }); };
 const emit = (type, payload, turnId = null, correlation = null) => publish({
-  nativeSessionId: session.threadId, turnId, type, correlation, payload,
+  nativeSessionId: session.eventSessionId ?? session.threadId, turnId, type, correlation, payload,
 });
 function rateLimitUsage(result) {
   const snapshot = result?.rateLimits;
@@ -55,7 +58,70 @@ function recovery() {
     model: session.model,
     reasoningEffort: session.reasoningEffort,
     serviceTier: session.serviceTier,
+    contextWindow: session.contextWindow,
   } };
+}
+// model/list omits context bounds. Use the native, freshly downloaded catalog,
+// never API marketing limits or another provider's same-named model.
+async function contextCatalog(models) {
+  try {
+    const {config} = await rpc('config/read', {includeLayers:false});
+    if (config.model_catalog_json || (config.model_provider && config.model_provider !== 'openai')
+      || config.model_providers?.openai?.base_url) return new Map();
+    const home = process.env.CODEX_HOME || path.join(homedir(), '.codex');
+    const cache = JSON.parse(await readFile(path.join(home, 'models_cache.json'), 'utf8'));
+    const age = Date.now() - Date.parse(cache.fetched_at);
+    if (!Number.isFinite(age) || age < -60_000 || age > 86_400_000 || !Array.isArray(cache.models)) return new Map();
+    return new Map(models.flatMap(model => {
+      const native = cache.models.find(item => item.slug === model.model);
+      const base = native?.context_window, max = native?.max_context_window;
+      if (!Number.isSafeInteger(base) || base <= 0 || !Number.isSafeInteger(max) || max <= base) return [];
+      return [[model.model, [base, max].map(tokens => ({id:String(tokens), tokens,
+        label:`${tokens / 1000}K`, description:tokens === base ? 'Codex 模型目录默认窗口' : 'Codex 模型目录最大窗口'}))]];
+    }));
+  } catch { return new Map(); }
+}
+async function modelCatalog() {
+  const result = await rpc('model/list', {limit:100, includeHidden:false});
+  const models = result?.data ?? [];
+  const contexts = await contextCatalog(models);
+  const current = session.model ?? models.find(model => model.isDefault)?.model ?? null;
+  const options = contexts.get(current) ?? [];
+  // Read the running process configuration, rather than echoing the requested ID.
+  let configured = null;
+  try { configured = (await rpc('config/read', {includeLayers:false})).config.model_context_window; } catch {}
+  const actual = configured ?? options[0]?.tokens;
+  return {current, currentServiceTier:session.serviceTier,
+    currentContextWindow:options.find(option => option.tokens === actual)?.id ?? null,
+    models:models.map(model => ({...model, contextWindows:contexts.get(model.model) ?? []}))};
+}
+async function switchContextWindow(contextWindow, targetModel = null) {
+  if (session.turn || session.changingContext) fail('busy');
+  const catalog = await modelCatalog();
+  const model = catalog.models.find(model => model.model === catalog.current);
+  if (!targetModel && !model?.contextWindows.some(option => option.id === contextWindow)) fail('invalid_request', 'Context window is not supported by the native model catalog');
+  const previous = session;
+  previous.changingContext = true;
+  const restore = async (window, selectedModel) => {
+    await stopCodex(); session = null;
+    await execute('resume', {sessionId:previous.id, workspace:{path:previous.cwd},
+      eventSessionId:previous.eventSessionId ?? previous.threadId, suppressStarted:true,
+      executionProfile:{...previous.executionProfile, model:selectedModel, reasoningEffort:previous.reasoningEffort},
+      binding:{pluginId, recovery:{schema:'dev.aibo.codex.recovery',version:1,data:{
+        threadId:previous.threadId, model:selectedModel,
+        reasoningEffort:previous.reasoningEffort, serviceTier:previous.serviceTier, contextWindow:window}}}});
+  };
+  try {
+    await restore(contextWindow, targetModel ?? catalog.current);
+    const confirmed = await modelCatalog();
+    if (!targetModel && confirmed.currentContextWindow !== contextWindow) fail('invalid_output', 'Codex did not apply the context window');
+    publishRecovery();
+    return confirmed;
+  } catch (error) {
+    try { await restore(previous.contextWindow, previous.model ?? catalog.current); }
+    catch { session = null; await stopCodex(); }
+    throw error;
+  } finally { previous.changingContext = false; }
 }
 function publishRecovery() { emit('session.info_changed', { recovery: recovery() }); }
 const boundedText = (value, max = 4_000) => {
@@ -259,7 +325,7 @@ async function startThread(cwd, approvalPolicy, approvalsReviewer, sandbox, mode
   validateThreadPolicy(result, approvalPolicy, approvalsReviewer, sandbox, model);
   const threadId = result?.thread?.id;
   if (!threadId) fail('invalid_session', 'Codex did not return a thread id');
-  return threadId;
+  return {threadId, model:result.model};
 }
 function updateGoal(goal) {
   if (JSON.stringify(session.goal) === JSON.stringify(goal)) return;
@@ -426,8 +492,8 @@ function onCodex(message) {
     void finishNativeTurn(turn, p.turn.id, status);
   }
 }
-async function startCodex(cwd) {
-  child = spawn('codex', ['app-server', '--stdio'], { cwd, stdio: ['pipe', 'pipe', 'pipe'] });
+async function startCodex(cwd, contextWindow = null) {
+  child = spawn('codex', ['app-server', '--stdio', ...(contextWindow ? ['-c', `model_context_window=${Number(contextWindow)}`, '-c', `model_auto_compact_token_limit=${Math.floor(Number(contextWindow) * 0.9)}`] : [])], { cwd, stdio: ['pipe', 'pipe', 'pipe'] });
   const startedChild = child;
   child.stderr.on('data', (chunk) => process.stderr.write(chunk));
   child.on('exit', () => {
@@ -454,7 +520,20 @@ async function stopCodex() {
 export async function execute(action, p) {
   if (action === 'create' || action === 'resume') {
     if (session || !p.workspace?.path) fail('permission_denied');
-    await startCodex(p.workspace.path);
+    const recoveryModel = p.binding?.recovery?.data?.model;
+    const contextWindow = p.executionProfile?.model && p.executionProfile.model !== recoveryModel
+      ? null : p.binding?.recovery?.data?.contextWindow ?? null;
+    if (contextWindow !== null && (typeof contextWindow !== 'string' || !/^[1-9][0-9]*$/.test(contextWindow) || !Number.isSafeInteger(Number(contextWindow)))) fail('invalid_recovery_data');
+    await startCodex(p.workspace.path, contextWindow);
+    if (contextWindow) {
+      try {
+        const models = (await rpc('model/list', {limit:100,includeHidden:false})).data ?? [];
+        const current = p.executionProfile?.model ?? p.binding?.recovery?.data?.model ?? models.find(model => model.isDefault)?.model;
+        const options = (await contextCatalog(models)).get(current) ?? [];
+        const config = (await rpc('config/read', {includeLayers:false})).config;
+        if (!options.some(option => option.id === contextWindow) || config.model_context_window !== Number(contextWindow)) fail('invalid_recovery_data', 'Native context specification is unavailable or was not applied');
+      } catch (error) { await stopCodex(); throw error; }
+    }
     const approvalPolicy = typeof p.executionProfile?.approvalPolicy === 'string'
       ? p.executionProfile.approvalPolicy
       : 'untrusted';
@@ -466,6 +545,7 @@ export async function execute(action, p) {
     const reasoningEffort = typeof p.executionProfile?.reasoningEffort === 'string' ? p.executionProfile.reasoningEffort : p.binding?.recovery?.data?.reasoningEffort ?? null;
     const serviceTier = typeof p.binding?.recovery?.data?.serviceTier === 'string' ? p.binding.recovery.data.serviceTier : null;
     let threadId;
+    let nativeModel = model;
     if (action === 'resume') {
       const recovery = p.binding?.recovery;
       if (p.binding?.pluginId !== pluginId || recovery?.schema !== 'dev.aibo.codex.recovery' || recovery?.version !== 1 || typeof recovery.data?.threadId !== 'string') fail('invalid_recovery_data');
@@ -474,6 +554,7 @@ export async function execute(action, p) {
         const result = await rpc('thread/resume', { threadId, approvalPolicy, ...(approvalsReviewer ? {approvalsReviewer} : {}), sandbox, ...(model ? {model} : {}) });
         validateThreadPolicy(result, approvalPolicy, approvalsReviewer, sandbox, model);
         threadId = result?.thread?.id ?? threadId;
+        nativeModel = result.model;
       } catch (error) {
         // Codex creates the thread record before its first rollout. If Aibo
         // restarts before the first turn, thread/resume cannot load that
@@ -482,21 +563,21 @@ export async function execute(action, p) {
         // this session response, while the selected model/reasoning values
         // remain in the recovery payload below.
         if (!isMissingRolloutError(error)) throw error;
-        threadId = await startThread(p.workspace.path, approvalPolicy, approvalsReviewer, sandbox, model);
+        ({threadId, model:nativeModel} = await startThread(p.workspace.path, approvalPolicy, approvalsReviewer, sandbox, model));
       }
     } else {
-      threadId = await startThread(p.workspace.path, approvalPolicy, approvalsReviewer, sandbox, model);
+      ({threadId, model:nativeModel} = await startThread(p.workspace.path, approvalPolicy, approvalsReviewer, sandbox, model));
     }
-    session = { id: p.sessionId, threadId, cwd: p.workspace.path,
-      model, reasoningEffort, serviceTier,
+    session = { id: p.sessionId, threadId, eventSessionId:p.eventSessionId, cwd: p.workspace.path,
+      model:nativeModel, reasoningEffort, serviceTier, contextWindow, executionProfile:p.executionProfile,
       revision: 0, turn: null, goal: null, tokenUsage: null, rateLimitUsage: null };
-    emit('session.started', { state: 'idle' });
+    if (!p.suppressStarted) emit('session.started', { state: 'idle' });
     await refreshRateLimits();
     return { nativeSessionId: threadId, recovery: recovery() };
   }
   if (!session || p.sessionId !== session.id) fail('invalid_session');
   if (action === 'send') {
-    if (session.turn) fail('busy');
+    if (session.turn || session.changingContext) fail('busy');
     const turn = newTurn(p);
     session.turn = turn;
     const turnParams = { threadId: session.threadId, input: [{ type: 'text', text: p.input.text }], summary: 'auto' };
@@ -508,7 +589,7 @@ export async function execute(action, p) {
     return { accepted: true };
   }
   if (action === 'resumeGoal') {
-    if (session.turn) fail('busy');
+    if (session.turn || session.changingContext) fail('busy');
     const turn = newTurn(p);
     session.turn = turn;
     const starting = (async () => {
@@ -582,9 +663,16 @@ export async function execute(action, p) {
     updateGoal(normalized);
     return { goal: normalized };
   }
+  if (action === 'operation' && p.operationId === 'ext.dev.aibo.codex.context-window') {
+    if (p.input?.action === 'list') return modelCatalog();
+    if (p.input?.action === 'set') return switchContextWindow(p.input.contextWindow);
+    fail('invalid_request', 'unknown context window action');
+  }
   if (action === 'operation' && p.operationId === 'ext.dev.aibo.codex.model') {
     if (p.input?.action === 'set') {
       if (typeof p.input.reference !== 'string' || !p.input.reference.trim()) fail('invalid_request', 'reference is required when selecting a model');
+      if (session.turn || session.changingContext) fail('busy');
+      if (session.contextWindow && p.input.reference !== session.model) return switchContextWindow(null, p.input.reference);
       session.model = p.input.reference;
     } else if (p.input?.action !== 'list') fail('invalid_request', 'unknown model action');
     const result = await rpc('model/list', { limit: 100, includeHidden: false });
@@ -593,7 +681,7 @@ export async function execute(action, p) {
       if (!selected?.serviceTiers?.some((tier) => tier?.id === session.serviceTier)) session.serviceTier = 'default';
     }
     if (p.input?.action === 'set') publishRecovery();
-    return { current: session.model, currentServiceTier: session.serviceTier, models: result?.data ?? [] };
+    return modelCatalog();
   }
   if (action === 'operation' && p.operationId === 'ext.dev.aibo.codex.service-tier') {
     if (p.input?.action === 'set') {

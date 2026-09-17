@@ -227,6 +227,7 @@
       case 'loadModels': await loadSessionModels(); break;
       case 'selectModel': await applySessionModelConfiguration(target!, detail ?? null); break;
       case 'selectServiceTier': await applySessionServiceTier(target!); break;
+      case 'selectContextWindow': await applySessionContextWindow(intent.value!, target!); break;
       case 'selectAccess': await applySessionAccess(target as SessionAccessMode); break;
       case 'compact': await compactCurrentSession(); break;
       case 'answer':
@@ -2653,6 +2654,10 @@
     await applyModelChange({ kind: 'configuration', model, reasoningEffort });
   }
 
+  async function applySessionContextWindow(contextWindow: string, modelReference: string): Promise<void> {
+    await applyModelChange({ kind: 'contextWindow', contextWindow, modelReference });
+  }
+
   async function applySessionServiceTier(serviceTier: string): Promise<void> {
     await applyModelChange({ kind: 'serviceTier', serviceTier });
   }
@@ -3883,6 +3888,7 @@
       onLoadModels={guard('onLoadModels', () => void loadSessionModels())}
       onSelectModelConfiguration={guard('onSelectModelConfiguration', (model, reasoningEffort) => void applySessionModelConfiguration(model, reasoningEffort))}
       onSelectServiceTier={guard('onSelectServiceTier', (serviceTier) => void applySessionServiceTier(serviceTier))}
+      onSelectContextWindow={guard('onSelectContextWindow', (contextWindow, modelReference) => void applySessionContextWindow(contextWindow, modelReference))}
       onCompact={guard('onCompact', () => void compactCurrentSession())}
     />
     {/if}

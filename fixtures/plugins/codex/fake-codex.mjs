@@ -49,9 +49,15 @@ input.on('line', (line) => {
   }
   const policy = {approvalPolicy:params.approvalPolicy,approvalsReviewer:params.approvalsReviewer,model:params.model,sandbox:{type:process.env.CODEX_FAKE_SANDBOX ?? ({'read-only':'readOnly','workspace-write':'workspaceWrite','danger-full-access':'dangerFullAccess'}[params.sandbox])}};
   if (method === 'initialize') write({ id, result: { userAgent: 'fake-codex/1.0.0' } });
+  else if (method === 'config/read') {
+    const override = process.argv.find(arg => arg.startsWith('model_context_window='));
+    write({id,result:{config:{model_context_window:override ? Number(override.split('=')[1]) : null,
+      model_provider:process.env.CODEX_FAKE_CUSTOM_PROVIDER || null}}});
+  }
   else if (method === 'account/rateLimits/read') write({ id, result: { rateLimits: { limitId: 'codex', limitName: '5 小时', planType: 'plus', primary: { usedPercent: 20, windowDurationMins: 300, resetsAt: 1900000000 }, secondary: { usedPercent: 40, windowDurationMins: 10080, resetsAt: 1900500000 }, credits: { balance: '12.5', hasCredits: true, unlimited: false } } } });
   else if (method === 'thread/start') write({ id, result: { thread: { id: process.env.CODEX_FAKE_THREAD_ID ?? 'native-thread' }, ...policy } });
   else if (method === 'thread/resume' && process.env.CODEX_FAKE_MISSING_ROLLOUT === '1') write({ id, error: { code: -32600, message: `no rollout found for thread id ${params.threadId}` } });
+  else if (method === 'thread/resume' && process.env.CODEX_FAKE_REJECT_CONTEXT === '1' && process.argv.includes('model_context_window=872000')) write({id,error:{code:-32000,message:'Native context rejected'}});
   else if (method === 'thread/resume') write({ id, result: { thread: { id: params.threadId }, ...policy } });
   else if (method === 'thread/list') write({id,result:{data:[{id:'catalog-thread',title:'Catalog entry',cwd:params.cwd,status:{type:'idle'}}]}});
   else if (method === 'thread/read' && childThreads.has(params.threadId) && process.env.CODEX_FAKE_SUBAGENT_READ_FAIL === '1') write({id,error:{code:-32000,message:'Child history unavailable'}});
@@ -69,6 +75,10 @@ input.on('line', (line) => {
     write({method:'item/agentMessage/delta',params:{threadId:params.threadId,turnId:nativeTurnId,itemId:'steered',delta:params.input[0].text}});
   }
   else if (method === 'turn/start') {
+    if (params.input?.[0]?.text?.startsWith('context:')) {
+      const expected = params.input[0].text.slice(8);
+      if (!process.argv.includes(`model_context_window=${expected}`)) {write({id,error:{code:-32000,message:'Native process context mismatch'}});return;}
+    }
     nativeTurnId = params.input?.[0]?.text?.startsWith('unique turn:') ? params.input[0].text : 'native-turn';
     if (params.summary !== 'auto') {
       write({ id, error: { code: -32000, message: 'reasoning summary was not requested' } });

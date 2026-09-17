@@ -333,3 +333,18 @@ test('subagent cards and detail dialogs remain skin-owned semantic controls', as
     }
   }
 });
+
+
+test('context window selector stays in the UI kit beside the Fast action', async () => {
+  const composer = await readFile(path.join(root, 'src/lib/components/app/Composer.svelte'), 'utf8');
+  const header = composer.slice(composer.indexOf('<div class="composer-model-header">'), composer.indexOf('{#if sessionRunning}', composer.indexOf('<div class="composer-model-header">')));
+  assert.match(header, /matrixFastTier/);
+  assert.match(header, /<ModelContextSelect/);
+  assert.match(header, /sessionCapabilities.includes\('model.context-window'\)/);
+  const contract = await readFile(path.join(root, 'src/lib/ui-kit/contract.ts'), 'utf8');
+  assert.match(contract, /ModelContextSelect: Component<UiModelContextSelectProps>/);
+  for (const kit of ['shadcn', 'material3']) {
+    const source = await readFile(path.join(root, `src/lib/ui-kit/kits/${kit}/ModelContextSelect.svelte`), 'utf8');
+    assert.match(source, /<select/); assert.match(source, /disabled=\{disabled \|\| options.length === 0\}/);
+  }
+});

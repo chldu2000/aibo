@@ -45,6 +45,10 @@ export function conversationActions(state: PresentationConversation): Spec[] {
     }
     const fastTier = state.modelCatalog?.current?.serviceTiers.find(tier => tier.label.trim().toLowerCase() === 'fast');
     if (capable('model.service-tier') && fastTier) add('selectServiceTier', [state.modelCatalog?.currentServiceTier === fastTier.id ? 'default' : fastTier.id]);
+    const contextWindows = state.modelCatalog?.current?.contextWindows ?? [];
+    if (capable('model.context-window') && !state.modelCatalogLoading && contextWindows.length) {
+      add('selectContextWindow', [state.modelCatalog!.current!.reference, ...contextWindows.map(option => option.id)], 'change');
+    }
     const access = sessionAgentKind(session) === 'codex' ? ['ask-for-approval', 'approve-for-me', 'full-access'] : ['read-only', 'plan', 'workspace-write'];
     for (const mode of access) add('selectAccess', [mode]);
     if (capable('compaction.run') && !state.compacting) add('compact');
@@ -102,6 +106,10 @@ export function createConversationDirectory() {
   const scope = (state: PresentationConversation) => JSON.stringify([state.workspace?.id ?? null, state.session?.id ?? null]);
   return {
     project: (state: PresentationConversation) => directory.project(conversationActions(state), scope(state)),
-    resolve: (state: PresentationConversation, context: PresentationContext, intent: PresentationIntent) => directory.resolve(conversationActions(state), scope(state), context, intent),
+    resolve: (state: PresentationConversation, context: PresentationContext, intent: PresentationIntent) => {
+      const action = directory.resolve(conversationActions(state), scope(state), context, intent);
+      if (action?.operation === 'selectContextWindow' && (intent.context.revision !== context.revision || !action.args.slice(1).includes(intent.value ?? null))) return null;
+      return action;
+    },
   };
 }

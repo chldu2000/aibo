@@ -75,12 +75,20 @@ interface SessionModelOption {
   defaultReasoningEffort: string | null;
   reasoningEfforts: SessionReasoningOption[];
   serviceTiers: SessionServiceTierOption[];
+  contextWindows?: SessionContextWindowOption[];
 }
 
 interface SessionReasoningOption {
   id: string;
   label: string;
   description: string | null;
+}
+
+interface SessionContextWindowOption {
+  id: string;
+  label: string;
+  description: string | null;
+  tokens?: number | null;
 }
 
 interface SessionServiceTierOption {
@@ -95,6 +103,7 @@ interface SessionModelCatalog {
   currentReasoningEffort: string | null;
   reasoningEfforts: SessionReasoningOption[];
   currentServiceTier: string | null;
+  currentContextWindow?: string | null;
 }
 
 interface AgentGoal {
@@ -253,14 +262,14 @@ export type PresentationConversation = {
 
 export type PresentationConversationOperation = 'copyCode' | 'openLink' | 'draft' | 'send' | 'stop' | 'retry' | 'queueSteer' | 'queueFollowUp' | 'clearQueue' | 'removeQueuedMessage' | 'sendQueuedMessage' | 'resumeQueue' | 'clearGoal' | 'pauseGoal' | 'resumeGoal'
   | 'addAttachments' | 'addDirectory' | 'removeAttachment' | 'selectPath' | 'selectSessionReference' | 'selectCommand'
-  | 'openSubagent' | 'loadOlder' | 'fork' | 'loadModels' | 'selectModel' | 'selectServiceTier' | 'selectAccess' | 'compact'
+  | 'openSubagent' | 'loadOlder' | 'fork' | 'loadModels' | 'selectModel' | 'selectServiceTier' | 'selectContextWindow' | 'selectAccess' | 'compact'
   | 'answer' | 'chooseAnswer' | 'submitAnswers' | 'cancelAnswers'
   | 'openTree' | 'closeTree' | 'refreshTree' | 'selectTreeNode';
 
 export type PresentationConversationAction = {
   token: string;
   operation: PresentationConversationOperation;
-  event: 'click' | 'input';
+  event: 'click' | 'input' | 'change';
   /** Fixed semantic arguments chosen by the host, not parameters supplied by package code. */
   args: readonly (string | null)[];
 };

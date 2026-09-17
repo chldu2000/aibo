@@ -544,3 +544,8 @@ hide running send-now without it. External conversation action directories apply
 the same gate, and the native host rechecks before accepting or claiming a message.
 Provider queue events cannot replace host-owned durable snapshots. No UI kit or
 skin owns queue persistence, delivery, attachment identity or uncertain recovery.
+
+
+### Model context window selector
+
+`UiKitAdapter.ModelContextSelect` receives only current option ID, model-specific option descriptors, disabled state and an onSelect callback. The runtime proxy selects the active implementation; both built-in skins own their dropdown styles. Composer places the control in the model header beside Fast and computes capability/lifecycle gating. External workbench presentations receive the same model metadata and a validated `selectContextWindow` change action. No provider identity or skin ID is used to infer support.
