@@ -89,6 +89,7 @@ test('management center owns plugin administration while plugin sessions stay in
   assert.match(app, /catch \(error\) \{ pluginError = toErrorMessage\(error\); \}/);
   assert.match(app, /finally \{ pluginBusy = false; \}/);
   assert.match(app, /settingsOpen = false;/, 'creating an extension session returns to the main workbench');
+  assert.match(app, /await createPluginSession\(choice\.installationId, choice\.contributionId, workspaceId\);\s*errorMessage = pluginError;/, 'a successful extension session clears any stale creation error');
   assert.match(manager, /!installation\.installed \|\| !installation\.enabled/, 'uninstalled plugins cannot create sessions');
   assert.match(manager, /installation\.sessionProviders as provider/);
   assert.match(manager, /!installation\.runnable/, 'plugins with missing required dependencies cannot create sessions');

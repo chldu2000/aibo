@@ -1074,7 +1074,7 @@
     if (!choice) return;
     if (workspaceId !== selectedWorkspaceId) activateWorkspace(workspaceId);
     await createPluginSession(choice.installationId, choice.contributionId, workspaceId);
-    if (pluginError) errorMessage = pluginError;
+    errorMessage = pluginError;
   }
 
   const managementNeedsAttention = $derived(
