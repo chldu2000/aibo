@@ -31,7 +31,8 @@
   let { installations, packagePath, onPackagePathChange, busy, onInstall, onEnabledChange, onUninstall, onCreateSession, onConfigure }: Props = $props();
   const fieldId = $props.id();
   let selectedId = $state<string | null>(null);
-  const selected = $derived(installations.find(item => item.id === selectedId) ?? installations[0]);
+  const installedPlugins = $derived(installations.filter(item => item.installed));
+  const selected = $derived(installedPlugins.find(item => item.id === selectedId) ?? installedPlugins[0]);
   let showingDetail = $state(false);
 
 </script>
@@ -47,12 +48,12 @@
         <Button type="submit" disabled={busy || !packagePath.trim()}>安装插件</Button>
       </form>
 
-      {#if installations.length === 0}
+      {#if installedPlugins.length === 0}
         <p role="status">尚未安装外部插件。</p>
       {:else}
         <div class="plugin-browser" class:showing-detail={showingDetail}>
           <nav class="plugin-navigation" aria-label="已安装插件">
-            {#each installations as installation (installation.id)}
+            {#each installedPlugins as installation (installation.id)}
               <Button variant={selected?.id === installation.id ? 'secondary' : 'ghost'} aria-pressed={selected?.id === installation.id}
                 onclick={() => { selectedId = installation.id; showingDetail = true; }}>
                 {installation.manifest.displayName} · {installation.pluginVersion}
@@ -61,7 +62,7 @@
           </nav>
           <div class="plugin-detail">
             <div class="plugin-list-back"><Button variant="ghost" onclick={() => (showingDetail = false)}>← 插件列表</Button></div>
-          {#each installations as installation (installation.id)}
+          {#each installedPlugins as installation (installation.id)}
             {#if selected?.id === installation.id}
             <Card aria-label={installation.manifest.displayName}>
               <CardHeader>
