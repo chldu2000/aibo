@@ -20,12 +20,13 @@ test('confirmed model catalogs survive running session navigation without fetchi
     const calls = [];
     const getSessionModels = async id => {
       calls.push(id);
+      if (id === 'cursor') throw Error('session operation failed: Contribution provider is unavailable');
       return { current: { label: id }, currentReasoningEffort: id === 'codex' ? 'high' : 'medium' };
     };
     ${source}
     async function select(id, state) {
       selectedSessionId = id;
-      selectedSession = { id, state, archived: false };
+      selectedSession = { id, state, archived: false, capabilities: id === 'cursor' ? ['turn.send', 'queue.manage'] : ['model.select'] };
       sessionModelCatalog = null; // Navigation clears the selected pane.
       refreshSelection();
       await Promise.resolve();
@@ -42,6 +43,11 @@ test('confirmed model catalogs survive running session navigation without fetchi
     await select('uncached', 'running');
     assert.equal(sessionModelCatalog, null);
     await select('codex', 'idle');
+    assert.deepEqual(calls, ['codex', 'pi', 'codex']);
+    await select('cursor', 'idle');
+    await loadSessionModels();
+    assert.equal(errorMessage, null, 'opening Cursor must not surface a model provider error');
+    assert.equal(sessionModelCatalog, null);
     assert.deepEqual(calls, ['codex', 'pi', 'codex']);
   })()`);
   await run(assert);

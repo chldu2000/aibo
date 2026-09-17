@@ -2581,7 +2581,7 @@
 
   async function loadSessionModels(): Promise<void> {
     const session = selectedSession;
-    if (!desktop || !session || session.archived || isSessionRunning(session)) return;
+    if (!desktop || !session || session.archived || !session.capabilities.includes('model.select') || isSessionRunning(session)) return;
     const generation = ++sessionModelRequestGeneration;
     sessionModelCatalogLoading = true;
     errorMessage = null;
