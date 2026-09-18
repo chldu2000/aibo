@@ -98,6 +98,14 @@ Adapter 负责将它转换为提供者特有的审核路由与权限授权。
 - 控制操作必须进入允许列表。事件只能在 invocation 有效期内发送；处理取消，并拒绝已不属于活动调用的控制。
 - 不能通过增加清单字段自行声明权限执行后端。尚未与宿主协商执行保障的外部提供者只能获得受限配置；原生沙箱支持需要宿主集成与验证。
 
+## 声明并协商可选会话功能
+
+自 `7865fad` 起，宿主按有效能力分发功能。有效集合取会话 open 声明、固定 release 清单操作、Runtime 实际握手与宿主合同的交集。可选操作使用 `<pluginId>.<feature>`、版本 `1.0.0` 和 [共享功能合同](../contracts/session-features.v1.json) 的精确 schema；不是添加 capabilities 字符串就能启用功能。
+
+功能响应需包含合同要求的 recovery、capabilities 和专用数据。命令可用 insertionText 声明插入语法；session.tree、session.timeline、session.snapshot 各自独立。执行权限和 accessModes 由宿主授权，插件不能自行声明原生后端。升级插件后应新建会话验证，旧会话仍固定旧 release。
+
+完整步骤、构建示例、Cursor 0.1.11 迁移范围及排查表见 [会话能力声明与协商](session-capability-negotiation.md)。
+
 ## 扩展呈现
 
 使用独立 `presentation.json` 包定制主题、控件、核心语义视图或整个工作台。

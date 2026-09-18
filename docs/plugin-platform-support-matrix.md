@@ -12,6 +12,7 @@
 | 旧 Agent runtime / view | 执行支持已移除 | 旧 PluginHost 与 v1 进程传输已删除；旧视图动作 IPC 与渲染组件已删除 |
 | Capability runtime | 2.0、2.1 | min/max 必须精确匹配同一受支持版本；2.1 增加 invocation 流与执行中控制，内置 Codex/Pi 及线程读取、分支、目录已接入共享 Broker；旧原生管理器已删除。实际初始化校验插件、release、generation 和操作身份；支持与验证限制见[会话能力迁移](./capability-session-migration.md) |
 | 语义视图 | contract 1.0.0 / protocol 1.0；contract 1.1.0 / protocol 1.1 | 每种组合要求 semanticView min/max 精确匹配；核心为 collection、detail、settings、inspector；1.1 增加受控写操作 |
+| 会话可选功能 | 1.0.0 | 清单、Runtime 握手、open 声明与宿主精确 schema 共同协商；功能不授予执行权限，见[迁移指南](session-capability-negotiation.md) |
 | 业务 capability | 插件声明的版本化契约 | 不设全局业务版本；命名空间、输入/输出 schema、提供者依赖范围与具体绑定共同约束选择，不因安装新版本自动换绑 |
 | 默认 renderer | dev.aibo.ui-default 1.0.0，semanticVersion 1.0.0 | 显式接受 experimental-v1、v1、v1.1 快照；四个核心语义必需；numbered-detail 1.0.0 可选，失败回退核心 detail |
 | 公共数据 SDK | @aibo/plugin-protocol 0.1.0 | 纯数据，不导出 DOM、框架或函数；包含 capability、semantic、presentation、renderer 数据合同 |

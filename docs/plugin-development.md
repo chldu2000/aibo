@@ -122,6 +122,16 @@ That shared file is an in-repository implementation reference, not a published S
   negotiated host enforcement receive a restricted profile; native sandbox support requires
   host integration and verification.
 
+## Negotiate optional session features
+
+Since `7865fad`, host features are dispatched by negotiated capabilities. The effective set intersects session-open claims, the pinned release manifest, the actual Runtime initialization handshake and host-supported contracts. Optional operations use `<pluginId>.<feature>`, version `1.0.0`, session scope, `effect: "read"` and `permissions: ["workspace.read"]`. Both schemas must exactly match a variant in the [feature registry](../contracts/session-features.v1.json); validate stricter business conditions in the handler.
+
+Advertise fully qualified capability IDs, versions and operation IDs in the handshake, and unqualified feature names such as `model.select` in the open response. Return recovery, capabilities and any feature-specific required fields in operation results. Claims alone do not enable features, and feature support does not grant execution authority. Host-approved execution profiles supply accessModes; plugins cannot self-authorize a native backend.
+
+Commands may provide insertionText for their insertion syntax. Tree navigation, timeline snapshots and remote thread summaries use independent session.tree, session.timeline and session.snapshot features. Presentation code must consume host actions and state rather than infer support from provider names. Publish a new plugin version and test a new session: existing sessions remain pinned to their previous release.
+
+See the [negotiation and migration guide (Chinese)](session-capability-negotiation.md) for a schema extraction example, Cursor 0.1.11 compatibility, execution boundaries and troubleshooting. Validate packaged-worker handshakes and real responses against the contracts; mocked engines do not establish native-engine or desktop compatibility.
+
 ## Extend presentation
 
 Create a separate `presentation.json` package to customize themes, controls, core semantic
@@ -173,7 +183,7 @@ Standard Runtime 2.1 providers declaring open/turn/cancel/close receive a host-o
 
 ## 模型上下文大小选择
 
-宿主支持独立会话能力 `model.context-window`。插件在自己的命名空间声明操作（如 `<pluginId>.model.context-window`），并仅在真正实现时将 `model.context-window` 加入会话 capabilities。Cursor 插件不因本次宿主变更自动获得此能力。
+宿主支持独立会话能力 `model.context-window`。插件在自己的命名空间声明操作（如 `<pluginId>.model.context-window`），并仅在真正实现时将 `model.context-window` 加入会话 capabilities。该功能仍须按共享合同完成声明与协商；Cursor 0.1.11 已适配。
 
 模型目录（`model.select` 的 `action: "list"` 返回值）新增可选字段：
 
@@ -188,13 +198,15 @@ Standard Runtime 2.1 providers declaring open/turn/cancel/close receive a host-o
     ]
   }],
   "current": "example-model",
-  "currentContextWindow": "standard"
+  "currentContextWindow": "standard",
+  "recovery": null,
+  "capabilities": ["model.select", "model.context-window"]
 }
 ```
 
 `id` 是后端不透明选项值，不根据显示标签反推 token 数。`label` 为显示文字，`description`、`tokens` 可选；`tokens` 若提供应为安全范围内正整数。选项必须按模型提供，不能将当前模型的列表复制给所有模型。旧目录缺失字段会归一化为空列表和空当前值，不影响既有模型、推理、Fast 功能。
 
-设置通过绑定插件调用 `<pluginId>.model.context-window`（版本 `1.0.0`），输入为 `{ "action": "set", "contextWindow": "long" }`。操作可参照模型设置声明 `effect: "read"`、`permissions: ["workspace.read"]`；实际参数由插件验证，不允许利用配置操作绕过工作区写入审批。插件应返回确认结果及更新后的 `recovery`，将选项应用于后续真实请求并在恢复时重放。宿主沿用既有 recovery 持久化机制；随后重新读取模型目录，以 `currentContextWindow` 确认成功，不在通用 execution profile 中假造配置。
+设置通过绑定插件调用 `<pluginId>.model.context-window`（版本 `1.0.0`），输入为 `{ "action": "set", "contextWindow": "long" }`。操作须按共享功能合同声明 `effect: "read"`、`permissions: ["workspace.read"]`；实际参数由插件验证，不允许利用配置操作绕过工作区写入审批。插件应返回确认结果及更新后的 `recovery` 和 `capabilities`，将选项应用于后续真实请求并在恢复时重放。宿主沿用既有 recovery 持久化机制；随后重新读取模型目录，以 `currentContextWindow` 确认成功，不在通用 execution profile 中假造配置。
 
 Fast 旁的上下文下拉框只有在会话声明能力、当前模型提供非空选项、目录加载完成且会话可修改时才启用。设置前重新读取目录，拒绝已经切换模型的旧选择；设置失败或未确认时读取真实状态并显示错误。运行中宿主拒绝上下文修改。外部呈现的 `selectContextWindow` 是带当前模型与允许值的 `change` 动作，拒绝旧 revision、已移除选项和伪造值。
 
