@@ -1,0 +1,879 @@
+{
+  "schema": "aibo.session-features/v1",
+  "version": "1.0.0",
+  "capabilities": {
+    "model.select": [
+      {
+        "inputSchema": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "action"
+          ],
+          "properties": {
+            "action": {
+              "enum": [
+                "list",
+                "set"
+              ]
+            },
+            "provider": {
+              "type": "string",
+              "minLength": 1
+            },
+            "modelId": {
+              "type": "string",
+              "minLength": 1
+            }
+          }
+        },
+        "outputSchema": {
+          "type": "object",
+          "properties": {
+            "recovery": {
+              "type": [
+                "object",
+                "null"
+              ]
+            },
+            "capabilities": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            }
+          },
+          "required": [
+            "recovery",
+            "capabilities"
+          ]
+        }
+      },
+      {
+        "inputSchema": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "action"
+          ],
+          "properties": {
+            "action": {
+              "enum": [
+                "list",
+                "set"
+              ]
+            },
+            "reference": {
+              "type": "string",
+              "minLength": 1
+            }
+          }
+        },
+        "outputSchema": {
+          "type": "object",
+          "properties": {
+            "recovery": {
+              "type": [
+                "object",
+                "null"
+              ]
+            },
+            "capabilities": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            }
+          },
+          "required": [
+            "recovery",
+            "capabilities"
+          ]
+        }
+      }
+    ],
+    "model.reasoning": [
+      {
+        "inputSchema": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "action"
+          ],
+          "properties": {
+            "action": {
+              "enum": [
+                "list",
+                "set"
+              ]
+            },
+            "level": {
+              "type": "string",
+              "minLength": 1
+            }
+          }
+        },
+        "outputSchema": {
+          "type": "object",
+          "properties": {
+            "recovery": {
+              "type": [
+                "object",
+                "null"
+              ]
+            },
+            "capabilities": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            }
+          },
+          "required": [
+            "recovery",
+            "capabilities"
+          ]
+        }
+      }
+    ],
+    "command.list": [
+      {
+        "inputSchema": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "action": {
+              "const": "get"
+            }
+          }
+        },
+        "outputSchema": {
+          "type": "object",
+          "properties": {
+            "recovery": {
+              "type": [
+                "object",
+                "null"
+              ]
+            },
+            "capabilities": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            }
+          },
+          "required": [
+            "recovery",
+            "capabilities"
+          ]
+        }
+      }
+    ],
+    "skill.list": [
+      {
+        "inputSchema": {
+          "type": "object",
+          "additionalProperties": false
+        },
+        "outputSchema": {
+          "type": "object",
+          "properties": {
+            "recovery": {
+              "type": [
+                "object",
+                "null"
+              ]
+            },
+            "capabilities": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            }
+          },
+          "required": [
+            "recovery",
+            "capabilities"
+          ]
+        }
+      },
+      {
+        "inputSchema": {
+          "type": "object",
+          "additionalProperties": false
+        },
+        "outputSchema": {
+          "type": "object",
+          "required": [
+            "skills",
+            "recovery",
+            "capabilities"
+          ],
+          "properties": {
+            "skills": {
+              "type": "array"
+            },
+            "recovery": {
+              "type": [
+                "object",
+                "null"
+              ]
+            },
+            "capabilities": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            }
+          }
+        }
+      }
+    ],
+    "queue.manage": [
+      {
+        "inputSchema": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "action"
+          ],
+          "properties": {
+            "action": {
+              "enum": [
+                "steer",
+                "followUp",
+                "clear"
+              ]
+            },
+            "message": {
+              "type": "string",
+              "minLength": 1
+            }
+          }
+        },
+        "outputSchema": {
+          "type": "object",
+          "properties": {
+            "recovery": {
+              "type": [
+                "object",
+                "null"
+              ]
+            },
+            "capabilities": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            }
+          },
+          "required": [
+            "recovery",
+            "capabilities"
+          ]
+        }
+      },
+      {
+        "inputSchema": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "action"
+          ],
+          "properties": {
+            "action": {
+              "enum": [
+                "steer"
+              ]
+            },
+            "message": {
+              "type": "string",
+              "minLength": 1
+            }
+          }
+        },
+        "outputSchema": {
+          "type": "object",
+          "properties": {
+            "recovery": {
+              "type": [
+                "object",
+                "null"
+              ]
+            },
+            "capabilities": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            }
+          },
+          "required": [
+            "recovery",
+            "capabilities"
+          ]
+        }
+      }
+    ],
+    "compaction.run": [
+      {
+        "inputSchema": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "instructions": {
+              "type": "string"
+            }
+          }
+        },
+        "outputSchema": {
+          "type": "object",
+          "properties": {
+            "recovery": {
+              "type": [
+                "object",
+                "null"
+              ]
+            },
+            "capabilities": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            }
+          },
+          "required": [
+            "recovery",
+            "capabilities"
+          ]
+        }
+      }
+    ],
+    "session.tree": [
+      {
+        "inputSchema": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "action": {
+              "enum": [
+                "get",
+                "navigate"
+              ]
+            },
+            "entryId": {
+              "type": "string",
+              "minLength": 1
+            },
+            "summarize": {
+              "type": "boolean"
+            },
+            "customInstructions": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          }
+        },
+        "outputSchema": {
+          "type": "object",
+          "properties": {
+            "recovery": {
+              "type": [
+                "object",
+                "null"
+              ]
+            },
+            "capabilities": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            }
+          },
+          "required": [
+            "recovery",
+            "capabilities"
+          ]
+        }
+      }
+    ],
+    "session.reload": [
+      {
+        "inputSchema": {
+          "type": "object",
+          "additionalProperties": false
+        },
+        "outputSchema": {
+          "type": "object",
+          "properties": {
+            "recovery": {
+              "type": [
+                "object",
+                "null"
+              ]
+            },
+            "capabilities": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            }
+          },
+          "required": [
+            "recovery",
+            "capabilities"
+          ]
+        }
+      }
+    ],
+    "model.context-window": [
+      {
+        "inputSchema": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "action"
+          ],
+          "properties": {
+            "action": {
+              "enum": [
+                "list",
+                "set"
+              ]
+            },
+            "contextWindow": {
+              "type": "string",
+              "minLength": 1
+            }
+          }
+        },
+        "outputSchema": {
+          "type": "object",
+          "properties": {
+            "recovery": {
+              "type": [
+                "object",
+                "null"
+              ]
+            },
+            "capabilities": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            }
+          },
+          "required": [
+            "recovery",
+            "capabilities"
+          ]
+        }
+      }
+    ],
+    "session.timeline": [
+      {
+        "inputSchema": {
+          "type": "object",
+          "additionalProperties": false
+        },
+        "outputSchema": {
+          "type": "object",
+          "properties": {
+            "recovery": {
+              "type": [
+                "object",
+                "null"
+              ]
+            },
+            "capabilities": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "branch": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "required": [
+                  "id"
+                ],
+                "properties": {
+                  "id": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "role": {
+                    "type": "string"
+                  },
+                  "type": {
+                    "type": "string"
+                  },
+                  "summary": {
+                    "type": "string"
+                  },
+                  "parts": {
+                    "type": "array",
+                    "items": {
+                      "type": "object"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "required": [
+            "recovery",
+            "capabilities",
+            "branch"
+          ]
+        }
+      }
+    ],
+    "goal.manage": [
+      {
+        "inputSchema": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "action"
+          ],
+          "properties": {
+            "action": {
+              "enum": [
+                "get",
+                "set",
+                "clear",
+                "pause"
+              ]
+            },
+            "objective": {
+              "type": "string",
+              "minLength": 1
+            },
+            "tokenBudget": {
+              "type": "integer",
+              "minimum": 1
+            }
+          }
+        },
+        "outputSchema": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "goal",
+            "recovery",
+            "capabilities"
+          ],
+          "properties": {
+            "goal": {
+              "type": [
+                "object",
+                "null"
+              ]
+            },
+            "recovery": {
+              "type": [
+                "object",
+                "null"
+              ]
+            },
+            "capabilities": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            }
+          }
+        }
+      }
+    ],
+    "model.service-tier": [
+      {
+        "inputSchema": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "action"
+          ],
+          "properties": {
+            "action": {
+              "enum": [
+                "list",
+                "set"
+              ]
+            },
+            "tier": {
+              "type": "string",
+              "minLength": 1
+            }
+          }
+        },
+        "outputSchema": {
+          "type": "object",
+          "properties": {
+            "current": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "recovery": {
+              "type": [
+                "object",
+                "null"
+              ]
+            },
+            "capabilities": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            }
+          },
+          "required": [
+            "current",
+            "recovery",
+            "capabilities"
+          ]
+        }
+      }
+    ],
+    "approval.respond": [
+      {
+        "inputSchema": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "requestId",
+            "decision"
+          ],
+          "properties": {
+            "requestId": {
+              "type": "string",
+              "minLength": 1
+            },
+            "decision": {
+              "enum": [
+                "accept",
+                "cancel"
+              ]
+            }
+          }
+        },
+        "outputSchema": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "resolved",
+            "recovery",
+            "capabilities"
+          ],
+          "properties": {
+            "resolved": {
+              "const": true
+            },
+            "recovery": {
+              "type": [
+                "object",
+                "null"
+              ]
+            },
+            "capabilities": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            }
+          }
+        }
+      }
+    ],
+    "user-input.respond": [
+      {
+        "inputSchema": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "requestId",
+            "answers"
+          ],
+          "properties": {
+            "requestId": {
+              "type": "string",
+              "minLength": 1
+            },
+            "answers": {
+              "type": "object"
+            }
+          }
+        },
+        "outputSchema": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "resolved",
+            "recovery",
+            "capabilities"
+          ],
+          "properties": {
+            "resolved": {
+              "const": true
+            },
+            "recovery": {
+              "type": [
+                "object",
+                "null"
+              ]
+            },
+            "capabilities": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            }
+          }
+        }
+      }
+    ],
+    "session.snapshot": [
+      {
+        "inputSchema": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {}
+        },
+        "outputSchema": {
+          "type": "object",
+          "required": [
+            "recovery",
+            "capabilities",
+            "thread"
+          ],
+          "properties": {
+            "recovery": {
+              "type": [
+                "object",
+                "null"
+              ]
+            },
+            "capabilities": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "thread": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "id",
+                "title",
+                "cwd",
+                "status",
+                "updatedAt",
+                "turnCount"
+              ],
+              "properties": {
+                "id": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "title": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "cwd": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "status": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "updatedAt": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "turnCount": {
+                  "type": [
+                    "integer",
+                    "null"
+                  ],
+                  "minimum": 0
+                }
+              }
+            }
+          }
+        }
+      }
+    ],
+    "session.fork": [
+      {
+        "inputSchema": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "nativeTurnId": {
+              "type": "string",
+              "minLength": 1
+            }
+          }
+        },
+        "outputSchema": {
+          "type": "object",
+          "required": [
+            "recovery",
+            "capabilities",
+            "fork"
+          ],
+          "properties": {
+            "recovery": {
+              "type": [
+                "object",
+                "null"
+              ]
+            },
+            "capabilities": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "fork": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "nativeSessionId",
+                "recovery"
+              ],
+              "properties": {
+                "nativeSessionId": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "recovery": {
+                  "type": [
+                    "object",
+                    "null"
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    ]
+  }
+}

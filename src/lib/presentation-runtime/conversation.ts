@@ -3,7 +3,6 @@ import type { PresentationContext, PresentationIntent } from '../../../packages/
 import { createActionDirectory } from './action-directory.ts';
 import { answeredRequest } from '../app/user-input-drafts.ts';
 import { parseSubagent } from '../app/subagents.ts';
-import { sessionAgentKind } from '../app/agent-kind.ts';
 
 import {splitSessionReferences} from '../../../packages/presentation-workbench/session-references.js';
 import {markdownTargets} from '../../../packages/presentation-workbench/markdown.js';
@@ -49,7 +48,7 @@ export function conversationActions(state: PresentationConversation): Spec[] {
     if (capable('model.context-window') && !state.modelCatalogLoading && contextWindows.length) {
       add('selectContextWindow', [state.modelCatalog!.current!.reference, ...contextWindows.map(option => option.id)], 'change');
     }
-    const access = sessionAgentKind(session) === 'codex' ? ['ask-for-approval', 'approve-for-me', 'full-access'] : ['read-only', 'plan', 'workspace-write'];
+    const access = state.executionProfile?.sessionId === session.id ? state.executionProfile.accessModes ?? [] : [];
     for (const mode of access) add('selectAccess', [mode]);
     if (capable('compaction.run') && !state.compacting) add('compact');
     if (capable('session.fork')) {

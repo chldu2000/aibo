@@ -370,7 +370,7 @@
                             <Button variant="ghost" size="icon" type="button" aria-label="取消归档" title="取消归档" onclick={() => onUnarchiveSession(session.id)} disabled={busy}>
                               <Icon name="archive-restore" size={13} />
                             </Button>
-                          {:else if session.agent === 'codex'}
+                          {:else if session.canSyncSnapshot}
                             <Button variant="ghost" size="icon" type="button" aria-label="归档会话" title="归档" onclick={() => onRequestArchiveSession(session.id)} disabled={busy || isSessionRunning(session) || archivingSessionId !== null}>
                               <Icon name="archive" size={13} />
                             </Button>

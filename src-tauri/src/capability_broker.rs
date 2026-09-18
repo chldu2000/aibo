@@ -26,7 +26,8 @@ fn input_limit(capability: &str) -> usize {
     match capability {
         "aibo.session.turn" | "aibo.session.turn.write"
         // Queue messages carry the same quoted session context as turn sends.
-        | "dev.aibo.pi.queue.manage" => 262_144,
+        => 262_144,
+        name if name.ends_with(".queue.manage") => 262_144,
         // A host tool reply may contain a base64-encoded read of up to 512 KiB.
         // Reserve space below the transport's 1 MiB frame limit for its envelope.
         "aibo.session.tool.respond" => 786_432,
@@ -71,7 +72,7 @@ fn fail(code: &str, message: &str) -> Failure { Failure { code: code.into(), mes
 fn database(_: impl std::fmt::Display) -> Failure { fail("provider_unavailable", "Capability storage is unavailable") }
 #[derive(Deserialize, Serialize, Debug)]
 #[serde(rename_all = "camelCase")]
-pub(crate) struct Response { pub instance_id: String, pub invocation_id: String, pub installation_id: String, pub generation_id: String, pub output: Value }
+pub(crate) struct Response { pub instance_id: String, pub invocation_id: String, pub installation_id: String, pub generation_id: String, pub output: Value, #[serde(skip)] pub negotiated_operations: Value }
 #[derive(Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub(crate) struct Provider {
@@ -459,9 +460,9 @@ impl Broker {
             return Err(fail("incompatible_version", "Runtime did not negotiate the declared operation"));
         }
         sqlx::query("UPDATE capability_invocations SET generation_id=? WHERE id=?").bind(&runtime.generation_id).bind(id).execute(&self.db).await.map_err(database)?;
-        Ok::<_,Failure>(runtime)
+        Ok::<_,Failure>((runtime, handshake["operations"].clone()))
         };
-        let runtime = tokio::select! {
+        let (runtime, negotiated_operations) = tokio::select! {
             biased;
             _ = chain.cancelled() => return Err(fail("cancelled", "Invocation was cancelled")),
             _ = tokio::time::sleep_until(chain.deadline.into()) => return Err(fail("timeout", "Invocation deadline expired")),
@@ -524,7 +525,7 @@ impl Broker {
         if raw["invocationId"] != id || raw["generationId"] != runtime.generation_id || raw["output"].to_string().len() > MAX_OUTPUT || !raw.as_object().is_some_and(|object|object.len() == 3 && object.contains_key("output")) || !jsonschema::options().build(&provider.operation["outputSchema"]).map_err(database)?.is_valid(&raw["output"]) {
             return Err(fail("invalid_output", "Runtime returned a stale or invalid result"));
         }
-        Ok(Response { instance_id: slot.id.clone(), invocation_id: id.into(), installation_id: provider.installation_id.clone(), generation_id: runtime.generation_id.clone(), output: raw["output"].clone() })
+        Ok(Response { instance_id: slot.id.clone(), invocation_id: id.into(), installation_id: provider.installation_id.clone(), generation_id: runtime.generation_id.clone(), output: raw["output"].clone(), negotiated_operations })
     }
     async fn child_call(&self, child_id: &str, params: &Value, parent_id: &str, runtime: &PluginRuntime, request: &Request, provider: &Provider, chain: &Chain) -> Result<Response, Failure> {
         let child: ChildRequest = serde_json::from_value(params.clone()).map_err(|_|fail("invalid_input", "Invalid dependency call envelope"))?;

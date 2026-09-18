@@ -10,6 +10,7 @@ impl SessionHost {
         if self.live.lock().await.contains_key(session_id) { return Err("busy: session must be idle before branching".into()); }
         self.open(caller, session_id).await?;
         let (source, manifest) = self.metadata(session_id).await?;
+        if !source.capabilities.iter().any(|cap| cap == "session.fork") { return Err("capability_unsupported: session.fork".into()); }
         if source.archived { return Err("invalid_session: archived session cannot branch".into()); }
         let saved = self.saved_binding(session_id).await?.ok_or("history_only: missing capability binding")?;
         let turns = sqlx::query("SELECT id,external_turn_id,status,input_text,output_text,started_at,completed_at FROM turns WHERE session_id=? ORDER BY started_at,id")
@@ -49,7 +50,7 @@ impl SessionHost {
             .bind(&new_id).bind(&source.workspace_id).bind(&source.agent).bind(format!("{} · 分支",source.label)).bind(&now).bind(&now).bind(&source.plugin_installation_id)
             .execute(&mut *tx).await.map_err(|e|e.to_string())?;
         sqlx::query("INSERT INTO session_bindings(session_id,external_session_id,generation_id,adapter_version,parent_external_session_id,bound_at,plugin_binding_json,plugin_capabilities_json) VALUES(?,?,NULL,'2.1',?,?,?,?)")
-            .bind(&new_id).bind(native).bind(saved["nativeSessionId"].as_str()).bind(&now).bind(document.to_string()).bind(response.output["capabilities"].to_string())
+            .bind(&new_id).bind(native).bind(saved["nativeSessionId"].as_str()).bind(&now).bind(document.to_string()).bind(json!(crate::session_contract::negotiate(&manifest, &source.agent, &response.output["capabilities"], &response.negotiated_operations)).to_string())
             .execute(&mut *tx).await.map_err(|e|e.to_string())?;
         let profile = sqlx::query("INSERT INTO session_execution_profiles(session_id,schema_version,requested_json,enforced_json,unsupported_json,adapter_capabilities_json,native_sandbox,resolved_at,created_at,updated_at,enforcement_backend) SELECT ?,schema_version,requested_json,enforced_json,unsupported_json,adapter_capabilities_json,native_sandbox,resolved_at,?,?,enforcement_backend FROM session_execution_profiles WHERE session_id=?")
             .bind(&new_id).bind(&now).bind(&now).bind(session_id).execute(&mut *tx).await.map_err(|e|e.to_string())?;

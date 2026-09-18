@@ -254,12 +254,13 @@
     <div class="timeline-heading-actions">
           {@render presentationActions?.()}
       {#if session}
-        {#if sessionKind === 'codex' && !sessionArchived}
+        {#if session?.capabilities.includes('session.fork') && !sessionArchived}
           <Button variant="ghost" size="sm" type="button" onclick={() => onForkSession()} disabled={busy || sessionRunning || selectedSessionArchiving} title="从最新完成的回复创建分支">
             <Icon name="branch" size={13} /> 分支
           </Button>
-        {:else if sessionKind === 'pi'}
-          <Button variant="ghost" size="sm" type="button" onclick={onOpenPiTree} disabled={selectedSessionArchiving} title="打开 Pi 会话树">
+        {/if}
+        {#if session?.capabilities.includes('session.tree')}
+          <Button variant="ghost" size="sm" type="button" onclick={onOpenPiTree} disabled={selectedSessionArchiving} title="打开会话树">
             <Icon name="branch" size={13} /> 会话树
           </Button>
         {/if}
@@ -295,7 +296,7 @@
             加载更早的 {Math.min(hiddenTimelineCount, 80)} 条消息
           </Button>
         {/if}
-        {#each groupTimelineItems(visibleTimeline, sessionKind === 'pi') as renderItem (renderItem.id)}
+        {#each groupTimelineItems(visibleTimeline, session?.capabilities.includes('session.timeline') ?? false) as renderItem (renderItem.id)}
           {#if renderItem.kind === 'tool-group'}
             <Card as="article" data-presentation-message={'message-group:' + renderItem.id} class="timeline-entry tool-entry tool-group-entry">
               <details class="tool-group">
@@ -356,7 +357,7 @@
                 <Badge variant={item.role === 'assistant' ? 'secondary' : 'outline'}>{item.role === 'assistant' ? (sessionKind === 'pi' ? 'PI' : sessionKind === 'codex' ? 'CODEX' : 'AGENT') : item.role === 'system' && item.toolName === 'reasoning' ? 'THINKING' : item.role.toUpperCase()}</Badge>
                 <div class="entry-meta-actions">
                   <Badge variant={item.status === 'failed' ? 'destructive' : item.status === 'queued' ? 'secondary' : 'outline'}>{statusLabel(item.status)}</Badge>
-                  {#if sessionKind === 'codex' && !sessionArchived && item.turnId && forkBoundaryMessageIds.has(item.id)}
+                  {#if session?.capabilities.includes('session.fork') && !sessionArchived && item.turnId && forkBoundaryMessageIds.has(item.id)}
                     <Button variant="ghost" size="icon" type="button" aria-label="从此回复创建会话分支" title="从此回复创建分支" onclick={() => onForkSession(item.turnId!)} disabled={busy || sessionRunning || selectedSessionArchiving}>
                       <Icon name="branch" size={13} />
                     </Button>
@@ -564,7 +565,7 @@
         <span title={limit.resetsAt ? `重置于 ${new Date(limit.resetsAt * 1000).toLocaleString()}` : undefined}>{limitLabel(limit)}剩余 {Math.max(0, 100 - Math.round(limit.usedPercent))}%</span>
       {/each}
       {#if usageValues.credits?.unlimited}<span>Credits 不限量</span>{:else if usageValues.credits?.balance}<span>Credits {usageValues.credits.balance}</span>{/if}
-      {#if sessionKind === 'pi' && !sessionRunning && !sessionArchived && usageValues.contextUsed !== null}
+      {#if session?.capabilities.includes('compaction.run') && !sessionRunning && !sessionArchived && usageValues.contextUsed !== null}
         <Button class="usage-compact-button" variant="ghost" size="sm" type="button" onclick={onCompact} disabled={busy || contextCompacting}>
           {contextCompacting ? '压缩中…' : '压缩上下文'}
         </Button>

@@ -326,6 +326,67 @@
           }
         }
       }
+    },
+    "aibo.session.catalog": {
+      "inputSchema": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {}
+      },
+      "outputSchema": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "threads"
+        ],
+        "properties": {
+          "threads": {
+            "type": "array",
+            "maxItems": 100,
+            "items": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "id",
+                "title",
+                "cwd",
+                "status",
+                "updatedAt"
+              ],
+              "properties": {
+                "id": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "title": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "cwd": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "status": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "updatedAt": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
     }
   }
 }

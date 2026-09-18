@@ -2,7 +2,6 @@
   import { Badge, Button, Card, CardContent, CardHeader, CardTitle, Icon } from '$lib/ui-kit';
   import type { PiSessionTreeNode, PiSessionTreeSnapshot } from '$lib/types';
   import type { SessionPanelView } from './view-types';
-  import { sessionAgentKind } from '$lib/app/agent-kind';
 
   type GraphNode = { node: PiSessionTreeNode; x: number; y: number };
   type GraphEdge = { id: string; fromX: number; fromY: number; toX: number; toY: number };
@@ -84,12 +83,12 @@
 
 <svelte:window onkeydown={handleWindowKeydown} />
 
-{#if open && sessionAgentKind(session) === 'pi'}
+{#if open && session?.capabilities.includes('session.tree')}
   <div class="pi-tree-overlay" role="presentation" onclick={requestClose}>
     <Card class="pi-tree-dialog" role="dialog" aria-modal="true" aria-labelledby="pi-tree-title" onclick={(event) => event.stopPropagation()}>
       <CardHeader class="pi-tree-dialog-header">
         <div class="pi-tree-dialog-title">
-          <CardTitle id="pi-tree-title">Pi 会话树</CardTitle>
+          <CardTitle id="pi-tree-title">会话树</CardTitle>
           <small>{session.label}</small>
         </div>
         <div class="pi-tree-dialog-actions">

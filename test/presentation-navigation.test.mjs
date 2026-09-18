@@ -5,8 +5,8 @@ const context = { workspaceId: 'w1', sessionId: 's1', revision: 4 };
 const state = {
   agentChoices: [{ id: 'external-installation/provider', label: 'External Agent', icon: { path: 'M2 2L22 22Z' } }],
   workspaces: [{ id: 'w1', label: 'One', path: '/one', trust: 'trusted' }, { id: 'w2', label: 'Two', path: '/two', trust: 'untrusted' }],
-  sessionsByWorkspace: { w1: [{ id: 's1', workspaceId: 'w1', agent: 'codex', label: 'A', state: 'idle', archived: false, updatedAt: '' }],
-    w2: [{ id: 's2', workspaceId: 'w2', agent: 'pi', label: 'B', state: 'running', archived: false, updatedAt: '' }, { id: 's3', workspaceId: 'w2', agent: 'plugin', label: 'C', state: 'idle', archived: true, updatedAt: '' }] },
+  sessionsByWorkspace: { w1: [{ id: 's1', workspaceId: 'w1', agent: 'third-party', canSyncSnapshot: true, label: 'A', state: 'idle', archived: false, updatedAt: '' }],
+    w2: [{ id: 's2', workspaceId: 'w2', agent: 'pi', capabilities: [], label: 'B', state: 'running', archived: false, updatedAt: '' }, { id: 's3', workspaceId: 'w2', agent: 'plugin', capabilities: [], label: 'C', state: 'idle', archived: true, updatedAt: '' }] },
   selectedWorkspaceId: 'w1', selectedSessionId: 's1', expandedWorkspaceIds: ['w1','w2'], sessionsLoadingWorkspaceIds: [],
   busy: false, threadBusy: false, archivingWorkspaceId: null, archivingSessionId: null,
   sessionSearchOpen: false, sessionFilterOpen: false, sessionSearch: '', sessionFilter: 'active', createSessionWorkspaceId: null, renamingSessionId: 's1', sessionLabelDraft: 'New',

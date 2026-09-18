@@ -130,13 +130,13 @@ test('Codex thread snapshots and forks use native identities without replacing t
 
 test('Codex workspace catalog is a separate pinned contribution and cannot switch to session execution', async t => {
   const f = await sessionCapability(t, 'codex', {}, undefined, 'dev.aibo.codex.catalog');
-  const result = await f.invoke('dev.aibo.codex.thread.list');
+  const result = await f.invoke('aibo.session.catalog');
   assert.equal(result.threads[0].id, 'catalog-thread');
   assert.equal(result.threads[0].cwd, f.directory);
   assert.equal(result.threads[0].status, 'idle');
   assert.equal(f.events.length, 0, 'catalog reads do not start conversations');
   await assert.rejects(f.rpc('capability.initialize', {...f.identity,contributionId:'dev.aibo.codex.agent',protocol:'2.1',pluginId:'dev.aibo.codex',pluginVersion:'2.0.1'}), /initialization/);
-  assert.equal((await f.invoke('dev.aibo.codex.thread.list')).threads.length, 1);
+  assert.equal((await f.invoke('aibo.session.catalog')).threads.length, 1);
 });
 
 

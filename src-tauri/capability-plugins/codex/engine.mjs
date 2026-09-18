@@ -710,6 +710,7 @@ export async function execute(action, p) {
     const skills = (result?.data ?? []).flatMap((item) => item?.skills ?? []).map((skill) => ({
       ...skill,
       description: skill.description ?? skill.interface?.shortDescription ?? null,
+      insertionText: `$${skill.name} `,
       source: 'skill',
       category: 'skill',
       execution: 'prompt',

@@ -61,7 +61,7 @@
   <div class="alert-dialog-overlay" role="presentation" onclick={onCancelPiNavigation}>
     <Card class="pi-navigation-dialog" role="dialog" aria-modal="true" aria-labelledby="pi-navigation-title" onclick={(event) => event.stopPropagation()}>
       <CardHeader class="pi-navigation-dialog-header">
-        <CardTitle id="pi-navigation-title">切换 Pi 会话树节点</CardTitle>
+        <CardTitle id="pi-navigation-title">切换 会话树节点</CardTitle>
         <p>选择如何处理即将离开的分支。原分支会保留，可以随时切回。</p>
       </CardHeader>
       <CardContent class="pi-navigation-dialog-content">
@@ -70,7 +70,7 @@
             <span><strong>No Summary</strong><small>直接切换，不为离开的分支生成总结</small></span>
           </Button>
           <Button variant={piNavigationMode === 'summary' ? 'secondary' : 'outline'} type="button" role="radio" aria-checked={piNavigationMode === 'summary'} onclick={() => onSetPiNavigationMode('summary')}>
-            <span><strong>Summarize</strong><small>使用 Pi 默认提示总结离开的分支</small></span>
+            <span><strong>Summarize</strong><small>使用 插件默认提示总结离开的分支</small></span>
           </Button>
           <Button variant={piNavigationMode === 'custom' ? 'secondary' : 'outline'} type="button" role="radio" aria-checked={piNavigationMode === 'custom'} onclick={() => onSetPiNavigationMode('custom')}>
             <span><strong>Summarize with custom prompt</strong><small>在默认总结提示后追加你的要求</small></span>

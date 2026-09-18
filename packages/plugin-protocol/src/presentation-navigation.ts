@@ -2,7 +2,7 @@
 export type PresentationNavigation = {
   agentChoices?: { id: string; label: string; icon?: import('./agent-icon.js').AgentIcon }[];
   workspaces: { id: string; label: string; path: string; trust: string }[];
-  sessionsByWorkspace: Record<string, { id: string; workspaceId: string; agent: string; label: string; state: string; archived: boolean; updatedAt: string }[]>;
+  sessionsByWorkspace: Record<string, { id: string; workspaceId: string; agent: string; canSyncSnapshot?: boolean; label: string; state: string; archived: boolean; updatedAt: string }[]>;
   selectedWorkspaceId: string | null;
   selectedSessionId: string | null;
   expandedWorkspaceIds: string[];

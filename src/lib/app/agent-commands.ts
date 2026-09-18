@@ -1,55 +1,34 @@
-import type { AgentCommand } from '$lib/types';
-import type { AgentKind } from './agent-kind';
+import type { AgentCommand, Session, SessionAccessMode } from '$lib/types';
 
-/**
- * Commands handled by Aibo itself for embedded Pi sessions.
- * Dynamic Pi extension/skill commands are loaded from the host at runtime.
- */
-export const AIBO_PI_COMMANDS: AgentCommand[] = [
-  { name: 'settings', description: '打开 Aibo 设置', source: 'builtin', category: 'agent', execution: 'aibo', agent: 'pi' },
-  { name: 'new', description: '新建 Pi 会话', source: 'builtin', category: 'agent', execution: 'aibo', agent: 'pi' },
-  { name: 'name', description: '查看或修改当前会话名称', source: 'builtin', category: 'agent', execution: 'aibo', agent: 'pi' },
-  { name: 'trust', description: '切换当前工作区信任状态', source: 'builtin', category: 'agent', execution: 'aibo', agent: 'pi' },
-  { name: 'tree', description: '刷新并查看当前会话树', source: 'builtin', category: 'agent', execution: 'aibo', agent: 'pi' },
-  { name: 'session', description: '查看当前会话信息', source: 'builtin', category: 'agent', execution: 'aibo', agent: 'pi' },
-  { name: 'resume', description: '刷新会话并回到当前工作区', source: 'builtin', category: 'agent', execution: 'aibo', agent: 'pi' },
-  { name: 'compact', description: '压缩当前会话上下文', source: 'builtin', category: 'agent', execution: 'adapter', agent: 'pi' },
-  { name: 'model', description: '查看或切换当前模型', source: 'builtin', category: 'agent', execution: 'adapter', agent: 'pi' },
-  { name: 'thinking', description: '查看或设置推理强度', source: 'builtin', category: 'agent', execution: 'adapter', agent: 'pi' },
-  { name: 'reload', description: '重新加载会话资源', source: 'builtin', category: 'agent', execution: 'adapter', agent: 'pi' },
+// Host commands are selected from negotiated session capabilities. Plugin commands
+// already belong to the bound provider; their insertion syntax is provider data.
+const COMMANDS: Array<[string, string, string[]]> = [
+  ['settings', '打开 Aibo 设置', []], ['new', '新建会话', []],
+  ['name', '查看或修改会话名称', []], ['trust', '切换工作区信任状态', []],
+  ['session', '查看会话信息', []], ['resume', '刷新会话', []],
+  ['archive', '归档会话', []],
+  ['tree', '查看会话树或刷新远端会话', ['session.tree', 'session.snapshot']],
+  ['fork', '从当前会话创建分支', ['session.fork']],
+  ['compact', '压缩上下文', ['compaction.run']],
+  ['model', '查看或切换模型', ['model.select']],
+  ['thinking', '查看或设置推理强度', ['model.reasoning']],
+  ['reload', '重新加载会话资源', ['session.reload']],
+  ['goal', '查看、设置或清除目标', ['goal.manage']],
+  ['skills', '刷新 Skills', ['skill.list', 'command.list']],
 ];
 
-/**
- * Commands handled by Aibo itself for Codex sessions. They intentionally
- * mirror the existing command-palette actions rather than being sent to the
- * Codex model as plain text.
- */
-export const AIBO_CODEX_COMMANDS: AgentCommand[] = [
-  { name: 'settings', description: '打开 Aibo 设置', source: 'builtin', category: 'agent', execution: 'aibo', agent: 'codex' },
-  { name: 'new', description: '新建 Codex 会话', source: 'builtin', category: 'agent', execution: 'aibo', agent: 'codex' },
-  { name: 'name', description: '查看或修改当前会话名称', source: 'builtin', category: 'agent', execution: 'aibo', agent: 'codex' },
-  { name: 'trust', description: '切换当前工作区信任状态', source: 'builtin', category: 'agent', execution: 'aibo', agent: 'codex' },
-  { name: 'tree', description: '刷新当前 Codex 线程', source: 'builtin', category: 'agent', execution: 'aibo', agent: 'codex' },
-  { name: 'session', description: '查看当前会话信息', source: 'builtin', category: 'agent', execution: 'aibo', agent: 'codex' },
-  { name: 'resume', description: '刷新当前 Codex 线程', source: 'builtin', category: 'agent', execution: 'aibo', agent: 'codex' },
-  { name: 'fork', description: '从当前会话创建分支', source: 'builtin', category: 'agent', execution: 'aibo', agent: 'codex' },
-  { name: 'archive', description: '归档当前会话', source: 'builtin', category: 'agent', execution: 'aibo', agent: 'codex' },
-  { name: 'model', description: '查看或切换当前模型', source: 'builtin', category: 'agent', execution: 'adapter', agent: 'codex' },
-  { name: 'thinking', description: '查看或设置推理强度', source: 'builtin', category: 'agent', execution: 'adapter', agent: 'codex' },
-  { name: 'plan', description: '切换到只读计划模式', source: 'builtin', category: 'agent', execution: 'aibo', agent: 'codex' },
-  { name: 'goal', description: '查看、设置或清除当前目标', source: 'builtin', category: 'agent', execution: 'adapter', agent: 'codex' },
-  { name: 'skills', description: '刷新当前工作区 Skills', source: 'builtin', category: 'agent', execution: 'adapter', agent: 'codex' },
-];
+export function sessionBuiltinCommands(session: Pick<Session, 'capabilities' | 'pluginInstallationId'> | null, accessModes: readonly SessionAccessMode[] = []): AgentCommand[] {
+  if (!session?.pluginInstallationId) return [];
+  const commands: AgentCommand[] = COMMANDS.filter(([, , required]) => !required.length || required.some(capability => session.capabilities.includes(capability)))
+    .map(([name, description]) => ({ name, description, source: 'builtin', category: 'agent', execution: 'aibo' as const }));
+  if (accessModes.includes('plan')) commands.push({name: 'plan', description: '切换计划模式', source: 'builtin', category: 'agent', execution: 'aibo'});
+  return commands;
+}
 
-export function visibleSessionCommands(
-  agent: AgentKind,
-  builtinCommands: AgentCommand[],
-  discoveredCommands: AgentCommand[],
-): AgentCommand[] {
+export function visibleSessionCommands(builtinCommands: AgentCommand[], discoveredCommands: AgentCommand[]): AgentCommand[] {
   const seen = new Set<string>();
-  return [...builtinCommands, ...discoveredCommands].filter((command) => {
+  return [...builtinCommands, ...discoveredCommands].filter(command => {
     if (command.enabled === false) return false;
-    if (command.agent && command.agent !== 'both' && command.agent !== agent) return false;
     const name = command.name.toLocaleLowerCase();
     if (seen.has(name)) return false;
     seen.add(name);
@@ -57,9 +36,8 @@ export function visibleSessionCommands(
   });
 }
 
-export function commandComposerInsertion(agent: AgentKind | null, command: AgentCommand): string {
-  const skill = command.category === 'skill' || command.source === 'skill';
-  return agent === 'codex' && skill ? '$' + command.name + ' ' : '/' + command.name + ' ';
+export function commandComposerInsertion(command: AgentCommand): string {
+  return command.insertionText ?? '/' + command.name + ' ';
 }
 
 export type ParsedAgentCommand = {

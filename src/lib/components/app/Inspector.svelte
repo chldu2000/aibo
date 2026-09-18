@@ -313,13 +313,13 @@
     {#if executionProfile}
       <Card class="profile-card">
         <CardHeader class="thread-card-heading">
-          <CardTitle>{sessionKind === 'codex' ? 'Codex 原生权限' : '执行配置'}</CardTitle>
+          <CardTitle>{executionProfile.nativeSandbox ? '原生权限' : '执行配置'}</CardTitle>
           <Badge variant={executionProfile.nativeSandbox ? 'success' : 'warning'}>
-            {sessionKind === 'codex' ? 'Codex 原生控制' : executionProfile.nativeSandbox ? '原生沙箱' : '无原生沙箱'}
+            {executionProfile.nativeSandbox ? '原生沙箱' : '无原生沙箱'}
           </Badge>
         </CardHeader>
         <CardContent class="profile-card-content">
-          {#if sessionKind === 'codex'}
+          {#if executionProfile.nativeSandbox}
             <dl>
               <div><dt>审批</dt><dd>{executionProfile.enforced.approvalPolicy}</dd></div>
               <div><dt>审核者</dt><dd>{executionProfile.enforced.approvalReviewer}</dd></div>
@@ -327,7 +327,7 @@
               {#if executionProfile.enforced.model}<div><dt>模型</dt><dd>{executionProfile.enforced.model}</dd></div>{/if}
               {#if executionProfile.enforced.reasoningEffort}<div><dt>推理</dt><dd>{executionProfile.enforced.reasoningEffort}</dd></div>{/if}
             </dl>
-            <p class="thread-empty">权限由 Codex App Server 执行；Aibo 仅提供当前会话的投影和切换入口。</p>
+            <p class="thread-empty">权限由宿主认可的原生执行器执行；Aibo 仅提供当前会话的投影和切换入口。</p>
           {:else}
             <dl>
               <div><dt>模式</dt><dd>{profileValue(modeLabel, executionProfile.requested.interactionMode, executionProfile.enforced.interactionMode)}</dd></div>
@@ -530,14 +530,14 @@
   {#if workspace && desktop}
     <Card class="thread-card">
       <CardHeader class="thread-card-heading">
-        <CardTitle>Codex 线程</CardTitle>
+        <CardTitle>远端会话</CardTitle>
         <Badge variant="secondary" class="count-pill">{codexThreads.length}</Badge>
       </CardHeader>
       <CardContent class="thread-card-content">
         {#if codexThreads.length === 0}
           <p class="thread-empty">暂无远端线程</p>
         {:else}
-          <div class="thread-list" aria-label="Codex 线程列表">
+          <div class="thread-list" aria-label="远端会话列表">
             {#each codexThreads.slice(0, 5) as thread (thread.id)}
               <div class="thread-item">
                 <div class="thread-copy">

@@ -118,9 +118,9 @@ async fn codex_branch_uses_native_boundary_and_copies_host_history_and_profile()
     manifest["executableDependencies"] = json!([{"kind":"runtime","name":"node","versionRange":">=22","required":true}]);
     fs::write(package.join("plugin.json"),manifest.to_string()).unwrap();
     let engine = include_str!("../capability-plugins/codex/engine.mjs");
-    let native_start = "spawn('codex', ['app-server', '--stdio']";
+    let native_start = "spawn('codex', ['app-server', '--stdio',";
     assert!(engine.contains(native_start));
-    fs::write(package.join("engine.mjs"),engine.replace(native_start,"spawn(process.execPath, [new URL('./fake-codex.mjs', import.meta.url).pathname]")).unwrap();
+    fs::write(package.join("engine.mjs"),engine.replace(native_start,"spawn(process.execPath, [new URL('./fake-codex.mjs', import.meta.url).pathname,")).unwrap();
     for (name, source) in [
         ("worker.mjs",include_str!("../capability-plugins/codex/worker.mjs")),
         ("fake-codex.mjs",include_str!("../../fixtures/plugins/codex/fake-codex.mjs")),
@@ -133,10 +133,14 @@ async fn codex_branch_uses_native_boundary_and_copies_host_history_and_profile()
         .bind(workspace.to_string_lossy().as_ref()).bind(crate::now_iso()).bind(crate::now_iso()).execute(&db).await.unwrap();
     let installed = plugin_registry::install(&db,&root.join("data"),&package).await.unwrap();
     plugin_registry::enable(&db,&installed.id,true).await.unwrap();
+    // Fixture native execution is explicitly authorized by the host, not its ID.
+    assert_eq!(execution_profile::installation_backend(&db,&installed.id,"dev.aibo.codex.agent").await.unwrap(),execution_profile::EnforcementBackend::Unnegotiated);
+    sqlx::query("INSERT INTO session_execution_authorities(installation_id,contribution_id,backend) VALUES(?,'dev.aibo.codex.agent','codex-native')")
+        .bind(&installed.id).execute(&db).await.unwrap();
     let broker = Broker::new(db.clone());
     let host = SessionHost::new(db.clone(),broker.clone());
-    broker.bind(Binding {scope:Scope::Workspace("w".into()),capability:"dev.aibo.codex.thread.list".into(),version:"1.0.0".into(),installation_id:installed.id.clone(),contribution_id:"dev.aibo.codex.catalog".into()}).await.unwrap();
-    let catalog = broker.invoke("main",Request {scope:Scope::Workspace("w".into()),capability:"dev.aibo.codex.thread.list".into(),version:"1.0.0".into(),request_id:"catalog".into(),turn_id:None,input:json!({})}).await.unwrap();
+    broker.bind(Binding {scope:Scope::Workspace("w".into()),capability:"aibo.session.catalog".into(),version:"1.0.0".into(),installation_id:installed.id.clone(),contribution_id:"dev.aibo.codex.catalog".into()}).await.unwrap();
+    let catalog = broker.invoke("main",Request {scope:Scope::Workspace("w".into()),capability:"aibo.session.catalog".into(),version:"1.0.0".into(),request_id:"catalog".into(),turn_id:None,input:json!({})}).await.unwrap();
     assert_eq!(catalog.output["threads"][0]["id"],"catalog-thread");
     let count:i64 = sqlx::query_scalar("SELECT COUNT(*) FROM sessions").fetch_one(&db).await.unwrap();
     assert_eq!(count,0,"workspace catalog must not create a conversation");
@@ -474,13 +478,13 @@ async fn completed_turn_snapshot_does_not_use_retired_interaction() {
         .bind(&session.id).fetch_all(&db).await.unwrap();
     assert!(messages.iter().any(|role| role=="user"));
     assert!(messages.iter().any(|role| role=="assistant"));
-    let timeline = host.pi_timeline_from("main", &session.id).await.unwrap();
+    let timeline = host.active_timeline_from("main", &session.id).await.unwrap();
     assert_eq!(timeline.iter().filter(|item| item.role == "user" && item.content == "boundary message").count(), 1);
     assert!(timeline.iter().any(|item| item.role == "assistant"));
     let stale_control = host.invoke_provider_capability("main", &session.id, "queue.manage", json!({"action":"steer","message":"do not replay"})).await.unwrap_err();
     assert!(stale_control.contains("finished accepting interactions"));
     let pending_host = host.clone(); let id = session.id.clone();
-    let mut read = tokio::spawn(async move { pending_host.invoke_capability_from("main", &id, "session.snapshot", json!({})).await });
+    let mut read = tokio::spawn(async move { pending_host.invoke_capability_from("main", &id, "session.timeline", json!({})).await });
     let premature = tokio::time::timeout(Duration::from_millis(50), &mut read).await;
     drop(finalization);
     let result = match premature { Ok(result) => result.unwrap(), Err(_) => read.await.unwrap() };
@@ -505,11 +509,11 @@ async fn accepted_turn_snapshot_does_not_use_unready_interaction() {
     assert_eq!(count, 1);
     sqlx::query("INSERT INTO messages(id,session_id,role,content,status,created_at,updated_at) VALUES('other-branch',?,'user','OTHER_BRANCH','completed',?,?)")
         .bind(&session.id).bind(crate::now_iso()).bind(crate::now_iso()).execute(&db).await.unwrap();
-    let timeline = host.pi_timeline_from("main", &session.id).await.unwrap();
+    let timeline = host.active_timeline_from("main", &session.id).await.unwrap();
     assert_eq!(timeline.iter().filter(|item| item.role == "user" && item.content == "boundary message").count(), 1);
     assert!(!timeline.iter().any(|item| item.content == "OTHER_BRANCH"), "a native branch must not include unrelated host history");
     let pending_host = host.clone(); let id = session.id.clone();
-    let mut read = tokio::spawn(async move { pending_host.invoke_capability_from("main", &id, "session.snapshot", json!({})).await });
+    let mut read = tokio::spawn(async move { pending_host.invoke_capability_from("main", &id, "session.timeline", json!({})).await });
     let premature = tokio::time::timeout(Duration::from_millis(50), &mut read).await;
     drop(admission);
     let result = match premature { Ok(result) => result.unwrap(), Err(_) => read.await.unwrap() };
@@ -587,9 +591,9 @@ async fn goal_resume_and_pause_use_host_execution_ownership_and_policy() {
     manifest["executableDependencies"] = json!([{"kind":"runtime","name":"node","versionRange":">=22","required":true}]);
     fs::write(package.join("plugin.json"),manifest.to_string()).unwrap();
     let engine = include_str!("../capability-plugins/codex/engine.mjs");
-    let native_start = "spawn('codex', ['app-server', '--stdio']";
+    let native_start = "spawn('codex', ['app-server', '--stdio',";
     assert!(engine.contains(native_start));
-    fs::write(package.join("engine.mjs"),engine.replace(native_start,"spawn(process.execPath, [new URL('./fake-codex.mjs', import.meta.url).pathname]")).unwrap();
+    fs::write(package.join("engine.mjs"),engine.replace(native_start,"spawn(process.execPath, [new URL('./fake-codex.mjs', import.meta.url).pathname,")).unwrap();
     for (name, source) in [
         ("worker.mjs",include_str!("../capability-plugins/codex/worker.mjs")),
         ("fake-codex.mjs",include_str!("../../fixtures/plugins/codex/fake-codex.mjs")),
@@ -603,6 +607,10 @@ async fn goal_resume_and_pause_use_host_execution_ownership_and_policy() {
         .bind(workspace.to_string_lossy().as_ref()).bind(crate::now_iso()).bind(crate::now_iso()).execute(&db).await.unwrap();
     let installed = plugin_registry::install(&db,&root.join("data"),&package).await.unwrap();
     plugin_registry::enable(&db,&installed.id,true).await.unwrap();
+    // Fixture native execution is explicitly authorized by the host, not its ID.
+    assert_eq!(execution_profile::installation_backend(&db,&installed.id,"dev.aibo.codex.agent").await.unwrap(),execution_profile::EnforcementBackend::Unnegotiated);
+    sqlx::query("INSERT INTO session_execution_authorities(installation_id,contribution_id,backend) VALUES(?,'dev.aibo.codex.agent','codex-native')")
+        .bind(&installed.id).execute(&db).await.unwrap();
     let broker = Broker::new(db.clone());
     let host = SessionHost::new(db.clone(),broker.clone());
 
@@ -658,9 +666,9 @@ async fn subagent_history_survives_restart_without_a_running_provider() {
     manifest["executableDependencies"] = json!([{"kind":"runtime","name":"node","versionRange":">=22","required":true}]);
     fs::write(package.join("plugin.json"),manifest.to_string()).unwrap();
     let engine = include_str!("../capability-plugins/codex/engine.mjs");
-    let native_start = "spawn('codex', ['app-server', '--stdio']";
+    let native_start = "spawn('codex', ['app-server', '--stdio',";
     assert!(engine.contains(native_start));
-    fs::write(package.join("engine.mjs"),engine.replace(native_start,"spawn(process.execPath, [new URL('./fake-codex.mjs', import.meta.url).pathname]")).unwrap();
+    fs::write(package.join("engine.mjs"),engine.replace(native_start,"spawn(process.execPath, [new URL('./fake-codex.mjs', import.meta.url).pathname,")).unwrap();
     for (name, source) in [
         ("worker.mjs",include_str!("../capability-plugins/codex/worker.mjs")),
         ("fake-codex.mjs",include_str!("../../fixtures/plugins/codex/fake-codex.mjs")),
@@ -673,10 +681,14 @@ async fn subagent_history_survives_restart_without_a_running_provider() {
         .bind(workspace.to_string_lossy().as_ref()).bind(crate::now_iso()).bind(crate::now_iso()).execute(&db).await.unwrap();
     let installed = plugin_registry::install(&db,&root.join("data"),&package).await.unwrap();
     plugin_registry::enable(&db,&installed.id,true).await.unwrap();
+    // Fixture native execution is explicitly authorized by the host, not its ID.
+    assert_eq!(execution_profile::installation_backend(&db,&installed.id,"dev.aibo.codex.agent").await.unwrap(),execution_profile::EnforcementBackend::Unnegotiated);
+    sqlx::query("INSERT INTO session_execution_authorities(installation_id,contribution_id,backend) VALUES(?,'dev.aibo.codex.agent','codex-native')")
+        .bind(&installed.id).execute(&db).await.unwrap();
     let broker = Broker::new(db.clone());
     let host = SessionHost::new(db.clone(),broker.clone());
-    broker.bind(Binding {scope:Scope::Workspace("w".into()),capability:"dev.aibo.codex.thread.list".into(),version:"1.0.0".into(),installation_id:installed.id.clone(),contribution_id:"dev.aibo.codex.catalog".into()}).await.unwrap();
-    let catalog = broker.invoke("main",Request {scope:Scope::Workspace("w".into()),capability:"dev.aibo.codex.thread.list".into(),version:"1.0.0".into(),request_id:"catalog".into(),turn_id:None,input:json!({})}).await.unwrap();
+    broker.bind(Binding {scope:Scope::Workspace("w".into()),capability:"aibo.session.catalog".into(),version:"1.0.0".into(),installation_id:installed.id.clone(),contribution_id:"dev.aibo.codex.catalog".into()}).await.unwrap();
+    let catalog = broker.invoke("main",Request {scope:Scope::Workspace("w".into()),capability:"aibo.session.catalog".into(),version:"1.0.0".into(),request_id:"catalog".into(),turn_id:None,input:json!({})}).await.unwrap();
     assert_eq!(catalog.output["threads"][0]["id"],"catalog-thread");
     let count:i64 = sqlx::query_scalar("SELECT COUNT(*) FROM sessions").fetch_one(&db).await.unwrap();
     assert_eq!(count,0,"workspace catalog must not create a conversation");
@@ -858,6 +870,31 @@ async fn context_window_changes_cannot_bypass_live_turn_admission() {
     assert!(error.starts_with("busy:"), "{error}");
     host.cancel_from("main", &session.id).await.unwrap();
     wait_for_turn(&host, &session.id).await;
+    broker.stop_session(&session.id).await.unwrap();
+    db.close().await;
+    fs::remove_dir_all(root).unwrap();
+}
+
+#[tokio::test]
+async fn third_party_session_negotiates_tree_timeline_and_mediated_access() {
+    let (root, db, broker, host, session) = session_queue_fixture(true).await;
+    assert_eq!(session.agent, "dev.example.waiting.agent");
+    for capability in ["session.tree", "session.timeline", "compaction.run", "model.select", "queue.manage"] {
+        assert!(session.capabilities.contains(&capability.into()), "{capability}: {:?}", session.capabilities);
+    }
+    assert!(!session.capabilities.contains(&"session.fork".into()));
+    let profile = crate::session_execution_profile(&db, &session.id).await.unwrap().profile;
+    assert_eq!(profile.enforcement_backend, execution_profile::EnforcementBackend::CoreProxy);
+    assert_eq!(profile.access_modes, ["read-only", "plan", "workspace-write"]);
+    assert!(!profile.native_sandbox);
+    host.send_from("main", &session.id, "third party timeline", None).await.unwrap();
+    wait_for_turn(&host, &session.id).await;
+    let timeline = host.active_timeline_from("main", &session.id).await.unwrap();
+    assert!(timeline.iter().any(|entry| entry.role == "assistant" && entry.content.contains("third party timeline")));
+    let tree = host.invoke_capability_from("main", &session.id, "session.tree", json!({"action":"get"})).await.unwrap();
+    assert!(tree["tree"].is_array());
+    let error = host.invoke_capability_from("main", &session.id, "goal.manage", json!({"action":"get"})).await.unwrap_err();
+    assert!(error.contains("capability_unsupported"));
     broker.stop_session(&session.id).await.unwrap();
     db.close().await;
     fs::remove_dir_all(root).unwrap();

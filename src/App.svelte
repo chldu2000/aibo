@@ -176,7 +176,7 @@
   const externalConversation = $derived<PresentationConversation>({
     workspace: selectedWorkspace, session: selectedSession, goal: codexGoal, goalBusy,
     thread: codexThreadSnapshot && { id: codexThreadSnapshot.id, turnCount: codexThreadSnapshot.turnCount },
-    timeline, timelineVisibleCount, groupSystemItems: selectedSessionAgent === 'pi', usage: usageValues, retryPrompt, retryReason,
+    timeline, timelineVisibleCount, groupSystemItems: selectedSession?.capabilities.includes('session.timeline') ?? false, usage: usageValues, retryPrompt, retryReason,
     userInputRequests: selectedUserInputRequests, answerDrafts: Object.fromEntries(selectedUserInputRequests.flatMap(request => request.questions.map(question => {
       const key = userInputDraftKey(request, question.id); return [key, userInputDrafts[key] ?? ''];
     }))), queue: queueSnapshot,
@@ -217,7 +217,7 @@
         handleComposerInput(composerText); selectComposerWorkspacePath(target!); break;
       case 'selectCommand': {
         const command = visibleAgentCommands.find((item) => item.name === target);
-        if (command) composerText = composerText.replace(/^\/([^\s]*)$/, commandComposerInsertion(sessionAgentKind(selectedSession), command));
+        if (command) composerText = composerText.replace(/^\/([^\s]*)$/, commandComposerInsertion(command));
         handleComposerInput(composerText);
         break;
       }
@@ -538,7 +538,6 @@
   import { createApprovalController } from '$lib/app/approval-controller';
   import { toErrorMessage } from '$lib/app/error-utils';
   import { createSessionLifecycleController } from '$lib/app/session-lifecycle-controller';
-  import { createAgentSessionController } from '$lib/app/agent-session-controller';
   import { createSessionContextController } from '$lib/app/session-context-controller';
   import { createRefreshController } from '$lib/app/refresh-controller';
   import { createModelConfigurationService, modelConfigurationState } from '$lib/app/model-configuration';
@@ -552,8 +551,7 @@
   import { createPiTreeController } from '$lib/app/pi-tree-controller';
   import { createWorkspaceController } from '$lib/app/workspace-controller';
   import {
-    AIBO_CODEX_COMMANDS,
-    AIBO_PI_COMMANDS,
+    sessionBuiltinCommands,
     commandComposerInsertion,
     parseAgentCommand,
     visibleSessionCommands,
@@ -566,7 +564,6 @@
   } from '$lib/app/composer-draft-storage';
   import type { ComposerDrafts } from '$lib/app/composer-draft-storage';
   import { isSessionRunning } from '$lib/app/session-state';
-  import { dispatchBuiltinCommand } from '$lib/app/compatibility/command-dispatch';
   import { sessionAgentKind } from '$lib/app/agent-kind';
   import { sessionAccessProfile } from '$lib/app/session-access-profile';
   import {
@@ -889,9 +886,7 @@
 
   const visibleAgentCommands = $derived.by(() => {
     if (!selectedSession) return [];
-    const selectedKind = sessionAgentKind(selectedSession);
-    const builtinCommands = selectedKind === 'pi' ? AIBO_PI_COMMANDS : selectedKind === 'codex' ? AIBO_CODEX_COMMANDS : [];
-    return visibleSessionCommands(selectedKind, builtinCommands, agentCommands);
+    return visibleSessionCommands(sessionBuiltinCommands(selectedSession, executionProfile?.sessionId === selectedSession.id ? executionProfile.accessModes : []), agentCommands);
   });
   let commandSearchGeneration = 0;
   let busy = $state(false);
@@ -1443,7 +1438,7 @@
       return withActivityAge('等待你的输入…');
     }
     if (selectedSession.state === 'compacting') return withActivityAge('正在压缩上下文…');
-    const agentLabel = sessionAgentKind(selectedSession) === 'pi' ? 'Pi' : 'Codex';
+    const agentLabel = selectedSession?.label ?? 'Agent';
     const activityOverride = agentActivityOverrides[selectedSession.id];
     if (activityOverride) return withActivityAge(activityOverride);
     if (streamingTimelineItem?.role === 'tool') {
@@ -2464,7 +2459,7 @@
     if (event.sessionId === selectedSessionId && ['turn.completed', 'turn.failed', 'session.state_changed'].includes(event.type)) void refreshGoal();
     processAgentEvent(event, {
       selectedSessionId,
-      selectedAgent: selectedSessionAgent,
+      selectedAgent: selectedSession?.label ?? null,
       timeline,
       pendingApprovals,
       pendingUserInputs,
@@ -2506,16 +2501,8 @@
     }
   }
 
-  async function createCodex() {
-    await agentSessionController.createCodex(selectedWorkspace);
-  }
-
-  async function createPi() {
-    await agentSessionController.createPi(selectedWorkspace);
-  }
-
   function profileForAccess(mode: SessionAccessMode): ExecutionProfile {
-    return sessionAccessProfile(sessionAgentKind(selectedSession), mode, executionProfile?.requested);
+    return sessionAccessProfile(executionProfile?.sessionId === selectedSession?.id ? executionProfile?.accessModes ?? [] : [], mode, executionProfile?.requested);
   }
 
   async function applySessionAccess(mode: SessionAccessMode): Promise<void> {
@@ -2545,9 +2532,7 @@
       // every session in the workspace (which also reloads unrelated list and
       // conversation context on this path).
       markSessionIdle(session);
-      notice = sessionAgentKind(session) === 'codex'
-        ? mode === 'full-access' ? 'Codex 已切换为 Full Access。' : mode === 'approve-for-me' ? 'Codex 已切换为 Approve for me。' : 'Codex 已切换为 Ask for approval。'
-        : mode === 'workspace-write' ? '会话权限已切换为工作区写入。' : mode === 'plan' ? '会话已切换为计划模式。' : '会话权限已切换为只读。';
+      notice = '会话权限已更新。';
     } catch (error) {
       errorMessage = toErrorMessage(error);
     } finally {
@@ -2662,9 +2647,9 @@
     await applyModelChange({ kind: 'serviceTier', serviceTier });
   }
 
-  async function executePiBuiltinCommand(input: string): Promise<boolean> {
+  async function executeBuiltinCommand(input: string): Promise<boolean> {
     const command = parseAgentCommand(input);
-    if (!command || sessionAgentKind(selectedSession) !== 'pi') return false;
+    if (!command || !selectedSession || !sessionBuiltinCommands(selectedSession, executionProfile?.sessionId === selectedSession.id ? executionProfile.accessModes : []).some(item => item.name === command.name)) return false;
 
     const session = selectedSession;
     const workspace = selectedWorkspace;
@@ -2739,8 +2724,11 @@
           return true;
         }
         await run(async () => {
-          await refreshPiTree(session.id);
-          notice = '会话树已刷新。';
+          if (session.capabilities.includes('session.tree')) {
+            await refreshPiTree(session.id);
+            piTreeOpen = true;
+          } else await refreshCodexThread(session.id);
+          notice = '会话已刷新。';
         });
         return true;
       case 'session':
@@ -2748,7 +2736,7 @@
           errorMessage = '/session 不接受参数。';
           return true;
         }
-        notice = `${session.label} · ${session.externalSessionId ?? '尚未绑定 Pi 会话 ID'}`;
+        notice = `${session.label} · ${session.externalSessionId ?? '尚未绑定远端会话 ID'}`;
         composerText = '';
         return true;
       case 'resume':
@@ -2799,117 +2787,7 @@
           if (Array.isArray(result.commands)) {
             agentCommands = result.commands.filter((item): item is AgentCommand => Boolean(item && typeof item === 'object' && typeof item.name === 'string'));
           }
-          notice = 'Pi 会话资源已重新加载。';
-        });
-        return true;
-      default:
-        return false;
-    }
-  }
-
-  async function executeCodexBuiltinCommand(input: string): Promise<boolean> {
-    const command = parseAgentCommand(input);
-    if (!command || sessionAgentKind(selectedSession) !== 'codex') return false;
-
-    const session = selectedSession;
-    const workspace = selectedWorkspace;
-    const run = async (operation: () => Promise<void>): Promise<void> => {
-      busy = true;
-      errorMessage = null;
-      try {
-        await operation();
-        composerText = '';
-      } catch (error) {
-        errorMessage = toErrorMessage(error);
-      } finally {
-        busy = false;
-      }
-    };
-
-    switch (command.name) {
-      case 'settings':
-        if (command.args) {
-          errorMessage = '/settings 不接受参数。';
-          return true;
-        }
-        openSettingsPanel();
-        composerText = '';
-        return true;
-      case 'new':
-        if (command.args) {
-          errorMessage = '/new 不接受参数。';
-          return true;
-        }
-        if (!workspace) {
-          errorMessage = '请先选择一个工作区。';
-          return true;
-        }
-        toggleSessionCreator(workspace.id);
-        composerText = '';
-        return true;
-      case 'name':
-        if (!command.args) {
-          beginRenameSession(session.id);
-          composerText = '';
-          return true;
-        }
-        await run(async () => {
-          const renamed = await renameSessionApi(session.id, command.args);
-          updateWorkspaceSessions(session.workspaceId, (items) =>
-            items.map((item) => (item.id === renamed.id ? renamed : item)),
-          );
-          notice = '会话名称已更新。';
-        });
-        return true;
-      case 'trust':
-        if (!workspace) {
-          errorMessage = '请先选择一个工作区。';
-          return true;
-        }
-        if (command.args && !['on', 'off', 'true', 'false', 'trusted', 'untrusted'].includes(command.args.toLocaleLowerCase())) {
-          errorMessage = '/trust 可选参数为 on 或 off。';
-          return true;
-        }
-        if (command.args) {
-          const shouldTrust = ['on', 'true', 'trusted'].includes(command.args.toLocaleLowerCase());
-          if ((workspace.trust === 'trusted') !== shouldTrust) await run(() => toggleTrust(workspace));
-          else composerText = '';
-        } else {
-          await run(() => toggleTrust(workspace));
-        }
-        return true;
-      case 'tree':
-        if (command.args) {
-          errorMessage = '/tree 不接受参数。';
-          return true;
-        }
-        await run(async () => {
-          await refreshCodexThread(session.id);
-          notice = 'Codex 线程已刷新。';
-        });
-        return true;
-      case 'session':
-        if (command.args) {
-          errorMessage = '/session 不接受参数。';
-          return true;
-        }
-        notice = `${session.label} · ${session.externalSessionId ?? '尚未绑定 Codex 线程 ID'}`;
-        composerText = '';
-        return true;
-      case 'resume':
-        if (command.args) {
-          errorMessage = '/resume 不接受参数。';
-          return true;
-        }
-        if (!workspace) {
-          errorMessage = '请先选择一个工作区。';
-          return true;
-        }
-        await run(async () => {
-          activateWorkspace(workspace.id);
-          await refreshSessions(workspace.id);
-          await refreshCodexThread(session.id);
-          notice = 'Codex 线程已恢复。';
+          notice = '会话资源已重新加载。';
         });
         return true;
       case 'fork':
@@ -2927,45 +2805,17 @@
         requestArchiveSession(session.id);
         composerText = '';
         return true;
-      case 'model':
-        if (command.args) {
-          await applySessionModel(command.args);
-        } else {
-          await loadSessionModels();
-          if (!errorMessage) {
-            notice = '模型列表已刷新，请从输入框右侧选择模型。';
-          }
-        }
-        composerText = '';
-        return true;
-      case 'thinking':
-        if (command.args) {
-          await applySessionReasoningEffort(command.args);
-        } else {
-          await loadSessionModels();
-          if (!errorMessage) {
-            notice = `当前推理强度：${sessionModelCatalog?.currentReasoningEffort ?? '模型默认'}${sessionModelCatalog?.reasoningEfforts.length ? `（可选：${sessionModelCatalog.reasoningEfforts.map((item) => item.id).join('、')}）` : ''}`;
-          }
-        }
-        composerText = '';
-        return true;
       case 'plan':
-        if (command.args) {
-          errorMessage = '/plan 不接受参数。';
-          return true;
-        }
+        if (command.args) { errorMessage = '/plan 不接受参数。'; return true; }
         await applySessionAccess('plan');
-        if (!errorMessage) {
-          notice = 'Codex 已切换到只读计划模式。';
-        }
-        composerText = '';
+        if (!errorMessage) composerText = '';
         return true;
       case 'goal':
         await run(async () => {
           if (command.args.toLocaleLowerCase() === 'clear') {
             await agentFacade.invoke(session, 'goal.manage', { action: 'clear' });
             codexGoal = null;
-            notice = 'Codex 当前目标已清除。';
+            notice = '当前目标已清除。';
             return;
           }
           if (!command.args) {
@@ -2988,7 +2838,7 @@
             await agentFacade.invoke(session, 'goal.resume', {});
             await refreshSessions(session.workspaceId);
           }
-          notice = `Codex 目标已设置：${command.args}`;
+          notice = `目标已设置：${command.args}`;
         });
         return true;
       case 'skills':
@@ -2998,7 +2848,7 @@
         }
         await run(async () => {
           agentCommands = await loadSessionCommands(session);
-          notice = `已刷新 Codex Skills（${agentCommands.length} 项）。`;
+          notice = `已刷新 Skills（${agentCommands.length} 项）。`;
         });
         return true;
       default:
@@ -3007,7 +2857,7 @@
   }
 
   async function sendPrompt() {
-    if (await dispatchBuiltinCommand(selectedSession, composerText, { codex: executeCodexBuiltinCommand, pi: executePiBuiltinCommand })) return;
+    if (await executeBuiltinCommand(composerText)) return;
     await messageController.sendPrompt();
     await refreshPromptQueue();
   }
@@ -3048,7 +2898,7 @@
   }
 
   async function queuePrompt(mode: 'steer' | 'followUp') {
-    if (await dispatchBuiltinCommand(selectedSession, composerText, { codex: executeCodexBuiltinCommand, pi: executePiBuiltinCommand })) return;
+    if (await executeBuiltinCommand(composerText)) return;
     await messageController.queuePrompt(mode);
     await refreshPromptQueue();
   }
@@ -3309,38 +3159,6 @@
     isSessionRunning,
   });
 
-  const agentSessionController = createAgentSessionController({
-    getSelectedWorkspaceId: () => selectedWorkspaceId,
-    api: {
-      createSession: (workspaceId, agentId, profile) => createAgentSession(workspaceId, agentId, undefined, profile),
-    },
-    getDesktop: () => desktop,
-    getWorkspaceSessionMap: () => workspaceSessionMap,
-    setWorkspaceSessionMap: (value) => (workspaceSessionMap = value),
-    setSelectedSessionId: (value) => (selectedSessionId = value),
-    setTimeline: (value) => (timeline = value),
-    setQueueSnapshot: applyPromptQueue,
-    setCheckpoints: (value) => (checkpoints = value),
-    setRetry: (prompt, reason) => {
-      retryPrompt = prompt;
-      retryReason = reason;
-    },
-    setLastSubmittedPrompt: (value) => (lastSubmittedPrompt = value),
-    setPiTree: (value) => (piTree = value),
-    setAttachments: (value) => (attachments = value),
-    setPiNavigationEntryId: (value) => (piNavigationEntryId = value),
-    setCreateSessionWorkspaceId: (value) => (createSessionWorkspaceId = value),
-    setBusy: (value) => (busy = value),
-    setErrorMessage: (value) => (errorMessage = value),
-    setNotice: (value) => (notice = value),
-    clearSelectedSessionContext,
-    refreshCodexThreads,
-    refreshPiTree,
-    refreshTurnChangeSet,
-    refreshExecutionProfile,
-    refreshSessions,
-  });
-
   const workspaceController = createWorkspaceController({
     api: {
       addWorkspace,
@@ -3450,7 +3268,12 @@
 
   const messageController = createMessageController({
     api: {
-      createDefaultSession: (workspaceId) => createAgentSession(workspaceId, 'dev.aibo.codex.agent'),
+      createDefaultSession: async (workspaceId) => {
+        const providers = readySessionProviders(pluginInstallations);
+        if (providers.length !== 1) throw new Error('请先选择一个 Agent 插件并创建会话。');
+        const provider = providers[0];
+        return createAgentSession(workspaceId, provider.contributionId, provider.installationId);
+      },
       sendAgentPrompt,
       cancelAgentTurn,
       invokeAgentCapability,

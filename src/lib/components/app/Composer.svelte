@@ -161,7 +161,7 @@
   );
 
   const activeProfile = $derived(executionProfile?.enforced ?? executionProfile?.requested ?? null);
-  const codexPermissionMode = $derived<'ask-for-approval' | 'approve-for-me' | 'full-access' | null>(
+  const nativePermissionMode = $derived<'ask-for-approval' | 'approve-for-me' | 'full-access' | null>(
     activeProfile?.filesystemPolicy === 'danger-full-access'
       ? 'full-access'
       : activeProfile?.filesystemPolicy === 'workspace-write' && activeProfile?.approvalPolicy === 'on-request' && activeProfile?.approvalReviewer === 'auto-review'
@@ -173,40 +173,32 @@
   const accessLabel = $derived(
     !selectedSession
       ? '会话设置'
-      : selectedAgent === 'codex'
-        ? codexPermissionMode === 'full-access' ? 'Full Access' : codexPermissionMode === 'approve-for-me' ? 'Approve for me' : codexPermissionMode === 'ask-for-approval' ? 'Ask for approval' : '配置 Codex 权限'
-      : activeProfile?.filesystemPolicy === 'workspace-write'
-        ? '工作区写入'
-        : activeProfile?.interactionMode === 'plan'
-          ? '计划模式'
-          : '只读',
+      : activeProfile?.interactionMode === 'plan' ? '计划模式' : executionProfile?.nativeSandbox
+        ? nativePermissionMode === 'full-access' ? 'Full Access' : nativePermissionMode === 'approve-for-me' ? 'Approve for me' : nativePermissionMode === 'ask-for-approval' ? 'Ask for approval' : '配置原生权限'
+      : activeProfile?.filesystemPolicy === 'workspace-write' ? '工作区写入' : '只读',
   );
   const accessDetail = $derived(
-    selectedAgent === 'codex'
-      ? codexPermissionMode === 'full-access' ? '由 Codex 原生控制 · 完整主机访问' : codexPermissionMode === 'approve-for-me' ? '由 Codex 原生控制 · 自动批准沙箱内操作' : codexPermissionMode === 'ask-for-approval' ? '由 Codex 原生控制 · 操作前请求批准' : '该会话使用历史权限配置；请选择一个 Codex 原生模式'
+    activeProfile?.interactionMode === 'plan' ? '分析并制定方案，不执行修改' : executionProfile?.nativeSandbox
+      ? nativePermissionMode === 'full-access' ? '由原生执行器控制 · 完整主机访问' : nativePermissionMode === 'approve-for-me' ? '由原生执行器控制 · 自动批准沙箱内操作' : nativePermissionMode === 'ask-for-approval' ? '由原生执行器控制 · 操作前请求批准' : '该会话使用历史权限配置；请选择一个原生模式'
       : activeProfile
       ? `${activeProfile.filesystemPolicy === 'workspace-write' ? '可修改工作区' : '仅查看'} · ${activeProfile.commandPolicy === 'disabled' ? '命令关闭' : activeProfile.approvalPolicy === 'on-request' ? '命令需审批' : '命令受信任'}`
       : '选择会话后可查看当前执行配置',
   );
-  const piAccessOptions: Array<{ mode: SessionAccessMode; label: string; detail: string }> = [
+  const mediatedAccessOptions: Array<{ mode: SessionAccessMode; label: string; detail: string }> = [
     { mode: 'read-only', label: '只读', detail: '查看文件，不修改工作区' },
     { mode: 'plan', label: '计划', detail: '分析并制定方案，不执行修改' },
     { mode: 'workspace-write', label: '工作区写入', detail: '允许修改工作区，命令需要审批' },
   ];
-  const codexAccessOptions: Array<{ mode: SessionAccessMode; label: string; detail: string }> = [
-    { mode: 'ask-for-approval', label: 'Ask for approval', detail: '由 Codex 在执行操作前请求你的批准' },
-    { mode: 'approve-for-me', label: 'Approve for me', detail: '由 Codex 自动批准沙箱内的操作' },
-    { mode: 'full-access', label: 'Full Access', detail: '由 Codex 以完整主机访问执行操作' },
+  const nativeAccessOptions: Array<{ mode: SessionAccessMode; label: string; detail: string }> = [
+    { mode: 'ask-for-approval', label: 'Ask for approval', detail: '由原生执行器在执行操作前请求你的批准' },
+    { mode: 'approve-for-me', label: 'Approve for me', detail: '由原生执行器自动批准沙箱内的操作' },
+    { mode: 'full-access', label: 'Full Access', detail: '由原生执行器以完整主机访问执行操作' },
   ];
-  const accessOptions = $derived(selectedAgent === 'codex' ? codexAccessOptions : piAccessOptions);
+  const accessOptions = $derived([...nativeAccessOptions, ...mediatedAccessOptions].filter(option => executionProfile?.sessionId === selectedSession?.id && executionProfile?.accessModes?.includes(option.mode)));
   const activeAccessMode = $derived<SessionAccessMode | null>(
-    selectedAgent === 'codex'
-      ? codexPermissionMode
-      : activeProfile?.filesystemPolicy === 'workspace-write'
-      ? 'workspace-write'
-      : activeProfile?.interactionMode === 'plan'
-        ? 'plan'
-        : 'read-only',
+    activeProfile?.interactionMode === 'plan' ? 'plan' : executionProfile?.nativeSandbox
+      ? nativePermissionMode
+      : activeProfile?.filesystemPolicy === 'workspace-write' ? 'workspace-write' : 'read-only',
   );
   const modelLabel = $derived(
     modelOverride || modelCatalog?.current?.label || activeProfile?.model || (modelCatalogLoading ? '正在读取模型…' : '模型未读取'),
@@ -293,7 +285,7 @@
   }
 
   function selectAgentCommand(command: AgentCommand): void {
-    text = text.replace(/^\/([^\s]*)$/, commandComposerInsertion(selectedAgent, command));
+    text = text.replace(/^\/([^\s]*)$/, commandComposerInsertion(command));
     slashActiveIndex = -1;
     onComposerInput(text);
   }

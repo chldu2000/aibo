@@ -28,6 +28,7 @@ export interface ResolvedExecutionProfile {
   unsupported: string[];
   adapterCapabilities: string[];
   nativeSandbox: boolean;
+  accessModes?: SessionAccessMode[];
   resolvedAt: string;
 }
 
@@ -54,6 +55,7 @@ export type AgentCommandCategory = 'agent' | 'skill' | 'extension';
 export type AgentCommandExecution = 'aibo' | 'adapter' | 'prompt';
 
 export interface AgentCommand {
+  insertionText?: string;
   id?: string;
   name: string;
   aliases?: string[];
@@ -61,7 +63,8 @@ export interface AgentCommand {
   source: 'extension' | 'prompt' | 'skill' | string;
   category?: AgentCommandCategory;
   execution?: AgentCommandExecution;
-  agent?: AgentName | 'both';
+  /** Legacy display metadata; binding determines command ownership. */
+  agent?: string;
   enabled?: boolean;
   argumentHint?: string;
   capability?: string;

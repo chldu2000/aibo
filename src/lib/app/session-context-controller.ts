@@ -15,7 +15,6 @@ import type {
   RestoreOperation,
 } from '$lib/types';
 import { toErrorMessage } from './error-utils';
-import { sessionAgentKind } from './agent-kind';
 import { createAgentFacade } from './agent-facade';
 
 export type SessionContextControllerContext = {
@@ -72,7 +71,7 @@ export function createSessionContextController(context: SessionContextController
       if (workspaceId === context.getSelectedWorkspaceId()) {
         context.setCodexThreads(loadedThreads);
       }
-      if (announce) context.setNotice(`已读取 ${loadedThreads.length} 个 Codex 线程。`);
+      if (announce) context.setNotice(`已读取 ${loadedThreads.length} 个远端会话。`);
     } catch (error) {
       if (announce) context.setErrorMessage(toErrorMessage(error));
     }
@@ -87,7 +86,7 @@ export function createSessionContextController(context: SessionContextController
     if (
       !context.getDesktop() ||
       !session ||
-      sessionAgentKind(session) !== 'codex' ||
+      !session.capabilities.includes('session.snapshot') ||
       session.archived ||
       !session.externalSessionId
     ) {
@@ -239,7 +238,7 @@ export function createSessionContextController(context: SessionContextController
       if (sessionId === context.getSelectedSessionId()) context.setPiTree(snapshot);
     } catch (error) {
       if (sessionId === context.getSelectedSessionId()) {
-        context.setNotice('Pi 会话树暂时无法读取，请稍后点击“刷新”重试。');
+        context.setNotice('会话树暂时无法读取，请稍后点击“刷新”重试。');
       }
       console.warn('unable to read Pi session tree', error);
     }

@@ -1520,7 +1520,7 @@ fn row_to_timeline_item(row: &sqlx::sqlite::SqliteRow) -> Result<TimelineItem, C
     })
 }
 
-fn pi_snapshot_timeline(snapshot: &serde_json::Value, session_id: &str) -> Vec<TimelineItem> {
+fn session_snapshot_timeline(snapshot: &serde_json::Value, session_id: &str) -> Vec<TimelineItem> {
     snapshot
         .get("branch")
         .and_then(serde_json::Value::as_array)
@@ -1652,13 +1652,15 @@ async fn session_execution_profile(
     .fetch_optional(db)
     .await?;
     let session = session_by_id(db, session_id).await?;
-    let backend = execution_profile::EnforcementBackend::legacy_agent(&session.agent);
+    let backend = if let Some(installation) = &session.plugin_installation_id {
+        execution_profile::installation_backend(db, installation, &session.agent).await.map_err(CoreError::InvalidExecutionProfile)?
+    } else { execution_profile::EnforcementBackend::legacy_agent(&session.agent) };
     if let Some(row) = row {
         let mut stored = profile_from_row(&row, session_id.to_owned())
             .map_err(CoreError::InvalidExecutionProfile)?;
         if session.plugin_installation_id.is_some() {
             let mut resolved = execution_profile::resolve_with_backend(
-                stored.profile.enforcement_backend,
+                backend,
                 Some(stored.profile.requested.clone()),
                 stored.profile.resolved_at.clone(),
             )
@@ -1869,11 +1871,11 @@ async fn get_timeline(
     window: tauri::WebviewWindow, state: State<'_, AppState>,
 ) -> Result<Vec<TimelineItem>, CoreError> {
     let session = session_by_id(&state.db, &session_id).await?;
-    if session.agent == "dev.aibo.pi.agent"
+    if session.capabilities.iter().any(|cap| cap == "session.timeline")
         && session.plugin_installation_id.is_some()
         && !session.archived
     {
-        return state.plugins.pi_timeline_from(window.label(), &session_id).await.map_err(CoreError::SessionOperation);
+        return state.plugins.active_timeline_from(window.label(), &session_id).await.map_err(CoreError::SessionOperation);
     }
     let rows = sqlx::query(
         "SELECT id, session_id, turn_id, external_message_id, role, tool_name, content,
@@ -3558,19 +3560,17 @@ pub(crate) async fn terminate_process_tree(child: &mut tokio::process::Child) {
 
 #[tauri::command]
 async fn list_codex_threads(workspace_id: String, window: tauri::WebviewWindow, state: State<'_, AppState>) -> Result<serde_json::Value, CoreError> {
-    let request = capability_broker::Request {scope:capability_broker::Scope::Workspace(workspace_id),capability:"dev.aibo.codex.thread.list".into(),version:"1.0.0".into(),request_id:Ulid::new().to_string(),turn_id:None,input:serde_json::json!({})};
-    let response = match state.capability_broker.invoke(window.label(),request.clone()).await {
-        Ok(response) => response,
-        Err(error) if error.code == "provider_selection_required" => {
-            let providers = state.capability_broker.providers(&request.scope,&request.capability,&request.version).await.map_err(|e|CoreError::Initialization(e.message))?;
-            if providers.len()!=1 { return Err(CoreError::Initialization("provider_selection_required: choose a Codex catalog release".into())); }
-            let provider = &providers[0];
-            state.capability_broker.bind(capability_broker::Binding {scope:request.scope.clone(),capability:request.capability.clone(),version:request.version.clone(),installation_id:provider.installation_id.clone(),contribution_id:provider.contribution_id.clone()}).await.map_err(|e|CoreError::Initialization(e.message))?;
-            state.capability_broker.invoke(window.label(),request).await.map_err(|e|CoreError::Initialization(e.message))?
-        }
-        Err(error) => return Err(CoreError::Initialization(error.message)),
-    };
-    Ok(response.output["threads"].clone())
+    let scope = capability_broker::Scope::Workspace(workspace_id);
+    let capability = "aibo.session.catalog";
+    let providers = state.capability_broker.providers(&scope, capability, "1.0.0").await.map_err(|e|CoreError::Initialization(e.message))?;
+    let mut threads = Vec::new();
+    for provider in providers {
+        let binding = capability_broker::Binding {scope:scope.clone(),capability:capability.into(),version:"1.0.0".into(),installation_id:provider.installation_id,contribution_id:provider.contribution_id};
+        let request = capability_broker::Request {scope:scope.clone(),capability:capability.into(),version:"1.0.0".into(),request_id:Ulid::new().to_string(),turn_id:None,input:serde_json::json!({})};
+        let response = state.capability_broker.invoke_bound(window.label(),request,&binding).await.map_err(|e|CoreError::Initialization(e.message))?;
+        threads.extend(response.output["threads"].as_array().into_iter().flatten().cloned());
+    }
+    Ok(serde_json::json!(threads))
 }
 
 #[tauri::command]
@@ -3721,8 +3721,8 @@ async fn create_agent_session(workspace_id: String, agent_id: String, installati
         ).bind(&agent_id).fetch_optional(&state.db).await.map_err(|error|error.to_string())?
             .ok_or("provider_unavailable: no enabled installation for this contribution")?,
     };
-    let profile = requested_profile.map(|requested| execution_profile::resolve(&agent_id, Some(requested), now_iso())).transpose()?;
-    let profile = match profile { Some(profile) => profile, None => execution_profile::resolve(&agent_id, None, now_iso())? };
+    let backend = execution_profile::installation_backend(&state.db, &installation_id, &agent_id).await?;
+    let profile = execution_profile::resolve_with_backend(backend, requested_profile, now_iso())?;
     let session = state.plugins.create_with_profile_from(window.label(), &workspace_id, &installation_id, &agent_id, Some(profile)).await?;
     Ok(session)
 }
@@ -3921,7 +3921,7 @@ async fn get_pi_session_tree(
             .await
             .map_err(CoreError::SessionOperation);
     }
-    Err(CoreError::SessionOperation("legacy Pi session is history-only; the session tree requires a new Pi SDK plugin session".to_owned()))
+    Err(CoreError::SessionOperation("history_only: the session tree requires a bound capability session".to_owned()))
 }
 
 #[tauri::command]
@@ -4489,7 +4489,7 @@ mod tests {
         canonical_workspace_path, collect_workspace_capabilities,
         executable_search_path_from, find_executable, mark_turn_interrupted,
         normalize_session_filter, now_iso, open_database,
-        persist_restore_operation, pi_snapshot_timeline, plugin_model_catalog, recover_interrupted_sessions,
+        persist_restore_operation, session_snapshot_timeline, plugin_model_catalog, recover_interrupted_sessions,
         recover_interrupted_turn_changes, require_trusted_workspace,
         session_execution_profile, session_label_from_first_message,
         workspace_label, CoreError, SessionListFilter, Workspace,
@@ -5452,7 +5452,7 @@ mod tests {
     }
 
     #[test]
-    fn pi_snapshot_timeline_projects_only_the_active_branch() {
+    fn session_snapshot_timeline_projects_only_the_active_branch() {
         let snapshot = serde_json::json!({
             "branch": [
                 { "id": "user-root", "type": "message", "timestamp": "2026-09-07T00:00:00Z", "role": "user", "summary": "root" },
@@ -5469,7 +5469,7 @@ mod tests {
             ]
         });
 
-        let timeline = pi_snapshot_timeline(&snapshot, "pi-session");
+        let timeline = session_snapshot_timeline(&snapshot, "pi-session");
         assert_eq!(timeline.len(), 4);
         assert_eq!(timeline[0].id, "user-root");
         assert_eq!(timeline[1].role, "system");
@@ -5481,7 +5481,7 @@ mod tests {
     }
 
     #[test]
-    fn pi_snapshot_timeline_preserves_structured_assistant_parts() {
+    fn session_snapshot_timeline_preserves_structured_assistant_parts() {
         let snapshot = serde_json::json!({"branch": [{
             "id": "mixed", "type": "message", "role": "assistant",
             "timestamp": "2026-09-10T00:00:00Z", "summary": "flattened fallback",
@@ -5491,7 +5491,7 @@ mod tests {
                 {"role": "assistant", "type": "message", "summary": "我先查看文件。"}
             ]
         }]});
-        let timeline = pi_snapshot_timeline(&snapshot, "session");
+        let timeline = session_snapshot_timeline(&snapshot, "session");
         assert_eq!(timeline.len(), 3);
         assert_eq!(timeline[0].role, "system");
         assert_eq!(timeline[0].tool_name.as_deref(), Some("reasoning"));

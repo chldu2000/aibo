@@ -23,6 +23,35 @@ impl EnforcementBackend {
     }
 }
 
+/// A native executor needs an explicit host grant for this exact installation.
+/// Other providers may use the host tool gateway after declaring its standard
+/// contracts; write grants and workspace trust are still checked per invocation.
+pub(crate) async fn installation_backend(db: &SqlitePool, installation: &str, contribution: &str) -> Result<EnforcementBackend, String> {
+    let grant: Option<String> = sqlx::query_scalar("SELECT backend FROM session_execution_authorities WHERE installation_id=? AND contribution_id=?")
+        .bind(installation).bind(contribution).fetch_optional(db).await.map_err(|error| error.to_string())?;
+    if let Some(grant) = grant {
+        return serde_json::from_value(serde_json::json!(grant)).map_err(|error| error.to_string());
+    }
+    let raw: Option<String> = sqlx::query_scalar("SELECT manifest_json FROM plugin_installations WHERE id=? AND installed=1 AND enabled=1")
+        .bind(installation).fetch_optional(db).await.map_err(|error| error.to_string())?;
+    let Some(raw) = raw else { return Ok(EnforcementBackend::Unnegotiated); };
+    let manifest: serde_json::Value = serde_json::from_str(&raw).map_err(|error| error.to_string())?;
+    let operations = manifest["contributions"].as_array().and_then(|entries| entries.iter().find(|entry| entry["id"] == contribution && entry["kind"] == "capabilityProvider" && entry["scope"] == "session"))
+        .and_then(|entry| entry["operations"].as_array());
+    let mediated = ["aibo.session.tool.respond", "aibo.session.turn.write"].iter().all(|id| operations.is_some_and(|ops| ops.iter().any(|op|
+        op["capability"]["id"] == *id && crate::session_contract::validates_operation(op, "session", &manifest))));
+    Ok(if mediated { EnforcementBackend::CoreProxy } else { EnforcementBackend::Unnegotiated })
+}
+
+/// Host-authorized presets, independent of provider identity or self-reported flags.
+fn access_modes(backend: EnforcementBackend) -> Vec<String> {
+    match backend {
+        EnforcementBackend::CodexNative => vec!["ask-for-approval", "approve-for-me", "full-access", "plan"],
+        EnforcementBackend::CoreProxy => vec!["read-only", "plan", "workspace-write"],
+        EnforcementBackend::Unnegotiated => vec!["read-only"],
+    }.into_iter().map(str::to_owned).collect()
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
 #[serde(deny_unknown_fields)]
@@ -54,6 +83,8 @@ pub(crate) struct ResolvedExecutionProfile {
     pub(crate) unsupported: Vec<String>,
     pub(crate) adapter_capabilities: Vec<String>,
     pub(crate) native_sandbox: bool,
+    #[serde(default)]
+    pub(crate) access_modes: Vec<String>,
     pub(crate) resolved_at: String,
 }
 
@@ -222,6 +253,7 @@ pub(crate) fn resolve_with_backend(
             }
             enforced.interaction_mode = "ask".to_owned();
             enforced.approval_policy = "never".to_owned();
+            enforced.approval_reviewer = "none".to_owned();
             enforced.filesystem_policy = "read-only".to_owned();
             enforced.command_policy = "disabled".to_owned();
             enforced.network_policy = "disabled".to_owned();
@@ -237,6 +269,7 @@ pub(crate) fn resolve_with_backend(
         unsupported,
         adapter_capabilities,
         native_sandbox,
+        access_modes: access_modes(backend),
         resolved_at,
     })
 }
@@ -319,6 +352,7 @@ pub(crate) fn from_row(
                 .try_get::<i64, _>("native_sandbox")
                 .map_err(|error| error.to_string())?
                 != 0,
+            access_modes: access_modes(serde_json::from_str(&row.try_get::<String, _>("enforcement_backend").map_err(|error| error.to_string())?).map_err(|error| format!("invalid enforcement backend: {error}"))?),
             resolved_at: row
                 .try_get("resolved_at")
                 .map_err(|error| error.to_string())?,

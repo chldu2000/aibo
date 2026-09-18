@@ -27,6 +27,7 @@ export interface SessionListItem {
   id: string;
   workspaceId: string;
   agent: 'codex' | 'pi' | 'plugin';
+  canSyncSnapshot: boolean;
   label: string;
   state: SessionState;
   archived: boolean;

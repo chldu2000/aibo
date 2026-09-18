@@ -56,7 +56,7 @@ export function createPiTreeController(context: PiTreeControllerContext) {
     const session = context.getSelectedSession();
     if (!entryId || !sessionId || !session || !session.capabilities.includes('session.tree')) return false;
     if (!context.getDesktop()) {
-      context.setNotice('当前是 Web 预览；Pi 分支切换需要在 Tauri 桌面模式中执行。');
+      context.setNotice('当前是 Web 预览；分支切换需要在 Tauri 桌面模式中执行。');
       return false;
     }
 
@@ -76,7 +76,7 @@ export function createPiTreeController(context: PiTreeControllerContext) {
         editorText: typeof result.editorText === 'string' ? result.editorText : null,
       };
       if (navigation.cancelled) {
-        context.setNotice('Pi 分支切换已取消。');
+        context.setNotice('分支切换已取消。');
         return false;
       } else {
         if (context.getSelectedSessionId() !== sessionId) return false;
@@ -85,7 +85,7 @@ export function createPiTreeController(context: PiTreeControllerContext) {
         if (context.getSelectedSessionId() !== sessionId) return false;
         context.setTimeline(timeline);
         if (navigation.editorText !== null) context.setComposerText(navigation.editorText);
-        context.setNotice('Pi 会话已切换到选定分支；原分支仍保留在会话树中。');
+        context.setNotice('会话已切换到选定分支；原分支仍保留在会话树中。');
         return true;
       }
     } catch (error) {

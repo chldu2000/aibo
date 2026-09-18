@@ -254,7 +254,7 @@ export function handleAgentEvent(event: AgentEvent, context: AgentEventHandlerCo
       typeof event.payload.pendingApprovalCount === 'number'
         ? event.payload.pendingApprovalCount
         : 0;
-    const agentLabel = context.selectedAgent === 'pi' ? 'Pi' : 'Codex';
+    const agentLabel = context.selectedAgent ?? 'Agent';
     context.setNotice(
       discarded > 0
         ? `${agentLabel} 进程已退出，${discarded} 个待审批请求已清除；请重新发送。`

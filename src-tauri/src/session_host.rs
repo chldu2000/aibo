@@ -33,14 +33,14 @@ enum TurnPhase { Starting, Running, Settling, Finished }
 #[derive(Clone)]
 struct LiveTurn {
     caller:String, request_id:String, cancel:Arc<AtomicBool>,
-    phase:watch::Sender<TurnPhase>, pi_branch:Option<Arc<Vec<crate::TimelineItem>>>,
+    phase:watch::Sender<TurnPhase>, active_branch:Option<Arc<Vec<crate::TimelineItem>>>,
 }
 
 // Only observational calls may wait for the next idle state. Never replay a
 // model change, queue operation, approval, or other interaction after a turn.
 fn passive_session_read(capability: &str, input: &Value) -> bool {
     match capability {
-        "session.snapshot" | "command.list" | "skill.list" => true,
+        "session.snapshot" | "session.timeline" | "command.list" | "skill.list" => true,
         "model.select" | "model.reasoning" | "model.service-tier" | "model.context-window" => input["action"] == "list",
         "session.tree" => input["action"] == "get",
         _ => false,
@@ -128,7 +128,8 @@ impl SessionHost {
         let _guard=self.session_operation(&id).await;
         sqlx::query("INSERT INTO sessions(id,workspace_id,agent,label,state,created_at,updated_at,plugin_installation_id) VALUES(?,?,?,?,'starting',?,?,?)")
             .bind(&id).bind(workspace_id).bind(contribution_id).bind(crate::DEFAULT_CAPABILITY_SESSION_LABEL).bind(&now).bind(&now).bind(installation_id).execute(&self.db).await.map_err(|e|e.to_string())?;
-        let profile=match profile {Some(profile)=>profile,None=>execution_profile::resolve(contribution_id,None,now)?};
+        let backend = execution_profile::installation_backend(&self.db, installation_id, contribution_id).await?;
+        let profile = execution_profile::resolve_with_backend(backend, profile.map(|value| value.requested), now)?;
         execution_profile::save_for_session(&self.db,&id,&profile).await.map_err(|e|e.to_string())?;
         if let Err(error)=self.open(caller,&id).await {
             let _=sqlx::query("UPDATE sessions SET state='failed' WHERE id=?").bind(&id).execute(&self.db).await;return Err(error);
@@ -154,12 +155,13 @@ impl SessionHost {
         let binding=Self::binding(&session,"aibo.session.open")?;
         let request=Request {scope:binding.scope.clone(),capability:binding.capability.clone(),version:binding.version.clone(),request_id:ulid::Ulid::new().to_string(),turn_id:None,input:json!({"mode":if previous.is_some(){"resume"}else{"create"},"executionProfile":profile.enforced,"recovery":previous.as_ref().map(|b|&b["recovery"])})};
         let result=self.broker.invoke_bound(caller,request,&binding).await.map_err(|e|e.message)?;
+        let negotiated = crate::session_contract::negotiate(&manifest, &session.agent, &result.output["capabilities"], &result.negotiated_operations);
         let now=crate::now_iso();
         let document=json!({"schema":"aibo.session-binding/v2","sessionId":session_id,"pluginInstallationId":session.plugin_installation_id,"pluginId":manifest["pluginId"],"pluginVersion":manifest["version"],"agentId":session.agent,"nativeSessionId":result.output["nativeSessionId"],"runtimeProtocolVersion":"2.1","recovery":result.output["recovery"],"createdAt":previous.as_ref().map(|b|b["createdAt"].clone()).unwrap_or(json!(now)),"updatedAt":now});
         if !crate::session_contract::binding_schema().is_valid(&document) {return Err("invalid_output: session binding".into());}
         let mut tx=self.db.begin_with("BEGIN IMMEDIATE").await.map_err(|e|e.to_string())?;
         sqlx::query("INSERT INTO session_bindings(session_id,external_session_id,generation_id,adapter_version,bound_at,plugin_binding_json,plugin_capabilities_json) VALUES(?,?,?,'2.1',?,?,?) ON CONFLICT(session_id) DO UPDATE SET external_session_id=excluded.external_session_id,generation_id=excluded.generation_id,adapter_version='2.1',bound_at=excluded.bound_at,plugin_binding_json=excluded.plugin_binding_json,plugin_capabilities_json=excluded.plugin_capabilities_json")
-            .bind(session_id).bind(result.output["nativeSessionId"].as_str()).bind(&result.generation_id).bind(&now).bind(document.to_string()).bind(result.output["capabilities"].to_string()).execute(&mut *tx).await.map_err(|e|e.to_string())?;
+            .bind(session_id).bind(result.output["nativeSessionId"].as_str()).bind(&result.generation_id).bind(&now).bind(document.to_string()).bind(json!(negotiated).to_string()).execute(&mut *tx).await.map_err(|e|e.to_string())?;
         sqlx::query("UPDATE sessions SET state='idle',updated_at=? WHERE id=?").bind(now).bind(session_id).execute(&mut *tx).await.map_err(|e|e.to_string())?;
         tx.commit().await.map_err(|e|e.to_string())?;Ok(())
     }
@@ -214,7 +216,7 @@ impl SessionHost {
         if text.trim().is_empty() || text.len()>200_000 {return Err("invalid_input: prompt length".into());}
         if self.live.lock().await.contains_key(session_id) {return Err("busy: session has an active invocation".into());}
         self.open(caller,session_id).await?;
-        let (session,_)=self.metadata(session_id).await?;
+        let (session,manifest)=self.metadata(session_id).await?;
         if goal_resume && !session.capabilities.iter().any(|capability| capability == "goal.resume") {return Err("capability_unsupported: goal.resume".into());}
         let saved=self.saved_binding(session_id).await?.ok_or("invalid_session: no native binding")?;
         let profile=crate::session_execution_profile(&self.db,session_id).await.map_err(|e|e.to_string())?.profile.enforced;
@@ -225,16 +227,16 @@ impl SessionHost {
             (false,true)=>"aibo.session.turn.write", (false,false)=>"aibo.session.turn",
         };
         let binding=Self::binding(&session,capability)?;
-        // Freeze the active Pi branch before this turn. Runtime queries are not
+        // Freeze the provider's active branch before this turn. Runtime queries are not
         // needed to display its accepted user message or subsequent streamed rows.
-        let pi_branch = if session.agent == "dev.aibo.pi.agent" {
-            let binding = Self::binding(&session, "dev.aibo.pi.session.snapshot")?;
+        let active_branch = if session.capabilities.iter().any(|cap| cap == "session.timeline") {
+            let binding = Self::binding(&session, &format!("{}.session.timeline", manifest["pluginId"].as_str().ok_or("invalid_manifest")?))?;
             let response = self.broker.invoke_bound(caller, Request {
                 scope:binding.scope.clone(), capability:binding.capability.clone(), version:"1.0.0".into(),
                 request_id:ulid::Ulid::new().to_string(), turn_id:None, input:json!({}),
             }, &binding).await.map_err(|e| e.message)?;
             self.save_recovery(session_id, &response).await?;
-            Some(Arc::new(crate::pi_snapshot_timeline(&response.output, session_id)))
+            Some(Arc::new(crate::session_snapshot_timeline(&response.output, session_id)))
         } else { None };
         let turn=ulid::Ulid::new().to_string();let message=ulid::Ulid::new().to_string();let now=crate::now_iso();
         let workspace=crate::workspace_by_id(&self.db,&session.workspace_id).await.map_err(|e|e.to_string())?;
@@ -258,7 +260,7 @@ impl SessionHost {
         }
         tx.commit().await.map_err(|e|e.to_string())?;
         let (phase, _) = watch::channel(TurnPhase::Starting);
-        let run=LiveTurn {caller:caller.into(),request_id:turn.clone(),cancel:Arc::new(AtomicBool::new(false)),phase,pi_branch};live.insert(session_id.into(),run.clone());drop(live);
+        let run=LiveTurn {caller:caller.into(),request_id:turn.clone(),cancel:Arc::new(AtomicBool::new(false)),phase,active_branch};live.insert(session_id.into(),run.clone());drop(live);
         self.turn_baselines.lock().await.insert(turn.clone(),baseline);
         let _=crate::auto_name_session_from_first_message(&self.db,session_id,&message,text).await;
         let request=Request {scope:binding.scope.clone(),capability:capability.into(),version:"1.0.0".into(),request_id:turn.clone(),turn_id:Some(turn.clone()),input:if goal_resume {json!({})} else {json!({"text":text,"attachments":attachments.into_iter().map(|id|json!({"attachmentId":id})).collect::<Vec<_>>()})}};
@@ -314,10 +316,10 @@ impl SessionHost {
         let updated=sqlx::query("UPDATE session_bindings SET plugin_binding_json=? WHERE session_id=? AND generation_id=?").bind(binding.to_string()).bind(session_id).bind(&response.generation_id).execute(&self.db).await.map_err(|e|e.to_string())?;
         if updated.rows_affected()!=1 {return Err("invalid_session: recovery generation changed".into());}Ok(())
     }
-    pub async fn pi_timeline_from(&self, caller: &str, session_id: &str) -> Result<Vec<crate::TimelineItem>, String> {
+    pub async fn active_timeline_from(&self, caller: &str, session_id: &str) -> Result<Vec<crate::TimelineItem>, String> {
         let running = self.live.lock().await.get(session_id).cloned();
         if let Some(run) = running {
-            if let Some(branch) = run.pi_branch {
+            if let Some(branch) = run.active_branch {
                 let mut timeline = (*branch).clone();
                 let rows = sqlx::query("SELECT id,session_id,turn_id,external_message_id,role,tool_name,content,status,created_at,updated_at FROM messages WHERE session_id=? AND turn_id=? ORDER BY created_at,sequence,id")
                     .bind(session_id).bind(&run.request_id).fetch_all(&self.db).await.map_err(|e|e.to_string())?;
@@ -325,8 +327,8 @@ impl SessionHost {
                 return Ok(timeline);
             }
         }
-        let snapshot = self.invoke_capability_from(caller, session_id, "session.snapshot", json!({})).await?;
-        Ok(crate::pi_snapshot_timeline(&snapshot, session_id))
+        let snapshot = self.invoke_capability_from(caller, session_id, "session.timeline", json!({})).await?;
+        Ok(crate::session_snapshot_timeline(&snapshot, session_id))
     }
     pub async fn invoke_capability_from(&self,caller:&str,session_id:&str,capability:&str,input:Value)->Result<Value,String> {
         if capability == "queue.manage" && self.host_queue_supported(session_id).await? {
@@ -365,6 +367,7 @@ impl SessionHost {
             // operation or hold admission for the duration of an Agent turn.
             if running.is_some() { drop(admission.take()); }
             let (session,manifest)=self.metadata(session_id).await?;
+            if !session.capabilities.iter().any(|cap| cap == capability) { return Err(format!("capability_unsupported: {capability}")); }
             let qualified=format!("{}.{}",manifest["pluginId"].as_str().ok_or("invalid_manifest")?,capability);
             let reference_turn = running.as_ref().filter(|_| capability == "queue.manage"
                 && matches!(input["action"].as_str(), Some("steer" | "followUp")))

@@ -63,7 +63,7 @@ impl Broker {
             || !jsonschema::options().build(&provider.operation["outputSchema"]).map_err(database)?.is_valid(&raw["output"]) {
             return Err(fail("invalid_output","Control returned an invalid result"));
         }
-        Ok(Response {instance_id:interaction.instance_id,invocation_id:interaction.invocation_id,installation_id:provider.installation_id,generation_id:interaction.runtime.generation_id,output:raw["output"].clone()})
+        Ok(Response {instance_id:interaction.instance_id,invocation_id:interaction.invocation_id,installation_id:provider.installation_id,generation_id:interaction.runtime.generation_id,output:raw["output"].clone(),negotiated_operations:Value::Null})
     }
 }
 

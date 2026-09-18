@@ -549,3 +549,29 @@ skin owns queue persistence, delivery, attachment identity or uncertain recovery
 ### Model context window selector
 
 `UiKitAdapter.ModelContextSelect` receives only current option ID, model-specific option descriptors, disabled state and an onSelect callback. The runtime proxy selects the active implementation; both built-in skins own their dropdown styles. Composer places the control in the model header beside Fast and computes capability/lifecycle gating. External workbench presentations receive the same model metadata and a validated `selectContextWindow` change action. No provider identity or skin ID is used to infer support.
+
+## 协商后的 Agent 功能
+
+页面不通过 Codex/Pi 名称决定功能。`Session.capabilities` 是宿主在会话开放时取
+插件声明、已安装 manifest 的版本化契约与运行时握手的交集；Broker 每次调用继续
+检查权限、安装绑定和运行时 generation。可选功能契约见
+`contracts/session-features.v1.json`，基础生命周期和工作区目录见
+`contracts/session-capabilities.v1.json`。不认识或契约不匹配的功能不进入有效能力列表。
+
+默认 Svelte 界面与外部 Presentation 使用同一组有效能力控制分支、树、压缩、模型、
+目标和命令。树与分支时间线是两个独立契约：`session.tree` 提供导航，
+`session.timeline` 提供当前分支的 `branch` 条目（含可选结构化 `parts`），并启用
+普通系统条目的分组；分支总结和压缩总结仍单独显示。宿主在回合开始前冻结分支，
+再叠加本回合的持久化消息，防止正在执行时刷新历史阻塞或混入别的分支。
+`session.snapshot` 是远端线程摘要，不能替代分支时间线。
+
+导航只接收由有效能力投影的 `canSyncSnapshot`，继续不暴露完整能力或传输字段。
+权限菜单接收宿主的 `executionProfile.accessModes`；插件的名字和自报权限标志不
+产生原生执行权。原生执行器必须有绑定到具体安装与贡献的宿主授权；声明标准
+工具回复和写入契约的第三方可以使用 Core 的工具代理，实际写入仍受工作区信任、
+执行配置、Broker 权限与审批约束。没有协商的执行器只提供只读模式。
+
+斜杠命令由有效能力生成，公共宿主命令适用于所有绑定会话。插件发现的命令不再
+用内置品牌枚举过滤；`AgentCommand.insertionText` 定义需要插入的文本（例如技能的
+`$name `），未提供时使用 `/name `。工作区远端会话目录使用
+`aibo.session.catalog`，聚合支持该契约的可用插件，不固定选择 Codex。

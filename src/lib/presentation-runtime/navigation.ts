@@ -29,7 +29,7 @@ export function navigationActions(state: PresentationNavigation): PresentationNa
       if (session.archived) add('unarchiveSession', session.id);
       else {
         if (!running(session.state) && state.archivingSessionId === null) add('archiveSession', session.id);
-        if (session.agent === 'codex' && !state.threadBusy && state.archivingSessionId !== session.id) add('syncSession', session.id);
+        if (session.canSyncSnapshot && !state.threadBusy && state.archivingSessionId !== session.id) add('syncSession', session.id);
       }
       if (state.archivingSessionId !== session.id) add('renameSession', session.id);
     }

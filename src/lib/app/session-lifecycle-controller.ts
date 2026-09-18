@@ -9,7 +9,6 @@ import {
   upsertSession,
 } from './session-transitions';
 import { toErrorMessage } from './error-utils';
-import { sessionAgentKind } from './agent-kind';
 
 export type SessionLifecycleControllerContext = {
   api: {
@@ -113,7 +112,7 @@ export function createSessionLifecycleController(
 
   async function forkSession(sessionId: string | null, throughTurnId?: string): Promise<void> {
     const target = sessionId ? context.findSession(sessionId) : null;
-    if (!target || !context.getDesktop() || target.archived || target.id === context.getArchivingSessionId()) return;
+    if (!target || !context.getDesktop() || target.archived || !target.capabilities.includes('session.fork') || target.id === context.getArchivingSessionId()) return;
     if (running(target)) {
       context.setErrorMessage('请等待当前 turn 完成后再创建分支。');
       return;
@@ -130,8 +129,8 @@ export function createSessionLifecycleController(
       void context.refreshCodexThread(forked.id);
       void context.refreshCodexThreads(context.getSelectedWorkspaceId() ?? forked.workspaceId);
       context.setNotice(throughTurnId
-        ? 'Codex 分支已创建，已复制到选定回复。'
-        : 'Codex 分支已创建，已复制最近一条已完成 turn。');
+        ? '会话分支已创建，已复制到选定回复。'
+        : '会话分支已创建，已复制最近一条已完成 turn。');
     } catch (error) {
       context.setErrorMessage(toErrorMessage(error));
     } finally {
@@ -167,7 +166,7 @@ export function createSessionLifecycleController(
       if (invalidatedCurrentSession) context.clearSelectedSessionContext();
       void context.refreshCodexThreads(archived.workspaceId);
       await context.refreshSessions(archived.workspaceId);
-      context.setNotice(`${sessionAgentKind(archived) === 'pi' ? 'Pi 会话' : 'Codex 线程'}已归档；本地时间线仍保留。`);
+      context.setNotice(`会话已归档；本地时间线仍保留。`);
     } catch (error) {
       context.setErrorMessage(toErrorMessage(error));
     } finally {
@@ -188,7 +187,7 @@ export function createSessionLifecycleController(
       context.activateWorkspace(restored.workspaceId);
       context.setSelectedSessionId(restored.id);
       context.setTimeline(await context.api.getTimeline(restored.id));
-      if (sessionAgentKind(restored) === 'codex') {
+      if (restored.capabilities.includes('session.snapshot')) {
         void context.refreshCodexThread(restored.id, true);
         void context.refreshCodexThreads(restored.workspaceId);
       }
@@ -196,7 +195,7 @@ export function createSessionLifecycleController(
       if (context.getWorkspaceSessions(restored.workspaceId).some((item) => item.id === restored.id)) {
         context.setSelectedSessionId(restored.id);
       }
-      context.setNotice(`${sessionAgentKind(restored) === 'pi' ? 'Pi 会话' : 'Codex 线程'}已取消归档，可以继续发送消息。`);
+      context.setNotice(`会话已取消归档，可以继续发送消息。`);
     } catch (error) {
       context.setErrorMessage(toErrorMessage(error));
     } finally {

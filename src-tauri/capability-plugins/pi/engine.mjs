@@ -14,7 +14,7 @@ const {
 } = sdkModule;
 
 
-export const capabilities = ['session.create', 'session.resume', 'session.close', 'session.reload', 'turn.send', 'turn.cancel', 'stream.text', 'model.select', 'model.reasoning', 'model.context-window', 'command.list', 'skill.list', 'approval.respond', 'queue.manage', 'compaction.run', 'session.tree', 'session.snapshot', 'ext.dev.aibo.pi.usage', 'ext.dev.aibo.pi.retry', 'ext.dev.aibo.pi.extension'];
+export const capabilities = ['session.create', 'session.resume', 'session.close', 'session.reload', 'turn.send', 'turn.cancel', 'stream.text', 'model.select', 'model.reasoning', 'model.context-window', 'command.list', 'skill.list', 'approval.respond', 'queue.manage', 'compaction.run', 'session.tree', 'session.timeline', 'ext.dev.aibo.pi.usage', 'ext.dev.aibo.pi.retry', 'ext.dev.aibo.pi.extension'];
 let provider = null;
 let session = null;
 let publish;

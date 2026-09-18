@@ -22,7 +22,7 @@ export function toWorkspaceListItems(workspaces: Workspace[]): WorkspaceListItem
 export function toSessionListItem(session: Session): SessionListItem {
   const { id, workspaceId, label, state, archived, updatedAt } = session;
   const agent = sessionAgentKind(session);
-  return { id, workspaceId, agent, label, state, archived, updatedAt };
+  return { id, workspaceId, agent, label, state, archived, updatedAt, canSyncSnapshot: session.capabilities.includes('session.snapshot') };
 }
 
 export function toSessionListItems(sessions: Session[]): SessionListItem[] {

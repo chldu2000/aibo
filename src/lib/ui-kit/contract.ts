@@ -163,6 +163,9 @@ export type UiSubagentDialogProps = {
   onClose: () => void; children?: Snippet;
 };
 
+/** Visual adapters render host-projected Agent actions. Feature availability comes
+ * from negotiated session capabilities, navigation canSyncSnapshot, and host-owned
+ * executionProfile.accessModes; Agent names select branding only. */
 export type UiKitAdapter = {
   SubagentCard: Component<UiSubagentCardProps>;
   SubagentDialog: Component<UiSubagentDialogProps>;
