@@ -15,6 +15,7 @@ mod workspace_write_runs;
 mod artifact;
 mod change_set;
 mod execution_profile;
+mod session_controls;
 mod session_permissions;
 mod session_models;
 mod plugin_runtime;
@@ -1632,7 +1633,7 @@ fn require_trusted_workspace(
     workspace: &Workspace,
     profile: &ResolvedExecutionProfile,
 ) -> Result<(), CoreError> {
-    let requests_side_effects = profile.enforced.filesystem_policy == "workspace-write"
+    let requests_side_effects = profile.enforced.filesystem_policy != "read-only"
         || profile.enforced.command_policy != "disabled"
         || profile.enforced.network_policy != "disabled";
     if requests_side_effects && workspace.trust != "trusted" {
@@ -1668,6 +1669,7 @@ async fn session_execution_profile(
             )
             .map_err(CoreError::InvalidExecutionProfile)?;
             resolved.adapter_capabilities = session.capabilities;
+            resolved.session_controls = session_controls::for_installation(db, session.plugin_installation_id.as_ref().unwrap(), &session.agent, &resolved).await.map_err(CoreError::InvalidExecutionProfile)?;
             stored.profile = resolved;
         }
         return Ok(stored);
@@ -1681,6 +1683,7 @@ async fn session_execution_profile(
     .map_err(CoreError::InvalidExecutionProfile)?;
     if session.plugin_installation_id.is_some() {
         resolved.adapter_capabilities = session.capabilities;
+        resolved.session_controls = session_controls::for_installation(db, session.plugin_installation_id.as_ref().unwrap(), &session.agent, &resolved).await.map_err(CoreError::InvalidExecutionProfile)?;
     }
     resolved
         .unsupported
@@ -1710,7 +1713,7 @@ async fn get_session_execution_profile(
 #[tauri::command]
 async fn update_session_execution_profile(
     session_id: String,
-    requested: ExecutionProfile,
+    control_id: String,
     window: tauri::WebviewWindow, state: State<'_, AppState>,
 ) -> Result<SessionExecutionProfile, CoreError> {
     let _admission = state.plugins.session_operation(&session_id).await;
@@ -1727,8 +1730,8 @@ async fn update_session_execution_profile(
     ) {
         return Err(CoreError::SessionBusy);
     }
-    let backend = session_execution_profile(&state.db, &session_id).await?.profile.enforcement_backend;
-    let mut resolved = execution_profile::resolve_with_backend(backend, Some(requested), now_iso())
+    let current = session_execution_profile(&state.db, &session_id).await?.profile;
+    let mut resolved = session_controls::select(&current, &control_id)
         .map_err(CoreError::InvalidExecutionProfile)?;
     if session.plugin_installation_id.is_some() {
         resolved.adapter_capabilities = session.capabilities.clone();
@@ -5378,6 +5381,13 @@ mod tests {
             require_trusted_workspace(&workspace, &profile),
             Err(CoreError::WorkspaceTrustRequired)
         ));
+        // A declared control can combine full filesystem access with disabled
+        // commands/network; filesystem authority alone still requires trust.
+        let mut full_access = profile.clone();
+        full_access.enforced.filesystem_policy = "danger-full-access".into();
+        full_access.enforced.command_policy = "disabled".into();
+        full_access.enforced.network_policy = "disabled".into();
+        assert!(matches!(require_trusted_workspace(&workspace, &full_access), Err(CoreError::WorkspaceTrustRequired)));
     }
 
     #[test]

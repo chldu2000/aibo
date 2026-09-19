@@ -43,15 +43,6 @@ pub(crate) async fn installation_backend(db: &SqlitePool, installation: &str, co
     Ok(if mediated { EnforcementBackend::CoreProxy } else { EnforcementBackend::Unnegotiated })
 }
 
-/// Host-authorized presets, independent of provider identity or self-reported flags.
-fn access_modes(backend: EnforcementBackend) -> Vec<String> {
-    match backend {
-        EnforcementBackend::CodexNative => vec!["ask-for-approval", "approve-for-me", "full-access", "plan"],
-        EnforcementBackend::CoreProxy => vec!["read-only", "plan", "workspace-write"],
-        EnforcementBackend::Unnegotiated => vec!["read-only"],
-    }.into_iter().map(str::to_owned).collect()
-}
-
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
 #[serde(deny_unknown_fields)]
@@ -84,7 +75,7 @@ pub(crate) struct ResolvedExecutionProfile {
     pub(crate) adapter_capabilities: Vec<String>,
     pub(crate) native_sandbox: bool,
     #[serde(default)]
-    pub(crate) access_modes: Vec<String>,
+    pub(crate) session_controls: Vec<crate::session_controls::SessionControl>,
     pub(crate) resolved_at: String,
 }
 
@@ -269,7 +260,7 @@ pub(crate) fn resolve_with_backend(
         unsupported,
         adapter_capabilities,
         native_sandbox,
-        access_modes: access_modes(backend),
+        session_controls: Vec::new(),
         resolved_at,
     })
 }
@@ -352,7 +343,7 @@ pub(crate) fn from_row(
                 .try_get::<i64, _>("native_sandbox")
                 .map_err(|error| error.to_string())?
                 != 0,
-            access_modes: access_modes(serde_json::from_str(&row.try_get::<String, _>("enforcement_backend").map_err(|error| error.to_string())?).map_err(|error| format!("invalid enforcement backend: {error}"))?),
+            session_controls: Vec::new(),
             resolved_at: row
                 .try_get("resolved_at")
                 .map_err(|error| error.to_string())?,

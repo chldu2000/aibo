@@ -1,8 +1,9 @@
+import type { SessionControl } from './session.js';
 type AgentName = 'codex' | 'pi';
 
 type InteractionMode = 'ask' | 'plan' | 'edit';
 
-type SessionAccessMode = 'read-only' | 'plan' | 'workspace-write' | 'ask-for-approval' | 'approve-for-me' | 'full-access';
+
 
 type ApprovalPolicy = 'never' | 'untrusted' | 'on-request' | 'trusted';
 type ApprovalReviewer = 'user' | 'auto-review' | 'none';
@@ -32,7 +33,7 @@ interface ResolvedExecutionProfile {
   unsupported: string[];
   adapterCapabilities: string[];
   nativeSandbox: boolean;
-  accessModes?: SessionAccessMode[];
+  sessionControls?: SessionControl[];
   resolvedAt: string;
 }
 

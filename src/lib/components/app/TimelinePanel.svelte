@@ -9,7 +9,7 @@
   import { goalStatusLabel, goalCanResume } from '$lib/app/session-goal';
   import { sessionAgentKind } from '$lib/app/agent-kind';
   import { GoalBar, Badge, Button, Card, CardContent, CardHeader, CardTitle, Icon, Input, Separator } from '$lib/ui-kit';
-  import type { AgentCommand, AgentGoal, AgentQueueSnapshot, ContextAttachment, SessionAccessMode, SessionExecutionProfile, SessionModelCatalog, Session, UserInputRequest, WorkspacePathSuggestion } from '$lib/types';
+  import type { AgentCommand, AgentGoal, AgentQueueSnapshot, ContextAttachment, SessionControlId, SessionExecutionProfile, SessionModelCatalog, Session, UserInputRequest, WorkspacePathSuggestion } from '$lib/types';
   import type { UsageValues } from './view-models';
   import Composer from './Composer.svelte';
   import { splitSessionReferences } from '../../../../packages/presentation-workbench/session-references.js';
@@ -80,7 +80,7 @@
     onSendQueuedMessage: (id: string) => void;
     onResumeQueue: () => void;
     onAbort: () => void;
-    onSelectAccess: (mode: SessionAccessMode) => void | Promise<void>;
+    onSelectAccess: (mode: SessionControlId) => void | Promise<void>;
     onLoadModels: () => void | Promise<void>;
     onSelectModelConfiguration: (model: string, reasoningEffort: string | null) => void | Promise<void>;
     onSelectServiceTier: (serviceTier: string) => void | Promise<void>;

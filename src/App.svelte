@@ -231,7 +231,7 @@
       case 'selectModel': await applySessionModelConfiguration(target!, detail ?? null); break;
       case 'selectServiceTier': await applySessionServiceTier(target!); break;
       case 'selectContextWindow': await applySessionContextWindow(intent.value!, target!); break;
-      case 'selectAccess': await applySessionAccess(target as SessionAccessMode); break;
+      case 'selectAccess': await applySessionAccess(target as SessionControlId); break;
       case 'compact': await compactCurrentSession(); break;
       case 'answer':
       case 'chooseAnswer': {
@@ -623,7 +623,6 @@
   import type { ComposerDrafts } from '$lib/app/composer-draft-storage';
   import { isSessionRunning } from '$lib/app/session-state';
   import { sessionAgentKind } from '$lib/app/agent-kind';
-  import { sessionAccessProfile } from '$lib/app/session-access-profile';
   import {
     addWorkspace,
     archiveSession as archiveSessionApi,
@@ -717,7 +716,7 @@
     CodexThreadSummary,
     Session,
     SessionModelCatalog,
-    SessionAccessMode,
+    SessionControlId,
     SessionExecutionProfile,
     AgentGoal,
     TurnChangeSet,
@@ -946,7 +945,7 @@
 
   const visibleAgentCommands = $derived.by(() => {
     if (!selectedSession) return [];
-    return visibleSessionCommands(sessionBuiltinCommands(selectedSession, executionProfile?.sessionId === selectedSession.id ? executionProfile.accessModes : []), agentCommands);
+    return visibleSessionCommands(sessionBuiltinCommands(selectedSession, executionProfile?.sessionId === selectedSession.id ? executionProfile.sessionControls : []), agentCommands);
   });
   let commandSearchGeneration = 0;
   let busy = $state(false);
@@ -2638,11 +2637,7 @@
     }
   }
 
-  function profileForAccess(mode: SessionAccessMode): ExecutionProfile {
-    return sessionAccessProfile(executionProfile?.sessionId === selectedSession?.id ? executionProfile?.accessModes ?? [] : [], mode, executionProfile?.requested);
-  }
-
-  async function applySessionAccess(mode: SessionAccessMode): Promise<void> {
+  async function applySessionAccess(mode: SessionControlId): Promise<void> {
     const session = selectedSession;
     if (!session) return;
     if (!desktop) {
@@ -2663,13 +2658,13 @@
     busy = true;
     errorMessage = null;
     try {
-      executionProfile = await updateSessionExecutionProfile(session.id, profileForAccess(mode));
+      executionProfile = await updateSessionExecutionProfile(session.id, mode);
       // The profile belongs to this session only. Keep the current list entry
       // coherent after the backend closes its idle runtime, without reloading
       // every session in the workspace (which also reloads unrelated list and
       // conversation context on this path).
       markSessionIdle(session);
-      notice = '会话权限已更新。';
+      notice = '会话设置已更新。';
     } catch (error) {
       errorMessage = toErrorMessage(error);
     } finally {
@@ -2786,8 +2781,16 @@
 
   async function executeBuiltinCommand(input: string): Promise<boolean> {
     const command = parseAgentCommand(input);
-    if (!command || !selectedSession || !sessionBuiltinCommands(selectedSession, executionProfile?.sessionId === selectedSession.id ? executionProfile.accessModes : []).some(item => item.name === command.name)) return false;
+    if (!command || !selectedSession || !sessionBuiltinCommands(selectedSession, executionProfile?.sessionId === selectedSession.id ? executionProfile.sessionControls : []).some(item => item.name === command.name)) return false;
 
+    const control = executionProfile?.sessionId === selectedSession.id
+      ? executionProfile.sessionControls?.find(option => option.command === command.name) : undefined;
+    if (control) {
+      if (command.args) { errorMessage = `/${command.name} 不接受参数。`; return true; }
+      await applySessionAccess(control.id);
+      if (!errorMessage) composerText = '';
+      return true;
+    }
     const session = selectedSession;
     const workspace = selectedWorkspace;
     const run = async (operation: () => Promise<void>): Promise<void> => {
@@ -2941,11 +2944,6 @@
         }
         requestArchiveSession(session.id);
         composerText = '';
-        return true;
-      case 'plan':
-        if (command.args) { errorMessage = '/plan 不接受参数。'; return true; }
-        await applySessionAccess('plan');
-        if (!errorMessage) composerText = '';
         return true;
       case 'goal':
         await run(async () => {

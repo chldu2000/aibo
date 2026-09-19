@@ -15,3 +15,20 @@ export type SessionDomainEvent = {
   nativeSessionId:string;turnId:string|null;type:string;
   correlation:Record<string,JsonValue>|null;payload:Record<string,JsonValue>;
 };
+
+/** Declarative controls offered by a session contribution, never an authority grant. */
+export interface SessionControl {
+  id: string;
+  kind: 'permission' | 'mode';
+  label: string;
+  description: string;
+  command?: string;
+  profile: {
+    interactionMode?: 'ask' | 'plan' | 'edit';
+    approvalPolicy?: 'never' | 'untrusted' | 'on-request' | 'trusted';
+    approvalReviewer?: 'user' | 'auto-review' | 'none';
+    filesystemPolicy?: 'read-only' | 'workspace-write' | 'danger-full-access';
+    commandPolicy?: 'disabled' | 'approved' | 'trusted';
+    networkPolicy?: 'disabled' | 'agent-managed';
+  };
+}

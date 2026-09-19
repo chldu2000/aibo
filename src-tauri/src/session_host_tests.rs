@@ -883,7 +883,7 @@ async fn third_party_session_negotiates_tree_timeline_and_mediated_access() {
     assert!(!session.capabilities.contains(&"session.fork".into()));
     let profile = crate::session_execution_profile(&db, &session.id).await.unwrap().profile;
     assert_eq!(profile.enforcement_backend, execution_profile::EnforcementBackend::CoreProxy);
-    assert_eq!(profile.access_modes, ["read-only", "plan", "workspace-write"]);
+    assert_eq!(profile.session_controls.iter().map(|option|option.id.as_str()).collect::<Vec<_>>(), ["read-only", "plan", "workspace-write"]);
     assert!(!profile.native_sandbox);
     host.send_from("main", &session.id, "third party timeline", None).await.unwrap();
     wait_for_turn(&host, &session.id).await;

@@ -79,6 +79,14 @@ not general authorization for arbitrary plugin or nested dependency writes. Refe
 The host persists the semantic `approvalReviewer` (`user`, `auto-review`, or `none`);
 native adapters translate it to provider-specific review routing and permission grants.
 
+## Declaring permission and session-mode controls
+
+Session contributions declare `sessionControls` with opaque IDs, labels, descriptions,
+permission/mode categories and execution-profile patches. The UI renders only the controls
+validated by the host for the pinned installation; no Agent-name-based defaults are added.
+Selection submits a control ID for host-side validation, not a client-generated profile.
+See [the declaration contract and migration guide](session-controls.md).
+
 ## Package your own changes
 
 The external builder demonstrates the full process in

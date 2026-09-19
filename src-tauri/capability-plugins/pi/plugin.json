@@ -1,10 +1,13 @@
 {
   "schema": "aibo.plugin-manifest/v2",
   "pluginId": "dev.aibo.pi",
-  "version": "2.0.7",
+  "version": "2.0.8",
   "displayName": "Pi",
   "description": "Pi session capabilities.",
-  "hostSdk": { "min": "0.1.0", "maxExclusive": "0.2.0" },
+  "hostSdk": {
+    "min": "0.1.0",
+    "maxExclusive": "0.2.0"
+  },
   "host": {
     "min": "0.1.0",
     "maxExclusive": "0.2.0"
@@ -946,6 +949,51 @@
           ],
           "timeoutMs": 120000,
           "idempotent": false
+        }
+      ],
+      "sessionControls": [
+        {
+          "id": "read-only",
+          "kind": "mode",
+          "label": "只读",
+          "description": "查看文件，不修改工作区",
+          "profile": {
+            "interactionMode": "ask",
+            "filesystemPolicy": "read-only",
+            "commandPolicy": "disabled",
+            "approvalPolicy": "never",
+            "approvalReviewer": "none",
+            "networkPolicy": "disabled"
+          }
+        },
+        {
+          "id": "plan",
+          "kind": "mode",
+          "label": "计划",
+          "description": "分析并制定方案，不执行修改",
+          "profile": {
+            "interactionMode": "plan",
+            "filesystemPolicy": "read-only",
+            "commandPolicy": "disabled",
+            "approvalPolicy": "never",
+            "approvalReviewer": "none",
+            "networkPolicy": "disabled"
+          },
+          "command": "plan"
+        },
+        {
+          "id": "workspace-write",
+          "kind": "mode",
+          "label": "工作区写入",
+          "description": "允许修改工作区，命令需要审批",
+          "profile": {
+            "interactionMode": "edit",
+            "filesystemPolicy": "workspace-write",
+            "commandPolicy": "approved",
+            "approvalPolicy": "on-request",
+            "approvalReviewer": "user",
+            "networkPolicy": "disabled"
+          }
         }
       ]
     }

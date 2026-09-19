@@ -1,8 +1,10 @@
+import type { SessionControl } from '../../packages/plugin-protocol/src/session';
+export type { SessionControl } from '../../packages/plugin-protocol/src/session';
 export type WorkspaceTrust = 'trusted' | 'untrusted';
 
 export type AgentName = 'codex' | 'pi';
 export type InteractionMode = 'ask' | 'plan' | 'edit';
-export type SessionAccessMode = 'read-only' | 'plan' | 'workspace-write' | 'ask-for-approval' | 'approve-for-me' | 'full-access';
+export type SessionControlId = string;
 export type ApprovalPolicy = 'never' | 'untrusted' | 'on-request' | 'trusted';
 export type ApprovalReviewer = 'user' | 'auto-review' | 'none';
 export type FilesystemPolicy = 'read-only' | 'workspace-write' | 'danger-full-access';
@@ -28,7 +30,7 @@ export interface ResolvedExecutionProfile {
   unsupported: string[];
   adapterCapabilities: string[];
   nativeSandbox: boolean;
-  accessModes?: SessionAccessMode[];
+  sessionControls?: SessionControl[];
   resolvedAt: string;
 }
 

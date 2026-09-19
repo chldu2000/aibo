@@ -1,4 +1,4 @@
-import type { AgentCommand, Session, SessionAccessMode } from '$lib/types';
+import type { AgentCommand, Session, SessionControl } from '$lib/types';
 
 // Host commands are selected from negotiated session capabilities. Plugin commands
 // already belong to the bound provider; their insertion syntax is provider data.
@@ -17,11 +17,11 @@ const COMMANDS: Array<[string, string, string[]]> = [
   ['skills', '刷新 Skills', ['skill.list', 'command.list']],
 ];
 
-export function sessionBuiltinCommands(session: Pick<Session, 'capabilities' | 'pluginInstallationId'> | null, accessModes: readonly SessionAccessMode[] = []): AgentCommand[] {
+export function sessionBuiltinCommands(session: Pick<Session, 'capabilities' | 'pluginInstallationId'> | null, controls: readonly SessionControl[] = []): AgentCommand[] {
   if (!session?.pluginInstallationId) return [];
   const commands: AgentCommand[] = COMMANDS.filter(([, , required]) => !required.length || required.some(capability => session.capabilities.includes(capability)))
     .map(([name, description]) => ({ name, description, source: 'builtin', category: 'agent', execution: 'aibo' as const }));
-  if (accessModes.includes('plan')) commands.push({name: 'plan', description: '切换计划模式', source: 'builtin', category: 'agent', execution: 'aibo'});
+  for (const control of controls) if (control.command) commands.push({name: control.command, description: control.description || control.label, source: 'builtin', category: 'agent', execution: 'aibo'});
   return commands;
 }
 

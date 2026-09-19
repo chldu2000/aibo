@@ -1,12 +1,13 @@
 <script lang="ts">
   import { tick } from 'svelte';
+  import { sessionControlOptions, selectedSessionControls } from '$lib/app/session-access-profile';
   import { commandComposerInsertion } from '$lib/app/agent-commands';
   import { sessionAgentKind } from '$lib/app/agent-kind';
   import { filterMentionSuggestions, type MentionCategory } from '$lib/app/mention-suggestions';
   import type { ModelConfigurationState } from '$lib/app/model-configuration';
   import { AgentStatusMark, Button, Card, Icon, ModelContextSelect, ModelMatrix, Textarea } from '$lib/ui-kit';
   import type { UiModelMatrixRow } from '$lib/ui-kit';
-  import type { AgentCommand, AgentCommandCategory, ContextAttachment, SessionAccessMode, SessionExecutionProfile, SessionModelCatalog, Session, WorkspacePathSuggestion } from '$lib/types';
+  import type { AgentCommand, AgentCommandCategory, ContextAttachment, SessionControlId, SessionExecutionProfile, SessionModelCatalog, Session, WorkspacePathSuggestion } from '$lib/types';
   import { scrollActiveOptionIntoView } from './active-option-scroll';
 
   type SlashCategory = 'all' | AgentCommandCategory;
@@ -39,7 +40,7 @@
     onSend: () => void;
     onQueue: (mode: 'steer' | 'followUp') => void;
     onAbort: () => void;
-    onSelectAccess: (mode: SessionAccessMode) => void | Promise<void>;
+    onSelectAccess: (mode: SessionControlId) => void | Promise<void>;
     onLoadModels: () => void | Promise<void>;
     onSelectModelConfiguration: (model: string, reasoningEffort: string | null) => void | Promise<void>;
     onSelectServiceTier: (serviceTier: string) => void | Promise<void>;
@@ -161,45 +162,13 @@
   );
 
   const activeProfile = $derived(executionProfile?.enforced ?? executionProfile?.requested ?? null);
-  const nativePermissionMode = $derived<'ask-for-approval' | 'approve-for-me' | 'full-access' | null>(
-    activeProfile?.filesystemPolicy === 'danger-full-access'
-      ? 'full-access'
-      : activeProfile?.filesystemPolicy === 'workspace-write' && activeProfile?.approvalPolicy === 'on-request' && activeProfile?.approvalReviewer === 'auto-review'
-        ? 'approve-for-me'
-        : activeProfile?.filesystemPolicy === 'workspace-write' && activeProfile?.approvalPolicy === 'on-request' && activeProfile?.approvalReviewer === 'user'
-          ? 'ask-for-approval'
-          : null,
-  );
-  const accessLabel = $derived(
-    !selectedSession
-      ? '会话设置'
-      : activeProfile?.interactionMode === 'plan' ? '计划模式' : executionProfile?.nativeSandbox
-        ? nativePermissionMode === 'full-access' ? 'Full Access' : nativePermissionMode === 'approve-for-me' ? 'Approve for me' : nativePermissionMode === 'ask-for-approval' ? 'Ask for approval' : '配置原生权限'
-      : activeProfile?.filesystemPolicy === 'workspace-write' ? '工作区写入' : '只读',
-  );
-  const accessDetail = $derived(
-    activeProfile?.interactionMode === 'plan' ? '分析并制定方案，不执行修改' : executionProfile?.nativeSandbox
-      ? nativePermissionMode === 'full-access' ? '由原生执行器控制 · 完整主机访问' : nativePermissionMode === 'approve-for-me' ? '由原生执行器控制 · 自动批准沙箱内操作' : nativePermissionMode === 'ask-for-approval' ? '由原生执行器控制 · 操作前请求批准' : '该会话使用历史权限配置；请选择一个原生模式'
-      : activeProfile
-      ? `${activeProfile.filesystemPolicy === 'workspace-write' ? '可修改工作区' : '仅查看'} · ${activeProfile.commandPolicy === 'disabled' ? '命令关闭' : activeProfile.approvalPolicy === 'on-request' ? '命令需审批' : '命令受信任'}`
-      : '选择会话后可查看当前执行配置',
-  );
-  const mediatedAccessOptions: Array<{ mode: SessionAccessMode; label: string; detail: string }> = [
-    { mode: 'read-only', label: '只读', detail: '查看文件，不修改工作区' },
-    { mode: 'plan', label: '计划', detail: '分析并制定方案，不执行修改' },
-    { mode: 'workspace-write', label: '工作区写入', detail: '允许修改工作区，命令需要审批' },
-  ];
-  const nativeAccessOptions: Array<{ mode: SessionAccessMode; label: string; detail: string }> = [
-    { mode: 'ask-for-approval', label: 'Ask for approval', detail: '由原生执行器在执行操作前请求你的批准' },
-    { mode: 'approve-for-me', label: 'Approve for me', detail: '由原生执行器自动批准沙箱内的操作' },
-    { mode: 'full-access', label: 'Full Access', detail: '由原生执行器以完整主机访问执行操作' },
-  ];
-  const accessOptions = $derived([...nativeAccessOptions, ...mediatedAccessOptions].filter(option => executionProfile?.sessionId === selectedSession?.id && executionProfile?.accessModes?.includes(option.mode)));
-  const activeAccessMode = $derived<SessionAccessMode | null>(
-    activeProfile?.interactionMode === 'plan' ? 'plan' : executionProfile?.nativeSandbox
-      ? nativePermissionMode
-      : activeProfile?.filesystemPolicy === 'workspace-write' ? 'workspace-write' : 'read-only',
-  );
+  const accessOptions = $derived(sessionControlOptions(executionProfile, selectedSession ? selectedSessionId : null));
+  const selectedControls = $derived(selectedSessionControls(accessOptions, activeProfile));
+  const accessLabel = $derived(selectedControls.map(option => option.label).join(' · ') || '会话设置');
+  const accessDetail = $derived(selectedControls.map(option => option.description).join(' · '));
+  const accessGroups = $derived(['permission', 'mode'].map(kind => ({
+    kind, label: kind === 'permission' ? '权限' : '会话模式', options: accessOptions.filter(option => option.kind === kind),
+  })).filter(group => group.options.length));
   const modelLabel = $derived(
     modelOverride || modelCatalog?.current?.label || activeProfile?.model || (modelCatalogLoading ? '正在读取模型…' : '模型未读取'),
   );
@@ -532,7 +501,7 @@
         {/if}
       </div>
 
-      {#if selectedSession}
+      {#if selectedSession && accessOptions.length}
         <div class="composer-menu-anchor">
           <Button
             variant="toolbar"
@@ -548,30 +517,34 @@
           </Button>
           {#if sessionMenuOpen}
             <div class="composer-menu composer-profile-menu" role="menu" aria-label="会话设置">
-              <div class="composer-menu-heading">会话权限</div>
+              <div class="composer-menu-heading">会话设置</div>
               <div class="composer-menu-detail">{accessDetail}</div>
-              <div class="composer-access-options" role="group" aria-label="选择会话权限">
-                {#each accessOptions as option (option.mode)}
+              {#each accessGroups as group (group.kind)}
+              <div class="composer-menu-heading">{group.label}</div>
+              <div class="composer-access-options" role="group" aria-label={group.label}>
+                {#each group.options as option (option.id)}
+                  {@const active = selectedControls.some(selected => selected.id === option.id)}
                   <button
-                    class:active={option.mode === activeAccessMode}
+                    class:active={active}
                     type="button"
                     role="menuitemradio"
-                    aria-checked={option.mode === activeAccessMode}
+                    aria-checked={active}
                     onclick={() => {
                       sessionMenuOpen = false;
-                      if (option.mode !== activeAccessMode) void onSelectAccess(option.mode);
+                      if (!active) void onSelectAccess(option.id);
                     }}
                     disabled={busy || selectedSessionArchiving || sessionRunning}
                   >
-                    <Icon name={option.mode === 'full-access' || option.mode === 'approve-for-me' || option.mode === 'workspace-write' ? 'trust' : option.mode === 'plan' ? 'file' : 'untrust'} size={15} />
+                    <Icon name={option.kind === 'mode' ? 'file' : 'trust'} size={15} />
                     <span class="composer-access-option-copy">
                       <strong>{option.label}</strong>
-                      <small>{option.detail}</small>
+                      <small>{option.description}</small>
                     </span>
-                    {#if option.mode === activeAccessMode}<Icon name="check" size={14} />{/if}
+                    {#if active}<Icon name="check" size={14} />{/if}
                   </button>
                 {/each}
               </div>
+              {/each}
               {#if executionProfile?.unsupported && executionProfile.unsupported.length > 0}
                 <div class="composer-menu-warning">未启用：{executionProfile.unsupported.join('、')}</div>
               {/if}

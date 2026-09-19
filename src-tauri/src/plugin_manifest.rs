@@ -119,6 +119,7 @@ pub(crate) fn normalize(manifest: &Value) -> Result<ManifestModel, String> {
         if !owned(id, plugin) { return Err(invalid("contribution ID must belong to its plugin")); }
         if !ids.insert(id) { return Err(invalid("duplicate contribution ID")); }
         let kind = entry["kind"].as_str().unwrap();
+        crate::session_controls::validate_declaration(entry)?;
         if kind == "semanticView" {
             range(&entry["provider"]["version"])?;
             let expected_scope = match entry["extensionPoint"].as_str().unwrap() {

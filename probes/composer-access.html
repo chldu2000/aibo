@@ -1,0 +1,38 @@
+<!doctype html><html lang="zh"><head><meta charset="UTF-8"><title>Composer permission regression</title></head><body><div id="probe"></div><script type="module">
+import '/src/app.css';
+import { mount, unmount } from 'svelte';
+import Composer from '/src/lib/components/app/Composer.svelte';
+import { setUiKit } from '/src/lib/ui-kit/registry.ts';
+import codex from '/src-tauri/capability-plugins/codex/plugin.json';
+import pi from '/src-tauri/capability-plugins/pi/plugin.json';
+let instance;
+const actions = [];
+window.composerAccessProbe = {
+  actions: () => actions,
+  async show(kit, agent) {
+    if (instance) await unmount(instance);
+    setUiKit(kit);
+    actions.length = 0;
+    const native = agent === 'codex';
+    const controls = agent === 'custom' ? [
+      {id:'limited-tools',kind:'permission',label:'Limited tools',description:'Plugin defined permissions',profile:{filesystemPolicy:'read-only'}},
+      {id:'team-sandbox',kind:'permission',label:'Team sandbox',description:'Team approval policy',profile:{filesystemPolicy:'workspace-write'}},
+      {id:'outline-first',kind:'mode',label:'Outline first',description:'Prepare a proposal',profile:{interactionMode:'plan'}},
+    ] : (native ? codex : pi).contributions[0].sessionControls;
+    const requested = {schema:'aibo.execution-profile/v1', interactionMode:'ask', approvalPolicy:native?'on-request':'never',
+      approvalReviewer:native?'user':'none', filesystemPolicy:native?'workspace-write':'read-only', commandPolicy:native?'approved':'disabled', networkPolicy:'disabled'};
+    instance = mount(Composer, {target:document.getElementById('probe'), props:{
+      selectedAgent:agent==='custom'?null:agent, selectedSession:true, selectedSessionId:'new-session', sessionCapabilities:[],
+      sessionArchived:false, sessionRunning:false, selectedSessionArchiving:false, busy:false, attachments:[],
+      executionProfile:{sessionId:'new-session', schema:requested.schema, requested, enforced:requested,
+        nativeSandbox:native, unsupported:[], adapterCapabilities:[], resolvedAt:'now',
+        sessionControls:controls},
+      modelConfiguration:{currentReasoningEffort:null,selectedReasoningEffort:null,defaultAction:'preserve'},
+      modelCatalog:null, modelCatalogLoading:false, workspacePathSuggestions:[], agentCommands:[], agentCommandsLoading:false,
+      onSelectAccess:mode=>actions.push(mode), onAddAttachments(){}, onAddDirectory(){}, onRemoveAttachment(){},
+      onSend(){}, onQueue(){}, onAbort(){}, onLoadModels(){}, onSelectModelConfiguration(){},
+      onSelectServiceTier(){}, onSelectContextWindow(){}, onComposerInput(){}, onSelectWorkspacePath(){},
+    }});
+  },
+};
+</script></body></html>

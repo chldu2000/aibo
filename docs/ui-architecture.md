@@ -566,7 +566,9 @@ skin owns queue persistence, delivery, attachment identity or uncertain recovery
 `session.snapshot` 是远端线程摘要，不能替代分支时间线。
 
 导航只接收由有效能力投影的 `canSyncSnapshot`，继续不暴露完整能力或传输字段。
-权限菜单接收宿主的 `executionProfile.accessModes`；插件的名字和自报权限标志不
+权限与模式菜单接收宿主校验后的 `executionProfile.sessionControls`（来自绑定插件的清单声明）；
+选项 ID、文案、配置补丁及可选命令别名归插件所有，前端只传回选项 ID。未声明不补默认菜单。
+插件的名字和自报权限标志不
 产生原生执行权。原生执行器必须有绑定到具体安装与贡献的宿主授权；声明标准
 工具回复和写入契约的第三方可以使用 Core 的工具代理，实际写入仍受工作区信任、
 执行配置、Broker 权限与审批约束。没有协商的执行器只提供只读模式。

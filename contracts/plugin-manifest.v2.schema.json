@@ -680,6 +680,13 @@
         },
         "settings": {
           "$ref": "#/$defs/agentSettings"
+        },
+        "sessionControls": {
+          "type": "array",
+          "maxItems": 16,
+          "items": {
+            "$ref": "#/$defs/sessionControl"
+          }
         }
       }
     },
@@ -981,6 +988,133 @@
           }
         }
       }
+    },
+    "sessionControl": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "kind",
+        "label",
+        "description",
+        "profile"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9.-]*$",
+          "maxLength": 80
+        },
+        "kind": {
+          "enum": [
+            "permission",
+            "mode"
+          ]
+        },
+        "label": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 80
+        },
+        "description": {
+          "type": "string",
+          "maxLength": 300
+        },
+        "command": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9-]*$",
+          "maxLength": 40
+        },
+        "profile": {
+          "type": "object",
+          "additionalProperties": false,
+          "minProperties": 1,
+          "properties": {
+            "interactionMode": {
+              "enum": [
+                "ask",
+                "plan",
+                "edit"
+              ]
+            },
+            "approvalPolicy": {
+              "enum": [
+                "never",
+                "untrusted",
+                "on-request",
+                "trusted"
+              ]
+            },
+            "approvalReviewer": {
+              "enum": [
+                "user",
+                "auto-review",
+                "none"
+              ]
+            },
+            "filesystemPolicy": {
+              "enum": [
+                "read-only",
+                "workspace-write",
+                "danger-full-access"
+              ]
+            },
+            "commandPolicy": {
+              "enum": [
+                "disabled",
+                "approved",
+                "trusted"
+              ]
+            },
+            "networkPolicy": {
+              "enum": [
+                "disabled",
+                "agent-managed"
+              ]
+            }
+          }
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "kind": {
+                "const": "permission"
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "profile": {
+                "not": {
+                  "required": [
+                    "interactionMode"
+                  ]
+                }
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "kind": {
+                "const": "mode"
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "profile": {
+                "required": [
+                  "interactionMode"
+                ]
+              }
+            }
+          }
+        }
+      ]
     }
   },
   "allOf": [

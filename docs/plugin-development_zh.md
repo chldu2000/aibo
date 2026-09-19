@@ -62,6 +62,10 @@ HTML、CSS、皮肤 ID 或可执行界面代码。
 它不是任意插件写入或嵌套依赖写入的通行证。
 宿主持久化语义化的 `approvalReviewer`（`user`、`auto-review` 或 `none`）；原生
 Adapter 负责将它转换为提供者特有的审核路由与权限授权。
+权限与会话模式菜单由会话贡献的 `sessionControls` 声明，包含选项 ID、类别、文案与
+执行配置补丁。宿主按当前安装的实际执行授权过滤和应用声明，不按 Agent 名称生成
+菜单。未声明就不展示；插件原生命令不被 Aibo 的固定模式命令覆盖。
+声明格式与迁移见[会话控制菜单](session-controls.md)。
 可结合契约阅读[能力写入夹具](../fixtures/plugins/capability-write/)和[语义写入夹具](../fixtures/plugins/semantic-write/)。
 
 ## 打包自己的改动

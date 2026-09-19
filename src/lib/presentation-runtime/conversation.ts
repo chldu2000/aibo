@@ -48,8 +48,8 @@ export function conversationActions(state: PresentationConversation): Spec[] {
     if (capable('model.context-window') && !state.modelCatalogLoading && contextWindows.length) {
       add('selectContextWindow', [state.modelCatalog!.current!.reference, ...contextWindows.map(option => option.id)], 'change');
     }
-    const access = state.executionProfile?.sessionId === session.id ? state.executionProfile.accessModes ?? [] : [];
-    for (const mode of access) add('selectAccess', [mode]);
+    const access = state.executionProfile?.sessionId === session.id ? state.executionProfile.sessionControls ?? [] : [];
+    for (const option of access) add('selectAccess', [option.id]);
     if (capable('compaction.run') && !state.compacting) add('compact');
     if (capable('session.fork')) {
       add('fork');

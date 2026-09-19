@@ -1,10 +1,13 @@
 {
   "schema": "aibo.plugin-manifest/v2",
   "pluginId": "dev.aibo.codex",
-  "version": "2.0.11",
+  "version": "2.0.12",
   "displayName": "Codex",
   "description": "Codex session capabilities.",
-  "hostSdk": { "min": "0.1.0", "maxExclusive": "0.2.0" },
+  "hostSdk": {
+    "min": "0.1.0",
+    "maxExclusive": "0.2.0"
+  },
   "host": {
     "min": "0.1.0",
     "maxExclusive": "0.2.0"
@@ -1071,6 +1074,47 @@
           ],
           "timeoutMs": 120000,
           "idempotent": false
+        }
+      ],
+      "sessionControls": [
+        {
+          "id": "ask-for-approval",
+          "kind": "permission",
+          "label": "Ask for approval",
+          "description": "由原生执行器在执行操作前请求你的批准",
+          "profile": {
+            "filesystemPolicy": "workspace-write",
+            "commandPolicy": "approved",
+            "approvalPolicy": "on-request",
+            "approvalReviewer": "user",
+            "networkPolicy": "disabled"
+          }
+        },
+        {
+          "id": "approve-for-me",
+          "kind": "permission",
+          "label": "Approve for me",
+          "description": "由原生执行器自动批准沙箱内的操作",
+          "profile": {
+            "filesystemPolicy": "workspace-write",
+            "commandPolicy": "trusted",
+            "approvalPolicy": "on-request",
+            "approvalReviewer": "auto-review",
+            "networkPolicy": "disabled"
+          }
+        },
+        {
+          "id": "full-access",
+          "kind": "permission",
+          "label": "Full Access",
+          "description": "由原生执行器以完整主机访问执行操作",
+          "profile": {
+            "filesystemPolicy": "danger-full-access",
+            "commandPolicy": "trusted",
+            "approvalPolicy": "never",
+            "approvalReviewer": "none",
+            "networkPolicy": "agent-managed"
+          }
         }
       ]
     },

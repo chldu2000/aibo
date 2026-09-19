@@ -195,11 +195,11 @@ export const getSessionExecutionProfile = (
 
 export const updateSessionExecutionProfile = (
   sessionId: string,
-  requested: ExecutionProfile,
+  controlId: string,
 ): Promise<SessionExecutionProfile> =>
   invoke<SessionExecutionProfile>('update_session_execution_profile', {
     sessionId,
-    requested,
+    controlId,
   });
 
 export const listSessions = (

@@ -3,7 +3,6 @@ import {renderExecutionProfile,renderAttachment,renderSessionMetadata} from './m
 import {splitSessionReferences} from './session-references.js';
 import {renderTimeline} from './timeline.js';
 const labels={pauseGoal:'暂停目标',resumeGoal:'恢复目标',clearGoal:'清除目标',send:'发送',stop:'停止',retry:'重试',queueSteer:'立即发送',queueFollowUp:'排队发送',clearQueue:'清空队列',resumeQueue:'继续队列',addAttachments:'添加附件',addDirectory:'添加目录',loadOlder:'加载更早消息',fork:'分叉会话',loadModels:'刷新模型',compact:'压缩上下文',openTree:'会话树',closeTree:'关闭会话树',refreshTree:'刷新会话树',submitAnswers:'提交回答',cancelAnswers:'取消回答'};
-const accessLabels={'read-only':'只读',plan:'计划','workspace-write':'工作区写入','ask-for-approval':'请求审批','approve-for-me':'自动审批','full-access':'完整访问'};
 export function renderConversation(state,actions){
  const find=(operation,...args)=>actionFor(actions,operation,...args);
  const controls=(operations)=>operations.flatMap(operation=>{const action=actions.find(a=>a.operation===operation&&!a.args.length);return action?[button('conversation:action:'+operation,labels[operation],action)]:[]});
@@ -75,7 +74,7 @@ export function renderConversation(state,actions){
     ...(contextAction?{events:{change:contextAction.token}}:{}),
   }]);
   composer.push(node('details','conversation:models' ,null,[node('summary','models:title',state.modelCatalog?.current?.label??'模型'),...controls(['loadModels']),fastAction?button('models:fast','⚡ '+fastTier.label,fastAction,{'aria-pressed':String(state.modelCatalog?.currentServiceTier===fastTier.id),title:fastTier.description??fastTier.label}):null,contextSelect,state.modelCatalogLoading?text('models:loading','正在加载模型'):null,...models]));
-  composer.push(node('details','conversation:access',null,[node('summary','access:title','访问权限'),...actions.filter(a=>a.operation==='selectAccess').map(action=>button('access:'+action.args[0],accessLabels[action.args[0]]??action.args[0],action)),renderExecutionProfile(state.executionProfile,'conversation:execution-profile')]));
+  composer.push(node('details','conversation:access',null,[node('summary','access:title','会话设置'),...actions.filter(a=>a.operation==='selectAccess').map(action=>button('access:'+action.args[0],state.executionProfile?.sessionControls?.find(option=>option.id===action.args[0])?.label??action.args[0],action)),renderExecutionProfile(state.executionProfile,'conversation:execution-profile')]));
   if(state.usage){
    const usage=state.usage;
    const percent=usage.contextUsed!==null&&usage.contextLimit?Math.min(100,Math.round(usage.contextUsed/usage.contextLimit*100)):null;
