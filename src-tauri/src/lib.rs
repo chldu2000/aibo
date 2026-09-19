@@ -18,6 +18,7 @@ mod execution_profile;
 mod session_permissions;
 mod session_models;
 mod plugin_runtime;
+mod plugin_sdk;
 mod plugin_contract;
 mod plugin_manifest;
 mod session_contract;

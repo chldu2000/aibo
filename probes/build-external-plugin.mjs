@@ -17,15 +17,16 @@ export async function buildExternalPlugin() {
   for(const name of ['package.json','README.md','runtime.mjs','stdio.mjs','runtime.d.ts','stdio.d.ts']) await copyFile(path.resolve('packages/capability-runtime',name),path.join(sdk,name));
   const sdkTar=path.join(sdk,pack(sdk).filename);
   await cp(path.resolve('examples/capability-plugin'),consumer,{recursive:true});
-  execFileSync('npm',['install','--offline','--ignore-scripts','--no-audit','--no-fund','--cache',cache,protocolTar,sdkTar],{cwd:consumer,stdio:'pipe'});
+  execFileSync('npm',['install','--save-dev','--offline','--ignore-scripts','--no-audit','--no-fund','--cache',cache,protocolTar,sdkTar],{cwd:consumer,stdio:'pipe'});
   await copyFile(path.resolve('examples/capability-plugin/package.json'),path.join(consumer,'package.json'));
   execFileSync(process.execPath,[tsc,'-p','tsconfig.json'],{cwd:consumer,stdio:'pipe'});
   const archive=pack(consumer);
-  if(!archive.files.some(file=>file.path==='dist/worker.js') || !archive.files.some(file=>file.path==='node_modules/@aibo/capability-runtime/stdio.mjs')) throw Error('External archive is missing its worker or SDK');
+  if(!archive.files.some(file=>file.path==='dist/worker.js')) throw Error('External archive is missing its worker');
+  if(archive.files.some(file=>file.path.startsWith('node_modules/@aibo/'))) throw Error('Host SDK must not be bundled');
   if(archive.files.some(file=>/svelte|\.css$|\.tsx?$/.test(file.path.replace(/\.d\.ts$/,'.types')))) throw Error('External runtime archive contains frontend or uncompiled source');
   const packagePath=path.join(root,'unpacked');await mkdir(packagePath);
   execFileSync('tar',['-xzf',path.join(consumer,archive.filename),'-C',packagePath,'--strip-components=1']);
-  const evidence={externalDirectory:true,offlineSdkTarballs:true,compiledWithoutDom:true,bundledRuntime:true,files:archive.files.map(file=>file.path)};
+  const evidence={externalDirectory:true,offlineSdkTarballs:true,compiledWithoutDom:true,bundledRuntime:false,hostSdk:true,files:archive.files.map(file=>file.path)};
   await writeFile(path.join(root,'build-evidence.json'),JSON.stringify(evidence,null,2));
   return {root,packagePath,evidence};
 }

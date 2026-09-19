@@ -442,6 +442,13 @@ impl Broker {
             let mut args: Vec<String> = provider.manifest["entrypoint"]["args"].as_array().into_iter().flatten().map(|arg|arg.as_str().unwrap().into()).collect();
             let executable = if entrypoint.extension().is_some_and(|extension|extension == "mjs" || extension == "js") {
                 args.insert(0,entrypoint.to_string_lossy().into_owned());
+                if provider.manifest.get("hostSdk").is_some() {
+                    let registry = provider.directory.parent().ok_or_else(||fail("provider_unavailable", "Plugin registry is unavailable"))?;
+                    let preload = crate::plugin_sdk::prepare(registry).map_err(|_|fail("provider_unavailable", "Host SDK integrity check failed"))?;
+                    // URL encoding handles spaces, #, %, non-ASCII and Windows paths.
+                    let url = tauri::Url::from_file_path(preload).map_err(|_|fail("provider_unavailable", "Host SDK path is invalid"))?;
+                    args.splice(0..0, ["--import".into(), url.to_string()]);
+                }
                 crate::find_executable("node").ok_or_else(||fail("provider_unavailable", "Node is unavailable"))?
             } else { entrypoint };
             let runtime = if protocol == "2.1" { PluginRuntime::spawn_interactive(&executable,&args,&provider.directory,self.sdk_module.as_deref()) }
@@ -698,6 +705,45 @@ mod tests {
             }
         }).await.unwrap();
     }
+    #[tokio::test]
+    async fn host_sdk_plugins_invoke_without_bundled_dependencies_on_both_protocols() {
+        let fixture = Fixture::new().await;
+        for (version, protocol) in [("3.0.0", "2.0"), ("3.0.1", "2.1")] {
+            let source = fixture.root.join(format!("sdk plugin # {version}"));
+            fs::create_dir(&source).unwrap();
+            let mut manifest: Value = serde_json::from_str(include_str!("../../fixtures/plugins/capability-echo/plugin.json")).unwrap();
+            manifest["version"] = json!(version);
+            manifest["hostSdk"] = json!({"min":"0.1.0","maxExclusive":"0.2.0"});
+            manifest["protocols"]["runtime"] = json!({"min":protocol,"max":protocol});
+            fs::write(source.join("plugin.json"), manifest.to_string()).unwrap();
+            fs::write(source.join("worker.mjs"), r#"
+                import {readFileSync} from 'node:fs';
+                import {serveCapability} from '@aibo/capability-runtime/stdio';
+                import {SEMANTIC_SCHEMA} from '@aibo/plugin-protocol';
+                const m=JSON.parse(readFileSync(new URL('./plugin.json',import.meta.url),'utf8'));
+                const c=m.contributions[0];
+                serveCapability({pluginId:m.pluginId,pluginVersion:m.version,contributionId:c.id,
+                    protocol:m.protocols.runtime.min,
+                    operations:c.operations.map(op=>({capability:op.capability.id,version:op.capability.version,operationId:op.id})),
+                    invoke:async request=>({value:SEMANTIC_SCHEMA,workspacePath:request.context.workspacePath})});
+            "#).unwrap();
+            let installed = plugin_registry::install(&fixture.db, &fixture.root.join("data"), &source).await.unwrap();
+            assert!(installed.runnable);
+            plugin_registry::enable(&fixture.db, &installed.id, true).await.unwrap();
+            fixture.bind(Scope::Workspace("a".into()), &installed.id).await;
+            let result = fixture.broker.invoke("main", request("a", version, json!({"value":"hello"}))).await.unwrap();
+            assert_eq!(result.output["value"], "aibo.semantic-view/v1");
+            let directory = fixture.root.join("data/plugins").join(&installed.id);
+            assert!(!directory.join("node_modules").exists());
+            plugin_registry::inspect(&directory.canonicalize().unwrap()).unwrap();
+            fixture.broker.stop_installation(&installed.id).await.unwrap();
+        }
+        let copies = fs::read_dir(fixture.root.join("data/plugins")).unwrap()
+            .filter_map(Result::ok).filter(|entry|entry.file_name().to_string_lossy().starts_with(".host-sdk-")).count();
+        assert_eq!(copies, 1, "independent installed releases share one host SDK");
+        fixture.finish().await;
+    }
+
     #[tokio::test]
     async fn invokes_real_process_without_agent_and_retains_binding_after_restart() {
         let fixture = Fixture::new().await;

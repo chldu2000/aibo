@@ -1,5 +1,5 @@
 import {readFileSync} from 'node:fs';
-import {serveCapabilities} from './stdio.mjs';
+import {serveCapabilities} from '@aibo/capability-runtime/stdio';
 import {sessionProvider} from './session-provider.mjs';
 import * as engine from './engine.mjs';
 const manifest=JSON.parse(readFileSync(new URL('./plugin.json',import.meta.url),'utf8'));

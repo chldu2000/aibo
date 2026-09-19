@@ -23,8 +23,9 @@ node --input-type=module -e 'import { buildExternalPlugin } from "./probes/build
 ```
 
 构建器会打包本地 SDK，将样例复制到仓库外的临时目录，离线安装 SDK tarball，编译
-worker，并把运行依赖一起打包。输出的 `installPath` 是解包后的安装目录，包含
-`plugin.json`、`dist/worker.js` 和必需的 `node_modules`。这一步不启动 Aibo，也不调用模型。
+worker，SDK 仅用于开发。输出的 `installPath` 是解包后的安装目录，包含
+`plugin.json`、`dist/worker.js`，不包含 Aibo SDK 或 `node_modules`。运行时由支持
+`hostSdk` 的新宿主提供 SDK，见[宿主 SDK](host-sdk.md)。这一步不启动 Aibo，也不调用模型。
 输出的开发目录会保留供检查；需要长期开发时，请复制到固定位置。
 
 在桌面应用的「插件」入口中填入 `installPath`，安装并启用。样例会贡献名为
@@ -69,9 +70,9 @@ Adapter 负责将它转换为提供者特有的审核路由与权限授权。
 长期维护的插件项目可在自己的开发目录中重复以下步骤：
 
 1. 使用 TypeScript 构建 `packages/plugin-protocol`，再用 `npm pack --ignore-scripts` 分别打包它和 `packages/capability-runtime`。
-2. 在插件项目中安装这两个本地 tarball。SDK 尚未发布公共注册表，不要直接依赖公网包名安装。
+2. 在插件项目中将这两个本地 tarball 安装为 `devDependencies`。SDK 尚未发布公共注册表，不要直接依赖公网包名安装。
 3. 使用 `tsc -p tsconfig.json` 编译 `worker.ts`。最终 `package.json` 的运行依赖使用版本号，不携带开发机器上的 tarball 路径。
-4. 在插件项目运行 `npm pack --ignore-scripts`。样例的 `bundledDependencies` 包含两个 SDK；检查产物中有清单、编译后的入口和运行依赖，没有工作区符号链接或宿主源码导入。
+4. 清单声明 `hostSdk`，在插件项目运行 `npm pack --ignore-scripts`。检查产物中有清单、编译后的入口和插件自带的第三方依赖，但没有 Aibo SDK、工作区符号链接或宿主源码导入。SDK 的纯类型引用仅供编译；其公开 JS 入口由宿主解析。
 5. 将产物解包到目录，再从 Aibo 安装该目录。发布改动时，同时递增清单和 worker 的插件版本。
 
 插件 release 不可变，会话固定绑定提供者安装。安装新版本不会静默迁移正在使用的会话

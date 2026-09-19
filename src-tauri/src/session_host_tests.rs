@@ -125,8 +125,6 @@ async fn codex_branch_uses_native_boundary_and_copies_host_history_and_profile()
         ("worker.mjs",include_str!("../capability-plugins/codex/worker.mjs")),
         ("fake-codex.mjs",include_str!("../../fixtures/plugins/codex/fake-codex.mjs")),
         ("session-provider.mjs",include_str!("../capability-plugins/session-provider.mjs")),
-        ("runtime.mjs",include_str!("../../packages/capability-runtime/runtime.mjs")),
-        ("stdio.mjs",include_str!("../../packages/capability-runtime/stdio.mjs")),
     ] {fs::write(package.join(name),source).unwrap();}
     let db = crate::open_database(&root.join("data/aibo.sqlite3")).await.unwrap();
     sqlx::query("INSERT INTO workspaces(id,path,label,trusted,created_at,updated_at) VALUES('w',?,'Test',1,?,?)")

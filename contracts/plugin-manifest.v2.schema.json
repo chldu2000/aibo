@@ -94,6 +94,10 @@
     "host": {
       "$ref": "#/$defs/versionRange"
     },
+    "hostSdk": {
+      "$ref": "#/$defs/versionRange",
+      "description": "Opt into the host-provided public Node ESM SDK; independent of wire protocol versions."
+    },
     "protocols": {
       "type": "object",
       "additionalProperties": false,

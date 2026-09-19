@@ -93,6 +93,13 @@ pub(crate) fn normalize(manifest: &Value) -> Result<ManifestModel, String> {
     }
     semver::Version::parse(manifest["version"].as_str().unwrap()).map_err(|_| invalid("invalid package version"))?;
     range(&manifest["host"])?;
+    if let Some(sdk) = manifest.get("hostSdk") {
+        range(sdk)?;
+        let entry = manifest["entrypoint"]["executable"].as_str().unwrap_or("");
+        if !entry.ends_with(".mjs") && !entry.ends_with(".js") {
+            return Err(invalid("hostSdk requires a Node ESM entrypoint (.mjs or .js)"));
+        }
+    }
     for bounds in manifest["protocols"].as_object().into_iter().flat_map(|object| object.values()) {
         let min = semver::Version::parse(&format!("{}.0", bounds["min"].as_str().unwrap())).map_err(|_| invalid("invalid protocol minimum"))?;
         let max = semver::Version::parse(&format!("{}.0", bounds["max"].as_str().unwrap())).map_err(|_| invalid("invalid protocol maximum"))?;
@@ -203,6 +210,12 @@ pub(crate) fn activation_issues(manifest: &Value) -> Result<Vec<String>, String>
     let min = semver::Version::parse(manifest["host"]["min"].as_str().unwrap()).unwrap();
     let max = semver::Version::parse(manifest["host"]["maxExclusive"].as_str().unwrap()).unwrap();
     if host < min || host >= max { issues.push("当前宿主版本不在插件要求的范围内。".into()); }
+    if let Some(sdk) = manifest.get("hostSdk") {
+        let version = semver::Version::parse(crate::plugin_sdk::VERSION).unwrap();
+        let min = semver::Version::parse(sdk["min"].as_str().unwrap()).unwrap();
+        let max = semver::Version::parse(sdk["maxExclusive"].as_str().unwrap()).unwrap();
+        if version < min || version >= max { issues.push(format!("当前宿主 SDK {} 不在插件要求的范围内。", version)); }
+    }
     for entry in model.contributions.iter().filter(|entry|entry.required && !contribution_supported(entry,manifest)) {
         let operation = entry.metadata["operations"].as_array().and_then(|operations|operations.iter().find(|operation| {
             let Some(permissions) = operation["permissions"].as_array() else { return false; };
@@ -222,6 +235,22 @@ mod tests {
     use super::*;
     fn view() -> Value { serde_json::from_str(include_str!("../../fixtures/plugins/platform-v2/declarative.json")).unwrap() }
     fn provider() -> Value { serde_json::from_str(include_str!("../../fixtures/plugins/platform-v2/provider.json")).unwrap() }
+
+    #[test]
+    fn host_sdk_requires_a_node_entrypoint_and_checks_its_own_version() {
+        let mut manifest = provider();
+        manifest["entrypoint"]["executable"] = json!("worker.mjs");
+        manifest["hostSdk"] = json!({"min":"0.1.0","maxExclusive":"0.2.0"});
+        assert!(normalize(&manifest).is_ok());
+        assert!(!activation_issues(&manifest).unwrap().iter().any(|issue|issue.contains("SDK")));
+        manifest["hostSdk"] = json!({"min":"0.2.0","maxExclusive":"0.3.0"});
+        assert!(activation_issues(&manifest).unwrap().iter().any(|issue|issue.contains("SDK")));
+        manifest["hostSdk"] = json!({"min":"0.1.0","maxExclusive":"0.1.0"});
+        assert!(normalize(&manifest).is_err());
+        manifest["hostSdk"] = json!({"min":"0.1.0","maxExclusive":"0.2.0"});
+        manifest["entrypoint"]["executable"] = json!("worker.exe");
+        assert!(normalize(&manifest).is_err());
+    }
 
     #[test]
     fn retired_v1_metadata_is_readable_but_cannot_be_activated() {

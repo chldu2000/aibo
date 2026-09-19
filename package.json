@@ -25,6 +25,7 @@
     "test:contracts": "node --test test/adapter-contract.test.mjs",
     "test": "node --test",
     "generate:semantic-validator": "node scripts/build-semantic-validator.mjs",
+    "generate:host-sdk": "node scripts/build-host-sdk.mjs",
     "generate:presentation-validator": "node scripts/build-presentation-validator.mjs",
     "probe:semantic-ui": "node probes/semantic-ui-browser.mjs",
     "probe:presentation-sandbox": "node probes/presentation-sandbox-browser.mjs",

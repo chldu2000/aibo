@@ -1,6 +1,7 @@
 import {chmod,copyFile,mkdir,mkdtemp,readFile,rm} from 'node:fs/promises';
 import {tmpdir} from 'node:os';
 import path from 'node:path';
+import {pathToFileURL} from 'node:url';
 import {JsonlProcess} from '../../probes/lib/jsonl-process.mjs';
 import Ajv from 'ajv/dist/2020.js';
 
@@ -11,7 +12,6 @@ export async function sessionCapability(t,name,extraEnv={},existingDirectory,con
   const data=path.join(directory,'data');await mkdir(data,{recursive:true});
   for (const file of ['engine.mjs','worker.mjs','plugin.json']) await copyFile(`src-tauri/capability-plugins/${name}/${file}`,path.join(pkg,file));
   await copyFile('src-tauri/capability-plugins/session-provider.mjs',path.join(pkg,'session-provider.mjs'));
-  for (const file of ['runtime.mjs','stdio.mjs']) await copyFile(`packages/capability-runtime/${file}`,path.join(pkg,file));
   if (name==='codex') {
     await copyFile('fixtures/plugins/codex/fake-codex.mjs',path.join(directory,'codex'));await chmod(path.join(directory,'codex'),0o755);
   }
@@ -24,7 +24,7 @@ export async function sessionCapability(t,name,extraEnv={},existingDirectory,con
     if(!validate(result))throw Error(`Invalid ${capability} output: ${JSON.stringify(validate.errors)}`);
     return result;
   }
-  const client=new JsonlProcess(process.execPath,[path.join(pkg,'worker.mjs')],{cwd:directory,env:{...process.env,PATH:`${directory}${path.delimiter}${process.env.PATH}`,AIBO_PI_SDK_MODULE:path.resolve('fixtures/pi/fake-sdk.mjs'),...extraEnv}}).start();
+  const client=new JsonlProcess(process.execPath,['--import',pathToFileURL(path.resolve('packages/plugin-host/register.mjs')).href,path.join(pkg,'worker.mjs')],{cwd:directory,env:{...process.env,PATH:`${directory}${path.delimiter}${process.env.PATH}`,AIBO_PI_SDK_MODULE:path.resolve('fixtures/pi/fake-sdk.mjs'),...extraEnv}}).start();
   t.after(async()=>{await client.close();if(!existingDirectory)await rm(directory,{recursive:true,force:true});});
   const events=[],frames=[];let counter=0;
   client.on('message',message=>{frames.push(message);if(message.method==='capability.event')events.push(message.params);});

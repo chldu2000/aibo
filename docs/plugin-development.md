@@ -25,9 +25,10 @@ node --input-type=module -e 'import { buildExternalPlugin } from "./probes/build
 ```
 
 This builds local SDK tarballs, copies the example into a temporary directory outside
-the repository, installs those tarballs offline, compiles the worker and bundles its
-runtime dependencies. It prints an unpacked `installPath` containing `plugin.json`,
-`dist/worker.js`, and the required `node_modules`. It does not launch Aibo or call a model.
+the repository, installs those tarballs offline as development dependencies and compiles
+the worker. It prints an unpacked `installPath` containing `plugin.json` and `dist/worker.js`,
+without SDK copies or `node_modules`. A new host supporting `hostSdk` supplies the public SDK
+at runtime; see [host SDK](host-sdk.md). It does not launch Aibo or call a model.
 The returned development directory is retained for inspection; copy it somewhere durable
 if you plan to keep working on it.
 
@@ -86,13 +87,13 @@ plugin project, repeat these stages in your own development directory:
 
 1. Build `packages/plugin-protocol` with TypeScript, then locally pack it and
    `packages/capability-runtime` with `npm pack --ignore-scripts`.
-2. Install both local tarballs in your plugin project. These packages are not available
+2. Install both local tarballs as `devDependencies` in your plugin project. These packages are not available
    from a public registry; do not start with a registry-only installation command.
 3. Compile `worker.ts` using `tsc -p tsconfig.json`. Keep runtime dependency versions in
    the final `package.json`; do not ship machine-specific tarball paths.
-4. Run `npm pack --ignore-scripts` in the plugin project. The example's
-   `bundledDependencies` includes both SDK packages. Inspect the archive for the manifest,
-   compiled entrypoint and runtime dependencies; exclude workspace symlinks and app imports.
+4. Declare `hostSdk` in the manifest and run `npm pack --ignore-scripts`. Inspect the archive
+   for the manifest, compiled entrypoint and plugin-owned third-party runtime dependencies.
+   Exclude Aibo SDK copies, workspace symlinks and app imports; the host resolves public SDK imports.
 5. Unpack the archive into a directory, then install that directory through Aibo.
    For each changed release, increment the plugin version and worker version together.
 
