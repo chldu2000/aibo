@@ -11,6 +11,27 @@ export function gitActions(state: PresentationGit): Spec[] {
   const workspace = state.workspace;
   if (!workspace || !state.desktop) return actions;
   if (!state.loading) add('refresh');
+  if (state.repositories) {
+    add('repositorySearch', [], 'input');
+    if (!state.operationBusy) {
+      add('selectRepository', [null]);
+      for (const repo of state.repositories) add('selectRepository', [repo.id]);
+    }
+    if (state.discoveryLimited && !state.loading) add('continueDiscovery');
+    for (const repo of state.repositories) {
+      add('toggleRepository', [repo.id]);
+      if (state.repositoryId !== null) continue;
+      const writable = workspace.trust === 'trusted' && !state.operationBusy;
+      const changes = repo.changes?.workspaceId === workspace.id && repo.changes.captureStatus === 'captured' && !repo.error ? repo.changes : null;
+      for (const file of changes?.files ?? []) {
+        if (file.staged && !file.conflicted) { add('repositoryDiff', [repo.id, file.path, 'staged']); if (writable) add('repositoryUnstage', [repo.id, file.path]); }
+        if (file.unstaged || file.untracked || file.conflicted) { add('repositoryDiff', [repo.id, file.path, 'unstaged']); if (writable) add('repositoryStage', [repo.id, file.path]); }
+      }
+      if (writable && changes?.files.some(file => file.unstaged || file.untracked || file.conflicted)) add('repositoryStageAll', [repo.id]);
+      if (writable && changes?.files.some(file => file.staged)) add('repositoryUnstageAll', [repo.id]);
+    }
+    if (state.repositoryId === null) { add('selectSection', ['history']); return actions; }
+  }
   if (!state.metadataLoading) add('refreshMetadata');
   add('selectSection', ['changes']); add('selectSection', ['history']);
   if (state.canRequestReview && !state.reviewBusy) add('requestReview');
@@ -49,7 +70,7 @@ export function gitActions(state: PresentationGit): Spec[] {
 }
 export function createGitDirectory() {
   const directory = createActionDirectory<Spec>('git');
-  const scope = (state: PresentationGit) => JSON.stringify([state.workspace?.id ?? null, state.sessionId]);
+  const scope = (state: PresentationGit) => JSON.stringify([state.workspace?.id ?? null, state.sessionId, state.repositoryId ?? null]);
   return {
     project: (state: PresentationGit) => directory.project(gitActions(state), scope(state)),
     resolve: (state: PresentationGit, context: PresentationContext, intent: PresentationIntent) => directory.resolve(gitActions(state), scope(state), context, intent),

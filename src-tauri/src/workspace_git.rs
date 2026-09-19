@@ -66,11 +66,23 @@ pub(crate) async fn apply_workspace_git_file_action_requested(
     action: String,
     request: &crate::workspace_write_runs::Request,
 ) -> Result<GitFileActionResult, CoreError> {
+    apply_workspace_git_file_action_requested_in_repository(db, workspace_id, path, action, request, None).await
+}
+
+pub(crate) async fn apply_workspace_git_file_action_requested_in_repository(
+    db: &SqlitePool,
+    workspace_id: String,
+    path: String,
+    action: String,
+    request: &crate::workspace_write_runs::Request,
+    repository_id: Option<&str>,
+) -> Result<GitFileActionResult, CoreError> {
     let workspace = workspace_by_id(db, &workspace_id).await?;
+    let repository_path = crate::git_repositories::resolve(&workspace.path, repository_id)?;
     if workspace.trust != "trusted" {
         return Err(CoreError::WorkspaceTrustRequired);
     }
-    crate::workspace_write_runs::execute_requested(db, &workspace, "git.index", serde_json::json!({"path":path,"action":action}), request, |cancel| apply_git_index_action(&workspace.path, &path, &action, Some(cancel))).await
+    crate::workspace_write_runs::execute_requested(db, &workspace, "git.index", serde_json::json!({"repositoryId":repository_id,"path":path,"action":action}), request, |cancel| apply_git_index_action(&repository_path, &path, &action, Some(cancel))).await
 }
 
 async fn run_git_workspace_action(workspace_path: &str, action: &str, cancellation: Option<crate::workspace_write_runs::Cancellation>) -> Result<GitWorkspaceActionResult, CoreError> {
@@ -92,11 +104,22 @@ pub(crate) async fn apply_workspace_git_action_requested(
     action: String,
     request: &crate::workspace_write_runs::Request,
 ) -> Result<GitWorkspaceActionResult, CoreError> {
+    apply_workspace_git_action_requested_in_repository(db, workspace_id, action, request, None).await
+}
+
+pub(crate) async fn apply_workspace_git_action_requested_in_repository(
+    db: &SqlitePool,
+    workspace_id: String,
+    action: String,
+    request: &crate::workspace_write_runs::Request,
+    repository_id: Option<&str>,
+) -> Result<GitWorkspaceActionResult, CoreError> {
     let workspace = workspace_by_id(db, &workspace_id).await?;
+    let repository_path = crate::git_repositories::resolve(&workspace.path, repository_id)?;
     if workspace.trust != "trusted" {
         return Err(CoreError::WorkspaceTrustRequired);
     }
-    crate::workspace_write_runs::execute_requested(db, &workspace, "git.index-all", serde_json::json!({"action":action}), request, |cancel| run_git_workspace_action(&workspace.path, &action, Some(cancel))).await
+    crate::workspace_write_runs::execute_requested(db, &workspace, "git.index-all", serde_json::json!({"repositoryId":repository_id,"action":action}), request, |cancel| run_git_workspace_action(&repository_path, &action, Some(cancel))).await
 }
 
 async fn commit_workspace(operation: &GitOperation<'_>, message: &str) -> Result<GitCommitResult, CoreError> {
@@ -124,11 +147,22 @@ pub(crate) async fn commit_workspace_changes_requested(
     message: String,
     request: &crate::workspace_write_runs::Request,
 ) -> Result<GitCommitResult, CoreError> {
+    commit_workspace_changes_requested_in_repository(db, workspace_id, message, request, None).await
+}
+
+pub(crate) async fn commit_workspace_changes_requested_in_repository(
+    db: &SqlitePool,
+    workspace_id: String,
+    message: String,
+    request: &crate::workspace_write_runs::Request,
+    repository_id: Option<&str>,
+) -> Result<GitCommitResult, CoreError> {
     let workspace = workspace_by_id(db, &workspace_id).await?;
+    let repository_path = crate::git_repositories::resolve(&workspace.path, repository_id)?;
     if workspace.trust != "trusted" {
         return Err(CoreError::WorkspaceTrustRequired);
     }
-    crate::workspace_write_runs::execute_requested(db, &workspace, "git.commit", serde_json::json!({"message":message}), request, |cancel| async { commit_workspace(&GitOperation::new(&workspace.path).cancellable(cancel), &message).await }).await
+    crate::workspace_write_runs::execute_requested(db, &workspace, "git.commit", serde_json::json!({"repositoryId":repository_id,"message":message}), request, |cancel| async { commit_workspace(&GitOperation::new(&repository_path).cancellable(cancel), &message).await }).await
 }
 
 fn list_git_branches(workspace_path: &str) -> Result<Vec<GitBranch>, CoreError> {
@@ -183,8 +217,17 @@ pub(crate) async fn list_workspace_git_branches(
     db: &SqlitePool,
     workspace_id: String,
 ) -> Result<Vec<GitBranch>, CoreError> {
+    list_workspace_git_branches_in_repository(db, workspace_id, None).await
+}
+
+pub(crate) async fn list_workspace_git_branches_in_repository(
+    db: &SqlitePool,
+    workspace_id: String,
+    repository_id: Option<&str>,
+) -> Result<Vec<GitBranch>, CoreError> {
     let workspace = workspace_by_id(db, &workspace_id).await?;
-    list_git_branches(&workspace.path)
+    let repository_path = crate::git_repositories::resolve(&workspace.path, repository_id)?;
+    list_git_branches(&repository_path)
 }
 
 fn validate_git_ref_name(name: &str) -> Result<(), CoreError> {
@@ -203,12 +246,23 @@ pub(crate) async fn checkout_workspace_git_branch_requested(
     branch: String,
     request: &crate::workspace_write_runs::Request,
 ) -> Result<GitWorkspaceActionResult, CoreError> {
+    checkout_workspace_git_branch_requested_in_repository(db, workspace_id, branch, request, None).await
+}
+
+pub(crate) async fn checkout_workspace_git_branch_requested_in_repository(
+    db: &SqlitePool,
+    workspace_id: String,
+    branch: String,
+    request: &crate::workspace_write_runs::Request,
+    repository_id: Option<&str>,
+) -> Result<GitWorkspaceActionResult, CoreError> {
     validate_git_ref_name(&branch)?;
     let workspace = workspace_by_id(db, &workspace_id).await?;
+    let repository_path = crate::git_repositories::resolve(&workspace.path, repository_id)?;
     if workspace.trust != "trusted" {
         return Err(CoreError::WorkspaceTrustRequired);
     }
-    crate::workspace_write_runs::execute_requested(db, &workspace, "git.checkout", serde_json::json!({"branch":branch}), request, |cancel| async { GitOperation::new(&workspace.path).cancellable(cancel).action(&["switch", "--", &branch], "checkout").await }).await
+    crate::workspace_write_runs::execute_requested(db, &workspace, "git.checkout", serde_json::json!({"repositoryId":repository_id,"branch":branch}), request, |cancel| async { GitOperation::new(&repository_path).cancellable(cancel).action(&["switch", "--", &branch], "checkout").await }).await
 }
 
 pub(crate) async fn create_workspace_git_branch_requested(
@@ -217,12 +271,23 @@ pub(crate) async fn create_workspace_git_branch_requested(
     branch: String,
     request: &crate::workspace_write_runs::Request,
 ) -> Result<GitWorkspaceActionResult, CoreError> {
+    create_workspace_git_branch_requested_in_repository(db, workspace_id, branch, request, None).await
+}
+
+pub(crate) async fn create_workspace_git_branch_requested_in_repository(
+    db: &SqlitePool,
+    workspace_id: String,
+    branch: String,
+    request: &crate::workspace_write_runs::Request,
+    repository_id: Option<&str>,
+) -> Result<GitWorkspaceActionResult, CoreError> {
     validate_git_ref_name(&branch)?;
     let workspace = workspace_by_id(db, &workspace_id).await?;
+    let repository_path = crate::git_repositories::resolve(&workspace.path, repository_id)?;
     if workspace.trust != "trusted" {
         return Err(CoreError::WorkspaceTrustRequired);
     }
-    crate::workspace_write_runs::execute_requested(db, &workspace, "git.create-branch", serde_json::json!({"branch":branch}), request, |cancel| async { GitOperation::new(&workspace.path).cancellable(cancel).action(&["switch", "-c", &branch], "create_branch").await }).await
+    crate::workspace_write_runs::execute_requested(db, &workspace, "git.create-branch", serde_json::json!({"repositoryId":repository_id,"branch":branch}), request, |cancel| async { GitOperation::new(&repository_path).cancellable(cancel).action(&["switch", "-c", &branch], "create_branch").await }).await
 }
 
 fn list_git_history(workspace_path: &str, limit: u32) -> Result<Vec<GitCommit>, CoreError> {
@@ -273,8 +338,18 @@ pub(crate) async fn list_workspace_git_history(
     workspace_id: String,
     limit: Option<u32>,
 ) -> Result<Vec<GitCommit>, CoreError> {
+    list_workspace_git_history_in_repository(db, workspace_id, limit, None).await
+}
+
+pub(crate) async fn list_workspace_git_history_in_repository(
+    db: &SqlitePool,
+    workspace_id: String,
+    limit: Option<u32>,
+    repository_id: Option<&str>,
+) -> Result<Vec<GitCommit>, CoreError> {
     let workspace = workspace_by_id(db, &workspace_id).await?;
-    list_git_history(&workspace.path, limit.unwrap_or(30))
+    let repository_path = crate::git_repositories::resolve(&workspace.path, repository_id)?;
+    list_git_history(&repository_path, limit.unwrap_or(30))
 }
 
 fn git_commit_files(workspace_path: &str, commit: &str) -> Result<Vec<GitCommitFile>, CoreError> {
@@ -346,9 +421,21 @@ pub(crate) async fn list_workspace_git_commit_files(
     offset: Option<usize>,
     limit: Option<usize>,
 ) -> Result<GitCommitFileList, CoreError> {
+    list_workspace_git_commit_files_in_repository(db, workspace_id, commit, offset, limit, None).await
+}
+
+pub(crate) async fn list_workspace_git_commit_files_in_repository(
+    db: &SqlitePool,
+    workspace_id: String,
+    commit: String,
+    offset: Option<usize>,
+    limit: Option<usize>,
+    repository_id: Option<&str>,
+) -> Result<GitCommitFileList, CoreError> {
     validate_git_ref_name(&commit)?;
     let workspace = workspace_by_id(db, &workspace_id).await?;
-    let files = git_commit_files(&workspace.path, &commit)?;
+    let repository_path = crate::git_repositories::resolve(&workspace.path, repository_id)?;
+    let files = git_commit_files(&repository_path, &commit)?;
     let total = files.len();
     let offset = offset.unwrap_or(0).min(total);
     let limit = limit.unwrap_or(10).clamp(1, 100);
@@ -365,6 +452,16 @@ pub(crate) async fn get_workspace_git_commit_file_diff(
     commit: String,
     path: String,
 ) -> Result<WorkspaceFileDiff, CoreError> {
+    get_workspace_git_commit_file_diff_in_repository(db, workspace_id, commit, path, None).await
+}
+
+pub(crate) async fn get_workspace_git_commit_file_diff_in_repository(
+    db: &SqlitePool,
+    workspace_id: String,
+    commit: String,
+    path: String,
+    repository_id: Option<&str>,
+) -> Result<WorkspaceFileDiff, CoreError> {
     validate_git_ref_name(&commit)?;
     if Path::new(&path).is_absolute()
         || Path::new(&path)
@@ -376,11 +473,12 @@ pub(crate) async fn get_workspace_git_commit_file_diff(
         ));
     }
     let workspace = workspace_by_id(db, &workspace_id).await?;
+    let repository_path = crate::git_repositories::resolve(&workspace.path, repository_id)?;
     let mut command = Command::new("git");
     let output = command_output_bounded(
         command.args([
             "-C",
-            &workspace.path,
+            &repository_path,
             "show",
             "--no-ext-diff",
             "--no-color",
@@ -483,8 +581,17 @@ pub(crate) async fn get_workspace_git_remote_status(
     db: &SqlitePool,
     workspace_id: String,
 ) -> Result<GitRemoteStatus, CoreError> {
+    get_workspace_git_remote_status_in_repository(db, workspace_id, None).await
+}
+
+pub(crate) async fn get_workspace_git_remote_status_in_repository(
+    db: &SqlitePool,
+    workspace_id: String,
+    repository_id: Option<&str>,
+) -> Result<GitRemoteStatus, CoreError> {
     let workspace = workspace_by_id(db, &workspace_id).await?;
-    git_remote_status(&workspace.path)
+    let repository_path = crate::git_repositories::resolve(&workspace.path, repository_id)?;
+    git_remote_status(&repository_path)
 }
 
 pub(crate) async fn sync_workspace_git_requested(
@@ -493,12 +600,23 @@ pub(crate) async fn sync_workspace_git_requested(
     action: String,
     request: &crate::workspace_write_runs::Request,
 ) -> Result<GitWorkspaceActionResult, CoreError> {
+    sync_workspace_git_requested_in_repository(db, workspace_id, action, request, None).await
+}
+
+pub(crate) async fn sync_workspace_git_requested_in_repository(
+    db: &SqlitePool,
+    workspace_id: String,
+    action: String,
+    request: &crate::workspace_write_runs::Request,
+    repository_id: Option<&str>,
+) -> Result<GitWorkspaceActionResult, CoreError> {
     let workspace = workspace_by_id(db, &workspace_id).await?;
+    let repository_path = crate::git_repositories::resolve(&workspace.path, repository_id)?;
     if workspace.trust != "trusted" {
         return Err(CoreError::WorkspaceTrustRequired);
     }
-    let command = git_sync_command(&workspace.path, &action)?;
-    crate::workspace_write_runs::execute_requested(db, &workspace, "git.sync", serde_json::json!({"action":action}), request, |cancel| execute_git_action(command, action, Duration::from_secs(120), Some(cancel))).await
+    let command = git_sync_command(&repository_path, &action)?;
+    crate::workspace_write_runs::execute_requested(db, &workspace, "git.sync", serde_json::json!({"repositoryId":repository_id,"action":action}), request, |cancel| execute_git_action(command, action, Duration::from_secs(120), Some(cancel))).await
 }
 
 fn git_sync_command(workspace_path: &str, action: &str) -> Result<TokioCommand, CoreError> {
@@ -553,11 +671,20 @@ pub(crate) async fn list_workspace_git_stashes(
     db: &SqlitePool,
     workspace_id: String,
 ) -> Result<Vec<GitStashEntry>, CoreError> {
+    list_workspace_git_stashes_in_repository(db, workspace_id, None).await
+}
+
+pub(crate) async fn list_workspace_git_stashes_in_repository(
+    db: &SqlitePool,
+    workspace_id: String,
+    repository_id: Option<&str>,
+) -> Result<Vec<GitStashEntry>, CoreError> {
     let workspace = workspace_by_id(db, &workspace_id).await?;
+    let repository_path = crate::git_repositories::resolve(&workspace.path, repository_id)?;
     let output = Command::new("git")
         .args([
             "-C",
-            &workspace.path,
+            &repository_path,
             "stash",
             "list",
             "--format=%gd%x09%gs",
@@ -587,12 +714,23 @@ pub(crate) async fn apply_workspace_git_stash_requested(
     reference: String,
     request: &crate::workspace_write_runs::Request,
 ) -> Result<GitWorkspaceActionResult, CoreError> {
+    apply_workspace_git_stash_requested_in_repository(db, workspace_id, reference, request, None).await
+}
+
+pub(crate) async fn apply_workspace_git_stash_requested_in_repository(
+    db: &SqlitePool,
+    workspace_id: String,
+    reference: String,
+    request: &crate::workspace_write_runs::Request,
+    repository_id: Option<&str>,
+) -> Result<GitWorkspaceActionResult, CoreError> {
     validate_git_ref_name(&reference)?;
     let workspace = workspace_by_id(db, &workspace_id).await?;
+    let repository_path = crate::git_repositories::resolve(&workspace.path, repository_id)?;
     if workspace.trust != "trusted" {
         return Err(CoreError::WorkspaceTrustRequired);
     }
-    crate::workspace_write_runs::execute_requested(db, &workspace, "git.stash-apply", serde_json::json!({"reference":reference}), request, |cancel| async { GitOperation::new(&workspace.path).cancellable(cancel).action(&["stash", "apply", &reference], "stash_apply").await }).await
+    crate::workspace_write_runs::execute_requested(db, &workspace, "git.stash-apply", serde_json::json!({"repositoryId":repository_id,"reference":reference}), request, |cancel| async { GitOperation::new(&repository_path).cancellable(cancel).action(&["stash", "apply", &reference], "stash_apply").await }).await
 }
 
 pub(crate) async fn stash_workspace_git_requested(
@@ -601,12 +739,23 @@ pub(crate) async fn stash_workspace_git_requested(
     message: Option<String>,
     request: &crate::workspace_write_runs::Request,
 ) -> Result<GitWorkspaceActionResult, CoreError> {
+    stash_workspace_git_requested_in_repository(db, workspace_id, message, request, None).await
+}
+
+pub(crate) async fn stash_workspace_git_requested_in_repository(
+    db: &SqlitePool,
+    workspace_id: String,
+    message: Option<String>,
+    request: &crate::workspace_write_runs::Request,
+    repository_id: Option<&str>,
+) -> Result<GitWorkspaceActionResult, CoreError> {
     let workspace = workspace_by_id(db, &workspace_id).await?;
+    let repository_path = crate::git_repositories::resolve(&workspace.path, repository_id)?;
     if workspace.trust != "trusted" {
         return Err(CoreError::WorkspaceTrustRequired);
     }
     let message = message.unwrap_or_else(|| "aibo workspace changes".to_owned());
-    crate::workspace_write_runs::execute_requested(db, &workspace, "git.stash-push", serde_json::json!({"message":message}), request, |cancel| async { GitOperation::new(&workspace.path).cancellable(cancel).action(&["stash", "push", "-u", "-m", &message], "stash_push").await }).await
+    crate::workspace_write_runs::execute_requested(db, &workspace, "git.stash-push", serde_json::json!({"repositoryId":repository_id,"message":message}), request, |cancel| async { GitOperation::new(&repository_path).cancellable(cancel).action(&["stash", "push", "-u", "-m", &message], "stash_push").await }).await
 }
 
 

@@ -27,3 +27,17 @@ test('Git tokens bind immutable operation arguments and revoke previous draft su
  const stage=dir.project(state).find(a=>a.operation==='stageFile');
  assert.equal(dir.resolve({...state,changes:{...state.changes,files:[]}},context,{id:stage.token,event:'click',context}),null);
 });
+
+test('multiple repositories bind identical filenames to distinct targets and revoke actions on selection', () => {
+ const repo=id=>({id,name:id,relativePath:id,kind:'repository',externalRoot:false,changes:state.changes,error:null});
+ const all={...state,repositoryId:null,repositories:[repo('one'),repo('two')],changes:null};
+ const actions=gitActions(all);
+ assert.deepEqual(actions.filter(a=>a.operation==='repositoryStage').map(a=>a.args),[['one','changed'],['two','changed']]);
+ for(const op of ['commit','fetch','push','stageAll','selectCommit','requestReview'])assert.ok(!actions.some(a=>a.operation===op));
+ const dir=createGitDirectory();const first={...all,repositoryId:'one',changes:state.changes};
+ const token=dir.project(first).find(a=>a.operation==='commitMessage');
+ dir.project({...first,repositoryId:'two'});
+ assert.equal(dir.resolve({...first,repositoryId:'two'},context,{id:token.token,event:'input',value:'wrong repo',context}),null);
+ assert.ok(!gitActions({...all,operationBusy:true}).some(a=>['repositoryStage','repositoryUnstage','repositoryStageAll','repositoryUnstageAll','selectRepository'].includes(a.operation)));
+ assert.ok(!gitActions({...all,workspace:{...all.workspace,trust:'untrusted'}}).some(a=>a.operation==='repositoryStage'));
+});

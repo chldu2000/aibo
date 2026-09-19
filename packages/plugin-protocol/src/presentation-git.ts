@@ -74,7 +74,17 @@ interface GitStashEntry {
 }
 
 export type PresentationGitDrafts = { commitMessage: string; branchDraft: string; gitSection: 'changes' | 'history'; selectedCommit: string | null };
+export type GitRepository = { id: string; name: string; relativePath: string; kind: 'repository' | 'submodule' | 'worktree'; externalRoot: boolean };
+export type GitRepositoryState = GitRepository & { changes: WorkspaceChanges | null; error: string | null };
+export type GitRepositoryDiscovery = { repositories: GitRepository[]; limited: boolean; warnings: string[]; scanBudget: number };
 export type PresentationGit = {
+  repositories?: GitRepositoryState[];
+  repositoryId?: string | null;
+  repositorySearch?: string;
+  repositoryPickerOpen?: boolean;
+  collapsedRepositories?: string[];
+  discoveryLimited?: boolean;
+  discoveryWarnings?: string[];
   workspace: { id: string; label: string; path: string; trust: string } | null;
   sessionId: string | null;
   desktop: boolean;
@@ -103,7 +113,8 @@ export type PresentationGitAction = {
     | 'commitMessage' | 'branchDraft' | 'commit' | 'createBranch' | 'checkoutBranch'
     | 'stageFile' | 'unstageFile' | 'stageAll' | 'unstageAll' | 'openDiff' | 'closeDiff'
     | 'selectCommit' | 'loadMoreCommitFiles' | 'openCommitDiff' | 'fetch' | 'pull' | 'push'
-    | 'saveStash' | 'applyStash' | 'requestReview';
+    | 'saveStash' | 'applyStash' | 'requestReview' | 'selectRepository' | 'repositorySearch' | 'toggleRepository' | 'continueDiscovery'
+    | 'repositoryDiff' | 'repositoryStage' | 'repositoryUnstage' | 'repositoryStageAll' | 'repositoryUnstageAll';
   event: 'click' | 'input';
   args: readonly (string | null)[];
 };

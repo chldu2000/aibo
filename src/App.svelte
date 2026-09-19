@@ -49,6 +49,9 @@
     if (agentSettings.target) void agentSettingsController.select({...agentSettings.target,scope});
   }
 
+  import type { GitRepositoryState } from '../packages/plugin-protocol/src/presentation-git';
+  import { repositoryDraftKey, readRepositoryViews, writeRepositoryViews } from '$lib/app/git-repository-state';
+  import { listWorkspaceGitRepositories } from '$lib/api';
   import { readWorkbenchDrafts, writeWorkbenchDrafts, emptyGitPanelState } from '$lib/app/workbench-drafts';
   const draftStorage = { getItem: (key: string) => window.localStorage.getItem(key), setItem: (key: string, value: string) => window.localStorage.setItem(key, value) };
   import { readWorkbenchLayout, writeWorkbenchLayout } from '$lib/app/workbench-layout-storage';
@@ -249,15 +252,60 @@
       case 'selectTreeNode': requestPiTreeNavigation(target!); break;
     }
   }
+  let repositoryViews = $state(readRepositoryViews(draftStorage, presentationWindowId()));
+  let gitRepositories = $state<GitRepositoryState[]>([]);
+  let gitRepositoriesWorkspace = $state<string | null>(null);
+  let repositorySearch = $state('');
+  let repositoryPickerOpen = $state(false);
+  let repositoryPendingSection: 'changes' | 'history' | undefined;
+  let discoveryLimited = $state(false);
+  let discoveryWarnings = $state<string[]>([]);
+  let repositoryScanBudget = $state(2000);
+  const repositoryId = $derived(selectedWorkspaceId ? repositoryViews[selectedWorkspaceId]?.selected ?? null : null);
+  const gitDraftKey = $derived(repositoryDraftKey(selectedWorkspaceId ?? '', repositoryId));
+  const visibleRepositories = $derived(gitRepositoriesWorkspace === selectedWorkspaceId ? gitRepositories : []);
+  $effect(() => { writeRepositoryViews(draftStorage, presentationWindowId(), repositoryViews); });
+  function toggleRepository(id: string) {
+    if (!selectedWorkspaceId) return;
+    const view = repositoryViews[selectedWorkspaceId] ?? { selected: null, collapsed: [] };
+    repositoryViews[selectedWorkspaceId] = { ...view, collapsed: view.collapsed.includes(id) ? view.collapsed.filter(value => value !== id) : [...view.collapsed, id] };
+  }
+  function selectRepository(id: string | null, section?: 'changes' | 'history') {
+    if (!selectedWorkspaceId || workspaceGitOperationBusy || (id !== null && !visibleRepositories.some(repo => repo.id === id))) return;
+    repositoryViews[selectedWorkspaceId] = { ...repositoryViews[selectedWorkspaceId], selected: id, collapsed: repositoryViews[selectedWorkspaceId]?.collapsed ?? [] };
+    ++workspaceGitMetadataRequestGeneration;
+    workspaceGitBranches = []; workspaceGitHistory = []; workspaceGitRemoteStatus = null; workspaceGitStashes = [];
+    workspaceGitMetadataLoading = false; workspaceGitMetadataError = null;
+    closeWorkspaceCommitFiles(); closeWorkspaceFileDiff();
+    workspaceChanges = visibleRepositories.find(repo => repo.id === id)?.changes ?? null;
+    repositoryPickerOpen = false;
+    section ??= repositoryPendingSection; repositoryPendingSection = undefined;
+    if (id !== null) {
+      if (section) {
+        const key = repositoryDraftKey(selectedWorkspaceId, id);
+        workbenchDrafts.git[key] = { ...(workbenchDrafts.git[key] ?? emptyGitPanelState()), gitSection: section };
+      }
+      void refreshWorkspaceGitMetadata(selectedWorkspaceId);
+      restoreRepositoryFile(selectedWorkspaceId, id);
+    }
+  }
+  function restoreRepositoryFile(workspaceId: string, id: string) {
+    const saved = repositoryViews[workspaceId]?.files?.[id];
+    if (saved && visibleRepositories.find(repo => repo.id === id)?.changes?.files.some(file => file.path === saved.path && (saved.staged ? file.staged : file.unstaged || file.untracked || file.conflicted))) {
+      void openWorkspaceFileDiff(workspaceId, saved.path, saved.staged, id);
+    }
+  }
   const externalGit = $derived<PresentationGit>({
+    repositories: visibleRepositories, repositoryId, repositorySearch, repositoryPickerOpen,
+    collapsedRepositories: repositoryViews[selectedWorkspaceId ?? '']?.collapsed ?? [], discoveryLimited, discoveryWarnings,
     workspace: selectedWorkspace, sessionId: selectedSessionId, desktop, open: sidePanelOpen, activeView: sidePanelView,
-    changes: workspaceChanges, loading: workspaceChangesLoading, error: workspaceChangesError,
+    changes: workspaceChanges, loading: workspaceChangesLoading, error: visibleRepositories.find(repo => repo.id === repositoryId)?.error ?? workspaceChangesError,
     branches: workspaceGitBranches, history: workspaceGitHistory, metadataLoading: workspaceGitMetadataLoading,
     metadataError: workspaceGitMetadataError, commitFiles: workspaceGitCommitFiles, commitFilesLoading: workspaceGitCommitFilesLoading,
     remoteStatus: workspaceGitRemoteStatus, stashes: workspaceGitStashes, operationBusy: workspaceGitOperationBusy,
     reviewBusy: workspaceGitReviewBusy,
     canRequestReview: Boolean(selectedSession?.pluginInstallationId) && selectedSession?.workspaceId === selectedWorkspaceId && !selectedSession?.archived && !sessionRunning,
-    draft: workbenchDrafts.git[selectedWorkspaceId ?? ''] ?? emptyGitPanelState(),
+    draft: workbenchDrafts.git[gitDraftKey] ?? emptyGitPanelState(),
     preview: { fileDiff: workspaceFileDiff, loading: workspaceFileDiffLoading, error: workspaceFileDiffError,
       selectedPath: workspaceFileDiffPath, staged: workspaceFileDiffStaged, contextLabel: workspaceFileDiffContextLabel },
   });
@@ -268,15 +316,25 @@
     const workspaceId = selectedWorkspaceId!;
     const draft = externalGit.draft;
     switch (action.operation) {
+      case 'selectRepository': selectRepository(target); break;
+      case 'repositorySearch': repositorySearch = intent.value!; break;
+      case 'toggleRepository': toggleRepository(target!); break;
+      case 'continueDiscovery': repositoryScanBudget = Math.min(repositoryScanBudget * 4, 100000); await refreshWorkspaceChanges(workspaceId); break;
+      case 'repositoryDiff': await openWorkspaceFileDiff(workspaceId, detail!, action.args[2] === 'staged', target!); break;
+      case 'repositoryStage': await applyWorkspaceGitAction(workspaceId, detail!, 'stage', target!); break;
+      case 'repositoryUnstage': await applyWorkspaceGitAction(workspaceId, detail!, 'unstage', target!); break;
+      case 'repositoryStageAll': await applyWorkspaceGitWorkspaceAction(workspaceId, 'stage_all', target!); break;
+      case 'repositoryUnstageAll': await applyWorkspaceGitWorkspaceAction(workspaceId, 'unstage_all', target!); break;
       case 'togglePanel': toggleSidePanel(); break;
       case 'selectView': selectSidePanelView(target as SidePanelView); break;
       case 'selectSection':
-        workbenchDrafts.git[workspaceId] = { ...draft, gitSection: target as 'changes' | 'history' };
+        if (repositoryId === null) { repositoryPickerOpen = true; repositoryPendingSection = target as 'changes' | 'history'; break; }
+        workbenchDrafts.git[gitDraftKey] = { ...draft, gitSection: target as 'changes' | 'history' };
         if (target === 'history') await refreshWorkspaceGitMetadata(workspaceId); break;
       case 'refresh': await refreshWorkspaceChanges(workspaceId); break;
       case 'refreshMetadata': await refreshWorkspaceGitMetadata(workspaceId); break;
-      case 'commitMessage': workbenchDrafts.git[workspaceId] = { ...draft, commitMessage: intent.value! }; break;
-      case 'branchDraft': workbenchDrafts.git[workspaceId] = { ...draft, branchDraft: intent.value! }; break;
+      case 'commitMessage': workbenchDrafts.git[gitDraftKey] = { ...draft, commitMessage: intent.value! }; break;
+      case 'branchDraft': workbenchDrafts.git[gitDraftKey] = { ...draft, branchDraft: intent.value! }; break;
       case 'commit': await commitWorkspaceGitChanges(workspaceId, target!); break;
       case 'createBranch': await createWorkspaceBranch(workspaceId, target!); break;
       case 'checkoutBranch': await checkoutWorkspaceBranch(workspaceId, target!); break;
@@ -286,7 +344,7 @@
       case 'unstageAll': await applyWorkspaceGitWorkspaceAction(workspaceId, 'unstage_all'); break;
       case 'openDiff': await openWorkspaceFileDiff(workspaceId, target!, detail === 'staged'); break;
       case 'closeDiff': closeWorkspaceFileDiff(); break;
-      case 'selectCommit': workbenchDrafts.git[workspaceId] = { ...draft, selectedCommit: target! }; await loadWorkspaceCommitFiles(workspaceId, target!); break;
+      case 'selectCommit': workbenchDrafts.git[gitDraftKey] = { ...draft, selectedCommit: target! }; await loadWorkspaceCommitFiles(workspaceId, target!); break;
       case 'loadMoreCommitFiles': await loadWorkspaceCommitFiles(workspaceId, target!, true); break;
       case 'openCommitDiff': await openWorkspaceCommitFileDiff(workspaceId, target!, detail!); break;
       case 'fetch': case 'pull': case 'push': await syncWorkspaceBranch(workspaceId, action.operation); break;
@@ -800,6 +858,7 @@
   let workspaceFileDiffLoading = $state(false);
   let workspaceFileDiffError = $state<string | null>(null);
   let workspaceFileDiffPath = $state<string | null>(null);
+  let previewRepositoryId = $state<string | null>(null);
   let workspaceFileDiffStaged = $state(false);
   let workspaceFileDiffContextLabel = $state<string | null>(null);
   let workspaceFileDiffRequestGeneration = 0;
@@ -858,6 +917,7 @@
 
   function resetWorkspaceGitView(): void {
     ++workspaceChangesRequestGeneration;
+    repositorySearch = ''; discoveryLimited = false; discoveryWarnings = []; repositoryScanBudget = 2000;
     workspaceChanges = null;
     workspaceChangesLoading = false;
     workspaceChangesError = null;
@@ -1915,6 +1975,7 @@
   }
 
   async function refreshWorkspaceChanges(workspaceId: string, background = false) {
+    if (workspaceId !== selectedWorkspaceId) return;
     if (background && (workspaceChangesLoading || workspaceChangesBackgroundRefreshing)) return;
     const generation = ++workspaceChangesRequestGeneration;
     if (!desktop) {
@@ -1932,10 +1993,40 @@
       workspaceChangesError = null;
     }
     try {
-      const changes = await getWorkspaceChanges(workspaceId);
-      if (generation === workspaceChangesRequestGeneration && workspaceId === selectedWorkspaceId) {
-        workspaceChanges = changes;
+      const discovery = await listWorkspaceGitRepositories(workspaceId, repositoryScanBudget);
+      if (generation !== workspaceChangesRequestGeneration || workspaceId !== selectedWorkspaceId) return;
+      discoveryLimited = discovery.limited; discoveryWarnings = discovery.warnings;
+      const restoringWorkspace = gitRepositoriesWorkspace !== workspaceId;
+      const previous = gitRepositoriesWorkspace === workspaceId ? gitRepositories : [];
+      gitRepositoriesWorkspace = workspaceId;
+      gitRepositories = discovery.repositories.map(repo => ({ ...repo, changes: previous.find(old => old.id === repo.id)?.changes ?? null, error: null }));
+      const remembered = repositoryViews[workspaceId];
+      const next = remembered && (remembered.selected === null || gitRepositories.some(repo => repo.id === remembered.selected))
+        ? remembered.selected : gitRepositories.length === 1 ? gitRepositories[0].id : null;
+      if (!remembered || next !== remembered.selected) {
+        repositoryViews[workspaceId] = { ...remembered, selected: next, collapsed: remembered?.collapsed ?? [] };
+        ++workspaceGitMetadataRequestGeneration;
+        workspaceGitBranches = []; workspaceGitHistory = []; workspaceGitRemoteStatus = null; workspaceGitStashes = [];
+        closeWorkspaceCommitFiles(); closeWorkspaceFileDiff();
       }
+      workspaceChanges = gitRepositories.find(repo => repo.id === repositoryId)?.changes ?? null;
+      // Publish discovery immediately; each repository settles independently.
+      const pendingRepositories = [...gitRepositories];
+      for (let offset = 0; offset < pendingRepositories.length; offset += 4) {
+        if (generation !== workspaceChangesRequestGeneration || workspaceId !== selectedWorkspaceId) break;
+        await Promise.all(pendingRepositories.slice(offset, offset + 4).map(async repo => {
+        let changes: WorkspaceChanges | null = null; let error: string | null = null;
+        try { changes = await getWorkspaceChanges(workspaceId, repo.id); } catch (failure) { error = toErrorMessage(failure); }
+        if (generation !== workspaceChangesRequestGeneration || workspaceId !== selectedWorkspaceId) return;
+        gitRepositories = gitRepositories.map(current => current.id === repo.id ? { ...current, changes, error } : current);
+        workspaceChanges = gitRepositories.find(current => current.id === repositoryId)?.changes ?? null;
+        }));
+      }
+      if (generation === workspaceChangesRequestGeneration && workspaceId === selectedWorkspaceId && repositoryId !== null) {
+        if (!background) void refreshWorkspaceGitMetadata(workspaceId);
+        if (restoringWorkspace) restoreRepositoryFile(workspaceId, repositoryId);
+      }
+
     } catch (error) {
       if (generation === workspaceChangesRequestGeneration && workspaceId === selectedWorkspaceId) {
         if (!background) workspaceChanges = null;
@@ -1954,16 +2045,24 @@
     workspaceId: string,
     path: string,
     staged: boolean,
+    explicitRepository?: string,
   ): Promise<void> {
+    const targetRepository = explicitRepository ?? repositoryId ?? undefined;
+
+    if (targetRepository) {
+      const view = repositoryViews[workspaceId] ?? { selected: null, collapsed: [] };
+      repositoryViews[workspaceId] = { ...view, files: { ...view.files, [targetRepository]: { path, staged } } };
+    }
     const generation = ++workspaceFileDiffRequestGeneration;
+    previewRepositoryId = targetRepository ?? null;
     workspaceFileDiffPath = path;
     workspaceFileDiffStaged = staged;
-    workspaceFileDiffContextLabel = null;
+    workspaceFileDiffContextLabel = `${visibleRepositories.find(repo => repo.id === targetRepository)?.name ?? ''} · ${path}`;
     workspaceFileDiff = null;
     workspaceFileDiffLoading = true;
     workspaceFileDiffError = null;
     try {
-      const diff = await getWorkspaceFileDiff(workspaceId, path, staged);
+      const diff = await getWorkspaceFileDiff(workspaceId, path, staged, targetRepository);
       if (generation === workspaceFileDiffRequestGeneration && workspaceId === selectedWorkspaceId) {
         workspaceFileDiff = diff;
       }
@@ -1981,6 +2080,7 @@
     ++workspaceFileDiffRequestGeneration;
     workspaceFileDiff = null;
     workspaceFileDiffPath = null;
+    previewRepositoryId = null;
     workspaceFileDiffStaged = false;
     workspaceFileDiffContextLabel = null;
     workspaceFileDiffError = null;
@@ -1988,6 +2088,9 @@
   }
 
   async function refreshWorkspaceGitMetadata(workspaceId: string, background = false): Promise<void> {
+    const targetRepository = repositoryId ?? undefined;
+    if (!targetRepository) return;
+
     if (background && (workspaceGitMetadataLoading || workspaceGitMetadataBackgroundRefreshing)) return;
     if (background) workspaceGitMetadataBackgroundRefreshing = true;
     const generation = ++workspaceGitMetadataRequestGeneration;
@@ -1995,19 +2098,19 @@
     workspaceGitMetadataError = null;
     try {
       const [branches, history, remoteStatus, stashes] = await Promise.all([
-        listWorkspaceGitBranches(workspaceId),
-        listWorkspaceGitHistory(workspaceId),
-        getWorkspaceGitRemoteStatus(workspaceId),
-        listWorkspaceGitStashes(workspaceId),
+        listWorkspaceGitBranches(workspaceId, targetRepository),
+        listWorkspaceGitHistory(workspaceId, 30, targetRepository),
+        getWorkspaceGitRemoteStatus(workspaceId, targetRepository),
+        listWorkspaceGitStashes(workspaceId, targetRepository),
       ]);
-      if (generation === workspaceGitMetadataRequestGeneration && workspaceId === selectedWorkspaceId) {
+      if (generation === workspaceGitMetadataRequestGeneration && workspaceId === selectedWorkspaceId && targetRepository === repositoryId) {
         workspaceGitBranches = branches;
         workspaceGitHistory = history;
         workspaceGitRemoteStatus = remoteStatus;
         workspaceGitStashes = stashes;
       }
     } catch (error) {
-      if (generation === workspaceGitMetadataRequestGeneration && workspaceId === selectedWorkspaceId) {
+      if (generation === workspaceGitMetadataRequestGeneration && workspaceId === selectedWorkspaceId && targetRepository === repositoryId) {
         if (!background) workspaceGitMetadataError = toErrorMessage(error);
       }
     } finally {
@@ -2017,18 +2120,21 @@
   }
 
   async function checkoutWorkspaceBranch(workspaceId: string, branch: string): Promise<void> {
+    const targetRepository = repositoryId ?? undefined;
+    if (!targetRepository) return;
+
     if (workspaceGitOperationBusy) return;
     workspaceGitBusyPath = '*';
     errorMessage = null;
     try {
-      const result = await checkoutWorkspaceGitBranch(workspaceId, branch);
+      const result = await checkoutWorkspaceGitBranch(workspaceId, branch, undefined, targetRepository);
       if (!result.applied) {
         errorMessage = result.message;
         return;
       }
       notice = `已切换到 ${branch}。`;
       await Promise.all([refreshWorkspaceChanges(workspaceId), refreshWorkspaceGitMetadata(workspaceId)]);
-      closeWorkspaceFileDiff();
+      if (workspaceId === selectedWorkspaceId && targetRepository === repositoryId) closeWorkspaceFileDiff();
     } catch (error) {
       errorMessage = toErrorMessage(error);
     } finally {
@@ -2037,20 +2143,23 @@
   }
 
   async function createWorkspaceBranch(workspaceId: string, branch: string): Promise<void> {
+    const targetRepository = repositoryId ?? undefined;
+    if (!targetRepository) return;
+
     if (workspaceGitOperationBusy) return;
     workspaceGitBusyPath = '*';
     errorMessage = null;
     try {
-      const result = await createWorkspaceGitBranch(workspaceId, branch);
+      const result = await createWorkspaceGitBranch(workspaceId, branch, undefined, targetRepository);
       if (!result.applied) {
         errorMessage = result.message;
         return;
       }
-      const draft = workbenchDrafts.git[workspaceId];
-      if (draft?.branchDraft.trim() === branch.trim()) workbenchDrafts.git[workspaceId] = { ...draft, branchDraft: '' };
+      const draft = workbenchDrafts.git[repositoryDraftKey(workspaceId, targetRepository ?? null)];
+      if (draft?.branchDraft.trim() === branch.trim()) workbenchDrafts.git[repositoryDraftKey(workspaceId, targetRepository ?? null)] = { ...draft, branchDraft: '' };
       notice = `已创建并切换到 ${branch}。`;
       await Promise.all([refreshWorkspaceChanges(workspaceId), refreshWorkspaceGitMetadata(workspaceId)]);
-      closeWorkspaceFileDiff();
+      if (workspaceId === selectedWorkspaceId && targetRepository === repositoryId) closeWorkspaceFileDiff();
     } catch (error) {
       errorMessage = toErrorMessage(error);
     } finally {
@@ -2059,11 +2168,14 @@
   }
 
   async function syncWorkspaceBranch(workspaceId: string, action: GitSyncAction): Promise<void> {
+    const targetRepository = repositoryId ?? undefined;
+    if (!targetRepository) return;
+
     if (workspaceGitOperationBusy) return;
     workspaceGitSyncBusy = true;
     errorMessage = null;
     try {
-      const result = await syncWorkspaceGit(workspaceId, action);
+      const result = await syncWorkspaceGit(workspaceId, action, undefined, targetRepository);
       if (!result.applied) {
         errorMessage = result.message;
         return;
@@ -2078,11 +2190,14 @@
   }
 
   async function saveWorkspaceStash(workspaceId: string): Promise<void> {
+    const targetRepository = repositoryId ?? undefined;
+    if (!targetRepository) return;
+
     if (workspaceGitOperationBusy) return;
     workspaceGitSyncBusy = true;
     errorMessage = null;
     try {
-      const result = await stashWorkspaceGit(workspaceId);
+      const result = await stashWorkspaceGit(workspaceId, undefined, undefined, targetRepository);
       if (!result.applied) {
         errorMessage = result.message;
         return;
@@ -2097,11 +2212,14 @@
   }
 
   async function applyWorkspaceStash(workspaceId: string, reference: string): Promise<void> {
+    const targetRepository = repositoryId ?? undefined;
+    if (!targetRepository) return;
+
     if (workspaceGitOperationBusy) return;
     workspaceGitSyncBusy = true;
     errorMessage = null;
     try {
-      const result = await applyWorkspaceGitStash(workspaceId, reference);
+      const result = await applyWorkspaceGitStash(workspaceId, reference, undefined, targetRepository);
       if (!result.applied) {
         errorMessage = result.message;
         return;
@@ -2116,6 +2234,9 @@
   }
 
   async function requestWorkspaceAgentReview(workspaceId: string): Promise<void> {
+    const targetRepository = repositoryId ?? undefined;
+    if (!targetRepository) return;
+
     const session = selectedSession;
     if (!session || session.workspaceId !== workspaceId || session.archived) {
       errorMessage = '请先选择当前工作区中的可用 Agent 会话。';
@@ -2143,7 +2264,7 @@
       for (const staged of file.staged ? [true, ...(file.unstaged ? [false] : [])] : [false]) {
         if (diffLength >= maxReviewDiffLength) break;
         try {
-          const result = await getWorkspaceFileDiff(workspaceId, file.path, staged);
+          const result = await getWorkspaceFileDiff(workspaceId, file.path, staged, targetRepository);
           if (!result.available || !result.diff) continue;
           const section = `\n\n### ${staged ? '暂存区' : '工作区'}：${file.path}\n${result.diff}`;
           const remaining = maxReviewDiffLength - diffLength;
@@ -2179,20 +2300,22 @@
   }
 
   async function loadWorkspaceCommitFiles(workspaceId: string, commit: string, append = false): Promise<void> {
+    const targetRepository = repositoryId ?? undefined;
+
     const generation = ++workspaceGitCommitFilesRequestGeneration;
     workspaceGitCommitFilesLoading = true;
     workspaceGitMetadataError = null;
     const offset = append && workspaceGitCommitFiles?.commit === commit ? workspaceGitCommitFiles.files.length : 0;
     if (!append) workspaceGitCommitFiles = null;
     try {
-      const result = await listWorkspaceGitCommitFiles(workspaceId, commit, offset);
-      if (generation === workspaceGitCommitFilesRequestGeneration && workspaceId === selectedWorkspaceId) {
+      const result = await listWorkspaceGitCommitFiles(workspaceId, commit, offset, 10, targetRepository);
+      if (generation === workspaceGitCommitFilesRequestGeneration && workspaceId === selectedWorkspaceId && targetRepository === repositoryId) {
         workspaceGitCommitFiles = append && workspaceGitCommitFiles?.commit === commit
           ? { ...result, files: [...workspaceGitCommitFiles.files, ...result.files] }
           : result;
       }
     } catch (error) {
-      if (generation === workspaceGitCommitFilesRequestGeneration && workspaceId === selectedWorkspaceId) {
+      if (generation === workspaceGitCommitFilesRequestGeneration && workspaceId === selectedWorkspaceId && targetRepository === repositoryId) {
         workspaceGitMetadataError = toErrorMessage(error);
       }
     } finally {
@@ -2207,18 +2330,21 @@
   }
 
   async function openWorkspaceCommitFileDiff(workspaceId: string, commit: string, path: string): Promise<void> {
+    const targetRepository = repositoryId ?? undefined;
+
     const generation = ++workspaceFileDiffRequestGeneration;
+    previewRepositoryId = targetRepository ?? null;
     workspaceFileDiffPath = path;
     workspaceFileDiffStaged = false;
-    workspaceFileDiffContextLabel = `提交 ${commit.slice(0, 8)}`;
+    workspaceFileDiffContextLabel = `${visibleRepositories.find(repo => repo.id === targetRepository)?.name ?? ''} · 提交 ${commit.slice(0, 8)} · ${path}`;
     workspaceFileDiff = null;
     workspaceFileDiffLoading = true;
     workspaceFileDiffError = null;
     try {
-      const diff = await getWorkspaceGitCommitFileDiff(workspaceId, commit, path);
-      if (generation === workspaceFileDiffRequestGeneration && workspaceId === selectedWorkspaceId) workspaceFileDiff = diff;
+      const diff = await getWorkspaceGitCommitFileDiff(workspaceId, commit, path, targetRepository);
+      if (generation === workspaceFileDiffRequestGeneration && workspaceId === selectedWorkspaceId && targetRepository === repositoryId) workspaceFileDiff = diff;
     } catch (error) {
-      if (generation === workspaceFileDiffRequestGeneration && workspaceId === selectedWorkspaceId) workspaceFileDiffError = toErrorMessage(error);
+      if (generation === workspaceFileDiffRequestGeneration && workspaceId === selectedWorkspaceId && targetRepository === repositoryId) workspaceFileDiffError = toErrorMessage(error);
     } finally {
       if (generation === workspaceFileDiffRequestGeneration) workspaceFileDiffLoading = false;
     }
@@ -2242,12 +2368,16 @@
     workspaceId: string,
     path: string,
     action: 'stage' | 'unstage',
+    explicitRepository?: string,
   ): Promise<void> {
+    const targetRepository = explicitRepository ?? repositoryId ?? undefined;
+    if (!targetRepository) return;
+
     if (workspaceGitOperationBusy) return;
     workspaceGitBusyPath = path;
     errorMessage = null;
     try {
-      const result = await applyWorkspaceGitFileAction(workspaceId, path, action);
+      const result = await applyWorkspaceGitFileAction(workspaceId, path, action, undefined, targetRepository);
       if (!result.applied) {
         errorMessage = result.message;
         return;
@@ -2264,12 +2394,16 @@
   async function applyWorkspaceGitWorkspaceAction(
     workspaceId: string,
     action: GitWorkspaceAction,
+    explicitRepository?: string,
   ): Promise<void> {
+    const targetRepository = explicitRepository ?? repositoryId ?? undefined;
+    if (!targetRepository) return;
+
     if (workspaceGitOperationBusy) return;
     workspaceGitBusyPath = '*';
     errorMessage = null;
     try {
-      const result = await applyWorkspaceGitActionApi(workspaceId, action);
+      const result = await applyWorkspaceGitActionApi(workspaceId, action, undefined, targetRepository);
       if (!result.applied) {
         errorMessage = result.message;
         return;
@@ -2284,21 +2418,24 @@
   }
 
   async function commitWorkspaceGitChanges(workspaceId: string, message: string): Promise<boolean> {
+    const targetRepository = repositoryId ?? undefined;
+    if (!targetRepository) return false;
+
     if (workspaceGitOperationBusy) return false;
     workspaceGitCommitBusy = true;
     errorMessage = null;
     try {
-      const result = await commitWorkspaceChanges(workspaceId, message);
+      const result = await commitWorkspaceChanges(workspaceId, message, undefined, targetRepository);
       if (!result.committed) {
         errorMessage = result.message;
         return false;
       }
-      const draft = workbenchDrafts.git[workspaceId];
-      if (draft?.commitMessage.trim() === message.trim()) workbenchDrafts.git[workspaceId] = { ...draft, commitMessage: '' };
+      const draft = workbenchDrafts.git[repositoryDraftKey(workspaceId, targetRepository ?? null)];
+      if (draft?.commitMessage.trim() === message.trim()) workbenchDrafts.git[repositoryDraftKey(workspaceId, targetRepository ?? null)] = { ...draft, commitMessage: '' };
       notice = result.hash ? `已创建提交 ${result.hash.slice(0, 8)}。` : '已创建提交。';
       await refreshWorkspaceChanges(workspaceId);
       await refreshWorkspaceGitMetadata(workspaceId);
-      closeWorkspaceFileDiff();
+      if (workspaceId === selectedWorkspaceId && targetRepository === repositoryId) closeWorkspaceFileDiff();
       return true;
     } catch (error) {
       errorMessage = toErrorMessage(error);
@@ -3772,8 +3909,12 @@
       onSelectView={guard('onSelectView', selectSidePanelView)}
       />
       {:else if sidePanelView === 'git'}
-        {#key selectedWorkspaceId}
-        <WorkspaceGitPanel draftState={workbenchDrafts.git[selectedWorkspaceId ?? ''] ?? emptyGitPanelState()} onDraftChange={guard('onDraftChange', (value) => { if (selectedWorkspaceId) workbenchDrafts.git[selectedWorkspaceId] = value; })}
+        {#key `${selectedWorkspaceId}:${repositoryId}`}
+        <WorkspaceGitPanel draftState={workbenchDrafts.git[gitDraftKey] ?? emptyGitPanelState()} onDraftChange={guard('onDraftChange', (value) => { if (selectedWorkspaceId) workbenchDrafts.git[gitDraftKey] = value; })}
+          repositories={visibleRepositories} {repositoryId} {repositorySearch} {discoveryLimited} {discoveryWarnings}
+          collapsedRepositories={repositoryViews[selectedWorkspaceId ?? '']?.collapsed ?? []}
+          onSelectRepository={guard('onSelectRepository', selectRepository)} onRepositorySearch={guard('onRepositorySearch', (value) => repositorySearch = value)} onToggleRepository={guard('onToggleRepository', toggleRepository)}
+          onContinueDiscovery={guard('onContinueDiscovery', () => { repositoryScanBudget = Math.min(repositoryScanBudget * 4, 100000); if (selectedWorkspaceId) void refreshWorkspaceChanges(selectedWorkspaceId); })}
           workspace={selectedWorkspace}
           desktop={desktop}
           changes={workspaceChanges}
@@ -3781,6 +3922,7 @@
           error={workspaceChangesError}
           selectedFilePath={workspaceFileDiffPath}
           selectedFileStaged={workspaceFileDiffStaged}
+          {previewRepositoryId}
           branches={workspaceGitBranches}
           history={workspaceGitHistory}
           gitMetadataLoading={workspaceGitMetadataLoading}
@@ -3794,10 +3936,10 @@
           canRequestReview={selectedSession !== null && selectedSession.workspaceId === selectedWorkspaceId && !selectedSession.archived && !sessionRunning}
           activeView={sidePanelView}
           onRefresh={guard('onRefresh', () => selectedWorkspaceId && void refreshWorkspaceChanges(selectedWorkspaceId))}
-          onApplyFileAction={guard('onApplyFileAction', (workspaceId, path, action) => void applyWorkspaceGitAction(workspaceId, path, action))}
-          onApplyWorkspaceAction={guard('onApplyWorkspaceAction', (workspaceId, action) => void applyWorkspaceGitWorkspaceAction(workspaceId, action))}
+          onApplyFileAction={guard('onApplyFileAction', (workspaceId, path, action, repo) => void applyWorkspaceGitAction(workspaceId, path, action, repo))}
+          onApplyWorkspaceAction={guard('onApplyWorkspaceAction', (workspaceId, action, repo) => void applyWorkspaceGitWorkspaceAction(workspaceId, action, repo))}
           onCommit={guard('onCommit', (workspaceId, message) => commitWorkspaceGitChanges(workspaceId, message))}
-          onOpenDiff={guard('onOpenDiff', (workspaceId, path, staged) => void openWorkspaceFileDiff(workspaceId, path, staged))}
+          onOpenDiff={guard('onOpenDiff', (workspaceId, path, staged, repo) => void openWorkspaceFileDiff(workspaceId, path, staged, repo))}
           onRefreshGitMetadata={guard('onRefreshGitMetadata', (workspaceId) => void refreshWorkspaceGitMetadata(workspaceId))}
           onCheckoutBranch={guard('onCheckoutBranch', (workspaceId, branch) => void checkoutWorkspaceBranch(workspaceId, branch))}
           onCreateBranch={guard('onCreateBranch', (workspaceId, branch) => void createWorkspaceBranch(workspaceId, branch))}

@@ -2,6 +2,7 @@ mod agent_settings;
 mod project_actions;
 mod controlled_process;
 mod workspace_git;
+mod git_repositories;
 mod core_turn_git;
 mod turn_restore;
 mod execution_history;
@@ -2188,10 +2189,12 @@ async fn list_restore_operations(
 #[tauri::command]
 async fn get_workspace_changes(
     workspace_id: String,
+    repository_id: Option<String>,
     state: State<'_, AppState>,
 ) -> Result<WorkspaceChanges, CoreError> {
     let workspace = workspace_by_id(&state.db, &workspace_id).await?;
-    let changes = workspace_changes(Path::new(&workspace.path))
+    let repository_path = git_repositories::resolve(&workspace.path, repository_id.as_deref())?;
+    let changes = workspace_changes(Path::new(&repository_path))
         .await
         .map_err(CoreError::Database)?;
     Ok(WorkspaceChanges {
@@ -2221,12 +2224,13 @@ async fn get_workspace_changes(
 #[tauri::command]
 async fn get_workspace_file_diff(
     workspace_id: String,
+    repository_id: Option<String>,
     path: String,
     staged: bool,
     state: State<'_, AppState>,
 ) -> Result<WorkspaceFileDiff, CoreError> {
     let workspace = workspace_by_id(&state.db, &workspace_id).await?;
-    let root = workspace.path.clone();
+    let root = git_repositories::resolve(&workspace.path, repository_id.as_deref())?;
     tokio::task::spawn_blocking(move || workspace_file_diff(&root, &path, staged))
         .await
         .map_err(|error| CoreError::Database(format!("workspace diff task failed: {error}")))?
@@ -2934,6 +2938,7 @@ async fn apply_git_hunk_action(
 #[tauri::command]
 async fn apply_workspace_git_file_action(
     workspace_id: String,
+    repository_id: Option<String>,
     path: String,
     action: String,
     request_id: String,
@@ -2941,145 +2946,158 @@ async fn apply_workspace_git_file_action(
     state: State<'_, AppState>,
 ) -> Result<GitFileActionResult, CoreError> {
     let request = git_write_request(request_id, window);
-    workspace_git::apply_workspace_git_file_action_requested(&state.db, workspace_id, path, action, &request).await
+    workspace_git::apply_workspace_git_file_action_requested_in_repository(&state.db, workspace_id, path, action, &request, repository_id.as_deref()).await
 }
 
 #[tauri::command]
 async fn apply_workspace_git_action(
     workspace_id: String,
+    repository_id: Option<String>,
     action: String,
     request_id: String,
     window: tauri::WebviewWindow,
     state: State<'_, AppState>,
 ) -> Result<GitWorkspaceActionResult, CoreError> {
     let request = git_write_request(request_id, window);
-    workspace_git::apply_workspace_git_action_requested(&state.db, workspace_id, action, &request).await
+    workspace_git::apply_workspace_git_action_requested_in_repository(&state.db, workspace_id, action, &request, repository_id.as_deref()).await
 }
 
 #[tauri::command]
 async fn commit_workspace_changes(
     workspace_id: String,
+    repository_id: Option<String>,
     message: String,
     request_id: String,
     window: tauri::WebviewWindow,
     state: State<'_, AppState>,
 ) -> Result<GitCommitResult, CoreError> {
     let request = git_write_request(request_id, window);
-    workspace_git::commit_workspace_changes_requested(&state.db, workspace_id, message, &request).await
+    workspace_git::commit_workspace_changes_requested_in_repository(&state.db, workspace_id, message, &request, repository_id.as_deref()).await
 }
 
 #[tauri::command]
 async fn list_workspace_git_branches(
     workspace_id: String,
+    repository_id: Option<String>,
     state: State<'_, AppState>,
 ) -> Result<Vec<GitBranch>, CoreError> {
-    workspace_git::list_workspace_git_branches(&state.db, workspace_id).await
+    workspace_git::list_workspace_git_branches_in_repository(&state.db, workspace_id, repository_id.as_deref()).await
 }
 
 #[tauri::command]
 async fn checkout_workspace_git_branch(
     workspace_id: String,
+    repository_id: Option<String>,
     branch: String,
     request_id: String,
     window: tauri::WebviewWindow,
     state: State<'_, AppState>,
 ) -> Result<GitWorkspaceActionResult, CoreError> {
     let request = git_write_request(request_id, window);
-    workspace_git::checkout_workspace_git_branch_requested(&state.db, workspace_id, branch, &request).await
+    workspace_git::checkout_workspace_git_branch_requested_in_repository(&state.db, workspace_id, branch, &request, repository_id.as_deref()).await
 }
 
 #[tauri::command]
 async fn create_workspace_git_branch(
     workspace_id: String,
+    repository_id: Option<String>,
     branch: String,
     request_id: String,
     window: tauri::WebviewWindow,
     state: State<'_, AppState>,
 ) -> Result<GitWorkspaceActionResult, CoreError> {
     let request = git_write_request(request_id, window);
-    workspace_git::create_workspace_git_branch_requested(&state.db, workspace_id, branch, &request).await
+    workspace_git::create_workspace_git_branch_requested_in_repository(&state.db, workspace_id, branch, &request, repository_id.as_deref()).await
 }
 
 #[tauri::command]
 async fn list_workspace_git_history(
     workspace_id: String,
+    repository_id: Option<String>,
     limit: Option<u32>,
     state: State<'_, AppState>,
 ) -> Result<Vec<GitCommit>, CoreError> {
-    workspace_git::list_workspace_git_history(&state.db, workspace_id, limit).await
+    workspace_git::list_workspace_git_history_in_repository(&state.db, workspace_id, limit, repository_id.as_deref()).await
 }
 
 #[tauri::command]
 async fn list_workspace_git_commit_files(
     workspace_id: String,
+    repository_id: Option<String>,
     commit: String,
     offset: Option<usize>,
     limit: Option<usize>,
     state: State<'_, AppState>,
 ) -> Result<GitCommitFileList, CoreError> {
-    workspace_git::list_workspace_git_commit_files(&state.db, workspace_id, commit, offset, limit).await
+    workspace_git::list_workspace_git_commit_files_in_repository(&state.db, workspace_id, commit, offset, limit, repository_id.as_deref()).await
 }
 
 #[tauri::command]
 async fn get_workspace_git_commit_file_diff(
     workspace_id: String,
+    repository_id: Option<String>,
     commit: String,
     path: String,
     state: State<'_, AppState>,
 ) -> Result<WorkspaceFileDiff, CoreError> {
-    workspace_git::get_workspace_git_commit_file_diff(&state.db, workspace_id, commit, path).await
+    workspace_git::get_workspace_git_commit_file_diff_in_repository(&state.db, workspace_id, commit, path, repository_id.as_deref()).await
 }
 
 #[tauri::command]
 async fn get_workspace_git_remote_status(
     workspace_id: String,
+    repository_id: Option<String>,
     state: State<'_, AppState>,
 ) -> Result<GitRemoteStatus, CoreError> {
-    workspace_git::get_workspace_git_remote_status(&state.db, workspace_id).await
+    workspace_git::get_workspace_git_remote_status_in_repository(&state.db, workspace_id, repository_id.as_deref()).await
 }
 
 #[tauri::command]
 async fn sync_workspace_git(
     workspace_id: String,
+    repository_id: Option<String>,
     action: String,
     request_id: String,
     window: tauri::WebviewWindow,
     state: State<'_, AppState>,
 ) -> Result<GitWorkspaceActionResult, CoreError> {
     let request = git_write_request(request_id, window);
-    workspace_git::sync_workspace_git_requested(&state.db, workspace_id, action, &request).await
+    workspace_git::sync_workspace_git_requested_in_repository(&state.db, workspace_id, action, &request, repository_id.as_deref()).await
 }
 
 #[tauri::command]
 async fn list_workspace_git_stashes(
     workspace_id: String,
+    repository_id: Option<String>,
     state: State<'_, AppState>,
 ) -> Result<Vec<GitStashEntry>, CoreError> {
-    workspace_git::list_workspace_git_stashes(&state.db, workspace_id).await
+    workspace_git::list_workspace_git_stashes_in_repository(&state.db, workspace_id, repository_id.as_deref()).await
 }
 
 #[tauri::command]
 async fn apply_workspace_git_stash(
     workspace_id: String,
+    repository_id: Option<String>,
     reference: String,
     request_id: String,
     window: tauri::WebviewWindow,
     state: State<'_, AppState>,
 ) -> Result<GitWorkspaceActionResult, CoreError> {
     let request = git_write_request(request_id, window);
-    workspace_git::apply_workspace_git_stash_requested(&state.db, workspace_id, reference, &request).await
+    workspace_git::apply_workspace_git_stash_requested_in_repository(&state.db, workspace_id, reference, &request, repository_id.as_deref()).await
 }
 
 #[tauri::command]
 async fn stash_workspace_git(
     workspace_id: String,
+    repository_id: Option<String>,
     message: Option<String>,
     request_id: String,
     window: tauri::WebviewWindow,
     state: State<'_, AppState>,
 ) -> Result<GitWorkspaceActionResult, CoreError> {
     let request = git_write_request(request_id, window);
-    workspace_git::stash_workspace_git_requested(&state.db, workspace_id, message, &request).await
+    workspace_git::stash_workspace_git_requested_in_repository(&state.db, workspace_id, message, &request, repository_id.as_deref()).await
 }
 
 #[tauri::command]
@@ -4429,6 +4447,7 @@ pub fn run() {
             list_restore_operations,
             restore_turn_change_set,
             get_workspace_changes,
+            git_repositories::list_workspace_git_repositories,
             get_workspace_file_diff,
             apply_workspace_git_file_action,
             apply_workspace_git_action,

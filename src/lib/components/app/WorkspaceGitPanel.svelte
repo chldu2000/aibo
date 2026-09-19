@@ -1,4 +1,5 @@
 <script lang="ts">
+  import type { GitRepositoryState } from '../../../../packages/plugin-protocol/src/presentation-git';
   import type { GitPanelState } from '$lib/app/workbench-drafts';
   import { Badge, Button, Card, CardHeader, CardTitle, Icon, Input, Separator } from '$lib/ui-kit';
   import SidePanelTabs from './SidePanelTabs.svelte';
@@ -17,6 +18,16 @@
   import type { WorkspaceListItem } from './view-types';
 
   type WorkspaceGitPanelProps = {
+    repositories: GitRepositoryState[];
+    repositoryId: string | null;
+    repositorySearch: string;
+    collapsedRepositories: string[];
+    discoveryLimited: boolean;
+    discoveryWarnings: string[];
+    onSelectRepository: (id: string | null, section?: 'changes' | 'history') => void;
+    onRepositorySearch: (value: string) => void;
+    onToggleRepository: (id: string) => void;
+    onContinueDiscovery: () => void;
     draftState: GitPanelState;
     onDraftChange: (state: GitPanelState) => void;
     workspace: WorkspaceListItem | null;
@@ -25,6 +36,7 @@
     loading: boolean;
     error: string | null;
     selectedFilePath: string | null;
+    previewRepositoryId: string | null;
     selectedFileStaged: boolean;
     branches: GitBranch[];
     history: GitCommit[];
@@ -39,10 +51,10 @@
     canRequestReview: boolean;
     activeView: 'context' | 'git';
     onRefresh: () => void;
-    onApplyFileAction: (workspaceId: string, path: string, action: 'stage' | 'unstage') => void;
-    onApplyWorkspaceAction: (workspaceId: string, action: GitWorkspaceAction) => void;
+    onApplyFileAction: (workspaceId: string, path: string, action: 'stage' | 'unstage', repositoryId?: string) => void;
+    onApplyWorkspaceAction: (workspaceId: string, action: GitWorkspaceAction, repositoryId?: string) => void;
     onCommit: (workspaceId: string, message: string) => void | Promise<boolean>;
-    onOpenDiff: (workspaceId: string, path: string, staged: boolean) => void;
+    onOpenDiff: (workspaceId: string, path: string, staged: boolean, repositoryId?: string) => void;
     onRefreshGitMetadata: (workspaceId: string) => void;
     onCheckoutBranch: (workspaceId: string, branch: string) => void;
     onCreateBranch: (workspaceId: string, branch: string) => void;
@@ -57,13 +69,15 @@
   };
 
   let {
+    repositories, repositoryId, repositorySearch, collapsedRepositories, discoveryLimited, discoveryWarnings,
+    onSelectRepository, onRepositorySearch, onToggleRepository, onContinueDiscovery,
     draftState, onDraftChange,
     workspace,
     desktop,
     changes,
     loading,
     error,
-    selectedFilePath,
+    selectedFilePath, previewRepositoryId,
     selectedFileStaged,
     branches,
     history,
@@ -101,15 +115,15 @@
   const untrackedFiles = $derived(changes?.files.filter((file) => file.untracked && !file.conflicted) ?? []);
   const headLabel = $derived(changes?.head ? changes.head.slice(0, 8) : null);
   const stagedCount = $derived(stagedFiles.length);
+  let repositoryMenuOpen = $state(false);
+  let pendingSection = $state<'changes' | 'history' | undefined>(undefined);
+  let cleanRepositoriesOpen = $state(false);
+  const currentRepository = $derived(repositories.find(repo => repo.id === repositoryId));
+  const filteredRepositories = $derived(repositories.filter(repo => `${repo.name} ${repo.relativePath}`.toLowerCase().includes(repositorySearch.toLowerCase())));
   let branchMenuOpen = $state(false);
   let stashMenuOpen = $state(false);
   type ChangeGroupKey = 'conflicted' | 'staged' | 'changed' | 'untracked';
-  let expandedChangeGroups = $state<Record<ChangeGroupKey, boolean>>({
-    conflicted: true,
-    staged: true,
-    changed: true,
-    untracked: true,
-  });
+  let expandedChangeGroups = $state<Record<string, boolean>>({});
 
   let restoredCommitTarget: string | null = null;
   $effect(() => {
@@ -126,8 +140,9 @@
     }
   });
 
-  function toggleChangeGroup(group: ChangeGroupKey): void {
-    expandedChangeGroups = { ...expandedChangeGroups, [group]: !expandedChangeGroups[group] };
+  function toggleChangeGroup(group: ChangeGroupKey, repo: string | undefined): void {
+    const key = `${repo ?? repositoryId}:${group}`;
+    expandedChangeGroups = { ...expandedChangeGroups, [key]: !(expandedChangeGroups[key] ?? true) };
   }
 
   function displayPath(file: WorkspaceFileChange): string {
@@ -204,6 +219,7 @@
   }
 
   function selectGitSection(section: 'changes' | 'history'): void {
+    if (repositoryId === null && section === 'history') { pendingSection = 'history'; repositoryMenuOpen = true; return; }
     onDraftChange({ ...draftState, gitSection: section });
     branchMenuOpen = false;
     stashMenuOpen = false;
@@ -217,7 +233,7 @@
   }
 </script>
 
-{#snippet fileGroup(group: ChangeGroupKey, title: string, files: WorkspaceFileChange[], action: 'stage' | 'unstage')}
+{#snippet fileGroup(group: ChangeGroupKey, title: string, files: WorkspaceFileChange[], action: 'stage' | 'unstage', repoId: string | undefined = undefined)}
   {#if files.length > 0}
     <section class="git-change-group" aria-label={title}>
       <header class="git-change-group-heading">
@@ -226,29 +242,29 @@
           size="sm"
           type="button"
           class="git-change-group-trigger"
-          aria-expanded={expandedChangeGroups[group]}
-          aria-controls={`git-change-list-${group}`}
-          onclick={() => toggleChangeGroup(group)}
+          aria-expanded={(expandedChangeGroups[`${repoId ?? repositoryId}:${group}`] ?? true)}
+          aria-controls={`git-change-list-${repoId ?? repositoryId}-${group}`}
+          onclick={() => toggleChangeGroup(group, repoId)}
         >
           <Icon
             name="chevron-down"
             size={12}
-            data-collapsed={!expandedChangeGroups[group] ? 'true' : undefined}
+            data-collapsed={!(expandedChangeGroups[`${repoId ?? repositoryId}:${group}`] ?? true) ? 'true' : undefined}
             aria-hidden="true"
           />
           <span class="git-change-group-title">{title}</span>
           <Badge variant="secondary">{files.length}</Badge>
         </Button>
       </header>
-      {#if expandedChangeGroups[group]}
-      <div id={`git-change-list-${group}`} class="git-change-list" role="list">
+      {#if (expandedChangeGroups[`${repoId ?? repositoryId}:${group}`] ?? true)}
+      <div id={`git-change-list-${repoId ?? repositoryId}-${group}`} class="git-change-list" role="list">
           {#each files as file (`${title}:${file.path}`)}
             {@const location = fileLocation(file)}
             <div
               class="changeset-file changeset-file-row"
-              class:changeset-file-selected={selectedFilePath === file.path && selectedFileStaged === (action === 'unstage')}
+              class:changeset-file-selected={((repoId ?? repositoryId) === previewRepositoryId) && selectedFilePath === file.path && selectedFileStaged === (action === 'unstage')}
               role="listitem"
-              aria-current={selectedFilePath === file.path && selectedFileStaged === (action === 'unstage') ? 'true' : undefined}
+              aria-current={((repoId ?? repositoryId) === previewRepositoryId) && selectedFilePath === file.path && selectedFileStaged === (action === 'unstage') ? 'true' : undefined}
             >
               <span
                 class={`change-kind change-kind-${file.conflicted ? 'conflicted' : file.kind}`}
@@ -262,7 +278,7 @@
                 class="changeset-file-button"
                 aria-label={`查看${changeLabel(file)}文件 ${file.path} 的差异`}
                 title="查看文件差异"
-                onclick={() => workspace && onOpenDiff(workspace.id, file.path, action === 'unstage')}
+                onclick={() => workspace && onOpenDiff(workspace.id, file.path, action === 'unstage', repoId)}
               >
                 <span class="changeset-file-copy" title={displayPath(file)}>
                   <code class:changeset-file-name-only={!location} class="changeset-file-name">{fileName(file)}</code>
@@ -277,7 +293,7 @@
                   aria-label={action === 'stage' ? `暂存 ${file.path}` : `取消暂存 ${file.path}`}
                   title={action === 'stage' ? '暂存更改' : '取消暂存'}
                   disabled={!workspace || workspace.trust !== 'trusted' || operationBusy}
-                  onclick={() => workspace && onApplyFileAction(workspace.id, file.path, action)}
+                  onclick={() => workspace && onApplyFileAction(workspace.id, file.path, action, repoId)}
                 >
                   <Icon name={action === 'stage' ? 'add' : 'undo'} size={13} />
                 </Button>
@@ -290,6 +306,32 @@
   {/if}
 {/snippet}
 
+{#snippet repositoryGroup(repo: GitRepositoryState)}
+  <section class="git-change-group" aria-label={`仓库 ${repo.name} ${repo.relativePath}`}>
+    <header class="git-change-group-heading">
+      <Button variant="ghost" size="sm" aria-expanded={!collapsedRepositories.includes(repo.id)} onclick={() => onToggleRepository(repo.id)}>
+        <Icon name="chevron-down" size={12} data-collapsed={collapsedRepositories.includes(repo.id) ? 'true' : undefined} /><strong>{repo.name}</strong>
+        <span>{repo.changes?.branch ?? 'Detached HEAD'}</span><Badge variant="secondary">{repo.changes?.files.length ?? 0}</Badge>
+      </Button>
+      <small>{repo.relativePath}{repo.kind === 'submodule' ? ' · 子模块' : repo.kind === 'worktree' ? ' · Worktree' : ''}{repo.externalRoot ? ' · 仓库根目录位于工作区外' : ''}</small>
+    </header>
+    {#if !collapsedRepositories.includes(repo.id)}
+      {#if repo.error}<p role="status">{repo.error}</p>
+      {:else if !repo.changes}<p role="status">正在读取变更…</p>
+      {:else if repo.changes.captureStatus !== 'captured'}<p role="status">{repo.changes.captureError}</p>
+      {:else}
+        {@render fileGroup('conflicted', '合并冲突', repo.changes.files.filter(file => file.conflicted), 'stage', repo.id)}
+        {@render fileGroup('staged', '已暂存的更改', repo.changes.files.filter(file => file.staged && !file.conflicted), 'unstage', repo.id)}
+        {@render fileGroup('changed', '更改', repo.changes.files.filter(file => file.unstaged && !file.untracked && !file.conflicted), 'stage', repo.id)}
+        {@render fileGroup('untracked', '未跟踪的文件', repo.changes.files.filter(file => file.untracked && !file.conflicted), 'stage', repo.id)}
+        {#if repo.changes.files.some(file => file.unstaged || file.untracked)}<Button variant="ghost" size="sm" disabled={operationBusy || workspace?.trust !== 'trusted'} onclick={() => workspace && onApplyWorkspaceAction(workspace.id, 'stage_all', repo.id)}>全部暂存</Button>{/if}
+        {#if repo.changes.files.some(file => file.staged)}<Button variant="ghost" size="sm" disabled={operationBusy || workspace?.trust !== 'trusted'} onclick={() => workspace && onApplyWorkspaceAction(workspace.id, 'unstage_all', repo.id)}>全部取消暂存</Button>{/if}
+      {/if}
+      <Button variant="outline" size="sm" disabled={operationBusy} onclick={() => onSelectRepository(repo.id)}>{repo.changes?.files.some(file => file.staged) ? '提交…' : '打开仓库'}</Button>
+    {/if}
+  </section>
+{/snippet}
+
 <Card as="aside" class="inspector" data-ui-component="workspace-git-panel" aria-label="Git 源代码管理">
   <SidePanelTabs {activeView} onSelect={onSelectView} />
   <div id="side-panel-content-git" class="side-panel-view" role="tabpanel" aria-labelledby="side-panel-tab-git">
@@ -299,7 +341,9 @@
       {#if workspace}<small class="changeset-status">{workspace.label}</small>{/if}
     </div>
     <div class="project-action-heading-actions">
-      {#if changes?.captureStatus === 'captured'}
+      {#if repositoryId === null && repositories.length > 0}
+        <Badge variant="secondary">{repositories.reduce((sum, repo) => sum + (repo.changes?.files.length ?? 0), 0)}</Badge>
+      {:else if changes?.captureStatus === 'captured'}
         <Badge variant={changes.dirty ? 'warning' : 'secondary'}>{changes.files.length}</Badge>
       {/if}
       <Button
@@ -316,6 +360,17 @@
     </div>
   </CardHeader>
   <Separator />
+  {#if repositories.length > 1 || repositoryId === null}
+    <Button variant="outline" size="sm" disabled={operationBusy} aria-expanded={repositoryMenuOpen} onclick={() => repositoryMenuOpen = !repositoryMenuOpen}>{currentRepository?.name ?? '所有仓库'} ▾</Button>
+    {#if repositoryMenuOpen}
+      <Input aria-label="搜索仓库" placeholder="搜索仓库名称或路径" value={repositorySearch} oninput={(event) => onRepositorySearch(event.currentTarget.value)} />
+      <Button variant="ghost" size="sm" disabled={operationBusy} onclick={() => { onSelectRepository(null); repositoryMenuOpen = false; }}>所有仓库</Button>
+      {#each filteredRepositories as repo (repo.id)}<Button variant="ghost" size="sm" disabled={operationBusy} onclick={() => { onSelectRepository(repo.id, pendingSection); pendingSection = undefined; repositoryMenuOpen = false; }}>{repo.name} · {repo.relativePath}</Button>{/each}
+    {/if}
+  {/if}
+  {#if currentRepository}<small>{currentRepository.name} · {currentRepository.relativePath}{currentRepository.externalRoot ? ' · 仓库根目录位于工作区外' : ''}</small>{/if}
+  {#if discoveryLimited}<p role="status">发现范围受限</p><Button variant="ghost" size="sm" disabled={loading} onclick={onContinueDiscovery}>继续扫描</Button>{/if}
+  {#each discoveryWarnings as warning}<p role="status">{warning}</p>{/each}
   <div class="git-section-toolbar">
     <div class="git-section-tabs" role="tablist" aria-label="Git 视图">
       <Button
@@ -325,7 +380,7 @@
         type="button"
         role="tab"
         aria-controls="git-view-content"
-        aria-selected={draftState.gitSection === 'changes'}
+        aria-selected={repositoryId === null || draftState.gitSection === 'changes'}
         onclick={() => selectGitSection('changes')}
       >变更</Button>
       <Button
@@ -335,7 +390,7 @@
         type="button"
         role="tab"
         aria-controls="git-view-content"
-        aria-selected={draftState.gitSection === 'history'}
+        aria-selected={repositoryId !== null && draftState.gitSection === 'history'}
         onclick={() => selectGitSection('history')}
       >历史</Button>
     </div>
@@ -344,7 +399,7 @@
       size="sm"
       type="button"
       class="git-review-button"
-      disabled={!canRequestReview || reviewBusy}
+      disabled={!canRequestReview || reviewBusy || repositoryId === null}
       title="创建独立只读会话审查 Git 变更"
       onclick={() => workspace && onRequestReview(workspace.id)}
     >
@@ -356,13 +411,22 @@
   <div
     id="git-view-content"
     role="tabpanel"
-    aria-labelledby={draftState.gitSection === 'changes' ? 'git-changes-tab' : 'git-history-tab'}
+    aria-labelledby={repositoryId === null || draftState.gitSection === 'changes' ? 'git-changes-tab' : 'git-history-tab'}
     aria-live="polite"
   >
     {#if !workspace}
       <div class="inspector-empty">选择一个工作区查看 Git 状态。</div>
     {:else if !desktop}
       <div class="inspector-empty">Git 视图仅在桌面模式中可用。</div>
+    {:else if repositoryId === null}
+      {#each repositories.filter(repo => !repo.changes || repo.error || repo.changes.captureStatus !== 'captured' || repo.changes.files.length > 0) as repo (repo.id)}{@render repositoryGroup(repo)}{/each}
+      {@const clean = repositories.filter(repo => !repo.error && repo.changes?.captureStatus === 'captured' && repo.changes.files.length === 0)}
+      {#if clean.length > 0}
+        <Button variant="ghost" size="sm" aria-expanded={cleanRepositoriesOpen} onclick={() => cleanRepositoriesOpen = !cleanRepositoriesOpen}>干净的仓库（{clean.length}）</Button>
+        {#if cleanRepositoriesOpen}{#each clean as repo (repo.id)}{@render repositoryGroup(repo)}{/each}{/if}
+      {/if}
+      {#if loading}<p role="status">正在扫描仓库…</p>{:else if error}<p role="status">{error}</p>{:else if repositories.length === 0}<div class="inspector-empty">工作区内未发现 Git 仓库。</div>{/if}
+    {:else if currentRepository?.error}<p role="status">{currentRepository.error}</p>
     {:else if loading && !changes}
       <div class="inspector-empty">正在读取 Git 状态…</div>
     {:else if error}
@@ -457,7 +521,7 @@
 
       {#if remoteStatus?.upstream}
         <div class="git-remote-row" aria-label="Git 远端同步">
-          <span>{remoteStatus.upstream}</span>
+          <span>{currentRepository?.name} · {remoteStatus.upstream}</span>
           {#if remoteStatus.ahead > 0}<Badge variant="secondary">↑{remoteStatus.ahead}</Badge>{/if}
           {#if remoteStatus.behind > 0}<Badge variant="warning">↓{remoteStatus.behind}</Badge>{/if}
           <Button variant="ghost" size="sm" type="button" disabled={operationBusy} onclick={() => onSync(workspace.id, 'fetch')}>刷新</Button>
@@ -485,6 +549,7 @@
         </section>
 
         {#if stagedCount > 0}
+          <p>提交到 {currentRepository?.name} · {changes.branch ?? 'Detached HEAD'}</p>
           <form class="git-commit-form" onsubmit={(event) => { event.preventDefault(); void submitCommit(); }}>
             <Input
               value={draftState.commitMessage} oninput={(event) => onDraftChange({ ...draftState, commitMessage: event.currentTarget.value })}
