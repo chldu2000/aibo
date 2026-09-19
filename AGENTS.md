@@ -1,5 +1,29 @@
 # Aibo agent instructions
 
+## Host business logic and agent capabilities
+
+These rules apply to every host business logic change, including frontend,
+backend, session lifecycle, permissions, menus, and command routing.
+
+- Drive agent-dependent behavior through generic capability contracts,
+  plugin declarations, or negotiated runtime capabilities. Do not hardcode
+  branches or lookup tables keyed by agent names, plugin IDs, executable
+  names, or equivalent identity checks to select business behavior.
+- When agents need different behavior, extend the shared capability model
+  and let plugins supply the relevant declarations or implementations.
+  Keep vendor-specific protocol mapping and compatibility logic inside the
+  corresponding plugin or adapter, outside generic host policy and UI.
+- Treat declarations as capability requests, not authorization grants. The
+  host validates contracts and enforces installation grants and workspace
+  policy through generic rules; plugins retain their native enforcement
+  responsibilities.
+- Define explicit behavior for absent or unsupported capabilities without
+  inferring support from agent identity. A new plugin implementing the same
+  contract must work without changes to host business logic.
+- Before handing off a host logic change, inspect the affected paths for
+  identity-based special cases and verify the behavior using capability
+  combinations, including missing capabilities and a third-party plugin.
+
 ## UI architecture hard rules
 
 These rules are mandatory for every UI change. They are enforced by the
