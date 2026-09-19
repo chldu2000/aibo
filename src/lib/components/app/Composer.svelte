@@ -131,8 +131,7 @@
           .join(' ')
           .toLocaleLowerCase();
         return haystack.includes(query);
-      })
-      .slice(0, 24);
+      });
   });
   const slashCategories: Array<{ id: SlashCategory; label: string }> = [
     { id: 'all', label: 'All' },

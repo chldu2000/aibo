@@ -18,16 +18,18 @@ test('suggestions filter commands and bind only available host buttons while pla
  assert.equal(paths.confirmWithTab,false);assert.ok(paths.keys.every(key=>key.startsWith('path:')));
 });
 
-test('command categories retain per-category limits and empty menus remain valid',async()=>{
+test('command categories expose entries beyond 24 and empty menus remain valid',async()=>{
  const state=JSON.parse(await readFile('fixtures/presentation-workbench/conversation.json','utf8'));
  state.draft='/';state.agentCommands=[...Array.from({length:30},(_,i)=>({name:'agent'+i,source:'agent'})),{name:'skill-command',source:'skill'},{name:'extension-command',source:'prompt'}];
  const directory=createConversationDirectory();
  let nodes=flatten(renderConversation(state,directory.project(state)));
  const config=nodes.find(node=>node.key==='conversation:draft:input').suggestions;
- assert.equal(config.categories[0].options.length,24);
+ assert.equal(config.categories[0].options.length,32);
+ assert.equal(config.categories[1].options.length,30);
+ assert.ok(config.keys.includes('command:agent29'));
  assert.deepEqual(config.categories[2].options,['command:skill-command']);
  assert.deepEqual(config.categories[3].options,['command:extension-command']);
- assert.ok(config.keys.includes('command:skill-command'),'categories do not lose entries beyond the all-category limit');
+ assert.ok(config.keys.includes('command:skill-command'),'skills remain accessible after native commands');
  const list=nodes.find(node=>node.key==='conversation:command-options');
  assert.equal(list.attrs.role,'listbox');
  assert.ok(list.children.every(node=>node.attrs.role==='option'));
