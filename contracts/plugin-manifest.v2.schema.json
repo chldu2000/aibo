@@ -687,6 +687,12 @@
           "items": {
             "$ref": "#/$defs/sessionControl"
           }
+        },
+        "executionPolicy": {
+          "enum": [
+            "agent-managed"
+          ],
+          "description": "Provider owns native tool permissions. Does not grant host sandbox enforcement or host tool access."
         }
       }
     },
@@ -1056,14 +1062,16 @@
               "enum": [
                 "read-only",
                 "workspace-write",
-                "danger-full-access"
+                "danger-full-access",
+                "agent-managed"
               ]
             },
             "commandPolicy": {
               "enum": [
                 "disabled",
                 "approved",
-                "trusted"
+                "trusted",
+                "agent-managed"
               ]
             },
             "networkPolicy": {

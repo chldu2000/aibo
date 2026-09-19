@@ -9,6 +9,8 @@ pub(crate) const EXECUTION_PROFILE_SCHEMA: &str = "aibo.execution-profile/v1";
 pub(crate) enum EnforcementBackend {
     CodexNative,
     CoreProxy,
+    /// Tools execute under the provider's own permissions; no host sandbox claim.
+    AgentManaged,
     #[default]
     Unnegotiated,
 }
@@ -40,6 +42,10 @@ pub(crate) async fn installation_backend(db: &SqlitePool, installation: &str, co
         .and_then(|entry| entry["operations"].as_array());
     let mediated = ["aibo.session.tool.respond", "aibo.session.turn.write"].iter().all(|id| operations.is_some_and(|ops| ops.iter().any(|op|
         op["capability"]["id"] == *id && crate::session_contract::validates_operation(op, "session", &manifest))));
+    let provider = manifest["contributions"].as_array().and_then(|entries| entries.iter().find(|entry| entry["id"] == contribution));
+    if provider.is_some_and(|entry| entry["executionPolicy"] == "agent-managed") {
+        return Ok(EnforcementBackend::AgentManaged);
+    }
     Ok(if mediated { EnforcementBackend::CoreProxy } else { EnforcementBackend::Unnegotiated })
 }
 
@@ -74,6 +80,8 @@ pub(crate) struct ResolvedExecutionProfile {
     pub(crate) unsupported: Vec<String>,
     pub(crate) adapter_capabilities: Vec<String>,
     pub(crate) native_sandbox: bool,
+    #[serde(default)]
+    pub(crate) agent_managed_permissions: bool,
     #[serde(default)]
     pub(crate) session_controls: Vec<crate::session_controls::SessionControl>,
     pub(crate) resolved_at: String,
@@ -142,12 +150,12 @@ fn validate_profile(profile: &ExecutionProfile) -> Result<(), String> {
     validate_choice(
         "filesystemPolicy",
         &profile.filesystem_policy,
-        &["read-only", "workspace-write", "danger-full-access"],
+        &["read-only", "workspace-write", "danger-full-access", "agent-managed"],
     )?;
     validate_choice(
         "commandPolicy",
         &profile.command_policy,
-        &["disabled", "approved", "trusted"],
+        &["disabled", "approved", "trusted", "agent-managed"],
     )?;
     validate_choice(
         "networkPolicy",
@@ -170,10 +178,18 @@ pub(crate) fn resolve_with_backend(
     requested: Option<ExecutionProfile>,
     resolved_at: String,
 ) -> Result<ResolvedExecutionProfile, String> {
-    let requested = requested.unwrap_or_else(|| default_requested_profile(
-        if backend == EnforcementBackend::CodexNative { "codex" } else { "generic" },
-    ).expect("host default profile"));
+    let requested = requested.unwrap_or_else(|| {
+        let mut profile = default_requested_profile(
+            if backend == EnforcementBackend::CodexNative { "codex" } else { "generic" },
+        ).expect("host default profile");
+        if backend == EnforcementBackend::AgentManaged { profile.network_policy = "agent-managed".into(); }
+        profile
+    });
     validate_profile(&requested)?;
+    if backend != EnforcementBackend::AgentManaged &&
+        (requested.filesystem_policy == "agent-managed" || requested.command_policy == "agent-managed") {
+        return Err("unsupported: provider-managed permissions require an agent-managed provider".into());
+    }
 
     let mut enforced = requested.clone();
     let mut unsupported = Vec::new();
@@ -190,6 +206,18 @@ pub(crate) fn resolve_with_backend(
         }
     }
     let (adapter_capabilities, native_sandbox) = match backend {
+        EnforcementBackend::AgentManaged => {
+            // A native mode describes behavior, not OS isolation. All tool
+            // permissions (including network) remain with the provider.
+            let editing = requested.interaction_mode == "edit";
+            enforced.filesystem_policy = if editing { "agent-managed" } else { "read-only" }.into();
+            enforced.command_policy = if editing { "agent-managed" } else { "disabled" }.into();
+            enforced.network_policy = "agent-managed".into();
+            enforced.approval_policy = if editing { "on-request" } else { "never" }.into();
+            enforced.approval_reviewer = if editing { "user" } else { "none" }.into();
+            if requested != enforced { unsupported.push("permissions.agent-managed".into()); }
+            (vec!["permissions.agentManaged".into(), "permissions.noNativeSandbox".into()], false)
+        },
         EnforcementBackend::CodexNative => (
             vec![
                 "history.read".to_owned(),
@@ -260,6 +288,7 @@ pub(crate) fn resolve_with_backend(
         unsupported,
         adapter_capabilities,
         native_sandbox,
+        agent_managed_permissions: backend == EnforcementBackend::AgentManaged,
         session_controls: Vec::new(),
         resolved_at,
     })
@@ -327,11 +356,13 @@ pub(crate) fn from_row(
             .map_err(|error| error.to_string())?,
     )
     .map_err(|error| format!("invalid adapter capabilities: {error}"))?;
+    let backend: EnforcementBackend = serde_json::from_str(&row.try_get::<String, _>("enforcement_backend")
+        .map_err(|error| error.to_string())?).map_err(|error| format!("invalid enforcement backend: {error}"))?;
     Ok(SessionExecutionProfile {
         session_id,
         profile: ResolvedExecutionProfile {
-            enforcement_backend: serde_json::from_str(&row.try_get::<String, _>("enforcement_backend")
-                .map_err(|error| error.to_string())?).map_err(|error| format!("invalid enforcement backend: {error}"))?,
+            enforcement_backend: backend,
+            agent_managed_permissions: backend == EnforcementBackend::AgentManaged,
             schema: row
                 .try_get("schema_version")
                 .map_err(|error| error.to_string())?,
@@ -385,6 +416,30 @@ mod tests {
         assert!(serde_json::from_value::<ExecutionProfile>(forged).is_err());
     }
 
+    #[test]
+    fn agent_managed_modes_never_claim_host_sandbox_or_command_approval_coverage() {
+        for mode in ["ask", "plan", "edit"] {
+            let mut requested = editable_profile();
+            requested.interaction_mode = mode.into();
+            let resolved = resolve_with_backend(EnforcementBackend::AgentManaged, Some(requested), "now".into()).unwrap();
+            assert_eq!(resolved.enforced.interaction_mode, mode);
+            assert!(!resolved.native_sandbox);
+            assert_eq!(resolved.enforced.network_policy, "agent-managed");
+            assert_eq!(resolved.enforced.filesystem_policy, if mode == "edit" { "agent-managed" } else { "read-only" });
+            assert_eq!(resolved.enforced.command_policy, if mode == "edit" { "agent-managed" } else { "disabled" });
+            assert!(!resolved.adapter_capabilities.iter().any(|c| c == "permissions.nativeSandbox" || c == "tools.workspace-command-gateway"));
+            let roundtrip = resolve_with_backend(EnforcementBackend::AgentManaged, Some(resolved.enforced.clone()), "later".into()).unwrap();
+            assert!(roundtrip.unsupported.is_empty());
+            assert_eq!(roundtrip.requested, roundtrip.enforced);
+        }
+        let mut requested = editable_profile();
+        requested.filesystem_policy = "agent-managed".into();
+        requested.command_policy = "agent-managed".into();
+        for backend in [EnforcementBackend::Unnegotiated, EnforcementBackend::CoreProxy, EnforcementBackend::CodexNative] {
+            assert!(resolve_with_backend(backend, Some(requested.clone()), "now".into()).is_err());
+        }
+    }
+
     #[tokio::test]
     async fn migrates_host_grants_without_turning_requested_permissions_into_grants() {
         use sqlx::Row;
@@ -406,6 +461,7 @@ mod tests {
                 .bind(serde_json::to_string(enforced).unwrap()).bind(i64::from(native)).execute(&db).await.unwrap();
         }
         sqlx::raw_sql(include_str!("../migrations/0024_execution_enforcement_backend.sql")).execute(&db).await.unwrap();
+        sqlx::raw_sql(include_str!("../migrations/0047_agent_managed_execution.sql")).execute(&db).await.unwrap();
         for (id, expected) in [("granted", EnforcementBackend::CoreProxy), ("requested-only", EnforcementBackend::Unnegotiated), ("claimed-native", EnforcementBackend::Unnegotiated), ("pi", EnforcementBackend::CoreProxy), ("codex", EnforcementBackend::CodexNative)] {
             let row = sqlx::query("SELECT * FROM session_execution_profiles WHERE session_id=?").bind(id).fetch_one(&db).await.unwrap();
             let stored = super::from_row(&row, id.into()).unwrap().profile;

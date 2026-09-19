@@ -19,6 +19,13 @@ test('attachment metadata preserves pending versus submitted, strategy and zero-
  assert.ok(sent.some(node=>node.text==='已发送 · 内联'));
  assert.ok(!sent.some(node=>node.events),'metadata does not introduce business actions');
 });
+test('provider-managed execution explains permission ownership without claiming a sandbox',()=>{
+ const managed={...profile,agentManagedPermissions:true,adapterCapabilities:['permissions.agentManaged'],enforced:{...profile.enforced,filesystemPolicy:'agent-managed',commandPolicy:'agent-managed',networkPolicy:'agent-managed'}};
+ const nodes=flatten(renderExecutionProfile(managed,'managed'));
+ assert.equal(nodes.find(node=>node.key==='managed:enforced:filesystemPolicy').text,'Agent 原生权限');
+ assert.equal(nodes.find(node=>node.key==='managed:enforced:commandPolicy').text,'Agent 原生权限');
+ assert.equal(nodes.find(node=>node.key==='managed:sandbox').text,'权限由 Agent 管理；aibo 转发审批，不提供进程沙箱');
+});
 test('unreadable Git state is not described as a clean workspace',async()=>{
  const {readFile}=await import('node:fs/promises');const {renderGit}=await import('../packages/presentation-workbench/git.js');
  const state=JSON.parse(await readFile('fixtures/presentation-workbench/git.json','utf8'));state.changes={...state.changes,captureStatus:'failed',captureError:'repository unavailable',files:[]};

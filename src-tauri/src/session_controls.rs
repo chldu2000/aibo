@@ -18,6 +18,11 @@ pub(crate) struct SessionControl {
 }
 
 pub(crate) fn validate_declaration(entry: &Value) -> Result<(), String> {
+    if entry.get("executionPolicy").is_some() && (entry["executionPolicy"] != "agent-managed"
+        || entry["scope"] != "session"
+        || !entry["operations"].as_array().is_some_and(|ops| ops.iter().any(|op| op["capability"]["id"] == "aibo.session.open"))) {
+        return Err("invalid_manifest: agent-managed execution requires a session provider".into());
+    }
     let Some(raw) = entry.get("sessionControls") else { return Ok(()); };
     if entry["scope"] != "session" || !entry["operations"].as_array().is_some_and(|ops|
         ops.iter().any(|op|op["capability"]["id"] == "aibo.session.open")) {
@@ -81,6 +86,58 @@ mod tests {
     use super::*;
     use serde_json::json;
     use std::fs;
+
+    #[tokio::test]
+    async fn agent_managed_installation_exposes_modes_and_persists_without_native_grants() {
+        let root = std::env::temp_dir().join(format!("aibo-native-modes-{}", ulid::Ulid::new()));
+        let db = crate::open_database(&root.join("data/aibo.sqlite3")).await.unwrap();
+        let source = root.join("plugin"); fs::create_dir(&source).unwrap();
+        let mut manifest: Value = serde_json::from_str(&include_str!("../capability-plugins/pi/plugin.json").replace("dev.aibo.pi", "org.example.native")).unwrap();
+        let entry = &mut manifest["contributions"][0];
+        entry["executionPolicy"] = json!("agent-managed");
+        entry["operations"].as_array_mut().unwrap().retain(|op| op["capability"]["id"] != "aibo.session.tool.respond");
+        entry["sessionControls"] = json!(["ask", "plan", "edit"].map(|mode| {
+            let mut requested = execution_profile::default_requested_profile("generic").unwrap();
+            requested.interaction_mode = mode.into();
+            let resolved = execution_profile::resolve_with_backend(EnforcementBackend::AgentManaged, Some(requested), "now".into()).unwrap();
+            let mut profile = serde_json::to_value(resolved.enforced).unwrap();
+            for field in ["schema", "model", "reasoningEffort"] { profile.as_object_mut().unwrap().remove(field); }
+            json!({"id":mode,"kind":"mode","label":mode,"description":"Native provider permissions","profile":profile})
+        }));
+        fs::write(source.join("plugin.json"), manifest.to_string()).unwrap();
+        fs::write(source.join("worker.mjs"), "// metadata-only fixture").unwrap();
+        let installed = crate::plugin_registry::install(&db, &root.join("data"), &source).await.unwrap();
+        crate::plugin_registry::enable(&db, &installed.id, true).await.unwrap();
+        let backend = execution_profile::installation_backend(&db, &installed.id, "org.example.native.agent").await.unwrap();
+        assert_eq!(backend, EnforcementBackend::AgentManaged);
+        let grants: i64 = sqlx::query_scalar("SELECT count(*) FROM session_execution_authorities WHERE installation_id=?").bind(&installed.id).fetch_one(&db).await.unwrap();
+        assert_eq!(grants, 0);
+        let now = crate::now_iso();
+        sqlx::query("INSERT INTO workspaces(id,path,label,trusted,created_at,updated_at) VALUES('w',?,'test',1,?,?)")
+            .bind(root.to_string_lossy().as_ref()).bind(&now).bind(&now).execute(&db).await.unwrap();
+        sqlx::query("INSERT INTO sessions(id,workspace_id,agent,label,state,plugin_installation_id,created_at,updated_at) VALUES('s','w','org.example.native.agent','test','idle',?,?,?)")
+            .bind(&installed.id).bind(&now).bind(&now).execute(&db).await.unwrap();
+        let mut current = execution_profile::resolve_with_backend(backend, None, now).unwrap();
+        current.requested.model = Some("chosen-model".into());
+        current.requested.reasoning_effort = Some("high".into());
+        for mode in ["edit", "plan", "ask"] {
+            current.session_controls = for_installation(&db, &installed.id, "org.example.native.agent", &current).await.unwrap();
+            assert_eq!(current.session_controls.len(), 3);
+            current = select(&current, mode).unwrap();
+            assert_eq!(current.enforced.interaction_mode, mode);
+            assert_eq!(current.enforced.model.as_deref(), Some("chosen-model"));
+            assert_eq!(current.enforced.reasoning_effort.as_deref(), Some("high"));
+            execution_profile::save_for_session(&db, "s", &current).await.unwrap();
+            let row = sqlx::query("SELECT * FROM session_execution_profiles WHERE session_id='s'").fetch_one(&db).await.unwrap();
+            current = execution_profile::from_row(&row, "s".into()).unwrap().profile;
+            assert_eq!(current.enforcement_backend, EnforcementBackend::AgentManaged);
+            assert!(!current.native_sandbox);
+        }
+        assert!(select(&current, "debug").is_err());
+        crate::plugin_registry::enable(&db, &installed.id, false).await.unwrap();
+        assert!(for_installation(&db, &installed.id, "org.example.native.agent", &current).await.unwrap().is_empty());
+        db.close().await; fs::remove_dir_all(root).unwrap();
+    }
 
     #[tokio::test]
     async fn arbitrary_plugin_declarations_drive_pinned_session_controls_without_granting_authority() {

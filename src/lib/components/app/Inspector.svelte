@@ -110,10 +110,12 @@
   }
 
   function filesystemLabel(policy: string): string {
+    if (policy === 'agent-managed') return 'Agent 原生权限';
     return policy === 'workspace-write' ? '工作区可写' : '只读';
   }
 
   function commandLabel(policy: string): string {
+    if (policy === 'agent-managed') return 'Agent 原生权限';
     return policy === 'trusted' ? '自动执行' : policy === 'approved' ? '需审批' : '禁用';
   }
 
@@ -323,7 +325,7 @@
             <dl>
               <div><dt>审批</dt><dd>{executionProfile.enforced.approvalPolicy}</dd></div>
               <div><dt>审核者</dt><dd>{executionProfile.enforced.approvalReviewer}</dd></div>
-              <div><dt>沙箱</dt><dd>{executionProfile.enforced.filesystemPolicy}</dd></div>
+              <div><dt>沙箱</dt><dd>{executionProfile.agentManagedPermissions ? 'Agent 原生权限，aibo 不提供进程沙箱' : executionProfile.enforced.filesystemPolicy}</dd></div>
               {#if executionProfile.enforced.model}<div><dt>模型</dt><dd>{executionProfile.enforced.model}</dd></div>{/if}
               {#if executionProfile.enforced.reasoningEffort}<div><dt>推理</dt><dd>{executionProfile.enforced.reasoningEffort}</dd></div>{/if}
             </dl>

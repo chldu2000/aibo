@@ -50,3 +50,21 @@
 
 迁移时递增插件版本，并先升级支持此清单字段的宿主。旧插件不声明该字段仍可运行，
 但不会获得宿主虚构的权限或模式菜单。
+
+## Agent 原生权限
+
+使用原生工具执行的 session provider 可以声明 `executionPolicy: "agent-managed"`。
+这表示用户选择由提供者管理权限，不是宿主授予原生沙箱或 Core 工具代理权限。
+新字段由清单 schema 校验；旧版宿主不接受该声明。安装与启用仍遵循现有插件信任流程。
+
+该后端允许 ask / plan / edit 模式。edit 的文件、命令和网络策略为 `agent-managed`，
+审批为 user / on-request：只有提供者实际发出的请求才出现在 aibo。ask / plan 的
+read-only / disabled 描述原生模式行为，网络仍为 agent-managed；不是操作系统隔离。
+请求值与这些约定不符时，宿主报告不支持的配置；菜单不展示会被改写的选项。
+
+界面通过宿主生成的 `agentManagedPermissions: true` 标明权限归属，
+`nativeSandbox` 始终为 false，不能从插件自报能力推导沙箱保障。
+新后端保存于执行配置（migration 0047），不写入 `session_execution_authorities`，
+不能借该声明取得 Codex 原生授权或调用 Core 工具。模式切换仍检查工作区信任、
+会话空闲状态和固定 release，并在下次执行时恢复原生会话；Agent 写轮次仍须通过
+宿主写入准入，模型、推理和会话历史不因切换丢弃。

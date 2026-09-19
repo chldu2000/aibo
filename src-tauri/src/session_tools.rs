@@ -133,11 +133,14 @@ impl SessionHost {
             )
             .await;
         }
-        let profile = crate::session_execution_profile(&self.db, session_id)
+        let resolved = crate::session_execution_profile(&self.db, session_id)
             .await
             .map_err(|error| error.to_string())?
-            .profile
-            .enforced;
+            .profile;
+        if resolved.enforcement_backend == crate::execution_profile::EnforcementBackend::AgentManaged {
+            return Self::reply_tool_error(runtime, request_id, "permission_denied: native provider permissions do not authorize Core tools").await;
+        }
+        let profile = resolved.enforced;
         let workspace = crate::workspace_by_id(&self.db, workspace_id)
             .await
             .map_err(|error| error.to_string())?;

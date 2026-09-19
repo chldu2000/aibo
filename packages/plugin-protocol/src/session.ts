@@ -27,8 +27,8 @@ export interface SessionControl {
     interactionMode?: 'ask' | 'plan' | 'edit';
     approvalPolicy?: 'never' | 'untrusted' | 'on-request' | 'trusted';
     approvalReviewer?: 'user' | 'auto-review' | 'none';
-    filesystemPolicy?: 'read-only' | 'workspace-write' | 'danger-full-access';
-    commandPolicy?: 'disabled' | 'approved' | 'trusted';
+    filesystemPolicy?: 'read-only' | 'workspace-write' | 'danger-full-access' | 'agent-managed';
+    commandPolicy?: 'disabled' | 'approved' | 'trusted' | 'agent-managed';
     networkPolicy?: 'disabled' | 'agent-managed';
   };
 }

@@ -7,8 +7,8 @@ export type InteractionMode = 'ask' | 'plan' | 'edit';
 export type SessionControlId = string;
 export type ApprovalPolicy = 'never' | 'untrusted' | 'on-request' | 'trusted';
 export type ApprovalReviewer = 'user' | 'auto-review' | 'none';
-export type FilesystemPolicy = 'read-only' | 'workspace-write' | 'danger-full-access';
-export type CommandPolicy = 'disabled' | 'approved' | 'trusted';
+export type FilesystemPolicy = 'read-only' | 'workspace-write' | 'danger-full-access' | 'agent-managed';
+export type CommandPolicy = 'disabled' | 'approved' | 'trusted' | 'agent-managed';
 export type NetworkPolicy = 'disabled' | 'agent-managed';
 
 export interface ExecutionProfile {
@@ -30,6 +30,7 @@ export interface ResolvedExecutionProfile {
   unsupported: string[];
   adapterCapabilities: string[];
   nativeSandbox: boolean;
+  agentManagedPermissions?: boolean;
   sessionControls?: SessionControl[];
   resolvedAt: string;
 }
