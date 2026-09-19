@@ -21,8 +21,8 @@ test('plugin manager hides uninstalled releases and shows the empty state in bot
       manifest: { displayName: 'Installed plugin' },
     };
     const props = {
-      packagePath: '', busy: false,
-      onPackagePathChange() {}, onInstall() {}, onEnabledChange() {},
+      busy: false,
+      onInstall() {}, onEnabledChange() {},
       onUninstall() {}, onConfigure() {}, onCreateSession() {},
     };
     for (const kit of ['shadcn', 'material3']) {

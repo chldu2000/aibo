@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { Badge, Button, Card, CardContent, CardHeader, CardTitle, Input, Label } from '$lib/ui-kit';
+  import { Badge, Button, Card, CardContent, CardHeader, CardTitle } from '$lib/ui-kit';
 
   type Installation = {
     id: string;
@@ -18,8 +18,6 @@
 
   type Props = {
     installations: Installation[];
-    packagePath: string;
-    onPackagePathChange: (path: string) => void;
     busy: boolean;
     onInstall: () => void;
     onEnabledChange: (id: string, enabled: boolean) => void;
@@ -28,8 +26,7 @@
     onCreateSession: (installationId: string, agentId: string) => void;
   };
 
-  let { installations, packagePath, onPackagePathChange, busy, onInstall, onEnabledChange, onUninstall, onCreateSession, onConfigure }: Props = $props();
-  const fieldId = $props.id();
+  let { installations, busy, onInstall, onEnabledChange, onUninstall, onCreateSession, onConfigure }: Props = $props();
   let selectedId = $state<string | null>(null);
   const installedPlugins = $derived(installations.filter(item => item.installed));
   const selected = $derived(installedPlugins.find(item => item.id === selectedId) ?? installedPlugins[0]);
@@ -42,11 +39,9 @@
   <CardContent>
     <div class="plugin-manager">
       <p>从本地解包目录安装插件，安装后默认禁用。启用前请确认来源可信：插件在独立进程运行，但不等于系统沙箱。</p>
-      <form class="plugin-install" onsubmit={(event) => { event.preventDefault(); if (!busy && packagePath.trim()) onInstall(); }}>
-        <Label for={fieldId}>插件解包目录</Label>
-        <Input id={fieldId} value={packagePath} disabled={busy} placeholder="包含 plugin.json 的本地目录" oninput={(event: Event) => onPackagePathChange((event.currentTarget as HTMLInputElement).value)} />
-        <Button type="submit" disabled={busy || !packagePath.trim()}>安装插件</Button>
-      </form>
+      <div class="plugin-actions">
+        <Button type="button" variant="outline" disabled={busy} onclick={onInstall}>选择目录安装</Button>
+      </div>
 
       {#if installedPlugins.length === 0}
         <p role="status">尚未安装外部插件。</p>
@@ -110,9 +105,8 @@
 </Card>
 
 <style>
-  .plugin-manager, .plugin-install, .plugin-details { display: flex; flex-direction: column; gap: 0.75rem; min-width: 0; }
+  .plugin-manager, .plugin-details { display: flex; flex-direction: column; gap: 0.75rem; min-width: 0; }
   .plugin-heading, .plugin-actions { display: flex; align-items: center; flex-wrap: wrap; gap: 0.5rem; }
-  .plugin-install { align-items: stretch; }
   .plugin-browser { display: grid; grid-template-columns: minmax(180px, 240px) minmax(0, 1fr); gap: 16px; }
   .plugin-navigation { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
   .plugin-detail { min-width: 0; }

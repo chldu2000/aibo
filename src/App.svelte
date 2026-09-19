@@ -1053,7 +1053,6 @@
     return () => { clearInterval(timer); window.removeEventListener('focus', refresh); ++pluginRefreshRevision; };
   });
   const pluginManagerInstallations = $derived(pluginInstallations.map(installation => ({ ...installation, sessionProviders: sessionProviders(installation) })));
-  let pluginPackagePath = $state('');
   let pluginBusy = $state(false);
   let pluginError = $state('');
 
@@ -1089,9 +1088,10 @@
 
   async function installPlugin(): Promise<void> {
     await pluginOperation(async () => {
-      await installAgentPlugin(pluginPackagePath.trim());
+      const path = await open({ directory: true, multiple: false, title: '选择能力插件目录' });
+      if (typeof path !== 'string') return;
+      await installAgentPlugin(path);
       await refreshPluginInstallations();
-      pluginPackagePath = '';
     });
   }
 
@@ -3536,8 +3536,6 @@
 {#snippet extensionManagement()}
   <PluginManagerPanel
     installations={pluginManagerInstallations}
-    packagePath={pluginPackagePath}
-    onPackagePathChange={hostGuard('onPackagePathChange', (value) => { pluginPackagePath = value; })}
     busy={pluginBusy || !desktop}
     onInstall={hostGuard('onInstall', () => void installPlugin())}
     onEnabledChange={hostGuard('onEnabledChange', (id, enabled) => void enablePlugin(id, enabled))}
