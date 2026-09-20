@@ -584,3 +584,6 @@ export const listWorkspaceGitRepositories = (workspaceId: string, scanBudget = 2
 
 export const registerSessionClipboardImages = (sessionId: string, images: import('./app/clipboard-images').ClipboardImage[]): Promise<ContextAttachment[]> =>
   invoke('register_session_clipboard_images', { sessionId, images });
+
+export const getSessionAttachmentPreview = (sessionId: string, attachmentId: string): Promise<string> =>
+  invoke<string>('get_session_attachment_preview', { sessionId, attachmentId });

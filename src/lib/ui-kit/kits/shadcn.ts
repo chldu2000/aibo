@@ -1,3 +1,4 @@
+import AttachmentList from './shared/AttachmentList.svelte';
 import ModelContextSelect from './shadcn/ModelContextSelect.svelte';
 import SubagentDialog from './shadcn/SubagentDialog.svelte';
 import SubagentCard from './shadcn/SubagentCard.svelte';
@@ -33,6 +34,7 @@ import metadata from '../../../../packages/presentation-shadcn/themes.json';
 export const shadcnUiKit: UiKitAdapter = {
   SubagentDialog,
   SubagentCard,
+  AttachmentList,
   GoalBar,
   HostPanel,
   ManagementCenter,

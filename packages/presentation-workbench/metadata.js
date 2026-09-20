@@ -13,3 +13,11 @@ export function renderSessionMetadata(session,key){
  if(!session)return null;
  return node('details',key,null,[node('summary',key+':summary','会话信息'),text(key+':id','会话 ID：'+session.id),text(key+':external',session.externalSessionId?'远端绑定：'+session.externalSessionId:null),text(key+':updated',session.updatedAt?'更新于 '+session.updatedAt:null),text(key+':archived',session.archived?'已归档':null)]);
 }
+
+export function renderMessageAttachment(item,key){
+ const name=(item.path??item.id).split(/[\\/]/).pop()||item.id;
+ return {...node('div',key,null,[
+  item.mediaType?.startsWith('image/')?{...node('img',key+':preview',null,[],{alt:name,width:'160',height:'112'}),resource:'attachment:'+item.id}:null,
+  text(key+':name',name),
+ ],{title:item.path??item.id}),className:'message-attachment'};
+}

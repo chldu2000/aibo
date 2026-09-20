@@ -1,21 +1,23 @@
+import {splitMessageAttachments} from './message-attachments.js';
+import {renderMessageAttachment} from './metadata.js';
 import {splitSessionReferences} from './session-references.js';
 import {node,button,text,actionFor} from './tree.js';
 import {renderRichText} from './rich-text.js';
 import {groupTimelineItems} from './timeline-model.js';
 
-export function renderTimeline(entries,actions,groupSystemItems=false){
+export function renderTimeline(entries,actions,groupSystemItems=false,attachments=[]){
  return groupTimelineItems(entries,groupSystemItems).map(group=>{
-  if(group.kind==='entry')return renderTimelineEntry(group.item,actions);
+  if(group.kind==='entry')return renderTimelineEntry(group.item,actions,attachments);
   const key='message-group:'+group.id;
   const tool=group.kind==='tool-group';
   const completed=group.items.filter(item=>item.status==='completed').length;
   return node('details',key,null,[
    node('summary',key+':summary',tool?`工具调用 · ${group.items.length} 项 · ${completed}/${group.items.length} 完成`:`系统消息 · ${group.items.length} 项`),
    ...group.items.map(entry=>{
-    if(tool)return renderTimelineEntry(entry,actions);
+    if(tool)return renderTimelineEntry(entry,actions,attachments);
     return node('details','message:'+entry.id+':disclosure',null,[
      node('summary','message:'+entry.id+':summary',(entry.content.split('\n')[0]||'系统消息')+' · 查看详情'),
-     renderTimelineEntry(entry,actions),
+     renderTimelineEntry(entry,actions,attachments),
     ]);
    }),
   ]);
@@ -26,7 +28,7 @@ const timelineStatusLabels={streaming:'生成中',completed:'完成',failed:'失
 const timelineToolLabels={commandExecution:'命令执行',fileRead:'读取文件',fileChange:'修改文件',mcpToolCall:'MCP 工具',webSearch:'网页搜索'};
 
 /** Tool payloads are literal text; only conversational prose uses Markdown. */
-export function renderTimelineEntry(entry,actions){
+export function renderTimelineEntry(entry,actions,attachments=[]){
  const key='message:'+entry.id;
  if(entry.toolName==='subagent') {
   try {
@@ -52,8 +54,10 @@ export function renderTimelineEntry(entry,actions){
    {...node('pre','message:content:'+entry.id,entry.content||'…'),className:diff?'tool-output diff-content':'tool-output'},
   ]);
  }else{
-  const message=entry.role==='user'?splitSessionReferences(entry.content):{body:entry.content,references:[]};
-  content=node('div',key+':body',null,[message.body?renderRichText(message.body,'message:content:'+entry.id,entry.id,actions):message.references.length?null:text(key+':empty','…'),
+  const attached=entry.role==='user'?splitMessageAttachments(entry.content,attachments):{body:entry.content,attachments:[]};
+  const message=entry.role==='user'?splitSessionReferences(attached.body):{body:entry.content,references:[]};
+  content=node('div',key+':body',null,[message.body?renderRichText(message.body,'message:content:'+entry.id,entry.id,actions):message.references.length||attached.attachments.length?null:text(key+':empty','…'),
+   ...attached.attachments.map(item=>renderMessageAttachment(item,key+':attachment:'+item.id)),
    ...message.references.map((reference,index)=>{const refKey=key+':reference:'+index;return node('details',refKey,null,[
     node('summary',refKey+':title','引用会话 · '+reference.title),
     text(refKey+':note',reference.agent+' · '+reference.note+(reference.omitted===null?'':' · 已省略 '+reference.omitted+' 条消息')),

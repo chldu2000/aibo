@@ -1,5 +1,6 @@
+import {splitMessageAttachments} from './message-attachments.js';
 import {node,button,field,section,text,actionFor} from './tree.js';
-import {renderExecutionProfile,renderAttachment,renderSessionMetadata} from './metadata.js';
+import {renderExecutionProfile,renderMessageAttachment,renderSessionMetadata} from './metadata.js';
 import {splitSessionReferences} from './session-references.js';
 import {renderTimeline} from './timeline.js';
 const labels={pauseGoal:'暂停目标',resumeGoal:'恢复目标',clearGoal:'清除目标',send:'发送',stop:'停止',retry:'重试',queueSteer:'立即发送',queueFollowUp:'排队发送',clearQueue:'清空队列',resumeQueue:'继续队列',addAttachments:'添加附件',addDirectory:'添加目录',loadOlder:'加载更早消息',fork:'分叉会话',loadModels:'刷新模型',compact:'压缩上下文',openTree:'会话树',closeTree:'关闭会话树',refreshTree:'刷新会话树',submitAnswers:'提交回答',cancelAnswers:'取消回答'};
@@ -8,7 +9,7 @@ export function renderConversation(state,actions){
  const controls=(operations)=>operations.flatMap(operation=>{const action=actions.find(a=>a.operation===operation&&!a.args.length);return action?[button('conversation:action:'+operation,labels[operation],action)]:[]});
  const children=[node('header','conversation:header',null,[node('h1','conversation:title',state.session?.label??'选择或创建会话'),text('conversation:activity',state.activityLabel),node('nav','conversation:tools',null,controls(['fork','compact','openTree']))])];
  children.push(renderSessionMetadata(state.session,'conversation:session-metadata'));
- const messages=renderTimeline(state.timelineVisibleCount>0?state.timeline.slice(-state.timelineVisibleCount):[],actions,state.groupSystemItems===true);
+ const messages=renderTimeline(state.timelineVisibleCount>0?state.timeline.slice(-state.timelineVisibleCount):[],actions,state.groupSystemItems===true,state.attachments);
  children.push({...node('section','conversation:timeline',null,[...controls(['loadOlder']),...messages],{'aria-label':'会话消息'}),className:'timeline'});
  if(state.retryReason||state.retryPrompt)children.push(section('conversation:retry','重试',[text('retry:reason',state.retryReason),text('retry:prompt',state.retryPrompt),...controls(['retry'])]));
  for(const request of state.userInputRequests){
@@ -27,6 +28,7 @@ export function renderConversation(state,actions){
   state.queue.paused?text('queue:paused','自动发送已暂停'):null,
   ...(state.queue.items?.length?state.queue.items.map(item=>section('queue:item:'+item.id,item.status==='sending'?'正在发送':item.status==='uncertain'?'投递结果未知':item.status==='failed'?'发送失败':'等待发送',[
    text('queue:text:'+item.id,splitSessionReferences(item.text).body.split('[AIBO_CONTEXT_ATTACHMENTS]')[0].trim()),
+   ...splitMessageAttachments(item.text,state.attachments).attachments.map(attachment=>renderMessageAttachment(attachment,'queue:'+item.id+':attachment:'+attachment.id)),
    item.error?text('queue:error:'+item.id,item.error):null,
    (!state.running || state.session?.capabilities.includes('queue.steer')) ? button('queue:send:'+item.id,'立即发送',find('sendQueuedMessage',item.id)) : null,
    button('queue:remove:'+item.id,'删除',find('removeQueuedMessage',item.id)),
@@ -45,8 +47,9 @@ export function renderConversation(state,actions){
   const composer=[goal,draftField,text('conversation:shortcut','⌘/Ctrl+Enter '+(state.running?'排队发送':'发送')+' · Enter 换行'),state.draftFailed?node('p','conversation:draft-error','草稿保存失败',[],{role:'alert'}):null];
 
   composer.push(node('nav','conversation:composer-tools',null,controls(['addAttachments','addDirectory','send','stop','queueSteer','queueFollowUp'])));
-  const attachmentList=node('ul','conversation:attachment-list',null,state.attachments.map(item=>node('li','attachment:'+item.id,null,[renderAttachment(item,'composer:attachment:'+item.id),button('attachment:remove:'+item.id,'移除附件 '+item.path,find('removeAttachment',item.id))])));
-  if(state.attachments.length)composer.push(node('details','conversation:attachments',null,[node('summary','conversation:attachments:summary','附件 · '+state.attachments.length),attachmentList]));
+  const pendingAttachments=state.attachments.filter(item=>item.turnId===null && item.sessionId===state.session.id);
+  const attachmentList=node('ul','conversation:attachment-list',null,pendingAttachments.map(item=>node('li','attachment:'+item.id,null,[renderMessageAttachment(item,'composer:attachment:'+item.id),button('attachment:remove:'+item.id,'移除附件 '+item.path,find('removeAttachment',item.id))])));
+  if(pendingAttachments.length)composer.push(node('details','conversation:attachments',null,[node('summary','conversation:attachments:summary','附件 · '+pendingAttachments.length),attachmentList],{open:true}));
   const mention=/(?:^|\s)@[^\s]*$/.test(state.draft);
   const slash=state.draft.match(/^\/([^\s]*)$/);
   const categoryOf=command=>command.category??(command.source==='skill'?'skill':command.source==='extension'||command.source==='prompt'?'extension':'agent');

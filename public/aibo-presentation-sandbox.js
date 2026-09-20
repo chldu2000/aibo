@@ -130,7 +130,11 @@
     workerUrl = null;
   }
   function fail(message) { stop(); send({ type: 'failure', message: String(message).slice(0, 512) }); }
+  let previewScope = '', previews = new Map();
   function render(tree, context) {
+    const scope = JSON.stringify([context.workspaceId,context.sessionId]);
+    if (scope !== previewScope) { previewScope=scope; previews.clear(); }
+
     let count = 0; const keys = new Set();
     const elements=new Map(),clicks=new Map(),interactive=new Set(),suggestions=[];let suggestionCount=0;
     const nextSplitters=new Map();
@@ -142,8 +146,21 @@
       const element = ['svg','path','circle','rect','line','polyline','polygon','g'].includes(value.tag)
         ? document.createElementNS('http://www.w3.org/2000/svg', value.tag) : document.createElement(value.tag);
       if (value.resource !== undefined) {
-        if (value.tag !== 'img' || typeof value.resource !== 'string' || !assets[value.resource]?.startsWith('data:image/')) throw Error('invalid_presentation_image');
-        element.src = assets[value.resource];
+        if (value.tag !== 'img' || typeof value.resource !== 'string') throw Error('invalid_presentation_image');
+        if (value.resource.startsWith('attachment:')) {
+          const id=value.resource.slice(11);
+          const attachment=current?.data?.conversation?.attachments?.find(item=>item.id===id && item.sessionId===context.sessionId);
+          if (attachment?.mediaType?.startsWith('image/')) {
+            element.dataset.attachmentPreview=id;
+            element.style.objectFit='contain';
+            if(previews.get(id))element.src=previews.get(id);
+            else if(!previews.has(id)){previews.set(id,null);send({type:'attachment-preview',id,context});}
+            element.onerror=()=>{element.alt='图片无法预览 · '+attachment.path;};
+          }
+        } else {
+          if (!assets[value.resource]?.startsWith('data:image/')) throw Error('invalid_presentation_image');
+          element.src = assets[value.resource];
+        }
       }
       element.dataset.presentationKey = value.key;
       elements.set(value.key,element);
@@ -316,7 +333,12 @@
     port.onmessage = ({ data }) => {
       if (disposed) return;
       try {
-        if (data.type === 'start' && !worker) start(data);
+        if (data.type === 'attachment-preview' && data.scope===previewScope) {
+          const url=typeof data.url==='string' && /^data:image\/(png|jpeg|gif|webp);base64,/.test(data.url)?data.url:null;
+          previews.set(data.id,url);
+          for(const element of root.querySelectorAll('img[data-attachment-preview]'))if(element.dataset.attachmentPreview===data.id){if(url)element.src=url;else element.alt='图片无法预览 · '+element.alt;}
+        }
+        else if (data.type === 'start' && !worker) start(data);
         else if(data.type==='suspended'){suspended=data.value===true;if(suspended)mayRestoreFocus=false;}
         else if(data.type==='activate'){active=true;mayRestoreFocus=data.restoreFocus===true;if(data.viewState){lastState=data.viewState;restoreState(lastState,data.restoreFocus===true);}}
         else if(data.type==='restore-focus'){mayRestoreFocus=true;restoreState(lastState,true);}

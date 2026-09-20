@@ -1,4 +1,6 @@
 <script lang="ts">
+  import { createAttachmentPreviews } from '$lib/app/attachment-previews';
+  import { getSessionAttachmentPreview } from '$lib/api';
   import { SubagentDetails } from '$lib/components/app';
   import { getSubagentHistory } from '$lib/api';
   import { parseSubagent, mergeSubagentEntries, type SubagentEntry } from '$lib/app/subagents';
@@ -886,6 +888,9 @@
     untrack(() => { ++turnFileDiffGeneration; turnFileDiff = null; turnFileDiffLoading = false; turnFileDiffError = null; });
   });
   let attachments = $state<ContextAttachment[]>([]);
+  let attachmentPreviews = $state<Record<string, string | null>>({});
+  const previewController = createAttachmentPreviews(getSessionAttachmentPreview, values => { attachmentPreviews = values; });
+  $effect(() => { previewController.update(desktop ? selectedSessionId : null, attachments); });
   let artifacts = $state<Artifact[]>([]);
   let projectActions = $state<ProjectAction[]>([]);
   let projectActionRuns = $state<ProjectActionRun[]>([]);
@@ -3716,7 +3721,7 @@
       {/if}
     </HostPanel>
   {/if}
-<PresentationHost onPasteImages={(files) => void pasteComposerImages(files)} hideWhenSuspended={sessionHistoryOpen} onRestore={() => void presentationOperation(() => presentationPackagesController.select(null))} bind:this={presentationHost} active={presentationPackages.active} themeId={presentationPackages.themeId} input={externalInput} suspended={historyOpen || sessionHistoryOpen || capabilityHistoryOpen || settingsOpen || commandPaletteOpen || archiveConfirmationSessionId !== null || piNavigationEntryId !== null} onIntent={externalIntent}>
+<PresentationHost readAttachmentPreview={getSessionAttachmentPreview} onPasteImages={(files) => void pasteComposerImages(files)} hideWhenSuspended={sessionHistoryOpen} onRestore={() => void presentationOperation(() => presentationPackagesController.select(null))} bind:this={presentationHost} active={presentationPackages.active} themeId={presentationPackages.themeId} input={externalInput} suspended={historyOpen || sessionHistoryOpen || capabilityHistoryOpen || settingsOpen || commandPaletteOpen || archiveConfirmationSessionId !== null || piNavigationEntryId !== null} onIntent={externalIntent}>
 <WorkbenchPresentation hideWhenSuspended={sessionHistoryOpen} onRestore={() => desktop ? presentationPackagesController.select(null) : Promise.resolve()} bind:this={workbenchPresentation} bind:layout={presentationLayout} bind:switching={presentationSwitching} bind:gridElement={workspaceGridElement} navigationWidth={workspaceSidebarWidth} auxiliaryWidth={inspectorWidth} auxiliaryOpen={sidePanelOpen} suspended={historyOpen || sessionHistoryOpen || capabilityHistoryOpen || settingsOpen || commandPaletteOpen || archiveConfirmationSessionId !== null || piNavigationEntryId !== null} windowId={presentationWindowId()} snapshot={{ workspaceId: selectedWorkspaceId, sessionId: selectedSessionId, draft: composerText, navigation: sidePanelView, timelineRevision: timeline.length }}>
 {#snippet navigation(guard)}
     <WorkspaceSidebar
@@ -3824,6 +3829,7 @@
       selectedSessionArchiving={selectedSessionArchiving}
       busy={busy}
       attachments={attachments}
+      {attachmentPreviews}
       executionProfile={executionProfile}
       modelConfiguration={modelConfigurationState(selectedSession, sessionModelCatalog, executionProfile)}
       modelCatalog={sessionModelCatalog}

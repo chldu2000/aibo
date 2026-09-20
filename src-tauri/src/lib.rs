@@ -3125,6 +3125,11 @@ async fn reference_session(session_id: String, source_session_id: String, state:
 }
 
 #[tauri::command]
+async fn get_session_attachment_preview(session_id: String, attachment_id: String, state: State<'_, AppState>) -> Result<String, String> {
+    clipboard_images::preview(&state.db, &session_id, &attachment_id).await
+}
+
+#[tauri::command]
 async fn register_session_clipboard_images(session_id: String, images: Vec<clipboard_images::ImageInput>, state: State<'_, AppState>) -> Result<Vec<ContextAttachment>, CoreError> {
     clipboard_images::register(&state.db, &state.data_dir, &session_id, images).await
 }
@@ -3215,7 +3220,7 @@ async fn list_session_attachments(
     let rows = sqlx::query(
         "SELECT id, schema_version, workspace_id, session_id, turn_id, path, content_hash, size,
                 media_type, source, send_strategy, created_at, inline_context
-         FROM attachments WHERE session_id = ? AND queued_message_id IS NULL ORDER BY created_at ASC",
+         FROM attachments WHERE session_id = ? AND (queued_message_id IS NULL OR turn_id IS NOT NULL) ORDER BY created_at ASC",
     )
     .bind(&session_id)
     .fetch_all(&state.db)
@@ -4480,6 +4485,7 @@ pub fn run() {
             apply_git_file_action,
             register_session_attachments,
             register_session_clipboard_images,
+            get_session_attachment_preview,
             reference_session,
             list_session_attachments,
             remove_session_attachment,

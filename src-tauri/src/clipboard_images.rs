@@ -130,6 +130,27 @@ pub(crate) fn turn_attachment(
     Ok(serde_json::json!({"attachmentId":id,"type":"image","path":path,"mimeType":mime}))
 }
 
+/// Resolve only an attachment owned by this session; callers never provide file paths.
+pub(crate) async fn preview(db: &SqlitePool, session_id: &str, id: &str) -> Result<String, String> {
+    let row = sqlx::query("SELECT a.id,a.media_type,a.inline_context,a.content_hash,a.path,w.path AS workspace_path FROM attachments a JOIN workspaces w ON w.id=a.workspace_id WHERE a.id=? AND a.session_id=?")
+        .bind(id).bind(session_id).fetch_one(db).await.map_err(|_| "附件不存在。")?;
+    let mime: String = row.get("media_type");
+    if !matches!(mime.as_str(), "image/png" | "image/jpeg" | "image/gif" | "image/webp") { return Err("不支持预览此附件。".into()); }
+    let context: Option<String> = row.get("inline_context");
+    let path = if context.as_deref().and_then(|value|serde_json::from_str::<serde_json::Value>(value).ok()).is_some_and(|value|value["schema"] == "aibo.clipboard-image/v1") {
+        turn_attachment(&row, &["image.input".into()])?["path"].as_str().unwrap().to_owned()
+    } else {
+        crate::workspace_guard::canonicalize_target(Path::new(&row.get::<String,_>("workspace_path")), Path::new(&row.get::<String,_>("path")))?.to_string_lossy().into_owned()
+    };
+    let metadata = std::fs::metadata(&path).map_err(|_|"图片已丢失。")?;
+    if !metadata.is_file() || metadata.len() > MAX_IMAGE as u64 { return Err("图片过大或不可读取。".into()); }
+    let bytes = std::fs::read(path).map_err(|_|"图片不可读取。")?;
+    let hash: Option<String> = row.get("content_hash");
+    if hash.is_some_and(|hash|hash != format!("sha256:{:x}",Sha256::digest(&bytes))) { return Err("图片已发生变化。".into()); }
+    extension(&mime,&bytes).map_err(|error|error.to_string())?;
+    Ok(format!("data:{mime};base64,{}",STANDARD.encode(bytes)))
+}
+
 /// Deleting a draft attachment releases its owned file; never delete paths
 /// outside the host image directory or follow a replaced symbolic link.
 pub(crate) fn remove_file(data_dir: &Path, context: &str) {
@@ -175,6 +196,8 @@ mod tests {
             .unwrap();
         assert_eq!(attachments.len(), 2);
         assert_ne!(attachments[0].id, attachments[1].id);
+        assert_eq!(preview(&db, "s", &attachments[0].id).await.unwrap(), format!("data:image/png;base64,{PNG}"));
+        assert!(preview(&db, "another-session", &attachments[0].id).await.is_err());
         assert_eq!(std::fs::read_dir(&workspace).unwrap().count(), 0);
         let rows = sqlx::query("SELECT id,media_type,inline_context,content_hash FROM attachments WHERE session_id='s' ORDER BY id").fetch_all(&db).await.unwrap();
         assert!(turn_attachment(&rows[0], &[]).is_err());
@@ -187,6 +210,7 @@ mod tests {
         );
         std::fs::write(input["path"].as_str().unwrap(), b"changed").unwrap();
         assert!(turn_attachment(&rows[0], &["image.input".into()]).is_err());
+        assert!(preview(&db, "s", &rows[0].get::<String,_>("id")).await.is_err());
         let bad = ImageInput {
             media_type: "image/png".into(),
             data: STANDARD.encode(b"not an image"),

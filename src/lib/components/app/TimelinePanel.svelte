@@ -1,4 +1,6 @@
 <script lang="ts">
+  import { AttachmentList } from '$lib/ui-kit';
+  import { splitMessageAttachments } from '../../../../packages/presentation-workbench/message-attachments.js';
   import { parseSubagent, subagentStatusLabels } from '$lib/app/subagents';
   import { SubagentCard } from '$lib/ui-kit';
   import { tick } from 'svelte';
@@ -50,6 +52,7 @@
     selectedSessionArchiving: boolean;
     busy: boolean;
     attachments: ContextAttachment[];
+    attachmentPreviews?: Record<string, string | null>;
     executionProfile: SessionExecutionProfile | null;
     modelConfiguration: ModelConfigurationState;
     modelCatalog: SessionModelCatalog | null;
@@ -117,7 +120,7 @@
     sessionRunning,
     selectedSessionArchiving,
     busy,
-    attachments,
+    attachments, attachmentPreviews = {},
     executionProfile,
     modelConfiguration,
     modelCatalog,
@@ -379,8 +382,10 @@
                   <pre class:diff-content={isDiffContent(item.content)}>{item.content || '…'}</pre>
                 </details>
               {:else}
-                {@const message = item.role === 'user' ? splitSessionReferences(item.content) : { body: item.content, references: [] }}
-                <div class="entry-content">{#if message.body}<MarkdownContent content={message.body} />{:else if !message.references.length}…{/if}</div>
+                {@const attached = item.role === 'user' ? splitMessageAttachments(item.content, attachments) : { body:item.content, attachments:[] }}
+                {@const message = item.role === 'user' ? splitSessionReferences(attached.body) : { body: item.content, references: [] }}
+                <div class="entry-content">{#if message.body}<MarkdownContent content={message.body} />{:else if !message.references.length && !attached.attachments.length}…{/if}</div>
+                <AttachmentList items={attached.attachments} previews={attachmentPreviews} />
                 {#each message.references as reference, index (`${reference.id}-${index}`)}
                   <details class="tool-output">
                     <summary>引用会话 · {reference.title}</summary>
@@ -490,6 +495,7 @@
             {/if}
             <Button variant="ghost" size="sm" onclick={() => onRemoveQueuedMessage(item.id)} disabled={busy || sessionArchived || selectedSessionArchiving || item.status === 'sending'}>删除</Button>
           </div>
+          <AttachmentList items={splitMessageAttachments(item.text, attachments).attachments} previews={attachmentPreviews} />
           {#if item.error}<div role="status">{item.error}</div>{/if}
         {/each}
       {:else}
@@ -526,6 +532,7 @@
     selectedSessionArchiving={selectedSessionArchiving}
     busy={busy}
     attachments={attachments}
+    {attachmentPreviews}
     executionProfile={executionProfile}
     {modelConfiguration}
     modelCatalog={modelCatalog}

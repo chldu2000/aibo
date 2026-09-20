@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { AttachmentList } from '$lib/ui-kit';
   import { clipboardImageFiles } from '$lib/app/clipboard-images';
   import { tick } from 'svelte';
   import { sessionControlOptions, selectedSessionControls } from '$lib/app/session-access-profile';
@@ -23,6 +24,7 @@
     selectedSessionArchiving: boolean;
     busy: boolean;
     attachments: ContextAttachment[];
+    attachmentPreviews?: Record<string, string | null>;
     executionProfile: SessionExecutionProfile | null;
     modelConfiguration: ModelConfigurationState;
     modelCatalog: SessionModelCatalog | null;
@@ -60,7 +62,7 @@
     sessionRunning,
     selectedSessionArchiving,
     busy,
-    attachments,
+    attachments, attachmentPreviews = {},
     executionProfile,
     modelConfiguration,
     modelCatalog,
@@ -224,9 +226,7 @@
         : reasoningEffort === selectedReasoningEffort);
   }
 
-  function attachmentName(path: string): string {
-    return path.split(/[\\/]/).filter(Boolean).at(-1) ?? path;
-  }
+
 
   function formatBytes(bytes: number): string {
     if (bytes < 1024) return `${bytes} B`;
@@ -283,25 +283,7 @@
 <Card as="form" class="composer" data-ui-component="composer" onsubmit={(event) => { event.preventDefault(); onSend(); }}>
   <div class="composer-body">
     {#if pendingAttachments.length > 0}
-      <div class="composer-attachments" aria-label="上下文附件">
-        {#each pendingAttachments as attachment (attachment.id)}
-          <span class="composer-attachment" title={attachment.path}>
-            <Icon name="folder" size={12} />
-            <span>{(attachment.mediaType === 'application/vnd.aibo.session-reference+json' ? attachment.path : attachmentName(attachment.path))}</span>
-            <Button
-              variant="toolbar"
-              size="icon"
-              type="button"
-              class="composer-attachment-remove"
-              aria-label={`移除附件 ${(attachment.mediaType === 'application/vnd.aibo.session-reference+json' ? attachment.path : attachmentName(attachment.path))}`}
-              onclick={() => onRemoveAttachment(attachment.id)}
-              disabled={busy}
-            >
-              <Icon name="close" size={11} />
-            </Button>
-          </span>
-        {/each}
-      </div>
+      <AttachmentList items={pendingAttachments} previews={attachmentPreviews} onRemove={onRemoveAttachment} disabled={busy} />
       <small class="composer-context-summary">
         上下文 · {pendingAttachments.length} 项 · 约 {formatBytes(pendingAttachmentBytes)}
       </small>

@@ -19,7 +19,7 @@ export async function preparePresentationSandbox(
   onIntent: (intent: PresentationIntent) => void,
   onFailure: (error: Error) => void,
   signal?: AbortSignal,
-  options: { onPasteImages?: (files: File[]) => void; viewState?: ReturnType<typeof createPresentationViewStateStore>; localInputActions?: readonly string[] | ((input: PresentationInput) => readonly string[]); onRecover?: () => void; allowInheritance?: boolean; onInheritanceChange?: (inherited: boolean) => void; decorative?: boolean } = {},
+  options: { readAttachmentPreview?: (sessionId: string, id: string) => Promise<string>; onPasteImages?: (files: File[]) => void; viewState?: ReturnType<typeof createPresentationViewStateStore>; localInputActions?: readonly string[] | ((input: PresentationInput) => readonly string[]); onRecover?: () => void; allowInheritance?: boolean; onInheritanceChange?: (inherited: boolean) => void; decorative?: boolean } = {},
 ): Promise<MountedSandbox> {
   const verified = await verifyPresentationPackage(JSON.stringify(installed.release.manifest), async path => {
     const value = installed.resources[path];
@@ -114,6 +114,17 @@ export async function preparePresentationSandbox(
     else if(data.type==='view-state'&&active&&data.context?.workspaceId===input.context.workspaceId&&data.context?.sessionId===input.context.sessionId&&data.context?.revision===input.context.revision){options.viewState?.write(input.context,data.state);}
     else if (data.type === 'recovery' && active) {
       if (options.onRecover) options.onRecover(); else fail('presentation_recovery_requested');
+    }
+    else if (data.type === 'attachment-preview') {
+      const sessionId = input.context.sessionId;
+      const conversation = (input.data as { conversation?: { attachments?: { id: string; sessionId: string; mediaType: string }[] } } | null)?.conversation;
+      if (!sessionId || data.context?.sessionId !== sessionId || data.context?.workspaceId !== input.context.workspaceId
+        || !conversation?.attachments?.some(item => item.id === data.id && item.sessionId === sessionId && item.mediaType.startsWith('image/'))) return;
+      const scope = JSON.stringify([input.context.workspaceId, sessionId]);
+      void options.readAttachmentPreview?.(sessionId, data.id).then(url => reply(url), () => reply(null));
+      function reply(url: string | null) {
+        if (JSON.stringify([input.context.workspaceId, input.context.sessionId]) === scope) channel.port1.postMessage({ type:'attachment-preview', id:data.id, scope, url });
+      }
     }
     else if (data.type === 'clipboard-images' && active && !suspended && !target.closest('[inert],[hidden]')) {
       const actions = (input.data as { conversationActions?: { operation: string; token: string }[] } | null)?.conversationActions;

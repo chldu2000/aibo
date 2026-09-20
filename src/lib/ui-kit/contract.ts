@@ -1,3 +1,9 @@
+export type UiAttachmentListProps = {
+ items: { id: string; path: string; mediaType: string }[];
+ previews?: Record<string, string | null>;
+ onRemove?: (id: string) => void;
+ disabled?: boolean;
+};
 import type { AgentSettingsSnapshot, AgentSettingValue } from '../../../packages/plugin-protocol/src/settings';
 import type { PresentationProps } from './presentation-props';
 import type { Component, Snippet } from 'svelte';
@@ -168,6 +174,7 @@ export type UiSubagentDialogProps = {
  * executionProfile.sessionControls; Agent names select branding only. */
 export type UiKitAdapter = {
   SubagentCard: Component<UiSubagentCardProps>;
+  AttachmentList: Component<UiAttachmentListProps>;
   SubagentDialog: Component<UiSubagentDialogProps>;
   GoalBar: Component<UiGoalBarProps>;
   AgentSettingsForm: Component<UiAgentSettingsFormProps>;

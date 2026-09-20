@@ -577,3 +577,9 @@ skin owns queue persistence, delivery, attachment identity or uncertain recovery
 用内置品牌枚举过滤；`AgentCommand.insertionText` 定义需要插入的文本（例如技能的
 `$name `），未提供时使用 `/name `。工作区远端会话目录使用
 `aibo.session.catalog`，聚合支持该契约的可用插件，不固定选择 Codex。
+
+附件由 `UiKitAdapter.AttachmentList` 渲染，接收文件名、类型、预览和可选移除回调。
+输入框只展示未发送附件；用户消息通过文本中持久化的附件 ID 展示对应文件，
+不能按 turnId 批量关联（插话可能共用轮次）。预览缓存属于当前会话，切换后丢弃
+迟到响应；预览失败仍保留文件名称。读取入口仅接收会话和附件 ID，校验所有权、
+工作区边界、格式、大小及哈希，不接受前端提供的文件路径。

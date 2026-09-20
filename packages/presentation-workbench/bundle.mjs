@@ -1,7 +1,7 @@
 import {readFile} from 'node:fs/promises';
 /** Bundle this package's fixed, dependency-free modules without executing their source. */
 export async function workbenchSource(){
- const modules=['tree','metadata','markdown','rich-text','timeline-model','session-references','timeline','navigation','conversation','git','inspector','capability','workbench'];
+ const modules=['tree','message-attachments','metadata','markdown','rich-text','timeline-model','session-references','timeline','navigation','conversation','git','inspector','capability','workbench'];
  let source='self.aiboWorkbench=(()=>{const modules={};\n';
  for(const name of modules){
   let code=await readFile(new URL(name+'.js',import.meta.url),'utf8');

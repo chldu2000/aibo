@@ -31,3 +31,5 @@ export { default as GoalBar } from './runtime/GoalBar.svelte';
 export { default as SubagentCard } from './runtime/SubagentCard.svelte';
 
 export { default as SubagentDialog } from './runtime/SubagentDialog.svelte';
+
+export { default as AttachmentList } from './runtime/AttachmentList.svelte';

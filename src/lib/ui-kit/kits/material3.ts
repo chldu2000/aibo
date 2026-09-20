@@ -1,3 +1,4 @@
+import AttachmentList from './shared/AttachmentList.svelte';
 import ModelContextSelect from './material3/ModelContextSelect.svelte';
 import SubagentDialog from './material3/SubagentDialog.svelte';
 import SubagentCard from './material3/SubagentCard.svelte';
@@ -31,6 +32,7 @@ import metadata from '../../../../packages/presentation-material3/themes.json';
 export const material3UiKit: UiKitAdapter = {
   SubagentDialog,
   SubagentCard,
+  AttachmentList,
   GoalBar,
   HostPanel,
   ManagementCenter,
