@@ -7,7 +7,7 @@ import path from 'node:path';
 const pluginId = 'dev.aibo.codex';
 const pluginVersion = '2.0.9';
 
-export const capabilities = ['session.create', 'session.resume', 'session.close', 'turn.send', 'turn.cancel', 'queue.manage', 'stream.text', 'goal.manage', 'goal.pause', 'goal.resume', 'model.select', 'model.reasoning', 'model.service-tier', 'model.context-window', 'skill.list', 'approval.respond', 'user-input.respond', 'session.snapshot', 'session.fork'];
+export const capabilities = ['session.create', 'session.resume', 'session.close', 'turn.send', 'image.input', 'turn.cancel', 'queue.manage', 'stream.text', 'goal.manage', 'goal.pause', 'goal.resume', 'model.select', 'model.reasoning', 'model.service-tier', 'model.context-window', 'skill.list', 'approval.respond', 'user-input.respond', 'session.snapshot', 'session.fork'];
 let child = null;
 let childLines = null;
 let nextId = 1;
@@ -580,7 +580,7 @@ export async function execute(action, p) {
     if (session.turn || session.changingContext) fail('busy');
     const turn = newTurn(p);
     session.turn = turn;
-    const turnParams = { threadId: session.threadId, input: [{ type: 'text', text: p.input.text }], summary: 'auto' };
+    const turnParams = { threadId: session.threadId, input: [{ type: 'text', text: p.input.text }, ...(p.input.attachments ?? []).filter(item => item.type === 'image').map(item => ({type:'localImage',path:item.path}))], summary: 'auto' };
     if (session.model) turnParams.model = session.model;
     if (session.reasoningEffort) turnParams.reasoningEffort = session.reasoningEffort;
     if (session.serviceTier) turnParams.serviceTier = session.serviceTier;
@@ -640,7 +640,7 @@ export async function execute(action, p) {
     const turn = session.turn;
     if (!turn?.nativeId) fail('no_active_turn', 'no_active_turn');
     try {
-      const result = await rpc('turn/steer', {threadId:session.threadId, expectedTurnId:turn.nativeId, input:[{type:'text',text:p.input.message}]});
+      const result = await rpc('turn/steer', {threadId:session.threadId, expectedTurnId:turn.nativeId, input:[{type:'text',text:p.input.message},...(p.input.attachments??[]).filter(item=>item.type==='image').map(item=>({type:'localImage',path:item.path}))]});
       return {accepted:true,turnId:result.turnId};
     } catch (error) {
       if (error.nativeRejected) {

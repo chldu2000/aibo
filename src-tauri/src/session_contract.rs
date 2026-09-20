@@ -73,7 +73,7 @@ pub(crate) fn negotiate(manifest: &Value, contribution: &str, claimed: &Value, h
         let supported = match *name {
             "session.create" | "session.resume" => standard("aibo.session.open"),
             "session.close" => standard("aibo.session.close"),
-            "turn.send" | "stream.text" => standard("aibo.session.turn"),
+            "turn.send" | "stream.text" | "image.input" => standard("aibo.session.turn"),
             "turn.cancel" => standard("aibo.session.cancel"),
             "goal.resume" => claims.contains(&"goal.manage") && optional("goal.manage") && standard("aibo.session.goal.resume"),
             "goal.pause" => claims.contains(&"goal.manage") && optional("goal.manage")
@@ -98,9 +98,9 @@ mod tests {
     fn third_party_features_require_claims_contracts_and_runtime_agreement() {
         let source = include_str!("../capability-plugins/pi/plugin.json").replace("dev.aibo.pi", "org.example.agent");
         let manifest: Value = serde_json::from_str(&source).unwrap();
-        let claims = serde_json::json!(["session.tree","session.timeline","compaction.run","model.select","session.fork","permissions.nativeControls","unknown"]);
+        let claims = serde_json::json!(["session.tree","session.timeline","compaction.run","model.select","session.fork","permissions.nativeControls","unknown","image.input"]);
         let runtime = handshake(&manifest);
-        assert_eq!(negotiate(&manifest, "org.example.agent.agent", &claims, &runtime), ["session.tree","session.timeline","compaction.run","model.select"]);
+        assert_eq!(negotiate(&manifest, "org.example.agent.agent", &claims, &runtime), ["session.tree","session.timeline","compaction.run","model.select","image.input"]);
         assert!(negotiate(&manifest, "foreign", &claims, &runtime).is_empty());
         assert!(negotiate(&manifest, "org.example.agent.agent", &claims, &serde_json::json!([])).is_empty());
         assert!(negotiate(&manifest, "org.example.agent.agent", &serde_json::json!([]), &runtime).is_empty());

@@ -1,3 +1,4 @@
+import { readFile } from 'node:fs/promises';
 import { pathToFileURL } from 'node:url';
 const sdkModule = await import(process.env.AIBO_PI_SDK_MODULE
   ? pathToFileURL(process.env.AIBO_PI_SDK_MODULE).href
@@ -14,7 +15,7 @@ const {
 } = sdkModule;
 
 
-export const capabilities = ['session.create', 'session.resume', 'session.close', 'session.reload', 'turn.send', 'turn.cancel', 'stream.text', 'model.select', 'model.reasoning', 'model.context-window', 'command.list', 'skill.list', 'approval.respond', 'queue.manage', 'compaction.run', 'session.tree', 'session.timeline', 'ext.dev.aibo.pi.usage', 'ext.dev.aibo.pi.retry', 'ext.dev.aibo.pi.extension'];
+export const capabilities = ['session.create', 'session.resume', 'session.close', 'session.reload', 'turn.send', 'image.input', 'turn.cancel', 'stream.text', 'model.select', 'model.reasoning', 'model.context-window', 'command.list', 'skill.list', 'approval.respond', 'queue.manage', 'compaction.run', 'session.tree', 'session.timeline', 'ext.dev.aibo.pi.usage', 'ext.dev.aibo.pi.retry', 'ext.dev.aibo.pi.extension'];
 let provider = null;
 let session = null;
 let publish;
@@ -295,7 +296,7 @@ async function sdkRequest(startedProvider, type, fields) {
     else await sdkSetContext(startedProvider, session.contextWindow);
   }
   if (type === 'prompt') {
-    void sdkSession.prompt(String(fields.message ?? '')).catch((error) => {
+    void sdkSession.prompt(String(fields.message ?? ''), { images: fields.images }).catch((error) => {
       onPi(sdkEvent({ type: 'agent_error', error: error.message }), startedProvider);
       onPi({ type: 'agent_settled' }, startedProvider);
     });
@@ -325,7 +326,7 @@ async function sdkRequest(startedProvider, type, fields) {
   if (type === 'get_commands') return { success: true, data: { commands: sdkCommands(sdkSession) } };
   if (type === 'get_skills') return { success: true, data: { skills: sdkSkills(sdkSession) } };
   if (type === 'steer' && (!session?.turn || !sdkSession.isStreaming)) fail('no_active_turn', 'no_active_turn');
-  if (type === 'steer' || type === 'follow_up') { await sdkSession[type === 'steer' ? 'steer' : 'followUp'](fields.message); return { success: true, data: { queued: fields.message } }; }
+  if (type === 'steer' || type === 'follow_up') { await sdkSession[type === 'steer' ? 'steer' : 'followUp'](fields.message, fields.images); return { success: true, data: { queued: fields.message } }; }
   if (type === 'clear_queue') { const queue = sdkSession.clearQueue(); return { success: true, data: queue }; }
   if (type === 'compact') return { success: true, data: { ...(await sdkSession.compact(fields.customInstructions || undefined)) } };
   if (type === 'get_tree') return { success: true, data: { tree: sdkTree(startedProvider), leafId: startedProvider.manager.getLeafId(), branch: sdkBranch(startedProvider) } };
@@ -669,7 +670,14 @@ export async function execute(action, p) {
       itemOrder: [], currentItem: null, agentMessages: [], toolItems: new Map() };
     session.turn = turn;
     try {
-      await dispatch('prompt', { message: p.input.text });
+      let images;
+      if (p.input.attachments?.some(item => item.type === 'image')) {
+        turn.loadingImages = true;
+        images = await imageInputs(p.input.attachments);
+        turn.loadingImages = false;
+        if (session.turn !== turn) return { accepted: true };
+      }
+      await dispatch('prompt', { message: p.input.text, images });
     } catch (error) {
       if (session.turn === turn) { session.turn = null;  }
       throw error;
@@ -678,6 +686,11 @@ export async function execute(action, p) {
   }
   if (action === 'cancel') {
     if (session.turn?.id === p.turnId) {
+      if (session.turn.loadingImages) {
+        emit('turn.completed', { status: 'interrupted' }, session.turn.id, { requestId: session.turn.requestId, itemId: null });
+        session.turn = null;
+        return { accepted: true };
+      }
       try {
         await dispatch('abort');
       } catch (error) {
@@ -722,8 +735,8 @@ export async function execute(action, p) {
     else if (p.operationId === 'ext.dev.aibo.pi.reload') result = await dispatch('reload');
     else if (p.operationId === 'ext.dev.aibo.pi.queue') {
       if (p.input?.action === 'clear') result = await dispatch('clear_queue');
-      else if (p.input?.action === 'steer' && p.input.message) result = await dispatch('steer', { message: p.input.message });
-      else if (p.input?.action === 'followUp' && p.input.message) result = await dispatch('follow_up', { message: p.input.message });
+      else if (p.input?.action === 'steer' && p.input.message) result = await dispatch('steer', { message: p.input.message, images: await imageInputs(p.input.attachments) });
+      else if (p.input?.action === 'followUp' && p.input.message) result = await dispatch('follow_up', { message: p.input.message, images: await imageInputs(p.input.attachments) });
       else fail('invalid_request', 'message is required when adding to the queue');
     } else if (p.operationId === 'ext.dev.aibo.pi.compact') {
       result = await dispatch('compact', { customInstructions: p.input?.instructions || undefined });
@@ -747,3 +760,7 @@ export async function execute(action, p) {
 }
 export const stop = stopPi;
 export const snapshot = () => session ? recovery() : null;
+
+async function imageInputs(attachments = []) {
+  return Promise.all(attachments.filter(item => item.type === 'image').map(async item => ({ type:'image', mimeType:item.mimeType, data:(await readFile(item.path)).toString('base64') })));
+}

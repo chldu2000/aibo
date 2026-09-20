@@ -70,14 +70,14 @@ export function createMessageController(context: MessageControllerContext) {
   function unsupportedAttachmentPaths(): string[] {
     return context
       .getAttachments()
-      .filter((attachment) => attachment.turnId === null && attachment.mediaType.startsWith('image/'))
+      .filter((attachment) => attachment.sessionId === context.getSelectedSession()?.id && attachment.turnId === null && attachment.mediaType.startsWith('image/') && attachment.sendStrategy !== 'inline')
       .map((attachment) => attachment.path);
   }
 
   async function sendPromptOnce(): Promise<void> {
     const draftText = context.getComposerText();
     const input = draftText.trim();
-    if (!input) return;
+    if (!input && !context.getAttachments().some(item => item.sessionId === context.getSelectedSession()?.id && item.turnId === null && item.mediaType.startsWith('image/') && item.sendStrategy === 'inline')) return;
     const workspace = context.getSelectedWorkspace();
     if (!workspace) {
       context.setErrorMessage('请先选择一个工作区。');
@@ -188,7 +188,7 @@ export function createMessageController(context: MessageControllerContext) {
     const draftText = context.getComposerText();
     const input = draftText.trim();
     const session = context.getSelectedSession();
-    if (!input || !session || !session.capabilities.includes('queue.manage') || !context.getDesktop()) return;
+    if ((!input && !context.getAttachments().some(item => item.sessionId === session?.id && item.turnId === null && item.mediaType.startsWith('image/') && item.sendStrategy === 'inline')) || !session || !session.capabilities.includes('queue.manage') || !context.getDesktop()) return;
     if (session.archived || context.getSelectedSessionArchiving()) return;
     if (mode === 'steer' && context.getSessionRunning() && !session.capabilities.includes('queue.steer')) return;
     let requestInput: string;

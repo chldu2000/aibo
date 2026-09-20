@@ -581,3 +581,6 @@ export const getSubagentHistory = (sessionId: string, agentId: string): Promise<
 
 export const listWorkspaceGitRepositories = (workspaceId: string, scanBudget = 2000): Promise<import('../../packages/plugin-protocol/src/presentation-git').GitRepositoryDiscovery> =>
   invoke('list_workspace_git_repositories', { workspaceId, scanBudget });
+
+export const registerSessionClipboardImages = (sessionId: string, images: import('./app/clipboard-images').ClipboardImage[]): Promise<ContextAttachment[]> =>
+  invoke('register_session_clipboard_images', { sessionId, images });

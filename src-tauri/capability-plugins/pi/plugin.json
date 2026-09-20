@@ -1,7 +1,7 @@
 {
   "schema": "aibo.plugin-manifest/v2",
   "pluginId": "dev.aibo.pi",
-  "version": "2.0.8",
+  "version": "2.0.9",
   "displayName": "Pi",
   "description": "Pi session capabilities.",
   "hostSdk": {
@@ -619,6 +619,13 @@
               "message": {
                 "type": "string",
                 "minLength": 1
+              },
+              "attachments": {
+                "type": "array",
+                "maxItems": 128,
+                "items": {
+                  "type": "object"
+                }
               }
             }
           },

@@ -158,7 +158,9 @@ class FakeSession {
     for (const listener of this.listeners) listener(event);
   }
 
-  async prompt(text) {
+  async prompt(text, options = {}) {
+    if (text === 'host clipboard image fixture' && (options.images?.length !== 1 || options.images[0].mimeType !== 'image/png' || options.images[0].data !== 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+aWZkAAAAASUVORK5CYII=')) throw Error('Host image attachment did not reach Pi');
+    if (text === 'clipboard image fixture' && (options.images?.length !== 1 || options.images[0].type !== 'image' || options.images[0].mimeType !== 'image/png' || options.images[0].data !== process.env.AIBO_FAKE_IMAGE_DATA)) throw Error('Native image input missing or changed');
     if (text.startsWith('context:') && this.model.contextWindow !== Number(text.slice(8))) throw Error('Running Pi model context mismatch');
     this.isStreaming = true;
     this.abortRequested = false;

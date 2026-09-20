@@ -199,6 +199,15 @@
         else element.setAttribute(name, attribute);
         if (name === 'value' && 'value' in element) element.value = String(attribute);
       }
+      if (value.tag === 'textarea' && value.events?.input && current?.data?.conversationActions?.some(action => action.operation === 'draft' && action.token === value.events.input)) {
+        element.addEventListener('paste', event => {
+          if (!event.isTrusted || !active || suspended || element.disabled || element.readOnly) return;
+          const files = Array.from(event.clipboardData?.items ?? []).filter(item => item.kind === 'file' && item.type.startsWith('image/')).map(item => item.getAsFile()).filter(Boolean);
+          if (!files.length) return;
+          event.preventDefault();
+          send({type:'clipboard-images', context, token:value.events.input, files});
+        });
+      }
       if (value.events) for (const [event, id] of Object.entries(value.events)) {
         if (!eventNames.has(event) || typeof id !== 'string' || !id || id.length > 256) throw Error('invalid_presentation_event');
         element.addEventListener(event, e => {

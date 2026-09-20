@@ -897,3 +897,23 @@ async fn third_party_session_negotiates_tree_timeline_and_mediated_access() {
     db.close().await;
     fs::remove_dir_all(root).unwrap();
 }
+
+#[tokio::test]
+async fn clipboard_image_reaches_the_negotiated_provider_from_host_storage() {
+    let (root, db, broker, host, session) = concurrent_session_fixture().await;
+    assert!(session.capabilities.contains(&"image.input".into()));
+    let image = serde_json::from_value(serde_json::json!({
+        "mediaType":"image/png",
+        "data":"iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+aWZkAAAAASUVORK5CYII="
+    })).unwrap();
+    let attachments = crate::clipboard_images::register(&db, &root.join("data"), &session.id, vec![image]).await.unwrap();
+    host.send_from("main", &session.id, "host clipboard image fixture", None).await.unwrap();
+    wait_for_turn(&host, &session.id).await;
+    let status: String = sqlx::query_scalar("SELECT status FROM turns WHERE session_id=?").bind(&session.id).fetch_one(&db).await.unwrap();
+    assert_eq!(status, "completed", "the fixture rejects absent or changed native image bytes");
+    let turn: Option<String> = sqlx::query_scalar("SELECT turn_id FROM attachments WHERE id=?").bind(&attachments[0].id).fetch_one(&db).await.unwrap();
+    assert!(turn.is_some());
+    broker.stop_session(&session.id).await.unwrap();
+    db.close().await;
+    fs::remove_dir_all(root).unwrap();
+}

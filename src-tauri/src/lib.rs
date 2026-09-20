@@ -8,6 +8,7 @@ mod turn_restore;
 mod execution_history;
 mod session_history;
 mod session_context;
+mod clipboard_images;
 mod capability_history;
 mod workspace_git_approval;
 mod workspace_writes;
@@ -3124,6 +3125,11 @@ async fn reference_session(session_id: String, source_session_id: String, state:
 }
 
 #[tauri::command]
+async fn register_session_clipboard_images(session_id: String, images: Vec<clipboard_images::ImageInput>, state: State<'_, AppState>) -> Result<Vec<ContextAttachment>, CoreError> {
+    clipboard_images::register(&state.db, &state.data_dir, &session_id, images).await
+}
+
+#[tauri::command]
 async fn register_session_attachments(
     session_id: String,
     paths: Vec<String>,
@@ -3243,11 +3249,13 @@ async fn remove_session_attachment(
     state: State<'_, AppState>,
 ) -> Result<(), CoreError> {
     session_by_id(&state.db, &session_id).await?;
-    sqlx::query("DELETE FROM attachments WHERE id = ? AND session_id = ? AND queued_message_id IS NULL")
-        .bind(attachment_id)
-        .bind(session_id)
-        .execute(&state.db)
-        .await?;
+    let deleted = sqlx::query("DELETE FROM attachments WHERE id = ? AND session_id = ? AND turn_id IS NULL AND queued_message_id IS NULL RETURNING media_type, inline_context")
+        .bind(&attachment_id).bind(&session_id).fetch_optional(&state.db).await?;
+    if let Some(row) = deleted {
+        if row.get::<String,_>("media_type").starts_with("image/") {
+            if let Some(context) = row.get::<Option<String>,_>("inline_context") { clipboard_images::remove_file(&state.data_dir, &context); }
+        }
+    }
     Ok(())
 }
 
@@ -4471,6 +4479,7 @@ pub fn run() {
             apply_git_hunk_action,
             apply_git_file_action,
             register_session_attachments,
+            register_session_clipboard_images,
             reference_session,
             list_session_attachments,
             remove_session_attachment,

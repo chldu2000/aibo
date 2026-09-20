@@ -137,12 +137,12 @@ impl SessionHost {
         let session = crate::session_by_id(&self.db, session_id).await.map_err(|e|e.to_string())?;
         let workspace = crate::workspace_by_id(&self.db, &session.workspace_id).await.map_err(|e|e.to_string())?;
         let root = std::fs::canonicalize(&workspace.path).map_err(|e|e.to_string())?;
-        let rows = sqlx::query("SELECT path,content_hash,size,media_type,inline_context FROM attachments WHERE session_id=? AND queued_message_id=?")
+        let rows = sqlx::query("SELECT id,path,content_hash,size,media_type,inline_context FROM attachments WHERE session_id=? AND queued_message_id=?")
             .bind(session_id).bind(id).fetch_all(&self.db).await.map_err(|e|e.to_string())?;
         for row in rows {
+            if row.get::<String,_>("media_type").starts_with("image/") { crate::clipboard_images::turn_attachment(&row, &session.capabilities)?; continue; }
             if row.get::<Option<String>,_>("inline_context").is_some() { continue; }
             let path: String = row.get("path");
-            if row.get::<String,_>("media_type").starts_with("image/") { return Err(format!("当前 Agent 不支持图片上下文：{path}")); }
             let target = crate::workspace_guard::canonicalize_target(&root, Path::new(&path))?;
             let metadata = std::fs::metadata(&target).map_err(|e|format!("附件不可用：{path}: {e}"))?;
             if row.get::<Option<i64>,_>("size").is_some_and(|size|metadata.is_dir() || size != metadata.len() as i64) { return Err(format!("附件大小已变化：{path}")); }
@@ -189,9 +189,16 @@ impl SessionHost {
                 return Err("capability_unsupported: queue.steer".into());
             }
             if run.cancel.load(Ordering::Acquire) { return Err("busy: session is stopping".into()); }
+            let rows = sqlx::query("SELECT id,media_type,inline_context,content_hash FROM attachments WHERE session_id=? AND queued_message_id=?")
+                .bind(session_id).bind(id).fetch_all(&self.db).await.map_err(|e|e.to_string())?;
+            let attachments = rows.iter().map(|row|crate::clipboard_images::turn_attachment(row,&session.capabilities)).collect::<Result<Vec<_>,_>>()?;
             sqlx::query("UPDATE queued_messages SET status='sending',delivery='steer',turn_id=?,error=NULL WHERE id=?")
                 .bind(&run.request_id).bind(id).execute(&self.db).await.map_err(|e|e.to_string())?;
-            let result = self.invoke_provider_capability(caller, session_id, "queue.manage", json!({"action":"steer","message":text})).await;
+            let mut input = json!({"action":"steer","message":text});
+            if attachments.iter().any(|attachment| attachment["type"] == "image") {
+                input["attachments"] = json!(attachments);
+            }
+            let result = self.invoke_provider_capability(caller, session_id, "queue.manage", input).await;
             match result {
                 Ok(_) => {
                     let now = crate::now_iso();

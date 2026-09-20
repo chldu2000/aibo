@@ -234,3 +234,13 @@ test('a failed native interrupt reports failure while retaining pause and the li
   assert.equal(goal.status,'paused');
   assert.equal(f.events.some(e=>e.event.turnId==='pause-failure'&&e.event.type==='turn.completed'),false,'failed interrupt must not fabricate terminal execution');
 });
+
+for (const provider of ['codex','pi']) test(`${provider} sends clipboard image bytes through its native image input`,async t=>{
+  const {writeFile}=await import('node:fs/promises');
+  const data='iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+aWZkAAAAASUVORK5CYII=';
+  const f=await sessionCapability(t,provider,{AIBO_FAKE_IMAGE_DATA:data});
+  const path=f.data+'/image.png';await writeFile(path,Buffer.from(data,'base64'));
+  const opened=await f.invoke('aibo.session.open',{mode:'create',executionProfile:profile});
+  assert.ok(opened.capabilities.includes('image.input'));
+  assert.equal((await f.invoke('aibo.session.turn',{text:'clipboard image fixture',attachments:[{attachmentId:'image',type:'image',path,mimeType:'image/png'}]},'image-turn')).status,'completed');
+});

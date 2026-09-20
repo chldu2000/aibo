@@ -21,6 +21,7 @@ export function conversationActions(state: PresentationConversation): Spec[] {
   if (!session) return entries;
   const bound = Boolean(session.pluginInstallationId);
   const available = bound && !session.archived && !state.archiving && !state.busy;
+  const hasImage = state.attachments.some(item => item.sessionId === session.id && item.turnId === null && item.sendStrategy === 'inline' && item.mediaType.startsWith('image/'));
   const capable = (name: string) => bound && session.capabilities.includes(name);
   if (available && (!state.running || capable('queue.manage'))) {
     add('draft', [], 'input'); add('addAttachments'); add('addDirectory');
@@ -35,7 +36,7 @@ export function conversationActions(state: PresentationConversation): Spec[] {
   }
   if (available && !state.running) {
     if (!state.goalBusy && capable('goal.manage') && state.goal && state.goal.status !== 'cleared') add('clearGoal');
-    if (state.draft.trim()) add('send');
+    if (state.draft.trim() || hasImage) add('send');
     if (state.retryPrompt) add('retry');
     if (!state.modelCatalogLoading) add('loadModels');
     if (capable('model.select')) for (const model of state.modelCatalog?.models ?? []) {
@@ -60,7 +61,7 @@ export function conversationActions(state: PresentationConversation): Spec[] {
   if (bound && state.running && !state.busy && !state.archiving) {
     add('stop');
     if (capable('queue.manage')) {
-      if (state.draft.trim()) { if (capable('queue.steer')) add('queueSteer'); add('queueFollowUp'); }
+      if (state.draft.trim() || hasImage) { if (capable('queue.steer')) add('queueSteer'); add('queueFollowUp'); }
 
     }
   }

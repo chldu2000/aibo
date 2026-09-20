@@ -64,6 +64,7 @@
     composerText?: string;
     composerDraftFailed: boolean;
     onAddAttachments: () => void;
+    onPasteImages: (files: File[]) => void;
     onAddDirectory: () => void;
     onRemoveAttachment: (id: string) => void;
     onLoadOlderTimeline: () => void;
@@ -150,7 +151,7 @@
     onSelectServiceTier,
     onSelectContextWindow,
     onCompact,
-    onAddAttachments,
+    onAddAttachments, onPasteImages,
     onAddDirectory,
     onRemoveAttachment,
     onComposerInput,
@@ -538,6 +539,7 @@
     agentCommandsLoading={agentCommandsLoading}
     bind:text={composerText}
     onAddAttachments={onAddAttachments}
+    onPasteImages={onPasteImages}
     onAddDirectory={onAddDirectory}
     onRemoveAttachment={onRemoveAttachment}
     onSend={onSend}

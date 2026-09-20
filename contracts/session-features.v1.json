@@ -314,6 +314,104 @@
             "capabilities"
           ]
         }
+      },
+      {
+        "inputSchema": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "action"
+          ],
+          "properties": {
+            "action": {
+              "enum": [
+                "steer",
+                "followUp",
+                "clear"
+              ]
+            },
+            "message": {
+              "type": "string",
+              "minLength": 1
+            },
+            "attachments": {
+              "type": "array",
+              "maxItems": 128,
+              "items": {
+                "type": "object"
+              }
+            }
+          }
+        },
+        "outputSchema": {
+          "type": "object",
+          "properties": {
+            "recovery": {
+              "type": [
+                "object",
+                "null"
+              ]
+            },
+            "capabilities": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            }
+          },
+          "required": [
+            "recovery",
+            "capabilities"
+          ]
+        }
+      },
+      {
+        "inputSchema": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "action"
+          ],
+          "properties": {
+            "action": {
+              "enum": [
+                "steer"
+              ]
+            },
+            "message": {
+              "type": "string",
+              "minLength": 1
+            },
+            "attachments": {
+              "type": "array",
+              "maxItems": 128,
+              "items": {
+                "type": "object"
+              }
+            }
+          }
+        },
+        "outputSchema": {
+          "type": "object",
+          "properties": {
+            "recovery": {
+              "type": [
+                "object",
+                "null"
+              ]
+            },
+            "capabilities": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            }
+          },
+          "required": [
+            "recovery",
+            "capabilities"
+          ]
+        }
       }
     ],
     "compaction.run": [

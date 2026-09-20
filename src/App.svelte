@@ -51,6 +51,8 @@
 
   import type { GitRepositoryState } from '../packages/plugin-protocol/src/presentation-git';
   import { repositoryDraftKey, readRepositoryViews, writeRepositoryViews } from '$lib/app/git-repository-state';
+  import { encodeClipboardImages } from '$lib/app/clipboard-images';
+  import { registerSessionClipboardImages } from '$lib/api';
   import { listWorkspaceGitRepositories } from '$lib/api';
   import { readWorkbenchDrafts, writeWorkbenchDrafts, emptyGitPanelState } from '$lib/app/workbench-drafts';
   const draftStorage = { getItem: (key: string) => window.localStorage.getItem(key), setItem: (key: string, value: string) => window.localStorage.setItem(key, value) };
@@ -2444,6 +2446,22 @@
     }
   }
 
+  async function pasteComposerImages(files: File[]) {
+    const session = selectedSession;
+    if (!desktop || !session || session.archived || selectedSessionArchiving || busy) return;
+    busy = true;
+    try {
+      const images = await encodeClipboardImages(files);
+      const registered = await registerSessionClipboardImages(session.id, images);
+      if (selectedSessionId === session.id) {
+        attachments = [...attachments, ...registered];
+        notice = `已添加 ${registered.length} 张图片。`;
+      }
+    } catch (error) {
+      if (selectedSessionId === session.id) errorMessage = toErrorMessage(error);
+    } finally { busy = false; }
+  }
+
   async function registerAttachmentPaths(paths: string[]) {
     const session = selectedSession;
     if (!desktop || !session || session.archived || selectedSessionArchiving) return;
@@ -3698,7 +3716,7 @@
       {/if}
     </HostPanel>
   {/if}
-<PresentationHost hideWhenSuspended={sessionHistoryOpen} onRestore={() => void presentationOperation(() => presentationPackagesController.select(null))} bind:this={presentationHost} active={presentationPackages.active} themeId={presentationPackages.themeId} input={externalInput} suspended={historyOpen || sessionHistoryOpen || capabilityHistoryOpen || settingsOpen || commandPaletteOpen || archiveConfirmationSessionId !== null || piNavigationEntryId !== null} onIntent={externalIntent}>
+<PresentationHost onPasteImages={(files) => void pasteComposerImages(files)} hideWhenSuspended={sessionHistoryOpen} onRestore={() => void presentationOperation(() => presentationPackagesController.select(null))} bind:this={presentationHost} active={presentationPackages.active} themeId={presentationPackages.themeId} input={externalInput} suspended={historyOpen || sessionHistoryOpen || capabilityHistoryOpen || settingsOpen || commandPaletteOpen || archiveConfirmationSessionId !== null || piNavigationEntryId !== null} onIntent={externalIntent}>
 <WorkbenchPresentation hideWhenSuspended={sessionHistoryOpen} onRestore={() => desktop ? presentationPackagesController.select(null) : Promise.resolve()} bind:this={workbenchPresentation} bind:layout={presentationLayout} bind:switching={presentationSwitching} bind:gridElement={workspaceGridElement} navigationWidth={workspaceSidebarWidth} auxiliaryWidth={inspectorWidth} auxiliaryOpen={sidePanelOpen} suspended={historyOpen || sessionHistoryOpen || capabilityHistoryOpen || settingsOpen || commandPaletteOpen || archiveConfirmationSessionId !== null || piNavigationEntryId !== null} windowId={presentationWindowId()} snapshot={{ workspaceId: selectedWorkspaceId, sessionId: selectedSessionId, draft: composerText, navigation: sidePanelView, timelineRevision: timeline.length }}>
 {#snippet navigation(guard)}
     <WorkspaceSidebar
@@ -3822,6 +3840,7 @@
       onComposerInput={guard('onComposerInput', (value) => { composerText = value; handleComposerInput(value); })}
       onSelectWorkspacePath={guard('onSelectWorkspacePath', selectComposerWorkspacePath)}
       onAddAttachments={guard('onAddAttachments', () => void chooseSessionAttachments())}
+      onPasteImages={guard('onPasteImages', (files) => void pasteComposerImages(files))}
       onAddDirectory={guard('onAddDirectory', () => void chooseSessionAttachmentDirectory())}
       onRemoveAttachment={guard('onRemoveAttachment', (attachmentId) => void removeAttachment(attachmentId))}
       onLoadOlderTimeline={guard('onLoadOlderTimeline', loadOlderTimeline)}

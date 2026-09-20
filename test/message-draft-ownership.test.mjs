@@ -88,3 +88,23 @@ test('sending while running queues once even when validation has not finished', 
     assert.equal(consumed,1);
   } finally {await server.close();}
 });
+
+
+test('image-only drafts send and queue registered images without embedding binary data in text', async () => {
+  const server=await createServer({server:{middlewareMode:true,ws:false,watch:null},appType:'custom'});
+  try {
+    const {createMessageController}=await server.ssrLoadModule('/src/lib/app/message-controller.ts');
+    for (const queued of [false,true]) {
+      const session={id:'s',workspaceId:'w',pluginInstallationId:'p',capabilities:['queue.manage'],archived:false};
+      const calls=[];
+      const controller=createMessageController({
+        api:{validateSessionAttachments:async()=>[],sendAgentPrompt:async(id,text)=>{calls.push(text);return session;},invokeAgentCapability:async(id,cap,input)=>{calls.push(input.message);return {}; }},
+        getDesktop:()=>true,getSelectedWorkspace:()=>({id:'w'}),getSelectedSession:()=>session,getSelectedSessionArchiving:()=>false,getSessionRunning:()=>queued,
+        getComposerText:()=>'',getAttachments:()=>[{id:'image',sessionId:'s',turnId:null,path:'clipboard.png',size:68,mediaType:'image/png',sendStrategy:'inline',inlineContext:'private storage metadata'}],
+        consumeDraft(){},setBusy(){},setErrorMessage(error){assert.equal(error,null);},setLastSubmittedPrompt(){},setPromptInFlight(){},getWorkspaceSessionMap:()=>({w:[session]}),setWorkspaceSessionMap(){},refreshTimeline:async()=>{},refreshAttachments:async()=>{},
+      });
+      await controller.sendPrompt();
+      assert.equal(calls.length,1);assert.match(calls[0],/attachment:image/);assert.ok(!calls[0].includes('private storage'));
+    }
+  } finally {await server.close();}
+});

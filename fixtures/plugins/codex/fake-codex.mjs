@@ -75,6 +75,10 @@ input.on('line', (line) => {
     write({method:'item/agentMessage/delta',params:{threadId:params.threadId,turnId:nativeTurnId,itemId:'steered',delta:params.input[0].text}});
   }
   else if (method === 'turn/start') {
+    if (params.input?.[0]?.text === 'clipboard image fixture') {
+      const image=params.input.find(item=>item.type==='localImage');
+      if (!image || readFileSync(image.path).toString('base64') !== process.env.AIBO_FAKE_IMAGE_DATA) { write({id,error:{code:-32600,message:'Native image input missing or changed'}}); return; }
+    }
     if (params.input?.[0]?.text?.startsWith('context:')) {
       const expected = params.input[0].text.slice(8);
       if (!process.argv.includes(`model_context_window=${expected}`)) {write({id,error:{code:-32000,message:'Native process context mismatch'}});return;}

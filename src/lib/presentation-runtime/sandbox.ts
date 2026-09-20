@@ -19,7 +19,7 @@ export async function preparePresentationSandbox(
   onIntent: (intent: PresentationIntent) => void,
   onFailure: (error: Error) => void,
   signal?: AbortSignal,
-  options: { viewState?: ReturnType<typeof createPresentationViewStateStore>; localInputActions?: readonly string[] | ((input: PresentationInput) => readonly string[]); onRecover?: () => void; allowInheritance?: boolean; onInheritanceChange?: (inherited: boolean) => void; decorative?: boolean } = {},
+  options: { onPasteImages?: (files: File[]) => void; viewState?: ReturnType<typeof createPresentationViewStateStore>; localInputActions?: readonly string[] | ((input: PresentationInput) => readonly string[]); onRecover?: () => void; allowInheritance?: boolean; onInheritanceChange?: (inherited: boolean) => void; decorative?: boolean } = {},
 ): Promise<MountedSandbox> {
   const verified = await verifyPresentationPackage(JSON.stringify(installed.release.manifest), async path => {
     const value = installed.resources[path];
@@ -114,6 +114,15 @@ export async function preparePresentationSandbox(
     else if(data.type==='view-state'&&active&&data.context?.workspaceId===input.context.workspaceId&&data.context?.sessionId===input.context.sessionId&&data.context?.revision===input.context.revision){options.viewState?.write(input.context,data.state);}
     else if (data.type === 'recovery' && active) {
       if (options.onRecover) options.onRecover(); else fail('presentation_recovery_requested');
+    }
+    else if (data.type === 'clipboard-images' && active && !suspended && !target.closest('[inert],[hidden]')) {
+      const actions = (input.data as { conversationActions?: { operation: string; token: string }[] } | null)?.conversationActions;
+      if (data.context?.workspaceId !== input.context.workspaceId || data.context?.sessionId !== input.context.sessionId || data.context?.revision !== input.context.revision
+        || !actions?.some(action => action.operation === 'draft' && action.token === data.token)
+        || !Array.isArray(data.files) || !data.files.length || data.files.length > 8
+        || data.files.some((file: unknown) => !(file instanceof File) || file.size > 10 * 1024 * 1024 || !file.type.startsWith('image/'))
+        || data.files.reduce((sum: number, file: File) => sum + file.size, 0) > 20 * 1024 * 1024) return;
+      options.onPasteImages?.(data.files);
     }
     else if (data.type === 'intent' && active && !suspended && !target.closest('[inert],[hidden]')) {
       const intent = data.intent;

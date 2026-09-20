@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { clipboardImageFiles } from '$lib/app/clipboard-images';
   import { tick } from 'svelte';
   import { sessionControlOptions, selectedSessionControls } from '$lib/app/session-access-profile';
   import { commandComposerInsertion } from '$lib/app/agent-commands';
@@ -35,6 +36,7 @@
     agentCommandsLoading: boolean;
     text?: string;
     onAddAttachments: () => void;
+    onPasteImages: (files: File[]) => void;
     onAddDirectory: () => void;
     onRemoveAttachment: (id: string) => void;
     onSend: () => void;
@@ -71,7 +73,7 @@
     agentCommands,
     agentCommandsLoading,
     text = $bindable(''),
-    onAddAttachments,
+    onAddAttachments, onPasteImages,
     onAddDirectory,
     onRemoveAttachment,
     onSend,
@@ -87,6 +89,7 @@
   }: ComposerProps = $props();
 
   const pendingAttachments = $derived(attachments.filter((attachment) => attachment.turnId === null));
+  const hasImage = $derived(pendingAttachments.some(item => item.mediaType.startsWith('image/') && item.sendStrategy === 'inline'));
   const pendingAttachmentBytes = $derived(
     pendingAttachments.reduce((total, attachment) => total + (attachment.size ?? 0), 0),
   );
@@ -310,6 +313,12 @@
       rows="2"
       placeholder={sessionArchived ? '该会话已归档，请取消归档或创建分支继续…' : selectedSession ? '输入消息，⌘/Ctrl + Enter 发送…' : '先新建或选择一个 Agent 会话…'}
       disabled={!selectedSession || sessionArchived || selectedSessionArchiving || (sessionRunning && !sessionCapabilities.includes('queue.manage')) || busy}
+      onpaste={(event) => {
+        const files = clipboardImageFiles(event.clipboardData);
+        if (!files.length) return;
+        event.preventDefault();
+        onPasteImages(files);
+      }}
       onkeydown={(event) => {
         if (showMentionSuggestions) {
           if (event.key === 'Tab') {
@@ -634,15 +643,15 @@
       {#if sessionRunning}
         {#if sessionCapabilities.includes('queue.manage')}
           {#if sessionCapabilities.includes('queue.steer')}
-            <Button variant="queue" class="composer-action composer-action-queue" size="sm" type="button" onclick={() => onQueue('steer')} disabled={busy || !text.trim()}>立即发送</Button>
+            <Button variant="queue" class="composer-action composer-action-queue" size="sm" type="button" onclick={() => onQueue('steer')} disabled={busy || (!text.trim() && !hasImage)}>立即发送</Button>
           {/if}
-          <Button variant="queue" class="composer-action composer-action-queue" size="sm" type="button" onclick={() => onQueue('followUp')} disabled={busy || !text.trim()}>排队发送</Button>
+          <Button variant="queue" class="composer-action composer-action-queue" size="sm" type="button" onclick={() => onQueue('followUp')} disabled={busy || (!text.trim() && !hasImage)}>排队发送</Button>
         {/if}
         <Button variant="abort" class="composer-action composer-action-abort" size="icon" type="button" onclick={onAbort} disabled={busy} aria-label="中止">
           <Icon name="stop" size={13} />
         </Button>
       {:else}
-        <Button variant="send" class="composer-action composer-action-send" size="icon" type="submit" disabled={!selectedSession || sessionArchived || selectedSessionArchiving || !text.trim() || busy} aria-label="发送">
+        <Button variant="send" class="composer-action composer-action-send" size="icon" type="submit" disabled={!selectedSession || sessionArchived || selectedSessionArchiving || (!text.trim() && !hasImage) || busy} aria-label="发送">
           <Icon name="send" size={16} />
         </Button>
       {/if}
