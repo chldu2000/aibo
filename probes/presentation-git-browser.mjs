@@ -24,6 +24,7 @@ try {
       transformCallback(fn){const id=++callback;window['_'+id]=fn;return id;},unregisterCallback(id){delete window['_'+id];},
       async invoke(command,args={}){
         window.presentationCommands.push(command);window.navigationCalls.push({command,args});
+        if(command==='list_workspace_git_repositories'&&window.selectorFixture)return {repositories:[{id:'one',name:'aibo',relativePath:'aibo'},{id:'two',name:'aibo-plugins',relativePath:'aibo-plugins'},{id:'packages/aibo',name:'aibo',relativePath:'packages/aibo'},{id:'long',name:'a-very-long-repository-name-for-layout-verification',relativePath:'packages/tools/a-very-long-repository-name-for-layout-verification'}].map(repo=>({...repo,kind:'repository',externalRoot:false})),limited:false,warnings:[],scanBudget:2000};
         if(command==='list_workspace_git_repositories')return {repositories:(window.multiRepository?['one','two']:['.']).map(id=>({id,name:id==='.'?'w1':id,relativePath:id,kind:'repository',externalRoot:false})),limited:false,warnings:[],scanBudget:2000};
         if(command==='get_workspace_changes')return {workspaceId:args.workspaceId,head:'head',branch:'main',dirty:true,capturedAt:'now',files:[changed],captureStatus:'captured',captureError:null};
         if(command==='list_workspace_git_branches')return [{name:'main',current:true,commit:'head'},{name:'topic',current:false,commit:'old'}];
@@ -147,17 +148,55 @@ try {
   await page.locator('body').click({position:{x:2,y:2}}); await page.keyboard.press('Meta+,');
   await page.getByRole('button',{name:'恢复内置呈现',exact:true}).click();
   await page.getByRole('button',{name:'完成',exact:true}).click();
-  await page.getByRole('button',{name:'two ▾',exact:true}).click();
-  await page.getByRole('button',{name:'所有仓库',exact:true}).click();
+  await page.getByRole('button',{name:'选择仓库',exact:true}).click();
+  await page.getByRole('option',{name:/^所有仓库/}).click();
   const firstGroup=page.locator('section[aria-label="仓库 one one"]');
   await firstGroup.getByRole('button',{name:'暂存 src/file.ts',exact:true}).click();
   await page.waitForFunction(()=>window.navigationCalls.some(c=>c.command==='apply_workspace_git_file_action'&&c.args.repositoryId==='one'));
   await page.screenshot({path:'/tmp/aibo-multi-repositories.png'});
   await page.getByRole('tab',{name:'历史',exact:true}).click();
-  await page.getByRole('button',{name:'one · one',exact:true}).click();
+  await page.getByRole('option',{name:'one',exact:true}).click();
   await page.getByRole('button',{name:'查看提交 commit-a 的文件：Earlier change',exact:true}).waitFor();
+  await page.evaluate(()=>{window.selectorFixture=true;});
+  await page.getByRole('button',{name:'刷新 Git 状态',exact:true}).click();
+  await page.waitForFunction(()=>document.querySelector('[data-repository-select-trigger]')?.textContent.includes('aibo'));
+  for (const [kit,theme] of [['shadcn','light'],['shadcn','zinc'],['material3','daylight'],['material3','ocean']]) {
+    await page.evaluate(async ({kit,theme})=>{const registry=await import('/src/lib/ui-kit/registry.ts');registry.setUiKit(kit);registry.setUiTheme(theme);},{kit,theme});
+    const picker=page.getByRole('button',{name:'选择仓库',exact:true});
+    await picker.click();
+    const search=page.getByRole('combobox',{name:'搜索仓库',exact:true});
+    await search.waitFor();
+    assert.equal(await search.evaluate(element=>element===document.activeElement),true);
+    assert.equal(await page.getByRole('option',{name:'aibo',exact:true}).count(),1);
+    assert.equal(await page.getByRole('option',{name:'aibo，packages/aibo',exact:true}).count(),1);
+    const rows=await page.getByRole('option').evaluateAll(elements=>elements.map(element=>{const r=element.getBoundingClientRect();return {x:r.x,y:r.y,right:r.right,width:r.width,height:r.height};}));
+    for(let i=1;i<rows.length;i++){assert.equal(rows[i].x,rows[0].x);assert.ok(rows[i].y>=rows[i-1].y+rows[i-1].height);}
+    assert.ok(await page.locator('.repository-popup').evaluate(element=>element.scrollWidth<=element.clientWidth));
+    await page.locator('[data-ui-component="workspace-git-panel"]').screenshot({path:`/tmp/aibo-repository-picker-${kit}-${theme}.png`,animations:'disabled'});
+    await search.fill('does-not-exist');
+    await page.getByRole('status').filter({hasText:'没有匹配的仓库'}).waitFor();
+    await search.fill('aibo-plugins');
+    await search.press('Enter');
+    await page.waitForFunction(()=>document.querySelector('[data-repository-select-trigger]')?.textContent.includes('aibo-plugins'));
+    assert.equal(await picker.getAttribute('aria-expanded'),'false');
+    await picker.press('ArrowDown');
+    await search.waitFor();
+    await search.press('Escape');
+    assert.equal(await picker.getAttribute('aria-expanded'),'false');
+    assert.equal(await picker.evaluate(element=>element===document.activeElement),true);
+    await picker.click();
+    await page.getByText('源代码管理',{exact:true}).click();
+    assert.equal(await picker.getAttribute('aria-expanded'),'false');
+    await picker.click();
+    await search.press('ArrowDown');
+    assert.ok(await search.evaluate(element=>document.getElementById(element.getAttribute('aria-activedescendant'))?.textContent.includes('packages/aibo')));
+    await search.press('Enter');
+    await page.waitForFunction(()=>document.querySelector('[data-repository-select-trigger]')?.title.endsWith('packages/aibo'));
+    await picker.click();
+    await page.getByRole('option',{name:'aibo',exact:true}).click();
+  }
   assert.deepEqual(errors,[]);
-  const result={passed:true,nativePort:'mocked; actual App.svelte and Worker, no repository operations performed',browser:browser.version(),checks:['complete Git metadata and truncated hunk preview','stage targets host-selected file','forged action rejected','commit draft survives external/default/external switch','rejected commit keeps draft and successful commit clears it','branch draft and creation','history file paging and commit preview','fetch dispatch through existing host controller','same-named file actions carry repository identity','drafts survive repository switches','delayed previous-repository history cannot overwrite selection','native all-repository grouping and scoped stage','history picker opens the selected repository history']};
+  const result={passed:true,nativePort:'mocked; actual App.svelte and Worker, no repository operations performed',browser:browser.version(),checks:['complete Git metadata and truncated hunk preview','stage targets host-selected file','forged action rejected','commit draft survives external/default/external switch','rejected commit keeps draft and successful commit clears it','branch draft and creation','history file paging and commit preview','fetch dispatch through existing host controller','same-named file actions carry repository identity','drafts survive repository switches','delayed previous-repository history cannot overwrite selection','native all-repository grouping and scoped stage','history picker opens the selected repository history','repository picker layout and keyboard/search/dismissal in both skins and light/dark themes']};
   await writeFile('/tmp/aibo-presentation-git-browser.json',JSON.stringify(result,null,2));console.log(JSON.stringify(result));
 
 } catch(error) { console.error(JSON.stringify({errors,body:await page.locator('body').innerText()})); throw error; } finally {await browser.close();await server.close();}

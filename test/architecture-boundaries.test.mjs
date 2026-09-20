@@ -348,3 +348,18 @@ test('context window selector stays in the UI kit beside the Fast action', async
     assert.match(source, /<select/); assert.match(source, /disabled=\{disabled \|\| options.length === 0\}/);
   }
 });
+
+test('Git repository selector is a required skin-owned composite', async () => {
+  const panel = await readFile(path.join(root, 'src/lib/components/app/WorkspaceGitPanel.svelte'), 'utf8');
+  assert.match(panel, /<RepositorySelect/);
+  const contract = await readFile(path.join(root, 'src/lib/ui-kit/contract.ts'), 'utf8');
+  assert.match(contract, /RepositorySelect: Component<UiRepositorySelectProps>/);
+  const proxy = await readFile(path.join(root, 'src/lib/ui-kit/runtime/RepositorySelect.svelte'), 'utf8');
+  assert.match(proxy, /\$activeUiKit\.RepositorySelect/);
+  for (const kit of ['shadcn', 'material3']) {
+    const adapter = await readFile(path.join(root, `src/lib/ui-kit/kits/${kit}.ts`), 'utf8');
+    assert.match(adapter, /\n  RepositorySelect,/);
+    const styles = await readFile(path.join(root, `src/lib/ui-kit/kits/${kit}.css`), 'utf8');
+    assert.match(styles, /\.repository-select/);
+  }
+});

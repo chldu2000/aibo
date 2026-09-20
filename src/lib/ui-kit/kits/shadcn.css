@@ -188,3 +188,16 @@
 @media (prefers-reduced-motion: reduce) {
   .shadcn-agent-status-mark.tone-running .shadcn-agent-status-track rect { animation: none; }
 }
+
+.app-shell[data-ui-kit='shadcn'] .repository-select {
+  --repo-text: var(--foreground);
+  --repo-muted: var(--muted-foreground);
+  --repo-border: var(--border);
+  --repo-outline: var(--ring);
+  --repo-focus: var(--ring);
+  --repo-trigger: var(--background);
+  --repo-surface: var(--popover);
+  --repo-hover: var(--accent);
+  --repo-radius: 7px;
+  --repo-shadow: 0 8px 24px rgb(0 0 0 / 16%);
+}

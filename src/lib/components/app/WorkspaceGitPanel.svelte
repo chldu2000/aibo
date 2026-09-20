@@ -1,7 +1,7 @@
 <script lang="ts">
   import type { GitRepositoryState } from '../../../../packages/plugin-protocol/src/presentation-git';
   import type { GitPanelState } from '$lib/app/workbench-drafts';
-  import { Badge, Button, Card, CardHeader, CardTitle, Icon, Input, Separator } from '$lib/ui-kit';
+  import { Badge, Button, Card, CardHeader, CardTitle, Icon, Input, RepositorySelect, Separator } from '$lib/ui-kit';
   import SidePanelTabs from './SidePanelTabs.svelte';
   import type {
     GitBranch,
@@ -119,7 +119,6 @@
   let pendingSection = $state<'changes' | 'history' | undefined>(undefined);
   let cleanRepositoriesOpen = $state(false);
   const currentRepository = $derived(repositories.find(repo => repo.id === repositoryId));
-  const filteredRepositories = $derived(repositories.filter(repo => `${repo.name} ${repo.relativePath}`.toLowerCase().includes(repositorySearch.toLowerCase())));
   let branchMenuOpen = $state(false);
   let stashMenuOpen = $state(false);
   type ChangeGroupKey = 'conflicted' | 'staged' | 'changed' | 'untracked';
@@ -361,14 +360,13 @@
   </CardHeader>
   <Separator />
   {#if repositories.length > 1 || repositoryId === null}
-    <Button variant="outline" size="sm" disabled={operationBusy} aria-expanded={repositoryMenuOpen} onclick={() => repositoryMenuOpen = !repositoryMenuOpen}>{currentRepository?.name ?? '所有仓库'} ▾</Button>
-    {#if repositoryMenuOpen}
-      <Input aria-label="搜索仓库" placeholder="搜索仓库名称或路径" value={repositorySearch} oninput={(event) => onRepositorySearch(event.currentTarget.value)} />
-      <Button variant="ghost" size="sm" disabled={operationBusy} onclick={() => { onSelectRepository(null); repositoryMenuOpen = false; }}>所有仓库</Button>
-      {#each filteredRepositories as repo (repo.id)}<Button variant="ghost" size="sm" disabled={operationBusy} onclick={() => { onSelectRepository(repo.id, pendingSection); pendingSection = undefined; repositoryMenuOpen = false; }}>{repo.name} · {repo.relativePath}</Button>{/each}
-    {/if}
+    <RepositorySelect {repositories} selectedId={repositoryId} open={repositoryMenuOpen} search={repositorySearch} disabled={operationBusy}
+      onOpenChange={(open) => { repositoryMenuOpen = open; if (!open) { pendingSection = undefined; onRepositorySearch(''); } }}
+      onSearch={onRepositorySearch}
+      onSelect={(id) => { onSelectRepository(id, id === null ? undefined : pendingSection); pendingSection = undefined; repositoryMenuOpen = false; onRepositorySearch(''); }}
+    />
   {/if}
-  {#if currentRepository}<small>{currentRepository.name} · {currentRepository.relativePath}{currentRepository.externalRoot ? ' · 仓库根目录位于工作区外' : ''}</small>{/if}
+  {#if currentRepository?.externalRoot}<small class="changeset-status">仓库根目录位于工作区外</small>{/if}
   {#if discoveryLimited}<p role="status">发现范围受限</p><Button variant="ghost" size="sm" disabled={loading} onclick={onContinueDiscovery}>继续扫描</Button>{/if}
   {#each discoveryWarnings as warning}<p role="status">{warning}</p>{/each}
   <div class="git-section-toolbar">

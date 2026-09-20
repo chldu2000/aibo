@@ -22,6 +22,7 @@ export type {
   UiSettingsItem,
   UiSettingsSectionProps,
   UiKitAdapter,
+  UiRepositorySelectProps,
   UiKitOption,
   UiKitRegistration,
   UiModelMatrixCell,

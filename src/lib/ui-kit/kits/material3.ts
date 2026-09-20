@@ -1,3 +1,4 @@
+import RepositorySelect from './shared/RepositorySelect.svelte';
 import AttachmentList from './shared/AttachmentList.svelte';
 import ModelContextSelect from './material3/ModelContextSelect.svelte';
 import SubagentDialog from './material3/SubagentDialog.svelte';
@@ -54,6 +55,7 @@ export const material3UiKit: UiKitAdapter = {
   Input,
   Label,
   ModelContextSelect,
+  RepositorySelect,
   ModelMatrix,
   Separator,
   Textarea,

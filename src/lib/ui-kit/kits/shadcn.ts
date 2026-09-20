@@ -1,3 +1,4 @@
+import RepositorySelect from './shared/RepositorySelect.svelte';
 import AttachmentList from './shared/AttachmentList.svelte';
 import ModelContextSelect from './shadcn/ModelContextSelect.svelte';
 import SubagentDialog from './shadcn/SubagentDialog.svelte';
@@ -56,6 +57,7 @@ export const shadcnUiKit: UiKitAdapter = {
   Input: InputComponent,
   Label: LabelComponent,
   ModelContextSelect,
+  RepositorySelect,
   ModelMatrix: ModelMatrixComponent,
   Separator: SeparatorComponent,
   Textarea: TextareaComponent,

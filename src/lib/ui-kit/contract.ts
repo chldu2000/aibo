@@ -65,6 +65,17 @@ export type UiButtonVariant =
   | 'abort'
   | 'send';
 
+export type UiRepositorySelectProps = {
+  repositories: readonly { id: string; name: string; relativePath: string }[];
+  selectedId: string | null;
+  open: boolean;
+  search: string;
+  disabled: boolean;
+  onOpenChange: (open: boolean) => void;
+  onSearch: (value: string) => void;
+  onSelect: (id: string | null) => void;
+};
+
 export type UiModelContextSelectProps = {
   options: readonly { id: string; label: string; description: string | null; tokens?: number | null }[];
   current: string | null;
@@ -198,6 +209,7 @@ export type UiKitAdapter = {
   Label: Component;
   ModelMatrix: Component<UiModelMatrixProps>;
   ModelContextSelect: Component<UiModelContextSelectProps>;
+  RepositorySelect: Component<UiRepositorySelectProps>;
   Separator: Component;
   Textarea: Component;
 };
