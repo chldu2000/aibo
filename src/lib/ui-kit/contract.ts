@@ -1,3 +1,4 @@
+import type { SessionControl } from '../../../packages/plugin-protocol/src/session';
 export type UiAttachmentListProps = {
  items: { id: string; path: string; mediaType: string }[];
  previews?: Record<string, string | null>;
@@ -26,6 +27,9 @@ export type UiIconName =
   | 'delete'
   | 'diagnostics'
   | 'edit'
+  | 'eye'
+  | 'shield-question'
+  | 'shield-alert'
   | 'filter'
   | 'file'
   | 'focus'
@@ -64,6 +68,11 @@ export type UiButtonVariant =
   | 'queue'
   | 'abort'
   | 'send';
+
+export type UiSessionControlMarkProps = {
+  control: Pick<SessionControl, 'kind' | 'profile'>;
+  compact?: boolean;
+};
 
 export type UiRepositorySelectProps = {
   repositories: readonly { id: string; name: string; relativePath: string }[];
@@ -210,6 +219,7 @@ export type UiKitAdapter = {
   ModelMatrix: Component<UiModelMatrixProps>;
   ModelContextSelect: Component<UiModelContextSelectProps>;
   RepositorySelect: Component<UiRepositorySelectProps>;
+  SessionControlMark: Component<UiSessionControlMarkProps>;
   Separator: Component;
   Textarea: Component;
 };

@@ -7,7 +7,7 @@
   import { sessionAgentKind } from '$lib/app/agent-kind';
   import { filterMentionSuggestions, type MentionCategory } from '$lib/app/mention-suggestions';
   import type { ModelConfigurationState } from '$lib/app/model-configuration';
-  import { AgentStatusMark, Button, Card, Icon, ModelContextSelect, ModelMatrix, Textarea } from '$lib/ui-kit';
+  import { AgentStatusMark, Button, Card, Icon, ModelContextSelect, ModelMatrix, SessionControlMark, Textarea } from '$lib/ui-kit';
   import type { UiModelMatrixRow } from '$lib/ui-kit';
   import type { AgentCommand, AgentCommandCategory, ContextAttachment, SessionControlId, SessionExecutionProfile, SessionModelCatalog, Session, WorkspacePathSuggestion } from '$lib/types';
   import { scrollActiveOptionIntoView } from './active-option-scroll';
@@ -501,9 +501,14 @@
             aria-haspopup="menu"
             aria-expanded={sessionMenuOpen}
             title={accessDetail}
+            aria-label={accessLabel}
           >
-            <Icon name={activeProfile?.filesystemPolicy === 'danger-full-access' || activeProfile?.filesystemPolicy === 'workspace-write' ? 'trust' : 'untrust'} size={16} />
-            <span>{accessLabel}</span>
+            {#each selectedControls as option, index (option.id)}
+              {#if index > 0}<span class="composer-access-divider" aria-hidden="true">·</span>{/if}
+              <span class="composer-access-selection"><SessionControlMark control={option} compact /><span>{option.label}</span></span>
+            {:else}
+              <Icon name="settings" size={16} /><span>{accessLabel}</span>
+            {/each}
           </Button>
           {#if sessionMenuOpen}
             <div class="composer-menu composer-profile-menu" role="menu" aria-label="会话设置">
@@ -525,7 +530,7 @@
                     }}
                     disabled={busy || selectedSessionArchiving || sessionRunning}
                   >
-                    <Icon name={option.kind === 'mode' ? 'file' : 'trust'} size={15} />
+                    <SessionControlMark control={option} />
                     <span class="composer-access-option-copy">
                       <strong>{option.label}</strong>
                       <small>{option.description}</small>

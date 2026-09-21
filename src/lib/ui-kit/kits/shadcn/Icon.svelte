@@ -1,4 +1,7 @@
 <script lang="ts">
+  import EyeIcon from '@lucide/svelte/icons/eye';
+  import ShieldQuestionIcon from '@lucide/svelte/icons/shield-question-mark';
+  import ShieldAlertIcon from '@lucide/svelte/icons/shield-alert';
   import PauseIcon from '@lucide/svelte/icons/pause';
   import PlayIcon from '@lucide/svelte/icons/circle-play';
   import AddIcon from '@lucide/svelte/icons/plus';
@@ -40,6 +43,9 @@
   let { name, size = 16, ...restProps }: IconProps = $props();
 
   const icons = {
+    eye: EyeIcon,
+    'shield-question': ShieldQuestionIcon,
+    'shield-alert': ShieldAlertIcon,
     add: AddIcon,
     archive: ArchiveIcon,
     'archive-restore': ArchiveRestoreIcon,

@@ -126,7 +126,11 @@
         "--aibo-danger-border": "#991b1b",
         "--aibo-danger-surface": "#450a0a",
         "--aibo-danger-hover": "#7f1d1d",
-        "--aibo-danger-text": "#fecaca"
+        "--aibo-danger-text": "#fecaca",
+        "--aibo-session-info": "#8abcf8",
+        "--aibo-session-plan": "#c4a5f0",
+        "--aibo-session-write": "#7bd5a7",
+        "--aibo-session-elevated": "#f2bd6b"
       }
     },
     {
@@ -251,7 +255,11 @@
         "--aibo-danger-border": "#991b1b",
         "--aibo-danger-surface": "#450a0a",
         "--aibo-danger-hover": "#7f1d1d",
-        "--aibo-danger-text": "#fecaca"
+        "--aibo-danger-text": "#fecaca",
+        "--aibo-session-info": "#8abcf8",
+        "--aibo-session-plan": "#c4a5f0",
+        "--aibo-session-write": "#7bd5a7",
+        "--aibo-session-elevated": "#f2bd6b"
       }
     },
     {
@@ -376,7 +384,11 @@
         "--aibo-danger-border": "#991b1b",
         "--aibo-danger-surface": "#450a0a",
         "--aibo-danger-hover": "#7f1d1d",
-        "--aibo-danger-text": "#fecaca"
+        "--aibo-danger-text": "#fecaca",
+        "--aibo-session-info": "#8abcf8",
+        "--aibo-session-plan": "#c4a5f0",
+        "--aibo-session-write": "#7bd5a7",
+        "--aibo-session-elevated": "#f2bd6b"
       }
     },
     {
@@ -501,7 +513,11 @@
         "--aibo-danger-border": "#fca5a5",
         "--aibo-danger-surface": "#fef2f2",
         "--aibo-danger-hover": "#fee2e2",
-        "--aibo-danger-text": "#991b1b"
+        "--aibo-danger-text": "#991b1b",
+        "--aibo-session-info": "#2563a8",
+        "--aibo-session-plan": "#7952b3",
+        "--aibo-session-write": "#18734b",
+        "--aibo-session-elevated": "#a35c08"
       }
     }
   ]

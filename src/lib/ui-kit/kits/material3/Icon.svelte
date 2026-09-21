@@ -1,4 +1,7 @@
 <script lang="ts">
+  import eye from '@ktibow/iconset-material-symbols/visibility-outline-rounded';
+  import shieldQuestion from '@ktibow/iconset-material-symbols/policy-outline-rounded';
+  import shieldAlert from '@ktibow/iconset-material-symbols/gpp-maybe-outline-rounded';
   import pause from '@ktibow/iconset-material-symbols/pause-rounded';
   import play from '@ktibow/iconset-material-symbols/play-circle-outline-rounded';
   import add from '@ktibow/iconset-material-symbols/add-rounded';
@@ -42,6 +45,9 @@
   let { name, size = 18, ...restProps }: IconProps = $props();
 
   const icons = {
+    eye,
+    'shield-question': shieldQuestion,
+    'shield-alert': shieldAlert,
     add,
     archive,
     'archive-restore': archiveRestore,

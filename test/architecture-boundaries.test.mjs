@@ -363,3 +363,20 @@ test('Git repository selector is a required skin-owned composite', async () => {
     assert.match(styles, /\.repository-select/);
   }
 });
+
+test('session control marks belong to both skins and are shared by options and current selection', async () => {
+  const composer = await readFile(path.join(root, 'src/lib/components/app/Composer.svelte'), 'utf8');
+  assert.equal((composer.match(/<SessionControlMark /g) ?? []).length, 2);
+  const contract = await readFile(path.join(root, 'src/lib/ui-kit/contract.ts'), 'utf8');
+  assert.match(contract, /SessionControlMark: Component<UiSessionControlMarkProps>/);
+  for (const kit of ['shadcn', 'material3']) {
+    const adapter = await readFile(path.join(root, `src/lib/ui-kit/kits/${kit}.ts`), 'utf8');
+    assert.match(adapter, /\n  SessionControlMark,/);
+    const { themes } = JSON.parse(await readFile(path.join(root, `packages/presentation-${kit}/themes.json`), 'utf8'));
+    for (const theme of themes) {
+      const colors = ['info', 'plan', 'write', 'elevated'].map(tone => theme.tokens[`--aibo-session-${tone}`]);
+      assert.ok(colors.every(Boolean));
+      assert.equal(new Set(colors).size, 4);
+    }
+  }
+});

@@ -587,3 +587,7 @@ skin owns queue persistence, delivery, attachment identity or uncertain recovery
 ### Git 仓库选择器
 
 `UiKitAdapter.RepositorySelect` 接收仓库名称与相对路径、当前选择、展开状态、搜索文本、禁用状态及语义回调。应用层负责仓库切换和历史入口；UI kit 负责浮层布局、列表层级、搜索输入、选中标记、键盘导航与焦点恢复。两套皮肤注册同一套可访问的交互结构，并在各自样式中定义表面、边框、圆角和颜色。名称与路径相同时不重复显示；不同路径的同名仓库保留次级路径。
+
+### 会话模式与权限标识
+
+`UiKitAdapter.SessionControlMark` 只接收选项的 `kind`、声明的 `profile` 和紧凑显示标志。UI kit 根据策略含义选择图标和语义色，不根据 Agent 名称、选项 ID 或显示文案推断权限。菜单和当前设置按钮复用同一标识；同时选中的权限与会话模式分别显示。两套皮肤各自提供眼睛、审批盾牌等图标，深浅主题注册 `--aibo-session-info/plan/write/elevated` 色彩。未识别的自定义策略使用中性设置图标，完整文件访问优先保留警示标识。此分类只用于显示，不授予或更改执行权限。

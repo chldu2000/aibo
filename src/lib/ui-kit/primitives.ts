@@ -35,3 +35,5 @@ export { default as SubagentDialog } from './runtime/SubagentDialog.svelte';
 export { default as AttachmentList } from './runtime/AttachmentList.svelte';
 
 export { default as RepositorySelect } from './runtime/RepositorySelect.svelte';
+
+export { default as SessionControlMark } from './runtime/SessionControlMark.svelte';

@@ -1,3 +1,4 @@
+import SessionControlMark from './shared/SessionControlMark.svelte';
 import RepositorySelect from './shared/RepositorySelect.svelte';
 import AttachmentList from './shared/AttachmentList.svelte';
 import ModelContextSelect from './material3/ModelContextSelect.svelte';
@@ -56,6 +57,7 @@ export const material3UiKit: UiKitAdapter = {
   Label,
   ModelContextSelect,
   RepositorySelect,
+  SessionControlMark,
   ModelMatrix,
   Separator,
   Textarea,

@@ -261,8 +261,12 @@ h2 { font-size: 16px; letter-spacing: -0.02em; }
 .composer-toolbar-icon { width: 34px !important; height: 34px !important; }
 .composer-toolbar-control { min-width: 0; }
 .composer-action { flex: none; }
-.composer-access-control { color: var(--aibo-warning-text); }
-.composer-access-control:hover { color: var(--aibo-warning-text); }
+.composer-access-control { color: var(--aibo-muted); }
+.composer-access-control:hover { color: var(--aibo-text); }
+.composer-access-selection { display: inline-flex; align-items: center; gap: 5px; min-width: 0; }
+.composer-access-selection > span:last-child { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.composer-access-divider { color: var(--aibo-subtle); }
+.composer-profile-menu .composer-access-options button { gap: 9px; align-items: center; padding-block: 8px; }
 .composer-model-control { max-width: min(280px, 38vw); }
 .composer-model-label { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .composer-menu { position: absolute; z-index: 35; bottom: calc(100% + 8px); display: grid; width: min(240px, calc(100vw - 32px)); min-width: 0; gap: 3px; border: 1px solid var(--aibo-border-strong); border-radius: 10px; padding: 5px; background: var(--aibo-surface); box-shadow: 0 16px 36px rgb(0 0 0 / 34%); }

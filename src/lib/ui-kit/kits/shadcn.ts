@@ -1,3 +1,4 @@
+import SessionControlMark from './shared/SessionControlMark.svelte';
 import RepositorySelect from './shared/RepositorySelect.svelte';
 import AttachmentList from './shared/AttachmentList.svelte';
 import ModelContextSelect from './shadcn/ModelContextSelect.svelte';
@@ -58,6 +59,7 @@ export const shadcnUiKit: UiKitAdapter = {
   Label: LabelComponent,
   ModelContextSelect,
   RepositorySelect,
+  SessionControlMark,
   ModelMatrix: ModelMatrixComponent,
   Separator: SeparatorComponent,
   Textarea: TextareaComponent,
