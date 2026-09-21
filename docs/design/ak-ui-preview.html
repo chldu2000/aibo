@@ -1,0 +1,336 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="color-scheme" content="light dark">
+<title>Aibo · ak-ui 工作台设计稿</title>
+<style>
+/* Standalone design study. Semantic tokens follow the local ak-ui skill contract;
+   values below are Aibo adaptations, not a bundled distribution of ak-ui. */
+[data-ak-ui] {
+  --ak-surface-canvas:#f5f5f1; --ak-surface-panel:#fcfcf9; --ak-surface-muted:#eceee8;
+  --ak-surface-raised:#ffffff; --ak-surface-inverse:#20241f;
+  --ak-text-primary:#252923; --ak-text-secondary:#676e62; --ak-text-inverse:#fafbf5;
+  --ak-signal-info:#396b77; --ak-signal-action:#e6f16b; --ak-signal-accent:#798322;
+  --ak-signal-success:#3b704c; --ak-signal-danger:#aa4141; --ak-signal-disabled:#8b9186;
+  --ak-font-sans:Inter,"Helvetica Neue",Arial,"PingFang SC","Microsoft YaHei",sans-serif;
+  --ak-font-serif:"Songti SC","Noto Serif CJK SC",serif;
+  --ak-font-mono:"SFMono-Regular",Consolas,"Liberation Mono",monospace;
+  --ak-font-command:var(--ak-font-sans);
+  --ak-type-display-size:36px; --ak-type-title-size:24px; --ak-type-label-size:12px;
+  --ak-type-data-size:12px; --ak-type-tight:-.035em; --ak-type-wide:.12em;
+  --ak-space-1:4px; --ak-space-2:8px; --ak-space-3:12px; --ak-space-4:16px; --ak-space-5:24px; --ak-space-6:32px;
+  --ak-density-control-height:44px; --ak-density-panel-padding:24px;
+  --ak-line-hairline:1px; --ak-line-strong:3px; --ak-cut-sm:5px; --ak-cut-md:10px; --ak-cut-lg:20px;
+  --ak-radius-subtle:3px; --ak-shadow-panel:0 16px 60px #18201b1a;
+  --ak-motion-fast:120ms; --ak-motion-base:200ms; --ak-motion-slow:420ms;
+  --ak-ease-standard:cubic-bezier(.2,0,0,1); --ak-ease-emphasized:cubic-bezier(.2,.8,.2,1);
+  --ak-focus-color:#467581; --ak-focus-width:2px; --ak-focus-offset:3px;
+  --aibo-line:#daddd4; --aibo-selected:#e5e9d9; --aibo-action-text:#293018;
+  --aibo-success-surface:#eaf0e8; --aibo-danger-surface:#f8ece9;
+  color-scheme:light; color:var(--ak-text-primary); background:var(--ak-surface-canvas);
+  font:14px/1.6 var(--ak-font-sans); margin:0;
+}
+[data-ak-ui][data-theme="dark"] {
+  --ak-surface-canvas:#1d211e; --ak-surface-panel:#222723; --ak-surface-muted:#282e29;
+  --ak-surface-raised:#2c322d; --ak-surface-inverse:#f0f2e8;
+  --ak-text-primary:#e6e9df; --ak-text-secondary:#a3ac9d; --ak-text-inverse:#20251f;
+  --ak-signal-info:#92c0c8; --ak-signal-action:#dbe878; --ak-signal-accent:#ccd88a;
+  --ak-signal-success:#a4c3a5; --ak-signal-danger:#e5a4a0; --ak-signal-disabled:#7f887c;
+  --ak-focus-color:#dbe878; --aibo-line:#3a423b; --aibo-selected:#343e2d;
+  --aibo-success-surface:#293a2e; --aibo-danger-surface:#402d2a;
+  --ak-shadow-panel:0 16px 60px #0005; color-scheme:dark;
+}
+[data-ak-ui] *,[data-ak-ui] *::before,[data-ak-ui] *::after {box-sizing:border-box}
+[data-ak-ui] button,[data-ak-ui] input,[data-ak-ui] textarea,[data-ak-ui] select {font:inherit;color:inherit}
+[data-ak-ui] button {cursor:pointer;border:0;background:none;min-height:var(--ak-density-control-height);border-radius:var(--ak-radius-subtle)}
+[data-ak-ui] button:disabled {cursor:not-allowed;color:var(--ak-signal-disabled);background:var(--ak-surface-muted)}
+[data-ak-ui] button:not(:disabled):hover {background:var(--ak-surface-muted);box-shadow:inset 0 -2px var(--aibo-line)}
+[data-ak-ui] button:active:not(:disabled) {transform:translateY(1px)}
+[data-ak-ui] :focus-visible {outline:var(--ak-focus-width) solid var(--ak-focus-color);outline-offset:var(--ak-focus-offset)}
+[data-ak-ui] button,[data-ak-ui] a {transition:box-shadow var(--ak-motion-fast) var(--ak-ease-standard)}
+[data-ak-ui] h1,[data-ak-ui] h2,[data-ak-ui] h3,[data-ak-ui] p {margin:0}
+[data-ak-ui] h1 {font-size:21px;letter-spacing:var(--ak-type-tight);font-weight:650}
+[data-ak-ui] h2 {font-size:var(--ak-type-title-size);letter-spacing:var(--ak-type-tight);font-weight:600}
+[data-ak-ui] h3 {font-size:14px;font-weight:600}
+[data-ak-ui] svg {width:18px;height:18px;stroke:currentColor;fill:none;stroke-width:1.6;stroke-linecap:round;stroke-linejoin:round;flex:none;vertical-align:middle}
+[data-ak-ui] [hidden] {display:none!important}
+.app {height:100dvh;min-height:620px;display:grid;grid-template-columns:248px minmax(0,1fr);grid-template-rows:44px minmax(0,1fr) 30px;overflow:hidden}
+.titlebar {grid-column:1/-1;display:flex;align-items:center;justify-content:space-between;padding:0 var(--ak-space-5);border-bottom:1px solid var(--aibo-line);background:var(--ak-surface-muted);font-size:11px;letter-spacing:.03em;color:var(--ak-text-secondary)}
+.window-mark {display:flex;align-items:center;gap:var(--ak-space-3)}
+.window-mark i {width:8px;height:8px;border:1px solid var(--ak-text-secondary);border-radius:50%;opacity:.5}
+.titlebar .draft-label {border-left:1px solid var(--aibo-line);padding-left:var(--ak-space-3);font-family:var(--ak-font-mono)}
+.sidebar {grid-column:1;grid-row:2;background:var(--ak-surface-muted);border-right:1px solid var(--aibo-line);display:flex;flex-direction:column;min-height:0;padding:var(--ak-space-5) var(--ak-space-4) var(--ak-space-3)}
+.primary {background:var(--ak-signal-action)!important;color:var(--aibo-action-text)!important;font-weight:650;display:flex;align-items:center;justify-content:center;gap:var(--ak-space-2);padding:0 var(--ak-space-4)}
+.primary:hover {box-shadow:inset 0 -3px var(--ak-signal-accent)!important}
+.new-session {justify-content:space-between;min-height:46px!important;position:relative;margin-bottom:var(--ak-space-3)}
+.new-session::after {content:"";position:absolute;right:0;top:0;border-top:8px solid var(--ak-surface-muted);border-left:8px solid transparent}
+.search-button {display:flex;align-items:center;gap:var(--ak-space-3);width:100%;padding:0 var(--ak-space-3);color:var(--ak-text-secondary)!important;text-align:left;font-size:12px!important}
+.key {font:10px var(--ak-font-mono);border:1px solid var(--aibo-line);padding:3px 5px;border-radius:2px;margin-left:auto}
+.section-caption {display:flex;justify-content:space-between;align-items:center;margin:var(--ak-space-5) var(--ak-space-3) var(--ak-space-2);font:10px var(--ak-font-mono);letter-spacing:var(--ak-type-wide);color:var(--ak-text-secondary)}
+.workspace-label {display:flex;align-items:center;gap:var(--ak-space-2);padding:var(--ak-space-3);font-size:13px;font-weight:650}
+.workspace-label small {margin-left:auto;font-weight:400;color:var(--ak-text-secondary)}
+.session-list {display:flex;flex-direction:column;gap:var(--ak-space-1)}
+.session {width:100%;text-align:left;padding:var(--ak-space-3) var(--ak-space-3) var(--ak-space-3) var(--ak-space-5);position:relative;min-width:0}
+.session span {display:block;font-size:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.session small {display:block;font:10px var(--ak-font-mono);color:var(--ak-text-secondary);margin-top:5px}
+.session[aria-current="page"] {background:var(--aibo-selected);box-shadow:inset 3px 0 var(--ak-signal-accent)}
+.session[aria-current="page"]::after {content:"";position:absolute;right:10px;top:20px;width:5px;height:5px;background:var(--ak-signal-accent)}
+.sidebar-scroll {overflow-y:auto;min-height:0;flex:1}
+.sidebar-bottom {border-top:1px solid var(--aibo-line);padding-top:var(--ak-space-3);margin-top:var(--ak-space-4)}
+.nav-action {display:flex;align-items:center;gap:var(--ak-space-3);width:100%;padding:0 var(--ak-space-3);text-align:left;font-size:12px!important}
+.nav-action small {margin-left:auto;color:var(--ak-text-secondary)}
+.workspace {min-width:0;display:flex;flex-direction:column;grid-column:2;grid-row:2;background:var(--ak-surface-canvas)}
+.workspace-header {display:flex;align-items:center;justify-content:space-between;gap:var(--ak-space-4);padding:var(--ak-space-5) var(--ak-space-6) var(--ak-space-4);background:var(--ak-surface-panel)}
+.eyebrow {font:10px var(--ak-font-mono);color:var(--ak-text-secondary);letter-spacing:var(--ak-type-wide);margin-bottom:var(--ak-space-2)}
+.header-actions {display:flex;align-items:center;gap:var(--ak-space-2)}
+.icon-button {min-width:44px;display:inline-flex;align-items:center;justify-content:center}
+.status {font-size:11px;display:inline-flex;align-items:center;gap:6px;color:var(--ak-signal-success);white-space:nowrap}
+.status::before {content:"";height:6px;width:6px;background:currentColor}
+.tabs {display:flex;gap:var(--ak-space-5);padding:0 var(--ak-space-6);background:var(--ak-surface-panel);border-bottom:1px solid var(--aibo-line)}
+.tab {font-size:12px!important;border-radius:0!important;padding:0 2px;display:flex;align-items:center;gap:var(--ak-space-2);border-bottom:2px solid transparent!important;color:var(--ak-text-secondary)!important}
+.tab[aria-selected="true"] {color:var(--ak-text-primary)!important;border-bottom-color:var(--ak-signal-accent)!important;font-weight:650}
+.count {font:10px var(--ak-font-mono);background:var(--ak-surface-muted);padding:1px 5px}
+.work-body {flex:1;min-height:0;display:flex}
+.main-pane {flex:1;min-width:0;display:flex;flex-direction:column}
+.conversation {overflow:auto;flex:1;min-height:0;padding:var(--ak-space-6) clamp(24px,4vw,68px) var(--ak-space-5)}
+.thread {max-width:850px;margin:auto}
+.date-rule {display:flex;align-items:center;gap:var(--ak-space-4);color:var(--ak-text-secondary);font:10px var(--ak-font-mono);margin-bottom:var(--ak-space-6)}
+.date-rule::before,.date-rule::after {content:"";height:1px;flex:1;background:var(--aibo-line)}
+.message {margin-bottom:var(--ak-space-6)}
+.message-meta {display:flex;align-items:center;gap:var(--ak-space-2);font-size:11px;margin-bottom:var(--ak-space-3)}
+.message-meta time {color:var(--ak-text-secondary);font:10px var(--ak-font-mono);margin-left:auto}
+.avatar {height:24px;width:24px;display:grid;place-items:center;background:var(--ak-surface-muted);font:10px var(--ak-font-mono);border:1px solid var(--aibo-line)}
+.avatar.ai {background:var(--aibo-selected);color:var(--ak-signal-accent);font-size:14px;font-weight:700}
+.user-body {border-left:2px solid var(--aibo-line);padding:var(--ak-space-3) var(--ak-space-4);background:var(--ak-surface-panel);font-size:13px;line-height:1.9}
+.message-copy {font-size:13px;line-height:1.95}
+.message-copy p + p {margin-top:var(--ak-space-3)}
+.task-heading {font-size:20px!important;margin:var(--ak-space-4) 0 var(--ak-space-2)!important;font-weight:550!important;letter-spacing:-.02em}
+.plan {margin:var(--ak-space-5) 0;padding:0;list-style:none;display:grid;gap:var(--ak-space-3)}
+.plan li {display:flex;gap:var(--ak-space-3);align-items:baseline;font-size:12px}
+.plan-number {font:11px var(--ak-font-mono);color:var(--ak-signal-accent);border-bottom:1px solid var(--ak-signal-accent);padding-bottom:2px}
+.plan strong {font-weight:550}
+.plan small {display:block;color:var(--ak-text-secondary);font-size:11px;margin-top:2px}
+.tool {border-top:1px solid var(--aibo-line);border-bottom:1px solid var(--aibo-line);margin-top:var(--ak-space-4)}
+.tool summary {cursor:pointer;min-height:44px;display:flex;align-items:center;gap:var(--ak-space-2);font-size:11px;list-style:none}
+.tool summary::-webkit-details-marker {display:none}
+.tool summary::before {content:"+";font:16px var(--ak-font-mono);color:var(--ak-text-secondary);width:16px;text-align:center}
+.tool[open] summary::before {content:"−"}
+.tool summary .duration {margin-left:auto;color:var(--ak-text-secondary);font:10px var(--ak-font-mono)}
+.tool-output {font:11px/1.8 var(--ak-font-mono);background:var(--ak-surface-muted);padding:var(--ak-space-4);margin:0 0 var(--ak-space-3);white-space:pre-wrap;overflow-wrap:anywhere}
+.ready {display:flex;align-items:center;gap:var(--ak-space-2);color:var(--ak-signal-success);font-size:11px;margin-top:var(--ak-space-4)}
+.composer-wrap {padding:0 clamp(24px,4vw,68px) var(--ak-space-4)}
+.composer {max-width:850px;margin:auto;background:var(--ak-surface-panel);border:1px solid var(--aibo-line);position:relative;box-shadow:0 3px 0 var(--ak-surface-muted)}
+.composer:focus-within {border-color:var(--ak-signal-accent)}
+.composer::before {content:"";position:absolute;left:-1px;top:-1px;width:24px;height:3px;background:var(--ak-signal-accent)}
+.composer textarea {display:block;width:100%;min-height:78px;resize:vertical;max-height:180px;background:transparent;border:0;padding:var(--ak-space-4);outline:none;font-size:13px}
+.composer textarea::placeholder {color:var(--ak-text-secondary)}
+.composer textarea:focus-visible {outline:2px solid var(--ak-focus-color);outline-offset:-4px}
+.composer-toolbar {display:flex;align-items:center;gap:var(--ak-space-2);padding:0 var(--ak-space-2) var(--ak-space-2)}
+.control-select {border:0;background:transparent;min-height:44px;max-width:145px;font-size:11px!important;padding:0 5px;cursor:pointer}
+.send {margin-left:auto;min-width:44px;min-height:44px;display:grid;place-items:center;background:var(--ak-signal-action)!important;color:var(--aibo-action-text)!important}
+.composer-caption {max-width:850px;margin:var(--ak-space-3) auto 0;display:flex;justify-content:space-between;font-size:10px;color:var(--ak-text-secondary)}
+.attachment {margin:var(--ak-space-3) var(--ak-space-4) 0;font-size:11px;overflow-wrap:anywhere}
+.context {width:284px;flex:none;border-left:1px solid var(--aibo-line);background:var(--ak-surface-panel);overflow:auto;padding:var(--ak-space-5)}
+.context-header {display:flex;align-items:center;justify-content:space-between;padding-bottom:var(--ak-space-4);border-bottom:1px solid var(--aibo-line)}
+.context-header span {font:10px var(--ak-font-mono);color:var(--ak-text-secondary)}
+.context-section {padding:var(--ak-space-5) 0;border-bottom:1px solid var(--aibo-line)}
+.context-title {font:10px var(--ak-font-mono);letter-spacing:.06em;color:var(--ak-text-secondary);margin-bottom:var(--ak-space-4)}
+.branch {display:flex;gap:var(--ak-space-2);align-items:center;font:11px var(--ak-font-mono);overflow-wrap:anywhere}
+.context dl {display:grid;grid-template-columns:auto 1fr;gap:var(--ak-space-3);margin:var(--ak-space-4) 0 0;font-size:11px}
+.context dt {color:var(--ak-text-secondary)}
+.context dd {margin:0;text-align:right}
+.context .muted {color:var(--ak-text-secondary);font-size:11px}
+.file-row {display:flex;align-items:center;gap:var(--ak-space-2);width:100%;text-align:left;font:10px var(--ak-font-mono)!important;padding:0 4px}
+.file-row span {overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1}
+.file-row em {font-style:normal;color:var(--ak-signal-success);white-space:nowrap}
+.review-button {border:1px solid var(--aibo-line)!important;width:100%;font-size:11px!important;display:flex;align-items:center;justify-content:space-between;padding:0 var(--ak-space-3);margin-top:var(--ak-space-3)}
+.context-note {font-size:11px;line-height:1.8;color:var(--ak-text-secondary);margin-top:var(--ak-space-5)!important}
+.meter {height:4px;background:var(--ak-surface-muted);margin-top:var(--ak-space-3)}
+.meter span {display:block;width:24%;height:100%;background:var(--ak-signal-accent)}
+.footer {grid-column:1/-1;display:flex;align-items:center;gap:var(--ak-space-4);padding:0 var(--ak-space-4);border-top:1px solid var(--aibo-line);background:var(--ak-surface-muted);font:10px var(--ak-font-mono);color:var(--ak-text-secondary)}
+.footer .status {font-size:10px}.footer-right {margin-left:auto}
+.view-panel {overflow:auto;padding:var(--ak-space-6);flex:1}
+.view-heading {display:flex;align-items:flex-start;justify-content:space-between;gap:var(--ak-space-4);margin-bottom:var(--ak-space-6)}
+.subcopy {color:var(--ak-text-secondary);font-size:12px;margin-top:var(--ak-space-2)!important}
+.execution-list {border-top:1px solid var(--aibo-line)}
+.execution-row {display:grid;grid-template-columns:32px 1fr auto;gap:var(--ak-space-4);padding:var(--ak-space-5) 0;border-bottom:1px solid var(--aibo-line);font-size:12px}
+.execution-row>svg {color:var(--ak-signal-success);margin-top:2px}
+.execution-row time {font:11px var(--ak-font-mono);color:var(--ak-text-secondary)}
+.execution-row code {font:11px var(--ak-font-mono);overflow-wrap:anywhere}
+.diff-selector {display:flex;gap:var(--ak-space-2);flex-wrap:wrap;margin-bottom:var(--ak-space-4)}
+.diff-selector button {font:11px var(--ak-font-mono);padding:0 var(--ak-space-3);border:1px solid var(--aibo-line)}
+.diff-selector button[aria-pressed="true"] {background:var(--aibo-selected);border-bottom:3px solid var(--ak-signal-accent)}
+.diff {border:1px solid var(--aibo-line);background:var(--ak-surface-panel);overflow:auto}
+.diff-heading {padding:var(--ak-space-3) var(--ak-space-4);border-bottom:1px solid var(--aibo-line);font:11px var(--ak-font-mono)}
+.diff pre {font:12px/2 var(--ak-font-mono);margin:0;padding:var(--ak-space-4) 0;min-width:480px}
+.diff-line {display:block;padding:0 var(--ak-space-4)}
+.diff-line.add {background:var(--aibo-success-surface);color:var(--ak-signal-success)}
+.diff-line.remove {background:var(--aibo-danger-surface);color:var(--ak-signal-danger)}
+.approval {margin-top:var(--ak-space-5);padding:var(--ak-space-4);border-left:3px solid var(--ak-signal-accent);background:var(--ak-surface-muted);display:flex;align-items:center;gap:var(--ak-space-4);flex-wrap:wrap}
+.approval p {font-size:12px}.approval small {color:var(--ak-text-secondary);font-size:11px}.approval .primary {margin-left:auto;font-size:12px}
+.empty {display:flex;align-items:center;justify-content:center;min-height:280px;flex-direction:column;text-align:center;gap:var(--ak-space-4)}
+.empty-symbol {font:72px/1 var(--ak-font-command);color:var(--ak-signal-accent);letter-spacing:-7px}
+.empty p {max-width:360px;color:var(--ak-text-secondary);font-size:12px}
+.suggestions {display:flex;gap:var(--ak-space-2);flex-wrap:wrap;justify-content:center;margin-top:var(--ak-space-3)}
+.suggestions button {padding:0 var(--ak-space-3);border:1px solid var(--aibo-line);font-size:11px}
+.mobile-menu {display:none!important}
+.modal {border:1px solid var(--aibo-line);border-top:3px solid var(--ak-signal-accent);background:var(--ak-surface-panel);color:var(--ak-text-primary);padding:var(--ak-space-6);width:min(620px,calc(100% - 32px));max-height:85dvh;box-shadow:var(--ak-shadow-panel)}
+.modal::backdrop {background:#11180f66;backdrop-filter:blur(3px)}
+.modal-header {display:flex;justify-content:space-between;align-items:center;margin-bottom:var(--ak-space-5)}
+.modal-header h2 {font-size:22px}
+.setting-row {display:flex;align-items:center;justify-content:space-between;gap:var(--ak-space-4);padding:var(--ak-space-5) 0;border-top:1px solid var(--aibo-line)}
+.setting-row p {font-size:13px}.setting-row small {display:block;color:var(--ak-text-secondary);font-size:11px;margin-top:4px}
+.theme-options {display:flex;gap:var(--ak-space-2)}
+.theme-options button {padding:0 var(--ak-space-4);border:1px solid var(--aibo-line);white-space:nowrap;font-size:12px}
+.theme-options button[aria-pressed="true"] {background:var(--aibo-selected);border-bottom:3px solid var(--ak-signal-accent)}
+.search-input {width:100%;min-height:48px;padding:var(--ak-space-3);background:var(--ak-surface-canvas);border:1px solid var(--aibo-line);margin-bottom:var(--ak-space-4)}
+.search-result {display:flex;align-items:center;justify-content:space-between;width:100%;padding:var(--ak-space-3);border-bottom:1px solid var(--aibo-line)!important;font-size:13px!important;text-align:left}
+.search-result small {color:var(--ak-text-secondary);font-size:10px}
+.plugin {display:flex;align-items:center;gap:var(--ak-space-4);padding:var(--ak-space-5) 0;border-top:1px solid var(--aibo-line)}
+.plugin-icon {height:42px;width:42px;border:1px solid var(--aibo-line);display:grid;place-items:center;font:20px var(--ak-font-mono)}
+.plugin .status {margin-left:auto}.plugin small {color:var(--ak-text-secondary);font-size:11px}
+.toast {position:fixed;bottom:45px;left:50%;transform:translateX(-50%);z-index:20;border:1px solid var(--aibo-line);border-left:3px solid var(--ak-signal-accent);background:var(--ak-surface-raised);padding:var(--ak-space-3) var(--ak-space-5);box-shadow:var(--ak-shadow-panel);font-size:12px;max-width:calc(100% - 32px)}
+@media(min-width:1600px){.app {grid-template-columns:270px minmax(0,1fr)}.context {width:320px}.conversation {padding-top:44px}}
+@media(max-width:1180px){.context{width:240px;padding:var(--ak-space-4)}.app{grid-template-columns:220px minmax(0,1fr)}.conversation,.composer-wrap{padding-left:var(--ak-space-5);padding-right:var(--ak-space-5)}.workspace-header{padding-left:var(--ak-space-5);padding-right:var(--ak-space-5)}}
+@media(max-width:1000px){.context{display:none}.context.is-visible{display:block;width:260px}.header-status{display:none}}
+@media(max-width:720px){.app{grid-template-columns:minmax(0,1fr);min-height:0}.titlebar{padding:0 var(--ak-space-4)}.titlebar-center,.window-mark i,.footer-extra{display:none}.workspace{grid-column:1}.sidebar{position:fixed;inset:44px auto 30px 0;width:260px;z-index:10;box-shadow:var(--ak-shadow-panel);display:none}.sidebar.is-visible{display:flex}.mobile-menu{display:inline-flex!important}.workspace-header{padding:var(--ak-space-4);gap:var(--ak-space-2)}.header-title{flex:1;min-width:0}.header-title h1{font-size:17px;overflow:hidden;white-space:nowrap;text-overflow:ellipsis}.eyebrow{font-size:9px}.header-actions{gap:0}.tabs{padding:0 var(--ak-space-4);gap:var(--ak-space-5)}.conversation{padding:var(--ak-space-5) var(--ak-space-4)}.context.is-visible{position:fixed;right:0;top:44px;bottom:30px;width:min(300px,85vw);z-index:9;box-shadow:var(--ak-shadow-panel)}.composer-wrap{padding:0 var(--ak-space-4) var(--ak-space-3)}.composer-caption span:last-child{display:none}.composer-toolbar{gap:0}.control-select{max-width:110px;font-size:10px!important}.footer{gap:var(--ak-space-2);font-size:9px}.footer-right{font-size:9px}.view-panel{padding:var(--ak-space-5) var(--ak-space-4)}.view-heading{flex-direction:column}.setting-row{align-items:flex-start;flex-direction:column}.modal{padding:var(--ak-space-5)}.message{margin-bottom:var(--ak-space-5)}}
+@media(prefers-reduced-motion:reduce){[data-ak-ui] *,[data-ak-ui] *::before,[data-ak-ui] *::after{transition:none!important;animation:none!important;scroll-behavior:auto!important}}
+</style>
+</head>
+<body data-ak-ui data-theme="light">
+<svg width="0" height="0" style="position:absolute;overflow:hidden" aria-hidden="true"><defs>
+<symbol id="i-plus" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></symbol>
+<symbol id="i-search" viewBox="0 0 24 24"><circle cx="10.5" cy="10.5" r="6.5"/><path d="m16 16 5 5"/></symbol>
+<symbol id="i-folder" viewBox="0 0 24 24"><path d="M3 7V5h6l2 3h10v12H3Z"/></symbol>
+<symbol id="i-grid" viewBox="0 0 24 24"><rect x="4" y="4" width="6" height="6"/><rect x="14" y="4" width="6" height="6"/><rect x="4" y="14" width="6" height="6"/><rect x="14" y="14" width="6" height="6"/></symbol>
+<symbol id="i-settings" viewBox="0 0 24 24"><path d="M4 7h16M4 17h16"/><rect x="7" y="4" width="4" height="6"/><rect x="14" y="14" width="4" height="6"/></symbol>
+<symbol id="i-sun" viewBox="0 0 24 24"><circle cx="12" cy="12" r="4"/><path d="M12 2v2m0 16v2M2 12h2m16 0h2M5 5l1 1m12 12 1 1M5 19l1-1M18 6l1-1"/></symbol>
+<symbol id="i-panel" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="1"/><path d="M15 4v16"/></symbol>
+<symbol id="i-chat" viewBox="0 0 24 24"><path d="M4 4h16v13H9l-5 4Z"/><path d="M8 9h8M8 13h5"/></symbol>
+<symbol id="i-terminal" viewBox="0 0 24 24"><path d="m5 6 5 5-5 5m8 1h6"/></symbol>
+<symbol id="i-diff" viewBox="0 0 24 24"><path d="M8 3v18M16 3v18M4 8h8m0 8h8m-4-4v8"/></symbol>
+<symbol id="i-check" viewBox="0 0 24 24"><path d="m5 12 4 4L19 6"/></symbol>
+<symbol id="i-arrow" viewBox="0 0 24 24"><path d="M12 19V5m-6 6 6-6 6 6"/></symbol>
+<symbol id="i-right" viewBox="0 0 24 24"><path d="M5 12h14m-6-6 6 6-6 6"/></symbol>
+<symbol id="i-branch" viewBox="0 0 24 24"><circle cx="6" cy="5" r="2"/><circle cx="6" cy="19" r="2"/><circle cx="18" cy="5" r="2"/><path d="M6 7v10m12-10c0 7-12 3-12 9"/></symbol>
+<symbol id="i-file" viewBox="0 0 24 24"><path d="M5 3h9l5 5v13H5Z M14 3v6h5M9 13h6m-6 4h6"/></symbol>
+<symbol id="i-close" viewBox="0 0 24 24"><path d="m6 6 12 12M6 18 18 6"/></symbol>
+<symbol id="i-menu" viewBox="0 0 24 24"><path d="M4 6h16M4 12h16M4 18h16"/></symbol>
+<symbol id="i-shield" viewBox="0 0 24 24"><path d="m12 3 8 3v6c0 5-8 9-8 9s-8-4-8-9V6Z"/><path d="m8 12 3 3 5-6"/></symbol>
+<symbol id="i-stop" viewBox="0 0 24 24"><rect x="6" y="6" width="12" height="12"/></symbol>
+</defs></svg>
+<div class="app">
+  <header class="titlebar"><div class="window-mark"><i></i><i></i><i></i><span class="draft-label">DESIGN PREVIEW</span></div><span class="titlebar-center">Aibo / 你的 AI 开发工作台</span><span>AK–UI · SYSTEM</span></header>
+  <aside class="sidebar" id="sidebar" aria-label="工作区导航">
+    <button class="primary new-session" id="new-session"><span>新建会话</span><svg><use href="#i-plus"/></svg></button>
+    <button class="search-button" data-modal="search-dialog"><svg><use href="#i-search"/></svg>搜索会话<span class="key">⌘ K</span></button>
+    <div class="sidebar-scroll">
+      <div class="section-caption"><span>WORKSPACES</span><span>01</span></div>
+      <div class="workspace-label"><svg><use href="#i-folder"/></svg>aibo-dev<small>⌄</small></div>
+      <nav class="session-list" aria-label="会话列表">
+        <button class="session" aria-current="page" data-session="design"><span>重构默认视觉体验</span><small>Codex · 刚刚</small></button>
+        <button class="session" data-session="plugin"><span>梳理插件能力边界</span><small>Codex · 38 分钟前</small></button>
+        <button class="session" data-session="test"><span>完善会话恢复测试</span><small>Pi · 2 小时前</small></button>
+      </nav>
+      <div class="section-caption"><span>EARLIER</span><span>02</span></div>
+      <button class="session" data-session="git"><span>工作区 Git 变更预览</span><small>Codex · 昨天</small></button>
+      <button class="session" data-session="docs"><span>整理开发者文档</span><small>Pi · 昨天</small></button>
+    </div>
+    <div class="sidebar-bottom">
+      <button class="nav-action" data-modal="plugins-dialog"><svg><use href="#i-grid"/></svg>插件与能力<small>02</small></button>
+      <button class="nav-action" data-modal="settings-dialog"><svg><use href="#i-settings"/></svg>工作台设置<small>↗</small></button>
+    </div>
+  </aside>
+  <main class="workspace">
+    <header class="workspace-header">
+      <button class="icon-button mobile-menu" id="menu-toggle" aria-label="展开导航" aria-expanded="false" aria-controls="sidebar"><svg><use href="#i-menu"/></svg></button>
+      <div class="header-title"><div class="eyebrow">AIBO-DEV / SESSION</div><h1 id="session-title">重构默认视觉体验</h1></div>
+      <div class="header-actions"><span class="status header-status" id="header-status">已就绪</span><button class="icon-button" id="theme-toggle" aria-label="切换为深色主题" title="切换主题"><svg><use href="#i-sun"/></svg></button><button class="icon-button" id="context-toggle" aria-label="切换上下文面板" aria-expanded="true" aria-controls="context"><svg><use href="#i-panel"/></svg></button></div>
+    </header>
+    <div class="tabs" role="tablist" aria-label="会话视图">
+      <button class="tab" id="tab-chat" role="tab" aria-selected="true" aria-controls="panel-chat" data-view="chat"><svg><use href="#i-chat"/></svg>对话</button>
+      <button class="tab" id="tab-execution" role="tab" aria-selected="false" aria-controls="panel-execution" tabindex="-1" data-view="execution"><svg><use href="#i-terminal"/></svg>执行记录<span class="count">3</span></button>
+      <button class="tab" id="tab-changes" role="tab" aria-selected="false" aria-controls="panel-changes" tabindex="-1" data-view="changes"><svg><use href="#i-diff"/></svg>变更<span class="count">3</span></button>
+    </div>
+    <div class="work-body">
+      <section class="main-pane" id="panel-chat" role="tabpanel" aria-labelledby="tab-chat">
+        <div class="conversation" id="conversation"><div class="thread" id="thread">
+          <div class="date-rule">今天 · 9 月 22 日</div>
+          <article class="message"><div class="message-meta"><span class="avatar">YOU</span><strong>你</strong><time>14:32</time></div><div class="user-body">用 ak-ui 重新设计 Aibo 的默认界面。保持现代、简洁，导航和工作区在同一主题下统一明暗，让注意力回到对话与代码。</div></article>
+          <article class="message"><div class="message-meta"><span class="avatar ai">a</span><strong>Aibo</strong><span style="color:var(--ak-text-secondary)">/ Codex</span><time>14:33</time></div>
+            <div class="message-copy"><h2 class="task-heading">让复杂的工作，拥有清晰的界面。</h2><p>我会将两套默认视觉收敛为一套一致的工作台。保留熟悉的工作区结构，用更清晰的信息层级组织会话、执行过程与代码变更。</p></div>
+            <ol class="plan"><li><span class="plan-number">01</span><div><strong>统一视觉语言</strong><small>同主题、同明暗，以细微色阶划分区域。</small></div></li><li><span class="plan-number">02</span><div><strong>为内容留出空间</strong><small>降低装饰密度，突出对话、代码和当前操作。</small></div></li><li><span class="plan-number">03</span><div><strong>让执行过程可读</strong><small>工具调用按需展开，变更与上下文随时可达。</small></div></li></ol>
+            <details class="tool"><summary><svg><use href="#i-check"/></svg>已查看工作台结构<span class="duration">4 个文件 · 0.8s</span></summary><pre class="tool-output">src/lib/components/app/WorkspaceSidebar.svelte
+src/lib/components/app/Composer.svelte
+src/lib/ui-kit/contract.ts
+src/lib/ui-kit/registry.ts
+
+示例记录：业务与视觉通过 ui-kit 分离。</pre></details>
+            <div class="ready"><svg><use href="#i-check"/></svg>设计方向已整理，可在「变更」中预览样式示例。</div>
+          </article>
+        </div></div>
+        <div class="composer-wrap"><form class="composer" id="composer"><div class="attachment" id="attachment" hidden></div><textarea id="prompt" aria-label="发送给 Aibo 的消息" placeholder="继续你的想法，或提出新的任务…" rows="2"></textarea><div class="composer-toolbar"><button type="button" class="icon-button" id="attach" aria-label="添加附件"><svg><use href="#i-plus"/></svg></button><input type="file" id="file-input" hidden><select class="control-select" id="model" aria-label="选择模型"><option>Codex · GPT-5.4</option><option>Pi · 已配置模型</option></select><select class="control-select" id="access" aria-label="权限模式"><option>按需审批</option><option>只读模式</option></select><button class="send" id="send" type="submit" aria-label="发送消息" disabled><svg><use href="#i-arrow"/></svg></button></div></form><div class="composer-caption"><span>Enter 发送 · Shift + Enter 换行</span><span>本地设计演示 · 不连接 Agent</span></div></div>
+      </section>
+      <section class="view-panel" id="panel-execution" role="tabpanel" aria-labelledby="tab-execution" hidden><div class="view-heading"><div><div class="eyebrow">EXECUTION LOG</div><h2>每一步，都有迹可循。</h2><p class="subcopy">当前会话的工具调用与结果 · 以下为示例数据</p></div><span class="status">3 项完成</span></div><div class="execution-list"><div class="execution-row"><svg><use href="#i-check"/></svg><div><h3>检查 UI 架构</h3><p class="subcopy">读取组件边界与主题注册方式</p><code>read · contract.ts, registry.ts</code></div><time>14:33:02</time></div><div class="execution-row"><svg><use href="#i-check"/></svg><div><h3>读取工作台组件</h3><p class="subcopy">识别导航、输入区与上下文面板</p><code>read · WorkspaceSidebar.svelte, Composer.svelte</code></div><time>14:33:03</time></div><div class="execution-row"><svg><use href="#i-check"/></svg><div><h3>整理视觉方案</h3><p class="subcopy">建立统一的浅色与深色语义令牌</p><code>design · ak-ui / system</code></div><time>14:33:06</time></div></div></section>
+      <section class="view-panel" id="panel-changes" role="tabpanel" aria-labelledby="tab-changes" hidden><div class="view-heading"><div><div class="eyebrow">CHANGE REVIEW</div><h2>聚焦真正的变化。</h2><p class="subcopy">3 个文件 · 样式变更示例，并非实际仓库差异</p></div><span class="status">+48 / −26</span></div><div class="diff-selector" aria-label="选择变更文件"><button data-diff="0" aria-pressed="true">theme.css</button><button data-diff="1" aria-pressed="false">Workbench.svelte</button><button data-diff="2" aria-pressed="false">Composer.svelte</button></div><div class="diff"><div class="diff-heading" id="diff-heading">src/lib/ui-kit/theme.css</div><pre id="diff-code"></pre></div><div class="approval"><div><p id="approval-label">运行构建前需要你的批准</p><small>演示命令：pnpm run build · 工作区内执行</small></div><button class="primary" id="approve">批准本次执行 <svg><use href="#i-right"/></svg></button></div></section>
+      <aside class="context" id="context" aria-label="会话上下文"><div class="context-header"><h3>上下文</h3><span>CONTEXT</span></div><section class="context-section"><div class="context-title">当前工作区</div><div class="branch"><svg><use href="#i-branch"/></svg>design / default-ui</div><dl><dt>项目</dt><dd>aibo-dev</dd><dt>运行位置</dt><dd>本地工作区</dd><dt>权限</dt><dd id="context-access">按需审批</dd></dl></section><section class="context-section"><div class="context-title">本次变更 <span style="float:right">03</span></div><button class="file-row" data-open-diff="0"><svg><use href="#i-file"/></svg><span>theme.css</span><em>+24 −12</em></button><button class="file-row" data-open-diff="1"><svg><use href="#i-file"/></svg><span>Workbench.svelte</span><em>+16 −8</em></button><button class="file-row" data-open-diff="2"><svg><use href="#i-file"/></svg><span>Composer.svelte</span><em>+8 −6</em></button><button class="review-button" id="review">查看全部变更<svg><use href="#i-right"/></svg></button></section><section class="context-section"><div class="context-title">会话用量 · 示例</div><div style="display:flex;justify-content:space-between;font:11px var(--ak-font-mono)"><span>30.7k / 128k</span><span>24%</span></div><div class="meter" role="meter" aria-label="上下文使用量" aria-valuenow="24" aria-valuemin="0" aria-valuemax="100"><span></span></div><p class="muted" style="margin-top:12px">上下文空间充足</p></section><p class="context-note"><svg><use href="#i-shield"/></svg> 你的工作区，由你掌控。<br>需要审批的操作会在执行前单独确认。</p></aside>
+    </div>
+  </main>
+  <footer class="footer"><span class="status">本地演示</span><span class="footer-extra">aibo-dev</span><span class="footer-extra">↳ design/default-ui</span><span class="footer-right" id="theme-footer">AK–UI / LIGHT</span><span>UTF-8</span></footer>
+</div>
+<dialog class="modal" id="settings-dialog" aria-labelledby="settings-title"><div class="modal-header"><div><div class="eyebrow">PREFERENCES</div><h2 id="settings-title">工作台设置</h2></div><button class="icon-button" data-close aria-label="关闭设置"><svg><use href="#i-close"/></svg></button></div><div class="setting-row"><div><p>外观主题</p><small>所有区域保持统一明暗，仅通过色阶区分层级。</small></div><div class="theme-options"><button data-theme-choice="light" aria-pressed="true">浅色</button><button data-theme-choice="dark" aria-pressed="false">深色</button></div></div><div class="setting-row"><div><p>默认设计系统</p><small>统一替代原 shadcn / Material 3 默认视觉。</small></div><span class="status">Aibo · ak-ui</span></div><div class="setting-row"><div><p>动效</p><small>仅保留短促操作反馈，自动尊重系统减少动态效果设置。</small></div></div><p class="subcopy">这是交互设计稿。主题选择保存在当前浏览器，不修改 Aibo 设置。</p></dialog>
+<dialog class="modal" id="search-dialog" aria-labelledby="search-title"><div class="modal-header"><h2 id="search-title">搜索会话</h2><button class="icon-button" data-close aria-label="关闭搜索"><svg><use href="#i-close"/></svg></button></div><input class="search-input" id="search-input" placeholder="输入会话名称…" aria-label="搜索会话名称"><div id="search-results"></div><p class="subcopy">⌘ / Ctrl + K 打开 · Esc 关闭</p></dialog>
+<dialog class="modal" id="plugins-dialog" aria-labelledby="plugins-title"><div class="modal-header"><div><div class="eyebrow">CAPABILITIES</div><h2 id="plugins-title">插件与能力</h2></div><button class="icon-button" data-close aria-label="关闭插件面板"><svg><use href="#i-close"/></svg></button></div><p class="subcopy">一个工作台，连接不同的开发伙伴。以下为演示配置。</p><div class="plugin"><div class="plugin-icon">⌘</div><div><h3>Codex</h3><small>代码编写 · 工具执行 · 会话恢复</small></div><span class="status">已启用</span></div><div class="plugin"><div class="plugin-icon">π</div><div><h3>Pi</h3><small>代码编写 · 上下文管理</small></div><span class="status">已启用</span></div></dialog>
+<div class="toast" id="toast" role="status" hidden></div>
+<script>
+(() => {
+  const $ = s => document.querySelector(s), $$ = s => [...document.querySelectorAll(s)];
+  const icon = name => `<svg aria-hidden="true"><use href="#i-${name}"/></svg>`;
+  let toastTimer, runTimer, running = false, currentSession = 'design';
+  const savedThreads = new Map(), drafts = new Map();
+  const titles = {design:'重构默认视觉体验',plugin:'梳理插件能力边界',test:'完善会话恢复测试',git:'工作区 Git 变更预览',docs:'整理开发者文档',new:'新建会话'};
+  const intros = {plugin:'将宿主状态与插件执行职责分离，让新的能力提供方也能接入同一个工作台。',test:'检查草稿、消息队列与历史记录的恢复边界，为中断后的继续工作提供保障。',git:'在同一工作区查看文件差异、定位代码改动，并保留清晰的审查上下文。',docs:'整理安装、插件开发与会话管理文档，让项目约定更容易查找。'};
+  function notify(message) { clearTimeout(toastTimer); $('#toast').textContent=message; $('#toast').hidden=false; toastTimer=setTimeout(()=>$('#toast').hidden=true,3500); }
+  function setTheme(theme) { document.body.dataset.theme=theme; $('#theme-toggle').setAttribute('aria-label',theme==='light'?'切换为深色主题':'切换为浅色主题'); $('#theme-footer').textContent='AK–UI / '+theme.toUpperCase(); $$('[data-theme-choice]').forEach(b=>b.setAttribute('aria-pressed',String(b.dataset.themeChoice===theme))); try {localStorage.setItem('aibo-ak-preview-theme',theme)}catch{} }
+  let initialTheme='light'; try {initialTheme=localStorage.getItem('aibo-ak-preview-theme')||'light'}catch{} setTheme(initialTheme==='dark'?'dark':'light');
+  $('#theme-toggle').onclick=()=>setTheme(document.body.dataset.theme==='light'?'dark':'light');
+  $$('[data-theme-choice]').forEach(b=>b.onclick=()=>setTheme(b.dataset.themeChoice));
+  function setView(view,focus=false) { $$('[data-view]').forEach(b=>{const active=b.dataset.view===view; b.setAttribute('aria-selected',String(active));b.tabIndex=active?0:-1;$('#panel-'+b.dataset.view).hidden=!active;if(active&&focus)b.focus()}); }
+  $$('[data-view]').forEach(b=>b.onclick=()=>setView(b.dataset.view));
+  $('.tabs').addEventListener('keydown',e=>{const tabs=$$('[data-view]'),i=tabs.indexOf(document.activeElement);if(i<0)return;let n;if(e.key==='ArrowRight')n=(i+1)%tabs.length;else if(e.key==='ArrowLeft')n=(i+tabs.length-1)%tabs.length;else if(e.key==='Home')n=0;else if(e.key==='End')n=tabs.length-1;else return;e.preventDefault();setView(tabs[n].dataset.view,true)});
+  function openModal(id) { const d=document.getElementById(id);d.showModal(); if(id==='search-dialog'){$('#search-input').value='';renderSearch('');$('#search-input').focus()} }
+  $$('[data-modal]').forEach(b=>b.onclick=()=>openModal(b.dataset.modal));
+  $$('[data-close]').forEach(b=>b.onclick=()=>b.closest('dialog').close());
+  $$('dialog').forEach(d=>d.addEventListener('click',e=>{if(e.target===d){const r=d.getBoundingClientRect();if(e.clientX<r.left||e.clientX>r.right||e.clientY<r.top||e.clientY>r.bottom)d.close()}}));
+  $('#menu-toggle').onclick=()=>{const open=$('#sidebar').classList.toggle('is-visible');$('#menu-toggle').setAttribute('aria-expanded',String(open))};
+  const narrow=matchMedia('(max-width:1000px)');
+  function syncContext() {$('#context-toggle').setAttribute('aria-expanded',String(getComputedStyle($('#context')).display!=='none'))}
+  $('#context-toggle').onclick=()=>{const c=$('#context');if(narrow.matches){c.hidden=false;c.classList.toggle('is-visible')}else{c.hidden=!c.hidden}syncContext()};
+  narrow.addEventListener('change',()=>{$('#context').hidden=false;$('#context').classList.remove('is-visible');syncContext()});syncContext();
+  document.addEventListener('keydown',e=>{if((e.metaKey||e.ctrlKey)&&e.key.toLowerCase()==='k'){e.preventDefault();if(!document.querySelector('dialog[open]'))openModal('search-dialog')}if(e.key==='Escape'&&!document.querySelector('dialog[open]')){$('#sidebar').classList.remove('is-visible');$('#menu-toggle').setAttribute('aria-expanded','false');$('#context').classList.remove('is-visible');syncContext()}});
+  function endRun() {clearTimeout(runTimer);running=false;$('#header-status').textContent='已就绪';$('#send').innerHTML=icon('arrow');$('#send').setAttribute('aria-label','发送消息');$('#send').disabled=!$('#prompt').value.trim();}
+  function selectSession(id) { if(running){endRun();notify('演示生成已停止')} savedThreads.set(currentSession,$('#thread').innerHTML);drafts.set(currentSession,$('#prompt').value);currentSession=id;$('#session-title').textContent=titles[id];$$('[data-session]').forEach(b=>{if(b.dataset.session===id)b.setAttribute('aria-current','page');else b.removeAttribute('aria-current')});if(savedThreads.has(id))$('#thread').innerHTML=savedThreads.get(id);else if(id==='new')$('#thread').innerHTML='<div class="empty"><div class="empty-symbol">a.</div><div><div class="eyebrow">A SPACE FOR YOUR NEXT IDEA</div><h2>今天，一起做点什么？</h2></div><p>从一个问题、一段代码，或一个尚未成形的想法开始。</p><div class="suggestions"><button data-suggest="帮我梳理项目结构">梳理项目结构</button><button data-suggest="检查最近的代码变更">检查代码变更</button></div></div>';else{$('#thread').innerHTML='<div class="date-rule">会话预览 · 示例内容</div><article class="message"><div class="message-meta"><span class="avatar ai">a</span><strong>Aibo</strong></div><h2 class="task-heading"></h2><p class="message-copy"></p></article>';$('#thread h2').textContent=titles[id];$('#thread .message-copy').textContent=intros[id]}$('#prompt').value=drafts.get(id)||'';$('#send').disabled=!$('#prompt').value.trim();$('#attachment').hidden=true;$('#file-input').value='';setView('chat');$('#sidebar').classList.remove('is-visible');$('#menu-toggle').setAttribute('aria-expanded','false'); }
+  $$('[data-session]').forEach(b=>b.onclick=()=>selectSession(b.dataset.session));
+  $('#new-session').onclick=()=>{if(currentSession==='new'){setView('chat');$('#prompt').focus();return}selectSession('new');$('#prompt').focus()};
+  $('#thread').addEventListener('click',e=>{const b=e.target.closest('[data-suggest]');if(b){$('#prompt').value=b.dataset.suggest;$('#send').disabled=false;$('#prompt').focus()}});
+  function renderSearch(q) {const container=$('#search-results');container.replaceChildren();Object.entries(titles).filter(([id,t])=>id!=='new'&&t.includes(q)).forEach(([id,t])=>{const b=document.createElement('button');b.className='search-result';const name=document.createElement('span');name.textContent=t;const hint=document.createElement('small');hint.textContent='aibo-dev ↗';b.append(name,hint);b.onclick=()=>{$('#search-dialog').close();selectSession(id);$('#prompt').focus()};container.append(b)});if(!container.children.length){const p=document.createElement('p');p.className='subcopy';p.textContent='没有找到匹配的会话，试试其他关键词。';container.append(p)}}
+  $('#search-input').oninput=e=>renderSearch(e.target.value.trim());
+  $('#attach').onclick=()=>$('#file-input').click();$('#file-input').onchange=()=>{const f=$('#file-input').files[0];if(f){$('#attachment').textContent='附件 · '+f.name+'（仅本地展示，不上传）';$('#attachment').hidden=false}};
+  $('#access').onchange=()=>{$('#context-access').textContent=$('#access').value;notify('演示权限模式：'+$('#access').value)};
+  $('#model').onchange=()=>notify('演示模型：'+$('#model').value);
+  $('#prompt').oninput=()=>{if(!running)$('#send').disabled=!$('#prompt').value.trim()};
+  $('#prompt').onkeydown=e=>{if(e.key==='Enter'&&!e.shiftKey&&!e.isComposing){e.preventDefault();if(!running&&$('#prompt').value.trim())$('#composer').requestSubmit()}};
+  function appendMessage(text,isUser) {const a=document.createElement('article');a.className='message';a.innerHTML='<div class="message-meta"><span class="avatar '+(isUser?'':'ai')+'">'+(isUser?'YOU':'a')+'</span><strong>'+(isUser?'你':'Aibo')+'</strong><time>刚刚</time></div>';const p=document.createElement('div');p.className=isUser?'user-body':'message-copy';p.textContent=text;a.append(p);$('#thread').append(a);$('#conversation').scrollTop=$('#conversation').scrollHeight;}
+  $('#composer').onsubmit=e=>{e.preventDefault();if(running){endRun();appendMessage('已停止本次演示生成。',false);return}const value=$('#prompt').value.trim();if(!value)return;$('#thread .empty')?.remove();appendMessage(value,true);$('#prompt').value='';$('#attachment').hidden=true;$('#file-input').value='';running=true;$('#header-status').textContent='演示生成中';$('#send').innerHTML=icon('stop');$('#send').setAttribute('aria-label','停止生成');$('#send').disabled=false;runTimer=setTimeout(()=>{appendMessage('已收到。这是本地交互演示，消息不会发送到真实 Agent。你可以切换主题、查看执行记录与代码变更，或继续体验多轮对话。',false);endRun()},1400)};
+  const diffs=[{name:'src/lib/ui-kit/theme.css',lines:[['','  [data-ak-ui] {'],['remove','−   --sidebar-surface: #20241f;'],['remove','−   --workspace-surface: #ffffff;'],['add','+   --ak-surface-canvas: #f5f5f1;'],['add','+   --ak-surface-panel: #fcfcf9;'],['add','+   --ak-surface-muted: #eceee8;'],['','  }'],['',''],['','  [data-theme="dark"] {'],['add','+   --ak-surface-canvas: #1d211e;'],['add','+   --ak-surface-panel: #222723;'],['add','+   --ak-surface-muted: #282e29;'],['','  }']]},{name:'src/lib/ui-kit/Workbench.svelte',lines:[['','  <section class="workbench">'],['remove','−   <LegacyNavigation />'],['add','+   <WorkspaceNavigation />'],['add','+   <SessionTabs />'],['','      <Conversation />'],['add','+   <SessionContext />'],['','  </section>']]},{name:'src/lib/ui-kit/Composer.svelte',lines:[['','  <form class="composer">'],['add','+   <textarea aria-label="发送给 Aibo 的消息" />'],['','      <ModelSelect />'],['add','+   <AccessModeSelect />'],['remove','−   <button>提交</button>'],['add','+   <button aria-label="发送消息">↑</button>'],['','  </form>']]}];
+  function showDiff(i) {const d=diffs[i];$('#diff-heading').textContent=d.name;$('#diff-code').replaceChildren();d.lines.forEach(([kind,text])=>{const line=document.createElement('span');line.className='diff-line '+kind;line.textContent=text||' ';$('#diff-code').append(line)});$$('[data-diff]').forEach(b=>b.setAttribute('aria-pressed',String(Number(b.dataset.diff)===Number(i))))}
+  $$('[data-diff]').forEach(b=>b.onclick=()=>showDiff(Number(b.dataset.diff)));
+  $$('[data-open-diff]').forEach(b=>b.onclick=()=>{setView('changes');showDiff(Number(b.dataset.openDiff));if(narrow.matches){$('#context').classList.remove('is-visible');syncContext()}});
+  $('#review').onclick=()=>{setView('changes');if(narrow.matches){$('#context').classList.remove('is-visible');syncContext()}};showDiff(0);
+  $('#approve').onclick=()=>{$('#approval-label').textContent='✓ 已批准本次演示操作';$('#approve').textContent='已批准';$('#approve').disabled=true;notify('审批状态已更新，仅演示，未执行任何命令')};
+})();
+</script>
+</body>
+</html>
