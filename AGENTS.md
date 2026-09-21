@@ -24,6 +24,36 @@ backend, session lifecycle, permissions, menus, and command routing.
   identity-based special cases and verify the behavior using capability
   combinations, including missing capabilities and a third-party plugin.
 
+## Host and plugin ownership
+
+For changes to plugin contracts, session routing, presentation state, actions,
+or recovery, read [boundary lessons and regression requirements](docs/plugin-boundaries-and-regression.md).
+For capability negotiation also read [session negotiation](docs/session-capability-negotiation.md);
+for modes and permission ownership read [session controls](docs/session-controls.md);
+for external rendering read [presentation package contracts](docs/presentation-package.md).
+
+- The host owns authoritative workspace/session state, immutable release
+  bindings, durable history and queues, recoverable drafts and view state,
+  action admission, approval routing, and recovery. Capability plugins own
+  native protocol mapping and execution under the negotiated policy.
+  Presentation plugins own layout and visual expression of host snapshots.
+- Keep plugin management, trusted approval, and default-presentation recovery
+  outside replaceable presentation surfaces. A failing or disabled renderer
+  must not discard business state or make these controls inaccessible.
+- Negotiate manifest contracts, actual Runtime handshake operations, and
+  session-open capabilities together. Keep support, current action availability,
+  and execution authorization separate; revalidate at the host when executing.
+- Presentation actions use host-issued tokens scoped to the current context
+  and generation/revision. Renderers cannot construct arbitrary IPC calls,
+  capability requests, or permissions. Preserve the narrow host-owned local
+  input exception without relaxing send, navigation, or approval checks.
+- Dispatch existing sessions through their pinned installation/contribution;
+  reuse matching live runtime generations and resume after shutdown. Failed
+  upgrades or presentation candidates retain the last confirmed working state.
+- Changing models, modes, skins, or layouts must preserve unrelated history,
+  settings, drafts, attachments, queue items, and pending interactions according
+  to their ownership and scope. Define any intended reset explicitly.
+
 ## UI architecture hard rules
 
 These rules are mandatory for every UI change. They are enforced by the
@@ -55,6 +85,22 @@ Before handing off a change, run:
 ```sh
 pnpm run verify
 ```
+
+For every implementation change or new feature, identify affected producers,
+consumers, and shared paths before editing. Add a regression that detects the
+original failure where applicable, then verify both the changed behavior and
+the existing behavior it must preserve. Follow the impact matrix in
+[boundary lessons and regression requirements](docs/plugin-boundaries-and-regression.md#regression-gate).
+Passing only the new feature's test is not sufficient.
+
+Changes to shared contracts must cover supported, absent, and rejected
+capabilities, an unrelated provider, and old supported declarations. UI changes
+must cover both built-in skins and any affected external presentation surface,
+including inheritance and failure recovery. Rust execution/persistence changes
+also require relevant Rust tests; `verify` does not run them or browser/native
+probes. Report commands, results, and any unverified boundary explicitly.
+An unexplained failure blocks a claim that regression verification passed;
+do not delete coverage or narrow old assertions to accommodate new behavior.
 
 If a rule is intentionally changed, update the UI contract, architecture
 tests, and `docs/ui-architecture.md` in the same change. Do not weaken a test
