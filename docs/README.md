@@ -16,6 +16,7 @@
 
 ## 呈现插件与当前交付
 
+- [框架无关呈现目标与 checklist](presentation-framework-agnostic.md)：下一阶段 DOM 运行时、公共 SDK、默认外观迁移与验收门槛；尚未实现。
 - [Presentation 0.3.0 交付](presentation-release-0.3.0.md)：版本、安装、本地 ZIP 与离线 SDK。
 - [Presentation 包合同](presentation-package.md)：manifest、Worker、视觉树、动作及状态恢复。
 - [退出审计](presentation-plugin-exit-audit.md)：P0–P4 完成结论和浏览器、原生验收边界。
