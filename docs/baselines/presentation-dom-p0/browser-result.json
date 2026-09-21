@@ -1,0 +1,28 @@
+{
+  "passed": true,
+  "browser": "153.0.8010.12",
+  "scope": "Chromium, mock effects, browser trusted input; no native IPC/physical input or CPU isolation claim",
+  "sizes": {
+    "react": 194017,
+    "svelte": 52586
+  },
+  "evidence": [
+    {
+      "framework": "react",
+      "mountMs": 42.299999952316284,
+      "draft": "草稿-react"
+    },
+    {
+      "framework": "svelte",
+      "mountMs": 10.399999976158142,
+      "draft": "草稿-svelte"
+    },
+    {
+      "framework": "react",
+      "mountMs": 20.799999952316284,
+      "draft": "草稿-react"
+    },
+    "valid token plus forged isTrusted cannot execute; trusted host browser click confirms once",
+    "stale revision, old generation, suspended requests and revoked actions rejected"
+  ]
+}

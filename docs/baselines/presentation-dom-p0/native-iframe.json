@@ -1,0 +1,106 @@
+{
+  "axTrusted" : true,
+  "blockedNavigations" : 0,
+  "completed" : true,
+  "evidence" : [
+    {
+      "stats" : {
+        "active" : true,
+        "beats" : 3,
+        "checks" : {
+          "parentAccess" : false,
+          "storage" : false,
+          "tauri" : false
+        },
+        "draft" : "跨框架保留的草稿",
+        "executed" : 0,
+        "framework" : "react",
+        "generation" : 1,
+        "lastRenderMs" : 52,
+        "log" : [
+          "撤销旧呈现通道；宿主草稿保留",
+          "准备 react（独立 DOM）"
+        ],
+        "pending" : null,
+        "rejected" : 0,
+        "rendered" : 1,
+        "revision" : 1,
+        "suspended" : false
+      },
+      "step" : "react mounted"
+    },
+    {
+      "stats" : {
+        "active" : true,
+        "beats" : 8,
+        "checks" : {
+          "parentAccess" : false,
+          "storage" : false,
+          "tauri" : false
+        },
+        "draft" : "native shared draft",
+        "executed" : 0,
+        "framework" : "react",
+        "generation" : 1,
+        "lastRenderMs" : 52,
+        "log" : [
+          "撤销旧呈现通道；宿主草稿保留",
+          "准备 react（独立 DOM）",
+          "插件请求发送；仅宿主可确认，尚未产生副作用",
+          "拒绝：插件不可确认审批或调用通用 IPC",
+          "拒绝：插件不可确认审批或调用通用 IPC"
+        ],
+        "pending" : {
+          "draft" : "native shared draft",
+          "requestId" : "request-2",
+          "revision" : 2
+        },
+        "rejected" : 2,
+        "rendered" : 2,
+        "revision" : 2,
+        "suspended" : false
+      },
+      "step" : "forged request did not execute"
+    },
+    {
+      "stats" : {
+        "active" : true,
+        "beats" : 15,
+        "checks" : {
+          "parentAccess" : false,
+          "storage" : false,
+          "tauri" : false
+        },
+        "draft" : "native shared draft",
+        "executed" : 1,
+        "framework" : "svelte",
+        "generation" : 2,
+        "lastRenderMs" : 36,
+        "log" : [
+          "撤销旧呈现通道；宿主草稿保留",
+          "准备 react（独立 DOM）",
+          "插件请求发送；仅宿主可确认，尚未产生副作用",
+          "拒绝：插件不可确认审批或调用通用 IPC",
+          "拒绝：插件不可确认审批或调用通用 IPC",
+          "宿主确认：模拟发送一次（未调用 Agent）",
+          "撤销旧呈现通道；宿主草稿保留",
+          "准备 svelte（独立 DOM）"
+        ],
+        "pending" : null,
+        "rejected" : 2,
+        "rendered" : 4,
+        "revision" : 4,
+        "suspended" : false
+      },
+      "step" : "Svelte retained draft after React"
+    }
+  ],
+  "hostResponsiveDuringLoop" : false,
+  "mode" : "iframe",
+  "nativeAccessibilityConfirmations" : 1,
+  "physicalInputVerified" : false,
+  "platform" : "Version 27.0 (Build 26A428)",
+  "recoveryVerified" : false,
+  "scope" : "Standalone WKWebView; scripted setup and AXPress host input; mock side effects; no real Aibo\/Tauri IPC or hardware input",
+  "verdict" : "container fails host availability gate"
+}

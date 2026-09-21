@@ -1,0 +1,24 @@
+{
+  "baseCommit": "205ff148c667c1c38142cd4eb5272a4925e6e958",
+  "architecture": "arm64",
+  "sourceSha256": {
+    "Conversation.svelte": "ceb45ade5b70ecc22b7dd0df76e576330f90c00c876780aa8d9c47a45269b9ff",
+    "README.md": "9fb78808d29ac452a146a9bd83157954b21491c82054d87addad8e9462876f8c",
+    "browser.mjs": "21839551e2a4dc9ef19ad814e247a1d61f932e7033238930ab7c48221bf278e1",
+    "build.mjs": "d4e27af4940bcbf8ac101fd1211b41319807428485c1abf92fa3a1c363a2776c",
+    "client.mjs": "99f7e6392ce3e0af81d6c05a2dda6ff30aa542937b72d2a6675f9dcb616a524b",
+    "fixture.mjs": "2bfe523988805162b430f31e85e895eee137b54734cd7e7739fe50384d7692b4",
+    "host.mjs": "75f9098d6a3a3adca94c5412e05bcdcdf61b4109e60e4df7d2e22b0e8c233494",
+    "native-input.swift": "7bba3c79b2065c17982fd593034f2f26f94cb59108f399da023d6e6d045f70b4",
+    "native.mjs": "9d1f0eebe6a8b07d230144ef28a9013e8418c3cb164c62e2fc78875f1663d153",
+    "native.swift": "aaba1079e02dde87161693f6d121b09c68d2dfcc1b00628c798b1928948cb33f",
+    "package-lock.json": "778f8b356e057e6b8259e0bcc57869d23e03f9d76491d484dbe59ec69f7314c8",
+    "package.json": "a31d849917ac8279030a00cfe359eea44531795e4241bbcce801aa1f3310f12d",
+    "react.jsx": "035854ecf5fe91e3765b6e63e2418ebf742f2e6f5591393cda572884d9d4e183",
+    "svelte.svelte.js": "f5d49b676b33db4737f62c92f2589e05e772b71f1e1d94a5895358746b87022c",
+    "tauri-ipc.html": "e251f8bcc3dfbfb3dbb980a55765b06183ae9b7550dc473a70f5de0027528411",
+    "tauri-ipc.mjs": "d0f843b717b0876796e8dda2f71d97fdd72044501344a387b8cd02be87de422c"
+  },
+  "note": "Prototype artifacts only. Source hashes bind evidence to final prototype sources; no production support claim.",
+  "prototypeCommit": "5aea830adbbfef78583b01cc569b7722143e8f15"
+}

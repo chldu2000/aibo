@@ -1,0 +1,223 @@
+{
+  "axTrusted" : true,
+  "blockedNavigations" : 0,
+  "completed" : true,
+  "evidence" : [
+    {
+      "stats" : {
+        "active" : true,
+        "beats" : 4,
+        "checks" : {
+          "parentAccess" : false,
+          "storage" : false,
+          "tauri" : false
+        },
+        "draft" : "跨框架保留的草稿",
+        "executed" : 0,
+        "framework" : "react",
+        "generation" : 1,
+        "lastRenderMs" : 85,
+        "log" : [
+          "撤销旧呈现通道；宿主草稿保留",
+          "准备 react（独立 DOM）"
+        ],
+        "pending" : null,
+        "rejected" : 0,
+        "rendered" : 1,
+        "revision" : 1,
+        "suspended" : false
+      },
+      "step" : "react mounted"
+    },
+    {
+      "stats" : {
+        "active" : true,
+        "beats" : 9,
+        "checks" : {
+          "parentAccess" : false,
+          "storage" : false,
+          "tauri" : false
+        },
+        "draft" : "native shared draft",
+        "executed" : 0,
+        "framework" : "react",
+        "generation" : 1,
+        "lastRenderMs" : 85,
+        "log" : [
+          "撤销旧呈现通道；宿主草稿保留",
+          "准备 react（独立 DOM）",
+          "插件请求发送；仅宿主可确认，尚未产生副作用",
+          "拒绝：插件不可确认审批或调用通用 IPC",
+          "拒绝：插件不可确认审批或调用通用 IPC"
+        ],
+        "pending" : {
+          "draft" : "native shared draft",
+          "requestId" : "request-2",
+          "revision" : 2
+        },
+        "rejected" : 2,
+        "rendered" : 2,
+        "revision" : 2,
+        "suspended" : false
+      },
+      "step" : "forged request did not execute"
+    },
+    {
+      "stats" : {
+        "active" : true,
+        "beats" : 13,
+        "checks" : {
+          "parentAccess" : false,
+          "storage" : false,
+          "tauri" : false
+        },
+        "draft" : "native shared draft",
+        "executed" : 1,
+        "framework" : "svelte",
+        "generation" : 2,
+        "lastRenderMs" : 60,
+        "log" : [
+          "撤销旧呈现通道；宿主草稿保留",
+          "准备 react（独立 DOM）",
+          "插件请求发送；仅宿主可确认，尚未产生副作用",
+          "拒绝：插件不可确认审批或调用通用 IPC",
+          "拒绝：插件不可确认审批或调用通用 IPC",
+          "宿主确认：模拟发送一次（未调用 Agent）",
+          "撤销旧呈现通道；宿主草稿保留",
+          "准备 svelte（独立 DOM）"
+        ],
+        "pending" : null,
+        "rejected" : 2,
+        "rendered" : 4,
+        "revision" : 4,
+        "suspended" : false
+      },
+      "step" : "Svelte retained draft after React"
+    },
+    {
+      "stats" : {
+        "active" : true,
+        "beats" : 35,
+        "checks" : {
+          "parentAccess" : false,
+          "storage" : false,
+          "tauri" : false
+        },
+        "draft" : "native shared draft",
+        "executed" : 1,
+        "framework" : "svelte",
+        "generation" : 2,
+        "lastRenderMs" : 60,
+        "log" : [
+          "撤销旧呈现通道；宿主草稿保留",
+          "准备 react（独立 DOM）",
+          "插件请求发送；仅宿主可确认，尚未产生副作用",
+          "拒绝：插件不可确认审批或调用通用 IPC",
+          "拒绝：插件不可确认审批或调用通用 IPC",
+          "宿主确认：模拟发送一次（未调用 Agent）",
+          "撤销旧呈现通道；宿主草稿保留",
+          "准备 svelte（独立 DOM）",
+          "插件请求发送；仅宿主可确认，尚未产生副作用",
+          "拒绝：插件不可确认审批或调用通用 IPC",
+          "拒绝：插件不可确认审批或调用通用 IPC",
+          "插件即将进入死循环"
+        ],
+        "pending" : {
+          "draft" : "native shared draft",
+          "requestId" : "request-1",
+          "revision" : 4
+        },
+        "rejected" : 4,
+        "rendered" : 4,
+        "revision" : 4,
+        "suspended" : false
+      },
+      "step" : "host responsive during DOM loop"
+    },
+    {
+      "stats" : {
+        "active" : true,
+        "beats" : 37,
+        "checks" : {
+          "parentAccess" : false,
+          "storage" : false,
+          "tauri" : false
+        },
+        "draft" : "native shared draft",
+        "executed" : 2,
+        "framework" : "svelte",
+        "generation" : 2,
+        "lastRenderMs" : 60,
+        "log" : [
+          "撤销旧呈现通道；宿主草稿保留",
+          "准备 react（独立 DOM）",
+          "插件请求发送；仅宿主可确认，尚未产生副作用",
+          "拒绝：插件不可确认审批或调用通用 IPC",
+          "拒绝：插件不可确认审批或调用通用 IPC",
+          "宿主确认：模拟发送一次（未调用 Agent）",
+          "撤销旧呈现通道；宿主草稿保留",
+          "准备 svelte（独立 DOM）",
+          "插件请求发送；仅宿主可确认，尚未产生副作用",
+          "拒绝：插件不可确认审批或调用通用 IPC",
+          "拒绝：插件不可确认审批或调用通用 IPC",
+          "插件即将进入死循环",
+          "宿主确认：模拟发送一次（未调用 Agent）"
+        ],
+        "pending" : null,
+        "rejected" : 4,
+        "rendered" : 4,
+        "revision" : 5,
+        "suspended" : false
+      },
+      "step" : "trusted native accessibility input confirmed while plugin loops"
+    },
+    {
+      "stats" : {
+        "active" : true,
+        "beats" : 40,
+        "checks" : {
+          "parentAccess" : false,
+          "storage" : false,
+          "tauri" : false
+        },
+        "draft" : "native shared draft",
+        "executed" : 2,
+        "framework" : "react",
+        "generation" : 4,
+        "lastRenderMs" : 61,
+        "log" : [
+          "撤销旧呈现通道；宿主草稿保留",
+          "准备 react（独立 DOM）",
+          "插件请求发送；仅宿主可确认，尚未产生副作用",
+          "拒绝：插件不可确认审批或调用通用 IPC",
+          "拒绝：插件不可确认审批或调用通用 IPC",
+          "宿主确认：模拟发送一次（未调用 Agent）",
+          "撤销旧呈现通道；宿主草稿保留",
+          "准备 svelte（独立 DOM）",
+          "插件请求发送；仅宿主可确认，尚未产生副作用",
+          "拒绝：插件不可确认审批或调用通用 IPC",
+          "拒绝：插件不可确认审批或调用通用 IPC",
+          "插件即将进入死循环",
+          "宿主确认：模拟发送一次（未调用 Agent）",
+          "撤销旧呈现通道；宿主草稿保留",
+          "撤销旧呈现通道；宿主草稿保留",
+          "准备 react（独立 DOM）"
+        ],
+        "pending" : null,
+        "rejected" : 4,
+        "rendered" : 6,
+        "revision" : 6,
+        "suspended" : false
+      },
+      "step" : "replacement mounted after fault"
+    }
+  ],
+  "hostResponsiveDuringLoop" : true,
+  "mode" : "webview",
+  "nativeAccessibilityConfirmations" : 2,
+  "physicalInputVerified" : false,
+  "platform" : "Version 27.0 (Build 26A428)",
+  "recoveryVerified" : true,
+  "scope" : "Standalone WKWebView; scripted setup and AXPress host input; mock side effects; no real Aibo\/Tauri IPC or hardware input",
+  "verdict" : "WKWebView and native accessibility input experiment passed; Tauri integration remains unverified"
+}
