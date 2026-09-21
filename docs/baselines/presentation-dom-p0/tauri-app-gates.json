@@ -1,0 +1,577 @@
+{
+  "completed": true,
+  "checks": [
+    {
+      "step": "trusted host access before child",
+      "result": {
+        "command": "get_presentation_selection",
+        "accepted": true,
+        "value": null
+      }
+    },
+    {
+      "step": "host commands with embedded child",
+      "selection": {
+        "command": "get_presentation_selection",
+        "accepted": false,
+        "error": "current webview is not a WebviewWindow"
+      },
+      "workspaces": {
+        "command": "list_workspaces",
+        "accepted": true,
+        "value": [
+          {
+            "id": "01M32J5JCK9SJEHWAE08NFC1CQ",
+            "path": "/private/var/folders/vt/gg0_j7155r554w95f7t7hxsm0000gn/T/aibo-dom-p0-gates-PTgHeo/workspace",
+            "label": "workspace",
+            "trust": "trusted",
+            "lastOpenedAt": "2026-09-21T18:03:06.515721Z",
+            "createdAt": "2026-09-21T18:03:06.515721Z",
+            "updatedAt": "2026-09-21T18:03:06.518615Z"
+          }
+        ]
+      }
+    },
+    {
+      "step": "untrusted IPC and network isolation",
+      "result": {
+        "network": "rejected",
+        "results": [
+          {
+            "accepted": false,
+            "command": "list_workspaces",
+            "error": "list_workspaces not allowed on window \"main\", webview \"p0-dom-1\", URL: local\n\nallowed on: [webviews: \"main\", URL: local]\n\nreferenced by: capability: p0-trusted, permission: p0-host-api"
+          },
+          {
+            "accepted": false,
+            "command": "get_presentation_selection",
+            "error": "get_presentation_selection not allowed on window \"main\", webview \"p0-dom-1\", URL: local\n\nallowed on: [webviews: \"main\", URL: local]\n\nreferenced by: capability: p0-trusted, permission: p0-host-api"
+          },
+          {
+            "accepted": false,
+            "command": "resolve_agent_approval",
+            "error": "resolve_agent_approval not allowed on window \"main\", webview \"p0-dom-1\", URL: local\n\nallowed on: [webviews: \"main\", URL: local]\n\nreferenced by: capability: p0-trusted, permission: p0-host-api"
+          },
+          {
+            "accepted": false,
+            "command": "p0_mount",
+            "error": "p0_mount not allowed on window \"main\", webview \"p0-dom-1\", URL: local\n\nallowed on: [webviews: \"main\", URL: local]\n\nreferenced by: capability: p0-trusted, permission: p0-host-api"
+          },
+          {
+            "accepted": false,
+            "command": "p0_deliver",
+            "error": "p0_deliver not allowed on window \"main\", webview \"p0-dom-1\", URL: local\n\nallowed on: [webviews: \"main\", URL: local]\n\nreferenced by: capability: p0-trusted, permission: p0-host-api"
+          },
+          {
+            "accepted": false,
+            "command": "p0_inspect",
+            "error": "p0_inspect not allowed on window \"main\", webview \"p0-dom-1\", URL: local\n\nallowed on: [webviews: \"main\", URL: local]\n\nreferenced by: capability: p0-trusted, permission: p0-host-api"
+          },
+          {
+            "accepted": false,
+            "command": "plugin:window|is_visible",
+            "error": "window.is_visible not allowed on window \"main\", webview \"p0-dom-1\", URL: local\n\nallowed on: [webviews: \"main\", URL: local]\n\nreferenced by: capability: p0-trusted, permission: allow-is-visible"
+          },
+          {
+            "accepted": false,
+            "command": "plugin:event|emit",
+            "error": "event.emit not allowed on window \"main\", webview \"p0-dom-1\", URL: local\n\nallowed on: [webviews: \"main\", URL: local]\n\nreferenced by: capability: p0-trusted, permission: allow-emit"
+          },
+          {
+            "accepted": false,
+            "command": "p0_post",
+            "error": "stale instance"
+          }
+        ],
+        "storageLeak": null,
+        "type": "audit-result",
+        "violations": [
+          {
+            "blocked": "http://127.0.0.1:5173/__p0_forbidden_read",
+            "directive": "connect-src"
+          }
+        ]
+      }
+    },
+    {
+      "step": "unregistered caller rejected",
+      "results": [
+        {
+          "accepted": false,
+          "command": "list_workspaces",
+          "error": "ACL denied"
+        },
+        {
+          "accepted": false,
+          "command": "p0_post",
+          "error": "ACL denied"
+        },
+        {
+          "accepted": false,
+          "command": "plugin:window|is_visible",
+          "error": "ACL denied"
+        },
+        {
+          "accepted": false,
+          "command": "plugin:event|emit",
+          "error": "ACL denied"
+        }
+      ]
+    },
+    {
+      "step": "process baseline",
+      "processIds": {
+        "childPid": 20038,
+        "diagnosticPrivateSelector": true,
+        "hostPid": 19742,
+        "nativePid": 19542
+      },
+      "sample": {
+        "native": {
+          "pid": 19542,
+          "present": true,
+          "rssKiB": 388624,
+          "cpuPercent": 20.3,
+          "executable": "target/debug/aibo"
+        },
+        "host": {
+          "pid": 19742,
+          "present": true,
+          "rssKiB": 109600,
+          "cpuPercent": 5.6,
+          "executable": "/System/Library/Frameworks/WebKit.framework/Versions/A/XPCServices/com.apple.WebKit.WebContent.xpc/Contents/MacOS/com.apple.WebKit.WebContent"
+        },
+        "child": {
+          "pid": 20038,
+          "present": true,
+          "rssKiB": 36672,
+          "cpuPercent": 9,
+          "executable": "/System/Library/Frameworks/WebKit.framework/Versions/A/XPCServices/com.apple.WebKit.WebContent.xpc/Contents/MacOS/com.apple.WebKit.WebContent"
+        }
+      }
+    },
+    {
+      "step": "native suspension",
+      "noNewMessages": true
+    },
+    {
+      "step": "64MiB touched allocation",
+      "sample": {
+        "native": {
+          "pid": 19542,
+          "present": true,
+          "rssKiB": 389664,
+          "cpuPercent": 33,
+          "executable": "target/debug/aibo"
+        },
+        "host": {
+          "pid": 19742,
+          "present": true,
+          "rssKiB": 116016,
+          "cpuPercent": 7.9,
+          "executable": "/System/Library/Frameworks/WebKit.framework/Versions/A/XPCServices/com.apple.WebKit.WebContent.xpc/Contents/MacOS/com.apple.WebKit.WebContent"
+        },
+        "child": {
+          "pid": 20038,
+          "present": true,
+          "rssKiB": 102896,
+          "cpuPercent": 3.5,
+          "executable": "/System/Library/Frameworks/WebKit.framework/Versions/A/XPCServices/com.apple.WebKit.WebContent.xpc/Contents/MacOS/com.apple.WebKit.WebContent"
+        }
+      }
+    },
+    {
+      "step": "loop host heartbeat",
+      "advanced": 14,
+      "sample": {
+        "native": {
+          "pid": 19542,
+          "present": true,
+          "rssKiB": 389872,
+          "cpuPercent": 2.8,
+          "executable": "target/debug/aibo"
+        },
+        "host": {
+          "pid": 19742,
+          "present": true,
+          "rssKiB": 118384,
+          "cpuPercent": 0.8,
+          "executable": "/System/Library/Frameworks/WebKit.framework/Versions/A/XPCServices/com.apple.WebKit.WebContent.xpc/Contents/MacOS/com.apple.WebKit.WebContent"
+        },
+        "child": {
+          "pid": 20038,
+          "present": true,
+          "rssKiB": 103792,
+          "cpuPercent": 100,
+          "executable": "/System/Library/Frameworks/WebKit.framework/Versions/A/XPCServices/com.apple.WebKit.WebContent.xpc/Contents/MacOS/com.apple.WebKit.WebContent"
+        }
+      }
+    },
+    {
+      "step": "native approval during loop",
+      "input": {
+        "ok": true,
+        "stdout": "clicked isolated dialog: 允许本次执行\n",
+        "stderr": ""
+      }
+    },
+    {
+      "step": "real Git approval result",
+      "result": {
+        "accepted": true,
+        "value": {
+          "path": "p0-proof.txt",
+          "action": "stage",
+          "applied": true,
+          "message": "Git 操作已完成"
+        }
+      }
+    },
+    {
+      "step": "actual App management during loop",
+      "input": {
+        "ok": true,
+        "stdout": "P0 native AXPress completed\n",
+        "stderr": ""
+      },
+      "bodyContainsManagement": true
+    },
+    {
+      "step": "public close after loop",
+      "elapsedMs": 1001,
+      "sample": {
+        "native": {
+          "pid": 19542,
+          "present": true,
+          "rssKiB": 390416,
+          "cpuPercent": 4.5,
+          "executable": "target/debug/aibo"
+        },
+        "host": {
+          "pid": 19742,
+          "present": true,
+          "rssKiB": 128224,
+          "cpuPercent": 1.8,
+          "executable": "/System/Library/Frameworks/WebKit.framework/Versions/A/XPCServices/com.apple.WebKit.WebContent.xpc/Contents/MacOS/com.apple.WebKit.WebContent"
+        },
+        "child": {
+          "pid": 20038,
+          "present": true,
+          "rssKiB": 103792,
+          "cpuPercent": 100,
+          "executable": "/System/Library/Frameworks/WebKit.framework/Versions/A/XPCServices/com.apple.WebKit.WebContent.xpc/Contents/MacOS/com.apple.WebKit.WebContent"
+        }
+      },
+      "hostSelection": {
+        "command": "get_presentation_selection",
+        "accepted": true,
+        "value": null
+      }
+    },
+    {
+      "step": "closed loop after five seconds",
+      "elapsedMs": 5212,
+      "sample": {
+        "native": {
+          "pid": 19542,
+          "present": true,
+          "rssKiB": 390080,
+          "cpuPercent": 1.1,
+          "executable": "target/debug/aibo"
+        },
+        "host": {
+          "pid": 19742,
+          "present": true,
+          "rssKiB": 131120,
+          "cpuPercent": 0.2,
+          "executable": "/System/Library/Frameworks/WebKit.framework/Versions/A/XPCServices/com.apple.WebKit.WebContent.xpc/Contents/MacOS/com.apple.WebKit.WebContent"
+        },
+        "child": {
+          "pid": 20038,
+          "present": true,
+          "rssKiB": 103696,
+          "cpuPercent": 96,
+          "executable": "/System/Library/Frameworks/WebKit.framework/Versions/A/XPCServices/com.apple.WebKit.WebContent.xpc/Contents/MacOS/com.apple.WebKit.WebContent"
+        }
+      }
+    },
+    {
+      "step": "diagnostic cleanup of closed runaway process",
+      "result": {
+        "injected": true,
+        "pid": 20038
+      }
+    },
+    {
+      "step": "Svelte replacement",
+      "processIds": {
+        "childPid": 21250,
+        "diagnosticPrivateSelector": true,
+        "hostPid": 19742,
+        "nativePid": 19542
+      },
+      "draft": "P0 shared draft"
+    },
+    {
+      "step": "1000-message serial stream",
+      "samples": [
+        192,
+        65,
+        63,
+        65,
+        65,
+        66,
+        64,
+        65,
+        64,
+        64,
+        63,
+        64,
+        65,
+        65,
+        66,
+        81,
+        71,
+        68,
+        65,
+        71
+      ],
+      "p50": 65,
+      "p95": 81,
+      "snapshotBytes": 1078429,
+      "sample": {
+        "native": {
+          "pid": 19542,
+          "present": true,
+          "rssKiB": 402128,
+          "cpuPercent": 69.3,
+          "executable": "target/debug/aibo"
+        },
+        "host": {
+          "pid": 19742,
+          "present": true,
+          "rssKiB": 150208,
+          "cpuPercent": 5.5,
+          "executable": "/System/Library/Frameworks/WebKit.framework/Versions/A/XPCServices/com.apple.WebKit.WebContent.xpc/Contents/MacOS/com.apple.WebKit.WebContent"
+        },
+        "child": {
+          "pid": 21250,
+          "present": true,
+          "rssKiB": 116832,
+          "cpuPercent": 10,
+          "executable": "/System/Library/Frameworks/WebKit.framework/Versions/A/XPCServices/com.apple.WebKit.WebContent.xpc/Contents/MacOS/com.apple.WebKit.WebContent"
+        }
+      }
+    },
+    {
+      "step": "oversized message",
+      "result": {
+        "accepted": false,
+        "error": "message too large",
+        "type": "oversize-result"
+      }
+    },
+    {
+      "step": "2000-message finite flood",
+      "result": {
+        "fulfilled": 82,
+        "rejected": 1918,
+        "type": "flood-result"
+      },
+      "hostBeats": 14,
+      "maxBeatGap": 111
+    },
+    {
+      "step": "window and child bounds updated",
+      "hostBeats": 115
+    },
+    {
+      "step": "crash exact experimental content process",
+      "result": {
+        "injected": true,
+        "pid": 21250
+      }
+    },
+    {
+      "step": "replacement after process crash",
+      "processIds": {
+        "childPid": 21629,
+        "diagnosticPrivateSelector": true,
+        "hostPid": 19742,
+        "nativePid": 19542
+      }
+    },
+    {
+      "step": "disposed generation rejected",
+      "result": {
+        "command": "p0_deliver",
+        "accepted": false,
+        "error": "no instance"
+      }
+    }
+  ],
+  "timings": [
+    {
+      "framework": "react",
+      "mountMs": 111
+    },
+    {
+      "framework": "svelte",
+      "mountMs": 106
+    },
+    {
+      "framework": "react",
+      "mountMs": 250
+    }
+  ],
+  "beats": 125,
+  "maxBeatGap": 111,
+  "frameErrors": [],
+  "paintTimeouts": [],
+  "scope": "Actual App and Tauri, opt-in experimental native bridge; real scratch Git stage with native AX approval; framework fixture is not a full workbench",
+  "identifier": "local.aibo.domp0gates.1790013771567",
+  "platform": "darwin",
+  "architecture": "arm64",
+  "staged": "p0-proof.txt",
+  "forbiddenRequests": [],
+  "processSamples": [
+    {
+      "native": {
+        "pid": 19542,
+        "present": true,
+        "rssKiB": 388624,
+        "cpuPercent": 20.3,
+        "executable": "target/debug/aibo"
+      },
+      "host": {
+        "pid": 19742,
+        "present": true,
+        "rssKiB": 109600,
+        "cpuPercent": 5.6,
+        "executable": "/System/Library/Frameworks/WebKit.framework/Versions/A/XPCServices/com.apple.WebKit.WebContent.xpc/Contents/MacOS/com.apple.WebKit.WebContent"
+      },
+      "child": {
+        "pid": 20038,
+        "present": true,
+        "rssKiB": 36672,
+        "cpuPercent": 9,
+        "executable": "/System/Library/Frameworks/WebKit.framework/Versions/A/XPCServices/com.apple.WebKit.WebContent.xpc/Contents/MacOS/com.apple.WebKit.WebContent"
+      }
+    },
+    {
+      "native": {
+        "pid": 19542,
+        "present": true,
+        "rssKiB": 389664,
+        "cpuPercent": 33,
+        "executable": "target/debug/aibo"
+      },
+      "host": {
+        "pid": 19742,
+        "present": true,
+        "rssKiB": 116016,
+        "cpuPercent": 7.9,
+        "executable": "/System/Library/Frameworks/WebKit.framework/Versions/A/XPCServices/com.apple.WebKit.WebContent.xpc/Contents/MacOS/com.apple.WebKit.WebContent"
+      },
+      "child": {
+        "pid": 20038,
+        "present": true,
+        "rssKiB": 102896,
+        "cpuPercent": 3.5,
+        "executable": "/System/Library/Frameworks/WebKit.framework/Versions/A/XPCServices/com.apple.WebKit.WebContent.xpc/Contents/MacOS/com.apple.WebKit.WebContent"
+      }
+    },
+    {
+      "native": {
+        "pid": 19542,
+        "present": true,
+        "rssKiB": 389872,
+        "cpuPercent": 2.8,
+        "executable": "target/debug/aibo"
+      },
+      "host": {
+        "pid": 19742,
+        "present": true,
+        "rssKiB": 118384,
+        "cpuPercent": 0.8,
+        "executable": "/System/Library/Frameworks/WebKit.framework/Versions/A/XPCServices/com.apple.WebKit.WebContent.xpc/Contents/MacOS/com.apple.WebKit.WebContent"
+      },
+      "child": {
+        "pid": 20038,
+        "present": true,
+        "rssKiB": 103792,
+        "cpuPercent": 100,
+        "executable": "/System/Library/Frameworks/WebKit.framework/Versions/A/XPCServices/com.apple.WebKit.WebContent.xpc/Contents/MacOS/com.apple.WebKit.WebContent"
+      }
+    },
+    {
+      "native": {
+        "pid": 19542,
+        "present": true,
+        "rssKiB": 390416,
+        "cpuPercent": 4.5,
+        "executable": "target/debug/aibo"
+      },
+      "host": {
+        "pid": 19742,
+        "present": true,
+        "rssKiB": 128224,
+        "cpuPercent": 1.8,
+        "executable": "/System/Library/Frameworks/WebKit.framework/Versions/A/XPCServices/com.apple.WebKit.WebContent.xpc/Contents/MacOS/com.apple.WebKit.WebContent"
+      },
+      "child": {
+        "pid": 20038,
+        "present": true,
+        "rssKiB": 103792,
+        "cpuPercent": 100,
+        "executable": "/System/Library/Frameworks/WebKit.framework/Versions/A/XPCServices/com.apple.WebKit.WebContent.xpc/Contents/MacOS/com.apple.WebKit.WebContent"
+      }
+    },
+    {
+      "native": {
+        "pid": 19542,
+        "present": true,
+        "rssKiB": 390080,
+        "cpuPercent": 1.1,
+        "executable": "target/debug/aibo"
+      },
+      "host": {
+        "pid": 19742,
+        "present": true,
+        "rssKiB": 131120,
+        "cpuPercent": 0.2,
+        "executable": "/System/Library/Frameworks/WebKit.framework/Versions/A/XPCServices/com.apple.WebKit.WebContent.xpc/Contents/MacOS/com.apple.WebKit.WebContent"
+      },
+      "child": {
+        "pid": 20038,
+        "present": true,
+        "rssKiB": 103696,
+        "cpuPercent": 96,
+        "executable": "/System/Library/Frameworks/WebKit.framework/Versions/A/XPCServices/com.apple.WebKit.WebContent.xpc/Contents/MacOS/com.apple.WebKit.WebContent"
+      }
+    },
+    {
+      "native": {
+        "pid": 19542,
+        "present": true,
+        "rssKiB": 402128,
+        "cpuPercent": 69.3,
+        "executable": "target/debug/aibo"
+      },
+      "host": {
+        "pid": 19742,
+        "present": true,
+        "rssKiB": 150208,
+        "cpuPercent": 5.5,
+        "executable": "/System/Library/Frameworks/WebKit.framework/Versions/A/XPCServices/com.apple.WebKit.WebContent.xpc/Contents/MacOS/com.apple.WebKit.WebContent"
+      },
+      "child": {
+        "pid": 21250,
+        "present": true,
+        "rssKiB": 116832,
+        "cpuPercent": 10,
+        "executable": "/System/Library/Frameworks/WebKit.framework/Versions/A/XPCServices/com.apple.WebKit.WebContent.xpc/Contents/MacOS/com.apple.WebKit.WebContent"
+      }
+    }
+  ]
+}

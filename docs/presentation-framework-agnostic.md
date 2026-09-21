@@ -2,6 +2,8 @@
 
 状态：P0 原型与现状盘点进行中，生产 DOM 呈现尚未实现。日期：2026-09-22。
 首轮结果与剩余门槛见 [P0 实验记录](presentation-framework-p0.md)。
+第二轮真实 Tauri 集成发现宿主命令兼容及故障进程回收阻断，见 [门槛评审](presentation-framework-p0-gates.md)。
+P0 未通过；暂停 SDK 定稿和生产 DOM 加载，不改变长期目标或默认缩减支持平台。
 
 本文确定下一阶段目标及验收门槛，不表示当前宿主已经支持 DOM 插件，不修改
 [现行包合同](presentation-package.md)或替代 [ADR-0009](adr/0009-presentation-package-isolation.md)。
@@ -161,6 +163,11 @@ sandbox iframe、Shadow DOM 或“独立 WebView”名称均不构成进程隔�
 首轮只验证了 mock draft/send 与本机独立 WKWebView，未覆盖实际 App 的完整待审批、
 资源压力及全部动作。iframe CPU 对照失败；真实 Tauri 无 capability 视图仍可调用
 应用命令。上面剩余门槛保持未完成，不将原型成功等同于 P0 退出。
+
+第二轮已补证：应用 ACL 与未知调用者拒绝、循环中的实际 Git 原生审批和管理入口、
+有限消息/内存压力及进程级故障注入。仍有两项明确失败：嵌入后宿主命令不兼容，
+关闭视图超过 5 秒仍有失控内容进程。完整动作策略、IME/图片/资源预算与跨平台
+验证未完成；上述总门槛不勾选。细节与原始记录见 [门槛评审](presentation-framework-p0-gates.md)。
 
 退出条件：容器与授权可行性有实测证据。不满足时停止扩大 DOM 实现，记录阻塞，
 保持旧路径；不得将“可显示一个 React 按钮”当作此阶段完成。

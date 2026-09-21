@@ -1,0 +1,33 @@
+{
+  "branch": "prototype/presentation-dom-p0-gates",
+  "files": {
+    "probes/presentation-dom-prototype/Conversation.svelte": "ceb45ade5b70ecc22b7dd0df76e576330f90c00c876780aa8d9c47a45269b9ff",
+    "probes/presentation-dom-prototype/README.md": "450a759e319149c73a5626e001eebc9f18f1a400b35781ca2d3c9580b4584b87",
+    "probes/presentation-dom-prototype/action-policy.json": "729b5442295a6c3ac95cdf729e8177607318d2c1e521e094828cd71f9782a682",
+    "probes/presentation-dom-prototype/audit.mjs": "429bc7b865ba05de90dc66a3d60570ba361db11dad26b06b0b9971e9d727a43b",
+    "probes/presentation-dom-prototype/browser.mjs": "21839551e2a4dc9ef19ad814e247a1d61f932e7033238930ab7c48221bf278e1",
+    "probes/presentation-dom-prototype/build.mjs": "89c87c8b37ec8334281a59fb30eba24899c06e3bfb104fcd3062dd9c32898140",
+    "probes/presentation-dom-prototype/client.mjs": "67c04e6f5c89819d44fc04c9d415374683d1c1b7d9aac0fe604cb29797eaa78c",
+    "probes/presentation-dom-prototype/evaluate.mjs": "3f6e74a326ad8a3eafa03bd09ac24e5977ea00b62532994fb512c8950dd02d65",
+    "probes/presentation-dom-prototype/fixture.mjs": "2bfe523988805162b430f31e85e895eee137b54734cd7e7739fe50384d7692b4",
+    "probes/presentation-dom-prototype/host.mjs": "75f9098d6a3a3adca94c5412e05bcdcdf61b4109e60e4df7d2e22b0e8c233494",
+    "probes/presentation-dom-prototype/native-input.swift": "7ffc139957192a4d52a2ac0e95918f1e4aef4358e6c729446980e20c67369cfa",
+    "probes/presentation-dom-prototype/native.mjs": "9d1f0eebe6a8b07d230144ef28a9013e8418c3cb164c62e2fc78875f1663d153",
+    "probes/presentation-dom-prototype/native.swift": "aaba1079e02dde87161693f6d121b09c68d2dfcc1b00628c798b1928948cb33f",
+    "probes/presentation-dom-prototype/package-lock.json": "778f8b356e057e6b8259e0bcc57869d23e03f9d76491d484dbe59ec69f7314c8",
+    "probes/presentation-dom-prototype/package.json": "5d0f2188c56b92a3d7ae5b5ea576e6e625b67969dd129eedb4d7e7066e1ff216",
+    "probes/presentation-dom-prototype/react.jsx": "035854ecf5fe91e3765b6e63e2418ebf742f2e6f5591393cda572884d9d4e183",
+    "probes/presentation-dom-prototype/svelte.svelte.js": "f5d49b676b33db4737f62c92f2589e05e772b71f1e1d94a5895358746b87022c",
+    "probes/presentation-dom-prototype/tauri-app-boot.mjs": "0d76cd8807d59aa0a51bf2d53d3723f90880f209788bf0f88e87d856e9068c34",
+    "probes/presentation-dom-prototype/tauri-app-client.mjs": "5065b362536823ecf70c2eb6bf2c4acfeb4af96284633ae782b7a1456093e0c2",
+    "probes/presentation-dom-prototype/tauri-app.html": "a13527e05573963b4ca101f9d8e21320085c600c06597c63f643dc1273ebf117",
+    "probes/presentation-dom-prototype/tauri-app.mjs": "c12da94668742b62da145c534f567ed1f9217187c227fea349f748a1f07ded2e",
+    "probes/presentation-dom-prototype/tauri-ipc.html": "e251f8bcc3dfbfb3dbb980a55765b06183ae9b7550dc473a70f5de0027528411",
+    "probes/presentation-dom-prototype/tauri-ipc.mjs": "d0f843b717b0876796e8dda2f71d97fdd72044501344a387b8cd02be87de422c",
+    "src-tauri/Cargo.toml": "a026fd2439a4a5951963f2d603911472bcb1a844c5bacff70fb6a25316129b24",
+    "src-tauri/build.rs": "d041b6d2894f76f4f30f9f2e035760cc3460f3ccecf1d108a7d30659bd47fcc2",
+    "src-tauri/p0-permissions/host.toml": "dcabdc0c244f91d04d421c8c35a78a25036c78ae46f4908d27fee2a9c996359b",
+    "src-tauri/src/lib.rs": "ce9cb7138a11ee1974c387b736930a4ba01b98ad3bd2d61ff5a1a68ae07116fe",
+    "src-tauri/src/presentation_dom_p0.rs": "0edef61d368cb698fa84f2b9dc391612ef2182dba54216184f5e647bb2da5787"
+  }
+}

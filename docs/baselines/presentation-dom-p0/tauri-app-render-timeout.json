@@ -1,0 +1,25 @@
+{
+  "completed": false,
+  "error": "Error: timeout: render",
+  "checks": [
+    {
+      "step": "trusted host access before child",
+      "result": {
+        "command": "get_presentation_selection",
+        "accepted": true,
+        "value": null
+      }
+    }
+  ],
+  "timings": [],
+  "beats": 23,
+  "maxBeatGap": 1099,
+  "confirmedWrite": null,
+  "frameErrors": [],
+  "identifier": "local.aibo.domp0gates.1790013528088",
+  "platform": "darwin",
+  "architecture": "arm64",
+  "staged": "",
+  "forbiddenRequests": [],
+  "processSamples": []
+}

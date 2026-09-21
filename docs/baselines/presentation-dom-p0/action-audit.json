@@ -1,0 +1,17 @@
+{
+  "kind": "static coverage audit; not execution authorization proof",
+  "operations": {
+    "conversation": 38,
+    "navigation": 20,
+    "git": 34,
+    "inspector": 18,
+    "layout": 2,
+    "capability": 6
+  },
+  "totalOperations": 118,
+  "existingHostCommands": 107,
+  "documentCommands": [
+    "p0_post"
+  ],
+  "productionActionPolicyImplemented": false
+}

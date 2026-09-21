@@ -1,0 +1,13 @@
+{
+  "identifier": "local.aibo.domp0.1790011057419",
+  "platform": "darwin",
+  "architecture": "arm64",
+  "result": {
+    "command": "list_workspaces",
+    "grantedCapabilities": [],
+    "accepted": true,
+    "workspaceCount": 0
+  },
+  "scope": "Actual Aibo Tauri IPC, isolated application identity, read-only empty workspace list; no user data or write operations",
+  "verdict": "An ungranted WebView can call application commands: explicit application IPC admission required before DOM plugins"
+}

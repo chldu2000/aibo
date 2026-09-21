@@ -1,0 +1,17 @@
+{"errors":[],"body":"Aibo\n工作区\nw1\ns1\n8天\nw2\nw1\n可信\n+\n新建会话\nGit\n上下文\n源代码管理\nw1\n所有仓库\n0\n变更\n历史\nAgent 审查\n工作区内未发现 Git 仓库。"}
+node:internal/modules/run_main:107
+    triggerUncaughtException(
+    ^
+
+locator.click: Timeout 10000ms exceeded.
+Call log:
+[2m  - waiting for getByRole('button', { name: '打开设置', exact: true })[22m
+
+    at /Users/chldu/Workspace/aibo-dev/aibo/probes/presentation-full-skins-browser.mjs:75:61 {
+  log: [
+    "  - waiting for getByRole('button', { name: '打开设置', exact: true })"
+  ],
+  name: 'TimeoutError'
+}
+
+Node.js v24.18.0

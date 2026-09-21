@@ -1,0 +1,22 @@
+{
+  "probeCompleted": true,
+  "p0Passed": false,
+  "measuredGates": {
+    "sampledIpcDenied": true,
+    "allPaintAcknowledgementsWithinTwoSeconds": true,
+    "hostCommandCompatibility": false,
+    "closeTerminatesFaultWithinFiveSeconds": false,
+    "nativeGitApprovalDuringLoop": true,
+    "actualManagementAxPressDuringLoop": true
+  },
+  "unverified": [
+    "full action authorization",
+    "all trusted surfaces and recovery",
+    "native IME/input latency",
+    "images and memory ceiling",
+    "repeated-switch resource baseline",
+    "Windows",
+    "Linux"
+  ],
+  "note": "Scenario assertions passing do not imply P0 gates passing; inspect negative measurements and unverified requirements."
+}

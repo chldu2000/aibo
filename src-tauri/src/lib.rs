@@ -1,3 +1,5 @@
+#[cfg(feature = "presentation-dom-p0")]
+mod presentation_dom_p0;
 mod agent_settings;
 mod project_actions;
 mod controlled_process;
@@ -4363,6 +4365,8 @@ pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
         .setup(|app| {
+            #[cfg(feature = "presentation-dom-p0")]
+            app.manage(presentation_dom_p0::P0State::default());
             let data_dir = app.path().app_data_dir().map_err(|error| {
                 Box::new(CoreError::Initialization(format!(
                     "resolve app data directory: {error}"
@@ -4407,7 +4411,8 @@ pub fn run() {
             });
             Ok(())
         })
-        .invoke_handler(tauri::generate_handler![
+        .invoke_handler({
+            let standard: fn(tauri::ipc::Invoke<tauri::Wry>) -> bool = tauri::generate_handler![
             semantic_plugins::cancel_semantic_open,
             semantic_plugins::list_semantic_contributions,
             semantic_plugins::open_semantic_contribution,
@@ -4515,7 +4520,22 @@ pub fn run() {
             get_session_models,
             get_pi_session_tree,
             navigate_pi_session_tree,
-        ])
+        ];
+            move |invoke: tauri::ipc::Invoke<tauri::Wry>| {
+                #[cfg(feature = "presentation-dom-p0")]
+                if invoke.message.command().starts_with("p0_") {
+                    let experimental: fn(tauri::ipc::Invoke<tauri::Wry>) -> bool = tauri::generate_handler![
+                        presentation_dom_p0::p0_mount,
+                        presentation_dom_p0::p0_deliver,
+                        presentation_dom_p0::p0_post,
+                        presentation_dom_p0::p0_control,
+                        presentation_dom_p0::p0_inspect
+                    ];
+                    return experimental(invoke);
+                }
+                standard(invoke)
+            }
+        })
         .run(tauri::generate_context!())
         .expect("error while running Aibo");
 }

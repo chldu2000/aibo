@@ -1,0 +1,10 @@
+{
+  "os": "ProductName:\t\tmacOS\nProductVersion:\t\t27.0\nBuildVersion:\t\t26A428",
+  "architecture": "arm64",
+  "node": "v24.18.0",
+  "profile": "Tauri debug build; development server; not release performance",
+  "tauri": "2.11.5",
+  "wry": "0.55.1",
+  "physicalInputVerified": false,
+  "measurement": "RSS point samples; private PID selector for diagnosis only"
+}

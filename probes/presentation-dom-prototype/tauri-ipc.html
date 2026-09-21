@@ -1,0 +1,12 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Aibo P0 IPC boundary experiment</title>
+<p>只读 IPC 边界实验；独立应用数据目录。</p>
+<script type="module">
+  import { invoke } from '@tauri-apps/api/core';
+  const result = { command: 'list_workspaces', grantedCapabilities: [], accepted: false };
+  try { const workspaces = await invoke('list_workspaces'); result.accepted = true; result.workspaceCount = workspaces.length; }
+  catch (error) { result.error = String(error); }
+  document.querySelector('p').textContent = JSON.stringify(result);
+  await fetch('/__p0_ipc_report', { method: 'POST', body: JSON.stringify(result) });
+</script>

@@ -1,0 +1,17 @@
+{
+  "dependencies": {
+    "react": "19.2.0",
+    "react-dom": "19.2.0"
+  },
+  "name": "aibo-presentation-dom-prototype",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "node build.mjs",
+    "probe:browser": "node browser.mjs",
+    "probe:native": "node native.mjs",
+    "probe:ipc": "node tauri-ipc.mjs",
+    "probe:app": "cd ../.. && node probes/presentation-dom-prototype/tauri-app.mjs",
+    "audit": "cd ../.. && node probes/presentation-dom-prototype/audit.mjs"
+  }
+}

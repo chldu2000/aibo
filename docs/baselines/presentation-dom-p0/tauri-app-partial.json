@@ -1,0 +1,553 @@
+{
+  "completed": false,
+  "error": "Error: timeout: render",
+  "checks": [
+    {
+      "step": "trusted host access before child",
+      "result": {
+        "command": "get_presentation_selection",
+        "accepted": true,
+        "value": null
+      }
+    },
+    {
+      "step": "host commands with embedded child",
+      "selection": {
+        "command": "get_presentation_selection",
+        "accepted": false,
+        "error": "current webview is not a WebviewWindow"
+      },
+      "workspaces": {
+        "command": "list_workspaces",
+        "accepted": true,
+        "value": [
+          {
+            "id": "01M32J0NEH9DFMVS5K5YKHVF5J",
+            "path": "/private/var/folders/vt/gg0_j7155r554w95f7t7hxsm0000gn/T/aibo-dom-p0-gates-XCgMNd/workspace",
+            "label": "workspace",
+            "trust": "trusted",
+            "lastOpenedAt": "2026-09-21T18:00:25.809084Z",
+            "createdAt": "2026-09-21T18:00:25.809084Z",
+            "updatedAt": "2026-09-21T18:00:25.815235Z"
+          }
+        ]
+      }
+    },
+    {
+      "step": "untrusted IPC and network isolation",
+      "result": {
+        "network": "rejected",
+        "results": [
+          {
+            "accepted": false,
+            "command": "list_workspaces",
+            "error": "list_workspaces not allowed on window \"main\", webview \"p0-dom-1\", URL: local\n\nallowed on: [webviews: \"main\", URL: local]\n\nreferenced by: capability: p0-trusted, permission: p0-host-api"
+          },
+          {
+            "accepted": false,
+            "command": "get_presentation_selection",
+            "error": "get_presentation_selection not allowed on window \"main\", webview \"p0-dom-1\", URL: local\n\nallowed on: [webviews: \"main\", URL: local]\n\nreferenced by: capability: p0-trusted, permission: p0-host-api"
+          },
+          {
+            "accepted": false,
+            "command": "resolve_agent_approval",
+            "error": "resolve_agent_approval not allowed on window \"main\", webview \"p0-dom-1\", URL: local\n\nallowed on: [webviews: \"main\", URL: local]\n\nreferenced by: capability: p0-trusted, permission: p0-host-api"
+          },
+          {
+            "accepted": false,
+            "command": "p0_mount",
+            "error": "p0_mount not allowed on window \"main\", webview \"p0-dom-1\", URL: local\n\nallowed on: [webviews: \"main\", URL: local]\n\nreferenced by: capability: p0-trusted, permission: p0-host-api"
+          },
+          {
+            "accepted": false,
+            "command": "p0_deliver",
+            "error": "p0_deliver not allowed on window \"main\", webview \"p0-dom-1\", URL: local\n\nallowed on: [webviews: \"main\", URL: local]\n\nreferenced by: capability: p0-trusted, permission: p0-host-api"
+          },
+          {
+            "accepted": false,
+            "command": "p0_inspect",
+            "error": "p0_inspect not allowed on window \"main\", webview \"p0-dom-1\", URL: local\n\nallowed on: [webviews: \"main\", URL: local]\n\nreferenced by: capability: p0-trusted, permission: p0-host-api"
+          },
+          {
+            "accepted": false,
+            "command": "plugin:window|is_visible",
+            "error": "window.is_visible not allowed on window \"main\", webview \"p0-dom-1\", URL: local\n\nallowed on: [webviews: \"main\", URL: local]\n\nreferenced by: capability: p0-trusted, permission: allow-is-visible"
+          },
+          {
+            "accepted": false,
+            "command": "plugin:event|emit",
+            "error": "event.emit not allowed on window \"main\", webview \"p0-dom-1\", URL: local\n\nallowed on: [webviews: \"main\", URL: local]\n\nreferenced by: capability: p0-trusted, permission: allow-emit"
+          },
+          {
+            "accepted": false,
+            "command": "p0_post",
+            "error": "stale instance"
+          }
+        ],
+        "storageLeak": null,
+        "type": "audit-result",
+        "violations": [
+          {
+            "blocked": "http://127.0.0.1:5173/__p0_forbidden_read",
+            "directive": "connect-src"
+          }
+        ]
+      }
+    },
+    {
+      "step": "unregistered caller rejected",
+      "results": [
+        {
+          "accepted": false,
+          "command": "list_workspaces",
+          "error": "ACL denied"
+        },
+        {
+          "accepted": false,
+          "command": "p0_post",
+          "error": "ACL denied"
+        },
+        {
+          "accepted": false,
+          "command": "plugin:window|is_visible",
+          "error": "ACL denied"
+        },
+        {
+          "accepted": false,
+          "command": "plugin:event|emit",
+          "error": "ACL denied"
+        }
+      ]
+    },
+    {
+      "step": "process baseline",
+      "processIds": {
+        "childPid": 16500,
+        "diagnosticPrivateSelector": true,
+        "hostPid": 15988,
+        "nativePid": 15823
+      },
+      "sample": {
+        "native": {
+          "pid": 15823,
+          "present": true,
+          "rssKiB": 388720,
+          "cpuPercent": 19.9,
+          "executable": "target/debug/aibo"
+        },
+        "host": {
+          "pid": 15988,
+          "present": true,
+          "rssKiB": 115280,
+          "cpuPercent": 8.9,
+          "executable": "/System/Library/Frameworks/WebKit.framework/Versions/A/XPCServices/com.apple.WebKit.WebContent.xpc/Contents/MacOS/com.apple.WebKit.WebContent"
+        },
+        "child": {
+          "pid": 16500,
+          "present": true,
+          "rssKiB": 36592,
+          "cpuPercent": 10.2,
+          "executable": "/System/Library/Frameworks/WebKit.framework/Versions/A/XPCServices/com.apple.WebKit.WebContent.xpc/Contents/MacOS/com.apple.WebKit.WebContent"
+        }
+      }
+    },
+    {
+      "step": "native suspension",
+      "noNewMessages": true
+    },
+    {
+      "step": "64MiB touched allocation",
+      "sample": {
+        "native": {
+          "pid": 15823,
+          "present": true,
+          "rssKiB": 389840,
+          "cpuPercent": 29.9,
+          "executable": "target/debug/aibo"
+        },
+        "host": {
+          "pid": 15988,
+          "present": true,
+          "rssKiB": 122832,
+          "cpuPercent": 8,
+          "executable": "/System/Library/Frameworks/WebKit.framework/Versions/A/XPCServices/com.apple.WebKit.WebContent.xpc/Contents/MacOS/com.apple.WebKit.WebContent"
+        },
+        "child": {
+          "pid": 16500,
+          "present": true,
+          "rssKiB": 102896,
+          "cpuPercent": 4,
+          "executable": "/System/Library/Frameworks/WebKit.framework/Versions/A/XPCServices/com.apple.WebKit.WebContent.xpc/Contents/MacOS/com.apple.WebKit.WebContent"
+        }
+      }
+    },
+    {
+      "step": "loop host heartbeat",
+      "advanced": 15,
+      "sample": {
+        "native": {
+          "pid": 15823,
+          "present": true,
+          "rssKiB": 390464,
+          "cpuPercent": 9.2,
+          "executable": "target/debug/aibo"
+        },
+        "host": {
+          "pid": 15988,
+          "present": true,
+          "rssKiB": 125904,
+          "cpuPercent": 0.1,
+          "executable": "/System/Library/Frameworks/WebKit.framework/Versions/A/XPCServices/com.apple.WebKit.WebContent.xpc/Contents/MacOS/com.apple.WebKit.WebContent"
+        },
+        "child": {
+          "pid": 16500,
+          "present": true,
+          "rssKiB": 104048,
+          "cpuPercent": 98.1,
+          "executable": "/System/Library/Frameworks/WebKit.framework/Versions/A/XPCServices/com.apple.WebKit.WebContent.xpc/Contents/MacOS/com.apple.WebKit.WebContent"
+        }
+      }
+    },
+    {
+      "step": "native approval during loop",
+      "input": {
+        "ok": false,
+        "stdout": "",
+        "stderr": "Expected isolated native dialog was not found: [\"Aibo DOM P0 isolated gates\", \"AXWindow\", \"AXStandardWindow\", \"AXGroup\", \"AXGroup\", \"\", \"\", \"\", \"AXScrollArea\", \"\", \"\", \"Aibo\", \"AXWebArea\", \"窗口标题栏\", \"\", \"窗口标题栏\", \"AXToolbar\", \"\", \"Aibo\", \"\", \"AXStaticText\", \"打开管理中心\", \"\", \"打开管理中心\", \"AXButton\", \"隐藏侧边栏\", \"隐藏侧边栏\", \"AXCheckBox\", \"AXToggle\", \"\", \"\", \"\", \"AXGroup\", \"\", \"\", \"\", \"AXGroup\", \"AXLandmarkMain\", \"工作区\", \"\", \"工作区\", \"AXGroup\", \"AXLandmarkComplementary\", \"工作区\", \"\", \"AXHeading\", \"\", \"工作区\", \"\", \"AXStaticText\", \"工作区工具\", \"\", \"工作区工具\", \"AXGroup\", \"搜索会话\", \"搜索会话\", \"AXCheckBox\", \"AXToggle\", \"筛选会话\", \"筛选会话\", \"AXCheckBox\", \"AXToggle\", \"添加工作区\", \"\", \"添加工作区\", \"AXButton\", \"工作区列表\", \"\", \"工作区列表\", \"AXGroup\", \"workspace，可信\", \"\", \"workspace，可信\", \"AXButton\", \"workspace 管理操作\", \"\", \"workspace 管理操作\", \"AXGroup\", \"新建 Agent 会话\", \"\", \"新建 Agent 会话\", \"AXButton\", \"撤销信任\", \"\", \"撤销信任\", \"AXButton\", \"在Finder中打开工作区\", \"\", \"在Finder中打开工作区\", \"AXButton\", \"移除工作区\", \"\", \"移除工作区\", \"AXButton\", \"workspace 的会话\", \"\", \"workspace 的会话\", \"AXGroup\", \"AXLandmarkRegion\", \"\", \"暂无会话\", \"\", \"AXStaticText\", \"调整工作区与会话宽度，当前 200 像素\", \"\", \"调整工作区与会话宽度，当前 200 像素\", \"AXButton\", \"会话时间线\", \"\", \"会话时间线\", \"AXGroup\", \"AXLandmarkRegion\", \"workspace\", \"\", \"AXHeading\", \"\", \"workspace\", \"\", \"AXStaticText\", \"专注会话\", \"专注会话\", \"AXCheckBox\", \"AXToggle\", \"\", \"可信\", \"\", \"AXStaticText\", \"\", \"\", \"\", \"AXSplitter\", \"\", \"+\", \"\", \"AXStaticText\", \"新建会话\", \"\", \"AXHeading\", \"\", \"新建会话\", \"\", \"AXStaticText\", \"\", \"\", \"\", \"AXGroup\", \"AXLandmarkForm\", \"\", \"\", \"\", \"AXTextArea\", \"\", \"\", \"\", \"AXGroup\", \"AXEmptyGroup\", \"\", \"\", \"\", \"AXGroup\", \"\", \"先新建或选择一个 Agent 会话…\", \"\", \"AXStaticText\", \"\", \"\", \"\", \"AXGroup\", \"添加上下文\", \"\", \"添加上下文\", \"AXPopUpButton\", \"发送\", \"\", \"发送\", \"AXButton\", \"调整会话与侧边栏宽度，当前 352 像素\", \"\", \"调整会话与侧边栏宽度，当前 352 像素\", \"AXButton\", \"Git 源代码管理\", \"\", \"Git 源代码管理\", \"AXGroup\", \"AXLandmarkComplementary\", \"侧边栏视图\", \"侧边栏视图\", \"AXTabGroup\", \"Git\", \"\", \"AXRadioButton\", \"上下文\", \"\", \"AXRadioButton\", \"Git\", \"\", \"Git\", \"AXGroup\", \"AXTabPanel\", \"源代码管理\", \"\", \"AXHeading\", \"\", \"源代码管理\", \"\", \"AXStaticText\", \"\", \"workspace\", \"\", \"AXStaticText\", \"\", \"1\", \"\", \"AXStaticText\", \"刷新 Git 状态\", \"\", \"刷新 Git 状态\", \"AXButton\", \"\", \"\", \"\", \"AXSplitter\", \"Git 视图\", \"Git 视图\", \"AXTabGroup\", \"变更\", \"\", \"AXRadioButton\", \"历史\", \"\", \"AXRadioButton\", \"Agent 审查\", \"\", \"\", \"AXButton\", \"变更\", \"\", \"变更\", \"AXGroup\", \"AXTabPanel\", \"main\", \"\", \"\", \"AXButton\", \"\", \"HEAD 11ba9af1\", \"\", \"AXStaticText\", \"\", \"可操作\", \"\", \"AXStaticText\", \"取消全部暂存\", \"\", \"取消全部暂存\", \"AXButton\", \"\", \"\", \"\", \"AXGroup\", \"暂存栈 0\", \"\", \"\", \"AXButton\", \"\", \"\", \"\", \"AXGroup\", \"\", \"提交到 workspace · main\", \"\", \"AXStaticText\", \"\", \"\", \"\", \"AXGroup\", \"AXLandmarkForm\", \"提交信息\", \"\", \"提交信息\", \"AXTextField\", \"\", \"\", \"\", \"AXGroup\", \"AXEmptyGroup\", \"提交\", \"\", \"\", \"AXButton\", \"已暂存的更改\", \"\", \"已暂存的更改\", \"AXGroup\", \"AXLandmarkRegion\", \"\", \"\", \"\", \"AXGroup\", \"AXSectionHeader\", \"已暂存的更改 1\", \"\", \"\", \"AXButton\", \"\", \"\", \"\", \"AXList\", \"AXContentList\", \"\", \"\", \"\", \"AXGroup\", \"AXGroup\", \"AXButton\", \"AXCloseButton\", \"AXButton\", \"AXFullScreenButton\", \"AXGroup\", \"AXGroup\", \"AXButton\", \"AXMinimizeButton\", \"Aibo DOM P0 isolated gates\", \"AXStaticText\", \"Aibo DOM P0 isolated gates\", \"AXWindow\", \"AXStandardWindow\", \"AXGroup\", \"AXGroup\", \"\", \"\", \"\", \"AXScrollArea\", \"\", \"\", \"Aibo\", \"AXWebArea\", \"窗口标题栏\", \"\", \"窗口标题栏\", \"AXToolbar\", \"\", \"Aibo\", \"\", \"AXStaticText\", \"打开管理中心\", \"\", \"打开管理中心\", \"AXButton\", \"隐藏侧边栏\", \"隐藏侧边栏\", \"AXCheckBox\", \"AXToggle\", \"\", \"\", \"\", \"AXGroup\", \"\", \"\", \"\", \"AXGroup\", \"AXLandmarkMain\", \"工作区\", \"\", \"工作区\", \"AXGroup\", \"AXLandmarkComplementary\", \"工作区\", \"\", \"AXHeading\", \"\", \"工作区\", \"\", \"AXStaticText\", \"工作区工具\", \"\", \"工作区工具\", \"AXGroup\", \"搜索会话\", \"搜索会话\", \"AXCheckBox\", \"AXToggle\", \"筛选会话\", \"筛选会话\", \"AXCheckBox\", \"AXToggle\", \"添加工作区\", \"\", \"添加工作区\", \"AXButton\", \"工作区列表\", \"\", \"工作区列表\", \"AXGroup\", \"workspace，可信\", \"\", \"workspace，可信\", \"AXButton\", \"workspace 管理操作\", \"\", \"workspace 管理操作\", \"AXGroup\", \"新建 Agent 会话\", \"\", \"新建 Agent 会话\", \"AXButton\", \"撤销信任\", \"\", \"撤销信任\", \"AXButton\", \"在Finder中打开工作区\", \"\", \"在Finder中打开工作区\", \"AXButton\", \"移除工作区\", \"\", \"移除工作区\", \"AXButton\", \"workspace 的会话\", \"\", \"workspace 的会话\", \"AXGroup\", \"AXLandmarkRegion\", \"\", \"暂无会话\", \"\", \"AXStaticText\", \"调整工作区与会话宽度，当前 200 像素\", \"\", \"调整工作区与会话宽度，当前 200 像素\", \"AXButton\", \"会话时间线\", \"\", \"会话时间线\", \"AXGroup\", \"AXLandmarkRegion\", \"workspace\", \"\", \"AXHeading\", \"\", \"workspace\", \"\", \"AXStaticText\", \"专注会话\", \"专注会话\", \"AXCheckBox\", \"AXToggle\", \"\", \"可信\", \"\", \"AXStaticText\", \"\", \"\", \"\", \"AXSplitter\", \"\", \"+\", \"\", \"AXStaticText\", \"新建会话\", \"\", \"AXHeading\", \"\", \"新建会话\", \"\", \"AXStaticText\", \"\", \"\", \"\", \"AXGroup\", \"AXLandmarkForm\", \"\", \"\", \"\", \"AXTextArea\", \"\", \"\", \"\", \"AXGroup\", \"AXEmptyGroup\", \"\", \"\", \"\", \"AXGroup\", \"\", \"先新建或选择一个 Agent 会话…\", \"\", \"AXStaticText\", \"\", \"\", \"\", \"AXGroup\", \"添加上下文\", \"\", \"添加上下文\", \"AXPopUpButton\", \"发送\", \"\", \"发送\", \"AXButton\", \"调整会话与侧边栏宽度，当前 352 像素\", \"\", \"调整会话与侧边栏宽度，当前 352 像素\", \"AXButton\", \"Git 源代码管理\", \"\", \"Git 源代码管理\", \"AXGroup\", \"AXLandmarkComplementary\", \"侧边栏视图\", \"侧边栏视图\", \"AXTabGroup\", \"Git\", \"\", \"AXRadioButton\", \"上下文\", \"\", \"AXRadioButton\", \"Git\", \"\", \"Git\", \"AXGroup\", \"AXTabPanel\", \"源代码管理\", \"\", \"AXHeading\", \"\", \"源代码管理\", \"\", \"AXStaticText\", \"\", \"workspace\", \"\", \"AXStaticText\", \"\", \"1\", \"\", \"AXStaticText\", \"刷新 Git 状态\", \"\", \"刷新 Git 状态\", \"AXButton\", \"\", \"\", \"\", \"AXSplitter\", \"Git 视图\", \"Git 视图\", \"AXTabGroup\", \"变更\", \"\", \"AXRadioButton\", \"历史\", \"\", \"AXRadioButton\", \"Agent 审查\", \"\", \"\", \"AXButton\", \"变更\", \"\", \"变更\", \"AXGroup\", \"AXTabPanel\", \"main\", \"\", \"\", \"AXButton\", \"\", \"HEAD 11ba9af1\", \"\", \"AXStaticText\", \"\", \"可操作\", \"\", \"AXStaticText\", \"取消全部暂存\", \"\", \"取消全部暂存\", \"AXButton\", \"\", \"\", \"\", \"AXGroup\", \"暂存栈 0\", \"\", \"\", \"AXButton\", \"\", \"\", \"\", \"AXGroup\", \"\", \"提交到 workspace · main\", \"\", \"AXStaticText\", \"\", \"\", \"\", \"AXGroup\", \"AXLandmarkForm\", \"提交信息\", \"\", \"提交信息\", \"AXTextField\", \"\", \"\", \"\", \"AXGroup\", \"AXEmptyGroup\", \"提交\", \"\", \"\", \"AXButton\", \"已暂存的更改\", \"\", \"已暂存的更改\", \"AXGroup\", \"AXLandmarkRegion\", \"\", \"\", \"\", \"AXGroup\", \"AXSectionHeader\", \"已暂存的更改 1\", \"\", \"\", \"AXButton\", \"\", \"\", \"\", \"AXList\", \"AXContentList\", \"\", \"\", \"\", \"AXGroup\", \"AXGroup\", \"AXButton\", \"AXCloseButton\", \"AXButton\", \"AXFullScreenButton\", \"AXGroup\", \"AXGroup\", \"AXButton\", \"AXMinimizeButton\", \"Aibo DOM P0 isolated gates\", \"AXStaticText\", \"Aibo DOM P0 isolated gates\", \"AXWindow\", \"AXStandardWindow\", \"AXGroup\", \"AXGroup\", \"\", \"\", \"\", \"AXScrollArea\", \"\", \"\", \"Aibo\", \"AXWebArea\", \"窗口标题栏\", \"\", \"窗口标题栏\", \"AXToolbar\", \"\", \"Aibo\", \"\", \"AXStaticText\", \"打开管理中心\", \"\", \"打开管理中心\", \"AXButton\", \"隐藏侧边栏\", \"隐藏侧边栏\", \"AXCheckBox\", \"AXToggle\", \"\", \"\", \"\", \"AXGroup\", \"\", \"\", \"\", \"AXGroup\", \"AXLandmarkMain\", \"工作区\", \"\", \"工作区\", \"AXGroup\", \"AXLandmarkComplementary\", \"工作区\", \"\", \"AXHeading\", \"\", \"工作区\", \"\", \"AXStaticText\", \"工作区工具\", \"\", \"工作区工具\", \"AXGroup\", \"搜索会话\", \"搜索会话\", \"AXCheckBox\", \"AXToggle\", \"筛选会话\", \"筛选会话\", \"AXCheckBox\", \"AXToggle\", \"添加工作区\", \"\", \"添加工作区\", \"AXButton\", \"工作区列表\", \"\", \"工作区列表\", \"AXGroup\", \"workspace，可信\", \"\", \"workspace，可信\", \"AXButton\", \"workspace 管理操作\", \"\", \"workspace 管理操作\", \"AXGroup\", \"新建 Agent 会话\", \"\", \"新建 Agent 会话\", \"AXButton\", \"撤销信任\", \"\", \"撤销信任\", \"AXButton\", \"在Finder中打开工作区\", \"\", \"在Finder中打开工作区\", \"AXButton\", \"移除工作区\", \"\", \"移除工作区\", \"AXButton\", \"workspace 的会话\", \"\", \"workspace 的会话\", \"AXGroup\", \"AXLandmarkRegion\", \"\", \"暂无会话\", \"\", \"AXStaticText\", \"调整工作区与会话宽度，当前 200 像素\", \"\", \"调整工作区与会话宽度，当前 200 像素\", \"AXButton\", \"会话时间线\", \"\", \"会话时间线\", \"AXGroup\", \"AXLandmarkRegion\", \"workspace\", \"\", \"AXHeading\", \"\", \"workspace\", \"\", \"AXStaticText\", \"专注会话\", \"专注会话\", \"AXCheckBox\", \"AXToggle\", \"\", \"可信\", \"\", \"AXStaticText\", \"\", \"\", \"\", \"AXSplitter\", \"\", \"+\", \"\", \"AXStaticText\", \"新建会话\", \"\", \"AXHeading\", \"\", \"新建会话\", \"\", \"AXStaticText\", \"\", \"\", \"\", \"AXGroup\", \"AXLandmarkForm\", \"\", \"\", \"\", \"AXTextArea\", \"\", \"\", \"\", \"AXGroup\", \"AXEmptyGroup\", \"\", \"\", \"\", \"AXGroup\", \"\", \"先新建或选择一个 Agent 会话…\", \"\", \"AXStaticText\", \"\", \"\", \"\", \"AXGroup\", \"添加上下文\", \"\", \"添加上下文\", \"AXPopUpButton\", \"发送\", \"\", \"发送\", \"AXButton\", \"调整会话与侧边栏宽度，当前 352 像素\", \"\", \"调整会话与侧边栏宽度，当前 352 像素\", \"AXButton\", \"Git 源代码管理\", \"\", \"Git 源代码管理\", \"AXGroup\", \"AXLandmarkComplementary\", \"侧边栏视图\", \"侧边栏视图\", \"AXTabGroup\", \"Git\", \"\", \"AXRadioButton\", \"上下文\", \"\", \"AXRadioButton\", \"Git\", \"\", \"Git\", \"AXGroup\", \"AXTabPanel\", \"源代码管理\", \"\", \"AXHeading\", \"\", \"源代码管理\", \"\", \"AXStaticText\", \"\", \"workspace\", \"\", \"AXStaticText\", \"\", \"1\", \"\", \"AXStaticText\", \"刷新 Git 状态\", \"\", \"刷新 Git 状态\", \"AXButton\", \"\", \"\", \"\", \"AXSplitter\", \"Git 视图\", \"Git 视图\", \"AXTabGroup\", \"变更\", \"\", \"AXRadioButton\", \"历史\", \"\", \"AXRadioButton\", \"Agent 审查\", \"\", \"\", \"AXButton\", \"变更\", \"\", \"变更\", \"AXGroup\", \"AXTabPanel\", \"main\", \"\", \"\", \"AXButton\", \"\", \"HEAD 11ba9af1\", \"\", \"AXStaticText\", \"\", \"可操作\", \"\", \"AXStaticText\", \"取消全部暂存\", \"\", \"取消全部暂存\", \"AXButton\", \"\", \"\", \"\", \"AXGroup\", \"暂存栈 0\", \"\", \"\", \"AXButton\", \"\", \"\", \"\", \"AXGroup\", \"\", \"提交到 workspace · main\", \"\", \"AXStaticText\", \"\", \"\", \"\", \"AXGroup\", \"AXLandmarkForm\", \"提交信息\", \"\", \"提交信息\", \"AXTextField\", \"\", \"\", \"\", \"AXGroup\", \"AXEmptyGroup\", \"提交\", \"\", \"\", \"AXButton\", \"已暂存的更改\", \"\", \"已暂存的更改\", \"AXGroup\", \"AXLandmarkRegion\", \"\", \"\", \"\", \"AXGroup\", \"AXSectionHeader\", \"已暂存的更改 1\", \"\", \"\", \"AXButton\", \"\", \"\", \"\", \"AXList\", \"AXContentList\", \"\", \"\", \"\", \"AXGroup\", \"AXGroup\", \"AXButton\", \"AXCloseButton\", \"AXButton\", \"AXFullScreenButton\", \"AXGroup\", \"AXGroup\", \"AXButton\", \"AXMinimizeButton\", \"Aibo DOM P0 isolated gates\", \"AXStaticText\"]\n"
+      }
+    },
+    {
+      "step": "real Git approval result",
+      "result": {
+        "accepted": true,
+        "value": {
+          "path": "p0-proof.txt",
+          "action": "stage",
+          "applied": true,
+          "message": "Git 操作已完成"
+        }
+      }
+    },
+    {
+      "step": "actual App management during loop",
+      "input": {
+        "ok": true,
+        "stdout": "P0 native AXPress completed\n",
+        "stderr": ""
+      },
+      "bodyContainsManagement": true
+    },
+    {
+      "step": "public close after loop",
+      "elapsedMs": 1083,
+      "sample": {
+        "native": {
+          "pid": 15823,
+          "present": true,
+          "rssKiB": 390128,
+          "cpuPercent": 0.1,
+          "executable": "target/debug/aibo"
+        },
+        "host": {
+          "pid": 15988,
+          "present": true,
+          "rssKiB": 136304,
+          "cpuPercent": 0.5,
+          "executable": "/System/Library/Frameworks/WebKit.framework/Versions/A/XPCServices/com.apple.WebKit.WebContent.xpc/Contents/MacOS/com.apple.WebKit.WebContent"
+        },
+        "child": {
+          "pid": 16500,
+          "present": true,
+          "rssKiB": 103952,
+          "cpuPercent": 100,
+          "executable": "/System/Library/Frameworks/WebKit.framework/Versions/A/XPCServices/com.apple.WebKit.WebContent.xpc/Contents/MacOS/com.apple.WebKit.WebContent"
+        }
+      },
+      "hostSelection": {
+        "command": "get_presentation_selection",
+        "accepted": true,
+        "value": null
+      }
+    },
+    {
+      "step": "closed loop after five seconds",
+      "elapsedMs": 5500,
+      "sample": {
+        "native": {
+          "pid": 15823,
+          "present": true,
+          "rssKiB": 390128,
+          "cpuPercent": 4.9,
+          "executable": "target/debug/aibo"
+        },
+        "host": {
+          "pid": 15988,
+          "present": true,
+          "rssKiB": 136416,
+          "cpuPercent": 0.7,
+          "executable": "/System/Library/Frameworks/WebKit.framework/Versions/A/XPCServices/com.apple.WebKit.WebContent.xpc/Contents/MacOS/com.apple.WebKit.WebContent"
+        },
+        "child": {
+          "pid": 16500,
+          "present": true,
+          "rssKiB": 103952,
+          "cpuPercent": 99.7,
+          "executable": "/System/Library/Frameworks/WebKit.framework/Versions/A/XPCServices/com.apple.WebKit.WebContent.xpc/Contents/MacOS/com.apple.WebKit.WebContent"
+        }
+      }
+    },
+    {
+      "step": "diagnostic cleanup of closed runaway process",
+      "result": {
+        "injected": true,
+        "pid": 16500
+      }
+    }
+  ],
+  "timings": [
+    {
+      "framework": "react",
+      "mountMs": 107
+    }
+  ],
+  "beats": 117,
+  "maxBeatGap": 1080,
+  "confirmedWrite": {
+    "accepted": true,
+    "value": {
+      "path": "p0-proof.txt",
+      "action": "stage",
+      "applied": true,
+      "message": "Git 操作已完成"
+    }
+  },
+  "frameErrors": [],
+  "lastMessages": [
+    {
+      "generation": 1,
+      "packet": {
+        "checks": {
+          "parentAccess": false,
+          "storage": true,
+          "tauri": true
+        },
+        "type": "ready"
+      }
+    },
+    {
+      "generation": 1,
+      "packet": {
+        "generation": 1,
+        "revision": 1,
+        "type": "rendered"
+      }
+    },
+    {
+      "generation": 1,
+      "packet": {
+        "network": "rejected",
+        "results": [
+          {
+            "accepted": false,
+            "command": "list_workspaces",
+            "error": "list_workspaces not allowed on window \"main\", webview \"p0-dom-1\", URL: local\n\nallowed on: [webviews: \"main\", URL: local]\n\nreferenced by: capability: p0-trusted, permission: p0-host-api"
+          },
+          {
+            "accepted": false,
+            "command": "get_presentation_selection",
+            "error": "get_presentation_selection not allowed on window \"main\", webview \"p0-dom-1\", URL: local\n\nallowed on: [webviews: \"main\", URL: local]\n\nreferenced by: capability: p0-trusted, permission: p0-host-api"
+          },
+          {
+            "accepted": false,
+            "command": "resolve_agent_approval",
+            "error": "resolve_agent_approval not allowed on window \"main\", webview \"p0-dom-1\", URL: local\n\nallowed on: [webviews: \"main\", URL: local]\n\nreferenced by: capability: p0-trusted, permission: p0-host-api"
+          },
+          {
+            "accepted": false,
+            "command": "p0_mount",
+            "error": "p0_mount not allowed on window \"main\", webview \"p0-dom-1\", URL: local\n\nallowed on: [webviews: \"main\", URL: local]\n\nreferenced by: capability: p0-trusted, permission: p0-host-api"
+          },
+          {
+            "accepted": false,
+            "command": "p0_deliver",
+            "error": "p0_deliver not allowed on window \"main\", webview \"p0-dom-1\", URL: local\n\nallowed on: [webviews: \"main\", URL: local]\n\nreferenced by: capability: p0-trusted, permission: p0-host-api"
+          },
+          {
+            "accepted": false,
+            "command": "p0_inspect",
+            "error": "p0_inspect not allowed on window \"main\", webview \"p0-dom-1\", URL: local\n\nallowed on: [webviews: \"main\", URL: local]\n\nreferenced by: capability: p0-trusted, permission: p0-host-api"
+          },
+          {
+            "accepted": false,
+            "command": "plugin:window|is_visible",
+            "error": "window.is_visible not allowed on window \"main\", webview \"p0-dom-1\", URL: local\n\nallowed on: [webviews: \"main\", URL: local]\n\nreferenced by: capability: p0-trusted, permission: allow-is-visible"
+          },
+          {
+            "accepted": false,
+            "command": "plugin:event|emit",
+            "error": "event.emit not allowed on window \"main\", webview \"p0-dom-1\", URL: local\n\nallowed on: [webviews: \"main\", URL: local]\n\nreferenced by: capability: p0-trusted, permission: allow-emit"
+          },
+          {
+            "accepted": false,
+            "command": "p0_post",
+            "error": "stale instance"
+          }
+        ],
+        "storageLeak": null,
+        "type": "audit-result",
+        "violations": [
+          {
+            "blocked": "http://127.0.0.1:5173/__p0_forbidden_read",
+            "directive": "connect-src"
+          }
+        ]
+      }
+    },
+    {
+      "generation": 1,
+      "packet": {
+        "bytes": 67108864,
+        "type": "allocated"
+      }
+    },
+    {
+      "generation": 1,
+      "packet": {
+        "type": "loop-starting"
+      }
+    },
+    {
+      "generation": 2,
+      "packet": {
+        "checks": {
+          "parentAccess": false,
+          "storage": true,
+          "tauri": true
+        },
+        "type": "ready"
+      }
+    }
+  ],
+  "identifier": "local.aibo.domp0gates.1790013615562",
+  "platform": "darwin",
+  "architecture": "arm64",
+  "staged": "p0-proof.txt",
+  "forbiddenRequests": [],
+  "processSamples": [
+    {
+      "native": {
+        "pid": 15823,
+        "present": true,
+        "rssKiB": 388720,
+        "cpuPercent": 19.9,
+        "executable": "target/debug/aibo"
+      },
+      "host": {
+        "pid": 15988,
+        "present": true,
+        "rssKiB": 115280,
+        "cpuPercent": 8.9,
+        "executable": "/System/Library/Frameworks/WebKit.framework/Versions/A/XPCServices/com.apple.WebKit.WebContent.xpc/Contents/MacOS/com.apple.WebKit.WebContent"
+      },
+      "child": {
+        "pid": 16500,
+        "present": true,
+        "rssKiB": 36592,
+        "cpuPercent": 10.2,
+        "executable": "/System/Library/Frameworks/WebKit.framework/Versions/A/XPCServices/com.apple.WebKit.WebContent.xpc/Contents/MacOS/com.apple.WebKit.WebContent"
+      }
+    },
+    {
+      "native": {
+        "pid": 15823,
+        "present": true,
+        "rssKiB": 389840,
+        "cpuPercent": 29.9,
+        "executable": "target/debug/aibo"
+      },
+      "host": {
+        "pid": 15988,
+        "present": true,
+        "rssKiB": 122832,
+        "cpuPercent": 8,
+        "executable": "/System/Library/Frameworks/WebKit.framework/Versions/A/XPCServices/com.apple.WebKit.WebContent.xpc/Contents/MacOS/com.apple.WebKit.WebContent"
+      },
+      "child": {
+        "pid": 16500,
+        "present": true,
+        "rssKiB": 102896,
+        "cpuPercent": 4,
+        "executable": "/System/Library/Frameworks/WebKit.framework/Versions/A/XPCServices/com.apple.WebKit.WebContent.xpc/Contents/MacOS/com.apple.WebKit.WebContent"
+      }
+    },
+    {
+      "native": {
+        "pid": 15823,
+        "present": true,
+        "rssKiB": 390464,
+        "cpuPercent": 9.2,
+        "executable": "target/debug/aibo"
+      },
+      "host": {
+        "pid": 15988,
+        "present": true,
+        "rssKiB": 125904,
+        "cpuPercent": 0.1,
+        "executable": "/System/Library/Frameworks/WebKit.framework/Versions/A/XPCServices/com.apple.WebKit.WebContent.xpc/Contents/MacOS/com.apple.WebKit.WebContent"
+      },
+      "child": {
+        "pid": 16500,
+        "present": true,
+        "rssKiB": 104048,
+        "cpuPercent": 98.1,
+        "executable": "/System/Library/Frameworks/WebKit.framework/Versions/A/XPCServices/com.apple.WebKit.WebContent.xpc/Contents/MacOS/com.apple.WebKit.WebContent"
+      }
+    },
+    {
+      "native": {
+        "pid": 15823,
+        "present": true,
+        "rssKiB": 390128,
+        "cpuPercent": 0.1,
+        "executable": "target/debug/aibo"
+      },
+      "host": {
+        "pid": 15988,
+        "present": true,
+        "rssKiB": 136304,
+        "cpuPercent": 0.5,
+        "executable": "/System/Library/Frameworks/WebKit.framework/Versions/A/XPCServices/com.apple.WebKit.WebContent.xpc/Contents/MacOS/com.apple.WebKit.WebContent"
+      },
+      "child": {
+        "pid": 16500,
+        "present": true,
+        "rssKiB": 103952,
+        "cpuPercent": 100,
+        "executable": "/System/Library/Frameworks/WebKit.framework/Versions/A/XPCServices/com.apple.WebKit.WebContent.xpc/Contents/MacOS/com.apple.WebKit.WebContent"
+      }
+    },
+    {
+      "native": {
+        "pid": 15823,
+        "present": true,
+        "rssKiB": 390128,
+        "cpuPercent": 4.9,
+        "executable": "target/debug/aibo"
+      },
+      "host": {
+        "pid": 15988,
+        "present": true,
+        "rssKiB": 136416,
+        "cpuPercent": 0.7,
+        "executable": "/System/Library/Frameworks/WebKit.framework/Versions/A/XPCServices/com.apple.WebKit.WebContent.xpc/Contents/MacOS/com.apple.WebKit.WebContent"
+      },
+      "child": {
+        "pid": 16500,
+        "present": true,
+        "rssKiB": 103952,
+        "cpuPercent": 99.7,
+        "executable": "/System/Library/Frameworks/WebKit.framework/Versions/A/XPCServices/com.apple.WebKit.WebContent.xpc/Contents/MacOS/com.apple.WebKit.WebContent"
+      }
+    }
+  ]
+}

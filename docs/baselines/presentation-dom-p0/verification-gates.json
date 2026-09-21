@@ -1,0 +1,35 @@
+{
+  "verify": {
+    "command": "pnpm run verify",
+    "exitCode": 0,
+    "architectureTests": 33,
+    "nodeTests": 346,
+    "typecheck": "passed",
+    "build": "passed"
+  },
+  "rust": {
+    "command": "cargo test --manifest-path src-tauri/Cargo.toml --features presentation-dom-p0 --lib",
+    "passed": 234,
+    "failed": 0,
+    "environment": "escalated; sandbox denied ps in initial run"
+  },
+  "defaultRustCheck": {
+    "command": "cargo check --manifest-path src-tauri/Cargo.toml",
+    "exitCode": 0
+  },
+  "prototypeBrowser": {
+    "passed": true,
+    "evidence": "browser-gates.json"
+  },
+  "fullSkinsBrowser": {
+    "passed": false,
+    "original": "obsolete open-settings selector",
+    "diagnostic": "after temporary entry rename, navigation width value=261 visibility timeout",
+    "sourceChangesRetained": false
+  },
+  "warnings": [
+    "existing Rust dead-code warnings",
+    "existing Vite chunk size and mixed import warnings"
+  ],
+  "p0Passed": false
+}
