@@ -58,7 +58,7 @@ export function createWorkspaceController(context: WorkspaceControllerContext) {
         ...context.getWorkspaces().filter(({ id }) => id !== workspace.id),
       ]);
       context.selectWorkspace(workspace.id);
-      context.setNotice('工作区已添加。首次运行 Agent 前请明确确认信任状态。');
+      context.setNotice(workspace.trust === 'trusted' ? '工作区已添加，当前为可信状态。' : '工作区已添加，运行 Agent 前需确认信任。');
     } catch (error) {
       context.setErrorMessage(toErrorMessage(error));
     } finally {

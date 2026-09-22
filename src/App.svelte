@@ -1,7 +1,9 @@
 <script lang="ts">
   import { createAttachmentPreviews } from '$lib/app/attachment-previews';
   import { getSessionAttachmentPreview } from '$lib/api';
-  import { SubagentDetails } from '$lib/components/app';
+  import { SubagentDetails, WorkspacePreferencesPanel } from '$lib/components/app';
+  import { createWorkspacePreferencesController, emptyWorkspacePreferences } from '$lib/app/workspace-preferences-controller';
+  import { readWorkspacePreferences, saveWorkspacePreferences } from '$lib/api';
   import { getSubagentHistory } from '$lib/api';
   import { parseSubagent, mergeSubagentEntries, type SubagentEntry } from '$lib/app/subagents';
   let subagentSelection = $state<{sessionId:string; id:string} | null>(null);
@@ -981,6 +983,14 @@
   let retryReason = $state<string | null>(null);
   let lastSubmittedPrompt = $state<string | null>(null);
   let settingsOpen = $state(false);
+  let workspacePreferences = $state(emptyWorkspacePreferences());
+  const workspacePreferencesController = createWorkspacePreferencesController({
+    read: readWorkspacePreferences, save: saveWorkspacePreferences,
+    changed: value => { workspacePreferences = value; },
+  });
+  $effect(() => {
+    if (settingsOpen && desktop) untrack(() => { void workspacePreferencesController.load(); });
+  });
   let managementSection = $state<'appearance' | 'extensions' | 'runtime'>('appearance');
   const listSessions: typeof listAllSessions = listAllSessions;
   let historyOpen = $state(false);
@@ -3611,6 +3621,9 @@
   {/if}
 {/snippet}
 
+{#snippet workspaceSettings()}
+  <WorkspacePreferencesPanel state={workspacePreferences} {desktop} onChange={trusted => void workspacePreferencesController.save(trusted)} onReload={() => void workspacePreferencesController.load()} />
+{/snippet}
 {#snippet appearanceActions()}{@render presentationActions('appearance')}{/snippet}
 {#snippet diagnosticsActions()}{@render presentationActions('diagnostics')}{/snippet}
 {#snippet navigationFooter()}
@@ -3659,6 +3672,7 @@
     onClose={closeAppWindow}
   />
   <SettingsPanel
+    {workspaceSettings}
     packageManagement={presentationPackageManagement}
     presentationActions={appearanceActions}
     extensions={extensionManagement}

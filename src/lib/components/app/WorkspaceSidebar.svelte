@@ -300,7 +300,6 @@
               <span class="workspace-copy">
                 <strong>{workspace.label}</strong>
               </span>
-              <span class:trusted={workspace.trust === 'trusted'} class="trust-dot workspace-trust-dot" title={workspace.trust === 'trusted' ? '可信' : '待确认'}></span>
             </Button>
             <div class="workspace-item-actions" aria-label={`${workspace.label} 管理操作`}>
               <div class="session-agent-launcher" use:registerAgentLauncher={workspace.id}>

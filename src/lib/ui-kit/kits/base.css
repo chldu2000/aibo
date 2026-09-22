@@ -90,9 +90,6 @@ h2 { font-size: 16px; letter-spacing: -0.02em; }
 .session-item-row:hover .session-item-actions, .session-item-row:focus-within .session-item-actions { opacity: 1; pointer-events: auto; transform: translateY(-50%); }
 .workspace-item-row.session-creator-open .workspace-item-actions { opacity: 1; pointer-events: auto; transform: translateY(-50%); }
 .workspace-item-actions [data-slot='button'], .session-item-actions [data-slot='button'] { width: 26px; height: 26px; }
-.trust-dot { width: 7px; height: 7px; flex: none; border-radius: 50%; background: var(--aibo-warning-text); }
-.trust-dot.trusted { background: var(--aibo-success-text); }
-.workspace-trust-dot { align-self: center; margin-top: 0; }
 .empty-list { padding: 26px 12px; color: var(--aibo-muted); text-align: center; font-size: 12px; }
 .workspace-session-group { display: flex; min-width: 0; min-height: 0; flex-direction: column; gap: 2px; margin: 0 0 4px; padding: 2px 0 4px 24px; }
 .session-agent-launcher { position: relative; display: grid; place-items: center; }

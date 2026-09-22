@@ -151,6 +151,12 @@ export const getSessionModels = (sessionId: string): Promise<SessionModelCatalog
 
 
 
+export const readWorkspacePreferences = (): Promise<import('./app/workspace-preferences-controller').WorkspacePreferences> =>
+  invoke('read_workspace_preferences');
+
+export const saveWorkspacePreferences = (trustNewWorkspaces: boolean): Promise<import('./app/workspace-preferences-controller').WorkspacePreferences> =>
+  invoke('save_workspace_preferences', { trustNewWorkspaces });
+
 export const addWorkspace = (path: string): Promise<Workspace> =>
   invoke<Workspace>('add_workspace', { path });
 

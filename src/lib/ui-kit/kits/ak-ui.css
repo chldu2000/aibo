@@ -234,3 +234,13 @@
 .app-shell[data-ui-kit='ak-ui'] .inspector .panel-heading > div:first-child { min-width: 0; }
 .app-shell[data-ui-kit='ak-ui'] .inspector .panel-heading small { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 11px; }
 .app-shell[data-ui-kit='ak-ui'] .session-context-content :is(dt, dd) { font-size: 11px; line-height: 1.6; }
+
+.app-shell[data-ui-kit='ak-ui'] .workspace-preference-option { display: flex; align-items: center; gap: var(--ak-space-4); min-height: 44px; margin-inline: 20px; padding: var(--ak-space-3); border: 1px solid var(--aibo-border); background: var(--aibo-bg); cursor: pointer; }
+.app-shell[data-ui-kit='ak-ui'] .workspace-preference-option > span { flex: 1; min-width: 0; }
+.app-shell[data-ui-kit='ak-ui'] .workspace-preference-option strong { display: block; font-size: 12px; font-weight: 500; }
+.app-shell[data-ui-kit='ak-ui'] .workspace-preference-option small { display: block; margin-top: var(--ak-space-1); font-size: 11px; line-height: 1.6; color: var(--aibo-muted); }
+.app-shell[data-ui-kit='ak-ui'] .workspace-preference-option input { flex: none; width: 20px; height: 20px; accent-color: var(--aibo-accent); }
+.app-shell[data-ui-kit='ak-ui'] .workspace-preference-option:focus-within { outline: var(--ak-focus-width) solid var(--aibo-focus); outline-offset: 2px; }
+.app-shell[data-ui-kit='ak-ui'] .workspace-preference-option:has(input:disabled) { cursor: default; }
+.app-shell[data-ui-kit='ak-ui'] .workspace-preference-status { margin-inline: 20px; font-size: 11px; color: var(--aibo-muted); }
+.app-shell[data-ui-kit='ak-ui'] .workspace-preference-status [role='alert'] { color: var(--aibo-danger-text); }

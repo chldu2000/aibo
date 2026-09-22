@@ -5,6 +5,7 @@
 
   type SettingsPanelProps = {
     presentationActions?: Snippet;
+    workspaceSettings?: Snippet;
     packageManagement?: Snippet;
     extensions?: Snippet;
     runtime?: Snippet;
@@ -19,7 +20,7 @@
     onClose: () => void;
   };
 
-  let { presentationActions, packageManagement, extensions, runtime, open, activeSection, uiKits, activeUiKitName, activeThemeId, onSelectUiKit, onSelectTheme, onSelectSection, onClose }: SettingsPanelProps = $props();
+  let { presentationActions, workspaceSettings, packageManagement, extensions, runtime, open, activeSection, uiKits, activeUiKitName, activeThemeId, onSelectUiKit, onSelectTheme, onSelectSection, onClose }: SettingsPanelProps = $props();
   let openedKit = $state<string | null>(null);
   let requestedKit = $state<string | null>(null);
   $effect.pre(() => { if (open) { openedKit = untrack(() => activeUiKitName); requestedKit = null; } });
@@ -28,6 +29,7 @@
 
 {#snippet appearanceContent()}
   <div class="settings-tab-panel">
+    {#if workspaceSettings}{@render workspaceSettings()}<Separator />{/if}
     {@render presentationActions?.()}
     {@render packageManagement?.()}
     <section class="settings-section" aria-labelledby="ui-kit-title">

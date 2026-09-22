@@ -18,6 +18,7 @@ try {
     window.__TAURI_INTERNALS__={metadata:{currentWindow:{label:'main'},currentWebview:{label:'main'}},
       transformCallback(fn){const id=++callback;window['_'+id]=fn;return id;},unregisterCallback(id){delete window['_'+id];},
       async invoke(command,args={}){
+        if(command==='read_workspace_preferences')return {trustNewWorkspaces:true};
         window.presentationCommands.push(command);
         if(command==='plugin:dialog|open')return '/probe/package';
         if(command==='install_presentation_package'){localStorage.setItem('probe.presentation.installed',JSON.stringify(window.presentationInstallable));return window.presentationInstallable.release;}

@@ -1,4 +1,5 @@
 mod agent_settings;
+mod workspace_preferences;
 mod project_actions;
 mod controlled_process;
 mod workspace_git;
@@ -1288,7 +1289,11 @@ async fn search_workspace_paths(
 
 #[tauri::command]
 async fn add_workspace(path: String, state: State<'_, AppState>) -> Result<Workspace, CoreError> {
-    let canonical = canonical_workspace_path(&path)?;
+    add_workspace_in_db(&path, &state.db).await
+}
+
+async fn add_workspace_in_db(path: &str, db: &SqlitePool) -> Result<Workspace, CoreError> {
+    let canonical = canonical_workspace_path(path)?;
     let canonical_string = canonical.to_string_lossy().into_owned();
     let label = workspace_label(&canonical);
     let now = now_iso();
@@ -1297,7 +1302,7 @@ async fn add_workspace(path: String, state: State<'_, AppState>) -> Result<Works
     sqlx::query(
         "INSERT OR IGNORE INTO workspaces
          (id, path, label, trusted, last_opened_at, created_at, updated_at)
-         VALUES (?, ?, ?, 0, ?, ?, ?)",
+         VALUES (?, ?, ?, (SELECT trust_new_workspaces FROM workspace_preferences WHERE id = 1), ?, ?, ?)",
     )
     .bind(&id)
     .bind(&canonical_string)
@@ -1305,7 +1310,7 @@ async fn add_workspace(path: String, state: State<'_, AppState>) -> Result<Works
     .bind(&now)
     .bind(&now)
     .bind(&now)
-    .execute(&state.db)
+    .execute(db)
     .await?;
 
     sqlx::query(
@@ -1315,10 +1320,20 @@ async fn add_workspace(path: String, state: State<'_, AppState>) -> Result<Works
     .bind(&now)
     .bind(&now)
     .bind(&canonical_string)
-    .execute(&state.db)
+    .execute(db)
     .await?;
 
-    workspace_by_path(&state.db, &canonical_string).await
+    workspace_by_path(db, &canonical_string).await
+}
+
+#[tauri::command]
+async fn read_workspace_preferences(state: State<'_, AppState>) -> Result<workspace_preferences::WorkspacePreferences, CoreError> {
+    workspace_preferences::read(&state.db).await
+}
+
+#[tauri::command]
+async fn save_workspace_preferences(trust_new_workspaces: bool, state: State<'_, AppState>) -> Result<workspace_preferences::WorkspacePreferences, CoreError> {
+    workspace_preferences::save(&state.db, trust_new_workspaces).await
 }
 
 async fn workspace_by_path(db: &SqlitePool, path: &str) -> Result<Workspace, CoreError> {
@@ -4446,6 +4461,8 @@ pub fn run() {
             list_workspaces,
             search_workspace_paths,
             add_workspace,
+            read_workspace_preferences,
+            save_workspace_preferences,
             set_workspace_trust,
             remove_workspace,
             open_workspace_location,

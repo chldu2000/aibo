@@ -45,3 +45,4 @@ export { default as SessionHistoryPanel } from './SessionHistoryPanel.svelte';
 export { default as CapabilityHistoryPanel } from './CapabilityHistoryPanel.svelte';
 
 export { default as SubagentDetails } from './SubagentDetails.svelte';
+export { default as WorkspacePreferencesPanel } from './WorkspacePreferencesPanel.svelte';

@@ -8,7 +8,7 @@
   // Capture before the sibling workbench becomes inert in this render.
   const previous = typeof document === 'undefined' ? null : document.activeElement;
   const sections: readonly { id: UiManagementSection; label: string; description: string }[] = [
-    { id: 'appearance', label: '外观', description: '主题与工作台布局' },
+    { id: 'appearance', label: '工作台', description: '工作区、主题与布局' },
     { id: 'extensions', label: '扩展', description: '插件与能力来源' },
     { id: 'runtime', label: '运行状态', description: '环境与诊断' },
   ];

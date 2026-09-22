@@ -25,6 +25,7 @@ try {
     window.__TAURI_INTERNALS__={metadata:{currentWindow:{label:'main'},currentWebview:{label:'main'}},
       transformCallback(fn){const id=++callback;window['_'+id]=fn;return id;},unregisterCallback(id){delete window['_'+id];},
       async invoke(command,args={}){
+        if(command==='read_workspace_preferences')return {trustNewWorkspaces:true};
         window.presentationCommands.push(command);window.navigationCalls.push({command,args});
         if(command==='plugin:event|listen'){if(args.event==='agent-event')agentHandler=args.handler;return 1;}
         if(command==='inspect_workspace_capabilities')return {workspaceId:args.workspaceId,inspectedAt:'now',instructions:[],skills:[],tools:[],mcpServers:[],warnings:[]};
