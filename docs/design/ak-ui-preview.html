@@ -9,11 +9,12 @@
 /* Standalone design study. Semantic tokens follow the local ak-ui skill contract;
    values below are Aibo adaptations, not a bundled distribution of ak-ui. */
 [data-ak-ui] {
-  --ak-surface-canvas:#f5f5f1; --ak-surface-panel:#fcfcf9; --ak-surface-muted:#eceee8;
-  --ak-surface-raised:#ffffff; --ak-surface-inverse:#20241f;
-  --ak-text-primary:#252923; --ak-text-secondary:#676e62; --ak-text-inverse:#fafbf5;
-  --ak-signal-info:#396b77; --ak-signal-action:#e6f16b; --ak-signal-accent:#798322;
-  --ak-signal-success:#3b704c; --ak-signal-danger:#aa4141; --ak-signal-disabled:#8b9186;
+  --ak-color-blue:#22bbff; --ak-color-dark-blue:#0075a8; --ak-color-yellow:#ffd802;
+  --ak-surface-canvas:#e9ebe7; --ak-surface-panel:#f5f6f2; --ak-surface-muted:#dce0da;
+  --ak-surface-raised:#ffffff; --ak-surface-inverse:#111315;
+  --ak-text-primary:#171a1d; --ak-text-secondary:#4c5459; --ak-text-inverse:#f3f4ef;
+  --ak-signal-info:var(--ak-color-blue); --ak-signal-action:var(--ak-color-yellow); --ak-signal-accent:#a34f19;
+  --ak-signal-success:#23633e; --ak-signal-danger:#a63435; --ak-signal-disabled:#78827d;
   --ak-font-sans:Inter,"Helvetica Neue",Arial,"PingFang SC","Microsoft YaHei",sans-serif;
   --ak-font-serif:"Songti SC","Noto Serif CJK SC",serif;
   --ak-font-mono:"SFMono-Regular",Consolas,"Liberation Mono",monospace;
@@ -26,20 +27,20 @@
   --ak-radius-subtle:3px; --ak-shadow-panel:0 16px 60px #18201b1a;
   --ak-motion-fast:120ms; --ak-motion-base:200ms; --ak-motion-slow:420ms;
   --ak-ease-standard:cubic-bezier(.2,0,0,1); --ak-ease-emphasized:cubic-bezier(.2,.8,.2,1);
-  --ak-focus-color:#467581; --ak-focus-width:2px; --ak-focus-offset:3px;
-  --aibo-line:#daddd4; --aibo-selected:#e5e9d9; --aibo-action-text:#293018;
-  --aibo-success-surface:#eaf0e8; --aibo-danger-surface:#f8ece9;
+  --ak-focus-color:var(--ak-color-dark-blue); --ak-focus-width:2px; --ak-focus-offset:3px;
+  --aibo-line:#b3bab5; --aibo-selected:#cceaff; --aibo-action-text:#171a1d;
+  --aibo-success-surface:#dcecdf; --aibo-danger-surface:#f9e2df;
   color-scheme:light; color:var(--ak-text-primary); background:var(--ak-surface-canvas);
   font:14px/1.6 var(--ak-font-sans); margin:0;
 }
 [data-ak-ui][data-theme="dark"] {
-  --ak-surface-canvas:#1d211e; --ak-surface-panel:#222723; --ak-surface-muted:#282e29;
-  --ak-surface-raised:#2c322d; --ak-surface-inverse:#f0f2e8;
-  --ak-text-primary:#e6e9df; --ak-text-secondary:#a3ac9d; --ak-text-inverse:#20251f;
-  --ak-signal-info:#92c0c8; --ak-signal-action:#dbe878; --ak-signal-accent:#ccd88a;
-  --ak-signal-success:#a4c3a5; --ak-signal-danger:#e5a4a0; --ak-signal-disabled:#7f887c;
-  --ak-focus-color:#dbe878; --aibo-line:#3a423b; --aibo-selected:#343e2d;
-  --aibo-success-surface:#293a2e; --aibo-danger-surface:#402d2a;
+  --ak-surface-canvas:#111315; --ak-surface-panel:#202428; --ak-surface-muted:#2c3237;
+  --ak-surface-raised:#383f45; --ak-surface-inverse:#f3f4ef;
+  --ak-text-primary:#f3f4ef; --ak-text-secondary:#b5bbc0; --ak-text-inverse:#171a1d;
+  --ak-signal-info:var(--ak-color-blue); --ak-signal-action:var(--ak-color-yellow); --ak-signal-accent:#f0af74;
+  --ak-signal-success:#9dd6af; --ak-signal-danger:#ffaaa3; --ak-signal-disabled:#849291;
+  --ak-focus-color:var(--ak-color-blue); --aibo-line:#4c565e; --aibo-selected:#12394b;
+  --aibo-success-surface:#263f31; --aibo-danger-surface:#482e30;
   --ak-shadow-panel:0 16px 60px #0005; color-scheme:dark;
 }
 [data-ak-ui] *,[data-ak-ui] *::before,[data-ak-ui] *::after {box-sizing:border-box}
@@ -75,7 +76,7 @@
 .session {width:100%;text-align:left;padding:var(--ak-space-3) var(--ak-space-3) var(--ak-space-3) var(--ak-space-5);position:relative;min-width:0}
 .session span {display:block;font-size:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .session small {display:block;font:10px var(--ak-font-mono);color:var(--ak-text-secondary);margin-top:5px}
-.session[aria-current="page"] {background:var(--aibo-selected);box-shadow:inset 3px 0 var(--ak-signal-accent)}
+.session[aria-current="page"] {background:var(--aibo-selected);box-shadow:inset 3px 0 var(--ak-focus-color)}
 .session[aria-current="page"]::after {content:"";position:absolute;right:10px;top:20px;width:5px;height:5px;background:var(--ak-signal-accent)}
 .sidebar-scroll {overflow-y:auto;min-height:0;flex:1}
 .sidebar-bottom {border-top:1px solid var(--aibo-line);padding-top:var(--ak-space-3);margin-top:var(--ak-space-4)}
@@ -261,7 +262,7 @@
           <article class="message"><div class="message-meta"><span class="avatar">YOU</span><strong>你</strong><time>14:32</time></div><div class="user-body">用 ak-ui 重新设计 Aibo 的默认界面。保持现代、简洁，导航和工作区在同一主题下统一明暗，让注意力回到对话与代码。</div></article>
           <article class="message"><div class="message-meta"><span class="avatar ai">a</span><strong>Aibo</strong><span style="color:var(--ak-text-secondary)">/ Codex</span><time>14:33</time></div>
             <div class="message-copy"><h2 class="task-heading">让复杂的工作，拥有清晰的界面。</h2><p>我会将两套默认视觉收敛为一套一致的工作台。保留熟悉的工作区结构，用更清晰的信息层级组织会话、执行过程与代码变更。</p></div>
-            <ol class="plan"><li><span class="plan-number">01</span><div><strong>统一视觉语言</strong><small>同主题、同明暗，以细微色阶划分区域。</small></div></li><li><span class="plan-number">02</span><div><strong>为内容留出空间</strong><small>降低装饰密度，突出对话、代码和当前操作。</small></div></li><li><span class="plan-number">03</span><div><strong>让执行过程可读</strong><small>工具调用按需展开，变更与上下文随时可达。</small></div></li></ol>
+            <ol class="plan"><li><span class="plan-number">01</span><div><strong>统一视觉语言</strong><small>同主题、同明暗，以明确底色层级和功能色划分区域。</small></div></li><li><span class="plan-number">02</span><div><strong>为内容留出空间</strong><small>降低装饰密度，突出对话、代码和当前操作。</small></div></li><li><span class="plan-number">03</span><div><strong>让执行过程可读</strong><small>工具调用按需展开，变更与上下文随时可达。</small></div></li></ol>
             <details class="tool"><summary><svg><use href="#i-check"/></svg>已查看工作台结构<span class="duration">4 个文件 · 0.8s</span></summary><pre class="tool-output">src/lib/components/app/WorkspaceSidebar.svelte
 src/lib/components/app/Composer.svelte
 src/lib/ui-kit/contract.ts
@@ -280,7 +281,7 @@ src/lib/ui-kit/registry.ts
   </main>
   <footer class="footer"><span class="status">本地演示</span><span class="footer-extra">aibo-dev</span><span class="footer-extra">↳ design/default-ui</span><span class="footer-right" id="theme-footer">AK–UI / LIGHT</span><span>UTF-8</span></footer>
 </div>
-<dialog class="modal" id="settings-dialog" aria-labelledby="settings-title"><div class="modal-header"><div><div class="eyebrow">PREFERENCES</div><h2 id="settings-title">工作台设置</h2></div><button class="icon-button" data-close aria-label="关闭设置"><svg><use href="#i-close"/></svg></button></div><div class="setting-row"><div><p>外观主题</p><small>所有区域保持统一明暗，仅通过色阶区分层级。</small></div><div class="theme-options"><button data-theme-choice="light" aria-pressed="true">浅色</button><button data-theme-choice="dark" aria-pressed="false">深色</button></div></div><div class="setting-row"><div><p>默认设计系统</p><small>统一替代原 shadcn / Material 3 默认视觉。</small></div><span class="status">Aibo · ak-ui</span></div><div class="setting-row"><div><p>动效</p><small>仅保留短促操作反馈，自动尊重系统减少动态效果设置。</small></div></div><p class="subcopy">这是交互设计稿。主题选择保存在当前浏览器，不修改 Aibo 设置。</p></dialog>
+<dialog class="modal" id="settings-dialog" aria-labelledby="settings-title"><div class="modal-header"><div><div class="eyebrow">PREFERENCES</div><h2 id="settings-title">工作台设置</h2></div><button class="icon-button" data-close aria-label="关闭设置"><svg><use href="#i-close"/></svg></button></div><div class="setting-row"><div><p>外观主题</p><small>所有区域保持统一明暗，用背景、边界和状态色共同区分层级。</small></div><div class="theme-options"><button data-theme-choice="light" aria-pressed="true">浅色</button><button data-theme-choice="dark" aria-pressed="false">深色</button></div></div><div class="setting-row"><div><p>默认设计系统</p><small>统一替代原 shadcn / Material 3 默认视觉。</small></div><span class="status">Aibo · ak-ui</span></div><div class="setting-row"><div><p>动效</p><small>仅保留短促操作反馈，自动尊重系统减少动态效果设置。</small></div></div><p class="subcopy">这是交互设计稿。主题选择保存在当前浏览器，不修改 Aibo 设置。</p></dialog>
 <dialog class="modal" id="search-dialog" aria-labelledby="search-title"><div class="modal-header"><h2 id="search-title">搜索会话</h2><button class="icon-button" data-close aria-label="关闭搜索"><svg><use href="#i-close"/></svg></button></div><input class="search-input" id="search-input" placeholder="输入会话名称…" aria-label="搜索会话名称"><div id="search-results"></div><p class="subcopy">⌘ / Ctrl + K 打开 · Esc 关闭</p></dialog>
 <dialog class="modal" id="plugins-dialog" aria-labelledby="plugins-title"><div class="modal-header"><div><div class="eyebrow">CAPABILITIES</div><h2 id="plugins-title">插件与能力</h2></div><button class="icon-button" data-close aria-label="关闭插件面板"><svg><use href="#i-close"/></svg></button></div><p class="subcopy">一个工作台，连接不同的开发伙伴。以下为演示配置。</p><div class="plugin"><div class="plugin-icon">⌘</div><div><h3>Codex</h3><small>代码编写 · 工具执行 · 会话恢复</small></div><span class="status">已启用</span></div><div class="plugin"><div class="plugin-icon">π</div><div><h3>Pi</h3><small>代码编写 · 上下文管理</small></div><span class="status">已启用</span></div></dialog>
 <div class="toast" id="toast" role="status" hidden></div>

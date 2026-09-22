@@ -43,6 +43,20 @@ try{
   assert.equal(await input.inputValue(),'主题切换时保留这段草稿');
   const backgrounds=await page.locator('.sidebar,.timeline,.inspector').evaluateAll(nodes=>nodes.map(n=>getComputedStyle(n).backgroundColor));
   for(const bg of backgrounds){const rgb=bg.match(/[\d.]+/g).slice(0,3).map(Number);assert.equal(rgb.every(c=>c>200),mode==='light',bg)}
+  const primary=page.locator('.sidebar-new-session');
+  const primaryColors=await primary.evaluate(e=>{const s=getComputedStyle(e);return {bg:s.backgroundColor,fg:s.color}});
+  assert.equal(primaryColors.bg,'rgb(255, 216, 2)','main action uses the ak-ui yellow palette');
+  const contrast=({bg,fg})=>{
+    const lum=color=>{const rgb=color.match(/[\d.]+/g).slice(0,3).map(Number).map(n=>n/255).map(n=>n<=.04045?n/12.92:((n+.055)/1.055)**2.4);return rgb[0]*.2126+rgb[1]*.7152+rgb[2]*.0722};
+    const values=[lum(bg),lum(fg)].sort((a,b)=>b-a);return (values[0]+.05)/(values[1]+.05);
+  };
+  assert(contrast(primaryColors)>=4.5,'yellow buttons retain readable dark labels');
+  await primary.focus();await page.keyboard.press('Tab');await page.keyboard.press('Shift+Tab');
+  assert.equal(await primary.evaluate(e=>e===document.activeElement),true,'keyboard navigation returns to the main action');
+  assert.equal(await primary.evaluate(e=>getComputedStyle(e).outlineColor),mode==='light'?'rgb(0, 117, 168)':'rgb(34, 187, 255)','focus uses the official theme-appropriate blue');
+  await primary.hover();
+  assert.deepEqual(await primary.evaluate(e=>{const s=getComputedStyle(e);return {bg:s.backgroundColor,fg:s.color}}),primaryColors,'hover keeps the yellow action readable');
+  await page.mouse.move(700,40);await primary.evaluate(e=>e.blur());
   await page.screenshot({path:`${output}/desktop-${mode}.png`});
  }
  await page.getByRole('button',{name:'工作台设置',exact:true}).click();

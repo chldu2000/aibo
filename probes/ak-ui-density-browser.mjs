@@ -90,8 +90,22 @@ try {
   assert.equal(readability.nameClipped, false, readability.name);
   assert.equal(readability.stashAlignment, 'space-between');
   assert(readability.sizes.every(size => size >= 12), 'secondary information stays readable');
+  async function checkColorHierarchy() {
+    const styles = await page.evaluate(() => {
+      function background(e) { while(e){const color=getComputedStyle(e).backgroundColor;if(color!=='rgba(0, 0, 0, 0)'&&color!=='transparent')return color;e=e.parentElement}return '' }
+      const bg=selector=>background(document.querySelector(selector));
+      return {heading:bg('.git-change-group-heading'),file:bg('.changeset-file-row'),summary:bg('.git-summary-card'),canvas:bg('.timeline'),editor:bg('.composer'),
+        selected:bg('.git-section-tabs [aria-selected="true"]'),rest:bg('.git-section-tabs [aria-selected="false"]')};
+    });
+    assert.notEqual(styles.heading,styles.file,'Git group heading separates from file content');
+    assert.notEqual(styles.summary,styles.file,'branch summary separates from file content');
+    assert.notEqual(styles.canvas,styles.editor,'editor separates from reading canvas');
+    assert.notEqual(styles.selected,styles.rest,'Git selected tab has a visible surface signal');
+  }
+  await checkColorHierarchy();
   await page.screenshot({path:output+'/git-light.png'});
   await page.getByRole('button',{name:'切换明暗主题',exact:true}).click();
+  await checkColorHierarchy();
   await page.screenshot({path:output+'/git-dark.png'});
   await page.getByRole('tab',{name:'上下文',exact:true}).click();
   await page.screenshot({path:output+'/context-dark.png'});
