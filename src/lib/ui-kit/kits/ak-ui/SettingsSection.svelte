@@ -39,6 +39,6 @@
   .settings-copy { flex: 1 1 200px; min-width: 0; }
   h3 { display: flex; align-items: center; gap: 8px; margin: 0; font-size: 13px; font-weight: 500; color: var(--aibo-text); overflow-wrap: anywhere; }
   .settings-row-actions { display: flex; flex-wrap: wrap; flex: 0 0 auto; gap: 8px; max-width: 100%; }
-  kbd { display: inline-block; margin-top: 8px; padding: 2px 5px; border: 1px solid var(--aibo-border); border-radius: 4px; color: var(--aibo-muted); font-size: 10px; line-height: 1.5; }
+  kbd { display: inline-block; margin-top: 8px; padding: 2px 5px; border: 1px solid var(--aibo-border); border-radius: var(--ak-radius-subtle); color: var(--aibo-muted); font-size: 12px; line-height: 1.5; }
   .settings-error { color: var(--aibo-danger-text); }
 </style>

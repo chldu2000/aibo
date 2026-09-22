@@ -17,7 +17,7 @@
 
 <style>
   .context-window-select { display: inline-flex; align-items: center; gap: 0.4rem; font-size: 0.75rem; white-space: nowrap; }
-  select { max-width: 10rem; min-height: 2rem; padding: 0.25rem 0.5rem; border: 1px solid var(--border); border-radius: 0.375rem; background: var(--background); color: var(--foreground); font: inherit; }
+  select { max-width: 10rem; min-height: var(--ak-density-control-height); padding: 0.25rem 0.5rem; border: 1px solid var(--border); border-radius: var(--ak-radius-subtle); background: var(--background); color: var(--foreground); font: inherit; }
   select:focus-visible { outline: 2px solid var(--ring); outline-offset: 2px; }
   select:disabled { opacity: 0.5; cursor: not-allowed; }
 </style>

@@ -109,7 +109,7 @@
         "--aibo-success-text": "var(--ak-signal-success)",
         "--aibo-warning-border": "var(--ak-signal-accent)",
         "--aibo-warning-surface": "var(--aibo-selected)",
-        "--aibo-warning-text": "var(--ak-signal-accent)",
+        "--aibo-warning-text": "#626b1b",
         "--aibo-danger-border": "var(--ak-signal-danger)",
         "--aibo-danger-hover": "var(--aibo-danger-surface)",
         "--aibo-danger-text": "var(--ak-signal-danger)",

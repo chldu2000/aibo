@@ -9,11 +9,12 @@
 - `kits/ak-ui/themes.json` 是默认颜色、字体、间距和几何令牌来源；`ak-ui.css` 导入固定版本
   `@yunyoujun/ak-ui/tokens.css`，通过 `--ak-*` 与现有 `--aibo-*` 语义角色适配，不在运行时加载 CDN。
 - `kits/ak-ui.ts` 注册完整 `UiKitAdapter`，复用已有 Svelte 控件的语义与行为，替换按钮、工作台、
-  管理中心、确认弹窗和状态标记的视觉实现。旧 `shadcn` / `material3` 内置注册项和样式入口不再进入默认选择列表。
-  保留的历史组件和独立呈现包不表示仍有两套默认 UI；外部呈现包继续通过安装机制使用。
+  管理中心、确认弹窗和状态标记的视觉实现。旧 `shadcn` / `material3` 内置 adapter、组件目录和 CSS 已删除。
+  仍使用的组合控件归入 `kits/ak-ui/`，无皮肤专属视觉的行为组件留在 `kits/shared/`。
+  独立呈现包继续通过安装机制使用；不删除外部包或旧外观偏好的兼容迁移。
 - `kits/ak-ui/Icon.svelte` 以设计稿的 24 单位网格与 1.6 单位描边实现完整语义图标集；
   发送采用上箭头，插件采用四格，设置采用矩形滑块，继承文字颜色并保留按钮可访问名称。
-  插件提供的品牌标识保持原始路径，复用控件的线型图标仅统一描边粗细。
+  插件提供的品牌标识保持原始路径；目标栏、模型和设置控件也统一使用 ak-ui 图标。
 - `appearance-selection.ts` 仅迁移 `aibo.appearance.v1`：旧 `light` / `daylight` 转为浅色，
   其余已知旧主题转为深色。未知或损坏偏好回退到默认主题。外部包选择、消息、草稿、权限和工作区布局不参与迁移。
 - `UiWorkbenchChromeProps.auxiliaryOpen` 是可选的宿主布局信息，缺省 `true`，不承载会话业务。
@@ -126,35 +127,15 @@ runtime proxy 会订阅当前 adapter，因此切换皮肤时页面已使用的 
 主题还需声明 `colorScheme`，使原生表单控件和滚动区域与亮色或深色外观一致。
 当前默认提供浅色与深色，原 Zinc、Blue、Emerald、Light、Ocean、Sage、Violet、Daylight 均按上述规则迁移。
 
-皮肤的 token 也遵循各自的语义角色，而不是让页面组件依赖具体色值。shadcn
-皮肤注册 `background`、`foreground`、`card`、`popover`、`primary`、
-`secondary`、`muted`、`accent`、`destructive`、`border`、`input` 和 `ring`
-等角色；组件只引用这些角色来表达层级、交互和焦点状态。Material 3 皮肤
-注册 `primary/on-primary`、`surface`、`surface-container`、`on-surface`、
-`outline`、`error`、`scrim` 等角色，并通过 shape、elevation 和 easing token
-保持状态层与形状的一致性。新增控件应优先复用对应角色，不能把某个主题的
-十六进制颜色或阴影复制进组件。
+默认皮肤的颜色、字体、间距和几何由 `kits/ak-ui/themes.json` 定义，再映射到
+基础控件的 `background`、`foreground`、`primary`、`border` 等语义别名。
+重复视觉决策优先使用 `--ak-*` 令牌；正文和辅助信息应保持可读尺寸，不能用缩小
+警告、状态或文件名换取紧凑。目标、队列、输入框共享内容边界；文件名优先显示完整，
+目录作为次级信息；面板以矩形和细线为主，控件可采用 `--ak-radius-subtle`。
 
-参考规范：
-
-- [shadcn-svelte Theming](https://svelte-4.shadcn-svelte.com/docs/theming)
-- [Material 3 theming](https://developer.android.com/develop/ui/compose/designsystems/material3)
-- [Material 3 interaction states](https://m3.material.io/foundations/interaction/states/overview)
-
-以下保留历史实现说明，`material3` 已不是内置选择项。历史 adapter 使用
-[`m3-svelte`](https://github.com/KTibow/m3-svelte) 的 Material 3 交互按钮，
-并用兼容包装补齐 Aibo 所需的卡片与其他基础原语。卡片保持 Aibo 自己的
-语义元素和零布局副作用，避免第三方组件的 padding、flex 方向或交互 DOM
-改变三栏布局。旧 adapter 的开发入口记录如下；当前开发默认只支持 `ak-ui`：
-
-```bash
-VITE_AIBO_UI_KIT=ak-ui pnpm run dev
-```
-
-Material 3 token 只作用于 `[data-ui-kit='material3']`，切换视觉实现不需要
-修改页面组件或业务逻辑。该 adapter 目前标记为实验性，正式发布前仍需完成
-视觉覆盖和依赖许可证审查；当前 `m3-svelte` 包采用 Apache-2.0 OR GPL-3.0-only
-双许可证，发布前需要结合桌面发行策略确认选用的许可证。
+旧内置 Material 组件及其构建插件、Material Symbols、Lucide 和 shadcn CLI 依赖
+已移除。仍使用的本地基础原语保留于 `components/ui`；这不代表保留旧皮肤注册。
+开发入口仅支持默认 `ak-ui`，外部皮肤走呈现包安装机制。
 
 Adapter 的组件需要同时满足两类约束：Aibo 页面类拥有尺寸、滚动、flex/grid
 方向和内容密度的最终决定权；皮肤拥有颜色、形状、状态层、焦点反馈、字重与
@@ -197,7 +178,7 @@ Agent 品牌图标属于能力插件：Manifest v2 的 capabilityProvider 可声
   base commit 传给样式边界检查，只阻止新增违规，不会反复阻断历史基线。
 
 历史遗留的 `src/app.css` 视觉声明已迁移到 `src/lib/ui-kit/kits/base.css`，
-并由两套皮肤 CSS 按需覆盖。边界测试会阻止应用层继续新增视觉声明；新增的
+并由当前皮肤 CSS 按需覆盖。边界测试会阻止应用层继续新增视觉声明；新增的
 共享表现规则应放入 `base.css`，只属于某个皮肤的规则放入对应的 skin 文件。
 
 ## 当前拆分边界
@@ -205,7 +186,7 @@ Agent 品牌图标属于能力插件：Manifest v2 的 capabilityProvider 可声
 - `App.svelte` 保留 API 装配、Agent 事件入口、跨面板状态和页面生命周期；控制器通过依赖注入承载可测试的业务动作。
 - `WorkspaceSidebar`、`TimelinePanel`、`Composer`、`Inspector`、`SettingsPanel`、`WindowTitlebar` 和 `AppOverlays` 只负责展示与用户事件转发。
 - `view-models.ts` 负责领域对象到 UI 窄模型的纯函数投影；新增领域字段不会自动泄漏到页面组件。
-- `AlertDialog` 也属于 kit adapter 的契约。当前 shadcn adapter 继续复用本地实现，外部 kit 可以提供自己的弹窗实现。
+- `AlertDialog` 也属于 kit adapter 的契约。当前 ak-ui adapter 提供原生 dialog 实现，外部 kit 可以提供自己的弹窗实现。
 - `src/lib/app/selection-storage.ts` 封装会话选择的持久化与容错，页面只在生命周期边界调用它。
 - `src/lib/app/agent-event-handler.ts` 和 `error-utils.ts` 不依赖 Svelte/UI，分别负责 Agent 事件投影与错误归一化。
 - `src/lib/app/session-transitions.ts` 提供会话/工作区列表的纯状态转移原语，生命周期 controller 可直接复用。
@@ -255,7 +236,7 @@ explicitly unavailable until host capability/confirmation dispatch is wired.
 +
 +`src/lib/workbench/` 属于可信表现装配层：Svelte 组件只通过 `$lib/ui-kit` 使用视觉控件，CSS 仍仅表达布局，不调用具体 API、不按皮肤或 Provider ID 分支。`test/presentation-boundaries.test.mjs` 已纳入 `check:architecture`，同时检查数据模块传递依赖、公共类型无回调，以及移除 DOM lib 后的类型检查。
 +
-+`SemanticView` 是 `UiKitAdapter` 的新增必需成员，由 runtime proxy 转交当前皮肤；两套皮肤均实现，视觉/焦点/disabled 样式留在 kit 内部，未引入 optional 豁免。`PresentationProps` 中的 layout 和 onAction 是可信本地 renderer 参数，不属于能力数据合同。
++`SemanticView` 是 `UiKitAdapter` 的新增必需成员，由 runtime proxy 转交当前皮肤；当前 ak-ui 实现，视觉/焦点/disabled 样式留在 kit 内部，未引入 optional 豁免。`PresentationProps` 中的 layout 和 onAction 是可信本地 renderer 参数，不属于能力数据合同。
 +
 +Svelte 与最小 DOM adapter 均提供 mount/update/dispose 并消费相同 fixture。默认产品入口使用可信 Svelte 工作区组件，adapter 验证入口位于 `probes/semantic-ui.html`；最小 DOM renderer 不作为产品工作台发布，也不加载第三方脚本。JSON schema 验证器在开发阶段生成，运行时不调用 eval/Function，保持现行桌面 CSP。
 +
@@ -269,7 +250,7 @@ explicitly unavailable until host capability/confirmation dispatch is wired.
 
 `WorkbenchPresentation` 经 `$lib/ui-kit` 导出为可信宿主装配，复用生命周期控制器切换标准/专注会话布局，dispose 后真正重新挂载整个 App 可视子树。App 根状态、Agent 订阅与执行保持在子树之外；切换/默认恢复入口也在子树之外。`workbench-contract.ts` 是 JSON 上下文与动作，Svelte snippet 和本地函数端口不进入公共协议。此实现不加载第三方 UI 脚本，不代表 P4 Presentation Plugin 发布已完成。
 
-App 中所有业务回调和可写绑定经 generation、当前工作区及会话检查；`test/p2-boundaries.test.mjs` 通过 Svelte AST 检查这些入口并禁止 Shell 导入 Agent 生命周期 API。切换期间 inert，挂载失败回到标准呈现，焦点使用语义 ID。App/Git 提交说明、分支名和插件表单由宿主持有，并在窗口命名空间持久化；会话 Composer 草稿继续使用 Core session 持久化。两套皮肤继续提供同一视觉合同，新增 CSS 仅控制布局。
+App 中所有业务回调和可写绑定经 generation、当前工作区及会话检查；`test/p2-boundaries.test.mjs` 通过 Svelte AST 检查这些入口并禁止 Shell 导入 Agent 生命周期 API。切换期间 inert，挂载失败回到标准呈现，焦点使用语义 ID。App/Git 提交说明、分支名和插件表单由宿主持有，并在窗口命名空间持久化；会话 Composer 草稿继续使用 Core session 持久化。默认与外部皮肤继续提供同一视觉合同，新增 CSS 仅控制布局。
 
 验收包括两套皮肤的模型矩阵、两种 Git 布局、真实桌面流式切换/应用重启/窗口隔离，以及浏览器故障注入。详见 [P2 记录](archive/plugin-platform-p2-agent-state.md)。
 
@@ -286,7 +267,7 @@ P3 第五批通过 `InstalledWorkbench` 和纯数据端口接入已安装语义�
 
 ## P3 稳定语义贡献
 
-安装贡献由宿主解析 application/workspace/session 上下文，并通过统一命令入口打开。页面只传语义 scope、数据和动作，不指定皮肤或固定物理面板。SemanticView 继续是 UiKitAdapter 必需成员；两套皮肤共同支持 collection/detail、只读 settings 和 inspector，未增加 optional 例外，也未放宽 app 层样式规则。
+安装贡献由宿主解析 application/workspace/session 上下文，并通过统一命令入口打开。页面只传语义 scope、数据和动作，不指定皮肤或固定物理面板。SemanticView 继续是 UiKitAdapter 必需成员；默认与外部呈现共同支持 collection/detail、只读 settings 和 inspector，未增加 optional 例外，也未放宽 app 层样式规则。
 
 稳定合同为 contracts/semantic-view.v1.schema.json，原 experimental-v1 schema 独立保留；生成验证器同时读取两者，不能用新字段重新解释旧版本。settings.page 的 workspaceId 为 null，session.context/session.action 必须有 sessionId 和所属 workspaceId。宿主 lease 验证当前上下文、revision、窗口与启用状态后才调度只读能力。P4 再接入编辑、写入审批及任意呈现插件。
 
@@ -312,7 +293,7 @@ workbench 的架构检查递归覆盖子目录，包括 plugins 中的可信呈�
 语义区域选择入口：专注图标位于会话标题，会话历史位于工作区工具区，执行历史收入诊断，
 导航位置与恢复默认呈现收入外观设置。各面板只提供可选 snippet，App 注入宿主操作；
 入口选择不进入业务模块，也不新增常驻布局控制行。按钮与图标复用 UiKitAdapter 已有原语，
-`focus` 图标语义在两套皮肤中分别映射，具体外观仍由皮肤决定。后续呈现插件可替换这些区域的入口选择。
+`focus` 图标语义由当前皮肤映射，具体外观仍由皮肤决定。后续呈现插件可替换这些区域的入口选择。
 
 宿主持有命令面板的历史、专注与恢复命令；Ctrl/⌘+K 在宿主管理页同样可用。
 恢复的 Ctrl/⌘+Shift+Backspace 捕获监听和错误提示中的恢复按钮位于呈现实例之外，
@@ -348,7 +329,7 @@ PluginView 的非 never 确认使用宿主原生对话框，并以 Tauri 注入�
 
 可信默认呈现登记 `dev.aibo.ui-default.numbered-detail@1.0.0`，适用于 detail。`presentation-adapters.ts` 将经过协商的数据描述映射到构建中登记的可执行适配器；没有实现、版本不兼容时选取核心适配器。安装包中的字符串不能提供可执行代码。
 
-现有 UiKitAdapter.SemanticView 的本地 props 增加语义选项 `detailPresentation: plain | numbered`，两套皮肤均通过各自 SemanticView 包装呈现。专业视图继续显示全部属性、状态、截断提示和原动作；行号为辅助视觉，屏幕阅读器不会将行号混入文本。安装视图允许切换到通用阅读，不改变快照、输入和宿主权限。
+现有 UiKitAdapter.SemanticView 的本地 props 增加语义选项 `detailPresentation: plain | numbered`，当前 ak-ui 通过 SemanticView 包装呈现。专业视图继续显示全部属性、状态、截断提示和原动作；行号为辅助视觉，屏幕阅读器不会将行号混入文本。安装视图允许切换到通用阅读，不改变快照、输入和宿主权限。
 
 专业视图最多生成 5,000 个文本行节点，首次挂载或更新超出限制时由呈现生命周期控制器回退到完整文本的核心视图，保留当前布局。限制只影响呈现方式，不截断底层内容。专业实现的限制与宿主快照大小限制分别验证。
 
@@ -453,8 +434,7 @@ InstalledWorkbench 是纯展示组件：接收 InstalledWorkbenchState 与语义
 ### 独立皮肤主题数据
 
 shadcn 和 Material 3 的主题定义分别归属 `packages/presentation-shadcn/themes.json`
-与 `packages/presentation-material3/themes.json`。内置兼容注册仅组合这些元数据
-与本地适配器，包构建读取同一数据，避免主题分叉。包独立实现四核心语义、公开模型/状态控件及完整工作台，未提供的范围继续继承
+与 `packages/presentation-material3/themes.json`。这些元数据供独立包构建读取，宿主不再注册对应的旧内置适配器。包独立实现四核心语义、公开模型/状态控件及完整工作台，未提供的范围继续继承
 宿主默认实现。固定宿主区域继续使用可信适配器。
 
 双皮肤 0.3.0 的 workbench 使用独立 `@aibo/presentation-workbench` 0.2.0 固定模块，
@@ -516,21 +496,19 @@ aria-pressed 按钮，编辑器关联真实 listbox；可信桥继续校验动�
 ## 宿主管理面板
 
 执行历史和插件调用历史使用必需的 `UiKitAdapter.HostPanel`。
-宿主传入标题、返回/关闭回调及内容；两套皮肤通过同一生命周期实现和各自视觉规则
+宿主传入标题、返回/关闭回调及内容；ak-ui 通过共享生命周期实现和自身视觉规则
 提供居中面板。固定标题栏、内容独立滚动、窄窗口适配和焦点管理均位于 UI Kit。
 面板不属于可替换工作台，架构检查确保其在呈现释放后仍可使用。
 
 标题栏只提供一个管理中心入口。外观、扩展和运行状态使用必需的
 `UiKitAdapter.ManagementCenter`，App 只传当前栏目、三个语义内容 snippet 和导航回调，
-不得判断皮肤或传入皮肤专用样式。shadcn 采用紧凑侧栏导航；Material 3 采用顶部
-圆角分段导航和更宽松的内容表面。插件安装管理属于扩展栏目，插件创建的 Agent 会话
+不得判断皮肤或传入皮肤专用样式。ak-ui 采用紧凑侧栏导航和矩形内容表面。插件安装管理属于扩展栏目，插件创建的 Agent 会话
 返回统一主工作台，不维护第二套消息时间线。Agent 或插件不可用时，标题栏入口可显示
 宿主计算的需要处理状态，但具体视觉反馈仍由当前 UI Kit 决定。
 
 默认工作台的列顺序、列宽、滚动和恢复仍由可信 Presentation 管理；三栏表面、区域
 分隔、导航选中层级、时间线容器和 Composer 外形由必需的
-`UiKitAdapter.WorkbenchChrome` 管理。shadcn 使用紧凑密度、细分隔和扁平内容流；
-Material 3 使用 tonal surfaces、圆角容器和 state/elevation 层级。该组合控件只接收
+`UiKitAdapter.WorkbenchChrome` 管理。ak-ui 使用细分隔、统一明暗和扁平内容流。该组合控件只接收
 布局语义和既有工作台 children，不接收业务状态或皮肤专用 class，因而切换皮肤不会
 重建会话、草稿或 Presentation generation。
 
@@ -549,15 +527,14 @@ Material 3 使用 tonal surfaces、圆角容器和 state/elevation 层级。该�
 `UiKitAdapter.SettingsSection` 是必需的设置组合控件，接收分组标题、条目描述、
 语义图标、快捷键及操作意图，通过 `onAction(itemId, actionId)` 发回用户意图。
 工作台布局、皮肤包管理与诊断历史入口均使用这一合同，不在 App 中决定按钮的
-拉伸、颜色、圆角或字重。shadcn 使用分隔设置行和紧凑按钮；Material 3 使用
-分组表面、前导图标与文本/tonal 操作。两者自行处理窄窗口换行。
+拉伸、颜色、圆角或字重。ak-ui 使用分隔设置行和紧凑按钮，并自行处理窄窗口换行。
 外部包未覆盖的宿主管理区域继续继承可信 UI Kit；外部 CSS 不能跨隔离边界
 覆盖管理或恢复入口。新增可信皮肤可以替换此适配器而保持相同数据与操作合同。
 
 ## Agent 设置表单
 
 `UiKitAdapter.AgentSettingsForm` 接收协议描述、当前作用域草稿、继承值和语义回调。
-`runtime/AgentSettingsForm.svelte` 跟随当前皮肤，两个皮肤分别拥有表单表面、字体、
+`runtime/AgentSettingsForm.svelte` 跟随当前皮肤，皮肤拥有表单表面、字体、
 选择器和焦点反馈；共享字段结构位于 `kits/shared/AgentSettingsForm.svelte`。
 应用层只选择目标和转发动作，`agent-settings-controller.ts` 通过注入的读写端口管理
 草稿、加载和保存。配置权限、字段校验、作用域解析和原子保存均由 Rust 宿主负责。
@@ -641,8 +618,17 @@ skin owns queue persistence, delivery, attachment identity or uncertain recovery
 
 ### Git 仓库选择器
 
-`UiKitAdapter.RepositorySelect` 接收仓库名称与相对路径、当前选择、展开状态、搜索文本、禁用状态及语义回调。应用层负责仓库切换和历史入口；UI kit 负责浮层布局、列表层级、搜索输入、选中标记、键盘导航与焦点恢复。两套皮肤注册同一套可访问的交互结构，并在各自样式中定义表面、边框、圆角和颜色。名称与路径相同时不重复显示；不同路径的同名仓库保留次级路径。
+`UiKitAdapter.RepositorySelect` 接收仓库名称与相对路径、当前选择、展开状态、搜索文本、禁用状态及语义回调。应用层负责仓库切换和历史入口；UI kit 负责浮层布局、列表层级、搜索输入、选中标记、键盘导航与焦点恢复。默认 ak-ui 注册共享的可访问交互结构，并在自身样式中定义表面、边框、圆角和颜色。名称与路径相同时不重复显示；不同路径的同名仓库保留次级路径。
 
 ### 会话模式与权限标识
 
-`UiKitAdapter.SessionControlMark` 只接收选项的 `kind`、声明的 `profile` 和紧凑显示标志。UI kit 根据策略含义选择图标和语义色，不根据 Agent 名称、选项 ID 或显示文案推断权限。菜单和当前设置按钮复用同一标识；同时选中的权限与会话模式分别显示。两套皮肤各自提供眼睛、审批盾牌等图标，深浅主题注册 `--aibo-session-info/plan/write/elevated` 色彩。未识别的自定义策略使用中性设置图标，完整文件访问优先保留警示标识。此分类只用于显示，不授予或更改执行权限。
+`UiKitAdapter.SessionControlMark` 只接收选项的 `kind`、声明的 `profile` 和紧凑显示标志。UI kit 根据策略含义选择图标和语义色，不根据 Agent 名称、选项 ID 或显示文案推断权限。菜单和当前设置按钮复用同一标识；同时选中的权限与会话模式分别显示。默认 ak-ui 和独立外部皮肤提供眼睛、审批盾牌等图标，深浅主题注册 `--aibo-session-info/plan/write/elevated` 色彩。未识别的自定义策略使用中性设置图标，完整文件访问优先保留警示标识。此分类只用于显示，不授予或更改执行权限。
+
+### 旧内置 UI 清理回归
+
+架构测试针对当前注册的 ak-ui 适配器，同时保留独立 shadcn / Material 呈现包的
+主题及图标合同检查。`test/default-ui-kit.test.mjs` 防止旧目录、专用依赖或导入重新进入
+宿主，并保留旧设置迁移覆盖。`probes/ak-ui-density-browser.mjs` 检查可读字号、
+文件名、分区对齐、明暗主题、悬浮及触屏操作；`probes/ak-ui-controls-browser.mjs`
+检查迁移后的目标、子 Agent、模型选择和设置控件。外部包继承、失效恢复仍由
+呈现包浏览器回归覆盖。

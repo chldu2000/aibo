@@ -80,6 +80,16 @@ try {
   const gitHeader=await page.locator('[data-ui-component="workspace-git-panel"] .panel-heading').boundingBox();
   const remote=await page.locator('.git-remote-row').boundingBox();
   assert(remote.y+remote.height-gitHeader.y<310,'Git controls do not consume the whole side panel');
+  const readability = await page.evaluate(() => {
+    const name = document.querySelector('.changeset-file-name');
+    const trigger = document.querySelector('.git-stash-trigger');
+    return {nameClipped: name.scrollWidth > name.clientWidth, name: name.textContent,
+      stashAlignment: getComputedStyle(trigger).justifyContent,
+      sizes: [...document.querySelectorAll('.capability-list [data-slot="badge"], .git-remote-row, .session-context-content dd')].map(e => parseFloat(getComputedStyle(e).fontSize))};
+  });
+  assert.equal(readability.nameClipped, false, readability.name);
+  assert.equal(readability.stashAlignment, 'space-between');
+  assert(readability.sizes.every(size => size >= 12), 'secondary information stays readable');
   await page.screenshot({path:output+'/git-light.png'});
   await page.getByRole('button',{name:'切换明暗主题',exact:true}).click();
   await page.screenshot({path:output+'/git-dark.png'});

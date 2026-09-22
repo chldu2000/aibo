@@ -211,21 +211,19 @@ test('visible Git panel refreshes external repository changes promptly', async (
 });
 
 test('session status uses agent-specific marks through the UI kit', async () => {
-  const [sidebar, contract, shadcn, material, styles] = await Promise.all([
+  const [sidebar, contract, ak, styles] = await Promise.all([
     readFile(path.join(root, 'src/lib/components/app/WorkspaceSidebar.svelte'), 'utf8'),
     readFile(path.join(root, 'src/lib/ui-kit/contract.ts'), 'utf8'),
-    readFile(path.join(root, 'src/lib/ui-kit/kits/shadcn.ts'), 'utf8'),
-    readFile(path.join(root, 'src/lib/ui-kit/kits/material3.ts'), 'utf8'),
+    readFile(path.join(root, 'src/lib/ui-kit/kits/ak-ui.ts'), 'utf8'),
     readFile(path.join(root, 'src/lib/ui-kit/kits/base.css'), 'utf8'),
   ]);
   assert.match(sidebar, /<AgentStatusMark/, 'session rows must use the semantic agent status mark');
   assert.match(contract, /AgentStatusMark: Component<UiAgentStatusMarkProps>/, 'the mark must be part of the UI kit contract');
-  assert.match(shadcn, /AgentStatusMark:/, 'the shadcn skin must implement the mark');
-  assert.match(material, /AgentStatusMark,/, 'the Material skin must implement the mark');
+  assert.match(ak, /AgentStatusMark:/, 'the active skin must implement the mark');
   assert.match(styles, /prefers-reduced-motion: reduce/, 'running animation must respect reduced-motion preferences');
-  const shadcnStyles = await readFile(path.join(root, 'src/lib/ui-kit/kits/shadcn.css'), 'utf8');
-  assert.match(shadcnStyles, /stroke-dashoffset/, 'the shadcn running mark must animate along its stationary border');
-  assert.match(shadcnStyles, /tone-running \.shadcn-agent-status-track \{ animation: none; \}/, 'the rounded-square track itself must not rotate');
+  const akStyles = await readFile(path.join(root, 'src/lib/ui-kit/kits/ak-ui.css'), 'utf8');
+  assert.match(akStyles, /stroke-dashoffset/, 'the ak-ui running mark must animate along its stationary border');
+  assert.match(akStyles, /tone-running \.ak-agent-status-track \{ transform: none; \}/, 'the rounded-square track itself must not rotate');
 });
 
 test('the diff preview monospace token is defined in the UI kit', async () => {
@@ -256,32 +254,32 @@ test('business modules do not depend on Svelte, UI, or API implementations', asy
   }
 });
 
-test('management center layout is owned independently by both UI kits', async () => {
-  const [contract, shadcn, material, settings] = await Promise.all([
+test('management center layout is owned by the registered UI kit', async () => {
+  const [contract, ak, styles, settings] = await Promise.all([
     readFile(path.join(root, 'src/lib/ui-kit/contract.ts'), 'utf8'),
-    readFile(path.join(root, 'src/lib/ui-kit/kits/shadcn/ManagementCenter.svelte'), 'utf8'),
-    readFile(path.join(root, 'src/lib/ui-kit/kits/material3/ManagementCenter.svelte'), 'utf8'),
+    readFile(path.join(root, 'src/lib/ui-kit/kits/ak-ui/ManagementCenter.svelte'), 'utf8'),
+    readFile(path.join(root, 'src/lib/ui-kit/kits/ak-ui.css'), 'utf8'),
     readFile(path.join(root, 'src/lib/components/app/SettingsPanel.svelte'), 'utf8'),
   ]);
   assert.match(contract, /ManagementCenter: Component<UiManagementCenterProps>/);
-  assert.match(shadcn, /grid-template-columns: 13\.5rem minmax\(0, 1fr\)/, 'shadcn owns its sidebar layout');
-  assert.match(material, /border-radius: 1\.5rem/, 'Material 3 owns its navigation container shape');
+  assert.match(ak, /management-nav/);
+  assert.match(styles, /grid-template-columns: 200px minmax\(0, 1fr\)/, 'the skin owns its sidebar layout');
   assert.match(settings, /<ManagementCenter/);
   assert.doesNotMatch(settings, /data-ui-kit|data-ui-theme|shadcn|material3/, 'app settings must not branch on a skin');
 });
 
-test('workbench visual character belongs to both UI kits without duplicating layout behavior', async () => {
-  const [contract, host, shadcn, material] = await Promise.all([
+test('workbench visual character belongs to the UI kit without duplicating layout behavior', async () => {
+  const [contract, host, ak, styles] = await Promise.all([
     readFile(path.join(root, 'src/lib/ui-kit/contract.ts'), 'utf8'),
     readFile(path.join(root, 'src/lib/workbench/WorkbenchPresentation.svelte'), 'utf8'),
-    readFile(path.join(root, 'src/lib/ui-kit/kits/shadcn/WorkbenchChrome.svelte'), 'utf8'),
-    readFile(path.join(root, 'src/lib/ui-kit/kits/material3/WorkbenchChrome.svelte'), 'utf8'),
+    readFile(path.join(root, 'src/lib/ui-kit/kits/ak-ui/WorkbenchChrome.svelte'), 'utf8'),
+    readFile(path.join(root, 'src/lib/ui-kit/kits/ak-ui.css'), 'utf8'),
   ]);
   assert.match(contract, /WorkbenchChrome: Component<UiWorkbenchChromeProps>/);
   assert.match(host, /<WorkbenchChrome layout=\{instance\.layout\} \{auxiliaryOpen\}>/);
-  assert.match(shadcn, /session-item-row\.selected/);
-  assert.match(material, /--m3c-secondary-container/);
-  for (const skin of [shadcn, material]) assert.doesNotMatch(skin, /onSelectSession|workspaceId|sessionId/, 'skin chrome receives no business behavior');
+  assert.match(styles, /session-item-row\.selected/);
+  assert.match(ak, /compact-region-navigation/);
+  for (const skin of [ak]) assert.doesNotMatch(skin, /onSelectSession|workspaceId|sessionId/, 'skin chrome receives no business behavior');
 });
 
 test('TimelinePanel forwards every required Composer callback from App', async () => {
@@ -307,7 +305,7 @@ test('composer goals use a semantic control implemented by every built-in kit', 
   assert.ok(source.indexOf('<GoalBar') > source.indexOf('</CardHeader>'));
   const contract = await readFile(path.join(root, 'src/lib/ui-kit/contract.ts'), 'utf8');
   assert.match(contract, /GoalBar: Component<UiGoalBarProps>/);
-  for (const kit of ['shadcn', 'material3']) {
+  for (const kit of ['ak-ui']) {
     const registration = await readFile(path.join(root, `src/lib/ui-kit/kits/${kit}.ts`), 'utf8');
     assert.match(registration, /\n  GoalBar,/);
     const component = await readFile(path.join(root, `src/lib/ui-kit/kits/${kit}/GoalBar.svelte`), 'utf8');
@@ -326,7 +324,7 @@ test('subagent cards and detail dialogs remain skin-owned semantic controls', as
     assert.ok(contract.includes(`${name}: Component<Ui${name}Props>`));
     const proxy = await readFile(path.join(root, `src/lib/ui-kit/runtime/${name}.svelte`), 'utf8');
     assert.ok(proxy.includes(`$activeUiKit.${name}`));
-    for (const skin of ['shadcn', 'material3']) {
+    for (const skin of ['ak-ui']) {
       const registration = await readFile(path.join(root, `src/lib/ui-kit/kits/${skin}.ts`), 'utf8');
       assert.ok(registration.includes(`\n  ${name},`));
       assert.ok((await readFile(path.join(root, `src/lib/ui-kit/kits/${skin}/${name}.svelte`), 'utf8')).length);
@@ -343,7 +341,7 @@ test('context window selector stays in the UI kit beside the Fast action', async
   assert.match(header, /sessionCapabilities.includes\('model.context-window'\)/);
   const contract = await readFile(path.join(root, 'src/lib/ui-kit/contract.ts'), 'utf8');
   assert.match(contract, /ModelContextSelect: Component<UiModelContextSelectProps>/);
-  for (const kit of ['shadcn', 'material3']) {
+  for (const kit of ['ak-ui']) {
     const source = await readFile(path.join(root, `src/lib/ui-kit/kits/${kit}/ModelContextSelect.svelte`), 'utf8');
     assert.match(source, /<select/); assert.match(source, /disabled=\{disabled \|\| options.length === 0\}/);
   }
@@ -356,7 +354,7 @@ test('Git repository selector is a required skin-owned composite', async () => {
   assert.match(contract, /RepositorySelect: Component<UiRepositorySelectProps>/);
   const proxy = await readFile(path.join(root, 'src/lib/ui-kit/runtime/RepositorySelect.svelte'), 'utf8');
   assert.match(proxy, /\$activeUiKit\.RepositorySelect/);
-  for (const kit of ['shadcn', 'material3']) {
+  for (const kit of ['ak-ui']) {
     const adapter = await readFile(path.join(root, `src/lib/ui-kit/kits/${kit}.ts`), 'utf8');
     assert.match(adapter, /\n  RepositorySelect,/);
     const styles = await readFile(path.join(root, `src/lib/ui-kit/kits/${kit}.css`), 'utf8');
@@ -364,14 +362,16 @@ test('Git repository selector is a required skin-owned composite', async () => {
   }
 });
 
-test('session control marks belong to both skins and are shared by options and current selection', async () => {
+test('session control marks belong to the active kit and external skins and are shared by options and current selection', async () => {
   const composer = await readFile(path.join(root, 'src/lib/components/app/Composer.svelte'), 'utf8');
   assert.equal((composer.match(/<SessionControlMark /g) ?? []).length, 2);
   const contract = await readFile(path.join(root, 'src/lib/ui-kit/contract.ts'), 'utf8');
   assert.match(contract, /SessionControlMark: Component<UiSessionControlMarkProps>/);
-  for (const kit of ['shadcn', 'material3']) {
+  for (const kit of ['ak-ui']) {
     const adapter = await readFile(path.join(root, `src/lib/ui-kit/kits/${kit}.ts`), 'utf8');
     assert.match(adapter, /\n  SessionControlMark,/);
+  }
+  for (const kit of ['shadcn', 'material3']) {
     const { themes } = JSON.parse(await readFile(path.join(root, `packages/presentation-${kit}/themes.json`), 'utf8'));
     for (const theme of themes) {
       const colors = ['info', 'plan', 'write', 'elevated'].map(tone => theme.tokens[`--aibo-session-${tone}`]);

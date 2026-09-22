@@ -1,5 +1,5 @@
 :root {
-  /* shadcn-style dark tokens: neutral zinc surfaces, semantic accents only. */
+  /* Fallback host tokens; the registered theme supplies the active semantic values. */
   --aibo-color-scheme: dark;
   --aibo-bg: #09090b;
   --aibo-text: #fafafa;

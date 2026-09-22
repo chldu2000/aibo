@@ -5,5 +5,5 @@
 </script>
 <div class="semantic-skin"><View {...props} /></div>
 <style>
-  .semantic-skin { --semantic-radius: 0.5rem; height: 100%; min-height: 0; }
+  .semantic-skin { --semantic-radius: var(--ak-radius-subtle); height: 100%; min-height: 0; }
 </style>

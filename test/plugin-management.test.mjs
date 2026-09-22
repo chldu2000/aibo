@@ -11,7 +11,7 @@ test('desktop bundle and host validators exclude the retired executable protocol
 });
 
 test('retired Agent views have no IPC or rendering seam', async () => {
-  for (const file of ['src/lib/api.ts','src-tauri/src/lib.rs','src/lib/ui-kit/contract.ts','src/lib/ui-kit/kits/shadcn.ts','src/lib/ui-kit/kits/material3.ts']) {
+  for (const file of ['src/lib/api.ts','src-tauri/src/lib.rs','src/lib/ui-kit/contract.ts','src/lib/ui-kit/kits/ak-ui.ts']) {
     const source = await readFile(new URL('../'+file,import.meta.url),'utf8');
     assert.doesNotMatch(source, /get_plugin_views|invoke_plugin_view_action|get_plugin_view_snapshots|PluginView/);
   }
@@ -63,7 +63,7 @@ test('management center owns plugin administration while plugin sessions stay in
   const app = await readFile(new URL('../src/App.svelte', import.meta.url), 'utf8');
   const titlebar = await readFile(new URL('../src/lib/components/app/WindowTitlebar.svelte', import.meta.url), 'utf8');
   const settings = await readFile(new URL('../src/lib/components/app/SettingsPanel.svelte', import.meta.url), 'utf8');
-  const management = await readFile(new URL('../src/lib/ui-kit/kits/shadcn/ManagementCenter.svelte', import.meta.url), 'utf8');
+  const management = await readFile(new URL('../src/lib/ui-kit/kits/ak-ui/ManagementCenter.svelte', import.meta.url), 'utf8');
   const manager = await readFile(new URL('../src/lib/components/app/PluginManagerPanel.svelte', import.meta.url), 'utf8');
 
   for (const callback of [
@@ -85,7 +85,7 @@ test('management center owns plugin administration while plugin sessions stay in
   assert.match(titlebar, /打开管理中心/);
   assert.doesNotMatch(titlebar, /打开 Agent 诊断|data-host-navigation="plugins"/);
   assert.match(settings, /<ManagementCenter/);
-  assert.match(management, /label: '外观'.*label: '扩展'.*label: '运行状态'/s);
+  assert.match(management, /label: '工作台'.*label: '扩展'.*label: '运行状态'/s);
   assert.match(app, /catch \(error\) \{ pluginError = toErrorMessage\(error\); \}/);
   assert.match(app, /finally \{ pluginBusy = false; \}/);
   assert.match(app, /settingsOpen = false;/, 'creating an extension session returns to the main workbench');
