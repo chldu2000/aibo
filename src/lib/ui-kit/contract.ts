@@ -149,6 +149,8 @@ export type UiHostPanelProps = {
 export type UiManagementSection = 'appearance' | 'extensions' | 'runtime';
 export type UiManagementCenterProps = {
   title: string;
+  /** A changed presentation restores its own semantic focus after the dialog closes. */
+  restoreTriggerFocus?: boolean;
   activeSection: UiManagementSection;
   onSelectSection: (section: UiManagementSection) => void;
   onClose: () => void;
@@ -159,6 +161,8 @@ export type UiManagementCenterProps = {
 };
 export type UiWorkbenchChromeProps = {
   layout: string;
+  /** Visibility from the host layout; skins may recompose slots on narrow screens. */
+  auxiliaryOpen?: boolean;
   children: Snippet;
 };
 

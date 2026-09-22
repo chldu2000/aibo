@@ -6,7 +6,7 @@ import { chromium } from 'playwright';
 const source="self.aiboPresentation={render(input){const c=input.data.conversation;const actions=input.data.conversationActions;const children=[{tag:'h1',key:'heading',text:'External conversation'},{tag:'pre',key:'snapshot',attrs:{'aria-label':'Conversation snapshot'},text:JSON.stringify(c)},...input.data.navigationActions.filter(a=>a.operation==='selectWorkspace'||a.operation==='selectSession').map(a=>({tag:'button',key:a.token,text:a.operation+':'+a.targetId,events:{click:a.token}}))];for(const a of actions){if(a.event==='input'){const answer=a.operation==='answer';children.push({tag:'input',key:answer?'answer:'+JSON.stringify(a.args):'draft',attrs:{'aria-label':answer?'External answer':'External composer',value:answer?c.answerDrafts[JSON.stringify([c.session.id,...a.args])]||'':c.draft},events:{input:a.token}})}else children.push({tag:'button',key:a.token,text:a.operation+(a.args.length?':'+a.args.join(':'):''),events:{click:a.token}})}return {tag:'main',key:'main',children}}};";
 const bytes=Buffer.from(source);
 const pkg={release:{digest:'a'.repeat(64),enabled:true,manifest:{schema:'aibo.presentation-package/v1',id:'dev.example.workbench',version:'1.0.0',displayName:'External skin',hostApi:'1.0.0',coreSemantics:'1.0.0',snapshotSchemas:['aibo.semantic-view/v1'],entry:'skin.js',surfaces:['workbench'],resources:[{path:'skin.js',bytes:bytes.length,sha256:createHash('sha256').update(bytes).digest('hex'),mediaType:'text/javascript'}]}},resources:{'skin.js':bytes.toString('base64')}};
-const server=await createServer({server:{host:'127.0.0.1',port:0,hmr:false,watch:null}});await server.listen();
+const server=await createServer({server:{host:'127.0.0.1',port:0,strictPort:false,hmr:false,watch:null}});await server.listen();
 const browser=await chromium.launch({headless:true});const page=await browser.newPage({viewport:{width:1280,height:900}});const errors=[];
 page.on('pageerror',error=>errors.push(error.message));page.setDefaultTimeout(10000);
 try {
@@ -15,7 +15,7 @@ try {
     const workspaces = ['w1','w2'].map(id=>({id,label:id,path:'/probe/'+id,trust:'trusted',createdAt:'2026-09-13',updatedAt:'2026-09-13',lastOpenedAt:null}));
     const sessions = ['s1','s2'].map((id,index)=>({id,workspaceId:'w'+(index+1),label:id,agent:'plugin',state:'idle',archived:false,externalSessionId:null,pluginInstallationId:'provider',capabilities:['queue.manage','model.list','model.select','model.reasoning','compaction.run'],createdAt:'2026-09-13',updatedAt:'2026-09-13'}));
     window.navigationCalls=[];
-    const model={reference:'model-a',label:'Model A',id:'a',provider:'probe',description:null,isDefault:true,defaultReasoningEffort:null,reasoningEfforts:[{id:'high',label:'High',description:null}]};
+    const model={reference:'model-a',label:'Model A',id:'a',provider:'probe',description:null,isDefault:true,defaultReasoningEffort:null,serviceTiers:[],contextWindows:[],reasoningEfforts:[{id:'high',label:'High',description:null}]};
     const catalog={current:model,models:[model],currentReasoningEffort:null,reasoningEfforts:model.reasoningEfforts};
     let agentHandler=null,sequence=0;
     window.emitAgent=(type,payload)=>{const event={schemaVersion:'2.0',eventId:'event:'+ ++sequence,generationId:'generation',sequence,occurredAt:new Date().toISOString(),source:{pluginId:'dev.example.provider',pluginVersion:'1.0.0'},workspaceId:'w1',sessionId:'s1',turnId:'turn',type,payload};if(type==='session.state_changed')sessions[0].state=payload.state;window['_'+agentHandler]({event:'agent-event',id:1,payload:event});};
@@ -61,7 +61,7 @@ try {
       }};
   },pkg);
   await page.goto(`http://127.0.0.1:${server.httpServer.address().port}/`);
-  await page.getByRole('button',{name:'打开设置',exact:true}).click();
+  await page.getByRole('button',{name:/^打开管理中心/}).click();
   await page.getByRole('button',{name:'安装皮肤插件',exact:true}).click();
   await page.getByRole('button',{name:'External skin 1.0.0',exact:true}).click();
   await page.waitForFunction(()=>JSON.parse(localStorage.getItem('probe.presentation.selection')||'null')!==null);
@@ -89,13 +89,13 @@ try {
   await page.evaluate(()=>window.emitAgent('user_input.requested',{requestId:'question',isBlocking:true,questions:[{id:'q',header:null,question:'Which answer?',options:[{label:'Option',description:null}],isOther:true}]}));
   const answer=frame.getByRole('textbox',{name:'External answer'});await answer.waitFor();
   await answer.pressSequentially('answer survives skin switch',{delay:10});
-  await page.getByRole('button',{name:'打开设置',exact:true}).click();
+  await page.getByRole('button',{name:/^打开管理中心/}).click();
   await page.getByRole('button',{name:'恢复内置呈现',exact:true}).click();
   await page.getByRole('button',{name:'完成',exact:true}).click();
   const nativeAnswer=page.getByRole('textbox',{name:'Which answer?'});
   assert.equal(await nativeAnswer.inputValue(),'answer survives skin switch');
   await nativeAnswer.fill('edited in default skin');
-  await page.getByRole('button',{name:'打开设置',exact:true}).click();
+  await page.getByRole('button',{name:/^打开管理中心/}).click();
   await page.getByRole('button',{name:'External skin 1.0.0',exact:true}).click();
   await page.getByRole('button',{name:'完成',exact:true}).click();
   assert.equal(await answer.inputValue(),'edited in default skin');

@@ -28,6 +28,8 @@
   type TimelinePanelProps = {
     onOpenSubagent?: (id: string) => void;
     presentationActions?: Snippet;
+    onOpenExecutionHistory?: () => void;
+    onOpenChanges?: () => void;
     workspace: WorkspaceListItem | null;
     session: SessionPanelView | null;
     selectedSessionId: string | null;
@@ -97,6 +99,8 @@
   let {
     onOpenSubagent,
     presentationActions,
+    onOpenExecutionHistory,
+    onOpenChanges,
     workspace,
     session,
     selectedSessionId,
@@ -254,7 +258,7 @@
 
 <Card as="section" class="timeline" data-ui-component="timeline-panel" aria-label="会话时间线">
   <CardHeader class="panel-heading timeline-heading">
-    <CardTitle>{session?.label ?? workspace?.label ?? '选择工作区'}</CardTitle>
+    <div class="timeline-heading-copy"><small>{workspace?.label ?? 'Aibo'} / 会话</small><CardTitle>{session?.label ?? workspace?.label ?? '选择工作区'}</CardTitle></div>
     <div class="timeline-heading-actions">
           {@render presentationActions?.()}
       {#if session}
@@ -282,8 +286,12 @@
       {/if}
     </div>
   </CardHeader>
+  <nav class="conversation-navigation" aria-label="会话视图">
+    <Button variant="ghost" aria-current="page" onclick={() => timelineFeed?.focus()}>对话</Button>
+    {#if onOpenExecutionHistory}<Button variant="ghost" onclick={onOpenExecutionHistory}><Icon name="archive" size={14} />执行记录</Button>{/if}
+    {#if onOpenChanges}<Button variant="ghost" onclick={onOpenChanges} disabled={!workspace}><Icon name="review" size={14} />变更</Button>{/if}
+  </nav>
   {#if workspace}
-    <Separator />
 
     {#if retryPrompt && session && !sessionRunning && !sessionArchived}
       <div class="timeline-retry" role="status">
@@ -293,7 +301,7 @@
     {/if}
 
     {#if timeline.length > 0}
-      <div bind:this={timelineFeed} data-presentation-timeline class="timeline-feed" aria-live="polite" onscroll={handleTimelineViewportScroll}>
+      <div bind:this={timelineFeed} data-presentation-timeline tabindex="-1" class="timeline-feed" aria-live="polite" onscroll={handleTimelineViewportScroll}>
         <div bind:this={timelineContent} class="timeline-feed-content">
         {#if hiddenTimelineCount > 0}
           <Button class="timeline-load-more" variant="ghost" size="sm" type="button" onclick={onLoadOlderTimeline}>
@@ -406,7 +414,8 @@
     {:else if session}
       <div class="timeline-empty compact-empty">
         <div class="orbit"><span></span><span></span><span></span></div>
-        <h3>发送第一条消息</h3>
+        <h3>今天，一起做点什么？</h3>
+        <p>从一个问题、一段代码，或一个尚未成形的想法开始。</p>
       </div>
     {:else}
       <div class="timeline-empty compact-empty">

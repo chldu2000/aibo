@@ -4,7 +4,7 @@ import { chromium } from 'playwright';
 
 // Seed only the preview data; exercise App's real rendering and event chain.
 const server = await createServer({
-  server: { host: '127.0.0.1', port: 0, hmr: false, watch: null },
+  server: { host: '127.0.0.1', port: 0, strictPort: false, hmr: false, watch: null },
   plugins: [{ name: 'composer-preview-session', enforce: 'pre', transform(code, id) {
     if (!id.endsWith('/src/App.svelte')) return;
     return code.replace('workspaces = previewWorkspaces;', `workspaces = previewWorkspaces;
@@ -20,12 +20,12 @@ const server = await createServer({
 await server.listen();
 const browser = await chromium.launch({ headless: true });
 try {
-  for (const kit of ['shadcn', 'material3']) {
+  for (const kit of ['light', 'dark']) {
   const page = await browser.newPage();
   const errors = [];
   page.on('pageerror', error => errors.push(error.message));
   await page.goto(`http://127.0.0.1:${server.httpServer.address().port}`);
-  await page.evaluate(async kit => (await import('/src/lib/ui-kit/registry.ts')).setUiKit(kit), kit);
+  await page.evaluate(async kit => (await import('/src/lib/ui-kit/registry.ts')).setUiTheme(kit), kit);
   const input = page.locator('[data-composer-input]');
   await input.waitFor();
   await input.click();

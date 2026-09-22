@@ -1,5 +1,5 @@
 <script lang="ts">
-  import type { Snippet } from 'svelte';
+  import { untrack, type Snippet } from 'svelte';
   import { Button, Icon, ManagementCenter, Separator } from '$lib/ui-kit';
   import type { UiKitOption, UiManagementSection } from '$lib/ui-kit';
 
@@ -20,6 +20,9 @@
   };
 
   let { presentationActions, packageManagement, extensions, runtime, open, activeSection, uiKits, activeUiKitName, activeThemeId, onSelectUiKit, onSelectTheme, onSelectSection, onClose }: SettingsPanelProps = $props();
+  let openedKit = $state<string | null>(null);
+  let requestedKit = $state<string | null>(null);
+  $effect.pre(() => { if (open) { openedKit = untrack(() => activeUiKitName); requestedKit = null; } });
   const activeKit = $derived(uiKits.find((kit) => kit.id === activeUiKitName) ?? uiKits[0]);
 </script>
 
@@ -31,7 +34,7 @@
       <div class="settings-section-heading"><div><h2 id="ui-kit-title">界面皮肤</h2><p>切换会立即应用，并在下次启动时恢复。</p></div></div>
       <div class="appearance-kit-grid">
         {#each uiKits as kit (kit.id)}
-          <button class:active={kit.id === activeUiKitName} class="appearance-kit-option" type="button" aria-pressed={kit.id === activeUiKitName} onclick={() => onSelectUiKit(kit.id)}>
+          <button class:active={kit.id === activeUiKitName} class="appearance-kit-option" type="button" aria-pressed={kit.id === activeUiKitName} onclick={() => { requestedKit = kit.id; onSelectUiKit(kit.id); }}>
             <span class="appearance-option-heading"><strong>{kit.label}</strong>{#if kit.id === activeUiKitName}<Icon name="check" size={15} />{/if}</span>
             <small>{kit.description}</small>
           </button>
@@ -59,5 +62,5 @@
 {#snippet footerContent()}<Button size="sm" type="button" onclick={onClose}>完成</Button>{/snippet}
 
 {#if open}
-  <ManagementCenter title="管理中心" {activeSection} {onSelectSection} {onClose} appearance={appearanceContent} extensions={extensionContent} runtime={runtimeContent} footer={footerContent} />
+  <ManagementCenter title="管理中心" restoreTriggerFocus={openedKit === activeUiKitName && (requestedKit === null || requestedKit === openedKit)} {activeSection} {onSelectSection} {onClose} appearance={appearanceContent} extensions={extensionContent} runtime={runtimeContent} footer={footerContent} />
 {/if}

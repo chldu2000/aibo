@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import { createServer } from 'vite';
 
-test('plugin manager hides uninstalled releases and shows the empty state in both skins', async () => {
+test('plugin manager hides uninstalled releases and shows the empty state in both default themes', async () => {
   const server = await createServer({
     server: { middlewareMode: true, ws: false, watch: null },
     appType: 'custom',
@@ -10,7 +10,7 @@ test('plugin manager hides uninstalled releases and shows the empty state in bot
   try {
     const { render } = await server.ssrLoadModule('svelte/server');
     const { default: Manager } = await server.ssrLoadModule('/src/lib/components/app/PluginManagerPanel.svelte');
-    const { setUiKit } = await server.ssrLoadModule('/src/lib/ui-kit/registry.ts');
+    const { setUiTheme } = await server.ssrLoadModule('/src/lib/ui-kit/registry.ts');
     const removed = {
       id: 'removed', pluginId: 'external.removed', pluginVersion: '1.0.0',
       installed: false, enabled: false, runnable: false,
@@ -25,8 +25,8 @@ test('plugin manager hides uninstalled releases and shows the empty state in bot
       onInstall() {}, onEnabledChange() {},
       onUninstall() {}, onConfigure() {}, onCreateSession() {},
     };
-    for (const kit of ['shadcn', 'material3']) {
-      setUiKit(kit);
+    for (const kit of ['light', 'dark']) {
+      setUiTheme(kit);
       const mixed = render(Manager, { props: { ...props, installations: [removed, installed] } }).body;
       assert.doesNotMatch(mixed, /Removed plugin|已卸载/, kit);
       assert.match(mixed, /Installed plugin/);

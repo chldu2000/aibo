@@ -27,7 +27,7 @@
   }
   $effect(() => { if (subagentSelection && subagentSelection.sessionId !== selectedSessionId) { subagentOpen = false; subagentSelection = null; subagentEntries = []; ++subagentGeneration; } });
 
-  import { AgentSettingsForm } from '$lib/ui-kit';
+  import { AgentSettingsForm, Icon } from '$lib/ui-kit';
   import { readAgentSettings, saveAgentSettings } from './lib/api';
   import { createAgentSettingsController, type AgentSettingsState } from './lib/app/agent-settings-controller';
   import type { CapabilityScope } from '../packages/plugin-protocol/src/capability';
@@ -3613,6 +3613,10 @@
 
 {#snippet appearanceActions()}{@render presentationActions('appearance')}{/snippet}
 {#snippet diagnosticsActions()}{@render presentationActions('diagnostics')}{/snippet}
+{#snippet navigationFooter()}
+  <Button variant="ghost" onclick={() => openManagementCenter('extensions')}><Icon name="plugins" />插件与能力</Button>
+  <Button variant="ghost" onclick={() => openManagementCenter('appearance')}><Icon name="settings" />工作台设置</Button>
+{/snippet}
 {#snippet navigationActions()}{@render presentationActions('navigation')}{/snippet}
 {#snippet conversationActions()}{@render presentationActions('conversation')}{/snippet}
 {#snippet presentationActions(surface: 'conversation' | 'navigation' | 'diagnostics' | 'appearance')}
@@ -3643,6 +3647,11 @@
   <WindowTitlebar
     onOpenManagement={() => openManagementCenter('appearance')}
     {managementNeedsAttention}
+    themeLabel={$activeTheme.label}
+    onToggleTheme={() => {
+      const next = availableUiKits.find(kit => kit.id === $activeUiKitName)?.themes.find(theme => theme.colorScheme !== $activeTheme.colorScheme);
+      if (next) setUiTheme(next.id);
+    }}
     sidePanelOpen={sidePanelOpen}
     onToggleSidePanel={toggleSidePanel}
     onToggleMaximize={toggleMaximizeWindow}
@@ -3726,6 +3735,7 @@
 {#snippet navigation(guard)}
     <WorkspaceSidebar
       presentationActions={navigationActions}
+      footerActions={navigationFooter}
       workspaces={workspaceItems}
       sessionsByWorkspace={sessionItemsByWorkspace}
       selectedWorkspaceId={selectedWorkspaceId}
@@ -3804,6 +3814,8 @@
          is initialized once and would reject edits after session navigation. -->
     <TimelinePanel
       presentationActions={conversationActions}
+      onOpenExecutionHistory={guard('onOpenExecutionHistory', openExecutionHistory)}
+      onOpenChanges={guard('onOpenChanges', () => selectSidePanelView('git'))}
       workspace={selectedWorkspace}
       session={selectedSession}
       selectedSessionId={selectedSessionId}
@@ -3996,6 +4008,7 @@
 {/snippet}
 </WorkbenchPresentation>
 </PresentationHost>
+<footer class="workbench-status" aria-label="工作台状态"><span>{desktop ? '本地工作区' : '浏览器预览'}</span><span>{selectedWorkspace?.label ?? '未选择工作区'}</span><span>{$activeTheme.label}</span></footer>
   <AppOverlays
     {errorMessage}
     {notice}

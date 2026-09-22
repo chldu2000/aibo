@@ -1,5 +1,46 @@
 # UI 架构与组件库扩展
 
+## 默认工作台：Aibo ak-ui
+
+默认视觉已收敛为 `ak-ui` 一个注册项，提供 `light` / `dark` 两种主题，默认浅色。
+实现采用 ak-ui 的 **system** 强度，并以 [HTML 设计稿](design/ak-ui-preview.html) 为视觉基准：
+侧栏不显示 Logo 或标语，以新建会话开始；导航、对话、上下文及管理面板在每个主题下保持统一明暗。
+
+- `kits/ak-ui/themes.json` 是默认颜色、字体、间距和几何令牌来源；`ak-ui.css` 导入固定版本
+  `@yunyoujun/ak-ui/tokens.css`，通过 `--ak-*` 与现有 `--aibo-*` 语义角色适配，不在运行时加载 CDN。
+- `kits/ak-ui.ts` 注册完整 `UiKitAdapter`，复用已有 Svelte 控件的语义与行为，替换按钮、工作台、
+  管理中心、确认弹窗和状态标记的视觉实现。旧 `shadcn` / `material3` 内置注册项和样式入口不再进入默认选择列表。
+  保留的历史组件和独立呈现包不表示仍有两套默认 UI；外部呈现包继续通过安装机制使用。
+- `kits/ak-ui/Icon.svelte` 以设计稿的 24 单位网格与 1.6 单位描边实现完整语义图标集；
+  发送采用上箭头，插件采用四格，设置采用矩形滑块，继承文字颜色并保留按钮可访问名称。
+  插件提供的品牌标识保持原始路径，复用控件的线型图标仅统一描边粗细。
+- `appearance-selection.ts` 仅迁移 `aibo.appearance.v1`：旧 `light` / `daylight` 转为浅色，
+  其余已知旧主题转为深色。未知或损坏偏好回退到默认主题。外部包选择、消息、草稿、权限和工作区布局不参与迁移。
+- `UiWorkbenchChromeProps.auxiliaryOpen` 是可选的宿主布局信息，缺省 `true`，不承载会话业务。
+  窄屏在工作区、会话和辅助区域之间切换显示，既有内容保持挂载；桌面保留可调整列宽与标准、专注、交换侧栏布局。
+- 会话导航的执行记录打开已有宿主历史面板，变更入口打开已有 Git 面板，文件选择继续在中央展示真实差异。
+  设计稿中的示例消息、用量和差异不会写入正式应用。
+- `UiManagementCenterProps.restoreTriggerFocus` 缺省为 `true`。关闭普通设置后焦点回到触发器；
+  设置期间请求更换呈现时为 `false`（包括包仍在异步激活的情况），将焦点与选区恢复交还宿主呈现状态存储，避免弹窗抢走编辑器焦点。
+- 管理入口、审批及恢复快捷键仍由宿主持有；外部插件缺少的 surface 继承新的默认实现。
+
+新增回归入口：`test/appearance-selection.test.mjs`（偏好迁移、无效值、主题表面与文字对比度）、
+`test/default-ui-kit.test.mjs`（唯一注册项、旧入口兼容与未知选择）、
+`probes/ak-ui-browser.mjs`（真实 App 主题、草稿、管理弹窗、响应式区域及减少动态效果）。
+外部包继承与故障回退继续由 `probes/presentation-app-browser.mjs`、
+`probes/presentation-full-skins-browser.mjs` 验证。探针使用替身 IPC，不能替代原生桌面授权或真实 Agent 验收。
+
+### 侧栏密度与悬浮状态
+
+- 工作区行预留“新建会话”和“更多”的固定宽度，会话行预留一个“更多”按钮。悬浮、键盘聚焦
+  和菜单打开时显示操作；触摸输入下常显，名称不会被操作覆盖或因悬浮改变宽度。
+- 次要操作使用原生 Popover 顶层菜单，不受侧栏滚动裁剪；保留原有信任、目录、移除、归档、
+  读取线程和改名回调。Escape 返回触发按钮，点击外部关闭。Agent 选择器对齐触发按钮下沿。
+- 上下文以单层分区排版，统一 16px 水平边距、12px 分区留白与 8px 标题间距；能力组采用
+  标签/内容两列，长标识截断并保留完整值。Git 分支、HEAD 与同步状态紧凑排列。新增菜单及常用操作保持至少 44px 的点击高度。
+- `probes/ak-ui-density-browser.mjs` 覆盖长名称、悬浮前后几何、菜单焦点和路由、多 Agent、
+  多仓库、浅深色、窄桌面与信息区高度，避免仅用静态无悬浮截图验收。
+
 ## 当前 Presentation 架构
 
 根据 [ADR-0008](adr/0008-unified-presentation-plugins.md)，皮肤与 Presentation
@@ -48,10 +89,10 @@ P2c 的 `PresentationHost` 与 `WorkbenchPresentation` 都是宿主生命周期�
 1. `App.svelte` 负责状态装配、生命周期和页面组合；业务动作通过 `src/lib/app/` 控制器完成。
 2. `src/lib/components/app/` 负责工作区、时间线、Composer、Inspector 和设置等页面级展示，只通过 props 和回调与业务层通信。
 3. `src/lib/ui-kit/` 是基础组件 adapter 门面。
-4. `src/lib/components/ui/` 提供当前默认的 shadcn-svelte 风格实现。
+4. `src/lib/ui-kit/kits/ak-ui/` 提供默认视觉，复用 `src/lib/components/ui/` 的已有基础行为。
 
 应用的视觉 CSS 也属于 UI kit 边界：`src/lib/ui-kit/kits/base.css` 提供跨皮肤
-共享的语义样式与动效，`material3.css` 和 `shadcn.css` 负责各自皮肤的覆盖；
+共享的语义样式与动效，`ak-ui.css` 负责默认工作台的覆盖；
 `src/app.css` 只作为样式入口，不承载颜色、边框、圆角、阴影、字体或状态反馈。
 
 页面组件不应直接导入 `src/lib/components/ui/`，统一从 `$lib/ui-kit` 引入基础组件。这样替换视觉实现时，不需要修改会话状态或 Agent API。
@@ -68,8 +109,7 @@ P2c 的 `PresentationHost` 与 `WorkbenchPresentation` 都是宿主生命周期�
 runtime proxy 会订阅当前 adapter，因此切换皮肤时页面已使用的 `Button`、`Card`、
 `Icon` 等基础组件会一起替换，不要求刷新窗口，也不会触碰会话状态。
 主题还需声明 `colorScheme`，使原生表单控件和滚动区域与亮色或深色外观一致。
-当前 shadcn-svelte 提供 Zinc、Blue、Emerald 和 Light，Material 3 提供 Ocean、
-Sage、Violet 和 Daylight。
+当前默认提供浅色与深色，原 Zinc、Blue、Emerald、Light、Ocean、Sage、Violet、Daylight 均按上述规则迁移。
 
 皮肤的 token 也遵循各自的语义角色，而不是让页面组件依赖具体色值。shadcn
 皮肤注册 `background`、`foreground`、`card`、`popover`、`primary`、
@@ -86,14 +126,14 @@ Sage、Violet 和 Daylight。
 - [Material 3 theming](https://developer.android.com/develop/ui/compose/designsystems/material3)
 - [Material 3 interaction states](https://m3.material.io/foundations/interaction/states/overview)
 
-当前的第一个外挂样式示例是 `material3`：它使用
+以下保留历史实现说明，`material3` 已不是内置选择项。历史 adapter 使用
 [`m3-svelte`](https://github.com/KTibow/m3-svelte) 的 Material 3 交互按钮，
 并用兼容包装补齐 Aibo 所需的卡片与其他基础原语。卡片保持 Aibo 自己的
 语义元素和零布局副作用，避免第三方组件的 padding、flex 方向或交互 DOM
-改变三栏布局。可以直接在「设置 → 外观」中切换，也可以在没有已保存外观设置时指定开发默认值：
+改变三栏布局。旧 adapter 的开发入口记录如下；当前开发默认只支持 `ak-ui`：
 
 ```bash
-VITE_AIBO_UI_KIT=material3 pnpm run dev
+VITE_AIBO_UI_KIT=ak-ui pnpm run dev
 ```
 
 Material 3 token 只作用于 `[data-ui-kit='material3']`，切换视觉实现不需要

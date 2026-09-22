@@ -44,6 +44,7 @@
     "@lucide/svelte": "^1.39.0",
     "@tauri-apps/api": "^2.8.0",
     "@tauri-apps/plugin-dialog": "^2.7.3",
+    "@yunyoujun/ak-ui": "1.1.0",
     "clsx": "^2.1.1",
     "m3-svelte": "7.2.0",
     "tailwind-merge": "^3.6.0"

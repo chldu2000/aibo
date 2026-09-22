@@ -1,5 +1,5 @@
 <script lang="ts">
-  import type { Snippet } from 'svelte';
+  import { tick, type Snippet } from 'svelte';
   import { AgentStatusMark, Button, Card, CardHeader, CardTitle, Icon, Input } from '$lib/ui-kit';
   import type { SessionFilter } from '$lib/types';
   import { relativeTimeLabel, sessionStateLabel, sessionStatusTone, isSessionRunning } from './session-utils';
@@ -8,6 +8,7 @@
 
   type WorkspaceSidebarProps = {
     presentationActions?: Snippet;
+    footerActions?: Snippet;
     workspaces: WorkspaceListItem[];
     sessionsByWorkspace: Record<string, SessionListItem[]>;
     selectedWorkspaceId: string | null;
@@ -47,6 +48,7 @@
 
   let {
     presentationActions,
+    footerActions,
     workspaces,
     sessionsByWorkspace,
     selectedWorkspaceId,
@@ -94,6 +96,20 @@
   const agentRingCount = $derived(Math.max(1, Math.ceil(agentChoices.length / AGENTS_PER_RING)));
   const agentWheelBackdropSize = $derived((FIRST_RING_RADIUS + (agentRingCount - 1) * RING_GAP + 18) * 2);
   const agentLaunchers = new Map<string, HTMLElement>();
+  let primaryLauncher: HTMLElement | null = null;
+  const menuPrefix = $props.id();
+  let rowMenuPosition = $state({ left: 0, top: 0 });
+  function positionRowMenu(trigger: HTMLButtonElement) {
+    const bounds = trigger.getBoundingClientRect();
+    rowMenuPosition = { left: bounds.right - 224, top: bounds.bottom + 4 };
+  }
+  function closeRowMenu(event: MouseEvent) {
+    (event.currentTarget as HTMLElement).closest<HTMLElement>('[popover]')?.hidePopover();
+  }
+  function focusRowMenu(event: ToggleEvent) {
+    if (event.newState === 'open') (event.currentTarget as HTMLElement).querySelector<HTMLButtonElement>('button:not(:disabled)')?.focus();
+  }
+
   let agentWheelPosition = $state<{ left: number; top: number } | null>(null);
 
   function registerAgentLauncher(node: HTMLElement, workspaceId: string) {
@@ -108,32 +124,52 @@
       agentWheelPosition = null;
       return;
     }
-    const launcher = agentLaunchers.get(createSessionWorkspaceId);
+    const launcher = primaryLauncher?.isConnected ? primaryLauncher : agentLaunchers.get(createSessionWorkspaceId);
     if (!launcher) return;
     const bounds = launcher.getBoundingClientRect();
     agentWheelPosition = {
-      left: bounds.left + bounds.width / 2,
-      top: bounds.top + bounds.height / 2,
+      left: bounds.left,
+      top: bounds.bottom + 4,
     };
   }
 
   $effect(() => {
     const openWorkspaceId = createSessionWorkspaceId;
-    requestAnimationFrame(updateAgentWheelPosition);
+    const frame = requestAnimationFrame(() => {
+      updateAgentWheelPosition();
+      if (openWorkspaceId) void tick().then(() => {
+        if (createSessionWorkspaceId === openWorkspaceId) document.getElementById(`session-agent-wheel-${openWorkspaceId}`)?.querySelector<HTMLButtonElement>('button:not(:disabled)')?.focus();
+      });
+    });
     window.addEventListener('resize', updateAgentWheelPosition);
     document.addEventListener('scroll', updateAgentWheelPosition, true);
     const closeOnOutsidePointer = (event: PointerEvent) => {
       if (!openWorkspaceId || !(event.target instanceof Element)) return;
-      if (event.target.closest('.session-agent-wheel, .session-agent-launcher')) return;
+      if (event.target.closest('.session-agent-wheel, .session-agent-launcher, .sidebar-new-session')) return;
       onToggleSessionCreator(openWorkspaceId);
     };
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.defaultPrevented || event.key !== 'Escape' || !openWorkspaceId) return;
+      event.preventDefault(); closeSessionCreator();
+    };
+    if (openWorkspaceId) document.addEventListener('keydown', closeOnEscape);
     if (openWorkspaceId) document.addEventListener('pointerdown', closeOnOutsidePointer, true);
     return () => {
+      cancelAnimationFrame(frame);
       window.removeEventListener('resize', updateAgentWheelPosition);
       document.removeEventListener('scroll', updateAgentWheelPosition, true);
       document.removeEventListener('pointerdown', closeOnOutsidePointer, true);
+      document.removeEventListener('keydown', closeOnEscape);
     };
   });
+
+  function closeSessionCreator(): void {
+    const workspaceId = createSessionWorkspaceId;
+    if (!workspaceId) return;
+    const trigger = primaryLauncher ?? agentLaunchers.get(workspaceId)?.querySelector<HTMLElement>('button');
+    onToggleSessionCreator(workspaceId);
+    void tick().then(() => trigger?.focus());
+  }
 
   function agentWheelStyle(index: number): string {
     const ring = Math.floor(index / AGENTS_PER_RING);
@@ -147,6 +183,15 @@
 </script>
 
 <Card as="aside" class="sidebar" data-ui-component="workspace-sidebar" aria-label="工作区">
+  <Button class="sidebar-new-session" type="button" disabled={busy}
+    aria-expanded={Boolean(createSessionWorkspaceId)}
+    aria-controls={createSessionWorkspaceId ? `session-agent-wheel-${createSessionWorkspaceId}` : undefined}
+    onclick={(event) => {
+      const workspaceId = selectedWorkspaceId ?? workspaces[0]?.id;
+      if (!workspaceId) { onChooseWorkspaceDirectory(); return; }
+      primaryLauncher = event.currentTarget;
+      onToggleSessionCreator(workspaceId);
+    }}><span>新建会话</span><Icon name="add" size={16} /></Button>
   <CardHeader class="panel-heading">
     <CardTitle>工作区</CardTitle>
     <div class="workspace-toolbar" aria-label="工作区工具">
@@ -244,7 +289,7 @@
               aria-expanded={workspaceExpanded}
               aria-controls={workspaceExpanded ? `workspace-sessions-${workspace.id}` : undefined}
               aria-label={`${workspace.label}，${workspace.trust === 'trusted' ? '可信' : '待确认'}`}
-              title={workspace.path}
+              title={`${workspace.label}\n${workspace.path}`}
               onclick={() => onSelectWorkspace(workspace.id)}
             >
               {#if workspaceExpanded}
@@ -268,45 +313,48 @@
                   title="新建会话"
                   aria-expanded={createSessionWorkspaceId === workspace.id}
                   aria-controls={createSessionWorkspaceId === workspace.id ? `session-agent-wheel-${workspace.id}` : undefined}
-                  onclick={(event) => { event.stopPropagation(); onToggleSessionCreator(workspace.id); }}
+                  onclick={(event) => { event.stopPropagation(); primaryLauncher = null; onToggleSessionCreator(workspace.id); }}
                   disabled={busy}
                 >
                   <Icon name="add" size={15} />
                 </Button>
               </div>
+              <Button variant="ghost" size="icon" type="button" aria-label={`${workspace.label} 更多操作`} title="更多工作区操作" popovertarget={`${menuPrefix}-workspace-${workspace.id}`} onclick={event => positionRowMenu(event.currentTarget)}><span aria-hidden="true" class="row-more-mark">···</span></Button>
+              <div id={`${menuPrefix}-workspace-${workspace.id}`} class="row-action-menu" popover="auto" role="group" aria-label={`${workspace.label} 管理菜单`} ontoggle={focusRowMenu} style={`--row-menu-left: ${rowMenuPosition.left}px; --row-menu-top: ${rowMenuPosition.top}px`}>
               <Button
                 variant="ghost"
-                size="icon"
+                size="sm"
                 type="button"
                 aria-label={workspace.trust === 'trusted' ? '撤销信任' : '标记为可信'}
                 title={workspace.trust === 'trusted' ? '撤销信任' : '标记为可信'}
-                onclick={(event) => { event.stopPropagation(); onToggleTrust(workspace.id); }}
+                onclick={(event) => { event.stopPropagation(); closeRowMenu(event); onToggleTrust(workspace.id); }}
                 disabled={busy}
               >
-                {#if workspace.trust === 'trusted'}<Icon name="untrust" size={14} />{:else}<Icon name="trust" size={14} />{/if}
+                {#if workspace.trust === 'trusted'}<Icon name="untrust" size={14} />撤销信任{:else}<Icon name="trust" size={14} />标记为可信{/if}
               </Button>
               <Button
                 variant="ghost"
-                size="icon"
+                size="sm"
                 type="button"
                 aria-label={`在${workspaceLocationLabel}中打开工作区`}
                 title={`在${workspaceLocationLabel}中打开`}
-                onclick={(event) => { event.stopPropagation(); onOpenWorkspaceLocation(workspace.id); }}
+                onclick={(event) => { event.stopPropagation(); closeRowMenu(event); onOpenWorkspaceLocation(workspace.id); }}
                 disabled={busy}
               >
-                <Icon name="folder" size={14} />
+                <Icon name="folder" size={14} />在{workspaceLocationLabel}中打开
               </Button>
               <Button
                 variant="ghost"
-                size="icon"
+                size="sm"
                 type="button"
                 aria-label="移除工作区"
                 title="移除工作区"
-                onclick={(event) => { event.stopPropagation(); onDeleteWorkspace(workspace.id); }}
+                onclick={(event) => { event.stopPropagation(); closeRowMenu(event); onDeleteWorkspace(workspace.id); }}
                 disabled={busy || archivingWorkspaceId === workspace.id}
               >
-                <Icon name="delete" size={14} />
+                <Icon name="delete" size={14} />移除工作区
               </Button>
+              </div>
             </div>
           </div>
 
@@ -366,25 +414,28 @@
                           </time>
                         </Button>
                         <div class="session-item-actions" aria-label={`${session.label} 操作`}>
+                          <Button variant="ghost" size="icon" type="button" aria-label={`${session.label} 更多操作`} title="更多会话操作" popovertarget={`${menuPrefix}-session-${session.id}`} onclick={event => positionRowMenu(event.currentTarget)}><span aria-hidden="true" class="row-more-mark">···</span></Button>
+                          <div id={`${menuPrefix}-session-${session.id}`} class="row-action-menu" popover="auto" role="group" aria-label={`${session.label} 操作菜单`} ontoggle={focusRowMenu} style={`--row-menu-left: ${rowMenuPosition.left}px; --row-menu-top: ${rowMenuPosition.top}px`}>
                           {#if session.archived}
-                            <Button variant="ghost" size="icon" type="button" aria-label="取消归档" title="取消归档" onclick={() => onUnarchiveSession(session.id)} disabled={busy}>
-                              <Icon name="archive-restore" size={13} />
+                            <Button variant="ghost" size="sm" type="button" aria-label="取消归档" title="取消归档" onclick={(event) => { closeRowMenu(event); onUnarchiveSession(session.id); }} disabled={busy}>
+                              <Icon name="archive-restore" size={13} />取消归档
                             </Button>
                           {:else if session.canSyncSnapshot}
-                            <Button variant="ghost" size="icon" type="button" aria-label="归档会话" title="归档" onclick={() => onRequestArchiveSession(session.id)} disabled={busy || isSessionRunning(session) || archivingSessionId !== null}>
-                              <Icon name="archive" size={13} />
+                            <Button variant="ghost" size="sm" type="button" aria-label="归档会话" title="归档" onclick={(event) => { closeRowMenu(event); onRequestArchiveSession(session.id); }} disabled={busy || isSessionRunning(session) || archivingSessionId !== null}>
+                              <Icon name="archive" size={13} />归档会话
                             </Button>
-                            <Button variant="ghost" size="icon" type="button" aria-label="读取线程" title="读取线程" onclick={() => onSyncCodexThread(session.id)} disabled={threadBusy || busy || archivingSessionId === session.id}>
-                              <Icon name="refresh" size={13} />
+                            <Button variant="ghost" size="sm" type="button" aria-label="读取线程" title="读取线程" onclick={(event) => { closeRowMenu(event); onSyncCodexThread(session.id); }} disabled={threadBusy || busy || archivingSessionId === session.id}>
+                              <Icon name="refresh" size={13} />读取线程
                             </Button>
                           {:else}
-                            <Button variant="ghost" size="icon" type="button" aria-label="归档会话" title="归档" onclick={() => onRequestArchiveSession(session.id)} disabled={busy || isSessionRunning(session) || archivingSessionId !== null}>
-                              <Icon name="archive" size={13} />
+                            <Button variant="ghost" size="sm" type="button" aria-label="归档会话" title="归档" onclick={(event) => { closeRowMenu(event); onRequestArchiveSession(session.id); }} disabled={busy || isSessionRunning(session) || archivingSessionId !== null}>
+                              <Icon name="archive" size={13} />归档会话
                             </Button>
                           {/if}
-                          <Button variant="ghost" size="icon" type="button" aria-label="改名" title="改名" onclick={() => onBeginRenameSession(session.id)} disabled={busy || archivingSessionId === session.id}>
-                            <Icon name="edit" size={13} />
+                          <Button variant="ghost" size="sm" type="button" aria-label="改名" title="改名" onclick={(event) => { closeRowMenu(event); onBeginRenameSession(session.id); }} disabled={busy || archivingSessionId === session.id}>
+                            <Icon name="edit" size={13} />改名
                           </Button>
+                          </div>
                         </div>
                       {/if}
                     </div>
@@ -401,6 +452,7 @@
       {/each}
     {/if}
   </div>
+  {#if footerActions}<div class="sidebar-footer">{@render footerActions()}</div>{/if}
   {#if createSessionWorkspaceId && agentWheelPosition}
     <div
       id={`session-agent-wheel-${createSessionWorkspaceId}`}
@@ -409,6 +461,7 @@
       aria-label="选择 Agent 创建会话"
       style={`--agent-wheel-left: ${agentWheelPosition.left}px; --agent-wheel-top: ${agentWheelPosition.top}px; --agent-wheel-backdrop-size: ${agentWheelBackdropSize}px`}
     >
+      <span class="session-agent-wheel-title">选择 Agent</span>
       <Button
         class="session-agent-wheel-trigger"
         variant="ghost"
@@ -416,9 +469,9 @@
         type="button"
         aria-label="关闭 Agent 选择"
         title="关闭 Agent 选择"
-        onclick={() => onToggleSessionCreator(createSessionWorkspaceId!)}
+        onclick={closeSessionCreator}
       >
-        <Icon name="add" size={15} />
+        <Icon name="close" size={15} />
       </Button>
       {#each agentChoices as agent, index (agent.id)}
         <Button
@@ -433,12 +486,12 @@
           onkeydown={(event) => {
             if (event.key === 'Escape') {
               event.preventDefault();
-              onToggleSessionCreator(createSessionWorkspaceId!);
+              closeSessionCreator();
             }
           }}
           disabled={busy}
         >
-          <AgentStatusMark agent="plugin" icon={agent.icon} tone="idle" label={agent.label} />
+          <AgentStatusMark agent="plugin" icon={agent.icon} tone="idle" label={agent.label} /><span class="session-agent-label">{agent.label}</span>
         </Button>
       {/each}
       {#if agentChoices.length === 0}

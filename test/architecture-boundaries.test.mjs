@@ -278,7 +278,7 @@ test('workbench visual character belongs to both UI kits without duplicating lay
     readFile(path.join(root, 'src/lib/ui-kit/kits/material3/WorkbenchChrome.svelte'), 'utf8'),
   ]);
   assert.match(contract, /WorkbenchChrome: Component<UiWorkbenchChromeProps>/);
-  assert.match(host, /<WorkbenchChrome layout=\{instance\.layout\}>/);
+  assert.match(host, /<WorkbenchChrome layout=\{instance\.layout\} \{auxiliaryOpen\}>/);
   assert.match(shadcn, /session-item-row\.selected/);
   assert.match(material, /--m3c-secondary-container/);
   for (const skin of [shadcn, material]) assert.doesNotMatch(skin, /onSelectSession|workspaceId|sessionId/, 'skin chrome receives no business behavior');

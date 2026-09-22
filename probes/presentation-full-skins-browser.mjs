@@ -6,16 +6,16 @@ import { chromium } from 'playwright';
 import {buildPresentationSkins} from './lib/build-presentation-skins.mjs';
 import {probePresentationApprovalFault} from './lib/presentation-approval-fault.mjs';
 const built=await buildPresentationSkins();const pkg=built.packages[0];
-const server=await createServer({server:{host:'127.0.0.1',port:0,hmr:false,watch:null}});await server.listen();
+const server=await createServer({server:{host:'127.0.0.1',port:0,strictPort:false,hmr:false,watch:null}});await server.listen();
 const browser=await chromium.launch({headless:true});const page=await browser.newPage({viewport:{width:1280,height:900}});const errors=[];
-page.on('pageerror',error=>errors.push(error.message));page.setDefaultTimeout(10000);
+page.on('pageerror',error=>errors.push(error.stack ?? error.message));page.setDefaultTimeout(10000);
 try {
   await page.addInitScript(pkg=>{
     let callback=0;window.presentationCopies=[];window.presentationLinks=[];Object.defineProperty(navigator,'clipboard',{value:{writeText:async value=>window.presentationCopies.push(value)},configurable:true});window.open=(...args)=>{window.presentationLinks.push(args);return null};window.presentationCommands=[];window.presentationInstallable=pkg;
     const workspaces = ['w1','w2'].map(id=>({id,label:id,path:'/probe/'+id,trust:'trusted',createdAt:'2026-09-13',updatedAt:'2026-09-13',lastOpenedAt:null}));
     const sessions = ['s1','s2'].map((id,index)=>({id,workspaceId:'w'+(index+1),label:id,agent:'plugin',state:'idle',archived:false,externalSessionId:null,pluginInstallationId:'provider',capabilities:['command.list','queue.manage','model.list','model.select','model.reasoning','compaction.run'],createdAt:'2026-09-13',updatedAt:'2026-09-13'}));
     window.navigationCalls=[];
-    const model={reference:'model-a',label:'Model A',id:'a',provider:'probe',description:null,isDefault:true,defaultReasoningEffort:null,reasoningEfforts:[{id:'high',label:'High',description:null}]};
+    const model={reference:'model-a',label:'Model A',id:'a',provider:'probe',description:null,isDefault:true,defaultReasoningEffort:null,serviceTiers:[],contextWindows:[],reasoningEfforts:[{id:'high',label:'High',description:null}]};
     const catalog={current:model,models:[model],currentReasoningEffort:null,reasoningEfforts:model.reasoningEfforts};
     let agentHandler=null,sequence=0;
     window.emitAgent=(type,payload)=>{const event={schemaVersion:'2.0',eventId:'event:'+ ++sequence,generationId:'generation',sequence,occurredAt:new Date().toISOString(),source:{pluginId:'dev.example.provider',pluginVersion:'1.0.0'},workspaceId:'w1',sessionId:'s1',turnId:'turn',type,payload};if(type==='session.state_changed')sessions[0].state=payload.state;window['_'+agentHandler]({event:'agent-event',id:1,payload:event});};
@@ -72,7 +72,7 @@ try {
   const frame=page.frameLocator('.presentation-external iframe');
   for(const pkg of built.packages){
     await page.evaluate(pkg=>window.presentationInstallable=pkg,pkg);
-    await page.getByRole('button',{name:'打开设置',exact:true}).click();
+    await page.getByRole('button',{name:/^打开管理中心/}).click();
     await page.getByRole('button',{name:'安装皮肤插件',exact:true}).click();
     await page.getByRole('button',{name:pkg.release.manifest.displayName+' '+pkg.release.manifest.version,exact:true}).click();
     await page.getByRole('button',{name:'完成',exact:true}).click();
@@ -125,12 +125,14 @@ try {
     await composer.fill('/he');await frame.getByRole('listbox',{name:'命令建议'}).waitFor();
     await composer.press('Escape');await frame.getByRole('listbox',{name:'命令建议'}).waitFor({state:'hidden'});
     await composer.press('Enter');assert.equal(await composer.inputValue(),'/he\n');
-    await composer.fill('@src');await frame.getByRole('listbox',{name:'路径建议'}).waitFor();
-    await composer.press('ArrowDown');await composer.press('Tab');
+    await composer.fill('@src');await frame.getByRole('listbox',{name:'引用建议'}).waitFor();
+    await frame.getByRole('option',{name:'src/two.ts',exact:true}).waitFor();
+    await composer.press('ArrowDown');await composer.press('Enter');
     await page.waitForFunction(()=>window.navigationCalls.some(call=>call.command==='register_session_attachments'&&call.args.paths.includes('src/two.ts')));
     await frame.locator('textarea[aria-label="消息"][value="@src/two.ts "]').waitFor();
     assert.equal(await composer.evaluate(element=>element.selectionStart),'@src/two.ts '.length);
-    await composer.fill('@src');await frame.getByRole('listbox',{name:'路径建议'}).waitFor();
+    await composer.fill('@src');await frame.getByRole('listbox',{name:'引用建议'}).waitFor();
+    await frame.getByRole('option',{name:'src/two.ts',exact:true}).waitFor();
     const sendsBeforePath=await page.evaluate(()=>window.navigationCalls.filter(call=>call.command==='send_agent_prompt').length);
     await composer.press('Control+Enter');
     await frame.locator('textarea[aria-label="消息"][value="@src/one.ts "]').waitFor();
@@ -211,7 +213,7 @@ try {
       const viewport=element.closest('.conversation-history');viewport.scrollTop+=element.getBoundingClientRect().top-viewport.getBoundingClientRect().top+12;
     });
     await page.waitForTimeout(50);
-    await page.getByRole('button',{name:'打开设置',exact:true}).click();
+    await page.getByRole('button',{name:/^打开管理中心/}).click();
     await page.getByRole('button',{name:'恢复内置呈现',exact:true}).click();
     assert.equal(await page.getByRole('button',{name:`调整工作区与会话宽度，当前 ${resized} 像素`,exact:true}).count(),1);
     await page.getByRole('button',{name:'完成',exact:true}).click();
@@ -225,7 +227,7 @@ try {
       const viewport=element.closest('[data-presentation-timeline]');viewport.scrollTop+=element.getBoundingClientRect().top-viewport.getBoundingClientRect().top+18;
     });
     await page.waitForTimeout(50);
-    await page.getByRole('button',{name:'打开设置',exact:true}).click();
+    await page.getByRole('button',{name:/^打开管理中心/}).click();
     await page.getByRole('button',{name:pkg.release.manifest.displayName+' '+pkg.release.manifest.version,exact:true}).click();
     await page.getByRole('button',{name:'完成',exact:true}).click();
     await frame.locator('.navigation').waitFor({state:'visible'});
@@ -265,7 +267,7 @@ try {
     await frame.locator('button[data-presentation-key="layout:mode:standard"][aria-pressed="true"]').waitFor();
 
 
-    await page.getByRole('button',{name:'打开设置',exact:true}).click();
+    await page.getByRole('button',{name:/^打开管理中心/}).click();
     await page.getByRole('button',{name:'恢复内置呈现',exact:true}).click();
     await page.getByRole('button',{name:'完成',exact:true}).click();
   }
@@ -274,4 +276,4 @@ try {
   assert.deepEqual(errors,[]);
   const result={passed:true,nativePort:'mocked; actual App and independently built full skin Workers',browser:browser.version(),packages:built.packages.map(({release})=>({id:release.manifest.id,version:release.manifest.version,digest:release.digest})),checks:[...approvalChecks,'command filters are separate pressed buttons, editor controls only the option list, history supports PageDown','desktop history and composer scroll independently, send remains visible, named history and editor appear in the accessibility tree','ordinary message and tool group anchors transfer across different scroll containers','default and external composer focus and selection transfer in both directions','command category Tab and reverse Tab, mouse focus return, primary path confirmation','command and path keyboard completion, caret placement and Escape newline','answer draft reload waits for matching live request and clears after submit','focus and review modes, reversed drag, draft preservation and mode reload','reload restores both widths, panel visibility and selected view','both splitter drag directions and auxiliary keyboard resize','keyboard width adjustment and default/external width retention','primary Enter submits through host action','consecutive tool group with completion count','literal tool payloads and native reasoning disclosure in both skins','both full packages install and activate','workspace and session navigation','rich timeline headings, lists, inline and fenced code','host-bound code copy and link actions','attachment transport metadata hidden','rapid Chinese/English input and send','Git/context panel switching','requested and enforced permissions remain distinct','attachment status, strategy and size','diagnostic details remain visible','default/external switch retains host draft']};
   await writeFile('/tmp/aibo-full-skins-browser.json',JSON.stringify(result,null,2)+'\n');console.log(JSON.stringify(result));
-} catch(error) {console.error(JSON.stringify({errors,body:await page.locator('body').innerText()}));throw error;} finally {await browser.close();await server.close();await built.dispose();}
+} catch(error) {console.error(JSON.stringify({errors}));throw error;} finally {await browser.close();await server.close();await built.dispose();}

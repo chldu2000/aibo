@@ -32,7 +32,7 @@
   let switchTicket = 0;
   let instance = $state<{ generation: number; layout: string; guard: (id: string, callback: (...args: any[]) => any) => (...args: any[]) => any } | null>(null);
   const visibleSlots = $derived(instance ? defaultWorkbenchSlots(instance.layout).filter(slot => slots[slot] && (auxiliaryOpen || (slot !== 'auxiliary' && slot !== 'auxiliaryResize'))) : []);
-  const columns = $derived(visibleSlots.map(slot => slot === 'content' ? 'minmax(0, 1fr)' : slot === 'navigation' ? `minmax(0, ${navigationWidth}px)` : slot === 'auxiliary' ? `minmax(0, ${auxiliaryWidth}px)` : '14px').join(' '));
+  const columns = $derived(visibleSlots.map(slot => slot === 'content' ? 'minmax(0, 1fr)' : slot === 'navigation' ? `minmax(0, ${navigationWidth}px)` : slot === 'auxiliary' ? `minmax(0, ${auxiliaryWidth}px)` : 'var(--workbench-splitter-width, 14px)').join(' '));
   const storageKey = $derived(`aibo.workbench-presentation.v1.${encodeURIComponent(windowId)}`);
   let focus = $state<string | null>(null);
   let allowedActions = new Set<string>();
@@ -143,7 +143,7 @@
 {/if}
 <div bind:this={target} onfocusin={rememberFocus} class="workbench-presentation" data-presentation-focus-target={focus} data-presentation-layout={instance?.layout} data-presentation-generation={instance?.generation} inert={switching || suspended} aria-busy={switching} style:display={suspended && hideWhenSuspended ? 'none' : 'flex'}>
   {#if instance}{#key instance.generation}
-    <WorkbenchChrome layout={instance.layout}>
+    <WorkbenchChrome layout={instance.layout} {auxiliaryOpen}>
       <main bind:this={gridElement} class="workspace-grid" class:inspector-hidden={!auxiliaryOpen} style:grid-template-columns={columns} style={`--workspace-sidebar-width: ${navigationWidth}px; --workspace-inspector-width: ${auxiliaryWidth}px`}>
         {#each visibleSlots as slot (slot)}
           {@render slots[slot]?.(instance.guard, { growthDirection: visibleSlots.indexOf(slot) < visibleSlots.indexOf('content') ? 1 : -1 })}

@@ -3,6 +3,8 @@
 
   type WindowTitlebarProps = {
     onOpenManagement: () => void;
+    onToggleTheme?: () => void;
+    themeLabel?: string;
     managementNeedsAttention: boolean;
     sidePanelOpen: boolean;
     onToggleSidePanel: () => void;
@@ -13,6 +15,8 @@
 
   let {
     onOpenManagement,
+    onToggleTheme,
+    themeLabel,
     managementNeedsAttention,
     sidePanelOpen,
     onToggleSidePanel,
@@ -35,6 +39,7 @@
 >
   <span class="window-title">Aibo</span>
   <div class="window-actions">
+    {#if onToggleTheme}<Button variant="ghost" size="icon" aria-label="切换明暗主题" title={themeLabel} onclick={onToggleTheme}><Icon name="eye" size={15} /></Button>{/if}
     <Button variant={managementNeedsAttention ? 'secondary' : 'ghost'} size="icon" type="button" data-host-navigation="management" aria-label={managementNeedsAttention ? '打开管理中心，有项目需要处理' : '打开管理中心'} title={managementNeedsAttention ? '管理中心 · 需要处理' : '管理中心'} onclick={onOpenManagement}>
       <Icon name="settings" size={15} />
     </Button>

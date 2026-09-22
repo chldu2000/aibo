@@ -15,7 +15,7 @@ export async function probePresentationApprovalFault(page) {
   const manifest={schema:'aibo.presentation-package/v1',id:'dev.example.approval-fault',version:'1.0.0',displayName:'Approval fault',hostApi:'1.0.0',coreSemantics:'1.0.0',snapshotSchemas:['aibo.semantic-view/v1'],entry:'skin.js',surfaces:['workbench'],resources:Object.entries(resources).map(([path,bytes])=>({path,bytes:bytes.length,sha256:createHash('sha256').update(bytes).digest('hex'),mediaType:path.endsWith('.js')?'text/javascript':'text/css'}))};
   const pkg={release:{digest:createHash('sha256').update(JSON.stringify(manifest)).digest('hex'),enabled:true,manifest},resources:Object.fromEntries(Object.entries(resources).map(([path,bytes])=>[path,bytes.toString('base64')]))};
   await page.evaluate(pkg=>{window.presentationInstallable=pkg;},pkg);
-  await page.getByRole('button',{name:'打开设置',exact:true}).click();
+  await page.getByRole('button',{name:/^打开管理中心/}).click();
   await page.getByRole('button',{name:'安装皮肤插件',exact:true}).click();
   await page.getByRole('button',{name:'Approval fault 1.0.0',exact:true}).click();
   await page.getByRole('button',{name:'完成',exact:true}).click();
@@ -43,7 +43,7 @@ export async function probePresentationApprovalFault(page) {
     {sessionId:'s1',requestId:'after-fault',decision:'cancel'},
   ]);
   await cards.waitFor({state:'detached'});
-  await page.getByRole('button',{name:'打开设置',exact:true}).click();
+  await page.getByRole('button',{name:/^打开管理中心/}).click();
   await page.getByRole('button',{name:'卸载',exact:true}).click();
   await page.getByRole('button',{name:'完成',exact:true}).click();
   return ['forged package approval token is ignored','fixed approval remains clickable while Worker is blocked despite viewport-filling package CSS','fallback retains the other pending approval and permits rejection','exact host request identities and decisions reach the native IPC substitute'];

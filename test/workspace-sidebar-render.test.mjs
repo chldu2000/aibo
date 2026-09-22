@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import { createServer } from 'vite';
 
-test('sidebar renders projected Pi, Codex and external sessions in both skins', async (t) => {
+test('sidebar renders projected Pi, Codex and external sessions in both default themes', async (t) => {
   // Compile the real component and its UI kit through the application config.
   // Keep the renderer in the same module graph as the compiled components.
   const server = await createServer({
@@ -13,7 +13,7 @@ test('sidebar renders projected Pi, Codex and external sessions in both skins', 
     const { render } = await server.ssrLoadModule('svelte/server');
     const { default: Sidebar } = await server.ssrLoadModule('/src/lib/components/app/WorkspaceSidebar.svelte');
     const { toSessionListItemsByWorkspace } = await server.ssrLoadModule('/src/lib/components/app/view-models.ts');
-    const { setUiKit } = await server.ssrLoadModule('/src/lib/ui-kit/registry.ts');
+    const { setUiTheme } = await server.ssrLoadModule('/src/lib/ui-kit/registry.ts');
     const records = [
       ['dev.aibo.pi.agent', 'Pi regression'],
       ['dev.aibo.codex.agent', 'Codex regression'],
@@ -25,9 +25,9 @@ test('sidebar renders projected Pi, Codex and external sessions in both skins', 
     const sessionsByWorkspace = toSessionListItemsByWorkspace({ workspace: records });
     assert.ok(sessionsByWorkspace.workspace.every((session) => !('capabilities' in session)));
 
-    for (const kit of ['shadcn', 'material3']) {
+    for (const kit of ['light', 'dark']) {
       await t.test(kit, () => {
-        setUiKit(kit);
+        setUiTheme(kit);
         const props = {
           workspaces: [{ id: 'workspace', label: 'Workspace', path: '/tmp', trust: 'trusted' }],
           expandedWorkspaceIds: ['workspace'],

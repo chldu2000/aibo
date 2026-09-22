@@ -1,20 +1,20 @@
 import { derived, get, writable } from 'svelte/store';
 import type { AppearanceSelection, UiKitOption, UiKitRegistration } from './contract';
-import { material3UiKitRegistration } from './kits/material3';
-import { shadcnUiKitRegistration } from './kits/shadcn';
+import { akUiKitRegistration } from './kits/ak-ui';
+import { normalizeDefaultAppearance } from './appearance-selection';
 import { defaultPresentation } from '../workbench/plugins/default-presentation';
 import { resolvePresentationPlugin } from './presentation-plugin';
 
 const STORAGE_KEY = 'aibo.appearance.v1';
 
-const builtInDefault = { ...shadcnUiKitRegistration, renderer: defaultPresentation };
-const presentationRegistrations = [shadcnUiKitRegistration, material3UiKitRegistration].map(
+const builtInDefault = { ...akUiKitRegistration, renderer: defaultPresentation };
+const presentationRegistrations = [akUiKitRegistration].map(
   ({ adapter, ...metadata }) => resolvePresentationPlugin({ ...metadata, components: adapter }, builtInDefault),
 );
 // Compatibility projection: existing appearance consumers keep their current interface.
 const registrations = presentationRegistrations;
 
-export type UiKitName = 'shadcn' | 'material3';
+export type UiKitName = 'ak-ui';
 
 const registrationMap = new Map<string, UiKitRegistration>(
   registrations.map((registration) => [registration.id, registration]),
@@ -26,19 +26,12 @@ function fallbackSelection(): AppearanceSelection {
   return { kitId: registration.id, themeId: registration.defaultThemeId };
 }
 
-function normalizeSelection(value: unknown): AppearanceSelection | null {
-  if (!value || typeof value !== 'object') return null;
-  const candidate = value as Partial<AppearanceSelection>;
-  if (typeof candidate.kitId !== 'string' || typeof candidate.themeId !== 'string') return null;
-  const registration = registrationMap.get(candidate.kitId);
-  if (!registration?.themes.some((theme) => theme.id === candidate.themeId)) return null;
-  return { kitId: candidate.kitId, themeId: candidate.themeId };
-}
-
 function readInitialSelection(): AppearanceSelection {
   if (typeof window === 'undefined') return fallbackSelection();
   try {
-    return normalizeSelection(JSON.parse(window.localStorage.getItem(STORAGE_KEY) ?? 'null')) ?? fallbackSelection();
+    const restored = normalizeDefaultAppearance(JSON.parse(window.localStorage.getItem(STORAGE_KEY) ?? 'null'));
+    if (restored) persistSelection(restored);
+    return restored ?? fallbackSelection();
   } catch {
     return fallbackSelection();
   }
@@ -75,6 +68,7 @@ export const activeThemeStyle = derived(activeTheme, ($theme) =>
 );
 
 export function setUiKit(kitId: string) {
+  if (kitId === 'shadcn' || kitId === 'material3') kitId = 'ak-ui';
   const registration = registrationMap.get(kitId);
   if (!registration) return;
   const current = get(selection);
