@@ -124,6 +124,13 @@ try{
  assert.equal(await input.inputValue(),'主题切换时保留这段草稿');
  await page.keyboard.press('Control+Shift+Backspace');
  await page.waitForFunction(()=>document.querySelector('[data-presentation-layout="standard"][aria-busy="false"]'));
+ // An @-mentioned pending attachment collapses into its inline tag; deleting the mention restores the chip.
+ await input.fill('请看 @pnpm-lock.yaml 这个文件');
+ assert.equal(await page.locator('.composer .attachment-item').count(),1,'mentioned attachment is not duplicated as a chip');
+ assert.deepEqual(await page.locator('.composer-mention').allTextContents(),['@pnpm-lock.yaml']);
+ assert.deepEqual(await page.locator('.composer .attachment-item > :first-child').evaluateAll(nodes=>nodes.map(n=>Math.round(n.getBoundingClientRect().width))),[22],'image placeholder is the 22px thumb inside a chip');
+ await input.fill('主题切换时保留这段草稿');
+ assert.equal(await page.locator('.composer .attachment-item').count(),2);
  await page.setViewportSize({width:390,height:844});
  for(const mode of ['light','dark']){
   if(await page.locator('.app-shell').getAttribute('data-ui-theme')!==mode)await page.getByRole('button',{name:'切换明暗主题',exact:true}).click();

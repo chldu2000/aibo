@@ -126,6 +126,10 @@
     if (last < text.length) segments.push({ text: text.slice(last), mention: false });
     return segments;
   });
+  // A pending attachment that the draft already @-mentions shows only as its inline tag;
+  // removing the tag brings its chip back, so attached context always has a visible handle.
+  const mentionedPaths = $derived(new Set(mentionSegments.filter(segment => segment.mention).map(segment => segment.text.slice(1))));
+  const visibleAttachments = $derived(pendingAttachments.filter(attachment => !mentionedPaths.has(attachment.path)));
   const activeMentionQuery = $derived.by(() => {
     const match = text.match(/(?:^|\s)@([^\s]*)$/);
     return match ? match[1] : null;
@@ -287,8 +291,8 @@
 
 <Card as="form" class="composer" data-ui-component="composer" onsubmit={(event) => { event.preventDefault(); onSend(); }}>
   <div class="composer-body">
-    {#if pendingAttachments.length > 0}
-      <AttachmentList items={pendingAttachments.map(item => ({ ...item, sizeLabel: formatBytes(item.size) }))} previews={attachmentPreviews} onRemove={onRemoveAttachment} disabled={busy} />
+    {#if visibleAttachments.length > 0}
+      <AttachmentList items={visibleAttachments.map(item => ({ ...item, sizeLabel: formatBytes(item.size) }))} previews={attachmentPreviews} onRemove={onRemoveAttachment} disabled={busy} />
     {/if}
     <div class="composer-input-stack">
     <!-- Mirror of the text with @references as tags; the textarea above it keeps input, caret and selection. -->

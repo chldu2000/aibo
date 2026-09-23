@@ -474,6 +474,15 @@
   font-size: 14px;
 }
 
+/* Inside a 32px chip the thumbnail link is the thumbnail; the 44px link box is for message attachments. */
+
+.app-shell[data-ui-kit='ak-ui'] .composer .attachment-item a {
+  width: 22px;
+  height: 22px;
+  min-width: 0;
+  min-height: 0;
+}
+
 .app-shell[data-ui-kit='ak-ui'] .composer .attachment-caption button {
   width: 30px;
   height: 30px;
