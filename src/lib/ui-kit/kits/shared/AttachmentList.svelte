@@ -32,7 +32,7 @@
  .attachment-file-icon { font-size:24px; }
  .attachment-caption { display:flex; flex:1; min-width:0; align-items:center; gap:4px; font-size:var(--aibo-type-meta, 12px); }
  .attachment-caption span { flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
- .attachment-size { flex:none; color:var(--aibo-muted); font-variant-numeric:tabular-nums; }
+ .attachment-caption span.attachment-size { flex:none; color:var(--aibo-muted); font-variant-numeric:tabular-nums; } /* outranks the growing name span above */
  button { display:grid; place-items:center; width:24px; height:28px; padding:0; flex:none; border:0; border-radius:3px; background:transparent; color:var(--aibo-muted); cursor:pointer; font-size:18px; }
  button:hover { background:var(--aibo-surface-hover); color:var(--aibo-text); }
  button:disabled { opacity:.5; cursor:default; }
