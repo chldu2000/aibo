@@ -1869,6 +1869,29 @@
   field-sizing: content;
   max-height: min(240px, 30dvh);
   overflow-y: auto;
+  /* Glyphs come from the mention layer; the textarea keeps only caret and selection. */
+  color: transparent;
+  caret-color: var(--aibo-text);
+}
+
+/* Keep this box identical to .composer-textarea above: the layer paints the draft the textarea hides. */
+
+.app-shell[data-ui-kit='ak-ui'] .composer-mention-layer {
+  padding: var(--ak-space-3) var(--ak-space-4);
+  border: 0;
+  font: var(--aibo-type-body)/1.6 var(--ak-font-sans);
+  max-height: min(240px, 30dvh);
+}
+
+.app-shell[data-ui-kit='ak-ui'] .composer-mention {
+  color: var(--aibo-selected-ink);
+  background: var(--aibo-accent-soft);
+  border-radius: var(--ak-radius-subtle);
+  box-shadow: 0 0 0 1px var(--aibo-accent);
+}
+
+.app-shell[data-ui-kit='ak-ui'] .composer-textarea::placeholder {
+  color: var(--aibo-muted);
 }
 
 .app-shell[data-ui-kit='ak-ui'] .attachment-caption button {

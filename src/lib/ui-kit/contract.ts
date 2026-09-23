@@ -1,6 +1,6 @@
 import type { SessionControl } from '../../../packages/plugin-protocol/src/session';
 export type UiAttachmentListProps = {
- items: { id: string; path: string; mediaType: string }[];
+ items: { id: string; path: string; mediaType: string; sizeLabel?: string }[];
  previews?: Record<string, string | null>;
  onRemove?: (id: string) => void;
  disabled?: boolean;

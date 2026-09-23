@@ -48,6 +48,21 @@ try {
   await input.fill('back in a');
   assert.equal(await input.inputValue(), 'back in a');
   assert.equal(await page.getByRole('button', { name: '发送', exact: true }).isEnabled(), true);
+  // @references render as tags in a mirror layer; it must share the textarea's exact box or the caret drifts.
+  await input.fill('请看 @src/lib/ui-kit/contract.ts 然后 ' + '换行文字 '.repeat(40) + '\n'.repeat(12) + '@docs/x.md 末尾');
+  const mirror = await page.evaluate(() => {
+    const read = node => { const c = getComputedStyle(node); const b = node.getBoundingClientRect(); return { x: b.x, y: b.y, w: b.width, h: b.height, pad: c.padding, border: c.borderWidth, font: c.font, ws: c.whiteSpace, wrap: c.overflowWrap, gutter: c.scrollbarGutter, scrollHeight: node.scrollHeight }; };
+    const textarea = document.querySelector('[data-composer-input]'); const layer = document.querySelector('.composer-mention-layer');
+    textarea.scrollTop = 99999; textarea.dispatchEvent(new Event('scroll'));
+    return { textarea: read(textarea), layer: read(layer), glyphs: getComputedStyle(textarea).color, caret: getComputedStyle(textarea).caretColor, tags: [...document.querySelectorAll('.composer-mention')].map(m => m.textContent), scroll: [textarea.scrollTop, layer.scrollTop] };
+  });
+  assert.deepEqual(mirror.layer, mirror.textarea, 'mention layer mirrors the textarea box, typography, wrapping and scroll height');
+  assert.equal(mirror.glyphs, 'rgba(0, 0, 0, 0)', 'textarea glyphs are transparent so the draft is painted once, by the layer');
+  assert.notEqual(mirror.caret, 'rgba(0, 0, 0, 0)', 'caret stays visible');
+  assert.deepEqual(mirror.tags, ['@src/lib/ui-kit/contract.ts', '@docs/x.md']);
+  assert.equal(mirror.scroll[0], mirror.scroll[1], 'layer follows textarea scrolling');
+  assert(mirror.scroll[0] > 0, 'fixture overflows so the scroll sync is exercised');
+  await input.fill('back in a');
   assert.deepEqual(errors, []);
   console.log(`${kit}: initial selection, session switches, typing and presentation remount passed`);
   await page.close();

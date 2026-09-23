@@ -232,12 +232,19 @@ h2 { font-size: 16px; letter-spacing: -0.02em; }
 .composer:focus-within { border-color: var(--aibo-focus); box-shadow: 0 0 0 3px color-mix(in srgb, var(--aibo-focus) 14%, transparent); }
 .composer-body { position: relative; display: grid; min-width: 0; flex: 1; gap: 5px; }
 .composer-attachments { display: flex; min-width: 0; flex-wrap: wrap; gap: 4px; }
-.composer-context-summary { color: var(--aibo-subtle); font-size: var(--aibo-type-meta, 12px); }
 .composer-attachment { display: inline-flex; min-width: 0; max-width: 220px; align-items: center; gap: 4px; border: 1px solid var(--aibo-border); border-radius: 999px; padding: 2px 3px 2px 7px; color: var(--aibo-muted); background: var(--aibo-surface); font-size: var(--aibo-type-meta, 12px); }
 .composer-attachment > span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .composer-attachment-remove { width: 18px !important; height: 18px !important; flex: none; color: var(--aibo-subtle); }
 .composer-textarea { min-width: 0; min-height: 74px; resize: vertical; border-color: transparent; padding: 1px 4px 0; background: transparent; box-shadow: none; font-size: var(--aibo-type-body, 14px); line-height: 1.55; }
 .composer-textarea:focus-visible { border-color: transparent; box-shadow: none; }
+/* The mention layer repaints the draft behind a glyph-transparent textarea, so it must copy the
+   textarea's box exactly: same padding, border width, font, line height, wrapping and scrollbar gutter.
+   Tags may not add horizontal padding or the caret drifts from the painted text. */
+.composer-body .composer-textarea { color: transparent; caret-color: var(--aibo-text); scrollbar-gutter: stable; }
+.composer-textarea::placeholder { color: var(--aibo-subtle); }
+.composer-textarea::selection { color: transparent; }
+.composer-mention-layer { box-sizing: border-box; padding: 1px 4px 0; border: 1px solid transparent; color: var(--aibo-text); font-family: inherit; font-size: var(--aibo-type-body, 14px); line-height: 1.55; white-space: pre-wrap; overflow-wrap: break-word; overflow-y: auto; scrollbar-gutter: stable; scrollbar-color: transparent transparent; }
+.composer-mention { padding: 0; color: inherit; background: var(--aibo-accent-soft); border-radius: 3px; box-shadow: 0 0 0 1px var(--aibo-accent-border); }
 .composer-suggestions { position: absolute; z-index: 30; right: 0; bottom: calc(100% + 8px); left: 0; display: grid; grid-template-rows: auto minmax(0, 1fr); max-height: 236px; overflow: hidden; border: 1px solid var(--aibo-border-strong); border-radius: 8px; padding: 4px; background: var(--aibo-surface); box-shadow: 0 12px 28px rgb(0 0 0 / 28%); }
 .composer-suggestion-options { display: grid; min-height: 0; overflow-y: auto; }
 .composer-suggestions button { display: flex; min-width: 0; align-items: center; gap: 8px; border: 0; border-radius: 5px; padding: 7px 8px; color: var(--aibo-muted); background: transparent; text-align: left; font-size: var(--aibo-type-meta, 12px); }

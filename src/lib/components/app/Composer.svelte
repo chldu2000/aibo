@@ -93,9 +93,6 @@
 
   const pendingAttachments = $derived(attachments.filter((attachment) => attachment.turnId === null));
   const hasImage = $derived(pendingAttachments.some(item => item.mediaType.startsWith('image/') && item.sendStrategy === 'inline'));
-  const pendingAttachmentBytes = $derived(
-    pendingAttachments.reduce((total, attachment) => total + (attachment.size ?? 0), 0),
-  );
 
   let mentionActiveIndex = $state(0);
   let mentionCategory = $state<MentionCategory>('all');
@@ -115,6 +112,19 @@
     mentionActiveIndex = 0;
     slashCategory = 'all';
     slashActiveIndex = 0;
+  });
+  let mentionLayer = $state<HTMLDivElement | null>(null);
+  // Same token shape the mention picker inserts: "@" + path up to the next whitespace.
+  const mentionSegments = $derived.by(() => {
+    const segments: { text: string; mention: boolean }[] = [];
+    let last = 0;
+    for (const match of text.matchAll(/(?<=^|\s)@\S+/g)) {
+      if (match.index > last) segments.push({ text: text.slice(last, match.index), mention: false });
+      segments.push({ text: match[0], mention: true });
+      last = match.index + match[0].length;
+    }
+    if (last < text.length) segments.push({ text: text.slice(last), mention: false });
+    return segments;
   });
   const activeMentionQuery = $derived.by(() => {
     const match = text.match(/(?:^|\s)@([^\s]*)$/);
@@ -278,13 +288,14 @@
 <Card as="form" class="composer" data-ui-component="composer" onsubmit={(event) => { event.preventDefault(); onSend(); }}>
   <div class="composer-body">
     {#if pendingAttachments.length > 0}
-      <AttachmentList items={pendingAttachments} previews={attachmentPreviews} onRemove={onRemoveAttachment} disabled={busy} />
-      <small class="composer-context-summary">
-        上下文 · {pendingAttachments.length} 项 · 约 {formatBytes(pendingAttachmentBytes)}
-      </small>
+      <AttachmentList items={pendingAttachments.map(item => ({ ...item, sizeLabel: formatBytes(item.size) }))} previews={attachmentPreviews} onRemove={onRemoveAttachment} disabled={busy} />
     {/if}
+    <div class="composer-input-stack">
+    <!-- Mirror of the text with @references as tags; the textarea above it keeps input, caret and selection. -->
+    <div class="composer-mention-layer" aria-hidden="true" bind:this={mentionLayer}>{#each mentionSegments as segment, index (index)}{#if segment.mention}<mark class="composer-mention">{segment.text}</mark>{:else}{segment.text}{/if}{/each}{'\n'}</div>
     <Textarea data-presentation-focus="composer"
       class="composer-textarea"
+      onscroll={(event) => { if (mentionLayer) mentionLayer.scrollTop = (event.currentTarget as HTMLTextAreaElement).scrollTop; }}
       data-composer-input="true"
       bind:value={text}
       rows="2"
@@ -376,6 +387,7 @@
       }}
       oninput={(event) => updateComposerInput((event.currentTarget as HTMLTextAreaElement).value)}
     ></Textarea>
+    </div>
     {#if showMentionSuggestions && mentionActiveIndex >= 0}
       <div class="composer-suggestions" role="group" aria-label="引用会话或工作区路径">
         <div class="composer-command-categories" role="tablist" aria-label="引用分类">
@@ -642,6 +654,27 @@
 </Card>
 
 <style>
+  /* Layer and textarea share one grid cell so the mirror always has the textarea's box. */
+  .composer-input-stack {
+    display: grid;
+    min-width: 0;
+  }
+
+  .composer-input-stack > :global(*) {
+    grid-area: 1 / 1;
+    min-width: 0;
+  }
+
+  .composer-mention-layer {
+    overflow: hidden;
+    pointer-events: none;
+  }
+
+  .composer-input-stack > :global(.composer-textarea) {
+    position: relative;
+    z-index: 1;
+  }
+
   .composer-model-header {
     display: flex;
     align-items: center;
