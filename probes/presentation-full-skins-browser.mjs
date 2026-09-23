@@ -88,6 +88,9 @@ try {
   await tabs.getByRole('tab',{name:'变更',exact:true}).click();
   const changes=page.locator('#session-panel-changes');
   await changes.getByText('tab-test.txt',{exact:true}).waitFor();
+  assert.equal(await changes.locator('.session-changes-repo').count(),1);
+  await changes.getByText('部分暂存',{exact:true}).waitFor();
+  assert((await changes.locator('.session-change-row').first().boundingBox()).height<=64,'change rows remain compact');
   await changes.getByRole('button',{name:'查看暂存差异',exact:true}).click();
   await changes.getByText('staged-result',{exact:true}).waitFor();
   await changes.getByRole('button',{name:'查看未暂存差异',exact:true}).click();

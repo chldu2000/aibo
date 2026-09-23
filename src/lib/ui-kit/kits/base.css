@@ -637,3 +637,38 @@ dd { max-width: 68%; overflow: hidden; margin: 0; color: var(--aibo-muted); font
 .sidebar-new-session { margin-bottom: 8px; }
 .conversation-navigation { display: flex; gap: 8px; }
 .session-agent-label { display: none; }
+
+/* Dense, disclosure-first records share the same rhythm in every skin. */
+.app-shell .timeline-entry.timeline-entry:is(.compact-record, .execution-record) { position: relative; max-width: 100%; padding: 6px 10px; margin-bottom: 6px; border: 1px solid var(--aibo-border); border-radius: 5px; background: var(--aibo-surface); contain-intrinsic-size: 0 44px; }
+.app-shell .timeline-entry.compact-record > .entry-meta { position: absolute; right: 10px; top: 10px; gap: 6px; margin: 0; }
+.app-shell .compact-record > .tool-output > summary { padding-right: 150px; }
+.app-shell .timeline-entry.timeline-entry:is(.compact-record, .execution-record) > .tool-output { margin: 0; }
+.app-shell .timeline-entry.timeline-entry:is(.compact-record, .execution-record) > .tool-output > summary { min-height: 30px; gap: 6px; font-size: 12px; }
+.app-shell .compact-record .tool-output-action { display: none; }
+.app-shell .execution-record summary > [data-slot='badge'] { flex: none; margin-left: 8px; }
+.app-shell .timeline-entry.timeline-entry.tool-group-entry { margin-bottom: 6px; padding: 6px 10px; }
+.app-shell .tool-group > summary { min-height: 30px; }
+.session-changes { display: grid; gap: 16px; min-width: 0; font-size: 12px; }
+.session-changes-heading { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.session-changes-heading h3 { margin: 0; font-size: 15px; font-weight: 600; }
+.session-changes-heading p { margin: 4px 0 0; color: var(--aibo-muted); font-size: 12px; line-height: 1.5; }
+.session-changes-heading > button { flex: none; gap: 6px; min-height: 30px; padding: 4px 10px; font-size: 12px; }
+.session-changes-repo { min-width: 0; overflow: hidden; border: 1px solid var(--aibo-border); border-radius: 6px; background: var(--aibo-surface); }
+.session-changes-repo-heading { display: flex; align-items: center; gap: 10px; min-height: 38px; padding: 6px 12px; background: var(--aibo-surface-hover); }
+.session-changes-repo-heading > span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--aibo-muted); }
+.session-changes-repo-heading > [data-slot='badge'] { margin-left: auto; flex: none; }
+.session-change-row { display: flex; align-items: center; gap: 10px; min-height: 42px; padding: 6px 12px; border-top: 1px solid var(--aibo-border); }
+.session-change-row:hover { background: var(--aibo-surface-hover); }
+.session-change-row > svg { flex: none; color: var(--aibo-muted); }
+.session-change-path { min-width: 0; flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-family: var(--aibo-mono); font-size: 12px; }
+.session-change-row > [data-slot='badge'] { flex: none; font-size: 10px; }
+.session-change-actions { display: flex; flex: none; gap: 4px; }
+.session-change-actions > button { min-height: 28px; height: auto; padding: 4px 6px; font-size: 11px; color: var(--aibo-accent-text); }
+.session-changes-repo > p { padding: 16px 12px; color: var(--aibo-muted); }
+@media (max-width: 640px) {
+ .session-changes-heading { align-items: flex-start; }
+ .session-change-row { flex-wrap: wrap; gap: 6px; }
+ .session-change-path { flex-basis: 60%; }
+ .session-change-actions { margin-left: auto; }
+ .app-shell .execution-record .tool-output-action { display: none; }
+}

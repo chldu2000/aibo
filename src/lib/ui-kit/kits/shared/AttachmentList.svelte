@@ -14,7 +14,7 @@
        <img src={previews[item.id] ?? undefined} alt={name(item.path)} loading="lazy" onerror={() => { failed = {...failed, [item.id]:true}; }} />
       </a>
      {:else}<span class="attachment-placeholder">{previews[item.id] === null || failed[item.id] ? '图片无法预览' : '图片加载中…'}</span>{/if}
-    {/if}
+    {:else}<span class="attachment-file-icon" aria-hidden="true">▤</span>{/if}
     <div class="attachment-caption"><span>{name(item.path)}</span>
      {#if onRemove}<button type="button" {disabled} aria-label={`移除附件 ${name(item.path)}`} onclick={() => onRemove?.(item.id)}>×</button>{/if}
     </div>
@@ -23,13 +23,17 @@
  </div>
 {/if}
 <style>
- .attachment-list { display:flex; flex-wrap:wrap; gap:8px; margin:8px 0; }
- .attachment-item { max-width:200px; border:1px solid currentColor; border-radius:8px; overflow:hidden; }
- .attachment-item img { display:block; width:160px; height:112px; object-fit:contain; }
- .attachment-placeholder { display:grid; width:160px; height:112px; place-items:center; font-size:12px; opacity:.7; }
- .attachment-caption { display:flex; align-items:center; gap:8px; padding:5px 8px; font-size:12px; }
- .attachment-caption span { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
- button { flex:none; border:0; background:transparent; color:inherit; cursor:pointer; font-size:18px; }
+ .attachment-list { display:flex; flex-wrap:wrap; align-items:flex-start; gap:8px; margin:8px 0; }
+ .attachment-item { display:flex; align-items:center; gap:8px; width:220px; max-width:100%; min-width:0; height:56px; padding:6px; border:1px solid var(--aibo-border); border-radius:6px; background:var(--aibo-surface); overflow:hidden; }
+ .attachment-item a { flex:none; }
+ .attachment-item img { display:block; width:42px; height:42px; object-fit:contain; background:var(--aibo-surface-hover); border-radius:3px; }
+ .attachment-placeholder, .attachment-file-icon { display:grid; flex:none; width:42px; height:42px; place-items:center; background:var(--aibo-surface-hover); color:var(--aibo-muted); border-radius:3px; }
+ .attachment-placeholder { font-size:10px; text-align:center; line-height:1.3; }
+ .attachment-file-icon { font-size:24px; }
+ .attachment-caption { display:flex; flex:1; min-width:0; align-items:center; gap:4px; font-size:12px; }
+ .attachment-caption span { flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+ button { display:grid; place-items:center; width:24px; height:28px; padding:0; flex:none; border:0; border-radius:3px; background:transparent; color:var(--aibo-muted); cursor:pointer; font-size:18px; }
+ button:hover { background:var(--aibo-surface-hover); color:var(--aibo-text); }
  button:disabled { opacity:.5; cursor:default; }
- a:focus-visible,button:focus-visible { outline:2px solid currentColor; outline-offset:-2px; }
+ a:focus-visible,button:focus-visible { outline:2px solid var(--aibo-accent); outline-offset:-2px; }
 </style>

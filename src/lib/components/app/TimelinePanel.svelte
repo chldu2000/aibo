@@ -375,7 +375,7 @@
             <Card
               as="article"
               data-presentation-message={'message:' + item.id}
-              class={`timeline-entry ${item.role === 'assistant' ? 'assistant-entry' : item.role === 'user' ? 'user-entry' : item.role === 'tool' ? 'tool-entry' : item.role === 'system' ? 'system-entry' : ''}`}
+              class={`timeline-entry ${item.role === 'tool' || (item.role === 'system' && item.toolName === 'reasoning') ? 'compact-record' : ''} ${item.role === 'assistant' ? 'assistant-entry' : item.role === 'user' ? 'user-entry' : item.role === 'tool' ? 'tool-entry' : item.role === 'system' ? 'system-entry' : ''}`}
             >
               <div class="entry-meta">
                 <Badge variant={item.role === 'assistant' ? 'secondary' : 'outline'}>{item.role === 'assistant' ? (sessionKind === 'pi' ? 'PI' : sessionKind === 'codex' ? 'CODEX' : 'AGENT') : item.role === 'system' && item.toolName === 'reasoning' ? 'THINKING' : item.role.toUpperCase()}</Badge>
@@ -448,9 +448,8 @@
       {#if !session}<p role="status">请先选择会话。</p>
       {:else}
         {#each timeline.filter(item => item.role === 'tool') as item (item.id)}
-          <Card as="article" class="timeline-entry tool-entry">
-            <CardHeader><CardTitle>{toolLabel(item)}</CardTitle><Badge variant="outline">{item.status}</Badge></CardHeader>
-            <CardContent><details class="tool-output"><summary>{item.entryType === 'tool_call' ? '查看调用参数' : '查看执行结果'}</summary><pre>{item.content || '…'}</pre></details></CardContent>
+          <Card as="article" class="timeline-entry tool-entry execution-record">
+            <details class="tool-output"><summary><span class="tool-output-name">{toolLabel(item)}</span><span class="tool-output-action">{item.entryType === 'tool_call' ? '查看调用参数' : '查看执行结果'}</span><Badge variant={item.status === 'failed' ? 'destructive' : 'outline'}>{statusLabel(item.status)}</Badge></summary><pre>{item.content || '…'}</pre></details>
           </Card>
         {:else}<p role="status">本会话暂无执行记录。</p>{/each}
       {/if}
