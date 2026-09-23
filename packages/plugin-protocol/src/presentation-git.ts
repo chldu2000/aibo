@@ -1,4 +1,6 @@
 interface WorkspaceFileChange {
+  stagedStats?: { additions: number; deletions: number } | null;
+  unstagedStats?: { additions: number; deletions: number } | null;
   path: string;
   previousPath: string | null;
   kind: 'added' | 'modified' | 'deleted' | 'renamed';

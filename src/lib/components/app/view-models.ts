@@ -1,7 +1,7 @@
 import type { Session, Workspace } from '$lib/types';
 import type { SessionListItem, WorkspaceListItem } from './view-types';
 import { sessionAgentKind } from '$lib/app/agent-kind';
-import { sessionProviderIcon, type SessionProviderInstallation } from '$lib/app/session-providers';
+import { sessionProviderIcon, sessionProviderInfo, type SessionProviderInstallation } from '$lib/app/session-providers';
 export { readUsageValue, toUsageValues } from '$lib/app/session-usage';
 export type { UsageLimitValue, UsageSnapshot, UsageValues } from '$lib/app/session-usage';
 
@@ -36,7 +36,7 @@ export function toSessionListItemsByWorkspace(
   return Object.fromEntries(
     Object.entries(sessionsByWorkspace).map(([workspaceId, sessions]) => [
       workspaceId,
-      sessions.map(session => ({ ...toSessionListItem(session), icon: sessionProviderIcon(installations, session) })),
+      sessions.map(session => ({ ...toSessionListItem(session), icon: sessionProviderIcon(installations, session), providerLabel: sessionProviderInfo(installations, session).label })),
     ]),
   );
 }

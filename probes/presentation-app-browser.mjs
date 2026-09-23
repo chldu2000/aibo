@@ -50,7 +50,7 @@ try {
   await page.waitForFunction(()=>JSON.parse(localStorage.getItem('probe.presentation.selection')||'null')!==null);
   assert.equal(await page.locator('.appearance-kit-option[aria-pressed="true"]').count(),1);
   assert.match(await page.locator('.appearance-kit-option[aria-pressed="true"]').textContent(),/External skin/);
-  await page.getByRole('button',{name:'完成',exact:true}).click();
+  await page.getByRole('button',{name:'关闭管理中心',exact:true}).click();
   const editor=page.frameLocator('iframe').getByRole('textbox',{name:'External draft'});
   await editor.fill('saved draft');
   await page.waitForFunction(()=>document.querySelector('iframe')?.dataset.presentationRevision);
@@ -62,7 +62,7 @@ try {
   await page.waitForFunction(()=>document.querySelectorAll('iframe').length===0);
   await assertMigrated();
   await page.getByRole('button',{name:'External skin 1.0.0',exact:true}).click();
-  await page.getByRole('button',{name:'完成',exact:true}).click();
+  await page.getByRole('button',{name:'关闭管理中心',exact:true}).click();
   await editor.waitFor();assert.equal(await editor.inputValue(),'saved draft quick typing');
   await page.reload();
   await page.frameLocator('iframe').getByRole('heading',{name:'External workbench'}).waitFor();
@@ -81,7 +81,7 @@ try {
   await page.waitForFunction(()=>document.querySelectorAll('iframe').length===0);
   await page.getByRole('button',{name:'安装皮肤插件',exact:true}).click();
   await page.getByRole('button',{name:'External skin 1.0.0',exact:true}).click();
-  await page.getByRole('button',{name:'完成',exact:true}).click();
+  await page.getByRole('button',{name:'关闭管理中心',exact:true}).click();
   await page.frameLocator('iframe').getByRole('textbox',{name:'External draft'}).fill('crash');
   await page.waitForFunction(()=>document.querySelectorAll('iframe').length===0 && JSON.parse(localStorage.getItem('probe.presentation.selection')||'null')===null);
   await page.getByRole('button',{name:/^打开管理中心/}).click();

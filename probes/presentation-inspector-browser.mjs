@@ -71,7 +71,7 @@ try {
   await page.getByRole('button',{name:'安装皮肤插件',exact:true}).click();
   await page.getByRole('button',{name:'External skin 1.0.0',exact:true}).click();
   await page.waitForFunction(()=>JSON.parse(localStorage.getItem('probe.presentation.selection')||'null')!==null);
-  await page.getByRole('button',{name:'完成',exact:true}).click();
+  await page.getByRole('button',{name:'关闭管理中心',exact:true}).click();
   const frame=page.frameLocator('iframe');
   const snapshot=()=>frame.getByLabel('Inspector snapshot').textContent().then(JSON.parse);
   await frame.getByRole('heading',{name:'External Inspector'}).waitFor();
@@ -82,12 +82,12 @@ try {
   await page.waitForFunction(()=>typeof window.resolveArtifact==='function');
   await page.getByRole('button',{name:'打开设置',exact:true}).click();
   await page.getByRole('button',{name:'恢复内置呈现',exact:true}).click();
-  await page.getByRole('button',{name:'完成',exact:true}).click();
+  await page.getByRole('button',{name:'关闭管理中心',exact:true}).click();
   await page.evaluate(()=>window.resolveArtifact());
   await page.getByText(/Host retained artifact preview/).waitFor();
   await page.getByRole('button',{name:'打开设置',exact:true}).click();
   await page.getByRole('button',{name:'External skin 1.0.0',exact:true}).click();
-  await page.getByRole('button',{name:'完成',exact:true}).click();
+  await page.getByRole('button',{name:'关闭管理中心',exact:true}).click();
   assert.equal((await snapshot()).artifactPreview.content.truncated,true);
   assert.equal((await snapshot()).changeSet.commands[0].output,'command output');
   assert.equal((await snapshot()).changeSet.verification[0].output,'verification output');

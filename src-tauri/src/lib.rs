@@ -343,6 +343,8 @@ pub struct RestoreOperation {
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct WorkspaceFileChange {
+    pub(crate) staged_stats: Option<change_set::GitLineStats>,
+    pub(crate) unstaged_stats: Option<change_set::GitLineStats>,
     pub(crate) path: String,
     pub(crate) previous_path: Option<String>,
     pub(crate) kind: String,
@@ -2227,6 +2229,8 @@ async fn get_workspace_changes(
             .files
             .into_iter()
             .map(|file| WorkspaceFileChange {
+                staged_stats: file.staged_stats,
+                unstaged_stats: file.unstaged_stats,
                 path: file.path,
                 previous_path: file.previous_path,
                 kind: file.kind.to_owned(),

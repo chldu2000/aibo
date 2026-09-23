@@ -41,7 +41,11 @@ try{
  assert.equal(await page.evaluate(()=>localStorage.getItem('probe.unrelated.draft')),'保留我的草稿');
  assert.equal(await page.locator('.sidebar-new-session').count(),1);
  assert.equal(await page.locator('.sidebar .brand').count(),0);
- const input=page.locator('[data-composer-input]');await input.fill('主题切换时保留这段草稿');
+ const input=page.locator('[data-composer-input]');
+ const initialHeight=(await input.boundingBox()).height;
+ await input.fill(Array(8).fill('多行草稿').join('\n'));
+ assert((await input.boundingBox()).height>initialHeight,'composer grows with multiline input');
+ await input.fill('主题切换时保留这段草稿');
  for(const mode of ['light','dark']){
   if(await page.locator('.app-shell').getAttribute('data-ui-theme')!==mode)await page.getByRole('button',{name:'切换明暗主题',exact:true}).click();
   assert.equal(await input.inputValue(),'主题切换时保留这段草稿');
@@ -92,9 +96,13 @@ try{
  await page.getByRole('dialog',{name:'管理中心',exact:true}).waitFor();
  const selectedNav=page.locator('.management-nav [aria-selected="true"]');
  assert(contrast(await selectedNav.evaluate(e=>{const s=getComputedStyle(e);return {bg:s.backgroundColor,fg:s.color}}))>=4.5,'selected navigation label stays readable in the dark theme');
- assert.equal(await page.locator('.appearance-kit-option').count(),1);
+ assert.equal(await page.locator('.appearance-kit-info').count(),1);
+ assert.equal(await page.locator('.appearance-kit-option').count(),0);
+ assert.equal(await page.locator('.management-content').evaluate(e=>e.scrollTop),0);
+ assert.equal(await page.getByRole('radiogroup',{name:'主题色'}).count(),1);
  assert.equal(await page.locator('.appearance-theme-option').count(),2);
- await page.locator('.appearance-theme-option').filter({hasText:'浅色'}).click();
+ await page.getByRole('radio',{name:/浅色/}).check();
+ assert(await page.getByRole('radio',{name:/浅色/}).isChecked());
  assert(contrast(await selectedNav.evaluate(e=>{const s=getComputedStyle(e);return {bg:s.backgroundColor,fg:s.color}}))>=4.5,'selected navigation label stays readable in the light theme');
  await page.screenshot({path:`${output}/settings-light.png`});
  await page.keyboard.press('Escape');assert.equal(await page.getByRole('dialog',{name:'管理中心',exact:true}).count(),0);
@@ -121,6 +129,9 @@ try{
   assert(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth));
   assert(await input.isVisible());
   assert((await input.boundingBox()).width>250);
+  const attachments=await page.locator('.composer .attachment-item').evaluateAll(items=>items.map(e=>e.getBoundingClientRect().top));
+  assert.equal(new Set(attachments).size,1,'mobile attachments stay on one scrolling row');
+  assert((await page.locator('.composer').boundingBox()).height<250,'composer leaves mobile reading space');
   await page.screenshot({path:`${output}/mobile-${mode}.png`});
  }
  const regions=page.getByRole('navigation',{name:'工作台区域'});

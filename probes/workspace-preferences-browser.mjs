@@ -59,7 +59,7 @@ try {
   await open();assert.equal(await toggle.isChecked(),true);
   await page.screenshot({path:'/tmp/aibo-workspace-preferences/default-on.png'});
   await toggle.click();await page.waitForFunction(()=>localStorage.getItem('probe.trust-default')==='false');
-  assert.equal(await toggle.isChecked(),false);await page.getByRole('button',{name:'完成',exact:true}).click();
+  assert.equal(await toggle.isChecked(),false);await page.getByRole('button',{name:'关闭管理中心',exact:true}).click();
   assert.equal((await add('/probe/default-untrusted')).trust,'untrusted');
   await page.reload();await page.locator('.workspace-item').first().waitFor();await open();
   assert.equal(await toggle.isChecked(),false,'preference is loaded again after reload');
@@ -68,7 +68,7 @@ try {
   assert.equal(await toggle.isChecked(),false,'failed save does not change the displayed setting');
   await page.evaluate(()=>window.failPreferenceSave=false);await toggle.click();
   await page.waitForFunction(()=>localStorage.getItem('probe.trust-default')==='true');
-  await page.getByRole('button',{name:'完成',exact:true}).click();
+  await page.getByRole('button',{name:'关闭管理中心',exact:true}).click();
   assert.equal((await add('/probe/default-untrusted')).trust,'untrusted','re-adding an existing workspace preserves trust');
   assert.equal((await add('/probe/trusted-again')).trust,'trusted');
   // Revocation remains available in the host navigation menu, not as a row dot.

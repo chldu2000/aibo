@@ -13,7 +13,7 @@
       <a href={previews[item.id] ?? undefined} download={name(item.path)} title={`保存图片 ${name(item.path)}`}>
        <img src={previews[item.id] ?? undefined} alt={name(item.path)} loading="lazy" onerror={() => { failed = {...failed, [item.id]:true}; }} />
       </a>
-     {:else}<span class="attachment-placeholder">{previews[item.id] === null || failed[item.id] ? '图片无法预览' : '图片加载中…'}</span>{/if}
+     {:else}<span class="attachment-placeholder" role="img" aria-label={previews[item.id] === null || failed[item.id] ? '图片无法预览' : '图片加载中'} title={previews[item.id] === null || failed[item.id] ? '图片无法预览' : '图片加载中'}>{previews[item.id] === null || failed[item.id] ? '!' : '…'}</span>{/if}
     {:else}<span class="attachment-file-icon" aria-hidden="true">▤</span>{/if}
     <div class="attachment-caption"><span>{name(item.path)}</span>
      {#if onRemove}<button type="button" {disabled} aria-label={`移除附件 ${name(item.path)}`} onclick={() => onRemove?.(item.id)}>×</button>{/if}

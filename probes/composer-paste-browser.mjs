@@ -4,7 +4,7 @@ import { chromium } from 'playwright';
 import {buildPresentationSkins} from './lib/build-presentation-skins.mjs';
 const built=await buildPresentationSkins();
 const pkg=built.packages[0];
-const server=await createServer({server:{host:'127.0.0.1',port:0,hmr:false,watch:null}});await server.listen();
+const server=await createServer({server:{host:'127.0.0.1',port:0,strictPort:false,hmr:false,watch:null}});await server.listen();
 const browser=await chromium.launch({headless:true});
 const page=await browser.newPage();
 page.setDefaultTimeout(15000);
@@ -117,7 +117,7 @@ try {
   await page.keyboard.press('Meta+,');
   await page.getByRole('button',{name:'安装皮肤插件',exact:true}).click();
   await page.getByRole('button',{name:new RegExp(pkg.release.manifest.displayName+' '+pkg.release.manifest.version),exact:true}).click();
-  await page.getByRole('button',{name:'完成',exact:true}).click();
+  await page.getByRole('button',{name:'关闭管理中心',exact:true}).click();
   const frame=page.frameLocator('iframe:not([aria-hidden="true"])');
   const externalInput=frame.locator('textarea').first();
   await externalInput.click();

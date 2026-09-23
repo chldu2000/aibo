@@ -16,6 +16,7 @@
   $effect(() => { returnToTrigger = restoreTriggerFocus; });
   onMount(() => {
     dialog.showModal();
+    dialog.querySelector<HTMLElement>('.management-content')?.scrollTo(0, 0);
     return () => {
       dialog.close();
       if (!(previous instanceof HTMLElement) || !previous.isConnected) return;
@@ -43,7 +44,7 @@
   const r = dialog.getBoundingClientRect();
   if (event.clientX < r.left || event.clientX > r.right || event.clientY < r.top || event.clientY > r.bottom) onClose();
 }}>
-  <header class="management-header"><div><small>PREFERENCES</small><h1 id="management-title">{title}</h1></div><Button variant="ghost" size="icon" aria-label="关闭管理中心" onclick={onClose}><Icon name="close" /></Button></header>
+  <header class="management-header"><div><h1 id="management-title">{title}</h1></div><Button variant="ghost" size="icon" aria-label="关闭管理中心" onclick={onClose}><Icon name="close" /></Button></header>
   <div class="management-body">
     <div class="management-nav" role="tablist" aria-label="管理中心栏目" aria-orientation="vertical">
       {#each sections as section, index (section.id)}

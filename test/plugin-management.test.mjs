@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import test from 'node:test';
-import { sessionProviders, readySessionProviders, sessionProviderIcon, sessionProviderInfo } from '../src/lib/app/session-providers.ts';
+import { sessionProviders, sessionProviderChoices, readySessionProviders, sessionProviderIcon, sessionProviderInfo } from '../src/lib/app/session-providers.ts';
 
 test('desktop bundle and host validators exclude the retired executable protocols', async () => {
   const config = JSON.parse(await readFile(new URL('../src-tauri/tauri.conf.json', import.meta.url), 'utf8'));
@@ -111,4 +111,17 @@ test('session context shows the provider identity declared by its plugin', async
   assert.deepEqual(sessionProviderInfo([unnamed], session), { label: provider.id });
   const inspector = await readFile(new URL('../src/lib/components/app/Inspector.svelte', import.meta.url), 'utf8');
   assert.doesNotMatch(inspector, /sessionAgentKind|=== '(?:codex|pi)'|'(?:PI|CX|AG)'/, 'Inspector does not branch on Agent identity');
+});
+
+test('chooser explains unavailable providers without authorizing session creation', () => {
+  const contribution = {id:'third-party',kind:'capabilityProvider',scope:'session',metadata:{displayName:'Third Party',icon:{path:'M2 2L22 22Z'},operations:[{capability:{id:'aibo.session.open'}}]}};
+  const ready = {id:'ready',installed:true,enabled:true,runnable:true,contributions:[contribution]};
+  const blocked = {...ready,id:'blocked',runnable:false};
+  const choices = sessionProviderChoices([ready,blocked,{...ready,id:'removed',installed:false}]);
+  assert.equal(choices.length,2);
+  assert.equal(choices[0].unavailableReason,undefined);
+  assert.equal(choices[1].unavailableReason,'缺少运行依赖');
+  assert.deepEqual(choices[1].icon,contribution.metadata.icon);
+  assert.deepEqual(readySessionProviders([blocked]),[]);
+  assert.deepEqual(sessionProviderChoices([{...ready,contributions:[]}]),[]);
 });

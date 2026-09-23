@@ -18,7 +18,7 @@ export async function probePresentationApprovalFault(page) {
   await page.getByRole('button',{name:/^打开管理中心/}).click();
   await page.getByRole('button',{name:'安装皮肤插件',exact:true}).click();
   await page.getByRole('button',{name:'Approval fault 1.0.0',exact:true}).click();
-  await page.getByRole('button',{name:'完成',exact:true}).click();
+  await page.getByRole('button',{name:'关闭管理中心',exact:true}).click();
   const frame=page.frameLocator('.presentation-external iframe');
   await frame.getByRole('heading',{name:'Fault presentation'}).waitFor();
   await page.evaluate(()=>{
@@ -45,6 +45,6 @@ export async function probePresentationApprovalFault(page) {
   await cards.waitFor({state:'detached'});
   await page.getByRole('button',{name:/^打开管理中心/}).click();
   await page.getByRole('button',{name:'卸载',exact:true}).click();
-  await page.getByRole('button',{name:'完成',exact:true}).click();
+  await page.getByRole('button',{name:'关闭管理中心',exact:true}).click();
   return ['forged package approval token is ignored','fixed approval remains clickable while Worker is blocked despite viewport-filling package CSS','fallback retains the other pending approval and permits rejection','exact host request identities and decisions reach the native IPC substitute'];
 }

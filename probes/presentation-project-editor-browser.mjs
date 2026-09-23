@@ -82,7 +82,7 @@ try {
   await page.getByRole('button',{name:'安装皮肤插件',exact:true}).click();
   await page.getByRole('button',{name:'External skin 1.0.0',exact:true}).click();
   await page.waitForFunction(()=>JSON.parse(localStorage.getItem('probe.presentation.selection')||'null')!==null);
-  await page.getByRole('button',{name:'完成',exact:true}).click();
+  await page.getByRole('button',{name:'关闭管理中心',exact:true}).click();
   const frame=page.frameLocator('iframe');
   const snapshot=()=>frame.getByLabel('Inspector snapshot').textContent().then(JSON.parse);
   await frame.getByRole('heading',{name:'External project editor'}).waitFor();
@@ -93,14 +93,14 @@ try {
   await frame.getByRole('textbox',{name:'External args',exact:true}).fill('["run","test with spaces"]');
   await page.getByRole('button',{name:'打开设置',exact:true}).click();
   await page.getByRole('button',{name:'恢复内置呈现',exact:true}).click();
-  await page.getByRole('button',{name:'完成',exact:true}).click();
+  await page.getByRole('button',{name:'关闭管理中心',exact:true}).click();
   const native=page.getByRole('textbox',{name:'动作名称',exact:true});
   assert.equal(await native.inputValue(),'draft across skins');await native.fill('edited in default');
   await page.getByRole('button',{name:'保存动作',exact:true}).click();
   await page.getByText('probe save failure',{exact:true}).waitFor();assert.equal(await native.inputValue(),'edited in default');
   await page.getByRole('button',{name:'打开设置',exact:true}).click();
   await page.getByRole('button',{name:'External skin 1.0.0',exact:true}).click();
-  await page.getByRole('button',{name:'完成',exact:true}).click();
+  await page.getByRole('button',{name:'关闭管理中心',exact:true}).click();
   assert.equal(await name.inputValue(),'edited in default');assert.equal((await snapshot()).projectEditor.error,'probe save failure');
   await page.evaluate(()=>window.projectSaveFails=false);
   await frame.getByRole('button',{name:'saveProjectAction',exact:true}).click();

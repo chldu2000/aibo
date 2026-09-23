@@ -73,7 +73,7 @@ try {
   await page.getByRole('button',{name:'安装皮肤插件',exact:true}).click();
   await page.getByRole('button',{name:'External skin 1.0.0',exact:true}).click();
   await page.waitForFunction(()=>JSON.parse(localStorage.getItem('probe.presentation.selection')||'null')!==null);
-  await page.getByRole('button',{name:'完成',exact:true}).click();
+  await page.getByRole('button',{name:'关闭管理中心',exact:true}).click();
   const frame=page.frameLocator('iframe');
   const snapshot=()=>frame.getByLabel('Git snapshot').textContent().then(JSON.parse);
   const waitSnapshot=async predicate=>{for(let i=0;i<100;i++){if(predicate(await snapshot()))return;await page.waitForTimeout(50);}throw Error('Git snapshot did not settle');};
@@ -98,12 +98,12 @@ try {
   await message.pressSequentially('message across skins',{delay:10});
   await page.locator('body').click({position:{x:2,y:2}}); await page.keyboard.press('Meta+,');
   await page.getByRole('button',{name:'恢复内置呈现',exact:true}).click();
-  await page.getByRole('button',{name:'完成',exact:true}).click();
+  await page.getByRole('button',{name:'关闭管理中心',exact:true}).click();
   const native=page.getByRole('textbox',{name:'提交信息',exact:true});
   assert.equal(await native.inputValue(),'message across skins');await native.fill('edited in default');
   await page.locator('body').click({position:{x:2,y:2}}); await page.keyboard.press('Meta+,');
   await page.getByRole('button',{name:'External skin 1.0.0',exact:true}).click();
-  await page.getByRole('button',{name:'完成',exact:true}).click();
+  await page.getByRole('button',{name:'关闭管理中心',exact:true}).click();
   assert.equal(await message.inputValue(),'edited in default');
   await frame.getByRole('button',{name:'commit:edited in default',exact:true}).click();
   await page.getByRole('alert').filter({hasText:'probe commit rejected'}).waitFor();
@@ -153,7 +153,7 @@ try {
   await page.evaluate(()=>{window.delayedRepositoryReads=false;});
   await page.locator('body').click({position:{x:2,y:2}}); await page.keyboard.press('Meta+,');
   await page.getByRole('button',{name:'恢复内置呈现',exact:true}).click();
-  await page.getByRole('button',{name:'完成',exact:true}).click();
+  await page.getByRole('button',{name:'关闭管理中心',exact:true}).click();
   await page.getByRole('button',{name:'选择仓库',exact:true}).click();
   await page.getByRole('option',{name:/^所有仓库/}).click();
   const firstGroup=page.locator('section[aria-label="仓库 one one"]');

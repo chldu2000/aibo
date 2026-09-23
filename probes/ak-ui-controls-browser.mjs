@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import {mkdir} from 'node:fs/promises';
 import {createServer} from 'vite';
 import {chromium} from 'playwright';
-const server=await createServer({server:{host:'127.0.0.1',port:0,hmr:false,watch:null},plugins:[{
+const server=await createServer({server:{host:'127.0.0.1',port:0,strictPort:false,hmr:false,watch:null},plugins:[{
   name:'ak-controls-fixture',configureServer(server){server.middlewares.use('/__ak-controls',(_req,res)=>{res.setHeader('Content-Type','text/html');res.end('<html><meta name="viewport" content="width=device-width, initial-scale=1"><body><div id="app"></div><script type="module" src="/probes/fixtures/ak-ui-controls.mjs"></script></body></html>')})}
 }]});
 await server.listen();const browser=await chromium.launch({headless:true});const page=await browser.newPage({viewport:{width:1100,height:1000}});const errors=[];

@@ -1,6 +1,6 @@
 <script lang="ts">
   import { untrack, type Snippet } from 'svelte';
-  import { Button, Icon, ManagementCenter, Separator } from '$lib/ui-kit';
+  import { Icon, ManagementCenter, Separator } from '$lib/ui-kit';
   import type { UiKitOption, UiManagementSection } from '$lib/ui-kit';
 
   type SettingsPanelProps = {
@@ -34,6 +34,9 @@
     {@render packageManagement?.()}
     <section class="settings-section" aria-labelledby="ui-kit-title">
       <div class="settings-section-heading"><div><h2 id="ui-kit-title">界面皮肤</h2><p>切换会立即应用，并在下次启动时恢复。</p></div></div>
+      {#if uiKits.length === 1}
+        <div class="appearance-kit-info"><strong>{uiKits[0].label}</strong><span>{uiKits[0].description}</span></div>
+      {:else}
       <div class="appearance-kit-grid">
         {#each uiKits as kit (kit.id)}
           <button class:active={kit.id === activeUiKitName} class="appearance-kit-option" type="button" aria-pressed={kit.id === activeUiKitName} onclick={() => { requestedKit = kit.id; onSelectUiKit(kit.id); }}>
@@ -42,17 +45,19 @@
           </button>
         {/each}
       </div>
+      {/if}
     </section>
     <Separator />
     <section class="settings-section" aria-labelledby="theme-color-title">
       <div class="settings-section-heading"><div><h2 id="theme-color-title">主题色</h2><p>颜色方案由当前皮肤提供。</p></div></div>
-      <div class="appearance-theme-grid">
+      <div class="appearance-theme-grid" role="radiogroup" aria-label="主题色">
         {#each activeKit?.themes ?? [] as theme (theme.id)}
-          <button class:active={theme.id === activeThemeId} class="appearance-theme-option" type="button" aria-pressed={theme.id === activeThemeId} onclick={() => onSelectTheme(theme.id)}>
+          <label class:active={theme.id === activeThemeId} class="appearance-theme-option" >
+            <input type="radio" name="appearance-theme" value={theme.id} checked={theme.id === activeThemeId} onchange={() => onSelectTheme(theme.id)} />
             <span class="theme-swatches" aria-hidden="true">{#each theme.swatches as swatch}<i style:background={swatch}></i>{/each}</span>
             <span class="theme-option-copy"><strong>{theme.label}</strong><small>{theme.description}</small></span>
             {#if theme.id === activeThemeId}<Icon name="check" size={15} />{/if}
-          </button>
+          </label>
         {/each}
       </div>
     </section>
@@ -61,8 +66,7 @@
 
 {#snippet extensionContent()}<div class="settings-tab-panel">{@render extensions?.()}</div>{/snippet}
 {#snippet runtimeContent()}<div class="settings-tab-panel">{@render runtime?.()}</div>{/snippet}
-{#snippet footerContent()}<Button size="sm" type="button" onclick={onClose}>完成</Button>{/snippet}
 
 {#if open}
-  <ManagementCenter title="管理中心" restoreTriggerFocus={openedKit === activeUiKitName && (requestedKit === null || requestedKit === openedKit)} {activeSection} {onSelectSection} {onClose} appearance={appearanceContent} extensions={extensionContent} runtime={runtimeContent} footer={footerContent} />
+  <ManagementCenter title="管理中心" restoreTriggerFocus={openedKit === activeUiKitName && (requestedKit === null || requestedKit === openedKit)} {activeSection} {onSelectSection} {onClose} appearance={appearanceContent} extensions={extensionContent} runtime={runtimeContent} />
 {/if}

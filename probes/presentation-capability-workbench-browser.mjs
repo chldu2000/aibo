@@ -61,7 +61,7 @@ try {
   await page.getByRole('button',{name:'安装皮肤插件',exact:true}).click();
   await page.getByRole('button',{name:'External skin 1.0.0',exact:true}).click();
   await page.waitForFunction(()=>JSON.parse(localStorage.getItem('probe.presentation.selection')||'null')!==null);
-  await page.getByRole('button',{name:'完成',exact:true}).click();
+  await page.getByRole('button',{name:'关闭管理中心',exact:true}).click();
   const frame=page.frameLocator('iframe');
   const snapshot=()=>frame.getByLabel('Capability state').textContent().then(JSON.parse);
   const calls=command=>page.evaluate(command=>window.navigationCalls.filter(c=>c.command===command).length,command);
@@ -74,13 +74,13 @@ try {
   const opened=await calls('open_semantic_contribution');const released=await calls('release_semantic_contribution');
   await page.getByRole('button',{name:'打开设置',exact:true}).click();
   await page.getByRole('button',{name:'恢复内置呈现',exact:true}).click();
-  await page.getByRole('button',{name:'完成',exact:true}).click();
+  await page.getByRole('button',{name:'关闭管理中心',exact:true}).click();
   await page.getByText('Complete capability detail',{exact:true}).waitFor();
   await page.getByRole('button',{name:'切换布局',exact:true}).click();
   assert.equal(await calls('open_semantic_contribution'),opened);assert.equal(await calls('release_semantic_contribution'),released);
   await page.getByRole('button',{name:'打开设置',exact:true}).click();
   await page.getByRole('button',{name:'External skin 1.0.0',exact:true}).click();
-  await page.getByRole('button',{name:'完成',exact:true}).click();
+  await page.getByRole('button',{name:'关闭管理中心',exact:true}).click();
   assert.equal((await snapshot()).view.layout,'sidebar');assert.equal((await snapshot()).view.snapshot.view.content,'Complete capability detail');
   assert.equal(await calls('open_semantic_contribution'),opened);assert.equal(await calls('release_semantic_contribution'),released);
   console.log('verified switch retains lease');

@@ -175,7 +175,7 @@
     kind, label: kind === 'permission' ? '权限' : '会话模式', options: accessOptions.filter(option => option.kind === kind),
   })).filter(group => group.options.length));
   const modelLabel = $derived(
-    modelOverride || modelCatalog?.current?.label || activeProfile?.model || (modelCatalogLoading ? '正在读取模型…' : '模型未读取'),
+    modelOverride || modelCatalog?.current?.label || activeProfile?.model || (modelCatalogLoading ? '正在读取模型…' : '默认模型'),
   );
   const currentReasoningEffort = $derived(modelConfiguration.currentReasoningEffort);
   const reasoningLabel = $derived(currentReasoningEffort ? ` · ${currentReasoningEffort}` : '');

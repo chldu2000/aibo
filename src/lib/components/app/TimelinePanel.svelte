@@ -33,6 +33,8 @@
     changesPanel?: Snippet;
     workspace: WorkspaceListItem | null;
     session: SessionPanelView | null;
+    /** Provider name declared by the session's plugin, shown as the assistant's author label. */
+    sessionProviderLabel?: string;
     selectedSessionId: string | null;
     codexGoal: AgentGoal | null;
     goalBusy?: boolean;
@@ -105,6 +107,7 @@
     changesPanel,
     workspace,
     session,
+    sessionProviderLabel,
     selectedSessionId,
     codexGoal,
     goalBusy = false,
@@ -232,6 +235,10 @@
     }
   }
 
+  function countStatus(items: readonly TimelineViewItem[], ...statuses: TimelineViewItem['status'][]): number {
+    return items.filter((item) => statuses.includes(item.status)).length;
+  }
+
   function statusLabel(status: TimelineViewItem['status']): string {
     return status === 'streaming'
       ? '生成中'
@@ -260,7 +267,21 @@
 
 <Card as="section" class="timeline" data-ui-component="timeline-panel" aria-label="会话时间线">
   <CardHeader class="panel-heading timeline-heading">
-    <div class="timeline-heading-copy"><small>{workspace?.label ?? 'Aibo'} / 会话</small><CardTitle>{session?.label ?? workspace?.label ?? '选择工作区'}</CardTitle></div>
+    <div class="timeline-heading-copy"><small>{workspace?.label ?? 'Aibo'}{#if session} / {sessionProviderLabel ?? session.agent}{/if}</small><CardTitle>{session?.label ?? workspace?.label ?? '选择工作区'}</CardTitle></div>
+    <div class="conversation-navigation" role="tablist" aria-label="会话视图">
+      {#each [{ id: 'conversation', label: '对话' }, { id: 'executions', label: '执行记录' }, { id: 'changes', label: '变更' }] as tab}
+        <Button variant={activeTab === tab.id ? 'secondary' : 'ghost'} role="tab" id={`session-tab-${tab.id}`} aria-controls={`session-panel-${tab.id}`} aria-selected={activeTab === tab.id} tabindex={activeTab === tab.id ? 0 : -1}
+          onclick={() => onSelectTab(tab.id as typeof activeTab)}
+          onkeydown={(event) => {
+            const ids = ['conversation', 'executions', 'changes'] as const;
+            const index = ids.indexOf(activeTab);
+            const next = event.key === 'ArrowRight' ? (index + 1) % 3 : event.key === 'ArrowLeft' ? (index + 2) % 3 : event.key === 'Home' ? 0 : event.key === 'End' ? 2 : -1;
+            if (next < 0) return;
+            event.preventDefault(); onSelectTab(ids[next]);
+            document.getElementById(`session-tab-${ids[next]}`)?.focus();
+          }}>{tab.label}</Button>
+      {/each}
+    </div>
     <div class="timeline-heading-actions">
           {@render presentationActions?.()}
       {#if session}
@@ -281,27 +302,11 @@
           <Badge variant="outline">{codexThreadSnapshot.turnCount === null ? '远端轮次未知' : `远端 ${codexThreadSnapshot.turnCount} 轮`}</Badge>
         {/if}
       {/if}
-      {#if workspace}
-        <Badge variant={workspace.trust === 'trusted' ? 'success' : 'warning'}>
-          {workspace.trust === 'trusted' ? '可信' : '待确认'}
-        </Badge>
+      {#if workspace && workspace.trust !== 'trusted'}
+        <Badge variant="warning">待确认</Badge>
       {/if}
     </div>
   </CardHeader>
-  <div class="conversation-navigation" role="tablist" aria-label="会话视图">
-    {#each [{ id: 'conversation', label: '对话' }, { id: 'executions', label: '执行记录' }, { id: 'changes', label: '变更' }] as tab}
-      <Button variant={activeTab === tab.id ? 'secondary' : 'ghost'} role="tab" id={`session-tab-${tab.id}`} aria-controls={`session-panel-${tab.id}`} aria-selected={activeTab === tab.id} tabindex={activeTab === tab.id ? 0 : -1}
-        onclick={() => onSelectTab(tab.id as typeof activeTab)}
-        onkeydown={(event) => {
-          const ids = ['conversation', 'executions', 'changes'] as const;
-          const index = ids.indexOf(activeTab);
-          const next = event.key === 'ArrowRight' ? (index + 1) % 3 : event.key === 'ArrowLeft' ? (index + 2) % 3 : event.key === 'Home' ? 0 : event.key === 'End' ? 2 : -1;
-          if (next < 0) return;
-          event.preventDefault(); onSelectTab(ids[next]);
-          document.getElementById(`session-tab-${ids[next]}`)?.focus();
-        }}>{tab.label}</Button>
-    {/each}
-  </div>
   <div role="tabpanel" id="session-panel-conversation" aria-labelledby="session-tab-conversation" class="conversation-tab-content" hidden={activeTab !== 'conversation'}>
   {#if workspace}
 
@@ -326,10 +331,10 @@
               <details class="tool-group">
                 <summary>
                   <span class="tool-group-title">
-                    <Badge variant="outline">TOOL</Badge>
-                    <span>工具调用 · {renderItem.items.length} 项</span>
+                    <Icon name="bolt" size={14} />
+                    <span>{renderItem.items.length} 个工具调用</span>
                   </span>
-                  <Badge variant="outline">{renderItem.items.filter((item) => item.status === 'completed').length}/{renderItem.items.length} 完成</Badge>
+                  {#if countStatus(renderItem.items, 'failed') > 0}<Badge variant="destructive">{countStatus(renderItem.items, 'failed')} 个失败</Badge>{:else if countStatus(renderItem.items, 'streaming', 'queued') > 0}<Badge variant="outline">{countStatus(renderItem.items, 'streaming', 'queued')} 个进行中</Badge>{/if}
                 </summary>
                 <div class="tool-group-items">
                   {#each renderItem.items as tool (tool.id)}
@@ -349,7 +354,7 @@
               <details class="tool-group">
                 <summary>
                   <span class="tool-group-title">
-                    <Badge variant="outline">SYSTEM</Badge>
+                    <Icon name="diagnostics" size={14} />
                     <span>系统消息 · {renderItem.items.length} 项</span>
                   </span>
                 </summary>
@@ -378,9 +383,9 @@
               class={`timeline-entry ${item.role === 'tool' || (item.role === 'system' && item.toolName === 'reasoning') ? 'compact-record' : ''} ${item.role === 'assistant' ? 'assistant-entry' : item.role === 'user' ? 'user-entry' : item.role === 'tool' ? 'tool-entry' : item.role === 'system' ? 'system-entry' : ''}`}
             >
               <div class="entry-meta">
-                <Badge variant={item.role === 'assistant' ? 'secondary' : 'outline'}>{item.role === 'assistant' ? (sessionKind === 'pi' ? 'PI' : sessionKind === 'codex' ? 'CODEX' : 'AGENT') : item.role === 'system' && item.toolName === 'reasoning' ? 'THINKING' : item.role.toUpperCase()}</Badge>
+                <span class="entry-author">{item.role === 'assistant' ? (sessionProviderLabel ?? session?.agent ?? '助手') : item.role === 'user' ? '你' : item.role === 'system' && item.toolName === 'reasoning' ? '思考' : item.role === 'tool' ? '工具' : '系统'}</span>
                 <div class="entry-meta-actions">
-                  <Badge variant={item.status === 'failed' ? 'destructive' : item.status === 'queued' ? 'secondary' : 'outline'}>{statusLabel(item.status)}</Badge>
+                  {#if item.status !== 'completed'}<Badge variant={item.status === 'failed' ? 'destructive' : item.status === 'queued' ? 'secondary' : 'outline'}>{statusLabel(item.status)}</Badge>{/if}
                   {#if session?.capabilities.includes('session.fork') && !sessionArchived && item.turnId && forkBoundaryMessageIds.has(item.id)}
                     <Button variant="ghost" size="icon" type="button" aria-label="从此回复创建会话分支" title="从此回复创建分支" onclick={() => onForkSession(item.turnId!)} disabled={busy || sessionRunning || selectedSessionArchiving}>
                       <Icon name="branch" size={13} />

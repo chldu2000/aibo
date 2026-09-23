@@ -45,9 +45,9 @@ export function relativeTimeLabel(value: string): string {
   if (!Number.isFinite(timestamp)) return '';
   const elapsedSeconds = Math.max(0, Math.floor((Date.now() - timestamp) / 1000));
   if (elapsedSeconds < 60) return '刚刚';
-  if (elapsedSeconds < 60 * 60) return `${Math.floor(elapsedSeconds / 60)}分`;
-  if (elapsedSeconds < 24 * 60 * 60) return `${Math.floor(elapsedSeconds / (60 * 60))}时`;
-  if (elapsedSeconds < 30 * 24 * 60 * 60) return `${Math.floor(elapsedSeconds / (24 * 60 * 60))}天`;
+  if (elapsedSeconds < 60 * 60) return `${Math.floor(elapsedSeconds / 60)} 分钟`;
+  if (elapsedSeconds < 24 * 60 * 60) return `${Math.floor(elapsedSeconds / (60 * 60))} 小时`;
+  if (elapsedSeconds < 30 * 24 * 60 * 60) return `${Math.floor(elapsedSeconds / (24 * 60 * 60))} 天`;
   return new Intl.DateTimeFormat('zh-CN', { month: 'numeric', day: 'numeric' }).format(timestamp);
 }
 

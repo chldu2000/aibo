@@ -23,6 +23,7 @@ export interface WorkspaceListItem {
 }
 
 export interface SessionListItem {
+  providerLabel?: string;
   icon?: import('../../../../packages/plugin-protocol/src/agent-icon').AgentIcon;
   id: string;
   workspaceId: string;

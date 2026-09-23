@@ -54,6 +54,13 @@ pub(crate) struct RestoreReport {
     pub(crate) unsupported: Vec<String>,
 }
 
+#[derive(Debug, Clone, serde::Serialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct GitLineStats {
+    pub(crate) additions: u64,
+    pub(crate) deletions: u64,
+}
+
 #[derive(Debug, Clone)]
 pub(crate) struct WorkspaceFileChange {
     pub(crate) path: String,
@@ -63,6 +70,8 @@ pub(crate) struct WorkspaceFileChange {
     pub(crate) unstaged: bool,
     pub(crate) untracked: bool,
     pub(crate) conflicted: bool,
+    pub(crate) staged_stats: Option<GitLineStats>,
+    pub(crate) unstaged_stats: Option<GitLineStats>,
 }
 
 #[derive(Debug, Clone)]
@@ -433,7 +442,17 @@ fn workspace_changes_sync(root: &Path) -> Result<WorkspaceChanges, String> {
     if !status.status.success() {
         return Err(format!("git status exited with {}", status.status));
     }
-    let files = parse_workspace_git_status(&status.stdout);
+    let mut files = parse_workspace_git_status(&status.stdout);
+    if !files.is_empty() {
+        let staged = read_workspace_numstat(&root, true);
+        let unstaged = read_workspace_numstat(&root, false);
+        for file in &mut files {
+            if !file.conflicted {
+                file.staged_stats = staged.get(&file.path).cloned();
+                file.unstaged_stats = unstaged.get(&file.path).cloned();
+            }
+        }
+    }
     Ok(WorkspaceChanges {
         head,
         branch,
@@ -443,6 +462,33 @@ fn workspace_changes_sync(root: &Path) -> Result<WorkspaceChanges, String> {
         capture_status: "captured",
         capture_error: None,
     })
+}
+
+// Optional statistics never block the status list (binary files and errors have no counts).
+fn read_workspace_numstat(root: &Path, staged: bool) -> BTreeMap<String, GitLineStats> {
+    let mut command = Command::new("git");
+    command.arg("-C").arg(root).args(["diff", "--numstat", "-z", "--no-ext-diff", "--no-textconv"]);
+    if staged { command.arg("--cached"); }
+    command.arg("--");
+    command.output().ok().filter(|output| output.status.success())
+        .map(|output| parse_workspace_numstat(&output.stdout)).unwrap_or_default()
+}
+
+fn parse_workspace_numstat(data: &[u8]) -> BTreeMap<String, GitLineStats> {
+    let mut stats = BTreeMap::new();
+    let mut records = data.split(|byte| *byte == 0);
+    while let Some(record) = records.next() {
+        let mut fields = record.splitn(3, |byte| *byte == b'\t');
+        let (Some(added), Some(deleted), Some(path)) = (fields.next(), fields.next(), fields.next()) else { continue; };
+        let path = if path.is_empty() {
+            let _source = records.next();
+            let Some(destination) = records.next() else { break; };
+            destination
+        } else { path };
+        let (Ok(additions), Ok(deletions)) = (String::from_utf8_lossy(added).parse(), String::from_utf8_lossy(deleted).parse()) else { continue; };
+        stats.insert(String::from_utf8_lossy(path).into_owned(), GitLineStats { additions, deletions });
+    }
+    stats
 }
 
 fn parse_workspace_git_status(status: &[u8]) -> Vec<WorkspaceFileChange> {
@@ -477,6 +523,8 @@ fn parse_workspace_git_status(status: &[u8]) -> Vec<WorkspaceFileChange> {
                     unstaged,
                     untracked,
                     conflicted,
+                    staged_stats: None,
+                    unstaged_stats: None,
                 });
             } else {
                 files.push(WorkspaceFileChange {
@@ -487,6 +535,8 @@ fn parse_workspace_git_status(status: &[u8]) -> Vec<WorkspaceFileChange> {
                     unstaged,
                     untracked,
                     conflicted,
+                    staged_stats: None,
+                    unstaged_stats: None,
                 });
             }
             continue;
@@ -505,6 +555,8 @@ fn parse_workspace_git_status(status: &[u8]) -> Vec<WorkspaceFileChange> {
             unstaged,
             untracked,
             conflicted,
+            staged_stats: None,
+            unstaged_stats: None,
         });
     }
     files
@@ -947,6 +999,8 @@ mod tests {
         assert_eq!(workspace_changes.capture_status, "captured");
         assert_eq!(workspace_changes.files[0].path, "tracked.txt");
         assert_eq!(workspace_changes.files[0].kind, "modified");
+        assert_eq!(workspace_changes.files[0].unstaged_stats, Some(super::GitLineStats { additions: 1, deletions: 1 }));
+        assert_eq!(workspace_changes.files[0].staged_stats, None);
         fs::remove_dir_all(root).expect("cleanup");
     }
 
@@ -993,7 +1047,18 @@ mod tests {
         assert_eq!(changes.files[0].path, "new.txt");
         assert_eq!(changes.files[0].previous_path.as_deref(), Some("old.txt"));
         assert_eq!(changes.files[0].kind, "renamed");
+        assert_eq!(changes.files[0].staged_stats, Some(super::GitLineStats { additions: 0, deletions: 0 }));
+        assert_eq!(changes.files[0].unstaged_stats, None);
         fs::remove_dir_all(root).expect("cleanup");
+    }
+
+    #[test]
+    fn numstat_preserves_renames_special_paths_and_binary_absence() {
+        let stats = super::parse_workspace_numstat(b"2\t1\twith\ttab.txt\0-\t-\tbinary\0".iter().chain(b"0\t0\t\0old.txt\0new.txt\0").copied().collect::<Vec<_>>().as_slice());
+        assert_eq!(stats["with\ttab.txt"], super::GitLineStats { additions: 2, deletions: 1 });
+        assert_eq!(stats["new.txt"], super::GitLineStats { additions: 0, deletions: 0 });
+        assert!(!stats.contains_key("binary"));
+        assert!(!stats.contains_key("old.txt"));
     }
 
     #[test]

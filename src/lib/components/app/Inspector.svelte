@@ -4,7 +4,7 @@
   import type { PresentationArtifactPreview } from '../../../../packages/plugin-protocol/src/presentation-inspector';
   import ProjectActionsPanel from './ProjectActionsPanel.svelte';
   import SidePanelTabs from './SidePanelTabs.svelte';
-  import { formatBytes, sessionStateLabel } from './session-utils';
+  import { relativeTimeLabel, formatBytes, sessionStateLabel } from './session-utils';
   import type {
     AgentDiagnostic,
     CodexThreadListItem,
@@ -141,18 +141,6 @@
 <Card as="aside" class="inspector" hidden={!visible} data-ui-component="inspector" aria-label="会话上下文">
   <SidePanelTabs {activeView} onSelect={onSelectView} />
   <div id="side-panel-content-context" class="side-panel-view" role="tabpanel" aria-labelledby="side-panel-tab-context">
-  <CardHeader class="panel-heading">
-    <CardTitle>上下文</CardTitle>
-    {#if session}
-      <Badge variant={session.archived ? 'secondary' : sessionRunning || selectedSessionArchiving ? 'warning' : 'outline'}>
-        {selectedSessionArchiving ? '归档中' : sessionStateLabel(session)}
-      </Badge>
-    {:else}
-      <Badge variant="secondary">未选择</Badge>
-    {/if}
-  </CardHeader>
-  <Separator />
-
   <ProjectActionsPanel
     workspace={workspace}
     {desktop}
@@ -271,12 +259,13 @@
             <small>{sessionProvider?.label ?? session.agent}</small>
           </div>
         </div>
+        <Button variant="ghost" size="icon" aria-label="刷新上下文" title="刷新上下文" disabled={busy || threadBusy} onclick={() => { onRefresh(); if (workspace && desktop) onSyncCodexThreads(); }}><Icon name="refresh" size={14} /></Button>
       </CardHeader>
       <CardContent class="session-context-content">
         <dl>
           <div><dt>会话 ID</dt><dd title={session.id}>{session.id}</dd></div>
           {#if session.externalSessionId}<div><dt>远端绑定</dt><dd title={session.externalSessionId}>{session.externalSessionId}</dd></div>{/if}
-          <div><dt>更新时间</dt><dd>{session.updatedAt}</dd></div>
+          <div><dt>更新时间</dt><dd><time datetime={session.updatedAt} title={session.updatedAt}>{relativeTimeLabel(session.updatedAt)}</time></dd></div>
         </dl>
       </CardContent>
     </Card>
@@ -552,9 +541,7 @@
           </div>
           {#if codexThreads.length > 5}<small class="thread-more">仅显示最近 5 个线程</small>{/if}
         {/if}
-        <Button variant="ghost" size="sm" type="button" onclick={onSyncCodexThreads} disabled={threadBusy || busy}>
-          <Icon name="refresh" size={13} /> 刷新线程
-        </Button>
+
       </CardContent>
     </Card>
   {/if}
@@ -566,11 +553,5 @@
     </Card>
   {/if}
 
-  <Separator />
-  <div class="inspector-footer">
-    <Button variant="ghost" size="sm" type="button" onclick={onRefresh} disabled={busy}>
-      <Icon name="refresh" size={13} /> 刷新数据
-    </Button>
-  </div>
   </div>
 </Card>

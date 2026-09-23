@@ -103,7 +103,7 @@ try {
     await page.getByRole('button',{name:/^打开管理中心/}).click();
     await page.getByRole('button',{name:'安装皮肤插件',exact:true}).click();
     await page.getByRole('button',{name:pkg.release.manifest.displayName+' '+pkg.release.manifest.version,exact:true}).click();
-    await page.getByRole('button',{name:'完成',exact:true}).click();
+    await page.getByRole('button',{name:'关闭管理中心',exact:true}).click();
     await frame.getByRole('heading',{name:'工作区',exact:true}).waitFor();
     if(!await frame.getByRole('button',{name:'s1',exact:true}).count())await frame.getByRole('button',{name:'w1',exact:true}).click();
     await frame.getByRole('button',{name:'s1',exact:true}).click();
@@ -244,7 +244,7 @@ try {
     await page.getByRole('button',{name:/^打开管理中心/}).click();
     await page.getByRole('button',{name:'恢复内置呈现',exact:true}).click();
     assert.equal(await page.getByRole('button',{name:`调整工作区与会话宽度，当前 ${resized} 像素`,exact:true}).count(),1);
-    await page.getByRole('button',{name:'完成',exact:true}).click();
+    await page.getByRole('button',{name:'关闭管理中心',exact:true}).click();
     const defaultComposer=page.locator('.presentation-fallback textarea[data-presentation-focus="composer"]');
     await defaultComposer.waitFor({state:'visible'});
     assert.deepEqual(await defaultComposer.evaluate(element=>[element===document.activeElement,element.selectionStart,element.selectionEnd]),[true,1,3]);
@@ -257,7 +257,7 @@ try {
     await page.waitForTimeout(50);
     await page.getByRole('button',{name:/^打开管理中心/}).click();
     await page.getByRole('button',{name:pkg.release.manifest.displayName+' '+pkg.release.manifest.version,exact:true}).click();
-    await page.getByRole('button',{name:'完成',exact:true}).click();
+    await page.getByRole('button',{name:'关闭管理中心',exact:true}).click();
     await frame.locator('.navigation').waitFor({state:'visible'});
     assert.equal(await frame.locator('.navigation').evaluate(element=>Math.round(element.getBoundingClientRect().width)),resized);
     await composer.waitFor();assert.equal(await composer.inputValue(),'换肤保留');
@@ -297,7 +297,7 @@ try {
 
     await page.getByRole('button',{name:/^打开管理中心/}).click();
     await page.getByRole('button',{name:'恢复内置呈现',exact:true}).click();
-    await page.getByRole('button',{name:'完成',exact:true}).click();
+    await page.getByRole('button',{name:'关闭管理中心',exact:true}).click();
   }
   const approvalChecks=await probePresentationApprovalFault(page);
   await writeFile('/tmp/aibo-presentation-approval-fault-browser.json',JSON.stringify({passed:true,browser:browser.version(),nativePort:'mocked; actual App, real Worker infinite loop, Playwright pointer input',checks:approvalChecks},null,2)+'\n');

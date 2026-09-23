@@ -49,3 +49,15 @@ export function sessionProviderIcon(installations: SessionProviderInstallation[]
   const installation = installations.find(item => item.id === session.pluginInstallationId);
   return installation ? sessionProviders(installation).find(provider => provider.id === session.agent)?.icon : undefined;
 }
+
+/** Includes installed but unavailable choices for the host chooser; creation still uses readySessionProviders. */
+export function sessionProviderChoices(installations: SessionProviderInstallation[]): (SessionProviderChoice & { unavailableReason?: string })[] {
+  const ready = new Set(readySessionProviders(installations).map(choice => choice.id));
+  return installations.filter(installation => installation.installed).flatMap(installation =>
+    sessionProviders(installation).map(provider => {
+      const id = JSON.stringify([installation.id, provider.id]);
+      return { id, installationId: installation.id, contributionId: provider.id, label: provider.displayName, icon: provider.icon,
+        ...(!ready.has(id) ? { unavailableReason: !installation.enabled ? '未启用' : installation.activationIssues?.length ? '运行环境不可用' : '缺少运行依赖' } : {}) };
+    }),
+  );
+}

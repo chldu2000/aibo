@@ -66,7 +66,7 @@ try {
   await page.getByRole('button',{name:'安装皮肤插件',exact:true}).click();
   await page.getByRole('button',{name:'External skin 1.0.0',exact:true}).click();
   await page.waitForFunction(()=>JSON.parse(localStorage.getItem('probe.presentation.selection')||'null')!==null);
-  await page.getByRole('button',{name:'完成',exact:true}).click();
+  await page.getByRole('button',{name:'关闭管理中心',exact:true}).click();
   const frame=page.frameLocator('iframe');
   const snapshot=()=>frame.getByLabel('Conversation snapshot').textContent().then(JSON.parse);
   await frame.getByRole('heading',{name:'External conversation'}).waitFor();
@@ -92,13 +92,13 @@ try {
   await answer.pressSequentially('answer survives skin switch',{delay:10});
   await page.getByRole('button',{name:/^打开管理中心/}).click();
   await page.getByRole('button',{name:'恢复内置呈现',exact:true}).click();
-  await page.getByRole('button',{name:'完成',exact:true}).click();
+  await page.getByRole('button',{name:'关闭管理中心',exact:true}).click();
   const nativeAnswer=page.getByRole('textbox',{name:'Which answer?'});
   assert.equal(await nativeAnswer.inputValue(),'answer survives skin switch');
   await nativeAnswer.fill('edited in default skin');
   await page.getByRole('button',{name:/^打开管理中心/}).click();
   await page.getByRole('button',{name:'External skin 1.0.0',exact:true}).click();
-  await page.getByRole('button',{name:'完成',exact:true}).click();
+  await page.getByRole('button',{name:'关闭管理中心',exact:true}).click();
   assert.equal(await answer.inputValue(),'edited in default skin');
   await frame.getByRole('button',{name:'submitAnswers:question:turn',exact:true}).click();
   await page.waitForFunction(()=>window.navigationCalls.some(c=>c.command==='resolve_agent_user_input'));

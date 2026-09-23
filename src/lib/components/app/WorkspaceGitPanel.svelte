@@ -279,6 +279,7 @@
       <div id={`git-change-list-${repoId ?? repositoryId}-${group}`} class="git-change-list" role="list">
           {#each files as file (`${title}:${file.path}`)}
             {@const location = fileLocation(file)}
+            {@const stats = action === 'unstage' ? file.stagedStats : file.unstagedStats}
             <div
               class="changeset-file changeset-file-row"
               class:changeset-file-selected={((repoId ?? repositoryId) === previewRepositoryId) && selectedFilePath === file.path && selectedFileStaged === (action === 'unstage')}
@@ -304,6 +305,8 @@
                   {#if location}<small class="changeset-file-location">{location}</small>{/if}
                 </span>
               </Button>
+              <div class="git-file-tail">
+              {#if stats}<span class="git-line-stats" aria-label={`新增 ${stats.additions} 行，删除 ${stats.deletions} 行`}><span>+{stats.additions}</span><span>−{stats.deletions}</span></span>{/if}
               <div class="changeset-actions">
                 <Button
                   variant="ghost"
@@ -316,6 +319,7 @@
                 >
                   <Icon name={action === 'stage' ? 'add' : 'undo'} size={13} />
                 </Button>
+              </div>
               </div>
             </div>
           {/each}
@@ -332,7 +336,7 @@
         <Icon name="chevron-down" size={12} data-collapsed={collapsedRepositories.includes(repo.id) ? 'true' : undefined} /><strong>{repo.name}</strong>
         <span>{repo.changes?.branch ?? 'Detached HEAD'}</span><Badge variant="secondary">{repo.changes?.files.length ?? 0}</Badge>
       </Button>
-      <small>{repo.relativePath}{repo.kind === 'submodule' ? ' · 子模块' : repo.kind === 'worktree' ? ' · Worktree' : ''}{repo.externalRoot ? ' · 仓库根目录位于工作区外' : ''}</small>
+      <small>{repo.relativePath !== repo.name && repo.relativePath !== '.' ? repo.relativePath : ''}{repo.kind === 'submodule' ? ' · 子模块' : repo.kind === 'worktree' ? ' · Worktree' : ''}{repo.externalRoot ? ' · 仓库根目录位于工作区外' : ''}</small>
     </header>
     {#if !collapsedRepositories.includes(repo.id)}
       {#if repo.error}<p role="status">{repo.error}</p>

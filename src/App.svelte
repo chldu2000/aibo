@@ -713,7 +713,7 @@
     unarchiveSession as unarchiveSessionApi,
   } from './lib/api';
   import type { PluginInstallation } from './lib/api';
-  import { sessionProviders, readySessionProviders, sessionProviderIcon, sessionProviderInfo } from '$lib/app/session-providers';
+  import { sessionProviders, sessionProviderChoices, readySessionProviders, sessionProviderIcon, sessionProviderInfo } from '$lib/app/session-providers';
   import type {
     AgentQueueSnapshot,
     AgentCommand,
@@ -3838,7 +3838,7 @@
         if (workspace) void deleteWorkspace(workspace);
       })}
       onOpenWorkspaceLocation={guard('onOpenWorkspaceLocation', (workspaceId) => void openWorkspaceLocation(workspaceId))}
-      {agentChoices}
+      agentChoices={sessionProviderChoices(pluginInstallations)}
       onCreateAgent={guard('onCreateAgent', (workspaceId, choiceId) => void createWheelSession(workspaceId, choiceId))}
       onSelectSession={guard('onSelectSession', (id) => { installedTool = null; selectSession(id); })}
       onUnarchiveSession={guard('onUnarchiveSession', (sessionId) => void unarchiveSession(sessionId))}
@@ -3892,6 +3892,7 @@
       changesPanel={sessionChanges}
       workspace={selectedWorkspace}
       session={selectedSession}
+      sessionProviderLabel={selectedSession ? sessionProviderInfo(pluginInstallations, selectedSession).label : undefined}
       selectedSessionId={selectedSessionId}
       {codexGoal}
       goalBusy={goalBusy}

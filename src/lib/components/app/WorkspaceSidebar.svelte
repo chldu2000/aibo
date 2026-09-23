@@ -35,7 +35,7 @@
     onToggleTrust: (workspaceId: string) => void;
     onDeleteWorkspace: (workspaceId: string) => void;
     onOpenWorkspaceLocation: (workspaceId: string) => void;
-    agentChoices: SessionProviderChoice[];
+    agentChoices: (SessionProviderChoice & { unavailableReason?: string })[];
     onCreateAgent: (workspaceId: string, choiceId: string) => void;
     onSelectSession: (sessionId: string) => void;
     onUnarchiveSession: (sessionId: string) => void;
@@ -301,25 +301,10 @@
                 <strong>{workspace.label}</strong>
               </span>
             </Button>
-            <div class="workspace-item-actions" aria-label={`${workspace.label} 管理操作`}>
-              <div class="session-agent-launcher" use:registerAgentLauncher={workspace.id}>
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  type="button"
-                  class="session-agent-trigger"
-                  aria-label="新建 Agent 会话"
-                  title="新建会话"
-                  aria-expanded={createSessionWorkspaceId === workspace.id}
-                  aria-controls={createSessionWorkspaceId === workspace.id ? `session-agent-wheel-${workspace.id}` : undefined}
-                  onclick={(event) => { event.stopPropagation(); primaryLauncher = null; onToggleSessionCreator(workspace.id); }}
-                  disabled={busy}
-                >
-                  <Icon name="add" size={15} />
-                </Button>
-              </div>
+            <div class="workspace-item-actions" use:registerAgentLauncher={workspace.id} aria-label={`${workspace.label} 管理操作`}>
               <Button variant="ghost" size="icon" type="button" aria-label={`${workspace.label} 更多操作`} title="更多工作区操作" popovertarget={`${menuPrefix}-workspace-${workspace.id}`} onclick={event => positionRowMenu(event.currentTarget)}><span aria-hidden="true" class="row-more-mark">···</span></Button>
               <div id={`${menuPrefix}-workspace-${workspace.id}`} class="row-action-menu" popover="auto" role="group" aria-label={`${workspace.label} 管理菜单`} ontoggle={focusRowMenu} style={`--row-menu-left: ${rowMenuPosition.left}px; --row-menu-top: ${rowMenuPosition.top}px`}>
+              <Button variant="ghost" size="sm" disabled={busy} onclick={(event) => { event.stopPropagation(); closeRowMenu(event); primaryLauncher = agentLaunchers.get(workspace.id)?.querySelector<HTMLButtonElement>('button') ?? null; onToggleSessionCreator(workspace.id); }}><Icon name="add" size={15} />在此新建会话</Button>
               <Button
                 variant="ghost"
                 size="sm"
@@ -335,12 +320,12 @@
                 variant="ghost"
                 size="sm"
                 type="button"
-                aria-label={`在${workspaceLocationLabel}中打开工作区`}
-                title={`在${workspaceLocationLabel}中打开`}
+                aria-label={`在 ${workspaceLocationLabel} 中打开工作区`}
+                title={`在 ${workspaceLocationLabel} 中打开`}
                 onclick={(event) => { event.stopPropagation(); closeRowMenu(event); onOpenWorkspaceLocation(workspace.id); }}
                 disabled={busy}
               >
-                <Icon name="folder" size={14} />在{workspaceLocationLabel}中打开
+                <Icon name="folder" size={14} />在 {workspaceLocationLabel} 中打开
               </Button>
               <Button
                 variant="ghost"
@@ -367,7 +352,7 @@
               {#if workspaceSessions.length > 0}
                 <div class="session-list" aria-label="Agent 会话列表">
                   {#each workspaceSessions as session (session.id)}
-                    {@const agentLabel = session.agent === 'pi' ? 'Pi' : session.agent === 'codex' ? 'Codex' : 'Plugin'}
+                    {@const agentLabel = session.providerLabel ?? 'Agent'}
                     <div class:selected={session.id === selectedSessionId} class:is-renaming={renamingSessionId === session.id} class="session-item-row">
                       {#if renamingSessionId === session.id}
                         <div class="session-rename-inline">
@@ -408,6 +393,7 @@
                             label={`${agentLabel}，${sessionStateLabel(session)}`}
                           />
                           <span class="session-item-label">{session.label}</span>
+                          {#if ['running', 'waiting_approval', 'failed'].includes(session.state)}<span class="session-state-label">{sessionStateLabel(session)}</span>{/if}
                           <time class="session-updated" datetime={session.updatedAt}>
                             {archivingSessionId === session.id ? '归档中' : relativeTimeLabel(session.updatedAt)}
                           </time>
@@ -488,9 +474,9 @@
               closeSessionCreator();
             }
           }}
-          disabled={busy}
+          disabled={busy || Boolean(agent.unavailableReason)}
         >
-          <AgentStatusMark agent="plugin" icon={agent.icon} tone="idle" label={agent.label} /><span class="session-agent-label">{agent.label}</span>
+          <AgentStatusMark agent="plugin" icon={agent.icon} tone="idle" label={agent.label} /><span class="session-agent-label">{agent.label}<small>{agent.unavailableReason ?? '本地 · 已就绪'}</small></span>
         </Button>
       {/each}
       {#if agentChoices.length === 0}

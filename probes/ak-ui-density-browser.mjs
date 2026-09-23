@@ -14,8 +14,8 @@ try {
   const installFixture=()=>{
     localStorage.setItem('aibo.appearance.v1',JSON.stringify({kitId:'ak-ui',themeId:'light'}));
     const workspace={id:'w1',label:'aibo-dev-with-a-long-workspace-name',path:'/probe/aibo',trust:'trusted',createdAt:'2026-09-22',updatedAt:'2026-09-22'};
-    const session={id:'s1',workspaceId:'w1',label:'检查侧栏的信息密度和悬浮操作',agent:'third.party',pluginInstallationId:'third',state:'idle',capabilities:[],archived:false,externalSessionId:'a-long-external-session-identifier-for-overflow-check',createdAt:'2026-09-22',updatedAt:'2026-09-22T15:30:00.123Z'};
-    const changes={workspaceId:'w1',head:'0c78fe5abcdef',branch:'main',dirty:true,capturedAt:'now',captureStatus:'captured',captureError:null,files:Array.from({length:8},(_,i)=>({path:`src/component-${i}.svelte`,previousPath:null,kind:'modified',staged:false,unstaged:true,untracked:false,conflicted:false}))};
+    const session={id:'s1',workspaceId:'w1',label:'检查侧栏的信息密度和悬浮操作',agent:'agent-2',pluginInstallationId:'provider-2',state:'idle',capabilities:[],archived:false,externalSessionId:'a-long-external-session-identifier-for-overflow-check',createdAt:'2026-09-22',updatedAt:'2026-09-22T15:30:00.123Z'};
+    const changes={workspaceId:'w1',head:'0c78fe5abcdef',branch:'main',dirty:true,capturedAt:'now',captureStatus:'captured',captureError:null,files:Array.from({length:8},(_,i)=>({path:`src/component-${i}.svelte`,previousPath:null,kind:'modified',staged:false,unstaged:true,untracked:false,conflicted:false,unstagedStats:i===0?{additions:12,deletions:3}:null}))};
     window.densityCalls=[];window.failHistoryPageOnce=false;let callback=0;
     window.__TAURI_INTERNALS__={metadata:{currentWindow:{label:'main'},currentWebview:{label:'main'}},transformCallback(fn){const id=++callback;window['_'+id]=fn;return id;},unregisterCallback(id){delete window['_'+id];},async invoke(command,args={}){
       window.densityCalls.push({command,args});
@@ -26,7 +26,7 @@ try {
       if(command==='get_presentation_selection'||command==='get_composer_draft'||command==='get_session_execution_profile'||command==='get_turn_change_set')return null;
       if(command==='save_composer_draft')return {text:args.text,sendFailed:false,updatedAt:'now'};
       if(command==='rename_session'){session.label=args.label;return {...session};}
-      if(command==='list_plugin_installations')return ['Codex','Pi','Third-party'].map((label,i)=>({id:'provider-'+i,pluginId:'dev.example.'+i,pluginVersion:'1.0.0',packageDigest:'fixture-'+i,installed:true,enabled:true,runnable:true,dependencies:[],activationIssues:[],manifest:{displayName:label},contributions:[{id:'agent-'+i,kind:'capabilityProvider',scope:'session',required:true,metadata:{displayName:label,operations:[{capability:{id:'aibo.session.open'}}]}}]}));
+      if(command==='list_plugin_installations')return ['Codex','Pi','Third-party'].map((label,i)=>({id:'provider-'+i,pluginId:'dev.example.'+i,pluginVersion:'1.0.0',packageDigest:'fixture-'+i,installed:true,enabled:true,runnable:true,dependencies:[],activationIssues:[],manifest:{displayName:label},contributions:[{id:'agent-'+i,kind:'capabilityProvider',scope:'session',required:true,metadata:{displayName:label,icon:{path:'M2 2L22 22Z'},operations:[{capability:{id:'aibo.session.open'}}]}}]}));
       if(command==='inspect_workspace_capabilities')return {workspaceId:'w1',inspectedAt:'now',instructions:[],skills:[],mcpServers:[],warnings:[],tools:['workspace-read','workspace-search','artifact-store','checkpoint-restore','project-actions'].map(name=>({name,source:'core'}))};
       if(command==='list_workspace_git_repositories')return {repositories:[{id:'repo',name:'aibo',relativePath:'.',kind:'repository',externalRoot:false},{id:'nested',name:'tools',relativePath:'tools',kind:'repository',externalRoot:false}],limited:false,warnings:[],scanBudget:2000};
       if(command==='get_workspace_changes')return changes;
@@ -57,6 +57,9 @@ try {
   assert(await contextTab.evaluate(e=>e===document.activeElement));
   assert.equal(await contextTab.evaluate(e=>getComputedStyle(e,'::after').height),'3px');
   await page.locator('.workspace-capabilities-card').waitFor();
+  assert.equal(await page.locator('.session-context-title .agent-status-logo path').getAttribute('d'),'M2 2L22 22Z','Inspector renders the third-party provider icon');
+  assert.equal(await page.locator('.session-item .agent-status-logo path').getAttribute('d'),'M2 2L22 22Z');
+  assert.equal(await page.locator('.session-context-content time').getAttribute('title'),'2026-09-22T15:30:00.123Z');
   const row=page.locator('.workspace-item-row');const copy=row.locator('.workspace-copy');
   await page.mouse.move(700,40);const before=await copy.boundingBox();await row.hover();
   await page.waitForFunction(()=>getComputedStyle(document.querySelector('.workspace-item-actions')).opacity==='1');
@@ -65,10 +68,13 @@ try {
   const bounds=await more.boundingBox();assert(before.x+before.width<=bounds.x,'workspace label is not covered by hover actions');
   await page.screenshot({path:output+'/context-hover-light.png'});
   await more.click();const menu=page.locator('.row-action-menu:popover-open');await menu.waitFor();
-  assert.equal(await menu.getByRole('button').count(),3);
+  assert.equal(await menu.getByRole('button').count(),4);
   await menu.locator('button:focus').waitFor();
   await page.screenshot({path:output+'/workspace-menu-light.png'});
-  await page.keyboard.press('Escape');await menu.waitFor({state:'hidden'});
+  await menu.getByRole('button',{name:'在此新建会话'}).click();
+  await page.getByRole('group',{name:'选择 Agent 创建会话'}).waitFor();
+  await page.keyboard.press('Escape');
+  await menu.waitFor({state:'hidden'});
   assert.equal(await more.evaluate(e=>e===document.activeElement),true,'Escape returns to its trigger');
   await more.click();await menu.getByRole('button',{name:/中打开工作区/}).click();
   await page.waitForFunction(()=>window.densityCalls.some(c=>c.command==='open_workspace_location'&&c.args.workspaceId==='w1'));
@@ -84,11 +90,17 @@ try {
   await create.click();
   const chooser=page.getByRole('group',{name:'选择 Agent 创建会话'});await chooser.waitFor();
   assert.equal(await chooser.locator('.session-agent-option').count(),3);
-  assert((await chooser.boundingBox()).height<220,'three providers fit in a compact chooser');
+  assert((await chooser.boundingBox()).height<280,'three providers fit in a compact chooser');
   await page.screenshot({path:output+'/agent-chooser-light.png'});
   await page.keyboard.press('Escape');
   const caps=await page.locator('.workspace-capabilities-card').boundingBox();assert(caps.height<240,'capability rows have no nested padding');
   await page.getByRole('tab',{name:'Git',exact:true}).click();
+  const stats=page.getByLabel('新增 12 行，删除 3 行').first();
+  await stats.waitFor();
+  await stats.locator('..').locator('..').hover();
+  assert.equal(await stats.evaluate(e=>getComputedStyle(e).visibility),'hidden');
+  await page.mouse.move(700,40);
+  assert.equal(await stats.evaluate(e=>getComputedStyle(e).visibility),'visible');
   await page.getByRole('button',{name:'选择仓库',exact:true}).click();
   const repositoryLayout=await page.locator('.repository-select').evaluate(root=>{
     const rect=selector=>root.querySelector(selector).getBoundingClientRect().toJSON();
