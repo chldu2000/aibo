@@ -28,8 +28,9 @@
   type TimelinePanelProps = {
     onOpenSubagent?: (id: string) => void;
     presentationActions?: Snippet;
-    onOpenExecutionHistory?: () => void;
-    onOpenChanges?: () => void;
+    activeTab?: 'conversation' | 'executions' | 'changes';
+    onSelectTab?: (tab: 'conversation' | 'executions' | 'changes') => void;
+    changesPanel?: Snippet;
     workspace: WorkspaceListItem | null;
     session: SessionPanelView | null;
     selectedSessionId: string | null;
@@ -99,8 +100,9 @@
   let {
     onOpenSubagent,
     presentationActions,
-    onOpenExecutionHistory,
-    onOpenChanges,
+    activeTab = 'conversation',
+    onSelectTab = () => {},
+    changesPanel,
     workspace,
     session,
     selectedSessionId,
@@ -170,7 +172,7 @@
   let timelineContent: HTMLElement | null = $state(null);
 
   function scrollTimelineToBottom(): void {
-    if (timelineFeed) timelineStickiness.scrollToBottom(timelineFeed);
+    if (timelineFeed && activeTab === 'conversation') timelineStickiness.scrollToBottom(timelineFeed);
   }
 
   function handleTimelineViewportScroll(event: Event): void {
@@ -286,11 +288,21 @@
       {/if}
     </div>
   </CardHeader>
-  <nav class="conversation-navigation" aria-label="会话视图">
-    <Button variant="ghost" aria-current="page" onclick={() => timelineFeed?.focus()}>对话</Button>
-    {#if onOpenExecutionHistory}<Button variant="ghost" onclick={onOpenExecutionHistory}><Icon name="archive" size={14} />执行记录</Button>{/if}
-    {#if onOpenChanges}<Button variant="ghost" onclick={onOpenChanges} disabled={!workspace}><Icon name="review" size={14} />变更</Button>{/if}
-  </nav>
+  <div class="conversation-navigation" role="tablist" aria-label="会话视图">
+    {#each [{ id: 'conversation', label: '对话' }, { id: 'executions', label: '执行记录' }, { id: 'changes', label: '变更' }] as tab}
+      <Button variant={activeTab === tab.id ? 'secondary' : 'ghost'} role="tab" id={`session-tab-${tab.id}`} aria-controls={`session-panel-${tab.id}`} aria-selected={activeTab === tab.id} tabindex={activeTab === tab.id ? 0 : -1}
+        onclick={() => onSelectTab(tab.id as typeof activeTab)}
+        onkeydown={(event) => {
+          const ids = ['conversation', 'executions', 'changes'] as const;
+          const index = ids.indexOf(activeTab);
+          const next = event.key === 'ArrowRight' ? (index + 1) % 3 : event.key === 'ArrowLeft' ? (index + 2) % 3 : event.key === 'Home' ? 0 : event.key === 'End' ? 2 : -1;
+          if (next < 0) return;
+          event.preventDefault(); onSelectTab(ids[next]);
+          document.getElementById(`session-tab-${ids[next]}`)?.focus();
+        }}>{tab.label}</Button>
+    {/each}
+  </div>
+  <div role="tabpanel" id="session-panel-conversation" aria-labelledby="session-tab-conversation" class="conversation-tab-content" hidden={activeTab !== 'conversation'}>
   {#if workspace}
 
     {#if retryPrompt && session && !sessionRunning && !sessionArchived}
@@ -427,6 +439,25 @@
     <div class="timeline-empty">
       <div class="empty-symbol">+</div>
       <h3>选择工作区</h3>
+    </div>
+  {/if}
+
+  </div>
+  {#if activeTab === 'executions'}
+    <div role="tabpanel" id="session-panel-executions" aria-labelledby="session-tab-executions" class="timeline-feed" tabindex="0">
+      {#if !session}<p role="status">请先选择会话。</p>
+      {:else}
+        {#each timeline.filter(item => item.role === 'tool') as item (item.id)}
+          <Card as="article" class="timeline-entry tool-entry">
+            <CardHeader><CardTitle>{toolLabel(item)}</CardTitle><Badge variant="outline">{item.status}</Badge></CardHeader>
+            <CardContent><details class="tool-output"><summary>{item.entryType === 'tool_call' ? '查看调用参数' : '查看执行结果'}</summary><pre>{item.content || '…'}</pre></details></CardContent>
+          </Card>
+        {:else}<p role="status">本会话暂无执行记录。</p>{/each}
+      {/if}
+    </div>
+  {:else if activeTab === 'changes'}
+    <div role="tabpanel" id="session-panel-changes" aria-labelledby="session-tab-changes" class="timeline-feed" tabindex="0">
+      {#if session && changesPanel}{@render changesPanel()}{:else}<p role="status">请先选择会话。</p>{/if}
     </div>
   {/if}
 
@@ -591,3 +622,8 @@
     </div>
   {/if}
 </Card>
+
+<style>
+  .conversation-tab-content { display: flex; flex-direction: column; flex: 1; min-height: 0; overflow: hidden; }
+  .conversation-tab-content[hidden] { display: none; }
+</style>

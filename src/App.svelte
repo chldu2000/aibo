@@ -1,4 +1,10 @@
 <script lang="ts">
+  import { createSessionDiffController, emptySessionDiff } from '$lib/app/session-diff-controller';
+  let sessionTabs = $state<Record<string, 'conversation' | 'executions' | 'changes'>>({});
+  let sessionDiff = $state(emptySessionDiff());
+  const sessionDiffController = createSessionDiffController(getWorkspaceFileDiff, value => { sessionDiff = value; });
+  $effect(() => { selectedSessionId; selectedWorkspaceId; sessionDiffController.close(); });
+
   import { createAttachmentPreviews } from '$lib/app/attachment-previews';
   import { getSessionAttachmentPreview } from '$lib/api';
   import { SubagentDetails, WorkspacePreferencesPanel } from '$lib/components/app';
@@ -3878,8 +3884,12 @@
          is initialized once and would reject edits after session navigation. -->
     <TimelinePanel
       presentationActions={conversationActions}
-      onOpenExecutionHistory={guard('onOpenExecutionHistory', openExecutionHistory)}
-      onOpenChanges={guard('onOpenChanges', () => selectSidePanelView('git'))}
+      activeTab={sessionTabs[selectedSessionId ?? ''] ?? 'conversation'}
+      onSelectTab={guard('onSelectTab', (tab) => {
+        sessionTabs[selectedSessionId ?? ''] = tab;
+        if (tab === 'changes' && selectedWorkspaceId) void refreshWorkspaceChanges(selectedWorkspaceId);
+      })}
+      changesPanel={sessionChanges}
       workspace={selectedWorkspace}
       session={selectedSession}
       selectedSessionId={selectedSessionId}
@@ -3949,6 +3959,40 @@
       onCompact={guard('onCompact', () => void compactCurrentSession())}
     />
     {/if}
+{/snippet}
+{#snippet sessionChanges()}
+  <p>当前会话工作区的未提交变更（包含暂存、未暂存和未跟踪文件；共用工作区的会话共享这些变更）。</p>
+  <Button variant="outline" disabled={!desktop || workspaceChangesLoading} onclick={() => { sessionDiffController.close(); if (selectedWorkspaceId) void refreshWorkspaceChanges(selectedWorkspaceId); }}>刷新变更</Button>
+  {#if !desktop}<p role="status">读取 Git 变更需要桌面宿主。</p>
+  {:else if workspaceChangesLoading}<p role="status">正在读取变更…</p>
+  {:else if workspaceChangesError}<p role="alert">{workspaceChangesError}</p>
+  {:else}
+    {#if discoveryLimited}<p role="status">仓库扫描尚未完成，以下仅显示已发现的仓库。</p>{/if}
+    {#each discoveryWarnings as warning}<p role="alert">{warning}</p>{/each}
+    {#each visibleRepositories as repo (repo.id)}
+      <section aria-label={`仓库 ${repo.name}`}>
+        <h3>{repo.name} · {repo.relativePath}</h3>
+        {#if repo.error}<p role="alert">{repo.error}</p>
+        {:else if !repo.changes}<p role="status">正在读取变更…</p>
+        {:else if repo.changes.captureStatus !== 'captured'}<p role="status">{repo.changes.captureError ?? '无法读取此仓库的变更。'}</p>
+        {:else}
+          {#each repo.changes.files as file (file.path)}
+            <div>
+              <span>{file.path}{file.conflicted ? ' · 冲突' : ''}</span>
+              {#each [false, true] as staged}
+                {#if staged ? file.staged : file.unstaged || file.untracked || file.conflicted}
+                  <Button variant="ghost" onclick={() => { if (selectedWorkspaceId) void sessionDiffController.open(selectedWorkspaceId, repo.id, file.path, staged); }}>{staged ? '查看暂存差异' : file.untracked ? '查看未跟踪文件' : '查看未暂存差异'}</Button>
+                {/if}
+              {/each}
+            </div>
+          {:else}<p role="status">没有未提交变更。</p>{/each}
+        {/if}
+      </section>
+    {:else}<p role="status">当前工作区未发现 Git 仓库。</p>{/each}
+  {/if}
+  {#if sessionDiff.path}
+    <WorkspaceFileDiffPreview fileDiff={sessionDiff.diff} fileDiffLoading={sessionDiff.loading} fileDiffError={sessionDiff.error} selectedPath={sessionDiff.path} selectedStaged={sessionDiff.staged} onClose={() => sessionDiffController.close()} />
+  {/if}
 {/snippet}
 {#snippet auxiliaryResize(guard, slot)}
     {#if sidePanelOpen}

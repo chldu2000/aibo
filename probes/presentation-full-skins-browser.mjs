@@ -29,6 +29,9 @@ try {
         window.presentationCommands.push(command);window.navigationCalls.push({command,args});
         if(command==='plugin:event|listen'){if(args.event==='agent-event')agentHandler=args.handler;return 1;}
         if(command==='inspect_workspace_capabilities')return {workspaceId:args.workspaceId,inspectedAt:'now',instructions:[],skills:[],tools:[],mcpServers:[],warnings:[]};
+        if(window.sessionTabsFixture && command==='list_workspace_git_repositories')return {repositories:[{id:'repo',name:'repo',relativePath:'.',kind:'repository'}],limited:false,warnings:[]};
+        if(window.sessionTabsFixture && command==='get_workspace_changes')return {workspaceId:args.workspaceId,head:'head',branch:'main',dirty:true,capturedAt:'now',files:[{path:'tab-test.txt',kind:'modified',staged:true,unstaged:true,untracked:false,conflicted:false}],captureStatus:'captured',captureError:null};
+        if(window.sessionTabsFixture && command==='get_workspace_file_diff')return {path:args.path,staged:args.staged,available:true,truncated:false,diff:'diff --git a/tab-test.txt b/tab-test.txt\n@@ -1 +1 @@\n-old\n+'+(args.staged?'staged-result':'working-result'),hunks:[],reason:null};
         if(command==='get_workspace_changes')return {workspaceId:args.workspaceId,head:'head',branch:'main',dirty:false,capturedAt:'now',files:[],captureStatus:'captured',captureError:null};
         if(command==='get_workspace_git_remote_status')return {branch:'main',upstream:null,ahead:0,behind:0};
         if(command==='get_turn_change_set')return null;
@@ -70,6 +73,27 @@ try {
       }};
   },pkg);
   await page.goto(`http://127.0.0.1:${server.httpServer.address().port}/`);
+  await page.evaluate(()=>window.sessionTabsFixture=true);
+  const workspaceButton=page.getByRole('button',{name:'w1，可信',exact:true});
+  await workspaceButton.waitFor();
+  if(await workspaceButton.getAttribute('aria-expanded')!=='true')await workspaceButton.click();
+  await page.getByText('s1',{exact:true}).first().click();
+  const tabs=page.getByRole('tablist',{name:'会话视图'});
+  await tabs.getByRole('tab',{name:'执行记录',exact:true}).click();
+  const executions=page.locator('#session-panel-executions');
+  await executions.locator('article').first().waitFor();
+  assert.equal(await executions.locator('article').count(),2);
+  await executions.getByText('查看执行结果',{exact:true}).click();
+  await executions.getByText('literal tool result',{exact:true}).waitFor();
+  await tabs.getByRole('tab',{name:'变更',exact:true}).click();
+  const changes=page.locator('#session-panel-changes');
+  await changes.getByText('tab-test.txt',{exact:true}).waitFor();
+  await changes.getByRole('button',{name:'查看暂存差异',exact:true}).click();
+  await changes.getByText('staged-result',{exact:true}).waitFor();
+  await changes.getByRole('button',{name:'查看未暂存差异',exact:true}).click();
+  await changes.getByText('working-result',{exact:true}).waitFor();
+  await tabs.getByRole('tab',{name:'对话',exact:true}).click();
+  await page.evaluate(()=>window.sessionTabsFixture=false);
   const frame=page.frameLocator('.presentation-external iframe');
   for(const pkg of built.packages){
     await page.evaluate(pkg=>window.presentationInstallable=pkg,pkg);
