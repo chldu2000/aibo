@@ -344,6 +344,7 @@
 .app-shell[data-ui-kit='ak-ui'] .entry-meta {
   margin-bottom: var(--ak-space-2);
   align-items: center;
+  color: var(--aibo-muted);
   font-size: var(--aibo-type-meta);
 }
 
