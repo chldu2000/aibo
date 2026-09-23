@@ -216,7 +216,21 @@
   border-radius: 0;
 }
 
-.app-shell[data-ui-kit='ak-ui'] .session-item-row.selected {
+/* Hover belongs to the whole row, including the more-button zone: one flat fill, no button
+   fill or inset line underneath it. The selected session keeps its blue. */
+
+.app-shell[data-ui-kit='ak-ui'] :is(.workspace-item-row, .session-item-row):is(:hover, :focus-within) {
+  background: var(--aibo-hover);
+}
+
+.app-shell[data-ui-kit='ak-ui'] :is(.workspace-item-row, .session-item-row) :is(.workspace-item, .session-item):is(:hover, :focus-visible):not(:disabled),
+.app-shell[data-ui-kit='ak-ui'] :is(.workspace-item-row, .session-item-row):is(:hover, :focus-within) :is(.workspace-item, .session-item) {
+  background: transparent;
+  box-shadow: none;
+}
+
+.app-shell[data-ui-kit='ak-ui'] .session-item-row.selected,
+.app-shell[data-ui-kit='ak-ui'] .session-item-row.selected:is(:hover, :focus-within) {
   background: var(--aibo-accent-soft);
   box-shadow: inset 3px 0 var(--aibo-accent);
 }
