@@ -1,0 +1,871 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="color-scheme" content="light dark">
+<title>Aibo · ak-ui 工作台改版设计稿</title>
+<style>
+/* Interactive redesign study for the default ak-ui skin (system intensity).
+   Token values mirror src/lib/ui-kit/kits/ak-ui/themes.json. Brand icons are
+   neutral placeholders: real ones come from each capability plugin. */
+[data-ak-ui] {
+  --ak-color-blue:#22bbff; --ak-color-dark-blue:#0075a8; --ak-color-yellow:#ffd802; --ak-color-black:#000; --ak-color-white:#fff;
+  --ak-surface-canvas:#e9ebe7; --ak-surface-panel:#f5f6f2; --ak-surface-muted:#dce0da; --ak-surface-raised:#fff; --ak-surface-inverse:#111315;
+  --ak-text-primary:#171a1d; --ak-text-secondary:#4c5459; --ak-text-inverse:#f3f4ef;
+  --ak-signal-info:var(--ak-color-blue); --ak-signal-action:var(--ak-color-yellow); --ak-signal-accent:#a34f19;
+  --ak-signal-success:#23633e; --ak-signal-danger:#a63435; --ak-signal-disabled:#78827d;
+  --ak-font-sans:Inter,"Helvetica Neue",Arial,"PingFang SC","Microsoft YaHei",sans-serif;
+  --ak-font-serif:"Songti SC","Noto Serif CJK SC","Source Han Serif SC",serif;
+  --ak-font-mono:"SFMono-Regular",Menlo,Consolas,"Liberation Mono",monospace;
+  --ak-font-command:var(--ak-font-serif);
+  --ak-type-title-size:20px; --ak-type-label-size:12px; --ak-type-data-size:12px; --ak-type-tight:-.02em; --ak-type-wide:.08em;
+  --ak-space-1:4px; --ak-space-2:8px; --ak-space-3:12px; --ak-space-4:16px; --ak-space-5:24px; --ak-space-6:32px;
+  --ak-density-control-height:44px;
+  --ak-line-hairline:1px; --ak-line-strong:3px; --ak-cut-sm:6px; --ak-cut-md:10px;
+  --ak-radius-subtle:3px; --ak-shadow-panel:0 16px 60px #18201b1f;
+  --ak-motion-fast:120ms; --ak-motion-base:200ms; --ak-ease-standard:cubic-bezier(.2,0,0,1);
+  --ak-focus-color:var(--ak-color-dark-blue); --ak-focus-width:2px;
+  /* Aibo semantic roles */
+  --line:#b3bab5; --line-strong:#737d78; --selected:#cceaff; --selected-ink:#004f72; --hover:#d3d9d4;
+  --info-surface:#e9f5fc; --info-text:var(--ak-color-dark-blue);
+  --warning-surface:#fff0c2; --warning-text:#775700; --warning-border:#9b761b;
+  --success-surface:#dcecdf; --danger-surface:#f9e2df; --action-text:#171a1d;
+  /* Type roles: the minimum readable size is 12px. */
+  --text-body:14px; --text-ui:13px; --text-meta:12px;
+  color-scheme:light; color:var(--ak-text-primary); background:var(--ak-surface-canvas);
+  font:var(--text-ui)/1.5 var(--ak-font-sans); margin:0;
+}
+[data-ak-ui][data-theme="dark"] {
+  --ak-surface-canvas:#111315; --ak-surface-panel:#202428; --ak-surface-muted:#2c3237; --ak-surface-raised:#383f45; --ak-surface-inverse:#f3f4ef;
+  --ak-text-primary:#f3f4ef; --ak-text-secondary:#b5bbc0; --ak-text-inverse:#171a1d;
+  --ak-signal-accent:#f0af74; --ak-signal-success:#9dd6af; --ak-signal-danger:#ffaaa3; --ak-signal-disabled:#849291;
+  --ak-shadow-panel:0 16px 60px #0007; --ak-focus-color:var(--ak-color-blue);
+  --line:#4c565e; --line-strong:#7e8b95; --selected:#12394b; --selected-ink:var(--ak-color-blue); --hover:#353d44;
+  --info-surface:#183440; --info-text:var(--ak-color-blue);
+  --warning-surface:#493b20; --warning-text:#f0ce75; --warning-border:#c09b43;
+  --success-surface:#263f31; --danger-surface:#482e30;
+  color-scheme:dark;
+}
+* { box-sizing:border-box; }
+body { height:100dvh; overflow:hidden; }
+button, input, select, textarea { font:inherit; color:inherit; }
+button { cursor:pointer; }
+:focus-visible { outline:var(--ak-focus-width) solid var(--ak-focus-color); outline-offset:2px; }
+svg.i { width:18px; height:18px; flex:none; fill:none; stroke:currentColor; stroke-width:1.6; stroke-linecap:round; stroke-linejoin:round; }
+.mono { font-family:var(--ak-font-mono); }
+.muted { color:var(--ak-text-secondary); }
+.meta { font-size:var(--text-meta); color:var(--ak-text-secondary); }
+[hidden] { display:none !important; }
+.feed-inner > * { min-width:0; }
+.sr { position:absolute; width:1px; height:1px; overflow:hidden; clip-path:inset(50%); white-space:nowrap; }
+.ellipsis { min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+@media (prefers-reduced-motion:reduce) { *, *::before, *::after { transition-duration:0s !important; animation:none !important; } }
+
+/* ---------- Buttons: one anatomy, four intents. Visible size may be 32px; hit area stays 44px. ---------- */
+.btn { position:relative; display:inline-flex; align-items:center; justify-content:center; gap:var(--ak-space-2); min-height:32px; padding:0 var(--ak-space-3);
+  border:1px solid transparent; border-radius:var(--ak-radius-subtle); background:transparent; font-size:var(--text-ui); font-weight:500; white-space:nowrap;
+  transition:box-shadow var(--ak-motion-fast) var(--ak-ease-standard), transform var(--ak-motion-fast); }
+.btn::before { content:''; position:absolute; inset:-6px -2px; } /* 44px hit area around a 32px control */
+.btn:hover:not(:disabled) { background:var(--hover); box-shadow:inset 0 -2px var(--line-strong); }
+.btn:active:not(:disabled) { transform:translateY(1px); }
+.btn.outline { border-color:var(--line-strong); }
+.btn.primary { background:var(--ak-signal-action); color:var(--action-text); font-weight:650;
+  clip-path:polygon(0 0,calc(100% - var(--ak-cut-sm)) 0,100% var(--ak-cut-sm),100% 100%,0 100%); }
+.btn.primary:hover:not(:disabled) { background:var(--ak-signal-action); box-shadow:inset 0 -3px var(--ak-color-black); }
+.btn.danger { color:var(--ak-signal-danger); border-color:currentColor; }
+.btn:disabled { color:var(--ak-signal-disabled); cursor:not-allowed; }
+.btn.primary:disabled { background:transparent; border-color:var(--line); clip-path:none; }
+.btn.icon { width:32px; padding:0; }
+.btn.icon::before { inset:-6px; }
+.btn.tall { min-height:44px; }
+.kbd { font:11.5px/1 var(--ak-font-mono); padding:3px 5px; border:1px solid currentColor; border-radius:2px; opacity:.7; }
+
+/* Neutral count / status tags. Colour is never the only state carrier: each tag has text. */
+.tag { display:inline-flex; align-items:center; gap:4px; height:20px; padding:0 6px; border:1px solid var(--line); border-radius:2px;
+  font-size:var(--text-meta); font-weight:500; line-height:1; color:var(--ak-text-secondary); white-space:nowrap; font-variant-numeric:tabular-nums; }
+.tag.warn { color:var(--warning-text); background:var(--warning-surface); border-color:var(--warning-border); }
+.tag.ok { color:var(--ak-signal-success); background:var(--success-surface); border-color:currentColor; }
+.tag.bad { color:var(--ak-signal-danger); background:var(--danger-surface); border-color:currentColor; }
+.tag.info { color:var(--info-text); background:var(--info-surface); border-color:currentColor; }
+
+/* ---------- Selection language (the only two) ----------
+   1. Tabs: bottom 3px signal bar.   2. Lists / navigation: left 3px signal bar + selected fill. */
+.tabs { display:flex; gap:var(--ak-space-1); min-width:0; }
+.tab { position:relative; display:inline-flex; align-items:center; gap:6px; min-height:44px; padding:0 var(--ak-space-3); border:0; background:none;
+  color:var(--ak-text-secondary); font-size:var(--text-ui); font-weight:600; white-space:nowrap; }
+.tab:hover { color:var(--ak-text-primary); }
+.tab[aria-selected="true"] { color:var(--ak-text-primary); }
+.tab[aria-selected="true"]::after { content:''; position:absolute; left:var(--ak-space-2); right:var(--ak-space-2); bottom:0; height:var(--ak-line-strong); background:var(--ak-focus-color); }
+.tab:focus-visible { outline-offset:-4px; }
+.tab .tag { height:18px; }
+.row { position:relative; display:flex; align-items:center; gap:var(--ak-space-3); width:100%; min-height:44px; padding:0 var(--ak-space-3);
+  border:0; background:none; text-align:left; font-size:var(--text-ui); }
+.row:hover { background:var(--hover); }
+.row[aria-selected="true"], .row[aria-current="page"] { background:var(--selected); box-shadow:inset var(--ak-line-strong) 0 var(--ak-focus-color); }
+.row:focus-visible { outline-offset:-2px; }
+
+/* ---------- Shell ---------- */
+.shell { display:grid; grid-template-rows:44px minmax(0,1fr) 28px; height:100dvh; }
+.titlebar { display:flex; align-items:center; gap:var(--ak-space-2); padding:0 var(--ak-space-2) 0 84px; background:var(--ak-surface-muted); border-bottom:1px solid var(--line); }
+.titlebar .app { font-weight:600; font-size:var(--text-ui); }
+.titlebar .spacer { flex:1; }
+.titlebar .btn[aria-pressed="true"] { background:var(--selected); color:var(--selected-ink); }
+.regions { display:none; }
+.grid { display:grid; grid-template-columns:260px minmax(0,1fr) 340px; min-height:0; }
+.grid.no-aux { grid-template-columns:260px minmax(0,1fr) 0; }
+.grid.no-aux .inspector { display:none; }
+.statusbar { display:flex; align-items:center; gap:var(--ak-space-4); padding:0 var(--ak-space-4); background:var(--ak-surface-muted); border-top:1px solid var(--line); font-size:var(--text-meta); color:var(--ak-text-secondary); }
+.statusbar .end { margin-left:auto; }
+.statusbar .dot { display:inline-block; width:7px; height:7px; margin-right:6px; background:var(--ak-signal-success); }
+
+/* ---------- Sidebar ---------- */
+.sidebar { display:flex; flex-direction:column; min-height:0; background:var(--ak-surface-muted); border-right:1px solid var(--line); }
+.sidebar-top { padding:var(--ak-space-3); }
+.new-session { width:100%; min-height:44px; justify-content:space-between; }
+.new-session::before { inset:0; }
+.section-head { display:flex; align-items:center; gap:2px; min-height:44px; padding:0 var(--ak-space-2) 0 var(--ak-space-4);
+  font-size:var(--text-meta); font-weight:600; letter-spacing:var(--ak-type-wide); color:var(--ak-text-secondary); }
+.section-head > span { flex:1; }
+.nav-scroll { flex:1; min-height:0; overflow:auto; padding-bottom:var(--ak-space-2); }
+.ws { position:relative; }
+.ws-row { padding-left:var(--ak-space-3); padding-right:44px; font-weight:600; }
+.ws-row .chev { transition:transform var(--ak-motion-fast); }
+.ws-row[aria-expanded="false"] .chev { transform:rotate(-90deg); }
+.row-more { position:absolute; top:0; right:0; width:44px; height:44px; display:grid; place-items:center; border:0; background:none; color:var(--ak-text-secondary); opacity:0; }
+.ws:hover > .row-more, .session:hover > .row-more, .row-more:focus-visible, .row-more[aria-expanded="true"] { opacity:1; }
+@media (hover:none) { .row-more { opacity:1; } }
+.row-more:hover { color:var(--ak-text-primary); background:var(--hover); }
+.session { position:relative; }
+.session .row { padding-left:28px; padding-right:var(--ak-space-3); }
+.session .title { flex:1; }
+.session .time { font-size:var(--text-meta); color:var(--ak-text-secondary); font-variant-numeric:tabular-nums; }
+.session:hover :is(.time,.tag), .session:focus-within :is(.time,.tag) { visibility:hidden; }
+.session .row-more { background:inherit; }
+.agent-mark { position:relative; display:grid; place-items:center; width:20px; height:20px; flex:none; color:var(--ak-text-secondary); }
+.agent-mark svg { width:16px; height:16px; }
+.agent-mark[data-state="running"]::after { content:''; position:absolute; inset:-2px; border:1.5px solid var(--ak-focus-color); border-right-color:transparent; border-radius:50%; animation:spin 1s linear infinite; }
+.agent-mark[data-state="attention"] { color:var(--warning-text); }
+.agent-mark[data-state="failed"] { color:var(--ak-signal-danger); }
+@keyframes spin { to { transform:rotate(1turn); } }
+.sidebar-footer { border-top:1px solid var(--line); padding:var(--ak-space-1) 0; }
+.sidebar-footer .row { padding-left:var(--ak-space-4); }
+
+/* ---------- Popovers / menus ---------- */
+[popover] { margin:0; padding:var(--ak-space-1); border:1px solid var(--line-strong); border-radius:var(--ak-radius-subtle); background:var(--ak-surface-raised); color:var(--ak-text-primary); box-shadow:var(--ak-shadow-panel); }
+.menu { width:240px; }
+.menu .row { border-radius:2px; }
+.menu hr { border:0; border-top:1px solid var(--line); margin:var(--ak-space-1) 0; }
+.menu .row.danger { color:var(--ak-signal-danger); }
+.menu-title { padding:var(--ak-space-2) var(--ak-space-3) var(--ak-space-1); font-size:var(--text-meta); color:var(--ak-text-secondary); }
+.agent-option .copy { display:grid; flex:1; line-height:1.3; }
+.agent-option small { font-size:var(--text-meta); color:var(--ak-text-secondary); }
+.agent-option:disabled { color:var(--ak-signal-disabled); cursor:not-allowed; }
+.agent-option:disabled:hover { background:none; }
+
+/* ---------- Conversation ---------- */
+.main { display:grid; grid-template-columns:minmax(0,1fr); grid-template-rows:auto minmax(0,1fr) auto; min-width:0; min-height:0; background:var(--ak-surface-canvas); }
+.main-head { display:flex; align-items:flex-end; gap:var(--ak-space-4); padding:0 var(--ak-space-5); min-height:64px; background:var(--ak-surface-panel); border-bottom:1px solid var(--line); }
+.main-head .heading { flex:1; min-width:0; padding:10px 0 12px; }
+.crumb { display:flex; gap:6px; font-size:var(--text-meta); color:var(--ak-text-secondary); }
+.session-title { margin:2px 0 0; font:700 var(--ak-type-title-size)/1.25 var(--ak-font-command); letter-spacing:var(--ak-type-tight); }
+.main-head .tabs { align-self:flex-end; }
+.main-head .tools { display:flex; align-items:center; gap:var(--ak-space-2); align-self:center; }
+.state { display:inline-flex; align-items:center; gap:6px; font-size:var(--text-meta); color:var(--ak-text-secondary); }
+.state i { width:8px; height:8px; background:var(--ak-signal-disabled); }
+.state[data-state="running"] i { background:var(--ak-focus-color); animation:pulse 1.2s ease-in-out infinite; }
+.state[data-state="attention"] { color:var(--warning-text); } .state[data-state="attention"] i { background:var(--warning-border); }
+.state[data-state="failed"] { color:var(--ak-signal-danger); } .state[data-state="failed"] i { background:var(--ak-signal-danger); }
+@keyframes pulse { 50% { opacity:.3; } }
+.feed { overflow:auto; padding:var(--ak-space-5) var(--ak-space-5) var(--ak-space-6); }
+.feed-inner { max-width:760px; margin:0 auto; display:grid; gap:var(--ak-space-5); }
+.msg-meta { display:flex; align-items:center; gap:var(--ak-space-2); margin-bottom:var(--ak-space-2); font-size:var(--text-meta); color:var(--ak-text-secondary); }
+.msg-meta strong { color:var(--ak-text-primary); font-weight:600; }
+.user .bubble { padding:var(--ak-space-3) var(--ak-space-4); background:var(--ak-surface-raised); border:1px solid var(--line); font-size:var(--text-body); line-height:1.7; }
+.assistant .body { font-size:var(--text-body); line-height:1.75; }
+.assistant .body h2 { margin:0 0 var(--ak-space-2); font-size:17px; font-weight:650; line-height:1.4; }
+.assistant .body p { margin:0 0 var(--ak-space-3); }
+.assistant .body ul { margin:0; padding-left:1.3em; display:grid; gap:4px; }
+.assistant .body code { font:12.5px var(--ak-font-mono); padding:1px 4px; background:var(--ak-surface-muted); border-radius:2px; }
+.tools-group { border:1px solid var(--line); background:var(--ak-surface-panel); }
+.tools-group > summary { display:flex; align-items:center; gap:var(--ak-space-2); min-height:44px; padding:0 var(--ak-space-3); list-style:none; font-size:var(--text-ui); cursor:pointer; }
+.tools-group > summary::-webkit-details-marker { display:none; }
+.tools-group > summary .chev { transition:transform var(--ak-motion-fast); transform:rotate(-90deg); }
+.tools-group[open] > summary .chev { transform:none; }
+.tools-group > summary:hover { background:var(--hover); }
+.tool { display:flex; align-items:center; gap:var(--ak-space-2); min-height:36px; padding:0 var(--ak-space-3) 0 36px; border-top:1px solid var(--line); font-size:var(--text-meta); }
+.tool .name { font-weight:600; width:56px; flex:none; }
+.tool .target { flex:1; font-family:var(--ak-font-mono); color:var(--ak-text-secondary); }
+.approval { border:1px solid var(--warning-border); border-left:var(--ak-line-strong) solid var(--warning-border); background:var(--warning-surface); padding:var(--ak-space-3) var(--ak-space-4); }
+.approval .head { display:flex; align-items:center; gap:var(--ak-space-2); color:var(--warning-text); font-weight:650; }
+.approval pre { margin:var(--ak-space-2) 0 var(--ak-space-3); padding:var(--ak-space-2) var(--ak-space-3); background:var(--ak-surface-raised); border:1px solid var(--line); font:12.5px/1.6 var(--ak-font-mono); color:var(--ak-text-primary); overflow:auto; }
+.approval .actions { display:flex; flex-wrap:wrap; gap:var(--ak-space-2); }
+.activity { display:flex; align-items:center; gap:var(--ak-space-2); font-size:var(--text-meta); color:var(--ak-text-secondary); }
+.empty { display:grid; place-items:center; align-content:center; gap:var(--ak-space-2); min-height:40vh; text-align:center; color:var(--ak-text-secondary); }
+.empty h3 { margin:0; font:700 22px var(--ak-font-command); color:var(--ak-text-primary); }
+.run-list, .file-list { display:grid; border:1px solid var(--line); background:var(--ak-surface-panel); }
+.run { display:grid; grid-template-columns:20px minmax(0,1fr) auto auto; align-items:center; gap:var(--ak-space-3); min-height:44px; padding:0 var(--ak-space-3); border:0; border-top:1px solid var(--line); background:none; text-align:left; }
+.run:first-child { border-top:0; }
+.run:hover { background:var(--hover); }
+
+/* ak-form field anatomy (https://ak-ui.yyj.moe/components/ak-form): square corners, hairline
+   border with a 4px signal edge, panel fill; hover darkens the border, focus uses the signal border
+   plus a 3px halo, invalid adds an inset danger edge. Applied to the composer, inputs and select triggers. */
+.field, .composer { border:var(--ak-line-hairline) solid var(--line); border-left:4px solid var(--line-strong); border-radius:0;
+  background:var(--ak-surface-panel); caret-color:var(--ak-focus-color);
+  transition:border-color var(--ak-motion-fast) ease, box-shadow var(--ak-motion-fast) ease; }
+.field:hover:not(:disabled), .composer:hover { border-color:var(--line-strong); }
+.field:focus-visible, .composer:focus-within { outline:0; border-color:var(--ak-focus-color); box-shadow:0 0 0 3px color-mix(in srgb,var(--ak-focus-color) 20%,transparent); }
+.field[aria-invalid="true"] { border-color:var(--ak-signal-danger); box-shadow:inset 4px 0 var(--ak-signal-danger); }
+.field:disabled { color:var(--ak-text-secondary); background:var(--ak-surface-muted); opacity:.7; cursor:not-allowed; }
+.field::placeholder { color:var(--ak-text-secondary); opacity:1; }
+.composer-wrap { padding:0 var(--ak-space-5) var(--ak-space-4); }
+.composer { max-width:760px; margin:0 auto; }
+.attachments { display:flex; gap:var(--ak-space-2); padding:var(--ak-space-2) var(--ak-space-3) 0; overflow-x:auto; }
+.attachments:empty { display:none; }
+.chip { display:inline-flex; align-items:center; gap:6px; height:32px; max-width:220px; flex:none; padding:0 0 0 6px; border:1px solid var(--line); background:var(--ak-surface-raised); font-size:var(--text-meta); }
+.chip .thumb { width:22px; height:22px; flex:none; background:linear-gradient(135deg,var(--ak-surface-muted) 50%,var(--line) 50%); border:1px solid var(--line); }
+.chip .size { color:var(--ak-text-secondary); font-variant-numeric:tabular-nums; }
+.chip .btn.icon { width:30px; min-height:30px; }
+.composer textarea { display:block; width:100%; min-height:64px; max-height:240px; padding:var(--ak-space-3) var(--ak-space-4); border:0; background:transparent; resize:none; font-size:var(--text-body); line-height:1.6; }
+.composer textarea:focus-visible { outline:0; }
+.composer textarea::placeholder { color:var(--ak-text-secondary); }
+.composer-bar { display:flex; align-items:center; gap:var(--ak-space-1); padding:var(--ak-space-1) var(--ak-space-2) var(--ak-space-2); }
+.composer-bar .grow { flex:1; }
+.picker { display:inline-flex; align-items:center; gap:4px; }
+.picker .chev { width:14px; height:14px; opacity:.7; }
+.send { width:40px; min-height:36px; padding:0; }
+
+/* ---------- Inspector ---------- */
+.inspector { display:flex; flex-direction:column; min-height:0; background:var(--ak-surface-panel); border-left:1px solid var(--line); }
+.inspector > .tabs { padding:0 var(--ak-space-2); background:var(--ak-surface-muted); border-bottom:1px solid var(--line); }
+.inspector > .tabs .tab { flex:1; justify-content:center; }
+.inspector .panel { flex:1; min-height:0; overflow:auto; }
+.inspector .panel[hidden] { display:none; }
+.sect { padding:var(--ak-space-2) var(--ak-space-4) var(--ak-space-4); border-bottom:1px solid var(--line); }
+.sect-head { display:flex; align-items:center; gap:var(--ak-space-2); min-height:36px; }
+.sect-head h3 { flex:1; margin:0; font-size:var(--text-ui); font-weight:650; }
+.kv { display:grid; grid-template-columns:72px minmax(0,1fr); gap:6px var(--ak-space-3); margin:0; font-size:var(--text-meta); }
+.kv dt { color:var(--ak-text-secondary); }
+.kv dd { margin:0; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.chips { display:flex; flex-wrap:wrap; gap:4px; }
+.chips .tag { font-family:var(--ak-font-mono); font-weight:400; color:var(--ak-text-primary); }
+.list-row { display:flex; align-items:center; gap:var(--ak-space-2); min-height:36px; font-size:var(--text-meta); }
+.list-row .name { flex:1; font-size:var(--text-ui); }
+.trust-line { display:flex; align-items:center; gap:var(--ak-space-2); font-size:var(--text-meta); color:var(--ak-text-secondary); }
+.trust-line strong { color:var(--ak-signal-success); font-weight:600; }
+.panel-note { margin:0; font-size:var(--text-meta); color:var(--ak-text-secondary); }
+/* Git */
+.git-head { display:flex; gap:var(--ak-space-2); padding:var(--ak-space-3) var(--ak-space-4) var(--ak-space-2); }
+.select { flex:1; min-width:0; justify-content:space-between; min-height:36px; }
+.btn.select:hover:not(:disabled) { background:var(--ak-surface-panel); box-shadow:none; }
+.branch { display:flex; align-items:center; gap:var(--ak-space-2); padding:0 var(--ak-space-4) var(--ak-space-2); font-size:var(--text-meta); }
+.branch .name { font-family:var(--ak-font-mono); font-size:var(--text-ui); font-weight:600; }
+.branch .grow { flex:1; }
+.subtabs { padding:0 var(--ak-space-2); border-bottom:1px solid var(--line); }
+.commit-box { display:flex; gap:var(--ak-space-2); padding:var(--ak-space-3) var(--ak-space-4); }
+.input { flex:1; min-width:0; min-height:36px; padding:0 var(--ak-space-3); font-size:var(--text-ui); }
+.group-head { display:flex; align-items:center; gap:var(--ak-space-2); width:100%; min-height:36px; padding:0 var(--ak-space-2) 0 var(--ak-space-3); border:0; border-top:1px solid var(--line); background:var(--ak-surface-muted);
+  font-size:var(--text-meta); font-weight:650; letter-spacing:.02em; text-align:left; }
+.group-head .chev { width:14px; height:14px; transition:transform var(--ak-motion-fast); }
+.group-head[aria-expanded="false"] .chev { transform:rotate(-90deg); }
+.group-head .grow { flex:1; }
+.file { display:flex; align-items:center; gap:var(--ak-space-2); width:100%; min-height:36px; padding:0 var(--ak-space-2) 0 var(--ak-space-3); border:0; background:none; text-align:left; font-size:var(--text-ui); }
+.file::before { content:''; position:absolute; }
+.file { position:relative; }
+.file:hover { background:var(--hover); }
+.file[aria-selected="true"] { background:var(--selected); box-shadow:inset var(--ak-line-strong) 0 var(--ak-focus-color); }
+.st { display:grid; place-items:center; width:18px; height:18px; flex:none; font:600 11.5px/1 var(--ak-font-mono); border:1px solid currentColor; }
+.st.M { color:var(--ak-signal-accent); } .st.A { color:var(--ak-signal-success); } .st.D { color:var(--ak-signal-danger); }
+.file .fname { flex:none; max-width:60%; }
+.file .fdir { flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; direction:rtl; text-align:left; font-size:var(--text-meta); color:var(--ak-text-secondary); }
+.file .delta { font:var(--text-meta) var(--ak-font-mono); white-space:nowrap; }
+.file .delta .add { color:var(--ak-signal-success); } .file .delta .del { color:var(--ak-signal-danger); }
+.file .hover-act { display:none; }
+.file:hover .delta, .file:focus-within .delta { display:none; }
+.file:hover .hover-act, .file:focus-within .hover-act { display:inline-flex; }
+.commit { display:grid; grid-template-columns:minmax(0,1fr) auto; gap:0 var(--ak-space-2); width:100%; padding:6px var(--ak-space-4); min-height:44px; border:0; border-bottom:1px solid var(--line); background:none; text-align:left; }
+.commit:hover { background:var(--hover); }
+.commit .subject { font-size:var(--text-ui); }
+.commit .when { font-size:var(--text-meta); color:var(--ak-text-secondary); }
+.commit .by { grid-column:1/-1; font-size:var(--text-meta); color:var(--ak-text-secondary); }
+.more { width:calc(100% - 2 * var(--ak-space-4)); margin:var(--ak-space-3) var(--ak-space-4); }
+
+/* ---------- Settings dialog ---------- */
+dialog.settings { width:min(880px,calc(100vw - 32px)); height:min(620px,calc(100dvh - 64px)); padding:0; border:1px solid var(--line-strong); border-top:var(--ak-line-strong) solid var(--ak-focus-color);
+  background:var(--ak-surface-panel); color:var(--ak-text-primary); box-shadow:var(--ak-shadow-panel); }
+dialog.settings[open] { display:grid; grid-template-rows:auto minmax(0,1fr); }
+dialog::backdrop { background:color-mix(in srgb,var(--ak-surface-inverse) 40%,transparent); }
+.dlg-head { display:flex; align-items:center; gap:var(--ak-space-3); padding:var(--ak-space-3) var(--ak-space-3) var(--ak-space-3) var(--ak-space-5); border-bottom:1px solid var(--line); }
+.dlg-head h2 { flex:1; margin:0; font:700 20px var(--ak-font-command); }
+.dlg-body { display:grid; grid-template-columns:200px minmax(0,1fr); min-height:0; }
+.dlg-nav { padding:var(--ak-space-2) 0; background:var(--ak-surface-muted); border-right:1px solid var(--line); }
+.dlg-nav .row { padding-left:var(--ak-space-4); }
+.dlg-content { overflow:auto; padding:var(--ak-space-4) var(--ak-space-5) var(--ak-space-5); }
+.dlg-content h3 { margin:var(--ak-space-4) 0 var(--ak-space-1); font-size:var(--text-ui); font-weight:650; }
+.dlg-content h3:first-child { margin-top:0; }
+.dlg-content > p { margin:0 0 var(--ak-space-3); font-size:var(--text-meta); color:var(--ak-text-secondary); }
+.setting { display:flex; align-items:center; gap:var(--ak-space-4); min-height:56px; padding:var(--ak-space-2) var(--ak-space-4); border:1px solid var(--line); border-top:0; background:var(--ak-surface-raised); }
+.setting:first-of-type, h3 + p + .setting, h3 + .setting { border-top:1px solid var(--line); }
+.setting .copy { flex:1; min-width:0; }
+.setting .copy strong { display:block; font-weight:600; }
+.setting .copy small { display:block; margin-top:2px; font-size:var(--text-meta); color:var(--ak-text-secondary); }
+.theme-choices { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:var(--ak-space-2); }
+.theme-choice { position:relative; display:flex; align-items:center; gap:var(--ak-space-3); min-height:64px; padding:var(--ak-space-3); border:1px solid var(--line); background:var(--ak-surface-raised); cursor:pointer; }
+.theme-choice:has(input:checked) { border-color:var(--ak-focus-color); box-shadow:inset var(--ak-line-strong) 0 var(--ak-focus-color); background:var(--selected); }
+.theme-choice:has(input:focus-visible) { outline:var(--ak-focus-width) solid var(--ak-focus-color); outline-offset:2px; }
+.theme-choice input { position:absolute; opacity:0; }
+.swatch { display:flex; width:48px; height:28px; border:1px solid var(--line-strong); flex:none; }
+.swatch i { flex:1; }
+.theme-choice .check { margin-left:auto; visibility:hidden; color:var(--ak-focus-color); }
+.theme-choice:has(input:checked) .check { visibility:visible; }
+.switch { appearance:none; position:relative; width:40px; height:22px; flex:none; margin:0; border:2px solid var(--line-strong); border-radius:11px; background:var(--ak-surface-muted); cursor:pointer; transition:background var(--ak-motion-fast); }
+.switch::after { content:''; position:absolute; top:2px; left:2px; width:14px; height:14px; border-radius:50%; background:var(--ak-text-primary); transition:transform var(--ak-motion-fast) var(--ak-ease-standard); }
+.switch:checked { background:var(--ak-color-dark-blue); border-color:var(--ak-color-dark-blue); }
+.switch:checked::after { background:#fff; transform:translateX(18px); }
+
+/* ---------- Design notes overlay ---------- */
+.notes-toggle { position:fixed; right:16px; bottom:40px; z-index:20; min-height:36px; background:var(--ak-surface-inverse); color:var(--ak-surface-canvas); box-shadow:var(--ak-shadow-panel); }
+.notes-toggle:hover:not(:disabled) { background:var(--ak-surface-inverse); }
+.notes { position:fixed; right:16px; bottom:84px; z-index:20; width:380px; max-height:calc(100dvh - 140px); overflow:auto; padding:var(--ak-space-3); background:var(--ak-surface-raised); border:1px solid var(--line-strong); border-top:var(--ak-line-strong) solid var(--ak-signal-action); box-shadow:var(--ak-shadow-panel); }
+.notes[hidden] { display:none; }
+.notes h2 { margin:0 0 var(--ak-space-1); font:700 16px var(--ak-font-command); }
+.notes > p { margin:0 0 var(--ak-space-2); font-size:var(--text-meta); color:var(--ak-text-secondary); }
+.notes ol { margin:0; padding:0; list-style:none; display:grid; gap:2px; counter-reset:n; }
+.notes li { counter-increment:n; display:grid; grid-template-columns:24px 1fr; gap:var(--ak-space-2); padding:6px var(--ak-space-2); font-size:var(--text-meta); line-height:1.55; cursor:default; }
+.notes li::before { content:counter(n); font:600 12px var(--ak-font-mono); color:var(--ak-text-secondary); }
+.notes li:hover { background:var(--hover); }
+.notes li b { display:block; font-size:var(--text-ui); }
+.note-hit { outline:2px dashed var(--ak-signal-accent) !important; outline-offset:-2px !important; }
+
+/* ---------- Narrow layouts ---------- */
+@media (max-width:1100px) {
+  .grid { grid-template-columns:240px minmax(0,1fr) 300px; }
+  .main-head { flex-wrap:wrap; align-items:center; padding:0 var(--ak-space-4); }
+  .main-head .heading { flex-basis:100%; padding-bottom:0; }
+  .main-head .tools { margin-left:auto; }
+}
+@media (max-width:760px) {
+  .shell { grid-template-rows:44px 44px minmax(0,1fr) 0; }
+  .titlebar { padding-left:var(--ak-space-3); }
+  .titlebar [data-desktop] { display:none; }
+  .regions { display:flex; background:var(--ak-surface-muted); border-bottom:1px solid var(--line); }
+  .regions .tab { flex:1; justify-content:center; }
+  .statusbar { display:none; }
+  .grid, .grid.no-aux { grid-template-columns:minmax(0,1fr); }
+  .grid > * { display:none !important; }
+  .grid[data-region="nav"] > .sidebar, .grid[data-region="main"] > .main, .grid[data-region="aux"] > .inspector { display:flex !important; }
+  .grid[data-region="main"] > .main { display:grid !important; }
+  .main-head { padding:0 var(--ak-space-3); gap:0 var(--ak-space-2); }
+  .main-head .heading { padding-top:8px; }
+  .session-title { font-size:17px; }
+  .crumb { display:none; }
+  .main-head .tabs { order:3; flex-basis:100%; overflow-x:auto; }
+  .feed { padding:var(--ak-space-4) var(--ak-space-3); }
+  .composer-wrap { padding:0 var(--ak-space-2) var(--ak-space-2); }
+  .composer-bar .ctx { display:none; }
+  .notes-toggle { top:4px; bottom:auto; right:auto; left:56px; }
+  .notes { left:8px; right:8px; width:auto; bottom:56px; }
+  .dlg-body { grid-template-columns:1fr; grid-template-rows:auto minmax(0,1fr); }
+  .dlg-nav { display:flex; overflow-x:auto; padding:0; border-right:0; border-bottom:1px solid var(--line); }
+  .dlg-nav .row { width:auto; flex:none; }
+  .theme-choices { grid-template-columns:1fr; }
+}
+</style>
+</head>
+<body data-ak-ui data-theme="light">
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <defs>
+    <path id="p-add" d="M12 5v14M5 12h14"/><path id="p-archive" d="M3 4h18v4H3ZM5 8v13h14V8M9 12h6"/>
+    <path id="p-branch" d="M6 7v10m12-10c0 7-12 3-12 9M8 5a2 2 0 1 1-4 0 2 2 0 1 1 4 0M8 19a2 2 0 1 1-4 0 2 2 0 1 1 4 0M20 5a2 2 0 1 1-4 0 2 2 0 1 1 4 0"/>
+    <path id="p-check" d="m5 12 4 4L19 6"/><path id="p-chev" d="m6 9 6 6 6-6"/><path id="p-close" d="m6 6 12 12M6 18 18 6"/>
+    <path id="p-delete" d="M4 6h16M9 6V3h6v3M6 6v15h12V6M10 10v7m4-7v7"/><path id="p-edit" d="m4 16 12-12 4 4L8 20H4Zm9-9 4 4"/>
+    <path id="p-filter" d="M4 6h16M7 12h10m-7 6h4"/><path id="p-file" d="M5 3h9l5 5v13H5ZM14 3v6h5M9 13h6m-6 4h6"/>
+    <path id="p-focus" d="M8 3H3v5m13-5h5v5M3 16v5h5m13-5v5h-5"/><path id="p-folder" d="M3 7V5h6l2 3h10v12H3Z"/>
+    <path id="p-folder-add" d="M3 7V5h6l2 3h10v12H3ZM12 11v6m-3-3h6"/><path id="p-panel" d="M3 4h18v16H3ZM15 4v16"/>
+    <path id="p-plugins" d="M4 4h6v6H4Zm10 0h6v6h-6ZM4 14h6v6H4Zm10 0h6v6h-6Z"/>
+    <path id="p-refresh" d="M20 9a8 8 0 0 0-14-3L3 9m0-5v5h5M4 15a8 8 0 0 0 14 3l3-3m0 5v-5h-5"/>
+    <path id="p-review" d="M5 3h9l5 5v4M5 3v18h6M14 3v6h5M19 16a3 3 0 1 1-6 0 3 3 0 1 1 6 0m-1 2 3 3"/>
+    <path id="p-search" d="M17 10.5a6.5 6.5 0 1 1-13 0 6.5 6.5 0 1 1 13 0m-1 5.5 5 5"/><path id="p-send" d="M12 19V5m-6 6 6-6 6 6"/>
+    <path id="p-settings" d="M4 7h3m4 0h9M4 17h10m4 0h2M7 4h4v6H7Zm7 10h4v6h-4Z"/><path id="p-stop" d="M6 6h12v12H6Z"/>
+    <path id="p-trust" d="m12 3 8 3v6c0 5-8 9-8 9s-8-4-8-9V6Zm-4 9 3 3 5-6"/><path id="p-alert" d="m12 3 8 3v6c0 5-8 9-8 9s-8-4-8-9V6ZM12 8v5m0 3h.01"/>
+    <path id="p-more" d="M5 12h.01M12 12h.01M19 12h.01"/><path id="p-moon" d="M20 14A8 8 0 0 1 10 4a8 8 0 1 0 10 10Z"/>
+    <path id="p-sun" d="M12 8a4 4 0 1 0 0 8 4 4 0 1 0 0-8M12 2v2m0 16v2M4.9 4.9l1.4 1.4m11.4 11.4 1.4 1.4M2 12h2m16 0h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/>
+    <path id="p-image" d="M3 4h18v16H3Zm0 12 5-5 4 4 3-3 6 6M15 9h.01"/><path id="p-tool" d="M3 4h18v16H3Zm4 5 3 3-3 3m5 0h5"/>
+    <!-- Placeholder provider marks; real paths come from each plugin's manifest icon. -->
+    <path id="p-agent-a" d="M12 3 20 7.5v9L12 21l-8-4.5v-9ZM12 8v8m-4-4h8"/>
+    <path id="p-agent-b" d="M5 5h14v14H5ZM9 9h6v6H9Z"/>
+    <path id="p-agent-c" d="m12 3 9 9-9 9-9-9Z"/>
+  </defs>
+</svg>
+
+<div class="shell">
+  <header class="titlebar">
+    <span class="app">Aibo</span>
+    <span class="spacer"></span>
+    <button class="btn icon" id="themeToggle" type="button" aria-label="切换明暗主题" title="切换明暗主题"><svg viewBox="0 0 24 24" class="i"><use href="#p-moon"/></svg></button>
+    <button class="btn icon" type="button" data-open-settings aria-label="工作台设置" title="工作台设置 ⌘,"><svg viewBox="0 0 24 24" class="i"><use href="#p-settings"/></svg></button>
+    <button class="btn icon" id="auxToggle" type="button" aria-pressed="true" aria-label="显示侧边栏" title="显示侧边栏 ⌘\" data-desktop data-note="12"><svg viewBox="0 0 24 24" class="i"><use href="#p-panel"/></svg></button>
+  </header>
+
+  <nav class="regions" aria-label="工作台区域">
+    <div class="tabs" role="tablist" style="flex:1" data-note="13">
+      <button class="tab" role="tab" aria-selected="false" data-region="nav">工作区</button>
+      <button class="tab" role="tab" aria-selected="true" data-region="main">会话</button>
+      <button class="tab" role="tab" aria-selected="false" data-region="aux">侧边栏</button>
+    </div>
+  </nav>
+
+  <div class="grid" id="grid" data-region="main">
+    <!-- ================= Sidebar ================= -->
+    <aside class="sidebar" aria-label="工作区与会话">
+      <div class="sidebar-top">
+        <button class="btn primary new-session" id="newSession" type="button" popovertarget="agentMenu" aria-haspopup="true" data-note="1">
+          <span style="display:inline-flex;gap:8px;align-items:center"><svg viewBox="0 0 24 24" class="i"><use href="#p-add"/></svg>新建会话</span>
+          <span class="kbd">⌘N</span>
+        </button>
+      </div>
+      <div class="section-head">
+        <span>工作区</span>
+        <button class="btn icon" type="button" aria-label="搜索会话" title="搜索会话 ⌘K"><svg viewBox="0 0 24 24" class="i"><use href="#p-search"/></svg></button>
+        <button class="btn icon" type="button" aria-label="筛选" title="筛选"><svg viewBox="0 0 24 24" class="i"><use href="#p-filter"/></svg></button>
+        <button class="btn icon" type="button" aria-label="添加工作区" title="添加工作区"><svg viewBox="0 0 24 24" class="i"><use href="#p-folder-add"/></svg></button>
+      </div>
+      <div class="nav-scroll" id="nav"></div>
+      <div class="sidebar-footer">
+        <button class="row" type="button"><svg viewBox="0 0 24 24" class="i"><use href="#p-plugins"/></svg>插件与能力</button>
+        <button class="row" type="button" data-open-settings><svg viewBox="0 0 24 24" class="i"><use href="#p-settings"/></svg>工作台设置</button>
+      </div>
+    </aside>
+
+    <!-- ================= Conversation ================= -->
+    <main class="main" aria-label="会话">
+      <header class="main-head" data-note="4">
+        <div class="heading">
+          <div class="crumb"><span id="crumbWs">aibo-dev</span><span aria-hidden="true">/</span><span id="crumbAgent">Agent A</span></div>
+          <h1 class="session-title ellipsis" id="sessionTitle">重构默认视觉体验</h1>
+        </div>
+        <div class="tabs" role="tablist" aria-label="会话视图" id="mainTabs">
+          <button class="tab" role="tab" aria-selected="true" aria-controls="view-chat" id="tab-chat">对话</button>
+          <button class="tab" role="tab" aria-selected="false" aria-controls="view-runs" id="tab-runs" tabindex="-1">执行记录</button>
+          <button class="tab" role="tab" aria-selected="false" aria-controls="view-diff" id="tab-diff" tabindex="-1">变更 <span class="tag">3</span></button>
+        </div>
+        <div class="tools">
+          <span class="state" id="sessionState" data-state="running"><i></i><span>运行中</span></span>
+          <button class="btn icon" type="button" aria-label="专注会话" title="专注会话"><svg viewBox="0 0 24 24" class="i"><use href="#p-focus"/></svg></button>
+        </div>
+      </header>
+
+      <div class="feed" id="feed">
+        <div class="feed-inner" id="view-chat" role="tabpanel" aria-labelledby="tab-chat"></div>
+        <div class="feed-inner" id="view-runs" role="tabpanel" aria-labelledby="tab-runs" hidden>
+          <div class="run-list" data-note="9">
+            <button class="run" type="button"><span class="st A" title="成功">✓</span><span class="ellipsis mono">pnpm run check:types</span><span class="meta">12.4s</span><span class="meta">14:36</span></button>
+            <button class="run" type="button"><span class="st D" title="失败">✕</span><span class="ellipsis mono">node --test test/ui-style-boundaries.test.mjs</span><span class="meta">3.1s</span><span class="meta">14:35</span></button>
+            <button class="run" type="button"><span class="st A" title="成功">✓</span><span class="ellipsis mono">rg --files src/lib/ui-kit</span><span class="meta">0.2s</span><span class="meta">14:33</span></button>
+          </div>
+        </div>
+        <div class="feed-inner" id="view-diff" role="tabpanel" aria-labelledby="tab-diff" hidden>
+          <div class="file-list">
+            <button class="file" type="button" aria-selected="true"><span class="st M" aria-label="已修改">M</span><span class="fname ellipsis mono">ak-ui.css</span><span class="fdir">src/lib/ui-kit/kits/</span><span class="delta"><span class="add">+48</span> <span class="del">−112</span></span></button>
+            <button class="file" type="button"><span class="st M" aria-label="已修改">M</span><span class="fname ellipsis mono">themes.json</span><span class="fdir">src/lib/ui-kit/kits/ak-ui/</span><span class="delta"><span class="add">+6</span> <span class="del">−2</span></span></button>
+            <button class="file" type="button"><span class="st A" aria-label="新增">A</span><span class="fname ellipsis mono">ak-ui-redesign.html</span><span class="fdir">docs/design/</span><span class="delta"><span class="add">+620</span></span></button>
+          </div>
+        </div>
+      </div>
+
+      <div class="composer-wrap">
+        <div class="composer" data-note="7">
+          <div class="attachments" id="attachments"></div>
+          <label class="sr" for="prompt">消息</label>
+          <textarea id="prompt" rows="2" placeholder="输入消息，⌘Enter 发送，/ 调用命令，@ 引用文件"></textarea>
+          <div class="composer-bar">
+            <button class="btn icon" type="button" id="attach" aria-label="添加附件" title="添加附件"><svg viewBox="0 0 24 24" class="i"><use href="#p-add"/></svg></button>
+            <button class="btn picker" type="button" title="执行权限">工作区可写<svg viewBox="0 0 24 24" class="i chev"><use href="#p-chev"/></svg></button>
+            <button class="btn picker" type="button" title="模型">模型 · 默认<svg viewBox="0 0 24 24" class="i chev"><use href="#p-chev"/></svg></button>
+            <span class="grow"></span>
+            <span class="meta ctx" id="ctxSummary"></span>
+            <button class="btn danger" type="button" id="stop"><svg viewBox="0 0 24 24" class="i"><use href="#p-stop"/></svg>停止</button>
+            <button class="btn primary send" type="button" id="send" aria-label="发送" title="发送 ⌘Enter" disabled><svg viewBox="0 0 24 24" class="i"><use href="#p-send"/></svg></button>
+          </div>
+        </div>
+      </div>
+    </main>
+
+    <!-- ================= Inspector ================= -->
+    <aside class="inspector" aria-label="侧边栏">
+      <div class="tabs" role="tablist" aria-label="侧边栏视图" id="sideTabs" data-note="10">
+        <button class="tab" role="tab" aria-selected="false" aria-controls="panel-git" id="side-git" tabindex="-1"><svg viewBox="0 0 24 24" class="i"><use href="#p-branch"/></svg>Git <span class="tag">8</span></button>
+        <button class="tab" role="tab" aria-selected="true" aria-controls="panel-context" id="side-context"><svg viewBox="0 0 24 24" class="i"><use href="#p-file"/></svg>上下文</button>
+      </div>
+
+      <section class="panel" id="panel-context" role="tabpanel" aria-labelledby="side-context" data-note="8">
+        <div class="sect">
+          <div class="sect-head"><h3>会话</h3><button class="btn icon" type="button" aria-label="刷新上下文" title="刷新上下文"><svg viewBox="0 0 24 24" class="i"><use href="#p-refresh"/></svg></button></div>
+          <dl class="kv">
+            <dt>Agent</dt><dd style="display:flex;gap:6px;align-items:center"><span class="agent-mark"><svg viewBox="0 0 24 24" class="i"><use href="#p-agent-a"/></svg></span>Agent A <span class="muted">· 本地插件</span></dd>
+            <dt>会话 ID</dt><dd class="mono" title="s_8f31c2">s_8f31c2</dd>
+            <dt>远端绑定</dt><dd class="mono" title="thread_a-long-external-session-id-0192">thread_a-long-external-session-id-0192</dd>
+            <dt>更新</dt><dd title="2026-09-22 15:30:00">19 小时前</dd>
+          </dl>
+        </div>
+        <div class="sect">
+          <div class="sect-head"><h3>工作区</h3><span class="tag ok"><svg viewBox="0 0 24 24" class="i" style="width:12px;height:12px"><use href="#p-trust"/></svg>已信任</span></div>
+          <p class="panel-note" style="margin-bottom:8px">Agent 可以在 <span class="mono">~/Workspace/aibo-dev</span> 内执行已授权的操作。</p>
+          <dl class="kv">
+            <dt>指令</dt><dd class="muted">未发现</dd>
+            <dt>Skills</dt><dd class="muted">未发现</dd>
+            <dt>Core 工具</dt><dd style="white-space:normal"><div class="chips"><span class="tag">workspace-read</span><span class="tag">workspace-search</span><span class="tag">artifact-store</span><span class="tag">checkpoint-restore</span><span class="tag">project-actions</span></div></dd>
+            <dt>MCP</dt><dd class="muted">未发现</dd>
+          </dl>
+        </div>
+        <div class="sect">
+          <div class="sect-head"><h3>上下文附件</h3><span class="tag" id="attachCount">2</span></div>
+          <div id="ctxAttachments"></div>
+        </div>
+        <div class="sect">
+          <div class="sect-head"><h3>工程动作</h3><button class="btn" type="button"><svg viewBox="0 0 24 24" class="i"><use href="#p-add"/></svg>添加</button></div>
+          <p class="panel-note">注册 Test、Lint 或 Build 后，可以在工作区内受控运行。</p>
+        </div>
+        <div class="sect">
+          <div class="sect-head"><h3>任务工件</h3><span class="tag">0</span></div>
+          <p class="panel-note">命令输出和验证结果会保留在这里。</p>
+        </div>
+      </section>
+
+      <section class="panel" id="panel-git" role="tabpanel" aria-labelledby="side-git" hidden data-note="11">
+        <div class="git-head">
+          <button class="btn select field" type="button"><span style="display:inline-flex;gap:8px;align-items:center"><svg viewBox="0 0 24 24" class="i"><use href="#p-folder"/></svg>aibo</span><svg viewBox="0 0 24 24" class="i" style="width:14px"><use href="#p-chev"/></svg></button>
+          <button class="btn icon outline" type="button" aria-label="刷新 Git 状态" title="刷新"><svg viewBox="0 0 24 24" class="i"><use href="#p-refresh"/></svg></button>
+        </div>
+        <div class="branch">
+          <svg viewBox="0 0 24 24" class="i"><use href="#p-branch"/></svg><span class="name">main</span><span class="muted mono">↑1 origin/main</span><span class="grow"></span>
+          <button class="btn outline" type="button">拉取</button><button class="btn outline" type="button">推送</button>
+        </div>
+        <div class="tabs subtabs" role="tablist" aria-label="Git 视图" id="gitTabs">
+          <button class="tab" role="tab" aria-selected="true" aria-controls="git-changes" id="git-tab-changes">变更 <span class="tag">8</span></button>
+          <button class="tab" role="tab" aria-selected="false" aria-controls="git-history" id="git-tab-history" tabindex="-1">历史</button>
+          <span style="flex:1"></span>
+          <button class="btn" type="button" style="align-self:center"><svg viewBox="0 0 24 24" class="i"><use href="#p-review"/></svg>Agent 审查</button>
+        </div>
+        <div id="git-changes" role="tabpanel" aria-labelledby="git-tab-changes">
+          <div class="commit-box"><label class="sr" for="commitMsg">提交信息</label><input class="input field" id="commitMsg" placeholder="提交信息"><button class="btn primary" type="button" id="commitBtn" disabled>提交</button></div>
+          <div id="gitGroups"></div>
+        </div>
+        <div id="git-history" role="tabpanel" aria-labelledby="git-tab-history" hidden></div>
+      </section>
+    </aside>
+  </div>
+
+  <footer class="statusbar">
+    <span><i class="dot" aria-hidden="true"></i>本地工作区</span><span>aibo-dev</span><span class="mono">main ↑1</span>
+    <span class="end" id="themeLabel">浅色</span>
+  </footer>
+</div>
+
+<!-- Agent chooser -->
+<div popover id="agentMenu" class="menu" role="menu" aria-label="选择 Agent 创建会话">
+  <div class="menu-title">在 aibo-dev 中新建会话</div>
+  <button class="row agent-option" role="menuitem" type="button"><span class="agent-mark"><svg viewBox="0 0 24 24" class="i"><use href="#p-agent-a"/></svg></span><span class="copy">Agent A<small>本地 · 已就绪</small></span><span class="kbd">1</span></button>
+  <button class="row agent-option" role="menuitem" type="button"><span class="agent-mark"><svg viewBox="0 0 24 24" class="i"><use href="#p-agent-b"/></svg></span><span class="copy">Agent B<small>本地 · 已就绪</small></span><span class="kbd">2</span></button>
+  <button class="row agent-option" role="menuitem" type="button" disabled><span class="agent-mark"><svg viewBox="0 0 24 24" class="i"><use href="#p-agent-c"/></svg></span><span class="copy">Agent C<small>缺少运行依赖</small></span></button>
+</div>
+<!-- Row menus -->
+<div popover id="wsMenu" class="menu" role="menu" aria-label="工作区操作">
+  <button class="row" role="menuitem" type="button"><svg viewBox="0 0 24 24" class="i"><use href="#p-add"/></svg>在此新建会话</button>
+  <button class="row" role="menuitem" type="button"><svg viewBox="0 0 24 24" class="i"><use href="#p-folder"/></svg>在 Finder 中打开</button>
+  <button class="row" role="menuitem" type="button"><svg viewBox="0 0 24 24" class="i"><use href="#p-alert"/></svg>撤销信任</button>
+  <hr><button class="row danger" role="menuitem" type="button"><svg viewBox="0 0 24 24" class="i"><use href="#p-delete"/></svg>移除工作区</button>
+</div>
+<div popover id="sessionMenu" class="menu" role="menu" aria-label="会话操作">
+  <button class="row" role="menuitem" type="button"><svg viewBox="0 0 24 24" class="i"><use href="#p-edit"/></svg>重命名</button>
+  <button class="row" role="menuitem" type="button"><svg viewBox="0 0 24 24" class="i"><use href="#p-branch"/></svg>从此处分支</button>
+  <hr><button class="row" role="menuitem" type="button"><svg viewBox="0 0 24 24" class="i"><use href="#p-archive"/></svg>归档</button>
+</div>
+
+<!-- Settings -->
+<dialog class="settings" id="settings" aria-labelledby="settingsTitle" data-note="14">
+  <div class="dlg-head">
+    <h2 id="settingsTitle">工作台设置</h2>
+    <button class="btn icon" type="button" id="closeSettings" aria-label="关闭"><svg viewBox="0 0 24 24" class="i"><use href="#p-close"/></svg></button>
+  </div>
+  <div class="dlg-body">
+    <nav class="dlg-nav" aria-label="设置分类">
+      <button class="row" type="button" aria-current="page">外观</button>
+      <button class="row" type="button">工作区</button>
+      <button class="row" type="button">插件与能力</button>
+      <button class="row" type="button">运行状态</button>
+    </nav>
+    <div class="dlg-content">
+      <h3>主题</h3>
+      <p>立即生效，下次启动时保留。</p>
+      <div class="theme-choices" role="radiogroup" aria-label="主题">
+        <label class="theme-choice"><input type="radio" name="theme" value="light" checked><span class="swatch"><i style="background:#e9ebe7"></i><i style="background:#dce0da"></i><i style="background:#ffd802"></i></span><span><strong>浅色</strong></span><svg viewBox="0 0 24 24" class="i check"><use href="#p-check"/></svg></label>
+        <label class="theme-choice"><input type="radio" name="theme" value="dark"><span class="swatch"><i style="background:#111315"></i><i style="background:#2c3237"></i><i style="background:#ffd802"></i></span><span><strong>深色</strong></span><svg viewBox="0 0 24 24" class="i check"><use href="#p-check"/></svg></label>
+      </div>
+      <h3>皮肤</h3>
+      <p>外部皮肤以插件形式安装；内置皮肤始终可恢复。</p>
+      <div class="setting"><div class="copy"><strong>Aibo · ak-ui</strong><small>内置 · 当前使用</small></div><button class="btn outline" type="button">安装皮肤插件…</button></div>
+      <h3>新增工作区</h3>
+      <div class="setting"><div class="copy"><strong>默认信任</strong><small>仅影响之后添加的目录，已有工作区不变。</small></div><input class="switch" type="checkbox" role="switch" checked aria-label="新增工作区默认信任"></div>
+    </div>
+  </div>
+</dialog>
+
+<button class="btn notes-toggle" type="button" id="notesToggle" aria-expanded="false" aria-controls="notes">改动说明</button>
+<aside class="notes" id="notes" hidden aria-label="改动说明">
+  <h2>相对当前实现的改动</h2>
+  <p>悬停条目会在界面上标出对应区域。</p>
+  <ol>
+    <li data-for="1"><span><b>主操作只保留一个几何动作</b>黄色仅用于主操作；切角改用 clip-path，不再用伪元素三角叠底色。</span></li>
+    <li data-for="2"><span><b>单行会话，44px 命中区</b>插件图标、标题和相对时间（“19 小时前”）放在一行；状态用图标动画加文字表达，不只靠颜色。</span></li>
+    <li data-for="3"><span><b>工作区名不再被截断</b>只为“更多”预留 44px；“在此新建会话”移入菜单。</span></li>
+    <li data-for="4"><span><b>会话头部压到 64px</b>视图标签并入头部，只保留一个状态。去掉等宽加宽字距的面包屑，标题使用命令字体。</span></li>
+    <li data-for="5"><span><b>消息去噪</b>删除 USER/AGENT 大写标签和每条“完成”，只有异常或运行中才显示状态。正文 14px，行高 1.75。</span></li>
+    <li data-for="6"><span><b>工具调用成组折叠</b>一行摘要：多少个调用、多少失败；展开后每条 36px。</span></li>
+    <li data-for="7"><span><b>Composer 遵循 ak-form 表单样式</b>方角、1px 边框加 4px 左侧信号边；聚焦时信号色边框加 3px 光晕，不使用切角。附件改为 32px 单行 chip，去掉缩放手柄；禁用的发送按钮保留可见边框。</span></li>
+    <li data-for="8"><span><b>上下文分区统一对齐</b>去掉标题左竖线；标签和值都左对齐；时间显示相对值，悬停可看完整时间；信任改为成功语义，不再用警告黄。</span></li>
+    <li data-for="9"><span><b>执行记录成表</b>状态、命令、耗时、时间放在固定列里。</span></li>
+    <li data-for="10"><span><b>标签只有一种选中样式</b>主区、侧栏、Git 子视图都用底部 3px 信号条；列表和导航用左侧条加选中底色。方向键切换时焦点跟随。</span></li>
+    <li data-for="11"><span><b>Git 单行文件列表</b>状态字母带框和文字标签，文件名在前，目录从左侧截断，右侧显示增删行数，悬停时换成暂存操作；分组计数使用中性色。</span></li>
+    <li data-for="12"><span><b>标题栏开关</b>按下状态只用选中底色，不加信号条。</span></li>
+    <li data-for="13"><span><b>移动端</b>区域切换使用同一套标签样式；隐藏面包屑和状态栏，内容区大约多出 150px。</span></li>
+    <li data-for="14"><span><b>设置去冗余</b>去掉英文眉标和“完成”页脚，主题改为单选卡片，单一皮肤改为一行说明。打开时从顶部开始。</span></li>
+  </ol>
+</aside>
+
+<script>
+const $ = (s, r = document) => r.querySelector(s);
+const $$ = (s, r = document) => [...r.querySelectorAll(s)];
+const icon = (id, cls = 'i') => `<svg viewBox="0 0 24 24" class="${cls}"><use href="#p-${id}"/></svg>`;
+
+/* ---------- Data (fixture) ---------- */
+const workspaces = [
+  { id: 'w1', name: 'aibo-dev', expanded: true, sessions: [
+    { id: 's1', title: '重构默认视觉体验', agent: 'a', agentName: 'Agent A', state: 'running', time: '刚刚' },
+    { id: 's2', title: '会话恢复测试需要审批写入 fixtures 目录', agent: 'b', agentName: 'Agent B', state: 'attention', time: '12 分钟' },
+    { id: 's3', title: '检查侧栏的信息密度和悬浮操作', agent: 'a', agentName: 'Agent A', state: 'idle', time: '19 小时' },
+    { id: 's4', title: 'Git 历史分页失败重试', agent: 'c', agentName: 'Agent C', state: 'failed', time: '2 天' },
+  ]},
+  { id: 'w2', name: 'aibo-plugins-with-a-long-workspace-name', expanded: false, sessions: [
+    { id: 's5', title: '插件清单 v2 迁移', agent: 'b', agentName: 'Agent B', state: 'idle', time: '5 天' },
+  ]},
+];
+const stateText = { running: '运行中', attention: '待审批', failed: '失败', idle: '空闲' };
+let selected = 's1';
+let attachments = [
+  { id: 'a1', name: 'clipboard-wide.png', kind: 'image', size: '2.4 KB', mode: '内联' },
+  { id: 'a2', name: 'pnpm-lock.yaml', kind: 'file', size: '1.2 KB', mode: '引用' },
+];
+
+/* ---------- Sidebar ---------- */
+function renderNav() {
+  $('#nav').innerHTML = workspaces.map(ws => `
+    <div class="ws" ${ws.id === 'w1' ? 'data-note="3"' : ''}>
+      <button class="row ws-row" type="button" aria-expanded="${ws.expanded}" data-ws="${ws.id}" title="${ws.name}">
+        ${icon('chev', 'i chev')}<span class="ellipsis">${ws.name}</span>
+      </button>
+      <button class="row-more" type="button" popovertarget="wsMenu" aria-label="${ws.name} 更多操作">${icon('more')}</button>
+    </div>
+    <div role="list" ${ws.expanded ? '' : 'hidden'}>
+      ${ws.sessions.map((s, i) => `
+        <div class="session" role="listitem" ${ws.id === 'w1' && i === 0 ? 'data-note="2"' : ''}>
+          <button class="row" type="button" data-session="${s.id}" aria-current="${s.id === selected ? 'page' : 'false'}" title="${s.title}">
+            <span class="agent-mark" data-state="${s.state}" title="${s.agentName} · ${stateText[s.state]}">${icon(s.state === 'attention' ? 'alert' : 'agent-' + s.agent)}</span>
+            <span class="title ellipsis">${s.title}</span>
+            ${s.state === 'attention' ? '<span class="tag warn">待审批</span>' : s.state === 'failed' ? '<span class="tag bad">失败</span>' : `<span class="time">${s.time}</span>`}
+            <span class="sr">${stateText[s.state]}</span>
+          </button>
+          <button class="row-more" type="button" popovertarget="sessionMenu" aria-label="${s.title} 更多操作">${icon('more')}</button>
+        </div>`).join('')}
+    </div>`).join('');
+}
+$('#nav').addEventListener('click', e => {
+  const ws = e.target.closest('[data-ws]');
+  if (ws) { const w = workspaces.find(x => x.id === ws.dataset.ws); w.expanded = !w.expanded; renderNav(); $(`[data-ws="${w.id}"]`).focus(); }
+  const s = e.target.closest('[data-session]');
+  if (s) { selected = s.dataset.session; renderNav(); renderSession(); setRegion('main'); }
+});
+
+/* ---------- Conversation ---------- */
+function renderSession() {
+  const ws = workspaces.find(w => w.sessions.some(s => s.id === selected));
+  const s = ws.sessions.find(x => x.id === selected);
+  $('#sessionTitle').textContent = s.title; $('#sessionTitle').title = s.title;
+  $('#crumbWs').textContent = ws.name; $('#crumbAgent').textContent = s.agentName;
+  const st = $('#sessionState'); st.dataset.state = s.state; st.lastElementChild.textContent = stateText[s.state];
+  $('#stop').hidden = s.state !== 'running';
+  const who = `<span class="agent-mark">${icon('agent-' + s.agent)}</span><strong>${s.agentName}</strong>`;
+  const chat = $('#view-chat');
+  if (s.id === 's1') chat.innerHTML = `
+    <div class="user" data-note="5"><div class="msg-meta"><strong>你</strong><span>14:32</span></div>
+      <div class="bubble">使用 ak-ui 改造 Aibo 的默认界面。导航和工作区在同一主题下保持统一明暗，保留会话与代码变更的工作流。</div></div>
+    <div class="assistant"><div class="msg-meta">${who}<span>14:33</span></div>
+      <div class="body"><h2>先统一密度和选中语言，再处理装饰。</h2>
+      <p>当前实现同时叠加了旧的紧凑样式和 ak-ui 覆盖，导致 44px 控件里出现 9px 文字。</p>
+      <ul><li><strong>密度</strong>：命中区保持 44px，可见控件收紧到 32–36px。</li>
+      <li><strong>层级</strong>：正文 14px，界面 13px，元信息 12px，不再更小。</li>
+      <li><strong>信号</strong>：黄色只表示操作，蓝色只表示当前与焦点，<code>--ak-signal-*</code> 不借作他用。</li></ul></div></div>
+    <details class="tools-group" data-note="6"><summary>${icon('chev', 'i chev')}${icon('tool')}<span>4 个工具调用</span><span class="meta">· 1 个失败 · 15.8s</span></summary>
+      <div class="tool"><span class="st A">✓</span><span class="name">read</span><span class="target ellipsis">src/lib/ui-kit/kits/ak-ui.css</span><span class="meta">0.1s</span></div>
+      <div class="tool"><span class="st A">✓</span><span class="name">search</span><span class="target ellipsis">font-size: (8|9|10)px</span><span class="meta">0.2s</span></div>
+      <div class="tool"><span class="st A">✓</span><span class="name">shell</span><span class="target ellipsis">pnpm run check:types</span><span class="meta">12.4s</span></div>
+      <div class="tool"><span class="st D">✕</span><span class="name">shell</span><span class="target ellipsis">node --test test/ui-style-boundaries.test.mjs</span><span class="meta">3.1s</span></div>
+    </details>
+    <div class="activity"><span class="agent-mark" data-state="running">${icon('agent-a')}</span>正在编辑 <span class="mono">ak-ui.css</span> · 42s</div>`;
+  else if (s.state === 'attention') chat.innerHTML = `
+    <div class="assistant"><div class="msg-meta">${who}<span>14:20</span></div><div class="body"><p>需要写入测试夹具以复现会话恢复失败。</p></div></div>
+    <div class="approval" role="group" aria-label="审批请求"><div class="head">${icon('alert')}需要你的批准 · 写入文件</div>
+      <pre>write fixtures/session-restore/broken-state.json  (+42 行)</pre>
+      <div class="actions"><button class="btn primary tall" type="button">允许一次</button><button class="btn outline tall" type="button">本会话内允许</button><button class="btn danger tall" type="button">拒绝</button></div></div>`;
+  else if (s.state === 'failed') chat.innerHTML = `
+    <div class="assistant"><div class="msg-meta">${who}<span>2 天前</span><span class="tag bad">失败</span></div>
+      <div class="body"><p>进程意外退出（exit 137）。已保存的历史不受影响。</p></div>
+      <div style="margin-top:8px;display:flex;gap:8px"><button class="btn outline" type="button">${icon('refresh')}重试</button><button class="btn" type="button">查看日志</button></div></div>`;
+  else chat.innerHTML = `<div class="empty"><h3>从一个问题开始</h3><p class="meta">描述目标，Agent 会在当前工作区中规划并执行。</p></div>`;
+}
+
+/* ---------- Composer ---------- */
+function renderAttachments() {
+  $('#attachments').innerHTML = attachments.map(a => `
+    <span class="chip" title="${a.name}">${a.kind === 'image' ? '<span class="thumb" aria-hidden="true"></span>' : icon('file')}
+      <span class="ellipsis">${a.name}</span><span class="size">${a.size}</span>
+      <button class="btn icon" type="button" data-remove="${a.id}" aria-label="移除 ${a.name}">${icon('close')}</button></span>`).join('');
+  $('#ctxSummary').textContent = attachments.length ? `${attachments.length} 个附件` : '';
+  $('#attachCount').textContent = attachments.length;
+  $('#ctxAttachments').innerHTML = attachments.length ? attachments.map(a => `
+    <div class="list-row">${icon(a.kind === 'image' ? 'image' : 'file')}<span class="name ellipsis mono" title="${a.name}">${a.name}</span><span class="muted">${a.mode} · ${a.size}</span></div>`).join('')
+    : '<p class="panel-note">发送前可以在输入框中添加文件或目录。</p>';
+  updateSend();
+}
+$('#attachments').addEventListener('click', e => {
+  const b = e.target.closest('[data-remove]'); if (!b) return;
+  attachments = attachments.filter(a => a.id !== b.dataset.remove); renderAttachments(); $('#prompt').focus();
+});
+$('#attach').addEventListener('click', () => { attachments.push({ id: 'a' + Date.now(), name: 'notes-' + (attachments.length + 1) + '.md', kind: 'file', size: '0.8 KB', mode: '引用' }); renderAttachments(); });
+const prompt = $('#prompt');
+function updateSend() { $('#send').disabled = !prompt.value.trim(); }
+prompt.addEventListener('input', () => { prompt.style.height = 'auto'; prompt.style.height = Math.min(prompt.scrollHeight, 240) + 'px'; updateSend(); });
+prompt.addEventListener('keydown', e => { if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) { e.preventDefault(); $('#send').click(); } });
+$('#send').addEventListener('click', () => {
+  if (!prompt.value.trim()) return;
+  const node = document.createElement('div'); node.className = 'user';
+  node.innerHTML = '<div class="msg-meta"><strong>你</strong><span>现在</span></div><div class="bubble"></div>';
+  node.querySelector('.bubble').textContent = prompt.value;
+  $('#view-chat').append(node); prompt.value = ''; prompt.style.height = ''; updateSend();
+  $('#feed').scrollTop = $('#feed').scrollHeight;
+});
+
+/* ---------- Tabs with roving focus (focus follows the selected tab) ---------- */
+function tabs(list, onChange) {
+  const items = () => $$('[role="tab"]', list);
+  const select = (tab, focus) => {
+    items().forEach(t => { const on = t === tab; t.setAttribute('aria-selected', on); t.tabIndex = on ? 0 : -1; const p = t.getAttribute('aria-controls'); if (p) $('#' + p).hidden = !on; });
+    if (focus) tab.focus(); onChange?.(tab);
+  };
+  list.addEventListener('click', e => { const t = e.target.closest('[role="tab"]'); if (t) select(t, false); });
+  list.addEventListener('keydown', e => {
+    const all = items(), i = all.indexOf(document.activeElement); if (i < 0) return;
+    const next = { ArrowRight: i + 1, ArrowLeft: i - 1, Home: 0, End: all.length - 1 }[e.key];
+    if (next === undefined) return; e.preventDefault(); select(all[(next + all.length) % all.length], true);
+  });
+}
+tabs($('#mainTabs')); tabs($('#sideTabs')); tabs($('#gitTabs'));
+tabs($('.regions [role="tablist"]'), t => { $('#grid').dataset.region = t.dataset.region; });
+function setRegion(r) { const t = $(`.regions [data-region="${r}"]`); if (getComputedStyle($('.regions')).display !== 'none') t.click(); }
+
+/* ---------- Git ---------- */
+const groups = [
+  { id: 'staged', label: '已暂存', open: true, files: [['A', 'ak-ui-redesign.html', 'docs/design/', '+620', '']] },
+  { id: 'changes', label: '更改', open: true, files: [
+    ['M', 'ak-ui.css', 'src/lib/ui-kit/kits/', '+48', '−112'], ['M', 'base.css', 'src/lib/ui-kit/kits/', '+12', '−105'],
+    ['M', 'themes.json', 'src/lib/ui-kit/kits/ak-ui/', '+6', '−2'], ['M', 'Inspector.svelte', 'src/lib/components/app/', '+9', '−14'],
+    ['M', 'WorkspaceSidebar.svelte', 'src/lib/components/app/', '+21', '−30'], ['D', 'legacy-density.css', 'src/lib/ui-kit/kits/', '', '−88'],
+    ['M', 'ak-ui-density-browser.mjs', 'probes/', '+18', '−4'] ] },
+];
+let selectedFile = 'ak-ui.css';
+function renderGit() {
+  $('#gitGroups').innerHTML = groups.map(g => `
+    <button class="group-head" type="button" aria-expanded="${g.open}" data-group="${g.id}">${icon('chev', 'i chev')}<span class="grow">${g.label}</span><span class="tag">${g.files.length}</span></button>
+    <div ${g.open ? '' : 'hidden'}>${g.files.map(([s, n, d, a, r]) => `
+      <button class="file" type="button" data-file="${n}" aria-selected="${n === selectedFile}" title="${d}${n}">
+        <span class="st ${s}" aria-label="${{ M: '已修改', A: '新增', D: '已删除' }[s]}">${s}</span>
+        <span class="fname ellipsis mono">${n}</span><span class="fdir">${d}</span>
+        <span class="delta"><span class="add">${a}</span> <span class="del">${r}</span></span>
+        <span class="hover-act meta">${g.id === 'staged' ? '取消暂存' : '暂存'}</span></button>`).join('')}</div>`).join('');
+  $('#commitBtn').disabled = !$('#commitMsg').value.trim();
+}
+$('#gitGroups').addEventListener('click', e => {
+  const g = e.target.closest('[data-group]'); if (g) { const x = groups.find(y => y.id === g.dataset.group); x.open = !x.open; renderGit(); $(`[data-group="${x.id}"]`).focus(); return; }
+  const f = e.target.closest('[data-file]'); if (f) { selectedFile = f.dataset.file; renderGit(); $(`[data-file="${CSS.escape(selectedFile)}"]`).focus(); }
+});
+$('#commitMsg').addEventListener('input', () => { $('#commitBtn').disabled = !$('#commitMsg').value.trim(); });
+let historyPages = 1;
+function renderHistory() {
+  const rows = Array.from({ length: historyPages * 8 }, (_, i) => `
+    <button class="commit" type="button"><span class="subject ellipsis">${['调整文件列表对齐', '修复历史分页重试', '统一选中态语言', '移除旧紧凑样式', '合并重复选择器', '会话行改为单行', '上下文分区对齐', '更新密度探针'][i % 8]}</span>
+      <span class="when">${i < 3 ? (i + 1) * 2 + ' 小时前' : (i - 1) + ' 天前'}</span>
+      <span class="by"><span class="mono">${(0xabc1234 + i * 977).toString(16).slice(0, 7)}</span> · Tester</span></button>`).join('');
+  $('#git-history').innerHTML = rows + (historyPages < 2 ? '<button class="btn outline more" type="button" id="moreHistory">加载更早的提交</button>' : '<p class="panel-note" style="padding:12px 16px">已显示全部提交</p>');
+}
+$('#git-history').addEventListener('click', e => { if (e.target.id === 'moreHistory') { historyPages++; renderHistory(); } });
+
+/* ---------- Chrome ---------- */
+function setTheme(t) {
+  document.body.dataset.theme = t;
+  $('#themeToggle').innerHTML = icon(t === 'dark' ? 'sun' : 'moon');
+  $('#themeLabel').textContent = t === 'dark' ? '深色' : '浅色';
+  $$('input[name="theme"]').forEach(r => r.checked = r.value === t);
+}
+$('#themeToggle').addEventListener('click', () => setTheme(document.body.dataset.theme === 'dark' ? 'light' : 'dark'));
+$$('input[name="theme"]').forEach(r => r.addEventListener('change', () => setTheme(r.value)));
+$('#auxToggle').addEventListener('click', e => {
+  const on = e.currentTarget.getAttribute('aria-pressed') !== 'true';
+  e.currentTarget.setAttribute('aria-pressed', on); $('#grid').classList.toggle('no-aux', !on);
+});
+let settingsTrigger = null;
+$$('[data-open-settings]').forEach(b => b.addEventListener('click', () => {
+  settingsTrigger = b; $('#settings').showModal(); $('.dlg-content').scrollTop = 0;
+}));
+$('#closeSettings').addEventListener('click', () => $('#settings').close());
+$('#settings').addEventListener('close', () => settingsTrigger?.focus());
+$('#settings').addEventListener('click', e => { if (e.target === e.currentTarget) e.currentTarget.close(); });
+$('.dlg-nav').addEventListener('click', e => { const b = e.target.closest('.row'); if (!b) return; $$('.dlg-nav .row').forEach(x => x.removeAttribute('aria-current')); b.setAttribute('aria-current', 'page'); });
+
+/* Popovers anchor below their trigger and return focus on close. */
+let popoverTrigger = null;
+document.addEventListener('click', e => { const t = e.target.closest('[popovertarget]'); if (t) popoverTrigger = t; }, true);
+$$('[popover]').forEach(p => p.addEventListener('toggle', e => {
+  const t = popoverTrigger; if (!t) return;
+  if (e.newState === 'open') {
+    t.setAttribute('aria-expanded', 'true');
+    const r = t.getBoundingClientRect(), w = p.offsetWidth, h = p.offsetHeight;
+    p.style.left = Math.max(8, Math.min(r.right - w, innerWidth - w - 8)) + 'px';
+    p.style.top = (r.bottom + 4 + h > innerHeight ? r.top - h - 4 : r.bottom + 4) + 'px';
+    p.style.left = (t.id === 'newSession' ? r.left : parseFloat(p.style.left)) + 'px';
+    p.querySelector('.row:not(:disabled)')?.focus();
+  } else { t.setAttribute('aria-expanded', 'false'); }
+}));
+$$('[popover] .row').forEach(b => b.addEventListener('click', () => { const p = b.closest('[popover]'); p.hidePopover(); popoverTrigger?.focus(); }));
+$$('[popover]').forEach(p => p.addEventListener('keydown', e => {
+  const rows = $$('.row:not(:disabled)', p), i = rows.indexOf(document.activeElement);
+  if (e.key === 'ArrowDown' || e.key === 'ArrowUp') { e.preventDefault(); rows[(i + (e.key === 'ArrowDown' ? 1 : -1) + rows.length) % rows.length].focus(); }
+  if (e.key === 'Escape') { requestAnimationFrame(() => popoverTrigger?.focus()); }
+}));
+document.addEventListener('keydown', e => {
+  if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'n') { e.preventDefault(); $('#newSession').click(); }
+});
+
+/* Design notes: hovering an item outlines its target. */
+$('#notesToggle').addEventListener('click', e => {
+  const open = $('#notes').hidden; $('#notes').hidden = !open; e.currentTarget.setAttribute('aria-expanded', open);
+});
+$$('#notes li').forEach(li => {
+  li.addEventListener('mouseenter', () => $$(`[data-note="${li.dataset.for}"]`).forEach(n => n.classList.add('note-hit')));
+  li.addEventListener('mouseleave', () => $$('.note-hit').forEach(n => n.classList.remove('note-hit')));
+});
+
+renderNav(); renderSession(); renderAttachments(); renderGit(); renderHistory(); setTheme('light');
+</script>
+</body>
+</html>
