@@ -342,8 +342,9 @@
 }
 
 .app-shell[data-ui-kit='ak-ui'] .entry-meta {
-  margin-bottom: var(--ak-space-3);
+  margin-bottom: var(--ak-space-2);
   align-items: center;
+  font-size: var(--aibo-type-meta);
 }
 
 .app-shell[data-ui-kit='ak-ui'] .entry-author {
@@ -361,7 +362,14 @@
 .app-shell[data-ui-kit='ak-ui'] :is(.tool-output, .tool-group) > summary {
   min-height: 44px;
   align-content: center;
-  font-size: var(--aibo-type-meta);
+  padding: 0 var(--ak-space-3);
+  font-size: var(--aibo-type-ui);
+}
+
+/* The group is a bordered list; its rows carry the inset, the container none. */
+
+.app-shell[data-ui-kit='ak-ui'] .timeline-entry.timeline-entry.tool-group-entry {
+  padding: 0;
 }
 
 .app-shell[data-ui-kit='ak-ui'] :is(.tool-output pre, .entry-content pre) {
@@ -393,10 +401,12 @@
 /* The composer is one ak-form field: hairline border, 4px signal edge, panel fill. */
 
 .app-shell[data-ui-kit='ak-ui'] .composer {
-  /* Same 760px column as the feed, so the field lines up with the messages above it. */
+  /* Same 760px column as the feed, so the field lines up with the messages above it.
+     The field itself has no inset: the textarea, chips and toolbar each carry their own. */
   width: min(100% - var(--workbench-content-inset) * 2, var(--workbench-content-width));
   margin: 0 auto var(--ak-space-4);
-  padding: var(--ak-space-3) var(--ak-space-4);
+  padding: 0;
+  gap: 0;
   border: var(--ak-line-hairline) solid var(--aibo-border);
   border-left: 4px solid var(--aibo-border-strong);
   border-radius: 0;
@@ -409,8 +419,50 @@
   border-color: var(--aibo-border-strong);
 }
 
+.app-shell[data-ui-kit='ak-ui'] .composer-body {
+  gap: 0;
+}
+
 .app-shell[data-ui-kit='ak-ui'] .composer-toolbar {
+  gap: var(--ak-space-1);
+  padding: var(--ak-space-1) var(--ak-space-2) var(--ak-space-2);
+}
+
+/* Attachment chips: one 32px row above the text, raised surface, square. */
+
+.app-shell[data-ui-kit='ak-ui'] .composer .attachment-list {
+  margin: 0;
+  padding: var(--ak-space-2) var(--ak-space-3) 0;
   gap: var(--ak-space-2);
+}
+
+.app-shell[data-ui-kit='ak-ui'] .composer .attachment-item {
+  width: auto;
+  max-width: 220px;
+  height: 32px;
+  gap: 6px;
+  padding: 0 0 0 6px;
+  border-radius: 0;
+  background: var(--ak-surface-raised);
+}
+
+.app-shell[data-ui-kit='ak-ui'] .composer .attachment-item :is(img, .attachment-placeholder, .attachment-file-icon) {
+  width: 22px;
+  height: 22px;
+  border-radius: 0;
+  border: 1px solid var(--aibo-border);
+  overflow: hidden;
+  white-space: nowrap;
+}
+
+.app-shell[data-ui-kit='ak-ui'] .composer .attachment-file-icon {
+  font-size: 14px;
+}
+
+.app-shell[data-ui-kit='ak-ui'] .composer .attachment-caption button {
+  width: 30px;
+  height: 30px;
+  border-radius: 0;
 }
 
 .app-shell[data-ui-kit='ak-ui'] .composer-toolbar [data-slot='button'] {
@@ -780,7 +832,8 @@
   }
 
   .app-shell[data-ui-kit='ak-ui'] .composer {
-    padding: var(--ak-space-3);
+    width: calc(100% - var(--ak-space-2) * 2);
+    margin-bottom: var(--ak-space-2);
   }
 
   .app-shell[data-ui-kit='ak-ui'] .composer-toolbar {
@@ -1316,10 +1369,11 @@
 }
 
 .app-shell[data-ui-kit='ak-ui'] .inspector :is(.project-actions-card, .workspace-capabilities-card, .capability-checker-card, .capabilities-card, .session-context-card, .attachments-card, .artifacts-card, .thread-card, .profile-card, .changeset-card) {
-  margin: 0 var(--ak-space-4);
+  /* Sections run the full panel width; the divider spans it and the content keeps a 16px inset. */
+  margin: 0;
   border: 0;
   border-bottom: 1px solid var(--aibo-border);
-  padding: var(--ak-space-3) 0;
+  padding: var(--ak-space-2) var(--ak-space-4) var(--ak-space-4);
   border-radius: 0;
   background: var(--aibo-surface);
 }
@@ -1788,6 +1842,7 @@
 
 .app-shell[data-ui-kit='ak-ui'] .composer-textarea {
   min-height: 64px;
+  padding: var(--ak-space-3) var(--ak-space-4);
   border: 0;
   resize: none;
   font: var(--aibo-type-body)/1.6 var(--ak-font-sans);
@@ -1808,4 +1863,14 @@
   place-items: center;
   min-width: 44px;
   min-height: 44px;
+}
+
+/* Region tabs on narrow screens: flush strip, equal tabs, control-size labels. */
+
+.app-shell[data-ui-kit='ak-ui'] .compact-region-navigation {
+  padding-inline: 0;
+}
+
+.app-shell[data-ui-kit='ak-ui'] .compact-region-navigation .ak-button {
+  font-size: var(--aibo-type-ui);
 }

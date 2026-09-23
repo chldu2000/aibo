@@ -157,9 +157,9 @@ try{
   const designColumn=await reference.locator('#view-chat.feed-inner').evaluate(readColumn);
   const actualColumn=await page.locator('.timeline-feed-content').evaluate(readColumn);
   assert.deepEqual(actualColumn,designColumn,`${size} reading column matches the design study`);
-  // The composer carries the messages' own column so the field lines up with them.
-  const composerWidth=await page.locator('.composer').evaluate(node=>Math.round(node.getBoundingClientRect().width));
-  assert.equal(composerWidth,actualColumn.width,`${size} composer shares the reading column`);
+  // The composer follows the design study's own gutter: the reading column on desktop, 8px on phones.
+  const composerWidth=target=>target.locator('.composer').evaluate(node=>Math.round(node.getBoundingClientRect().width));
+  assert.equal(await composerWidth(page),await composerWidth(reference),`${size} composer width matches the design study`);
   for(const mode of ['light','dark']){
    await reference.evaluate(mode=>document.body.dataset.theme=mode,mode);
    const design=await reference.locator('.composer').evaluate(e=>{const s=getComputedStyle(e);return {edge:s.borderLeftWidth,radius:s.borderRadius}});
