@@ -147,6 +147,19 @@ try{
  await reference.goto(`http://127.0.0.1:${server.httpServer.address().port}/docs/design/ak-ui-redesign.html`);
  for(const [size,width,height] of [['desktop',1440,960],['mobile',390,844]]){
   await reference.setViewportSize({width,height});
+  // Both surfaces share the viewport so widths are comparable, not just border anatomy.
+  await page.setViewportSize({width,height});
+  // A CDP resize lands before layout settles, so let both pages reach a stable box
+  // rather than measuring the previous viewport's gutters.
+  const settle=target=>target.evaluate(()=>new Promise(done=>requestAnimationFrame(()=>requestAnimationFrame(done))));
+  await settle(reference);await settle(page);
+  const readColumn=node=>({width:Math.round(node.getBoundingClientRect().width),gap:getComputedStyle(node).rowGap});
+  const designColumn=await reference.locator('#view-chat.feed-inner').evaluate(readColumn);
+  const actualColumn=await page.locator('.timeline-feed-content').evaluate(readColumn);
+  assert.deepEqual(actualColumn,designColumn,`${size} reading column matches the design study`);
+  // The composer carries the messages' own column so the field lines up with them.
+  const composerWidth=await page.locator('.composer').evaluate(node=>Math.round(node.getBoundingClientRect().width));
+  assert.equal(composerWidth,actualColumn.width,`${size} composer shares the reading column`);
   for(const mode of ['light','dark']){
    await reference.evaluate(mode=>document.body.dataset.theme=mode,mode);
    const design=await reference.locator('.composer').evaluate(e=>{const s=getComputedStyle(e);return {edge:s.borderLeftWidth,radius:s.borderRadius}});

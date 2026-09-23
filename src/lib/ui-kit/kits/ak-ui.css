@@ -9,7 +9,10 @@
   font-size: var(--aibo-type-body);
   letter-spacing: 0;
   --workbench-splitter-width: 6px;
-  --workbench-content-inset: clamp(24px, 4vw, 64px);
+  /* One reading column: 760px of content inside a 24px gutter. A wider fluid gutter
+     used to eat into the column before the cap could ever apply. */
+  --workbench-content-inset: var(--ak-space-5);
+  --workbench-content-width: 760px;
   --aibo-selected-ink: color-mix(in srgb, var(--aibo-accent) 85%, var(--ak-color-black));
 }
 
@@ -295,21 +298,38 @@
 }
 
 .app-shell[data-ui-kit='ak-ui'] .timeline-feed {
-  padding: var(--ak-space-6) var(--workbench-content-inset);
+  padding: var(--ak-space-5) var(--workbench-content-inset) var(--ak-space-6);
 }
 
+/* The feed is a grid so one gap sets the rhythm; entries carry no margin of their own. */
+
 .app-shell[data-ui-kit='ak-ui'] .timeline-feed-content {
-  max-width: 850px;
+  display: grid;
+  gap: var(--ak-space-5);
+  max-width: var(--workbench-content-width);
   margin-inline: auto;
 }
 
 .app-shell[data-ui-kit='ak-ui'] .timeline-entry {
   max-width: 100%;
   padding: 0;
-  margin: 0 0 var(--ak-space-6);
+  margin: 0;
   border: 0;
   background: transparent;
   box-shadow: none;
+}
+
+/* Records keep their own tighter spacing, but as grid children it has to come off the
+   gap instead of adding a second margin to it. */
+
+.app-shell[data-ui-kit='ak-ui'] .timeline-feed-content .timeline-entry.timeline-entry:is(.compact-record, .execution-record, .tool-group-entry) {
+  margin: 0;
+}
+
+.app-shell[data-ui-kit='ak-ui'] .timeline-feed-content
+  :is(.compact-record, .execution-record, .tool-group-entry)
+  + :is(.compact-record, .execution-record, .tool-group-entry) {
+  margin-top: calc(var(--ak-space-2) - var(--ak-space-5));
 }
 
 .app-shell[data-ui-kit='ak-ui'] .entry-meta {
@@ -364,7 +384,9 @@
 /* The composer is one ak-form field: hairline border, 4px signal edge, panel fill. */
 
 .app-shell[data-ui-kit='ak-ui'] .composer {
-  margin: 0 var(--workbench-content-inset) var(--ak-space-5);
+  /* Same 760px column as the feed, so the field lines up with the messages above it. */
+  width: min(100% - var(--workbench-content-inset) * 2, var(--workbench-content-width));
+  margin: 0 auto var(--ak-space-4);
   padding: var(--ak-space-3) var(--ak-space-4);
   border: var(--ak-line-hairline) solid var(--aibo-border);
   border-left: 4px solid var(--aibo-border-strong);
@@ -499,7 +521,8 @@
   display: flex;
   flex: none;
   order: 3;
-  min-height: 30px;
+  /* Read-only text row, so it sits below the 44px interactive minimum. */
+  min-height: 28px;
   align-items: center;
   gap: var(--ak-space-4);
   padding: 0 var(--ak-space-4);
@@ -675,12 +698,9 @@
 
 @media (max-width: 1100px) {
 
-  .app-shell[data-ui-kit='ak-ui'] {
-    --workbench-content-inset: var(--ak-space-5);
-  }
-
   .app-shell[data-ui-kit='ak-ui'] .timeline-heading {
     flex-wrap: wrap;
+    align-items: center;
     padding: 0 var(--ak-space-4);
   }
 
@@ -689,12 +709,8 @@
     padding-bottom: 0;
   }
 
-  .app-shell[data-ui-kit='ak-ui'] .timeline-feed {
-    padding: var(--ak-space-5);
-  }
-
-  .app-shell[data-ui-kit='ak-ui'] .composer {
-    margin-inline: var(--ak-space-5);
+  .app-shell[data-ui-kit='ak-ui'] .timeline-heading-actions {
+    margin-left: auto;
   }
 
   .app-shell[data-ui-kit='ak-ui'] .timeline-heading-actions [data-slot='badge'] {
@@ -702,15 +718,20 @@
   }
 }
 
-@media (max-width: 720px) {
+@media (max-width: 760px) {
 
   .app-shell[data-ui-kit='ak-ui'] {
-    --workbench-content-inset: var(--ak-space-4);
+    --workbench-content-inset: var(--ak-space-3);
   }
 
   .app-shell[data-ui-kit='ak-ui'] .timeline-heading {
     min-height: 0;
+    gap: 0 var(--ak-space-2);
     padding: 0 var(--ak-space-3);
+  }
+
+  .app-shell[data-ui-kit='ak-ui'] .timeline-heading-copy {
+    padding-top: 8px;
   }
 
   .app-shell[data-ui-kit='ak-ui'] .timeline-heading-copy > small {
@@ -722,15 +743,22 @@
   }
 
   .app-shell[data-ui-kit='ak-ui'] .timeline-heading [data-slot='card-title'] {
-    font-size: 18px;
+    font-size: 17px;
+  }
+
+  /* Once the title holds its own row, the view tabs take the row below it. */
+
+  .app-shell[data-ui-kit='ak-ui'] .timeline-heading .conversation-navigation {
+    order: 3;
+    flex-basis: 100%;
+    overflow-x: auto;
   }
 
   .app-shell[data-ui-kit='ak-ui'] .timeline-feed {
-    padding: var(--ak-space-4);
+    padding: var(--ak-space-4) var(--ak-space-3);
   }
 
   .app-shell[data-ui-kit='ak-ui'] .composer {
-    margin: 0 var(--ak-space-4) var(--ak-space-4);
     padding: var(--ak-space-3);
   }
 
@@ -1171,7 +1199,9 @@
 /* Secondary content retains readable type and follows the same content grid. */
 
 .app-shell[data-ui-kit='ak-ui'] :is(.goal-bar, .usage-strip, .timeline-retry, .agent-activity, .agent-queue, .composer-draft-status) {
-  margin-inline: var(--workbench-content-inset);
+  /* These sit between the feed and the composer, so they share the same column. */
+  width: min(100% - var(--workbench-content-inset) * 2, var(--workbench-content-width));
+  margin-inline: auto;
   border-radius: var(--ak-radius-subtle);
   font-size: var(--ak-type-data-size);
 }
