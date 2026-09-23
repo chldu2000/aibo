@@ -115,3 +115,49 @@ test('ak-ui does not restore a universal transition override', async () => {
   const source = await readFile(path.join(root, 'src/lib/ui-kit/kits/ak-ui.css'), 'utf8');
   assert.doesNotMatch(source, /\]\s+\*\s*\{[^}]*transition/s);
 });
+
+/** Returns the skin's media blocks and the selectors each one declares, by line. */
+async function akResponsiveBlocks() {
+  const lines = (await readFile(path.join(root, 'src/lib/ui-kit/kits/ak-ui.css'), 'utf8')).split('\n');
+  const blocks = [];
+  let depth = 0;
+  let open = null;
+  lines.forEach((line, index) => {
+    if (line.startsWith('@media')) { open = { condition: line.trim(), start: index + 1, selectors: [] }; depth = 0; }
+    depth += (line.match(/\{/g) ?? []).length - (line.match(/\}/g) ?? []).length;
+    if (open && index + 1 > open.start) {
+      if (line.includes('{') && !line.trim().startsWith('@') && !line.trim().startsWith('/*')) open.selectors.push(line.split('{')[0].trim());
+      if (depth === 0) { blocks.push({ ...open, end: index + 1 }); open = null; }
+    }
+  });
+  const inside = new Set(blocks.flatMap(block => Array.from({ length: block.end - block.start + 1 }, (_, offset) => block.start + offset)));
+  const base = lines.flatMap((line, index) => inside.has(index + 1) || !line.includes('{') || line.trim().startsWith('@') || line.trim().startsWith('/*')
+    ? [] : [{ selector: line.split('{')[0].trim(), line: index + 1 }]).filter(rule => rule.selector);
+  return { blocks, base };
+}
+
+test('each ak-ui responsive condition is declared once', async () => {
+  const { blocks } = await akResponsiveBlocks();
+  const conditions = blocks.map(block => block.condition);
+  assert.deepEqual([...new Set(conditions)], conditions, 'split media blocks let the same breakpoint disagree with itself');
+});
+
+test('no ak-ui responsive rule is silently overridden by a later unconditional rule', async () => {
+  const { blocks, base } = await akResponsiveBlocks();
+  const shadowed = blocks.flatMap(block => block.selectors.flatMap(selector =>
+    base.filter(rule => rule.selector === selector && rule.line > block.end)
+      .map(rule => `${block.condition} ${selector} loses to the rule at line ${rule.line}`)));
+  assert.deepEqual(shadowed, [], 'a media rule placed before its own base rule never applies');
+});
+
+test('the theme picker keeps a colour preview beside its radio', async () => {
+  const source = await readFile(path.join(root, 'src/lib/ui-kit/kits/ak-ui.css'), 'utf8');
+  const hidden = /\.appearance-theme-option\s+\.theme-swatches\s*\{[^}]*display:\s*none/s;
+  assert.doesNotMatch(source, hidden, 'swatches are the only colour preview once the check mark is dropped');
+});
+
+test('shared skin code detects dialogs natively instead of by skin class name', async () => {
+  const source = await readFile(path.join(root, 'src/lib/ui-kit/kits/shared/HostPanel.svelte'), 'utf8');
+  assert.match(source, /dialog\[open\]/, 'the keyboard guard must see every skin modal, not one skin’s class');
+  assert.doesNotMatch(source, /settings-overlay/, 'that class no longer exists, so the guard silently never matched');
+});

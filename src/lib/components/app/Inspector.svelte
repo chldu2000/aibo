@@ -1,10 +1,10 @@
 <script lang="ts">
-  import { AgentStatusMark, Badge, Button, Card, CardContent, CardHeader, CardTitle, Icon, Separator } from '$lib/ui-kit';
+  import { AgentStatusMark, Badge, Button, Card, CardContent, CardHeader, CardTitle, Icon } from '$lib/ui-kit';
   import type { AgentIcon } from '../../../../packages/plugin-protocol/src/agent-icon';
   import type { PresentationArtifactPreview } from '../../../../packages/plugin-protocol/src/presentation-inspector';
   import ProjectActionsPanel from './ProjectActionsPanel.svelte';
   import SidePanelTabs from './SidePanelTabs.svelte';
-  import { relativeTimeLabel, formatBytes, sessionStateLabel } from './session-utils';
+  import { relativeTimeLabel, formatBytes } from './session-utils';
   import type {
     AgentDiagnostic,
     CodexThreadListItem,

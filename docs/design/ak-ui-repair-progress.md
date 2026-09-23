@@ -47,3 +47,29 @@ Inspector 夹具补齐仓库发现；导航探针针对原生模态框验证 ine
 
 实现边界：控件保留实际 44px 命中区域，未使用会与邻居重叠的扩展伪元素；移动端以输入区小于 250px、
 附件单行、页面不横溢出验收，不对不同窗口的阅读高度承诺固定增加 150px。共享 base 样式保留外部呈现回退消费者。
+
+## P4：复核 P2/P3
+
+复核 `fd11cf7` 与 `91b647a`。P2/P3 的主体确实落地：`ak-ui.css` 无原始色值、无低于 12px 字号，
+Git 行数来自原生 `git diff --numstat -z` 且有制表符/改名/二进制的原生测试，
+`pnpm run verify` 与三个 ak-ui 探针均通过。以下四项与记录不符，已修正：
+
+- [x] 上一节“合并 18 组重复样式”未包含媒体查询：`@media (max-width: 720px)` 和
+  `@media (hover: none), (pointer: coarse)` 各自仍分成两块，同一断点可以自相矛盾。已各自合并为一块。
+  合并方向不能随意选：靠后那块 coarse 指针的 `.git-file-tail { display: flex }` 位于自身无条件规则之后，
+  若上移到前一块就会被后面的 `display: grid` 覆盖，触屏操作入口随之失效，因此向后合并。
+- [x] 主题卡片改原生 radio 时同时隐藏了色板和勾选标记，“主题色”只剩文字，没有任何颜色预览。
+  恢复色板（圆角仍沿用皮肤的 `--ak-radius-subtle`），勾选标记由 radio 自身表达。
+- [x] P3 删除 `base.css` 的 `.settings-overlay` 等规则，但共享的 `HostPanel` 仍用该类名判断
+  上层是否有模态框。该选择器此后永不匹配，执行历史面板在管理中心或子 Agent 对话框打开时会抢走 Escape。
+  改为原生 `dialog[open]`，共享层不再依赖某套皮肤的类名。
+- [x] `Inspector.svelte` 移除页脚和上下文标题后残留 `Separator`、`sessionStateLabel` 两个未使用导入。
+
+新增四项断言（`test/ui-style-boundaries.test.mjs`）：断点条件唯一、媒体规则不被同选择器的
+后置无条件规则遮蔽、主题色板不得隐藏、共享层用原生 `dialog[open]` 而非皮肤类名。
+其中三项在修复前的代码上确认失败；遮蔽那项在旧代码上本就通过，属于防止回归的前向约束，不代表抓到了缺陷。
+
+验证：`pnpm run verify`（40 项架构检查、370 项 Node 测试、类型检查及构建，全部通过）；
+`ak-ui`、`ak-ui-density`、`ak-ui-controls`、`presentation-full-skins`、`presentation-navigation` 探针通过。
+导航探针首次失败是我把两个探针并行跑造成的端口冲突，单独重跑通过，与改动无关。
+本轮视觉结论来自 CSS/标记审查与探针断言（计算样式、包围盒、溢出检查），未逐张查看截图。
