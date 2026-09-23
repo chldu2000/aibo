@@ -28,6 +28,18 @@ test('Git tokens bind immutable operation arguments and revoke previous draft su
  assert.equal(dir.resolve({...state,changes:{...state.changes,files:[]}},context,{id:stage.token,event:'click',context}),null);
 });
 
+test('Git history offers another page only while a repository has more commits and is idle',()=>{
+ const paging={...state,repositoryId:'repo',historyHasMore:true,historyLoadingMore:false};
+ const directory=createGitDirectory();
+ const action=directory.project(paging).find(item=>item.operation==='loadMoreHistory');
+ assert.ok(action);
+ assert.deepEqual(directory.resolve(paging,context,{id:action.token,event:'click',context}).args,[]);
+ for(const unavailable of [{...paging,historyHasMore:false},{...paging,historyLoadingMore:true},{...paging,metadataLoading:true},{...paging,repositoryId:null}]){
+  assert.ok(!gitActions(unavailable).some(item=>item.operation==='loadMoreHistory'));
+  assert.equal(directory.resolve(unavailable,context,{id:action.token,event:'click',context}),null);
+ }
+});
+
 test('multiple repositories bind identical filenames to distinct targets and revoke actions on selection', () => {
  const repo=id=>({id,name:id,relativePath:id,kind:'repository',externalRoot:false,changes:state.changes,error:null});
  const all={...state,repositoryId:null,repositories:[repo('one'),repo('two')],changes:null};

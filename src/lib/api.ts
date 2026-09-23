@@ -323,8 +323,9 @@ export const listWorkspaceGitHistory = (
   workspaceId: string,
   limit = 30,
   repositoryId?: string,
+  offset = 0,
 ): Promise<GitCommit[]> =>
-  invoke<GitCommit[]>('list_workspace_git_history', { repositoryId, workspaceId, limit });
+  invoke<GitCommit[]>('list_workspace_git_history', { repositoryId, workspaceId, limit, offset });
 
 export const listWorkspaceGitCommitFiles = (
   workspaceId: string,

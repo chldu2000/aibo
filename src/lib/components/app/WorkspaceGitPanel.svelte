@@ -40,6 +40,9 @@
     selectedFileStaged: boolean;
     branches: GitBranch[];
     history: GitCommit[];
+    historyHasMore: boolean;
+    historyLoadingMore: boolean;
+    historyLoadMoreError: string | null;
     gitMetadataLoading: boolean;
     gitMetadataError: string | null;
     commitFiles: GitCommitFileList | null;
@@ -56,6 +59,7 @@
     onCommit: (workspaceId: string, message: string) => void | Promise<boolean>;
     onOpenDiff: (workspaceId: string, path: string, staged: boolean, repositoryId?: string) => void;
     onRefreshGitMetadata: (workspaceId: string) => void;
+    onLoadMoreHistory: (workspaceId: string) => void;
     onCheckoutBranch: (workspaceId: string, branch: string) => void;
     onCreateBranch: (workspaceId: string, branch: string) => void;
     onSelectCommit: (workspaceId: string, commit: string) => void;
@@ -81,6 +85,9 @@
     selectedFileStaged,
     branches,
     history,
+    historyHasMore,
+    historyLoadingMore,
+    historyLoadMoreError,
     gitMetadataLoading,
     gitMetadataError,
     commitFiles,
@@ -97,6 +104,7 @@
     onCommit,
     onOpenDiff,
     onRefreshGitMetadata,
+    onLoadMoreHistory,
     onCheckoutBranch,
     onCreateBranch,
     onSelectCommit,
@@ -222,7 +230,7 @@
     onDraftChange({ ...draftState, gitSection: section });
     branchMenuOpen = false;
     stashMenuOpen = false;
-    if (section === 'history' && workspace) onRefreshGitMetadata(workspace.id);
+    if (section === 'history' && workspace && history.length === 0 && !gitMetadataLoading) onRefreshGitMetadata(workspace.id);
   }
 
   function moveGitTab(event: KeyboardEvent): void {
@@ -647,6 +655,12 @@
                 {/if}
               </div>
             {/each}
+            {#if historyLoadMoreError}<div class="git-diff-message" role="alert">{historyLoadMoreError}</div>{/if}
+            {#if historyHasMore && workspace}
+              <Button variant="outline" size="sm" type="button" class="git-history-more" disabled={historyLoadingMore || gitMetadataLoading} onclick={() => onLoadMoreHistory(workspace.id)}>
+                {historyLoadingMore ? '正在加载更多提交…' : historyLoadMoreError ? '重试加载更多' : '加载更多提交'}
+              </Button>
+            {/if}
           </section>
         {/if}
       {/if}

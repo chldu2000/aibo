@@ -61,6 +61,7 @@ export function gitActions(state: PresentationGit): Spec[] {
   }
   if (state.remoteStatus && !state.operationBusy) add('fetch');
   for (const commit of state.history) add('selectCommit', [commit.hash]);
+  if (state.repositoryId !== null && state.historyHasMore && !state.historyLoadingMore && !state.metadataLoading) add('loadMoreHistory');
   const files = state.commitFiles;
   if (files && files.commit === state.draft.selectedCommit && state.history.some(commit => commit.hash === files.commit)) {
     if (files.files.length < files.total && !state.commitFilesLoading) add('loadMoreCommitFiles', [files.commit]);

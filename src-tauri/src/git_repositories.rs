@@ -331,14 +331,14 @@ mod tests {
         .unwrap();
         assert!(committed.committed);
         assert_eq!(
-            list_workspace_git_history_in_repository(&db, "w".into(), None, Some("two"))
+            list_workspace_git_history_in_repository(&db, "w".into(), None, Some("two"), None)
                 .await
                 .unwrap()[0]
                 .subject,
             "Only two"
         );
         assert!(
-            list_workspace_git_history_in_repository(&db, "w".into(), None, Some("one"))
+            list_workspace_git_history_in_repository(&db, "w".into(), None, Some("one"), None)
                 .await
                 .unwrap()
                 .is_empty()

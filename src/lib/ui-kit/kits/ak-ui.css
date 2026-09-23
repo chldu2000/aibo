@@ -126,6 +126,8 @@
 .app-shell[data-ui-kit='ak-ui'] :is(.git-summary-card, .trust-card, .agent-card, .inspector-empty) { border: 0; border-bottom: 1px solid var(--aibo-border); border-radius: 0; background: transparent; box-shadow: none; }
 .app-shell[data-ui-kit='ak-ui'] :is(.changeset-file-row, .git-commit-row) { border-radius: 0; }
 .app-shell[data-ui-kit='ak-ui'] .inspector :is(.changeset-file-button, .git-commit-button) { min-height: 44px; }
+.app-shell[data-ui-kit='ak-ui'] :is(.git-commit-file, .git-commit-files-more) { justify-content: flex-start; text-align: left; }
+.app-shell[data-ui-kit='ak-ui'] .git-history-more { width: 100%; margin-top: var(--ak-space-2); }
 .app-shell[data-ui-kit='ak-ui'] .workbench-status { display: flex; flex: none; order: 3; min-height: 30px; align-items: center; gap: var(--ak-space-4); padding: 0 var(--ak-space-4); background: var(--aibo-surface-hover); border-top: 1px solid var(--aibo-border); color: var(--aibo-muted); font: var(--ak-type-label-size) var(--ak-font-mono); }
 .app-shell[data-ui-kit='ak-ui'] .workbench-status span:last-child { margin-left: auto; }
 .app-shell[data-ui-kit='ak-ui'] .agent-status-mark { border-radius: 1px; }

@@ -44,6 +44,8 @@ export function renderGit(state,actions){
   single.push(act('stageAll','全部暂存'),act('unstageAll','全部取消暂存'),field('git:commit-message',current?`提交到 ${current.name} · ${state.changes?.branch??'Detached HEAD'}`:'提交说明',state.draft.commitMessage,find('commitMessage'),true),act('commit','提交'));
  }else{
   single.push(node('ul','git:history',null,state.history.map(commit=>node('li','git:commit:'+commit.hash,null,[act('selectCommit',`${commit.shortHash} ${commit.subject}`,commit.hash),text('git:author:'+commit.hash,`${commit.author} · ${commit.authoredAt}`)]))));
+  if(state.historyLoadMoreError)single.push(node('p','git:history-more-error',state.historyLoadMoreError,[],{role:'alert'}));
+  single.push(state.historyLoadingMore?text('git:history-more-loading','正在加载更多提交…'):state.historyHasMore?act('loadMoreHistory','加载更多提交'):null);
   if(state.commitFiles)single.push(node('ul','git:commit-files',null,state.commitFiles.files.map(file=>node('li','git:commit-file:'+file.path,null,[act('openCommitDiff',file.path,state.commitFiles.commit,file.path)]))),act('loadMoreCommitFiles','加载更多文件',state.commitFiles.commit));
  }
  single.push(node('details','git:branches',null,[node('summary','git:branches-title','分支'),field('git:branch-draft','新分支名称',state.draft.branchDraft,find('branchDraft')),act('createBranch','创建分支'),...state.branches.map(branch=>node('p','git:branch:'+branch.name,null,[text('git:branch-name:'+branch.name,branch.name+(branch.current?' · 当前':'')),act('checkoutBranch','切换分支',branch.name)]))]));

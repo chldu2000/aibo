@@ -16,7 +16,7 @@ try {
     const workspace={id:'w1',label:'aibo-dev-with-a-long-workspace-name',path:'/probe/aibo',trust:'trusted',createdAt:'2026-09-22',updatedAt:'2026-09-22'};
     const session={id:'s1',workspaceId:'w1',label:'检查侧栏的信息密度和悬浮操作',agent:'third.party',pluginInstallationId:'third',state:'idle',capabilities:[],archived:false,externalSessionId:'a-long-external-session-identifier-for-overflow-check',createdAt:'2026-09-22',updatedAt:'2026-09-22T15:30:00.123Z'};
     const changes={workspaceId:'w1',head:'0c78fe5abcdef',branch:'main',dirty:true,capturedAt:'now',captureStatus:'captured',captureError:null,files:Array.from({length:8},(_,i)=>({path:`src/component-${i}.svelte`,previousPath:null,kind:'modified',staged:false,unstaged:true,untracked:false,conflicted:false}))};
-    window.densityCalls=[];let callback=0;
+    window.densityCalls=[];window.failHistoryPageOnce=false;let callback=0;
     window.__TAURI_INTERNALS__={metadata:{currentWindow:{label:'main'},currentWebview:{label:'main'}},transformCallback(fn){const id=++callback;window['_'+id]=fn;return id;},unregisterCallback(id){delete window['_'+id];},async invoke(command,args={}){
       window.densityCalls.push({command,args});
       if(command==='get_app_snapshot')return {platform:'macos',appVersion:'probe',workspaceCount:1,diagnostics:[]};
@@ -31,6 +31,12 @@ try {
       if(command==='list_workspace_git_repositories')return {repositories:[{id:'repo',name:'aibo',relativePath:'.',kind:'repository',externalRoot:false},{id:'nested',name:'tools',relativePath:'tools',kind:'repository',externalRoot:false}],limited:false,warnings:[],scanBudget:2000};
       if(command==='get_workspace_changes')return changes;
       if(command==='get_workspace_git_remote_status')return {branch:'main',upstream:'origin/main',ahead:1,behind:0};
+      if(command==='list_workspace_git_history'){
+        if((args.offset??0)>0&&window.failHistoryPageOnce){window.failHistoryPageOnce=false;throw Error('历史分页暂时失败');}
+        const entries=[{hash:'commit-a',shortHash:'abc1234',subject:'调整文件列表对齐',author:'Tester',authoredAt:'2026-09-22T15:30:00Z'},...Array.from({length:19},(_,index)=>({hash:`older-${index}`,shortHash:`older-${index}`,subject:`较早的提交 ${index+1}`,author:'Tester',authoredAt:'2026-09-21T15:30:00Z'}))];
+        return entries.slice(args.offset??0,(args.offset??0)+(args.limit??30));
+      }
+      if(command==='list_workspace_git_commit_files')return {commit:args.commit,files:[{path:'src/components/AlignedButton.svelte',previousPath:null,kind:'modified'}],total:2};
       if(command==='get_timeline')return [{id:'a',sessionId:'s1',turnId:'t',role:'assistant',entryType:'message',content:'侧栏保留清晰的信息层级，操作在需要时出现。',status:'completed',createdAt:'2026-09-22'}];
       return [];
     }};
@@ -131,8 +137,34 @@ try {
     assert.notEqual(styles.canvas,styles.editor,'editor separates from reading canvas');
     assert.notEqual(styles.selected,styles.rest,'Git selected tab has a visible surface signal');
   }
+  async function checkHistoryFileAlignment(mode) {
+    await historyTab.click();
+    const commits=page.locator('.git-history-entry');
+    await commits.nth(15).waitFor();
+    assert.equal(await commits.count(),16,'history initially renders the newest 16 commits');
+    await page.getByRole('button',{name:'查看提交 abc1234 的文件：调整文件列表对齐',exact:true}).click();
+    const file=page.locator('.git-commit-file');await file.waitFor();
+    const fileInset=await file.evaluate(element=>element.querySelector('.change-kind').getBoundingClientRect().left-element.getBoundingClientRect().left);
+    assert(fileInset>=0&&fileInset<24,`Git history file marker should align with the row start: ${fileInset}px`);
+    const more=page.locator('.git-commit-files-more');
+    const moreInset=await more.evaluate(element=>{const range=document.createRange();range.selectNodeContents(element);return range.getBoundingClientRect().left-element.getBoundingClientRect().left});
+    assert(moreInset>=0&&moreInset<24,`Git history load-more label should align with the row start: ${moreInset}px`);
+    if(mode==='light'){
+      await page.evaluate(()=>{window.failHistoryPageOnce=true;});
+      await page.getByRole('button',{name:'加载更多提交',exact:true}).click();
+      await page.getByRole('alert').filter({hasText:'历史分页暂时失败'}).waitFor();
+      assert.equal(await commits.count(),16,'a failed page keeps already loaded commits');
+    }
+    await page.getByRole('button',{name:mode==='light'?'重试加载更多':'加载更多提交',exact:true}).click();
+    await commits.nth(19).waitFor();
+    assert.equal(await commits.count(),20,'loading more appends older commits');
+    assert.equal(await page.getByRole('button',{name:'加载更多提交',exact:true}).count(),0,'the button disappears at the end of history');
+    await page.screenshot({path:`${output}/git-history-${mode}.png`});
+    await changesTab.click();
+  }
   await checkColorHierarchy();
   await page.screenshot({path:output+'/git-light.png'});
+  await checkHistoryFileAlignment('light');
   await page.getByRole('button',{name:'切换明暗主题',exact:true}).click();
   await checkColorHierarchy();
   await page.getByRole('button',{name:'选择仓库',exact:true}).click();
@@ -142,6 +174,7 @@ try {
   await page.getByRole('option',{name:/^tools/}).click();
   assert.match(await page.getByRole('button',{name:'选择仓库',exact:true}).textContent(),/tools/,'selecting another repository updates the trigger');
   await page.screenshot({path:output+'/git-dark.png'});
+  await checkHistoryFileAlignment('dark');
   await page.getByRole('tab',{name:'上下文',exact:true}).click();
   await page.screenshot({path:output+'/context-dark.png'});
   await page.setViewportSize({width:1000,height:760});

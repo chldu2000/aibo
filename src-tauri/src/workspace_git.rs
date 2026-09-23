@@ -290,13 +290,14 @@ pub(crate) async fn create_workspace_git_branch_requested_in_repository(
     crate::workspace_write_runs::execute_requested(db, &workspace, "git.create-branch", serde_json::json!({"repositoryId":repository_id,"branch":branch}), request, |cancel| async { GitOperation::new(&repository_path).cancellable(cancel).action(&["switch", "-c", &branch], "create_branch").await }).await
 }
 
-fn list_git_history(workspace_path: &str, limit: u32) -> Result<Vec<GitCommit>, CoreError> {
+fn list_git_history(workspace_path: &str, limit: u32, offset: u32) -> Result<Vec<GitCommit>, CoreError> {
     let limit = limit.clamp(1, 100);
     let output = Command::new("git")
         .args([
             "-C",
             workspace_path,
             "log",
+            &format!("--skip={offset}"),
             &format!("-{limit}"),
             "--date=iso-strict",
             "--format=%H%x09%h%x09%s%x09%an%x09%aI",
@@ -338,7 +339,7 @@ pub(crate) async fn list_workspace_git_history(
     workspace_id: String,
     limit: Option<u32>,
 ) -> Result<Vec<GitCommit>, CoreError> {
-    list_workspace_git_history_in_repository(db, workspace_id, limit, None).await
+    list_workspace_git_history_in_repository(db, workspace_id, limit, None, None).await
 }
 
 pub(crate) async fn list_workspace_git_history_in_repository(
@@ -346,10 +347,11 @@ pub(crate) async fn list_workspace_git_history_in_repository(
     workspace_id: String,
     limit: Option<u32>,
     repository_id: Option<&str>,
+    offset: Option<u32>,
 ) -> Result<Vec<GitCommit>, CoreError> {
     let workspace = workspace_by_id(db, &workspace_id).await?;
     let repository_path = crate::git_repositories::resolve(&workspace.path, repository_id)?;
-    list_git_history(&repository_path, limit.unwrap_or(30))
+    list_git_history(&repository_path, limit.unwrap_or(30), offset.unwrap_or(0))
 }
 
 fn git_commit_files(workspace_path: &str, commit: &str) -> Result<Vec<GitCommitFile>, CoreError> {
@@ -835,6 +837,29 @@ pub(crate) async fn stash_workspace_git(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn git_history_pages_continue_without_repeating_commits() {
+        let root = std::env::temp_dir().join(format!("aibo-git-history-{}", ulid::Ulid::new()));
+        std::fs::create_dir_all(&root).unwrap();
+        let git = |args: &[&str]| {
+            let output = Command::new("git").arg("-C").arg(&root).args(args).output().unwrap();
+            assert!(output.status.success(), "{}", String::from_utf8_lossy(&output.stderr));
+        };
+        git(&["init", "-q", "-b", "main"]);
+        git(&["config", "user.name", "Aibo Fixture"]);
+        git(&["config", "user.email", "fixture@example.invalid"]);
+        git(&["config", "commit.gpgsign", "false"]);
+        for index in 0..5 { git(&["commit", "-q", "--allow-empty", "-m", &format!("Commit {index}")]); }
+        let first = list_git_history(root.to_str().unwrap(), 2, 0).unwrap();
+        let second = list_git_history(root.to_str().unwrap(), 2, 2).unwrap();
+        let last = list_git_history(root.to_str().unwrap(), 2, 4).unwrap();
+        assert_eq!(first.iter().map(|commit| commit.subject.as_str()).collect::<Vec<_>>(), ["Commit 4", "Commit 3"]);
+        assert_eq!(second.iter().map(|commit| commit.subject.as_str()).collect::<Vec<_>>(), ["Commit 2", "Commit 1"]);
+        assert_eq!(last[0].subject, "Commit 0");
+        assert_eq!(last.len(), 1);
+        std::fs::remove_dir_all(root).unwrap();
+    }
 
     #[tokio::test]
     async fn unborn_index_and_failed_preconditions_do_not_delete_working_files_or_start_writes() {

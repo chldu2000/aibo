@@ -213,10 +213,13 @@ args 是宿主已选定的目标和选项；点击携带的 value 不能替换�
 
 ## 工作台 Git
 
-`data.git: PresentationGit` 提供工作区状态、文件标志、分支、历史、提交文件分页、
+`data.git: PresentationGit` 提供工作区状态、文件标志、分支、历史分页、提交文件分页、
 远端/暂存栈、加载/错误/忙碌状态以及完整差异预览。预览保留 hunks、truncated、
 reason 与提交上下文，不把裁剪结果描述为完整差异。`data.gitActions` 通过同一
 不透明句柄机制提供面板切换、读取、暂存、提交、分支、同步和暂存栈操作。
+历史默认展示最近 16 条；`historyHasMore`、`historyLoadingMore` 与
+`historyLoadMoreError` 告知呈现是否提供、正在执行或需要重试 `loadMoreHistory`。
+这些字段对旧呈现可选；新操作由宿主按当前工作区和仓库重新校验。
 
 文件、暂存侧、分支、历史提交及暂存栈引用均由当前宿主数据绑定。宿主重新核对
 工作区、信任、忙碌状态和当前目标后调用既有工作区控制器；插件的事件 value

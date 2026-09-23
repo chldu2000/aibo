@@ -29,7 +29,10 @@ try {
         if(command==='get_workspace_changes')return {workspaceId:args.workspaceId,head:'head',branch:'main',dirty:true,capturedAt:'now',files:[changed],captureStatus:'captured',captureError:null};
         if(command==='list_workspace_git_branches')return [{name:'main',current:true,commit:'head'},{name:'topic',current:false,commit:'old'}];
         if(command==='list_workspace_git_history'&&window.delayedRepositoryReads){if(args.repositoryId==='one')await new Promise(resolve=>setTimeout(resolve,300));return [{hash:'commit-a',shortHash:'commit-a',subject:args.repositoryId==='one'?'STALE ONE':'CURRENT TWO',author:'Author',authoredAt:'2026-09-13'}];}
-        if(command==='list_workspace_git_history')return [{hash:'commit-a',shortHash:'commit-a',subject:'Earlier change',author:'Author',authoredAt:'2026-09-13'}];
+        if(command==='list_workspace_git_history'){
+          const entries=[{hash:'commit-a',shortHash:'commit-a',subject:'Earlier change',author:'Author',authoredAt:'2026-09-13'},...Array.from({length:19},(_,index)=>({hash:`older-${index}`,shortHash:`older-${index}`,subject:`Older change ${index+1}`,author:'Author',authoredAt:'2026-09-12'}))];
+          return entries.slice(args.offset??0,(args.offset??0)+(args.limit??30));
+        }
         if(command==='get_workspace_git_remote_status')return {branch:'main',upstream:'origin/main',ahead:1,behind:1};
         if(command==='list_workspace_git_stashes')return [{reference:'stash@{0}',message:'Saved changes'}];
         if(command==='get_workspace_file_diff'||command==='get_workspace_git_commit_file_diff')return {path:args.path,staged:args.staged??false,available:true,truncated:true,diff:'@@ -1 +1 @@\n-before\n+after',hunks:[{index:0,header:'@@ -1 +1 @@',content:'-before\n+after'}],reason:'preview limit'};
@@ -111,6 +114,9 @@ try {
   await frame.getByRole('button',{name:'createBranch:feature/skin',exact:true}).click();
   await page.waitForTimeout(150);assert.equal(await branch.inputValue(),'');
   await frame.getByRole('button',{name:'selectSection:history',exact:true}).click();
+  await waitSnapshot(value=>value.history.length===16&&value.historyHasMore===true);
+  await frame.getByRole('button',{name:'loadMoreHistory',exact:true}).click();
+  await waitSnapshot(value=>value.history.length===20&&value.historyHasMore===false);
   await frame.getByRole('button',{name:'selectCommit:commit-a',exact:true}).click();
   await frame.getByRole('button',{name:'openCommitDiff:commit-a:historical.ts',exact:true}).click();
   await page.waitForTimeout(100);assert.equal((await snapshot()).preview.contextLabel,'w1 · 提交 commit-a · historical.ts');
@@ -196,7 +202,7 @@ try {
     await page.getByRole('option',{name:'aibo',exact:true}).click();
   }
   assert.deepEqual(errors,[]);
-  const result={passed:true,nativePort:'mocked; actual App.svelte and Worker, no repository operations performed',browser:browser.version(),checks:['complete Git metadata and truncated hunk preview','stage targets host-selected file','forged action rejected','commit draft survives external/default/external switch','rejected commit keeps draft and successful commit clears it','branch draft and creation','history file paging and commit preview','fetch dispatch through existing host controller','same-named file actions carry repository identity','drafts survive repository switches','delayed previous-repository history cannot overwrite selection','native all-repository grouping and scoped stage','history picker opens the selected repository history','repository picker layout and keyboard/search/dismissal in both skins and light/dark themes']};
+  const result={passed:true,nativePort:'mocked; actual App.svelte and Worker, no repository operations performed',browser:browser.version(),checks:['complete Git metadata and truncated hunk preview','stage targets host-selected file','forged action rejected','commit draft survives external/default/external switch','rejected commit keeps draft and successful commit clears it','branch draft and creation','history pagination through external action plus commit-file paging and preview','fetch dispatch through existing host controller','same-named file actions carry repository identity','drafts survive repository switches','delayed previous-repository history cannot overwrite selection','native all-repository grouping and scoped stage','history picker opens the selected repository history','repository picker layout and keyboard/search/dismissal in both skins and light/dark themes']};
   await writeFile('/tmp/aibo-presentation-git-browser.json',JSON.stringify(result,null,2));console.log(JSON.stringify(result));
 
 } catch(error) { console.error(JSON.stringify({errors,body:await page.locator('body').innerText()})); throw error; } finally {await browser.close();await server.close();}

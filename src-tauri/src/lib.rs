@@ -3035,9 +3035,10 @@ async fn list_workspace_git_history(
     workspace_id: String,
     repository_id: Option<String>,
     limit: Option<u32>,
+    offset: Option<u32>,
     state: State<'_, AppState>,
 ) -> Result<Vec<GitCommit>, CoreError> {
-    workspace_git::list_workspace_git_history_in_repository(&state.db, workspace_id, limit, repository_id.as_deref()).await
+    workspace_git::list_workspace_git_history_in_repository(&state.db, workspace_id, limit, repository_id.as_deref(), offset).await
 }
 
 #[tauri::command]

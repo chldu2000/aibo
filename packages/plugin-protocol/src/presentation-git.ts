@@ -95,6 +95,9 @@ export type PresentationGit = {
   error: string | null;
   branches: GitBranch[];
   history: GitCommit[];
+  historyHasMore?: boolean;
+  historyLoadingMore?: boolean;
+  historyLoadMoreError?: string | null;
   metadataLoading: boolean;
   metadataError: string | null;
   commitFiles: GitCommitFileList | null;
@@ -112,7 +115,7 @@ export type PresentationGitAction = {
   operation: 'togglePanel' | 'selectView' | 'selectSection' | 'refresh' | 'refreshMetadata'
     | 'commitMessage' | 'branchDraft' | 'commit' | 'createBranch' | 'checkoutBranch'
     | 'stageFile' | 'unstageFile' | 'stageAll' | 'unstageAll' | 'openDiff' | 'closeDiff'
-    | 'selectCommit' | 'loadMoreCommitFiles' | 'openCommitDiff' | 'fetch' | 'pull' | 'push'
+    | 'selectCommit' | 'loadMoreHistory' | 'loadMoreCommitFiles' | 'openCommitDiff' | 'fetch' | 'pull' | 'push'
     | 'saveStash' | 'applyStash' | 'requestReview' | 'selectRepository' | 'repositorySearch' | 'toggleRepository' | 'continueDiscovery'
     | 'repositoryDiff' | 'repositoryStage' | 'repositoryUnstage' | 'repositoryStageAll' | 'repositoryUnstageAll';
   event: 'click' | 'input';
