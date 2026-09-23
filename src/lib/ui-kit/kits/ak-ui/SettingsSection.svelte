@@ -29,12 +29,12 @@
   {#if error}<p class="settings-error" role="alert">{error}</p>{/if}
 </section>
 <style>
-  .settings-group { margin-inline: 20px; min-width: 0; }
+  .settings-group { min-width: 0; }
   header { margin-bottom: 12px; }
   h2 { margin: 0; color: var(--aibo-text); font-size: 13px; font-weight: 600; }
   p { margin: 5px 0 0; color: var(--aibo-subtle); font-size: 12px; line-height: 1.5; overflow-wrap: anywhere; }
-  .settings-rows { border: 1px solid var(--aibo-border); border-radius: var(--radius); overflow: hidden; }
-  .settings-row { display: flex; flex-wrap: wrap; align-items: center; gap: 12px 20px; padding: 14px; }
+  .settings-rows { border: 1px solid var(--aibo-border); overflow: hidden; }
+  .settings-row { display: flex; flex-wrap: wrap; align-items: center; gap: 12px 16px; min-height: 56px; padding: 8px 16px; }
   .settings-row + .settings-row { border-top: 1px solid var(--aibo-border); }
   .settings-copy { flex: 1 1 200px; min-width: 0; }
   h3 { display: flex; align-items: center; gap: 8px; margin: 0; font-size: 13px; font-weight: 500; color: var(--aibo-text); overflow-wrap: anywhere; }

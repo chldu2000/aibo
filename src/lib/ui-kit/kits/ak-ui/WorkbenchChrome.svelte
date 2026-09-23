@@ -16,7 +16,8 @@
 <style>
   .workbench-chrome { display: flex; flex-direction: column; flex: 1; min-width: 0; min-height: 0; overflow: hidden; background: var(--aibo-bg); }
   .compact-region-navigation { display: none; }
-  @media (max-width: 900px) {
+  /* Same breakpoint as the skin's narrow layout, so the header and the region tabs collapse together. */
+  @media (max-width: 760px) {
     .compact-region-navigation { display: flex; flex: none; gap: var(--ak-space-1); padding-inline: var(--ak-space-2); border-bottom: 1px solid var(--aibo-border); background: var(--aibo-surface-hover); }
     /* Region switching is tab navigation: same bottom signal bar as the other tab lists. */
     .compact-region-navigation :global(.ak-button) { position: relative; flex: 1; border: 0; border-radius: 0; color: var(--aibo-muted); font-size: var(--aibo-type-ui); font-weight: 600; }
