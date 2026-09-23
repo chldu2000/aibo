@@ -640,11 +640,21 @@ skin owns queue persistence, delivery, attachment identity or uncertain recovery
 
 `UiKitAdapter.RepositorySelect` 接收仓库名称与相对路径、当前选择、展开状态、搜索文本、禁用状态及语义回调。应用层负责仓库切换和历史入口；UI kit 负责浮层布局、列表层级、搜索输入、选中标记、键盘导航与焦点恢复。默认 ak-ui 注册共享的可访问交互结构，并在自身样式中定义表面、边框、圆角和颜色。名称与路径相同时不重复显示；不同路径的同名仓库保留次级路径。
 
+横向内容标签（侧栏 Git/上下文和 Git 变更/历史）采用 ak-ui `ak-tabs` 的等宽列表、分隔线、选中底线与可见键盘焦点。已有面板关系和受控状态由应用保留；方向键、Home/End 在标签间切换。会话视图导航沿用同一视觉节奏，但继续使用 `nav`/`aria-current` 表达跳转；竖向管理目录保留独立的方向与标记。
+
 ### 会话模式与权限标识
 
 `UiKitAdapter.SessionControlMark` 只接收选项的 `kind`、声明的 `profile` 和紧凑显示标志。UI kit 根据策略含义选择图标和语义色，不根据 Agent 名称、选项 ID 或显示文案推断权限。菜单和当前设置按钮复用同一标识；同时选中的权限与会话模式分别显示。默认 ak-ui 和独立外部皮肤提供眼睛、审批盾牌等图标，深浅主题注册 `--aibo-session-info/plan/write/elevated` 色彩。未识别的自定义策略使用中性设置图标，完整文件访问优先保留警示标识。此分类只用于显示，不授予或更改执行权限。
 
 ### 旧内置 UI 清理回归
+
+默认 ak-ui 皮肤的表单样式由 `src/lib/ui-kit/kits/ak-ui.css` 统一管理：独立输入框、
+多行输入和原生选择使用直角、加重左边线及清晰的聚焦/校验/禁用状态；复选框和
+单选项保留原生或 ARIA 语义，开关保留轨道形状。搜索和消息输入嵌在已有容器时，
+由容器显示蓝色焦点边线，避免双层边框。列表选中项使用 ak-ui 蓝色浅底和左侧蓝色
+标记；标题栏开关仅使用蓝色底色与图标区分激活态，主要操作仍使用黄色。布局与交互参照
+[ak-ui 官网](https://ak-ui.yyj.moe/) 和 [Damocles](https://gitee.com/chldu/damocles)；
+`probes/ak-ui-controls-browser.mjs` 在明暗主题下验证这些表单状态和键盘操作。
 
 架构测试针对当前注册的 ak-ui 适配器，同时保留独立 shadcn / Material 呈现包的
 主题及图标合同检查。`test/default-ui-kit.test.mjs` 防止旧目录、专用依赖或导入重新进入

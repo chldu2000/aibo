@@ -6,7 +6,9 @@
   padding: 0; font-family: var(--ak-font-sans); font-size: 14px; letter-spacing: 0;
   --workbench-splitter-width: 6px;
   --workbench-content-inset: clamp(24px, 4vw, 64px);
+  --aibo-selected-ink: color-mix(in srgb, var(--aibo-accent) 85%, var(--ak-color-black));
 }
+.app-shell[data-ui-kit='ak-ui'][data-ui-theme='dark'] { --aibo-selected-ink: var(--aibo-accent); }
 .app-shell[data-ui-kit='ak-ui'] * { transition-property: box-shadow, transform, opacity; }
 .app-shell[data-ui-kit='ak-ui'] :is(button, input, select, textarea, summary):focus-visible {
   outline: var(--ak-focus-width) solid var(--aibo-focus); outline-offset: 2px;
@@ -62,9 +64,7 @@
 .app-shell[data-ui-kit='ak-ui'] .timeline-heading-copy { min-width: 0; }
 .app-shell[data-ui-kit='ak-ui'] .timeline-heading-copy > small { display: block; margin-bottom: var(--ak-space-2); font: var(--ak-type-label-size) var(--ak-font-mono); letter-spacing: .1em; color: var(--aibo-muted); }
 .app-shell[data-ui-kit='ak-ui'] .timeline-heading-actions { flex-wrap: wrap; justify-content: flex-end; }
-.app-shell[data-ui-kit='ak-ui'] .conversation-navigation { display: flex; gap: var(--ak-space-5); padding: 0 var(--ak-space-6); border-bottom: 1px solid var(--aibo-border); background: var(--aibo-surface); }
-.app-shell[data-ui-kit='ak-ui'] .conversation-navigation .ak-button { padding-inline: var(--ak-space-3); border-radius: 0; color: var(--aibo-muted); }
-.app-shell[data-ui-kit='ak-ui'] .conversation-navigation [aria-current='page'] { background: var(--aibo-accent-soft); color: var(--aibo-accent-text); border-bottom: 2px solid var(--aibo-accent); }
+.app-shell[data-ui-kit='ak-ui'] .conversation-navigation { padding-inline: var(--ak-space-6); }
 .app-shell[data-ui-kit='ak-ui'] .timeline-feed { padding: var(--ak-space-6) var(--workbench-content-inset); }
 .app-shell[data-ui-kit='ak-ui'] .timeline-feed-content { max-width: 850px; margin-inline: auto; }
 .app-shell[data-ui-kit='ak-ui'] .timeline-entry { max-width: 100%; padding: 0; margin: 0 0 var(--ak-space-6); border: 0; background: transparent; box-shadow: none; }
@@ -92,10 +92,37 @@
 .app-shell[data-ui-kit='ak-ui'] .composer-attachment { border-radius: var(--ak-radius-subtle); }
 .app-shell[data-ui-kit='ak-ui'] .inspector { background: var(--aibo-bg); }
 .app-shell[data-ui-kit='ak-ui'] .inspector .panel-heading { background: var(--aibo-surface-hover); min-height: 56px; padding: var(--ak-space-2) var(--ak-space-4); border-bottom: 1px solid var(--aibo-border); }
-.app-shell[data-ui-kit='ak-ui'] .side-panel-tabs-shell { padding: 0 var(--ak-space-4); background: var(--aibo-surface-hover); border-bottom: 1px solid var(--aibo-border); }
-.app-shell[data-ui-kit='ak-ui'] .side-panel-tabs { gap: var(--ak-space-4); }
-.app-shell[data-ui-kit='ak-ui'] .side-panel-tabs [data-slot='button'] { min-height: 44px; padding: 0 var(--ak-space-2); background: transparent; border-radius: 0; color: var(--aibo-muted); }
-.app-shell[data-ui-kit='ak-ui'] .side-panel-tabs [aria-selected='true'] { color: var(--aibo-accent-text); background: var(--aibo-accent-soft); border-bottom: 2px solid var(--aibo-accent); }
+.app-shell[data-ui-kit='ak-ui'] .side-panel-tabs-shell { padding: 0 var(--ak-space-4); background: var(--aibo-surface-hover); }
+.app-shell[data-ui-kit='ak-ui'] :is(.side-panel-tabs, .git-section-tabs, .conversation-navigation) {
+  --ak-tabs-signal: var(--aibo-accent);
+  display: grid;
+  grid-auto-columns: minmax(0, 1fr);
+  grid-auto-flow: column;
+  gap: 0;
+  border-bottom: 1px solid var(--aibo-border);
+  background: var(--aibo-surface-hover);
+}
+.app-shell[data-ui-kit='ak-ui'] :is(.side-panel-tabs, .git-section-tabs, .conversation-navigation) > .ak-button {
+  position: relative;
+  min-width: 0;
+  min-height: 48px;
+  border: 0;
+  border-radius: 0;
+  padding: var(--ak-space-2);
+  background: transparent;
+  color: var(--aibo-muted);
+  box-shadow: none;
+  font-size: var(--ak-type-label-size);
+  font-weight: 700;
+  letter-spacing: .04em;
+}
+.app-shell[data-ui-kit='ak-ui'] :is(.side-panel-tabs, .git-section-tabs, .conversation-navigation) > .ak-button + .ak-button { border-left: 1px solid var(--aibo-border); }
+.app-shell[data-ui-kit='ak-ui'] :is(.side-panel-tabs, .git-section-tabs, .conversation-navigation) > .ak-button:hover:not(:disabled) { background: var(--ak-surface-raised); color: var(--aibo-text); box-shadow: none; }
+.app-shell[data-ui-kit='ak-ui'] :is(.side-panel-tabs, .git-section-tabs, .conversation-navigation) > .ak-button:is([aria-selected='true'], [aria-current='page']) { background: var(--ak-surface-raised); color: var(--aibo-text); box-shadow: none; }
+.app-shell[data-ui-kit='ak-ui'] :is(.side-panel-tabs, .git-section-tabs, .conversation-navigation) > .ak-button:is([aria-selected='true'], [aria-current='page'])::after {
+  position: absolute; right: 0; bottom: 0; left: 0; height: 4px; background: var(--ak-tabs-signal); content: '';
+}
+.app-shell[data-ui-kit='ak-ui'] :is(.side-panel-tabs, .git-section-tabs, .conversation-navigation) > .ak-button:focus-visible { z-index: 1; outline: 3px solid var(--aibo-focus); outline-offset: -3px; }
 .app-shell[data-ui-kit='ak-ui'] :is(.git-summary-card, .trust-card, .agent-card, .inspector-empty) { border: 0; border-bottom: 1px solid var(--aibo-border); border-radius: 0; background: transparent; box-shadow: none; }
 .app-shell[data-ui-kit='ak-ui'] :is(.changeset-file-row, .git-commit-row) { border-radius: 0; }
 .app-shell[data-ui-kit='ak-ui'] .inspector :is(.changeset-file-button, .git-commit-button) { min-height: 44px; }
@@ -141,7 +168,7 @@
   .app-shell[data-ui-kit='ak-ui'] .timeline-heading { flex-wrap: wrap; min-height: 0; padding: var(--ak-space-4); }
   .app-shell[data-ui-kit='ak-ui'] .timeline-heading-actions { gap: var(--ak-space-1); }
   .app-shell[data-ui-kit='ak-ui'] .timeline-heading [data-slot='card-title'] { font-size: 18px; }
-  .app-shell[data-ui-kit='ak-ui'] .conversation-navigation { padding-inline: var(--ak-space-4); gap: var(--ak-space-4); }
+  .app-shell[data-ui-kit='ak-ui'] .conversation-navigation { padding-inline: var(--ak-space-4); }
   .app-shell[data-ui-kit='ak-ui'] .timeline-feed { padding: var(--ak-space-4); }
   .app-shell[data-ui-kit='ak-ui'] .composer { margin: 0 var(--ak-space-4) var(--ak-space-4); padding: var(--ak-space-3); }
   .app-shell[data-ui-kit='ak-ui'] .composer-toolbar { flex-wrap: wrap; }
@@ -203,9 +230,21 @@
 .app-shell[data-ui-kit='ak-ui'] .session-context-content dd { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .app-shell[data-ui-kit='ak-ui'] .inspector-footer { padding: var(--ak-space-1) var(--ak-space-4); }
 .app-shell[data-ui-kit='ak-ui'] .inspector .trust-card { margin: 0 var(--ak-space-4); padding: var(--ak-space-3) 0; }
-.app-shell[data-ui-kit='ak-ui'] .repository-select { margin: var(--ak-space-2) var(--ak-space-4); }
+.app-shell[data-ui-kit='ak-ui'] .repository-select {
+  margin: var(--ak-space-2) var(--ak-space-4);
+  --repo-text: var(--aibo-text);
+  --repo-muted: var(--aibo-muted);
+  --repo-border: var(--aibo-border);
+  --repo-outline: var(--aibo-border-strong);
+  --repo-focus: var(--aibo-focus);
+  --repo-radius: var(--ak-radius-subtle);
+  --repo-trigger: var(--aibo-surface);
+  --repo-hover: var(--aibo-surface-hover);
+  --repo-surface: var(--ak-surface-raised);
+  --repo-shadow: var(--ak-shadow-panel);
+}
 .app-shell[data-ui-kit='ak-ui'] .repository-trigger { min-height: 44px; padding-inline: var(--ak-space-2); }
-.app-shell[data-ui-kit='ak-ui'] .git-section-toolbar { margin: 0 var(--ak-space-4); gap: var(--ak-space-2); padding-bottom: var(--ak-space-2); border-bottom: 1px solid var(--aibo-border); }
+.app-shell[data-ui-kit='ak-ui'] .git-section-toolbar { margin: 0 var(--ak-space-4); gap: var(--ak-space-2); padding-bottom: var(--ak-space-2); border-bottom: 0; }
 .app-shell[data-ui-kit='ak-ui'] .git-section-tabs .ak-button { padding-inline: var(--ak-space-2); }
 .app-shell[data-ui-kit='ak-ui'] .git-review-button { padding-inline: var(--ak-space-2); font-size: var(--ak-type-label-size); }
 .app-shell[data-ui-kit='ak-ui'] .inspector .git-summary-card { padding-block: var(--ak-space-2); }
@@ -271,7 +310,6 @@
 .app-shell[data-ui-kit='ak-ui'] .inspector :is(.thread-card-heading, .session-context-heading) { border-left: var(--ak-line-strong) solid var(--aibo-border-strong); padding-left: var(--ak-space-2); }
 .app-shell[data-ui-kit='ak-ui'] .capability-list [data-slot='badge'] { background: var(--aibo-surface-hover); border-color: var(--aibo-border); color: var(--aibo-text); }
 .app-shell[data-ui-kit='ak-ui'] .repository-trigger { background: var(--aibo-surface); border: 1px solid var(--aibo-border); }
-.app-shell[data-ui-kit='ak-ui'] .git-section-tabs [role='tab'][aria-selected='true'] { background: var(--aibo-accent-soft); color: var(--aibo-accent-text); box-shadow: inset 0 -2px var(--aibo-accent); }
 .app-shell[data-ui-kit='ak-ui'] .inspector .git-summary-card { background: var(--aibo-surface-hover); border: 1px solid var(--aibo-border); }
 .app-shell[data-ui-kit='ak-ui'] .git-summary-card .thread-card-heading { border-left: 0; padding-inline: var(--ak-space-2); }
 .app-shell[data-ui-kit='ak-ui'] .git-branch-label { color: var(--aibo-text); }
@@ -286,3 +324,113 @@
 .app-shell[data-ui-kit='ak-ui'] .settings-rows { background: var(--aibo-surface); }
 .app-shell[data-ui-kit='ak-ui'] .workspace-preference-option { background: var(--aibo-surface); }
 .app-shell[data-ui-kit='ak-ui'] .workspace-preference-option:has(input:checked) { border-color: var(--aibo-accent); box-shadow: inset var(--ak-line-strong) 0 var(--aibo-accent); }
+
+/* ak-ui form anatomy, adapted to the existing native and Svelte controls. */
+.app-shell[data-ui-kit='ak-ui'] :is([data-slot='input'], [data-slot='textarea'], select) {
+  min-height: var(--ak-density-control-height);
+  border: var(--ak-line-hairline) solid var(--aibo-border);
+  border-left: 4px solid var(--aibo-border-strong);
+  border-radius: 0;
+  padding-inline: var(--ak-space-3);
+  background-color: var(--ak-surface-panel);
+  color: var(--aibo-text);
+  box-shadow: none;
+  font: 14px/1.45 var(--ak-font-sans);
+  caret-color: var(--aibo-focus);
+}
+.app-shell[data-ui-kit='ak-ui'] :is([data-slot='input'], [data-slot='textarea'], select)::placeholder { color: var(--aibo-muted); opacity: 1; }
+.app-shell[data-ui-kit='ak-ui'] :is([data-slot='input'], [data-slot='textarea'], select):hover:not(:disabled) { border-color: var(--aibo-border-strong); }
+.app-shell[data-ui-kit='ak-ui'] :is([data-slot='input'], [data-slot='textarea'], select):focus-visible {
+  border-color: var(--aibo-focus);
+  outline: var(--ak-focus-width) solid var(--aibo-focus);
+  outline-offset: 1px;
+  box-shadow: 0 0 0 4px color-mix(in srgb, var(--aibo-focus) 16%, transparent);
+}
+.app-shell[data-ui-kit='ak-ui'] :is([data-slot='input'], [data-slot='textarea'], select)[aria-invalid='true'] {
+  border-color: var(--aibo-danger-border);
+  border-left-color: var(--aibo-danger-border);
+  box-shadow: inset 4px 0 var(--aibo-danger-border);
+}
+.app-shell[data-ui-kit='ak-ui'] :is([data-slot='input'], [data-slot='textarea'], select):disabled {
+  color: var(--aibo-muted);
+  background-color: var(--aibo-surface-hover);
+  opacity: .72;
+  cursor: not-allowed;
+}
+.app-shell[data-ui-kit='ak-ui'] select {
+  appearance: none;
+  padding-right: var(--ak-space-6);
+  background-image: linear-gradient(45deg, transparent 50%, var(--aibo-text) 50%), linear-gradient(135deg, var(--aibo-text) 50%, transparent 50%);
+  background-position: calc(100% - 18px) center, calc(100% - 13px) center;
+  background-size: 5px 5px;
+  background-repeat: no-repeat;
+}
+.app-shell[data-ui-kit='ak-ui'] select option { color: var(--aibo-text); background: var(--ak-surface-raised); }
+
+/* Search and composer fields sit inside their own bordered surfaces. */
+.app-shell[data-ui-kit='ak-ui'] :is(.composer-textarea, .command-palette-search [data-slot='input'], .workspace-tool-panel [data-slot='input'], .repository-search input) {
+  border: 0;
+  background: transparent;
+  box-shadow: none;
+}
+.app-shell[data-ui-kit='ak-ui'] :is(.composer-textarea, .command-palette-search [data-slot='input'], .workspace-tool-panel [data-slot='input'], .repository-search input):focus-visible { border: 0; box-shadow: none; }
+.app-shell[data-ui-kit='ak-ui'] :is(.composer, .command-palette-search, .workspace-tool-panel, .repository-search):focus-within { border-color: var(--aibo-focus); box-shadow: inset var(--ak-line-strong) 0 var(--aibo-focus); }
+.app-shell[data-ui-kit='ak-ui'] .composer-textarea { font: 13px/1.8 var(--ak-font-sans); }
+
+/* Native checkboxes, radios and switches retain their keyboard semantics. */
+.app-shell[data-ui-kit='ak-ui'] input[type='checkbox']:not([role='switch']),
+.app-shell[data-ui-kit='ak-ui'] input[type='radio'] {
+  appearance: none;
+  position: relative;
+  flex: none;
+  width: 24px;
+  height: 24px;
+  margin: 0;
+  border: 2px solid var(--aibo-border-strong);
+  border-radius: 0;
+  background: var(--ak-surface-panel);
+  cursor: pointer;
+}
+.app-shell[data-ui-kit='ak-ui'] input[type='radio'] { border-radius: 50%; }
+.app-shell[data-ui-kit='ak-ui'] input[type='checkbox']:not([role='switch']):checked,
+.app-shell[data-ui-kit='ak-ui'] input[type='radio']:checked { border-color: var(--aibo-focus); background: var(--ak-color-blue); }
+.app-shell[data-ui-kit='ak-ui'] input[type='checkbox']:not([role='switch']):checked::after {
+  position: absolute; inset: 4px 3px 5px 5px; border-bottom: 3px solid var(--ak-color-black); border-left: 3px solid var(--ak-color-black); content: ''; transform: rotate(-45deg);
+}
+.app-shell[data-ui-kit='ak-ui'] input[type='radio']:checked::after { position: absolute; inset: 5px; border-radius: 50%; background: var(--ak-color-black); content: ''; }
+.app-shell[data-ui-kit='ak-ui'] input[role='switch'] {
+  appearance: none;
+  position: relative;
+  flex: none;
+  width: 44px;
+  height: 24px;
+  margin: 0;
+  border: 2px solid var(--aibo-border-strong);
+  border-radius: 16px;
+  background: var(--aibo-surface-hover);
+  cursor: pointer;
+}
+.app-shell[data-ui-kit='ak-ui'] input[role='switch']::after {
+  position: absolute; top: 3px; left: 3px; width: 14px; height: 14px; border-radius: 50%; background: var(--aibo-text); content: ''; transition: transform var(--ak-motion-fast) var(--ak-ease-standard);
+}
+.app-shell[data-ui-kit='ak-ui'] input[role='switch']:checked { border-color: var(--ak-color-dark-blue); background: var(--ak-color-dark-blue); }
+.app-shell[data-ui-kit='ak-ui'] input[role='switch']:checked::after { background: var(--ak-color-white); transform: translateX(19px); }
+.app-shell[data-ui-kit='ak-ui'] :is(input[type='checkbox'], input[type='radio']):focus-visible { outline: var(--ak-focus-width) solid var(--aibo-focus); outline-offset: 2px; }
+.app-shell[data-ui-kit='ak-ui'] :is(input[type='checkbox'], input[type='radio']):disabled { opacity: .5; cursor: not-allowed; }
+.app-shell[data-ui-kit='ak-ui'] .workspace-preference-option input[role='switch'] { width: 44px; height: 24px; }
+.app-shell[data-ui-kit='ak-ui'] .agent-settings-surface input[type='checkbox'] { width: 24px; height: 24px; }
+.app-shell[data-ui-kit='ak-ui'] .agent-settings-surface select { min-height: var(--ak-density-control-height); padding-inline: var(--ak-space-3) var(--ak-space-6); border-left: 4px solid var(--aibo-border-strong); border-radius: 0; background-color: var(--ak-surface-panel); }
+
+/* The website navigation reference uses a blue fill; terminal-like choices add a left rule. */
+.app-shell[data-ui-kit='ak-ui'] :is(.management-nav [aria-selected='true'], .repository-option[aria-selected='true'], .repository-option.is-active, .composer-access-options [aria-checked='true'], .pi-navigation-mode-list [aria-checked='true'], .ak-button[aria-pressed='true']) {
+  background: var(--aibo-accent-soft);
+  box-shadow: inset var(--ak-line-strong) 0 var(--aibo-accent);
+}
+.app-shell[data-ui-kit='ak-ui'] :is(.management-nav [aria-selected='true'], .repository-option[aria-selected='true'], .composer-access-options [aria-checked='true'], .pi-navigation-mode-list [aria-checked='true']) { color: var(--aibo-selected-ink); }
+.app-shell[data-ui-kit='ak-ui'] .repository-option[aria-selected='true'] .repository-option-name { color: var(--aibo-selected-ink); }
+.app-shell[data-ui-kit='ak-ui'] .window-actions .ak-button[aria-pressed='true'],
+.app-shell[data-ui-kit='ak-ui'] .window-actions .ak-button[aria-pressed='true']:hover:not(:disabled) {
+  color: var(--aibo-selected-ink);
+  background: var(--aibo-accent-soft);
+  box-shadow: none;
+}

@@ -225,6 +225,18 @@
     if (section === 'history' && workspace) onRefreshGitMetadata(workspace.id);
   }
 
+  function moveGitTab(event: KeyboardEvent): void {
+    const current = repositoryId === null || draftState.gitSection === 'changes' ? 'changes' : 'history';
+    let next: 'changes' | 'history' | undefined;
+    if (event.key === 'ArrowLeft' || event.key === 'ArrowRight') next = current === 'changes' ? 'history' : 'changes';
+    if (event.key === 'Home') next = 'changes';
+    if (event.key === 'End') next = 'history';
+    if (!next) return;
+    event.preventDefault();
+    selectGitSection(next);
+    if (repositoryId !== null || next === 'changes') requestAnimationFrame(() => document.getElementById(`git-${next}-tab`)?.focus());
+  }
+
   function submitBranch(): void {
     if (!workspace || workspace.trust !== 'trusted' || !draftState.branchDraft.trim()) return;
     onCreateBranch(workspace.id, draftState.branchDraft.trim());
@@ -379,6 +391,8 @@
         role="tab"
         aria-controls="git-view-content"
         aria-selected={repositoryId === null || draftState.gitSection === 'changes'}
+        tabindex={repositoryId === null || draftState.gitSection === 'changes' ? 0 : -1}
+        onkeydown={moveGitTab}
         onclick={() => selectGitSection('changes')}
       >变更</Button>
       <Button
@@ -389,6 +403,8 @@
         role="tab"
         aria-controls="git-view-content"
         aria-selected={repositoryId !== null && draftState.gitSection === 'history'}
+        tabindex={repositoryId !== null && draftState.gitSection === 'history' ? 0 : -1}
+        onkeydown={moveGitTab}
         onclick={() => selectGitSection('history')}
       >历史</Button>
     </div>

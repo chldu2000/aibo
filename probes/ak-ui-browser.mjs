@@ -24,6 +24,10 @@ const server = await createServer({server:{host:'127.0.0.1',port:0,strictPort:fa
 await server.listen();
 const browser=await chromium.launch({headless:true});
 const output=process.env.AIBO_PROBE_OUTPUT??'/tmp/aibo-ak-ui';await mkdir(output,{recursive:true});
+const contrast=({bg,fg})=>{
+ const lum=color=>{const rgb=color.match(/[\d.]+/g).slice(0,3).map(Number).map(n=>n/255).map(n=>n<=.04045?n/12.92:((n+.055)/1.055)**2.4);return rgb[0]*.2126+rgb[1]*.7152+rgb[2]*.0722};
+ const values=[lum(bg),lum(fg)].sort((a,b)=>b-a);return (values[0]+.05)/(values[1]+.05);
+};
 try{
  const page=await browser.newPage({viewport:{width:1440,height:960}});const errors=[];page.on('pageerror',e=>errors.push(e.message));
  await page.addInitScript(()=>{
@@ -43,13 +47,20 @@ try{
   assert.equal(await input.inputValue(),'主题切换时保留这段草稿');
   const backgrounds=await page.locator('.sidebar,.timeline,.inspector').evaluateAll(nodes=>nodes.map(n=>getComputedStyle(n).backgroundColor));
   for(const bg of backgrounds){const rgb=bg.match(/[\d.]+/g).slice(0,3).map(Number);assert.equal(rgb.every(c=>c>200),mode==='light',bg)}
+  const conversationTabs=await page.locator('.conversation-navigation').evaluate(nav=>({flow:getComputedStyle(nav).gridAutoFlow,selectedLine:getComputedStyle(nav.querySelector('[aria-current="page"]'),'::after').height,selectedBg:getComputedStyle(nav.querySelector('[aria-current="page"]')).backgroundColor,otherBg:getComputedStyle(nav.querySelector('.ak-button:not([aria-current])')).backgroundColor}));
+  assert.equal(conversationTabs.flow,'column');assert.equal(conversationTabs.selectedLine,'4px');assert.notEqual(conversationTabs.selectedBg,conversationTabs.otherBg);
+  const titlebarToggle=page.locator('.window-actions .ak-button[aria-pressed]');
+  assert.equal(await titlebarToggle.getAttribute('aria-pressed'),'true');
+  await titlebarToggle.hover();
+  const titlebarState=await titlebarToggle.evaluate(e=>{const s=getComputedStyle(e);return {bg:s.backgroundColor,fg:s.color,shadow:s.boxShadow,titlebarBg:getComputedStyle(e.closest('.window-titlebar')).backgroundColor}});
+  assert.equal(titlebarState.shadow,'none','active titlebar icon has no navigation signal bar, even on hover');
+  assert.notEqual(titlebarState.bg,titlebarState.titlebarBg,'active titlebar icon retains a blue selection fill');
+  assert(contrast(titlebarState)>=4.5,'active titlebar icon remains readable');
+  await titlebarToggle.focus();await page.keyboard.press('Tab');await page.keyboard.press('Shift+Tab');
+  assert.equal(await titlebarToggle.evaluate(e=>getComputedStyle(e).outlineColor),mode==='light'?'rgb(0, 117, 168)':'rgb(34, 187, 255)','active titlebar icon keeps its keyboard focus outline');
   const primary=page.locator('.sidebar-new-session');
   const primaryColors=await primary.evaluate(e=>{const s=getComputedStyle(e);return {bg:s.backgroundColor,fg:s.color}});
   assert.equal(primaryColors.bg,'rgb(255, 216, 2)','main action uses the ak-ui yellow palette');
-  const contrast=({bg,fg})=>{
-    const lum=color=>{const rgb=color.match(/[\d.]+/g).slice(0,3).map(Number).map(n=>n/255).map(n=>n<=.04045?n/12.92:((n+.055)/1.055)**2.4);return rgb[0]*.2126+rgb[1]*.7152+rgb[2]*.0722};
-    const values=[lum(bg),lum(fg)].sort((a,b)=>b-a);return (values[0]+.05)/(values[1]+.05);
-  };
   assert(contrast(primaryColors)>=4.5,'yellow buttons retain readable dark labels');
   await primary.focus();await page.keyboard.press('Tab');await page.keyboard.press('Shift+Tab');
   assert.equal(await primary.evaluate(e=>e===document.activeElement),true,'keyboard navigation returns to the main action');
@@ -59,11 +70,17 @@ try{
   await page.mouse.move(700,40);await primary.evaluate(e=>e.blur());
   await page.screenshot({path:`${output}/desktop-${mode}.png`});
  }
+ const titlebarToggle=page.locator('.window-actions .ak-button[aria-pressed]');
+ await titlebarToggle.click();assert.equal(await titlebarToggle.getAttribute('aria-pressed'),'false');
+ await titlebarToggle.click();assert.equal(await titlebarToggle.getAttribute('aria-pressed'),'true');
  await page.getByRole('button',{name:'工作台设置',exact:true}).click();
  await page.getByRole('dialog',{name:'管理中心',exact:true}).waitFor();
+ const selectedNav=page.locator('.management-nav [aria-selected="true"]');
+ assert(contrast(await selectedNav.evaluate(e=>{const s=getComputedStyle(e);return {bg:s.backgroundColor,fg:s.color}}))>=4.5,'selected navigation label stays readable in the dark theme');
  assert.equal(await page.locator('.appearance-kit-option').count(),1);
  assert.equal(await page.locator('.appearance-theme-option').count(),2);
  await page.locator('.appearance-theme-option').filter({hasText:'浅色'}).click();
+ assert(contrast(await selectedNav.evaluate(e=>{const s=getComputedStyle(e);return {bg:s.backgroundColor,fg:s.color}}))>=4.5,'selected navigation label stays readable in the light theme');
  await page.screenshot({path:`${output}/settings-light.png`});
  await page.keyboard.press('Escape');assert.equal(await page.getByRole('dialog',{name:'管理中心',exact:true}).count(),0);
  await page.locator('.sidebar-footer button:focus').waitFor();
