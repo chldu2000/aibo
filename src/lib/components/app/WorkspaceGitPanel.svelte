@@ -363,7 +363,7 @@
       {#if repositoryId === null && repositories.length > 0}
         <Badge variant="secondary">{repositories.reduce((sum, repo) => sum + (repo.changes?.files.length ?? 0), 0)}</Badge>
       {:else if changes?.captureStatus === 'captured'}
-        <Badge variant={changes.dirty ? 'warning' : 'secondary'}>{changes.files.length}</Badge>
+        <Badge variant="secondary">{changes.files.length}</Badge>
       {/if}
       <Button
         variant="ghost"

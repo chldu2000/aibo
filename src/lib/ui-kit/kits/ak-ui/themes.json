@@ -122,7 +122,10 @@
         "--aibo-titlebar-height": "44px",
         "--aibo-info-surface": "#e9f5fc",
         "--aibo-info-text": "var(--ak-color-dark-blue)",
-        "--aibo-hover": "#cbd2ce"
+        "--aibo-hover": "#cbd2ce",
+        "--aibo-type-body": "14px",
+        "--aibo-type-ui": "13px",
+        "--aibo-type-meta": "12px"
       }
     },
     {
@@ -243,7 +246,10 @@
         "--aibo-titlebar-height": "44px",
         "--aibo-info-surface": "#183440",
         "--aibo-info-text": "var(--ak-color-blue)",
-        "--aibo-hover": "#414b53"
+        "--aibo-hover": "#414b53",
+        "--aibo-type-body": "14px",
+        "--aibo-type-ui": "13px",
+        "--aibo-type-meta": "12px"
       }
     }
   ]

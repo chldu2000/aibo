@@ -34,7 +34,7 @@ try {
  for(const theme of ['light','dark']) {
    if(await page.locator('.app-shell').getAttribute('data-ui-theme')!==theme)await page.getByRole('button',{name:'切换主题'}).click();
    await field.focus();await page.keyboard.press('Tab');await page.keyboard.press('Shift+Tab');
-   assert.equal(await field.evaluate(e=>getComputedStyle(e).outlineStyle),'solid','keyboard focus remains visible');
+   await field.evaluate(e=>Promise.all(e.getAnimations().map(a=>a.finished)));const focusRing=await field.evaluate(e=>{const s=getComputedStyle(e);return {top:s.borderTopColor,shadow:s.boxShadow}});assert.equal(focusRing.top,theme==='light'?'rgb(0, 117, 168)':'rgb(34, 187, 255)','ak-form focus recolours the whole border');assert.match(focusRing.shadow,/ 0px 0px 0px 3px$/,'keyboard focus keeps a visible 3px halo');
    assert.equal(await field.evaluate(e=>getComputedStyle(e).borderLeftColor),theme==='light'?'rgb(0, 117, 168)':'rgb(34, 187, 255)');
    assert.equal(await page.getByRole('textbox',{name:'校验错误'}).evaluate(e=>getComputedStyle(e).borderLeftColor),theme==='light'?'rgb(166, 52, 53)':'rgb(255, 170, 163)');
    assert.equal(await page.getByRole('switch',{name:'开关选择'}).evaluate(e=>getComputedStyle(e).borderTopLeftRadius),'16px');

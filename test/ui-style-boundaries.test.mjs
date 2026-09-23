@@ -97,3 +97,15 @@ test('the ak-ui skin draws colours from theme tokens, not raw values', async () 
   const source = await readFile(path.join(root, 'src/lib/ui-kit/kits/ak-ui.css'), 'utf8');
   assert.deepEqual(source.match(/#[0-9a-f]{3,8}\b/gi) ?? [], [], 'raw colours belong in kits/ak-ui/themes.json');
 });
+
+test('skin text never drops below the 12px metadata floor', async () => {
+  const files = ['src/lib/ui-kit/kits/base.css', 'src/lib/ui-kit/kits/ak-ui.css'];
+  for (const kit of ['src/lib/ui-kit/kits/ak-ui', 'src/lib/ui-kit/kits/shared']) {
+    for (const name of await readdir(path.join(root, kit))) if (name.endsWith('.svelte')) files.push(path.join(kit, name));
+  }
+  for (const file of files) {
+    const source = await readFile(path.join(root, file), 'utf8');
+    const tiny = [...source.matchAll(/\bfont(?:-size)?\s*:\s*(\d+(?:\.\d+)?)px/g)].filter(match => Number(match[1]) < 12).map(match => match[0]);
+    assert.deepEqual(tiny, [], `${file} uses text smaller than --aibo-type-meta`);
+  }
+});

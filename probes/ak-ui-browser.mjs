@@ -47,8 +47,8 @@ try{
   assert.equal(await input.inputValue(),'主题切换时保留这段草稿');
   const backgrounds=await page.locator('.sidebar,.timeline,.inspector').evaluateAll(nodes=>nodes.map(n=>getComputedStyle(n).backgroundColor));
   for(const bg of backgrounds){const rgb=bg.match(/[\d.]+/g).slice(0,3).map(Number);assert.equal(rgb.every(c=>c>200),mode==='light',bg)}
-  const conversationTabs=await page.locator('.conversation-navigation').evaluate(nav=>({flow:getComputedStyle(nav).gridAutoFlow,selectedLine:getComputedStyle(nav.querySelector('[aria-selected="true"]'),'::after').height,selectedBg:getComputedStyle(nav.querySelector('[aria-selected="true"]')).backgroundColor,otherBg:getComputedStyle(nav.querySelector('.ak-button[aria-selected="false"]')).backgroundColor}));
-  assert.equal(conversationTabs.flow,'column');assert.equal(conversationTabs.selectedLine,'4px');assert.notEqual(conversationTabs.selectedBg,conversationTabs.otherBg);
+  const conversationTabs=await page.locator('.conversation-navigation').evaluate(nav=>({flow:getComputedStyle(nav).gridAutoFlow,selectedLine:getComputedStyle(nav.querySelector('[aria-selected="true"]'),'::after').height,selectedInk:getComputedStyle(nav.querySelector('[aria-selected="true"]')).color,otherInk:getComputedStyle(nav.querySelector('.ak-button[aria-selected="false"]')).color}));
+  assert.equal(conversationTabs.flow,'column');assert.equal(conversationTabs.selectedLine,'3px');assert.notEqual(conversationTabs.selectedInk,conversationTabs.otherInk,'selected tab has a stronger label as well as its signal bar');
   const titlebarToggle=page.locator('.window-actions .ak-button[aria-pressed]');
   assert.equal(await titlebarToggle.getAttribute('aria-pressed'),'true');
   await titlebarToggle.hover();

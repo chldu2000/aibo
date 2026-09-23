@@ -560,7 +560,7 @@
   {/if}
 
   {#if workspace}
-    <Card class="trust-card">
+    <Card class="trust-card" data-trust={workspace.trust}>
       <div class="trust-card-heading"><Icon name="trust" size={16} /><strong>工作区信任</strong></div>
       <p>{workspace.trust === 'trusted' ? '当前目录已允许 Agent 操作。' : '确认目录来源后再启用 Agent 操作。'}</p>
     </Card>

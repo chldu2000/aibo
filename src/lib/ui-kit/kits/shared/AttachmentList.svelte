@@ -28,9 +28,9 @@
  .attachment-item a { flex:none; }
  .attachment-item img { display:block; width:42px; height:42px; object-fit:contain; background:var(--aibo-surface-hover); border-radius:3px; }
  .attachment-placeholder, .attachment-file-icon { display:grid; flex:none; width:42px; height:42px; place-items:center; background:var(--aibo-surface-hover); color:var(--aibo-muted); border-radius:3px; }
- .attachment-placeholder { font-size:10px; text-align:center; line-height:1.3; }
+ .attachment-placeholder { font-size:var(--aibo-type-meta, 12px); text-align:center; line-height:1.3; }
  .attachment-file-icon { font-size:24px; }
- .attachment-caption { display:flex; flex:1; min-width:0; align-items:center; gap:4px; font-size:12px; }
+ .attachment-caption { display:flex; flex:1; min-width:0; align-items:center; gap:4px; font-size:var(--aibo-type-meta, 12px); }
  .attachment-caption span { flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
  button { display:grid; place-items:center; width:24px; height:28px; padding:0; flex:none; border:0; border-radius:3px; background:transparent; color:var(--aibo-muted); cursor:pointer; font-size:18px; }
  button:hover { background:var(--aibo-surface-hover); color:var(--aibo-text); }

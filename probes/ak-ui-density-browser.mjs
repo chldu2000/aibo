@@ -55,7 +55,7 @@ try {
   await page.keyboard.press('ArrowRight');
   assert.equal(await contextTab.getAttribute('aria-selected'),'true');
   assert(await contextTab.evaluate(e=>e===document.activeElement));
-  assert.equal(await contextTab.evaluate(e=>getComputedStyle(e,'::after').height),'4px');
+  assert.equal(await contextTab.evaluate(e=>getComputedStyle(e,'::after').height),'3px');
   await page.locator('.workspace-capabilities-card').waitFor();
   const row=page.locator('.workspace-item-row');const copy=row.locator('.workspace-copy');
   await page.mouse.move(700,40);const before=await copy.boundingBox();await row.hover();
@@ -110,8 +110,8 @@ try {
   await page.keyboard.press('Home');
   assert.equal(await changesTab.getAttribute('aria-selected'),'true');
   await page.locator('#git-changes-tab:focus').waitFor();
-  assert.equal(await changesTab.evaluate(e=>getComputedStyle(e,'::after').height),'4px');
-  assert.equal(await historyTab.evaluate(e=>getComputedStyle(e).borderLeftWidth),'1px');
+  assert.equal(await changesTab.evaluate(e=>getComputedStyle(e,'::after').height),'3px');
+  assert.equal(await historyTab.evaluate(e=>getComputedStyle(e).borderLeftWidth),'0px','tabs are separated by spacing, not divider lines');
   const gitHeader=await page.locator('[data-ui-component="workspace-git-panel"] .panel-heading').boundingBox();
   const remote=await page.locator('.git-remote-row').boundingBox();
   assert(remote.y+remote.height-gitHeader.y<310,'Git controls do not consume the whole side panel');
@@ -130,12 +130,12 @@ try {
       function background(e) { while(e){const color=getComputedStyle(e).backgroundColor;if(color!=='rgba(0, 0, 0, 0)'&&color!=='transparent')return color;e=e.parentElement}return '' }
       const bg=selector=>background(document.querySelector(selector));
       return {heading:bg('.git-change-group-heading'),file:bg('.changeset-file-row'),summary:bg('.git-summary-card'),canvas:bg('.timeline'),editor:bg('.composer'),
-        selected:bg('.git-section-tabs [aria-selected="true"]'),rest:bg('.git-section-tabs [aria-selected="false"]')};
+        selected:getComputedStyle(document.querySelector('.git-section-tabs [aria-selected="true"]')).color,rest:getComputedStyle(document.querySelector('.git-section-tabs [aria-selected="false"]')).color};
     });
     assert.notEqual(styles.heading,styles.file,'Git group heading separates from file content');
     assert.notEqual(styles.summary,styles.file,'branch summary separates from file content');
     assert.notEqual(styles.canvas,styles.editor,'editor separates from reading canvas');
-    assert.notEqual(styles.selected,styles.rest,'Git selected tab has a visible surface signal');
+    assert.notEqual(styles.selected,styles.rest,'Git selected tab has a stronger label as well as its signal bar');
   }
   async function checkHistoryFileAlignment(mode) {
     await historyTab.click();
