@@ -31,7 +31,7 @@
 .app-shell[data-ui-kit='ak-ui'] .ak-button[data-variant='secondary'] { background: var(--aibo-surface-hover); }
 .app-shell[data-ui-kit='ak-ui'] .ak-button:is([data-variant='outline'], [data-variant='queue']) { border-color: var(--aibo-border); }
 .app-shell[data-ui-kit='ak-ui'] .ak-button:is([data-variant='destructive'], [data-variant='abort']) { background: var(--aibo-danger-surface); color: var(--aibo-danger-text); border-color: var(--aibo-danger-border); }
-.app-shell[data-ui-kit='ak-ui'] .ak-button:disabled { color: var(--ak-signal-disabled); background: var(--aibo-surface-hover); opacity: .65; cursor: not-allowed; }
+.app-shell[data-ui-kit='ak-ui'] .ak-button:disabled { color: var(--ak-signal-disabled); background: var(--aibo-surface-hover); border-color: var(--aibo-border-strong); cursor: not-allowed; }
 .app-shell[data-ui-kit='ak-ui'] .window-titlebar { margin: 0; min-height: 44px; padding-right: var(--ak-space-3); background: var(--aibo-surface-hover); border-bottom: 1px solid var(--aibo-border); }
 .app-shell[data-ui-kit='ak-ui'] .window-title { font-weight: 500; font-size: var(--ak-type-label-size); letter-spacing: .05em; color: var(--aibo-muted); }
 .app-shell[data-ui-kit='ak-ui'] .window-actions [data-slot='button'] { width: 44px; height: 44px; }
@@ -84,7 +84,6 @@
 .app-shell[data-ui-kit='ak-ui'] .composer::before { content: ''; position: absolute; left: -1px; top: -1px; width: 24px; height: 3px; background: var(--aibo-accent); }
 .app-shell[data-ui-kit='ak-ui'] .composer:focus-within { border-color: var(--aibo-accent); }
 .app-shell[data-ui-kit='ak-ui'] .composer-textarea { min-height: 78px; border: 0; font: 13px/1.8 var(--ak-font-sans); }
-.app-shell[data-ui-kit='ak-ui'] .composer-textarea:focus-visible { outline-offset: 2px; outline-width: 1px; }
 .app-shell[data-ui-kit='ak-ui'] .composer-toolbar { gap: var(--ak-space-2); }
 .app-shell[data-ui-kit='ak-ui'] .composer-toolbar [data-slot='button'] { min-height: 44px; font-size: var(--ak-type-label-size); }
 .app-shell[data-ui-kit='ak-ui'] :is(.composer-menu, .composer-suggestions) { border-radius: var(--ak-radius-subtle); box-shadow: var(--ak-shadow-panel); background: var(--aibo-surface); }
@@ -137,7 +136,7 @@
 .app-shell[data-ui-kit='ak-ui'] .tone-attention { outline: 1px solid var(--aibo-warning-text); }
 .app-shell[data-ui-kit='ak-ui'] .tone-failed { outline: 1px solid var(--aibo-danger-text); }
 .app-shell[data-ui-kit='ak-ui'] :is(.ak-management, .ak-alert) { padding: 0; color: var(--aibo-text); background: var(--aibo-surface); border: 1px solid var(--aibo-border); border-top: 3px solid var(--aibo-accent); border-radius: 0; box-shadow: var(--ak-shadow-panel); margin: auto; }
-.app-shell[data-ui-kit='ak-ui'] :is(.ak-management, .ak-alert)::backdrop { background: #11180f66; backdrop-filter: blur(3px); }
+.app-shell[data-ui-kit='ak-ui'] :is(.ak-management, .ak-alert)::backdrop { background: color-mix(in srgb, var(--ak-color-black) 40%, transparent); backdrop-filter: blur(3px); }
 .app-shell[data-ui-kit='ak-ui'] .ak-management { width: min(960px, calc(100vw - 48px)); height: min(700px, calc(100dvh - 88px)); max-width: none; max-height: none; }
 .app-shell[data-ui-kit='ak-ui'] .ak-management[open] { display: grid; grid-template-rows: auto minmax(0, 1fr) auto; }
 .app-shell[data-ui-kit='ak-ui'] .management-header { background: var(--aibo-surface-hover); display: flex; justify-content: space-between; align-items: center; padding: var(--ak-space-5); border-bottom: 1px solid var(--aibo-border); }
@@ -375,7 +374,7 @@
   background: transparent;
   box-shadow: none;
 }
-.app-shell[data-ui-kit='ak-ui'] :is(.composer-textarea, .command-palette-search [data-slot='input'], .workspace-tool-panel [data-slot='input'], .repository-search input):focus-visible { border: 0; box-shadow: none; }
+.app-shell[data-ui-kit='ak-ui'] :is(.composer-textarea, .command-palette-search [data-slot='input'], .workspace-tool-panel [data-slot='input'], .repository-search input):focus-visible { border: 0; outline: none; box-shadow: none; }
 .app-shell[data-ui-kit='ak-ui'] :is(.composer, .command-palette-search, .workspace-tool-panel, .repository-search):focus-within { border-color: var(--aibo-focus); box-shadow: inset var(--ak-line-strong) 0 var(--aibo-focus); }
 .app-shell[data-ui-kit='ak-ui'] .composer-textarea { font: 13px/1.8 var(--ak-font-sans); }
 

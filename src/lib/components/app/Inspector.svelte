@@ -1,10 +1,10 @@
 <script lang="ts">
-  import { Badge, Button, Card, CardContent, CardHeader, CardTitle, Icon, Separator } from '$lib/ui-kit';
+  import { AgentStatusMark, Badge, Button, Card, CardContent, CardHeader, CardTitle, Icon, Separator } from '$lib/ui-kit';
+  import type { AgentIcon } from '../../../../packages/plugin-protocol/src/agent-icon';
   import type { PresentationArtifactPreview } from '../../../../packages/plugin-protocol/src/presentation-inspector';
   import ProjectActionsPanel from './ProjectActionsPanel.svelte';
   import SidePanelTabs from './SidePanelTabs.svelte';
-  import { sessionStateLabel } from './session-utils';
-  import { sessionAgentKind } from '$lib/app/agent-kind';
+  import { formatBytes, sessionStateLabel } from './session-utils';
   import type {
     AgentDiagnostic,
     CodexThreadListItem,
@@ -17,6 +17,8 @@
     visible: boolean;
     workspace: WorkspaceListItem | null;
     session: SessionPanelView | null;
+    /** Provider identity declared by the session's plugin; absent when unknown. */
+    sessionProvider?: { label: string; icon?: AgentIcon };
     desktop: boolean;
     diagnostics: AgentDiagnostic[];
     workspaceCapabilities: WorkspaceCapabilityInventory | null;
@@ -60,6 +62,7 @@
     visible,
     workspace,
     session,
+    sessionProvider,
     desktop,
     diagnostics,
     workspaceCapabilities,
@@ -97,7 +100,6 @@
   const expandedArtifactId = $derived(artifactPreview.artifactId);
   const artifactContent = $derived(artifactPreview.content);
   const artifactLoading = $derived(artifactPreview.loading);
-  const sessionKind = $derived(sessionAgentKind(session));
   const turnFileIsRename = $derived(
     Boolean(turnChangeSet && turnFileDiff && turnChangeSet.files.find((file) => file.path === turnFileDiff.path)?.kind === 'renamed'),
   );
@@ -263,10 +265,10 @@
     <Card class="session-context-card">
       <CardHeader class="session-context-heading">
         <div class="session-context-title">
-          <span class={`session-agent session-agent-${sessionKind}`}>{sessionKind === 'pi' ? 'PI' : sessionKind === 'codex' ? 'CX' : 'AG'}</span>
+          <AgentStatusMark agent="plugin" icon={sessionProvider?.icon} tone="idle" label={sessionProvider?.label ?? session.agent} />
           <div>
             <CardTitle>{session.label}</CardTitle>
-            <small>{sessionKind === 'pi' ? 'Pi SDK host' : sessionKind === 'codex' ? 'Codex app-server' : session.agent}</small>
+            <small>{sessionProvider?.label ?? session.agent}</small>
           </div>
         </div>
       </CardHeader>
@@ -376,17 +378,15 @@
         {#if attachments.length === 0}
           <p class="thread-empty">发送前可在输入框添加文件或目录。</p>
         {:else}
-          <div class="thread-list" aria-label="当前上下文附件">
+          <ul class="context-attachment-list" aria-label="当前上下文附件">
             {#each attachments as attachment (attachment.id)}
-              <div class="thread-item changeset-file">
-                <Icon name={attachment.mediaType === 'inode/directory' ? 'folder' : 'folder-add'} size={13} />
-                <div class="thread-copy">
-                  <strong title={attachment.path}>{attachment.path}</strong>
-                  <small>{attachment.turnId ? '已发送' : '待发送'} · {attachment.sendStrategy === 'reference' ? '工作区引用' : '内联'}{attachment.size === null ? '' : ` · ${attachment.size} bytes`}</small>
-                </div>
-              </div>
+              <li class="context-attachment" title={attachment.path}>
+                <Icon name={attachment.mediaType === 'inode/directory' ? 'folder' : 'file'} size={16} />
+                <span class="context-attachment-name">{attachment.path.split(/[\\/]/).pop() || attachment.path}</span>
+                <span class="context-attachment-meta">{attachment.turnId ? '已发送' : '待发送'} · {attachment.sendStrategy === 'reference' ? '引用' : '内联'}{attachment.size === null ? '' : ` · ${formatBytes(attachment.size)}`}</span>
+              </li>
             {/each}
-          </div>
+          </ul>
         {/if}
       </CardContent>
     </Card>

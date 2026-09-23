@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import test from 'node:test';
-import { sessionProviders, readySessionProviders, sessionProviderIcon } from '../src/lib/app/session-providers.ts';
+import { sessionProviders, readySessionProviders, sessionProviderIcon, sessionProviderInfo } from '../src/lib/app/session-providers.ts';
 
 test('desktop bundle and host validators exclude the retired executable protocols', async () => {
   const config = JSON.parse(await readFile(new URL('../src-tauri/tauri.conf.json', import.meta.url), 'utf8'));
@@ -96,4 +96,19 @@ test('management center owns plugin administration while plugin sessions stay in
   assert.match(manager, /dependency\.required && !dependency\.available \? 'alert'/, 'missing required dependencies must be explicit');
   assert.match(manager, /onclick=\{\(\) => onUninstall\(installation\.id\)\}/, 'installed plugins can be uninstalled');
   assert.match(manager, /aria-busy=\{busy\}/);
+});
+
+test('session context shows the provider identity declared by its plugin', async () => {
+  const icon = { path: 'M4 4h16v16H4Z' };
+  const provider = { id: 'third.party.agent', kind: 'capabilityProvider', scope: 'session', metadata: {
+    displayName: 'Third-party Agent', icon, operations: [{capability: {id: 'aibo.session.open'}}],
+  } };
+  const installation = { id: 'release-3p', installed: true, enabled: false, runnable: false, contributions: [provider] };
+  const session = { agent: provider.id, pluginInstallationId: installation.id };
+  assert.deepEqual(sessionProviderInfo([installation], session), { label: 'Third-party Agent', icon });
+  assert.deepEqual(sessionProviderInfo([], session), { label: provider.id }, 'removed release falls back to the contribution ID');
+  const unnamed = {...installation, contributions: [{...provider, metadata: {...provider.metadata, displayName: undefined, icon: undefined}}]};
+  assert.deepEqual(sessionProviderInfo([unnamed], session), { label: provider.id });
+  const inspector = await readFile(new URL('../src/lib/components/app/Inspector.svelte', import.meta.url), 'utf8');
+  assert.doesNotMatch(inspector, /sessionAgentKind|=== '(?:codex|pi)'|'(?:PI|CX|AG)'/, 'Inspector does not branch on Agent identity');
 });

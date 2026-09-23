@@ -11,6 +11,7 @@
   import type { UiModelMatrixRow } from '$lib/ui-kit';
   import type { AgentCommand, AgentCommandCategory, ContextAttachment, SessionControlId, SessionExecutionProfile, SessionModelCatalog, Session, WorkspacePathSuggestion } from '$lib/types';
   import { scrollActiveOptionIntoView } from './active-option-scroll';
+  import { formatBytes } from './session-utils';
 
   type SlashCategory = 'all' | AgentCommandCategory;
 
@@ -227,12 +228,6 @@
   }
 
 
-
-  function formatBytes(bytes: number): string {
-    if (bytes < 1024) return `${bytes} B`;
-    if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
-    return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
-  }
 
   function updateComposerInput(value: string): void {
     mentionActiveIndex = 0;

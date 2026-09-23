@@ -92,3 +92,8 @@ test('agent icons come from plugin path data, without skin-owned brand maps or U
     assert.doesNotMatch(external, /agentPaths/);
   }
 });
+
+test('the ak-ui skin draws colours from theme tokens, not raw values', async () => {
+  const source = await readFile(path.join(root, 'src/lib/ui-kit/kits/ak-ui.css'), 'utf8');
+  assert.deepEqual(source.match(/#[0-9a-f]{3,8}\b/gi) ?? [], [], 'raw colours belong in kits/ak-ui/themes.json');
+});

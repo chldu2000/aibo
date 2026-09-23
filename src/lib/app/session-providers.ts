@@ -34,6 +34,16 @@ export function readySessionProviders(installations: SessionProviderInstallation
   });
 }
 
+/**
+ * Display identity of an existing session's provider, as declared by its plugin.
+ * Falls back to the contribution ID when the installation or declaration is gone.
+ */
+export function sessionProviderInfo(installations: SessionProviderInstallation[], session: { agent: string; pluginInstallationId?: string | null }): { label: string; icon?: AgentIcon } {
+  const installation = installations.find(item => item.id === session.pluginInstallationId);
+  const provider = installation ? sessionProviders(installation).find(item => item.id === session.agent) : undefined;
+  return provider ? { label: provider.displayName, ...(provider.icon ? { icon: provider.icon } : {}) } : { label: session.agent };
+}
+
 /** Existing sessions retain their release's identity even when that release is disabled. */
 export function sessionProviderIcon(installations: SessionProviderInstallation[], session: { agent: string; pluginInstallationId?: string | null }): AgentIcon | undefined {
   const installation = installations.find(item => item.id === session.pluginInstallationId);

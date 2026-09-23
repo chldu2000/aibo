@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { tick } from 'svelte';
   import { Button, Icon } from '$lib/ui-kit';
   import type { SidePanelView } from './view-types';
 
@@ -11,8 +12,11 @@
 
   const views: readonly SidePanelView[] = ['git', 'context'];
 
-  function focusView(view: SidePanelView): void {
-    requestAnimationFrame(() => document.getElementById(`side-panel-tab-${view}`)?.focus());
+  // Each panel mounts its own tab list, so the selected tab is a new element.
+  // Focus it as soon as Svelte has applied the switch, before the next frame.
+  async function focusView(view: SidePanelView): Promise<void> {
+    await tick();
+    document.getElementById(`side-panel-tab-${view}`)?.focus();
   }
 
   function moveTab(event: KeyboardEvent): void {
@@ -25,7 +29,7 @@
     if (!nextView) return;
     event.preventDefault();
     onSelect(nextView);
-    focusView(nextView);
+    void focusView(nextView);
   }
 </script>
 

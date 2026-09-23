@@ -713,7 +713,7 @@
     unarchiveSession as unarchiveSessionApi,
   } from './lib/api';
   import type { PluginInstallation } from './lib/api';
-  import { sessionProviders, readySessionProviders, sessionProviderIcon } from '$lib/app/session-providers';
+  import { sessionProviders, readySessionProviders, sessionProviderIcon, sessionProviderInfo } from '$lib/app/session-providers';
   import type {
     AgentQueueSnapshot,
     AgentCommand,
@@ -4017,6 +4017,7 @@
       visible={true}
       workspace={selectedWorkspace}
       session={selectedSession}
+      sessionProvider={selectedSession ? sessionProviderInfo(pluginInstallations, selectedSession) : undefined}
       desktop={desktop}
       activeView={sidePanelView}
       {diagnostics}
