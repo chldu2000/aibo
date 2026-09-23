@@ -6,7 +6,7 @@ export type WorkbenchLayoutState = {
 };
 type StoragePort = { getItem(key: string): string | null; setItem(key: string, value: string): void };
 const key = (windowId: string) => `aibo.workbench-layout.v1.${encodeURIComponent(windowId)}`;
-export const defaultWorkbenchLayout = (): WorkbenchLayoutState => ({ navigationWidth: 260, auxiliaryWidth: 320, auxiliaryOpen: true, activeView: 'git' });
+export const defaultWorkbenchLayout = (): WorkbenchLayoutState => ({ navigationWidth: 260, auxiliaryWidth: 340, auxiliaryOpen: true, activeView: 'git' });
 function normalize(value: unknown): WorkbenchLayoutState {
   const defaults = defaultWorkbenchLayout();
   if (!value || typeof value !== 'object') return defaults;

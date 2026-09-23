@@ -6,7 +6,7 @@
   import type { WorkbenchSnapshot, WorkbenchAction } from '../presentation/workbench-contract';
   type Guard = (id: string, callback: (...args: any[]) => any) => (...args: any[]) => any;
   let { snapshot, windowId, navigation, navigationResize, content, auxiliaryResize, auxiliary, overlays,
-    layout = $bindable('standard'), switching = $bindable(false), gridElement = $bindable(null), navigationWidth = 260, auxiliaryWidth = 320, auxiliaryOpen = true, suspended = false, hideWhenSuspended = true, onRestore }: {
+    layout = $bindable('standard'), switching = $bindable(false), gridElement = $bindable(null), navigationWidth = 260, auxiliaryWidth = 340, auxiliaryOpen = true, suspended = false, hideWhenSuspended = true, onRestore }: {
     onRestore?: () => Promise<void>;
     layout?: string;
     switching?: boolean;
