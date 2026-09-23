@@ -1160,8 +1160,11 @@
   transform: translateY(-50%);
 }
 
-.app-shell[data-ui-kit='ak-ui'] .session-item-actions {
+/* The more-button zone must show the row's own hover fill, not base's opaque surface box. */
+
+.app-shell[data-ui-kit='ak-ui'] :is(.workspace-item-actions, .session-item-actions) {
   background: transparent;
+  box-shadow: none;
 }
 
 .app-shell[data-ui-kit='ak-ui'] .row-more-mark {
