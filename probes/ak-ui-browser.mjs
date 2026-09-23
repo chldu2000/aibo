@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { createServer } from 'vite';
 import { chromium } from 'playwright';
-import { mkdir } from 'node:fs/promises';
+import { mkdir, writeFile } from 'node:fs/promises';
 
 // Fixture data enters App's preview path; the shipped UI, state controllers and
 // event handlers remain real. No Agent or native command is executed here.
@@ -101,6 +101,7 @@ try{
  assert.equal(await page.locator('.management-content').evaluate(e=>e.scrollTop),0);
  assert.equal(await page.getByRole('radiogroup',{name:'主题色'}).count(),1);
  assert.equal(await page.locator('.appearance-theme-option').count(),2);
+ for(const transition of await page.locator('.appearance-theme-option').evaluateAll(nodes=>nodes.map(e=>getComputedStyle(e).transitionProperty))) assert(!/background|color|all/.test(transition),'theme cards must not animate between old and new theme colors');
  await page.getByRole('radio',{name:/浅色/}).check();
  assert(await page.getByRole('radio',{name:/浅色/}).isChecked());
  assert(contrast(await selectedNav.evaluate(e=>{const s=getComputedStyle(e);return {bg:s.backgroundColor,fg:s.color}}))>=4.5,'selected navigation label stays readable in the light theme');
@@ -140,6 +141,22 @@ try{
  await regions.getByRole('button',{name:'会话',exact:true}).click();assert(await input.isVisible());
  await page.emulateMedia({reducedMotion:'reduce'});
  assert(await page.locator('.sidebar-new-session').evaluate(e=>parseFloat(getComputedStyle(e).transitionDuration)<.001));
+ // The mockup has different sample content, so compare the shared design contract
+ // and export paired screenshots for visual review instead of a misleading pixel threshold.
+ const reference=await browser.newPage();
+ await reference.goto(`http://127.0.0.1:${server.httpServer.address().port}/docs/design/ak-ui-redesign.html`);
+ for(const [size,width,height] of [['desktop',1440,960],['mobile',390,844]]){
+  await reference.setViewportSize({width,height});
+  for(const mode of ['light','dark']){
+   await reference.evaluate(mode=>document.body.dataset.theme=mode,mode);
+   const design=await reference.locator('.composer').evaluate(e=>{const s=getComputedStyle(e);return {edge:s.borderLeftWidth,radius:s.borderRadius}});
+   const actual=await page.locator('.composer').evaluate(e=>{const s=getComputedStyle(e);return {edge:s.borderLeftWidth,radius:s.borderRadius}});
+   assert.deepEqual(actual,design,'composer geometry follows the approved ak-form reference');
+   await reference.screenshot({path:`${output}/reference-${size}-${mode}.png`});
+  }
+ }
+ await reference.close();
+ await writeFile(`${output}/comparison.html`, `<!doctype html><meta charset="utf-8"><title>ak-ui 设计对照</title><style>body{font:16px sans-serif;margin:24px;background:#eee;color:#222}section{display:grid;grid-template-columns:1fr 1fr;gap:16px}img{max-width:100%;border:1px solid #aaa}h2{margin-top:40px}figure{margin:0}</style><h1>设计稿 / 实际应用</h1><p>内容不同，按层级、密度与表单规则对照；不是逐像素基准。</p>` + ['desktop','mobile'].flatMap(size=>['light','dark'].map(mode=>`<h2>${size} · ${mode}</h2><section><figure><figcaption>设计稿</figcaption><img src="reference-${size}-${mode}.png"></figure><figure><figcaption>实际应用</figcaption><img src="${size}-${mode}.png"></figure></section>`)).join(''));
  assert.deepEqual(errors,[]);
  console.log('PASS: actual App themes/migration, draft preservation, settings/native focus, provider chooser, layout recovery, responsive regions, reduced motion and clean browser console.');
 }finally{await browser.close();await server.close()}

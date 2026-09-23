@@ -35,6 +35,7 @@ try {
           if(window.inspectorDelayDiff)return new Promise(resolve=>{window.resolveDiff=()=>resolve(diff);});
           return diff;
         }
+        if(command==='list_workspace_git_repositories')return {repositories:[{id:'repo',name:'fixture',relativePath:'.',kind:'repository',externalRoot:false}],limited:false,warnings:[],scanBudget:2000};
         if(command==='get_workspace_changes')return {workspaceId:args.workspaceId,head:'head',branch:'main',dirty:true,capturedAt:'now',files:[],captureStatus:'captured',captureError:null};
         if(command==='apply_git_hunk_action')return {applied:true,message:'ok',path:args.path,hunkIndex:args.hunkIndex,action:args.action};
         if(command==='restore_turn_change_set')return {applied:false,restored:[],conflicts:['file.ts'],unsupported:[]};
@@ -67,7 +68,7 @@ try {
       }};
   },pkg);
   await page.goto(`http://127.0.0.1:${server.httpServer.address().port}/`);
-  await page.getByRole('button',{name:'打开设置',exact:true}).click();
+  await page.locator('[data-host-navigation="management"]').click();
   await page.getByRole('button',{name:'安装皮肤插件',exact:true}).click();
   await page.getByRole('button',{name:'External skin 1.0.0',exact:true}).click();
   await page.waitForFunction(()=>JSON.parse(localStorage.getItem('probe.presentation.selection')||'null')!==null);
@@ -80,12 +81,12 @@ try {
   await frame.getByRole('button',{name:'selectView:context',exact:true}).click();
   await frame.getByRole('button',{name:'toggleArtifact:artifact',exact:true}).click();
   await page.waitForFunction(()=>typeof window.resolveArtifact==='function');
-  await page.getByRole('button',{name:'打开设置',exact:true}).click();
+  await page.locator('[data-host-navigation="management"]').click();
   await page.getByRole('button',{name:'恢复内置呈现',exact:true}).click();
   await page.getByRole('button',{name:'关闭管理中心',exact:true}).click();
   await page.evaluate(()=>window.resolveArtifact());
   await page.getByText(/Host retained artifact preview/).waitFor();
-  await page.getByRole('button',{name:'打开设置',exact:true}).click();
+  await page.locator('[data-host-navigation="management"]').click();
   await page.getByRole('button',{name:'External skin 1.0.0',exact:true}).click();
   await page.getByRole('button',{name:'关闭管理中心',exact:true}).click();
   assert.equal((await snapshot()).artifactPreview.content.truncated,true);

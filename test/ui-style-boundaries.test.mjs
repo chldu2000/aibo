@@ -109,3 +109,9 @@ test('skin text never drops below the 12px metadata floor', async () => {
     assert.deepEqual(tiny, [], `${file} uses text smaller than --aibo-type-meta`);
   }
 });
+
+
+test('ak-ui does not restore a universal transition override', async () => {
+  const source = await readFile(path.join(root, 'src/lib/ui-kit/kits/ak-ui.css'), 'utf8');
+  assert.doesNotMatch(source, /\]\s+\*\s*\{[^}]*transition/s);
+});

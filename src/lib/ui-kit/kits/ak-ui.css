@@ -2,95 +2,421 @@
 
 /* Aibo's system-mode adaptation of ak-ui. Values live in ak-ui/themes.json;
    use the host semantic aliases so theme-only external packages still inherit. */
+
 .app-shell[data-ui-kit='ak-ui'] {
-  padding: 0; font-family: var(--ak-font-sans); font-size: var(--aibo-type-body); letter-spacing: 0;
+  padding: 0;
+  font-family: var(--ak-font-sans);
+  font-size: var(--aibo-type-body);
+  letter-spacing: 0;
   --workbench-splitter-width: 6px;
   --workbench-content-inset: clamp(24px, 4vw, 64px);
   --aibo-selected-ink: color-mix(in srgb, var(--aibo-accent) 85%, var(--ak-color-black));
 }
-.app-shell[data-ui-kit='ak-ui'][data-ui-theme='dark'] { --aibo-selected-ink: var(--aibo-accent); }
-/* Limit every transition to feedback properties so theme and state colours switch instantly. */
+
+.app-shell[data-ui-kit='ak-ui'][data-ui-theme='dark'] {
+  --aibo-selected-ink: var(--aibo-accent);
+}
+
+/* Shared focus and control primitives. */
 
 .app-shell[data-ui-kit='ak-ui'] :is(button, input, select, textarea, summary):focus-visible {
-  outline: var(--ak-focus-width) solid var(--aibo-focus); outline-offset: 2px;
+  outline: var(--ak-focus-width) solid var(--aibo-focus);
+  outline-offset: 2px;
 }
-.app-shell[data-ui-kit='ak-ui'] :is(button, input, textarea, select, [data-slot='card'], [data-slot='badge']) { border-radius: var(--ak-radius-subtle); }
-.app-shell[data-ui-kit='ak-ui'] [data-slot='card'] { box-shadow: none; }
-.app-shell[data-ui-kit='ak-ui'] [data-slot='badge'] { font-size: var(--ak-type-label-size); font-weight: 500; letter-spacing: .02em; }
+
+.app-shell[data-ui-kit='ak-ui'] :is(button, input, textarea, select, [data-slot='card'], [data-slot='badge']) {
+  border-radius: var(--ak-radius-subtle);
+}
+
+.app-shell[data-ui-kit='ak-ui'] [data-slot='card'] {
+  box-shadow: none;
+}
+
+.app-shell[data-ui-kit='ak-ui'] [data-slot='badge'] {
+  font-size: var(--ak-type-label-size);
+  font-weight: 500;
+  letter-spacing: .02em;
+}
+
 .app-shell[data-ui-kit='ak-ui'] .ak-button {
-  display: inline-flex; align-items: center; justify-content: center; gap: var(--ak-space-2); flex-shrink: 0;
-  min-height: var(--ak-density-control-height); border: 1px solid transparent; padding: 0 var(--ak-space-3);
-  font-size: var(--aibo-type-meta); font-weight: 500; color: var(--aibo-text); background: transparent;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--ak-space-2);
+  flex-shrink: 0;
+  min-height: var(--ak-density-control-height);
+  border: 1px solid transparent;
+  padding: 0 var(--ak-space-3);
+  font-size: var(--aibo-type-meta);
+  font-weight: 500;
+  color: var(--aibo-text);
+  background: transparent;
   transition: box-shadow var(--ak-motion-fast) var(--ak-ease-standard);
 }
-.app-shell[data-ui-kit='ak-ui'] .ak-button[data-size='icon'] { min-width: 44px; width: 44px; padding: 0; }
-.app-shell[data-ui-kit='ak-ui'] .ak-button svg { flex: none; }
-.app-shell[data-ui-kit='ak-ui'] .ak-button:hover:not(:disabled) { background: var(--aibo-hover, var(--aibo-surface-hover)); box-shadow: inset 0 -2px var(--aibo-border-strong); }
-.app-shell[data-ui-kit='ak-ui'] .ak-button:active:not(:disabled) { transform: translateY(1px); }
-.app-shell[data-ui-kit='ak-ui'] .ak-button:is([data-variant='default'], [data-variant='send']) { background: var(--primary); color: var(--primary-foreground); font-weight: 600; }
-.app-shell[data-ui-kit='ak-ui'] .ak-button:is([data-variant='default'], [data-variant='send']):hover:not(:disabled) { background: var(--primary); color: var(--primary-foreground); box-shadow: inset 0 -3px var(--aibo-accent); }
-.app-shell[data-ui-kit='ak-ui'] .ak-button[data-variant='secondary'] { background: var(--aibo-surface-hover); }
-.app-shell[data-ui-kit='ak-ui'] .ak-button:is([data-variant='outline'], [data-variant='queue']) { border-color: var(--aibo-border); }
-.app-shell[data-ui-kit='ak-ui'] .ak-button:is([data-variant='destructive'], [data-variant='abort']) { background: var(--aibo-danger-surface); color: var(--aibo-danger-text); border-color: var(--aibo-danger-border); }
-.app-shell[data-ui-kit='ak-ui'] .ak-button:disabled { color: var(--ak-signal-disabled); background: var(--aibo-surface-hover); border-color: var(--aibo-border-strong); cursor: not-allowed; }
-.app-shell[data-ui-kit='ak-ui'] .window-titlebar { margin: 0; min-height: 44px; padding-right: var(--ak-space-3); background: var(--aibo-surface-hover); border-bottom: 1px solid var(--aibo-border); }
-.app-shell[data-ui-kit='ak-ui'] .window-title { font-weight: 500; font-size: var(--ak-type-label-size); letter-spacing: .05em; color: var(--aibo-muted); }
-.app-shell[data-ui-kit='ak-ui'] .window-actions [data-slot='button'] { width: 44px; height: 44px; }
-.app-shell[data-ui-kit='ak-ui'] .workspace-grid { padding: 0; }
-.app-shell[data-ui-kit='ak-ui'] :is(.sidebar, .timeline, .inspector) { border: 0; border-radius: 0; box-shadow: none; }
-.app-shell[data-ui-kit='ak-ui'] .sidebar { padding: var(--ak-space-4) var(--ak-space-4) var(--ak-space-3); background: var(--aibo-surface-hover); }
-.app-shell[data-ui-kit='ak-ui'] .sidebar .panel-heading { padding: var(--ak-space-2) 0 0; flex-wrap: wrap; gap: var(--ak-space-2); border: 0; }
-.app-shell[data-ui-kit='ak-ui'] .sidebar .panel-heading [data-slot='card-title'] { font-size: var(--ak-type-label-size); letter-spacing: .08em; }
-.app-shell[data-ui-kit='ak-ui'] .sidebar-new-session { width: 100%; justify-content: space-between; min-height: 46px; position: relative; border-radius: 0; }
-.app-shell[data-ui-kit='ak-ui'] .sidebar-new-session::after { content: ''; position: absolute; top: -1px; right: -1px; border-top: var(--ak-cut-sm) solid var(--aibo-surface-hover); border-left: var(--ak-cut-sm) solid transparent; }
-.app-shell[data-ui-kit='ak-ui'] .workspace-toolbar [data-slot='button'] { width: 44px; min-height: 44px; }
-.app-shell[data-ui-kit='ak-ui'] .workspace-list { padding: var(--ak-space-1) 0; gap: var(--ak-space-2); }
-.app-shell[data-ui-kit='ak-ui'] .workspace-item { min-height: 44px; padding: var(--ak-space-2); padding-right: 44px; }
-.app-shell[data-ui-kit='ak-ui'] .workspace-copy strong { font-size: var(--aibo-type-ui); font-weight: 600; }
-.app-shell[data-ui-kit='ak-ui'] .workspace-session-group { padding: var(--ak-space-2) 0; gap: var(--ak-space-1); }
-.app-shell[data-ui-kit='ak-ui'] .session-item-row { border-radius: 0; border: 0; }
-.app-shell[data-ui-kit='ak-ui'] .session-item { min-height: 44px; padding: 0 var(--ak-space-3); border-radius: 0; }
-.app-shell[data-ui-kit='ak-ui'] .session-item-row.selected { background: var(--aibo-accent-soft); box-shadow: inset 3px 0 var(--aibo-accent); }
-.app-shell[data-ui-kit='ak-ui'] .session-item-row.selected .session-item { background: transparent; }
-.app-shell[data-ui-kit='ak-ui'] .sidebar-footer { margin-top: var(--ak-space-4); padding-top: var(--ak-space-3); border-top: 1px solid var(--aibo-border); }
-.app-shell[data-ui-kit='ak-ui'] .sidebar-footer .ak-button { width: 100%; justify-content: flex-start; }
-.app-shell[data-ui-kit='ak-ui'] .workspace-splitter { background: var(--aibo-surface-hover); border: 0; padding: 0; }
-.app-shell[data-ui-kit='ak-ui'] .workspace-splitter-line { background: var(--aibo-border); }
-.app-shell[data-ui-kit='ak-ui'] .workspace-splitter:hover .workspace-splitter-line { background: var(--aibo-accent); width: 3px; }
-.app-shell[data-ui-kit='ak-ui'] .timeline { background: var(--aibo-bg); }
-.app-shell[data-ui-kit='ak-ui'] .timeline-heading { align-items: flex-end; border-bottom: 1px solid var(--aibo-border); min-height: 64px; gap: var(--ak-space-4); padding: 0 var(--ak-space-5); background: var(--aibo-surface); }
-.app-shell[data-ui-kit='ak-ui'] .timeline-heading [data-slot='card-title'] { overflow: hidden; font: 700 20px/1.25 var(--ak-font-command); letter-spacing: -.02em; text-overflow: ellipsis; white-space: nowrap; }
-.app-shell[data-ui-kit='ak-ui'] .timeline-heading-copy { flex: 1; min-width: 0; padding-block: 10px 12px; }
-.app-shell[data-ui-kit='ak-ui'] .timeline-heading-copy > small { display: block; margin-bottom: 2px; overflow: hidden; font-size: var(--aibo-type-meta); color: var(--aibo-muted); text-overflow: ellipsis; white-space: nowrap; }
-.app-shell[data-ui-kit='ak-ui'] .timeline-heading-actions { flex-wrap: wrap; justify-content: flex-end; align-self: center; }
-.app-shell[data-ui-kit='ak-ui'] .timeline-heading .conversation-navigation { flex: none; grid-auto-columns: max-content; align-self: flex-end; padding: 0; border-bottom: 0; background: transparent; }
-.app-shell[data-ui-kit='ak-ui'] .timeline-feed { padding: var(--ak-space-6) var(--workbench-content-inset); }
-.app-shell[data-ui-kit='ak-ui'] .timeline-feed-content { max-width: 850px; margin-inline: auto; }
-.app-shell[data-ui-kit='ak-ui'] .timeline-entry { max-width: 100%; padding: 0; margin: 0 0 var(--ak-space-6); border: 0; background: transparent; box-shadow: none; }
-.app-shell[data-ui-kit='ak-ui'] .entry-meta { margin-bottom: var(--ak-space-3); }
-.app-shell[data-ui-kit='ak-ui'] .entry-meta { align-items: center; }
-.app-shell[data-ui-kit='ak-ui'] .entry-author { color: var(--aibo-text); font-size: var(--aibo-type-meta); font-weight: 600; }
-.app-shell[data-ui-kit='ak-ui'] .entry-content { font-size: var(--aibo-type-body); line-height: 1.75; margin: 0; }
-.app-shell[data-ui-kit='ak-ui'] .user-entry .entry-content { border-left: 2px solid var(--aibo-border); padding: var(--ak-space-3) var(--ak-space-4); background: var(--aibo-surface); }
-.app-shell[data-ui-kit='ak-ui'] :is(.tool-entry, .system-entry) { border-block: 1px solid var(--aibo-border); padding-block: var(--ak-space-2); }
-.app-shell[data-ui-kit='ak-ui'] :is(.tool-output, .tool-group) > summary { min-height: 44px; align-content: center; font-size: var(--aibo-type-meta); }
-.app-shell[data-ui-kit='ak-ui'] :is(.tool-output pre, .entry-content pre) { background: var(--aibo-surface-hover); border: 1px solid var(--aibo-border); border-radius: var(--ak-radius-subtle); font: var(--aibo-type-meta)/1.8 var(--aibo-mono); }
-.app-shell[data-ui-kit='ak-ui'] .timeline-empty { color: var(--aibo-muted); }
-.app-shell[data-ui-kit='ak-ui'] .timeline-empty .orbit { display: none; }
-.app-shell[data-ui-kit='ak-ui'] .timeline-empty h3 { color: var(--aibo-text); font-size: 24px; font-weight: 550; }
-.app-shell[data-ui-kit='ak-ui'] .timeline-empty p { font-size: var(--aibo-type-ui); margin-top: var(--ak-space-3); }
+
+.app-shell[data-ui-kit='ak-ui'] .ak-button[data-size='icon'] {
+  min-width: 44px;
+  width: 44px;
+  padding: 0;
+}
+
+.app-shell[data-ui-kit='ak-ui'] .ak-button svg {
+  flex: none;
+}
+
+.app-shell[data-ui-kit='ak-ui'] .ak-button:hover:not(:disabled) {
+  background: var(--aibo-hover, var(--aibo-surface-hover));
+  box-shadow: inset 0 -2px var(--aibo-border-strong);
+}
+
+.app-shell[data-ui-kit='ak-ui'] .ak-button:active:not(:disabled) {
+  transform: translateY(1px);
+}
+
+.app-shell[data-ui-kit='ak-ui'] .ak-button:is([data-variant='default'], [data-variant='send']) {
+  background: var(--primary);
+  color: var(--primary-foreground);
+  font-weight: 600;
+}
+
+.app-shell[data-ui-kit='ak-ui'] .ak-button:is([data-variant='default'], [data-variant='send']):hover:not(:disabled) {
+  background: var(--primary);
+  color: var(--primary-foreground);
+  box-shadow: inset 0 -3px var(--aibo-accent);
+}
+
+.app-shell[data-ui-kit='ak-ui'] .ak-button[data-variant='secondary'] {
+  background: var(--aibo-surface-hover);
+}
+
+.app-shell[data-ui-kit='ak-ui'] .ak-button:is([data-variant='outline'], [data-variant='queue']) {
+  border-color: var(--aibo-border);
+}
+
+.app-shell[data-ui-kit='ak-ui'] .ak-button:is([data-variant='destructive'], [data-variant='abort']) {
+  background: var(--aibo-danger-surface);
+  color: var(--aibo-danger-text);
+  border-color: var(--aibo-danger-border);
+}
+
+.app-shell[data-ui-kit='ak-ui'] .ak-button:disabled {
+  color: var(--ak-signal-disabled);
+  background: var(--aibo-surface-hover);
+  border-color: var(--aibo-border-strong);
+  cursor: not-allowed;
+}
+
+.app-shell[data-ui-kit='ak-ui'] .window-titlebar {
+  margin: 0;
+  min-height: 44px;
+  padding-right: var(--ak-space-3);
+  background: var(--aibo-surface-hover);
+  border-bottom: 1px solid var(--aibo-border);
+}
+
+.app-shell[data-ui-kit='ak-ui'] .window-title {
+  font-weight: 500;
+  font-size: var(--ak-type-label-size);
+  letter-spacing: .05em;
+  color: var(--aibo-muted);
+}
+
+.app-shell[data-ui-kit='ak-ui'] .window-actions [data-slot='button'] {
+  width: 44px;
+  height: 44px;
+}
+
+.app-shell[data-ui-kit='ak-ui'] .workspace-grid {
+  padding: 0;
+}
+
+.app-shell[data-ui-kit='ak-ui'] :is(.sidebar, .timeline, .inspector) {
+  border: 0;
+  border-radius: 0;
+  box-shadow: none;
+}
+
+.app-shell[data-ui-kit='ak-ui'] .sidebar {
+  padding: var(--ak-space-4) var(--ak-space-4) var(--ak-space-3);
+  background: var(--aibo-surface-hover);
+}
+
+.app-shell[data-ui-kit='ak-ui'] .sidebar .panel-heading {
+  padding: var(--ak-space-2) 0 0;
+  flex-wrap: wrap;
+  gap: var(--ak-space-2);
+  border: 0;
+}
+
+.app-shell[data-ui-kit='ak-ui'] .sidebar .panel-heading [data-slot='card-title'] {
+  font-size: var(--ak-type-label-size);
+  letter-spacing: .08em;
+}
+
+.app-shell[data-ui-kit='ak-ui'] .sidebar-new-session {
+  width: 100%;
+  justify-content: space-between;
+  min-height: 46px;
+  position: relative;
+  border-radius: 0;
+}
+
+.app-shell[data-ui-kit='ak-ui'] .sidebar-new-session::after {
+  content: '';
+  position: absolute;
+  top: -1px;
+  right: -1px;
+  border-top: var(--ak-cut-sm) solid var(--aibo-surface-hover);
+  border-left: var(--ak-cut-sm) solid transparent;
+}
+
+.app-shell[data-ui-kit='ak-ui'] .workspace-toolbar [data-slot='button'] {
+  width: 44px;
+  min-height: 44px;
+}
+
+.app-shell[data-ui-kit='ak-ui'] .workspace-list {
+  padding: var(--ak-space-1) 0;
+  gap: var(--ak-space-2);
+}
+
+.app-shell[data-ui-kit='ak-ui'] .workspace-item {
+  min-height: 44px;
+  padding: var(--ak-space-2);
+  padding-right: 44px;
+}
+
+.app-shell[data-ui-kit='ak-ui'] .workspace-copy strong {
+  font-size: var(--aibo-type-ui);
+  font-weight: 600;
+}
+
+.app-shell[data-ui-kit='ak-ui'] .workspace-session-group {
+  padding: var(--ak-space-2) 0;
+  gap: var(--ak-space-1);
+}
+
+.app-shell[data-ui-kit='ak-ui'] .session-item-row {
+  border-radius: 0;
+  border: 0;
+}
+
+.app-shell[data-ui-kit='ak-ui'] .session-item {
+  min-height: 44px;
+  padding: 0 var(--ak-space-3);
+  border-radius: 0;
+}
+
+.app-shell[data-ui-kit='ak-ui'] .session-item-row.selected {
+  background: var(--aibo-accent-soft);
+  box-shadow: inset 3px 0 var(--aibo-accent);
+}
+
+.app-shell[data-ui-kit='ak-ui'] .session-item-row.selected .session-item {
+  background: transparent;
+}
+
+.app-shell[data-ui-kit='ak-ui'] .sidebar-footer {
+  margin-top: var(--ak-space-4);
+  padding-top: var(--ak-space-3);
+  border-top: 1px solid var(--aibo-border);
+}
+
+.app-shell[data-ui-kit='ak-ui'] .sidebar-footer .ak-button {
+  width: 100%;
+  justify-content: flex-start;
+}
+
+.app-shell[data-ui-kit='ak-ui'] .workspace-splitter {
+  background: var(--aibo-surface-hover);
+  border: 0;
+  padding: 0;
+}
+
+.app-shell[data-ui-kit='ak-ui'] .workspace-splitter-line {
+  background: var(--aibo-border);
+}
+
+.app-shell[data-ui-kit='ak-ui'] .workspace-splitter:hover .workspace-splitter-line {
+  background: var(--aibo-accent);
+  width: 3px;
+}
+
+.app-shell[data-ui-kit='ak-ui'] .timeline {
+  background: var(--aibo-bg);
+}
+
+.app-shell[data-ui-kit='ak-ui'] .timeline-heading {
+  align-items: flex-end;
+  border-bottom: 1px solid var(--aibo-border);
+  min-height: 64px;
+  gap: var(--ak-space-4);
+  padding: 0 var(--ak-space-5);
+  background: var(--aibo-surface);
+}
+
+.app-shell[data-ui-kit='ak-ui'] .timeline-heading [data-slot='card-title'] {
+  overflow: hidden;
+  font: 700 20px/1.25 var(--ak-font-command);
+  letter-spacing: -.02em;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.app-shell[data-ui-kit='ak-ui'] .timeline-heading-copy {
+  flex: 1;
+  min-width: 0;
+  padding-block: 10px 12px;
+}
+
+.app-shell[data-ui-kit='ak-ui'] .timeline-heading-copy > small {
+  display: block;
+  margin-bottom: 2px;
+  overflow: hidden;
+  font-size: var(--aibo-type-meta);
+  color: var(--aibo-muted);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.app-shell[data-ui-kit='ak-ui'] .timeline-heading-actions {
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  align-self: center;
+}
+
+.app-shell[data-ui-kit='ak-ui'] .timeline-heading .conversation-navigation {
+  flex: none;
+  grid-auto-columns: max-content;
+  align-self: flex-end;
+  padding: 0;
+  border-bottom: 0;
+  background: transparent;
+}
+
+.app-shell[data-ui-kit='ak-ui'] .timeline-feed {
+  padding: var(--ak-space-6) var(--workbench-content-inset);
+}
+
+.app-shell[data-ui-kit='ak-ui'] .timeline-feed-content {
+  max-width: 850px;
+  margin-inline: auto;
+}
+
+.app-shell[data-ui-kit='ak-ui'] .timeline-entry {
+  max-width: 100%;
+  padding: 0;
+  margin: 0 0 var(--ak-space-6);
+  border: 0;
+  background: transparent;
+  box-shadow: none;
+}
+
+.app-shell[data-ui-kit='ak-ui'] .entry-meta {
+  margin-bottom: var(--ak-space-3);
+  align-items: center;
+}
+
+.app-shell[data-ui-kit='ak-ui'] .entry-author {
+  color: var(--aibo-text);
+  font-size: var(--aibo-type-meta);
+  font-weight: 600;
+}
+
+.app-shell[data-ui-kit='ak-ui'] .entry-content {
+  font-size: var(--aibo-type-body);
+  line-height: 1.75;
+  margin: 0;
+}
+
+.app-shell[data-ui-kit='ak-ui'] :is(.tool-output, .tool-group) > summary {
+  min-height: 44px;
+  align-content: center;
+  font-size: var(--aibo-type-meta);
+}
+
+.app-shell[data-ui-kit='ak-ui'] :is(.tool-output pre, .entry-content pre) {
+  background: var(--aibo-surface-hover);
+  border: 1px solid var(--aibo-border);
+  border-radius: var(--ak-radius-subtle);
+  font: var(--aibo-type-meta)/1.8 var(--aibo-mono);
+}
+
+.app-shell[data-ui-kit='ak-ui'] .timeline-empty {
+  color: var(--aibo-muted);
+}
+
+.app-shell[data-ui-kit='ak-ui'] .timeline-empty .orbit {
+  display: none;
+}
+
+.app-shell[data-ui-kit='ak-ui'] .timeline-empty h3 {
+  color: var(--aibo-text);
+  font-size: 24px;
+  font-weight: 550;
+}
+
+.app-shell[data-ui-kit='ak-ui'] .timeline-empty p {
+  font-size: var(--aibo-type-ui);
+  margin-top: var(--ak-space-3);
+}
+
 /* The composer is one ak-form field: hairline border, 4px signal edge, panel fill. */
-.app-shell[data-ui-kit='ak-ui'] .composer { margin: 0 var(--workbench-content-inset) var(--ak-space-5); padding: var(--ak-space-3) var(--ak-space-4); border: var(--ak-line-hairline) solid var(--aibo-border); border-left: 4px solid var(--aibo-border-strong); border-radius: 0; background: var(--ak-surface-panel); box-shadow: none; transition: border-color var(--ak-motion-fast) ease, box-shadow var(--ak-motion-fast) ease; }
-.app-shell[data-ui-kit='ak-ui'] .composer:hover { border-color: var(--aibo-border-strong); }
-.app-shell[data-ui-kit='ak-ui'] .composer-textarea { min-height: 64px; border: 0; resize: none; font: var(--aibo-type-body)/1.6 var(--ak-font-sans); }
-.app-shell[data-ui-kit='ak-ui'] .composer-toolbar { gap: var(--ak-space-2); }
-.app-shell[data-ui-kit='ak-ui'] .composer-toolbar [data-slot='button'] { min-height: 44px; font-size: var(--ak-type-label-size); }
-.app-shell[data-ui-kit='ak-ui'] :is(.composer-menu, .composer-suggestions) { border-radius: var(--ak-radius-subtle); box-shadow: var(--ak-shadow-panel); background: var(--aibo-surface); }
-.app-shell[data-ui-kit='ak-ui'] :is(.composer-menu, .composer-suggestions) button { min-height: 44px; }
-.app-shell[data-ui-kit='ak-ui'] .composer-attachment { border-radius: var(--ak-radius-subtle); }
-.app-shell[data-ui-kit='ak-ui'] .inspector { background: var(--aibo-bg); }
-.app-shell[data-ui-kit='ak-ui'] .inspector .panel-heading { background: var(--aibo-surface-hover); min-height: 56px; padding: var(--ak-space-2) var(--ak-space-4); border-bottom: 1px solid var(--aibo-border); }
-.app-shell[data-ui-kit='ak-ui'] .side-panel-tabs-shell { padding: 0 var(--ak-space-4); background: var(--aibo-surface-hover); }
+
+.app-shell[data-ui-kit='ak-ui'] .composer {
+  margin: 0 var(--workbench-content-inset) var(--ak-space-5);
+  padding: var(--ak-space-3) var(--ak-space-4);
+  border: var(--ak-line-hairline) solid var(--aibo-border);
+  border-left: 4px solid var(--aibo-border-strong);
+  border-radius: 0;
+  background: var(--ak-surface-panel);
+  box-shadow: none;
+  transition: border-color var(--ak-motion-fast) ease, box-shadow var(--ak-motion-fast) ease;
+}
+
+.app-shell[data-ui-kit='ak-ui'] .composer:hover {
+  border-color: var(--aibo-border-strong);
+}
+
+.app-shell[data-ui-kit='ak-ui'] .composer-toolbar {
+  gap: var(--ak-space-2);
+}
+
+.app-shell[data-ui-kit='ak-ui'] .composer-toolbar [data-slot='button'] {
+  min-height: 44px;
+  font-size: var(--ak-type-label-size);
+}
+
+.app-shell[data-ui-kit='ak-ui'] :is(.composer-menu, .composer-suggestions) {
+  border-radius: var(--ak-radius-subtle);
+  box-shadow: var(--ak-shadow-panel);
+  background: var(--aibo-surface);
+}
+
+.app-shell[data-ui-kit='ak-ui'] :is(.composer-menu, .composer-suggestions) button {
+  min-height: 44px;
+}
+
+.app-shell[data-ui-kit='ak-ui'] .composer-attachment {
+  border-radius: var(--ak-radius-subtle);
+}
+
+.app-shell[data-ui-kit='ak-ui'] .inspector {
+  background: var(--aibo-bg);
+}
+
+.app-shell[data-ui-kit='ak-ui'] .inspector .panel-heading {
+  background: var(--aibo-surface-hover);
+  min-height: 56px;
+  padding: var(--ak-space-2) var(--ak-space-4);
+  border-bottom: 1px solid var(--aibo-border);
+}
+
+.app-shell[data-ui-kit='ak-ui'] .side-panel-tabs-shell {
+  padding: 0 var(--ak-space-4);
+  background: var(--aibo-surface-hover);
+}
+
 .app-shell[data-ui-kit='ak-ui'] :is(.side-panel-tabs, .git-section-tabs, .conversation-navigation) {
   --ak-tabs-signal: var(--aibo-accent);
   display: grid;
@@ -100,6 +426,7 @@
   border-bottom: 1px solid var(--aibo-border);
   background: var(--aibo-surface-hover);
 }
+
 .app-shell[data-ui-kit='ak-ui'] :is(.side-panel-tabs, .git-section-tabs, .conversation-navigation) > .ak-button {
   position: relative;
   min-width: 0;
@@ -113,121 +440,517 @@
   font-size: var(--aibo-type-ui);
   font-weight: 600;
 }
-.app-shell[data-ui-kit='ak-ui'] :is(.side-panel-tabs, .git-section-tabs, .conversation-navigation) > .ak-button:hover:not(:disabled) { background: transparent; color: var(--aibo-text); box-shadow: none; }
-.app-shell[data-ui-kit='ak-ui'] :is(.side-panel-tabs, .git-section-tabs, .conversation-navigation) > .ak-button:is([aria-selected='true'], [aria-current='page']) { background: transparent; color: var(--aibo-text); box-shadow: none; }
-.app-shell[data-ui-kit='ak-ui'] :is(.side-panel-tabs, .git-section-tabs, .conversation-navigation) > .ak-button:is([aria-selected='true'], [aria-current='page'])::after {
-  position: absolute; right: var(--ak-space-2); bottom: 0; left: var(--ak-space-2); height: var(--ak-line-strong); background: var(--ak-tabs-signal); content: '';
-}
-.app-shell[data-ui-kit='ak-ui'] :is(.side-panel-tabs, .git-section-tabs, .conversation-navigation) > .ak-button:focus-visible { z-index: 1; outline: var(--ak-focus-width) solid var(--aibo-focus); outline-offset: -4px; }
-.app-shell[data-ui-kit='ak-ui'] :is(.git-summary-card, .trust-card, .agent-card, .inspector-empty) { border: 0; border-bottom: 1px solid var(--aibo-border); border-radius: 0; background: transparent; box-shadow: none; }
-.app-shell[data-ui-kit='ak-ui'] :is(.changeset-file-row, .git-commit-row) { border-radius: 0; }
-.app-shell[data-ui-kit='ak-ui'] .inspector :is(.changeset-file-button, .git-commit-button) { min-height: 44px; }
-.app-shell[data-ui-kit='ak-ui'] :is(.git-commit-file, .git-commit-files-more) { justify-content: flex-start; text-align: left; }
-.app-shell[data-ui-kit='ak-ui'] .git-history-more { width: 100%; margin-top: var(--ak-space-2); }
-.app-shell[data-ui-kit='ak-ui'] .workbench-status { display: flex; flex: none; order: 3; min-height: 30px; align-items: center; gap: var(--ak-space-4); padding: 0 var(--ak-space-4); background: var(--aibo-surface-hover); border-top: 1px solid var(--aibo-border); color: var(--aibo-muted); font: var(--ak-type-label-size) var(--ak-font-mono); }
-.app-shell[data-ui-kit='ak-ui'] .workbench-status span:last-child { margin-left: auto; }
-.app-shell[data-ui-kit='ak-ui'] .agent-status-mark { border-radius: 1px; }
-.app-shell[data-ui-kit='ak-ui'] .ak-agent-status-track { stroke: currentColor; fill: none; }
-.app-shell[data-ui-kit='ak-ui'] .tone-running .ak-agent-status-track { stroke-dasharray: 24 76; animation: ak-status-track 1.6s linear infinite; }
-@keyframes ak-status-track { to { stroke-dashoffset: -100; } }
-.app-shell[data-ui-kit='ak-ui'] .tone-attention { outline: 1px solid var(--aibo-warning-text); }
-.app-shell[data-ui-kit='ak-ui'] .tone-failed { outline: 1px solid var(--aibo-danger-text); }
-.app-shell[data-ui-kit='ak-ui'] :is(.ak-management, .ak-alert) { padding: 0; color: var(--aibo-text); background: var(--aibo-surface); border: 1px solid var(--aibo-border); border-top: 3px solid var(--aibo-accent); border-radius: 0; box-shadow: var(--ak-shadow-panel); margin: auto; }
-.app-shell[data-ui-kit='ak-ui'] :is(.ak-management, .ak-alert)::backdrop { background: color-mix(in srgb, var(--ak-color-black) 40%, transparent); backdrop-filter: blur(3px); }
-.app-shell[data-ui-kit='ak-ui'] .ak-management { width: min(960px, calc(100vw - 48px)); height: min(700px, calc(100dvh - 88px)); max-width: none; max-height: none; }
-.app-shell[data-ui-kit='ak-ui'] .ak-management[open] { display: grid; grid-template-rows: auto minmax(0, 1fr) auto; }
-.app-shell[data-ui-kit='ak-ui'] .management-header { background: var(--aibo-surface-hover); display: flex; justify-content: space-between; align-items: center; padding: var(--ak-space-5); border-bottom: 1px solid var(--aibo-border); }
-.app-shell[data-ui-kit='ak-ui'] .management-header small { font: var(--ak-type-label-size) var(--ak-font-mono); letter-spacing: .12em; color: var(--aibo-muted); }
-.app-shell[data-ui-kit='ak-ui'] .management-header h1 { font: 700 22px/1.3 var(--ak-font-command); margin: 0; }
-.app-shell[data-ui-kit='ak-ui'] .management-body { display: grid; grid-template-columns: 200px minmax(0, 1fr); min-height: 0; }
-.app-shell[data-ui-kit='ak-ui'] .management-nav { display: flex; flex-direction: column; gap: var(--ak-space-2); padding: var(--ak-space-4); background: var(--aibo-surface-hover); border-right: 1px solid var(--aibo-border); }
-.app-shell[data-ui-kit='ak-ui'] .management-nav button { display: grid; gap: var(--ak-space-1); text-align: left; min-height: 64px; padding: var(--ak-space-3); border: 0; color: var(--aibo-muted); background: transparent; }
-.app-shell[data-ui-kit='ak-ui'] .management-nav [aria-selected='true'] { background: var(--aibo-accent-soft); color: var(--aibo-text); box-shadow: inset 3px 0 var(--aibo-accent); }
-.app-shell[data-ui-kit='ak-ui'] .management-nav strong { font-size: var(--aibo-type-ui); font-weight: 550; }
-.app-shell[data-ui-kit='ak-ui'] .management-nav small { font-size: var(--ak-type-label-size); }
-.app-shell[data-ui-kit='ak-ui'] .management-content { background: var(--aibo-bg); min-width: 0; overflow: auto; padding: var(--ak-space-5); }
-.app-shell[data-ui-kit='ak-ui'] .management-footer { background: var(--aibo-surface-hover); display: flex; justify-content: flex-end; padding: var(--ak-space-4) var(--ak-space-5); border-top: 1px solid var(--aibo-border); }
-.app-shell[data-ui-kit='ak-ui'] :is(.appearance-kit-option, .appearance-theme-option) { border-radius: 0; background: var(--aibo-surface); border: 1px solid var(--aibo-border); padding: var(--ak-space-4); }
-.app-shell[data-ui-kit='ak-ui'] :is(.appearance-kit-option, .appearance-theme-option).active { border-color: var(--aibo-accent); background: var(--aibo-accent-soft); box-shadow: inset 3px 0 var(--aibo-accent); }
-.app-shell[data-ui-kit='ak-ui'] .appearance-theme-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-.app-shell[data-ui-kit='ak-ui'] .theme-swatches i { border-radius: 0; }
-.app-shell[data-ui-kit='ak-ui'] .ak-alert { width: min(480px, calc(100vw - 32px)); padding: var(--ak-space-5); }
-.app-shell[data-ui-kit='ak-ui'] .ak-alert p { margin-top: var(--ak-space-4); font-size: var(--aibo-type-ui); color: var(--aibo-muted); }
-.app-shell[data-ui-kit='ak-ui'] .alert-dialog-actions { margin-top: var(--ak-space-5); }
-@media (max-width: 1100px) {
-  .app-shell[data-ui-kit='ak-ui'] { --workbench-content-inset: var(--ak-space-5); }
-  .app-shell[data-ui-kit='ak-ui'] .timeline-heading { flex-wrap: wrap; padding: 0 var(--ak-space-4); }
-  .app-shell[data-ui-kit='ak-ui'] .timeline-heading-copy { flex-basis: 100%; padding-bottom: 0; }
-  .app-shell[data-ui-kit='ak-ui'] .timeline-feed { padding: var(--ak-space-5); }
-  .app-shell[data-ui-kit='ak-ui'] .composer { margin-inline: var(--ak-space-5); }
-  .app-shell[data-ui-kit='ak-ui'] .timeline-heading-actions [data-slot='badge'] { font-size: var(--ak-type-label-size); }
-}
-@media (max-width: 720px) {
-  .app-shell[data-ui-kit='ak-ui'] { --workbench-content-inset: var(--ak-space-4); }
-  .app-shell[data-ui-kit='ak-ui'] .timeline-heading { min-height: 0; padding: 0 var(--ak-space-3); }
-  .app-shell[data-ui-kit='ak-ui'] .timeline-heading-copy > small { display: none; }
-  .app-shell[data-ui-kit='ak-ui'] .timeline-heading-actions { gap: var(--ak-space-1); }
-  .app-shell[data-ui-kit='ak-ui'] .timeline-heading [data-slot='card-title'] { font-size: 18px; }
-  .app-shell[data-ui-kit='ak-ui'] .timeline-feed { padding: var(--ak-space-4); }
-  .app-shell[data-ui-kit='ak-ui'] .composer { margin: 0 var(--ak-space-4) var(--ak-space-4); padding: var(--ak-space-3); }
-  .app-shell[data-ui-kit='ak-ui'] .composer-toolbar { flex-wrap: wrap; }
-  .app-shell[data-ui-kit='ak-ui'] .composer-toolbar-start { flex-wrap: wrap; }
-  .app-shell[data-ui-kit='ak-ui'] .ak-management { width: calc(100vw - 24px); height: calc(100dvh - 64px); }
-  .app-shell[data-ui-kit='ak-ui'] .management-body { grid-template-columns: 1fr; grid-template-rows: auto minmax(0, 1fr); }
-  .app-shell[data-ui-kit='ak-ui'] .management-nav { flex-direction: row; border-right: 0; border-bottom: 1px solid var(--aibo-border); padding: var(--ak-space-2); overflow-x: auto; }
-  .app-shell[data-ui-kit='ak-ui'] .management-nav button { flex: 1; min-width: 90px; min-height: 44px; }
-  .app-shell[data-ui-kit='ak-ui'] .management-nav small { display: none; }
-  .app-shell[data-ui-kit='ak-ui'] .management-content { padding: var(--ak-space-4); }
-}
-/* The provider chooser uses the existing capability directory and callbacks. */
-.app-shell[data-ui-kit='ak-ui'] .session-agent-wheel {
-  top: clamp(60px, var(--agent-wheel-top), calc(100dvh - 280px)); left: clamp(16px, var(--agent-wheel-left), calc(100vw - 240px));
-  width: 224px; height: auto; max-height: min(400px, calc(100dvh - 120px)); overflow-y: auto;
-  display: flex; flex-direction: column; padding: var(--ak-space-2); gap: 0;
-  transform: none; border: 1px solid var(--aibo-border); border-top: 3px solid var(--aibo-accent);
-  border-radius: 0; background: var(--aibo-surface); box-shadow: var(--ak-shadow-panel);
-}
-.app-shell[data-ui-kit='ak-ui'] .session-agent-wheel::before { display: none; }
-.app-shell[data-ui-kit='ak-ui'] .session-agent-wheel [data-slot='button']:is(.session-agent-option, .session-agent-wheel-trigger) {
-  position: static; width: 100%; height: auto; min-height: 44px; transform: none; clip-path: none; border-radius: 0;
-  display: flex; justify-content: flex-start; padding: var(--ak-space-2); gap: var(--ak-space-3);
-}
-.app-shell[data-ui-kit='ak-ui'] .session-agent-wheel [data-slot='button'].session-agent-wheel-trigger { width: 44px; align-self: flex-end; justify-content: center; }
-.app-shell[data-ui-kit='ak-ui'] .session-agent-label { display: inline; }
-.app-shell[data-ui-kit='ak-ui'] .session-agent-empty { position: static; width: auto; transform: none; font-size: var(--aibo-type-meta); line-height: 1.8; }
 
-.app-shell[data-ui-kit='ak-ui'] .sidebar .session-item { gap: var(--ak-space-3); text-align: left; }
-.app-shell[data-ui-kit='ak-ui'] .session-item-label { font-size: var(--aibo-type-ui); font-weight: 500; }
-.app-shell[data-ui-kit='ak-ui'] .session-updated { min-width: 32px; margin: 0; text-align: right; font-size: var(--aibo-type-meta); }
-.app-shell[data-ui-kit='ak-ui'] .inspector :is(.project-actions-card, .workspace-capabilities-card, .capability-checker-card, .capabilities-card, .session-context-card, .attachments-card, .artifacts-card, .thread-card, .profile-card, .changeset-card) { margin: 0 var(--ak-space-4); border: 0; border-bottom: 1px solid var(--aibo-border); padding: var(--ak-space-3) 0; background: transparent; border-radius: 0; }
-.app-shell[data-ui-kit='ak-ui'] .inspector :is(.thread-card-heading, .thread-card-content) { padding-inline: 0; }
-.app-shell[data-ui-kit='ak-ui'] .inspector :is(.thread-card-content, .profile-card-content, .empty-detail, .thread-copy small) { font-size: var(--ak-type-label-size); line-height: 1.8; }
-.app-shell[data-ui-kit='ak-ui'] .markdown-heading-1 { font-size: 24px; font-weight: 600; }
-.app-shell[data-ui-kit='ak-ui'] .markdown-heading-2 { font-size: 20px; font-weight: 550; }
-.app-shell[data-ui-kit='ak-ui'] .markdown-list { list-style: revert; padding-left: var(--ak-space-5); gap: var(--ak-space-2); }
-.app-shell[data-ui-kit='ak-ui'] .composer-textarea { background: transparent; box-shadow: none; }
-.app-shell[data-ui-kit='ak-ui'] .appearance-kit-grid { grid-template-columns: 1fr; }
-.app-shell[data-ui-kit='ak-ui'] .ak-agent-status-track { border: 0; }
-.app-shell[data-ui-kit='ak-ui'] .tone-running .ak-agent-status-track { transform: none; }
-.app-shell[data-ui-kit='ak-ui'] .host-panel { border-radius: 0; border-top: 3px solid var(--aibo-accent); box-shadow: var(--ak-shadow-panel); }
+.app-shell[data-ui-kit='ak-ui'] :is(.side-panel-tabs, .git-section-tabs, .conversation-navigation) > .ak-button:hover:not(:disabled) {
+  background: transparent;
+  color: var(--aibo-text);
+  box-shadow: none;
+}
+
+.app-shell[data-ui-kit='ak-ui'] :is(.side-panel-tabs, .git-section-tabs, .conversation-navigation) > .ak-button:is([aria-selected='true'], [aria-current='page']) {
+  background: transparent;
+  color: var(--aibo-text);
+  box-shadow: none;
+}
+
+.app-shell[data-ui-kit='ak-ui'] :is(.side-panel-tabs, .git-section-tabs, .conversation-navigation) > .ak-button:is([aria-selected='true'], [aria-current='page'])::after {
+  position: absolute;
+  right: var(--ak-space-2);
+  bottom: 0;
+  left: var(--ak-space-2);
+  height: var(--ak-line-strong);
+  background: var(--ak-tabs-signal);
+  content: '';
+}
+
+.app-shell[data-ui-kit='ak-ui'] :is(.side-panel-tabs, .git-section-tabs, .conversation-navigation) > .ak-button:focus-visible {
+  z-index: 1;
+  outline: var(--ak-focus-width) solid var(--aibo-focus);
+  outline-offset: -4px;
+}
+
+.app-shell[data-ui-kit='ak-ui'] :is(.git-summary-card, .trust-card, .agent-card, .inspector-empty) {
+  border: 0;
+  border-bottom: 1px solid var(--aibo-border);
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+}
+
+.app-shell[data-ui-kit='ak-ui'] :is(.changeset-file-row, .git-commit-row) {
+  border-radius: 0;
+}
+
+.app-shell[data-ui-kit='ak-ui'] .inspector :is(.changeset-file-button, .git-commit-button) {
+  min-height: 44px;
+}
+
+.app-shell[data-ui-kit='ak-ui'] :is(.git-commit-file, .git-commit-files-more) {
+  justify-content: flex-start;
+  text-align: left;
+}
+
+.app-shell[data-ui-kit='ak-ui'] .git-history-more {
+  width: 100%;
+  margin-top: var(--ak-space-2);
+}
+
+.app-shell[data-ui-kit='ak-ui'] .workbench-status {
+  display: flex;
+  flex: none;
+  order: 3;
+  min-height: 30px;
+  align-items: center;
+  gap: var(--ak-space-4);
+  padding: 0 var(--ak-space-4);
+  background: var(--aibo-surface-hover);
+  border-top: 1px solid var(--aibo-border);
+  color: var(--aibo-muted);
+  font: var(--ak-type-label-size) var(--ak-font-mono);
+}
+
+.app-shell[data-ui-kit='ak-ui'] .workbench-status span:last-child {
+  margin-left: auto;
+}
+
+.app-shell[data-ui-kit='ak-ui'] .agent-status-mark {
+  border-radius: 1px;
+}
+
+@keyframes ak-status-track {
+
+  to {
+    stroke-dashoffset: -100;
+  }
+}
+
+.app-shell[data-ui-kit='ak-ui'] .tone-attention {
+  outline: 1px solid var(--aibo-warning-text);
+}
+
+.app-shell[data-ui-kit='ak-ui'] .tone-failed {
+  outline: 1px solid var(--aibo-danger-text);
+}
+
+.app-shell[data-ui-kit='ak-ui'] :is(.ak-management, .ak-alert) {
+  padding: 0;
+  color: var(--aibo-text);
+  background: var(--aibo-surface);
+  border: 1px solid var(--aibo-border);
+  border-top: 3px solid var(--aibo-accent);
+  border-radius: 0;
+  box-shadow: var(--ak-shadow-panel);
+  margin: auto;
+}
+
+.app-shell[data-ui-kit='ak-ui'] :is(.ak-management, .ak-alert)::backdrop {
+  background: color-mix(in srgb, var(--ak-color-black) 40%, transparent);
+  backdrop-filter: blur(3px);
+}
+
+.app-shell[data-ui-kit='ak-ui'] .ak-management {
+  width: min(960px, calc(100vw - 48px));
+  height: min(700px, calc(100dvh - 88px));
+  max-width: none;
+  max-height: none;
+}
+
+.app-shell[data-ui-kit='ak-ui'] .ak-management[open] {
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr) auto;
+}
+
+.app-shell[data-ui-kit='ak-ui'] .management-header {
+  background: var(--aibo-surface-hover);
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: var(--ak-space-5);
+  border-bottom: 1px solid var(--aibo-border);
+}
+
+.app-shell[data-ui-kit='ak-ui'] .management-header small {
+  font: var(--ak-type-label-size) var(--ak-font-mono);
+  letter-spacing: .12em;
+  color: var(--aibo-muted);
+}
+
+.app-shell[data-ui-kit='ak-ui'] .management-header h1 {
+  font: 700 22px/1.3 var(--ak-font-command);
+  margin: 0;
+}
+
+.app-shell[data-ui-kit='ak-ui'] .management-body {
+  display: grid;
+  grid-template-columns: 200px minmax(0, 1fr);
+  min-height: 0;
+}
+
+.app-shell[data-ui-kit='ak-ui'] .management-nav {
+  display: flex;
+  flex-direction: column;
+  gap: var(--ak-space-2);
+  padding: var(--ak-space-4);
+  background: var(--aibo-surface-hover);
+  border-right: 1px solid var(--aibo-border);
+}
+
+.app-shell[data-ui-kit='ak-ui'] .management-nav button {
+  display: grid;
+  gap: var(--ak-space-1);
+  text-align: left;
+  min-height: 64px;
+  padding: var(--ak-space-3);
+  border: 0;
+  color: var(--aibo-muted);
+  background: transparent;
+}
+
+.app-shell[data-ui-kit='ak-ui'] .management-nav [aria-selected='true'] {
+  background: var(--aibo-accent-soft);
+  color: var(--aibo-text);
+  box-shadow: inset 3px 0 var(--aibo-accent);
+}
+
+.app-shell[data-ui-kit='ak-ui'] .management-nav strong {
+  font-size: var(--aibo-type-ui);
+  font-weight: 550;
+}
+
+.app-shell[data-ui-kit='ak-ui'] .management-nav small {
+  font-size: var(--ak-type-label-size);
+}
+
+.app-shell[data-ui-kit='ak-ui'] .management-content {
+  background: var(--aibo-bg);
+  min-width: 0;
+  overflow: auto;
+  padding: var(--ak-space-5);
+}
+
+.app-shell[data-ui-kit='ak-ui'] .management-footer {
+  background: var(--aibo-surface-hover);
+  display: flex;
+  justify-content: flex-end;
+  padding: var(--ak-space-4) var(--ak-space-5);
+  border-top: 1px solid var(--aibo-border);
+}
+
+.app-shell[data-ui-kit='ak-ui'] :is(.appearance-kit-option, .appearance-theme-option) {
+  transition: box-shadow var(--ak-motion-fast) var(--ak-ease-standard), transform var(--ak-motion-fast) var(--ak-ease-standard);
+  border-radius: 0;
+  background: var(--aibo-surface);
+  border: 1px solid var(--aibo-border);
+  padding: var(--ak-space-4);
+}
+
+.app-shell[data-ui-kit='ak-ui'] :is(.appearance-kit-option, .appearance-theme-option).active {
+  border-color: var(--aibo-accent);
+  background: var(--aibo-accent-soft);
+  box-shadow: inset 3px 0 var(--aibo-accent);
+}
+
+.app-shell[data-ui-kit='ak-ui'] .appearance-theme-grid {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.app-shell[data-ui-kit='ak-ui'] .theme-swatches i {
+  border-radius: 0;
+}
+
+.app-shell[data-ui-kit='ak-ui'] .ak-alert {
+  width: min(480px, calc(100vw - 32px));
+  padding: var(--ak-space-5);
+}
+
+.app-shell[data-ui-kit='ak-ui'] .ak-alert p {
+  margin-top: var(--ak-space-4);
+  font-size: var(--aibo-type-ui);
+  color: var(--aibo-muted);
+}
+
+.app-shell[data-ui-kit='ak-ui'] .alert-dialog-actions {
+  margin-top: var(--ak-space-5);
+}
+
+@media (max-width: 1100px) {
+
+  .app-shell[data-ui-kit='ak-ui'] {
+    --workbench-content-inset: var(--ak-space-5);
+  }
+
+  .app-shell[data-ui-kit='ak-ui'] .timeline-heading {
+    flex-wrap: wrap;
+    padding: 0 var(--ak-space-4);
+  }
+
+  .app-shell[data-ui-kit='ak-ui'] .timeline-heading-copy {
+    flex-basis: 100%;
+    padding-bottom: 0;
+  }
+
+  .app-shell[data-ui-kit='ak-ui'] .timeline-feed {
+    padding: var(--ak-space-5);
+  }
+
+  .app-shell[data-ui-kit='ak-ui'] .composer {
+    margin-inline: var(--ak-space-5);
+  }
+
+  .app-shell[data-ui-kit='ak-ui'] .timeline-heading-actions [data-slot='badge'] {
+    font-size: var(--ak-type-label-size);
+  }
+}
+
+@media (max-width: 720px) {
+
+  .app-shell[data-ui-kit='ak-ui'] {
+    --workbench-content-inset: var(--ak-space-4);
+  }
+
+  .app-shell[data-ui-kit='ak-ui'] .timeline-heading {
+    min-height: 0;
+    padding: 0 var(--ak-space-3);
+  }
+
+  .app-shell[data-ui-kit='ak-ui'] .timeline-heading-copy > small {
+    display: none;
+  }
+
+  .app-shell[data-ui-kit='ak-ui'] .timeline-heading-actions {
+    gap: var(--ak-space-1);
+  }
+
+  .app-shell[data-ui-kit='ak-ui'] .timeline-heading [data-slot='card-title'] {
+    font-size: 18px;
+  }
+
+  .app-shell[data-ui-kit='ak-ui'] .timeline-feed {
+    padding: var(--ak-space-4);
+  }
+
+  .app-shell[data-ui-kit='ak-ui'] .composer {
+    margin: 0 var(--ak-space-4) var(--ak-space-4);
+    padding: var(--ak-space-3);
+  }
+
+  .app-shell[data-ui-kit='ak-ui'] .composer-toolbar {
+    flex-wrap: wrap;
+  }
+
+  .app-shell[data-ui-kit='ak-ui'] .composer-toolbar-start {
+    flex-wrap: wrap;
+  }
+
+  .app-shell[data-ui-kit='ak-ui'] .ak-management {
+    width: calc(100vw - 24px);
+    height: calc(100dvh - 64px);
+  }
+
+  .app-shell[data-ui-kit='ak-ui'] .management-body {
+    grid-template-columns: 1fr;
+    grid-template-rows: auto minmax(0, 1fr);
+  }
+
+  .app-shell[data-ui-kit='ak-ui'] .management-nav {
+    flex-direction: row;
+    border-right: 0;
+    border-bottom: 1px solid var(--aibo-border);
+    padding: var(--ak-space-2);
+    overflow-x: auto;
+  }
+
+  .app-shell[data-ui-kit='ak-ui'] .management-nav button {
+    flex: 1;
+    min-width: 90px;
+    min-height: 44px;
+  }
+
+  .app-shell[data-ui-kit='ak-ui'] .management-nav small {
+    display: none;
+  }
+
+  .app-shell[data-ui-kit='ak-ui'] .management-content {
+    padding: var(--ak-space-4);
+  }
+}
+
+/* The provider chooser uses the existing capability directory and callbacks. */
+
+.app-shell[data-ui-kit='ak-ui'] .session-agent-wheel {
+  top: clamp(60px, var(--agent-wheel-top), calc(100dvh - 280px));
+  left: clamp(16px, var(--agent-wheel-left), calc(100vw - 240px));
+  width: 224px;
+  height: auto;
+  max-height: min(400px, calc(100dvh - 120px));
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  padding: var(--ak-space-2);
+  gap: 0;
+  transform: none;
+  border: 1px solid var(--aibo-border);
+  border-top: 3px solid var(--aibo-accent);
+  border-radius: 0;
+  background: var(--aibo-surface);
+  box-shadow: var(--ak-shadow-panel);
+}
+
+.app-shell[data-ui-kit='ak-ui'] .session-agent-wheel::before {
+  display: none;
+}
+
+.app-shell[data-ui-kit='ak-ui'] .session-agent-wheel [data-slot='button']:is(.session-agent-option, .session-agent-wheel-trigger) {
+  position: static;
+  width: 100%;
+  height: auto;
+  min-height: 44px;
+  transform: none;
+  clip-path: none;
+  border-radius: 0;
+  display: flex;
+  justify-content: flex-start;
+  padding: var(--ak-space-2);
+  gap: var(--ak-space-3);
+}
+
+.app-shell[data-ui-kit='ak-ui'] .session-agent-wheel [data-slot='button'].session-agent-wheel-trigger {
+  width: 44px;
+  align-self: flex-end;
+  justify-content: center;
+}
+
+.app-shell[data-ui-kit='ak-ui'] .session-agent-empty {
+  position: static;
+  width: auto;
+  transform: none;
+  font-size: var(--aibo-type-meta);
+  line-height: 1.8;
+}
+
+.app-shell[data-ui-kit='ak-ui'] .sidebar .session-item {
+  gap: var(--ak-space-3);
+  text-align: left;
+}
+
+.app-shell[data-ui-kit='ak-ui'] .session-item-label {
+  font-size: var(--aibo-type-ui);
+  font-weight: 500;
+}
+
+.app-shell[data-ui-kit='ak-ui'] .session-updated {
+  min-width: 32px;
+  margin: 0;
+  text-align: right;
+  font-size: var(--aibo-type-meta);
+}
+
+.app-shell[data-ui-kit='ak-ui'] .inspector :is(.thread-card-heading, .thread-card-content) {
+  padding-inline: 0;
+}
+
+.app-shell[data-ui-kit='ak-ui'] .inspector :is(.thread-card-content, .profile-card-content, .empty-detail, .thread-copy small) {
+  font-size: var(--ak-type-label-size);
+  line-height: 1.8;
+}
+
+.app-shell[data-ui-kit='ak-ui'] .markdown-heading-1 {
+  font-size: 24px;
+  font-weight: 600;
+}
+
+.app-shell[data-ui-kit='ak-ui'] .markdown-heading-2 {
+  font-size: 20px;
+  font-weight: 550;
+}
+
+.app-shell[data-ui-kit='ak-ui'] .markdown-list {
+  list-style: revert;
+  padding-left: var(--ak-space-5);
+  gap: var(--ak-space-2);
+}
+
+.app-shell[data-ui-kit='ak-ui'] .appearance-kit-grid {
+  grid-template-columns: 1fr;
+}
+
+.app-shell[data-ui-kit='ak-ui'] .ak-agent-status-track {
+  stroke: currentColor;
+  fill: none;
+  border: 0;
+}
+
+.app-shell[data-ui-kit='ak-ui'] .tone-running .ak-agent-status-track {
+  stroke-dasharray: 24 76;
+  animation: ak-status-track 1.6s linear infinite;
+  transform: none;
+}
+
+.app-shell[data-ui-kit='ak-ui'] .host-panel {
+  border-radius: 0;
+  border-top: 3px solid var(--aibo-accent);
+  box-shadow: var(--ak-shadow-panel);
+}
 
 /* Dense side panels: one spacing layer per section, with full-size hit areas. */
-.app-shell[data-ui-kit='ak-ui'] .inspector [data-slot='card-title'] { font-size: var(--aibo-type-ui); line-height: 1.4; font-weight: 600; }
-.app-shell[data-ui-kit='ak-ui'] .inspector .panel-heading + [data-slot='separator'] { display: none; }
-.app-shell[data-ui-kit='ak-ui'] .inspector :is(.thread-card-heading, .session-context-heading) { padding: 0; min-height: 28px; flex-direction: row; align-items: center; gap: var(--ak-space-2); margin-bottom: var(--ak-space-2); }
-.app-shell[data-ui-kit='ak-ui'] .inspector :is(.thread-card-content, .profile-card-content, .session-context-content) { padding: 0; gap: var(--ak-space-2); font-size: var(--ak-type-label-size); line-height: 1.6; }
-.app-shell[data-ui-kit='ak-ui'] .inspector .thread-empty { margin: 0; font-size: var(--ak-type-label-size); line-height: 1.6; }
-.app-shell[data-ui-kit='ak-ui'] .workspace-capability-groups { gap: var(--ak-space-1); }
-.app-shell[data-ui-kit='ak-ui'] .workspace-capability-group { grid-template-columns: 64px minmax(0, 1fr); align-items: baseline; gap: var(--ak-space-2); }
-.app-shell[data-ui-kit='ak-ui'] .workspace-capability-group > strong { font-size: var(--ak-type-label-size); }
-.app-shell[data-ui-kit='ak-ui'] .capability-list { min-width: 0; gap: var(--ak-space-1); }
-.app-shell[data-ui-kit='ak-ui'] .capability-list [data-slot='badge'] { max-width: 100%; white-space: normal; overflow-wrap: anywhere; font-size: var(--ak-type-label-size); padding: 2px 5px; }
-.app-shell[data-ui-kit='ak-ui'] .session-context-title > div { min-width: 0; }
-.app-shell[data-ui-kit='ak-ui'] .session-context-title [data-slot='card-title'] { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.app-shell[data-ui-kit='ak-ui'] .session-context-content dl div { margin-top: var(--ak-space-1); gap: var(--ak-space-2); }
-.app-shell[data-ui-kit='ak-ui'] .session-context-content dd { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.app-shell[data-ui-kit='ak-ui'] .inspector-footer { padding: var(--ak-space-1) var(--ak-space-4); }
-.app-shell[data-ui-kit='ak-ui'] .inspector .trust-card { margin: 0 var(--ak-space-4); padding: var(--ak-space-3) 0; }
+
+.app-shell[data-ui-kit='ak-ui'] .inspector [data-slot='card-title'] {
+  font-size: var(--aibo-type-ui);
+  line-height: 1.4;
+  font-weight: 600;
+}
+
+.app-shell[data-ui-kit='ak-ui'] .inspector .panel-heading + [data-slot='separator'] {
+  display: none;
+}
+
+.app-shell[data-ui-kit='ak-ui'] .inspector :is(.thread-card-content, .profile-card-content, .session-context-content) {
+  padding: 0;
+  gap: var(--ak-space-2);
+  font-size: var(--ak-type-label-size);
+  line-height: 1.6;
+}
+
+.app-shell[data-ui-kit='ak-ui'] .inspector .thread-empty {
+  margin: 0;
+  font-size: var(--ak-type-label-size);
+  line-height: 1.6;
+}
+
+.app-shell[data-ui-kit='ak-ui'] .workspace-capability-groups {
+  gap: var(--ak-space-1);
+}
+
+.app-shell[data-ui-kit='ak-ui'] .workspace-capability-group {
+  grid-template-columns: 64px minmax(0, 1fr);
+  align-items: baseline;
+  gap: var(--ak-space-2);
+}
+
+.app-shell[data-ui-kit='ak-ui'] .workspace-capability-group > strong {
+  font-size: var(--ak-type-label-size);
+}
+
+.app-shell[data-ui-kit='ak-ui'] .capability-list {
+  min-width: 0;
+  gap: var(--ak-space-1);
+}
+
+.app-shell[data-ui-kit='ak-ui'] .session-context-title > div {
+  min-width: 0;
+}
+
+.app-shell[data-ui-kit='ak-ui'] .session-context-title [data-slot='card-title'] {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.app-shell[data-ui-kit='ak-ui'] .session-context-content dl div {
+  margin-top: var(--ak-space-1);
+  gap: var(--ak-space-2);
+}
+
 .app-shell[data-ui-kit='ak-ui'] .repository-select {
   margin: var(--ak-space-2) var(--ak-space-4);
   --repo-text: var(--aibo-text);
@@ -241,91 +964,421 @@
   --repo-surface: var(--ak-surface-raised);
   --repo-shadow: var(--ak-shadow-panel);
 }
-.app-shell[data-ui-kit='ak-ui'] .repository-trigger { min-height: 44px; padding-inline: var(--ak-space-2); }
-.app-shell[data-ui-kit='ak-ui'] .git-section-toolbar { margin: 0 var(--ak-space-4); gap: var(--ak-space-2); padding-bottom: var(--ak-space-2); border-bottom: 0; }
-.app-shell[data-ui-kit='ak-ui'] .git-section-tabs .ak-button { padding-inline: var(--ak-space-2); }
-.app-shell[data-ui-kit='ak-ui'] .git-review-button { padding-inline: var(--ak-space-2); font-size: var(--ak-type-label-size); }
-.app-shell[data-ui-kit='ak-ui'] .inspector .git-summary-card { padding-block: var(--ak-space-2); }
-.app-shell[data-ui-kit='ak-ui'] .git-summary-card .thread-card-heading { margin: 0; }
-.app-shell[data-ui-kit='ak-ui'] .git-branch-summary { display: flex; min-width: 0; flex: 1; flex-wrap: wrap; align-items: center; gap: 0 var(--ak-space-2); }
-.app-shell[data-ui-kit='ak-ui'] .git-branch-trigger { max-width: 100%; padding-inline: 0; }
-.app-shell[data-ui-kit='ak-ui'] .git-branch-summary .changeset-status { margin: 0; font: var(--ak-type-label-size) var(--aibo-mono); }
-.app-shell[data-ui-kit='ak-ui'] .git-remote-row { margin: 0 var(--ak-space-4); min-height: 44px; gap: var(--ak-space-1); font-size: var(--ak-type-label-size); }
-.app-shell[data-ui-kit='ak-ui'] .git-remote-row > span { flex: 1 1 auto; }
-.app-shell[data-ui-kit='ak-ui'] .git-remote-row > [data-slot='badge'] { flex: none; }
-.app-shell[data-ui-kit='ak-ui'] .git-remote-row .ak-button { padding-inline: var(--ak-space-2); font-size: var(--ak-type-label-size); }
 
-/* Keep action space stable at rest, hover, focus and touch. Popovers escape the scroll viewport. */
-.app-shell[data-ui-kit='ak-ui'] :is(.workspace-item-actions, .session-item-actions) { right: 0; gap: 0; border-radius: 0; transform: translateY(-50%); }
-.app-shell[data-ui-kit='ak-ui'] .session-item-actions { background: transparent; }
-.app-shell[data-ui-kit='ak-ui'] .row-more-mark { font-size: 20px; line-height: 1; letter-spacing: 1px; }
-.app-shell[data-ui-kit='ak-ui'] .row-action-menu { position: fixed; inset: auto; top: clamp(12px, var(--row-menu-top), calc(100dvh - 224px)); left: clamp(12px, var(--row-menu-left), calc(100vw - 236px)); margin: 0; width: 224px; max-height: calc(100dvh - 24px); overflow-y: auto; padding: var(--ak-space-2); border: 1px solid var(--aibo-border); border-radius: var(--ak-radius-subtle); background: var(--aibo-surface); color: var(--aibo-text); box-shadow: var(--ak-shadow-panel); }
-.app-shell[data-ui-kit='ak-ui'] .row-action-menu:popover-open { display: grid; }
-.app-shell[data-ui-kit='ak-ui'] .row-action-menu .ak-button { width: 100%; height: auto; justify-content: flex-start; padding-inline: var(--ak-space-2); gap: var(--ak-space-3); }
-.app-shell[data-ui-kit='ak-ui'] .workspace-item-actions:has(:popover-open),
-.app-shell[data-ui-kit='ak-ui'] .session-item-actions:has(:popover-open) { opacity: 1; pointer-events: auto; }
-.app-shell[data-ui-kit='ak-ui'] .session-agent-wheel-title { position: absolute; left: var(--ak-space-4); top: var(--ak-space-5); font-size: var(--ak-type-label-size); font-weight: 500; color: var(--aibo-muted); }
-@media (hover: none), (pointer: coarse) {
-  .app-shell[data-ui-kit='ak-ui'] :is(.workspace-item-actions, .session-item-actions) { opacity: 1; pointer-events: auto; }
+.app-shell[data-ui-kit='ak-ui'] .git-section-toolbar {
+  margin: 0 var(--ak-space-4);
+  gap: var(--ak-space-2);
+  padding-bottom: var(--ak-space-2);
+  border-bottom: 0;
 }
 
-.app-shell[data-ui-kit='ak-ui'] .inspector .panel-heading > div:first-child { min-width: 0; }
-.app-shell[data-ui-kit='ak-ui'] .inspector .panel-heading small { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: var(--ak-type-label-size); }
-.app-shell[data-ui-kit='ak-ui'] .session-context-content :is(dt, dd) { font-size: var(--ak-type-label-size); line-height: 1.6; }
+.app-shell[data-ui-kit='ak-ui'] .git-section-tabs .ak-button {
+  padding-inline: var(--ak-space-2);
+}
 
-.app-shell[data-ui-kit='ak-ui'] .workspace-preference-option { display: flex; align-items: center; gap: var(--ak-space-4); min-height: 44px; margin-inline: 20px; padding: var(--ak-space-3); border: 1px solid var(--aibo-border); background: var(--aibo-bg); cursor: pointer; }
-.app-shell[data-ui-kit='ak-ui'] .workspace-preference-option > span { flex: 1; min-width: 0; }
-.app-shell[data-ui-kit='ak-ui'] .workspace-preference-option strong { display: block; font-size: var(--aibo-type-meta); font-weight: 500; }
-.app-shell[data-ui-kit='ak-ui'] .workspace-preference-option small { display: block; margin-top: var(--ak-space-1); font-size: var(--ak-type-label-size); line-height: 1.6; color: var(--aibo-muted); }
-.app-shell[data-ui-kit='ak-ui'] .workspace-preference-option input { flex: none; width: 20px; height: 20px; accent-color: var(--aibo-accent); }
-.app-shell[data-ui-kit='ak-ui'] .workspace-preference-option:focus-within { outline: var(--ak-focus-width) solid var(--aibo-focus); outline-offset: 2px; }
-.app-shell[data-ui-kit='ak-ui'] .workspace-preference-option:has(input:disabled) { cursor: default; }
-.app-shell[data-ui-kit='ak-ui'] .workspace-preference-status { margin-inline: 20px; font-size: var(--ak-type-label-size); color: var(--aibo-muted); }
-.app-shell[data-ui-kit='ak-ui'] .workspace-preference-status [role='alert'] { color: var(--aibo-danger-text); }
+.app-shell[data-ui-kit='ak-ui'] .git-review-button {
+  padding-inline: var(--ak-space-2);
+  font-size: var(--ak-type-label-size);
+}
+
+.app-shell[data-ui-kit='ak-ui'] .git-branch-summary {
+  display: flex;
+  min-width: 0;
+  flex: 1;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0 var(--ak-space-2);
+}
+
+.app-shell[data-ui-kit='ak-ui'] .git-branch-trigger {
+  max-width: 100%;
+  padding-inline: 0;
+}
+
+.app-shell[data-ui-kit='ak-ui'] .git-branch-summary .changeset-status {
+  margin: 0;
+  font: var(--ak-type-label-size) var(--aibo-mono);
+}
+
+.app-shell[data-ui-kit='ak-ui'] .git-remote-row {
+  margin: 0 var(--ak-space-4);
+  min-height: 44px;
+  gap: var(--ak-space-1);
+  font-size: var(--ak-type-label-size);
+}
+
+.app-shell[data-ui-kit='ak-ui'] .git-remote-row > span {
+  flex: 1 1 auto;
+}
+
+.app-shell[data-ui-kit='ak-ui'] .git-remote-row > [data-slot='badge'] {
+  flex: none;
+}
+
+.app-shell[data-ui-kit='ak-ui'] .git-remote-row .ak-button {
+  padding-inline: var(--ak-space-2);
+  font-size: var(--ak-type-label-size);
+}
+
+/* Keep action space stable at rest, hover, focus and touch. Popovers escape the scroll viewport. */
+
+.app-shell[data-ui-kit='ak-ui'] :is(.workspace-item-actions, .session-item-actions) {
+  right: 0;
+  gap: 0;
+  border-radius: 0;
+  transform: translateY(-50%);
+}
+
+.app-shell[data-ui-kit='ak-ui'] .session-item-actions {
+  background: transparent;
+}
+
+.app-shell[data-ui-kit='ak-ui'] .row-more-mark {
+  font-size: 20px;
+  line-height: 1;
+  letter-spacing: 1px;
+}
+
+.app-shell[data-ui-kit='ak-ui'] .row-action-menu {
+  position: fixed;
+  inset: auto;
+  top: clamp(12px, var(--row-menu-top), calc(100dvh - 224px));
+  left: clamp(12px, var(--row-menu-left), calc(100vw - 236px));
+  margin: 0;
+  width: 224px;
+  max-height: calc(100dvh - 24px);
+  overflow-y: auto;
+  padding: var(--ak-space-2);
+  border: 1px solid var(--aibo-border);
+  border-radius: var(--ak-radius-subtle);
+  background: var(--aibo-surface);
+  color: var(--aibo-text);
+  box-shadow: var(--ak-shadow-panel);
+}
+
+.app-shell[data-ui-kit='ak-ui'] .row-action-menu:popover-open {
+  display: grid;
+}
+
+.app-shell[data-ui-kit='ak-ui'] .row-action-menu .ak-button {
+  width: 100%;
+  height: auto;
+  justify-content: flex-start;
+  padding-inline: var(--ak-space-2);
+  gap: var(--ak-space-3);
+}
+
+.app-shell[data-ui-kit='ak-ui'] .workspace-item-actions:has(:popover-open),
+.app-shell[data-ui-kit='ak-ui'] .session-item-actions:has(:popover-open) {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.app-shell[data-ui-kit='ak-ui'] .session-agent-wheel-title {
+  position: absolute;
+  left: var(--ak-space-4);
+  top: var(--ak-space-5);
+  font-size: var(--ak-type-label-size);
+  font-weight: 500;
+  color: var(--aibo-muted);
+}
+
+@media (hover: none), (pointer: coarse) {
+
+  .app-shell[data-ui-kit='ak-ui'] :is(.workspace-item-actions, .session-item-actions) {
+    opacity: 1;
+    pointer-events: auto;
+  }
+}
+
+.app-shell[data-ui-kit='ak-ui'] .inspector .panel-heading > div:first-child {
+  min-width: 0;
+}
+
+.app-shell[data-ui-kit='ak-ui'] .inspector .panel-heading small {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: var(--ak-type-label-size);
+}
+
+.app-shell[data-ui-kit='ak-ui'] .session-context-content :is(dt, dd) {
+  font-size: var(--ak-type-label-size);
+  line-height: 1.6;
+}
+
+.app-shell[data-ui-kit='ak-ui'] .workspace-preference-option > span {
+  flex: 1;
+  min-width: 0;
+}
+
+.app-shell[data-ui-kit='ak-ui'] .workspace-preference-option strong {
+  display: block;
+  font-size: var(--aibo-type-meta);
+  font-weight: 500;
+}
+
+.app-shell[data-ui-kit='ak-ui'] .workspace-preference-option small {
+  display: block;
+  margin-top: var(--ak-space-1);
+  font-size: var(--ak-type-label-size);
+  line-height: 1.6;
+  color: var(--aibo-muted);
+}
+
+.app-shell[data-ui-kit='ak-ui'] .workspace-preference-option input {
+  flex: none;
+  width: 20px;
+  height: 20px;
+  accent-color: var(--aibo-accent);
+}
+
+.app-shell[data-ui-kit='ak-ui'] .workspace-preference-option:focus-within {
+  outline: var(--ak-focus-width) solid var(--aibo-focus);
+  outline-offset: 2px;
+}
+
+.app-shell[data-ui-kit='ak-ui'] .workspace-preference-option:has(input:disabled) {
+  cursor: default;
+}
+
+.app-shell[data-ui-kit='ak-ui'] .workspace-preference-status {
+  margin-inline: 20px;
+  font-size: var(--ak-type-label-size);
+  color: var(--aibo-muted);
+}
+
+.app-shell[data-ui-kit='ak-ui'] .workspace-preference-status [role='alert'] {
+  color: var(--aibo-danger-text);
+}
 
 /* Secondary content retains readable type and follows the same content grid. */
-.app-shell[data-ui-kit='ak-ui'] :is(.goal-bar, .usage-strip, .timeline-retry, .agent-activity, .agent-queue, .composer-draft-status) { margin-inline: var(--workbench-content-inset); border-radius: var(--ak-radius-subtle); font-size: var(--ak-type-data-size); }
-.app-shell[data-ui-kit='ak-ui'] :is(.workspace-tool-panel, .checkpoint-summary, .artifact-preview, .git-branch-menu, .git-stash-menu, .git-diff-view, .turn-diff-hunk, .empty-symbol, .theme-swatches) { border-radius: var(--ak-radius-subtle); }
-.app-shell[data-ui-kit='ak-ui'] :is(.profile-warning, .composer-menu-warning, .approval-card code, .approval-card small, .project-action-run small, .project-action-run pre, .project-action-artifact, .turn-file-diff pre, .changeset-status, .composer-attachment, .trust-card p) { font-size: var(--ak-type-data-size); line-height: 1.6; }
-.app-shell[data-ui-kit='ak-ui'] :is(.session-filter-select, .project-action-editor select) { min-height: var(--ak-density-control-height); font-size: var(--ak-type-label-size); }
-.app-shell[data-ui-kit='ak-ui'] .git-stash-trigger { justify-content: space-between; text-align: left; }
-.app-shell[data-ui-kit='ak-ui'] .changeset-file-copy { flex-direction: row; align-items: baseline; gap: var(--ak-space-2); }
-.app-shell[data-ui-kit='ak-ui'] .changeset-file-name { flex: 0 1 auto; min-width: 0; max-width: none; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: var(--aibo-type-ui); }
-.app-shell[data-ui-kit='ak-ui'] .changeset-file-location { flex: 1 1 0; min-width: 0; overflow: hidden; direction: rtl; text-align: left; text-overflow: ellipsis; white-space: nowrap; font-size: var(--aibo-type-meta); color: var(--aibo-muted); }
-.app-shell[data-ui-kit='ak-ui'] .git-change-list .changeset-file-button { height: auto; }
 
-.app-shell[data-ui-kit='ak-ui'] .subagent-dialog { border-radius: 0; border-top: var(--ak-line-strong) solid var(--aibo-accent); box-shadow: var(--ak-shadow-panel); }
-.app-shell[data-ui-kit='ak-ui'] .subagent-dialog summary { min-height: var(--ak-density-control-height); align-content: center; }
+.app-shell[data-ui-kit='ak-ui'] :is(.goal-bar, .usage-strip, .timeline-retry, .agent-activity, .agent-queue, .composer-draft-status) {
+  margin-inline: var(--workbench-content-inset);
+  border-radius: var(--ak-radius-subtle);
+  font-size: var(--ak-type-data-size);
+}
+
+.app-shell[data-ui-kit='ak-ui'] :is(.workspace-tool-panel, .checkpoint-summary, .artifact-preview, .git-branch-menu, .git-stash-menu, .git-diff-view, .turn-diff-hunk, .empty-symbol, .theme-swatches) {
+  border-radius: var(--ak-radius-subtle);
+}
+
+.app-shell[data-ui-kit='ak-ui'] :is(.profile-warning, .composer-menu-warning, .approval-card code, .approval-card small, .project-action-run small, .project-action-run pre, .project-action-artifact, .turn-file-diff pre, .changeset-status, .composer-attachment, .trust-card p) {
+  font-size: var(--ak-type-data-size);
+  line-height: 1.6;
+}
+
+.app-shell[data-ui-kit='ak-ui'] :is(.session-filter-select, .project-action-editor select) {
+  min-height: var(--ak-density-control-height);
+  font-size: var(--ak-type-label-size);
+}
+
+.app-shell[data-ui-kit='ak-ui'] .git-stash-trigger {
+  justify-content: space-between;
+  text-align: left;
+}
+
+.app-shell[data-ui-kit='ak-ui'] .changeset-file-copy {
+  flex-direction: row;
+  align-items: baseline;
+  gap: var(--ak-space-2);
+}
+
+.app-shell[data-ui-kit='ak-ui'] .changeset-file-name {
+  flex: 0 1 auto;
+  min-width: 0;
+  max-width: none;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: var(--aibo-type-ui);
+}
+
+.app-shell[data-ui-kit='ak-ui'] .changeset-file-location {
+  flex: 1 1 0;
+  min-width: 0;
+  overflow: hidden;
+  direction: rtl;
+  text-align: left;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: var(--aibo-type-meta);
+  color: var(--aibo-muted);
+}
+
+.app-shell[data-ui-kit='ak-ui'] .git-change-list .changeset-file-button {
+  height: auto;
+}
+
+.app-shell[data-ui-kit='ak-ui'] .subagent-dialog {
+  border-radius: 0;
+  border-top: var(--ak-line-strong) solid var(--aibo-accent);
+  box-shadow: var(--ak-shadow-panel);
+}
+
+.app-shell[data-ui-kit='ak-ui'] .subagent-dialog summary {
+  min-height: var(--ak-density-control-height);
+  align-content: center;
+}
 
 /* Surface hierarchy: neutral structural bands, readable content planes, local signals. */
-.app-shell[data-ui-kit='ak-ui'] :is(.row-action-menu, .composer-menu, .composer-suggestions, .session-agent-wheel) { background: var(--ak-surface-raised); border-color: var(--aibo-border-strong); }
-.app-shell[data-ui-kit='ak-ui'] :is(.tool-entry, .system-entry) { background: var(--aibo-surface); border-left: var(--ak-line-strong) solid var(--aibo-border-strong); padding-inline: var(--ak-space-3); }
-.app-shell[data-ui-kit='ak-ui'] .tool-entry > .entry-meta { color: var(--aibo-info-text); }
-.app-shell[data-ui-kit='ak-ui'] .user-entry .entry-content { border: 1px solid var(--aibo-border); background: var(--ak-surface-raised); }
-.app-shell[data-ui-kit='ak-ui'] :is(.goal-bar, .usage-strip, .agent-activity, .agent-queue) { background: var(--aibo-surface); border-color: var(--aibo-border-strong); }
-.app-shell[data-ui-kit='ak-ui'] .goal-bar { border-left: var(--ak-line-strong) solid var(--aibo-info-text); }
-.app-shell[data-ui-kit='ak-ui'] .inspector :is(.project-actions-card, .workspace-capabilities-card, .capability-checker-card, .capabilities-card, .session-context-card, .attachments-card, .artifacts-card, .thread-card, .profile-card, .changeset-card) { background: var(--aibo-surface); }
-.app-shell[data-ui-kit='ak-ui'] .inspector :is(.thread-card-heading, .session-context-heading) { border-left: 0; padding-left: 0; }
-.app-shell[data-ui-kit='ak-ui'] .capability-list [data-slot='badge'] { background: var(--aibo-surface-hover); border-color: var(--aibo-border); color: var(--aibo-text); }
-.app-shell[data-ui-kit='ak-ui'] .repository-trigger { background: var(--aibo-surface); border: 1px solid var(--aibo-border); }
-.app-shell[data-ui-kit='ak-ui'] .inspector .git-summary-card { background: var(--aibo-surface-hover); border: 1px solid var(--aibo-border); }
-.app-shell[data-ui-kit='ak-ui'] .git-summary-card .thread-card-heading { border-left: 0; padding-inline: var(--ak-space-2); }
-.app-shell[data-ui-kit='ak-ui'] .git-branch-label { color: var(--aibo-text); }
-.app-shell[data-ui-kit='ak-ui'] :is(.git-change-group, .git-stash-section) { margin-inline: var(--ak-space-4); background: var(--aibo-surface); border: 1px solid var(--aibo-border); }
-.app-shell[data-ui-kit='ak-ui'] :is(.git-change-group-heading, .git-stash-trigger) { background: var(--aibo-surface-hover); }
-.app-shell[data-ui-kit='ak-ui'] .git-change-group-trigger { padding-inline: var(--ak-space-2); }
-.app-shell[data-ui-kit='ak-ui'] .changeset-file-row + .changeset-file-row { border-top: 1px solid var(--aibo-border); }
-.app-shell[data-ui-kit='ak-ui'] .changeset-file-row:is(:hover, :focus-within) { background: var(--aibo-hover); }
-.app-shell[data-ui-kit='ak-ui'] .changeset-file-row.changeset-file-selected { background: var(--aibo-accent-soft); box-shadow: inset 3px 0 var(--aibo-accent); }
-.app-shell[data-ui-kit='ak-ui'] .inspector .trust-card { background: var(--aibo-warning-surface); border-left: var(--ak-line-strong) solid var(--aibo-warning-border); padding-inline: var(--ak-space-3); }
-.app-shell[data-ui-kit='ak-ui'] .inspector .trust-card[data-trust='trusted'] { background: var(--aibo-success-surface); border-left-color: var(--aibo-success-border); }
-.app-shell[data-ui-kit='ak-ui'] .inspector .trust-card[data-trust='trusted'] :is(.trust-card-heading, .trust-card-heading svg, p) { color: var(--aibo-success-text); }
-.app-shell[data-ui-kit='ak-ui'] .inspector-footer { background: var(--aibo-surface-hover); border-top: 1px solid var(--aibo-border); }
-.app-shell[data-ui-kit='ak-ui'] .settings-rows { background: var(--aibo-surface); }
-.app-shell[data-ui-kit='ak-ui'] .workspace-preference-option { background: var(--aibo-surface); }
-.app-shell[data-ui-kit='ak-ui'] .workspace-preference-option:has(input:checked) { border-color: var(--aibo-accent); box-shadow: inset var(--ak-line-strong) 0 var(--aibo-accent); }
+
+.app-shell[data-ui-kit='ak-ui'] :is(.row-action-menu, .composer-menu, .composer-suggestions, .session-agent-wheel) {
+  background: var(--ak-surface-raised);
+  border-color: var(--aibo-border-strong);
+}
+
+.app-shell[data-ui-kit='ak-ui'] :is(.tool-entry, .system-entry) {
+  border-block: 1px solid var(--aibo-border);
+  padding-block: var(--ak-space-2);
+  background: var(--aibo-surface);
+  border-left: var(--ak-line-strong) solid var(--aibo-border-strong);
+  padding-inline: var(--ak-space-3);
+}
+
+.app-shell[data-ui-kit='ak-ui'] .tool-entry > .entry-meta {
+  color: var(--aibo-info-text);
+}
+
+.app-shell[data-ui-kit='ak-ui'] .user-entry .entry-content {
+  border-left: 2px solid var(--aibo-border);
+  padding: var(--ak-space-3) var(--ak-space-4);
+  border: 1px solid var(--aibo-border);
+  background: var(--ak-surface-raised);
+}
+
+.app-shell[data-ui-kit='ak-ui'] :is(.goal-bar, .usage-strip, .agent-activity, .agent-queue) {
+  background: var(--aibo-surface);
+  border-color: var(--aibo-border-strong);
+}
+
+.app-shell[data-ui-kit='ak-ui'] .goal-bar {
+  border-left: var(--ak-line-strong) solid var(--aibo-info-text);
+}
+
+.app-shell[data-ui-kit='ak-ui'] .inspector :is(.project-actions-card, .workspace-capabilities-card, .capability-checker-card, .capabilities-card, .session-context-card, .attachments-card, .artifacts-card, .thread-card, .profile-card, .changeset-card) {
+  margin: 0 var(--ak-space-4);
+  border: 0;
+  border-bottom: 1px solid var(--aibo-border);
+  padding: var(--ak-space-3) 0;
+  border-radius: 0;
+  background: var(--aibo-surface);
+}
+
+.app-shell[data-ui-kit='ak-ui'] .inspector :is(.thread-card-heading, .session-context-heading) {
+  padding: 0;
+  min-height: 28px;
+  flex-direction: row;
+  align-items: center;
+  gap: var(--ak-space-2);
+  margin-bottom: var(--ak-space-2);
+  border-left: 0;
+  padding-left: 0;
+}
+
+.app-shell[data-ui-kit='ak-ui'] .capability-list [data-slot='badge'] {
+  max-width: 100%;
+  white-space: normal;
+  overflow-wrap: anywhere;
+  font-size: var(--ak-type-label-size);
+  padding: 2px 5px;
+  background: var(--aibo-surface-hover);
+  border-color: var(--aibo-border);
+  color: var(--aibo-text);
+}
+
+.app-shell[data-ui-kit='ak-ui'] .repository-trigger {
+  min-height: 44px;
+  padding-inline: var(--ak-space-2);
+  background: var(--aibo-surface);
+  border: 1px solid var(--aibo-border);
+}
+
+.app-shell[data-ui-kit='ak-ui'] .inspector .git-summary-card {
+  padding-block: var(--ak-space-2);
+  background: var(--aibo-surface-hover);
+  border: 1px solid var(--aibo-border);
+}
+
+.app-shell[data-ui-kit='ak-ui'] .git-summary-card .thread-card-heading {
+  margin: 0;
+  border-left: 0;
+  padding-inline: var(--ak-space-2);
+}
+
+.app-shell[data-ui-kit='ak-ui'] .git-branch-label {
+  color: var(--aibo-text);
+}
+
+.app-shell[data-ui-kit='ak-ui'] :is(.git-change-group, .git-stash-section) {
+  margin-inline: var(--ak-space-4);
+  background: var(--aibo-surface);
+  border: 1px solid var(--aibo-border);
+}
+
+.app-shell[data-ui-kit='ak-ui'] :is(.git-change-group-heading, .git-stash-trigger) {
+  background: var(--aibo-surface-hover);
+}
+
+.app-shell[data-ui-kit='ak-ui'] .git-change-group-trigger {
+  padding-inline: var(--ak-space-2);
+}
+
+.app-shell[data-ui-kit='ak-ui'] .changeset-file-row + .changeset-file-row {
+  border-top: 1px solid var(--aibo-border);
+}
+
+.app-shell[data-ui-kit='ak-ui'] .changeset-file-row:is(:hover, :focus-within) {
+  background: var(--aibo-hover);
+}
+
+.app-shell[data-ui-kit='ak-ui'] .changeset-file-row.changeset-file-selected {
+  background: var(--aibo-accent-soft);
+  box-shadow: inset 3px 0 var(--aibo-accent);
+}
+
+.app-shell[data-ui-kit='ak-ui'] .inspector .trust-card {
+  margin: 0 var(--ak-space-4);
+  padding: var(--ak-space-3) 0;
+  background: var(--aibo-warning-surface);
+  border-left: var(--ak-line-strong) solid var(--aibo-warning-border);
+  padding-inline: var(--ak-space-3);
+}
+
+.app-shell[data-ui-kit='ak-ui'] .inspector .trust-card[data-trust='trusted'] {
+  background: var(--aibo-success-surface);
+  border-left-color: var(--aibo-success-border);
+}
+
+.app-shell[data-ui-kit='ak-ui'] .inspector .trust-card[data-trust='trusted'] :is(.trust-card-heading, .trust-card-heading svg, p) {
+  color: var(--aibo-success-text);
+}
+
+.app-shell[data-ui-kit='ak-ui'] .settings-rows {
+  background: var(--aibo-surface);
+}
+
+.app-shell[data-ui-kit='ak-ui'] .workspace-preference-option {
+  display: flex;
+  align-items: center;
+  gap: var(--ak-space-4);
+  min-height: 44px;
+  margin-inline: 20px;
+  padding: var(--ak-space-3);
+  border: 1px solid var(--aibo-border);
+  cursor: pointer;
+  background: var(--aibo-surface);
+}
+
+.app-shell[data-ui-kit='ak-ui'] .workspace-preference-option:has(input:checked) {
+  border-color: var(--aibo-accent);
+  box-shadow: inset var(--ak-line-strong) 0 var(--aibo-accent);
+}
 
 /* ak-ui form anatomy, adapted to the existing native and Svelte controls. */
+
 .app-shell[data-ui-kit='ak-ui'] :is([data-slot='input'], [data-slot='textarea'], select) {
   min-height: var(--ak-density-control-height);
   border: var(--ak-line-hairline) solid var(--aibo-border);
@@ -338,24 +1391,35 @@
   font: var(--aibo-type-body)/1.45 var(--ak-font-sans);
   caret-color: var(--aibo-focus);
 }
-.app-shell[data-ui-kit='ak-ui'] :is([data-slot='input'], [data-slot='textarea'], select)::placeholder { color: var(--aibo-muted); opacity: 1; }
-.app-shell[data-ui-kit='ak-ui'] :is([data-slot='input'], [data-slot='textarea'], select):hover:not(:disabled) { border-color: var(--aibo-border-strong); }
+
+.app-shell[data-ui-kit='ak-ui'] :is([data-slot='input'], [data-slot='textarea'], select)::placeholder {
+  color: var(--aibo-muted);
+  opacity: 1;
+}
+
+.app-shell[data-ui-kit='ak-ui'] :is([data-slot='input'], [data-slot='textarea'], select):hover:not(:disabled) {
+  border-color: var(--aibo-border-strong);
+}
+
 .app-shell[data-ui-kit='ak-ui'] :is([data-slot='input'], [data-slot='textarea'], select):focus-visible {
   border-color: var(--aibo-focus);
   outline: none;
   box-shadow: 0 0 0 3px color-mix(in srgb, var(--aibo-focus) 20%, transparent);
 }
+
 .app-shell[data-ui-kit='ak-ui'] :is([data-slot='input'], [data-slot='textarea'], select)[aria-invalid='true'] {
   border-color: var(--aibo-danger-border);
   border-left-color: var(--aibo-danger-border);
   box-shadow: inset 4px 0 var(--aibo-danger-border);
 }
+
 .app-shell[data-ui-kit='ak-ui'] :is([data-slot='input'], [data-slot='textarea'], select):disabled {
   color: var(--aibo-muted);
   background-color: var(--aibo-surface-hover);
   opacity: .72;
   cursor: not-allowed;
 }
+
 .app-shell[data-ui-kit='ak-ui'] select {
   appearance: none;
   padding-right: var(--ak-space-6);
@@ -364,18 +1428,33 @@
   background-size: 5px 5px;
   background-repeat: no-repeat;
 }
-.app-shell[data-ui-kit='ak-ui'] select option { color: var(--aibo-text); background: var(--ak-surface-raised); }
+
+.app-shell[data-ui-kit='ak-ui'] select option {
+  color: var(--aibo-text);
+  background: var(--ak-surface-raised);
+}
 
 /* Search and composer fields sit inside their own bordered surfaces. */
+
 .app-shell[data-ui-kit='ak-ui'] :is(.composer-textarea, .command-palette-search [data-slot='input'], .workspace-tool-panel [data-slot='input'], .repository-search input) {
   border: 0;
   background: transparent;
   box-shadow: none;
 }
-.app-shell[data-ui-kit='ak-ui'] :is(.composer-textarea, .command-palette-search [data-slot='input'], .workspace-tool-panel [data-slot='input'], .repository-search input):focus-visible { border: 0; outline: none; box-shadow: none; }
-.app-shell[data-ui-kit='ak-ui'] :is(.composer, .command-palette-search, .workspace-tool-panel, .repository-search):focus-within { border-color: var(--aibo-focus); box-shadow: 0 0 0 3px color-mix(in srgb, var(--aibo-focus) 20%, transparent); }
+
+.app-shell[data-ui-kit='ak-ui'] :is(.composer-textarea, .command-palette-search [data-slot='input'], .workspace-tool-panel [data-slot='input'], .repository-search input):focus-visible {
+  border: 0;
+  outline: none;
+  box-shadow: none;
+}
+
+.app-shell[data-ui-kit='ak-ui'] :is(.composer, .command-palette-search, .workspace-tool-panel, .repository-search):focus-within {
+  border-color: var(--aibo-focus);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--aibo-focus) 20%, transparent);
+}
 
 /* Native checkboxes, radios and switches retain their keyboard semantics. */
+
 .app-shell[data-ui-kit='ak-ui'] input[type='checkbox']:not([role='switch']),
 .app-shell[data-ui-kit='ak-ui'] input[type='radio'] {
   appearance: none;
@@ -389,13 +1468,34 @@
   background: var(--ak-surface-panel);
   cursor: pointer;
 }
-.app-shell[data-ui-kit='ak-ui'] input[type='radio'] { border-radius: 50%; }
-.app-shell[data-ui-kit='ak-ui'] input[type='checkbox']:not([role='switch']):checked,
-.app-shell[data-ui-kit='ak-ui'] input[type='radio']:checked { border-color: var(--aibo-focus); background: var(--ak-color-blue); }
-.app-shell[data-ui-kit='ak-ui'] input[type='checkbox']:not([role='switch']):checked::after {
-  position: absolute; inset: 4px 3px 5px 5px; border-bottom: 3px solid var(--ak-color-black); border-left: 3px solid var(--ak-color-black); content: ''; transform: rotate(-45deg);
+
+.app-shell[data-ui-kit='ak-ui'] input[type='radio'] {
+  border-radius: 50%;
 }
-.app-shell[data-ui-kit='ak-ui'] input[type='radio']:checked::after { position: absolute; inset: 5px; border-radius: 50%; background: var(--ak-color-black); content: ''; }
+
+.app-shell[data-ui-kit='ak-ui'] input[type='checkbox']:not([role='switch']):checked,
+.app-shell[data-ui-kit='ak-ui'] input[type='radio']:checked {
+  border-color: var(--aibo-focus);
+  background: var(--ak-color-blue);
+}
+
+.app-shell[data-ui-kit='ak-ui'] input[type='checkbox']:not([role='switch']):checked::after {
+  position: absolute;
+  inset: 4px 3px 5px 5px;
+  border-bottom: 3px solid var(--ak-color-black);
+  border-left: 3px solid var(--ak-color-black);
+  content: '';
+  transform: rotate(-45deg);
+}
+
+.app-shell[data-ui-kit='ak-ui'] input[type='radio']:checked::after {
+  position: absolute;
+  inset: 5px;
+  border-radius: 50%;
+  background: var(--ak-color-black);
+  content: '';
+}
+
 .app-shell[data-ui-kit='ak-ui'] input[role='switch'] {
   appearance: none;
   position: relative;
@@ -408,24 +1508,69 @@
   background: var(--aibo-surface-hover);
   cursor: pointer;
 }
+
 .app-shell[data-ui-kit='ak-ui'] input[role='switch']::after {
-  position: absolute; top: 3px; left: 3px; width: 14px; height: 14px; border-radius: 50%; background: var(--aibo-text); content: ''; transition: transform var(--ak-motion-fast) var(--ak-ease-standard);
+  position: absolute;
+  top: 3px;
+  left: 3px;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: var(--aibo-text);
+  content: '';
+  transition: transform var(--ak-motion-fast) var(--ak-ease-standard);
 }
-.app-shell[data-ui-kit='ak-ui'] input[role='switch']:checked { border-color: var(--ak-color-dark-blue); background: var(--ak-color-dark-blue); }
-.app-shell[data-ui-kit='ak-ui'] input[role='switch']:checked::after { background: var(--ak-color-white); transform: translateX(19px); }
-.app-shell[data-ui-kit='ak-ui'] :is(input[type='checkbox'], input[type='radio']):focus-visible { outline: var(--ak-focus-width) solid var(--aibo-focus); outline-offset: 2px; }
-.app-shell[data-ui-kit='ak-ui'] :is(input[type='checkbox'], input[type='radio']):disabled { opacity: .5; cursor: not-allowed; }
-.app-shell[data-ui-kit='ak-ui'] .workspace-preference-option input[role='switch'] { width: 44px; height: 24px; }
-.app-shell[data-ui-kit='ak-ui'] .agent-settings-surface input[type='checkbox'] { width: 24px; height: 24px; }
-.app-shell[data-ui-kit='ak-ui'] .agent-settings-surface select { min-height: var(--ak-density-control-height); padding-inline: var(--ak-space-3) var(--ak-space-6); border-left: 4px solid var(--aibo-border-strong); border-radius: 0; background-color: var(--ak-surface-panel); }
+
+.app-shell[data-ui-kit='ak-ui'] input[role='switch']:checked {
+  border-color: var(--ak-color-dark-blue);
+  background: var(--ak-color-dark-blue);
+}
+
+.app-shell[data-ui-kit='ak-ui'] input[role='switch']:checked::after {
+  background: var(--ak-color-white);
+  transform: translateX(19px);
+}
+
+.app-shell[data-ui-kit='ak-ui'] :is(input[type='checkbox'], input[type='radio']):focus-visible {
+  outline: var(--ak-focus-width) solid var(--aibo-focus);
+  outline-offset: 2px;
+}
+
+.app-shell[data-ui-kit='ak-ui'] :is(input[type='checkbox'], input[type='radio']):disabled {
+  opacity: .5;
+  cursor: not-allowed;
+}
+
+.app-shell[data-ui-kit='ak-ui'] .workspace-preference-option input[role='switch'] {
+  width: 44px;
+  height: 24px;
+}
+
+.app-shell[data-ui-kit='ak-ui'] .agent-settings-surface input[type='checkbox'] {
+  width: 24px;
+  height: 24px;
+}
+
+.app-shell[data-ui-kit='ak-ui'] .agent-settings-surface select {
+  min-height: var(--ak-density-control-height);
+  padding-inline: var(--ak-space-3) var(--ak-space-6);
+  border-left: 4px solid var(--aibo-border-strong);
+  border-radius: 0;
+  background-color: var(--ak-surface-panel);
+}
 
 /* The website navigation reference uses a blue fill; terminal-like choices add a left rule. */
+
 .app-shell[data-ui-kit='ak-ui'] :is(.management-nav [aria-selected='true'], .repository-option[aria-selected='true'], .composer-access-options [aria-checked='true'], .pi-navigation-mode-list [aria-checked='true']) {
   background: var(--aibo-accent-soft);
   box-shadow: inset var(--ak-line-strong) 0 var(--aibo-accent);
+  color: var(--aibo-selected-ink);
 }
-.app-shell[data-ui-kit='ak-ui'] :is(.management-nav [aria-selected='true'], .repository-option[aria-selected='true'], .composer-access-options [aria-checked='true'], .pi-navigation-mode-list [aria-checked='true']) { color: var(--aibo-selected-ink); }
-.app-shell[data-ui-kit='ak-ui'] .repository-option[aria-selected='true'] .repository-option-name { color: var(--aibo-selected-ink); }
+
+.app-shell[data-ui-kit='ak-ui'] .repository-option[aria-selected='true'] .repository-option-name {
+  color: var(--aibo-selected-ink);
+}
+
 .app-shell[data-ui-kit='ak-ui'] .ak-button[aria-pressed='true'],
 .app-shell[data-ui-kit='ak-ui'] .ak-button[aria-pressed='true']:hover:not(:disabled) {
   color: var(--aibo-selected-ink);
@@ -433,42 +1578,181 @@
   box-shadow: none;
 }
 
-/* P2: compact content with native control semantics. */
-.app-shell[data-ui-kit='ak-ui'] .session-state-label { font-size: var(--aibo-type-meta); color: var(--aibo-muted); }
-.app-shell[data-ui-kit='ak-ui'] .session-agent-label { display: grid; gap: var(--ak-space-1); text-align: left; }
-.app-shell[data-ui-kit='ak-ui'] .session-agent-label small { font-size: var(--aibo-type-meta); color: var(--aibo-muted); }
-.app-shell[data-ui-kit='ak-ui'] .session-context-title { flex: 1; min-width: 0; }
-.app-shell[data-ui-kit='ak-ui'] .session-context-content dl > div { display: grid; grid-template-columns: 72px minmax(0, 1fr); }
-.app-shell[data-ui-kit='ak-ui'] .session-context-content dd { text-align: left; margin: 0; }
-.app-shell[data-ui-kit='ak-ui'] .git-change-list .change-kind { display: grid; place-items: center; flex: none; width: 24px; height: 24px; border: 1px solid currentColor; font: var(--aibo-type-meta) var(--ak-font-mono); }
-.app-shell[data-ui-kit='ak-ui'] .git-history-copy strong { font-size: var(--aibo-type-ui); color: var(--aibo-text); }
-.app-shell[data-ui-kit='ak-ui'] .git-history-meta { font-size: var(--aibo-type-meta); }
-.app-shell[data-ui-kit='ak-ui'] .appearance-kit-info { display: flex; flex-wrap: wrap; gap: var(--ak-space-3); margin-inline: 20px; font-size: var(--aibo-type-ui); }
-.app-shell[data-ui-kit='ak-ui'] .appearance-kit-info span { color: var(--aibo-muted); }
-.app-shell[data-ui-kit='ak-ui'] .appearance-theme-option { grid-template-columns: auto minmax(0, 1fr); cursor: pointer; }
-.app-shell[data-ui-kit='ak-ui'] .appearance-theme-option .theme-swatches { display: none; }
-.app-shell[data-ui-kit='ak-ui'] .appearance-theme-option > svg { display: none; }
-.app-shell[data-ui-kit='ak-ui'] .appearance-theme-option:focus-within { outline: var(--ak-focus-width) solid var(--aibo-focus); outline-offset: 2px; }
+/* Content metadata, native theme choices, and responsive attachment layout. */
+
+.app-shell[data-ui-kit='ak-ui'] .session-state-label {
+  font-size: var(--aibo-type-meta);
+  color: var(--aibo-muted);
+}
+
+.app-shell[data-ui-kit='ak-ui'] .session-agent-label {
+  display: grid;
+  gap: var(--ak-space-1);
+  text-align: left;
+}
+
+.app-shell[data-ui-kit='ak-ui'] .session-agent-label small {
+  font-size: var(--aibo-type-meta);
+  color: var(--aibo-muted);
+}
+
+.app-shell[data-ui-kit='ak-ui'] .session-context-title {
+  flex: 1;
+  min-width: 0;
+}
+
+.app-shell[data-ui-kit='ak-ui'] .session-context-content dl > div {
+  display: grid;
+  grid-template-columns: 72px minmax(0, 1fr);
+}
+
+.app-shell[data-ui-kit='ak-ui'] .session-context-content dd {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  text-align: left;
+  margin: 0;
+}
+
+.app-shell[data-ui-kit='ak-ui'] .git-change-list .change-kind {
+  display: grid;
+  place-items: center;
+  flex: none;
+  width: 24px;
+  height: 24px;
+  border: 1px solid currentColor;
+  font: var(--aibo-type-meta) var(--ak-font-mono);
+}
+
+.app-shell[data-ui-kit='ak-ui'] .git-history-copy strong {
+  font-size: var(--aibo-type-ui);
+  color: var(--aibo-text);
+}
+
+.app-shell[data-ui-kit='ak-ui'] .git-history-meta {
+  font-size: var(--aibo-type-meta);
+}
+
+.app-shell[data-ui-kit='ak-ui'] .appearance-kit-info {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--ak-space-3);
+  margin-inline: 20px;
+  font-size: var(--aibo-type-ui);
+}
+
+.app-shell[data-ui-kit='ak-ui'] .appearance-kit-info span {
+  color: var(--aibo-muted);
+}
+
+.app-shell[data-ui-kit='ak-ui'] .appearance-theme-option {
+  grid-template-columns: auto minmax(0, 1fr);
+  cursor: pointer;
+}
+
+.app-shell[data-ui-kit='ak-ui'] .appearance-theme-option .theme-swatches {
+  display: none;
+}
+
+.app-shell[data-ui-kit='ak-ui'] .appearance-theme-option > svg {
+  display: none;
+}
+
+.app-shell[data-ui-kit='ak-ui'] .appearance-theme-option:focus-within {
+  outline: var(--ak-focus-width) solid var(--aibo-focus);
+  outline-offset: 2px;
+}
+
 @media (max-width: 720px) {
-  .app-shell[data-ui-kit='ak-ui'] .workbench-status { display: none; }
-  .app-shell[data-ui-kit='ak-ui'] .timeline-heading .conversation-navigation { order: 3; width: 100%; grid-auto-columns: minmax(0, 1fr); }
-  .app-shell[data-ui-kit='ak-ui'] .timeline-heading-copy { flex-basis: 0; }
-  .app-shell[data-ui-kit='ak-ui'] .composer .attachment-list { flex-wrap: nowrap; overflow-x: auto; }
-  .app-shell[data-ui-kit='ak-ui'] .composer .attachment-item { flex: 0 0 220px; }
+
+  .app-shell[data-ui-kit='ak-ui'] .workbench-status {
+    display: none;
+  }
+
+  .app-shell[data-ui-kit='ak-ui'] .timeline-heading .conversation-navigation {
+    order: 3;
+    width: 100%;
+    grid-auto-columns: minmax(0, 1fr);
+  }
+
+  .app-shell[data-ui-kit='ak-ui'] .timeline-heading-copy {
+    flex-basis: 0;
+  }
+
+  .app-shell[data-ui-kit='ak-ui'] .composer .attachment-list {
+    flex-wrap: nowrap;
+    overflow-x: auto;
+  }
+
+  .app-shell[data-ui-kit='ak-ui'] .composer .attachment-item {
+    flex: 0 0 220px;
+  }
 }
 
-.app-shell[data-ui-kit='ak-ui'] .git-file-tail { display: grid; min-width: 44px; }
-.app-shell[data-ui-kit='ak-ui'] .git-file-tail > * { grid-area: 1 / 1; }
-.app-shell[data-ui-kit='ak-ui'] .git-line-stats { display: flex; align-items: center; justify-content: end; gap: var(--ak-space-1); font: var(--aibo-type-meta) var(--ak-font-mono); }
-.app-shell[data-ui-kit='ak-ui'] .git-line-stats span:first-child { color: var(--aibo-success-text); }
-.app-shell[data-ui-kit='ak-ui'] .git-line-stats span:last-child { color: var(--aibo-danger-text); }
-.app-shell[data-ui-kit='ak-ui'] .changeset-file-row:is(:hover, :focus-within) .git-line-stats { visibility: hidden; }
+.app-shell[data-ui-kit='ak-ui'] .git-file-tail {
+  display: grid;
+  min-width: 44px;
+}
+
+.app-shell[data-ui-kit='ak-ui'] .git-file-tail > * {
+  grid-area: 1 / 1;
+}
+
+.app-shell[data-ui-kit='ak-ui'] .git-line-stats {
+  display: flex;
+  align-items: center;
+  justify-content: end;
+  gap: var(--ak-space-1);
+  font: var(--aibo-type-meta) var(--ak-font-mono);
+}
+
+.app-shell[data-ui-kit='ak-ui'] .git-line-stats span:first-child {
+  color: var(--aibo-success-text);
+}
+
+.app-shell[data-ui-kit='ak-ui'] .git-line-stats span:last-child {
+  color: var(--aibo-danger-text);
+}
+
+.app-shell[data-ui-kit='ak-ui'] .changeset-file-row:is(:hover, :focus-within) .git-line-stats {
+  visibility: hidden;
+}
+
 @media (hover: none), (pointer: coarse) {
-  .app-shell[data-ui-kit='ak-ui'] .git-file-tail { display: flex; }
-  .app-shell[data-ui-kit='ak-ui'] .git-file-tail .changeset-actions { opacity: 1; }
-  .app-shell[data-ui-kit='ak-ui'] .changeset-file-row .git-line-stats { visibility: visible; }
+
+  .app-shell[data-ui-kit='ak-ui'] .git-file-tail {
+    display: flex;
+  }
+
+  .app-shell[data-ui-kit='ak-ui'] .git-file-tail .changeset-actions {
+    opacity: 1;
+  }
+
+  .app-shell[data-ui-kit='ak-ui'] .changeset-file-row .git-line-stats {
+    visibility: visible;
+  }
 }
 
-.app-shell[data-ui-kit='ak-ui'] .composer-textarea { field-sizing: content; max-height: min(240px, 30dvh); overflow-y: auto; }
-.app-shell[data-ui-kit='ak-ui'] .attachment-caption button { width: 44px; height: 44px; }
-.app-shell[data-ui-kit='ak-ui'] .attachment-item a { display: grid; place-items: center; min-width: 44px; min-height: 44px; }
+.app-shell[data-ui-kit='ak-ui'] .composer-textarea {
+  min-height: 64px;
+  border: 0;
+  resize: none;
+  font: var(--aibo-type-body)/1.6 var(--ak-font-sans);
+  background: transparent;
+  box-shadow: none;
+  field-sizing: content;
+  max-height: min(240px, 30dvh);
+  overflow-y: auto;
+}
+
+.app-shell[data-ui-kit='ak-ui'] .attachment-caption button {
+  width: 44px;
+  height: 44px;
+}
+
+.app-shell[data-ui-kit='ak-ui'] .attachment-item a {
+  display: grid;
+  place-items: center;
+  min-width: 44px;
+  min-height: 44px;
+}

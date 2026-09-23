@@ -138,6 +138,10 @@
   }
 </script>
 
+{#snippet refreshControl()}
+  <Button variant="ghost" size="icon" aria-label="刷新上下文" title="刷新上下文" disabled={busy || threadBusy} onclick={() => { onRefresh(); if (workspace && desktop) onSyncCodexThreads(); }}><Icon name="refresh" size={14} /></Button>
+{/snippet}
+
 <Card as="aside" class="inspector" hidden={!visible} data-ui-component="inspector" aria-label="会话上下文">
   <SidePanelTabs {activeView} onSelect={onSelectView} />
   <div id="side-panel-content-context" class="side-panel-view" role="tabpanel" aria-labelledby="side-panel-tab-context">
@@ -259,7 +263,7 @@
             <small>{sessionProvider?.label ?? session.agent}</small>
           </div>
         </div>
-        <Button variant="ghost" size="icon" aria-label="刷新上下文" title="刷新上下文" disabled={busy || threadBusy} onclick={() => { onRefresh(); if (workspace && desktop) onSyncCodexThreads(); }}><Icon name="refresh" size={14} /></Button>
+        {@render refreshControl()}
       </CardHeader>
       <CardContent class="session-context-content">
         <dl>
@@ -548,7 +552,7 @@
 
   {#if workspace}
     <Card class="trust-card" data-trust={workspace.trust}>
-      <div class="trust-card-heading"><Icon name="trust" size={16} /><strong>工作区信任</strong></div>
+      <div class="trust-card-heading"><Icon name="trust" size={16} /><strong>工作区信任</strong>{#if !session}{@render refreshControl()}{/if}</div>
       <p>{workspace.trust === 'trusted' ? '当前目录已允许 Agent 操作。' : '确认目录来源后再启用 Agent 操作。'}</p>
     </Card>
   {/if}

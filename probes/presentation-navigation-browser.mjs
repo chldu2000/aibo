@@ -50,7 +50,7 @@ try {
       }};
   },pkg);
   await page.goto(`http://127.0.0.1:${server.httpServer.address().port}/`);
-  await page.getByRole('button',{name:'打开设置',exact:true}).click();
+  await page.locator('[data-host-navigation="management"]').click();
   await page.getByRole('button',{name:'安装皮肤插件',exact:true}).click();
   await page.getByRole('button',{name:'External skin 1.0.0',exact:true}).click();
   await page.waitForFunction(()=>JSON.parse(localStorage.getItem('probe.presentation.selection')||'null')!==null);
@@ -80,7 +80,11 @@ try {
   assert.equal(await page.evaluate(()=>window.navigationCalls.filter(c=>c.command==='archive_session').length),0);
   await frame.getByRole('button',{name:'archiveSession:s2',exact:true}).click();
   await page.getByRole('alertdialog').waitFor();
-  assert.equal(await page.locator('.presentation-external').isVisible(),false);
+  assert(await page.locator('.presentation-external').evaluate(e=>e.inert),'native host dialog suspends the external surface');
+  assert(await page.getByRole('alertdialog').evaluate(e=>e.contains(document.activeElement)),'focus stays in the trusted dialog');
+  await frame.getByRole('button',{name:'archiveSession:s2',exact:true}).evaluate(e=>e.click());
+  await page.waitForTimeout(100);
+  assert.equal(await page.evaluate(()=>window.navigationCalls.filter(c=>c.command==='archive_session').length),0,'suspended renderer cannot bypass archive confirmation');
   await page.getByRole('button',{name:'取消',exact:true}).click();
   await frame.getByRole('button',{name:'archiveSession:s2',exact:true}).click();
   await page.getByRole('alertdialog').getByRole('button',{name:'归档',exact:true}).click();
@@ -88,11 +92,11 @@ try {
   assert.equal(await page.evaluate(()=>window.navigationCalls.filter(c=>c.command==='archive_session').length),1);
   await frame.getByRole('button',{name:'unarchiveSession:s2',exact:true}).click();
   await frame.getByRole('button',{name:'archiveSession:s2',exact:true}).waitFor();
-  await page.getByRole('button',{name:'打开设置',exact:true}).click();
+  await page.locator('[data-host-navigation="management"]').click();
   await page.getByRole('button',{name:'恢复内置呈现',exact:true}).click();
   await page.getByRole('button',{name:'关闭管理中心',exact:true}).click();
   assert.equal(await page.locator('iframe').count(),0);
-  await page.getByRole('button',{name:/Renamed through plugin，Plugin/}).waitFor();
+  await page.getByRole('button',{name:/Renamed through plugin，plugin/}).waitFor();
   assert.deepEqual(errors,[]);
   const result={passed:true,nativePort:'mocked; actual App.svelte and sandbox runtime',browser:browser.version(),checks:['complete navigation state for multiple workspaces','search and rename keep rapid input','rename executes host lifecycle and host notification stays visible','forged archive rejected','archive confirmation remains in host and suspends external interaction','archive cancellation and confirmation','unarchive action','default UI retains renamed session after restore']};
   await writeFile('/tmp/aibo-presentation-navigation-browser.json',JSON.stringify(result,null,2));console.log(JSON.stringify(result));

@@ -223,7 +223,7 @@ test('session status uses agent-specific marks through the UI kit', async () => 
   assert.match(styles, /prefers-reduced-motion: reduce/, 'running animation must respect reduced-motion preferences');
   const akStyles = await readFile(path.join(root, 'src/lib/ui-kit/kits/ak-ui.css'), 'utf8');
   assert.match(akStyles, /stroke-dashoffset/, 'the ak-ui running mark must animate along its stationary border');
-  assert.match(akStyles, /tone-running \.ak-agent-status-track \{ transform: none; \}/, 'the rounded-square track itself must not rotate');
+  assert.match(akStyles, /tone-running \.ak-agent-status-track\s*\{[^}]*\btransform:\s*none\s*;/, 'the rounded-square track itself must not rotate');
 });
 
 test('the diff preview monospace token is defined in the UI kit', async () => {
