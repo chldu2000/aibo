@@ -1898,7 +1898,9 @@
 
 /* ak-ui form anatomy, adapted to the existing native and Svelte controls. */
 
-.app-shell[data-ui-kit='ak-ui'] :is([data-slot='input'], [data-slot='textarea'], select) {
+/* Keep select out of :is() so the arrow rule below can reserve its right padding. */
+.app-shell[data-ui-kit='ak-ui'] :is([data-slot='input'], [data-slot='textarea']),
+.app-shell[data-ui-kit='ak-ui'] select {
   min-height: var(--ak-density-control-height);
   border: var(--ak-line-hairline) solid var(--aibo-border);
   border-left: 4px solid var(--aibo-border-strong);
