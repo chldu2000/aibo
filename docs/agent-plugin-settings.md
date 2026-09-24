@@ -1,7 +1,7 @@
 # Agent 插件设置协议 v1
 
 Agent 能力提供者可以在 Manifest v2 的 session `capabilityProvider` 上声明 `settings`。
-宿主在「管理中心 → 扩展 → 插件 → 设置」提供表单，并将解析后的配置放进每次
+宿主在「工作台设置 → 插件与能力 → 插件 → 设置」提供表单，并将解析后的配置放进每次
 `capability.invoke` 的 `context.settings`。插件无需提供前端代码或申请 application 写权限。
 
 协议类型：[`packages/plugin-protocol/src/settings.ts`](../packages/plugin-protocol/src/settings.ts)。
@@ -74,6 +74,7 @@ await saveAgentSettings({
 读取返回 `target`、`descriptor`、`revision`、本层 `values`、包含本层覆盖的
 `effectiveValues` 和不含本层覆盖的 `inheritedValues`。初始 revision 为 0。
 保存替换本层整个 overrides 对象；省略某个 key 表示继承，`values: {}` 清空本层覆盖。
+切换设置分类或关闭设置窗口保留本次运行中的草稿；未保存时显示提示，不会自动提交。
 表单的「使用继承值」和「全部使用继承值」先改变草稿，点击保存后才持久化。
 
 宿主使用原子 compare-and-swap 校验 revision；成功保存递增 revision，清空也不删除

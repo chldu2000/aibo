@@ -54,12 +54,12 @@ try {
   };
   assert.equal((await add('/probe/default-trusted')).trust,'trusted');
   assert.equal(await page.evaluate(()=>JSON.parse(localStorage.getItem('probe.workspaces'))[0].trust),'untrusted');
-  const open=async()=>{await page.getByRole('button',{name:'工作台设置',exact:true}).click();await page.getByRole('switch',{name:'新增工作区默认信任'}).waitFor()};
+  const open=async()=>{await page.getByRole('button',{name:'工作台设置',exact:true}).click();await page.getByRole('tab',{name:'工作区',exact:true}).click();await page.getByRole('switch',{name:'新增工作区默认信任'}).waitFor()};
   const toggle=page.getByRole('switch',{name:'新增工作区默认信任'});
   await open();assert.equal(await toggle.isChecked(),true);
   await page.screenshot({path:'/tmp/aibo-workspace-preferences/default-on.png'});
   await toggle.click();await page.waitForFunction(()=>localStorage.getItem('probe.trust-default')==='false');
-  assert.equal(await toggle.isChecked(),false);await page.getByRole('button',{name:'关闭管理中心',exact:true}).click();
+  assert.equal(await toggle.isChecked(),false);await page.getByRole('button',{name:'关闭设置',exact:true}).click();
   assert.equal((await add('/probe/default-untrusted')).trust,'untrusted');
   await page.reload();await page.locator('.workspace-item').first().waitFor();await open();
   assert.equal(await toggle.isChecked(),false,'preference is loaded again after reload');
@@ -68,7 +68,7 @@ try {
   assert.equal(await toggle.isChecked(),false,'failed save does not change the displayed setting');
   await page.evaluate(()=>window.failPreferenceSave=false);await toggle.click();
   await page.waitForFunction(()=>localStorage.getItem('probe.trust-default')==='true');
-  await page.getByRole('button',{name:'关闭管理中心',exact:true}).click();
+  await page.getByRole('button',{name:'关闭设置',exact:true}).click();
   assert.equal((await add('/probe/default-untrusted')).trust,'untrusted','re-adding an existing workspace preserves trust');
   assert.equal((await add('/probe/trusted-again')).trust,'trusted');
   // Revocation remains available in the host navigation menu, not as a row dot.
@@ -80,7 +80,9 @@ try {
   await page.getByRole('alert').filter({hasText:'读取工作区设置失败'}).waitFor();assert.equal(await toggle.isDisabled(),true);
   await page.evaluate(()=>window.failPreferenceRead=false);await page.getByRole('button',{name:'重新读取设置',exact:true}).click();
   await page.waitForFunction(()=>!document.querySelector('input[role="switch"]').disabled);assert.equal(await toggle.isChecked(),true);
+  await page.getByRole('tab',{name:'外观',exact:true}).click();
   await page.locator('.appearance-theme-option').filter({hasText:'深色'}).click();
+  await page.getByRole('tab',{name:'工作区',exact:true}).click();
   await toggle.scrollIntoViewIfNeeded();
   await page.screenshot({path:'/tmp/aibo-workspace-preferences/dark.png'});
   await toggle.focus();await page.keyboard.press('Space');

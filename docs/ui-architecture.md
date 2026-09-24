@@ -126,6 +126,15 @@ Windows 使用独立配置和自绘窗口按钮。呈现替换不接管原生窗
 撤销或离开上下文的动作不能复用；点击严格核对 revision，本地输入仅使用合同明确允许的输入例外。
 呈现不能自行提交任意 IPC、文件路径或写命令。完整动作桥规则见[包合同](presentation-package.md)。
 
+### 设置中心
+
+两个快捷入口共用固定宿主 `SettingsPanel` 和 `ManagementCenter`，分别定位到外观和插件管理。
+内部 `UiManagementSection` 包含 `appearance`、`layout`、`workspace`、`extensions`、`runtime`，
+各分类通过独立 snippet 传入默认 kit；runtime proxy 原样转发。此分类属于内部 UI 合同，
+不改变外部呈现消息协议、Agent 设置作用域或原生持久化。
+皮肤选择与包管理分属外观和插件页，恢复入口与错误仍由宿主提供。
+插件表单草稿由 App 的设置控制器持有，分类卸载或关闭窗口不丢弃；保存动作仍显式执行。
+
 ### 固定宿主区域
 
 窗口标题栏、管理中心、历史面板、命令面板、审批、确认与默认恢复入口位于可替换工作台之外。
@@ -175,6 +184,7 @@ UI 实现变化需检查默认 ak-ui 浅/深主题，以及受影响外部包的
 | Composer 输入、引用、粘贴与附件 | `probes/composer-input-browser.mjs`、`probes/composer-paste-browser.mjs` |
 | 外部包继承、完整工作台与恢复 | `probes/presentation-app-browser.mjs`、`probes/presentation-full-skins-browser.mjs` |
 | 管理区域、焦点与审批访问 | `probes/host-panels-browser.mjs` |
+| 五类设置、快捷入口、布局恢复焦点、插件草稿与继承 | `probes/settings-sections-browser.mjs`、`probes/workspace-preferences-browser.mjs` |
 
 `verify` 不运行浏览器或 Rust 测试；使用替身 IPC 的浏览器结果不能证明原生授权、持久化或 OS 行为。
 涉及这些边界时追加对应原生验证并说明未覆盖范围。仅文档修改运行 `verify` 并检查引用即可。

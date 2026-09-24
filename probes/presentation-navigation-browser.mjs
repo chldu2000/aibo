@@ -51,10 +51,12 @@ try {
   },pkg);
   await page.goto(`http://127.0.0.1:${server.httpServer.address().port}/`);
   await page.locator('[data-host-navigation="management"]').click();
+  await page.getByRole('tab',{name:'插件与能力',exact:true}).click();
   await page.getByRole('button',{name:'安装皮肤插件',exact:true}).click();
+  await page.getByRole('tab',{name:'外观',exact:true}).click();
   await page.getByRole('button',{name:'External skin 1.0.0',exact:true}).click();
   await page.waitForFunction(()=>JSON.parse(localStorage.getItem('probe.presentation.selection')||'null')!==null);
-  await page.getByRole('button',{name:'关闭管理中心',exact:true}).click();
+  await page.getByRole('button',{name:'关闭设置',exact:true}).click();
   const frame=page.frameLocator('iframe');
   const snapshot=()=>frame.getByLabel('Navigation snapshot').textContent().then(JSON.parse);
   await frame.getByRole('heading',{name:'External navigation'}).waitFor();
@@ -93,8 +95,8 @@ try {
   await frame.getByRole('button',{name:'unarchiveSession:s2',exact:true}).click();
   await frame.getByRole('button',{name:'archiveSession:s2',exact:true}).waitFor();
   await page.locator('[data-host-navigation="management"]').click();
-  await page.getByRole('button',{name:'恢复内置呈现',exact:true}).click();
-  await page.getByRole('button',{name:'关闭管理中心',exact:true}).click();
+  await page.getByRole('button',{name:'恢复内置皮肤',exact:true}).click();
+  await page.getByRole('button',{name:'关闭设置',exact:true}).click();
   assert.equal(await page.locator('iframe').count(),0);
   await page.getByRole('button',{name:/Renamed through plugin，plugin/}).waitFor();
   assert.deepEqual(errors,[]);

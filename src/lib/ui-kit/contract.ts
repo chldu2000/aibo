@@ -152,7 +152,7 @@ export type UiHostPanelProps = {
   actions?: Snippet;
 };
 
-export type UiManagementSection = 'appearance' | 'extensions' | 'runtime';
+export type UiManagementSection = 'appearance' | 'layout' | 'workspace' | 'extensions' | 'runtime';
 export type UiManagementCenterProps = {
   title: string;
   /** A changed presentation restores its own semantic focus after the dialog closes. */
@@ -161,6 +161,8 @@ export type UiManagementCenterProps = {
   onSelectSection: (section: UiManagementSection) => void;
   onClose: () => void;
   appearance: Snippet;
+  layout: Snippet;
+  workspace: Snippet;
   extensions: Snippet;
   runtime: Snippet;
   footer?: Snippet;

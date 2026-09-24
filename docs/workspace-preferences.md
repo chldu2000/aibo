@@ -2,7 +2,7 @@
 
 本文件定义新增工作区的信任设置与持久化行为；整体 UI 边界见 [UI 架构](ui-architecture.md)。
 
-宿主“工作台设置 → 工作台 → 工作区”提供“新增工作区默认信任”，初始开启。
+宿主“工作台设置 → 工作区”提供“新增工作区默认信任”，初始开启。
 原生 `workspace_preferences` 单例表保存该偏好，`read_workspace_preferences` /
 `save_workspace_preferences` 只由宿主管理界面调用。界面仅在原生保存成功后确认开关值；
 读取失败时禁止修改并提供重试，浏览器预览不保存原生设置。

@@ -6,6 +6,7 @@
   import type { UiAgentSettingsFormProps } from '../../contract';
   let { snapshot, draft, busy, error, notice, onChange, onSave, onReset, onReload }: UiAgentSettingsFormProps = $props();
   const id = $props.id();
+  const dirty = $derived(Object.keys({ ...draft, ...snapshot.values }).some(key => draft[key] !== snapshot.values[key]));
 </script>
 <form class="agent-settings-form" onsubmit={(event) => { event.preventDefault(); if (!busy) onSave(); }} aria-busy={busy}>
   <header><h3>{snapshot.descriptor.title}</h3>{#if snapshot.descriptor.description}<p>{snapshot.descriptor.description}</p>{/if}</header>
@@ -30,5 +31,6 @@
   {/each}
   {#if error}<p role="alert">{error}</p>{/if}
   {#if notice}<p role="status">{notice}</p>{/if}
+  {#if dirty}<p role="status">有未保存的修改，切换分类或关闭设置会保留草稿；点击“保存设置”后生效。</p>{/if}
   <footer><Button type="submit" disabled={busy}>保存设置</Button><Button type="button" variant="outline" disabled={busy} onclick={onReset}>全部使用继承值</Button><Button type="button" variant="ghost" disabled={busy} onclick={onReload}>重新加载并丢弃修改</Button></footer>
 </form>

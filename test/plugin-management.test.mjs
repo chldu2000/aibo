@@ -82,10 +82,10 @@ test('management center owns plugin administration while plugin sessions stay in
   assert.match(app, /onOpenManagement=\{\(\) => openManagementCenter\('appearance'\)\}/);
   assert.doesNotMatch(app, /<PluginWorkspacePanel/);
   assert.match(app, /<PluginManagerPanel/);
-  assert.match(titlebar, /打开管理中心/);
+  assert.match(titlebar, /打开工作台设置/);
   assert.doesNotMatch(titlebar, /打开 Agent 诊断|data-host-navigation="plugins"/);
   assert.match(settings, /<ManagementCenter/);
-  assert.match(management, /label: '工作台'.*label: '扩展'.*label: '运行状态'/s);
+  assert.match(management, /label: '外观'.*label: '布局'.*label: '工作区'.*label: '插件与能力'.*label: '运行与诊断'/s);
   assert.match(app, /catch \(error\) \{ pluginError = toErrorMessage\(error\); \}/);
   assert.match(app, /finally \{ pluginBusy = false; \}/);
   assert.match(app, /settingsOpen = false;/, 'creating an extension session returns to the main workbench');

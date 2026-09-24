@@ -115,9 +115,11 @@ try {
   // Headless Chromium has its own clipboard: exercise a trusted native paste in the external skin.
   console.log('sent attachments passed');
   await page.keyboard.press('Meta+,');
+  await page.getByRole('tab',{name:'插件与能力',exact:true}).click();
   await page.getByRole('button',{name:'安装皮肤插件',exact:true}).click();
+  await page.getByRole('tab',{name:'外观',exact:true}).click();
   await page.getByRole('button',{name:new RegExp(pkg.release.manifest.displayName+' '+pkg.release.manifest.version),exact:true}).click();
-  await page.getByRole('button',{name:'关闭管理中心',exact:true}).click();
+  await page.getByRole('button',{name:'关闭设置',exact:true}).click();
   const frame=page.frameLocator('iframe:not([aria-hidden="true"])');
   const externalInput=frame.locator('textarea').first();
   await externalInput.click();

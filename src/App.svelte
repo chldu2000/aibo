@@ -75,6 +75,7 @@
   const savedWorkbenchLayout = readWorkbenchLayout(draftStorage, presentationWindowId());
   let workbenchDrafts = $state(readWorkbenchDrafts(draftStorage, presentationWindowId()));
   $effect(() => { writeWorkbenchDrafts(draftStorage, presentationWindowId(), workbenchDrafts); });
+  import type { UiManagementSection } from '$lib/ui-kit';
   import { SettingsSection, HostPanel, PresentationHost, WorkbenchPresentation, DefaultPresentationActions, FileChangeMark, Badge, Button, Card, CardHeader, CardTitle, CardContent } from '$lib/ui-kit';
   import { createPresentationPackageController, type PresentationPackageState } from '$lib/app/presentation-package-controller';
   import { listPresentationPackages, readPresentationPackage, installPresentationPackage, setPresentationPackageEnabled, uninstallPresentationPackage, getPresentationSelection, selectPresentationPackage } from '$lib/api';
@@ -1030,7 +1031,7 @@
   $effect(() => {
     if (settingsOpen && desktop) untrack(() => { void workspacePreferencesController.load(); });
   });
-  let managementSection = $state<'appearance' | 'extensions' | 'runtime'>('appearance');
+  let managementSection = $state<UiManagementSection>('appearance');
   const listSessions: typeof listAllSessions = listAllSessions;
   let historyOpen = $state(false);
   let historyWorkspaceId = $state<string | null>(null);
@@ -1131,7 +1132,7 @@
     };
   }
 
-  function openManagementCenter(section: 'appearance' | 'extensions' | 'runtime' = 'appearance'): void {
+  function openManagementCenter(section: UiManagementSection = 'appearance'): void {
     capabilityHistoryOpen = false;
     sessionHistoryOpen = false;
     historyOpen = false;
@@ -1139,7 +1140,6 @@
     installedTool = null;
     managementSection = section;
     settingsOpen = true;
-    if (section === 'extensions') void pluginOperation(refreshPluginInstallations);
   }
 
   async function installPlugin(): Promise<void> {
@@ -1614,7 +1614,7 @@
 
   const commandPaletteCommands = $derived.by((): CommandPaletteCommand[] => [
     { id: 'focus-presentation', label: '切换专注会话', description: '显示或收起工作台侧边区域', run: () => { void workbenchPresentation?.switchPresentation(presentationLayout === 'focus' ? 'standard' : 'focus'); } },
-    { id: 'restore-presentation', label: '恢复默认呈现', description: '恢复标准工作台布局', shortcut: '⌘⇧⌫', run: () => { void workbenchPresentation?.restoreDefault(); } },
+    { id: 'restore-presentation', label: '恢复默认工作台', description: '恢复内置皮肤与标准布局，保留会话和草稿', shortcut: '⌘⇧⌫', run: () => { void workbenchPresentation?.restoreDefault(); } },
     { id: 'execution-history', label: '执行历史', description: '查看执行记录', run: openExecutionHistory },
     { id: 'session-history', label: '会话历史', description: '查找与恢复历史会话', run: openSessionHistory },
     ...installedContributions.map(item => ({ id: `installed:${item.installationId}:${item.contributionId}`, label: item.title, description: item.issue ?? '已安装的插件视图', disabled: !contributionAvailable(item),
@@ -1649,14 +1649,14 @@
     },
     {
       id: 'settings',
-      label: '打开管理中心',
-      description: '外观、扩展与运行状态',
+      label: '打开工作台设置',
+      description: '外观、布局、工作区、插件与运行诊断',
       shortcut: '⌘,',
       run: openSettingsPanel,
     },
     {
       id: 'extensions',
-      label: '管理扩展',
+      label: '插件与能力',
       description: '安装、启用或移除插件',
       run: () => openManagementCenter('extensions'),
     },
@@ -3617,11 +3617,10 @@
 </script>
 
 {#snippet presentationPackageManagement()}
+  <section id="presentation-packages" aria-label="皮肤插件管理" tabindex="-1">
   <SettingsSection title="皮肤插件" error={presentationPackages.error} items={[
     { id: 'install', title: '安装皮肤', description: '从本地目录添加新的外观插件。', icon: 'plugins',
       actions: [{ id: 'install', label: '安装皮肤插件', intent: 'install', disabled: !desktop || presentationPackages.busy }] },
-    { id: 'builtin', title: '使用内置皮肤', description: '停用当前外部皮肤，保留工作台布局。', icon: 'undo',
-      actions: [{ id: 'restore', label: '恢复内置呈现', intent: 'restore', disabled: presentationPackages.busy }] },
     ...presentationPackages.releases.map(release => ({ id: release.digest, title: release.manifest.displayName,
       description: `${release.manifest.version} · ${release.enabled ? '已启用' : '已禁用'}`,
       actions: [
@@ -3630,7 +3629,6 @@
       ] })),
   ]} onAction={(item, action) => {
     if (item === 'install') void presentationOperation(installPresentationFromDirectory);
-    else if (item === 'builtin') void presentationOperation(() => desktop ? presentationPackagesController.select(null) : Promise.resolve());
     else {
       const release = presentationPackages.releases.find(release => release.digest === item);
       if (!release) return;
@@ -3638,6 +3636,7 @@
       else if (action === 'uninstall') void presentationOperation(() => presentationPackagesController.uninstall(release.digest));
     }
   }} />
+  </section>
 {/snippet}
 
 {#snippet extensionManagement()}
@@ -3698,15 +3697,21 @@
 {#snippet workspaceSettings()}
   <WorkspacePreferencesPanel state={workspacePreferences} {desktop} onChange={trusted => void workspacePreferencesController.save(trusted)} onReload={() => void workspacePreferencesController.load()} />
 {/snippet}
-{#snippet appearanceActions()}{@render presentationActions('appearance')}{/snippet}
+{#snippet appearanceActions()}
+  <SettingsSection title="皮肤恢复" items={[{
+    id: 'builtin', title: '内置皮肤', description: '恢复内置皮肤，保留当前布局、会话和草稿。', icon: 'undo',
+    actions: [{ id: 'restore', label: '恢复内置皮肤', intent: 'restore', disabled: presentationPackages.busy || !presentationPackages.active }],
+  }]} onAction={() => void presentationOperation(() => choosePresentation(availableUiKits[0].id))} />
+{/snippet}
+{#snippet layoutSettings()}{@render presentationActions('layout')}{/snippet}
 {#snippet diagnosticsActions()}{@render presentationActions('diagnostics')}{/snippet}
 {#snippet navigationFooter()}
-  <Button variant="ghost" onclick={() => openManagementCenter('extensions')}><Icon name="plugins" />插件与能力</Button>
-  <Button variant="ghost" onclick={() => openManagementCenter('appearance')}><Icon name="settings" />工作台设置</Button>
+  <Button variant="ghost" data-presentation-focus="settings-extensions" onclick={() => openManagementCenter('extensions')}><Icon name="plugins" />插件与能力</Button>
+  <Button variant="ghost" data-presentation-focus="settings-appearance" onclick={() => openManagementCenter('appearance')}><Icon name="settings" />工作台设置</Button>
 {/snippet}
 {#snippet navigationActions()}{@render presentationActions('navigation')}{/snippet}
 {#snippet conversationActions()}{@render presentationActions('conversation')}{/snippet}
-{#snippet presentationActions(surface: 'conversation' | 'navigation' | 'diagnostics' | 'appearance')}
+{#snippet presentationActions(surface: 'conversation' | 'navigation' | 'diagnostics' | 'layout')}
   <DefaultPresentationActions {surface} layout={presentationLayout} switching={presentationSwitching}
     onSwitchLayout={(layout) => { void workbenchPresentation?.switchPresentation(layout); }}
     onRestore={() => { void workbenchPresentation?.restoreDefault(); }}
@@ -3748,7 +3753,10 @@
   <SettingsPanel
     {workspaceSettings}
     packageManagement={presentationPackageManagement}
-    presentationActions={appearanceActions}
+    {appearanceActions}
+    {layoutSettings}
+    appearanceError={presentationPackages.error}
+    appearanceBusy={presentationPackages.busy}
     extensions={extensionManagement}
     runtime={runtimeStatus}
     open={settingsOpen}
