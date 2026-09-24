@@ -112,6 +112,15 @@ to make an implementation pass.
 
 ## Git commit guidance
 
+Commit messages must follow Conventional Commits. Use the subject format
+`<type>[optional scope][!]: <description>`, for example
+`feat(session): add resume support` or `docs: clarify commit guidance`.
+Use `feat` for new features, `fix` for bug fixes, and an appropriate type such
+as `docs`, `refactor`, `test`, `chore`, `build`, `ci`, `perf`, or `style` for
+other changes. Mark breaking changes with `!` before the colon or a
+`BREAKING CHANGE: <description>` footer. Separate any body and footer blocks
+from the subject with blank lines.
+
 When creating a Git commit, add the agent that made the change as a co-author
 using a standard trailer with the agent's own name and email address:
 
