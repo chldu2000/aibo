@@ -66,7 +66,7 @@
 | 能力、菜单、模式、模型协商 | 无此能力的会话正常使用；第三方与内置一致；旧 release、忙碌/归档门禁；模型/模式变化不丢历史和其他选择 | `test/session-capability-ui.test.mjs`、`test/agent-command-menu.test.mjs`、`test/model-catalog-navigation.test.mjs`、`test/model-configuration.test.mjs`、`test/composer-access-options.test.mjs`；`probes/plugin-command-menu-browser.mjs` |
 | Broker、执行配置、会话生命周期 | 只读/写入准入、拒绝/取消、固定绑定、热复用/重启恢复；其他 provider 的原有回合 | `src-tauri/src/session_host_tests.rs` 及对应 Broker/执行配置 Rust 测试；`test/session-capability-providers.test.mjs`、`test/pi-capability-workflow.test.mjs`、`test/approval-routing.test.mjs` |
 | 事件投影、队列、目标、子 Agent | 主回合唯一终态；历史重载、重复/迟到事件、FIFO/steering 区别、暂停/uncertain、普通对话与草稿不被消费 | `test/message-queue.test.mjs`、`test/session-goal.test.mjs`、`test/subagent-workflow.test.mjs`、`test/presentation-timeline.test.mjs` 及相应原生持久化测试 |
-| 呈现/UiKit/共享工作台、动作桥 | 默认呈现与两套皮肤一致保留业务；未覆盖 surface 继承；core 降级、草稿/焦点/锚点、过期动作、故障中审批/恢复可达 | `test/renderer-negotiation.test.mjs`、`test/presentation-package-controller.test.mjs`、`test/presentation-view-state.test.mjs`、`test/presentation-conversation.test.mjs`；`probes/presentation-full-skins-browser.mjs`、受影响 surface 探针 |
+| 呈现/UiKit/共享工作台、动作桥 | 默认 ak-ui 浅/深主题与受影响的外部呈现一致保留业务；未覆盖 surface 继承；core 降级、草稿/焦点/锚点、过期动作、故障中审批/恢复可达 | `test/renderer-negotiation.test.mjs`、`test/presentation-package-controller.test.mjs`、`test/presentation-view-state.test.mjs`、`test/presentation-conversation.test.mjs`；`probes/presentation-full-skins-browser.mjs`、受影响 surface 探针 |
 | 输入、附件、建议列表 | 纯文本/图片/引用、输入法与快捷键、长列表/长历史可用；草稿、队列、历史附件相互隔离 | `test/message-draft-ownership.test.mjs`、`test/clipboard-images.test.mjs`、`test/attachment-previews.test.mjs`、`test/presentation-suggestions.test.mjs`；`probes/composer-input-browser.mjs`、`probes/composer-paste-browser.mjs` |
 | 安装、SDK、打包、升级 | 启用/禁用/卸载、旧 release 绑定、失败候选回滚、缺依赖、损坏资源、桌面启动与宿主 SDK 装载 | `test/plugin-management.test.mjs`、`test/host-sdk.test.mjs`、`test/external-plugin-build.test.mjs`、`test/presentation-build.test.mjs`；相关安装/原生桌面探针 |
 | 共享 workspace/导航/设置/Git 状态 | 切换会话/工作区不串数据；设置继承和并发冲突；仓库选择不改变会话绑定；默认与外部工作台同步 | `test/session-navigation.test.mjs`、`test/agent-settings.test.mjs`、`test/git-repositories.test.mjs`、`test/presentation-navigation.test.mjs`、`test/presentation-git.test.mjs` |
@@ -75,7 +75,7 @@
 
 1. 修复缺陷时优先加入能复现原故障的回归；新特性同时覆盖成功、拒绝/缺失及至少一条共享路径上的旧行为。测试断言外部可观察结果，不能只匹配实现字符串或证明新字段存在。
 2. 运行根目录要求的 `pnpm run verify`，覆盖架构、类型、Node 测试与构建。对原生执行/持久化变更，另运行相关 `cargo test --manifest-path src-tauri/Cargo.toml --lib <filter>`；跨模块生命周期或数据库迁移需运行完整 `--lib` 测试。
-3. UI 或呈现桥变化另跑实际 App/浏览器探针，覆盖两套内置皮肤，以及受影响的外部工作台/控件/语义 surface。未声明 surface 的继承与故障回退也是功能；仅默认皮肤通过不代表外部包通过。
+3. UI 或呈现桥变化另跑实际 App/浏览器探针，覆盖内置 ak-ui 的浅/深主题，以及受影响的外部工作台/控件/语义 surface。未声明 surface 的继承与故障回退也是功能；仅默认 kit 通过不代表外部包通过。
 4. 真实 CLI/原生 IPC/桌面安装受影响时，用隔离数据和临时工作区验证；浏览器替身 IPC 不能证明原生授权、持久化或 OS 行为。仅文档修改执行根目录 verify 并检查引用，无需启动无关原生或浏览器探针。
 5. 对失败先确认是本次引入、原有失败还是环境阻塞，保留证据并修复本次引入的回归；不能删除旧用例、降低断言或修改基线掩盖变化。预期行为确实改变时，同步合同、迁移说明及新旧兼容用例。
 6. 交付时列出变更行为、受保护的旧行为、实际命令/结果、证据层级和未覆盖边界。测试未执行或失败原因未解释时，不能声称“无回归”或“完整验收通过”。

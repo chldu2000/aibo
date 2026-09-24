@@ -58,6 +58,9 @@ for external rendering read [presentation package contracts](docs/presentation-p
 
 These rules are mandatory for every UI change. They are enforced by the
 architecture tests; documentation alone is not a substitute for the checks.
+For changes to the default ak-ui kit's density, status, selection, hover,
+truncation, or responsive behavior, read the
+[current Aibo ak-ui spec](docs/design/ak-ui-current-spec.md).
 
 - `src/lib/components/app/` and `src/App.svelte` may import visual components
   only from `$lib/ui-kit`.
@@ -95,8 +98,9 @@ Passing only the new feature's test is not sufficient.
 
 Changes to shared contracts must cover supported, absent, and rejected
 capabilities, an unrelated provider, and old supported declarations. UI changes
-must cover both built-in skins and any affected external presentation surface,
-including inheritance and failure recovery. Rust execution/persistence changes
+must cover the registered built-in ak-ui kit in light and dark themes and any
+affected external presentation surface, including inheritance and failure
+recovery. Rust execution/persistence changes
 also require relevant Rust tests; `verify` does not run them or browser/native
 probes. Report commands, results, and any unverified boundary explicitly.
 An unexplained failure blocks a claim that regression verification passed;

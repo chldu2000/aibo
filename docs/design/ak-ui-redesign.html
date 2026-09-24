@@ -6,7 +6,8 @@
 <meta name="color-scheme" content="light dark">
 <title>Aibo · ak-ui 工作台改版设计稿</title>
 <style>
-/* Interactive redesign study for the default ak-ui skin (system intensity).
+/* Initial interactive redesign study for the default ak-ui skin (system intensity).
+   Later decisions are recorded in ak-ui-current-spec.md.
    Token values mirror src/lib/ui-kit/kits/ak-ui/themes.json. Brand icons are
    neutral placeholders: real ones come from each capability plugin. */
 [data-ak-ui] {
@@ -614,8 +615,8 @@ dialog::backdrop { background:color-mix(in srgb,var(--ak-surface-inverse) 40%,tr
 
 <button class="btn notes-toggle" type="button" id="notesToggle" aria-expanded="false" aria-controls="notes">改动说明</button>
 <aside class="notes" id="notes" hidden aria-label="改动说明">
-  <h2>相对当前实现的改动</h2>
-  <p>悬停条目会在界面上标出对应区域。</p>
+  <h2>初版改动说明（历史参考）</h2>
+  <p>这是初版交互设计快照。会话状态、Git 密度与悬停等后续决定，以 <a href="ak-ui-current-spec.md">Aibo ak-ui 现行规范</a> 为准。悬停条目会在界面上标出对应区域。</p>
   <ol>
     <li data-for="1"><span><b>主操作只保留一个几何动作</b>黄色仅用于主操作；切角改用 clip-path，不再用伪元素三角叠底色。</span></li>
     <li data-for="2"><span><b>单行会话，44px 命中区</b>插件图标、标题和相对时间（“19 小时前”）放在一行；状态用图标动画加文字表达，不只靠颜色。</span></li>

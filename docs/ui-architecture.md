@@ -5,6 +5,7 @@
 默认视觉已收敛为 `ak-ui` 一个注册项，提供 `light` / `dark` 两种主题，默认浅色。
 实现采用 ak-ui 的 **system** 强度，并以 [交互设计稿](design/ak-ui-redesign.html) 为视觉基准：
 侧栏不显示 Logo 或标语，以新建会话开始；导航、对话、上下文及管理面板在每个主题下保持统一明暗。
+后续确认的密度、状态和交互细节以 [Aibo ak-ui 现行规范](design/ak-ui-current-spec.md) 为准；设计稿保留初版交互示例。
 
 - `kits/ak-ui/themes.json` 是默认颜色、字体、间距和几何令牌来源；`ak-ui.css` 导入固定版本
   `@yunyoujun/ak-ui/tokens.css`，通过 `--ak-*` 与现有 `--aibo-*` 语义角色适配，不在运行时加载 CDN。
@@ -38,7 +39,7 @@
   单仓库也显示选择器；提交框常驻变更页，没有已暂存文件时禁用提交。批量暂存放在分组标题，
   分支管理保留在分支按钮下，远端刷新在分支展开区，暂存栈移到文件列表之后。文件分组使用通栏色带，
   行内展示状态、文件名、目录及增删统计；窄面板截断名称而保留操作入口。
-  分组标题保持原有高度，数量默认可见，悬停或键盘聚焦时由批量操作覆盖；文件操作使用“暂存/取消暂存”文字。
+  分组标题收紧至 36px，数量默认可见，悬停或键盘聚焦时由批量操作覆盖；文件操作使用“暂存/取消暂存”文字。
 
 
 - 会话条目仅在活动执行（运行、启动、压缩）时显示圆环动效，其余状态只改变 Agent 图标颜色。
@@ -57,7 +58,7 @@
 
 ### 字号、选中与表单（2026-09 改版）
 
-视觉目标以 [交互设计稿](design/ak-ui-redesign.html) 为准。
+视觉目标以 [Aibo ak-ui 现行规范](design/ak-ui-current-spec.md) 为准；[交互设计稿](design/ak-ui-redesign.html)保留初版视觉示例。
 
 - 字号只使用三级令牌：`--aibo-type-body`（14px，消息正文）、`--aibo-type-ui`（13px，控件）、
   `--aibo-type-meta`（12px，元信息），由 `themes.json` 提供；`base.css` 以同值作为外部主题的回退。
@@ -660,7 +661,7 @@ aria-pressed 按钮，编辑器关联真实 listbox；可信桥继续校验动�
 ### Composer goal bar
 
 `UiKitAdapter.GoalBar` receives an objective, localized status/usage labels and an
-optional clear callback. Both built-in skins own its appearance and expandable
+optional clear callback. The built-in ak-ui kit owns its appearance and expandable
 text. The app places it immediately above the composer, based on `goal.manage`
 capability data. A goal's lifecycle is separate from turn execution: an active
 goal on an idle session is awaiting continuation, not evidence of a running tool.
@@ -668,14 +669,14 @@ Installed presentation workbenches render the same goal inside the composer.
 
 Goal controls are capability-gated: `goal.pause` exposes pause through
 `goal.manage { action: "pause" }`, and `goal.resume` exposes the host-owned resume
-intent. The goal bar emits semantic callbacks; neither skin calls the provider.
+intent. The goal bar emits semantic callbacks; the kit does not call the provider.
 A completed, cleared, unknown, or budget-limited goal has no resume action.
 An explicit resume may retry a blocked or usage-limited goal; the provider still
 enforces the native limits. Pending operations disable duplicate controls.
 
 ### 子 Agent 的任务与过程
 
-`SubagentCard` 和 `SubagentDialog` 是 `UiKitAdapter` 的语义控件，两套内置皮肤都提供实现。应用只传入任务、状态、最近活动和打开/关闭回调，不选择皮肤或提供视觉参数。详情沿用消息 Markdown、工具输出和思考摘要的展示方式；原生 modal dialog 提供焦点约束、Escape 关闭和返回触发按钮，关闭不会停止任务。阅读历史时保留滚动位置，实时更新以“有新内容”按钮提示。
+`SubagentCard` 和 `SubagentDialog` 是 `UiKitAdapter` 的语义控件，内置 ak-ui kit 提供实现。应用只传入任务、状态、最近活动和打开/关闭回调，不选择皮肤或提供视觉参数。详情沿用消息 Markdown、工具输出和思考摘要的展示方式；原生 modal dialog 提供焦点约束、Escape 关闭和返回触发按钮，关闭不会停止任务。阅读历史时保留滚动位置，实时更新以“有新内容”按钮提示。
 
 Codex 插件把父子线程关联转换为 `subagent.updated` 和 `subagent.message`。这两个事件使用父会话身份、空 `turnId` 和经过宿主校验的 `payload.rootTurnId`，防止子线程完成事件结束父回合。派发调用完成不等于子任务完成。已知子线程的通知实时更新过程；只读 `thread/read` 补齐错过的消息和没有广播的状态。父回复提前结束时，宿主执行流保留到已知子任务结束或读取明确失败，避免丢失尾部记录。
 
@@ -696,7 +697,7 @@ skin owns queue persistence, delivery, attachment identity or uncertain recovery
 
 ### Model context window selector
 
-`UiKitAdapter.ModelContextSelect` receives only current option ID, model-specific option descriptors, disabled state and an onSelect callback. The runtime proxy selects the active implementation; both built-in skins own their dropdown styles. Composer places the control in the model header beside Fast and computes capability/lifecycle gating. External workbench presentations receive the same model metadata and a validated `selectContextWindow` change action. No provider identity or skin ID is used to infer support.
+`UiKitAdapter.ModelContextSelect` receives only current option ID, model-specific option descriptors, disabled state and an onSelect callback. The runtime proxy selects the active implementation; the built-in ak-ui kit owns its dropdown styles. Composer places the control in the model header beside Fast and computes capability/lifecycle gating. External workbench presentations receive the same model metadata and a validated `selectContextWindow` change action. No provider identity or skin ID is used to infer support.
 
 ## 协商后的 Agent 功能
 
