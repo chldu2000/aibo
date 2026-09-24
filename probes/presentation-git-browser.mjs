@@ -30,7 +30,7 @@ try {
         if(command==='list_workspace_git_branches')return [{name:'main',current:true,commit:'head'},{name:'topic',current:false,commit:'old'}];
         if(command==='list_workspace_git_history'&&window.delayedRepositoryReads){if(args.repositoryId==='one')await new Promise(resolve=>setTimeout(resolve,300));return [{hash:'commit-a',shortHash:'commit-a',subject:args.repositoryId==='one'?'STALE ONE':'CURRENT TWO',author:'Author',authoredAt:'2026-09-13'}];}
         if(command==='list_workspace_git_history'){
-          const entries=[{hash:'commit-a',shortHash:'commit-a',subject:'Earlier change',author:'Author',authoredAt:'2026-09-13'},...Array.from({length:19},(_,index)=>({hash:`older-${index}`,shortHash:`older-${index}`,subject:`Older change ${index+1}`,author:'Author',authoredAt:'2026-09-12'}))];
+          const entries=[{hash:'commit-a',shortHash:'commit-a',subject:'Earlier change',author:'Author',authoredAt:'2026-09-13'},...Array.from({length:19},(_,index)=>({hash:`older-${index}`,shortHash:`older-${index}`,subject:index===0?'fix(composer): @ 引用的文件不再重复显示附件卡片；图标与路径保持一致':`Older change ${index+1}`,author:'Author',authoredAt:'2026-09-12'}))];
           return entries.slice(args.offset??0,(args.offset??0)+(args.limit??30));
         }
         if(command==='get_workspace_git_remote_status')return {branch:'main',upstream:'origin/main',ahead:1,behind:1};
@@ -117,6 +117,14 @@ try {
     assert.equal(rects.row.height,36,'file rows follow the reference design’s 36px density');
     assert.ok(await panel.evaluate(el=>el.scrollWidth<=el.clientWidth),'no horizontal overflow');
     await panel.screenshot({path:`/tmp/aibo-git-layout-${width}.png`});
+    await panel.getByRole('tab',{name:'历史',exact:true}).click();
+    await panel.locator('.git-history-item').nth(1).waitFor();
+    assert(await panel.locator('.git-history-item').nth(1).evaluate(item=>{
+      const subject=item.querySelector('.git-history-copy strong');
+      return subject.getBoundingClientRect().right<=item.getBoundingClientRect().right+.5
+        && subject.scrollWidth>subject.clientWidth;
+    }),`long history subjects truncate within the ${width}px inspector`);
+    await panel.getByRole('tab',{name:'变更',exact:true}).click();
   }
   await page.locator('.workspace-grid').evaluate(el=>el.style.removeProperty('--workspace-inspector-width'));
 
@@ -274,11 +282,11 @@ try {
   await panel.getByRole('tab',{name:'历史',exact:true}).click();
   await panel.locator('.git-history-item').first().waitFor();
   const historyRows=await panel.locator('.git-history-item').evaluateAll(rows=>rows.map(row=>{
-    const bounds=row.getBoundingClientRect(), subject=row.querySelector('strong').getBoundingClientRect(), meta=row.querySelector('.git-history-meta').getBoundingClientRect();
-    return {height:bounds.height,separateLines:subject.bottom<=meta.top,contained:subject.top>=bounds.top && meta.bottom<=bounds.bottom};
+    const bounds=row.getBoundingClientRect(), subject=row.querySelector('strong').getBoundingClientRect(), time=row.querySelector('.git-history-time').getBoundingClientRect(), meta=row.querySelector('.git-history-meta').getBoundingClientRect();
+    return {height:bounds.height,separateLines:subject.bottom<=meta.top,contained:subject.top>=bounds.top && meta.bottom<=bounds.bottom,firstLine:subject.right<time.left && time.bottom<=meta.top,inset:subject.left-bounds.left,separator:getComputedStyle(row.parentElement).borderBottomWidth};
   }));
   assert.ok(historyRows.length>0);
-  assert.ok(historyRows.every(row=>row.height>=44 && row.separateLines && row.contained),'history keeps two readable lines within each row');
+  assert.ok(historyRows.every(row=>row.height>=44 && row.separateLines && row.contained && row.firstLine && row.inset>=16 && row.separator==='1px'),`history keeps the reference’s inset, top-line time, second-line metadata, and row separators: ${JSON.stringify(historyRows.slice(0,2))}`);
   const historyItem=panel.locator('.git-history-item').first();
   await historyItem.hover();
   await historyItem.evaluate(el=>Promise.all(el.getAnimations().map(animation=>animation.finished)));

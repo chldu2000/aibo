@@ -3,6 +3,7 @@
   import type { GitPanelState } from '$lib/app/workbench-drafts';
   import { Badge, Button, Card, Icon, Input, RepositorySelect } from '$lib/ui-kit';
   import SidePanelTabs from './SidePanelTabs.svelte';
+  import { relativeTimeLabel } from './session-utils';
   import type {
     GitBranch,
     GitCommit,
@@ -211,14 +212,9 @@
   }
 
   function commitTime(value: string): string {
-    const timestamp = new Date(value);
-    if (Number.isNaN(timestamp.getTime())) return value;
-    return new Intl.DateTimeFormat('zh-CN', {
-      month: 'numeric',
-      day: 'numeric',
-      hour: '2-digit',
-      minute: '2-digit',
-    }).format(timestamp);
+    const label = relativeTimeLabel(value);
+    if (!label) return value;
+    return /(?:分钟|小时|天)$/.test(label) ? `${label}前` : label;
   }
 
   async function submitCommit(): Promise<void> {
@@ -557,10 +553,11 @@
                 >
                   <span class="git-history-copy">
                     <strong>{commit.subject}</strong>
+                    <time class="git-history-time" datetime={commit.authoredAt} title={commit.authoredAt}>{commitTime(commit.authoredAt)}</time>
                     <small class="git-history-meta">
                       <code>{commit.shortHash}</code>
-                      <span>{commit.author}</span>
-                      <time datetime={commit.authoredAt}>{commitTime(commit.authoredAt)}</time>
+                      <span class="git-history-separator" aria-hidden="true">·</span>
+                      <span class="git-history-author">{commit.author}</span>
                     </small>
                   </span>
                 </Button>

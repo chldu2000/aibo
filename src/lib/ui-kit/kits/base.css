@@ -440,15 +440,16 @@ h2 { font-size: 16px; letter-spacing: -0.02em; }
 .workspace-file-diff-line-hunk { background: var(--aibo-accent-soft); }
 .workspace-file-diff-line-hunk code { color: var(--aibo-accent-text); }
 .workspace-file-diff-line-meta code { color: var(--aibo-subtle); }
-.git-history { display: grid; min-width: 0; gap: 1px; margin: 0 8px 8px; }
+.git-history { display: grid; min-width: 0; gap: 0; margin: 0; }
 .git-history-entry { display: grid; min-width: 0; }
-.git-history-item { width: 100%; min-width: 0; justify-content: flex-start; padding: 6px 7px; text-align: left; }
-.git-history-copy { display: grid; width: 100%; min-width: 0; flex: 1; gap: 2px; justify-items: start; text-align: left; }
-.git-history-copy strong { overflow: hidden; color: var(--aibo-muted); font-size: var(--aibo-type-meta, 12px); font-weight: 500; text-overflow: ellipsis; white-space: nowrap; }
-.git-history-meta { display: flex; width: 100%; min-width: 0; align-items: center; gap: 5px; overflow: hidden; color: var(--aibo-subtle); font-size: var(--aibo-type-meta, 12px); line-height: 1.3; white-space: nowrap; }
+.git-history-item { width: 100%; min-width: 0; justify-content: flex-start; padding: 6px 16px; text-align: left; }
+.git-history-copy { display: grid; grid-template-columns: minmax(0, 1fr) auto; width: 100%; min-width: 0; flex: 1; gap: 0 8px; align-items: baseline; text-align: left; }
+.git-history-copy strong { grid-column: 1; min-width: 0; max-width: 100%; overflow: hidden; color: var(--aibo-muted); font-size: var(--aibo-type-meta, 12px); font-weight: 500; text-overflow: ellipsis; white-space: nowrap; }
+.git-history-time { grid-column: 2; grid-row: 1; white-space: nowrap; }
+.git-history-meta { display: flex; grid-column: 1 / -1; min-width: 0; align-items: center; gap: 4px; overflow: hidden; color: var(--aibo-subtle); font-size: var(--aibo-type-meta, 12px); line-height: 1.3; white-space: nowrap; }
 .git-history-meta code { flex: none; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
-.git-history-meta span { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
-.git-history-meta time { flex: none; margin-left: auto; }
+.git-history-separator { flex: none; }
+.git-history-author { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
 .git-commit-files { display: grid; min-width: 0; gap: 1px; margin: 1px 0 4px 14px; border-left: 1px solid var(--aibo-border); padding-left: 4px; }
 .git-commit-file { width: 100%; min-width: 0; justify-content: flex-start; gap: 6px; padding: 4px 6px; text-align: left; }
 .git-commit-file > span:last-child { min-width: 0; overflow: hidden; color: var(--aibo-muted); font-family: var(--aibo-mono); font-size: var(--aibo-type-meta, 12px); text-overflow: ellipsis; white-space: nowrap; }

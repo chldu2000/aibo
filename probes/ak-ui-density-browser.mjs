@@ -33,7 +33,7 @@ try {
       if(command==='get_workspace_git_remote_status')return {branch:'main',upstream:'origin/main',ahead:1,behind:0};
       if(command==='list_workspace_git_history'){
         if((args.offset??0)>0&&window.failHistoryPageOnce){window.failHistoryPageOnce=false;throw Error('历史分页暂时失败');}
-        const entries=[{hash:'commit-a',shortHash:'abc1234',subject:'调整文件列表对齐',author:'Tester',authoredAt:'2026-09-22T15:30:00Z'},...Array.from({length:19},(_,index)=>({hash:`older-${index}`,shortHash:`older-${index}`,subject:`较早的提交 ${index+1}`,author:'Tester',authoredAt:'2026-09-21T15:30:00Z'}))];
+        const entries=[{hash:'commit-a',shortHash:'abc1234',subject:'调整文件列表对齐',author:'Tester',authoredAt:new Date(Date.now()-2*60*60*1000).toISOString()},...Array.from({length:19},(_,index)=>({hash:`older-${index}`,shortHash:`older-${index}`,subject:index===0?'fix(composer): @ 引用的文件不再重复显示附件卡片；图标与路径保持一致':`较早的提交 ${index+1}`,author:'Tester',authoredAt:'2026-09-21T15:30:00Z'}))];
         return entries.slice(args.offset??0,(args.offset??0)+(args.limit??30));
       }
       if(command==='list_workspace_git_commit_files')return {commit:args.commit,files:[{path:'src/components/AlignedButton.svelte',previousPath:null,kind:'modified'}],total:2};
@@ -184,6 +184,33 @@ try {
     await commits.nth(15).waitFor();
     assert((await gitSize('.git-history-item'))>=44,'two-line history entries keep enough height');
     assert.equal(await commits.count(),16,'history initially renders the newest 16 commits');
+    const firstCommit=await commits.first().evaluate(item=>{
+      const row=item.querySelector('.git-history-item');
+      const subject=item.querySelector('.git-history-copy strong');
+      const time=item.querySelector('.git-history-time');
+      const meta=item.querySelector('.git-history-meta');
+      const bounds=row.getBoundingClientRect();
+      return {subject:subject.getBoundingClientRect().toJSON(),time:time.getBoundingClientRect().toJSON(),meta:meta.getBoundingClientRect().toJSON(),bounds:bounds.toJSON(),paddingLeft:parseFloat(getComputedStyle(row).paddingLeft),relative:time.textContent,tooltip:time.title,datetime:time.dateTime,metaText:meta.textContent,separator:getComputedStyle(item).borderBottomWidth};
+    });
+    assert(firstCommit.subject.right<firstCommit.time.left && firstCommit.subject.top<firstCommit.meta.top,'history subject and time share the first line above metadata');
+    assert(firstCommit.meta.right<=firstCommit.bounds.right && firstCommit.subject.left-firstCommit.bounds.left>=firstCommit.paddingLeft,'history rows stay within their full-width inset');
+    assert.equal(firstCommit.relative,'2 小时前');
+    assert.equal(firstCommit.tooltip,firstCommit.datetime);
+    assert.match(firstCommit.metaText,/abc1234\s*·\s*Tester/);
+    assert.equal(firstCommit.separator,'1px','history entries have full-width separators');
+    const longCommit=commits.nth(1);
+    const longSubjectLayout=await longCommit.evaluate(item=>{
+      const subject=item.querySelector('.git-history-copy strong');
+      const style=getComputedStyle(item);
+      return {
+        contentRight:item.getBoundingClientRect().right-parseFloat(style.paddingRight),
+        subjectRight:subject.getBoundingClientRect().right,
+        subjectClient:subject.clientWidth,
+        subjectScroll:subject.scrollWidth
+      };
+    });
+    assert(longSubjectLayout.subjectRight<=longSubjectLayout.contentRight+.5 && longSubjectLayout.subjectScroll>longSubjectLayout.subjectClient,
+      `long commit subjects truncate inside the history row: ${JSON.stringify(longSubjectLayout)}`);
     await page.getByRole('button',{name:'查看提交 abc1234 的文件：调整文件列表对齐',exact:true}).click();
     const file=page.locator('.git-commit-file');await file.waitFor();
     const fileInset=await file.evaluate(element=>element.querySelector('.change-kind').getBoundingClientRect().left-element.getBoundingClientRect().left);
