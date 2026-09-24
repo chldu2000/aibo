@@ -599,6 +599,11 @@
   text-align: left;
 }
 
+/* History entries and their files use row fills, without the generic button signal. */
+.app-shell[data-ui-kit='ak-ui'] .git-history :is(.git-history-item, .git-commit-file):hover:not(:disabled) {
+  box-shadow: none;
+}
+
 .app-shell[data-ui-kit='ak-ui'] .git-history-more {
   width: 100%;
   margin-top: var(--ak-space-2);
@@ -1471,6 +1476,12 @@
 
 .app-shell[data-ui-kit='ak-ui'] .changeset-file-row:is(:hover, :focus-within) {
   background: var(--aibo-hover);
+}
+
+/* File rows own hover feedback; the inner diff button must not draw a second signal. */
+.app-shell[data-ui-kit='ak-ui'] .git-change-list .changeset-file-button:hover:not(:disabled) {
+  background: transparent;
+  box-shadow: none;
 }
 
 .app-shell[data-ui-kit='ak-ui'] .changeset-file-row.changeset-file-selected {

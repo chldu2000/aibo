@@ -254,6 +254,12 @@ try {
     await page.mouse.move(0,0);
     await action.focus();
     assert.equal(await action.evaluate(el=>getComputedStyle(el).opacity),'1','keyboard focus reveals the bulk action');
+    const fileButton=group.locator('.changeset-file-button').first();
+    await fileButton.hover();
+    await fileButton.evaluate(el=>Promise.all(el.getAnimations().map(animation=>animation.finished)));
+    const hoverStyle=await fileButton.evaluate(el=>({shadow:getComputedStyle(el).boxShadow,background:getComputedStyle(el).backgroundColor}));
+    assert.equal(hoverStyle.shadow,'none','file hover must not inherit the generic button bottom signal');
+    assert.equal(hoverStyle.background,'rgba(0, 0, 0, 0)','hover background belongs to the full file row');
     const fileAction=group.locator('.changeset-actions button').first();
     assert.equal(await fileAction.innerText(),'暂存');
     await fileAction.focus();
@@ -273,6 +279,15 @@ try {
   }));
   assert.ok(historyRows.length>0);
   assert.ok(historyRows.every(row=>row.height>=44 && row.separateLines && row.contained),'history keeps two readable lines within each row');
+  const historyItem=panel.locator('.git-history-item').first();
+  await historyItem.hover();
+  await historyItem.evaluate(el=>Promise.all(el.getAnimations().map(animation=>animation.finished)));
+  assert.equal(await historyItem.evaluate(el=>getComputedStyle(el).boxShadow),'none','commit history hover must not draw a bottom signal');
+  await historyItem.click();
+  const commitFile=panel.locator('.git-commit-file').first();
+  await commitFile.hover();
+  await commitFile.evaluate(el=>Promise.all(el.getAnimations().map(animation=>animation.finished)));
+  assert.equal(await commitFile.evaluate(el=>getComputedStyle(el).boxShadow),'none','expanded commit file hover must not draw a bottom signal');
   await panel.screenshot({path:'/tmp/aibo-git-history-density.png'});
 
   assert.deepEqual(errors,[]);
