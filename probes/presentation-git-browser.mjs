@@ -112,7 +112,7 @@ try {
     assert.ok(rects.branch.bottom<=rects.tabs.y+.5);
     assert.ok(rects.tabs.bottom<=rects.commit.y+.5);
     assert.ok(rects.commit.bottom<=rects.group.y+.5);
-    assert.equal(rects.input.y,rects.submit.y,'commit input and action share one row');
+    assert.ok(Math.abs(rects.input.y+rects.input.height/2-rects.submit.y-rects.submit.height/2)<.5,'commit input and action stay vertically centered on one row');
     assert.ok(rects.submit.right<=rects.panel.right,'commit action fits narrow inspector');
     assert.equal(rects.row.height,36,'file rows follow the reference design’s 36px density');
     assert.ok(await panel.evaluate(el=>el.scrollWidth<=el.clientWidth),'no horizontal overflow');
@@ -241,7 +241,7 @@ try {
     await page.mouse.move(0,0);
     assert.equal(await action.evaluate(el=>getComputedStyle(el).opacity),'0');
     assert.equal(await count.evaluate(el=>getComputedStyle(el).opacity),'1');
-    assert.ok((await heading.boundingBox()).height>=44,'group headings retain their original height');
+    assert.equal((await heading.boundingBox()).height,36,'single-line group headings match the file-list density');
     const marker=await group.locator('.change-kind').first().boundingBox();
     assert.equal(marker.width,18);
     assert.equal(marker.height,18);

@@ -118,6 +118,31 @@ try {
   await page.screenshot({path:output+'/repository-popup-light.png'});
   await page.getByRole('option',{name:/^aibo/}).click();
   await page.locator('.git-branch-bar').waitFor();
+  const gitSize=selector=>page.locator(selector).first().evaluate(element=>element.getBoundingClientRect().height);
+  for(const [selector,height] of [
+    ['.git-repository-toolbar .repository-trigger',36],
+    ['.git-repository-toolbar > .ak-button',32],
+    ['.git-branch-trigger',32],
+    ['.git-branch-bar > .ak-button:not(.git-branch-trigger)',32],
+    ['.git-section-tabs .ak-button',44],
+    ['.git-review-button',32],
+    ['.git-commit-form input',36],
+    ['.git-commit-form button',32],
+    ['.git-change-group-heading',36],
+    ['.git-stash-trigger',36],
+    ['.changeset-file-row',36]
+  ]) assert.equal(await gitSize(selector),height,`${selector} follows the design density`);
+  for(const [selector,overhang] of [['.git-repository-toolbar .repository-trigger',3],['.git-repository-toolbar > .ak-button',5]]) {
+    assert(await page.locator(selector).evaluate((element,overhang)=>{
+      const bounds=element.getBoundingClientRect();
+      return document.elementFromPoint(bounds.x+bounds.width/2,bounds.y-overhang)===element;
+    },overhang),`${selector} keeps an expanded pointer target`);
+  }
+  await page.locator('.git-branch-trigger').click();
+  await page.getByRole('textbox',{name:'新分支名称'}).waitFor();
+  assert.equal(await gitSize('.git-branch-create input'),36);
+  assert.equal(await gitSize('.git-branch-create button'),32);
+  await page.locator('.git-branch-trigger').click();
   const changesTab=page.locator('#git-changes-tab');
   const historyTab=page.locator('#git-history-tab');
   await changesTab.focus();await page.keyboard.press('ArrowRight');
@@ -157,6 +182,7 @@ try {
     await historyTab.click();
     const commits=page.locator('.git-history-entry');
     await commits.nth(15).waitFor();
+    assert((await gitSize('.git-history-item'))>=44,'two-line history entries keep enough height');
     assert.equal(await commits.count(),16,'history initially renders the newest 16 commits');
     await page.getByRole('button',{name:'查看提交 abc1234 的文件：调整文件列表对齐',exact:true}).click();
     const file=page.locator('.git-commit-file');await file.waitFor();
