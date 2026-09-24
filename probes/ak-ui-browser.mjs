@@ -70,10 +70,17 @@ try{
   assert.equal(await primary.evaluate(e=>e===document.activeElement),true,'keyboard navigation returns to the main action');
   assert.equal(await primary.evaluate(e=>getComputedStyle(e).outlineColor),mode==='light'?'rgb(0, 117, 168)':'rgb(34, 187, 255)','focus uses the official theme-appropriate blue');
   await primary.hover();
+  await primary.evaluate(el=>Promise.all(el.getAnimations().map(animation=>animation.finished)));
+  assert.equal(await primary.evaluate(el=>getComputedStyle(el).boxShadow),'none','primary button hover has no bottom signal');
   assert.deepEqual(await primary.evaluate(e=>{const s=getComputedStyle(e);return {bg:s.backgroundColor,fg:s.color}}),primaryColors,'hover keeps the yellow action readable');
   await page.mouse.move(700,40);await primary.evaluate(e=>e.blur());
   assert.match(await primary.evaluate(e=>getComputedStyle(e).clipPath),/^polygon/);
   assert.equal(await primary.evaluate(e=>getComputedStyle(e,'::after').content),'none');
+  const ordinary=page.locator('.sidebar-footer .ak-button').first();
+  await ordinary.hover();
+  await ordinary.evaluate(el=>Promise.all(el.getAnimations().map(animation=>animation.finished)));
+  assert.equal(await ordinary.evaluate(el=>getComputedStyle(el).boxShadow),'none','ordinary button hover has no bottom signal');
+  await page.mouse.move(700,40);
   const attachmentSizes=await page.locator('.composer .attachment-item').evaluateAll(nodes=>nodes.map(node=>node.getBoundingClientRect().height));
   assert.equal(attachmentSizes.length,2);
   assert(attachmentSizes.every(height=>height<=60),'mixed attachments stay compact');

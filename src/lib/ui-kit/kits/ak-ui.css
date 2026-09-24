@@ -69,7 +69,6 @@
 
 .app-shell[data-ui-kit='ak-ui'] .ak-button:hover:not(:disabled) {
   background: var(--aibo-hover, var(--aibo-surface-hover));
-  box-shadow: inset 0 -2px var(--aibo-border-strong);
 }
 
 .app-shell[data-ui-kit='ak-ui'] .ak-button:active:not(:disabled) {
@@ -85,7 +84,6 @@
 .app-shell[data-ui-kit='ak-ui'] .ak-button:is([data-variant='default'], [data-variant='send']):hover:not(:disabled) {
   background: var(--primary);
   color: var(--primary-foreground);
-  box-shadow: inset 0 -3px var(--aibo-accent);
 }
 
 .app-shell[data-ui-kit='ak-ui'] .ak-button[data-variant='secondary'] {
