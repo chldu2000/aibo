@@ -1,13 +1,13 @@
 # @aibo/capability-runtime
 
-Node 22+ Capability Runtime 2.0 helper，开发包当前仅本地打包。声明 `hostSdk` 的插件由宿主提供此包，开发时安装为 `devDependencies`，发布时不携带 SDK。版本、公开入口和迁移见[宿主 SDK](../../docs/host-sdk.md)。`serveCapability` 使用标准输入/输出 JSON-RPC；日志请写入 stderr。每个实例注册一个 contribution 及明确的 capability/version/operationId 列表。
+Node 22+ Capability Runtime 2.0/2.1 helper，开发包当前仅本地打包。声明 `hostSdk` 的插件由宿主提供此包，开发时安装为 `devDependencies`，发布时不携带 SDK。版本、公开入口和迁移见[宿主 SDK](../../docs/host-sdk.md)。`serveCapability` 使用标准输入/输出 JSON-RPC；日志请写入 stderr。每个实例注册一个 contribution 及明确的 capability/version/operationId 列表。
 
 ```js
 import { serveCapability } from '@aibo/capability-runtime/stdio';
 serveCapability({
   pluginId: 'dev.example.echo', pluginVersion: '1.0.0',
   contributionId: 'dev.example.echo.worker',
-  operations: [{capability:'dev.example.echo.read',version:'1.0.0',operationId:'read'}],
+  operations: [{capability:'dev.example.echo.read',version:'1.0.0',operationId:'dev.example.echo.read'}],
   invoke: async (request, tools) => request.input,
 });
 ```

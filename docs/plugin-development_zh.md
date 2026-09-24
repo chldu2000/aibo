@@ -2,155 +2,123 @@
 
 [English](plugin-development.md) | [简体中文](plugin-development_zh.md) | [项目 README](../README_zh.md)
 
+本文介绍公共扩展路径并索引对应合同，中英文版本保持相同范围。
+提供者专用实现历史和测试结果放在独立记录中。
+
 ## 选择扩展方式
 
 | 目标 | 扩展方式 | 起点 |
 | --- | --- | --- |
-| 增加操作、外部服务或领域数据 | 能力提供者 | [独立样例](../examples/capability-plugin/) |
-| 在工作台展示插件数据与动作 | 能力提供者 + 语义视图 | 同一份样例，无需编写前端代码 |
-| 接入编程 Agent | 使用 Runtime 2.1 的会话能力提供者 | [内置提供者](../src-tauri/capability-plugins/) |
-| 改变布局、渲染或皮肤 | 可安装的隔离呈现包 | [呈现包合同](presentation-package.md) |
+| 增加操作、服务或领域数据 | 能力提供者 | [独立样例](../examples/capability-plugin/) |
+| 展示业务数据和动作 | 能力提供者 + 语义贡献 | 同一份样例，无需前端代码 |
+| 接入编程 Agent | Runtime 2.1 会话能力提供者 | [会话能力协商](session-capability-negotiation.md) |
+| 定制主题、控件或工作台呈现 | 可安装的 Presentation 包 | [呈现包合同](presentation-package.md) |
 
-新能力插件使用 Manifest v2。旧 Agent Runtime v1 和归档中的旧开发指南已不适用于执行接入。
-能力声明描述插件能做什么，本身不授予工作区权限。准确的协议和平台组合见[支持矩阵](plugin-platform-support-matrix.md)。
+能力包使用 Manifest v2。旧 Agent Runtime v1 及归档指南不再是可执行接入路径。
+能力描述支持范围，不代表执行授权。术语见[领域词汇](../CONTEXT.md)。
 
-## 构建并安装可运行样例
+## 核对兼容要求
 
-先在 Aibo 仓库根目录执行 `pnpm install`，确保 Node.js 22+ 和 `tar` 可用，然后运行：
+| 维度 | 核对内容 |
+| --- | --- |
+| 宿主与 OS | 清单 `host` 范围、`platforms` 和[支持矩阵](plugin-platform-support-matrix.md)；能安装不等于真实运行已验收 |
+| 能力 Runtime | 精确支持版本：greeting 样例为 2.0，会话流与 control 显式使用 2.1 |
+| 语义视图 | 支持的 contract 与快照格式，独立于包版本 |
+| 宿主 SDK | 声明 `hostSdk` 时需宿主实现该功能并满足范围；当前样例要求 SDK `>=0.1.0 <0.2.0` |
+| 会话功能与权限 | 清单、握手、open 结果与宿主 schema 一致；原生权限归属另需[会话控件合同](session-controls.md) |
+| 呈现 | `presentation.json` 的 hostApi/coreSemantics 和快照声明，见包合同 |
+
+开发版本的宿主版本号本身不能证明包含哪些源码改动。
+验证时记录精确宿主提交/构建、插件 release、SDK 和原生 CLI 版本；历史说明中的提交不是已发布的最低宿主版本。
+
+## 构建并安装样例
+
+在 Aibo 仓库根目录先执行 `pnpm install`；需要 Node.js 22+、npm 和 `tar`。然后运行：
 
 ```sh
 node --input-type=module -e 'import { buildExternalPlugin } from "./probes/build-external-plugin.mjs"; const result = await buildExternalPlugin(); console.log(JSON.stringify({ developmentRoot: result.root, installPath: result.packagePath }, null, 2));'
 ```
 
-构建器会打包本地 SDK，将样例复制到仓库外的临时目录，离线安装 SDK tarball，编译
-worker，SDK 仅用于开发。输出的 `installPath` 是解包后的安装目录，包含
-`plugin.json`、`dist/worker.js`，不包含 Aibo SDK 或 `node_modules`。运行时由支持
-`hostSdk` 的新宿主提供 SDK，见[宿主 SDK](host-sdk.md)。这一步不启动 Aibo，也不调用模型。
-输出的开发目录会保留供检查；需要长期开发时，请复制到固定位置。
+构建器打包本地 SDK tarball，在临时开发副本中离线安装为开发依赖，编译 worker，输出解包安装目录。
+greeting 包包含 `plugin.json` 和 `dist/worker.js`，没有 Aibo SDK 副本或 `node_modules`；该样例没有第三方运行依赖。
+公开 SDK 由宿主通过 [hostSdk](host-sdk.md) 提供。构建不启动 Aibo 或调用模型。
+长期开发前将临时开发目录复制到固定位置。
 
-在桌面应用的「插件」入口中填入 `installPath`，安装并启用。样例会贡献名为
-**External SDK greeting** 的 command 语义视图，从命令入口打开后可看到
-`EXTERNAL_SDK_OK` 和刷新动作。直接调用能力时，需先由宿主选择并绑定提供者。
+通过桌面的能力插件管理入口安装并启用 `installPath`，从命令入口打开 **External SDK greeting**，
+检查 `EXTERNAL_SDK_OK` 和刷新动作。直接调用能力前须由宿主选择绑定。
+macOS 原生安装验收可从 Aibo 根目录运行 `node probes/external-plugin-native.mjs`；需要 Tauri 环境，
+探针自行构建包，并使用隔离应用数据和临时工作区。
 
-如需自动验证 macOS 桌面安装、调用和生命周期，可运行：
+## 编写与打包能力插件
 
-```sh
-node probes/external-plugin-native.mjs
-```
+从相互匹配的[清单](../examples/capability-plugin/plugin.json)和 [worker](../examples/capability-plugin/worker.ts)开始。
 
-此探针自行构建插件，使用隔离应用标识和临时工作区，需要可用的 Tauri 开发环境。
-直接用 `node` 启动 worker 不等于完整验证：worker 会在 stdin 上等待宿主协议握手。
+1. 设置插件、贡献、能力和操作 ID。capabilityProvider 的操作 ID 使用插件命名空间，例如
+   `dev.example.greeting.read`，且必须与运行时握手完全一致。npm 包、清单和 Worker 的 release 版本保持一致。
+2. 声明 scope、effect、permissions、输入输出 schema、超时和幂等性。实现操作允许列表，返回符合 schema 的数据；
+   日志写 stderr，stdout 只承载协议。
+3. 响应 `tools.signal`；通过 `tools.call` 调用声明依赖，作用域与授权由 Broker 补齐。
+   取消、拒绝或结果未知后，不自动重试写入。
+4. 语义贡献返回内容与动作含义，不携带 HTML/CSS 或可执行 UI。样例收到
+   `{ actionId: "refresh", itemId: null, offset: 0 }`，返回 `state`、`view`、`actions`，
+   快照身份和 revision 由宿主补齐。受控写入参考[能力写入](../fixtures/plugins/capability-write/)与
+   [语义写入](../fixtures/plugins/semantic-write/)夹具。
+5. 构建并本地打包 `packages/plugin-protocol` 与 `packages/capability-runtime`，将 tarball 安装为开发依赖，
+   再编译 Worker。SDK 当前未通过公共包注册表分发。
+6. 声明 `hostSdk`，打包已编译入口和清单；使用 bundler 时将公开 SDK 入口设为 external。
+   第三方运行库须编入业务 bundle 或显式包含在安装产物中；只写 dependencies 不会提供库文件，
+   Aibo 不执行 `npm install`。详见[SDK 打包规则](host-sdk.md)。
+7. 安装前检查解包产物的依赖完整性、开发机路径与符号链接。
+   [`build-external-plugin.mjs`](../probes/build-external-plugin.mjs)演示无第三方运行依赖样例的完整流程。
 
-## 编写能力包
+Release 不可变。包内容改变时递增 release 版本；既有会话固定 installation/contribution，
+安装更新不迁移既有会话或恢复数据。
 
-[样例清单](../examples/capability-plugin/plugin.json)与[worker](../examples/capability-plugin/worker.ts)
-是一套相互匹配的实现。复制后按以下步骤修改：
+## 接入会话提供者
 
-1. 使用自己的 `pluginId`、贡献 ID、操作 ID 和能力命名空间。清单版本必须与 worker 的 `pluginVersion` 一致。
-2. 声明 `host`、`platforms` 和准确的运行协议版本。样例使用 Runtime 2.0 与 Semantic View 1.0，不能从 SDK 包版本推导线协议版本。
-3. 为每个操作声明作用域、输入输出 JSON schema、effect、permissions、超时和幂等性。不需要工作区的操作使用 `application`；需要工作区或会话身份时使用 `workspace`、`session`。
-4. 只实现允许列表中的操作，返回符合 schema 的数据。日志写入 stderr，stdout 只承载协议消息。
-5. 响应 `tools.signal` 的取消信号。依赖其他提供者时使用 `tools.call`，作用域、调用身份和授权由 Broker 补齐。取消、拒绝或结果未知后，不自动重试写入。
+会话发现使用已启用、可运行、声明 `aibo.session.open` 的 session scope capabilityProvider。
+在 contribution 上提供 `displayName`，可选 `icon: { path: "M12 2L22 12L12 22L2 12Z" }`。
+图标为 24 × 24 坐标系内的单色 path，最多 8192 字符，不接受完整 SVG、URL、脚本或样式。
+宿主验证数据，皮肤提供配色和回退；每个 contribution 有自己的身份与依赖就绪状态。
 
-语义视图引用清单中声明的提供者操作。样例查询实际收到的是
-`{ actionId: "refresh", itemId: null, offset: 0 }`，不是空对象。输出包含 `state`、
-`view` 和 `actions`，快照身份与 revision 由宿主补齐。视图只表达内容和意图，不包含
-HTML、CSS、皮肤 ID 或可执行界面代码。
+显式使用 Runtime 2.1，并实现[会话合同](../contracts/session-capabilities.v1.json)、
+[事件 schema](../contracts/session-event.v1.schema.json)和[绑定 schema](../contracts/session-binding.v2.schema.json)。
+原生 ID 和 recovery 属于提供者，宿主会话/轮次身份、授权与持久历史属于 Aibo。
+Control 必须在操作允许列表中；处理取消，并只在有效 invocation 内发送事件。
+[内置 Worker](../src-tauri/capability-plugins/)可作实现参考，其私有共享 helper 不属于公共 SDK。
 
-写操作必须声明 write effect 和需要的权限，由宿主管理审批、工作区准入与持久化结果。
-用户为会话选择的执行配置直接授权该会话的顶层轮次，不再弹出第二次宽泛权限确认；
-它不是任意插件写入或嵌套依赖写入的通行证。
-宿主持久化语义化的 `approvalReviewer`（`user`、`auto-review` 或 `none`）；原生
-Adapter 负责将它转换为提供者特有的审核路由与权限授权。
-权限与会话模式菜单由会话贡献的 `sessionControls` 声明，包含选项 ID、类别、文案与
-执行配置补丁。宿主按当前安装的实际执行授权过滤和应用声明，不按 Agent 名称生成
-菜单。未声明就不展示；插件原生命令不被 Aibo 的固定模式命令覆盖。
-声明格式与迁移见[会话控制菜单](session-controls.md)。
-可结合契约阅读[能力写入夹具](../fixtures/plugins/capability-write/)和[语义写入夹具](../fixtures/plugins/semantic-write/)。
-
-## 打包自己的改动
-
-[`probes/build-external-plugin.mjs`](../probes/build-external-plugin.mjs)展示了完整打包流程。
-长期维护的插件项目可在自己的开发目录中重复以下步骤：
-
-1. 使用 TypeScript 构建 `packages/plugin-protocol`，再用 `npm pack --ignore-scripts` 分别打包它和 `packages/capability-runtime`。
-2. 在插件项目中将这两个本地 tarball 安装为 `devDependencies`。SDK 尚未发布公共注册表，不要直接依赖公网包名安装。
-3. 使用 `tsc -p tsconfig.json` 编译 `worker.ts`。最终 `package.json` 的运行依赖使用版本号，不携带开发机器上的 tarball 路径。
-4. 清单声明 `hostSdk`，在插件项目运行 `npm pack --ignore-scripts`。检查产物中有清单、编译后的入口和插件自带的第三方依赖，但没有 Aibo SDK、工作区符号链接或宿主源码导入。SDK 的纯类型引用仅供编译；其公开 JS 入口由宿主解析。
-5. 将产物解包到目录，再从 Aibo 安装该目录。发布改动时，同时递增清单和 worker 的插件版本。
-
-插件 release 不可变，会话固定绑定提供者安装。安装新版本不会静默迁移正在使用的会话
-或恢复数据。升级前应验证停用/启用、依赖缺失、版本不兼容和会话恢复行为。
-
-## 接入会话型 Agent
-
-新建会话轮盘自动发现已启用且依赖就绪的 session scope `aibo.session.open` 提供者。请在该 `capabilityProvider` contribution 上声明 `displayName` 和可选的 `icon`：
-
-```json
-"icon": { "path": "M12 2L22 12L12 22L2 12Z" }
-```
-
-图标是 24 × 24 坐标系中的单色 SVG path 数据，可包含多个子路径，最长 8192 字符。宿主验证数据，皮肤负责颜色和状态效果；不支持完整 SVG、图片 URL、脚本或样式。未提供图标时显示通用菱形。插件安装后还需启用并满足运行依赖，入口才会出现在轮盘中；禁用或卸载后入口消失。一个插件可以声明多个会话提供者，各自拥有名称和图标。
-
-从当前 [Codex worker](../src-tauri/capability-plugins/codex/worker.mjs)、
-[Pi worker](../src-tauri/capability-plugins/pi/worker.mjs)及其共用的
-[session provider](../src-tauri/capability-plugins/session-provider.mjs)入手。
-共用文件是仓库内实现参考，不是已发布的 SDK API。
-
-- 显式使用 Runtime 2.1 处理轮次事件流和执行中控制；helper 默认仍是 2.0。
-- 实现共享的[会话能力契约](../contracts/session-capabilities.v1.json)、[会话事件](../contracts/session-event.v1.schema.json)和[恢复绑定](../contracts/session-binding.v2.schema.json)。
-- 原生引擎 ID 留在原生绑定中。会话和轮次身份、首条消息命名、权限决定、事件校验和持久化历史由宿主管理。
-- 控制操作必须进入允许列表。事件只能在 invocation 有效期内发送；处理取消，并拒绝已不属于活动调用的控制。
-- 不能通过增加清单字段自行声明权限执行后端。尚未与宿主协商执行保障的外部提供者只能获得受限配置；原生沙箱支持需要宿主集成与验证。
-
-## 声明并协商可选会话功能
-
-自 `7865fad` 起，宿主按有效能力分发功能。有效集合取会话 open 声明、固定 release 清单操作、Runtime 实际握手与宿主合同的交集。可选操作使用 `<pluginId>.<feature>`、版本 `1.0.0` 和 [共享功能合同](../contracts/session-features.v1.json) 的精确 schema；不是添加 capabilities 字符串就能启用功能。
-
-功能响应需包含合同要求的 recovery、capabilities 和专用数据。命令可用 insertionText 声明插入语法；session.tree、session.timeline、session.snapshot 各自独立。执行权限和 accessModes 由宿主授权，插件不能自行声明原生后端。升级插件后应新建会话验证，旧会话仍固定旧 release。
-
-完整步骤、构建示例、Cursor 0.1.11 迁移范围及排查表见 [会话能力声明与协商](session-capability-negotiation.md)。
+可选功能的精确 schema、握手、open 声明、响应封套和能力缺失行为见[协商规则](session-capability-negotiation.md)。
+功能支持、当前可用性和授权分别判断。菜单消费宿主校验后的 `executionProfile.sessionControls`，选择只提交 control ID。
+[会话控件](session-controls.md)定义原生授权、CoreProxy 和 `agent-managed` 权限归属；
+不能从品牌或功能标签推导。仅打开编辑模式不授予写轮次权限。
 
 ## 扩展呈现
 
-使用独立 `presentation.json` 包定制主题、控件、核心语义视图或整个工作台。
-从[包合同](presentation-package.md)、[打包工具](../packages/presentation-tools/)及
-[shadcn](../packages/presentation-shadcn/)、[Material 3](../packages/presentation-material3/)
-独立样例开始；安装与离线 SDK 见 [0.3.0 交付说明](presentation-release-0.3.0.md)。
+外部皮肤使用独立 `presentation.json` 包和[呈现打包工具](../packages/presentation-tools/)。
+从[包合同](presentation-package.md)、[shadcn](../packages/presentation-shadcn/)或
+[Material 3](../packages/presentation-material3/)样例开始。Worker 返回受限视觉树，可信桥绘制并转发宿主动作 token。
+包不能直接访问 DOM、网络、存储或 Tauri IPC；未提供的 surface 继承宿主默认实现，管理、审批和恢复仍由宿主持有。
 
-可执行包在可终止 Worker 中返回受限视觉树，可信 iframe 桥绘制并转发宿主验证的
-动作。包不能直接访问 DOM、网络、存储或 Tauri IPC。未提供的范围继承宿主默认实现，
-管理、审批与恢复仍归宿主。能力包 Manifest v2 的 presentation 元数据不授予此执行
-资格；能力插件声明自身数据和操作入口时仍使用语义贡献。
+`UiKitAdapter`、kit 注册表与 [web-presentation 类型](../packages/web-presentation/)用于可信宿主开发，
+不属于外部包安装机制。修改这些边界遵循 [UI 架构](ui-architecture.md)。新增内部组件不会自动扩展公共 controls surface。
 
-随宿主集成呈现时，参考
-[`default-presentation.ts`](../src/lib/workbench/plugins/default-presentation.ts)、
-[工作台适配入口](../src/lib/workbench/presentation-adapters.ts)和
-[`@aibo/web-presentation`](../packages/web-presentation/)。保留核心 collection、detail、
-settings、inspector 语义，明确接受的快照版本，并为可选 renderer 保留核心降级方式。
-卸载本地视图不能丢失宿主拥有的执行状态。
+## 专项合同
 
-皮肤扩展使用 `UiKitAdapter` 和 [UI Kit 注册表](../src/lib/ui-kit/registry.ts)。应用组件只能
-通过 `$lib/ui-kit` 导入视觉组件；业务控制器不依赖 Svelte 或具体 API 实现。布局与图标
-位置归呈现层，授权、动作含义和业务结果归宿主。详细约束见 [UI 架构](ui-architecture.md)。
+| 改动 | 参考 |
+| --- | --- |
+| 设置、继承及调用快照 | [Agent 设置](agent-plugin-settings.md) |
+| 模型、推理、Fast、上下文窗口与用量 | [模型配置](model-configuration.md) |
+| 目标生命周期和恢复准入 | [目标](goal-lifecycle.md) |
+| 持久等待队列及独立协商的 steering | [消息队列](message-queue.md) |
+| 子 Agent 进度与过程历史 | [子 Agent 历史](subagent-history.md) |
+| 外部快照、控件与动作目录 | [呈现包](presentation-package.md) |
 
 ## 分享前验证
 
-```sh
-pnpm run verify
-cargo test --manifest-path src-tauri/Cargo.toml
-pnpm run probe:session:capabilities
-```
+在插件自身仓库运行测试与打包检查，再验证产物 Worker 的握手和真实响应 schema。
+会话插件另验原生创建、权限行为、取消及跨进程恢复。使用隔离数据，记录命令、版本、支持配置和未覆盖项；
+不要发布凭据或原始提供者日志。
 
-`verify` 包含协议打包与架构检查。会话工作流测试使用模拟引擎，不能代替真实模型兼容性
-验证。相关原生探针需单独运行，见[探针说明](native-engine-probes.md)。插件包、测试夹具
-和问题报告中不要包含凭据或未脱敏的提供者日志。
-
-## Agent 设置面板
-
-会话能力提供者可通过 `aibo.agent-settings/v1` 声明可编辑的分层设置。
-参见[协议、接入方式与内置示例](agent-plugin-settings.md)。
-
-## 宿主持久队列与可选 steering
-
-标准 Runtime 2.1 会话提供者声明 open/turn/cancel/close 后，由宿主提供持久等待队列，无需原生队列实现。运行中追加输入单独协商：宿主公开的 `queue.steer` 要求提供者协商 `queue.manage` 且清单同名操作明确包含 steer。宿主添加的能力不回写提供者协商数据。投递不确定时仍禁止自动重发。完整合同和兼容规则见 [消息队列](message-queue.md)。
+修改 Aibo 时从 Aibo 根目录运行 `pnpm run verify`，并按[回归矩阵](plugin-boundaries-and-regression.md#regression-gate)
+选择 Rust、浏览器和原生检查。`pnpm run probe:session:capabilities` 使用模拟引擎验证会话工作流；
+原生探针见[探针说明](native-engine-probes.md)。构建、模拟引擎、原生安装和真实桌面交互属于不同证据层级。

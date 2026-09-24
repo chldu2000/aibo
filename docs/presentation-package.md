@@ -1,7 +1,7 @@
 # Presentation 包合同 v1
 
-本合同已接入 App 安装、隔离执行与故障恢复。双皮肤 0.3.0 和共享工作台 0.2.0
-已交付，安装方式见[交付说明](presentation-release-0.3.0.md)，实现与验收边界见
+本合同已接入 App 安装、隔离执行与故障恢复。独立 shadcn / Material 3 呈现包及共享工作台
+的历史交付基线见[交付说明](presentation-release-0.3.0.md)，实现与验收边界见
 [退出审计](presentation-plugin-exit-audit.md)。阶段过程另见[重构记录](presentation-plugin-refactor.md)。
 
 包根目录使用 `presentation.json`。主题、控件和整窗呈现使用同一 manifest，
@@ -88,14 +88,16 @@ manifest 最大 128 KiB，最多 128 个资源、单个资源最大 8 MiB、资�
 
 包代码运行于 Worker，定义 `self.aiboPresentation.render(input)`，同步或异步返回
 `PresentationNode`。输入与视觉树类型从 `@aibo/plugin-protocol` 导出，不需要 DOM
-类型。最小入口如下：
+类型。下面的语义呈现入口只绑定输入中的宿主动作：
 
 ```js
 self.aiboPresentation = {
   render(input) {
+    const action = input.data.actions?.[0];
+    if (!action) return { tag: 'span', key: 'empty', text: '暂无可用动作' };
     return {
-      tag: 'button', key: 'refresh', text: '刷新',
-      className: 'toolbar-button', events: { click: 'refresh' }
+      tag: 'button', key: 'primary-action', text: action.label,
+      className: 'toolbar-button', events: { click: action.token }
     };
   }
 };
@@ -154,7 +156,16 @@ Enter 保持换行。禁用/只读输入框不触发，不能同时声明 keydow
 `PresentationControlData`；其他内部 UiKitAdapter 控件继续继承默认实现。
 `data.control` 标识控件，`data.props` 包含完整展示数据，业务回调不会交付 Worker。
 模型选择通过 `data.actions` 的宿主 token 绑定 click，宿主重新检查当前可用选项
-及 disabled 状态后执行。状态标记仅提供展示，没有业务动作。
+及 disabled 状态后执行。ModelMatrix actions 按 `kind: model | serviceTier` 区分，
+不能把服务层级动作当作模型选择；`props.fastTier` 为 null 时不画 Fast 控件。
+完整参数语义与上下文选择见[模型配置](model-configuration.md)。
+
+AgentStatusMark 仅提供展示，没有业务动作。消费可选 `props.icon: { path }`，
+在 24 × 24 viewBox 内用受限 svg/path 节点和 currentColor 绘制；缺失可用通用图标或文本。
+保留宿主 label 作为文字或可访问名称，不根据兼容字段 `agent` 硬编码品牌图标。
+精确 props/actions 类型见 [presentation-controls.ts](../packages/plugin-protocol/src/presentation-controls.ts)。
+AgentSettingsForm、ModelContextSelect、GoalBar、SubagentCard、SubagentDialog 均为内部控件，
+未加入外部 controls 目录，不能通过声明同名控件取得其接口。
 
 控件 render 可以返回 null，表示继承该控件的完整默认实现；这是 controls 专属
 协议，semantic/workbench 仍须返回有效视觉树。宿主在候选提交前预检两个目录项，
@@ -171,6 +182,12 @@ Enter 保持换行。禁用/只读输入框不触发，不能同时声明 keydow
 `data.navigationActions: PresentationNavigationAction[]`。前者包含全部已加载工作区
 及其会话、展开/加载状态、搜索/筛选、创建入口、改名草稿和忙碌状态；不会只交付
 当前工作区的简化会话列表。原首批顶层字段暂时保留兼容。
+
+创建候选来自 `data.navigation.agentChoices ?? []`，每项为 `{id, label, icon?}`。
+使用 navigationActions 中同时匹配 `operation === 'createAgent'`、`targetId === workspace.id`
+和 `choiceId === choice.id` 的 token；候选为空或动作缺失时不提供执行入口。
+旧 createCodex/createPi 动作已移除，不根据品牌补造入口，也不解析 choice ID。
+类型见 [presentation-navigation.ts](../packages/plugin-protocol/src/presentation-navigation.ts)。
 
 操作目录的 operation 表达用途，targetId 表达宿主选定的目标，token 用于绑定指定
 事件。目录覆盖导航、创建会话、信任/移除/打开工作区、搜索筛选、改名、归档与
@@ -210,6 +227,23 @@ args 是宿主已选定的目标和选项；点击携带的 value 不能替换�
 默认 TimelinePanel 和外部呈现共用宿主草稿：切换皮肤不清空，提交失败继续保留，
 请求结束后清理。回答草稿按窗口持久化，重载时仅为身份匹配的实时请求恢复，
 不会重建 Agent 待答请求。只有当前问题的草稿交付当前呈现。确认和审批仍位于固定宿主区域。
+
+### 会话专项消费规则
+
+- 模式/权限菜单读取 `executionProfile.sessionControls`，选择绑定 `selectAccess` 的 control ID，
+  不使用旧 accessModes 或自行构造 profile；权限归属见[会话控件](session-controls.md)。
+- 模型目录与 selectServiceTier/selectContextWindow 动作见[模型配置](model-configuration.md)。
+  上下文选择绑定 change 事件，提交字符串 ID；其他点击动作的 value 不能替换宿主参数。
+- 目标使用 conversation.goal / goalBusy，区分目标状态与 running，绑定 clearGoal/pauseGoal/resumeGoal；
+  不自行恢复 budgetLimited 目标，见[目标生命周期](goal-lifecycle.md)。
+- timeline 的 `toolName === 'subagent'` 内容经校验后展示独立任务卡，失败保留可读降级；
+  使用 openSubagent 与 child.id 对应的宿主 token 打开详情，不直接调用历史 IPC，见[子 Agent 历史](subagent-history.md)。
+- 队列优先使用可选 items/paused/revision，旧快照可显示 steering/followUp 文本，但不能合成条目 ID。
+  removeQueuedMessage/sendQueuedMessage 绑定 item.id，sending 项无单条操作，uncertain 不提供立即发送且阻止 resumeQueue。
+  运行中立即发送另需 queue.steer，等待队列和附件归属见[消息队列](message-queue.md)。
+
+以上状态用于展示，执行入口仍只来自当前动作目录；切换呈现不重置队列、历史或草稿。
+完整数据与动作枚举见 [presentation-conversation.ts](../packages/plugin-protocol/src/presentation-conversation.ts)。
 
 ## 工作台 Git
 
