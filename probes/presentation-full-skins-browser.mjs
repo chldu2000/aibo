@@ -78,6 +78,29 @@ try {
   await workspaceButton.waitFor();
   if(await workspaceButton.getAttribute('aria-expanded')!=='true')await workspaceButton.click();
   await page.getByText('s1',{exact:true}).first().click();
+  // Session rows keep routine state text out of the list and reserve tags for blockers.
+  const sessionRow = page.locator('.session-item').filter({has:page.locator('.session-item-label', {hasText:'s1'})}).first();
+  for (const [state, label, running] of [
+    ['running', null, true], ['starting', null, true], ['compacting', null, true],
+    ['waiting_approval', '待审批', false], ['waiting_user', '待你输入', false],
+    ['failed', '失败', false], ['interrupted', '已中断', false],
+    ['idle', null, false], ['closed', null, false], ['created', null, false],
+  ]) {
+    await page.evaluate(state=>window.emitAgent('session.state_changed',{state}),state);
+    await page.waitForFunction(({label,running})=>{
+      const row=[...document.querySelectorAll('.session-item')].find(row=>row.querySelector('.session-item-label')?.textContent==='s1');
+      return row && (row.querySelector('.session-state-label')?.textContent ?? null)===label && !!row.querySelector('.agent-status-orbit')===running;
+    },{label,running});
+    assert.equal(await sessionRow.locator('time').count(),label ? 0 : 1);
+    assert.equal(await sessionRow.locator('.agent-status-signal').count(),0);
+    if(running) {
+      assert.equal(await sessionRow.locator('.agent-status-orbit circle').count(),1);
+      assert.equal(await sessionRow.locator('.agent-status-orbit').evaluate(el=>getComputedStyle(el).animationName),'ak-status-track');
+    } else {
+      assert.equal(await sessionRow.locator('.agent-status-mark').evaluate(el=>getComputedStyle(el).outlineStyle),'none');
+    }
+  }
+  await page.evaluate(()=>window.emitAgent('session.state_changed',{state:'idle'}));
   const tabs=page.getByRole('tablist',{name:'会话视图'});
   await tabs.getByRole('tab',{name:'执行记录',exact:true}).click();
   const executions=page.locator('#session-panel-executions');

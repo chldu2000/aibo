@@ -634,7 +634,7 @@
   }
 }
 
-.app-shell[data-ui-kit='ak-ui'] .tone-attention {
+.app-shell[data-ui-kit='ak-ui'] .tone-attention:not(.agent-status-mark) {
   outline: 1px solid var(--aibo-warning-text);
 }
 
@@ -1016,12 +1016,13 @@
 
 .app-shell[data-ui-kit='ak-ui'] .ak-agent-status-track {
   stroke: currentColor;
+  stroke-width: 1.5;
   fill: none;
   border: 0;
 }
 
 .app-shell[data-ui-kit='ak-ui'] .tone-running .ak-agent-status-track {
-  stroke-dasharray: 24 76;
+  stroke-dasharray: 72 28;
   animation: ak-status-track 1.6s linear infinite;
   transform: none;
 }
@@ -1720,8 +1721,23 @@
 /* Content metadata, native theme choices, and responsive attachment layout. */
 
 .app-shell[data-ui-kit='ak-ui'] .session-state-label {
+  flex: none;
+  padding: 1px var(--ak-space-1);
+  border: var(--ak-line-hairline) solid var(--aibo-warning-border);
+  border-radius: var(--ak-radius-subtle);
   font-size: var(--aibo-type-meta);
-  color: var(--aibo-muted);
+  color: var(--aibo-warning-text);
+  background: var(--aibo-warning-surface);
+}
+
+.app-shell[data-ui-kit='ak-ui'] .session-state-label[data-tone='danger'] {
+  border-color: var(--aibo-danger-border);
+  color: var(--aibo-danger-text);
+  background: var(--aibo-danger-surface);
+}
+
+.app-shell[data-ui-kit='ak-ui'] .session-item .tone-running {
+  color: var(--aibo-accent);
 }
 
 .app-shell[data-ui-kit='ak-ui'] .session-agent-label {

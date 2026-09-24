@@ -393,10 +393,13 @@
                             label={`${agentLabel}，${sessionStateLabel(session)}`}
                           />
                           <span class="session-item-label">{session.label}</span>
-                          {#if ['running', 'waiting_approval', 'failed'].includes(session.state)}<span class="session-state-label">{sessionStateLabel(session)}</span>{/if}
+                          {#if !session.archived && ['waiting_approval', 'waiting_user', 'failed', 'interrupted'].includes(session.state)}
+                            <span class="session-state-label" data-tone={sessionStatusTone(session)}>{sessionStateLabel(session)}</span>
+                          {:else}
                           <time class="session-updated" datetime={session.updatedAt}>
                             {archivingSessionId === session.id ? '归档中' : relativeTimeLabel(session.updatedAt)}
                           </time>
+                          {/if}
                         </Button>
                         <div class="session-item-actions" aria-label={`${session.label} 操作`}>
                           <Button variant="ghost" size="icon" type="button" aria-label={`${session.label} 更多操作`} title="更多会话操作" popovertarget={`${menuPrefix}-session-${session.id}`} onclick={event => positionRowMenu(event.currentTarget)}><span aria-hidden="true" class="row-more-mark">···</span></Button>
