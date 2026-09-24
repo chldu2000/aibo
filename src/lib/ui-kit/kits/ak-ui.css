@@ -1940,3 +1940,180 @@
 .app-shell[data-ui-kit='ak-ui'] .compact-region-navigation .ak-button {
   font-size: var(--aibo-type-ui);
 }
+
+/* Git inspector follows the reference's flat toolbar, commit row and full-width groups. */
+.app-shell[data-ui-kit='ak-ui'] .git-repository-toolbar {
+  display: flex;
+  align-items: center;
+  gap: var(--ak-space-2);
+  padding: var(--ak-space-3) var(--ak-space-4) var(--ak-space-2);
+}
+.app-shell[data-ui-kit='ak-ui'] .git-repository-toolbar .repository-select {
+  flex: 1;
+  margin: 0;
+}
+.app-shell[data-ui-kit='ak-ui'] .git-repository-toolbar .repository-trigger {
+  min-height: 44px;
+  font-size: var(--aibo-type-ui);
+}
+.app-shell[data-ui-kit='ak-ui'] .git-branch-bar {
+  display: flex;
+  align-items: center;
+  gap: var(--ak-space-2);
+  min-width: 0;
+  padding: 0 var(--ak-space-4) var(--ak-space-2);
+}
+.app-shell[data-ui-kit='ak-ui'] .git-branch-bar .git-branch-trigger {
+  flex: 0 1 auto;
+  min-width: 0;
+  max-width: 40%;
+  font-family: var(--ak-font-mono);
+  font-weight: 600;
+}
+.app-shell[data-ui-kit='ak-ui'] .git-branch-label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.app-shell[data-ui-kit='ak-ui'] .git-upstream {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--aibo-muted);
+  font: var(--aibo-type-meta) var(--ak-font-mono);
+}
+.app-shell[data-ui-kit='ak-ui'] .git-branch-bar > .ak-button:not(.git-branch-trigger) {
+  flex: none;
+  padding-inline: var(--ak-space-2);
+}
+.app-shell[data-ui-kit='ak-ui'] .git-section-toolbar {
+  margin: 0;
+  padding: 0 var(--ak-space-4);
+  border-bottom: var(--ak-line-hairline) solid var(--aibo-border);
+}
+.app-shell[data-ui-kit='ak-ui'] .git-section-tabs {
+  display: flex;
+  flex: 1;
+  border: 0;
+  background: transparent;
+}
+.app-shell[data-ui-kit='ak-ui'] .git-section-tabs > .ak-button {
+  flex: none;
+}
+.app-shell[data-ui-kit='ak-ui'] .git-commit-form {
+  margin: 0;
+  gap: var(--ak-space-2);
+  padding: var(--ak-space-3) var(--ak-space-4);
+}
+.app-shell[data-ui-kit='ak-ui'] .git-commit-form [data-slot='input'] {
+  height: 44px;
+  font-size: var(--aibo-type-ui);
+}
+.app-shell[data-ui-kit='ak-ui'] .git-change-group {
+  margin: 0;
+  border: 0;
+}
+.app-shell[data-ui-kit='ak-ui'] .git-change-group-heading {
+  display: flex;
+  align-items: center;
+  border-top: var(--ak-line-hairline) solid var(--aibo-border);
+  background: var(--ak-surface-muted);
+}
+.app-shell[data-ui-kit='ak-ui'] .git-change-group-trigger {
+  flex: 1;
+  padding-inline: var(--ak-space-3) var(--ak-space-2);
+}
+.app-shell[data-ui-kit='ak-ui'] .git-change-list .changeset-file-row {
+  gap: var(--ak-space-2);
+  padding-inline: var(--ak-space-3) var(--ak-space-2);
+  border: 0;
+}
+.app-shell[data-ui-kit='ak-ui'] .git-change-list .changeset-file-name {
+  flex: 0 1 auto;
+  max-width: 65%;
+}
+.app-shell[data-ui-kit='ak-ui'] .git-change-list .changeset-file-name-only {
+  max-width: 100%;
+}
+.app-shell[data-ui-kit='ak-ui'] .git-change-list .change-kind {
+  border: var(--ak-line-hairline) solid currentColor;
+  border-radius: 0;
+  background: transparent;
+}
+.app-shell[data-ui-kit='ak-ui'] .git-stash-section {
+  margin: var(--ak-space-3) var(--ak-space-4);
+}
+
+.app-shell[data-ui-kit='ak-ui'] .git-review-button:disabled {
+  border-color: transparent;
+  background: transparent;
+}
+.app-shell[data-ui-kit='ak-ui'] :is(.side-panel-tabs, .git-section-tabs, .git-change-group-trigger) [data-slot='badge'] {
+  min-width: 20px;
+  padding: 0 var(--ak-space-1);
+  border: var(--ak-line-hairline) solid var(--aibo-border);
+  background: transparent;
+  color: var(--aibo-muted);
+  line-height: 1.4;
+}
+.app-shell[data-ui-kit='ak-ui'] .git-change-list .changeset-file-button {
+  font-weight: 400;
+}
+
+/* Only the single-line Git change list uses compact 32px rows. */
+.app-shell[data-ui-kit='ak-ui'] .git-change-list .changeset-file-button {
+  height: 32px;
+  min-height: 32px;
+  padding-block: 0;
+}
+.app-shell[data-ui-kit='ak-ui'] .git-change-list .change-kind {
+  width: 18px;
+  height: 18px;
+  line-height: 1;
+}
+.app-shell[data-ui-kit='ak-ui'] .git-change-list .changeset-file-row {
+  height: 32px;
+  min-height: 32px;
+}
+.app-shell[data-ui-kit='ak-ui'] .git-change-group-heading {
+  position: relative;
+}
+.app-shell[data-ui-kit='ak-ui'] .git-change-group-heading .git-change-group-action {
+  position: absolute;
+  right: var(--ak-space-1);
+  top: 50%;
+  transform: translateY(-50%);
+  width: 32px;
+  min-width: 32px;
+  height: 32px;
+  min-height: 32px;
+  opacity: 0;
+  pointer-events: none;
+}
+.app-shell[data-ui-kit='ak-ui'] .git-change-group-heading:has(.git-change-group-action):is(:hover, :focus-within) .git-change-group-count {
+  opacity: 0;
+}
+.app-shell[data-ui-kit='ak-ui'] .git-change-group-heading:is(:hover, :focus-within) .git-change-group-action {
+  opacity: 1;
+  pointer-events: auto;
+}
+.app-shell[data-ui-kit='ak-ui'] .git-change-list .changeset-actions .ak-button {
+  width: auto;
+  min-width: 0;
+  height: 32px;
+  min-height: 32px;
+  padding: 0 var(--ak-space-1);
+  color: var(--aibo-muted);
+  font-weight: 400;
+}
+.app-shell[data-ui-kit='ak-ui'] .git-change-list .changeset-actions .ak-button:hover:not(:disabled) {
+  color: var(--aibo-text);
+  background: transparent;
+  box-shadow: none;
+}
+
+.app-shell[data-ui-kit='ak-ui'] .git-change-group-count {
+  transition: none;
+}

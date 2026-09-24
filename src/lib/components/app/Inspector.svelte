@@ -143,7 +143,7 @@
 {/snippet}
 
 <Card as="aside" class="inspector" hidden={!visible} data-ui-component="inspector" aria-label="会话上下文">
-  <SidePanelTabs {activeView} onSelect={onSelectView} />
+  <SidePanelTabs {activeView} gitCount={workspaceChanges?.files.length} onSelect={onSelectView} />
   <div id="side-panel-content-context" class="side-panel-view" role="tabpanel" aria-labelledby="side-panel-tab-context">
   <ProjectActionsPanel
     workspace={workspace}

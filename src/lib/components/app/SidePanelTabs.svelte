@@ -1,14 +1,15 @@
 <script lang="ts">
   import { tick } from 'svelte';
-  import { Button, Icon } from '$lib/ui-kit';
+  import { Badge, Button, Icon } from '$lib/ui-kit';
   import type { SidePanelView } from './view-types';
 
   type SidePanelTabsProps = {
     activeView: SidePanelView;
+    gitCount?: number;
     onSelect: (view: SidePanelView) => void;
   };
 
-  let { activeView, onSelect }: SidePanelTabsProps = $props();
+  let { activeView, gitCount, onSelect }: SidePanelTabsProps = $props();
 
   const views: readonly SidePanelView[] = ['git', 'context'];
 
@@ -41,6 +42,7 @@
       type="button"
       role="tab"
       id="side-panel-tab-git"
+      aria-label="Git"
       aria-controls="side-panel-content-git"
       aria-selected={activeView === 'git'}
       tabindex={activeView === 'git' ? 0 : -1}
@@ -48,7 +50,7 @@
       onclick={() => onSelect('git')}
     >
       <Icon name="branch" size={13} data-icon="inline-start" />
-      Git
+      Git {#if gitCount !== undefined}<Badge variant="secondary">{gitCount}</Badge>{/if}
     </Button>
     <Button
       variant="ghost"

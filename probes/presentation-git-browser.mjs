@@ -26,7 +26,7 @@ try {
         window.presentationCommands.push(command);window.navigationCalls.push({command,args});
         if(command==='list_workspace_git_repositories'&&window.selectorFixture)return {repositories:[{id:'one',name:'aibo',relativePath:'aibo'},{id:'two',name:'aibo-plugins',relativePath:'aibo-plugins'},{id:'packages/aibo',name:'aibo',relativePath:'packages/aibo'},{id:'long',name:'a-very-long-repository-name-for-layout-verification',relativePath:'packages/tools/a-very-long-repository-name-for-layout-verification'}].map(repo=>({...repo,kind:'repository',externalRoot:false})),limited:false,warnings:[],scanBudget:2000};
         if(command==='list_workspace_git_repositories')return {repositories:(window.multiRepository?['one','two']:['.']).map(id=>({id,name:id==='.'?'w1':id,relativePath:id,kind:'repository',externalRoot:false})),limited:false,warnings:[],scanBudget:2000};
-        if(command==='get_workspace_changes')return {workspaceId:args.workspaceId,head:'head',branch:'main',dirty:true,capturedAt:'now',files:[changed],captureStatus:'captured',captureError:null};
+        if(command==='get_workspace_changes')return {workspaceId:args.workspaceId,head:'head',branch:'main',dirty:true,capturedAt:'now',files:window.densityFixture?[changed,{...changed,path:'new.ts',kind:'added',staged:false,unstaged:false,untracked:true}]:[changed],captureStatus:'captured',captureError:null};
         if(command==='list_workspace_git_branches')return [{name:'main',current:true,commit:'head'},{name:'topic',current:false,commit:'old'}];
         if(command==='list_workspace_git_history'&&window.delayedRepositoryReads){if(args.repositoryId==='one')await new Promise(resolve=>setTimeout(resolve,300));return [{hash:'commit-a',shortHash:'commit-a',subject:args.repositoryId==='one'?'STALE ONE':'CURRENT TWO',author:'Author',authoredAt:'2026-09-13'}];}
         if(command==='list_workspace_git_history'){
@@ -100,6 +100,26 @@ try {
   await page.getByRole('button',{name:'恢复内置呈现',exact:true}).click();
   await page.getByRole('button',{name:'关闭管理中心',exact:true}).click();
   const native=page.getByRole('textbox',{name:'提交信息',exact:true});
+  await native.waitFor();
+  const panel=page.locator('[data-ui-component="workspace-git-panel"]');
+  for(const width of [350,300]) {
+    await page.locator('.workspace-grid').evaluate((el,width)=>el.style.setProperty('--workspace-inspector-width',`${width}px`),width);
+    const rects=await panel.evaluate(el=>{
+      const rect=selector=>{const r=el.querySelector(selector).getBoundingClientRect();return {x:r.x,y:r.y,right:r.right,bottom:r.bottom,height:r.height};};
+      return {panel:el.getBoundingClientRect().toJSON(),repository:rect('.git-repository-toolbar'),branch:rect('.git-branch-bar'),tabs:rect('.git-section-toolbar'),commit:rect('.git-commit-form'),group:rect('.git-change-group'),input:rect('.git-commit-form input'),submit:rect('.git-commit-form button'),row:rect('.changeset-file-row')};
+    });
+    assert.ok(rects.repository.bottom<=rects.branch.y+.5);
+    assert.ok(rects.branch.bottom<=rects.tabs.y+.5);
+    assert.ok(rects.tabs.bottom<=rects.commit.y+.5);
+    assert.ok(rects.commit.bottom<=rects.group.y+.5);
+    assert.equal(rects.input.y,rects.submit.y,'commit input and action share one row');
+    assert.ok(rects.submit.right<=rects.panel.right,'commit action fits narrow inspector');
+    assert.equal(rects.row.height,32,'file rows follow the requested 32px density');
+    assert.ok(await panel.evaluate(el=>el.scrollWidth<=el.clientWidth),'no horizontal overflow');
+    await panel.screenshot({path:`/tmp/aibo-git-layout-${width}.png`});
+  }
+  await page.locator('.workspace-grid').evaluate(el=>el.style.removeProperty('--workspace-inspector-width'));
+
   assert.equal(await native.inputValue(),'message across skins');await native.fill('edited in default');
   await page.locator('body').click({position:{x:2,y:2}}); await page.keyboard.press('Meta+,');
   await page.getByRole('button',{name:'External skin 1.0.0',exact:true}).click();
@@ -166,7 +186,7 @@ try {
   await page.evaluate(()=>{window.selectorFixture=true;});
   await page.getByRole('button',{name:'刷新 Git 状态',exact:true}).click();
   await page.waitForFunction(()=>document.querySelector('[data-repository-select-trigger]')?.textContent.includes('aibo'));
-  for (const [kit,theme] of [['shadcn','light'],['shadcn','zinc'],['material3','daylight'],['material3','ocean']]) {
+  for (const [kit,theme] of [['ak-ui','light'],['ak-ui','dark']]) {
     await page.evaluate(async ({kit,theme})=>{const registry=await import('/src/lib/ui-kit/registry.ts');registry.setUiKit(kit);registry.setUiTheme(theme);},{kit,theme});
     const picker=page.getByRole('button',{name:'选择仓库',exact:true});
     await picker.click();
@@ -191,7 +211,7 @@ try {
     assert.equal(await picker.getAttribute('aria-expanded'),'false');
     assert.equal(await picker.evaluate(element=>element===document.activeElement),true);
     await picker.click();
-    await page.getByText('源代码管理',{exact:true}).click();
+    await page.getByRole('tab',{name:'Git',exact:true}).click();
     assert.equal(await picker.getAttribute('aria-expanded'),'false');
     await picker.click();
     await search.press('ArrowDown');
@@ -201,8 +221,62 @@ try {
     await picker.click();
     await page.getByRole('option',{name:'aibo',exact:true}).click();
   }
+  await panel.getByRole('tab',{name:'变更',exact:true}).click();
+  const unstage=page.getByRole('button',{name:'取消暂存 src/file.ts',exact:true});
+  if(await unstage.count()) { await unstage.focus(); await unstage.click(); }
+  await page.getByRole('button',{name:'暂存 src/file.ts',exact:true}).waitFor();
+  await native.fill('draft before staging');
+  assert.equal(await panel.getByRole('button',{name:'提交',exact:true}).isDisabled(),true);
+  await native.press('Enter');
+  assert.equal(await native.inputValue(),'draft before staging');
+  await page.evaluate(()=>window.densityFixture=true);
+  await page.getByRole('button',{name:'刷新 Git 状态',exact:true}).click();
+  await panel.getByRole('region',{name:'未跟踪的文件',exact:true}).waitFor();
+  for(const title of ['更改','未跟踪的文件']) {
+    const group=panel.getByRole('region',{name:title,exact:true});
+    const heading=group.locator('.git-change-group-heading');
+    const count=heading.locator('.git-change-group-count');
+    const action=heading.getByRole('button',{name:'暂存全部更改',exact:true});
+    await native.focus();
+    await page.mouse.move(0,0);
+    assert.equal(await action.evaluate(el=>getComputedStyle(el).opacity),'0');
+    assert.equal(await count.evaluate(el=>getComputedStyle(el).opacity),'1');
+    assert.ok((await heading.boundingBox()).height>=44,'group headings retain their original height');
+    const marker=await group.locator('.change-kind').first().boundingBox();
+    assert.equal(marker.width,18);
+    assert.equal(marker.height,18);
+    const before=await count.boundingBox();
+    await heading.hover();
+    assert.equal(await action.evaluate(el=>getComputedStyle(el).opacity),'1');
+    assert.equal(await count.evaluate(el=>getComputedStyle(el).opacity),'0');
+    const button=await action.boundingBox();
+    assert.ok(button.x<before.x+before.width && button.x+button.width>before.x,'bulk action covers the count without an extra column');
+    await page.mouse.move(0,0);
+    await action.focus();
+    assert.equal(await action.evaluate(el=>getComputedStyle(el).opacity),'1','keyboard focus reveals the bulk action');
+    const fileAction=group.locator('.changeset-actions button').first();
+    assert.equal(await fileAction.innerText(),'暂存');
+    await fileAction.focus();
+    await page.waitForFunction(title=>{const group=[...document.querySelectorAll('.git-change-group')].find(el=>el.getAttribute('aria-label')===title);return group && getComputedStyle(group.querySelector('.changeset-actions')).opacity==='1';},title);
+  }
+  for(const selector of ['.workspace-item','.session-item']) {
+    const rows=await page.locator(selector).evaluateAll(els=>els.filter(el=>el.getClientRects().length).map(el=>el.getBoundingClientRect().height));
+    assert.ok(rows.length>0);
+    assert.ok(rows.every(height=>height>=44),`${selector} retains its original row height`);
+  }
+  await panel.screenshot({path:'/tmp/aibo-git-density.png'});
+  await panel.getByRole('tab',{name:'历史',exact:true}).click();
+  await panel.locator('.git-history-item').first().waitFor();
+  const historyRows=await panel.locator('.git-history-item').evaluateAll(rows=>rows.map(row=>{
+    const bounds=row.getBoundingClientRect(), subject=row.querySelector('strong').getBoundingClientRect(), meta=row.querySelector('.git-history-meta').getBoundingClientRect();
+    return {height:bounds.height,separateLines:subject.bottom<=meta.top,contained:subject.top>=bounds.top && meta.bottom<=bounds.bottom};
+  }));
+  assert.ok(historyRows.length>0);
+  assert.ok(historyRows.every(row=>row.height>=44 && row.separateLines && row.contained),'history keeps two readable lines within each row');
+  await panel.screenshot({path:'/tmp/aibo-git-history-density.png'});
+
   assert.deepEqual(errors,[]);
-  const result={passed:true,nativePort:'mocked; actual App.svelte and Worker, no repository operations performed',browser:browser.version(),checks:['complete Git metadata and truncated hunk preview','stage targets host-selected file','forged action rejected','commit draft survives external/default/external switch','rejected commit keeps draft and successful commit clears it','branch draft and creation','history pagination through external action plus commit-file paging and preview','fetch dispatch through existing host controller','same-named file actions carry repository identity','drafts survive repository switches','delayed previous-repository history cannot overwrite selection','native all-repository grouping and scoped stage','history picker opens the selected repository history','repository picker layout and keyboard/search/dismissal in both skins and light/dark themes']};
+  const result={passed:true,nativePort:'mocked; actual App.svelte and Worker, no repository operations performed',browser:browser.version(),checks:['complete Git metadata and truncated hunk preview','stage targets host-selected file','forged action rejected','commit draft survives external/default/external switch','rejected commit keeps draft and successful commit clears it','branch draft and creation','history pagination through external action plus commit-file paging and preview','fetch dispatch through existing host controller','same-named file actions carry repository identity','drafts survive repository switches','delayed previous-repository history cannot overwrite selection','native all-repository grouping and scoped stage','history picker opens the selected repository history','repository picker layout and keyboard/search/dismissal in ak-ui light/dark themes','Git toolbar order, inline commit form and compact file rows at 300px and 350px']};
   await writeFile('/tmp/aibo-presentation-git-browser.json',JSON.stringify(result,null,2));console.log(JSON.stringify(result));
 
 } catch(error) { console.error(JSON.stringify({errors,body:await page.locator('body').innerText()})); throw error; } finally {await browser.close();await server.close();}
