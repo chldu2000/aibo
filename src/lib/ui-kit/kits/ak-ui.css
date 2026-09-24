@@ -814,17 +814,67 @@
   order: 3;
   /* Read-only text row, so it sits below the 44px interactive minimum. */
   min-height: 28px;
+  min-width: 0;
   align-items: center;
   gap: var(--ak-space-4);
   padding: 0 var(--ak-space-4);
   background: var(--aibo-surface-hover);
   border-top: 1px solid var(--aibo-border);
   color: var(--aibo-muted);
-  font: var(--ak-type-label-size) var(--ak-font-mono);
+  font: var(--aibo-type-meta) var(--ak-font-sans);
+  white-space: nowrap;
 }
 
-.app-shell[data-ui-kit='ak-ui'] .workbench-status span:last-child {
+.app-shell[data-ui-kit='ak-ui'] :is(.workbench-status-environment, .workbench-status-theme) {
+  flex: none;
+}
+
+.app-shell[data-ui-kit='ak-ui'] .workbench-status-workspace {
+  min-width: 0;
+  max-width: 20%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.app-shell[data-ui-kit='ak-ui'] .workbench-status-theme {
   margin-left: auto;
+}
+
+.app-shell[data-ui-kit='ak-ui'] .workbench-status.has-usage .workbench-status-theme {
+  margin-left: 0;
+}
+
+.app-shell[data-ui-kit='ak-ui'] .workbench-status-divider {
+  height: 12px;
+  background: var(--aibo-border);
+}
+
+.app-shell[data-ui-kit='ak-ui'] .workbench-status-usage {
+  display: flex;
+  align-items: center;
+  gap: var(--ak-space-4);
+  min-width: 0;
+  min-height: 27px;
+  margin-left: auto;
+  overflow-x: auto;
+  scrollbar-width: none;
+  font-variant-numeric: tabular-nums;
+}
+
+.app-shell[data-ui-kit='ak-ui'] .workbench-status-usage > span {
+  flex: none;
+}
+
+.app-shell[data-ui-kit='ak-ui'] .workbench-status-usage:focus-visible {
+  outline: var(--ak-focus-width) solid var(--aibo-focus);
+  outline-offset: -2px;
+}
+
+.app-shell[data-ui-kit='ak-ui'] .composer-context-actions {
+  display: flex;
+  flex: none;
+  justify-content: flex-end;
+  margin-bottom: var(--ak-space-2);
 }
 
 .app-shell[data-ui-kit='ak-ui'] .agent-status-mark {
@@ -1119,6 +1169,20 @@
 
   .app-shell[data-ui-kit='ak-ui'] .workbench-status {
     display: none;
+  }
+
+  .app-shell[data-ui-kit='ak-ui'] .workbench-status.has-usage {
+    display: flex;
+    padding-inline: var(--ak-space-3);
+  }
+
+  .app-shell[data-ui-kit='ak-ui'] .workbench-status :is(.workbench-status-environment, .workbench-status-workspace, .workbench-status-theme, .workbench-status-divider) {
+    display: none;
+  }
+
+  .app-shell[data-ui-kit='ak-ui'] .workbench-status-usage {
+    flex: 1;
+    margin-left: 0;
   }
 
   .app-shell[data-ui-kit='ak-ui'] .timeline-heading .conversation-navigation {
@@ -1580,7 +1644,7 @@
 
 /* Secondary content retains readable type and follows the same content grid. */
 
-.app-shell[data-ui-kit='ak-ui'] :is(.goal-bar, .usage-strip, .timeline-retry, .agent-activity, .agent-queue, .composer-draft-status) {
+.app-shell[data-ui-kit='ak-ui'] :is(.goal-bar, .usage-strip, .timeline-retry, .agent-activity, .agent-queue, .composer-draft-status, .composer-context-actions) {
   /* These sit between the feed and the composer, so they share the same column. */
   width: min(100% - var(--workbench-content-inset) * 2, var(--workbench-content-width));
   margin-inline: auto;

@@ -598,6 +598,7 @@
     PiSessionTreeOverlay,
     SettingsPanel,
     TimelinePanel,
+    WorkbenchStatus,
     WindowTitlebar,
     ExecutionHistoryPanel,
     SessionHistoryPanel,
@@ -4168,7 +4169,7 @@
 {/snippet}
 </WorkbenchPresentation>
 </PresentationHost>
-<footer class="workbench-status" aria-label="工作台状态"><span>{desktop ? '本地工作区' : '浏览器预览'}</span><span>{selectedWorkspace?.label ?? '未选择工作区'}</span><span>{$activeTheme.label}</span></footer>
+<WorkbenchStatus {desktop} workspaceLabel={selectedWorkspace?.label ?? null} themeLabel={$activeTheme.label} usage={usageValues} />
   <AppOverlays
     {errorMessage}
     {notice}

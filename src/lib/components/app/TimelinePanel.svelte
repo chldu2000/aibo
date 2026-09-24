@@ -221,10 +221,6 @@
     }
     return new Set(lastCompletedAssistantByTurn.values());
   });
-  const contextPercent = $derived.by(() => {
-    if (!usageValues || usageValues.contextUsed === null || !usageValues.contextLimit || usageValues.contextLimit <= 0) return null;
-    return Math.min(100, Math.round((usageValues.contextUsed / usageValues.contextLimit) * 100));
-  });
   function userInputKey(request: UserInputRequest, questionId: string): string {
     return userInputDraftKey(request, questionId);
   }
@@ -259,16 +255,6 @@
               : status;
   }
 
-  function compactNumber(value: number): string {
-    return new Intl.NumberFormat('zh-CN', { notation: 'compact', maximumFractionDigits: 1 }).format(value);
-  }
-
-  function limitLabel(limit: UsageValues['limits'][number]): string {
-    if (limit.label) return limit.label;
-    if (limit.windowMinutes && limit.windowMinutes % 1440 === 0) return `${limit.windowMinutes / 1440} 天`;
-    if (limit.windowMinutes && limit.windowMinutes % 60 === 0) return `${limit.windowMinutes / 60} 小时`;
-    return limit.windowMinutes ? `${limit.windowMinutes} 分钟` : '套餐';
-  }
 </script>
 
 {#snippet activity()}
@@ -643,24 +629,11 @@
     onSelectWorkspacePath={onSelectWorkspacePath}
   />
   {/key}
-  {#if usageValues}
-    <div class="usage-strip composer-usage-strip" aria-label="会话用量与套餐余量">
-      {#if usageValues.contextUsed !== null}
-        <span class:usage-estimated={usageValues.contextEstimated} title={usageValues.contextLimit ? `${usageValues.contextUsed} / ${usageValues.contextLimit} tokens` : `${usageValues.contextUsed} tokens`}>
-          上下文 {usageValues.contextLimit ? `${contextPercent ?? 0}%` : compactNumber(usageValues.contextUsed)}{usageValues.contextEstimated ? ' · 估算' : ''}
-        </span>
-      {/if}
-      {#if usageValues.total !== null}<span title={`输入 ${usageValues.input ?? '—'} · 输出 ${usageValues.output ?? '—'}`}>Token {compactNumber(usageValues.total)}</span>{/if}
-      {#if usageValues.plan}<span>{usageValues.plan.toUpperCase()}</span>{/if}
-      {#each usageValues.limits as limit (limit.id)}
-        <span title={limit.resetsAt ? `重置于 ${new Date(limit.resetsAt * 1000).toLocaleString()}` : undefined}>{limitLabel(limit)}剩余 {Math.max(0, 100 - Math.round(limit.usedPercent))}%</span>
-      {/each}
-      {#if usageValues.credits?.unlimited}<span>Credits 不限量</span>{:else if usageValues.credits?.balance}<span>Credits {usageValues.credits.balance}</span>{/if}
-      {#if session?.capabilities.includes('compaction.run') && !sessionRunning && !sessionArchived && usageValues.contextUsed !== null}
-        <Button class="usage-compact-button" variant="ghost" size="sm" type="button" onclick={onCompact} disabled={busy || contextCompacting}>
-          {contextCompacting ? '压缩中…' : '压缩上下文'}
-        </Button>
-      {/if}
+  {#if usageValues && session?.capabilities.includes('compaction.run') && !sessionRunning && !sessionArchived && usageValues.contextUsed !== null}
+    <div class="composer-context-actions">
+      <Button class="usage-compact-button" variant="ghost" size="sm" type="button" onclick={onCompact} disabled={busy || contextCompacting}>
+        {contextCompacting ? '压缩中…' : '压缩上下文'}
+      </Button>
     </div>
   {/if}
 </Card>

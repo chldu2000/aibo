@@ -2,6 +2,7 @@ export { default as WorkspaceSidebar } from './WorkspaceSidebar.svelte';
 export { default as PluginManagerPanel } from './PluginManagerPanel.svelte';
 export { default as Composer } from './Composer.svelte';
 export { default as TimelinePanel } from './TimelinePanel.svelte';
+export { default as WorkbenchStatus } from './WorkbenchStatus.svelte';
 export { default as PiSessionTreeOverlay } from './PiSessionTreeOverlay.svelte';
 export { default as Inspector } from './Inspector.svelte';
 export { default as WorkspaceGitPanel } from './WorkspaceGitPanel.svelte';
