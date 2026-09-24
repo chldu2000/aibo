@@ -13,6 +13,7 @@
     'archive-restore': 'M3 4h18v4H3ZM5 8v13h14V8M12 18v-7m-3 3 3-3 3 3',
     branch: 'M6 7v10m12-10c0 7-12 3-12 9M8 5a2 2 0 1 1-4 0 2 2 0 1 1 4 0M8 19a2 2 0 1 1-4 0 2 2 0 1 1 4 0M20 5a2 2 0 1 1-4 0 2 2 0 1 1 4 0',
     bolt: 'm13 3-9 11h7l-1 7 10-12h-7Z',
+    terminal: 'M3 4h18v16H3Zm4 5 3 3-3 3m5 0h5',
     check: 'm5 12 4 4L19 6',
     'chevron-down': 'm6 9 6 6 6-6',
     close: 'm6 6 12 12M6 18 18 6',

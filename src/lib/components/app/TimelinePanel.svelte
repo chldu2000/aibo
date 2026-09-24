@@ -10,14 +10,15 @@
   import type { ModelConfigurationState } from '$lib/app/model-configuration';
   import { goalStatusLabel, goalCanResume } from '$lib/app/session-goal';
   import { sessionAgentKind } from '$lib/app/agent-kind';
-  import { GoalBar, Badge, Button, Card, CardContent, CardHeader, CardTitle, Icon, Input, Separator } from '$lib/ui-kit';
+  import { AgentStatusMark, GoalBar, Badge, Button, Card, CardContent, CardHeader, CardTitle, Icon, Input, Separator } from '$lib/ui-kit';
   import type { AgentCommand, AgentGoal, AgentQueueSnapshot, ContextAttachment, SessionControlId, SessionExecutionProfile, SessionModelCatalog, Session, UserInputRequest, WorkspacePathSuggestion } from '$lib/types';
   import type { UsageValues } from './view-models';
   import Composer from './Composer.svelte';
   import { splitSessionReferences } from '../../../../packages/presentation-workbench/session-references.js';
   import MarkdownContent from './MarkdownContent.svelte';
-  import { sessionStateLabel } from './session-utils';
+  import { sessionStateLabel, sessionStatusTone } from './session-utils';
   import { executionTiming } from '$lib/app/execution-record';
+  import { toolGroupDuration, toolContentPreview } from '$lib/app/conversation-record';
   import { groupTimelineItems, isDiffContent, toolLabel } from './timeline-utils';
   import type {
     CodexThreadView,
@@ -36,6 +37,7 @@
     session: SessionPanelView | null;
     /** Provider name declared by the session's plugin, shown as the assistant's author label. */
     sessionProviderLabel?: string;
+    sessionProviderIcon?: import('../../../../packages/plugin-protocol/src/agent-icon').AgentIcon;
     selectedSessionId: string | null;
     codexGoal: AgentGoal | null;
     goalBusy?: boolean;
@@ -109,6 +111,7 @@
     workspace,
     session,
     sessionProviderLabel,
+    sessionProviderIcon,
     selectedSessionId,
     codexGoal,
     goalBusy = false,
@@ -267,6 +270,15 @@
   }
 </script>
 
+{#snippet activity()}
+  {#if agentActivityLabel}
+    <div class="agent-activity" role="status" aria-live="polite">
+      <AgentStatusMark agent="plugin" icon={sessionProviderIcon} tone={session ? sessionStatusTone(session) : 'idle'} label={sessionProviderLabel ?? '助手'} />
+      <span>{agentActivityLabel}</span>
+    </div>
+  {/if}
+{/snippet}
+
 <Card as="section" class="timeline" data-ui-component="timeline-panel" aria-label="会话时间线">
   <CardHeader class="panel-heading timeline-heading">
     <div class="timeline-heading-copy"><small>{workspace?.label ?? 'Aibo'}{#if session} / {sessionProviderLabel ?? session.agent}{/if}</small><CardTitle>{session?.label ?? workspace?.label ?? '选择工作区'}</CardTitle></div>
@@ -329,21 +341,32 @@
         {/if}
         {#each groupTimelineItems(visibleTimeline, session?.capabilities.includes('session.timeline') ?? false) as renderItem (renderItem.id)}
           {#if renderItem.kind === 'tool-group'}
+            {@const duration = toolGroupDuration(renderItem.items)}
             <Card as="article" data-presentation-message={'message-group:' + renderItem.id} class="timeline-entry tool-entry tool-group-entry">
               <details class="tool-group">
                 <summary>
+                  <Icon name="chevron-down" class="disclosure-chevron" />
                   <span class="tool-group-title">
-                    <Icon name="bolt" size={14} />
+                    <Icon name="terminal" />
                     <span>{renderItem.items.length} 个工具调用</span>
                   </span>
-                  {#if countStatus(renderItem.items, 'failed') > 0}<Badge variant="destructive">{countStatus(renderItem.items, 'failed')} 个失败</Badge>{:else if countStatus(renderItem.items, 'streaming', 'queued') > 0}<Badge variant="outline">{countStatus(renderItem.items, 'streaming', 'queued')} 个进行中</Badge>{/if}
+                  <span class="tool-group-meta">
+                    {#if countStatus(renderItem.items, 'failed') > 0}· {countStatus(renderItem.items, 'failed')} 个失败 {/if}
+                    {#if countStatus(renderItem.items, 'streaming', 'queued') > 0}· {countStatus(renderItem.items, 'streaming', 'queued')} 个进行中 {/if}
+                    {#if countStatus(renderItem.items, 'interrupted') > 0}· {countStatus(renderItem.items, 'interrupted')} 个中断 {/if}
+                    {#if duration}<span title="各记录首次记录至最后更新的间隔之和">· {duration}</span>{/if}
+                  </span>
                 </summary>
                 <div class="tool-group-items">
                   {#each renderItem.items as tool (tool.id)}
+                    {@const timing = executionTiming(tool)}
+                    {@const preview = toolContentPreview(tool.content)}
                     <details class="tool-output">
-                      <summary>
-                        <span class="tool-output-name">{toolLabel(tool)}</span>
-                        <span class="tool-output-action">{tool.entryType === 'tool_call' ? '查看调用参数' : isDiffContent(tool.content) ? '查看 diff' : '查看工具输出'}</span>
+                      <summary title={tool.entryType === 'tool_call' ? '查看调用参数' : isDiffContent(tool.content) ? '查看 diff' : '查看工具输出'}>
+                        <span class="tool-record-status" data-status={tool.status} aria-label={statusLabel(tool.status)} title={statusLabel(tool.status)}>{tool.status === 'completed' ? '✓' : tool.status === 'failed' ? '✕' : tool.status === 'interrupted' ? '−' : '…'}</span>
+                        <span class="tool-record-name" title={tool.toolName ?? '工具'}>{tool.toolName || '工具'}</span>
+                        <span class="tool-record-target" title={preview}>{preview}</span>
+                        {#if timing.durationLabel !== '—'}<span class="tool-record-duration" title={timing.durationTitle}>{toolGroupDuration([tool])}</span>{/if}
                       </summary>
                       <pre class:diff-content={isDiffContent(tool.content)}>{tool.content || '…'}</pre>
                     </details>
@@ -355,6 +378,7 @@
             <Card as="article" data-presentation-message={'message-group:' + renderItem.id} class="timeline-entry system-entry tool-group-entry">
               <details class="tool-group">
                 <summary>
+                  <Icon name="chevron-down" class="disclosure-chevron" />
                   <span class="tool-group-title">
                     <Icon name="diagnostics" size={14} />
                     <span>系统消息 · {renderItem.items.length} 项</span>
@@ -375,6 +399,7 @@
             </Card>
           {:else}
             {@const item = renderItem.item}
+            {@const timing = executionTiming(item)}
             {@const child = item.toolName === 'subagent' ? parseSubagent(item.content) : null}
             {#if child}
               <div data-presentation-message={'message:' + item.id}><SubagentCard name={child.name} task={child.task} statusLabel={subagentStatusLabels[child.status]} activity={child.activity} failed={['failed','unavailable'].includes(child.status)} onOpen={() => onOpenSubagent?.(child.id)} /></div>
@@ -385,7 +410,9 @@
               class={`timeline-entry ${item.role === 'tool' || (item.role === 'system' && item.toolName === 'reasoning') ? 'compact-record' : ''} ${item.role === 'assistant' ? 'assistant-entry' : item.role === 'user' ? 'user-entry' : item.role === 'tool' ? 'tool-entry' : item.role === 'system' ? 'system-entry' : ''}`}
             >
               <div class="entry-meta">
+                {#if item.role === 'assistant'}<AgentStatusMark agent="plugin" icon={sessionProviderIcon} tone="idle" label={sessionProviderLabel ?? '助手'} />{/if}
                 <span class="entry-author">{item.role === 'assistant' ? (sessionProviderLabel ?? session?.agent ?? '助手') : item.role === 'user' ? '你' : item.role === 'system' && item.toolName === 'reasoning' ? '思考' : item.role === 'tool' ? '工具' : '系统'}</span>
+                {#if timing.dateTime && (item.role === 'user' || item.role === 'assistant')}<time datetime={timing.dateTime} title={timing.dateTime}>{timing.timeLabel}</time>{/if}
                 <div class="entry-meta-actions">
                   {#if item.status !== 'completed'}<Badge variant={item.status === 'failed' ? 'destructive' : item.status === 'queued' ? 'secondary' : 'outline'}>{statusLabel(item.status)}</Badge>{/if}
                   {#if session?.capabilities.includes('session.fork') && !sessionArchived && item.turnId && forkBoundaryMessageIds.has(item.id)}
@@ -428,6 +455,7 @@
             {/if}
           {/if}
         {/each}
+        {@render activity()}
         </div>
       </div>
     {:else if session}
@@ -442,6 +470,7 @@
         <h3>新建会话</h3>
       </div>
     {/if}
+    {#if timeline.length === 0}{@render activity()}{/if}
   {:else}
     <div class="timeline-empty">
       <div class="empty-symbol">+</div>
@@ -527,13 +556,6 @@
           </CardContent>
         </Card>
       {/each}
-    </div>
-  {/if}
-
-  {#if agentActivityLabel}
-    <div class="agent-activity" role="status" aria-live="polite">
-      <span class="activity-dots" aria-hidden="true"><span></span><span></span><span></span></span>
-      <span>{agentActivityLabel}</span>
     </div>
   {/if}
 

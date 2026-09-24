@@ -3893,6 +3893,7 @@
       workspace={selectedWorkspace}
       session={selectedSession}
       sessionProviderLabel={selectedSession ? sessionProviderInfo(pluginInstallations, selectedSession).label : undefined}
+      sessionProviderIcon={selectedSession ? sessionProviderIcon(pluginInstallations, selectedSession) : undefined}
       selectedSessionId={selectedSessionId}
       {codexGoal}
       goalBusy={goalBusy}

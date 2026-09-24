@@ -21,6 +21,7 @@ export type UiIconName =
   | 'archive-restore'
   | 'branch'
   | 'bolt'
+  | 'terminal'
   | 'check'
   | 'chevron-down'
   | 'close'
