@@ -117,7 +117,7 @@ try {
   assert(!repositoryLayout.background.startsWith('rgba('),`repository popup must hide the Git controls beneath it: ${repositoryLayout.background}`);
   await page.screenshot({path:output+'/repository-popup-light.png'});
   await page.getByRole('option',{name:/^aibo/}).click();
-  await page.locator('.git-remote-row').waitFor();
+  await page.locator('.git-branch-bar').waitFor();
   const changesTab=page.locator('#git-changes-tab');
   const historyTab=page.locator('#git-history-tab');
   await changesTab.focus();await page.keyboard.press('ArrowRight');
@@ -128,15 +128,15 @@ try {
   await page.locator('#git-changes-tab:focus').waitFor();
   assert.equal(await changesTab.evaluate(e=>getComputedStyle(e,'::after').height),'3px');
   assert.equal(await historyTab.evaluate(e=>getComputedStyle(e).borderLeftWidth),'0px','tabs are separated by spacing, not divider lines');
-  const gitHeader=await page.locator('[data-ui-component="workspace-git-panel"] .panel-heading').boundingBox();
-  const remote=await page.locator('.git-remote-row').boundingBox();
+  const gitHeader=await page.locator('.git-repository-toolbar').boundingBox();
+  const remote=await page.locator('.git-branch-bar').boundingBox();
   assert(remote.y+remote.height-gitHeader.y<310,'Git controls do not consume the whole side panel');
   const readability = await page.evaluate(() => {
     const name = document.querySelector('.changeset-file-name');
     const trigger = document.querySelector('.git-stash-trigger');
     return {nameClipped: name.scrollWidth > name.clientWidth, name: name.textContent,
       stashAlignment: getComputedStyle(trigger).justifyContent,
-      sizes: [...document.querySelectorAll('.capability-list [data-slot="badge"], .git-remote-row, .session-context-content dd')].map(e => parseFloat(getComputedStyle(e).fontSize))};
+      sizes: [...document.querySelectorAll('.capability-list [data-slot="badge"], .git-branch-bar, .session-context-content dd')].map(e => parseFloat(getComputedStyle(e).fontSize))};
   });
   assert.equal(readability.nameClipped, false, readability.name);
   assert.equal(readability.stashAlignment, 'space-between');
@@ -145,11 +145,11 @@ try {
     const styles = await page.evaluate(() => {
       function background(e) { while(e){const color=getComputedStyle(e).backgroundColor;if(color!=='rgba(0, 0, 0, 0)'&&color!=='transparent')return color;e=e.parentElement}return '' }
       const bg=selector=>background(document.querySelector(selector));
-      return {heading:bg('.git-change-group-heading'),file:bg('.changeset-file-row'),summary:bg('.git-summary-card'),canvas:bg('.timeline'),editor:bg('.composer'),
+      return {heading:bg('.git-change-group-heading'),file:bg('.changeset-file-row'),summary:bg('.side-panel-tabs'),canvas:bg('.timeline'),editor:bg('.composer'),
         selected:getComputedStyle(document.querySelector('.git-section-tabs [aria-selected="true"]')).color,rest:getComputedStyle(document.querySelector('.git-section-tabs [aria-selected="false"]')).color};
     });
     assert.notEqual(styles.heading,styles.file,'Git group heading separates from file content');
-    assert.notEqual(styles.summary,styles.file,'branch summary separates from file content');
+    assert.notEqual(styles.summary,styles.file,'side panel navigation separates from file content');
     assert.notEqual(styles.canvas,styles.editor,'editor separates from reading canvas');
     assert.notEqual(styles.selected,styles.rest,'Git selected tab has a stronger label as well as its signal bar');
   }

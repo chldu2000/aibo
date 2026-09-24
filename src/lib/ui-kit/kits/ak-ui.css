@@ -168,13 +168,12 @@
   border-radius: 0;
 }
 
-.app-shell[data-ui-kit='ak-ui'] .sidebar-new-session::after {
-  content: '';
-  position: absolute;
-  top: -1px;
-  right: -1px;
-  border-top: var(--ak-cut-sm) solid var(--aibo-surface-hover);
-  border-left: var(--ak-cut-sm) solid transparent;
+.app-shell[data-ui-kit='ak-ui'] .sidebar-new-session {
+  clip-path: polygon(0 0, calc(100% - var(--ak-cut-sm)) 0, 100% var(--ak-cut-sm), 100% 100%, 0 100%);
+}
+
+.app-shell[data-ui-kit='ak-ui'] .sidebar-new-session:is(:focus-visible, :disabled) {
+  clip-path: none;
 }
 
 .app-shell[data-ui-kit='ak-ui'] .workspace-toolbar [data-slot='button'] {
@@ -2043,7 +2042,7 @@
 }
 .app-shell[data-ui-kit='ak-ui'] .git-change-list .changeset-file-name {
   flex: 0 1 auto;
-  max-width: 65%;
+  max-width: none;
 }
 .app-shell[data-ui-kit='ak-ui'] .git-change-list .changeset-file-name-only {
   max-width: 100%;
@@ -2073,10 +2072,10 @@
   font-weight: 400;
 }
 
-/* Only the single-line Git change list uses compact 32px rows. */
+/* Single-line Git changes use the reference design’s 36px row height. */
 .app-shell[data-ui-kit='ak-ui'] .git-change-list .changeset-file-button {
-  height: 32px;
-  min-height: 32px;
+  height: 36px;
+  min-height: 36px;
   padding-block: 0;
 }
 .app-shell[data-ui-kit='ak-ui'] .git-change-list .change-kind {
@@ -2085,8 +2084,8 @@
   line-height: 1;
 }
 .app-shell[data-ui-kit='ak-ui'] .git-change-list .changeset-file-row {
-  height: 32px;
-  min-height: 32px;
+  height: 36px;
+  min-height: 36px;
 }
 .app-shell[data-ui-kit='ak-ui'] .git-change-group-heading {
   position: relative;
@@ -2113,8 +2112,8 @@
 .app-shell[data-ui-kit='ak-ui'] .git-change-list .changeset-actions .ak-button {
   width: auto;
   min-width: 0;
-  height: 32px;
-  min-height: 32px;
+  height: 36px;
+  min-height: 36px;
   padding: 0 var(--ak-space-1);
   color: var(--aibo-muted);
   font-weight: 400;
@@ -2127,4 +2126,85 @@
 
 .app-shell[data-ui-kit='ak-ui'] .git-change-group-count {
   transition: none;
+}
+
+/* Expanded tools retain the design's compact 36px rows, independently of their summary. */
+.app-shell[data-ui-kit='ak-ui'] .tool-group-items {
+  margin-top: 0;
+  padding-top: 0;
+}
+.app-shell[data-ui-kit='ak-ui'] .tool-group-items .tool-output {
+  margin-top: 0;
+}
+.app-shell[data-ui-kit='ak-ui'] .tool-group-items .tool-output + .tool-output {
+  border-top: var(--ak-line-hairline) solid var(--aibo-border);
+}
+.app-shell[data-ui-kit='ak-ui'] .tool-group-items .tool-output > summary {
+  min-height: 36px;
+}
+.app-shell[data-ui-kit='ak-ui'] .git-history .git-history-item[aria-expanded='true'],
+.app-shell[data-ui-kit='ak-ui'] .git-history .git-history-item[aria-expanded='true']:hover:not(:disabled) {
+  background: var(--aibo-accent-soft);
+  box-shadow: inset var(--ak-line-strong) 0 var(--aibo-accent);
+  border-radius: 0;
+}
+.app-shell[data-ui-kit='ak-ui'] .execution-table {
+  width: 100%;
+  table-layout: fixed;
+  border-collapse: collapse;
+  border: var(--ak-line-hairline) solid var(--aibo-border);
+  background: var(--ak-surface-panel);
+  font-size: var(--aibo-type-meta);
+}
+.app-shell[data-ui-kit='ak-ui'] .execution-status-column { width: 48px; }
+.app-shell[data-ui-kit='ak-ui'] .execution-duration-column { width: 72px; }
+.app-shell[data-ui-kit='ak-ui'] .execution-time-column { width: 64px; }
+.app-shell[data-ui-kit='ak-ui'] .execution-table :is(th, td) {
+  padding: 0 var(--ak-space-2);
+  height: 44px;
+  text-align: left;
+  border-bottom: var(--ak-line-hairline) solid var(--aibo-border);
+}
+.app-shell[data-ui-kit='ak-ui'] .execution-table th {
+  color: var(--aibo-muted);
+  font-weight: 500;
+}
+.app-shell[data-ui-kit='ak-ui'] .execution-table :is(time, .execution-duration) {
+  color: var(--aibo-muted);
+  font-family: var(--ak-font-mono);
+  white-space: nowrap;
+}
+.app-shell[data-ui-kit='ak-ui'] .execution-status {
+  display: grid;
+  place-items: center;
+  width: 18px;
+  height: 18px;
+  border: var(--ak-line-hairline) solid currentColor;
+  color: var(--aibo-muted);
+}
+.app-shell[data-ui-kit='ak-ui'] .execution-record[data-status='completed'] .execution-status { color: var(--aibo-success-text); }
+.app-shell[data-ui-kit='ak-ui'] .execution-record[data-status='failed'] .execution-status { color: var(--aibo-danger-text); }
+.app-shell[data-ui-kit='ak-ui'] .execution-record[data-status='interrupted'] .execution-status { color: var(--aibo-warning-text); }
+.app-shell[data-ui-kit='ak-ui'] .execution-record:is(:hover, :focus-within) { background: var(--aibo-hover); }
+.app-shell[data-ui-kit='ak-ui'] .execution-table .execution-toggle {
+  width: 100%;
+  min-width: 0;
+  justify-content: space-between;
+  padding-inline: 0;
+  font-family: var(--ak-font-mono);
+}
+.app-shell[data-ui-kit='ak-ui'] .execution-toggle span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.app-shell[data-ui-kit='ak-ui'] .execution-toggle:hover:not(:disabled) { background: transparent; box-shadow: none; }
+.app-shell[data-ui-kit='ak-ui'] .execution-toggle[aria-expanded='true'] svg { transform: rotate(180deg); }
+.app-shell[data-ui-kit='ak-ui'] .execution-detail pre {
+  max-height: 320px;
+  margin: 0;
+  overflow: auto;
+  padding: var(--ak-space-3) 0;
+  font: var(--aibo-type-meta)/1.6 var(--ak-font-mono);
 }

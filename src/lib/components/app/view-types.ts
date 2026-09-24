@@ -40,7 +40,7 @@ export type SessionPanelView = Pick<
   'id' | 'workspaceId' | 'agent' | 'label' | 'state' | 'archived' | 'externalSessionId' | 'pluginInstallationId' | 'capabilities' | 'updatedAt'
 >;
 
-export type TimelineViewItem = Pick<TimelineItem, 'id' | 'turnId' | 'role' | 'toolName' | 'entryType' | 'content' | 'status'>;
+export type TimelineViewItem = Pick<TimelineItem, 'id' | 'turnId' | 'role' | 'toolName' | 'entryType' | 'content' | 'status'> & Partial<Pick<TimelineItem, 'createdAt' | 'updatedAt'>>;
 
 export type ApprovalView = Pick<
   ApprovalRequest,

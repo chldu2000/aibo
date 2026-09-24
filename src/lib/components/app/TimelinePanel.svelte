@@ -17,6 +17,7 @@
   import { splitSessionReferences } from '../../../../packages/presentation-workbench/session-references.js';
   import MarkdownContent from './MarkdownContent.svelte';
   import { sessionStateLabel } from './session-utils';
+  import { executionTiming } from '$lib/app/execution-record';
   import { groupTimelineItems, isDiffContent, toolLabel } from './timeline-utils';
   import type {
     CodexThreadView,
@@ -171,6 +172,7 @@
   }: TimelinePanelProps = $props();
   const sessionKind = $derived(sessionAgentKind(session));
   const timelineStickiness = createTimelineStickiness();
+  let expandedExecutionIds = $state<string[]>([]);
   let timelineFeed: HTMLElement | null = $state(null);
   let timelineContent: HTMLElement | null = $state(null);
 
@@ -452,11 +454,26 @@
     <div role="tabpanel" id="session-panel-executions" aria-labelledby="session-tab-executions" class="timeline-feed" tabindex="0">
       {#if !session}<p role="status">请先选择会话。</p>
       {:else}
-        {#each timeline.filter(item => item.role === 'tool') as item (item.id)}
-          <Card as="article" class="timeline-entry tool-entry execution-record">
-            <details class="tool-output"><summary><span class="tool-output-name">{toolLabel(item)}</span><span class="tool-output-action">{item.entryType === 'tool_call' ? '查看调用参数' : '查看执行结果'}</span><Badge variant={item.status === 'failed' ? 'destructive' : 'outline'}>{statusLabel(item.status)}</Badge></summary><pre>{item.content || '…'}</pre></details>
-          </Card>
-        {:else}<p role="status">本会话暂无执行记录。</p>{/each}
+        {#if timeline.some(item => item.role === 'tool')}
+          <table class="execution-table" aria-label="执行记录">
+            <colgroup><col class="execution-status-column" /><col /><col class="execution-duration-column" /><col class="execution-time-column" /></colgroup>
+            <thead><tr><th scope="col">状态</th><th scope="col">命令 / 工具</th><th scope="col">耗时</th><th scope="col">时间</th></tr></thead>
+            <tbody>
+              {#each timeline.filter(item => item.role === 'tool') as item, index (item.id)}
+                {@const timing = executionTiming(item)}
+                {@const executionKey = `${selectedSessionId}:${item.id}`}
+                {@const expanded = expandedExecutionIds.includes(executionKey)}
+                <tr class="execution-record" data-status={item.status}>
+                  <td><span class="execution-status" role="img" aria-label={statusLabel(item.status)} title={statusLabel(item.status)}>{item.status === 'completed' ? '✓' : item.status === 'failed' ? '×' : item.status === 'interrupted' ? '!' : '…'}</span></td>
+                  <td><Button variant="ghost" class="execution-toggle" aria-label={`${toolLabel(item)} · ${item.entryType === 'tool_call' ? '查看调用参数' : '查看执行结果'}`} aria-expanded={expanded} aria-controls={`execution-detail-${index}`} title={toolLabel(item)} onclick={() => expandedExecutionIds = expanded ? expandedExecutionIds.filter(id => id !== executionKey) : [...expandedExecutionIds, executionKey]}><span>{toolLabel(item)}</span><Icon name="chevron-down" size={12} aria-hidden="true" /></Button></td>
+                  <td class="execution-duration" title={timing.durationTitle}>{timing.durationLabel}</td>
+                  <td><time datetime={timing.dateTime} title={timing.dateTime}>{timing.timeLabel}</time></td>
+                </tr>
+                <tr class="execution-detail" hidden={!expanded} id={`execution-detail-${index}`}><td colspan="4"><pre>{item.content || '…'}</pre></td></tr>
+              {/each}
+            </tbody>
+          </table>
+        {:else}<p role="status">本会话暂无执行记录。</p>{/if}
       {/if}
     </div>
   {:else if activeTab === 'changes'}

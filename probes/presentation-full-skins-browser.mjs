@@ -102,11 +102,16 @@ try {
   }
   await page.evaluate(()=>window.emitAgent('session.state_changed',{state:'idle'}));
   const tabs=page.getByRole('tablist',{name:'会话视图'});
+  const toolGroup=page.locator('.tool-group').filter({hasText:'2 个工具调用'}).first();
+  await toolGroup.locator(':scope > summary').click();
+  const toolRows=await toolGroup.locator('.tool-output > summary').evaluateAll(els=>els.map(el=>el.getBoundingClientRect().height));
+  assert.equal(toolRows.length,2);
+  assert.ok(toolRows.every(height=>height===36),'expanded tool summaries are 36px');
   await tabs.getByRole('tab',{name:'执行记录',exact:true}).click();
   const executions=page.locator('#session-panel-executions');
-  await executions.locator('article').first().waitFor();
-  assert.equal(await executions.locator('article').count(),2);
-  await executions.getByText('查看执行结果',{exact:true}).click();
+  await executions.locator('.execution-record').first().waitFor();
+  assert.equal(await executions.locator('.execution-record').count(),2);
+  await executions.getByRole('button',{name:/查看执行结果$/}).click();
   await executions.getByText('literal tool result',{exact:true}).waitFor();
   await tabs.getByRole('tab',{name:'变更',exact:true}).click();
   const changes=page.locator('#session-panel-changes');

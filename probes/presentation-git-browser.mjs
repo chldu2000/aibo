@@ -114,7 +114,7 @@ try {
     assert.ok(rects.commit.bottom<=rects.group.y+.5);
     assert.equal(rects.input.y,rects.submit.y,'commit input and action share one row');
     assert.ok(rects.submit.right<=rects.panel.right,'commit action fits narrow inspector');
-    assert.equal(rects.row.height,32,'file rows follow the requested 32px density');
+    assert.equal(rects.row.height,36,'file rows follow the reference design’s 36px density');
     assert.ok(await panel.evaluate(el=>el.scrollWidth<=el.clientWidth),'no horizontal overflow');
     await panel.screenshot({path:`/tmp/aibo-git-layout-${width}.png`});
   }
@@ -282,8 +282,10 @@ try {
   const historyItem=panel.locator('.git-history-item').first();
   await historyItem.hover();
   await historyItem.evaluate(el=>Promise.all(el.getAnimations().map(animation=>animation.finished)));
-  assert.equal(await historyItem.evaluate(el=>getComputedStyle(el).boxShadow),'none','commit history hover must not draw a bottom signal');
+  assert.ok(!(await historyItem.evaluate(el=>getComputedStyle(el).boxShadow)).includes('0px -2px'),'commit history hover must not draw a bottom signal');
   await historyItem.click();
+  await historyItem.evaluate(el=>Promise.all(el.getAnimations().map(animation=>animation.finished)));
+  assert.match(await historyItem.evaluate(el=>getComputedStyle(el).boxShadow), /3px 0px 0px 0px inset/, 'selected history entry has a left signal');
   const commitFile=panel.locator('.git-commit-file').first();
   await commitFile.hover();
   await commitFile.evaluate(el=>Promise.all(el.getAnimations().map(animation=>animation.finished)));
