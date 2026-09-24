@@ -1,8 +1,5 @@
 # Business module rules
 
-- Keep modules framework-independent: no imports from Svelte, UI components,
-  or concrete API implementations.
-- Expose pure state transitions and dependency-injected controllers to the
-  page layer.
-- Do not add presentation classes, colors, theme IDs, or skin branches to
-  domain and lifecycle logic.
+For changes here, follow the [state and action ownership rules](../../../docs/ui-architecture.md#状态与动作所有权).
+Expose pure state transitions and dependency-injected controllers to the page layer;
+receive API and persistence ports from host composition.

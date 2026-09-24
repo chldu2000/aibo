@@ -2,6 +2,16 @@
 
 以通用能力分发改动 `7865fad` 为基础，已补充 `7a9ff8d` 的声明式会话控件与 `397c374` 的原生权限归属。内置与外置 Agent 使用同一套功能合同；插件名称、品牌和来源不构成功能或权限依据。
 
+## 会话提供者与身份
+
+领域术语以 [CONTEXT.md](../CONTEXT.md) 为准。会话提供者是声明 `aibo.session.open` 的
+session scope `capabilityProvider` contribution，由 installation ID 和 contribution ID 共同定位；
+创建入口从贡献目录发现，不依赖旧 `manifest.agents`。一个能力插件可以同时提供会话及其他作用域的能力。
+
+部分现有 API、会话数据与 binding 仍沿用 `agentId` 或 `agent` 字段名；在当前会话提供者路径中，
+它们承载 contribution ID，不表示品牌枚举或独立 Agent 运行协议。绑定保留具体 installation，
+因此升级安装不会将已有会话改绑到新的 release。字段名兼容不构成旧插件模型仍可执行的依据。
+
 ## 三层声明必须一致
 
 会话功能的有效集合是：`session.open` 返回的 capabilities、固定 release 的 manifest 操作、实际 Runtime initialize 握手操作与宿主支持合同的交集。未知功能或不匹配的声明不会成为宿主功能。每次调用仍由 Broker 检查绑定、运行时代际与权限。

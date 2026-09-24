@@ -1,76 +1,98 @@
 # Aibo Domain Language
 
-Aibo is a local host for multiple coding Agents. This glossary separates host-owned identity and history from installable plugin code and vendor-native state.
+Aibo is a local host for coding Agents, capability plugins, and presentation plugins.
+This glossary distinguishes host-owned identity and history from plugin behavior and vendor-native state.
 
 ## Language
 
+### Plugins and contributions
+
+**Capability Plugin**:
+An installable package that supplies domain behavior, business data, and optional semantic contributions.
+
 **Agent Plugin**:
-A versioned, installable package that contributes one or more Agent kinds to Aibo.
-_Avoid_: Adapter, provider integration
+A capability plugin that supplies one or more session providers. It is not a separate runtime or authorization model.
 
 **Plugin Release**:
-An immutable pairing of a Plugin ID, plugin version, and package integrity digest. Active sessions remain pinned to one Plugin Release.
-_Avoid_: Current plugin, latest plugin
+An immutable combination of plugin identity, version, and package integrity digest. A session's provider binding remains pinned to its release.
+_Avoid_: Using “current plugin” or “latest plugin” for a pinned release.
 
 **Plugin Installation**:
-A locally recorded, enabled or disabled copy of one Plugin Release.
-_Avoid_: Agent installation
+The host's local record of a particular release and its installation and enablement state. The record can remain available for history after the package is removed.
 
-**Agent Contribution**:
-A discoverable Agent kind declared by an Agent Plugin and identified by an Agent ID. A plugin may provide more than one contribution.
-_Avoid_: Provider, adapter type
+**Contribution**:
+A named entry supplied by a plugin for a declared role and scope. Its contribution identity is distinct from the plugin and installation identities.
 
-**Aibo Session**:
-A host-owned conversation with a stable Session ID, independent of any plugin process or vendor-native session identifier.
-_Avoid_: Thread, native session
+**Capability Provider**:
+A contribution that implements one or more capability contracts. A bound provider identifies the installation and contribution supplying those capabilities.
+_Avoid_: Treating a provider as the entire plugin package or as a permission grant.
 
-**Native Session Binding**:
-The versioned association between an Aibo Session, its pinned Plugin Release and Agent Contribution, and the plugin-owned data needed to resume execution.
-_Avoid_: Session, thread mapping
+**Session Provider**:
+A capability provider supplying the session lifecycle and any supported session features. It is the role used to discover and bind an Agent for a session, not a separate plugin or runtime category.
+
+**Native Adapter**:
+The plugin-side implementation that translates a provider's contracts into a vendor's native protocol, events, and recovery data. An adapter is an implementation role, not an installable plugin identity.
+
+### Capabilities and execution
+
+**Capability**:
+A domain operation or interaction offered through a capability contract. Capabilities may serve application, workspace, or session scope and include both lifecycle operations and optional features.
+
+**Capability Contract**:
+The versioned agreement defining a capability's identity, inputs, outputs, and behavioral meaning. Declaring or implementing the contract does not grant permission to execute it.
+
+**Capability Scope**:
+The identity and resource boundary of a capability use: application, workspace, or session. Scope is distinct from a running instance or process.
+
+**Execution Authorization**:
+The host's permission for an operation under the applicable installation grants, workspace policy, session configuration, and approval requirements. Supported capability and current UI availability are separate concepts.
 
 **Runtime Generation**:
 One supervised incarnation of a plugin process. Events from an earlier generation cannot affect a session attached to a later generation.
-_Avoid_: Plugin version, session generation
+_Avoid_: Confusing runtime generation with plugin release or presentation generation.
 
-**Capability**:
-A versioned, machine-readable promise that an Agent Contribution can perform an optional operation or interaction. A declared capability is not a permission grant.
-_Avoid_: Permission, feature flag
+### Sessions and history
+
+**Aibo Session**:
+A host-owned conversation with a stable session identity independent of plugin processes and vendor-native session identifiers.
+_Avoid_: Using a vendor “thread” or “native session” as the host session identity.
+
+**Native Session Binding**:
+The versioned association between an Aibo Session, its pinned provider installation and contribution, and the plugin-owned information needed to resume native execution.
+_Avoid_: Confusing the binding with the native session identifier alone.
 
 **History Projection**:
-The host-owned durable record of normalized session activity, readable even when its Agent Plugin is disabled, missing, or incompatible.
-_Avoid_: Native history, recovery data
+The host-owned durable record of normalized session activity, readable even when its provider is disabled, missing, or incompatible. It is distinct from plugin-owned recovery data.
 
-**Plugin View**:
-A validated declarative view document rendered by Aibo through the active UI kit. It contains no executable WebView code or visual skin instructions.
-_Avoid_: Plugin UI, embedded app
+### Semantics and presentation
 
-## Plugin Platform Evolution
+**Semantic Contribution**:
+A plugin-declared business entry, information structure, and action meaning, independent of physical layout or concrete visual components.
+_Avoid_: Calling a package that only declares semantic content a presentation plugin.
 
-**能力插件（Capability Plugin）**：提供领域行为、业务数据和可选语义贡献的插件。Agent 插件是能力插件的一种。
+**Presentation Plugin (Skin)**:
+An installable visual extension that can customize themes, controls, semantic views, and the workbench; unspecified surfaces inherit the host default. Skin is the user-facing name for the same plugin concept.
+_Avoid_: Defining skin and presentation as independently selected plugin identities.
 
-**能力契约（Capability Contract）**：对一种业务能力的身份、输入、输出和行为语义的版本化约定。它不代表调用者已经获得执行权限。
+**Semantic Action**:
+A user intent classified by responsibility as local interaction, host navigation, or capability invocation.
 
-**语义贡献（Semantic Contribution）**：插件声明的业务入口、信息结构与动作含义，不指定物理布局或具体组件。
-_Avoid_：用“UI 插件”指代只声明页面内容的包。
+**Host Navigation**:
+The current business location, detail target, and return relationship, independent of placement in a sidebar or central panel.
 
-**Presentation Plugin（皮肤插件）**：统一的呈现扩展，可定制主题、控件、语义视图及整个工作台；未定制的部分继承宿主默认呈现。皮肤是其面向用户的名称，与呈现插件是同一概念。
-_Avoid_：把皮肤插件与呈现插件定义为两种独立插件。
+**Core Semantics**:
+The host-governed information structure and action meanings that a compatible presentation must preserve for the surfaces it renders. Uncustomized surfaces retain them through the host's default implementation.
 
-**语义动作（Semantic Action）**：表达用户意图的动作，按责任分为本地交互、宿主导航和能力调用。
+**Specialized Presentation**:
+An optional rendering of known semantics that owns neither business facts nor execution authorization.
 
-**宿主导航（Host Navigation）**：以业务目标描述的当前位置、详情目标与返回关系，不指定侧栏、中央面板等物理位置。
+**Semantic Fallback**:
+Rendering the same data and actions through a core view when specialized presentation is unavailable.
+_Avoid_: Using “fallback” to mean hiding required data or disabling required actions.
 
-**能力作用域（Capability Scope）**：能力调用所关联的身份与资源边界，包括 application、workspace 和 session。作用域不等于运行实例或进程。
+**Core Semantic Version**:
+The version of the information and action meanings a presentation preserves. It does not determine which snapshot formats the presentation can read.
 
-**核心语义（Core Semantic）**：每个兼容表现插件都必须保留的信息结构和操作含义，由宿主治理其版本。
-
-**专业呈现（Specialized Presentation）**：针对已知语义提供的可选展示方式；它不拥有业务事实，也不替代权限或审批。
-
-**语义降级（Semantic Fallback）**：专业呈现不可用时，使用仍保留必要信息与操作的核心视图表达同一功能。
-_Avoid_：用“降级”指代隐藏必需数据或禁掉必需操作。
-
-**核心语义版本（Core Semantic Version）**：界定兼容表现插件必须保留的信息结构与操作含义；不代表它能读取所有快照格式。
-_Avoid_：用单一“UI 版本”混指语义、快照与实现版本。
-
-**快照协议版本（Snapshot Protocol Version）**：界定宿主与呈现之间传递的视图数据和动作格式。新增格式需要接收方明确支持，不能从核心语义兼容推断。
-_Avoid_：把快照版本等同于表现插件的发布版本。
+**Snapshot Protocol Version**:
+The version of the view-data and action format exchanged between host and presentation, requiring explicit receiver support.
+_Avoid_: Equating snapshot format, core semantics, and plugin release versions.

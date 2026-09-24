@@ -3,6 +3,7 @@
 ## 入门与开发
 
 - [English README](../README.md)、[中文 README](../README_zh.md)：功能、架构图、运行与目录导航。
+- [领域词汇](../CONTEXT.md)：插件、贡献、会话身份、能力与呈现概念的统一定义。
 - [插件开发指引](plugin-development_zh.md)、[English guide](plugin-development.md)：能力包、会话提供者与呈现扩展。
 - [会话能力声明与协商](session-capability-negotiation.md)：可选功能合同、执行授权和插件迁移。
 - [原生引擎探针](native-engine-probes.md)：环境要求、运行命令与结果位置。
