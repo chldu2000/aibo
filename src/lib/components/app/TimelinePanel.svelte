@@ -33,6 +33,7 @@
     activeTab?: 'conversation' | 'executions' | 'changes';
     onSelectTab?: (tab: 'conversation' | 'executions' | 'changes') => void;
     changesPanel?: Snippet;
+    changesCount?: number | null;
     workspace: WorkspaceListItem | null;
     session: SessionPanelView | null;
     /** Provider name declared by the session's plugin, shown as the assistant's author label. */
@@ -108,6 +109,7 @@
     activeTab = 'conversation',
     onSelectTab = () => {},
     changesPanel,
+    changesCount = null,
     workspace,
     session,
     sessionProviderLabel,
@@ -293,7 +295,7 @@
             if (next < 0) return;
             event.preventDefault(); onSelectTab(ids[next]);
             document.getElementById(`session-tab-${ids[next]}`)?.focus();
-          }}>{tab.label}</Button>
+          }}>{tab.label}{#if tab.id === 'changes' && changesCount !== null}<Badge class="session-changes-count" variant="outline">{changesCount}</Badge>{/if}</Button>
       {/each}
     </div>
     <div class="timeline-heading-actions">

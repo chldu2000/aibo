@@ -657,25 +657,29 @@ dd { max-width: 68%; overflow: hidden; margin: 0; color: var(--aibo-muted); font
 .app-shell .tool-group > summary { min-height: 30px; }
 .session-changes { display: grid; gap: 16px; min-width: 0; font-size: var(--aibo-type-meta, 12px); }
 .session-changes-heading { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
-.session-changes-heading h3 { margin: 0; font-size: 15px; font-weight: 600; }
-.session-changes-heading p { margin: 4px 0 0; color: var(--aibo-muted); font-size: var(--aibo-type-meta, 12px); line-height: 1.5; }
+.session-changes-heading > span { color: var(--aibo-muted); font-size: var(--aibo-type-meta, 12px); }
 .session-changes-heading > button { flex: none; gap: 6px; min-height: 30px; padding: 4px 10px; font-size: var(--aibo-type-meta, 12px); }
 .session-changes-repo { min-width: 0; overflow: hidden; border: 1px solid var(--aibo-border); border-radius: 6px; background: var(--aibo-surface); }
 .session-changes-repo-heading { display: flex; align-items: center; gap: 10px; min-height: 38px; padding: 6px 12px; background: var(--aibo-surface-hover); }
 .session-changes-repo-heading > span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--aibo-muted); }
 .session-changes-repo-heading > [data-slot='badge'] { margin-left: auto; flex: none; }
-.session-change-row { display: flex; align-items: center; gap: 10px; min-height: 42px; padding: 6px 12px; border-top: 1px solid var(--aibo-border); }
+.session-change-row { display: flex; width: 100%; align-items: center; justify-content: flex-start; gap: 8px; min-height: 44px; padding: 6px 12px; text-align: left; }
 .session-change-row:hover { background: var(--aibo-surface-hover); }
-.session-change-row > svg { flex: none; color: var(--aibo-muted); }
-.session-change-path { min-width: 0; flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-family: var(--aibo-mono); font-size: var(--aibo-type-meta, 12px); }
-.session-change-row > [data-slot='badge'] { flex: none; font-size: var(--aibo-type-meta, 12px); }
-.session-change-actions { display: flex; flex: none; gap: 4px; }
-.session-change-actions > button { min-height: 28px; height: auto; padding: 4px 6px; font-size: var(--aibo-type-meta, 12px); color: var(--aibo-accent-text); }
+.session-change-row[aria-expanded='true'] { background: var(--aibo-accent-soft); box-shadow: inset 3px 0 var(--aibo-accent); }
+.session-change-file { min-width: 0; }
+.session-change-marker { display: grid; place-items: center; flex: none; width: 18px; height: 18px; border: 1px solid currentColor; font: 600 12px/1 var(--aibo-mono); }
+.session-change-name { min-width: 0; max-width: 60%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-family: var(--aibo-mono); }
+.session-change-directory { min-width: 0; flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; direction: rtl; text-align: left; color: var(--aibo-muted); font-size: var(--aibo-type-meta, 12px); }
+.session-change-stats { display: flex; flex: none; gap: 4px; font-family: var(--aibo-mono); font-size: var(--aibo-type-meta, 12px); }
+.session-change-stats > :first-child { color: var(--aibo-success-text); }
+.session-change-stats > :last-child { color: var(--aibo-danger-text); }
+.session-change-preview[hidden] { display: none; }
+.session-change-preview-toolbar { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 0 12px; color: var(--aibo-muted); }
+.session-change-sides { display: flex; gap: 4px; }
+.session-change-preview .workspace-file-diff-preview { border: 0; border-radius: 0; box-shadow: none; }
+.session-change-preview .workspace-file-diff-preview-content { max-height: 420px; }
 .session-changes-repo > p { padding: 16px 12px; color: var(--aibo-muted); }
 @media (max-width: 640px) {
  .session-changes-heading { align-items: flex-start; }
- .session-change-row { flex-wrap: wrap; gap: 6px; }
- .session-change-path { flex-basis: 60%; }
- .session-change-actions { margin-left: auto; }
  .app-shell .execution-record .tool-output-action { display: none; }
 }

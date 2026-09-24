@@ -1,9 +1,14 @@
 <script lang="ts">
   import { createSessionDiffController, emptySessionDiff } from '$lib/app/session-diff-controller';
+  import { sessionChangeFile, sessionChangeRowId } from '$lib/app/session-change-file';
   let sessionTabs = $state<Record<string, 'conversation' | 'executions' | 'changes'>>({});
   let sessionDiff = $state(emptySessionDiff());
   const sessionDiffController = createSessionDiffController(getWorkspaceFileDiff, value => { sessionDiff = value; });
   $effect(() => { selectedSessionId; selectedWorkspaceId; sessionDiffController.close(); });
+  function closeSessionDiff(rowId: string) {
+    sessionDiffController.close();
+    void tick().then(() => document.getElementById(rowId)?.focus());
+  }
 
   import { createAttachmentPreviews } from '$lib/app/attachment-previews';
   import { getSessionAttachmentPreview } from '$lib/api';
@@ -277,6 +282,19 @@
   const repositoryId = $derived(selectedWorkspaceId ? repositoryViews[selectedWorkspaceId]?.selected ?? null : null);
   const gitDraftKey = $derived(repositoryDraftKey(selectedWorkspaceId ?? '', repositoryId));
   const visibleRepositories = $derived(gitRepositoriesWorkspace === selectedWorkspaceId ? gitRepositories : []);
+  const sessionChangesCount = $derived(!desktop || !selectedWorkspaceId || gitRepositoriesWorkspace !== selectedWorkspaceId || workspaceChangesLoading || workspaceChangesError || discoveryLimited
+    || visibleRepositories.some(repo => repo.error || repo.changes?.captureStatus !== 'captured')
+    ? null : visibleRepositories.reduce((total, repo) => total + (repo.changes?.files.length ?? 0), 0));
+  $effect(() => {
+    const { repositoryId: previewRepository, path, staged } = sessionDiff;
+    if (!path || workspaceChangesLoading) return;
+    const repo = visibleRepositories.find(item => item.id === previewRepository);
+    const file = repo?.changes?.files.find(item => item.path === path);
+    if (!file || repo?.error || repo?.changes?.captureStatus !== 'captured' || !(file.staged || file.unstaged || file.untracked || file.conflicted)) sessionDiffController.close();
+    else if (selectedWorkspaceId && (staged ? !file.staged : !(file.unstaged || file.untracked || file.conflicted))) {
+      void sessionDiffController.open(selectedWorkspaceId, repo.id, path, sessionChangeFile(file).defaultStaged);
+    }
+  });
   $effect(() => { writeRepositoryViews(draftStorage, presentationWindowId(), repositoryViews); });
   function toggleRepository(id: string) {
     if (!selectedWorkspaceId) return;
@@ -3890,6 +3908,7 @@
         if (tab === 'changes' && selectedWorkspaceId) void refreshWorkspaceChanges(selectedWorkspaceId);
       })}
       changesPanel={sessionChanges}
+      changesCount={sessionChangesCount}
       workspace={selectedWorkspace}
       session={selectedSession}
       sessionProviderLabel={selectedSession ? sessionProviderInfo(pluginInstallations, selectedSession).label : undefined}
@@ -3964,8 +3983,8 @@
 {/snippet}
 {#snippet sessionChanges()}
   <section class="session-changes" aria-label="工作区变更">
-  <header class="session-changes-heading"><div><h3>工作区变更</h3><p>未提交的文件 · 共用工作区的会话共享这些变更</p></div>
-  <Button variant="outline" disabled={!desktop || workspaceChangesLoading} onclick={() => { sessionDiffController.close(); if (selectedWorkspaceId) void refreshWorkspaceChanges(selectedWorkspaceId); }}><Icon name="refresh" size={14} />{workspaceChangesLoading ? '正在刷新…' : '刷新变更'}</Button></header>
+  <header class="session-changes-heading"><span>工作区未提交的文件</span>
+  <Button variant="ghost" size="icon" aria-label="刷新变更" title="刷新变更；共用工作区的会话共享这些变更" disabled={!desktop || workspaceChangesLoading} onclick={() => { sessionDiffController.close(); if (selectedWorkspaceId) void refreshWorkspaceChanges(selectedWorkspaceId); }}><Icon name="refresh" size={16} /></Button></header>
   {#if !desktop}<p role="status">读取 Git 变更需要桌面宿主。</p>
   {:else if workspaceChangesLoading}<p role="status">正在读取变更…</p>
   {:else if workspaceChangesError}<p role="alert">{workspaceChangesError}</p>
@@ -3974,31 +3993,43 @@
     {#each discoveryWarnings as warning}<p role="alert">{warning}</p>{/each}
     {#each visibleRepositories as repo (repo.id)}
       <section class="session-changes-repo" aria-label={`仓库 ${repo.name}`}>
-        <header class="session-changes-repo-heading"><strong>{repo.name}</strong><span>{repo.relativePath}</span>{#if repo.changes?.captureStatus === 'captured'}<Badge variant="outline">{repo.changes.files.length} 个文件</Badge>{/if}</header>
+        {#if visibleRepositories.length > 1}<header class="session-changes-repo-heading"><strong>{repo.name}</strong><span>{repo.relativePath}</span>{#if repo.changes?.captureStatus === 'captured'}<Badge variant="outline">{repo.changes.files.length} 个文件</Badge>{/if}</header>{/if}
         {#if repo.error}<p role="alert">{repo.error}</p>
         {:else if !repo.changes}<p role="status">正在读取变更…</p>
         {:else if repo.changes.captureStatus !== 'captured'}<p role="status">{repo.changes.captureError ?? '无法读取此仓库的变更。'}</p>
         {:else}
           {#each repo.changes.files as file (file.path)}
-            <div class="session-change-row">
-              <Icon name="file" size={15} />
-              <span class="session-change-path" title={file.path}>{file.path}</span>
-              <Badge variant={file.conflicted ? 'destructive' : 'outline'}>{file.conflicted ? '冲突' : file.untracked ? '未跟踪' : file.staged && file.unstaged ? '部分暂存' : file.staged ? '已暂存' : '未暂存'}</Badge>
-              <div class="session-change-actions">
-              {#each [false, true] as staged}
-                {#if staged ? file.staged : file.unstaged || file.untracked || file.conflicted}
-                  <Button variant="ghost" onclick={() => { if (selectedWorkspaceId) void sessionDiffController.open(selectedWorkspaceId, repo.id, file.path, staged); }}>{staged ? '查看暂存差异' : file.untracked ? '查看未跟踪文件' : '查看未暂存差异'}</Button>
+            {@const info = sessionChangeFile(file)}
+            {@const rowId = sessionChangeRowId(repo.id, file.path)}
+            {@const expanded = sessionDiff.repositoryId === repo.id && sessionDiff.path === file.path}
+            <div class="session-change-file">
+              <Button variant="ghost" class="session-change-row" id={rowId} aria-expanded={expanded} aria-controls={`${rowId}-preview`}
+                aria-label={`${info.fullPath}，${info.kindLabel}，${info.stateLabel}`} title={`${info.fullPath} · ${info.stateLabel}`}
+                onclick={() => { if (expanded) sessionDiffController.close(); else if (selectedWorkspaceId) void sessionDiffController.open(selectedWorkspaceId, repo.id, file.path, info.defaultStaged); }}>
+                <span class="session-change-marker" data-kind={info.kind} aria-hidden="true">{info.marker}</span>
+                <span class="session-change-name">{info.name}</span>
+                <span class="session-change-directory"><bdi dir="ltr">{info.directory}</bdi></span>
+                {#if info.stats}<span class="session-change-stats" title={info.statsTitle} aria-label={`新增 ${info.stats.additions} 行，删除 ${info.stats.deletions} 行`}><span>+{info.stats.additions}</span><span>−{info.stats.deletions}</span></span>{/if}
+              </Button>
+              <div class="session-change-preview" id={`${rowId}-preview`} hidden={!expanded}>
+                {#if expanded}
+                  <div class="session-change-preview-toolbar">
+                    <span>{info.stateLabel}</span>
+                    {#if file.staged && info.hasWorking}
+                      <div class="session-change-sides" role="group" aria-label="差异来源">
+                        <Button variant="ghost" aria-pressed={!sessionDiff.staged} onclick={() => { if (selectedWorkspaceId) void sessionDiffController.open(selectedWorkspaceId, repo.id, file.path, false); }}>工作区</Button>
+                        <Button variant="ghost" aria-pressed={sessionDiff.staged} onclick={() => { if (selectedWorkspaceId) void sessionDiffController.open(selectedWorkspaceId, repo.id, file.path, true); }}>暂存区</Button>
+                      </div>
+                    {/if}
+                  </div>
+                  <WorkspaceFileDiffPreview fileDiff={sessionDiff.diff} fileDiffLoading={sessionDiff.loading} fileDiffError={sessionDiff.error} selectedPath={file.path} selectedStaged={sessionDiff.staged} onClose={() => closeSessionDiff(rowId)} />
                 {/if}
-              {/each}
               </div>
             </div>
           {:else}<p role="status">没有未提交变更。</p>{/each}
         {/if}
       </section>
     {:else}<p role="status">当前工作区未发现 Git 仓库。</p>{/each}
-  {/if}
-  {#if sessionDiff.path}
-    <WorkspaceFileDiffPreview fileDiff={sessionDiff.diff} fileDiffLoading={sessionDiff.loading} fileDiffError={sessionDiff.error} selectedPath={sessionDiff.path} selectedStaged={sessionDiff.staged} onClose={() => sessionDiffController.close()} />
   {/if}
   </section>
 {/snippet}

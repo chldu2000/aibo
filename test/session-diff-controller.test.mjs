@@ -9,11 +9,24 @@ test('session diff preserves repository and index selection; late reads cannot c
   const old = controller.open('w', 'first', 'same.txt', false);
   controller.close();
   const next = controller.open('w', 'second', 'same.txt', true);
+  assert.equal(state.repositoryId, 'second');
+  assert.equal(state.path, 'same.txt');
+  assert.equal(state.loading, true);
   assert.deepEqual(reads[1].args, ['w', 'same.txt', true, 'second']);
   reads[1].resolve({ diff: 'current' }); await next;
   reads[0].resolve({ diff: 'stale' }); await old;
   assert.equal(state.diff.diff, 'current');
+  assert.equal(state.repositoryId, 'second');
   controller.close(); assert.deepEqual(state, emptySessionDiff());
+});
+test('collapsing a loading preview prevents late errors or results from reopening it', async () => {
+  for (const fail of [false, true]) {
+    let state, finish;
+    const controller = createSessionDiffController(() => new Promise((resolve, reject) => { finish = () => fail ? reject(Error('late')) : resolve({diff:'late'}); }), value => state = value);
+    const loading = controller.open('w', 'repo', 'file', false);
+    controller.close(); finish(); await loading;
+    assert.deepEqual(state, emptySessionDiff());
+  }
 });
 test('failed reads surface errors and a successful retry clears them', async () => {
   let state; let fail = true;
