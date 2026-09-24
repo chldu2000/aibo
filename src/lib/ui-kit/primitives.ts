@@ -1,4 +1,5 @@
 /** Runtime primitive proxies. Their implementations follow the active kit. */
+export { default as FileChangeMark } from './runtime/FileChangeMark.svelte';
 export { default as HostPanel } from './runtime/HostPanel.svelte';
 export { default as ManagementCenter } from './runtime/ManagementCenter.svelte';
 export { default as WorkbenchChrome } from './runtime/WorkbenchChrome.svelte';

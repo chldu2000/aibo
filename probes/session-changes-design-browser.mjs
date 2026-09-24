@@ -65,7 +65,7 @@ try {
     assert.equal(await panel.locator('.session-changes-repo-heading').count(),0,'single repo does not add a redundant heading');
     assert.equal(await panel.getByRole('button',{name:/查看.*差异/}).count(),0,'there are no separate diff buttons');
     assert.deepEqual(await rows.evaluateAll(nodes=>nodes.map(n=>n.getBoundingClientRect().height)),[36,36,36]);
-    assert.equal(await first.locator('.session-change-marker').innerText(),'M');
+    assert.equal(await first.locator('.file-change-mark').innerText(),'M');
     assert.equal(await first.locator('.session-change-name').innerText(),'ak-ui.css');
     assert.equal(await first.locator('.session-change-directory').innerText(),'src/lib/ui-kit/kits/');
     assert.equal(await first.locator('.session-change-stats').getAttribute('aria-label'),'新增 54 行，删除 114 行');

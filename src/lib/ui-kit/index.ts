@@ -10,6 +10,7 @@ export * from './primitives';
 export type {
   AppearanceSelection,
   UiAgentStatusMarkProps,
+  UiFileChangeMarkProps,
   UiAgentSettingsFormProps,
   UiButtonVariant,
   UiColumnSplitterProps,

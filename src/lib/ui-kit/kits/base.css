@@ -667,7 +667,6 @@ dd { max-width: 68%; overflow: hidden; margin: 0; color: var(--aibo-muted); font
 .session-change-row:hover { background: var(--aibo-surface-hover); }
 .session-change-row[aria-expanded='true'] { background: var(--aibo-accent-soft); box-shadow: inset 3px 0 var(--aibo-accent); }
 .session-change-file { min-width: 0; }
-.session-change-marker { display: grid; place-items: center; flex: none; width: 18px; height: 18px; border: 1px solid currentColor; font: 600 12px/1 var(--aibo-mono); }
 .session-change-name { min-width: 0; max-width: 60%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-family: var(--aibo-mono); }
 .session-change-directory { min-width: 0; flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; direction: rtl; text-align: left; color: var(--aibo-muted); font-size: var(--aibo-type-meta, 12px); }
 .session-change-stats { display: flex; flex: none; gap: 4px; font-family: var(--aibo-mono); font-size: var(--aibo-type-meta, 12px); }

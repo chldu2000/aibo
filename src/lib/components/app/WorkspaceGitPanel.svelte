@@ -1,13 +1,12 @@
 <script lang="ts">
   import type { GitRepositoryState } from '../../../../packages/plugin-protocol/src/presentation-git';
   import type { GitPanelState } from '$lib/app/workbench-drafts';
-  import { Badge, Button, Card, Icon, Input, RepositorySelect } from '$lib/ui-kit';
+  import { Badge, Button, Card, FileChangeMark, Icon, Input, RepositorySelect } from '$lib/ui-kit';
   import SidePanelTabs from './SidePanelTabs.svelte';
   import { relativeTimeLabel } from './session-utils';
   import type {
     GitBranch,
     GitCommit,
-    GitCommitFile,
     GitCommitFileList,
     GitRemoteStatus,
     GitStashEntry,
@@ -154,21 +153,13 @@
     expandedChangeGroups = { ...expandedChangeGroups, [key]: !(expandedChangeGroups[key] ?? true) };
   }
 
-  function displayPath(file: WorkspaceFileChange): string {
+  function displayPath(file: Pick<WorkspaceFileChange, 'path' | 'previousPath'>): string {
     return file.previousPath ? `${file.previousPath} → ${file.path}` : file.path;
   }
 
-  function changeMarker(file: WorkspaceFileChange): string {
-    if (file.conflicted) return '!';
-    if (file.kind === 'added') return 'A';
-    if (file.kind === 'deleted') return 'D';
-    if (file.kind === 'renamed') return 'R';
-    return 'M';
-  }
-
-  function changeLabel(file: WorkspaceFileChange): string {
+  function changeLabel(file: { kind: WorkspaceFileChange['kind']; conflicted?: boolean; untracked?: boolean }): string {
     if (file.conflicted) return '合并冲突';
-    if (file.kind === 'added') return '新增';
+    if (file.untracked || file.kind === 'added') return '新增';
     if (file.kind === 'deleted') return '删除';
     if (file.kind === 'renamed') return '重命名';
     return '修改';
@@ -184,26 +175,19 @@
     return segments.join('/');
   }
 
-  function fileName(file: WorkspaceFileChange): string {
+  function fileName(file: Pick<WorkspaceFileChange, 'path' | 'previousPath'>): string {
     return file.previousPath
       ? `${pathName(file.previousPath)} → ${pathName(file.path)}`
       : pathName(file.path);
   }
 
-  function fileLocation(file: WorkspaceFileChange): string {
+  function fileLocation(file: Pick<WorkspaceFileChange, 'path' | 'previousPath'>): string {
     const currentParent = pathParent(file.path);
     if (!file.previousPath) return currentParent;
     const previousParent = pathParent(file.previousPath);
     return previousParent !== currentParent
       ? `${previousParent || '.'} → ${currentParent || '.'}`
       : currentParent;
-  }
-
-  function commitFileMarker(file: GitCommitFile): string {
-    if (file.kind === 'added') return 'A';
-    if (file.kind === 'deleted') return 'D';
-    if (file.kind === 'renamed') return 'R';
-    return 'M';
   }
 
   function selectCommit(commit: string): void {
@@ -286,11 +270,7 @@
               role="listitem"
               aria-current={((repoId ?? repositoryId) === previewRepositoryId) && selectedFilePath === file.path && selectedFileStaged === (action === 'unstage') ? 'true' : undefined}
             >
-              <span
-                class={`change-kind change-kind-${file.conflicted ? 'conflicted' : file.kind}`}
-                aria-hidden="true"
-                title={changeLabel(file)}
-              >{changeMarker(file)}</span>
+              <FileChangeMark kind={file.conflicted ? 'conflicted' : file.untracked ? 'added' : file.kind} decorative />
               <Button
                 variant="ghost"
                 size="sm"
@@ -569,9 +549,13 @@
                       <div class="git-diff-message">该提交没有更改文件。</div>
                     {:else if commitFiles?.commit === commit.hash}
                       {#each commitFiles.files as file (file.path)}
-                        <Button variant="ghost" size="sm" type="button" class="git-commit-file" title={file.path} onclick={() => onOpenCommitFileDiff(workspace.id, commit.hash, file.path)}>
-                          <span class={`change-kind change-kind-${file.kind}`} aria-hidden="true">{commitFileMarker(file)}</span>
-                          <span>{file.previousPath ? `${file.previousPath} → ${file.path}` : file.path}</span>
+                        {@const location = fileLocation(file)}
+                        <Button variant="ghost" size="sm" type="button" class="git-commit-file" title={displayPath(file)} aria-label={`查看${changeLabel(file)}文件 ${displayPath(file)} 的提交差异`} onclick={() => onOpenCommitFileDiff(workspace.id, commit.hash, file.path)}>
+                          <FileChangeMark kind={file.kind} decorative />
+                          <span class="changeset-file-copy">
+                            <code class:changeset-file-name-only={!location} class="changeset-file-name">{fileName(file)}</code>
+                            {#if location}<small class="changeset-file-location"><bdi dir="ltr">{location}</bdi></small>{/if}
+                          </span>
                         </Button>
                       {/each}
                       {#if commitFiles.files.length < commitFiles.total}

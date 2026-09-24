@@ -30,11 +30,13 @@ import IconComponent from './ak-ui/Icon.svelte';
 import ModelMatrixComponent from './ak-ui/ModelMatrix.svelte';
 import ColumnSplitterComponent from './ak-ui/ColumnSplitter.svelte';
 import AgentStatusMarkComponent from './ak-ui/AgentStatusMark.svelte';
+import FileChangeMark from './ak-ui/FileChangeMark.svelte';
 import type { UiKitAdapter, UiKitRegistration, UiThemeRegistration } from '../contract';
 
 import metadata from './ak-ui/themes.json';
 
 export const akUiKit: UiKitAdapter = {
+  FileChangeMark,
   SubagentDialog,
   SubagentCard,
   AttachmentList,

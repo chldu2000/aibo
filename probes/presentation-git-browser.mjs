@@ -250,7 +250,7 @@ try {
     assert.equal(await action.evaluate(el=>getComputedStyle(el).opacity),'0');
     assert.equal(await count.evaluate(el=>getComputedStyle(el).opacity),'1');
     assert.equal((await heading.boundingBox()).height,36,'single-line group headings match the file-list density');
-    const marker=await group.locator('.change-kind').first().boundingBox();
+    const marker=await group.locator('.file-change-mark').first().boundingBox();
     assert.equal(marker.width,18);
     assert.equal(marker.height,18);
     const before=await count.boundingBox();

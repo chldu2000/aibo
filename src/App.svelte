@@ -75,7 +75,7 @@
   const savedWorkbenchLayout = readWorkbenchLayout(draftStorage, presentationWindowId());
   let workbenchDrafts = $state(readWorkbenchDrafts(draftStorage, presentationWindowId()));
   $effect(() => { writeWorkbenchDrafts(draftStorage, presentationWindowId(), workbenchDrafts); });
-  import { SettingsSection, HostPanel, PresentationHost, WorkbenchPresentation, DefaultPresentationActions, Badge, Button, Card, CardHeader, CardTitle, CardContent } from '$lib/ui-kit';
+  import { SettingsSection, HostPanel, PresentationHost, WorkbenchPresentation, DefaultPresentationActions, FileChangeMark, Badge, Button, Card, CardHeader, CardTitle, CardContent } from '$lib/ui-kit';
   import { createPresentationPackageController, type PresentationPackageState } from '$lib/app/presentation-package-controller';
   import { listPresentationPackages, readPresentationPackage, installPresentationPackage, setPresentationPackageEnabled, uninstallPresentationPackage, getPresentationSelection, selectPresentationPackage } from '$lib/api';
   import { createCapabilityWorkbenchDirectory } from '$lib/presentation-runtime/capability-workbench';
@@ -4006,7 +4006,7 @@
               <Button variant="ghost" class="session-change-row" id={rowId} aria-expanded={expanded} aria-controls={`${rowId}-preview`}
                 aria-label={`${info.fullPath}，${info.kindLabel}，${info.stateLabel}`} title={`${info.fullPath} · ${info.stateLabel}`}
                 onclick={() => { if (expanded) sessionDiffController.close(); else if (selectedWorkspaceId) void sessionDiffController.open(selectedWorkspaceId, repo.id, file.path, info.defaultStaged); }}>
-                <span class="session-change-marker" data-kind={info.kind} aria-hidden="true">{info.marker}</span>
+                <FileChangeMark kind={info.kind} decorative />
                 <span class="session-change-name">{info.name}</span>
                 <span class="session-change-directory"><bdi dir="ltr">{info.directory}</bdi></span>
                 {#if info.stats}<span class="session-change-stats" title={info.statsTitle} aria-label={`新增 ${info.stats.additions} 行，删除 ${info.stats.deletions} 行`}><span>+{info.stats.additions}</span><span>−{info.stats.deletions}</span></span>{/if}

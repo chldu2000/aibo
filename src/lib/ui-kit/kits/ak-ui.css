@@ -385,10 +385,21 @@
   box-shadow: inset var(--ak-line-strong) 0 var(--aibo-focus);
 }
 .app-shell[data-ui-kit='ak-ui'] .session-change-row:focus-visible { outline-offset: -2px; }
-.app-shell[data-ui-kit='ak-ui'] .session-change-marker[data-kind='added'] { color: var(--ak-signal-success); }
-.app-shell[data-ui-kit='ak-ui'] .session-change-marker[data-kind='modified'] { color: var(--ak-signal-accent); }
-.app-shell[data-ui-kit='ak-ui'] .session-change-marker[data-kind='renamed'] { color: var(--aibo-info-text); }
-.app-shell[data-ui-kit='ak-ui'] .session-change-marker:is([data-kind='deleted'], [data-kind='conflicted']) { color: var(--ak-signal-danger); }
+.app-shell[data-ui-kit='ak-ui'] .file-change-mark {
+  display: grid;
+  place-items: center;
+  flex: none;
+  width: 18px;
+  height: 18px;
+  border: var(--ak-line-hairline) solid currentColor;
+  border-radius: 0;
+  background: transparent;
+  font: 600 var(--aibo-type-meta)/1 var(--ak-font-mono);
+}
+.app-shell[data-ui-kit='ak-ui'] .file-change-mark[data-kind='added'] { color: var(--ak-signal-success); }
+.app-shell[data-ui-kit='ak-ui'] .file-change-mark[data-kind='modified'] { color: var(--ak-signal-accent); }
+.app-shell[data-ui-kit='ak-ui'] .file-change-mark[data-kind='renamed'] { color: var(--aibo-info-text); }
+.app-shell[data-ui-kit='ak-ui'] .file-change-mark:is([data-kind='deleted'], [data-kind='conflicted']) { color: var(--ak-signal-danger); }
 .app-shell[data-ui-kit='ak-ui'] .session-change-preview { border-top: var(--ak-line-hairline) solid var(--aibo-border); }
 .app-shell[data-ui-kit='ak-ui'] .session-change-preview-toolbar {
   min-height: 36px;
@@ -397,10 +408,6 @@
 }
 .app-shell[data-ui-kit='ak-ui'] .session-change-sides > .ak-button { min-height: 36px; }
 .app-shell[data-ui-kit='ak-ui'] .session-change-sides > .ak-button[aria-pressed='true'] { background: var(--aibo-accent-soft); color: var(--aibo-selected-ink); }
-@media (pointer: coarse) {
-  .app-shell[data-ui-kit='ak-ui'] .session-change-row.ak-button { height: 44px; min-height: 44px; }
-  .app-shell[data-ui-kit='ak-ui'] .session-change-sides > .ak-button { min-height: 44px; }
-}
 
 .app-shell[data-ui-kit='ak-ui'] .timeline-entry {
   max-width: 100%;
@@ -715,6 +722,39 @@
 .app-shell[data-ui-kit='ak-ui'] :is(.git-commit-file, .git-commit-files-more) {
   justify-content: flex-start;
   text-align: left;
+}
+
+.app-shell[data-ui-kit='ak-ui'] .git-commit-files {
+  gap: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+.app-shell[data-ui-kit='ak-ui'] .git-commit-file.ak-button {
+  height: 36px;
+  min-height: 36px;
+  gap: var(--ak-space-2);
+  padding: 0 var(--ak-space-2) 0 var(--ak-space-3);
+  border: 0;
+  border-bottom: var(--ak-line-hairline) solid var(--aibo-border);
+  border-radius: 0;
+  font-weight: 400;
+}
+.app-shell[data-ui-kit='ak-ui'] .git-commit-file > .changeset-file-copy {
+  color: var(--aibo-text);
+  font-family: var(--ak-font-sans);
+  font-size: var(--aibo-type-ui);
+}
+.app-shell[data-ui-kit='ak-ui'] .git-commit-file .changeset-file-name {
+  font-family: var(--ak-font-mono);
+  max-width: 65%;
+}
+.app-shell[data-ui-kit='ak-ui'] .git-commit-file .changeset-file-name-only { max-width: 100%; }
+.app-shell[data-ui-kit='ak-ui'] .git-commit-file:focus-visible { outline-offset: -2px; }
+
+@media (pointer: coarse) {
+  .app-shell[data-ui-kit='ak-ui'] :is(.session-change-row, .git-commit-file).ak-button { height: 44px; min-height: 44px; }
+  .app-shell[data-ui-kit='ak-ui'] .session-change-sides > .ak-button { min-height: 44px; }
 }
 
 /* History entries and their files use row fills, without the generic button signal. */
@@ -1928,15 +1968,6 @@
   margin: 0;
 }
 
-.app-shell[data-ui-kit='ak-ui'] .git-change-list .change-kind {
-  display: grid;
-  place-items: center;
-  flex: none;
-  width: 24px;
-  height: 24px;
-  border: 1px solid currentColor;
-  font: var(--aibo-type-meta) var(--ak-font-mono);
-}
 
 .app-shell[data-ui-kit='ak-ui'] .git-history-copy strong {
   font-size: var(--aibo-type-ui);
@@ -2238,11 +2269,6 @@
 .app-shell[data-ui-kit='ak-ui'] .git-change-list .changeset-file-name-only {
   max-width: 100%;
 }
-.app-shell[data-ui-kit='ak-ui'] .git-change-list .change-kind {
-  border: var(--ak-line-hairline) solid currentColor;
-  border-radius: 0;
-  background: transparent;
-}
 .app-shell[data-ui-kit='ak-ui'] .git-stash-section {
   margin: var(--ak-space-3) var(--ak-space-4);
 }
@@ -2296,11 +2322,6 @@
   height: 36px;
   min-height: 36px;
   padding-block: 0;
-}
-.app-shell[data-ui-kit='ak-ui'] .git-change-list .change-kind {
-  width: 18px;
-  height: 18px;
-  line-height: 1;
 }
 .app-shell[data-ui-kit='ak-ui'] .git-change-list .changeset-file-row {
   height: 36px;

@@ -107,6 +107,11 @@ export type UiColumnSplitterProps = {
 
 export type UiAgentStatusMarkProps = PresentationStatusMark;
 
+export type UiFileChangeMarkProps = {
+  kind: 'added' | 'modified' | 'deleted' | 'renamed' | 'conflicted';
+  decorative?: boolean;
+};
+
 /**
  * The minimum visual surface consumed by Aibo's app-level components.
  * Concrete kits may wrap shadcn-svelte, another Svelte library, or local
@@ -198,6 +203,7 @@ export type UiSubagentDialogProps = {
  * from negotiated session capabilities, navigation canSyncSnapshot, and host-owned
  * executionProfile.sessionControls; Agent names select branding only. */
 export type UiKitAdapter = {
+  FileChangeMark: Component<UiFileChangeMarkProps>;
   SubagentCard: Component<UiSubagentCardProps>;
   AttachmentList: Component<UiAttachmentListProps>;
   SubagentDialog: Component<UiSubagentDialogProps>;

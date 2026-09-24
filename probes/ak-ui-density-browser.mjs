@@ -36,7 +36,8 @@ try {
         const entries=[{hash:'commit-a',shortHash:'abc1234',subject:'调整文件列表对齐',author:'Tester',authoredAt:new Date(Date.now()-2*60*60*1000).toISOString()},...Array.from({length:19},(_,index)=>({hash:`older-${index}`,shortHash:`older-${index}`,subject:index===0?'fix(composer): @ 引用的文件不再重复显示附件卡片；图标与路径保持一致':`较早的提交 ${index+1}`,author:'Tester',authoredAt:'2026-09-21T15:30:00Z'}))];
         return entries.slice(args.offset??0,(args.offset??0)+(args.limit??30));
       }
-      if(command==='list_workspace_git_commit_files')return {commit:args.commit,files:[{path:'src/components/AlignedButton.svelte',previousPath:null,kind:'modified'}],total:2};
+      if(command==='list_workspace_git_commit_files')return {commit:args.commit,files:[{path:'src/components/AlignedButton.svelte',previousPath:null,kind:'modified'},{path:'probes/conversation-design-browser.mjs',previousPath:null,kind:'added'},{path:'src/components/一个很长的文件名称-long-renamed-component.svelte',previousPath:'legacy/old-component.svelte',kind:'renamed'}],total:4};
+      if(command==='get_workspace_git_commit_file_diff')return {path:args.path,staged:false,available:true,truncated:false,diff:'diff --git a/file b/file\n@@ -1 +1 @@\n-old\n+history-preview',hunks:[],reason:null};
       if(command==='get_timeline')return [{id:'a',sessionId:'s1',turnId:'t',role:'assistant',entryType:'message',content:'侧栏保留清晰的信息层级，操作在需要时出现。',status:'completed',createdAt:'2026-09-22'}];
       return [];
     }};
@@ -179,6 +180,12 @@ try {
     assert.notEqual(styles.selected,styles.rest,'Git selected tab has a stronger label as well as its signal bar');
   }
   async function checkHistoryFileAlignment(mode) {
+    const markStyle=element=>{const style=getComputedStyle(element);return {width:style.width,height:style.height,border:style.border,font:style.font,color:style.color,radius:style.borderRadius}};
+    const changeMark=await page.locator('.git-change-list .file-change-mark[data-kind="modified"]').first().evaluate(markStyle);
+    await page.locator('#session-tab-changes').click();
+    const sessionMark=page.locator('#session-panel-changes .file-change-mark[data-kind="modified"]').first();await sessionMark.waitFor();
+    assert.deepEqual(await sessionMark.evaluate(markStyle),changeMark,'session and Git changes use the same status mark');
+    await page.locator('#session-tab-conversation').click();
     await historyTab.click();
     const commits=page.locator('.git-history-entry');
     await commits.nth(15).waitFor();
@@ -212,8 +219,18 @@ try {
     assert(longSubjectLayout.subjectRight<=longSubjectLayout.contentRight+.5 && longSubjectLayout.subjectScroll>longSubjectLayout.subjectClient,
       `long commit subjects truncate inside the history row: ${JSON.stringify(longSubjectLayout)}`);
     await page.getByRole('button',{name:'查看提交 abc1234 的文件：调整文件列表对齐',exact:true}).click();
-    const file=page.locator('.git-commit-file');await file.waitFor();
-    const fileInset=await file.evaluate(element=>element.querySelector('.change-kind').getBoundingClientRect().left-element.getBoundingClientRect().left);
+    const file=page.locator('.git-commit-file').first();await file.waitFor();
+    assert.deepEqual(await file.locator('.file-change-mark').evaluate(markStyle),changeMark,'history and working changes share identical marker geometry and colour');
+    assert.equal((await file.boundingBox()).height,36);
+    assert.equal(await file.locator('.changeset-file-name').innerText(),'AlignedButton.svelte');
+    assert.equal(await file.locator('.changeset-file-location').innerText(),'src/components');
+    await file.hover();assert.equal(await file.evaluate(el=>getComputedStyle(el).borderRadius),'0px');
+    await file.focus();await page.keyboard.press('Enter');
+    await page.getByText('history-preview',{exact:true}).waitFor();
+    assert(await page.evaluate(()=>window.densityCalls.some(call=>call.command==='get_workspace_git_commit_file_diff'&&call.args.commit==='commit-a'&&call.args.path==='src/components/AlignedButton.svelte')));
+    await page.getByRole('button',{name:'关闭文件差异预览',exact:true}).click();
+    await page.locator('.git-commit-files').screenshot({path:`${output}/history-files-${mode}.png`});
+    const fileInset=await file.evaluate(element=>element.querySelector('.file-change-mark').getBoundingClientRect().left-element.getBoundingClientRect().left);
     assert(fileInset>=0&&fileInset<24,`Git history file marker should align with the row start: ${fileInset}px`);
     const more=page.locator('.git-commit-files-more');
     const moreInset=await more.evaluate(element=>{const range=document.createRange();range.selectNodeContents(element);return range.getBoundingClientRect().left-element.getBoundingClientRect().left});

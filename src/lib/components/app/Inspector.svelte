@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { AgentStatusMark, Badge, Button, Card, CardContent, CardHeader, CardTitle, Icon } from '$lib/ui-kit';
+  import { AgentStatusMark, FileChangeMark, Badge, Button, Card, CardContent, CardHeader, CardTitle, Icon } from '$lib/ui-kit';
   import type { AgentIcon } from '../../../../packages/plugin-protocol/src/agent-icon';
   import type { PresentationArtifactPreview } from '../../../../packages/plugin-protocol/src/presentation-inspector';
   import ProjectActionsPanel from './ProjectActionsPanel.svelte';
@@ -435,7 +435,7 @@
               {#each turnChangeSet.files.slice(0, 8) as file (file.path)}
                 <div class="thread-item changeset-file changeset-file-row">
                   <Button variant="ghost" size="sm" type="button" class="changeset-file-button" onclick={() => onShowTurnFileDiff(turnChangeSet.sessionId, turnChangeSet.turnId, file.path)} disabled={busy || sessionRunning || selectedSessionArchiving} title="查看文件 diff">
-                    <span class={`change-kind change-kind-${file.kind}`}>{file.kind === 'added' ? '+' : file.kind === 'deleted' ? '−' : file.kind === 'renamed' ? '↪' : '~'}</span>
+                    <FileChangeMark kind={file.kind} />
                     <code title={file.previousPath ? `${file.previousPath} → ${file.path}` : file.path}>
                       {file.previousPath ? `${file.previousPath} → ${file.path}` : file.path}
                     </code>

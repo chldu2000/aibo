@@ -743,6 +743,8 @@ Git 提交历史由宿主按仓库分页读取，默认展示最近 16 条，在
 
 ### 会话模式与权限标识
 
+文件变更标记通过 `UiKitAdapter.FileChangeMark`、runtime proxy 和当前 kit 注册表复用。应用只传递 `kind` 与可选的 `decorative`，由皮肤负责状态字母、可访问标签、几何与颜色。会话变更、Git 工作区列表、提交历史和回合变更摘要共用此控件。该控件是宿主内部适配器合同，不扩展外部呈现包的 wire protocol；未覆盖的宿主 surface 继续继承当前 kit。
+
 `UiKitAdapter.SessionControlMark` 只接收选项的 `kind`、声明的 `profile` 和紧凑显示标志。UI kit 根据策略含义选择图标和语义色，不根据 Agent 名称、选项 ID 或显示文案推断权限。菜单和当前设置按钮复用同一标识；同时选中的权限与会话模式分别显示。默认 ak-ui 和独立外部皮肤提供眼睛、审批盾牌等图标，深浅主题注册 `--aibo-session-info/plan/write/elevated` 色彩。未识别的自定义策略使用中性设置图标，完整文件访问优先保留警示标识。此分类只用于显示，不授予或更改执行权限。
 
 ### 旧内置 UI 清理回归
