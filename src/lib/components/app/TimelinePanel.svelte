@@ -120,7 +120,6 @@
     onClearGoal,
     onPauseGoal,
     onResumeGoal,
-    codexThreadSnapshot,
     timeline,
     timelineVisibleCount,
     usageValues,
@@ -299,8 +298,11 @@
       {/each}
     </div>
     <div class="timeline-heading-actions">
-          {@render presentationActions?.()}
       {#if session}
+        <span class="timeline-session-status" data-tone={selectedSessionArchiving ? 'attention' : sessionStatusTone(session)} role="status">
+          <span class="timeline-session-signal" aria-hidden="true"></span>
+          <span>{selectedSessionArchiving ? '归档中' : sessionStateLabel(session)}</span>
+        </span>
         {#if session?.capabilities.includes('session.fork') && !sessionArchived}
           <Button variant="ghost" size="sm" type="button" onclick={() => onForkSession()} disabled={busy || sessionRunning || selectedSessionArchiving} title="从最新完成的回复创建分支">
             <Icon name="branch" size={13} /> 分支
@@ -311,16 +313,11 @@
             <Icon name="branch" size={13} /> 会话树
           </Button>
         {/if}
-        <Badge variant={sessionArchived ? 'secondary' : sessionRunning || selectedSessionArchiving ? 'warning' : 'outline'}>
-          {selectedSessionArchiving ? '归档中' : sessionStateLabel(session)}
-        </Badge>
-        {#if codexThreadSnapshot && codexThreadSnapshot.id === session.externalSessionId}
-          <Badge variant="outline">{codexThreadSnapshot.turnCount === null ? '远端轮次未知' : `远端 ${codexThreadSnapshot.turnCount} 轮`}</Badge>
-        {/if}
       {/if}
       {#if workspace && workspace.trust !== 'trusted'}
         <Badge variant="warning">待确认</Badge>
       {/if}
+      {@render presentationActions?.()}
     </div>
   </CardHeader>
   <div role="tabpanel" id="session-panel-conversation" aria-labelledby="session-tab-conversation" class="conversation-tab-content" hidden={activeTab !== 'conversation'}>
