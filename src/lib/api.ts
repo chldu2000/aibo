@@ -613,3 +613,8 @@ export const cancelGlobalFileSearch = (requestId: string): Promise<void> => invo
 export const readSessionHistoryAround = (workspaceId: string, sessionId: string, messageId: string): Promise<import('./types').SessionHistoryPage> => invoke('read_session_history_around', { workspaceId, sessionId, messageId });
 
 export const searchGlobalAssets = (request: import('./app/global-search').SearchRequest): Promise<import('./app/global-search').SearchPage> => invoke('search_global_assets', { request });
+
+export const readSessionReferencePreferences = (): Promise<import('./app/session-reference-preferences-controller').SessionReferencePreferences> =>
+  invoke('read_session_reference_preferences');
+export const saveSessionReferencePreferences = (messageLimit: number | null): Promise<import('./app/session-reference-preferences-controller').SessionReferencePreferences> =>
+  invoke('save_session_reference_preferences', { messageLimit });

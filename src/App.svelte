@@ -15,6 +15,9 @@
   import { createAttachmentPreviews } from '$lib/app/attachment-previews';
   import { getSessionAttachmentPreview } from '$lib/api';
   import { SubagentDetails, WorkspacePreferencesPanel, HostConfirmationPanel } from '$lib/components/app';
+  import SessionReferencePreferencesPanel from '$lib/components/app/SessionReferencePreferencesPanel.svelte';
+  import { createSessionReferencePreferencesController, emptySessionReferencePreferences } from '$lib/app/session-reference-preferences-controller';
+  import { readSessionReferencePreferences, saveSessionReferencePreferences } from '$lib/api';
   import { createWorkspacePreferencesController, emptyWorkspacePreferences } from '$lib/app/workspace-preferences-controller';
   import { readWorkspacePreferences, saveWorkspacePreferences, readHostConfirmationPreferences, saveHostConfirmationPreference } from '$lib/api';
   import { createHostConfirmationController, emptyHostConfirmation } from '$lib/app/host-confirmation-controller';
@@ -1040,13 +1043,18 @@
     read: readHostConfirmationPreferences, save: saveHostConfirmationPreference,
     changed: value => { hostConfirmation = value; },
   });
+  let sessionReferencePreferences = $state(emptySessionReferencePreferences());
+  const sessionReferencePreferencesController = createSessionReferencePreferencesController({
+    read: readSessionReferencePreferences, save: saveSessionReferencePreferences,
+    changed: value => { sessionReferencePreferences = value; },
+  });
   let workspacePreferences = $state(emptyWorkspacePreferences());
   const workspacePreferencesController = createWorkspacePreferencesController({
     read: readWorkspacePreferences, save: saveWorkspacePreferences,
     changed: value => { workspacePreferences = value; },
   });
   $effect(() => {
-    if (settingsOpen && desktop) untrack(() => { void workspacePreferencesController.load(); void hostConfirmationController.load(); });
+    if (settingsOpen && desktop) untrack(() => { void workspacePreferencesController.load(); void hostConfirmationController.load(); void sessionReferencePreferencesController.load(); });
   });
   let managementSection = $state<UiManagementSection>('appearance');
   const listSessions: typeof listAllSessions = listAllSessions;
@@ -3856,6 +3864,7 @@
 {/snippet}
 
 {#snippet workspaceSettings()}
+  <SessionReferencePreferencesPanel state={sessionReferencePreferences} {desktop} onChange={limit => void sessionReferencePreferencesController.save(limit)} onReload={() => void sessionReferencePreferencesController.load()} />
   <WorkspacePreferencesPanel state={workspacePreferences} {desktop} onChange={trusted => void workspacePreferencesController.save(trusted)} onReload={() => void workspacePreferencesController.load()} />
   <HostConfirmationPanel state={hostConfirmation} {desktop} onChange={(category, policy) => void hostConfirmationController.save(category, policy)} onReload={() => void hostConfirmationController.load()} />
 {/snippet}

@@ -45,3 +45,11 @@ Rust `host_confirmation::tests` 覆盖默认值、迁移、SQLite 重启持久�
 验证默认 Git 暂存/提交与工程动作直接执行、询问模式的取消/允许、类别独立及信任撤销。
 浏览器探针验证键盘焦点可达；macOS 无头 Chromium 的原生 select 方向键提交在独立最小页面也不可用，
 因此选项保存由 `selectOption` 验证，不将其视为真实键盘弹出菜单的验收。
+
+## 会话引用范围
+
+工作区设置页中的“会话引用”提供全部用户/Agent 消息或最近 N 条（默认 12）。
+该项为应用级设置，由独立表 `session_reference_preferences` 保存，
+不影响工作区信任或操作确认。用户和 Agent 消息合计计数，新引用保留选中正文，
+超出 128 KiB 时明确拒绝。设置变更不改写已有引用与队列。
+详见[会话引用设置与兼容](session-context-and-handoff-plan.md#设置与兼容)。

@@ -1,3 +1,4 @@
+mod session_reference_preferences;
 mod agent_settings;
 mod workspace_preferences;
 mod host_confirmation;
@@ -1359,6 +1360,16 @@ async fn add_workspace_in_db(path: &str, db: &SqlitePool) -> Result<Workspace, C
     .await?;
 
     workspace_by_path(db, &canonical_string).await
+}
+
+#[tauri::command]
+async fn read_session_reference_preferences(state: State<'_, AppState>) -> Result<session_reference_preferences::SessionReferencePreferences, CoreError> {
+    session_reference_preferences::read(&state.db).await
+}
+
+#[tauri::command]
+async fn save_session_reference_preferences(message_limit: Option<i64>, state: State<'_, AppState>) -> Result<session_reference_preferences::SessionReferencePreferences, CoreError> {
+    session_reference_preferences::save(&state.db, message_limit).await
 }
 
 #[tauri::command]
@@ -4529,6 +4540,8 @@ pub fn run() {
             add_workspace,
             host_confirmation::read_host_confirmation_preferences,
             host_confirmation::save_host_confirmation_preference,
+            read_session_reference_preferences,
+            save_session_reference_preferences,
             read_workspace_preferences,
             save_workspace_preferences,
             set_workspace_trust,

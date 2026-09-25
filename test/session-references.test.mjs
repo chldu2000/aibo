@@ -24,9 +24,10 @@ test('send and both queue modes freeze reference context before async validation
   const {createMessageController}=await server.ssrLoadModule('/src/lib/app/message-controller.ts');
   for(const mode of ['send','steer','followUp']) for(const fail of [false,true]) {
    const target={id:'target',workspaceId:'w',pluginInstallationId:'plugin',capabilities:['queue.manage'],archived:false};
-   let selected=target,attachments=[reference],consumed=false;
+   const selectedReference={...reference,inlineContext:JSON.stringify({schema:'aibo.session-reference/v3',sourceSessionId:'source',messageLimit:null,messages:Array.from({length:18},(_,i)=>({role:'assistant',content:i===0?'source original'+'界'.repeat(1600):`later ${i}`}))})};
+   let selected=target,attachments=[selectedReference],consumed=false;
    const errors=[];
-   const accept=async(id,input)=>{assert.equal(id,'target');assert.ok(input.includes('source original'));assert.ok(!input.includes('wrong session'));if(fail)throw Error('send rejected');return target;};
+   const accept=async(id,input)=>{assert.equal(id,'target');assert.ok(input.includes('source original'+'界'.repeat(1600)));assert.ok(input.includes('later 17'));assert.ok(!input.includes('wrong session'));if(fail)throw Error('send rejected');return target;};
    const controller=createMessageController({
     api:{validateSessionAttachments:async()=>{selected={...target,id:'other'};attachments=[{...reference,sessionId:'other',inlineContext:'"wrong session"'}];return [];},sendAgentPrompt:accept,invokeAgentCapability:async(id,_cap,input)=>accept(id,input.message)},
     getDesktop:()=>true,getSelectedWorkspace:()=>({id:'w'}),getSelectedSession:()=>selected,getSelectedSessionArchiving:()=>false,getSessionRunning:()=>false,getComposerText:()=> 'continue',getAttachments:()=>attachments,
@@ -46,4 +47,23 @@ test('legacy pending references compact before send and never include tool bodie
   assert.equal(value.messages.length,12);assert.equal(value.messages[0].id,'8');assert.equal(value.omittedMessageCount,9);
   assert.ok(value.messages.every(m=>m.truncated&&Array.from(m.content).length===1500));assert.ok(!JSON.stringify(value).includes('secret tool output'));assert.ok(!JSON.stringify(value).includes('nested'));
  }finally{await server.close();}
+});
+
+test('configured references retain all selected text through prompt and shared presentation',async()=>{
+ const server=await createServer({server:{middlewareMode:true,ws:false,watch:null},appType:'custom'});
+ try {
+  const {withSessionReferenceContext}=await server.ssrLoadModule('/src/lib/app/session-references.ts');
+  const {splitSessionReferences}=await import('../packages/presentation-workbench/session-references.js');
+  for (const messageLimit of [null,18]) {
+   const snapshot={schema:'aibo.session-reference/v3',sourceSessionId:'source',messageLimit,contextMode:'conversation-messages',messages:Array.from({length:18},(_,i)=>({id:String(i),role:i%2?'assistant':'user',content:`message ${i} `+'界'.repeat(1600),truncated:false}))};
+   const prompt=withSessionReferenceContext('continue',[{...reference,inlineContext:JSON.stringify(snapshot)}],'target');
+   const payload=JSON.parse(prompt.split('\n').at(-2));
+   assert.deepEqual(payload[0].snapshot,snapshot);
+   const displayed=splitSessionReferences(prompt);
+   assert.equal(displayed.body,'continue');assert.equal(displayed.references[0].excerpts.length,18);
+   assert.equal(displayed.references[0].excerpts[0].text,snapshot.messages[0].content);
+   assert.equal(displayed.references[0].excerpts[0].truncated,false);
+   assert.throws(()=>withSessionReferenceContext('x',[{...reference,inlineContext:JSON.stringify({...snapshot,messages:[{role:'user',content:'界'.repeat(50000)}]})}],'target'),/128 KiB/);
+  }
+ } finally {await server.close();}
 });

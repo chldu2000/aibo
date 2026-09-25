@@ -29,6 +29,8 @@ pub(crate) async fn capture(db: &SqlitePool, target_id: &str, source_id: &str) -
     // One SQLite read transaction freezes membership and streaming content.
     // Bound allocation before loading a potentially very large history.
     let mut tx = db.begin().await?;
+    let message_limit: Option<i64> = sqlx::query_scalar("SELECT message_limit FROM session_reference_preferences WHERE id=1")
+        .fetch_one(&mut *tx).await?;
     let count: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM messages WHERE session_id=?")
         .bind(source_id).fetch_one(&mut *tx).await?;
     if count == 0 { return Err(CoreError::InvalidWorkspacePath("该会话暂无已保存的消息可供引用。".into())); }
@@ -36,27 +38,34 @@ pub(crate) async fn capture(db: &SqlitePool, target_id: &str, source_id: &str) -
         .bind(source_id).fetch_one(&mut *tx).await?;
     let tool_count: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM messages WHERE session_id=? AND role='tool'")
         .bind(source_id).fetch_one(&mut *tx).await?;
-    // Never load tool bodies. Bound both the number and size of conversational excerpts in SQL.
-    let rows = sqlx::query("SELECT id,role,substr(content,1,1501) AS content,length(content) AS original_length,status FROM messages WHERE session_id=? AND role IN ('user','assistant') ORDER BY created_at DESC,sequence DESC,id DESC LIMIT 12")
-        .bind(source_id).fetch_all(&mut *tx).await?;
+    // Check selected raw bytes before allocation, including JSON escaping overhead below.
+    // -1 is SQLite's unlimited LIMIT; only conversation messages participate in the count.
+    let limit = message_limit.unwrap_or(-1);
+    let selected_bytes: i64 = sqlx::query_scalar("SELECT COALESCE(SUM(bytes),0) FROM (SELECT length(CAST(content AS BLOB))+length(CAST(id AS BLOB))+length(status)+100 AS bytes FROM messages WHERE session_id=? AND role IN ('user','assistant') ORDER BY created_at DESC,sequence DESC,id DESC LIMIT ?)")
+        .bind(source_id).bind(limit).fetch_one(&mut *tx).await?;
+    if selected_bytes > MAX_SNAPSHOT_BYTES as i64 {
+        return Err(CoreError::InvalidWorkspacePath("会话引用超过 128 KiB 上限，请在设置中减少消息条数。未添加引用。".into()));
+    }
+    let rows = sqlx::query("SELECT id,role,content,status FROM messages WHERE session_id=? AND role IN ('user','assistant') ORDER BY created_at DESC,sequence DESC,id DESC LIMIT ?")
+        .bind(source_id).bind(limit).fetch_all(&mut *tx).await?;
     let items = rows.iter().rev().map(|row| {
         let content: String = row.get("content");
-        // Do not recursively embed references from earlier turns.
-        let clean = content.split("[AIBO_SESSION_REFERENCES]").next().unwrap_or_default()
-            .split("[AIBO_CONTEXT_ATTACHMENTS]").next().unwrap_or_default().trim();
-        let text = clean.chars().take(1500).collect::<String>();
+        // Keep selected message text intact, but never recursively embed attachments.
+        let text = content.split("[AIBO_SESSION_REFERENCES]").next().unwrap_or_default()
+            .split("[AIBO_CONTEXT_ATTACHMENTS]").next().unwrap_or_default();
         json!({"id":row.get::<String,_>("id"),"role":row.get::<String,_>("role"),
             "content":text,"status":row.get::<String,_>("status"),
-            "truncated":row.get::<i64,_>("original_length") > text.chars().count() as i64})
+            "truncated":text.len() < content.len()})
     }).collect::<Vec<_>>();
     let id = ulid::Ulid::new().to_string();
     let now = crate::now_iso();
     let snapshot = json!({
-        "schema":"aibo.session-reference/v2", "snapshotId":id,
+        "schema":"aibo.session-reference/v3", "snapshotId":id,
         "source":"persisted-core", "sourceSessionId":source_id,
         "sourceAgent":source.agent, "sourceLabel":source.label,
         "capturedAt":now, "throughMessageId":through,
-        "summaryKind":"extractive", "contextMode":"conversation-excerpts",
+        "summaryKind":"extractive", "contextMode":"conversation-messages",
+        "messageLimit":message_limit,
         "totalMessageCount":count,"omittedMessageCount":count-items.len() as i64,
         "omittedToolMessageCount":tool_count,"toolOutputsIncluded":false,
         "readAvailability":"on-demand reading is not available yet",
@@ -64,7 +73,7 @@ pub(crate) async fn capture(db: &SqlitePool, target_id: &str, source_id: &str) -
         "messages":items
     }).to_string();
     if snapshot.len() > MAX_SNAPSHOT_BYTES {
-        return Err(CoreError::InvalidWorkspacePath("会话快照超过 128 KiB 上限，未添加引用。".into()));
+        return Err(CoreError::InvalidWorkspacePath("会话引用超过 128 KiB 上限，请减少消息条数或引用数量。未添加引用。".into()));
     }
     let hash = format!("sha256:{:x}", Sha256::digest(snapshot.as_bytes()));
     let path = format!("会话：{}", source.label);
@@ -83,6 +92,49 @@ pub(crate) async fn capture(db: &SqlitePool, target_id: &str, source_id: &str) -
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[tokio::test]
+    async fn configured_count_selects_conversation_messages_and_freezes_each_reference() {
+        let root = std::env::temp_dir().join(format!("aibo-reference-count-{}", ulid::Ulid::new()));
+        let db = crate::open_database(&root.join("test.db")).await.unwrap();
+        sqlx::raw_sql("INSERT INTO workspaces(id,path,label,trusted,created_at,updated_at) VALUES ('w','/reference-test','w',1,'now','now');
+            INSERT INTO sessions(id,workspace_id,agent,label,state,created_at,updated_at) VALUES ('source','w','unknown.agent','source','closed','now','now'),('target','w','another.agent','target','closed','now','now');")
+            .execute(&db).await.unwrap();
+        for i in 0..20 {
+            sqlx::query("INSERT INTO messages(id,session_id,role,content,status,sequence,created_at,updated_at) VALUES (?,'source',?,?,'completed',?,'now','now')")
+                .bind(format!("m{i:02}")).bind(if i % 2 == 0 { "user" } else { "assistant" })
+                .bind(format!("  原文{i} {}  ", "界".repeat(1600))).bind(i).execute(&db).await.unwrap();
+        }
+        sqlx::raw_sql("INSERT INTO messages(id,session_id,role,content,status,sequence,created_at,updated_at) VALUES ('tool','source','tool','tool secret','completed',21,'now','now'),('system','source','system','system secret','completed',22,'now','now');")
+            .execute(&db).await.unwrap();
+        let default = capture(&db, "target", "source").await.unwrap();
+        let value: serde_json::Value = serde_json::from_str(default.inline_context.as_ref().unwrap()).unwrap();
+        assert_eq!(value["messages"].as_array().unwrap().len(), 12);
+        assert_eq!(value["messages"][0]["id"], "m08");
+        crate::session_reference_preferences::save(&db, Some(3)).await.unwrap();
+        let recent = capture(&db, "target", "source").await.unwrap();
+        let value: serde_json::Value = serde_json::from_str(recent.inline_context.as_ref().unwrap()).unwrap();
+        assert_eq!(value["messages"].as_array().unwrap().len(), 3);
+        assert_eq!(value["messages"][0]["id"], "m17");
+        assert_eq!(value["messages"][2]["id"], "m19");
+        assert_eq!(value["omittedMessageCount"], 19);
+        crate::session_reference_preferences::save(&db, None).await.unwrap();
+        let all = capture(&db, "target", "source").await.unwrap();
+        let value: serde_json::Value = serde_json::from_str(all.inline_context.as_ref().unwrap()).unwrap();
+        assert_eq!(value["messages"].as_array().unwrap().len(), 20);
+        assert_eq!(value["messageLimit"], serde_json::Value::Null);
+        assert_eq!(value["omittedMessageCount"], 2);
+        assert_eq!(value["messages"][0]["content"], format!("  原文0 {}  ", "界".repeat(1600)));
+        assert!(!all.inline_context.unwrap().contains("secret"));
+        let saved: String = sqlx::query_scalar("SELECT inline_context FROM attachments WHERE id=?").bind(&recent.id).fetch_one(&db).await.unwrap();
+        assert_eq!(saved, recent.inline_context.unwrap());
+        crate::session_reference_preferences::save(&db, Some(100)).await.unwrap();
+        let fewer = capture(&db, "target", "source").await.unwrap();
+        let value: serde_json::Value = serde_json::from_str(fewer.inline_context.as_ref().unwrap()).unwrap();
+        assert_eq!(value["messages"].as_array().unwrap().len(), 20);
+        db.close().await;
+        std::fs::remove_dir_all(root).unwrap();
+    }
+
     #[tokio::test]
     async fn snapshots_are_scoped_persisted_and_immutable() {
         let root = std::env::temp_dir().join(format!("aibo-context-{}", ulid::Ulid::new()));
@@ -119,14 +171,16 @@ mod tests {
         sqlx::query("UPDATE messages SET content=? WHERE id='m'").bind("界".repeat(MAX_SNAPSHOT_BYTES)).execute(&db).await.unwrap();
         sqlx::query("INSERT INTO messages(id,session_id,role,content,status,sequence,created_at,updated_at) VALUES ('tool','source','tool',?,'completed',2,'now','now')")
             .bind("PRIVATE_TOOL_OUTPUT".repeat(100000)).execute(&db).await.unwrap();
+        assert!(capture(&db,"target","source").await.is_err());
+        sqlx::query("UPDATE messages SET content=? WHERE id='m'").bind("界".repeat(2000)).execute(&db).await.unwrap();
         let compact = capture(&db,"target","source").await.unwrap();
         let compact_text = compact.inline_context.unwrap();
         assert!(!compact_text.contains("PRIVATE_TOOL_OUTPUT"));
         let compact_value: serde_json::Value = serde_json::from_str(&compact_text).unwrap();
         assert_eq!(compact_value["throughMessageId"],"tool");
         assert_eq!(compact_value["omittedToolMessageCount"],1);
-        assert_eq!(compact_value["messages"][0]["truncated"],true);
-        assert_eq!(compact_value["messages"][0]["content"].as_str().unwrap().chars().count(),1500);
+        assert_eq!(compact_value["messages"][0]["truncated"],false);
+        assert_eq!(compact_value["messages"][0]["content"].as_str().unwrap().chars().count(),2000);
         let count: i64 = sqlx::query_scalar("SELECT count(*) FROM attachments").fetch_one(&db).await.unwrap(); assert_eq!(count,3);
         sqlx::query("DELETE FROM attachments WHERE id=? AND session_id='target'").bind(&attachment.id).execute(&db).await.unwrap();
         let count: i64 = sqlx::query_scalar("SELECT count(*) FROM attachments WHERE id=?").bind(&attachment.id).fetch_one(&db).await.unwrap(); assert_eq!(count,0);
