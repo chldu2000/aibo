@@ -21,31 +21,118 @@
   .app-shell[data-ui-kit='material3'] :where(.context-window-select) select:disabled { opacity: 0.5; cursor: not-allowed; }
 
 
-/* ModelMatrix */
+/* ModelMatrix: tonal selection surface, without a ruled grid or intensity bars. */
+.app-shell[data-ui-kit='material3'] .ui-model-matrix-wrap {
+  max-height: 320px;
+  overflow: auto;
+  overscroll-behavior: contain;
+  border: 0;
+  border-radius: var(--md-sys-shape-corner-large);
+  padding: 4px;
+  background: var(--aibo-surface);
+}
+.app-shell[data-ui-kit='material3'] .ui-model-matrix-tools {
+  position: sticky;
+  left: 0;
+  z-index: 3;
+  display: flex;
+  padding: 4px 4px 8px;
+  background: var(--aibo-surface);
+}
+.app-shell[data-ui-kit='material3'] .ui-model-matrix-tools button {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 36px;
+  padding-inline: 16px;
+  border: 1px solid var(--aibo-border-strong);
+  border-radius: var(--md-sys-shape-corner-full);
+  color: var(--aibo-text);
+  background: transparent;
+  font: 500 var(--aibo-type-ui)/1.4 var(--md-aibo-font-sans);
+}
+.app-shell[data-ui-kit='material3'] .ui-model-matrix {
+  width: 100%;
+  min-width: max-content;
+  border-collapse: separate;
+  border-spacing: 2px 2px;
+  color: var(--aibo-text);
+  font-size: var(--aibo-type-ui);
+}
+.app-shell[data-ui-kit='material3'] .ui-model-matrix :is(th, td) {
+  height: 36px;
+  border: 0;
+}
+.app-shell[data-ui-kit='material3'] .ui-model-matrix thead th {
+  position: sticky;
+  z-index: 1;
+  top: -4px;
+  height: 32px;
+  font-size: var(--aibo-type-meta);
+  min-width: 44px;
+  padding-inline: 2px;
+  background: var(--aibo-surface);
+  color: var(--aibo-muted);
+  font-weight: 500;
+  text-align: center;
+  white-space: nowrap;
+}
+.app-shell[data-ui-kit='material3'] .ui-model-matrix thead th:first-child { z-index: 2; left: 0; width: 120px; min-width: 120px; text-align: left; }
+.app-shell[data-ui-kit='material3'] .ui-model-matrix tbody th {
+  position: sticky;
+  z-index: 1;
+  left: 0;
+  width: 120px;
+  max-width: 120px;
+  padding: 4px 6px;
+  line-height: 16px;
+  border-radius: var(--md-sys-shape-corner-medium);
+  background: var(--aibo-surface);
+  font-weight: 500;
+  text-align: left;
+  overflow-wrap: anywhere;
+}
+.app-shell[data-ui-kit='material3'] .ui-model-matrix tbody th > span { display: block; max-width: 108px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.app-shell[data-ui-kit='material3'] .ui-model-matrix tbody th small { display: block; margin-top: 0; color: var(--aibo-muted); font-size: var(--aibo-type-meta); font-weight: 400; }
+.app-shell[data-ui-kit='material3'] .ui-model-matrix tr.active-row th { color: var(--aibo-selected-ink); background: var(--aibo-selected); }
+.app-shell[data-ui-kit='material3'] .ui-model-matrix td { min-width: 44px; padding: 0; text-align: center; }
+.app-shell[data-ui-kit='material3'] .ui-model-matrix td button {
+  position: relative;
+  display: inline-flex;
+  width: 100%;
+  min-height: 36px;
+  align-items: center;
+  justify-content: center;
+  border: 0;
+  border-radius: var(--md-sys-shape-corner-full);
+  padding: 0 4px;
+  color: var(--aibo-muted);
+  background: transparent;
+  font: inherit;
+}
+.app-shell[data-ui-kit='material3'] .ui-model-matrix-wrap button:hover:not(:disabled):not(.active) { color: var(--aibo-text); background: var(--aibo-hover); }
+.app-shell[data-ui-kit='material3'] .ui-model-matrix-wrap button:focus-visible { outline: 2px solid var(--aibo-focus); outline-offset: -2px; }
+.app-shell[data-ui-kit='material3'] .ui-model-matrix td button.active { color: var(--primary-foreground); background: var(--primary); }
+.app-shell[data-ui-kit='material3'] .ui-model-matrix-tools button.active { border-color: transparent; color: var(--aibo-selected-ink); background: var(--aibo-selected); }
+.app-shell[data-ui-kit='material3'] .ui-model-matrix-wrap button:disabled { cursor: not-allowed; opacity: .38; }
+.app-shell[data-ui-kit='material3'] .ui-model-matrix .effort-mark { display: inline-flex; align-items: center; justify-content: center; }
+/* The column label carries intensity. Available choices use a quiet circular mark. */
+.app-shell[data-ui-kit='material3'] .ui-model-matrix .effort-ticks,
+.app-shell[data-ui-kit='material3'] .ui-model-matrix td button:not(.active):not(:disabled) > span:not(.effort-mark) {
+  display: block;
+  width: 16px;
+  height: 16px;
+  border: 2px solid var(--aibo-border-strong);
+  border-radius: 50%;
+  font-size: 0;
+}
+.app-shell[data-ui-kit='material3'] .ui-model-matrix :is(.effort-tick, .effort-selection) { display: none; }
 
-  .app-shell[data-ui-kit='material3'] .ui-model-matrix-wrap { max-height: 320px; overflow: auto; overscroll-behavior: contain; border: 1px solid var(--aibo-border); border-radius: var(--md-sys-shape-corner-small); background: var(--md-aibo-surface-panel); }
-  .app-shell[data-ui-kit='material3'] :where(.ui-model-matrix-wrap) .ui-model-matrix-tools { position: sticky; left: 0; z-index: 3; display: flex; padding: var(--md-aibo-space-2); border-bottom: 1px solid var(--aibo-border); background: var(--md-aibo-surface-muted); }
-  .app-shell[data-ui-kit='material3'] :where(.ui-model-matrix-wrap) .ui-model-matrix-tools button { display: inline-flex; align-items: center; gap: var(--md-aibo-space-2); min-height: var(--md-aibo-density-control-height); padding-inline: var(--md-aibo-space-3); border: 1px solid var(--aibo-border); border-radius: var(--md-sys-shape-corner-small); color: var(--aibo-text); background: transparent; font-size: var(--aibo-type-ui); }
-  .app-shell[data-ui-kit='material3'] :where(.ui-model-matrix-wrap) .ui-model-matrix { width: 100%; min-width: max-content; border-collapse: separate; border-spacing: 0; color: var(--aibo-text); font-size: var(--aibo-type-ui); }
-  .app-shell[data-ui-kit='material3'] :where(.ui-model-matrix-wrap) th, .app-shell[data-ui-kit='material3'] :where(.ui-model-matrix-wrap) td { height: var(--md-aibo-density-control-height); border-bottom: 1px solid var(--aibo-border); }
-  .app-shell[data-ui-kit='material3'] :where(.ui-model-matrix-wrap) tr:last-child th, .app-shell[data-ui-kit='material3'] :where(.ui-model-matrix-wrap) tr:last-child td { border-bottom: 0; }
-  .app-shell[data-ui-kit='material3'] :where(.ui-model-matrix-wrap) thead th { position: sticky; z-index: 1; top: 0; min-width: 52px; padding-inline: var(--md-aibo-space-2); background: var(--md-aibo-surface-muted); color: var(--aibo-muted); font-weight: 500; text-align: center; white-space: nowrap; }
-  .app-shell[data-ui-kit='material3'] :where(.ui-model-matrix-wrap) thead th:first-child { z-index: 2; left: 0; min-width: 136px; text-align: left; }
-  .app-shell[data-ui-kit='material3'] :where(.ui-model-matrix-wrap) tbody th { position: sticky; z-index: 1; left: 0; max-width: 200px; padding-inline: var(--md-aibo-space-3); background: var(--md-aibo-surface-panel); font-weight: 500; text-align: left; overflow-wrap: anywhere; }
-  .app-shell[data-ui-kit='material3'] :where(.ui-model-matrix-wrap) tbody th small { display: block; color: var(--aibo-muted); font-size: var(--md-aibo-type-label-size); }
-  .app-shell[data-ui-kit='material3'] :where(.ui-model-matrix-wrap) tr.active-row th { color: var(--aibo-info-text); background: var(--aibo-accent-soft); box-shadow: none; }
-  .app-shell[data-ui-kit='material3'] :where(.ui-model-matrix-wrap) td { min-width: 52px; padding: 0; text-align: center; }
-  .app-shell[data-ui-kit='material3'] :where(.ui-model-matrix-wrap) td button { position: relative; isolation: isolate; display: inline-flex; width: 100%; min-height: var(--md-aibo-density-control-height); align-items: center; justify-content: center; border: 0; border-radius: var(--md-sys-shape-corner-small); padding: 0; color: var(--aibo-muted); background: transparent; font: inherit; }
-  .app-shell[data-ui-kit='material3'] :where(.ui-model-matrix-wrap) button { transition: background-color var(--md-aibo-motion-fast) var(--md-aibo-ease-standard), color var(--md-aibo-motion-fast) var(--md-aibo-ease-standard); }
-  .app-shell[data-ui-kit='material3'] :where(.ui-model-matrix-wrap) button:hover:not(:disabled):not(.active) { color: var(--aibo-text); background: var(--aibo-hover); }
-  .app-shell[data-ui-kit='material3'] .ui-model-matrix-wrap :is(.ui-model-matrix, .ui-model-matrix-tools) button { border-radius: var(--md-sys-shape-corner-small); }
-  .app-shell[data-ui-kit='material3'] .ui-model-matrix-wrap :is(.ui-model-matrix, .ui-model-matrix-tools) button:focus-visible { outline: var(--md-aibo-focus-width) solid var(--aibo-focus); outline-offset: -2px; }
-  .app-shell[data-ui-kit='material3'] :where(.ui-model-matrix-wrap) td button.active, .app-shell[data-ui-kit='material3'] :where(.ui-model-matrix-wrap) .ui-model-matrix-tools button.active { color: var(--aibo-info-text); background: var(--aibo-accent-soft); }
-  .app-shell[data-ui-kit='material3'] :where(.ui-model-matrix-wrap) button:disabled { cursor: not-allowed; opacity: .5; }
-  .app-shell[data-ui-kit='material3'] :where(.ui-model-matrix-wrap) .effort-mark { position: relative; z-index: 1; display: inline-flex; width: 28px; height: 16px; align-items: center; justify-content: center; }
-  .app-shell[data-ui-kit='material3'] :where(.ui-model-matrix-wrap) .effort-ticks { display: inline-flex; align-items: center; gap: 3px; }
-  .app-shell[data-ui-kit='material3'] :where(.ui-model-matrix-wrap) .effort-tick { width: 3px; height: 8px; background: var(--aibo-border); }
-  .app-shell[data-ui-kit='material3'] :where(.ui-model-matrix-wrap) .effort-tick.filled { background: var(--aibo-muted); }
+/* Desktop selection is compact; coarse pointers keep the larger hit target. */
+@media (pointer: coarse) {
+  .app-shell[data-ui-kit='material3'] .ui-model-matrix td button,
+  .app-shell[data-ui-kit='material3'] .ui-model-matrix-tools button { min-height: 44px; }
+}
 
 /* SettingsSection */
 
@@ -215,4 +302,3 @@
   .app-shell[data-ui-kit='material3'] :where(.semantic-view) dl { margin: 0; display: flex; gap: 1rem; flex-wrap: wrap; }
   .app-shell[data-ui-kit='material3'] :where(.semantic-view) dd { margin: 0; overflow-wrap: anywhere; font-size: 0.875rem; }
   .app-shell[data-ui-kit='material3'] :where(.semantic-view) .diff-content { border: 1px solid var(--border); color: var(--foreground); width: 100%; resize: vertical; overflow: auto; min-height: 6rem; white-space: pre; font-family: monospace; font-size: 0.8125rem; padding: 1rem; background: var(--muted); border-radius: var(--semantic-radius); }
-  .app-shell[data-ui-kit='material3'] .effort-selection { display: none; }

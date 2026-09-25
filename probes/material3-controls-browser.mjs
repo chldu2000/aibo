@@ -45,7 +45,7 @@ try {
     assert.equal(await page.locator('.effort-selection').evaluate(e=>getComputedStyle(e).display),'none');
     await page.getByRole('button',{name:'快速',exact:true}).click();
     const [fast]=await styles(page.getByRole('button',{name:'快速',exact:true}));
-    assert.equal(fast.borderTopLeftRadius,'8px');
+    assert.equal(fast.borderTopLeftRadius,'999px');
     assert.doesNotMatch(fast.boxShadow,/inset/);
     for(const s of await styles(page.locator('.variant-fixture [data-slot="button"]'))) {
       assert.equal(s.borderTopLeftRadius,'999px');
@@ -82,6 +82,56 @@ try {
   await page.getByRole('button',{name:'切换忙碌'}).click();
   assert(await page.getByRole('combobox',{name:'模型上下文大小'}).isDisabled());
   assert(await page.getByRole('button',{name:'第三方模型，高',exact:true}).isDisabled());
+  // A multi-model catalog exercises MD3 presentation and the existing selection contract.
+  await page.goto(`http://127.0.0.1:${server.httpServer.address().port}/__controls?kit=material3&matrix=expanded`);
+  const matrix=page.locator('.ui-model-matrix-wrap');
+  for(const theme of ['light','dark']) {
+    if(await page.locator('.app-shell').getAttribute('data-ui-theme')!==theme)await page.getByRole('button',{name:'切换主题'}).click();
+    const choice=page.getByRole('button',{name:'推理模型 Long Context，max',exact:true});
+    await choice.focus();await page.keyboard.press('Space');
+    assert.equal(await choice.getAttribute('aria-pressed'),'true');
+    assert.equal(await page.getByLabel('操作结果').textContent(),'max');
+    assert.equal(await matrix.locator('tbody button[aria-pressed="true"]').count(),1);
+    assert.equal(await matrix.evaluate(e=>getComputedStyle(e).borderTopLeftRadius),'16px');
+    assert(await matrix.evaluate(e=>e.scrollWidth<=e.clientWidth),'500px matrix fits default plus low/medium/high/xhigh/max/ultra with a reserved scrollbar');
+    const lastHeader=matrix.locator('thead th').last();
+    assert.equal(await lastHeader.textContent(),'ultra');
+    assert((await lastHeader.boundingBox()).x+(await lastHeader.boundingBox()).width<=(await matrix.boundingBox()).x+(await matrix.boundingBox()).width);
+    assert.equal((await choice.boundingBox()).height,36,'desktop matrix uses compact selection targets');
+    const cells=await matrix.locator('th,td').evaluateAll(es=>es.map(e=>getComputedStyle(e).borderBottomWidth));
+    assert(cells.every(width=>width==='0px'),'matrix uses spacing instead of a ruled grid');
+    assert.equal(await choice.evaluate(e=>getComputedStyle(e).borderTopLeftRadius),'999px');
+    assert.equal(await matrix.locator('.effort-ticks').first().evaluate(e=>getComputedStyle(e).borderRadius),'50%');
+    assert(await matrix.locator('.effort-tick').evaluateAll(es=>es.every(e=>getComputedStyle(e).display==='none')),'intensity bars are absent');
+    assert(await page.getByRole('button',{name:'第三方模型，max',exact:true}).isDisabled());
+    const fast=page.getByRole('button',{name:'快速',exact:true});
+    await fast.click();assert.equal(await fast.getAttribute('aria-pressed'),'true');
+    await matrix.screenshot({path:`/tmp/aibo-material3-controls/matrix-${theme}.png`});
+    await fast.click();assert.equal(await fast.getAttribute('aria-pressed'),'false');
+    await page.getByRole('button',{name:'第三方模型，默认',exact:true}).click();
+    assert.equal(await page.getByLabel('操作结果').textContent(),'default');
+    assert.equal(await choice.getAttribute('aria-pressed'),'false');
+    await page.setViewportSize({width:390,height:844});
+    await matrix.scrollIntoViewIfNeeded();
+    const firstColumn=matrix.locator('tbody th').first();
+    const left=(await firstColumn.boundingBox()).x;
+    await matrix.evaluate(e=>{e.scrollLeft=e.scrollWidth;});
+    assert(await matrix.evaluate(e=>e.scrollLeft>0),'narrow matrix scrolls within its own container');
+    const pinned=(await firstColumn.boundingBox()).x;
+    assert(pinned>=(await matrix.boundingBox()).x && pinned<=left,'model labels stay visible at the leading edge during horizontal scrolling');
+    assert(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth));
+    await choice.focus();await page.keyboard.press('Enter');
+    assert.equal(await choice.getAttribute('aria-pressed'),'true','offscreen choices remain keyboard reachable');
+    await matrix.screenshot({path:`/tmp/aibo-material3-controls/matrix-${theme}-narrow.png`});
+    await page.setViewportSize({width:1100,height:1000});
+    await matrix.evaluate(e=>{e.scrollLeft=0;});
+  }
+  const touch=await browser.newPage({viewport:{width:540,height:900},hasTouch:true});
+  await touch.goto(`http://127.0.0.1:${server.httpServer.address().port}/__controls?kit=material3&matrix=expanded`);
+  await touch.locator('.ui-model-matrix').waitFor();
+  assert(await touch.evaluate(()=>matchMedia('(pointer: coarse)').matches));
+  assert(await touch.locator('.ui-model-matrix td button').evaluateAll(es=>es.every(e=>e.getBoundingClientRect().height>=44)),'touch keeps 44px targets');
+  await touch.close();
   assert.deepEqual(errors,[]);
   console.log('PASS: Material 3 control variants, badges, inputs, focus/error/disabled states, model selection and native choices; identical rendering with all ak-ui rules and tokens removed.');
 } finally { await browser.close(); await server.close(); }
