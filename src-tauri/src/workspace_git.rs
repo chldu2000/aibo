@@ -7,6 +7,8 @@ use sqlx::SqlitePool;
 use std::{path::Path, process::Command, time::{Duration, Instant}};
 use tokio::process::Command as TokioCommand;
 
+const GIT_OUTPUT_LIMIT: usize = 256 * 1024;
+
 /// One deadline for preconditions, mutation, and result inspection.
 pub(crate) struct GitOperation<'a> {
     workspace_path: &'a str,
@@ -85,10 +87,40 @@ pub(crate) async fn apply_workspace_git_file_action_requested_in_repository(
     crate::workspace_write_runs::execute_requested(db, &workspace, "git.index", serde_json::json!({"repositoryId":repository_id,"path":path,"action":action}), request, |cancel| apply_git_index_action(&repository_path, &path, &action, Some(cancel))).await
 }
 
+// Use the same status classification as the Git panel. Explicit literal paths
+// keep group staging from sweeping untracked files or resolving other conflicts.
+async fn stage_workspace_group(operation: &GitOperation<'_>, action: &str) -> Result<GitWorkspaceActionResult, CoreError> {
+    let (status, message) = operation.run(&["status", "--porcelain=v1", "-z", "--untracked-files=all", "--", "."], "inspect_stage_group").await?;
+    if !status.success {
+        return Ok(GitWorkspaceActionResult { action: action.into(), applied: false, message });
+    }
+    if status.stdout.len() > GIT_OUTPUT_LIMIT || std::str::from_utf8(&status.stdout).is_err() {
+        return Err(CoreError::Database("无法完整读取 Git 分组文件列表，未执行暂存".into()));
+    }
+    let (prefix, message) = operation.run(&["rev-parse", "--show-prefix"], "inspect_stage_prefix").await?;
+    if !prefix.success { return Err(CoreError::Database(message)); }
+    let prefix = std::str::from_utf8(&prefix.stdout).map_err(|_| CoreError::InvalidWorkspacePath("invalid Git path encoding".into()))?.trim_end_matches('\n');
+    let mut paths = Vec::new();
+    for file in crate::change_set::parse_workspace_git_status(&status.stdout) {
+        let selected = !file.conflicted && if action == "stage_untracked" { file.untracked } else { file.unstaged && !file.untracked };
+        if !selected { continue; }
+        // Porcelain paths are repository-relative, but Git -C may point at a
+        // workspace inside that repository. Stage only paths inside that scope.
+        let path = file.path.strip_prefix(prefix).filter(|path| !path.is_empty())
+            .ok_or_else(|| CoreError::InvalidWorkspacePath("Git group path is outside the workspace".into()))?.to_owned();
+        paths.push(path);
+    }
+    if paths.is_empty() { return Ok(GitWorkspaceActionResult { action: action.into(), applied: true, message: "该分组没有需要暂存的文件".into() }); }
+    let mut args = vec!["add", "--"];
+    args.extend(paths.iter().map(String::as_str));
+    operation.action(&args, action).await
+}
+
 async fn run_git_workspace_action(workspace_path: &str, action: &str, cancellation: Option<crate::workspace_write_runs::Cancellation>) -> Result<GitWorkspaceActionResult, CoreError> {
     let mut operation = GitOperation::new(workspace_path);
     operation.cancellation = cancellation;
     match action {
+        "stage_changed" | "stage_untracked" => stage_workspace_group(&operation, action).await,
         "stage_all" => operation.action(&["add", "-A", "--", "."], action).await,
         "unstage_all" => {
             if operation.has_head().await? { operation.action(&["restore", "--staged", "--", "."], action).await }
@@ -641,8 +673,7 @@ async fn capture_git_operation(command: TokioCommand, action: &str, timeout: Dur
     if let Some(cancel) = cancellation {
         if cancel.is_requested().await { return Err(CoreError::WriteOutcomeUnknown(format!("Git {action}: stopped before launching the next command"))); }
     }
-    const OUTPUT_LIMIT: usize = 256 * 1024;
-    let output = crate::controlled_process::execute_cancellable(command, timeout, OUTPUT_LIMIT + 1, async {
+    let output = crate::controlled_process::execute_cancellable(command, timeout, GIT_OUTPUT_LIMIT + 1, async {
         match cancellation { Some(cancel) => cancel.requested().await, None => std::future::pending::<()>().await }
     }).await
         .map_err(|error| CoreError::WriteOutcomeUnknown(format!("Git {action}: {error}")))?;
@@ -653,11 +684,11 @@ async fn capture_git_operation(command: TokioCommand, action: &str, timeout: Dur
     }
     // Redaction may shorten captured output below the byte limit. Remember
     // truncation before sanitizing so that discarded bytes are never hidden.
-    let truncated = output.stdout.len() > OUTPUT_LIMIT || output.stderr.len() > OUTPUT_LIMIT || message.len() > OUTPUT_LIMIT;
+    let truncated = output.stdout.len() > GIT_OUTPUT_LIMIT || output.stderr.len() > GIT_OUTPUT_LIMIT || message.len() > GIT_OUTPUT_LIMIT;
     let sanitized = crate::artifact::sanitize_content("git.command", message.trim());
-    let message = if truncated || sanitized.len() > OUTPUT_LIMIT {
+    let message = if truncated || sanitized.len() > GIT_OUTPUT_LIMIT {
         const SUFFIX: &str = "\n… Git 输出已截断";
-        format!("{}{}", crate::artifact::truncate_utf8(&sanitized, OUTPUT_LIMIT - SUFFIX.len(), ""), SUFFIX)
+        format!("{}{}", crate::artifact::truncate_utf8(&sanitized, GIT_OUTPUT_LIMIT - SUFFIX.len(), ""), SUFFIX)
     } else { sanitized };
     if output.timed_out || output.cancelled {
         return Err(CoreError::WriteOutcomeUnknown(format!("Git {action} 已停止，部分更改可能已生效。\n{message}")));
@@ -862,6 +893,92 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn group_staging_preserves_other_groups_and_conflicts() {
+        let root = std::env::temp_dir().join(format!("aibo-git-groups-{}", ulid::Ulid::new()));
+        std::fs::create_dir_all(&root).unwrap();
+        let path = root.to_str().unwrap();
+        let git = |args: &[&str]| {
+            let output = Command::new("git").arg("-C").arg(&root).args(args).output().unwrap();
+            assert!(output.status.success(), "{args:?}: {}", String::from_utf8_lossy(&output.stderr));
+            output.stdout
+        };
+        git(&["init", "-q", "-b", "main"]);
+        git(&["config", "user.name", "Aibo Fixture"]);
+        git(&["config", "user.email", "fixture@example.invalid"]);
+        git(&["config", "commit.gpgsign", "false"]);
+        for name in ["tracked.txt", "deleted.txt", "partial.txt", "conflict.txt", "renamed.txt"] {
+            std::fs::write(root.join(name), "base\n").unwrap();
+        }
+        git(&["add", "."]); git(&["commit", "-qm", "base"]);
+        git(&["checkout", "-qb", "topic"]);
+        std::fs::write(root.join("conflict.txt"), "topic\n").unwrap();
+        git(&["commit", "-qam", "topic"]); git(&["checkout", "-q", "main"]);
+        std::fs::write(root.join("conflict.txt"), "main\n").unwrap();
+        git(&["commit", "-qam", "main"]);
+        assert!(!Command::new("git").args(["-C", path, "merge", "topic"]).output().unwrap().status.success());
+        std::fs::write(root.join("tracked.txt"), "changed\n").unwrap();
+        std::fs::remove_file(root.join("deleted.txt")).unwrap();
+        std::fs::write(root.join("partial.txt"), "already staged\n").unwrap();git(&["add", "partial.txt"]);
+        std::fs::write(root.join("partial.txt"), "working copy\n").unwrap();
+        git(&["mv", "renamed.txt", "renamed target.txt"]);
+        std::fs::write(root.join("renamed target.txt"), "renamed and modified\n").unwrap();
+        std::fs::write(root.join("new [x].txt"), "untracked\n").unwrap();
+        std::fs::create_dir(root.join("new directory")).unwrap();
+        std::fs::write(root.join("new directory/nested.txt"), "nested\n").unwrap();
+
+        assert!(run_git_workspace_action(path, "stage_changed", None).await.unwrap().applied);
+        assert_eq!(git(&["show", ":tracked.txt"]), b"changed\n");
+        assert_eq!(git(&["show", ":partial.txt"]), b"working copy\n");
+        assert_eq!(git(&["show", ":renamed target.txt"]), b"renamed and modified\n");
+        assert!(git(&["ls-files", "deleted.txt"]).is_empty());
+        assert!(git(&["ls-files", "new [x].txt", "new directory/nested.txt"]).is_empty(), "changed group must not stage untracked files");
+        assert!(!git(&["ls-files", "--unmerged", "conflict.txt"]).is_empty(), "changed group must not resolve conflicts");
+
+        std::fs::write(root.join("tracked.txt"), "still unstaged\n").unwrap();
+        assert!(run_git_workspace_action(path, "stage_untracked", None).await.unwrap().applied);
+        assert_eq!(git(&["show", ":new [x].txt"]), b"untracked\n");
+        assert_eq!(git(&["show", ":new directory/nested.txt"]), b"nested\n");
+        assert_eq!(git(&["show", ":tracked.txt"]), b"changed\n", "untracked group must not stage tracked changes");
+        assert!(!git(&["ls-files", "--unmerged", "conflict.txt"]).is_empty());
+        assert!(run_git_workspace_action(path, "stage_untracked", None).await.unwrap().applied, "empty group is a no-op");
+        assert!(run_git_workspace_action(path, "stage_all", None).await.unwrap().applied);
+        assert_eq!(git(&["show", ":tracked.txt"]), b"still unstaged\n");
+        assert!(git(&["ls-files", "--unmerged"]).is_empty(), "repository-wide stage_all keeps its original scope");
+        std::fs::remove_dir_all(root).unwrap();
+    }
+
+    #[tokio::test]
+    async fn group_staging_handles_unborn_and_nested_workspaces() {
+        let root = std::env::temp_dir().join(format!("aibo-git-group-scope-{}", ulid::Ulid::new()));
+        let nested = root.join("nested workspace");
+        std::fs::create_dir_all(&nested).unwrap();
+        let git = |args: &[&str]| {
+            let output = Command::new("git").arg("-C").arg(&root).args(args).output().unwrap();
+            assert!(output.status.success(), "{args:?}: {}", String::from_utf8_lossy(&output.stderr));
+            output.stdout
+        };
+        git(&["init", "-q"]);
+        std::fs::write(root.join("outside.txt"), "outside\n").unwrap();
+        std::fs::write(nested.join("inside.txt"), "inside\n").unwrap();
+        assert!(run_git_workspace_action(nested.to_str().unwrap(), "stage_changed", None).await.unwrap().applied);
+        assert!(git(&["ls-files"]).is_empty(), "unborn tracked group must not stage new files");
+        assert!(run_git_workspace_action(nested.to_str().unwrap(), "stage_untracked", None).await.unwrap().applied);
+        assert_eq!(git(&["ls-files"]), b"nested workspace/inside.txt\n", "subdirectory workspace must not include its sibling files");
+        std::fs::write(nested.join("inside.txt"), "updated\n").unwrap();
+        assert!(run_git_workspace_action(nested.to_str().unwrap(), "stage_changed", None).await.unwrap().applied);
+        assert_eq!(git(&["show", ":nested workspace/inside.txt"]), b"updated\n");
+        #[cfg(unix)]
+        {
+            std::fs::write(nested.join(":(glob)*.txt"), "literal\n").unwrap();
+            std::fs::write(nested.join("inside.txt"), "not staged\n").unwrap();
+            assert!(run_git_workspace_action(nested.to_str().unwrap(), "stage_untracked", None).await.unwrap().applied);
+            assert_eq!(git(&["show", ":nested workspace/:(glob)*.txt"]), b"literal\n");
+            assert_eq!(git(&["show", ":nested workspace/inside.txt"]), b"updated\n", "literal pathspec must not expand to tracked files");
+        }
+        std::fs::remove_dir_all(root).unwrap();
+    }
+
+    #[tokio::test]
     async fn unborn_index_and_failed_preconditions_do_not_delete_working_files_or_start_writes() {
         let root = std::env::temp_dir().join(format!("aibo-git-preconditions-{}", ulid::Ulid::new()));
         std::fs::create_dir_all(&root).unwrap();
@@ -1027,7 +1144,9 @@ mod tests {
         assert!(remote_head.status.success());
         assert_eq!(String::from_utf8_lossy(&remote_head.stdout).trim(), git(&["rev-parse", "HEAD"]));
         sqlx::query("UPDATE workspaces SET trusted=0 WHERE id='workspace'").execute(&db).await.unwrap();
-        assert!(matches!(apply_workspace_git_action(&db, "workspace".into(), "stage_all".into()).await, Err(CoreError::WorkspaceTrustRequired)));
+        for action in ["stage_all", "stage_changed", "stage_untracked"] {
+            assert!(matches!(apply_workspace_git_action(&db, "workspace".into(), action.into()).await, Err(CoreError::WorkspaceTrustRequired)));
+        }
         assert!(git(&["diff", "--cached", "--name-only"]).is_empty());
         db.close().await;
         std::fs::remove_dir_all(root).unwrap();

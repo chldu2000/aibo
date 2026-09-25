@@ -246,7 +246,7 @@ try {
     const group=panel.getByRole('region',{name:title,exact:true});
     const heading=group.locator('.git-change-group-heading');
     const count=heading.locator('.git-change-group-count');
-    const action=heading.getByRole('button',{name:'暂存全部更改',exact:true});
+    const action=heading.getByRole('button',{name:title==='未跟踪的文件'?'暂存全部未跟踪文件':'暂存全部更改',exact:true});
     await native.focus();
     await page.mouse.move(0,0);
     assert.equal(await action.evaluate(el=>getComputedStyle(el).opacity),'0');

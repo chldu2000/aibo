@@ -513,7 +513,7 @@ export interface GitFileActionResult {
   message: string;
 }
 
-export type GitWorkspaceAction = 'stage_all' | 'unstage_all';
+export type GitWorkspaceAction = 'stage_all' | 'stage_changed' | 'stage_untracked' | 'unstage_all';
 export type GitWorkspaceResultAction =
   | GitWorkspaceAction
   | GitSyncAction

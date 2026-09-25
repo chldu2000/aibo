@@ -491,7 +491,7 @@ fn parse_workspace_numstat(data: &[u8]) -> BTreeMap<String, GitLineStats> {
     stats
 }
 
-fn parse_workspace_git_status(status: &[u8]) -> Vec<WorkspaceFileChange> {
+pub(crate) fn parse_workspace_git_status(status: &[u8]) -> Vec<WorkspaceFileChange> {
     let mut files = Vec::new();
     let mut records = status
         .split(|byte| *byte == 0)

@@ -256,7 +256,7 @@
           <Badge variant="secondary" class="git-change-group-count">{files.length}</Badge>
         </Button>
         {#if group === 'staged' || group === 'changed' || group === 'untracked'}
-          <Button variant="ghost" size="icon" class="git-change-group-action" aria-label={action === 'stage' ? '暂存全部更改' : '取消全部暂存'} title={action === 'stage' ? '暂存全部更改' : '取消全部暂存'} disabled={!workspace || workspace.trust !== 'trusted' || operationBusy} onclick={() => workspace && onApplyWorkspaceAction(workspace.id, action === 'stage' ? 'stage_all' : 'unstage_all', repoId)}><Icon name={action === 'stage' ? 'add' : 'undo'} size={14} /></Button>
+          <Button variant="ghost" size="icon" class="git-change-group-action" aria-label={group === 'untracked' ? '暂存全部未跟踪文件' : action === 'stage' ? '暂存全部更改' : '取消全部暂存'} title={group === 'untracked' ? '暂存全部未跟踪文件' : action === 'stage' ? '暂存全部更改' : '取消全部暂存'} disabled={!workspace || workspace.trust !== 'trusted' || operationBusy} onclick={() => workspace && onApplyWorkspaceAction(workspace.id, group === 'changed' ? 'stage_changed' : group === 'untracked' ? 'stage_untracked' : 'unstage_all', repoId)}><Icon name={action === 'stage' ? 'add' : 'undo'} size={14} /></Button>
         {/if}
       </header>
       {#if (expandedChangeGroups[`${repoId ?? repositoryId}:${group}`] ?? true)}

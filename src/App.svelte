@@ -2651,7 +2651,7 @@
         errorMessage = result.message;
         return;
       }
-      notice = action === 'stage_all' ? '已暂存全部更改。' : '已取消全部暂存。';
+      notice = { stage_all: '已暂存仓库中的全部更改。', stage_changed: '已暂存“更改”分组中的文件。', stage_untracked: '已暂存未跟踪的文件。', unstage_all: '已取消全部暂存。' }[action];
       await refreshWorkspaceChanges(workspaceId);
     } catch (error) {
       errorMessage = toErrorMessage(error);
