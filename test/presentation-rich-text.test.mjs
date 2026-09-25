@@ -16,8 +16,8 @@ test('rich text links and code copies bind current message content and revoke st
  const state=JSON.parse(await readFile('fixtures/presentation-workbench/conversation.json','utf8'));state.timeline[0].content=content;
  const directory=createConversationDirectory(),actions=directory.project(state),context={workspaceId:'w',sessionId:'s',revision:1};
  const tree=renderRichText(content,'message:m','m',actions),nodes=flatten(tree);
- assert.ok(nodes.some(node=>node.tag==='strong'&&node.text==='bold'));
- assert.ok(nodes.some(node=>node.tag==='code'&&node.text==='const x = "<script>";'));
+ assert.ok(nodes.some(node=>node.tag==='strong'&&flatten(node).some(child=>child.text==='bold')));
+ assert.ok(nodes.some(node=>node.tag==='code'&&flatten(node).map(child=>child.text??'').join('')==='const x = "<script>";'));
  assert.ok(!JSON.stringify(tree).includes('private transport'));
  assert.ok(!nodes.some(node=>node.tag==='script'||node.attrs?.href));
  const copy=actions.find(action=>action.operation==='copyCode'),link=actions.find(action=>action.operation==='openLink');

@@ -375,3 +375,34 @@
 :where(.app-shell[data-ui-kit='material3']) .global-search-preview h2 { font-size: 17px; }
 :where(.app-shell[data-ui-kit='material3']) .global-search-preview pre { font-size: var(--aibo-type-ui, 13px); line-height: 1.65; }
 :where(.app-shell[data-ui-kit='material3']) .session-history [data-search-hit='true'] { border-color: var(--aibo-focus); box-shadow: none; }
+:where(.app-shell[data-ui-kit='material3']) .markdown-content { line-height: 1.7; }
+:where(.app-shell[data-ui-kit='material3']) .markdown-content :is(p, th, td) { white-space: pre-wrap; overflow-wrap: anywhere; }
+:where(.app-shell[data-ui-kit='material3']) .markdown-content .markdown-heading { line-height: 1.4; font-weight: 650; margin-block: 12px 2px; }
+:where(.app-shell[data-ui-kit='material3']) .markdown-heading-1 { font-size: 24px; }
+:where(.app-shell[data-ui-kit='material3']) .markdown-heading-2 { font-size: 20px; }
+:where(.app-shell[data-ui-kit='material3']) .markdown-heading-3 { font-size: 17px; }
+:where(.app-shell[data-ui-kit='material3']) .markdown-heading-4 { font-size: 15px; }
+:where(.app-shell[data-ui-kit='material3']) .markdown-heading-5, :where(.app-shell[data-ui-kit='material3']) .markdown-heading-6 { font-size: 14px; }
+:where(.app-shell[data-ui-kit='material3']) .markdown-heading-6 { color: var(--aibo-muted); }
+:where(.app-shell[data-ui-kit='material3']) .markdown-content ul { list-style-type: disc; }
+:where(.app-shell[data-ui-kit='material3']) .markdown-content ol { list-style-type: decimal; }
+:where(.app-shell[data-ui-kit='material3']) .markdown-content ul ul { list-style-type: circle; }
+:where(.app-shell[data-ui-kit='material3']) .markdown-content li.markdown-task { list-style: none; }
+:where(.app-shell[data-ui-kit='material3']) .markdown-task-check { color: var(--aibo-accent-text); }
+:where(.app-shell[data-ui-kit='material3']) .markdown-quote { border-inline-start: 3px solid var(--aibo-border); color: var(--aibo-muted); background: var(--aibo-surface-hover); }
+:where(.app-shell[data-ui-kit='material3']) .markdown-table :is(th, td) { border: 1px solid var(--aibo-border); }
+:where(.app-shell[data-ui-kit='material3']) .markdown-table th { background: var(--aibo-surface-hover); font-weight: 650; }
+:where(.app-shell[data-ui-kit='material3']) .markdown-align-left { text-align: left; }
+:where(.app-shell[data-ui-kit='material3']) .markdown-align-center { text-align: center; }
+:where(.app-shell[data-ui-kit='material3']) .markdown-align-right { text-align: right; }
+:where(.app-shell[data-ui-kit='material3']) .markdown-rule { border: 0; border-top: 1px solid var(--aibo-border); }
+:where(.app-shell[data-ui-kit='material3']) .markdown-content :is(em) { font-style: italic; }
+:where(.app-shell[data-ui-kit='material3']) .markdown-content :is(del, .markdown-deleted) { text-decoration: line-through; }
+:where(.app-shell[data-ui-kit='material3']) .markdown-content pre code { padding: 0; background: transparent; color: inherit; font-size: inherit; }
+:where(.app-shell[data-ui-kit='material3']) .markdown-content :is(.markdown-table-scroll, .markdown-code):focus-visible { outline: 2px solid var(--aibo-accent-text); outline-offset: -2px; }
+:where(.app-shell[data-ui-kit='material3']) .markdown-content :is(.hljs-comment, .hljs-quote) { color: var(--aibo-muted); font-style: italic; }
+:where(.app-shell[data-ui-kit='material3']) .markdown-content :is(.hljs-keyword, .hljs-selector-tag, .hljs-meta, .hljs-doctag) { color: var(--md-sys-color-primary); font-weight: 600; }
+:where(.app-shell[data-ui-kit='material3']) .markdown-content :is(.hljs-string, .hljs-regexp, .hljs-addition, .hljs-attribute) { color: var(--aibo-success-text); }
+:where(.app-shell[data-ui-kit='material3']) .markdown-content :is(.hljs-number, .hljs-literal, .hljs-symbol, .hljs-bullet) { color: var(--aibo-warning-text); }
+:where(.app-shell[data-ui-kit='material3']) .markdown-content :is(.hljs-title, .hljs-type, .hljs-built_in, .hljs-attr) { color: var(--md-sys-color-primary); }
+:where(.app-shell[data-ui-kit='material3']) .markdown-content .hljs-deletion { color: var(--aibo-danger-text); }

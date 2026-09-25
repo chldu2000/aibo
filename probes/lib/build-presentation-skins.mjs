@@ -1,4 +1,4 @@
-import {mkdtemp,mkdir,readFile,rm} from 'node:fs/promises';
+import {mkdtemp,mkdir,readFile,rm,symlink,realpath} from 'node:fs/promises';
 import {tmpdir} from 'node:os';
 import path from 'node:path';
 import {execFileSync} from 'node:child_process';
@@ -10,6 +10,12 @@ export async function buildPresentationSkins({surfaces='controls,semantic,workbe
       const packed=JSON.parse(execFileSync('npm',['pack','--ignore-scripts','--offline','--json','--pack-destination',root,'--cache',path.join(root,'cache')],{cwd:path.resolve('packages',name),encoding:'utf8'}))[0];
       const installed=path.join(root,'node_modules/@aibo',name);await mkdir(installed,{recursive:true});
       execFileSync('tar',['-xzf',path.join(root,packed.filename),'-C',installed,'--strip-components=1']);
+    }
+    // Tar extraction does not install declared dependencies. Reuse the locked local
+    // installations for offline probes; Node resolves their transitive dependencies.
+    const workbench = JSON.parse(await readFile(path.join(root,'node_modules/@aibo/presentation-workbench/package.json'),'utf8'));
+    for (const dependency of Object.keys(workbench.dependencies ?? {})) {
+      await symlink(await realpath(path.resolve('node_modules',dependency)),path.join(root,'node_modules',dependency),'dir');
     }
     const packages=[];
     for(const skin of ['shadcn','material3']) {

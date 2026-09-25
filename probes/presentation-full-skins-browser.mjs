@@ -1,11 +1,12 @@
 import assert from 'node:assert/strict';
-import { writeFile } from 'node:fs/promises';
+import { readFile, writeFile } from 'node:fs/promises';
 import { createHash } from 'node:crypto';
 import { createServer } from 'vite';
 import { chromium } from 'playwright';
 import {buildPresentationSkins} from './lib/build-presentation-skins.mjs';
 import {probePresentationApprovalFault} from './lib/presentation-approval-fault.mjs';
 const built=await buildPresentationSkins();const pkg=built.packages[0];
+pkg.markdownTechnical=await readFile('fixtures/markdown-technical.md','utf8');
 const server=await createServer({server:{host:'127.0.0.1',port:0,strictPort:false,hmr:false,watch:null}});await server.listen();
 const browser=await chromium.launch({headless:true});const page=await browser.newPage({viewport:{width:1280,height:900}});const errors=[];
 page.on('pageerror',error=>errors.push(error.stack ?? error.message));page.setDefaultTimeout(10000);
@@ -44,7 +45,7 @@ try {
         if(command==='get_session_models')return catalog;
         if(command==='invoke_agent_capability'&&args.capability==='command.list')return {commands:[{name:'help',description:'Help command',source:'agent'},{name:'hello',description:'Hello command',source:'agent'},{name:'heal',description:'Healing skill',source:'skill'},{name:'height',description:'Height prompt',source:'prompt'}]};
         if(command==='search_workspace_paths')return [{path:'src/one.ts',isDirectory:false},{path:'src/two.ts',isDirectory:false}];
-        if(command==='get_timeline')return [{id:'message',sessionId:args.sessionId,turnId:'turn',externalMessageId:null,role:'assistant',toolName:'tool-name',entryType:'note',content:'Complete timeline data\n\n## Rich heading\n\n**Bold message** and `inline` [Reference](https://example.invalid)\n\n- Item one\n- Item two\n\n```js\nconst answer = 42;\n```\n[AIBO_CONTEXT_ATTACHMENTS]internal metadata[/AIBO_CONTEXT_ATTACHMENTS]',status:'completed',createdAt:'2026-09-13',updatedAt:'2026-09-13'},...([{id:'tool-message',role:'tool',toolName:'commandExecution',entryType:'tool_call',content:'**literal tool arguments**\n<script>literal</script>'},{id:'tool-result',role:'tool',toolName:'commandExecution',entryType:'tool_result',content:'literal tool result'},{id:'reasoning-message',role:'system',toolName:'reasoning',entryType:'note',content:'## Reasoning detail'}].map(item=>({...item,sessionId:args.sessionId,turnId:'turn',externalMessageId:null,status:'completed',createdAt:'2026-09-13',updatedAt:'2026-09-13'}))),...Array.from({length:16},(_,index)=>({id:'scroll-'+index,sessionId:args.sessionId,turnId:'turn',externalMessageId:null,role:'assistant',toolName:null,entryType:'note',content:'Scroll message '+index+'\n\n'+('Anchor paragraph. '.repeat(30)),status:'completed',createdAt:'2026-09-13',updatedAt:'2026-09-13'}))];
+        if(command==='get_timeline')return [{id:'message',sessionId:args.sessionId,turnId:'turn',externalMessageId:null,role:'assistant',toolName:'tool-name',entryType:'note',content:'Complete timeline data\n\n## Rich heading\n\n**Bold message** and `inline` [Reference](https://example.invalid)\n\n- Item one\n- Item two\n\n```js\nconst answer = 42;\n```\n[AIBO_CONTEXT_ATTACHMENTS]internal metadata[/AIBO_CONTEXT_ATTACHMENTS]\n\n'+pkg.markdownTechnical,status:'completed',createdAt:'2026-09-13',updatedAt:'2026-09-13'},...([{id:'tool-message',role:'tool',toolName:'commandExecution',entryType:'tool_call',content:'**literal tool arguments**\n<script>literal</script>'},{id:'tool-result',role:'tool',toolName:'commandExecution',entryType:'tool_result',content:'literal tool result'},{id:'reasoning-message',role:'system',toolName:'reasoning',entryType:'note',content:'## Reasoning detail'}].map(item=>({...item,sessionId:args.sessionId,turnId:'turn',externalMessageId:null,status:'completed',createdAt:'2026-09-13',updatedAt:'2026-09-13'}))),...Array.from({length:16},(_,index)=>({id:'scroll-'+index,sessionId:args.sessionId,turnId:'turn',externalMessageId:null,role:'assistant',toolName:null,entryType:'note',content:'Scroll message '+index+'\n\n'+('Anchor paragraph. '.repeat(30)),status:'completed',createdAt:'2026-09-13',updatedAt:'2026-09-13'}))];
         if(command==='invoke_agent_capability'){if(args.capability==='model.reasoning')catalog.currentReasoningEffort=args.input.level;return {};}
         if(command==='send_agent_prompt')return {...sessions.find(session=>session.id===args.sessionId),state:'idle'};
         if(command==='resolve_agent_user_input')return;
@@ -233,7 +234,14 @@ try {
     }
     assert.equal(await frame.locator('[data-presentation-key="message:content:tool-message"]').textContent(),'**literal tool arguments**\n<script>literal</script>');
     await frame.getByRole('heading',{name:'Reasoning detail',exact:true}).waitFor();
-    await frame.getByRole('button',{name:'复制代码',exact:true}).click();
+    assert.equal(await frame.locator('.markdown-content ol').first().getAttribute('start'),'3');
+    assert.equal(await frame.locator('.markdown-content ol ul li').count(),2);
+    assert.equal(await frame.locator('.markdown-content th[scope=col]').count(),3);
+    assert.equal(await frame.locator('.markdown-content h6').count(),1);
+    assert.equal(await frame.locator('.markdown-content blockquote').count(),1);
+    assert.equal(await frame.locator('.markdown-content del').textContent(),'过时建议');
+    assert.ok(await frame.locator('.markdown-content .hljs-keyword').count());
+    await frame.getByRole('button',{name:'复制代码',exact:true}).first().click();
     await page.waitForFunction(()=>window.presentationCopies.includes('const answer = 42;'));
     await frame.getByRole('link',{name:'Reference',exact:true}).click();
     await page.waitForFunction(()=>window.presentationLinks.some(args=>args[0]==='https://example.invalid'));

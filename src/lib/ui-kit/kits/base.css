@@ -568,3 +568,15 @@ dd { max-width: 68%; overflow: hidden; margin: 0; text-overflow: ellipsis; white
 .ui-select-check { display: flex; width: 14px; }
 
 .ui-select-popup:not(:popover-open) { display: none; }
+/* Shared Markdown geometry; colors and typography remain in each kit. */
+.markdown-content > *, .markdown-list-content > *, .markdown-quote > * { min-width: 0; max-width: 100%; margin: 0; }
+.markdown-content :is(ul, ol) { padding-inline-start: 1.6em; }
+.markdown-list-content, .markdown-quote { display: grid; gap: 8px; }
+.markdown-list li { position: relative; min-width: 0; }
+.markdown-task-check { position: absolute; inset-inline-start: -1.4em; top: 0; }
+.markdown-quote { padding: 8px 16px; }
+.markdown-table-scroll { min-width: 0; max-width: 100%; overflow: auto; }
+.markdown-table { width: 100%; border-collapse: collapse; }
+.markdown-table th, .markdown-table td { padding: 8px 12px; min-width: 100px; vertical-align: top; }
+.markdown-code-block .markdown-code { padding: 12px; }
+.markdown-content .markdown-rule { margin-block: 8px; }

@@ -3,7 +3,7 @@ import type { JsonValue } from './semantic.js';
 /** Visual trees are presentation output, never capability or semantic contributions. */
 export type PresentationNode = {
   tag: 'div' | 'section' | 'main' | 'aside' | 'header' | 'footer' | 'nav' | 'article'
-    | 'h1' | 'h2' | 'h3' | 'p' | 'span' | 'strong' | 'em' | 'pre' | 'code'
+    | 'h1' | 'h2' | 'h3' | 'h4' | 'h5' | 'h6' | 'p' | 'span' | 'strong' | 'em' | 'del' | 'blockquote' | 'pre' | 'code'
     | 'ul' | 'ol' | 'li' | 'button' | 'input' | 'textarea' | 'label' | 'select' | 'option'
     | 'table' | 'thead' | 'tbody' | 'tr' | 'th' | 'td' | 'details' | 'summary' | 'hr'
     | 'img' | 'svg' | 'path' | 'circle' | 'rect' | 'line' | 'polyline' | 'polygon' | 'g';

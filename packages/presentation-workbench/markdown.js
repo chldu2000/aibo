@@ -1,78 +1,80 @@
-  const SAFE_LINK = /^(?:https?:\/\/|mailto:)/i;
+import {Lexer} from 'marked';
+import {decodeHTML} from 'entities';
 
-  export function parseMarkdown(value) {
-    const lines = value.replace(/\r\n?/g, '\n').split('\n');
-    const blocks = [];
-    let index = 0;
-    while (index < lines.length) {
-      const line = lines[index];
-      if (line.trim() === '') {
-        index += 1;
-        continue;
-      }
-      const fence = line.match(/^\s*```([^`]*)\s*$/);
-      if (fence) {
-        const code = [];
-        index += 1;
-        while (index < lines.length && !/^\s*```\s*$/.test(lines[index])) {
-          code.push(lines[index]);
-          index += 1;
-        }
-        if (index < lines.length) index += 1;
-        blocks.push({ kind: 'code', lines: code, language: fence[1].trim() });
-        continue;
-      }
-      const heading = line.match(/^\s*(#{1,3})\s+(.+?)\s*#*\s*$/);
-      if (heading) {
-        blocks.push({ kind: 'heading', lines: [heading[2]], level: heading[1].length });
-        index += 1;
-        continue;
-      }
-      if (/^\s*[-*+]\s+/.test(line) || /^\s*\d+[.)]\s+/.test(line)) {
-        const list = [];
-        while (index < lines.length && (/^\s*[-*+]\s+/.test(lines[index]) || /^\s*\d+[.)]\s+/.test(lines[index]))) {
-          list.push(lines[index].replace(/^\s*(?:[-*+]\s+|\d+[.)]\s+)/, ''));
-          index += 1;
-        }
-        blocks.push({ kind: 'list', lines: list });
-        continue;
-      }
-      const paragraph = [line.trim()];
-      index += 1;
-      while (index < lines.length && lines[index].trim() !== '' && !/^\s*```/.test(lines[index]) && !/^\s*#{1,3}\s+/.test(lines[index]) && !/^\s*(?:[-*+]\s+|\d+[.)]\s+)/.test(lines[index])) {
-        paragraph.push(lines[index].trim());
-        index += 1;
-      }
-      blocks.push({ kind: 'paragraph', lines: [paragraph.join('\n')] });
+const SAFE_LINK = /^(?:https?:\/\/|mailto:)/i;
+const options = {gfm: true, breaks: true};
+
+// Only data leaves the lexer. HTML is displayed literally, never interpreted.
+function segments(tokens) {
+  return tokens.filter(token => token.type !== 'checkbox').map(token => {
+    if (token.type === 'html') return {kind: 'text', value: token.raw};
+    if (token.type === 'br') return {kind: 'text', value: '\n'};
+    if (token.type === 'codespan') return {kind: 'code', value: token.text};
+    if (['strong', 'em', 'del'].includes(token.type)) {
+      return {kind: token.type, value: token.text, children: segments(token.tokens)};
     }
-    return blocks;
-  }
-
-  export function inlineSegments(value) {
-    const segments = [];
-    const pattern = /(`[^`\n]+`|\*\*[^*\n]+\*\*|__[^_\n]+__|\[([^\]\n]+)\]\(([^)\n]+)\))/g;
-    let last = 0;
-    for (const match of value.matchAll(pattern)) {
-      const start = match.index ?? 0;
-      if (start > last) segments.push({ kind: 'text', value: value.slice(last, start) });
-      const token = match[0];
-      if (token.startsWith('`')) segments.push({ kind: 'code', value: token.slice(1, -1) });
-      else if (token.startsWith('**') || token.startsWith('__')) segments.push({ kind: 'strong', value: token.slice(2, -2) });
-      else if (match[2] && match[3] && SAFE_LINK.test(match[3])) segments.push({ kind: 'link', value: match[2], href: match[3] });
-      else segments.push({ kind: 'text', value: token });
-      last = start + token.length;
+    if (token.type === 'link' || token.type === 'image') {
+      const href = decodeHTML(token.href);
+      if (!SAFE_LINK.test(href) || /[\u0000-\u0020\u007f]/.test(href)) return {kind: 'text', value: token.raw};
+      // Images stay explicit links: remote fetching is not part of Markdown rendering.
+      const children = token.type === 'image'
+        ? [{kind: 'text', value: `图片：${decodeHTML(token.text) || href}`}]
+        : segments(token.tokens);
+      return {kind: 'link', value: decodeHTML(token.text), href, children};
     }
-    if (last < value.length) segments.push({ kind: 'text', value: value.slice(last) });
-    return segments;
+    return {kind: 'text', value: decodeHTML(token.text ?? token.raw)};
+  });
+}
+
+export function inlineSegments(value) {
+  return segments(Lexer.lexInline(value, options));
+}
+
+export function parseMarkdown(value) {
+  let index = 0;
+  function blocks(tokens) {
+    return tokens.filter(token => !['space', 'def', 'checkbox'].includes(token.type)).map(token => {
+      const base = {index: index++, lines: [token.text ?? token.raw]};
+      if (token.type === 'code') return {...base, kind: 'code', lines: token.text.split('\n'), language: (token.lang ?? '').split(/\s+/)[0]};
+      if (token.type === 'heading') return {...base, kind: 'heading', level: token.depth, segments: segments(token.tokens)};
+      if (token.type === 'hr') return {...base, kind: 'rule'};
+      if (token.type === 'blockquote') return {...base, kind: 'quote', blocks: blocks(token.tokens)};
+      if (token.type === 'list') return {...base, kind: 'list', ordered: token.ordered, start: token.ordered ? token.start : 1,
+        lines: token.items.map(item => item.text),
+        items: token.items.map(item => ({checked: item.task ? Boolean(item.checked) : null, blocks: blocks(item.tokens)}))};
+      if (token.type === 'table') return {...base, kind: 'table', align: token.align,
+        header: token.header.map(cell => segments(cell.tokens)), rows: token.rows.map(row => row.map(cell => segments(cell.tokens)))};
+      return {...base, kind: 'paragraph', segments: token.type === 'html'
+        ? [{kind: 'text', value: token.raw}] : segments(token.tokens ?? [{type: 'text', text: token.text ?? token.raw}])};
+    });
   }
+  return blocks(Lexer.lex(value.replace(/\r\n?/g, '\n'), options));
+}
 
+export function displayMarkdown(content) {
+  return content.replace(/\n?\[AIBO_CONTEXT_ATTACHMENTS\][\s\S]*?\[\/AIBO_CONTEXT_ATTACHMENTS\]/g, '').trimEnd();
+}
 
-export function displayMarkdown(content){return content.replace(/\n?\[AIBO_CONTEXT_ATTACHMENTS\][\s\S]*?\[\/AIBO_CONTEXT_ATTACHMENTS\]/g,'').trimEnd();}
-export function markdownTargets(content){
- const targets=[];
- for(const [index,block] of parseMarkdown(displayMarkdown(content)).entries()){
-  if(block.kind==='code')targets.push({kind:'code',index,value:block.lines.join('\n')});
-  else for(const line of block.lines)for(const segment of inlineSegments(line))if(segment.kind==='link'&&!targets.some(target=>target.kind==='link'&&target.value===segment.href))targets.push({kind:'link',index,value:segment.href});
- }
- return targets;
+export function markdownTargets(content) {
+  const targets = [], links = new Set();
+  function visitInline(values, index) {
+    for (const segment of values) {
+      if (segment.kind === 'link' && !links.has(segment.href)) {
+        links.add(segment.href);
+        targets.push({kind: 'link', index, value: segment.href});
+      }
+      if (segment.children) visitInline(segment.children, index);
+    }
+  }
+  function visit(blocks) {
+    for (const block of blocks) {
+      if (block.kind === 'code') targets.push({kind: 'code', index: block.index, value: block.lines.join('\n')});
+      if (block.segments) visitInline(block.segments, block.index);
+      if (block.kind === 'table') for (const row of [block.header, ...block.rows]) for (const cell of row) visitInline(cell, block.index);
+      if (block.blocks) visit(block.blocks);
+      if (block.items) for (const item of block.items) visit(item.blocks);
+    }
+  }
+  visit(parseMarkdown(displayMarkdown(content)));
+  return targets;
 }

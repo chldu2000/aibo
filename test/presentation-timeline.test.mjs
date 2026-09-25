@@ -19,7 +19,7 @@ test('reasoning disclosure keeps its identity during streaming and prose keeps M
  const after=flatten(renderTimelineEntry({...initial,status:'completed',content:'## Thinking\n\nMore thoughts'},[]));
  assert.equal(before.find(node=>node.tag==='details').key,after.find(node=>node.tag==='details').key);
  assert.ok(before.some(node=>node.text==='THINKING'));assert.ok(before.some(node=>node.text==='生成中'));
- assert.ok(after.some(node=>node.tag==='h3'&&flatten(node).some(child=>child.text==='Thinking')));
+ assert.ok(after.some(node=>node.tag==='h2'&&flatten(node).some(child=>child.text==='Thinking')));
  const token={operation:'fork',args:['turn'],event:'click',token:'host-issued'};
  assert.ok(!before.some(node=>node.events));
  assert.ok(flatten(renderTimelineEntry({...initial,role:'assistant'},[token])).some(node=>node.events?.click==='host-issued'));

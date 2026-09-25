@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {mkdtemp,mkdir,readFile,rm} from 'node:fs/promises';
+import {mkdtemp,mkdir,readFile,rm,symlink,realpath} from 'node:fs/promises';
 import {tmpdir} from 'node:os';
 import path from 'node:path';
 import {pathToFileURL} from 'node:url';
@@ -13,6 +13,9 @@ test('packed workbench renderers run outside repo and expose only host-issued ac
  const root=await mkdtemp(path.join(tmpdir(),'aibo-workbench-renderer-'));t.after(()=>rm(root,{recursive:true,force:true}));
  const packed=JSON.parse(execFileSync('npm',['pack','--ignore-scripts','--offline','--json','--pack-destination',root,'--cache',path.join(root,'cache')],{cwd:path.resolve('packages/presentation-workbench'),encoding:'utf8'}))[0];
  execFileSync('tar',['-xzf',path.join(root,packed.filename),'-C',root]);
+ const metadata=JSON.parse(await readFile(path.join(root,'package/package.json'),'utf8'));
+ await mkdir(path.join(root,'node_modules'));
+ for(const dependency of Object.keys(metadata.dependencies ?? {})) await symlink(await realpath(path.resolve('node_modules',dependency)),path.join(root,'node_modules',dependency),'dir');
  for(const name of ['git','inspector','capability'])assert.equal(typeof (await import(pathToFileURL(path.join(root,'package',name+'.js'))))['render'+name[0].toUpperCase()+name.slice(1)],'function');
  for(const name of ['navigation','conversation']){
   const module=await import(pathToFileURL(path.join(root,'package',name+'.js')));

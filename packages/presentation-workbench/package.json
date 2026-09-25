@@ -26,6 +26,13 @@
     "README.md",
     "bundle.mjs",
     "markdown.d.ts",
-    "timeline-model.d.ts"
-  ]
+    "timeline-model.d.ts",
+    "code-highlight.d.ts"
+  ],
+  "dependencies": {
+    "marked": "^18.0.14",
+    "entities": "^8.1.0",
+    "lowlight": "^3.3.0",
+    "esbuild": "^0.28.2"
+  }
 }

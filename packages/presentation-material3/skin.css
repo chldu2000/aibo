@@ -39,3 +39,52 @@ button{border-radius:9999px;border-color:transparent;padding:10px 20px}.collecti
 .ui-select-popup{color:var(--foreground);background:var(--card);border:1px solid var(--border);border-radius:var(--radius);box-shadow:0 8px 24px color-mix(in srgb,var(--foreground) 18%,transparent)}.ui-select-option{border:0;border-radius:var(--radius);background:transparent;color:var(--foreground)}.ui-select-option:hover:not(:disabled),.ui-select-option.is-active{background:var(--accent);color:var(--accent-foreground)}.ui-select-option[aria-selected=true]{background:var(--primary);color:var(--primary-foreground)}.ui-select-option.is-active{outline:2px solid var(--ring);outline-offset:-2px}
 
 .ui-select-popup:not(:popover-open) { display: none; }
+/* Shared Markdown geometry; colors and typography remain in each kit. */
+.markdown-content > *, .markdown-list-content > *, .markdown-quote > * { min-width: 0; max-width: 100%; margin: 0; }
+.markdown-content :is(ul, ol) { padding-inline-start: 1.6em; }
+.markdown-list-content, .markdown-quote { display: grid; gap: 8px; }
+.markdown-list li { position: relative; min-width: 0; }
+.markdown-task-check { position: absolute; inset-inline-start: -1.4em; top: 0; }
+.markdown-quote { padding: 8px 16px; }
+.markdown-table-scroll { min-width: 0; max-width: 100%; overflow: auto; }
+.markdown-table { width: 100%; border-collapse: collapse; }
+.markdown-table th, .markdown-table td { padding: 8px 12px; min-width: 100px; vertical-align: top; }
+.markdown-code-block .markdown-code { padding: 12px; }
+.markdown-content .markdown-rule { margin-block: 8px; }
+
+.workbench .markdown-content { line-height: 1.7; }
+.workbench .markdown-content :is(p, th, td) { white-space: pre-wrap; overflow-wrap: anywhere; }
+.workbench .markdown-content .markdown-heading { line-height: 1.4; font-weight: 650; margin-block: 12px 2px; }
+.workbench .markdown-heading-1 { font-size: 24px; }
+.workbench .markdown-heading-2 { font-size: 20px; }
+.workbench .markdown-heading-3 { font-size: 17px; }
+.workbench .markdown-heading-4 { font-size: 15px; }
+.workbench .markdown-heading-5, .workbench .markdown-heading-6 { font-size: 14px; }
+.workbench .markdown-heading-6 { color: var(--muted-foreground); }
+.workbench .markdown-content ul { list-style-type: disc; }
+.workbench .markdown-content ol { list-style-type: decimal; }
+.workbench .markdown-content ul ul { list-style-type: circle; }
+.workbench .markdown-content li.markdown-task { list-style: none; }
+.workbench .markdown-task-check { color: var(--primary); }
+.workbench .markdown-quote { border-inline-start: 3px solid var(--border); color: var(--muted-foreground); background: var(--muted); }
+.workbench .markdown-table :is(th, td) { border: 1px solid var(--border); }
+.workbench .markdown-table th { background: var(--muted); font-weight: 650; }
+.workbench .markdown-align-left { text-align: left; }
+.workbench .markdown-align-center { text-align: center; }
+.workbench .markdown-align-right { text-align: right; }
+.workbench .markdown-rule { border: 0; border-top: 1px solid var(--border); }
+.workbench .markdown-content :is(em) { font-style: italic; }
+.workbench .markdown-content :is(del, .markdown-deleted) { text-decoration: line-through; }
+.workbench .markdown-content pre code { padding: 0; background: transparent; color: inherit; font-size: inherit; }
+.workbench .markdown-content :is(.markdown-table-scroll, .markdown-code):focus-visible { outline: 2px solid var(--primary); outline-offset: -2px; }
+.workbench .markdown-content :is(.hljs-comment, .hljs-quote) { color: var(--muted-foreground); font-style: italic; }
+.workbench .markdown-content :is(.hljs-keyword, .hljs-selector-tag, .hljs-meta, .hljs-doctag) { color: var(--primary); font-weight: 600; }
+.workbench .markdown-content :is(.hljs-string, .hljs-regexp, .hljs-addition, .hljs-attribute) { color: var(--primary); }
+.workbench .markdown-content :is(.hljs-number, .hljs-literal, .hljs-symbol, .hljs-bullet) { color: var(--foreground); }
+.workbench .markdown-content :is(.hljs-title, .hljs-type, .hljs-built_in, .hljs-attr) { color: var(--primary); }
+.workbench .markdown-content .hljs-deletion { color: var(--aibo-danger, var(--foreground)); }
+
+.workbench .markdown-content { display: grid; gap: 8px; min-width: 0; }
+.workbench .markdown-list { display: grid; gap: 6px; }
+.workbench .markdown-content .markdown-task-check { position: static; float: inline-start; margin-inline-end: .4em; }
+.workbench .markdown-content pre { max-width: 100%; overflow: auto; white-space: pre; padding: 12px; }

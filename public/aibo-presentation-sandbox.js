@@ -202,8 +202,8 @@
     clearTimeout(stateTimer);stateTimer=setTimeout(()=>{if(active&&current&&renderedContext?.revision===current.context.revision){lastState=captureState();send({type:'view-state',context:current.context,state:lastState});}},0);
   }
   for(const event of ['focusin','selectionchange','scroll','input','toggle'])document.addEventListener(event,publishState,true);
-  const tags = new Set('div section main aside header footer nav article h1 h2 h3 p span strong em pre code ul ol li button input textarea label select option table thead tbody tr th td details summary hr img svg path circle rect line polyline polygon g'.split(' '));
-  const attributes = new Set('id role title aria-label aria-labelledby aria-describedby aria-expanded aria-selected aria-pressed aria-live aria-busy aria-atomic aria-hidden aria-current aria-disabled aria-orientation aria-valuenow aria-valuemin aria-valuemax placeholder type value min max step disabled readonly checked selected multiple name for tabindex rows cols open alt width height viewBox d fill stroke stroke-width stroke-linecap stroke-linejoin cx cy r x y x1 x2 y1 y2 points'.split(' '));
+  const tags = new Set('div section main aside header footer nav article h1 h2 h3 h4 h5 h6 p span strong em del blockquote pre code ul ol li button input textarea label select option table thead tbody tr th td details summary hr img svg path circle rect line polyline polygon g'.split(' '));
+  const attributes = new Set('id role title aria-label aria-labelledby aria-describedby aria-expanded aria-selected aria-pressed aria-live aria-busy aria-atomic aria-hidden aria-current aria-disabled aria-orientation aria-valuenow aria-valuemin aria-valuemax placeholder type value min max step disabled readonly checked selected multiple name for tabindex rows cols open start scope alt width height viewBox d fill stroke stroke-width stroke-linecap stroke-linejoin cx cy r x y x1 x2 y1 y2 points'.split(' '));
   const eventNames = new Set(['click', 'input', 'change', 'keydown']);
   const send = message => { if (!disposed) port?.postMessage(message); };
   function stop() {

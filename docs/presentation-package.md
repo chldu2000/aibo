@@ -109,6 +109,9 @@ token。渲染函数不能直接调用业务操作：宿主绘制桥仅从真实
 
 节点 key 在一棵树内唯一，稳定 key 用于恢复焦点、光标与滚动位置。节点只能使用
 已声明的标签、属性和事件；不允许 script、iframe、任意 on* 属性或 href/src URL。
+技术回答的富文本树支持 h1–h6、blockquote、em、del、ol/ul、table 与 hr；
+`start` 保留有序列表起始编号，`scope` 标记表格列标题。它们仅表达静态排版，
+不放宽 href/src、事件或执行权限。使用这些新增节点的外部包需要包含此支持的宿主。
 图片使用 `resource` 指向包内 PNG/WebP；SVG 图标使用受限 svg/path 等节点。
 CSS 字体或图片地址可写 `url("aibo-resource:font.woff2")`，宿主只替换已验证资源。
 
