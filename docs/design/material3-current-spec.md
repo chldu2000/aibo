@@ -23,7 +23,9 @@
 - 主按钮采用圆角填充样式；新建会话采用 primary-container 色调表面和 16px 圆角。
   次要、描边、危险和禁用操作保留各自语义；键盘焦点必须清晰可见。
 - 导航选中使用圆角容器填充，去掉左侧信号边；主标签沿用底部 3px 指示条并增加圆角端点。
-- 用户正文使用柔和色调表面，助手正文直接排在画布上；工具分组使用 12px 圆角。
+- 用户正文使用柔和色调表面，助手正文直接排在画布上；思考、工具与工具分组卡片使用完整四边轮廓和 12px 圆角。
+- 执行记录保留四列表格与原有展开操作，使用 12px 圆角色调容器、柔和表头和圆形状态标记。
+- 会话变更列表和 Git 提交展开后的文件行不绘制边界线，保留悬浮、焦点、选中反馈及差异预览。
 - Composer 使用 24px 圆角与单线边框，附件采用 8px chip；textarea 和提及绘制层保持相同文字度量。
   不改变发送快捷键、输入法处理、菜单、文件引用、粘贴、草稿及队列行为。
 - badge 使用 6px 圆角色调表面；模型矩阵使用圆角状态容器和勾选，不呈现 ak-ui 的充能角标。
@@ -44,6 +46,7 @@
 ```sh
 node probes/material3-browser.mjs
 node probes/material3-controls-browser.mjs
+node probes/material3-records-browser.mjs
 node probes/ak-ui-browser.mjs
 node probes/presentation-app-browser.mjs
 AIBO_BUILTIN_KIT=material3 node probes/presentation-app-browser.mjs
