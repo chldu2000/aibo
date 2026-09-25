@@ -1,6 +1,18 @@
 import type { Session } from '$lib/types';
 
 export type WorkspaceSessionMap = Record<string, Session[]>;
+export const WORKSPACE_SESSION_PAGE_SIZE = 5;
+
+function activityTime(session: Session): number {
+  const time = Date.parse(session.updatedAt);
+  const created = Date.parse(session.createdAt);
+  return Number.isFinite(time) ? time : Number.isFinite(created) ? created : 0;
+}
+
+export function sortSessions(sessions: Session[]): Session[] {
+  return [...sessions].sort((a, b) => activityTime(b) - activityTime(a)
+    || (a.id < b.id ? 1 : a.id > b.id ? -1 : 0));
+}
 
 export function upsertSession(
   sessionsByWorkspace: WorkspaceSessionMap,
@@ -9,10 +21,10 @@ export function upsertSession(
   const current = sessionsByWorkspace[session.workspaceId] ?? [];
   return {
     ...sessionsByWorkspace,
-    [session.workspaceId]: [
+    [session.workspaceId]: sortSessions([
       session,
       ...current.filter(({ id }) => id !== session.id),
-    ],
+    ]),
   };
 }
 
@@ -23,7 +35,7 @@ export function replaceSession(
   const current = sessionsByWorkspace[session.workspaceId] ?? [];
   return {
     ...sessionsByWorkspace,
-    [session.workspaceId]: current.map((item) => (item.id === session.id ? session : item)),
+    [session.workspaceId]: sortSessions(current.map((item) => (item.id === session.id ? session : item))),
   };
 }
 
@@ -65,13 +77,20 @@ export function reconcileSessionRefresh(
     (session) => baselineById.get(session.id) !== session,
   );
   const locallyChangedIds = new Set(locallyChanged.map((session) => session.id));
+  const loadedById = new Map(loaded.map((session) => [session.id, session]));
 
-  return [
-    ...locallyChanged,
+  return sortSessions([
+    ...locallyChanged.map((session) => {
+      const persisted = loadedById.get(session.id);
+      // A concurrent state/label edit owns those fields, but must not hide
+      // newer content activity returned by the host.
+      return persisted && activityTime(persisted) > activityTime(session)
+        ? { ...session, updatedAt: persisted.updatedAt } : session;
+    }),
     ...loaded.filter(
       (session) => !locallyRemoved.has(session.id) && !locallyChangedIds.has(session.id),
     ),
-  ];
+  ]);
 }
 
 export function ensureWorkspaceExpanded(expandedWorkspaceIds: string[], workspaceId: string): string[] {

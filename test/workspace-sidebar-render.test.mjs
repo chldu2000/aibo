@@ -51,6 +51,23 @@ test('sidebar renders projected Pi, Codex and external sessions in both default 
         assert.doesNotMatch(render(Sidebar, { props }).body, /Pi regression/);
         props.expandedWorkspaceIds = ['workspace'];
         assert.match(render(Sidebar, { props }).body, /Pi regression/);
+        props.sessionsByWorkspace = {
+          workspace: Array.from({ length: 11 }, (_, index) => ({
+            ...sessionsByWorkspace.workspace[0], id: `page-${index}`, label: `Paged session ${index + 1}!`,
+          })),
+        };
+        const firstPage = render(Sidebar, { props }).body;
+        assert.match(firstPage, /Paged session 5!/);
+        assert.doesNotMatch(firstPage, /Paged session 6!/);
+        assert.match(firstPage, /加载更多会话/);
+        props.sessionVisibleCounts = { workspace: 10 };
+        const secondPage = render(Sidebar, { props }).body;
+        assert.match(secondPage, /Paged session 10!/);
+        assert.doesNotMatch(secondPage, /Paged session 11!/);
+        props.sessionVisibleCounts = { workspace: 15 };
+        const lastPage = render(Sidebar, { props }).body;
+        assert.match(lastPage, /Paged session 11!/);
+        assert.doesNotMatch(lastPage, /加载更多会话/);
       });
     }
   } finally {

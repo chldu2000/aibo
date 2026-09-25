@@ -49,9 +49,12 @@ async fn capability_session_projects_tools_and_recovers_after_process_restart() 
         installation_id:installed.id.clone(), contribution_id:"dev.aibo.pi.agent".into(),
         scope:Scope::Application, version:1, expected_revision:1, values:serde_json::json!({}),
     }).await.unwrap();
+    let activity_before_resume = crate::session_by_id(&db, &session.id).await.unwrap().updated_at;
     broker.stop_session(&session.id).await.unwrap();
     let host = SessionHost::new(db.clone(), broker.clone());
     host.resume_from("main", &session.id).await.unwrap();
+    assert_eq!(crate::session_by_id(&db, &session.id).await.unwrap().updated_at, activity_before_resume,
+        "reopening a stopped provider must not promote an unchanged conversation");
     let resumed: String = sqlx::query_scalar("SELECT generation_id FROM session_bindings WHERE session_id=?").bind(&session.id).fetch_one(&db).await.unwrap();
     assert_ne!(generation, resumed);
     host.send_from("main", &session.id, "queue parity prompt", None).await.unwrap();

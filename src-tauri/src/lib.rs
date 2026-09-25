@@ -8,6 +8,8 @@ mod core_turn_git;
 mod turn_restore;
 mod execution_history;
 mod session_history;
+#[cfg(test)]
+mod session_activity_tests;
 mod session_context;
 mod clipboard_images;
 mod capability_history;
@@ -156,6 +158,7 @@ pub struct Session {
     pub(crate) plugin_installation_id: Option<String>,
     pub(crate) capabilities: Vec<String>,
     pub(crate) created_at: String,
+    // Navigation activity time; sessions.updated_at remains the maintenance clock.
     pub(crate) updated_at: String,
 }
 
@@ -1626,7 +1629,7 @@ async fn session_by_id(db: &SqlitePool, id: &str) -> Result<Session, CoreError> 
         "SELECT s.id, s.workspace_id, s.agent, s.label, s.state, s.archived,
                 b.external_session_id, s.plugin_installation_id, b.plugin_capabilities_json, b.plugin_binding_json,
                 p.manifest_json AS queue_manifest_json,
-                s.created_at, s.updated_at
+                s.created_at, COALESCE(s.content_updated_at, s.created_at) AS updated_at
          FROM sessions s
          LEFT JOIN session_bindings b ON b.session_id = s.id
          LEFT JOIN plugin_installations p ON p.id = s.plugin_installation_id
@@ -1805,6 +1808,15 @@ async fn list_sessions(
     status_filter: Option<String>,
     state: State<'_, AppState>,
 ) -> Result<Vec<Session>, CoreError> {
+    list_sessions_from_db(&state.db, &workspace_id, search, status_filter).await
+}
+
+async fn list_sessions_from_db(
+    db: &SqlitePool,
+    workspace_id: &str,
+    search: Option<String>,
+    status_filter: Option<String>,
+) -> Result<Vec<Session>, CoreError> {
     let filter = normalize_session_filter(status_filter.as_deref())?;
     let search = search
         .as_deref()
@@ -1815,7 +1827,7 @@ async fn list_sessions(
         "SELECT s.id, s.workspace_id, s.agent, s.label, s.state, s.archived,
                 b.external_session_id, s.plugin_installation_id, b.plugin_capabilities_json, b.plugin_binding_json,
                 p.manifest_json AS queue_manifest_json,
-                s.created_at, s.updated_at
+                s.created_at, COALESCE(s.content_updated_at, s.created_at) AS updated_at
          FROM sessions s
          LEFT JOIN session_bindings b ON b.session_id = s.id
          LEFT JOIN plugin_installations p ON p.id = s.plugin_installation_id
@@ -1834,7 +1846,7 @@ async fn list_sessions(
         SessionListFilter::Archived => query_text.push_str(" AND s.archived = 1"),
         SessionListFilter::State(_) => query_text.push_str(" AND s.archived = 0 AND s.state = ?"),
     }
-    query_text.push_str(" ORDER BY s.archived ASC, s.updated_at DESC");
+    query_text.push_str(" ORDER BY julianday(COALESCE(s.content_updated_at, s.created_at)) DESC, s.id DESC");
 
     let mut query = sqlx::query(&query_text).bind(&workspace_id);
     if let Some(search) = search {
@@ -1843,7 +1855,7 @@ async fn list_sessions(
     if let SessionListFilter::State(value) = filter {
         query = query.bind(value);
     }
-    let rows = query.fetch_all(&state.db).await?;
+    let rows = query.fetch_all(db).await?;
     rows.iter().map(row_to_session).collect()
 }
 

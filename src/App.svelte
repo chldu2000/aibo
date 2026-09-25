@@ -652,7 +652,7 @@
     parseAgentCommand,
     visibleSessionCommands,
   } from '$lib/app/agent-commands';
-  import { upsertSession, workspaceIdsForRefresh } from '$lib/app/session-transitions';
+  import { upsertSession, workspaceIdsForRefresh, WORKSPACE_SESSION_PAGE_SIZE } from '$lib/app/session-transitions';
   import type { PersistedSelection } from '$lib/app/selection-storage';
   import {
     readComposerDrafts,
@@ -944,6 +944,7 @@
   let projectActionRuns = $state<ProjectActionRun[]>([]);
   let selectedWorkspaceId = $state<string | null>(null);
   let expandedWorkspaceIds = $state<string[]>([]);
+  let sessionVisibleCounts = $state<Record<string, number>>({});
   let selectedSessionId = $state<string | null>(null);
   let persistedSelection = $state<PersistedSelection | null>(null);
   let composerDrafts = $state<ComposerDrafts>({});
@@ -1860,6 +1861,7 @@
   }
 
   async function refreshExpandedSessions() {
+    sessionVisibleCounts = {};
     const workspaceIds = workspaceIdsForRefresh(selectedWorkspaceId, expandedWorkspaceIds);
     await Promise.all(workspaceIds.map((id) => refreshSessions(id)));
   }
@@ -3295,7 +3297,16 @@
   }
 
   function selectWorkspace(id: string) {
+    delete sessionVisibleCounts[id];
     navigationController.selectWorkspace(id);
+  }
+
+  function loadMoreWorkspaceSessions(workspaceId: string) {
+    if (!expandedWorkspaceIds.includes(workspaceId)) return;
+    sessionVisibleCounts[workspaceId] = Math.min(
+      (sessionVisibleCounts[workspaceId] ?? WORKSPACE_SESSION_PAGE_SIZE) + WORKSPACE_SESSION_PAGE_SIZE,
+      getWorkspaceSessions(workspaceId).length,
+    );
   }
 
   function toggleSessionCreator(workspaceId: string) {
@@ -3849,6 +3860,8 @@
       footerActions={navigationFooter}
       workspaces={workspaceItems}
       sessionsByWorkspace={sessionItemsByWorkspace}
+      {sessionVisibleCounts}
+      onLoadMoreSessions={guard('onLoadMoreSessions', loadMoreWorkspaceSessions)}
       selectedWorkspaceId={selectedWorkspaceId}
       expandedWorkspaceIds={expandedWorkspaceIds}
       selectedSessionId={selectedSessionId}

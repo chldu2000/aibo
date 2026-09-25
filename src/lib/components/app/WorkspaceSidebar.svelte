@@ -5,12 +5,15 @@
   import { relativeTimeLabel, sessionStateLabel, sessionStatusTone, isSessionRunning } from './session-utils';
   import type { SessionListItem, WorkspaceListItem } from './view-types';
   import type { SessionProviderChoice } from '$lib/app/session-providers';
+  import { WORKSPACE_SESSION_PAGE_SIZE } from '$lib/app/session-transitions';
 
   type WorkspaceSidebarProps = {
     presentationActions?: Snippet;
     footerActions?: Snippet;
     workspaces: WorkspaceListItem[];
     sessionsByWorkspace: Record<string, SessionListItem[]>;
+    sessionVisibleCounts?: Record<string, number>;
+    onLoadMoreSessions: (workspaceId: string) => void;
     selectedWorkspaceId: string | null;
     expandedWorkspaceIds: string[];
     selectedSessionId: string | null;
@@ -51,6 +54,8 @@
     footerActions,
     workspaces,
     sessionsByWorkspace,
+    sessionVisibleCounts = {},
+    onLoadMoreSessions,
     selectedWorkspaceId,
     expandedWorkspaceIds,
     selectedSessionId,
@@ -292,6 +297,7 @@
       {#each workspaces as workspace (workspace.id)}
         {@const workspaceExpanded = expandedWorkspaceIds.includes(workspace.id)}
         {@const workspaceSessions = sessionsByWorkspace[workspace.id] ?? []}
+        {@const visibleCount = sessionVisibleCounts[workspace.id] ?? WORKSPACE_SESSION_PAGE_SIZE}
         <div class:expanded={workspaceExpanded} class="workspace-group">
           <div
             class:session-creator-open={createSessionWorkspaceId === workspace.id}
@@ -368,7 +374,7 @@
             >
               {#if workspaceSessions.length > 0}
                 <div class="session-list" aria-label="Agent 会话列表">
-                  {#each workspaceSessions as session (session.id)}
+                  {#each workspaceSessions.slice(0, visibleCount) as session (session.id)}
                     {@const agentLabel = session.providerLabel ?? 'Agent'}
                     <div class:selected={session.id === selectedSessionId} class:is-renaming={renamingSessionId === session.id} class="session-item-row">
                       {#if renamingSessionId === session.id}
@@ -444,6 +450,11 @@
                       {/if}
                     </div>
                   {/each}
+                  {#if workspaceSessions.length > visibleCount}
+                    <Button variant="ghost" type="button" onclick={() => onLoadMoreSessions(workspace.id)}>
+                      加载更多会话
+                    </Button>
+                  {/if}
                 </div>
               {:else if sessionsLoadingWorkspaceIds.includes(workspace.id)}
                 <span class="session-filter-empty">加载会话…</span>

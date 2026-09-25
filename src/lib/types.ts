@@ -138,6 +138,7 @@ export interface Session {
   pluginInstallationId: string | null;
   capabilities: string[];
   createdAt: string;
+  /** Last content activity (creation time when empty), not metadata maintenance. */
   updatedAt: string;
 }
 
