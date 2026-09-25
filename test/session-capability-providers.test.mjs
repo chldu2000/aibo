@@ -16,10 +16,10 @@ test('Codex capability provider streams turns, controls native requests and rest
   assert.equal(opened.nativeSessionId,'native-thread');
   assert.ok(opened.capabilities.includes('approval.respond'));
   assert.ok(opened.capabilities.includes('model.service-tier'), 'Fast must be advertised to the host before the UI can invoke it');
+  assert.equal((await f.invoke('aibo.session.turn',{text:'hello plugin'},'first')).status,'completed');
   const initialUsage=await initialUsageReady;
   assert.equal(initialUsage.payload.usage.plan,'plus');
   assert.equal(initialUsage.payload.usage.limits[0].usedPercent,20);
-  assert.equal((await f.invoke('aibo.session.turn',{text:'hello plugin'},'first')).status,'completed');
   const combinedUsage=f.events.filter(e=>e.event.type==='usage.updated').at(-1).event.payload.usage;
   assert.equal(combinedUsage.total.totalTokens,1234);
   assert.equal(combinedUsage.plan,'plus');

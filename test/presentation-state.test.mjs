@@ -40,6 +40,6 @@ test('draft persistence does not discard older drafts and extension sessions use
   assert.deepEqual(readComposerDrafts(disk), drafts);
   const app = await readFile(new URL('../src/App.svelte', import.meta.url), 'utf8');
   assert.doesNotMatch(app, /pluginDrafts|pluginTimeline|pluginSelection|pluginSessionId|<PluginWorkspacePanel/);
-  assert.match(app, /navigationController\.selectSession\(session\.id\);\s+settingsOpen = false;/);
+  assert.match(app, /selectSession: id => \{ navigationController\.selectSession\(id\); settingsOpen = false;/);
   assert.match(app, /<PluginManagerPanel/);
 });

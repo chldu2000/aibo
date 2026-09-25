@@ -597,6 +597,7 @@
     {selectedSessionId}
     sessionArchived={sessionArchived}
     sessionRunning={sessionRunning}
+    sessionStarting={session?.state === 'starting'}
     selectedSessionArchiving={selectedSessionArchiving}
     busy={busy}
     attachments={attachments}

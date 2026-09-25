@@ -122,24 +122,39 @@ impl SessionHost {
         }).transpose()
     }
     pub async fn create_with_profile_from(&self,caller:&str,workspace_id:&str,installation_id:&str,contribution_id:&str,profile:Option<execution_profile::ResolvedExecutionProfile>)->Result<Session,String> {
+        let session=self.prepare_with_profile(workspace_id,installation_id,contribution_id,profile).await?;
+        self.resume_from(caller,&session.id).await?;
+        crate::session_by_id(&self.db,&session.id).await.map_err(|e|e.to_string())
+    }
+    // Persist the host identity before starting a potentially slow native engine.
+    // No capabilities are claimed until open has actually negotiated them.
+    pub async fn prepare_with_profile(&self,workspace_id:&str,installation_id:&str,contribution_id:&str,profile:Option<execution_profile::ResolvedExecutionProfile>)->Result<Session,String> {
         let workspace=crate::workspace_by_id(&self.db,workspace_id).await.map_err(|e|e.to_string())?;
         if workspace.trust!="trusted" {return Err("permission_denied: workspace trust required".into());}
+        let raw:Option<String>=sqlx::query_scalar("SELECT manifest_json FROM plugin_installations WHERE id=? AND enabled=1 AND installed=1")
+            .bind(installation_id).fetch_optional(&self.db).await.map_err(|e|e.to_string())?;
+        let manifest:Value=serde_json::from_str(&raw.ok_or("provider_unavailable: installation is disabled or missing")?).map_err(|e|e.to_string())?;
+        if !crate::plugin_manifest::normalize(&manifest)?.contributions.iter().any(|entry|entry.id==contribution_id && entry.kind=="capabilityProvider" && entry.scope=="session" && entry.metadata["operations"].as_array().is_some_and(|ops|ops.iter().any(|op|op["capability"]["id"]=="aibo.session.open"))) {
+            return Err("provider_unavailable: session contribution is missing".into());
+        }
         let id=ulid::Ulid::new().to_string();let now=crate::now_iso();
         let _guard=self.session_operation(&id).await;
+        let backend = execution_profile::installation_backend(&self.db, installation_id, contribution_id).await?;
+        let profile = execution_profile::resolve_with_backend(backend, profile.map(|value| value.requested), now.clone())?;
         sqlx::query("INSERT INTO sessions(id,workspace_id,agent,label,state,created_at,updated_at,plugin_installation_id) VALUES(?,?,?,?,'starting',?,?,?)")
             .bind(&id).bind(workspace_id).bind(contribution_id).bind(crate::DEFAULT_CAPABILITY_SESSION_LABEL).bind(&now).bind(&now).bind(installation_id).execute(&self.db).await.map_err(|e|e.to_string())?;
-        let backend = execution_profile::installation_backend(&self.db, installation_id, contribution_id).await?;
-        let profile = execution_profile::resolve_with_backend(backend, profile.map(|value| value.requested), now)?;
         execution_profile::save_for_session(&self.db,&id,&profile).await.map_err(|e|e.to_string())?;
-        if let Err(error)=self.open(caller,&id).await {
-            let _=sqlx::query("UPDATE sessions SET state='failed' WHERE id=?").bind(&id).execute(&self.db).await;return Err(error);
-        }
         crate::session_by_id(&self.db,&id).await.map_err(|e|e.to_string())
     }
     pub async fn resume_from(&self,caller:&str,session_id:&str)->Result<(),String> {
         let _guard=self.session_operation(session_id).await;
         if self.live.lock().await.contains_key(session_id) {return Ok(());}
-        self.open(caller,session_id).await
+        let result=self.open(caller,session_id).await;
+        if result.is_err() {
+            sqlx::query("UPDATE sessions SET state='failed',updated_at=? WHERE id=? AND state='starting'")
+                .bind(crate::now_iso()).bind(session_id).execute(&self.db).await.map_err(|e|e.to_string())?;
+        }
+        result
     }
     async fn open(&self,caller:&str,session_id:&str)->Result<(),String> {
         let (session,manifest)=self.metadata(session_id).await?;

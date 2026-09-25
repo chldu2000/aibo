@@ -13,6 +13,7 @@ import {
 export type NavigationControllerContext = {
   getDesktop: () => boolean;
   getSelectedWorkspaceId: () => string | null;
+  getSelectedSessionId: () => string | null;
   getExpandedWorkspaceIds: () => string[];
   getCreateSessionWorkspaceId: () => string | null;
   getArchivingSessionId: () => string | null;
@@ -86,6 +87,7 @@ export function createNavigationController(context: NavigationControllerContext)
     const session = context.findSession(sessionId);
     if (!session || session.id === context.getArchivingSessionId()) return;
     activateWorkspace(session.workspaceId);
+    if (session.id === context.getSelectedSessionId()) return;
     // Reset all selected-session state, including the model catalog. Without
     // this, opening another session can briefly show the previous session's
     // model as current and skip loading its own catalog.

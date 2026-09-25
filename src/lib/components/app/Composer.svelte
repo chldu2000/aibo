@@ -22,6 +22,7 @@
     selectedSessionId: string | null;
     sessionArchived: boolean;
     sessionRunning: boolean;
+    sessionStarting?: boolean;
     selectedSessionArchiving: boolean;
     busy: boolean;
     attachments: ContextAttachment[];
@@ -61,6 +62,7 @@
     selectedSessionId,
     sessionArchived,
     sessionRunning,
+    sessionStarting = false,
     selectedSessionArchiving,
     busy,
     attachments, attachmentPreviews = {},
@@ -223,7 +225,7 @@
       })),
     })),
   );
-  const matrixDisabled = $derived(busy || sessionArchived || selectedSessionArchiving || sessionRunning);
+  const matrixDisabled = $derived(busy || sessionStarting || sessionArchived || selectedSessionArchiving || sessionRunning);
   const matrixFastTier = $derived.by(() => {
     if (!sessionCapabilities.includes('model.service-tier')) return null;
     const tier = modelCatalog?.current?.serviceTiers.find((option) => option.label.trim().toLowerCase() === 'fast') ?? null;
@@ -303,7 +305,7 @@
       data-composer-input="true"
       bind:value={text}
       rows="2"
-      placeholder={sessionArchived ? '该会话已归档，请取消归档或创建分支继续…' : selectedSession ? '输入消息，⌘/Ctrl + Enter 发送…' : '先新建或选择一个 Agent 会话…'}
+      placeholder={sessionStarting ? '会话正在初始化，可以先编写消息…' : sessionArchived ? '该会话已归档，请取消归档或创建分支继续…' : selectedSession ? '输入消息，⌘/Ctrl + Enter 发送…' : '先新建或选择一个 Agent 会话…'}
       disabled={!selectedSession || sessionArchived || selectedSessionArchiving || (sessionRunning && !sessionCapabilities.includes('queue.manage')) || busy}
       onpaste={(event) => {
         const files = clipboardImageFiles(event.clipboardData);
@@ -539,7 +541,7 @@
                       sessionMenuOpen = false;
                       if (!active) void onSelectAccess(option.id);
                     }}
-                    disabled={busy || selectedSessionArchiving || sessionRunning}
+                    disabled={busy || sessionStarting || selectedSessionArchiving || sessionRunning}
                   >
                     <SessionControlMark control={option} />
                     <span class="composer-access-option-copy">
@@ -613,15 +615,16 @@
                 <div class="composer-menu-detail">会话运行中，模型与推理强度暂不可修改。</div>
               {/if}
               {#if modelCatalogLoading}
-                <div class="composer-suggestions-empty">正在读取可用模型…</div>
-              {:else if modelCatalog && modelCatalog.models.length > 0}
+                <div class="composer-suggestions-empty">{modelCatalog ? '正在更新模型配置，以下为上次确认的信息…' : '正在读取可用模型…'}</div>
+              {/if}
+              {#if modelCatalog && modelCatalog.models.length > 0}
                 <ModelMatrix
                   columns={matrixReasoningOptions}
                   rows={matrixRows}
                   defaultLabel={matrixDefaultLabel}
                   defaultTitle={modelConfiguration.defaultAction === 'reset' ? '使用该模型的默认推理强度' : '切换模型，保留当前推理强度'}
                   fastTier={null}
-                  disabled={matrixDisabled}
+                  disabled={matrixDisabled || modelCatalogLoading}
                   onSelect={(model, reasoningEffort) => {
                     modelMenuOpen = false;
                     void onSelectModelConfiguration(model, reasoningEffort);
@@ -630,7 +633,7 @@
                 />
               {:else if sessionRunning}
                 <div class="composer-suggestions-empty">尚无已确认的模型配置，回合结束后将自动读取。</div>
-              {:else}
+              {:else if !modelCatalogLoading}
                 <div class="composer-suggestions-empty">未获取到可用模型，请稍后重试。</div>
               {/if}
             </div>
@@ -649,7 +652,7 @@
           <Icon name="stop" size={13} />
         </Button>
       {:else}
-        <Button variant="send" class="composer-action composer-action-send" size="icon" type="submit" disabled={!selectedSession || sessionArchived || selectedSessionArchiving || (!text.trim() && !hasImage) || busy} aria-label="发送">
+        <Button variant="send" class="composer-action composer-action-send" size="icon" type="submit" disabled={!selectedSession || sessionStarting || sessionArchived || selectedSessionArchiving || (!text.trim() && !hasImage) || busy} aria-label="发送">
           <Icon name="send" size={16} />
         </Button>
       {/if}

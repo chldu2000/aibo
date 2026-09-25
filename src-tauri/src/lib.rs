@@ -3768,7 +3768,7 @@ async fn uninstall_agent_plugin(id: String, state: State<'_, AppState>) -> Resul
 }
 
 #[tauri::command]
-async fn create_agent_session(workspace_id: String, agent_id: String, installation_id: Option<String>, requested_profile: Option<ExecutionProfile>, window: tauri::WebviewWindow, state: State<'_, AppState>) -> Result<Session, String> {
+async fn create_agent_session(workspace_id: String, agent_id: String, installation_id: Option<String>, requested_profile: Option<ExecutionProfile>, defer_start: Option<bool>, window: tauri::WebviewWindow, state: State<'_, AppState>) -> Result<Session, String> {
     let installation_id = match installation_id {
         Some(id) => id,
         None => sqlx::query_scalar(
@@ -3778,6 +3778,9 @@ async fn create_agent_session(workspace_id: String, agent_id: String, installati
     };
     let backend = execution_profile::installation_backend(&state.db, &installation_id, &agent_id).await?;
     let profile = execution_profile::resolve_with_backend(backend, requested_profile, now_iso())?;
+    if defer_start == Some(true) {
+        return state.plugins.prepare_with_profile(&workspace_id, &installation_id, &agent_id, Some(profile)).await;
+    }
     let session = state.plugins.create_with_profile_from(window.label(), &workspace_id, &installation_id, &agent_id, Some(profile)).await?;
     Ok(session)
 }
@@ -3799,11 +3802,11 @@ async fn cancel_agent_turn(session_id: String, window: tauri::WebviewWindow, sta
 }
 
 #[tauri::command]
-async fn resume_agent_session(session_id: String, window: tauri::WebviewWindow, state: State<'_, AppState>) -> Result<(), String> {
+async fn resume_agent_session(session_id: String, window: tauri::WebviewWindow, state: State<'_, AppState>) -> Result<Session, String> {
     let session = session_by_id(&state.db, &session_id).await.map_err(|error|error.to_string())?;
     if session.plugin_installation_id.is_none() { return Err("history_only: create a new capability session".into()); }
     state.plugins.resume_from(window.label(), &session_id).await?;
-    Ok(())
+    session_by_id(&state.db, &session_id).await.map_err(|error|error.to_string())
 }
 
 #[tauri::command]

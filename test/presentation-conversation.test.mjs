@@ -155,3 +155,12 @@ test('access actions use host-authorized modes and never infer authority from an
     assert.deepEqual(modes({...state,session,executionProfile:{...state.executionProfile,sessionControls:controls(['custom-review','custom-write'])}}),['custom-review','custom-write']);
   }
 });
+
+test('starting sessions keep the draft editor but expose no execution or configuration actions',()=>{
+ const pending={...state,session:{...state.session,state:'starting',capabilities:[]}};
+ assert.ok(operations(pending).includes('draft'));
+ for(const operation of ['send','retry','selectModel','selectAccess','compact','fork'])assert.ok(!operations(pending).includes(operation),operation);
+ const refreshing={...state,modelCatalogLoading:true};
+ assert.ok(!operations(refreshing).includes('selectModel'));
+ assert.ok(operations(refreshing).includes('draft'));
+});

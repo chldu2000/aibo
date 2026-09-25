@@ -917,3 +917,31 @@ async fn clipboard_image_reaches_the_negotiated_provider_from_host_storage() {
     db.close().await;
     fs::remove_dir_all(root).unwrap();
 }
+
+#[tokio::test]
+async fn prepared_session_is_visible_before_native_start_and_negotiates_only_when_ready() {
+    let (root,db,broker,host,original)=concurrent_session_fixture().await;
+    let installation=original.plugin_installation_id.as_deref().unwrap();
+    let pending=host.prepare_with_profile("w",installation,&original.agent,None).await.unwrap();
+    assert_eq!(pending.state,"starting");
+    assert!(pending.external_session_id.is_none());
+    assert!(pending.capabilities.is_empty());
+    assert!(broker.session_runtime_generation(installation,&original.agent,&pending.id).await.is_none());
+    let profile=crate::session_execution_profile(&db,&pending.id).await.unwrap();
+    assert!(!profile.profile.session_controls.is_empty(),"local mode declarations are available before native startup");
+    let (first,second)=tokio::join!(host.resume_from("main",&pending.id),host.resume_from("main",&pending.id));
+    first.unwrap();second.unwrap();
+    let ready=crate::session_by_id(&db,&pending.id).await.unwrap();
+    assert_eq!(ready.id,pending.id);
+    assert_eq!(ready.state,"idle");
+    assert!(ready.capabilities.iter().any(|cap|cap=="turn.send"));
+    assert!(ready.external_session_id.is_some());
+    let failed=host.prepare_with_profile("w",installation,&original.agent,None).await.unwrap();
+    plugin_registry::enable(&db,installation,false).await.unwrap();
+    assert!(host.resume_from("main",&failed.id).await.is_err());
+    assert_eq!(crate::session_by_id(&db,&failed.id).await.unwrap().state,"failed");
+    assert!(host.prepare_with_profile("w",installation,&original.agent,None).await.is_err());
+    broker.stop_session(&original.id).await.unwrap();
+    broker.stop_session(&pending.id).await.unwrap();
+    db.close().await;fs::remove_dir_all(root).unwrap();
+}

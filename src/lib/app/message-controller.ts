@@ -84,6 +84,10 @@ export function createMessageController(context: MessageControllerContext) {
       return;
     }
     const selectedSession = context.getSelectedSession();
+    if (selectedSession?.state === 'starting') {
+      context.setNotice('会话正在初始化，草稿已保留，请就绪后发送。');
+      return;
+    }
     const draftSessionId = selectedSession?.id ?? null;
     if (selectedSession?.archived) {
       context.setErrorMessage('已归档的会话不能继续发送消息，请先取消归档或创建分支。');

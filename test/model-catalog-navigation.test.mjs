@@ -12,6 +12,7 @@ test('confirmed model catalogs survive running session navigation without fetchi
     .replace(': Promise<void>', '');
   const run = new Function('assert', `return (async () => {
     const sessionModelCatalogs = new Map();
+    sessionModelCatalogs.load = (id, read) => read(id);
     let selectedSession, selectedSessionId, sessionModelCatalog = null;
     let sessionModelOverride = null, sessionModelCatalogLoading = false;
     let sessionModelRequestGeneration = 0, errorMessage = null;

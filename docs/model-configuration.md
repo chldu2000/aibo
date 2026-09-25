@@ -85,3 +85,16 @@ ModelMatrix 的动作先按 `kind: model | serviceTier` 区分，Fast 缺失时�
 `test/model-context-select.test.mjs`、`test/composer-fast-tier.test.mjs`、`test/session-usage.test.mjs`
 和 `test/presentation-conversation.test.mjs`。覆盖缺失/拒绝能力、旧目录、原生未确认、
 跨模型隔离、恢复及既有参数保留。模拟或离线请求截获不证明真实额度、百万 token 请求或桌面交互。
+
+## 启动与目录缓存
+
+宿主按不可变的 Aibo session ID 保存最近确认的模型目录，最多 30 个会话、1 MB、7 天。
+应用重启或切换会话时先展示该快照，再读取绑定 provider 的实时目录；刷新期间明确标识旧快照，
+默认与外部呈现均不提供模型修改动作。缓存不授予能力或执行权限，不能替换原生确认。
+实际修改模型配置前重新读取当前目录；同一会话的并发显示读取合并，配置修改会隔离旧请求。
+重复点击当前会话不清空已经加载的模型和模式。
+
+内置 Codex 2.0.14 在单个原生进程内共用模型发现请求，目录最多缓存 60 秒，进程关闭时清除，
+失败结果不缓存。模型、推理强度和服务层级不再各自重复发现。初始额度查询最多等待 5 秒，
+在后台进行且不阻塞 session open；结果仍经过当前会话和进程身份检查。没有活动 invocation 时，
+共享 provider 将用量事件保留到下一次调用，不发送无所属的事件。

@@ -5,13 +5,15 @@ import { homedir } from 'node:os';
 import path from 'node:path';
 
 const pluginId = 'dev.aibo.codex';
-const pluginVersion = '2.0.9';
+const pluginVersion = '2.0.14';
 
 export const capabilities = ['session.create', 'session.resume', 'session.close', 'turn.send', 'image.input', 'turn.cancel', 'queue.manage', 'stream.text', 'goal.manage', 'goal.pause', 'goal.resume', 'model.select', 'model.reasoning', 'model.service-tier', 'model.context-window', 'skill.list', 'approval.respond', 'user-input.respond', 'session.snapshot', 'session.fork'];
 let child = null;
 let childLines = null;
 let nextId = 1;
 let session = null;
+let modelDiscovery = null;
+const MODEL_CATALOG_TTL_MS = 60_000;
 const pending = new Map();
 const providerRequests = new Map();
 
@@ -42,14 +44,29 @@ function publishUsage() {
   if (Object.keys(usage).length) emit('usage.updated', { usage }, session.turn?.id ?? null);
 }
 async function refreshRateLimits() {
+  const target = session;
+  const startedChild = child;
   try {
-    const result = await rpc('account/rateLimits/read', {});
-    if (!session) return;
-    session.rateLimitUsage = rateLimitUsage(result);
+    const result = await rpc('account/rateLimits/read', {}, 5_000);
+    if (!target || session !== target || child !== startedChild) return;
+    target.rateLimitUsage = rateLimitUsage(result);
     publishUsage();
   } catch {
     // Account metadata is optional; token usage remains available without it.
   }
+}
+
+// The model and reasoning controls consume the same native directory. Share
+// discovery within this process, while allowing subsequent refreshes to expire it.
+function nativeModels() {
+  if (modelDiscovery && modelDiscovery.expiresAt > Date.now()) return modelDiscovery.promise;
+  const entry = { expiresAt: Date.now() + MODEL_CATALOG_TTL_MS, promise: null };
+  entry.promise = rpc('model/list', {limit:100, includeHidden:false}).catch(error => {
+    if (modelDiscovery === entry) modelDiscovery = null;
+    throw error;
+  });
+  modelDiscovery = entry;
+  return entry.promise;
 }
 
 function recovery() {
@@ -82,7 +99,7 @@ async function contextCatalog(models) {
   } catch { return new Map(); }
 }
 async function modelCatalog() {
-  const result = await rpc('model/list', {limit:100, includeHidden:false});
+  const result = await nativeModels();
   const models = result?.data ?? [];
   const contexts = await contextCatalog(models);
   const current = session.model ?? models.find(model => model.isDefault)?.model ?? null;
@@ -511,6 +528,7 @@ async function startCodex(cwd, contextWindow = null) {
   notify('initialized', {});
 }
 async function stopCodex() {
+  modelDiscovery = null;
   clearTimeout(subagentTimer); subagentTimer = null; subagents.clear();
   if (!child) return;
   clearTimeout(session?.turn?.timer);
@@ -527,7 +545,7 @@ export async function execute(action, p) {
     await startCodex(p.workspace.path, contextWindow);
     if (contextWindow) {
       try {
-        const models = (await rpc('model/list', {limit:100,includeHidden:false})).data ?? [];
+        const models = (await nativeModels()).data ?? [];
         const current = p.executionProfile?.model ?? p.binding?.recovery?.data?.model ?? models.find(model => model.isDefault)?.model;
         const options = (await contextCatalog(models)).get(current) ?? [];
         const config = (await rpc('config/read', {includeLayers:false})).config;
@@ -572,7 +590,7 @@ export async function execute(action, p) {
       model:nativeModel, reasoningEffort, serviceTier, contextWindow, executionProfile:p.executionProfile,
       revision: 0, turn: null, goal: null, tokenUsage: null, rateLimitUsage: null };
     if (!p.suppressStarted) emit('session.started', { state: 'idle' });
-    await refreshRateLimits();
+    void refreshRateLimits();
     return { nativeSessionId: threadId, recovery: recovery() };
   }
   if (!session || p.sessionId !== session.id) fail('invalid_session');
@@ -675,7 +693,7 @@ export async function execute(action, p) {
       if (session.contextWindow && p.input.reference !== session.model) return switchContextWindow(null, p.input.reference);
       session.model = p.input.reference;
     } else if (p.input?.action !== 'list') fail('invalid_request', 'unknown model action');
-    const result = await rpc('model/list', { limit: 100, includeHidden: false });
+    const result = await nativeModels();
     if (p.input?.action === 'set' && session.serviceTier && session.serviceTier !== 'default') {
       const selected = (result?.data ?? []).find((item) => item.model === session.model || item.id === session.model);
       if (!selected?.serviceTiers?.some((tier) => tier?.id === session.serviceTier)) session.serviceTier = 'default';
@@ -686,7 +704,7 @@ export async function execute(action, p) {
   if (action === 'operation' && p.operationId === 'ext.dev.aibo.codex.service-tier') {
     if (p.input?.action === 'set') {
       if (typeof p.input.tier !== 'string' || !p.input.tier.trim()) fail('invalid_request', 'tier is required when selecting a service tier');
-      const result = await rpc('model/list', { limit: 100, includeHidden: false });
+      const result = await nativeModels();
       const model = (result?.data ?? []).find((item) => item.model === session.model || item.id === session.model) ?? (result?.data ?? []).find((item) => item.isDefault) ?? null;
       const supported = p.input.tier === 'default' || model?.serviceTiers?.some((tier) => tier?.id === p.input.tier);
       if (!supported) fail('invalid_request', 'service tier is not supported by the current model');
@@ -701,7 +719,7 @@ export async function execute(action, p) {
       session.reasoningEffort = p.input.level;
       publishRecovery();
     } else if (p.input?.action !== 'list') fail('invalid_request', 'unknown reasoning action');
-    const result = await rpc('model/list', { limit: 100, includeHidden: false });
+    const result = await nativeModels();
     const model = (result?.data ?? []).find((item) => item.model === session.model || item.id === session.model) ?? (result?.data ?? []).find((item) => item.isDefault) ?? null;
     return { current: session.reasoningEffort, levels: model?.supportedReasoningEfforts ?? [] };
   }

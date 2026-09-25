@@ -91,11 +91,13 @@ export function createRefreshController(context: RefreshControllerContext) {
 
   async function refreshSelectedSessionContext(sessionId: string): Promise<void> {
     try {
-      await context.refreshTimeline(sessionId);
-      await context.refreshExecutionProfile(sessionId);
-      await context.refreshTurnChangeSet(sessionId);
-      await context.refreshAttachments(sessionId);
-      await context.refreshArtifacts(sessionId);
+      await Promise.all([
+        context.refreshTimeline(sessionId),
+        context.refreshExecutionProfile(sessionId),
+        context.refreshTurnChangeSet(sessionId),
+        context.refreshAttachments(sessionId),
+        context.refreshArtifacts(sessionId),
+      ]);
       void context.refreshCodexThread(sessionId);
       void context.refreshPiTree(sessionId);
     } catch (error) {

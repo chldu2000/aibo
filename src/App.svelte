@@ -1,4 +1,6 @@
 <script lang="ts">
+  import { createSessionStartupController } from '$lib/app/session-startup-controller';
+  import { createSessionModelCache } from '$lib/app/session-model-cache';
   import { createSessionDiffController, emptySessionDiff } from '$lib/app/session-diff-controller';
   import { sessionChangeFile, sessionChangeRowId } from '$lib/app/session-change-file';
   let sessionTabs = $state<Record<string, 'conversation' | 'executions' | 'changes'>>({});
@@ -876,7 +878,10 @@
   let sessionModelOverride = $state<string | null>(null);
   let sessionModelCatalog = $state<SessionModelCatalog | null>(null);
   // Confirmed catalogs belong to sessions, not the currently selected pane.
-  const sessionModelCatalogs = new Map<string, SessionModelCatalog>();
+  const sessionModelCatalogs = createSessionModelCache(typeof window === 'undefined' ? null : {
+    getItem: key => window.localStorage.getItem(key),
+    setItem: (key, value) => window.localStorage.setItem(key, value),
+  });
   let sessionModelCatalogLoading = $state(false);
   let codexGoal = $state<AgentGoal | null>(null);
   let sessionModelRequestGeneration = 0;
@@ -1167,17 +1172,22 @@
     });
   }
 
+  const sessionStartupController = createSessionStartupController({
+    prepare: (workspaceId, agentId, installationId) => createAgentSession(workspaceId, agentId, installationId, null, true),
+    start: resumeAgentSession,
+    getWorkspaceId: () => selectedWorkspaceId,
+    getSessionId: () => selectedSessionId,
+    findSession,
+    putSession: session => { workspaceSessionMap = upsertSession(workspaceSessionMap, session); },
+    selectSession: id => { navigationController.selectSession(id); settingsOpen = false; createSessionWorkspaceId = null; },
+    setCreating: value => { pluginBusy = value; },
+    setError: value => { pluginError = value; errorMessage = value; },
+    setNotice: value => { notice = value; },
+    refreshProfile: refreshExecutionProfile,
+  });
   async function createPluginSession(installationId: string, agentId: string, workspaceId = selectedWorkspaceId): Promise<void> {
     if (!workspaceId) { pluginError = '请先选择工作区。'; return; }
-    await pluginOperation(async () => {
-      const session = await createAgentSession(workspaceId, agentId, installationId);
-      workspaceSessionMap = upsertSession(workspaceSessionMap, session);
-      if (selectedWorkspaceId === workspaceId) {
-        navigationController.selectSession(session.id);
-        settingsOpen = false;
-        createSessionWorkspaceId = null;
-      }
-    });
+    await sessionStartupController.create(workspaceId, agentId, installationId);
   }
 
   async function createWheelSession(workspaceId: string, choiceId: string): Promise<void> {
@@ -2761,6 +2771,7 @@
     // invalidate it before closing so its rejection cannot surface as a user
     // error after the profile update succeeds.
     ++sessionModelRequestGeneration;
+    sessionModelCatalogs.invalidate(session.id);
     sessionModelCatalogLoading = false;
     ++commandSearchGeneration;
     busy = true;
@@ -2812,7 +2823,7 @@
     sessionModelCatalogLoading = true;
     errorMessage = null;
     try {
-      const catalog = await getSessionModels(session.id);
+      const catalog = await sessionModelCatalogs.load(session.id, getSessionModels);
       if (generation === sessionModelRequestGeneration && selectedSessionId === session.id) {
         sessionModelCatalogs.set(session.id, catalog);
         sessionModelCatalog = catalog;
@@ -2844,7 +2855,8 @@
     sessionModelCatalogLoading = false;
     const ownsSelection = () => selectedSessionId === session.id && generation === sessionModelRequestGeneration;
     try {
-      const result = await modelConfigurationService.apply(session, change, sessionModelCatalog, executionProfile);
+      sessionModelCatalogs.invalidate(session.id);
+      const result = await modelConfigurationService.apply(session, change, null, executionProfile);
       if (result.profile && !session.pluginInstallationId) markSessionIdle(session);
       if (!ownsSelection()) return;
       if (result.profile) executionProfile = result.profile;
@@ -3100,6 +3112,7 @@
   }
 
   async function sendPrompt() {
+    if (selectedSession?.state === 'starting') { notice = '会话正在初始化，草稿已保留，请就绪后发送。'; return; }
     if (await executeBuiltinCommand(composerText)) return;
     await messageController.sendPrompt();
     await refreshPromptQueue();
@@ -3332,6 +3345,7 @@
   const navigationController = createNavigationController({
     getDesktop: () => desktop,
     getSelectedWorkspaceId: () => selectedWorkspaceId,
+    getSelectedSessionId: () => selectedSessionId,
     getExpandedWorkspaceIds: () => expandedWorkspaceIds,
     getCreateSessionWorkspaceId: () => createSessionWorkspaceId,
     getArchivingSessionId: () => archivingSessionId,

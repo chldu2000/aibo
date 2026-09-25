@@ -104,10 +104,10 @@ export const selectPresentationPackage = (digest: string | null, themeId: string
 export const installAgentPlugin = (path: string): Promise<PluginInstallation> => invoke('install_agent_plugin', { path });
 export const setAgentPluginEnabled = (id: string, enabled: boolean): Promise<void> => invoke('set_agent_plugin_enabled', { id, enabled });
 export const uninstallAgentPlugin = (id: string): Promise<void> => invoke('uninstall_agent_plugin', { id });
-export const createAgentSession = (workspaceId: string, agentId: string, installationId?: string, requestedProfile?: ExecutionProfile | null): Promise<Session> => invoke('create_agent_session', { workspaceId, agentId, installationId, requestedProfile });
+export const createAgentSession = (workspaceId: string, agentId: string, installationId?: string, requestedProfile?: ExecutionProfile | null, deferStart = false): Promise<Session> => invoke('create_agent_session', { workspaceId, agentId, installationId, requestedProfile, deferStart });
 export const sendAgentPrompt = (sessionId: string, input: string): Promise<Session> => invoke('send_agent_prompt', { sessionId, input });
 export const cancelAgentTurn = (sessionId: string): Promise<void> => invoke('cancel_agent_turn', { sessionId });
-export const resumeAgentSession = (sessionId: string): Promise<void> => invoke('resume_agent_session', { sessionId });
+export const resumeAgentSession = (sessionId: string): Promise<Session> => invoke('resume_agent_session', { sessionId });
 export const closeAgentSession = (sessionId: string): Promise<void> => invoke('close_agent_session', { sessionId });
 export const invokeAgentCapability = (sessionId: string, capability: string, input: Record<string, unknown>): Promise<Record<string, unknown>> => invoke('invoke_agent_capability', { sessionId, capability, input });
 

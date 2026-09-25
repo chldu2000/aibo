@@ -34,17 +34,17 @@ export function conversationActions(state: PresentationConversation): Spec[] {
     if (capable('goal.pause') && (state.goal.status === 'active' || state.goal.status === 'paused' && state.running)) add('pauseGoal');
     if (!state.running && capable('goal.resume') && ['active','paused','blocked','usageLimited'].includes(state.goal.status)) add('resumeGoal');
   }
-  if (available && !state.running) {
+  if (available && !state.running && session.state !== 'starting') {
     if (!state.goalBusy && capable('goal.manage') && state.goal && state.goal.status !== 'cleared') add('clearGoal');
     if (state.draft.trim() || hasImage) add('send');
     if (state.retryPrompt) add('retry');
     if (!state.modelCatalogLoading) add('loadModels');
-    if (capable('model.select')) for (const model of state.modelCatalog?.models ?? []) {
+    if (!state.modelCatalogLoading && capable('model.select')) for (const model of state.modelCatalog?.models ?? []) {
       add('selectModel', [model.reference, null]);
       if (capable('model.reasoning')) for (const effort of model.reasoningEfforts) add('selectModel', [model.reference, effort.id]);
     }
     const fastTier = state.modelCatalog?.current?.serviceTiers.find(tier => tier.label.trim().toLowerCase() === 'fast');
-    if (capable('model.service-tier') && fastTier) add('selectServiceTier', [state.modelCatalog?.currentServiceTier === fastTier.id ? 'default' : fastTier.id]);
+    if (!state.modelCatalogLoading && capable('model.service-tier') && fastTier) add('selectServiceTier', [state.modelCatalog?.currentServiceTier === fastTier.id ? 'default' : fastTier.id]);
     const contextWindows = state.modelCatalog?.current?.contextWindows ?? [];
     if (capable('model.context-window') && !state.modelCatalogLoading && contextWindows.length) {
       add('selectContextWindow', [state.modelCatalog!.current!.reference, ...contextWindows.map(option => option.id)], 'change');

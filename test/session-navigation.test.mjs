@@ -12,6 +12,7 @@ test('workspace disclosure and session navigation keep separate contexts', async
     const context = {
       getDesktop: () => true,
       getSelectedWorkspaceId: () => workspace,
+      getSelectedSessionId: () => selected,
       getExpandedWorkspaceIds: () => expanded,
       getCreateSessionWorkspaceId: () => creator,
       getArchivingSessionId: () => null,
@@ -46,6 +47,10 @@ test('workspace disclosure and session navigation keep separate contexts', async
     assert.ok(calls.some(([name, id]) => name === 'refreshTimeline' && id === 'b1'));
     assert.ok(calls.some(([name, id]) => name === 'refreshWorkspaceCapabilities' && id === 'b'));
     assert.ok(!calls.some(([name]) => name === 'refreshSessions'));
+    calls.length = 0;
+    controller.selectSession('b1');
+    assert.equal(selected, 'b1');
+    assert.ok(!calls.some(([name]) => name.startsWith('refresh')), 'reselecting the current session must preserve its loaded context and pending catalog request');
     calls.length = 0;
     controller.selectWorkspace('a');
     assert.equal(workspace, 'b');

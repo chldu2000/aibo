@@ -83,5 +83,17 @@ read-only / disabled 描述原生模式行为，网络仍为 agent-managed；不
 发送会报告不支持并保留草稿附件。支持图片插话的队列操作还需采用
 `contracts/session-features.v1.json` 中包含可选 `attachments` 的队列契约。
 
-内置 Codex 2.0.13 和 Pi 2.0.9 支持图片输入；实际识图能力取决于所选模型。
+内置 Codex 2.0.14 和 Pi 2.0.9 支持图片输入；实际识图能力取决于所选模型。
 既有会话继续固定到原插件 release，不会因升级应用自动切换提供者版本。
+
+## 初始化期间的显示
+
+桌面新建入口使用两阶段创建：`create_agent_session` 携带 `deferStart: true` 时仅保存
+宿主会话身份、固定 installation/contribution 和执行配置，返回 `starting` 状态；随后
+`resume_agent_session` 创建原生会话并返回协商后的 Session。未指定 deferStart 的已有调用
+仍等待完整创建。初始化前 capabilities 为空，不根据 manifest 预先伪造协商结果。
+
+模式菜单来自本地固定 release 的声明，可以在原生认证期间显示；确认前禁用模式切换和发送，
+允许编辑草稿、导航及管理。初始化失败保留同一会话并显示错误；应用重启将遗留 starting 状态
+恢复为 interrupted，后续执行仍通过同一绑定重新打开。初始创建完成不会抢回已离开的会话，
+也不会恢复已经关闭或移除的会话。历史、模式和附件等独立读取并行进行。

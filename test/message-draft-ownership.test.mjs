@@ -108,3 +108,13 @@ test('image-only drafts send and queue registered images without embedding binar
     }
   } finally {await server.close();}
 });
+
+test('sending during native startup preserves the draft without invoking a turn',async()=>{
+ const server=await createServer({server:{middlewareMode:true,ws:false,watch:null},appType:'custom'});
+ try{
+  const {createMessageController}=await server.ssrLoadModule('/src/lib/app/message-controller.ts');let notice;
+  const controller=createMessageController({getComposerText:()=> 'draft',getSelectedWorkspace:()=>({id:'w'}),getSelectedSession:()=>({id:'s',state:'starting'}),
+   setNotice:value=>notice=value,api:{sendAgentPrompt:()=>assert.fail('startup cannot send')},consumeDraft:()=>assert.fail('startup cannot consume draft')});
+  await controller.sendPrompt();assert.match(notice,/初始化/);
+ }finally{await server.close()}
+});

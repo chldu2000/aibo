@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 import readline from 'node:readline';
-import {existsSync,readFileSync,writeFileSync} from 'node:fs';
+import {appendFileSync,existsSync,readFileSync,writeFileSync} from 'node:fs';
 const write = (message) => process.stdout.write(`${JSON.stringify({ jsonrpc: '2.0', ...message })}\n`);
 const input = readline.createInterface({ input: process.stdin, crlfDelay: Infinity });
 let nativeTurnId = 'native-turn';
@@ -44,6 +44,8 @@ input.on('line', (line) => {
     completeTurn(interactiveTurn.params); interactiveTurn = null; return;
   }
   const { id, method, params = {} } = request;
+  if (process.env.CODEX_FAKE_RPC_LOG && method) appendFileSync(process.env.CODEX_FAKE_RPC_LOG, `${method}\n`);
+  if (method === 'account/rateLimits/read' && process.env.CODEX_FAKE_HOLD_QUOTA === '1') return;
   if ((method === 'thread/start' || method === 'thread/resume') && process.env.CODEX_FAKE_EXPECT_REVIEWER && params.approvalsReviewer !== process.env.CODEX_FAKE_EXPECT_REVIEWER) {
     write({id,error:{code:-32000,message:'expected native approvals reviewer'}}); return;
   }
