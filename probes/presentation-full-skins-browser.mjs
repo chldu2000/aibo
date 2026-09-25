@@ -10,7 +10,7 @@ const server=await createServer({server:{host:'127.0.0.1',port:0,strictPort:fals
 const browser=await chromium.launch({headless:true});const page=await browser.newPage({viewport:{width:1280,height:900}});const errors=[];
 page.on('pageerror',error=>errors.push(error.stack ?? error.message));page.setDefaultTimeout(10000);
 try {
-  const builtInKit = process.env.AIBO_BUILTIN_KIT ?? 'ak-ui';
+  const builtInKit = process.env.AIBO_BUILTIN_KIT ?? 'material3';
   assert.ok(['ak-ui','material3'].includes(builtInKit));
   await page.addInitScript(kit => {
     if (window === window.top && !localStorage.getItem('aibo.appearance.v1')) localStorage.setItem('aibo.appearance.v1', JSON.stringify({kitId:kit,themeId:'light'}));
@@ -282,8 +282,8 @@ try {
     });
     await page.waitForTimeout(50);
     await page.getByRole('button',{name:/^打开工作台设置/}).click();
-    if (builtInKit === 'material3') await page.locator('.appearance-kit-option').filter({hasText:'Aibo · Material 3'}).click();
-    else await page.getByRole('button',{name:'恢复内置皮肤',exact:true}).click();
+    if (builtInKit === 'material3') await page.getByRole('button',{name:'恢复内置皮肤',exact:true}).click();
+    else await page.locator('.appearance-kit-option').filter({hasText:'Aibo · ak-ui'}).click();
     assert.equal(await page.locator('.app-shell').getAttribute('data-ui-kit'), builtInKit);
     assert.equal(await page.getByRole('button',{name:`调整工作区与会话宽度，当前 ${resized} 像素`,exact:true}).count(),1);
     await page.getByRole('button',{name:'关闭设置',exact:true}).click();
@@ -338,8 +338,8 @@ try {
 
 
     await page.getByRole('button',{name:/^打开工作台设置/}).click();
-    if (builtInKit === 'material3') await page.locator('.appearance-kit-option').filter({hasText:'Aibo · Material 3'}).click();
-    else await page.getByRole('button',{name:'恢复内置皮肤',exact:true}).click();
+    if (builtInKit === 'material3') await page.getByRole('button',{name:'恢复内置皮肤',exact:true}).click();
+    else await page.locator('.appearance-kit-option').filter({hasText:'Aibo · ak-ui'}).click();
     assert.equal(await page.locator('.app-shell').getAttribute('data-ui-kit'), builtInKit);
     await page.getByRole('button',{name:'关闭设置',exact:true}).click();
   }

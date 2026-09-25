@@ -790,6 +790,7 @@
     activeThemeStyle,
     activeUiKitName,
     availableUiKits,
+    defaultUiKitId,
     ColumnSplitter,
     setUiKit,
     setUiTheme,
@@ -3862,7 +3863,7 @@
   <SettingsSection title="皮肤恢复" items={[{
     id: 'builtin', title: '内置皮肤', description: '恢复内置皮肤，保留当前布局、会话和草稿。', icon: 'undo',
     actions: [{ id: 'restore', label: '恢复内置皮肤', intent: 'restore', disabled: presentationPackages.busy || !presentationPackages.active }],
-  }]} onAction={() => void presentationOperation(() => choosePresentation(availableUiKits[0].id))} />
+  }]} onAction={() => void presentationOperation(() => choosePresentation(defaultUiKitId))} />
 {/snippet}
 {#snippet layoutSettings()}{@render presentationActions('layout')}{/snippet}
 {#snippet diagnosticsActions()}{@render presentationActions('diagnostics')}{/snippet}

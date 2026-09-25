@@ -2,13 +2,16 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import { createServer } from 'vite';
 
-test('built-in kits expose both themes, preserve brightness, and keep ak-ui as the default', async () => {
+test('built-in kits expose both themes, preserve brightness, and use Material 3 as the default', async () => {
   const server = await createServer({ server: { middlewareMode: true, ws: false, watch: null }, appType: 'custom' });
   try {
     const { get } = await server.ssrLoadModule('svelte/store');
     const registry = await server.ssrLoadModule('/src/lib/ui-kit/registry.ts');
-    assert.deepEqual(registry.availableUiKits.map(kit => kit.id), ['ak-ui', 'material3']);
-    assert.equal(get(registry.activeUiKitName), 'ak-ui');
+    assert.deepEqual(registry.availableUiKits.map(kit => kit.id), ['material3', 'ak-ui']);
+    assert.equal(registry.defaultUiKitId, 'material3');
+    assert.deepEqual(get(registry.appearanceSelection), {kitId:'material3',themeId:'light'});
+    assert.equal(get(registry.activePresentationPlugin).id, 'material3');
+    registry.setUiKit('ak-ui');
     for (const theme of ['light', 'dark']) {
       registry.setUiTheme(theme);
       for (const legacy of ['shadcn']) {
@@ -44,7 +47,7 @@ test('built-in kits expose both themes, preserve brightness, and keep ak-ui as t
     registry.setUiKit('ak-ui');
     registry.toggleUiColorScheme();
     assert.equal(get(registry.activeTheme).id, 'dark');
-    assert.deepEqual(registry.availableUiKits[0].themes.map(theme => theme.id), ['light', 'dark']);
+    assert.deepEqual(registry.availableUiKits.find(kit => kit.id === 'ak-ui').themes.map(theme => theme.id), ['light', 'dark']);
     for (const role of ['Button','AlertDialog','WorkbenchChrome','ManagementCenter','SemanticView','ModelMatrix','RepositorySelect','SessionControlMark','SubagentDialog','AttachmentList']) assert.equal(typeof adapter[role], 'function', role);
   } finally { await server.close(); }
 });

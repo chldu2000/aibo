@@ -67,7 +67,7 @@ try {
   assert.equal(await editor.inputValue(),'saved draft quick typing');
   await page.getByRole('button',{name:/^打开工作台设置/}).click();
   await page.getByRole('button',{name:'恢复内置皮肤',exact:true}).click();
-  expectedKit='ak-ui'; // Explicit recovery keeps the established default entry.
+  expectedKit='material3'; // Explicit recovery selects the product default; automatic failure retains the chosen kit.
   await page.waitForFunction(()=>document.querySelectorAll('iframe').length===0);
   await assertMigrated();
   if (process.env.AIBO_BUILTIN_KIT === 'material3') {
@@ -122,7 +122,7 @@ try {
   assert.equal(await page.locator('iframe').count(),0);
   assert.equal(await page.locator('.presentation-fallback .timeline').evaluate(element=>getComputedStyle(element).backgroundColor),'rgb(17, 34, 51)','inherited workbench actually paints the external surface override');
   await page.getByRole('button',{name:'恢复内置皮肤',exact:true}).click();
-  expectedKit='ak-ui'; // Explicit recovery keeps the established default entry.
+  expectedKit='material3'; // Explicit recovery selects the product default; automatic failure retains the chosen kit.
   await page.waitForFunction(()=>JSON.parse(localStorage.getItem('probe.presentation.selection')||'null')===null);
   await assertMigrated();
   assert.equal(await page.locator('.appearance-kit-option[aria-pressed="true"]').count(),1);

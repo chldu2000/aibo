@@ -9,8 +9,9 @@ import { resolvePresentationPlugin } from './presentation-plugin';
 
 const STORAGE_KEY = 'aibo.appearance.v1';
 
-const builtInDefault = { ...akUiKitRegistration, renderer: defaultPresentation };
-const presentationRegistrations = [akUiKitRegistration, material3UiKitRegistration].map(
+const builtInDefault = { ...material3UiKitRegistration, renderer: defaultPresentation };
+export const defaultUiKitId = builtInDefault.id;
+const presentationRegistrations = [material3UiKitRegistration, akUiKitRegistration].map(
   ({ adapter, ...metadata }) => resolvePresentationPlugin({ ...metadata, components: adapter }, builtInDefault),
 );
 // Compatibility projection: existing appearance consumers keep their current interface.
@@ -24,7 +25,7 @@ const registrationMap = new Map<string, UiKitRegistration>(
 
 function fallbackSelection(): AppearanceSelection {
   const requestedKit = import.meta.env.VITE_AIBO_UI_KIT?.trim();
-  const registration = (requestedKit && registrationMap.get(requestedKit)) ?? registrations[0];
+  const registration = (requestedKit && registrationMap.get(requestedKit)) ?? builtInDefault;
   return { kitId: registration.id, themeId: registration.defaultThemeId };
 }
 
@@ -53,10 +54,10 @@ const selection = writable<AppearanceSelection>(readInitialSelection());
 export const appearanceSelection = { subscribe: selection.subscribe };
 export const availableUiKits: readonly UiKitOption[] = registrations.map(({ adapter: _adapter, renderer: _renderer, ...registration }) => registration);
 export const activeUiKitName = derived(selection, ($selection) => $selection.kitId as UiKitName);
-export const activeUiKitRegistration = derived(selection, ($selection) => registrationMap.get($selection.kitId) ?? registrations[0]);
+export const activeUiKitRegistration = derived(selection, ($selection) => registrationMap.get($selection.kitId) ?? builtInDefault);
 export const activeUiKit = derived(activeUiKitRegistration, ($registration) => $registration.adapter);
 export const activePresentationPlugin = derived(selection, ($selection) =>
-  presentationRegistrations.find(plugin => plugin.id === $selection.kitId) ?? presentationRegistrations[0],
+  presentationRegistrations.find(plugin => plugin.id === $selection.kitId) ?? builtInDefault,
 );
 export const activeTheme = derived(
   [selection, activeUiKitRegistration],

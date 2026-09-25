@@ -2,19 +2,20 @@
 
 以 [Material 3 交互设计稿](material3-redesign.html)为视觉基准，在现有工作台上增加一套内置外观。
 本规范定义 Material 3 独立拥有的完整视觉；状态、功能与布局所有权继续遵循 [UI 架构](../ui-architecture.md)。
-默认 ak-ui 的规则见 [ak-ui 规范](ak-ui-current-spec.md)。
+可选 ak-ui 的规则见 [ak-ui 规范](ak-ui-current-spec.md)。
 
 ## 接入与兼容
 
 - 注册 ID 为 `material3`；入口是工作台设置 → 外观 → 界面皮肤。
 - 经典蓝保留 `light` / `dark`；新增森林绿 `forest-light` / `forest-dark` 与紫罗兰 `plum-light` / `plum-dark`。
   所有配色均提供完整浅深版本，默认仍为经典蓝浅色。
-- ak-ui 仍为默认选择。切换内置皮肤保持当前明暗偏好，选择保存于原有外观存储键。
+- Material 3 经典蓝浅色为首次启动及无有效偏好时的默认外观。已有有效偏好保持不变，
+  包括 ak-ui 和已选配色；切换内置皮肤保持当前明暗偏好，选择保存于原有外观存储键。
 - 旧 Material 3 的 `ocean` / `sage` / `violet` / `daylight` 偏好继续迁移到 ak-ui；新增主题不恢复旧实现。
 - 两种内置 adapter 共享无皮肤的行为组件，保留有状态组件身份；图标和状态图形分别实现。
   共享组件不得携带具体皮肤样式，Material 3 不继承 ak-ui CSS 或 `--ak-*` 令牌。
 - 外部呈现包继续独立安装，未提供的 surface 继承当前内置选择；故障自动回退同样使用该选择。
-  设置中的“恢复内置皮肤”继续显式选择默认 ak-ui。切换与恢复不得丢失宿主拥有的数据。
+  设置中的“恢复内置皮肤”显式选择 Material 3，保留明暗。切换与恢复不得丢失宿主拥有的数据。
 
 ## 配色选择
 
@@ -59,6 +60,7 @@
 可复现的浏览器入口：
 
 ```sh
+node probes/default-appearance-browser.mjs
 node probes/material3-browser.mjs
 node probes/material3-palettes-browser.mjs
 node probes/material3-controls-browser.mjs

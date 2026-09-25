@@ -1,7 +1,7 @@
 # UI 架构与扩展边界
 
 本文定义当前 UI 的分层、状态所有权、扩展方式和验证要求。默认工作台的视觉与交互细则以
-[Aibo ak-ui 现行规范](design/ak-ui-current-spec.md)为准；公共呈现协议以
+[Aibo Material 3 现行规范](design/material3-current-spec.md)为准；公共呈现协议以
 [Presentation 包合同](presentation-package.md)为准。阶段记录只说明当时的实现与验收，不能替代现行规则。
 
 ## 分层与依赖方向
@@ -75,7 +75,9 @@ Agent 名称和品牌图标来自绑定插件声明，缺失时使用通用回�
 
 当前注册两个内置 kit：`ak-ui` 和 `material3`，均支持浅色/深色。ak-ui 保留原有两套主题；
 Material 3 提供经典蓝、森林绿与紫罗兰三组配色，每组包含浅深版本。
-`ak-ui` 仍为默认与首次启动的回退，默认浅色；新增 Material 3 可在外观设置直接选择。
+`material3` 为默认与首次启动的回退，使用经典蓝浅色；ak-ui 仍可在外观设置选择。
+有效的已保存外观优先于默认值，包括 ak-ui、Material 3 配色及旧偏好迁移结果；升级不覆盖用户选择。
+缺失、损坏或未知偏好回到默认外观，显式 `VITE_AIBO_UI_KIT` 覆盖仍然有效。
 两个注册入口各自装配 adapter。`kits/shared-controls.ts` 和 `kits/shared/` 只提供无皮肤的 DOM、
 可访问性与交互行为，`components/ui/` 的基础原语也不预置视觉 utility。图标和状态图形由各 kit
 独立提供。应用组件不直接导入这些实现目录。
@@ -112,8 +114,9 @@ Enter/Space 确认、Escape 取消及 Tab 离开；滚动祖先或调整窗口�
 两种内置外观切换时保留浅深偏好，不重建编辑器、菜单和管理对话框。工作区列宽、布局、草稿、
 附件、队列、历史及审批仍由原宿主管理。HTML 设计稿中的模拟交互不进入产品实现。
 外部包未覆盖的 surface 继承当前选中的内置 kit；外部包失败时回到该内置选择。
-设置中的“恢复内置皮肤”沿用既有行为，显式选择默认 ak-ui。
-默认选择仍为 ak-ui，选择 Material 3 不修改外部包清单、发布身份或会话绑定。
+设置中的“恢复内置皮肤”通过 `defaultUiKitId` 显式选择 Material 3 并保留明暗，
+不依赖设置卡片的显示顺序；外部包自动故障回退继续使用当前内置选择。
+更改默认外观不修改外部包清单、发布身份或会话绑定。
 
 ### 明暗与配色选择
 
@@ -224,7 +227,7 @@ Windows 使用独立配置和自绘窗口按钮。呈现替换不接管原生窗
 1. 先确定业务状态与动作的所有者；页面仅增加窄 props 和语义回调。
 2. 新增或修改语义接口时，同步 `UiKitAdapter` 及对应 props、runtime proxy、公开导出和当前所有注册 adapter。
    仅调整样式或主题令牌时沿用现有接口。两个内置 adapter 都必须覆盖完整合同，必需成员不能改为 optional 来绕过完整性检查。
-3. 视觉实现放入对应 kit；共享行为进入 shared，共享布局进入 base。默认 ak-ui 的具体视觉遵循现行规范。
+3. 视觉实现放入对应 kit；共享行为进入 shared，共享布局进入 base。ak-ui 的具体视觉遵循现行规范。
 4. 若影响外部呈现，分别检查未覆盖 surface 的继承，以及已覆盖 surface 的快照和动作是否仍完整。
    需要新增公共字段时，同时更新协议、验证器及消费者，不能把内部组件接口直接当作外部协议。
 5. 按下节验证；正式改变架构规则时同步 UI 合同、架构测试和本文。
@@ -247,14 +250,14 @@ Windows 使用独立配置和自绘窗口按钮。呈现替换不接管原生窗
 六个主题的实际颜色、明暗快捷切换、原生键盘选择、状态保留、重载与 ak-ui 不变。
 
 按[回归矩阵](plugin-boundaries-and-regression.md#regression-gate)选择受影响路径，验证改变的行为与必须保留的既有行为。
-UI 实现变化需检查默认 ak-ui 浅/深主题，以及受影响外部包的继承、协商与失败恢复。
+UI 实现变化需检查默认 Material 3 与 ak-ui 的浅/深主题，以及受影响外部包的继承、协商与失败恢复。
 设备范围按[现行规范的适用范围](design/ak-ui-current-spec.md#适用范围与优先级)选择；探针中保留的范围外场景属于补充检查。
 以下是常用浏览器入口，选择依据是改动边界，不是历史阶段编号：
 
 | 变化 | 探针入口 |
 | --- | --- |
 | 单选下拉的主题、键盘、长列表与外部动作 | `probes/select-browser.mjs` |
-| 默认主题、响应式、密度与控件交互 | `probes/ak-ui-browser.mjs`、`probes/ak-ui-density-browser.mjs`、`probes/ak-ui-controls-browser.mjs` |
+| 两套内置主题、响应式、密度与控件交互 | `probes/default-appearance-browser.mjs`、`probes/material3-browser.mjs`、`probes/ak-ui-browser.mjs`、`probes/ak-ui-density-browser.mjs`、`probes/ak-ui-controls-browser.mjs` |
 | Composer 输入、引用、粘贴与附件 | `probes/composer-input-browser.mjs`、`probes/composer-paste-browser.mjs` |
 | 外部包继承、完整工作台与恢复 | `probes/presentation-app-browser.mjs`、`probes/presentation-full-skins-browser.mjs` |
 | 管理区域、焦点与审批访问 | `probes/host-panels-browser.mjs` |
@@ -268,7 +271,7 @@ UI 实现变化需检查默认 ak-ui 浅/深主题，以及受影响外部包的
 
 | 修改内容 | 权威说明 |
 | --- | --- |
-| 默认 kit 的视觉、密度、状态与响应式 | [ak-ui 现行规范](design/ak-ui-current-spec.md) |
+| 内置 kit 的视觉、密度、状态与响应式 | [Material 3 现行规范](design/material3-current-spec.md)、[ak-ui 现行规范](design/ak-ui-current-spec.md) |
 | 外部呈现包、快照、动作、状态恢复 | [Presentation 包合同](presentation-package.md) |
 | 能力协商、模式和权限菜单 | [会话能力协商](session-capability-negotiation.md)、[会话控件](session-controls.md) |
 | 设置表单与原生校验 | [Agent 设置协议](agent-plugin-settings.md) |

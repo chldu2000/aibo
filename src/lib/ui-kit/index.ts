@@ -42,6 +42,7 @@ export {
   activeUiKitName,
   appearanceSelection,
   availableUiKits,
+  defaultUiKitId,
   setUiKit,
   setUiTheme,
   toggleUiColorScheme,
