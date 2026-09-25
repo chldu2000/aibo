@@ -21,6 +21,8 @@
 
 ## 呈现插件与当前交付
 
+- [Material Design 3 交互设计稿](design/material3-redesign.html)：保留现有三栏布局的组件外观探索，可直接在浏览器打开。支持浅深主题、会话与审批、Git 和五类设置的模拟交互；未连接原生宿主，不替代现行 UI 规范。
+
 - [Presentation 0.3.0 交付](presentation-release-0.3.0.md)：版本、安装、本地 ZIP 与离线 SDK。
 - [Presentation 包合同](presentation-package.md)：manifest、Worker、视觉树、动作及状态恢复。
 - [退出审计](presentation-plugin-exit-audit.md)：P0–P4 完成结论和浏览器、原生验收边界。

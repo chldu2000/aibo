@@ -1,0 +1,1341 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="color-scheme" content="light dark">
+<title>Aibo · Material Design 3 交互设计稿</title>
+<style>
+/* Standalone, offline Material 3 visual study. Native HTML controls, not the
+   official Material Web implementation. Retains the reference workbench layout.
+   All agent, permission, Git and plugin operations use in-memory fixtures.
+   Color roles: https://material-web.dev/theming/color/ */
+:root {
+  --md-sys-color-primary:#245ea7; --md-sys-color-on-primary:#ffffff;
+  --md-sys-color-primary-container:#d7e7ff; --md-sys-color-on-primary-container:#143b69;
+  --md-sys-color-secondary:#535f70; --md-sys-color-secondary-container:#dce5f2;
+  --md-sys-color-on-secondary-container:#263344;
+  --md-sys-color-surface:#f8faff; --md-sys-color-surface-container-lowest:#ffffff;
+  --md-sys-color-surface-container-low:#f1f4fa; --md-sys-color-surface-container:#ebeff6;
+  --md-sys-color-surface-container-high:#e5eaf2; --md-sys-color-surface-container-highest:#dee4ee;
+  --md-sys-color-on-surface:#1a1c20; --md-sys-color-on-surface-variant:#535b68;
+  --md-sys-color-outline:#747d8b; --md-sys-color-outline-variant:#c6cdd8;
+  --md-sys-color-error:#ba1a1a; --md-sys-color-error-container:#ffdad6;
+  --success:#286446; --success-surface:#dcefe2;
+  --warning-text:#775500; --warning-surface:#fff0c7; --warning-border:#c6a756;
+  --md-sys-shape-corner-small:8px; --md-sys-shape-corner-medium:12px;
+  --md-sys-shape-corner-large:16px; --md-sys-shape-corner-extra-large:28px;
+  --md-sys-motion-easing-standard:cubic-bezier(.2,0,0,1);
+  color-scheme:light;
+}
+[data-theme="dark"] {
+  --md-sys-color-primary:#a7c8ff; --md-sys-color-on-primary:#003063;
+  --md-sys-color-primary-container:#244775; --md-sys-color-on-primary-container:#d7e7ff;
+  --md-sys-color-secondary:#bcc8da; --md-sys-color-secondary-container:#3b485b;
+  --md-sys-color-on-secondary-container:#dce5f2;
+  --md-sys-color-surface:#11141a; --md-sys-color-surface-container-lowest:#0c0f14;
+  --md-sys-color-surface-container-low:#191d24; --md-sys-color-surface-container:#1e222b;
+  --md-sys-color-surface-container-high:#292e37; --md-sys-color-surface-container-highest:#343942;
+  --md-sys-color-on-surface:#e2e6ef; --md-sys-color-on-surface-variant:#bac3d2;
+  --md-sys-color-outline:#8b95a5; --md-sys-color-outline-variant:#424b59;
+  --md-sys-color-error:#ffb4ab; --md-sys-color-error-container:#552323;
+  --success:#9dd7b4; --success-surface:#223c2e;
+  --warning-text:#f1d17c; --warning-surface:#3d331b; --warning-border:#9b8244;
+  color-scheme:dark;
+}
+[data-m3] {
+  --surface-canvas:var(--md-sys-color-surface); --surface-panel:var(--md-sys-color-surface-container-low);
+  --surface-muted:var(--md-sys-color-surface-container); --surface-raised:var(--md-sys-color-surface-container-lowest);
+  --surface-inverse:var(--md-sys-color-on-surface);
+  --text-primary:var(--md-sys-color-on-surface); --text-secondary:var(--md-sys-color-on-surface-variant);
+  --text-inverse:var(--md-sys-color-surface); --signal-info:var(--md-sys-color-primary);
+  --signal-action:var(--md-sys-color-primary); --signal-accent:var(--warning-text);
+  --signal-success:var(--success); --signal-danger:var(--md-sys-color-error); --signal-disabled:var(--md-sys-color-on-surface-variant);
+  --font-sans:"Google Sans","Roboto","Segoe UI","PingFang SC","Microsoft YaHei",sans-serif;
+  --font-mono:"SFMono-Regular",Menlo,Consolas,monospace; --font-command:var(--font-sans);
+  --type-title-size:20px; --type-tight:-.025em; --type-wide:0;
+  --space-1:4px; --space-2:8px; --space-3:12px; --space-4:16px; --space-5:24px; --space-6:32px;
+  --line-hairline:1px; --line-strong:3px; --radius-subtle:12px;
+  --shadow-panel:0 8px 28px #00000020,0 2px 6px #00000012;
+  --motion-fast:150ms; --motion-base:250ms; --ease-standard:var(--md-sys-motion-easing-standard);
+  --focus-color:var(--md-sys-color-primary); --focus-width:2px;
+  --line:var(--md-sys-color-outline-variant); --line-strong:var(--md-sys-color-outline);
+  --selected:var(--md-sys-color-secondary-container); --selected-ink:var(--md-sys-color-on-secondary-container);
+  --hover:var(--md-sys-color-surface-container-high);
+  --info-surface:var(--md-sys-color-primary-container); --info-text:var(--md-sys-color-on-primary-container);
+  --danger-surface:var(--md-sys-color-error-container); --action-text:var(--md-sys-color-on-primary);
+  --text-body:14px; --text-ui:13px; --text-meta:12px;
+  color:var(--text-primary); background:var(--surface-canvas); font:var(--text-ui)/1.5 var(--font-sans); margin:0;
+}
+* { box-sizing:border-box; }
+body { height:100dvh; overflow:hidden; }
+button, input, select, textarea { font:inherit; color:inherit; }
+button { cursor:pointer; }
+:focus-visible { outline:var(--focus-width) solid var(--focus-color); outline-offset:2px; }
+svg.i { width:18px; height:18px; flex:none; fill:none; stroke:currentColor; stroke-width:1.6; stroke-linecap:round; stroke-linejoin:round; }
+.mono { font-family:var(--font-mono); }
+.muted { color:var(--text-secondary); }
+.meta { font-size:var(--text-meta); color:var(--text-secondary); }
+[hidden] { display:none !important; }
+.feed-inner > * { min-width:0; }
+.sr { position:absolute; width:1px; height:1px; overflow:hidden; clip-path:inset(50%); white-space:nowrap; }
+.ellipsis { min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+@media (prefers-reduced-motion:reduce) { *, *::before, *::after { transition-duration:0s !important; animation:none !important; } }
+
+/* ---------- Buttons: one anatomy, four intents. Visible size may be 32px; hit area stays 44px. ---------- */
+.btn { position:relative; display:inline-flex; align-items:center; justify-content:center; gap:var(--space-2); min-height:32px; padding:0 var(--space-3);
+  border:1px solid transparent; border-radius:var(--radius-subtle); background:transparent; font-size:var(--text-ui); font-weight:500; white-space:nowrap;
+  transition:box-shadow var(--motion-fast) var(--ease-standard), transform var(--motion-fast); }
+.btn::before { content:''; position:absolute; inset:-6px -2px; } /* 44px hit area around a 32px control */
+.btn:hover:not(:disabled) { background:var(--hover); box-shadow:inset 0 -2px var(--line-strong); }
+.btn:active:not(:disabled) { transform:translateY(1px); }
+.btn.outline { border-color:var(--line-strong); }
+.btn.primary { background:var(--signal-action); color:var(--action-text); font-weight:650;
+  clip-path:none; }
+.btn.primary:hover:not(:disabled) { background:var(--signal-action); box-shadow:inset 0 -3px var(--md-sys-color-primary); }
+.btn.danger { color:var(--signal-danger); border-color:currentColor; }
+.btn:disabled { color:var(--signal-disabled); cursor:not-allowed; }
+.btn.primary:disabled { background:transparent; border-color:var(--line); clip-path:none; }
+.btn.icon { width:32px; padding:0; }
+.btn.icon::before { inset:-6px; }
+.btn.tall { min-height:44px; }
+.kbd { font:12px/1 var(--font-mono); padding:3px 5px; border:1px solid currentColor; border-radius:2px; opacity:.7; }
+
+/* Neutral count / status tags. Colour is never the only state carrier: each tag has text. */
+.tag { display:inline-flex; align-items:center; gap:4px; height:20px; padding:0 6px; border:1px solid var(--line); border-radius:2px;
+  font-size:var(--text-meta); font-weight:500; line-height:1; color:var(--text-secondary); white-space:nowrap; font-variant-numeric:tabular-nums; }
+.tag.warn { color:var(--warning-text); background:var(--warning-surface); border-color:var(--warning-border); }
+.tag.ok { color:var(--signal-success); background:var(--success-surface); border-color:currentColor; }
+.tag.bad { color:var(--signal-danger); background:var(--danger-surface); border-color:currentColor; }
+.tag.info { color:var(--info-text); background:var(--info-surface); border-color:currentColor; }
+
+/* ---------- Selection language (the only two) ----------
+   1. Tabs: bottom 3px signal bar.   2. Lists / navigation: left 3px signal bar + selected fill. */
+.tabs { display:flex; gap:var(--space-1); min-width:0; }
+.tab { position:relative; display:inline-flex; align-items:center; gap:6px; min-height:44px; padding:0 var(--space-3); border:0; background:none;
+  color:var(--text-secondary); font-size:var(--text-ui); font-weight:600; white-space:nowrap; }
+.tab:hover { color:var(--text-primary); }
+.tab[aria-selected="true"] { color:var(--text-primary); }
+.tab[aria-selected="true"]::after { content:''; position:absolute; left:var(--space-2); right:var(--space-2); bottom:0; height:var(--line-strong); background:var(--focus-color); }
+.tab:focus-visible { outline-offset:-4px; }
+.tab .tag { height:18px; }
+.row { position:relative; display:flex; align-items:center; gap:var(--space-3); width:100%; min-height:44px; padding:0 var(--space-3);
+  border:0; background:none; text-align:left; font-size:var(--text-ui); }
+.row:hover { background:var(--hover); }
+.row[aria-selected="true"], .row[aria-current="page"] { background:var(--selected); box-shadow:inset var(--line-strong) 0 var(--focus-color); }
+.row:focus-visible { outline-offset:-2px; }
+
+/* ---------- Shell ---------- */
+.shell { display:grid; grid-template-rows:44px minmax(0,1fr) 28px; height:100dvh; }
+.titlebar { display:flex; align-items:center; gap:var(--space-2); padding:0 var(--space-2) 0 84px; background:var(--surface-muted); border-bottom:1px solid var(--line); }
+.titlebar .app { font-weight:600; font-size:var(--text-ui); }
+.titlebar .spacer { flex:1; }
+.titlebar .btn[aria-pressed="true"] { background:var(--selected); color:var(--selected-ink); }
+.regions { display:none; }
+.grid { display:grid; grid-template-columns:260px minmax(0,1fr) 340px; min-height:0; }
+.grid.no-aux { grid-template-columns:260px minmax(0,1fr) 0; }
+.grid.no-aux .inspector { display:none; }
+.statusbar { display:flex; align-items:center; gap:var(--space-4); padding:0 var(--space-4); background:var(--surface-muted); border-top:1px solid var(--line); font-size:var(--text-meta); color:var(--text-secondary); }
+.statusbar .end { margin-left:auto; }
+.statusbar .dot { display:inline-block; width:7px; height:7px; margin-right:6px; background:var(--signal-success); }
+
+/* ---------- Sidebar ---------- */
+.sidebar { display:flex; flex-direction:column; min-height:0; background:var(--surface-muted); border-right:1px solid var(--line); }
+.sidebar-top { padding:var(--space-3); }
+.new-session { width:100%; min-height:44px; justify-content:space-between; }
+.new-session::before { inset:0; }
+.section-head { display:flex; align-items:center; gap:2px; min-height:44px; padding:0 var(--space-2) 0 var(--space-4);
+  font-size:var(--text-meta); font-weight:600; letter-spacing:var(--type-wide); color:var(--text-secondary); }
+.section-head > span { flex:1; }
+.nav-scroll { flex:1; min-height:0; overflow:auto; padding-bottom:var(--space-2); }
+.ws { position:relative; }
+.ws-row { padding-left:var(--space-3); padding-right:44px; font-weight:600; }
+.ws-row .chev { transition:transform var(--motion-fast); }
+.ws-row[aria-expanded="false"] .chev { transform:rotate(-90deg); }
+.row-more { position:absolute; top:0; right:0; width:44px; height:44px; display:grid; place-items:center; border:0; background:none; color:var(--text-secondary); opacity:0; }
+.ws:hover > .row-more, .session:hover > .row-more, .row-more:focus-visible, .row-more[aria-expanded="true"] { opacity:1; }
+@media (hover:none) { .row-more { opacity:1; } }
+.row-more:hover { color:var(--text-primary); background:var(--hover); }
+.session { position:relative; }
+.session .row { padding-left:28px; padding-right:var(--space-3); }
+.session .title { flex:1; }
+.session .time { font-size:var(--text-meta); color:var(--text-secondary); font-variant-numeric:tabular-nums; }
+.session:hover :is(.time,.tag), .session:focus-within :is(.time,.tag) { visibility:hidden; }
+.session .row-more { background:inherit; }
+.agent-mark { position:relative; display:grid; place-items:center; width:20px; height:20px; flex:none; color:var(--text-secondary); }
+.agent-mark svg { width:16px; height:16px; }
+.agent-mark[data-state="running"]::after { content:''; position:absolute; inset:-2px; border:1.5px solid var(--focus-color); border-right-color:transparent; border-radius:50%; animation:spin 1s linear infinite; }
+.agent-mark[data-state="attention"] { color:var(--warning-text); }
+.agent-mark[data-state="failed"] { color:var(--signal-danger); }
+@keyframes spin { to { transform:rotate(1turn); } }
+.sidebar-footer { border-top:1px solid var(--line); padding:var(--space-1) 0; }
+.sidebar-footer .row { padding-left:var(--space-4); }
+
+/* ---------- Popovers / menus ---------- */
+[popover] { margin:0; padding:var(--space-1); border:1px solid var(--line-strong); border-radius:var(--radius-subtle); background:var(--surface-raised); color:var(--text-primary); box-shadow:var(--shadow-panel); }
+.menu { width:240px; }
+.menu .row { border-radius:2px; }
+.menu hr { border:0; border-top:1px solid var(--line); margin:var(--space-1) 0; }
+.menu .row.danger { color:var(--signal-danger); }
+.menu-title { padding:var(--space-2) var(--space-3) var(--space-1); font-size:var(--text-meta); color:var(--text-secondary); }
+.agent-option .copy { display:grid; flex:1; line-height:1.3; }
+.agent-option small { font-size:var(--text-meta); color:var(--text-secondary); }
+.agent-option:disabled { color:var(--signal-disabled); cursor:not-allowed; }
+.agent-option:disabled:hover { background:none; }
+
+/* ---------- Conversation ---------- */
+.main { display:grid; grid-template-columns:minmax(0,1fr); grid-template-rows:auto minmax(0,1fr) auto; min-width:0; min-height:0; background:var(--surface-canvas); }
+.main-head { display:flex; align-items:flex-end; gap:var(--space-4); padding:0 var(--space-5); min-height:64px; background:var(--surface-panel); border-bottom:1px solid var(--line); }
+.main-head .heading { flex:1; min-width:0; padding:10px 0 12px; }
+.crumb { display:flex; gap:6px; font-size:var(--text-meta); color:var(--text-secondary); }
+.session-title { margin:2px 0 0; font:700 var(--type-title-size)/1.25 var(--font-command); letter-spacing:var(--type-tight); }
+.main-head .tabs { align-self:flex-end; }
+.main-head .tools { display:flex; align-items:center; gap:var(--space-2); align-self:center; }
+.state { display:inline-flex; align-items:center; gap:6px; font-size:var(--text-meta); color:var(--text-secondary); }
+.state i { width:8px; height:8px; background:var(--signal-disabled); }
+.state[data-state="running"] i { background:var(--focus-color); animation:pulse 1.2s ease-in-out infinite; }
+.state[data-state="attention"] { color:var(--warning-text); } .state[data-state="attention"] i { background:var(--warning-border); }
+.state[data-state="failed"] { color:var(--signal-danger); } .state[data-state="failed"] i { background:var(--signal-danger); }
+@keyframes pulse { 50% { opacity:.3; } }
+.feed { overflow:auto; padding:var(--space-5) var(--space-5) var(--space-6); }
+.feed-inner { max-width:760px; margin:0 auto; display:grid; gap:var(--space-5); }
+.msg-meta { display:flex; align-items:center; gap:var(--space-2); margin-bottom:var(--space-2); font-size:var(--text-meta); color:var(--text-secondary); }
+.msg-meta strong { color:var(--text-primary); font-weight:600; }
+.user .bubble { padding:var(--space-3) var(--space-4); background:var(--surface-raised); border:1px solid var(--line); font-size:var(--text-body); line-height:1.7; }
+.assistant .body { font-size:var(--text-body); line-height:1.75; }
+.assistant .body h2 { margin:0 0 var(--space-2); font-size:17px; font-weight:650; line-height:1.4; }
+.assistant .body p { margin:0 0 var(--space-3); }
+.assistant .body ul { margin:0; padding-left:1.3em; display:grid; gap:4px; }
+.assistant .body code { font:12.5px var(--font-mono); padding:1px 4px; background:var(--surface-muted); border-radius:2px; }
+.tools-group { border:1px solid var(--line); background:var(--surface-panel); }
+.tools-group > summary { display:flex; align-items:center; gap:var(--space-2); min-height:44px; padding:0 var(--space-3); list-style:none; font-size:var(--text-ui); cursor:pointer; }
+.tools-group > summary::-webkit-details-marker { display:none; }
+.tools-group > summary .chev { transition:transform var(--motion-fast); transform:rotate(-90deg); }
+.tools-group[open] > summary .chev { transform:none; }
+.tools-group > summary:hover { background:var(--hover); }
+.tool { display:flex; align-items:center; gap:var(--space-2); min-height:36px; padding:0 var(--space-3) 0 36px; border-top:1px solid var(--line); font-size:var(--text-meta); }
+.tool .name { font-weight:600; width:56px; flex:none; }
+.tool .target { flex:1; font-family:var(--font-mono); color:var(--text-secondary); }
+.approval { border:1px solid var(--warning-border); border-left:var(--line-strong) solid var(--warning-border); background:var(--warning-surface); padding:var(--space-3) var(--space-4); }
+.approval .head { display:flex; align-items:center; gap:var(--space-2); color:var(--warning-text); font-weight:650; }
+.approval pre { margin:var(--space-2) 0 var(--space-3); padding:var(--space-2) var(--space-3); background:var(--surface-raised); border:1px solid var(--line); font:12.5px/1.6 var(--font-mono); color:var(--text-primary); overflow:auto; }
+.approval .actions { display:flex; flex-wrap:wrap; gap:var(--space-2); }
+.activity { display:flex; align-items:center; gap:var(--space-2); font-size:var(--text-meta); color:var(--text-secondary); }
+.empty { display:grid; place-items:center; align-content:center; gap:var(--space-2); min-height:40vh; text-align:center; color:var(--text-secondary); }
+.empty h3 { margin:0; font:700 22px var(--font-command); color:var(--text-primary); }
+.run-list, .file-list { display:grid; border:1px solid var(--line); background:var(--surface-panel); }
+.run { display:grid; grid-template-columns:20px minmax(0,1fr) auto auto; align-items:center; gap:var(--space-3); min-height:44px; padding:0 var(--space-3); border:0; border-top:1px solid var(--line); background:none; text-align:left; }
+.run:first-child { border-top:0; }
+.run:hover { background:var(--hover); }
+
+/* Outlined fields and a tonal composer retain the reference anatomy. */
+.field, .composer { border:var(--line-hairline) solid var(--line); border-left:4px solid var(--line-strong); border-radius:0;
+  background:var(--surface-panel); caret-color:var(--focus-color);
+  transition:border-color var(--motion-fast) ease, box-shadow var(--motion-fast) ease; }
+.field:hover:not(:disabled), .composer:hover { border-color:var(--line-strong); }
+.field:focus-visible, .composer:focus-within { outline:0; border-color:var(--focus-color); box-shadow:0 0 0 3px color-mix(in srgb,var(--focus-color) 20%,transparent); }
+.field[aria-invalid="true"] { border-color:var(--signal-danger); box-shadow:inset 4px 0 var(--signal-danger); }
+.field:disabled { color:var(--text-secondary); background:var(--surface-muted); opacity:.7; cursor:not-allowed; }
+.field::placeholder { color:var(--text-secondary); opacity:1; }
+.composer-wrap { padding:0 var(--space-5) var(--space-4); }
+.composer { max-width:760px; margin:0 auto; }
+.attachments { display:flex; gap:var(--space-2); padding:var(--space-2) var(--space-3) 0; overflow-x:auto; }
+.attachments:empty { display:none; }
+.chip { display:inline-flex; align-items:center; gap:6px; height:32px; max-width:220px; flex:none; padding:0 0 0 6px; border:1px solid var(--line); background:var(--surface-raised); font-size:var(--text-meta); }
+.chip .thumb { width:22px; height:22px; flex:none; background:linear-gradient(135deg,var(--surface-muted) 50%,var(--line) 50%); border:1px solid var(--line); }
+.chip .size { color:var(--text-secondary); font-variant-numeric:tabular-nums; }
+.chip .btn.icon { width:30px; min-height:30px; }
+.composer textarea { display:block; width:100%; min-height:64px; max-height:240px; padding:var(--space-3) var(--space-4); border:0; background:transparent; resize:none; font-size:var(--text-body); line-height:1.6; }
+.composer textarea:focus-visible { outline:0; }
+.composer textarea::placeholder { color:var(--text-secondary); }
+.composer-bar { display:flex; align-items:center; gap:var(--space-1); padding:var(--space-1) var(--space-2) var(--space-2); }
+.composer-bar .grow { flex:1; }
+.picker { display:inline-flex; align-items:center; gap:4px; }
+.picker .chev { width:14px; height:14px; opacity:.7; }
+.send { width:40px; min-height:36px; padding:0; }
+
+/* ---------- Inspector ---------- */
+.inspector { display:flex; flex-direction:column; min-height:0; background:var(--surface-panel); border-left:1px solid var(--line); }
+.inspector > .tabs { padding:0 var(--space-2); background:var(--surface-muted); border-bottom:1px solid var(--line); }
+.inspector > .tabs .tab { flex:1; justify-content:center; }
+.inspector .panel { flex:1; min-height:0; overflow:auto; }
+.inspector .panel[hidden] { display:none; }
+.sect { padding:var(--space-2) var(--space-4) var(--space-4); border-bottom:1px solid var(--line); }
+.sect-head { display:flex; align-items:center; gap:var(--space-2); min-height:36px; }
+.sect-head h3 { flex:1; margin:0; font-size:var(--text-ui); font-weight:650; }
+.kv { display:grid; grid-template-columns:72px minmax(0,1fr); gap:6px var(--space-3); margin:0; font-size:var(--text-meta); }
+.kv dt { color:var(--text-secondary); }
+.kv dd { margin:0; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.chips { display:flex; flex-wrap:wrap; gap:4px; }
+.chips .tag { font-family:var(--font-mono); font-weight:400; color:var(--text-primary); }
+.list-row { display:flex; align-items:center; gap:var(--space-2); min-height:36px; font-size:var(--text-meta); }
+.list-row .name { flex:1; font-size:var(--text-ui); }
+.trust-line { display:flex; align-items:center; gap:var(--space-2); font-size:var(--text-meta); color:var(--text-secondary); }
+.trust-line strong { color:var(--signal-success); font-weight:600; }
+.panel-note { margin:0; font-size:var(--text-meta); color:var(--text-secondary); }
+/* Git */
+.git-head { display:flex; gap:var(--space-2); padding:var(--space-3) var(--space-4) var(--space-2); }
+.select { flex:1; min-width:0; justify-content:space-between; min-height:36px; }
+.btn.select:hover:not(:disabled) { background:var(--surface-panel); box-shadow:none; }
+.branch { display:flex; align-items:center; gap:var(--space-2); padding:0 var(--space-4) var(--space-2); font-size:var(--text-meta); }
+.branch .name { font-family:var(--font-mono); font-size:var(--text-ui); font-weight:600; }
+.branch .grow { flex:1; }
+.subtabs { padding:0 var(--space-2); border-bottom:1px solid var(--line); }
+.commit-box { display:flex; gap:var(--space-2); padding:var(--space-3) var(--space-4); }
+.input { flex:1; min-width:0; min-height:36px; padding:0 var(--space-3); font-size:var(--text-ui); }
+.group-head { display:flex; align-items:center; gap:var(--space-2); width:100%; min-height:36px; padding:0 var(--space-2) 0 var(--space-3); border:0; border-top:1px solid var(--line); background:var(--surface-muted);
+  font-size:var(--text-meta); font-weight:650; letter-spacing:.02em; text-align:left; }
+.group-head .chev { width:14px; height:14px; transition:transform var(--motion-fast); }
+.group-head[aria-expanded="false"] .chev { transform:rotate(-90deg); }
+.group-head .grow { flex:1; }
+.file { display:flex; align-items:center; gap:var(--space-2); width:100%; min-height:36px; padding:0 var(--space-2) 0 var(--space-3); border:0; background:none; text-align:left; font-size:var(--text-ui); }
+.file::before { content:''; position:absolute; }
+.file { position:relative; }
+.file:hover { background:var(--hover); }
+.file[aria-selected="true"] { background:var(--selected); box-shadow:inset var(--line-strong) 0 var(--focus-color); }
+.st { display:grid; place-items:center; width:18px; height:18px; flex:none; font:600 12px/1 var(--font-mono); border:1px solid currentColor; }
+.st.M { color:var(--signal-accent); } .st.A { color:var(--signal-success); } .st.D { color:var(--signal-danger); }
+.file .fname { flex:none; max-width:60%; }
+.file .fdir { flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; direction:rtl; text-align:left; font-size:var(--text-meta); color:var(--text-secondary); }
+.file .delta { font:var(--text-meta) var(--font-mono); white-space:nowrap; }
+.file .delta .add { color:var(--signal-success); } .file .delta .del { color:var(--signal-danger); }
+.file .hover-act { display:none; }
+.file:hover .delta, .file:focus-within .delta { display:none; }
+.file:hover .hover-act, .file:focus-within .hover-act { display:inline-flex; }
+.commit { display:grid; grid-template-columns:minmax(0,1fr) auto; gap:0 var(--space-2); width:100%; padding:6px var(--space-4); min-height:44px; border:0; border-bottom:1px solid var(--line); background:none; text-align:left; }
+.commit:hover { background:var(--hover); }
+.commit .subject { font-size:var(--text-ui); }
+.commit .when { font-size:var(--text-meta); color:var(--text-secondary); }
+.commit .by { grid-column:1/-1; font-size:var(--text-meta); color:var(--text-secondary); }
+.more { width:calc(100% - 2 * var(--space-4)); margin:var(--space-3) var(--space-4); }
+
+/* ---------- Settings dialog ---------- */
+dialog.settings { width:min(880px,calc(100vw - 32px)); height:min(620px,calc(100dvh - 64px)); padding:0; border:1px solid var(--line-strong); border-top:var(--line-strong) solid var(--focus-color);
+  background:var(--surface-panel); color:var(--text-primary); box-shadow:var(--shadow-panel); }
+dialog.settings[open] { display:grid; grid-template-rows:auto minmax(0,1fr); }
+dialog::backdrop { background:color-mix(in srgb,var(--surface-inverse) 40%,transparent); }
+.dlg-head { display:flex; align-items:center; gap:var(--space-3); padding:var(--space-3) var(--space-3) var(--space-3) var(--space-5); border-bottom:1px solid var(--line); }
+.dlg-head h2 { flex:1; margin:0; font:700 20px var(--font-command); }
+.dlg-body { display:grid; grid-template-columns:200px minmax(0,1fr); min-height:0; }
+.dlg-nav { padding:var(--space-2) 0; background:var(--surface-muted); border-right:1px solid var(--line); }
+.dlg-nav .row { padding-left:var(--space-4); }
+.dlg-content { overflow:auto; padding:var(--space-4) var(--space-5) var(--space-5); }
+.dlg-content h3 { margin:var(--space-4) 0 var(--space-1); font-size:var(--text-ui); font-weight:650; }
+.dlg-content h3:first-child { margin-top:0; }
+.dlg-content > p { margin:0 0 var(--space-3); font-size:var(--text-meta); color:var(--text-secondary); }
+.setting { display:flex; align-items:center; gap:var(--space-4); min-height:56px; padding:var(--space-2) var(--space-4); border:1px solid var(--line); border-top:0; background:var(--surface-raised); }
+.setting:first-of-type, h3 + p + .setting, h3 + .setting { border-top:1px solid var(--line); }
+.setting .copy { flex:1; min-width:0; }
+.setting .copy strong { display:block; font-weight:600; }
+.setting .copy small { display:block; margin-top:2px; font-size:var(--text-meta); color:var(--text-secondary); }
+.theme-choices { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:var(--space-2); }
+.theme-choice { position:relative; display:flex; align-items:center; gap:var(--space-3); min-height:64px; padding:var(--space-3); border:1px solid var(--line); background:var(--surface-raised); cursor:pointer; }
+.theme-choice:has(input:checked) { border-color:var(--focus-color); box-shadow:inset var(--line-strong) 0 var(--focus-color); background:var(--selected); }
+.theme-choice:has(input:focus-visible) { outline:var(--focus-width) solid var(--focus-color); outline-offset:2px; }
+.theme-choice input { position:absolute; opacity:0; }
+.swatch { display:flex; width:48px; height:28px; border:1px solid var(--line-strong); flex:none; }
+.swatch i { flex:1; }
+.theme-choice .check { margin-left:auto; visibility:hidden; color:var(--focus-color); }
+.theme-choice:has(input:checked) .check { visibility:visible; }
+.switch { appearance:none; position:relative; width:40px; height:22px; flex:none; margin:0; border:2px solid var(--line-strong); border-radius:11px; background:var(--surface-muted); cursor:pointer; transition:background var(--motion-fast); }
+.switch::after { content:''; position:absolute; top:2px; left:2px; width:14px; height:14px; border-radius:50%; background:var(--text-primary); transition:transform var(--motion-fast) var(--ease-standard); }
+.switch:checked { background:var(--md-sys-color-primary); border-color:var(--md-sys-color-primary); }
+.switch:checked::after { background:#fff; transform:translateX(18px); }
+
+/* ---------- Design notes overlay ---------- */
+.notes-toggle { position:fixed; right:16px; bottom:40px; z-index:20; min-height:36px; background:var(--surface-inverse); color:var(--surface-canvas); box-shadow:var(--shadow-panel); }
+.notes-toggle:hover:not(:disabled) { background:var(--surface-inverse); }
+.notes { position:fixed; right:16px; bottom:84px; z-index:20; width:380px; max-height:calc(100dvh - 140px); overflow:auto; padding:var(--space-3); background:var(--surface-raised); border:1px solid var(--line-strong); border-top:var(--line-strong) solid var(--signal-action); box-shadow:var(--shadow-panel); }
+.notes[hidden] { display:none; }
+.notes h2 { margin:0 0 var(--space-1); font:700 16px var(--font-command); }
+.notes > p { margin:0 0 var(--space-2); font-size:var(--text-meta); color:var(--text-secondary); }
+.notes ol { margin:0; padding:0; list-style:none; display:grid; gap:2px; counter-reset:n; }
+.notes li { counter-increment:n; display:grid; grid-template-columns:24px 1fr; gap:var(--space-2); padding:6px var(--space-2); font-size:var(--text-meta); line-height:1.55; cursor:default; }
+.notes li::before { content:counter(n); font:600 12px var(--font-mono); color:var(--text-secondary); }
+.notes li:hover { background:var(--hover); }
+.notes li b { display:block; font-size:var(--text-ui); }
+.note-hit { outline:2px dashed var(--signal-accent) !important; outline-offset:-2px !important; }
+
+/* ---------- Narrow layouts ---------- */
+@media (max-width:1100px) {
+  .grid { grid-template-columns:240px minmax(0,1fr) 300px; }
+  .main-head { flex-wrap:wrap; align-items:center; padding:0 var(--space-4); }
+  .main-head .heading { flex-basis:100%; padding-bottom:0; }
+  .main-head .tools { margin-left:auto; }
+}
+@media (max-width:760px) {
+  .shell { grid-template-rows:44px 44px minmax(0,1fr) 0; }
+  .titlebar { padding-left:var(--space-3); }
+  .titlebar [data-desktop] { display:none; }
+  .regions { display:flex; background:var(--surface-muted); border-bottom:1px solid var(--line); }
+  .regions .tab { flex:1; justify-content:center; }
+  .statusbar { display:none; }
+  .grid, .grid.no-aux { grid-template-columns:minmax(0,1fr); }
+  .grid > * { display:none !important; }
+  .grid[data-region="nav"] > .sidebar, .grid[data-region="main"] > .main, .grid[data-region="aux"] > .inspector { display:flex !important; }
+  .grid[data-region="main"] > .main { display:grid !important; }
+  .main-head { padding:0 var(--space-3); gap:0 var(--space-2); }
+  .main-head .heading { padding-top:8px; }
+  .session-title { font-size:17px; }
+  .crumb { display:none; }
+  .main-head .tabs { order:3; flex-basis:100%; overflow-x:auto; }
+  .feed { padding:var(--space-4) var(--space-3); }
+  .composer-wrap { padding:0 var(--space-2) var(--space-2); }
+  .composer-bar .ctx { display:none; }
+  .notes-toggle { top:4px; bottom:auto; right:auto; left:56px; }
+  .notes { left:8px; right:8px; width:auto; bottom:56px; }
+  .dlg-body { grid-template-columns:1fr; grid-template-rows:auto minmax(0,1fr); }
+  .dlg-nav { display:flex; overflow-x:auto; padding:0; border-right:0; border-bottom:1px solid var(--line); }
+  .dlg-nav .row { width:auto; flex:none; }
+  .theme-choices { grid-template-columns:1fr; }
+}
+/* Material 3 component treatment. Shared geometry: 8 / 12 / 16 / 24 / 28 / full. */
+a { color:var(--md-sys-color-primary); }
+button,summary,a,input,textarea { -webkit-tap-highlight-color:transparent; }
+button { touch-action:manipulation; }
+.btn { border-radius:999px; min-height:36px; padding-inline:16px; font-weight:500; transition:background .15s,box-shadow .15s; }
+.btn::before { display:none; }
+.btn:hover:not(:disabled) { background:var(--hover); box-shadow:none; }
+.btn.primary { background:var(--md-sys-color-primary); color:var(--md-sys-color-on-primary); font-weight:600; }
+.btn.primary:hover:not(:disabled) { background:color-mix(in srgb,var(--md-sys-color-primary) 90%,var(--md-sys-color-on-primary)); box-shadow:0 2px 5px #0002; }
+.btn.primary:disabled { border:0; background:var(--md-sys-color-surface-container-highest); color:var(--text-secondary); opacity:.7; }
+.btn.outline { border-color:var(--md-sys-color-outline); color:var(--md-sys-color-primary); }
+.btn.danger { border:0; background:var(--danger-surface); }
+.btn.icon { min-height:36px; width:36px; padding:0; border-radius:50%; }
+.btn.icon svg { width:19px; height:19px; }
+.kbd { border:0; background:color-mix(in srgb,currentColor 8%,transparent); font-size:12px; padding:4px 6px; border-radius:5px; }
+.tag { border:0; background:var(--md-sys-color-surface-container-highest); border-radius:6px; padding:0 7px; font-size:12px; }
+.tag.ok,.tag.bad,.tag.warn,.tag.info { border:0; }
+.shell { grid-template-rows:48px minmax(0,1fr) 28px; }
+.titlebar { padding:0 14px 0 24px; background:var(--surface-muted); border:0; gap:12px; }
+.titlebar .app { font-size:17px; letter-spacing:-.5px; font-weight:650; }
+.title-divider { width:1px; height:16px; background:var(--line); }
+.title-workspace { color:var(--text-secondary); font-size:12px; }
+.study-label { font-size:12px; color:var(--text-secondary); margin-left:8px; padding:3px 8px; border:1px solid var(--line); border-radius:6px; }
+.titlebar .btn { min-height:32px; width:32px; }
+.grid { gap:0; background:var(--surface-muted); padding:0 8px 8px 0; }
+.sidebar { border:0; background:var(--surface-muted); }
+.sidebar-top { padding:16px 16px 12px; }
+.new-session.btn.primary { justify-content:space-between; min-height:52px; border-radius:16px; background:var(--md-sys-color-primary-container); color:var(--md-sys-color-on-primary-container); box-shadow:0 1px 2px #00000012; padding-inline:18px; }
+.new-session.btn.primary:hover { background:color-mix(in srgb,var(--md-sys-color-primary-container) 92%,var(--md-sys-color-primary)); box-shadow:0 3px 6px #00000016; }
+.section-head { padding:0 12px 0 24px; gap:0; letter-spacing:0; font-weight:500; }
+.section-head .btn.icon { width:32px; min-height:32px; }
+.nav-scroll { padding:4px 12px; }
+.ws { margin-top:10px; }
+.ws:first-child { margin-top:0; }
+.row { border-radius:24px; gap:10px; }
+.ws-row { padding-left:10px; font-weight:600; font-size:13px; }
+.row[aria-selected="true"],.row[aria-current="page"] { box-shadow:none; color:var(--selected-ink); }
+.session .row { padding-left:16px; padding-right:14px; min-height:46px; }
+.session .title { font-size:13px; }
+.session:has(.row-more:hover) .row { background:var(--hover); }
+.session:has(.row-more:hover) .row[aria-current="page"] { background:var(--selected); }
+.session .row-more,.ws .row-more { right:4px; width:36px; border-radius:50%; background:transparent; }
+.session .time { font-size:12px; }
+.agent-mark { color:var(--md-sys-color-primary); }
+.agent-mark[data-state="idle"] { color:var(--text-secondary); }
+.sidebar-footer { border:0; margin:8px 12px 0; padding-top:8px; }
+.sidebar-footer .row { padding-left:16px; min-height:44px; }
+.main { background:var(--surface-canvas); border-radius:20px 0 0 20px; overflow:hidden; }
+.main-head { min-height:78px; padding:0 24px; gap:16px; background:var(--surface-canvas); border-bottom:1px solid color-mix(in srgb,var(--line) 60%,transparent); flex-wrap:wrap; align-items:center; }
+.main-head .heading { flex-basis:100%; padding:18px 0 0; }
+.main-head .session-title { font-weight:600; font-size:20px; margin-top:4px; line-height:1.35; }
+.main-head .tools { margin-left:auto; padding-bottom:0; }
+.main-head .tabs { margin-top:-8px; }
+.main-head .crumb { font-size:12px; }
+.tab { font-weight:500; padding-inline:14px; min-height:44px; }
+.tab[aria-selected="true"] { color:var(--md-sys-color-primary); font-weight:600; }
+.tab[aria-selected="true"]::after { left:16px; right:16px; border-radius:3px 3px 0 0; }
+.state i,.statusbar .dot { border-radius:50%; }
+.feed { padding:24px 28px; }
+.feed-inner { gap:24px; }
+.msg-meta { gap:8px; margin-bottom:9px; }
+.user .bubble { border:0; background:var(--md-sys-color-surface-container); border-radius:4px 18px 18px 18px; padding:14px 18px; }
+.assistant .body h2 { font-size:17px; font-weight:600; margin-bottom:10px; }
+.assistant .body ul { gap:7px; }
+.assistant .body code { border-radius:4px; }
+.tools-group { border:1px solid color-mix(in srgb,var(--line) 70%,transparent); border-radius:12px; overflow:hidden; background:var(--surface-panel); }
+.tools-group summary { min-height:48px; }
+.tool { min-height:40px; gap:8px; cursor:pointer; }
+.tool:hover { background:var(--hover); }
+.activity { color:var(--md-sys-color-primary); padding:4px 0; }
+.approval { border:0; border-radius:16px; padding:20px; }
+.approval pre { border:0; border-radius:8px; margin-block:12px; white-space:pre-wrap; overflow-wrap:anywhere; }
+.approval .head { font-weight:600; }
+.approval .actions { margin-top:16px; }
+.field { border:1px solid var(--md-sys-color-outline); border-radius:8px; background:transparent; }
+.field:focus-visible { box-shadow:0 0 0 1px var(--focus-color); outline:0; }
+.composer-wrap { padding:12px 24px 18px; }
+.composer { border:1px solid var(--line); border-radius:24px; background:var(--surface-panel); box-shadow:0 2px 6px #00000005; }
+.composer:hover { border-color:var(--md-sys-color-outline); }
+.composer:focus-within { border-color:var(--focus-color); box-shadow:0 0 0 1px var(--focus-color); }
+.composer textarea { padding:16px 18px 10px; min-height:78px; }
+.attachments { padding:12px 14px 0; gap:6px; }
+.chip { height:30px; border-radius:8px; padding-left:8px; background:var(--surface-raised); }
+.chip .thumb { border-radius:4px; background:var(--md-sys-color-primary-container); }
+.chip .btn.icon { width:26px; min-height:26px; }
+.chip .size { font-size:12px; white-space:nowrap; flex:none; }
+.composer-bar { padding:0 10px 10px; gap:2px; flex-wrap:wrap; }
+.composer-bar .picker { font-size:12px; min-height:32px; padding-inline:9px; }
+.composer-bar .ctx { display:none; }
+.composer-bar #stop { min-height:32px; font-size:12px; padding-inline:10px; }
+.send.btn { border-radius:50%; width:36px; min-height:36px; padding:0; }
+.inspector { border:0; border-left:1px solid color-mix(in srgb,var(--line) 65%,transparent); border-radius:0 20px 20px 0; overflow:hidden; }
+.inspector > .tabs { background:var(--surface-panel); padding-top:8px; border-color:var(--line); }
+.sect { padding:12px 20px 18px; border-color:color-mix(in srgb,var(--line) 60%,transparent); }
+.sect-head { min-height:40px; margin-bottom:4px; }
+.sect-head h3 { font-size:13px; font-weight:600; }
+.kv { grid-template-columns:62px minmax(0,1fr); gap:9px 12px; }
+.chips { gap:6px; }
+.chips .tag { font-size:12px; height:24px; border-radius:6px; background:var(--md-sys-color-surface-container-high); }
+.list-row { flex-wrap:wrap; gap:6px; padding-block:4px; }
+.list-row .muted { font-size:12px; }
+.git-head { padding:16px 16px 12px; }
+.branch { gap:6px; flex-wrap:wrap; }
+.branch .btn { padding-inline:12px; min-height:30px; }
+.branch .mono { font-size:12px; }
+.subtabs .tab { padding-inline:10px; }
+.subtabs > .btn { padding-inline:8px; font-size:12px; }
+.commit-box .btn { padding-inline:16px; }
+.group-head { background:var(--surface-muted); min-height:36px; border:0; padding-inline:12px; }
+.group-head .batch { margin-left:6px; min-height:28px; font-size:12px; padding:0 6px; }
+.file { min-height:36px; gap:7px; }
+.file[aria-selected="true"] { box-shadow:none; background:var(--selected); }
+.file .fname { flex:1; max-width:none; font-size:12px; }
+.file .fdir { display:none; }
+.file .delta { font-size:12px; }
+.st { border:0; border-radius:4px; font-size:12px; background:color-mix(in srgb,currentColor 10%,transparent); }
+.file-entry { display:flex; align-items:center; }
+.file-entry .file { flex:1; min-width:0; }
+.stage-action { border:0; background:transparent; color:var(--md-sys-color-primary); font-size:12px; min-height:36px; padding:0 10px; cursor:pointer; }
+.stage-action:hover { background:var(--hover); }
+.file-entry:hover { background:var(--hover); }
+.file:hover .delta { display:inline; }
+.file .hover-act { display:none!important; }
+.run-list,.file-list { border-radius:12px; overflow:hidden; }
+.run { min-height:52px; gap:10px; }
+.commit { padding:10px 16px; border-color:color-mix(in srgb,var(--line) 60%,transparent); }
+.commit .by { margin-top:2px; }
+.statusbar { border:0; background:var(--surface-muted); gap:16px; padding-inline:20px; font-size:12px; }
+.statusbar .dot { width:6px; height:6px; }
+[popover] { border:0; border-radius:12px; padding:6px; background:var(--md-sys-color-surface-container-high); box-shadow:var(--shadow-panel); max-height:calc(100dvh - 24px); overflow:auto; }
+.menu .row { border-radius:8px; }
+.menu-title { font-size:12px; padding:8px 12px; }
+.menu .row[aria-checked="true"] { background:var(--selected); color:var(--selected-ink); }
+.menu .row[aria-checked="true"]::after { content:'✓'; margin-left:auto; }
+dialog.settings { border:0; border-radius:28px; background:var(--surface-panel); width:min(920px,calc(100vw - 40px)); height:min(660px,calc(100dvh - 64px)); }
+dialog::backdrop { background:#10162366; }
+.dlg-head { border:0; padding:24px 24px 20px 28px; }
+.dlg-head h2 { font-weight:500; font-size:23px; }
+.dlg-body { grid-template-columns:180px minmax(0,1fr); }
+.dlg-nav { background:transparent; padding:8px 12px; border:0; }
+.dlg-nav .row { padding-left:20px; margin-bottom:4px; }
+.dlg-content { padding:12px 28px 28px 12px; }
+.dlg-content h3 { font-weight:500; font-size:15px; margin-top:24px; }
+.setting { border:0!important; border-radius:12px; margin-bottom:3px; min-height:72px; background:var(--surface-muted); }
+.setting .copy strong { font-weight:500; }
+.theme-choice { border-radius:16px; border:1px solid var(--line); min-height:88px; gap:12px; }
+.theme-choice:has(input:checked) { box-shadow:inset 0 0 0 1px var(--focus-color); background:var(--info-surface); }
+.swatch { border:0; border-radius:8px; overflow:hidden; height:40px; }
+.switch { width:48px; height:28px; border-radius:20px; border:2px solid var(--md-sys-color-outline); background:var(--md-sys-color-surface-container-highest); }
+.switch::after { top:4px; left:4px; width:16px; height:16px; background:var(--md-sys-color-outline); }
+.switch:checked { border-color:var(--md-sys-color-primary); background:var(--md-sys-color-primary); }
+.switch:checked::after { width:20px; height:20px; top:2px; left:2px; transform:translateX(20px); background:var(--md-sys-color-on-primary); }
+.notes-toggle { bottom:40px; right:22px; border-radius:12px; background:var(--md-sys-color-secondary-container); color:var(--md-sys-color-on-secondary-container); box-shadow:0 2px 8px #0002; font-size:12px; }
+.notes-toggle:hover:not(:disabled) { background:var(--md-sys-color-primary-container); }
+.notes { border:0; border-radius:20px; bottom:84px; padding:20px; width:390px; }
+.notes h2 { font-size:17px; font-weight:600; }
+.notes li { padding:10px 4px; }
+.notes li b { margin-bottom:3px; font-weight:600; }
+.notes li::before { color:var(--md-sys-color-primary); }
+.snackbar { position:fixed; bottom:44px; left:50%; transform:translateX(-50%); z-index:200; max-width:min(560px,calc(100vw - 32px)); padding:14px 20px; border-radius:8px; background:var(--text-primary); color:var(--surface-canvas); box-shadow:var(--shadow-panel); font-size:13px; }
+.study-dialog { padding:24px; border:0; border-radius:28px; background:var(--md-sys-color-surface-container-high); color:var(--text-primary); width:min(600px,calc(100vw - 32px)); max-height:calc(100dvh - 48px); box-shadow:var(--shadow-panel); }
+.study-dialog h2 { font-size:22px; font-weight:500; margin:0 0 18px; }
+.study-dialog .dialog-actions { display:flex; gap:8px; justify-content:flex-end; margin-top:24px; }
+.study-dialog .field { width:100%; min-height:48px; padding:12px; }
+.study-dialog p { color:var(--text-secondary); line-height:1.7; }
+.search-dialog { padding:0; }
+.search-line { display:flex; align-items:center; gap:12px; padding:18px 22px; border-bottom:1px solid var(--line); }
+.search-line input { flex:1; min-width:0; border:0; outline:0; background:transparent; font-size:16px; }
+.search-line:focus-within { box-shadow:inset 0 -2px var(--focus-color); }
+.search-results { padding:8px; max-height:420px; overflow:auto; }
+.search-result { min-height:64px; border-radius:10px; }
+.search-result .copy { display:grid; gap:3px; flex:1; min-width:0; }
+.search-foot { padding:10px 22px; font-size:12px; color:var(--text-secondary); }
+.diff-preview { margin:0; border-radius:0 0 12px 12px; background:var(--surface-panel); padding:14px; overflow:auto; font:12px/1.8 var(--font-mono); white-space:pre; }
+.diff-preview .added { display:block; color:var(--success); background:var(--success-surface); }
+.diff-preview .removed { display:block; color:var(--signal-danger); background:var(--danger-surface); }
+.preview-title { display:flex; align-items:center; justify-content:space-between; font:12px var(--font-sans); padding-bottom:10px; color:var(--text-secondary); }
+.grid.focus-layout { grid-template-columns:0 minmax(0,1fr) 0; padding-left:8px; }
+.grid.focus-layout > .sidebar,.grid.focus-layout > .inspector { display:none; }
+.grid.focus-layout > .main { border-radius:20px; }
+@media(min-width:761px) {
+  .grid > .sidebar { grid-column:1; min-width:0; }
+  .grid > .main { grid-column:2; }
+  .grid > .inspector { grid-column:3; min-width:0; }
+}
+.grid.review-layout { grid-template-columns:220px minmax(0,1fr) minmax(380px,38%); }
+.layout-options { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:10px; }
+.layout-option { border:1px solid var(--line); padding:16px 12px; border-radius:12px; background:var(--surface-raised); color:var(--text-primary); }
+.layout-option[aria-pressed="true"] { background:var(--info-surface); border-color:var(--focus-color); }
+.layout-mini { display:grid; grid-template-columns:1fr 2fr 1fr; height:56px; gap:4px; margin-bottom:12px; }
+.layout-mini i { border-radius:4px; background:var(--md-sys-color-secondary-container); }
+.layout-mini i:nth-child(2) { background:var(--md-sys-color-primary-container); }
+.layout-option[data-layout="focus"] .layout-mini { grid-template-columns:1fr; }
+.layout-option[data-layout="focus"] .layout-mini i:not(:nth-child(2)) { display:none; }
+.layout-option[data-layout="review"] .layout-mini { grid-template-columns:1fr 1.2fr 2fr; }
+.queue-item { padding:12px; border-radius:12px; background:var(--info-surface); }
+.quick-prompts { display:flex; gap:8px; flex-wrap:wrap; justify-content:center; margin-top:12px; }
+.prototype-note { font-size:12px; }
+@media(min-width:1500px) { .main-head { flex-wrap:nowrap; min-height:88px; } .main-head .heading { flex-basis:auto; padding:12px 0; } .main-head .tabs { margin:0; } }
+@media(max-width:1190px) { .grid { grid-template-columns:230px minmax(0,1fr) 300px; } .grid.no-aux { grid-template-columns:230px minmax(0,1fr) 0; } .main-head { padding-inline:20px; } .feed { padding-inline:20px; } .composer-wrap { padding-inline:16px; } .composer-bar #stop { font-size:0; gap:0; width:32px; padding:0; } .study-label { display:none; } }
+@media(min-width:761px) and (max-width:1000px) { .grid { grid-template-columns:210px minmax(0,1fr); } .grid > .inspector { display:none; } .grid:not(.no-aux):not(.focus-layout) > .inspector { position:fixed; display:flex; top:48px; right:8px; bottom:36px; width:320px; z-index:15; box-shadow:var(--shadow-panel); border:1px solid var(--line); border-radius:20px; } .grid.no-aux { grid-template-columns:210px minmax(0,1fr) 0; } .grid.focus-layout { grid-template-columns:0 minmax(0,1fr) 0; } .main { border-radius:20px; } }
+@media(max-width:760px) { .shell { grid-template-rows:48px 44px minmax(0,1fr) 0; } .titlebar { padding-inline:16px; } .title-workspace,.title-divider { display:none; } .regions { border:0; padding-inline:8px; } .grid,.grid.no-aux,.grid.focus-layout,.grid.review-layout { grid-template-columns:minmax(0,1fr); padding:0 8px 8px; } .grid[data-region="nav"] > .sidebar { display:flex!important; } .main,.inspector { border-radius:16px; border:0; } .main-head { gap:6px; padding-inline:16px; } .main-head .heading { flex-basis:100%; padding-top:16px; } .main-head .tools { position:absolute; right:22px; top:99px; } .main-head .session-title { padding-right:90px; font-size:17px; } .main-head .tabs { order:3; margin-top:0; } .state { font-size:12px; } .feed { padding:20px 16px; } .composer-wrap { padding:8px 8px 12px; } .composer-bar { gap:0; } .composer-bar .picker { padding-inline:5px; font-size:12px; } .composer textarea { min-height:76px; font-size:14px; } .chip { max-width:180px; } .chip .size { display:none; } .notes-toggle { top:auto; bottom:12px; right:20px; left:auto; opacity:.95; } body:has(.grid[data-region="main"]) .notes-toggle { display:none; } .notes { width:auto; left:12px; right:12px; bottom:60px; max-height:75dvh; } .dlg-body { grid-template-columns:1fr; } .dlg-nav { padding:0 12px 8px; } .dlg-nav .row { padding-inline:16px; } .dlg-content { padding:16px 20px; } .dlg-head { padding:20px; } .theme-choices { grid-template-columns:1fr 1fr; } .theme-choice { padding:12px; gap:8px; } .swatch { width:28px; } .theme-choice .check { width:16px; } .setting { padding:12px; gap:10px; } .setting .btn { padding-inline:12px; } .layout-options { gap:6px; } .snackbar { bottom:20px; } }
+@media(prefers-reduced-motion:reduce) { *,*::before,*::after { animation:none!important; transition:none!important; scroll-behavior:auto!important; } }
+
+</style>
+</head>
+<body data-m3 data-theme="light">
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <defs>
+    <path id="p-add" d="M12 5v14M5 12h14"/><path id="p-archive" d="M3 4h18v4H3ZM5 8v13h14V8M9 12h6"/>
+    <path id="p-branch" d="M6 7v10m12-10c0 7-12 3-12 9M8 5a2 2 0 1 1-4 0 2 2 0 1 1 4 0M8 19a2 2 0 1 1-4 0 2 2 0 1 1 4 0M20 5a2 2 0 1 1-4 0 2 2 0 1 1 4 0"/>
+    <path id="p-check" d="m5 12 4 4L19 6"/><path id="p-chev" d="m6 9 6 6 6-6"/><path id="p-close" d="m6 6 12 12M6 18 18 6"/>
+    <path id="p-delete" d="M4 6h16M9 6V3h6v3M6 6v15h12V6M10 10v7m4-7v7"/><path id="p-edit" d="m4 16 12-12 4 4L8 20H4Zm9-9 4 4"/>
+    <path id="p-filter" d="M4 6h16M7 12h10m-7 6h4"/><path id="p-file" d="M5 3h9l5 5v13H5ZM14 3v6h5M9 13h6m-6 4h6"/>
+    <path id="p-focus" d="M8 3H3v5m13-5h5v5M3 16v5h5m13-5v5h-5"/><path id="p-folder" d="M3 7V5h6l2 3h10v12H3Z"/>
+    <path id="p-folder-add" d="M3 7V5h6l2 3h10v12H3ZM12 11v6m-3-3h6"/><path id="p-panel" d="M3 4h18v16H3ZM15 4v16"/>
+    <path id="p-plugins" d="M4 4h6v6H4Zm10 0h6v6h-6ZM4 14h6v6H4Zm10 0h6v6h-6Z"/>
+    <path id="p-refresh" d="M20 9a8 8 0 0 0-14-3L3 9m0-5v5h5M4 15a8 8 0 0 0 14 3l3-3m0 5v-5h-5"/>
+    <path id="p-review" d="M5 3h9l5 5v4M5 3v18h6M14 3v6h5M19 16a3 3 0 1 1-6 0 3 3 0 1 1 6 0m-1 2 3 3"/>
+    <path id="p-search" d="M17 10.5a6.5 6.5 0 1 1-13 0 6.5 6.5 0 1 1 13 0m-1 5.5 5 5"/><path id="p-send" d="M12 19V5m-6 6 6-6 6 6"/>
+    <path id="p-settings" d="M4 7h3m4 0h9M4 17h10m4 0h2M7 4h4v6H7Zm7 10h4v6h-4Z"/><path id="p-stop" d="M6 6h12v12H6Z"/>
+    <path id="p-trust" d="m12 3 8 3v6c0 5-8 9-8 9s-8-4-8-9V6Zm-4 9 3 3 5-6"/><path id="p-alert" d="m12 3 8 3v6c0 5-8 9-8 9s-8-4-8-9V6ZM12 8v5m0 3h.01"/>
+    <path id="p-more" d="M5 12h.01M12 12h.01M19 12h.01"/><path id="p-moon" d="M20 14A8 8 0 0 1 10 4a8 8 0 1 0 10 10Z"/>
+    <path id="p-sun" d="M12 8a4 4 0 1 0 0 8 4 4 0 1 0 0-8M12 2v2m0 16v2M4.9 4.9l1.4 1.4m11.4 11.4 1.4 1.4M2 12h2m16 0h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/>
+    <path id="p-image" d="M3 4h18v16H3Zm0 12 5-5 4 4 3-3 6 6M15 9h.01"/><path id="p-tool" d="M3 4h18v16H3Zm4 5 3 3-3 3m5 0h5"/>
+    <!-- Placeholder provider marks; real paths come from each plugin's manifest icon. -->
+    <path id="p-agent-a" d="M12 3 20 7.5v9L12 21l-8-4.5v-9ZM12 8v8m-4-4h8"/>
+    <path id="p-agent-b" d="M5 5h14v14H5ZM9 9h6v6H9Z"/>
+    <path id="p-agent-c" d="m12 3 9 9-9 9-9-9Z"/>
+  </defs>
+</svg>
+
+<div class="shell">
+  <header class="titlebar">
+    <span class="app">Aibo</span><span class="title-divider"></span><span class="title-workspace">aibo-dev</span><span class="study-label">Material 3 · 交互预览</span>
+    <span class="spacer"></span>
+    <button class="btn icon" id="themeToggle" type="button" aria-label="切换明暗主题" title="切换明暗主题"><svg viewBox="0 0 24 24" class="i"><use href="#p-moon"/></svg></button>
+    <button class="btn icon" type="button" data-open-settings aria-label="工作台设置" title="工作台设置 ⌘,"><svg viewBox="0 0 24 24" class="i"><use href="#p-settings"/></svg></button>
+    <button class="btn icon" id="auxToggle" type="button" aria-pressed="true" aria-label="显示侧边栏" title="显示侧边栏 ⌘\" data-desktop data-note="12"><svg viewBox="0 0 24 24" class="i"><use href="#p-panel"/></svg></button>
+  </header>
+
+  <nav class="regions" aria-label="工作台区域">
+    <div class="tabs" role="tablist" style="flex:1" data-note="13">
+      <button class="tab" role="tab" aria-selected="false" data-region="nav">工作区</button>
+      <button class="tab" role="tab" aria-selected="true" data-region="main">会话</button>
+      <button class="tab" role="tab" aria-selected="false" data-region="aux">侧边栏</button>
+    </div>
+  </nav>
+
+  <div class="grid" id="grid" data-region="main">
+    <!-- ================= Sidebar ================= -->
+    <aside class="sidebar" aria-label="工作区与会话">
+      <div class="sidebar-top">
+        <button class="btn primary new-session" id="newSession" type="button" popovertarget="agentMenu" aria-haspopup="true" data-note="1">
+          <span style="display:inline-flex;gap:8px;align-items:center"><svg viewBox="0 0 24 24" class="i"><use href="#p-add"/></svg>新建会话</span>
+          <span class="kbd">⌘N</span>
+        </button>
+      </div>
+      <div class="section-head">
+        <span>工作区</span>
+        <button class="btn icon" type="button" aria-label="搜索会话" title="搜索会话 ⌘K"><svg viewBox="0 0 24 24" class="i"><use href="#p-search"/></svg></button>
+        <button class="btn icon" type="button" aria-label="筛选" title="筛选"><svg viewBox="0 0 24 24" class="i"><use href="#p-filter"/></svg></button>
+        <button class="btn icon" type="button" aria-label="添加工作区" title="添加工作区"><svg viewBox="0 0 24 24" class="i"><use href="#p-folder-add"/></svg></button>
+      </div>
+      <div class="nav-scroll" id="nav"></div>
+      <div class="sidebar-footer">
+        <button class="row" type="button"><svg viewBox="0 0 24 24" class="i"><use href="#p-plugins"/></svg>插件与能力</button>
+        <button class="row" type="button" data-open-settings><svg viewBox="0 0 24 24" class="i"><use href="#p-settings"/></svg>工作台设置</button>
+      </div>
+    </aside>
+
+    <!-- ================= Conversation ================= -->
+    <main class="main" aria-label="会话">
+      <header class="main-head" data-note="4">
+        <div class="heading">
+          <div class="crumb"><span id="crumbWs">aibo-dev</span><span aria-hidden="true">/</span><span id="crumbAgent">Codex</span></div>
+          <h1 class="session-title ellipsis" id="sessionTitle">重新设计 Aibo 组件外观</h1>
+        </div>
+        <div class="tabs" role="tablist" aria-label="会话视图" id="mainTabs">
+          <button class="tab" role="tab" aria-selected="true" aria-controls="view-chat" id="tab-chat">对话</button>
+          <button class="tab" role="tab" aria-selected="false" aria-controls="view-runs" id="tab-runs" tabindex="-1">执行记录</button>
+          <button class="tab" role="tab" aria-selected="false" aria-controls="view-diff" id="tab-diff" tabindex="-1">变更 <span class="tag">3</span></button>
+        </div>
+        <div class="tools">
+          <span class="state" id="sessionState" data-state="running"><i></i><span>运行中</span></span>
+          <button class="btn icon" type="button" aria-label="专注会话" title="专注会话"><svg viewBox="0 0 24 24" class="i"><use href="#p-focus"/></svg></button>
+        </div>
+      </header>
+
+      <div class="feed" id="feed">
+        <div class="feed-inner" id="view-chat" role="tabpanel" aria-labelledby="tab-chat"></div>
+        <div class="feed-inner" id="view-runs" role="tabpanel" aria-labelledby="tab-runs" hidden>
+          <div class="run-list" data-note="9">
+            <button class="run" type="button"><span class="st A" title="成功">✓</span><span class="ellipsis mono">pnpm run check:types</span><span class="meta">12.4s</span><span class="meta">14:36</span></button>
+            <button class="run" type="button"><span class="st D" title="失败">✕</span><span class="ellipsis mono">node --test test/ui-style-boundaries.test.mjs</span><span class="meta">3.1s</span><span class="meta">14:35</span></button>
+            <button class="run" type="button"><span class="st A" title="成功">✓</span><span class="ellipsis mono">rg --files src/lib/ui-kit</span><span class="meta">0.2s</span><span class="meta">14:33</span></button>
+          </div>
+        </div>
+        <div class="feed-inner" id="view-diff" role="tabpanel" aria-labelledby="tab-diff" hidden>
+          <div class="file-list">
+            <button class="file" type="button" aria-selected="true"><span class="st M" aria-label="已修改">M</span><span class="fname ellipsis mono">ak-ui.css</span><span class="fdir">src/lib/ui-kit/kits/</span><span class="delta"><span class="add">+48</span> <span class="del">−112</span></span></button>
+            <button class="file" type="button"><span class="st M" aria-label="已修改">M</span><span class="fname ellipsis mono">themes.json</span><span class="fdir">src/lib/ui-kit/kits/ak-ui/</span><span class="delta"><span class="add">+6</span> <span class="del">−2</span></span></button>
+            <button class="file" type="button"><span class="st A" aria-label="新增">A</span><span class="fname ellipsis mono">material3-redesign.html</span><span class="fdir">docs/design/</span><span class="delta"><span class="add">+620</span></span></button>
+          </div>
+        </div>
+      </div>
+
+      <div class="composer-wrap">
+        <div class="composer" data-note="7">
+          <div class="attachments" id="attachments"></div>
+          <label class="sr" for="prompt">消息</label>
+          <textarea id="prompt" rows="2" placeholder="输入消息，⌘Enter 发送，/ 调用命令，@ 引用文件"></textarea>
+          <div class="composer-bar">
+            <button class="btn icon" type="button" id="attach" aria-label="添加附件" title="添加附件"><svg viewBox="0 0 24 24" class="i"><use href="#p-add"/></svg></button>
+            <button class="btn picker" type="button" title="执行权限" id="permissionPicker">工作区可写<svg viewBox="0 0 24 24" class="i chev"><use href="#p-chev"/></svg></button>
+            <button class="btn picker" type="button" title="模型" id="modelPicker">默认模型<svg viewBox="0 0 24 24" class="i chev"><use href="#p-chev"/></svg></button>
+            <span class="grow"></span>
+            <span class="meta ctx" id="ctxSummary"></span>
+            <button class="btn danger" type="button" id="stop"><svg viewBox="0 0 24 24" class="i"><use href="#p-stop"/></svg>停止</button>
+            <button class="btn primary send" type="button" id="send" aria-label="发送" title="发送 ⌘Enter" disabled><svg viewBox="0 0 24 24" class="i"><use href="#p-send"/></svg></button>
+          </div>
+        </div>
+      </div>
+    </main>
+
+    <!-- ================= Inspector ================= -->
+    <aside class="inspector" aria-label="侧边栏">
+      <div class="tabs" role="tablist" aria-label="侧边栏视图" id="sideTabs" data-note="10">
+        <button class="tab" role="tab" aria-selected="false" aria-controls="panel-git" id="side-git" tabindex="-1"><svg viewBox="0 0 24 24" class="i"><use href="#p-branch"/></svg>Git <span class="tag">8</span></button>
+        <button class="tab" role="tab" aria-selected="true" aria-controls="panel-context" id="side-context"><svg viewBox="0 0 24 24" class="i"><use href="#p-file"/></svg>上下文</button>
+      </div>
+
+      <section class="panel" id="panel-context" role="tabpanel" aria-labelledby="side-context" data-note="8">
+        <div class="sect">
+          <div class="sect-head"><h3>会话</h3><button class="btn icon" type="button" aria-label="刷新上下文" title="刷新上下文"><svg viewBox="0 0 24 24" class="i"><use href="#p-refresh"/></svg></button></div>
+          <dl class="kv">
+            <dt>Agent</dt><dd style="display:flex;gap:6px;align-items:center"><span class="agent-mark"><svg viewBox="0 0 24 24" class="i"><use href="#p-agent-a"/></svg></span>Codex <span class="muted">· 本地插件</span></dd>
+            <dt>会话 ID</dt><dd class="mono" title="s_8f31c2">s_8f31c2</dd>
+            <dt>远端绑定</dt><dd class="mono" title="thread_a-long-external-session-id-0192">thread_a-long-external-session-id-0192</dd>
+            <dt>更新</dt><dd title="2026-09-22 15:30:00">19 小时前</dd>
+          </dl>
+        </div>
+        <div class="sect">
+          <div class="sect-head"><h3>工作区</h3><span class="tag ok"><svg viewBox="0 0 24 24" class="i" style="width:12px;height:12px"><use href="#p-trust"/></svg>已信任</span></div>
+          <p class="panel-note" style="margin-bottom:8px">Agent 可以在 <span class="mono">~/Workspace/aibo-dev</span> 内执行已授权的操作。</p>
+          <dl class="kv">
+            <dt>指令</dt><dd class="muted">未发现</dd>
+            <dt>Skills</dt><dd class="muted">未发现</dd>
+            <dt>Core 工具</dt><dd style="white-space:normal"><div class="chips"><span class="tag">workspace-read</span><span class="tag">workspace-search</span><span class="tag">artifact-store</span><span class="tag">checkpoint-restore</span><span class="tag">project-actions</span></div></dd>
+            <dt>MCP</dt><dd class="muted">未发现</dd>
+          </dl>
+        </div>
+        <div class="sect">
+          <div class="sect-head"><h3>上下文附件</h3><span class="tag" id="attachCount">2</span></div>
+          <div id="ctxAttachments"></div>
+        </div>
+        <div class="sect">
+          <div class="sect-head"><h3>工程动作</h3><button class="btn" type="button"><svg viewBox="0 0 24 24" class="i"><use href="#p-add"/></svg>添加</button></div>
+          <p class="panel-note">注册 Test、Lint 或 Build 后，可以在工作区内受控运行。</p>
+        </div>
+        <div class="sect">
+          <div class="sect-head"><h3>任务工件</h3><span class="tag">0</span></div>
+          <p class="panel-note">命令输出和验证结果会保留在这里。</p>
+        </div>
+      </section>
+
+      <section class="panel" id="panel-git" role="tabpanel" aria-labelledby="side-git" hidden data-note="11">
+        <div class="git-head">
+          <button class="btn select field" type="button"><span style="display:inline-flex;gap:8px;align-items:center"><svg viewBox="0 0 24 24" class="i"><use href="#p-folder"/></svg>aibo</span><svg viewBox="0 0 24 24" class="i" style="width:14px"><use href="#p-chev"/></svg></button>
+          <button class="btn icon outline" type="button" aria-label="刷新 Git 状态" title="刷新"><svg viewBox="0 0 24 24" class="i"><use href="#p-refresh"/></svg></button>
+        </div>
+        <div class="branch">
+          <svg viewBox="0 0 24 24" class="i"><use href="#p-branch"/></svg><span class="name">main</span><span class="muted mono">↑1 origin/main</span><span class="grow"></span>
+          <button class="btn outline" type="button">拉取</button><button class="btn outline" type="button">推送</button>
+        </div>
+        <div class="tabs subtabs" role="tablist" aria-label="Git 视图" id="gitTabs">
+          <button class="tab" role="tab" aria-selected="true" aria-controls="git-changes" id="git-tab-changes">变更 <span class="tag">8</span></button>
+          <button class="tab" role="tab" aria-selected="false" aria-controls="git-history" id="git-tab-history" tabindex="-1">历史</button>
+          <span style="flex:1"></span>
+          <button class="btn" type="button" style="align-self:center"><svg viewBox="0 0 24 24" class="i"><use href="#p-review"/></svg>Agent 审查</button>
+        </div>
+        <div id="git-changes" role="tabpanel" aria-labelledby="git-tab-changes">
+          <div class="commit-box"><label class="sr" for="commitMsg">提交信息</label><input class="input field" id="commitMsg" placeholder="提交信息"><button class="btn primary" type="button" id="commitBtn" disabled>提交</button></div>
+          <div id="gitGroups"></div>
+        </div>
+        <div id="git-history" role="tabpanel" aria-labelledby="git-tab-history" hidden></div>
+      </section>
+    </aside>
+  </div>
+
+  <footer class="statusbar">
+    <span><i class="dot" aria-hidden="true"></i>本地工作区</span><span>aibo-dev</span><span class="mono">main ↑1</span>
+    <span class="end prototype-note">示例数据 · 操作仅在本页生效</span><span id="themeLabel">浅色</span>
+  </footer>
+</div>
+
+<!-- Agent chooser -->
+<div popover id="agentMenu" class="menu" role="menu" aria-label="选择 Agent 创建会话">
+  <div class="menu-title">在 aibo-dev 中新建会话</div>
+  <button class="row agent-option" role="menuitem" type="button"><span class="agent-mark"><svg viewBox="0 0 24 24" class="i"><use href="#p-agent-a"/></svg></span><span class="copy">Codex<small>本地 · 已就绪</small></span><span class="kbd">1</span></button>
+  <button class="row agent-option" role="menuitem" type="button"><span class="agent-mark"><svg viewBox="0 0 24 24" class="i"><use href="#p-agent-b"/></svg></span><span class="copy">Pi<small>本地 · 已就绪</small></span><span class="kbd">2</span></button>
+  <button class="row agent-option" role="menuitem" type="button" disabled><span class="agent-mark"><svg viewBox="0 0 24 24" class="i"><use href="#p-agent-c"/></svg></span><span class="copy">Cursor<small>缺少运行依赖</small></span></button>
+</div>
+<!-- Row menus -->
+<div popover id="wsMenu" class="menu" role="menu" aria-label="工作区操作">
+  <button class="row" role="menuitem" type="button"><svg viewBox="0 0 24 24" class="i"><use href="#p-add"/></svg>在此新建会话</button>
+  <button class="row" role="menuitem" type="button"><svg viewBox="0 0 24 24" class="i"><use href="#p-folder"/></svg>在 Finder 中打开</button>
+  <button class="row" role="menuitem" type="button"><svg viewBox="0 0 24 24" class="i"><use href="#p-alert"/></svg>撤销信任</button>
+  <hr><button class="row danger" role="menuitem" type="button"><svg viewBox="0 0 24 24" class="i"><use href="#p-delete"/></svg>移除工作区</button>
+</div>
+<div popover id="sessionMenu" class="menu" role="menu" aria-label="会话操作">
+  <button class="row" role="menuitem" type="button"><svg viewBox="0 0 24 24" class="i"><use href="#p-edit"/></svg>重命名</button>
+  <button class="row" role="menuitem" type="button"><svg viewBox="0 0 24 24" class="i"><use href="#p-branch"/></svg>从此处分支</button>
+  <hr><button class="row" role="menuitem" type="button"><svg viewBox="0 0 24 24" class="i"><use href="#p-archive"/></svg>归档</button>
+</div>
+
+<!-- Settings -->
+<dialog class="settings" id="settings" aria-labelledby="settingsTitle" data-note="14">
+  <div class="dlg-head">
+    <h2 id="settingsTitle">工作台设置</h2>
+    <button class="btn icon" type="button" id="closeSettings" aria-label="关闭"><svg viewBox="0 0 24 24" class="i"><use href="#p-close"/></svg></button>
+  </div>
+  <div class="dlg-body">
+    <nav class="dlg-nav" aria-label="设置分类">
+      <button class="row" type="button" aria-current="page">外观</button>
+      <button class="row" type="button">布局</button><button class="row" type="button">工作区</button>
+      <button class="row" type="button">插件与能力</button>
+      <button class="row" type="button">运行状态</button>
+    </nav>
+    <div class="dlg-content" id="settingsContent">
+      <h3>主题</h3>
+      <p>立即生效，下次启动时保留。</p>
+      <div class="theme-choices" role="radiogroup" aria-label="主题">
+        <label class="theme-choice"><input type="radio" name="theme" value="light" checked><span class="swatch"><i style="background:#f8faff"></i><i style="background:#ebeff6"></i><i style="background:#245ea7"></i></span><span><strong>浅色</strong></span><svg viewBox="0 0 24 24" class="i check"><use href="#p-check"/></svg></label>
+        <label class="theme-choice"><input type="radio" name="theme" value="dark"><span class="swatch"><i style="background:#11141a"></i><i style="background:#292e37"></i><i style="background:#245ea7"></i></span><span><strong>深色</strong></span><svg viewBox="0 0 24 24" class="i check"><use href="#p-check"/></svg></label>
+      </div>
+      <h3>皮肤</h3>
+      <p>外部皮肤以插件形式安装；内置皮肤始终可恢复。</p>
+      <div class="setting"><div class="copy"><strong>Material Design 3</strong><small>设计预览 · 当前使用</small></div><button class="btn outline" type="button">安装皮肤插件…</button></div>
+      <h3>新增工作区</h3>
+      <div class="setting"><div class="copy"><strong>默认信任</strong><small>仅影响之后添加的目录，已有工作区不变。</small></div><input class="switch" type="checkbox" role="switch" checked aria-label="新增工作区默认信任"></div>
+    </div>
+  </div>
+</dialog>
+
+<button class="btn notes-toggle" type="button" id="notesToggle" aria-expanded="false" aria-controls="notes">设计说明</button>
+<aside class="notes" id="notes" hidden aria-label="设计说明">
+<h2>熟悉的布局，新的组件语言</h2><p>Material Design 3 外观探索。所有业务操作均为本页模拟；刷新可重置会话与 Git 数据。</p>
+<ol>
+<li data-for="1"><span><b>色调主操作</b>新建会话使用 tonal extended FAB，发送使用 primary filled button。</span></li>
+<li data-for="2"><span><b>导航选中容器</b>保留工作区树与单行会话，以圆角填充替换左侧信号条。</span></li>
+<li data-for="4"><span><b>原有三栏布局</b>260px 导航、弹性阅读区、340px Inspector；支持专注和审查布局。</span></li>
+<li data-for="5"><span><b>可阅读的消息</b>正文 14px / 1.75，阅读栏不超过 760px。用户消息使用 tonal surface。</span></li>
+<li data-for="6"><span><b>工具调用</b>成组折叠，保留状态与耗时；点击工具行查看输出。</span></li>
+<li data-for="7"><span><b>圆角编辑器</b>24px 轮廓，附件 chip、模型和权限菜单，聚焦时强调边框。</span></li>
+<li data-for="10"><span><b>标签与状态</b>主标签保留短圆角指示条；成功、待审批、失败使用独立语义色。</span></li>
+<li data-for="11"><span><b>可操作的 Git</b>点文件预览差异，行尾暂存，填写信息后模拟提交；支持历史分页。</span></li>
+<li data-for="14"><span><b>五类设置</b>外观、布局、工作区、插件与能力、运行状态。主题偏好保存于此浏览器。</span></li>
+</ol><p style="margin-top:12px"><a href="ak-ui-redesign.html">原始设计稿</a> · <a href="https://material-web.dev/theming/color/" target="_blank" rel="noreferrer">M3 色彩角色</a></p>
+</aside>
+
+<div class="snackbar" id="snackbar" role="status" aria-live="polite" hidden></div>
+<input type="file" id="fileInput" multiple hidden>
+<dialog class="study-dialog search-dialog" id="searchDialog" aria-label="全局搜索">
+  <div class="search-line"><svg viewBox="0 0 24 24" class="i"><use href="#p-search"/></svg><input id="searchInput" type="search" aria-label="搜索会话与消息" placeholder="搜索会话与消息…" autocomplete="off"><button class="btn icon" data-close="searchDialog" aria-label="关闭搜索"><svg viewBox="0 0 24 24" class="i"><use href="#p-close"/></svg></button></div>
+  <div class="search-results" id="searchResults"></div><div class="search-foot">↑ ↓ 选择 · Enter 打开 · Esc 关闭</div>
+</dialog>
+<dialog class="study-dialog" id="actionDialog" aria-labelledby="actionTitle">
+  <h2 id="actionTitle"></h2><div id="actionBody"></div><div class="dialog-actions"><button class="btn" data-close="actionDialog">取消</button><button class="btn primary" id="actionConfirm">确定</button></div>
+</dialog>
+<dialog class="study-dialog" id="detailDialog" aria-labelledby="detailTitle">
+  <div style="display:flex;align-items:center;gap:12px"><h2 id="detailTitle" style="flex:1;margin:0">详情</h2><button class="btn icon" data-close="detailDialog" aria-label="关闭详情"><svg viewBox="0 0 24 24" class="i"><use href="#p-close"/></svg></button></div><div id="detailBody" style="margin-top:20px"></div>
+</dialog>
+<div popover id="choiceMenu" class="menu" role="menu" aria-label="会话选项"></div>
+
+<script>
+const $ = (s, r = document) => r.querySelector(s);
+const $$ = (s, r = document) => [...r.querySelectorAll(s)];
+const esc = value => String(value).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const icon = (id, cls = 'i') => `<svg viewBox="0 0 24 24" class="${cls}"><use href="#p-${id}"/></svg>`;
+
+/* ---------- Data (fixture) ---------- */
+const workspaces = [
+  { id: 'w1', name: 'aibo-dev', expanded: true, sessions: [
+    { id: 's1', title: '重新设计 Aibo 组件外观', agent: 'a', agentName: 'Codex', state: 'running', time: '刚刚' },
+    { id: 's2', title: '会话恢复测试需要审批写入 fixtures 目录', agent: 'b', agentName: 'Pi', state: 'attention', time: '12 分钟' },
+    { id: 's3', title: '检查侧栏的信息密度和悬浮操作', agent: 'a', agentName: 'Codex', state: 'idle', time: '19 小时' },
+    { id: 's4', title: 'Git 历史分页失败重试', agent: 'c', agentName: 'Cursor', state: 'failed', time: '2 天' },
+  ]},
+  { id: 'w2', name: 'aibo-plugins', expanded: false, sessions: [
+    { id: 's5', title: '插件清单 v2 迁移', agent: 'b', agentName: 'Pi', state: 'idle', time: '5 天' },
+  ]},
+];
+const stateText = { running: '运行中', attention: '待审批', failed: '失败', idle: '空闲' };
+let selected = 's1';
+let attachments = [
+  { id: 'a1', name: 'clipboard-wide.png', kind: 'image', size: '2.4 KB', mode: '内联' },
+  { id: 'a2', name: 'pnpm-lock.yaml', kind: 'file', size: '1.2 KB', mode: '引用' },
+];
+
+/* ---------- Sidebar ---------- */
+function renderNav() {
+  $('#nav').innerHTML = workspaces.map(ws => `
+    <div class="ws" ${ws.id === 'w1' ? 'data-note="3"' : ''}>
+      <button class="row ws-row" type="button" aria-expanded="${ws.expanded}" data-ws="${ws.id}" title="${esc(ws.name)}">
+        ${icon('chev', 'i chev')}<span class="ellipsis">${esc(ws.name)}</span>
+      </button>
+      <button class="row-more" type="button" popovertarget="wsMenu" aria-label="${esc(ws.name)} 更多操作">${icon('more')}</button>
+    </div>
+    <div role="list" ${ws.expanded ? '' : 'hidden'}>
+      ${ws.sessions.map((s, i) => `
+        <div class="session" role="listitem" ${ws.id === 'w1' && i === 0 ? 'data-note="2"' : ''}>
+          <button class="row" type="button" data-session="${s.id}" aria-current="${s.id === selected ? 'page' : 'false'}" title="${esc(s.title)}">
+            <span class="agent-mark" data-state="${s.state}" title="${s.agentName} · ${stateText[s.state]}">${icon(s.state === 'attention' ? 'alert' : 'agent-' + s.agent)}</span>
+            <span class="title ellipsis">${esc(s.title)}</span>
+            ${s.state === 'attention' ? '<span class="tag warn">待审批</span>' : s.state === 'failed' ? '<span class="tag bad">失败</span>' : `<span class="time">${s.time}</span>`}
+            <span class="sr">${stateText[s.state]}</span>
+          </button>
+          <button class="row-more" type="button" popovertarget="sessionMenu" aria-label="${esc(s.title)} 更多操作">${icon('more')}</button>
+        </div>`).join('')}
+    </div>`).join('');
+}
+$('#nav').addEventListener('click', e => {
+  const ws = e.target.closest('[data-ws]');
+  if (ws) { const w = workspaces.find(x => x.id === ws.dataset.ws); w.expanded = !w.expanded; renderNav(); $(`[data-ws="${w.id}"]`).focus(); }
+  const s = e.target.closest('[data-session]');
+  if (s) { selected = s.dataset.session; renderNav(); renderSession(); setRegion('main'); }
+});
+
+/* ---------- Conversation ---------- */
+function renderSession() {
+  const ws = workspaces.find(w => w.sessions.some(s => s.id === selected));
+  const s = ws.sessions.find(x => x.id === selected);
+  restoreDraft(s);
+  $('#sessionTitle').textContent = s.title; $('#sessionTitle').title = s.title;
+  $('#crumbWs').textContent = ws.name; $('#crumbAgent').textContent = s.agentName;
+  const st = $('#sessionState'); st.dataset.state = s.state; st.lastElementChild.textContent = stateText[s.state];
+  $('#stop').hidden = s.state !== 'running';
+  const who = `<span class="agent-mark">${icon('agent-' + s.agent)}</span><strong>${s.agentName}</strong>`;
+  const chat = $('#view-chat');
+  if (s.id === 's1') chat.innerHTML = `
+    <div class="user" data-note="5"><div class="msg-meta"><strong>你</strong><span>14:32</span></div>
+      <div class="bubble">保留现有的三栏布局，用 Material Design 3 重新设计 Aibo 的组件外观。希望对话、Git 与上下文仍然在熟悉的位置。</div></div>
+    <div class="assistant"><div class="msg-meta">${who}<span>14:33</span></div>
+      <div class="body"><h2>保留熟悉的工作流，让组件更轻盈。</h2>
+      <p>我梳理了会话、代码变更和上下文三个区域。新的外观沿用现有布局，用色调表面和圆角建立层级。</p>
+      <ul><li><strong>密度</strong>：保持桌面工作台密度，让正文和操作都有呼吸感。</li>
+      <li><strong>层级</strong>：以表面色区分区域，减少连续边框和强装饰。</li>
+      <li><strong>信号</strong>：主操作使用填充按钮，选中项使用柔和色调，状态保留文字。</li></ul></div></div>
+    <details class="tools-group" data-note="6"><summary>${icon('chev', 'i chev')}${icon('tool')}<span>4 个工具调用</span><span class="meta">· 1 个失败 · 15.8s</span></summary>
+      <div class="tool"><span class="st A">✓</span><span class="name">read</span><span class="target ellipsis">src/lib/ui-kit/kits/ak-ui.css</span><span class="meta">0.1s</span></div>
+      <div class="tool"><span class="st A">✓</span><span class="name">search</span><span class="target ellipsis">font-size: (8|9|10)px</span><span class="meta">0.2s</span></div>
+      <div class="tool"><span class="st A">✓</span><span class="name">shell</span><span class="target ellipsis">pnpm run check:types</span><span class="meta">12.4s</span></div>
+      <div class="tool"><span class="st D">✕</span><span class="name">shell</span><span class="target ellipsis">node --test test/ui-style-boundaries.test.mjs</span><span class="meta">3.1s</span></div>
+    </details>
+    <div class="activity"><span class="agent-mark" data-state="running">${icon('agent-a')}</span>正在整理组件样式 <span class="mono">material3-redesign.html</span></div>`;
+  else if (s.state === 'attention') chat.innerHTML = `
+    <div class="assistant"><div class="msg-meta">${who}<span>14:20</span></div><div class="body"><p>需要写入测试夹具以复现会话恢复失败。</p></div></div>
+    <div class="approval" role="group" aria-label="审批请求"><div class="head">${icon('alert')}需要你的批准 · 写入文件</div>
+      <pre>write fixtures/session-restore/broken-state.json  (+42 行)</pre>
+      <div class="actions"><button class="btn primary tall" type="button">允许一次</button><button class="btn outline tall" type="button">本会话内允许</button><button class="btn danger tall" type="button">拒绝</button></div></div>`;
+  else if (s.state === 'failed') chat.innerHTML = `
+    <div class="assistant"><div class="msg-meta">${who}<span>2 天前</span><span class="tag bad">失败</span></div>
+      <div class="body"><p>进程意外退出（exit 137）。已保存的历史不受影响。</p></div>
+      <div style="margin-top:8px;display:flex;gap:8px"><button class="btn outline" type="button">${icon('refresh')}重试</button><button class="btn" type="button">查看日志</button></div></div>`;
+  else chat.innerHTML = `<div class="empty"><h3>从一个问题开始</h3><p class="meta">描述目标，Agent 会在当前工作区中规划并执行。</p></div>`;
+}
+
+/* ---------- Composer ---------- */
+function renderAttachments() {
+  $('#attachments').innerHTML = attachments.map(a => `
+    <span class="chip" title="${esc(a.name)}">${a.kind === 'image' ? '<span class="thumb" aria-hidden="true"></span>' : icon('file')}
+      <span class="ellipsis">${esc(a.name)}</span><span class="size">${a.size}</span>
+      <button class="btn icon" type="button" data-remove="${a.id}" aria-label="移除 ${esc(a.name)}">${icon('close')}</button></span>`).join('');
+  $('#ctxSummary').textContent = attachments.length ? `${attachments.length} 个附件` : '';
+  $('#attachCount').textContent = attachments.length;
+  $('#ctxAttachments').innerHTML = attachments.length ? attachments.map(a => `
+    <div class="list-row">${icon(a.kind === 'image' ? 'image' : 'file')}<span class="name ellipsis mono" title="${esc(a.name)}">${esc(a.name)}</span><span class="muted">${a.mode} · ${a.size}</span></div>`).join('')
+    : '<p class="panel-note">发送前可以在输入框中添加文件或目录。</p>';
+  updateSend();
+}
+$('#attachments').addEventListener('click', e => {
+  const b = e.target.closest('[data-remove]'); if (!b) return;
+  attachments = attachments.filter(a => a.id !== b.dataset.remove); renderAttachments(); $('#prompt').focus();
+});
+const prompt = $('#prompt');
+function updateSend() { $('#send').disabled = (!prompt.value.trim() && !attachments.length) || currentSession()?.state === 'attention'; }
+prompt.addEventListener('input', () => { prompt.style.height = 'auto'; prompt.style.height = Math.min(prompt.scrollHeight, 240) + 'px'; updateSend(); });
+prompt.addEventListener('keydown', e => { if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) { e.preventDefault(); $('#send').click(); } });
+/* ---------- Tabs with roving focus (focus follows the selected tab) ---------- */
+function tabs(list, onChange) {
+  const items = () => $$('[role="tab"]', list);
+  const select = (tab, focus) => {
+    items().forEach(t => { const on = t === tab; t.setAttribute('aria-selected', on); t.tabIndex = on ? 0 : -1; const p = t.getAttribute('aria-controls'); if (p) $('#' + p).hidden = !on; });
+    if (focus) tab.focus(); onChange?.(tab);
+  };
+  list.addEventListener('click', e => { const t = e.target.closest('[role="tab"]'); if (t) select(t, false); });
+  list.addEventListener('keydown', e => {
+    const all = items(), i = all.indexOf(document.activeElement); if (i < 0) return;
+    const next = { ArrowRight: i + 1, ArrowLeft: i - 1, Home: 0, End: all.length - 1 }[e.key];
+    if (next === undefined) return; e.preventDefault(); select(all[(next + all.length) % all.length], true);
+  });
+}
+tabs($('#mainTabs')); tabs($('#sideTabs')); tabs($('#gitTabs'));
+tabs($('.regions [role="tablist"]'), t => { $('#grid').dataset.region = t.dataset.region; });
+function setRegion(r) { const t = $(`.regions [data-region="${r}"]`); if (getComputedStyle($('.regions')).display !== 'none') t.click(); }
+
+/* ---------- Git ---------- */
+const groups = [
+  { id: 'staged', label: '已暂存', open: true, files: [['A', 'material3-redesign.html', 'docs/design/', '+620', '']] },
+  { id: 'changes', label: '更改', open: true, files: [
+    ['M', 'ak-ui.css', 'src/lib/ui-kit/kits/', '+48', '−112'], ['M', 'base.css', 'src/lib/ui-kit/kits/', '+12', '−105'],
+    ['M', 'themes.json', 'src/lib/ui-kit/kits/ak-ui/', '+6', '−2'], ['M', 'Inspector.svelte', 'src/lib/components/app/', '+9', '−14'],
+    ['M', 'WorkspaceSidebar.svelte', 'src/lib/components/app/', '+21', '−30'], ['D', 'legacy-density.css', 'src/lib/ui-kit/kits/', '', '−88'],
+    ['M', 'ak-ui-density-browser.mjs', 'probes/', '+18', '−4'] ] },
+];
+let selectedFile = 'ak-ui.css';
+function renderGit() {
+  $('#gitGroups').innerHTML = groups.map(g => `
+    <button class="group-head" type="button" aria-expanded="${g.open}" data-group="${g.id}">${icon('chev', 'i chev')}<span class="grow">${g.label}</span><span class="tag">${g.files.length}</span></button>
+    <div ${g.open ? '' : 'hidden'}>${g.files.map(([s, n, d, a, r]) => `
+      <button class="file" type="button" data-file="${n}" aria-selected="${n === selectedFile}" title="${d}${n}">
+        <span class="st ${s}" aria-label="${{ M: '已修改', A: '新增', D: '已删除' }[s]}">${s}</span>
+        <span class="fname ellipsis mono">${n}</span><span class="fdir">${d}</span>
+        <span class="delta"><span class="add">${a}</span> <span class="del">${r}</span></span>
+        <span class="hover-act meta">${g.id === 'staged' ? '取消暂存' : '暂存'}</span></button>`).join('')}</div>`).join('');
+  $('#commitBtn').disabled = !$('#commitMsg').value.trim();
+}
+$('#commitMsg').addEventListener('input', () => { $('#commitBtn').disabled = !$('#commitMsg').value.trim(); });
+let historyPages = 1;
+function renderHistory() {
+  const rows = Array.from({ length: historyPages * 8 }, (_, i) => `
+    <button class="commit" type="button"><span class="subject ellipsis">${['调整文件列表对齐', '修复历史分页重试', '统一选中态语言', '移除旧紧凑样式', '合并重复选择器', '会话行改为单行', '上下文分区对齐', '更新密度探针'][i % 8]}</span>
+      <span class="when">${i < 3 ? (i + 1) * 2 + ' 小时前' : (i - 1) + ' 天前'}</span>
+      <span class="by"><span class="mono">${(0xabc1234 + i * 977).toString(16).slice(0, 7)}</span> · Tester</span></button>`).join('');
+  $('#git-history').innerHTML = rows + (historyPages < 2 ? '<button class="btn outline more" type="button" id="moreHistory">加载更早的提交</button>' : '<p class="panel-note" style="padding:12px 16px">已显示全部提交</p>');
+}
+$('#git-history').addEventListener('click', e => { if (e.target.id === 'moreHistory') { historyPages++; renderHistory(); } });
+
+/* ---------- Chrome ---------- */
+function setTheme(t) {
+  try { localStorage.setItem('aibo-m3-study-theme', t); } catch {}
+  document.body.dataset.theme = t;
+  $('#themeToggle').innerHTML = icon(t === 'dark' ? 'sun' : 'moon');
+  $('#themeLabel').textContent = t === 'dark' ? '深色' : '浅色';
+  $$('input[name="theme"]').forEach(r => r.checked = r.value === t);
+}
+$('#themeToggle').addEventListener('click', () => setTheme(document.body.dataset.theme === 'dark' ? 'light' : 'dark'));
+$$('input[name="theme"]').forEach(r => r.addEventListener('change', () => setTheme(r.value)));
+$('#auxToggle').addEventListener('click', e => {
+  if ($('#grid').classList.contains('focus-layout')) { setLayout('standard'); return; }
+  const on = e.currentTarget.getAttribute('aria-pressed') !== 'true';
+  e.currentTarget.setAttribute('aria-pressed', on); $('#grid').classList.toggle('no-aux', !on);
+});
+let settingsTrigger = null;
+$$('[data-open-settings]').forEach(b => b.addEventListener('click', () => {
+  settingsTrigger = b; $('#settings').showModal(); $('.dlg-content').scrollTop = 0;
+}));
+$('#closeSettings').addEventListener('click', () => $('#settings').close());
+$('#settings').addEventListener('close', () => settingsTrigger?.focus());
+$('#settings').addEventListener('click', e => { if (e.target === e.currentTarget) e.currentTarget.close(); });
+$('.dlg-nav').addEventListener('click', e => { const b = e.target.closest('.row'); if (!b) return; $$('.dlg-nav .row').forEach(x => x.removeAttribute('aria-current')); b.setAttribute('aria-current', 'page'); });
+
+/* Popovers anchor below their trigger and return focus on close. */
+let popoverTrigger = null;
+document.addEventListener('click', e => { const t = e.target.closest('[popovertarget]'); if (t) popoverTrigger = t; }, true);
+$$('[popover]').forEach(p => p.addEventListener('toggle', e => {
+  const t = popoverTrigger; if (!t) return;
+  if (e.newState === 'open') {
+    t.setAttribute('aria-expanded', 'true');
+    const r = t.getBoundingClientRect(), w = p.offsetWidth, h = p.offsetHeight;
+    p.style.left = Math.max(8, Math.min(r.right - w, innerWidth - w - 8)) + 'px';
+    p.style.top = (r.bottom + 4 + h > innerHeight ? r.top - h - 4 : r.bottom + 4) + 'px';
+    p.style.left = (t.id === 'newSession' ? r.left : parseFloat(p.style.left)) + 'px';
+    p.querySelector('.row:not(:disabled)')?.focus();
+  } else { t.setAttribute('aria-expanded', 'false'); }
+}));
+$$('[popover] .row').forEach(b => b.addEventListener('click', () => { const p = b.closest('[popover]'); p.hidePopover(); popoverTrigger?.focus(); }));
+$$('[popover]').forEach(p => p.addEventListener('keydown', e => {
+  const rows = $$('.row:not(:disabled)', p), i = rows.indexOf(document.activeElement);
+  if (e.key === 'ArrowDown' || e.key === 'ArrowUp') { e.preventDefault(); rows[(i + (e.key === 'ArrowDown' ? 1 : -1) + rows.length) % rows.length].focus(); }
+  if (e.key === 'Escape') { requestAnimationFrame(() => popoverTrigger?.focus()); }
+}));
+document.addEventListener('keydown', e => {
+  if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'n') { e.preventDefault(); $('#newSession').click(); }
+});
+
+/* Design notes: hovering an item outlines its target. */
+$('#notesToggle').addEventListener('click', e => {
+  const open = $('#notes').hidden; $('#notes').hidden = !open; e.currentTarget.setAttribute('aria-expanded', open);
+});
+$$('#notes li').forEach(li => {
+  li.addEventListener('mouseenter', () => $$(`[data-note="${li.dataset.for}"]`).forEach(n => n.classList.add('note-hit')));
+  li.addEventListener('mouseleave', () => $$('.note-hit').forEach(n => n.classList.remove('note-hit')));
+});
+
+/* Initial rendering is performed after prototype enhancements below. */
+
+/* Interactive study only: no host bridge, filesystem writes, network or execution. */
+let snackbarTimer, actionCallback, menuSessionId = 's1', menuWorkspaceId = 'w1';
+let sessionFilter = 'active', activeSetting = '外观', layoutMode = 'standard';
+let defaultTrust = true;
+const currentSession = () => workspaces.flatMap(w => w.sessions).find(s => s.id === selected);
+const currentWorkspace = () => workspaces.find(w => w.sessions.some(s => s.id === selected)) || workspaces[0];
+workspaces.forEach(w => { w.trusted = true; w.sessions.forEach(s => { s.messages = []; s.draft = ''; s.attachments = s.id === 's1' ? [...attachments] : []; s.permission = '工作区可写'; s.model = '默认模型'; }); });
+function notify(text) {
+  clearTimeout(snackbarTimer); $('#snackbar').textContent = text; $('#snackbar').hidden = false;
+  snackbarTimer = setTimeout(() => $('#snackbar').hidden = true, 3200);
+}
+function restoreDraft(s) {
+  prompt.value = s.draft || ''; attachments = s.attachments || []; prompt.style.height = '';
+}
+function saveDraft() { const s = currentSession(); if (s) { s.draft = prompt.value; s.attachments = [...attachments]; } }
+prompt.addEventListener('input', saveDraft);
+$('#attachments').addEventListener('click', saveDraft);
+$('#attach').addEventListener('click', () => $('#fileInput').click());
+$('#fileInput').addEventListener('change', e => {
+  for (const file of e.target.files) attachments.push({id:crypto.randomUUID(),name:file.name,kind:file.type.startsWith('image/')?'image':'file',size:file.size<1024?`${file.size} B`:`${(file.size/1024).toFixed(1)} KB`,mode:'引用'});
+  saveDraft(); renderAttachments(); e.target.value = ''; notify('附件已加入当前草稿');
+});
+function detail(title, html) { $('#detailTitle').textContent=title; $('#detailBody').innerHTML=html; $('#detailDialog').showModal(); }
+function ask(title, body, confirm, callback) {
+  $('#actionTitle').textContent=title; $('#actionBody').innerHTML=body; $('#actionConfirm').textContent=confirm;
+  actionCallback=callback; $('#actionDialog').showModal();
+  const input=$('#actionBody input'); if(input) { input.focus(); input.select(); }
+}
+$('#actionConfirm').addEventListener('click',()=>{ if(actionCallback?.()!==false) $('#actionDialog').close(); });
+$('#actionDialog').addEventListener('keydown',e=>{if(e.key==='Enter'&&e.target.matches('input')){e.preventDefault();$('#actionConfirm').click();}});
+$$('[data-close]').forEach(b=>b.addEventListener('click',()=>$('#'+b.dataset.close).close()));
+$$('.study-dialog').forEach(d=>d.addEventListener('click',e=>{if(e.target!==d)return; const r=d.getBoundingClientRect(); if(e.clientX<r.left||e.clientX>r.right||e.clientY<r.top||e.clientY>r.bottom)d.close();}));
+const baseRenderNav = renderNav;
+renderNav = function() {
+  baseRenderNav();
+  $$('#nav [data-session]').forEach(b=>{ const s=workspaces.flatMap(w=>w.sessions).find(s=>s.id===b.dataset.session); b.closest('.session').hidden=sessionFilter==='archived'?!s.archived:sessionFilter==='attention'?s.state!=='attention':!!s.archived; });
+  $$('#nav .ws').forEach((row,index)=>{row.querySelector('.row-more').dataset.menuWorkspace=workspaces[index].id;});
+  $$('#nav .session').forEach(row=>{row.querySelector('.row-more').dataset.menuSession=row.querySelector('[data-session]').dataset.session;});
+  if(!$$('#nav .session').some(row=>!row.hidden&& !row.parentElement.hidden)) $('#nav').insertAdjacentHTML('beforeend','<p class="panel-note" style="padding:16px">此筛选下暂无会话。</p>');
+};
+const baseRenderSession=renderSession;
+renderSession=function() {
+  if(!currentSession()) return;
+  baseRenderSession(); const s=currentSession(), ws=currentWorkspace();
+  $('#permissionPicker').innerHTML=esc(s.permission)+icon('chev','i chev');
+  $('#modelPicker').innerHTML=esc(s.model)+icon('chev','i chev');
+  $('#permissionPicker').disabled=s.state==='running'||s.state==='attention';
+  $('#permissionPicker').title=s.state==='running'?'运行结束后可更改执行权限':'执行权限';
+  $('#modelPicker').disabled=s.state==='running';
+  $('#prompt').disabled=!!s.archived; $('#attach').disabled=!!s.archived;
+  $('#prompt').placeholder=s.archived?'已归档的会话为只读，可在会话菜单中恢复':'输入消息，⌘Enter 发送，/ 调用命令，@ 引用文件';
+  if(s.archived) $('#sessionState').lastElementChild.textContent='已归档';
+  if(s.id==='s1'&&s.state!=='running') $('#view-chat .activity')?.remove();
+  if(s.resolution) $('#view-chat').innerHTML=`<div class="assistant"><div class="msg-meta"><strong>${esc(s.agentName)}</strong></div><div class="body"><p>${esc(s.resolution)}</p></div></div>`;
+  if(s.messages.length) $('#view-chat .empty')?.remove();
+  for(const m of s.messages) {
+    const node=document.createElement('div');node.className=m.role==='user'?'user':'assistant';
+    node.innerHTML=`<div class="msg-meta"><strong>${m.role==='user'?'你':esc(s.agentName)}</strong><span>${esc(m.time||'现在')}</span></div><div class="${m.role==='user'?'bubble':'body'}" style="white-space:pre-wrap;overflow-wrap:anywhere">${esc(m.text)}</div>`;
+    $('#view-chat').append(node);
+  }
+  if(s.queue?.length) $('#view-chat').insertAdjacentHTML('beforeend',`<div class="queue-item"><strong>${s.queue.length} 条消息等待发送</strong>${s.queue.map((q,i)=>`<div style="display:flex;gap:12px;align-items:center;margin-top:8px"><span class="ellipsis" style="flex:1">${esc(q.text)}</span><button class="btn" data-cancel-queue="${i}">移除</button></div>`).join('')}</div>`);
+  if($('#view-chat .empty')) $('#view-chat .empty').insertAdjacentHTML('beforeend','<div class="quick-prompts"><button class="btn outline" data-prompt="解释当前项目的结构">了解项目</button><button class="btn outline" data-prompt="审查当前工作区的变更">审查变更</button></div>');
+  const dd=$$('#panel-context .kv')[0];
+  dd.innerHTML=`<dt>Agent</dt><dd>${esc(s.agentName)} <span class="muted">· 本地插件</span></dd><dt>会话 ID</dt><dd class="mono">${esc(s.id)}</dd><dt>远端绑定</dt><dd class="mono" title="示例绑定 thread_${esc(s.id)}">thread_${esc(s.id)}</dd><dt>更新</dt><dd>${esc(s.time)}</dd>`;
+  $('#panel-context .sect:nth-child(2) .tag').textContent=ws.trusted?'已信任':'未信任';
+  $('#panel-context .sect:nth-child(2) .tag').className='tag '+(ws.trusted?'ok':'warn');
+  $('#panel-context .sect:nth-child(2) .panel-note').textContent=ws.trusted?`Agent 可以在 ${ws.name} 内执行已授权的操作。`:'当前工作区未信任，执行操作将受到限制。';
+  $('.title-workspace').textContent=ws.name;
+  $('.statusbar > span:nth-child(2)').textContent=ws.name;
+  renderAttachments(); updateSend();
+  $('#send').disabled||=!!s.archived;
+};
+function selectSession(id) { saveDraft(); selected=id; renderNav(); renderSession(); $('#tab-chat').click(); setRegion('main'); }
+function createSession(agent, workspaceId=menuWorkspaceId) {
+  const ws=workspaces.find(w=>w.id===workspaceId)||currentWorkspace();
+  const s={id:'s_'+Math.random().toString(36).slice(2,8),title:'新会话',agent,agentName:{a:'Codex',b:'Pi',c:'Cursor'}[agent],state:'idle',time:'刚刚',messages:[],draft:'',attachments:[],permission:'工作区可写',model:'默认模型'};
+  ws.sessions.unshift(s);ws.expanded=true;sessionFilter='active';selectSession(s.id);$('#prompt').focus();notify(`已在 ${ws.name} 创建 ${s.agentName} 会话`);
+}
+$$('#agentMenu .agent-option').forEach((b,i)=>b.addEventListener('click',()=>createSession(['a','b','c'][i])));
+$('#newSession').addEventListener('click',()=>{menuWorkspaceId=currentWorkspace().id;$('#agentMenu .menu-title').textContent=`在 ${currentWorkspace().name} 中新建会话`;});
+$('#nav').addEventListener('click',e=>{
+ const b=e.target.closest('[data-menu-session],[data-menu-workspace]');if(!b)return;
+ if(b.dataset.menuSession){menuSessionId=b.dataset.menuSession;const s=workspaces.flatMap(w=>w.sessions).find(s=>s.id===menuSessionId);$('#sessionMenu .row:last-child').innerHTML=icon('archive')+(s.archived?'取消归档':'归档');}
+ if(b.dataset.menuWorkspace){menuWorkspaceId=b.dataset.menuWorkspace;const w=workspaces.find(w=>w.id===menuWorkspaceId);$$('#wsMenu .row')[2].innerHTML=icon('trust')+(w.trusted?'撤销信任':'信任工作区');}
+});
+$$('#sessionMenu .row').forEach((b,i)=>b.addEventListener('click',()=>{
+ const s=workspaces.flatMap(w=>w.sessions).find(s=>s.id===menuSessionId);
+ if(i===0)ask('重命名会话',`<label for="renameInput">会话名称</label><input class="field" id="renameInput" maxlength="120" value="${esc(s.title)}">`,'保存',()=>{const title=$('#renameInput').value.trim();if(!title){$('#renameInput').focus();return false;}s.title=title;renderNav();renderSession();notify('会话名称已更新');});
+ if(i===1){const ws=workspaces.find(w=>w.sessions.includes(s));const copy={...s,id:'s_'+Date.now(),title:s.title+' · 分支',state:'idle',time:'刚刚',messages:structuredClone(s.messages),attachments:[],draft:'',archived:false,queue:[]};ws.sessions.unshift(copy);ws.expanded=true;selectSession(copy.id);notify('已创建会话分支');}
+ if(i===2){s.archived=!s.archived;renderNav();renderSession();notify(s.archived?'已归档，可从筛选菜单找回':'会话已恢复');}
+}));
+$$('#wsMenu .row').forEach((b,i)=>b.addEventListener('click',()=>{
+ const ws=workspaces.find(w=>w.id===menuWorkspaceId);
+ if(i===0){$('#agentMenu .menu-title').textContent=`在 ${ws.name} 中新建会话`;popoverTrigger=$('#newSession');$('#agentMenu').showPopover();}
+ if(i===1)detail('工作区位置',`<p>示例路径</p><pre class="diff-preview">~/Workspace/${esc(ws.name)}</pre><p>HTML 预览不调用系统文件管理器。</p>`);
+ if(i===2){ws.trusted=!ws.trusted;renderSession();notify(ws.trusted?'工作区已标记为信任（模拟）':'已撤销工作区信任（模拟）');}
+ if(i===3)ask('移除工作区？',`<p>从本页移除 ${esc(ws.name)} 及其示例会话。不会删除磁盘文件。</p>`,'移除',()=>{if(workspaces.length===1){notify('请至少保留一个示例工作区');return false;}workspaces.splice(workspaces.indexOf(ws),1);if(!currentSession())selected=workspaces[0].sessions[0].id;renderNav();renderSession();notify('已移除示例工作区');});
+}));
+function showChoices(trigger,title,choices,onSelect) {
+ const menu=$('#choiceMenu');popoverTrigger=trigger;
+ menu.innerHTML=`<div class="menu-title">${esc(title)}</div>`+choices.map((c,i)=>`<button class="row" role="menuitemradio" aria-checked="${!!c.selected}" data-choice="${i}" ${c.disabled?'disabled':''}>${esc(c.label)}</button>`).join('');
+ menu.onclick=e=>{const b=e.target.closest('[data-choice]');if(!b)return;menu.hidePopover();onSelect(choices[+b.dataset.choice]);trigger.focus();};menu.showPopover();
+}
+$('#permissionPicker').addEventListener('click',e=>showChoices(e.currentTarget,'执行权限 · 示例能力声明',['只读','工作区可写'].map(label=>({label,selected:currentSession().permission===label})),c=>{currentSession().permission=c.label;renderSession();notify('当前会话权限选项已更新（模拟）');}));
+$('#modelPicker').addEventListener('click',e=>showChoices(e.currentTarget,'模型 · 示例配置',['默认模型','快速模型','推理模型'].map(label=>({label,selected:currentSession().model===label})),c=>{currentSession().model=c.label;renderSession();}));
+$('[aria-label="筛选"]').addEventListener('click',e=>showChoices(e.currentTarget,'会话筛选',[{label:'活动会话',id:'active'},{label:'待审批',id:'attention'},{label:'已归档',id:'archived'}].map(c=>({...c,selected:sessionFilter===c.id})),c=>{sessionFilter=c.id;renderNav();e.currentTarget?.setAttribute('title',c.label);}));
+$('[aria-label="添加工作区"]').addEventListener('click',()=>ask('添加示例工作区','<p>为预览添加一个工作区名称，不会访问本地目录。</p><label for="workspaceName">工作区名称</label><input id="workspaceName" class="field" placeholder="my-project" maxlength="80">','添加',()=>{const name=$('#workspaceName').value.trim();if(!name){$('#workspaceName').focus();return false;}const id='w_'+Date.now();workspaces.push({id,name,expanded:true,trusted:defaultTrust,sessions:[]});createSession('a',id);}));
+function renderSearch() {
+ const q=$('#searchInput').value.toLowerCase().trim();
+ const rows=workspaces.flatMap(w=>w.sessions.map(s=>({w,s}))).filter(({s})=>!q||(s.title+' '+s.agentName+' '+s.messages.map(m=>m.text).join(' ')).toLowerCase().includes(q));
+ $('#searchResults').innerHTML=rows.length?rows.map(({s,w})=>`<button class="row search-result" data-search-session="${s.id}">${icon('agent-'+s.agent)}<span class="copy"><strong class="ellipsis">${esc(s.title)}</strong><span class="meta">${esc(w.name)} · ${esc(s.agentName)}${s.archived?' · 已归档':''}</span></span>${icon('chev')}</button>`).join(''):'<div class="empty" style="min-height:160px"><strong>没有匹配的会话</strong><span class="meta">试试工作内容或 Agent 名称。</span></div>';
+}
+function openSearch(){renderSearch();$('#searchDialog').showModal();$('#searchInput').focus();}
+$('[aria-label="搜索会话"]').addEventListener('click',openSearch);
+$('#searchInput').addEventListener('input',renderSearch);
+$('#searchResults').addEventListener('click',e=>{const b=e.target.closest('[data-search-session]');if(b){$('#searchDialog').close();selectSession(b.dataset.searchSession);}});
+$('#searchDialog').addEventListener('keydown',e=>{
+ const rows=$$('#searchResults button'),i=rows.indexOf(document.activeElement);
+ if(['ArrowDown','ArrowUp'].includes(e.key)&&rows.length){e.preventDefault();rows[(i+(e.key==='ArrowDown'?1:-1)+rows.length)%rows.length].focus();}
+ if(e.key==='Enter'&&document.activeElement===$('#searchInput')){e.preventDefault();rows[0]?.click();}
+});
+function stamp(){return new Date().toLocaleTimeString('zh-CN',{hour:'2-digit',minute:'2-digit'});}
+function finishRun(s, stopped=false) {
+ clearTimeout(s.timer);s.state='idle';s.time='刚刚';
+ if(!stopped)s.messages.push({role:'assistant',time:stamp(),text:'已收到。我会结合当前工作区和上下文继续处理。\n\n这是交互设计稿的模拟回复，未调用真实 Agent。'});
+ const queue=s.queue||[];s.queue=[];
+ queue.forEach(q=>s.messages.push({role:'user',time:stamp(),text:q.text}));
+ if(queue.length)s.messages.push({role:'assistant',time:stamp(),text:'队列中的消息已接收（模拟）。'});
+ if(currentSession()===s)renderSession();renderNav();
+ if(stopped)notify('已停止模拟运行');
+}
+$('#send').addEventListener('click',()=>{
+ const s=currentSession();if(s.archived||s.state==='attention'||(!prompt.value.trim()&&!attachments.length))return;
+ const value=prompt.value.trim(),text=value+(attachments.length?'\n\n附件：'+attachments.map(a=>a.name).join('、'):'');
+ if(s.state==='running'){(s.queue||=[]).push({text});notify('已加入消息队列');if(!s.timer)s.timer=setTimeout(()=>finishRun(s),1600);}
+ else {s.messages.push({role:'user',time:stamp(),text});if(s.title==='新会话')s.title=(value||'附件会话').slice(0,28);s.state='running';s.timer=setTimeout(()=>finishRun(s),1600);}
+ s.draft='';s.attachments=[];renderSession();renderNav();$('#tab-chat').click();$('#feed').scrollTop=$('#feed').scrollHeight;$('#prompt').focus();
+});
+$('#stop').addEventListener('click',()=>finishRun(currentSession(),true));
+$('#view-chat').addEventListener('click',e=>{
+ const approval=e.target.closest('.approval .btn');
+ if(approval){const s=currentSession();s.state='idle';s.resolution=approval.textContent.includes('拒绝')?'已拒绝这次文件写入。可以继续讨论其他方案。':`${approval.textContent}：审批已记录（模拟），未执行文件写入。`;renderSession();renderNav();notify('审批决定已记录');}
+ const cancel=e.target.closest('[data-cancel-queue]');if(cancel){currentSession().queue.splice(+cancel.dataset.cancelQueue,1);renderSession();}
+ const quick=e.target.closest('[data-prompt]');if(quick){prompt.value=quick.dataset.prompt;saveDraft();updateSend();prompt.focus();}
+ const btn=e.target.closest('button');if(btn?.textContent.trim()==='重试'){const s=currentSession();s.state='running';s.resolution='正在重新连接会话…';renderSession();s.timer=setTimeout(()=>{s.resolution='会话连接已恢复（模拟）。历史记录已保留。';finishRun(s,true);},1000);}
+ if(btn?.textContent.trim()==='查看日志')detail('运行日志','<pre class="diff-preview">[14:21:08] Agent process exited\n[14:21:08] exit code: 137\n[14:21:08] History projection saved\n[14:21:09] Waiting for reconnect</pre>');
+ const tool=e.target.closest('.tool');if(tool)detail('工具调用详情',`<span class="tag ${tool.querySelector('.D')?'bad':'ok'}">${tool.querySelector('.D')?'失败':'完成'}</span><pre class="diff-preview">${esc(tool.querySelector('.target').textContent)}\n\n${tool.querySelector('.D')?'AssertionError: expected component density to match specification\nexit code: 1':'Operation completed successfully\nexit code: 0'}</pre>`);
+});
+// The fixture starts running so the stop/queue states are available for exploration.
+prompt.addEventListener('input',()=>{
+ if(prompt.value==='/')showChoices(prompt,'会话命令',[{label:'总结当前会话'},{label:'审查工作区变更'},{label:'解释项目结构'}],c=>{prompt.value=c.label;saveDraft();updateSend();prompt.focus();});
+ if(prompt.value==='@')showChoices(prompt,'引用示例文件',[{label:'src/App.svelte'},{label:'docs/ui-architecture.md'},{label:'package.json'}],c=>{prompt.value='@'+c.label+' ';saveDraft();updateSend();prompt.focus();});
+});
+/* Git: separate file selection and staging actions; counts reflect fixture state. */
+function diffMarkup(name) {
+ return `<div class="diff-preview"><div class="preview-title"><span>${esc(name)} · 工作区差异（示例）</span><span>+3 −2</span></div>@@ -12,4 +12,5 @@\n<span class="removed">− border-radius: 0;</span><span class="removed">− background: var(--canvas);</span><span class="added">+ border-radius: 16px;</span><span class="added">+ background: var(--md-sys-color-surface);</span><span class="added">+ color: var(--md-sys-color-on-surface);</span></div>`;
+}
+let previewFile=null;
+const simulatedCommits=[];
+const baseRenderHistory=renderHistory;
+renderHistory=function() {
+ baseRenderHistory();
+ $('#git-history').insertAdjacentHTML('afterbegin',simulatedCommits.map(message=>`<button class="commit"><span class="subject ellipsis">${esc(message)}</span><span class="when">刚刚</span><span class="by"><span class="mono">e8a34c1</span> · 你</span></button>`).join(''));
+};
+renderGit=function() {
+ $('#gitGroups').innerHTML=groups.map(g=>`<div class="group-head"><button class="btn" style="flex:1;justify-content:flex-start;padding:0;min-height:36px" aria-expanded="${g.open}" data-group="${g.id}">${icon('chev','i chev')}${g.label}<span class="tag">${g.files.length}</span></button><button class="btn batch" data-stage-all="${g.id}" ${!g.files.length?'disabled':''}>${g.id==='staged'?'全部取消':'全部暂存'}</button></div><div ${g.open?'':'hidden'}>${g.files.map(([status,name,dir,add,del])=>`<div class="file-entry"><button class="file" data-file="${name}" aria-expanded="${previewFile===name}" aria-selected="${selectedFile===name}" title="${dir}${name}"><span class="st ${status}" aria-label="${{M:'修改',A:'新增',D:'删除'}[status]}">${status}</span><span class="fname ellipsis mono">${name}</span><span class="delta"><span class="add">${add}</span> <span class="del">${del}</span></span></button><button class="stage-action" data-stage="${name}" aria-label="${g.id==='staged'?'取消暂存':'暂存'} ${name}">${g.id==='staged'?'取消暂存':'暂存'}</button></div>${previewFile===name?diffMarkup(name):''}`).join('')||'<p class="panel-note" style="padding:12px 16px">'+(g.id==='staged'?'尚无暂存文件':'工作区已干净')+'</p>'}</div>`).join('');
+ $('#commitBtn').disabled=!$('#commitMsg').value.trim()||!groups[0].files.length;
+ const count=groups.reduce((n,g)=>n+g.files.length,0);
+ $('#side-git .tag').textContent=count;$('#git-tab-changes .tag').textContent=count;
+ $('#tab-diff .tag').textContent=count;
+ $('#view-diff').innerHTML=`<div><p class="meta" style="margin-top:0;margin-bottom:16px">当前工作区的文件变更 · ${count} 个文件</p><div class="file-list">${groups.flatMap(g=>g.files).map(([status,name,dir,add,del])=>`<button class="file" data-main-file="${name}" aria-expanded="${previewFile===name}"><span class="st ${status}">${status}</span><span class="fname ellipsis mono">${name}</span><span class="fdir">${dir}</span><span class="delta"><span class="add">${add}</span> <span class="del">${del}</span></span></button>${previewFile===name?diffMarkup(name):''}`).join('')||'<p class="panel-note" style="padding:24px">没有未提交的变更</p>'}</div></div>`;
+};
+$('#gitGroups').addEventListener('click',e=>{
+ const group=e.target.closest('[data-group]');if(group){const g=groups.find(g=>g.id===group.dataset.group);g.open=!g.open;renderGit();$(`[data-group="${g.id}"]`).focus();return;}
+ const stage=e.target.closest('[data-stage]'),all=e.target.closest('[data-stage-all]');
+ if(stage||all){const from=all?groups.find(g=>g.id===all.dataset.stageAll):groups.find(g=>g.files.some(f=>f[1]===stage.dataset.stage));const to=groups.find(g=>g!==from);const moved=all?from.files.splice(0):from.files.splice(from.files.findIndex(f=>f[1]===stage.dataset.stage),1);to.files.push(...moved);renderGit();notify(`${moved.length} 个文件${to.id==='staged'?'已暂存':'已取消暂存'}`);return;}
+ const file=e.target.closest('[data-file]');if(file){selectedFile=file.dataset.file;previewFile=previewFile===selectedFile?null:selectedFile;renderGit();$(`[data-file="${CSS.escape(selectedFile)}"]`).focus();}
+});
+$('#view-diff').addEventListener('click',e=>{const b=e.target.closest('[data-main-file]');if(!b)return;previewFile=previewFile===b.dataset.mainFile?null:b.dataset.mainFile;renderGit();$(`[data-main-file="${CSS.escape(b.dataset.mainFile)}"]`).focus();});
+$('#commitMsg').addEventListener('input',()=>$('#commitBtn').disabled=!$('#commitMsg').value.trim()||!groups[0].files.length);
+$('#commitBtn').addEventListener('click',()=>{
+ if(!groups[0].files.length||!$('#commitMsg').value.trim())return;
+ const message=$('#commitMsg').value.trim(),count=groups[0].files.length;
+ groups[0].files=[];$('#commitMsg').value='';previewFile=null;renderGit();
+ simulatedCommits.unshift(message);renderHistory();
+ notify(`已模拟提交 ${count} 个文件，真实仓库未改变`);
+});
+$('#git-history').addEventListener('click',e=>{const b=e.target.closest('.commit');if(b)detail(b.querySelector('.subject').textContent,`<p>${esc(b.querySelector('.by').textContent)}</p>${diffMarkup('src/lib/ui-kit/kits/ak-ui.css')}`);});
+$$('#view-runs .run').forEach((b,i)=>b.addEventListener('click',()=>detail('执行记录',`<span class="tag ${i===1?'bad':'ok'}">${i===1?'失败 · exit 1':'已完成 · exit 0'}</span><pre class="diff-preview">$ ${esc(b.querySelector('.mono').textContent)}\n\n${i===1?'AssertionError: density expected 44px, received 36px\n1 test failed':'All checks completed successfully.'}</pre>`)));
+$('[aria-label="刷新 Git 状态"]').addEventListener('click',()=>{previewFile=null;renderGit();notify('Git 示例状态已刷新');});
+$('.git-head .select').addEventListener('click',e=>showChoices(e.currentTarget,'工作区仓库',[{label:'aibo',selected:true},{label:'aibo-plugins · 示例不可用',disabled:true}],()=>notify('已选择 aibo 仓库')));
+$$('.branch .btn').forEach(b=>b.addEventListener('click',()=>notify(`已模拟${b.textContent.trim()}，未连接远端仓库`)));
+$('#gitTabs > .btn').addEventListener('click',()=>{prompt.value='请审查当前工作区的所有未提交变更，指出潜在问题。';saveDraft();updateSend();$('#tab-chat').click();setRegion('main');prompt.focus();notify('审查请求已放入输入框');});
+$('[aria-label="刷新上下文"]').addEventListener('click',()=>{renderSession();notify('上下文已刷新');});
+$('#panel-context .sect:nth-child(4) .btn').addEventListener('click',()=>ask('添加工程动作','<label for="actionName">名称</label><input id="actionName" class="field" value="Test"><label for="actionCommand" style="display:block;margin-top:16px">命令</label><input id="actionCommand" class="field" value="pnpm test">','添加',()=>{const name=$('#actionName').value.trim(),command=$('#actionCommand').value.trim();if(!name||!command)return false;const row=document.createElement('button');row.className='row';row.innerHTML=icon('tool')+`<span style="flex:1;text-align:left">${esc(name)}</span><span class="meta">运行</span>`;row.onclick=()=>detail(name,`<p>工程动作模拟输出</p><pre class="diff-preview">$ ${esc(command)}\n\nChecks passed.\nexit code: 0</pre>`);$('#panel-context .sect:nth-child(4) .panel-note').hidden=true;$('#panel-context .sect:nth-child(4)').append(row);}));
+
+/* Management center: matches the current five host categories. */
+const appearanceHTML=$('#settingsContent').innerHTML.replace(/<h3>新增工作区<\/h3>[\s\S]*/,'');
+function settingRow(title,description,control){return `<div class="setting"><div class="copy"><strong>${title}</strong><small>${description}</small></div>${control}</div>`;}
+function renderSettings(section=activeSetting) {
+ activeSetting=section;$$('.dlg-nav .row').forEach(b=>{if(b.textContent===section)b.setAttribute('aria-current','page');else b.removeAttribute('aria-current');});
+ const el=$('#settingsContent');
+ if(section==='外观')el.innerHTML=appearanceHTML;
+ if(section==='布局')el.innerHTML=`<h3>工作台布局</h3><p>保留会话和输入草稿，切换区域分配。</p><div class="layout-options">${[['standard','标准'],['focus','专注'],['review','审查']].map(([key,label])=>`<button class="layout-option" data-layout="${key}" aria-pressed="${layoutMode===key}"><span class="layout-mini"><i></i><i></i><i></i></span>${label}</button>`).join('')}</div><h3>辅助区域</h3>${settingRow('显示侧边栏','Git 与上下文在右侧显示。','<input class="switch" type="checkbox" role="switch" id="showAuxSetting" aria-label="显示侧边栏" '+($('#auxToggle').getAttribute('aria-pressed')==='true'?'checked':'')+'>')}<p style="margin-top:20px">快捷键：⌘ / Ctrl + \ 切换侧边栏。</p>`;
+ if(section==='工作区')el.innerHTML=`<h3>新增工作区</h3><p>偏好只作用于随后添加的示例工作区。</p>${settingRow('默认信任','已有工作区的信任状态保持不变。',`<input class="switch" type="checkbox" role="switch" id="defaultTrust" aria-label="新增工作区默认信任" ${defaultTrust?'checked':''}>`)}<h3>当前工作区</h3>${workspaces.map(w=>settingRow(esc(w.name),'~/Workspace/'+esc(w.name),`<span class="tag ${w.trusted?'ok':'warn'}">${w.trusted?'已信任':'未信任'}</span>`)).join('')}`;
+ if(section==='插件与能力')el.innerHTML=`<h3>已安装的插件</h3><p>以下为示例安装。现有会话始终保留其绑定与历史。</p>${['Codex','Pi','Cursor'].map((name,i)=>settingRow(name,i===2?'缺少运行依赖':'会话提供者 · 本地运行',i===2?'<span class="tag warn">不可用</span>':`<input class="switch" type="checkbox" role="switch" data-plugin="${i}" aria-label="启用 ${name}" ${pluginEnabled[i]?'checked':''}>`)).join('')}<h3>皮肤</h3>${settingRow('Material Design 3','主题、组件与工作台的外观预览','<span class="tag info">当前使用</span>')}<button class="btn outline" id="installPlugin" style="margin-top:16px">安装插件…</button>`;
+ if(section==='运行状态')el.innerHTML=`<h3>本地运行状态</h3><p>此页面使用示例数据，可安全探索不同交互状态。</p>${settingRow('工作台','界面与交互响应正常','<span class="tag ok">就绪</span>')}${settingRow('会话',`${workspaces.reduce((n,w)=>n+w.sessions.length,0)} 个会话 · ${workspaces.flatMap(w=>w.sessions).filter(s=>s.state==='running').length} 个运行中`,'<span class="tag">示例</span>')}${settingRow('原生服务','设计稿未连接宿主服务','<span class="tag">未连接</span>')}<button class="btn outline" id="showDiagnostics" style="margin-top:16px">查看诊断信息</button>`;
+ $$('input[name="theme"]',el).forEach(r=>{r.checked=r.value===document.body.dataset.theme;r.addEventListener('change',()=>setTheme(r.value));});
+}
+const pluginEnabled=[true,true];
+$('.dlg-nav').addEventListener('click',e=>{const b=e.target.closest('.row');if(b)renderSettings(b.textContent);});
+$$('[data-open-settings]').forEach(b=>b.addEventListener('click',()=>renderSettings('外观')));
+$('.sidebar-footer .row:first-child').addEventListener('click',e=>{settingsTrigger=e.currentTarget;renderSettings('插件与能力');$('#settings').showModal();});
+function setLayout(mode) {
+ layoutMode=mode;$('#grid').classList.toggle('focus-layout',mode==='focus');$('#grid').classList.toggle('review-layout',mode==='review');
+ if(mode!=='focus'){$('#grid').classList.remove('no-aux');$('#auxToggle').setAttribute('aria-pressed','true');}
+ if(mode==='review')$('#side-git').click();
+ $('[aria-label="专注会话"]').setAttribute('aria-pressed',mode==='focus');
+ if($('#settings').open)renderSettings('布局');
+}
+$('[aria-label="专注会话"]').addEventListener('click',()=>setLayout(layoutMode==='focus'?'standard':'focus'));
+$('#settingsContent').addEventListener('click',e=>{
+ const layout=e.target.closest('[data-layout]');if(layout)setLayout(layout.dataset.layout);
+ if(e.target.closest('#showDiagnostics'))detail('诊断信息','<pre class="diff-preview">presentation: material3-study\nrendering: native HTML + CSS\ndata source: in-memory fixtures\nnetwork: not connected\nlocal persistence: theme preference only</pre>');
+ const button=e.target.closest('button');if(button&&(button.textContent.includes('安装皮肤')||button.id==='installPlugin'))detail('安装插件','<p>正式应用支持从本地目录安装能力与皮肤插件。</p><p>设计稿仅展示管理入口，未连接安装服务。已安装插件可在列表中查看。</p>');
+});
+$('#settingsContent').addEventListener('change',e=>{
+ if(e.target.id==='defaultTrust')defaultTrust=e.target.checked;
+ if(e.target.id==='showAuxSetting'){$('#auxToggle').click();}
+ if(e.target.dataset.plugin!==undefined){const i=+e.target.dataset.plugin;pluginEnabled[i]=e.target.checked;const option=$$('#agentMenu .agent-option')[i];option.disabled=!e.target.checked;option.querySelector('small').textContent=e.target.checked?'本地 · 已就绪':'已停用';notify(e.target.checked?'示例插件已启用':'示例插件已停用，历史记录保留');}
+});
+let lastShift=0;
+document.addEventListener('keydown',e=>{
+ const mod=e.metaKey||e.ctrlKey;
+ if(mod&&e.key.toLowerCase()==='k'){e.preventDefault();if(!$$('dialog[open]').length)openSearch();}
+ if(mod&&e.key===','){e.preventDefault();if(!$$('dialog[open]').length)$('[data-open-settings]').click();}
+ if(mod&&e.key==='\\'){e.preventDefault();$('#auxToggle').click();}
+ if(e.key==='Shift'&&!/INPUT|TEXTAREA/.test(e.target.tagName)){const now=Date.now();if(now-lastShift<350&&!$$('dialog[open]').length)openSearch();lastShift=now;}
+ if($('#agentMenu').matches(':popover-open')&&/^[12]$/.test(e.key)){e.preventDefault();$$('#agentMenu .agent-option')[+e.key-1].click();}
+});
+// Ensure native tab activation and dialog focus behavior are available throughout.
+$('#view-chat').addEventListener('keydown',e=>{if(e.target.matches('.tool')&&['Enter',' '].includes(e.key)){e.preventDefault();e.target.click();}});
+const observer=new MutationObserver(()=>$$('.tool').forEach(t=>{t.tabIndex=0;t.setAttribute('role','button');t.setAttribute('aria-label','查看工具输出 '+t.querySelector('.target')?.textContent);}));
+observer.observe($('#view-chat'),{childList:true});
+renderNav();renderSession();renderGit();renderHistory();
+let theme='light';try{theme=localStorage.getItem('aibo-m3-study-theme')==='dark'?'dark':'light';}catch{}
+setTheme(theme);
+if(innerWidth>760&&innerWidth<=1000){$('#grid').classList.add('no-aux');$('#auxToggle').setAttribute('aria-pressed','false');}
+
+</script>
+</body>
+</html>
