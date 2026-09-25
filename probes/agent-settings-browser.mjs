@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { createServer } from 'vite';
 import { chromium } from 'playwright';
-const server=await createServer({server:{host:'127.0.0.1',port:0,hmr:false,watch:null}});
+const server=await createServer({server:{host:'127.0.0.1',port:0,strictPort:false,hmr:false,watch:null}});
 await server.listen();
 let browser;
 try {
@@ -10,13 +10,13 @@ try {
   const errors=[];page.on('pageerror',error=>errors.push(String(error)));
   await page.goto(`http://127.0.0.1:${server.httpServer.address().port}/probes/agent-settings.html`);
   await page.waitForFunction(()=>Boolean(window.mountSettingsProbe));
-  for(const kit of ['shadcn','material3']) {
+  for(const kit of ['ak-ui','material3']) {
     await page.evaluate(kit=>window.mountSettingsProbe(kit),kit);
     await page.getByLabel('名称',{exact:true}).fill('Custom');
     await page.getByLabel('附加指令',{exact:true}).fill('Keep it brief.');
     await page.getByLabel('附带摘要',{exact:true}).uncheck();
     await page.getByLabel('结果数量',{exact:true}).fill('25');
-    await page.getByLabel('回答长度',{exact:true}).selectOption('brief');
+    await page.getByRole('combobox',{name:'回答长度',exact:true}).click(); await page.getByRole('option').filter({hasText:'简短'}).click();
     await page.getByRole('button',{name:'保存设置',exact:true}).click();
     await page.getByRole('status').waitFor();
     assert.deepEqual(await page.evaluate(()=>window.settingsProbe.saves.at(-1).values),{text:'Custom',instructions:'Keep it brief.',enabled:false,limit:25,length:'brief'});

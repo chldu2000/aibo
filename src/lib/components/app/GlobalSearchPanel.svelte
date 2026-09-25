@@ -1,6 +1,6 @@
 <script lang="ts">
   import { onMount, tick } from 'svelte';
-  import { Button, Icon, Input } from '$lib/ui-kit';
+  import { Select, Button, Icon, Input } from '$lib/ui-kit';
   import { parseSearch, searchKinds, searchKindLabels, type SearchState, type SearchKind, type SearchResult } from '$lib/app/global-search';
   let { state: search, workspaces, onSearch, onActivate, onClose, preview, previewLoading, previewError, onBack, onOpenContext }: {
     state: SearchState; workspaces: { id: string; label: string }[];
@@ -90,10 +90,9 @@
         <Button variant="ghost" aria-pressed={parsed.kind === kind} onclick={() => selectKind(kind)}>{searchKindLabels[kind]}</Button>
       {/each}
     </div>
-    <select aria-label="搜索范围" value={search.workspaceId ?? ''} onchange={(event) => { onBack(); onSearch(search.query, search.kind, event.currentTarget.value || null); }}>
-      <option value="">全部工作区</option>
-      {#each workspaces as workspace}<option value={workspace.id}>{workspace.label}</option>{/each}
-    </select>
+    <Select aria-label="搜索范围" value={search.workspaceId ?? ''}
+      options={[{value:'',label:'全部工作区'}, ...workspaces.map(workspace => ({value:workspace.id,label:workspace.label}))]}
+      onSelect={value => { onBack(); onSearch(search.query, search.kind, value || null); }} />
   </div>
   {#if inPreview}
     <section class="global-search-preview" aria-label="搜索结果详情">

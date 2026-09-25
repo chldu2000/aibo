@@ -24,12 +24,12 @@
 
 /* Shared focus and control primitives. */
 
-.app-shell[data-ui-kit='ak-ui'] :is(button, input, select, textarea, summary):focus-visible {
+.app-shell[data-ui-kit='ak-ui'] :is(button, input, :is(select, .ui-select-trigger), textarea, summary):focus-visible {
   outline: var(--ak-focus-width) solid var(--aibo-focus);
   outline-offset: 2px;
 }
 
-.app-shell[data-ui-kit='ak-ui'] :is(button, input, textarea, select, [data-slot='card'], [data-slot='badge']) {
+.app-shell[data-ui-kit='ak-ui'] :is(button, input, textarea, :is(select, .ui-select-trigger), [data-slot='card'], [data-slot='badge']) {
   border-radius: var(--ak-radius-subtle);
 }
 
@@ -1679,7 +1679,7 @@
   line-height: 1.6;
 }
 
-.app-shell[data-ui-kit='ak-ui'] :is(.session-filter-select, .project-action-editor select) {
+.app-shell[data-ui-kit='ak-ui'] :is(.session-filter-select, .project-action-editor :is(select, .ui-select-trigger)) {
   min-height: var(--ak-density-control-height);
   font-size: var(--ak-type-label-size);
 }
@@ -1916,9 +1916,9 @@
 
 /* ak-ui form anatomy, adapted to the existing native and Svelte controls. */
 
-/* Keep select out of :is() so the arrow rule below can reserve its right padding. */
+/* Keep :is(select, .ui-select-trigger) out of :is() so the arrow rule below can reserve its right padding. */
 .app-shell[data-ui-kit='ak-ui'] :is([data-slot='input'], [data-slot='textarea']),
-.app-shell[data-ui-kit='ak-ui'] select {
+.app-shell[data-ui-kit='ak-ui'] :is(select, .ui-select-trigger) {
   min-height: var(--ak-density-control-height);
   border: var(--ak-line-hairline) solid var(--aibo-border);
   border-left: 4px solid var(--aibo-border-strong);
@@ -1931,35 +1931,35 @@
   caret-color: var(--aibo-focus);
 }
 
-.app-shell[data-ui-kit='ak-ui'] :is([data-slot='input'], [data-slot='textarea'], select)::placeholder {
+.app-shell[data-ui-kit='ak-ui'] :is([data-slot='input'], [data-slot='textarea'], :is(select, .ui-select-trigger))::placeholder {
   color: var(--aibo-muted);
   opacity: 1;
 }
 
-.app-shell[data-ui-kit='ak-ui'] :is([data-slot='input'], [data-slot='textarea'], select):hover:not(:disabled) {
+.app-shell[data-ui-kit='ak-ui'] :is([data-slot='input'], [data-slot='textarea'], :is(select, .ui-select-trigger)):hover:not(:disabled) {
   border-color: var(--aibo-border-strong);
 }
 
-.app-shell[data-ui-kit='ak-ui'] :is([data-slot='input'], [data-slot='textarea'], select):focus-visible {
+.app-shell[data-ui-kit='ak-ui'] :is([data-slot='input'], [data-slot='textarea'], :is(select, .ui-select-trigger)):focus-visible {
   border-color: var(--aibo-focus);
   outline: none;
   box-shadow: 0 0 0 3px color-mix(in srgb, var(--aibo-focus) 20%, transparent);
 }
 
-.app-shell[data-ui-kit='ak-ui'] :is([data-slot='input'], [data-slot='textarea'], select)[aria-invalid='true'] {
+.app-shell[data-ui-kit='ak-ui'] :is([data-slot='input'], [data-slot='textarea'], :is(select, .ui-select-trigger))[aria-invalid='true'] {
   border-color: var(--aibo-danger-border);
   border-left-color: var(--aibo-danger-border);
   box-shadow: inset 4px 0 var(--aibo-danger-border);
 }
 
-.app-shell[data-ui-kit='ak-ui'] :is([data-slot='input'], [data-slot='textarea'], select):disabled {
+.app-shell[data-ui-kit='ak-ui'] :is([data-slot='input'], [data-slot='textarea'], :is(select, .ui-select-trigger)):disabled {
   color: var(--aibo-muted);
   background-color: var(--aibo-surface-hover);
   opacity: .72;
   cursor: not-allowed;
 }
 
-.app-shell[data-ui-kit='ak-ui'] select {
+.app-shell[data-ui-kit='ak-ui'] :is(select, .ui-select-trigger) {
   appearance: none;
   padding-right: var(--ak-space-6);
   background-image: linear-gradient(45deg, transparent 50%, var(--aibo-text) 50%), linear-gradient(135deg, var(--aibo-text) 50%, transparent 50%);
@@ -1968,7 +1968,7 @@
   background-repeat: no-repeat;
 }
 
-.app-shell[data-ui-kit='ak-ui'] select option {
+.app-shell[data-ui-kit='ak-ui'] :is(select, .ui-select-trigger) option {
   color: var(--aibo-text);
   background: var(--ak-surface-raised);
 }
@@ -2090,7 +2090,7 @@
   height: 24px;
 }
 
-.app-shell[data-ui-kit='ak-ui'] .agent-settings-surface select {
+.app-shell[data-ui-kit='ak-ui'] .agent-settings-surface :is(select, .ui-select-trigger) {
   min-height: var(--ak-density-control-height);
   padding-inline: var(--ak-space-3) var(--ak-space-6);
   border-left: 4px solid var(--aibo-border-strong);
@@ -2690,3 +2690,12 @@
   padding: var(--ak-space-3) 0;
   font: var(--aibo-type-meta)/1.6 var(--ak-font-mono);
 }
+
+/* Skin-owned select trigger and top-layer option list. */
+.app-shell[data-ui-kit='ak-ui'] .ui-select-trigger { background-image: none; padding-right: 12px; text-align: left; font-family: inherit; cursor: pointer; }
+.app-shell[data-ui-kit='ak-ui'] .ui-select-popup { color: var(--aibo-text); background: var(--ak-surface-raised); border: 1px solid var(--aibo-border); border-radius: 0; box-shadow: 0 8px 24px color-mix(in srgb, var(--aibo-text) 18%, transparent); font: inherit; font-size: var(--aibo-type-ui); }
+.app-shell[data-ui-kit='ak-ui'] .ui-select-option { color: var(--aibo-text); background: transparent; border: 0; border-radius: 0; box-shadow: none; font: inherit; cursor: pointer; }
+.app-shell[data-ui-kit='ak-ui'] .ui-select-option:hover:not(:disabled), .app-shell[data-ui-kit='ak-ui'] .ui-select-option.is-active:not(:disabled) { background: var(--aibo-hover); }
+.app-shell[data-ui-kit='ak-ui'] .ui-select-option[aria-selected='true'] { color: var(--aibo-selected-ink); background: var(--aibo-selected); }
+.app-shell[data-ui-kit='ak-ui'] .ui-select-option.is-active { outline: 2px solid var(--aibo-focus); outline-offset: -2px; }
+.app-shell[data-ui-kit='ak-ui'] .ui-select-option:disabled { color: var(--aibo-muted); cursor: not-allowed; }

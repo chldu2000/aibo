@@ -177,7 +177,7 @@
 :where(.app-shell[data-ui-kit='ak-ui']) .artifact-preview pre { color: var(--aibo-muted); font: var(--aibo-type-meta, 12px)/1.45 var(--aibo-mono); }
 :where(.app-shell[data-ui-kit='ak-ui']) .project-actions-card { background: var(--aibo-bg); }
 :where(.app-shell[data-ui-kit='ak-ui']) .project-action-buttons [data-slot='button'] { font-size: var(--aibo-type-meta, 12px); }
-:where(.app-shell[data-ui-kit='ak-ui']) .project-action-editor select { border: 1px solid var(--aibo-border); border-radius: 6px; background: var(--aibo-surface); color: var(--aibo-text); font-size: var(--aibo-type-meta, 12px); }
+:where(.app-shell[data-ui-kit='ak-ui']) .project-action-editor :is(select, .ui-select-trigger) { border: 1px solid var(--aibo-border); border-radius: 6px; background: var(--aibo-surface); color: var(--aibo-text); font-size: var(--aibo-type-meta, 12px); }
 :where(.app-shell[data-ui-kit='ak-ui']) .project-action-editor textarea { font: var(--aibo-type-meta, 12px)/1.4 var(--aibo-mono); }
 :where(.app-shell[data-ui-kit='ak-ui']) .project-action-run { border-top: 1px solid var(--aibo-border); }
 :where(.app-shell[data-ui-kit='ak-ui']) .project-action-run small { color: var(--aibo-muted); font-size: var(--aibo-type-meta, 12px); }
@@ -359,7 +359,7 @@
 :where(.app-shell[data-ui-kit='ak-ui']) .global-search-toolbar { border-bottom: 1px solid var(--aibo-border); }
 :where(.app-shell[data-ui-kit='ak-ui']) .global-search-categories [data-slot='button'], :where(.app-shell[data-ui-kit='ak-ui']) .global-search-group-heading [data-slot='button'] { font-size: var(--aibo-type-meta, 12px); }
 :where(.app-shell[data-ui-kit='ak-ui']) .global-search-categories [aria-pressed='true'] { background: var(--aibo-surface-hover); color: var(--aibo-text); }
-:where(.app-shell[data-ui-kit='ak-ui']) .global-search select { color: var(--aibo-text); background: var(--aibo-surface); border: 1px solid var(--aibo-border); font: inherit; }
+:where(.app-shell[data-ui-kit='ak-ui']) .global-search :is(select, .ui-select-trigger) { color: var(--aibo-text); background: var(--aibo-surface); border: 1px solid var(--aibo-border); font: inherit; }
 :where(.app-shell[data-ui-kit='ak-ui']) .global-search-group-heading { color: var(--aibo-muted); background: var(--aibo-surface-muted, var(--aibo-surface)); font-size: var(--aibo-type-meta, 12px); }
 :where(.app-shell[data-ui-kit='ak-ui']) .global-search-result { border: 0; border-left: 3px solid transparent; border-radius: 0; background: transparent; color: var(--aibo-text); text-align: left; font: inherit; cursor: pointer; }
 :where(.app-shell[data-ui-kit='ak-ui']) .global-search-result:hover, :where(.app-shell[data-ui-kit='ak-ui']) .global-search-result[aria-selected='true'] { background: var(--aibo-surface-hover); }
@@ -369,7 +369,7 @@
 :where(.app-shell[data-ui-kit='ak-ui']) .global-search-copy small, :where(.app-shell[data-ui-kit='ak-ui']) .global-search-excerpt { color: var(--aibo-muted); font-size: var(--aibo-type-meta, 12px); }
 :where(.app-shell[data-ui-kit='ak-ui']) .global-search mark { color: inherit; background: color-mix(in srgb, var(--aibo-focus) 18%, transparent); }
 :where(.app-shell[data-ui-kit='ak-ui']) .global-search kbd { color: var(--aibo-muted); font-size: var(--aibo-type-meta, 12px); }
-:where(.app-shell[data-ui-kit='ak-ui']) .global-search :is(button,select,pre):focus-visible { outline: 2px solid var(--aibo-focus); outline-offset: -2px; }
+:where(.app-shell[data-ui-kit='ak-ui']) .global-search :is(button,:is(select, .ui-select-trigger),pre):focus-visible { outline: 2px solid var(--aibo-focus); outline-offset: -2px; }
 :where(.app-shell[data-ui-kit='ak-ui']) .global-search-empty { color: var(--aibo-muted); }
 :where(.app-shell[data-ui-kit='ak-ui']) .global-search-status { color: var(--aibo-muted); font-size: var(--aibo-type-meta, 12px); }
 :where(.app-shell[data-ui-kit='ak-ui']) .global-search-footer { border-top: 1px solid var(--aibo-border); color: var(--aibo-muted); font-size: var(--aibo-type-meta, 12px); }

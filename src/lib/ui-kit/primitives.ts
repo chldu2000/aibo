@@ -38,3 +38,5 @@ export { default as AttachmentList } from './runtime/AttachmentList.svelte';
 export { default as RepositorySelect } from './runtime/RepositorySelect.svelte';
 
 export { default as SessionControlMark } from './runtime/SessionControlMark.svelte';
+
+export { default as Select } from './runtime/Select.svelte';

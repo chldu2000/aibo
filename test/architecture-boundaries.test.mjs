@@ -343,7 +343,7 @@ test('context window selector stays in the UI kit beside the Fast action', async
   assert.match(contract, /ModelContextSelect: Component<UiModelContextSelectProps>/);
   for (const kit of ['ak-ui', 'material3']) {
     const source = await readFile(path.join(root, `src/lib/ui-kit/kits/shared/ModelContextSelect.svelte`), 'utf8');
-    assert.match(source, /<select/); assert.match(source, /disabled=\{disabled \|\| options.length === 0\}/);
+    assert.match(source, /<Select/); assert.match(source, /disabled=\{disabled \|\| options.length === 0\}/);
   }
 });
 
@@ -379,4 +379,13 @@ test('session control marks belong to the active kit and external skins and are 
       assert.equal(new Set(colors).size, 4);
     }
   }
+});
+
+
+test('application single-choice fields use the required skin-owned Select', async () => {
+  for (const name of await readdir(path.join(root, 'src/lib/components/app'))) {
+    if (name.endsWith('.svelte')) assert.doesNotMatch(await readFile(path.join(root, 'src/lib/components/app', name), 'utf8'), /<select\b/, name);
+  }
+  assert.match(await readFile(path.join(root, 'src/lib/ui-kit/contract.ts'), 'utf8'), /Select: Component<UiSelectProps>/);
+  assert.match(await readFile(path.join(root, 'src/lib/ui-kit/runtime/Select.svelte'), 'utf8'), /\$activeUiKit.Select/);
 });

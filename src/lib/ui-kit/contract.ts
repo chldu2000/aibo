@@ -86,6 +86,20 @@ export type UiRepositorySelectProps = {
   onSelect: (id: string | null) => void;
 };
 
+export type UiSelectProps = {
+  options: readonly { value: string; label: string; disabled?: boolean }[];
+  value: string;
+  placeholder?: string;
+  disabled?: boolean;
+  id?: string;
+  class?: string;
+  title?: string;
+  'aria-label'?: string;
+  'aria-labelledby'?: string;
+  'aria-describedby'?: string;
+  onSelect: (value: string) => void;
+};
+
 export type UiModelContextSelectProps = {
   options: readonly { id: string; label: string; description: string | null; tokens?: number | null }[];
   current: string | null;
@@ -205,6 +219,7 @@ export type UiSubagentDialogProps = {
  * from negotiated session capabilities, navigation canSyncSnapshot, and host-owned
  * executionProfile.sessionControls; Agent names select branding only. */
 export type UiKitAdapter = {
+  Select: Component<UiSelectProps>;
   FileChangeMark: Component<UiFileChangeMarkProps>;
   SubagentCard: Component<UiSubagentCardProps>;
   AttachmentList: Component<UiAttachmentListProps>;

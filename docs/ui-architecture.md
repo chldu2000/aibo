@@ -87,6 +87,20 @@ Material 3 提供经典蓝、森林绿与紫罗兰三组配色，每组包含浅
 迁移仅涉及旧外观存储，不改变外部包选择、工作区布局或会话数据。`VITE_AIBO_UI_KIT` 只查询内置注册表，
 不安装或加载外部皮肤。独立 shadcn / Material 3 呈现包仍通过包安装机制使用。
 
+### 单选下拉控件
+
+应用中的单选下拉通过必需的 `UiKitAdapter.Select` 使用统一语义接口：`options`、确认后的
+`value`、`disabled` 与 `onSelect`。选择只提交用户意图，异步确认前继续显示宿主提供的值。
+共享行为使用按钮 combobox 与 Popover 顶层 listbox，支持方向键、Home/End、文字定位、
+Enter/Space 确认、Escape 取消及 Tab 离开；滚动祖先或调整窗口时关闭，避免浮层脱离入口。
+触发器和选项的颜色、形状、选中及焦点样式分别由当前 kit 提供，页面不直接使用原生 `<select>`。
+
+外部视觉树沿用 `select` / `option` 及现有 change 动作合同，可信绘制桥将单选节点绘制为
+同类自定义菜单，保留语义 key、原始值、动作 token、revision 与真实用户事件校验。
+旧包通过现有主题令牌获得菜单的基础外观；独立 shadcn / Material 3 包从 0.3.2 提供
+`.ui-select-*` 样式，安装新版后使用包自己的菜单细节。
+多选节点继续保留原协议行为，本次未新增外部 controls surface。
+
 ### 内置 Material 3
 
 [Material 3 规范](design/material3-current-spec.md)以 [HTML 设计稿](design/material3-redesign.html)为视觉基准。
@@ -239,6 +253,7 @@ UI 实现变化需检查默认 ak-ui 浅/深主题，以及受影响外部包的
 
 | 变化 | 探针入口 |
 | --- | --- |
+| 单选下拉的主题、键盘、长列表与外部动作 | `probes/select-browser.mjs` |
 | 默认主题、响应式、密度与控件交互 | `probes/ak-ui-browser.mjs`、`probes/ak-ui-density-browser.mjs`、`probes/ak-ui-controls-browser.mjs` |
 | Composer 输入、引用、粘贴与附件 | `probes/composer-input-browser.mjs`、`probes/composer-paste-browser.mjs` |
 | 外部包继承、完整工作台与恢复 | `probes/presentation-app-browser.mjs`、`probes/presentation-full-skins-browser.mjs` |

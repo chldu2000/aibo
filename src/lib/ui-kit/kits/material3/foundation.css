@@ -176,7 +176,7 @@
 :where(.app-shell[data-ui-kit='material3']) .artifact-preview pre { color: var(--aibo-muted); font: var(--aibo-type-meta, 12px)/1.45 var(--aibo-mono); }
 :where(.app-shell[data-ui-kit='material3']) .project-actions-card { background: var(--aibo-bg); }
 :where(.app-shell[data-ui-kit='material3']) .project-action-buttons [data-slot='button'] { font-size: var(--aibo-type-meta, 12px); }
-:where(.app-shell[data-ui-kit='material3']) .project-action-editor select { border: 1px solid var(--aibo-border); border-radius: 6px; background: var(--aibo-surface); color: var(--aibo-text); font-size: var(--aibo-type-meta, 12px); }
+:where(.app-shell[data-ui-kit='material3']) .project-action-editor :is(select, .ui-select-trigger) { border: 1px solid var(--aibo-border); border-radius: 6px; background: var(--aibo-surface); color: var(--aibo-text); font-size: var(--aibo-type-meta, 12px); }
 :where(.app-shell[data-ui-kit='material3']) .project-action-editor textarea { font: var(--aibo-type-meta, 12px)/1.4 var(--aibo-mono); }
 :where(.app-shell[data-ui-kit='material3']) .project-action-run { border-top: 1px solid var(--aibo-border); }
 :where(.app-shell[data-ui-kit='material3']) .project-action-run small { color: var(--aibo-muted); font-size: var(--aibo-type-meta, 12px); }
@@ -358,7 +358,7 @@
 :where(.app-shell[data-ui-kit='material3']) .global-search-toolbar { border-bottom: 1px solid var(--aibo-border); }
 :where(.app-shell[data-ui-kit='material3']) .global-search-categories [data-slot='button'], :where(.app-shell[data-ui-kit='material3']) .global-search-group-heading [data-slot='button'] { font-size: var(--aibo-type-meta, 12px); }
 :where(.app-shell[data-ui-kit='material3']) .global-search-categories [aria-pressed='true'] { background: var(--aibo-surface-hover); color: var(--aibo-text); }
-:where(.app-shell[data-ui-kit='material3']) .global-search select { color: var(--aibo-text); background: var(--aibo-surface); border: 1px solid var(--aibo-border); font: inherit; }
+:where(.app-shell[data-ui-kit='material3']) .global-search :is(select, .ui-select-trigger) { color: var(--aibo-text); background: var(--aibo-surface); border: 1px solid var(--aibo-border); font: inherit; }
 :where(.app-shell[data-ui-kit='material3']) .global-search-group-heading { color: var(--aibo-muted); background: var(--aibo-surface-muted, var(--aibo-surface)); font-size: var(--aibo-type-meta, 12px); }
 :where(.app-shell[data-ui-kit='material3']) .global-search-result { border: 0; border-left: 3px solid transparent; border-radius: var(--md-sys-shape-corner-small); background: transparent; color: var(--aibo-text); text-align: left; font: inherit; cursor: pointer; }
 :where(.app-shell[data-ui-kit='material3']) .global-search-result:hover, :where(.app-shell[data-ui-kit='material3']) .global-search-result[aria-selected='true'] { background: var(--aibo-surface-hover); }
@@ -368,7 +368,7 @@
 :where(.app-shell[data-ui-kit='material3']) .global-search-copy small, :where(.app-shell[data-ui-kit='material3']) .global-search-excerpt { color: var(--aibo-muted); font-size: var(--aibo-type-meta, 12px); }
 :where(.app-shell[data-ui-kit='material3']) .global-search mark { color: inherit; background: color-mix(in srgb, var(--aibo-focus) 18%, transparent); }
 :where(.app-shell[data-ui-kit='material3']) .global-search kbd { color: var(--aibo-muted); font-size: var(--aibo-type-meta, 12px); }
-:where(.app-shell[data-ui-kit='material3']) .global-search :is(button,select,pre):focus-visible { outline: 2px solid var(--aibo-focus); outline-offset: -2px; }
+:where(.app-shell[data-ui-kit='material3']) .global-search :is(button,:is(select, .ui-select-trigger),pre):focus-visible { outline: 2px solid var(--aibo-focus); outline-offset: -2px; }
 :where(.app-shell[data-ui-kit='material3']) .global-search-empty { color: var(--aibo-muted); }
 :where(.app-shell[data-ui-kit='material3']) .global-search-status { color: var(--aibo-muted); font-size: var(--aibo-type-meta, 12px); }
 :where(.app-shell[data-ui-kit='material3']) .global-search-footer { border-top: 1px solid var(--aibo-border); color: var(--aibo-muted); font-size: var(--aibo-type-meta, 12px); }

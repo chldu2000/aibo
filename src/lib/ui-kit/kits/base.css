@@ -272,7 +272,7 @@ h1, h2, h3, p { margin: 0; }
 .project-action-buttons [data-slot='button'] { padding-inline: 5px; }
 .project-action-editor { display: grid; gap: 6px; margin-top: 8px; }
 .project-action-editor-row { display: grid; grid-template-columns: 82px minmax(0, 1fr); gap: 6px; }
-.project-action-editor select { min-width: 0; padding: 0 6px; }
+.project-action-editor :is(select, .ui-select-trigger) { min-width: 0; padding: 0 6px; }
 .project-action-editor textarea { min-height: 54px; resize: vertical; }
 .project-action-editor-actions { display: flex; justify-content: flex-end; gap: 5px; }
 .project-action-run { margin-top: 9px; padding-top: 8px; }
@@ -540,7 +540,7 @@ dd { max-width: 68%; overflow: hidden; margin: 0; text-overflow: ellipsis; white
 .global-search-toolbar { display: flex; flex-wrap: wrap; gap: 4px 12px; align-items: center; padding: 4px 12px 8px; }
 .global-search-categories { display: flex; flex-wrap: wrap; flex: 1; }
 .global-search-categories [data-slot='button'], .global-search-group-heading [data-slot='button'] { min-height: 32px; height: 32px; padding: 0 8px; }
-.global-search select { max-width: 180px; min-height: 32px; }
+.global-search :is(select, .ui-select-trigger) { max-width: 180px; min-height: 32px; }
 .global-search-results { min-height: 100px; overflow: auto; overscroll-behavior: contain; }
 .global-search-group-heading { display: flex; align-items: center; justify-content: space-between; min-height: 32px; padding: 4px 16px; }
 .global-search-result { display: flex; align-items: center; justify-content: space-between; gap: 12px; width: 100%; min-height: 52px; padding: 10px 16px; }
@@ -556,3 +556,15 @@ dd { max-width: 68%; overflow: hidden; margin: 0; text-overflow: ellipsis; white
 .global-search-preview-heading { display: flex; flex-wrap: wrap; justify-content: space-between; }
 .global-search-preview h2 { overflow-wrap: anywhere; }
 .global-search-preview pre { white-space: pre-wrap; overflow-wrap: anywhere; }
+
+/* Shared select layout; popovers stay in the themed subtree and enter the top layer. */
+.ui-select { display: inline-grid; min-width: 0; max-width: 100%; }
+.ui-select-trigger { display: flex; align-items: center; justify-content: space-between; gap: 12px; width: 100%; min-width: 0; }
+.ui-select-trigger > span:first-child { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ui-select-trigger > svg, .ui-select-check { flex: none; }
+.ui-select-popup { position: fixed; inset: auto; margin: 0; box-sizing: border-box; padding: 4px; overflow-y: auto; overscroll-behavior: contain; }
+.ui-select-option { display: flex; align-items: center; justify-content: space-between; gap: 12px; width: 100%; min-height: 36px; padding: 8px 12px; }
+.ui-select-option > span:first-child { overflow-wrap: anywhere; white-space: normal; text-align: left; }
+.ui-select-check { display: flex; width: 14px; }
+
+.ui-select-popup:not(:popover-open) { display: none; }

@@ -25,12 +25,12 @@
 
 
 
-.app-shell[data-ui-kit='material3'] :is(button, input, select, textarea, summary):focus-visible {
+.app-shell[data-ui-kit='material3'] :is(button, input, :is(select, .ui-select-trigger), textarea, summary):focus-visible {
   outline: var(--md-aibo-focus-width) solid var(--aibo-focus);
   outline-offset: 2px;
 }
 
-.app-shell[data-ui-kit='material3'] :is(button, input, textarea, select, [data-slot='card'], [data-slot='badge']) {
+.app-shell[data-ui-kit='material3'] :is(button, input, textarea, :is(select, .ui-select-trigger), [data-slot='card'], [data-slot='badge']) {
   border-radius: var(--md-sys-shape-corner-small);
 }
 
@@ -1670,7 +1670,7 @@
   line-height: 1.6;
 }
 
-.app-shell[data-ui-kit='material3'] :is(.session-filter-select, .project-action-editor select) {
+.app-shell[data-ui-kit='material3'] :is(.session-filter-select, .project-action-editor :is(select, .ui-select-trigger)) {
   min-height: var(--md-aibo-density-control-height);
   font-size: var(--md-aibo-type-label-size);
 }
@@ -1906,7 +1906,7 @@
 
 
 .app-shell[data-ui-kit='material3'] :is([data-slot='input'], [data-slot='textarea']),
-.app-shell[data-ui-kit='material3'] select {
+.app-shell[data-ui-kit='material3'] :is(select, .ui-select-trigger) {
   min-height: var(--md-aibo-density-control-height);
   border: var(--md-aibo-line-hairline) solid var(--aibo-border);
   border-radius: var(--md-sys-shape-corner-small);
@@ -1918,34 +1918,34 @@
   caret-color: var(--aibo-focus);
 }
 
-.app-shell[data-ui-kit='material3'] :is([data-slot='input'], [data-slot='textarea'], select)::placeholder {
+.app-shell[data-ui-kit='material3'] :is([data-slot='input'], [data-slot='textarea'], :is(select, .ui-select-trigger))::placeholder {
   color: var(--aibo-muted);
   opacity: 1;
 }
 
-.app-shell[data-ui-kit='material3'] :is([data-slot='input'], [data-slot='textarea'], select):hover:not(:disabled) {
+.app-shell[data-ui-kit='material3'] :is([data-slot='input'], [data-slot='textarea'], :is(select, .ui-select-trigger)):hover:not(:disabled) {
   border-color: var(--aibo-border-strong);
 }
 
-.app-shell[data-ui-kit='material3'] :is([data-slot='input'], [data-slot='textarea'], select):focus-visible {
+.app-shell[data-ui-kit='material3'] :is([data-slot='input'], [data-slot='textarea'], :is(select, .ui-select-trigger)):focus-visible {
   border-color: var(--aibo-focus);
   outline: none;
   box-shadow: 0 0 0 3px color-mix(in srgb, var(--aibo-focus) 20%, transparent);
 }
 
-.app-shell[data-ui-kit='material3'] :is([data-slot='input'], [data-slot='textarea'], select)[aria-invalid='true'] {
+.app-shell[data-ui-kit='material3'] :is([data-slot='input'], [data-slot='textarea'], :is(select, .ui-select-trigger))[aria-invalid='true'] {
   border-color: var(--aibo-danger-border);
   box-shadow: none;
 }
 
-.app-shell[data-ui-kit='material3'] :is([data-slot='input'], [data-slot='textarea'], select):disabled {
+.app-shell[data-ui-kit='material3'] :is([data-slot='input'], [data-slot='textarea'], :is(select, .ui-select-trigger)):disabled {
   color: var(--aibo-muted);
   background-color: var(--aibo-surface-hover);
   opacity: .72;
   cursor: not-allowed;
 }
 
-.app-shell[data-ui-kit='material3'] select {
+.app-shell[data-ui-kit='material3'] :is(select, .ui-select-trigger) {
   appearance: none;
   padding-right: var(--md-aibo-space-6);
   background-image: linear-gradient(45deg, transparent 50%, var(--aibo-text) 50%), linear-gradient(135deg, var(--aibo-text) 50%, transparent 50%);
@@ -1954,7 +1954,7 @@
   background-repeat: no-repeat;
 }
 
-.app-shell[data-ui-kit='material3'] select option {
+.app-shell[data-ui-kit='material3'] :is(select, .ui-select-trigger) option {
   color: var(--aibo-text);
   background: var(--md-aibo-surface-raised);
 }
@@ -2076,7 +2076,7 @@
   height: 24px;
 }
 
-.app-shell[data-ui-kit='material3'] .agent-settings-surface select {
+.app-shell[data-ui-kit='material3'] .agent-settings-surface :is(select, .ui-select-trigger) {
   min-height: var(--md-aibo-density-control-height);
   padding-inline: var(--md-aibo-space-3) var(--md-aibo-space-6);
   border-radius: var(--md-sys-shape-corner-small);
@@ -2694,7 +2694,7 @@
   background: var(--aibo-surface-hover);
 }
 .app-shell[data-ui-kit='material3'][data-color-scheme='dark'] { --aibo-selected-ink: var(--md-sys-color-on-secondary-container); }
-.app-shell[data-ui-kit='material3'] :is(button, input, select, textarea, summary):focus-visible { outline-offset: 2px; }
+.app-shell[data-ui-kit='material3'] :is(button, input, :is(select, .ui-select-trigger), textarea, summary):focus-visible { outline-offset: 2px; }
 .app-shell[data-ui-kit='material3'] .ui-button {
   border-radius: var(--md-sys-shape-corner-full);
   font-size: var(--aibo-type-ui);
@@ -2798,14 +2798,14 @@
   background: var(--md-sys-color-secondary-container);
   color: var(--md-sys-color-on-secondary-container);
 }
-.app-shell[data-ui-kit='material3'] :is([data-slot='input'], [data-slot='textarea'], select),
-.app-shell[data-ui-kit='material3'] .agent-settings-surface select {
+.app-shell[data-ui-kit='material3'] :is([data-slot='input'], [data-slot='textarea'], :is(select, .ui-select-trigger)),
+.app-shell[data-ui-kit='material3'] .agent-settings-surface :is(select, .ui-select-trigger) {
   border: 1px solid var(--md-sys-color-outline);
   border-radius: var(--md-sys-shape-corner-small);
   background-color: transparent;
 }
-.app-shell[data-ui-kit='material3'] :is([data-slot='input'], [data-slot='textarea'], select):focus-visible { box-shadow: 0 0 0 1px var(--aibo-focus); }
-.app-shell[data-ui-kit='material3'] :is([data-slot='input'], [data-slot='textarea'], select)[aria-invalid='true'] { box-shadow: 0 0 0 1px var(--aibo-danger-border); }
+.app-shell[data-ui-kit='material3'] :is([data-slot='input'], [data-slot='textarea'], :is(select, .ui-select-trigger)):focus-visible { box-shadow: 0 0 0 1px var(--aibo-focus); }
+.app-shell[data-ui-kit='material3'] :is([data-slot='input'], [data-slot='textarea'], :is(select, .ui-select-trigger))[aria-invalid='true'] { box-shadow: 0 0 0 1px var(--aibo-danger-border); }
 .app-shell[data-ui-kit='material3'] :is(.composer-textarea, .global-search-heading [data-slot='input'], .workspace-tool-panel [data-slot='input'], .repository-search input),
 .app-shell[data-ui-kit='material3'] :is(.composer-textarea, .global-search-heading [data-slot='input'], .workspace-tool-panel [data-slot='input'], .repository-search input):focus-visible { border: 0; outline: 0; box-shadow: none; background: transparent; }
 .app-shell[data-ui-kit='material3'] input[type='checkbox']:not([role='switch']) { border-radius: 4px; }
@@ -2907,3 +2907,12 @@
 .app-shell[data-ui-kit='material3'] .appearance-palette-option.active small { color: inherit; }
 .app-shell[data-ui-kit='material3'] :is(.appearance-mode-option, .appearance-palette-option).unavailable { opacity: .5; cursor: not-allowed; }
 .app-shell[data-ui-kit='material3'] :is(.appearance-mode-option, .appearance-palette-option) > input:disabled { cursor: not-allowed; }
+
+/* Skin-owned select trigger and top-layer option list. */
+.app-shell[data-ui-kit='material3'] .ui-select-trigger { background-image: none; padding-right: 12px; text-align: left; font-family: inherit; cursor: pointer; }
+.app-shell[data-ui-kit='material3'] .ui-select-popup { color: var(--aibo-text); background: var(--md-sys-color-surface-container-high); border: 1px solid var(--aibo-border); border-radius: 12px; box-shadow: 0 8px 24px color-mix(in srgb, var(--aibo-text) 18%, transparent); font: inherit; font-size: var(--aibo-type-ui); }
+.app-shell[data-ui-kit='material3'] .ui-select-option { color: var(--aibo-text); background: transparent; border: 0; border-radius: 12px; box-shadow: none; font: inherit; cursor: pointer; }
+.app-shell[data-ui-kit='material3'] .ui-select-option:hover:not(:disabled), .app-shell[data-ui-kit='material3'] .ui-select-option.is-active:not(:disabled) { background: var(--aibo-hover); }
+.app-shell[data-ui-kit='material3'] .ui-select-option[aria-selected='true'] { color: var(--aibo-selected-ink); background: var(--aibo-selected); }
+.app-shell[data-ui-kit='material3'] .ui-select-option.is-active { outline: 2px solid var(--aibo-focus); outline-offset: -2px; }
+.app-shell[data-ui-kit='material3'] .ui-select-option:disabled { color: var(--aibo-muted); cursor: not-allowed; }

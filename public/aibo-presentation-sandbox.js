@@ -4,6 +4,88 @@
   let port, worker, workerUrl, sequence = 0, current, timer, heartbeat, pongDeadline, assets = {}, themeKeys = [], disposed = false;
   const root = document.getElementById('root');
   let editSequence = 0, acceptedEdits = 0, localInputActions = [], allowInheritance = false;
+  // Single-choice fields use a skin-owned popup; the original node remains the
+  // value adapter for the existing, trusted host/local change handlers.
+  // Older packages still get a themed menu using their existing semantic tokens.
+  // Low-specificity defaults let each package own the final appearance.
+  const selectStyles = `
+    :where(.ui-select){display:inline-grid;min-width:0;max-width:100%}
+    :where(.ui-select-trigger){display:flex;align-items:center;justify-content:space-between;gap:12px;text-align:left;font:inherit;color:var(--foreground,var(--aibo-text));background:var(--background,var(--aibo-bg));border:1px solid var(--border,var(--aibo-border));border-radius:var(--radius,0);padding:8px}
+    :where(.ui-select-popup){padding:4px;overscroll-behavior:contain;font:inherit;color:var(--foreground,var(--aibo-text));background:var(--card,var(--aibo-surface));border:1px solid var(--border,var(--aibo-border));border-radius:var(--radius,0)}
+    :where(.ui-select-option){display:flex;justify-content:space-between;gap:12px;width:100%;min-height:36px;padding:8px 12px;text-align:left;white-space:normal;font:inherit;border:0;border-radius:var(--radius,0);color:inherit;background:transparent}
+    :where(.ui-select-option)[aria-selected=true]{color:var(--accent-foreground,var(--aibo-selected-ink));background:var(--accent,var(--aibo-selected))}
+    :where(.ui-select-option.is-active){outline:2px solid var(--ring,var(--aibo-focus));outline-offset:-2px}
+    .ui-select-popup[popover]:not(:popover-open){display:none}
+  `;
+  const selectAnchors = new WeakMap();
+  function selectControl(source, handlers) {
+    const wrapper=document.createElement('span'), trigger=document.createElement('button'), popup=document.createElement('div');
+    wrapper.className='ui-select'; trigger.className='ui-select-trigger'; popup.className='ui-select-popup';
+    for(const attr of source.attributes) if(attr.name!=='multiple') trigger.setAttribute(attr.name,attr.value);
+    trigger.classList.add('ui-select-trigger'); trigger.type='button'; trigger.setAttribute('role','combobox');
+    trigger.setAttribute('aria-haspopup','listbox'); trigger.setAttribute('aria-expanded','false');
+    popup.id='aibo-select-'+encodeURIComponent(source.dataset.presentationKey); popup.popover='auto'; popup.setAttribute('role','listbox');
+    for(const name of ['aria-label','aria-labelledby']) if(source.hasAttribute(name)) popup.setAttribute(name,source.getAttribute(name));
+    trigger.setAttribute('aria-controls',popup.id);
+    trigger.textContent=source.selectedOptions[0]?.textContent??'请选择';
+    const arrow=document.createElement('span');arrow.textContent='⌄';arrow.setAttribute('aria-hidden','true');trigger.append(arrow);
+    const options=[...source.options];let index=source.selectedIndex, query='', typedAt=0;
+    const close=()=>{if(popup.matches(':popover-open'))popup.hidePopover();trigger.setAttribute('aria-expanded','false');trigger.removeAttribute('aria-activedescendant');};
+    const paint=()=>{[...popup.children].forEach((item,i)=>item.classList.toggle('is-active',i===index));trigger.setAttribute('aria-activedescendant',popup.children[index]?.id??'');popup.children[index]?.scrollIntoView({block:'nearest'});};
+    const choose=(i,event)=>{
+      if(!event.isTrusted||!active||suspended||source.disabled||!options[i]||options[i].disabled)return;
+      close();trigger.focus();const previous=source.value;if(previous===options[i].value)return;source.value=options[i].value;
+      try {
+        for(const handler of handlers.input??[])handler(event);
+        for(const handler of handlers.change??[])handler(event);
+      } finally { source.value=previous; }
+    };
+    options.forEach((option,i)=>{
+      const button=document.createElement('button');button.type='button';button.className='ui-select-option';button.id=popup.id+'-'+i;button.tabIndex=-1;
+      button.setAttribute('role','option');button.setAttribute('aria-selected',String(option.selected));button.disabled=option.disabled;
+      const text=document.createElement('span');text.textContent=option.textContent;button.append(text);
+      const check=document.createElement('span');check.setAttribute('aria-hidden','true');check.textContent=option.selected?'✓':'';button.append(check);
+      button.addEventListener('pointerdown',event=>event.preventDefault());button.addEventListener('click',event=>{event.stopPropagation();choose(i,event);});popup.append(button);
+    });
+    const show=()=>{
+      if(source.disabled||!options.some(option=>!option.disabled))return;
+      query='';index=source.selectedIndex;if(index<0||options[index].disabled)index=options.findIndex(option=>!option.disabled);
+      popup.showPopover();const rect=trigger.getBoundingClientRect(),width=Math.min(Math.max(rect.width,180),innerWidth-16);
+      popup.style.width=width+'px';const height=Math.min(popup.scrollHeight,280,innerHeight-16);
+      Object.assign(popup.style,{position:'fixed',inset:'auto',margin:'0',boxSizing:'border-box',width:width+'px',maxHeight:height+'px',overflowY:'auto',left:Math.max(8,Math.min(rect.left,innerWidth-width-8))+'px',top:Math.max(8,rect.bottom+height+4<=innerHeight-8?rect.bottom+4:rect.top-height-4)+'px'});
+      selectAnchors.set(popup,rect);trigger.setAttribute('aria-expanded','true');paint();
+    };
+    trigger.addEventListener('click',event=>{if(!event.isTrusted)return;event.stopPropagation();popup.matches(':popover-open')?close():show();});
+    trigger.addEventListener('blur',close);
+    for(const event of ['click','keydown']) for(const handler of handlers[event]??[])trigger.addEventListener(event,handler);
+    trigger.addEventListener('keydown',event=>{
+      if(!event.isTrusted||source.disabled||event.isComposing||event.ctrlKey||event.metaKey)return;
+      const open=popup.matches(':popover-open');
+      if(event.key==='Tab'){close();return;}
+      if(event.key==='Escape'&&open){event.preventDefault();event.stopPropagation();close();return;}
+      const typingSpace=event.key===' '&&query&&Date.now()-typedAt<=700;
+      if(!typingSpace&&['Enter',' ','ArrowDown','ArrowUp','Home','End'].includes(event.key)){
+        event.preventDefault();event.stopPropagation();if(!open){show();return;}
+        if(event.key==='Enter'||event.key===' '){choose(index,event);return;}
+        const enabled=options.map((option,i)=>option.disabled?-1:i).filter(i=>i>=0),at=enabled.indexOf(index);
+        index=event.key==='Home'?enabled[0]:event.key==='End'?enabled.at(-1):enabled[(at+(event.key==='ArrowDown'?1:-1)+enabled.length)%enabled.length];paint();
+      }else if(event.key.length===1&&!event.altKey){
+        event.preventDefault();if(!open)show();query=Date.now()-typedAt>700?event.key:query+event.key;typedAt=Date.now();
+        const match=options.findIndex(option=>!option.disabled&&option.textContent.toLocaleLowerCase().startsWith(query.toLocaleLowerCase()));if(match>=0){index=match;paint();}
+      }
+    });
+    popup.addEventListener('toggle',event=>{if(event.newState==='closed')close();});
+    wrapper.append(trigger,popup);return {wrapper,trigger};
+  }
+  function dismissSelects(event) {
+    for(const popup of root.querySelectorAll('.ui-select-popup:popover-open')) {
+      if(event.target instanceof Node&&popup.contains(event.target))continue;
+      const anchor=selectAnchors.get(popup),rect=popup.previousElementSibling.getBoundingClientRect();
+      if(event.type==='resize'||!anchor||rect.top!==anchor.top||rect.left!==anchor.left)popup.hidePopover();
+    }
+  }
+  window.addEventListener('resize',dismissSelects);
+  window.addEventListener('scroll',dismissSelects,true);
   const edits = new Map();
   const suggestionStates=new Map(), completions=new Map();
   function bindSuggestions(entry,elements,clicks,interactive,context){
@@ -226,9 +308,11 @@
           send({type:'clipboard-images', context, token:value.events.input, files});
         });
       }
+      const selectHandlers = {};
+      const listen = (event, handler) => { element.addEventListener(event, handler); (selectHandlers[event] ??= []).push(handler); };
       if (value.events) for (const [event, id] of Object.entries(value.events)) {
         if (!eventNames.has(event) || typeof id !== 'string' || !id || id.length > 256) throw Error('invalid_presentation_event');
-        element.addEventListener(event, e => {
+        listen(event, e => {
           if (!e.isTrusted) return;
           if (event === 'click') e.stopPropagation();
           let edited;
@@ -244,7 +328,7 @@
       }
       if (value.localEvents) for (const [event, id] of Object.entries(value.localEvents)) {
         if (!eventNames.has(event) || typeof id !== 'string' || !id || id.length > 256 || value.events?.[event]) throw Error('invalid_local_presentation_event');
-        element.addEventListener(event, e => {
+        listen(event, e => {
           if (!e.isTrusted) return;
           e.stopPropagation();
           update(current, acceptedEdits, { id, event,
@@ -260,6 +344,9 @@
       if (value.children !== undefined) {
         if (!Array.isArray(value.children)) throw Error('invalid_presentation_children');
         for (const child of value.children) element.append(node(child, depth + 1));
+      }
+      if(value.tag==='select'&&!element.multiple){
+        const {wrapper,trigger}=selectControl(element,selectHandlers);elements.set(value.key,trigger);return wrapper;
       }
       return element;
     }
@@ -300,7 +387,7 @@
     localInputActions = packet.localInputActions;
     allowInheritance = packet.allowInheritance;
     const style = document.createElement('style');
-    style.textContent = 'html,body{margin:0;min-height:100%;}*{box-sizing:border-box;}' + packet.css;
+    style.textContent = 'html,body{margin:0;min-height:100%;}*{box-sizing:border-box;}' + selectStyles + packet.css;
     document.head.append(style);
     // Worker blob inherits this document's CSP: no network, imports or eval.
     const source = packet.source + '\n;self.onmessage = async ({data}) => { if(data.ping) { self.postMessage({pong:true}); return; } try { if(data.local) await self.aiboPresentation.handle(data.local,data.input); const tree = await self.aiboPresentation.render(data.input); self.postMessage({ticket:data.ticket,tree}); } catch(error) { self.postMessage({ticket:data.ticket,error:String(error)}); } };';

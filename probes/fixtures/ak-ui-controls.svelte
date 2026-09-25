@@ -1,6 +1,6 @@
 <script>
   import '../../src/app.css';
-  import { GoalBar, SubagentCard, SubagentDialog, ModelMatrix, ModelContextSelect, SettingsSection, Button, Badge, Input, Textarea } from '../../src/lib/ui-kit';
+  import { Select, GoalBar, SubagentCard, SubagentDialog, ModelMatrix, ModelContextSelect, SettingsSection, Button, Badge, Input, Textarea } from '../../src/lib/ui-kit';
   import akThemes from '../../src/lib/ui-kit/kits/ak-ui/themes.json';
   import materialThemes from '../../src/lib/ui-kit/kits/material3/themes.json';
   import { setUiKit } from '../../src/lib/ui-kit/registry';
@@ -11,6 +11,8 @@
   let busy = $state(false);
   let open = $state(false);
   let current = $state('normal');
+  let fieldValue = $state('first');
+  let longValue = $state('item-0');
   let selected = $state('');
   let selectedModel = $state('third-party/model');
   const expandedMatrix = new URLSearchParams(location.search).has('matrix');
@@ -40,7 +42,10 @@
       <label>校验错误<Input aria-label="校验错误" aria-invalid="true" aria-describedby="validation-message" /><small id="validation-message" role="alert">请输入名称</small></label>
       <label>不可编辑<Input aria-label="不可编辑" disabled value="已锁定" /></label>
       <label>多行输入<Textarea aria-label="多行输入" placeholder="输入说明" /></label>
-      <label>原生选择<select aria-label="原生选择"><option value="first">第一个选项</option><option value="second">第二个选项</option></select></label>
+      <label>皮肤选择<Select aria-label="皮肤选择" value={fieldValue} options={[{value:"first",label:"第一个选项"},{value:"second",label:"第二个选项"}]} onSelect={value => fieldValue=value} /></label>
+      {#if new URLSearchParams(location.search).has('select-cases')}
+        <label>长列表<Select aria-label="长列表" value={longValue} options={Array.from({length:40},(_,index)=>({value:`item-${index}`,label:`Item ${String(index).padStart(2,'0')}`,disabled:index===1}))} onSelect={value=>longValue=value} /></label>
+      {/if}
       <label class="choice"><input type="checkbox" bind:checked />复选选择</label>
       <label class="choice"><input type="checkbox" role="switch" aria-label="开关选择" bind:checked={switched} />开关选择</label>
       <div role="radiogroup" aria-label="单选选择">

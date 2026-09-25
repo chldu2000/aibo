@@ -45,41 +45,44 @@ try {
     await page.getByRole('heading', { name: '宿主操作确认', exact: true }).waitFor();
   };
   const select = label => page.getByRole('combobox', { name: `${label}确认策略`, exact: true });
+  const choose = async (label, text) => { await select(label).click(); await page.getByRole('option', {name:text,exact:true}).click(); };
   const labels = ['Git 操作', '工程动作', '恢复本轮变更', '插件能力写入', '插件视图写入'];
   await open();
-  for (const label of labels) assert.equal(await select(label).inputValue(), 'always-allow');
+  for (const label of labels) assert.equal((await select(label).innerText()).trim(), '始终允许');
   await page.screenshot({ path: '/tmp/aibo-host-confirmation/light.png' });
   for (const label of labels) {
-    await select(label).selectOption('ask');
-    await page.waitForFunction(() => !document.querySelector('select[aria-label="Git 操作确认策略"]').disabled);
-    assert.equal(await select(label).inputValue(), 'ask');
+    await choose(label, '每次询问');
+    await page.waitForFunction(() => !document.querySelector('button[aria-label="Git 操作确认策略"]').disabled);
+    assert.equal((await select(label).innerText()).trim(), '每次询问');
   }
   assert.equal(await page.getByRole('switch', { name: '新增工作区默认信任' }).isChecked(), true);
   await page.getByRole('button', { name: '关闭设置', exact: true }).click();
   await page.reload(); await open();
-  for (const label of labels) assert.equal(await select(label).inputValue(), 'ask');
+  for (const label of labels) assert.equal((await select(label).innerText()).trim(), '每次询问');
   await page.evaluate(() => { window.failConfirmationSave = true; });
-  await select('Git 操作').selectOption('always-allow');
+  await choose('Git 操作', '始终允许');
   await page.getByRole('alert').filter({ hasText: '保存确认设置失败' }).waitFor();
-  assert.equal(await select('Git 操作').inputValue(), 'ask');
+  assert.equal((await select('Git 操作').innerText()).trim(), '每次询问');
   await page.evaluate(() => { window.failConfirmationSave = false; });
-  await select('Git 操作').selectOption('always-allow');
+  await choose('Git 操作', '始终允许');
   await page.waitForFunction(() => JSON.parse(localStorage.getItem('probe.confirmations')).git === 'always-allow');
-  assert.equal(await select('工程动作').inputValue(), 'ask');
+  assert.equal((await select('工程动作').innerText()).trim(), '每次询问');
   await page.getByRole('button', { name: '关闭设置', exact: true }).click();
   await page.evaluate(() => { window.failConfirmationRead = true; }); await open();
   await page.getByRole('alert').filter({ hasText: '读取确认设置失败' }).waitFor();
   for (const label of labels) assert(await select(label).isDisabled());
   await page.evaluate(() => { window.failConfirmationRead = false; });
   await page.getByRole('button', { name: '重新读取确认设置', exact: true }).click();
-  await page.waitForFunction(() => !document.querySelector('select[aria-label="Git 操作确认策略"]').disabled);
+  await page.waitForFunction(() => !document.querySelector('button[aria-label="Git 操作确认策略"]').disabled);
   await page.getByRole('tab', { name: '外观', exact: true }).click();
   await page.locator('.appearance-theme-option').filter({ hasText: '深色' }).click();
   await page.getByRole('tab', { name: '工作区', exact: true }).click();
   await page.screenshot({ path: '/tmp/aibo-host-confirmation/dark.png' });
-  // macOS headless Chromium does not commit native popup choices from key events,
-  // even for an isolated plain select. Verify keyboard reachability here;
-  // selection/persistence is exercised above through Playwright's selectOption.
+  // Arrow navigation commits through the same save callback; Escape only dismisses the popup.
+  await select('Git 操作').focus(); await page.keyboard.press('Space'); await page.keyboard.press('End'); await page.keyboard.press('Enter');
+  await page.waitForFunction(() => JSON.parse(localStorage.getItem('probe.confirmations')).git === 'ask');
+  await select('Git 操作').focus(); await page.keyboard.press('Space'); await page.keyboard.press('Escape');
+  assert(await page.getByRole('dialog').isVisible());
   await select('Git 操作').focus(); await page.keyboard.press('Tab');
   assert.equal(await select('工程动作').evaluate(element => document.activeElement === element), true);
   await page.setViewportSize({ width: 390, height: 844 });

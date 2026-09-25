@@ -3,7 +3,7 @@ import { createServer } from 'vite';
 import { chromium } from 'playwright';
 import { buildPresentationSkins } from './lib/build-presentation-skins.mjs';
 const built = await buildPresentationSkins();
-const server = await createServer({server:{host:'127.0.0.1',port:0,hmr:false,watch:null}}); await server.listen();
+const server = await createServer({server:{host:'127.0.0.1',port:0,strictPort:false,hmr:false,watch:null}}); await server.listen();
 const browser = await chromium.launch({headless:true});
 try {
   for (const [theme,pkg] of [['light',null],['dark',null],['light',built.packages[0]],['dark',built.packages[1]]]) {
@@ -92,11 +92,11 @@ try {
     await input.fill('slow');await page.waitForTimeout(160);await input.fill('正文');
     await dialog.getByRole('option').filter({hasText:'中文连续正文'}).waitFor();await page.waitForTimeout(550);
     assert.equal(await dialog.getByRole('option').filter({hasText:'中文连续正文'}).count(),1);
-    await dialog.getByRole('combobox',{name:'搜索范围'}).selectOption('w2');
+    await dialog.getByRole('combobox',{name:'搜索范围'}).focus(); await page.keyboard.press('End'); await page.keyboard.press('End'); await page.keyboard.press('Enter');
     await page.waitForFunction(()=>window.searchCalls.some(call=>call.command==='search_global'&&call.args.request.workspaceId==='w2'));
     await input.focus();await page.keyboard.press('Tab');
     await page.waitForFunction(()=>window.searchCalls.some(call=>call.command==='search_global'&&call.args.request.workspaceId==='w2'&&call.args.request.kind==='workspace'&&call.args.request.query==='正文'));
-    assert.equal(await dialog.getByRole('combobox',{name:'搜索范围'}).inputValue(),'w2');
+    assert.equal((await dialog.getByRole('combobox',{name:'搜索范围'}).innerText()).trim(),'其他工程');
     await page.keyboard.press('Shift+Tab');assert.equal(await selectedKind(),'全部');
     await page.screenshot({path:`/tmp/aibo-search-${theme}-${pkg?.release.manifest.id??'builtin'}.png`});
     await page.setViewportSize({width:680,height:740});

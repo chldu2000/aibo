@@ -38,7 +38,7 @@ try {
     assert.equal(focused.borderLeftWidth,'1px');
     assert.equal(focused.borderTopColor,theme==='light'?'rgb(36, 94, 167)':'rgb(167, 200, 255)');
     assert.doesNotMatch(focused.boxShadow,/inset/);
-    await page.getByRole('combobox',{name:'模型上下文大小'}).selectOption('large');
+    await page.getByRole('combobox',{name:'模型上下文大小'}).click(); await page.getByRole('option',{name:'扩展',exact:true}).click();
     assert.equal(await page.getByLabel('操作结果').textContent(),'large');
     await page.getByRole('button',{name:'第三方模型，高',exact:true}).click();
     assert.equal(await page.getByRole('button',{name:'第三方模型，高',exact:true}).getAttribute('aria-pressed'),'true');

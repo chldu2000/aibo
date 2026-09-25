@@ -1,4 +1,5 @@
 <script lang="ts">
+  import Select from '../../runtime/Select.svelte';
   import Button from '../../runtime/Button.svelte';
   import Input from '../../runtime/Input.svelte';
   import Textarea from '../../runtime/Textarea.svelte';
@@ -18,9 +19,8 @@
       {#if field.type === 'boolean'}
         <input id={`${id}-${field.key}`} type="checkbox" checked={value === true} disabled={busy} aria-describedby={field.description ? `${id}-${field.key}-help` : undefined} onchange={(event) => onChange(field.key, event.currentTarget.checked)} />
       {:else if field.type === 'select'}
-        <select id={`${id}-${field.key}`} value={String(value)} disabled={busy} aria-describedby={field.description ? `${id}-${field.key}-help` : undefined} onchange={(event) => onChange(field.key, event.currentTarget.value)}>
-          {#each field.options ?? [] as option (option.value)}<option value={option.value}>{option.label}</option>{/each}
-        </select>
+        <Select id={`${id}-${field.key}`} value={String(value)} disabled={busy} aria-label={field.label} aria-describedby={field.description ? `${id}-${field.key}-help` : undefined}
+          options={field.options ?? []} onSelect={value => onChange(field.key, value)} />
       {:else if field.type === 'multiline'}
         <Textarea id={`${id}-${field.key}`} value={String(value)} rows={5} disabled={busy} aria-describedby={field.description ? `${id}-${field.key}-help` : undefined} oninput={(event: Event) => onChange(field.key, (event.currentTarget as HTMLTextAreaElement).value)} />
       {:else}

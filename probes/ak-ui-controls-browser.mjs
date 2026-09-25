@@ -12,7 +12,7 @@ try {
  await page.getByRole('button',{name:'暂停目标',exact:true}).click();assert.equal(await page.getByLabel('操作结果').textContent(),'pause');
  await page.getByRole('button',{name:'展开目标',exact:true}).click();assert.equal(await page.locator('.goal-copy').evaluate(e=>getComputedStyle(e.querySelector('p')).whiteSpace),'normal');
  await page.getByRole('button',{name:'查看 第三方子 Agent 的工作过程',exact:true}).click();await page.getByRole('dialog').waitFor();await page.keyboard.press('Escape');await page.getByRole('dialog').waitFor({state:'hidden'});
- await page.getByRole('combobox',{name:'模型上下文大小'}).selectOption('large');assert.equal(await page.getByLabel('操作结果').textContent(),'large');
+ await page.getByRole('combobox',{name:'模型上下文大小'}).click(); await page.getByRole('option',{name:'扩展',exact:true}).click();assert.equal(await page.getByLabel('操作结果').textContent(),'large');
  await page.getByRole('button',{name:'第三方模型，高',exact:true}).click();assert.equal(await page.getByRole('button',{name:'第三方模型，高',exact:true}).getAttribute('aria-pressed'),'true');
  assert(await page.getByRole('button',{name:'第三方模型，最高',exact:true}).isDisabled());
  await page.getByRole('button',{name:'快速',exact:true}).focus();await page.keyboard.press('Space');assert.equal(await page.getByLabel('操作结果').textContent(),'fast');
@@ -21,8 +21,8 @@ try {
  assert.equal(await field.evaluate(e=>getComputedStyle(e).borderTopLeftRadius),'0px');
  assert.equal(await field.evaluate(e=>getComputedStyle(e).borderLeftWidth),'4px');
  await field.fill('新的名称');assert.equal(await field.inputValue(),'新的名称');
- await page.getByRole('combobox',{name:'原生选择'}).selectOption('second');
- assert.equal(await page.getByRole('combobox',{name:'原生选择'}).inputValue(),'second');
+ await page.getByRole('combobox',{name:'皮肤选择'}).click(); await page.getByRole('option',{name:'第二个选项',exact:true}).click();
+ assert.equal((await page.getByRole('combobox',{name:'皮肤选择'}).innerText()).trim(),'第二个选项');
  await page.getByRole('checkbox',{name:'复选选择'}).check();
  assert(await page.getByRole('checkbox',{name:'复选选择'}).isChecked());
  await page.getByRole('switch',{name:'开关选择'}).check();
@@ -50,5 +50,5 @@ try {
  }
  await page.getByRole('button',{name:'切换忙碌'}).click();assert(await page.getByRole('combobox',{name:'模型上下文大小'}).isDisabled());assert(await page.getByRole('button',{name:'暂停目标',exact:true}).isDisabled());assert(await page.getByRole('button',{name:'第三方模型，高',exact:true}).isDisabled());
  await page.setViewportSize({width:390,height:844});assert((await page.locator('.goal-copy').boundingBox()).width >= 220, 'narrow goal text gets a full readable column');assert(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth));await page.screenshot({path:'/tmp/aibo-ak-controls/narrow.png'});
- assert.deepEqual(errors,[]);console.log('PASS: ak-ui controls and forms retain actions, native selection, disabled/error/focus states, 44px targets and small geometry in both themes and narrow viewport.');
+ assert.deepEqual(errors,[]);console.log('PASS: ak-ui controls and forms retain actions, skin-owned selection, disabled/error/focus states, 44px targets and small geometry in both themes and narrow viewport.');
 } catch(error) {console.error(JSON.stringify({errors}));await page.screenshot({path:'/tmp/aibo-ak-controls/failure.png'});throw error;} finally {await browser.close();await server.close()}

@@ -1,3 +1,4 @@
+import Select from './shared/Select.svelte';
 import SessionControlMark from './shared/SessionControlMark.svelte';
 import RepositorySelect from './shared/RepositorySelect.svelte';
 import AttachmentList from './shared/AttachmentList.svelte';
@@ -33,6 +34,7 @@ import type { UiKitAdapter } from '../contract';
 
 // Stable component identities preserve drafts, focus, dialogs and menu state.
 export const sharedControls: Omit<UiKitAdapter, 'Icon' | 'AgentStatusMark'> = {
+  Select,
   FileChangeMark,
   SubagentDialog,
   SubagentCard,

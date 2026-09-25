@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { Badge, Button, Card, CardContent, CardHeader, CardTitle, Input, Textarea } from '$lib/ui-kit';
+  import { Select, Badge, Button, Card, CardContent, CardHeader, CardTitle, Input, Textarea } from '$lib/ui-kit';
   import type { ProjectAction, ProjectActionRun, Workspace } from '$lib/types';
 
   type ProjectActionsPanelProps = {
@@ -66,9 +66,8 @@
         <form class="project-action-editor" onsubmit={(event) => { event.preventDefault(); void onSaveProjectEditor(); }}>
           <Input disabled={editor.saving} bind:value={() => editor.name, (value) => onProjectField('name', value)} placeholder="动作名称，如 Test" aria-label="动作名称" maxlength="80" />
           <div class="project-action-editor-row">
-            <select disabled={editor.saving} bind:value={() => editor.kind, (value) => onProjectField('kind', value)} aria-label="动作类型">
-              <option value="test">Test</option><option value="lint">Lint</option><option value="build">Build</option><option value="custom">Custom</option>
-            </select>
+            <Select disabled={editor.saving} value={editor.kind} onSelect={value => onProjectField('kind', value)} aria-label="动作类型"
+              options={[{value:'test',label:'Test'},{value:'lint',label:'Lint'},{value:'build',label:'Build'},{value:'custom',label:'Custom'}]} />
             <Input disabled={editor.saving} bind:value={() => editor.program, (value) => onProjectField('program', value)} placeholder="程序，如 pnpm" aria-label="动作程序" maxlength="255" />
           </div>
           <Textarea disabled={editor.saving} bind:value={() => editor.args, (value) => onProjectField('args', value)} rows="3" placeholder="参数：每行一个 argv，如 run\ntest；也可填写 JSON 数组" aria-label="动作参数"></Textarea>

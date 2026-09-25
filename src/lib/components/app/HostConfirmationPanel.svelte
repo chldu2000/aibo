@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { Button } from '$lib/ui-kit';
+  import { Select, Button } from '$lib/ui-kit';
   import { hostConfirmationCategories, type HostConfirmationState, type HostConfirmationCategory, type HostConfirmationPolicy } from '$lib/app/host-confirmation-controller';
   let { state, desktop, onChange, onReload }: {
     state: HostConfirmationState;
@@ -14,17 +14,11 @@
   {#each hostConfirmationCategories as category (category.id)}
     <label class="workspace-preference-option">
       <span><strong>{category.label}</strong><small id={`host-confirmation-${category.id}-description`}>{category.description}</small></span>
-      <select aria-label={`${category.label}确认策略`} aria-describedby={`host-confirmation-${category.id}-description`}
+      <Select aria-label={`${category.label}确认策略`} aria-describedby={`host-confirmation-${category.id}-description`}
         value={state.value?.[category.id] ?? ''} disabled={!desktop || !state.value || state.loading || state.saving}
-        onchange={event => {
-          const policy = event.currentTarget.value;
-          event.currentTarget.value = state.value?.[category.id] ?? '';
-          if (policy === 'always-allow' || policy === 'ask') onChange(category.id, policy);
-        }}>
-        {#if !state.value}<option value="">{desktop ? '未读取' : '桌面应用可用'}</option>{/if}
-        <option value="always-allow">始终允许</option>
-        <option value="ask">每次询问</option>
-      </select>
+        placeholder={desktop ? '未读取' : '桌面应用可用'}
+        options={[{value:'always-allow',label:'始终允许'},{value:'ask',label:'每次询问'}]}
+        onSelect={policy => { if (policy === 'always-allow' || policy === 'ask') onChange(category.id, policy); }} />
     </label>
   {/each}
   {#if !desktop}<p class="workspace-preference-status">请在桌面应用中调整此设置。</p>

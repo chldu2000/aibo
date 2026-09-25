@@ -34,3 +34,8 @@ button{border-radius:9999px;border-color:transparent;padding:10px 20px}.collecti
 .message-attachment { display:inline-flex; flex-direction:column; max-width:200px; margin:4px; padding:8px; border:1px solid currentColor; border-radius:8px; vertical-align:top; }
 .message-attachment img { width:160px; height:112px; object-fit:contain; }
 .message-attachment p { margin:4px 0 0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font-size:12px; }
+
+.ui-select{display:inline-grid;min-width:0;max-width:100%}.ui-select-trigger{display:flex;justify-content:space-between;align-items:center;gap:12px;text-align:left}.ui-select-popup{padding:4px;overscroll-behavior:contain}.ui-select-option{display:flex;justify-content:space-between;gap:12px;width:100%;min-height:36px;text-align:left}.ui-select-option span:first-child{overflow-wrap:anywhere}
+.ui-select-popup{color:var(--foreground);background:var(--card);border:1px solid var(--border);border-radius:var(--radius);box-shadow:0 8px 24px color-mix(in srgb,var(--foreground) 18%,transparent)}.ui-select-option{border:0;border-radius:var(--radius);background:transparent;color:var(--foreground)}.ui-select-option:hover:not(:disabled),.ui-select-option.is-active{background:var(--accent);color:var(--accent-foreground)}.ui-select-option[aria-selected=true]{background:var(--primary);color:var(--primary-foreground)}.ui-select-option.is-active{outline:2px solid var(--ring);outline-offset:-2px}
+
+.ui-select-popup:not(:popover-open) { display: none; }

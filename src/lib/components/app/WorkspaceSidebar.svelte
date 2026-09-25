@@ -1,6 +1,6 @@
 <script lang="ts">
   import { tick, type Snippet } from 'svelte';
-  import { AgentStatusMark, Button, Card, CardHeader, CardTitle, Icon, Input, Separator } from '$lib/ui-kit';
+  import { Select, AgentStatusMark, Button, Card, CardHeader, CardTitle, Icon, Input, Separator } from '$lib/ui-kit';
   import type { SessionFilter } from '$lib/types';
   import { relativeTimeLabel, sessionStateLabel, sessionStatusTone, isSessionRunning } from './session-utils';
   import type { SessionListItem, WorkspaceListItem } from './view-types';
@@ -246,22 +246,9 @@
       }}
     >
       {#if sessionFilterOpen}
-        <select
-          class="session-filter-select"
-          bind:value={sessionFilter}
-          aria-label="会话状态筛选"
-          onchange={onApplyFilters}
-        >
-          <option value="active">活动</option>
-          <option value="all">全部</option>
-          <option value="archived">已归档</option>
-          <option value="running">运行中</option>
-          <option value="waiting_approval">待审批</option>
-          <option value="idle">空闲</option>
-          <option value="interrupted">已中断</option>
-          <option value="failed">失败</option>
-          <option value="closed">已关闭</option>
-        </select>
+        <Select class="session-filter-select" aria-label="会话状态筛选" value={sessionFilter}
+          options={[{value:'active',label:'活动'},{value:'all',label:'全部'},{value:'archived',label:'已归档'},{value:'running',label:'运行中'},{value:'waiting_approval',label:'待审批'},{value:'idle',label:'空闲'},{value:'interrupted',label:'已中断'},{value:'failed',label:'失败'},{value:'closed',label:'已关闭'}]}
+          onSelect={value => { sessionFilter = value as typeof sessionFilter; onApplyFilters(); }} />
       {/if}
       <Button variant="ghost" size="icon" type="submit" aria-label="应用会话筛选" disabled={!selectedWorkspaceId}>
         <Icon name="filter" size={14} />

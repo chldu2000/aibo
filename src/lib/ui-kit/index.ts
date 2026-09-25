@@ -13,6 +13,7 @@ export type {
   UiFileChangeMarkProps,
   UiAgentSettingsFormProps,
   UiButtonVariant,
+  UiSelectProps,
   UiColumnSplitterProps,
   UiIconName,
   UiHostPanelProps,

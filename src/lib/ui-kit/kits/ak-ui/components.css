@@ -16,9 +16,9 @@
 /* ModelContextSelect */
 
   .app-shell[data-ui-kit='ak-ui'] .context-window-select { display: inline-flex; align-items: center; gap: 0.4rem; font-size: 0.75rem; white-space: nowrap; }
-  .app-shell[data-ui-kit='ak-ui'] :where(.context-window-select) select { max-width: 10rem; min-height: var(--ak-density-control-height); padding: 0.25rem 0.5rem; border: 1px solid var(--border); border-radius: var(--ak-radius-subtle); background: var(--background); color: var(--foreground); font: inherit; }
-  .app-shell[data-ui-kit='ak-ui'] :where(.context-window-select) select:focus-visible { outline: 2px solid var(--ring); outline-offset: 2px; }
-  .app-shell[data-ui-kit='ak-ui'] :where(.context-window-select) select:disabled { opacity: 0.5; cursor: not-allowed; }
+  .app-shell[data-ui-kit='ak-ui'] :where(.context-window-select) :is(select, .ui-select-trigger) { max-width: 10rem; min-height: var(--ak-density-control-height); padding: 0.25rem 0.5rem; border: 1px solid var(--border); border-radius: var(--ak-radius-subtle); background: var(--background); color: var(--foreground); font: inherit; }
+  .app-shell[data-ui-kit='ak-ui'] :where(.context-window-select) :is(select, .ui-select-trigger):focus-visible { outline: 2px solid var(--ring); outline-offset: 2px; }
+  .app-shell[data-ui-kit='ak-ui'] :where(.context-window-select) :is(select, .ui-select-trigger):disabled { opacity: 0.5; cursor: not-allowed; }
 
 
 /* ModelMatrix */
@@ -140,9 +140,9 @@
   .app-shell[data-ui-kit='ak-ui'] .agent-settings-surface p, .app-shell[data-ui-kit='ak-ui'] .agent-settings-surface small { margin: .25rem 0; color: var(--aibo-subtle); font-size: .8rem; line-height: 1.5; }
   .app-shell[data-ui-kit='ak-ui'] .agent-settings-surface .agent-settings-field { display: flex; flex-direction: column; gap: .4rem; }
   .app-shell[data-ui-kit='ak-ui'] .agent-settings-surface footer, .app-shell[data-ui-kit='ak-ui'] .agent-settings-surface .agent-settings-inheritance { display: flex; flex-wrap: wrap; align-items: center; gap: .5rem; }
-  .app-shell[data-ui-kit='ak-ui'] .agent-settings-surface select { padding: .6rem; border: 1px solid var(--aibo-border); border-radius: var(--ak-radius-subtle); background: var(--aibo-bg); color: var(--aibo-text); font: inherit; }
+  .app-shell[data-ui-kit='ak-ui'] .agent-settings-surface :is(select, .ui-select-trigger) { padding: .6rem; border: 1px solid var(--aibo-border); border-radius: var(--ak-radius-subtle); background: var(--aibo-bg); color: var(--aibo-text); font: inherit; }
   .app-shell[data-ui-kit='ak-ui'] .agent-settings-surface input[type="checkbox"] { width: 1.2rem; height: 1.2rem; accent-color: var(--aibo-accent); }
-  .app-shell[data-ui-kit='ak-ui'] .agent-settings-surface select:focus-visible, .app-shell[data-ui-kit='ak-ui'] .agent-settings-surface input:focus-visible { outline: 2px solid var(--aibo-focus); outline-offset: 2px; }
+  .app-shell[data-ui-kit='ak-ui'] .agent-settings-surface :is(select, .ui-select-trigger):focus-visible, .app-shell[data-ui-kit='ak-ui'] .agent-settings-surface input:focus-visible { outline: 2px solid var(--aibo-focus); outline-offset: 2px; }
   .app-shell[data-ui-kit='ak-ui'] .agent-settings-surface [role="alert"] { color: var(--aibo-danger-text); }
 
 
