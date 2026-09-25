@@ -1973,19 +1973,19 @@
 
 /* Search and composer fields sit inside their own bordered surfaces. */
 
-.app-shell[data-ui-kit='ak-ui'] :is(.composer-textarea, .command-palette-search [data-slot='input'], .workspace-tool-panel [data-slot='input'], .repository-search input) {
+.app-shell[data-ui-kit='ak-ui'] :is(.composer-textarea, .global-search-heading [data-slot='input'], .workspace-tool-panel [data-slot='input'], .repository-search input) {
   border: 0;
   background: transparent;
   box-shadow: none;
 }
 
-.app-shell[data-ui-kit='ak-ui'] :is(.composer-textarea, .command-palette-search [data-slot='input'], .workspace-tool-panel [data-slot='input'], .repository-search input):focus-visible {
+.app-shell[data-ui-kit='ak-ui'] :is(.composer-textarea, .global-search-heading [data-slot='input'], .workspace-tool-panel [data-slot='input'], .repository-search input):focus-visible {
   border: 0;
   outline: none;
   box-shadow: none;
 }
 
-.app-shell[data-ui-kit='ak-ui'] :is(.composer, .command-palette-search, .workspace-tool-panel, .repository-search):focus-within {
+.app-shell[data-ui-kit='ak-ui'] :is(.composer, .global-search-heading, .workspace-tool-panel, .repository-search):focus-within {
   border-color: var(--aibo-focus);
   box-shadow: 0 0 0 3px color-mix(in srgb, var(--aibo-focus) 20%, transparent);
 }

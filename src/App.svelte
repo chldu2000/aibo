@@ -174,9 +174,9 @@
     if (!action) return;
     const id = action.targetId!;
     switch (action.operation) {
-      case 'toggleSearch': sessionSearchOpen = !sessionSearchOpen; break;
+      case 'toggleSearch': openGlobalSearch(); break;
       case 'toggleFilter': sessionFilterOpen = !sessionFilterOpen; break;
-      case 'search': sessionSearch = intent.value!; break;
+      case 'search': openGlobalSearch(intent.value!); break;
       case 'filter': sessionFilter = intent.value as SessionFilter; await refreshExpandedSessions(); break;
       case 'applyFilters': await refreshExpandedSessions(); break;
       case 'addWorkspace': await chooseWorkspaceDirectory(); break;
@@ -594,7 +594,7 @@
   import { open } from '@tauri-apps/plugin-dialog';
   import {
     AppOverlays,
-    CommandPalette,
+    GlobalSearchPanel,
     DiagnosticsPanel,
     Inspector,
     PiSessionTreeOverlay,
@@ -629,7 +629,7 @@
   import { listCapabilityHistoryScopes, readCapabilityHistory } from '$lib/api';
   import { sessionMentionSuggestions } from '$lib/app/session-references';
   import { referenceSession } from '$lib/api';
-  import { listWorkspaceWriteRuns, cancelWorkspaceWrite, readSessionHistory } from '$lib/api';
+  import { listWorkspaceWriteRuns, cancelWorkspaceWrite, readSessionHistory, readSessionHistoryAround } from '$lib/api';
   import { createProjectTaskController, observeProjectTaskHistory } from '$lib/app/project-task-controller';
   import { createApprovalController } from '$lib/app/approval-controller';
   import { toErrorMessage } from '$lib/app/error-utils';
@@ -781,7 +781,9 @@
     WorkspacePathSuggestion,
   } from './lib/types';
   import type { SessionListItem, WorkspaceListItem } from './lib/components/app/view-types';
-  import type { CommandPaletteCommand } from '$lib/components/app';
+  import type { SearchCommand } from '$lib/app/search-commands';
+  import { createSearchController, emptySearch, searchCatalog, createDoubleShift, type SearchKind, type SearchResult } from '$lib/app/global-search';
+  import { searchGlobal, searchGlobalFiles, searchGlobalAssets, cancelGlobalFileSearch, readSearchResult } from '$lib/api';
   import {
     activeTheme,
     activeThemeStyle,
@@ -1017,9 +1019,9 @@
   let piNavigationCustomInstructions = $state('');
   let piTreeOpen = $state(false);
   let piNavigationStatus = $state<string | null>(null);
-  let sessionSearch = $state('');
+  const sessionSearch = ''; // Legacy presentation field; search now belongs to the host overlay.
   let sessionFilter = $state<SessionFilter>('active');
-  let sessionSearchOpen = $state(false);
+  const sessionSearchOpen = false;
   let sessionFilterOpen = $state(false);
   let createSessionWorkspaceId = $state<string | null>(null);
   let renamingSessionId = $state<string | null>(null);
@@ -1056,7 +1058,7 @@
   function openExecutionHistory(): void {
     capabilityHistoryOpen = false;
     sessionHistoryOpen = false;
-    settingsOpen = false; commandPaletteOpen = false;
+    settingsOpen = false; globalSearchOpen = false;
     historyWorkspaceId = selectedWorkspaceId ?? workspaces[0]?.id ?? null;
     historyOpen = true;
   }
@@ -1066,7 +1068,7 @@
   let sessionHistory = $state(emptySessionHistory());
   let sessionHistoryTrigger: HTMLElement | null = null;
   const sessionHistoryController = createSessionHistoryController({
-    list: id => listAllSessions(id, { statusFilter: 'all' }), read: readSessionHistory,
+    list: id => listAllSessions(id, { statusFilter: 'all' }), read: readSessionHistory, readAround: readSessionHistoryAround,
     publish: value => { sessionHistory = value; },
   });
   $effect(() => {
@@ -1077,14 +1079,14 @@
   function openSessionHistory(): void {
     capabilityHistoryOpen = false;
     sessionHistoryTrigger = document.activeElement instanceof HTMLElement ? document.activeElement : null;
-    historyOpen = false; settingsOpen = false; commandPaletteOpen = false;
+    historyOpen = false; settingsOpen = false; globalSearchOpen = false;
     sessionHistoryWorkspaceId = selectedWorkspaceId ?? workspaces[0]?.id ?? null;
     sessionHistoryOpen = true;
   }
   async function closeSessionHistory(): Promise<void> {
     sessionHistoryOpen = false;
     await tick();
-    const trigger = sessionHistoryTrigger?.isConnected ? sessionHistoryTrigger : document.querySelector<HTMLElement>('[aria-label="会话历史"]') ?? document.querySelector<HTMLElement>('[aria-label="打开设置"]');
+    const trigger = sessionHistoryTrigger?.isConnected ? sessionHistoryTrigger : document.querySelector<HTMLElement>('[aria-label="会话历史"]') ?? document.querySelector<HTMLElement>('[aria-label="全局搜索"]');
     trigger?.focus();
   }
 
@@ -1143,7 +1145,7 @@
     capabilityHistoryOpen = false;
     sessionHistoryOpen = false;
     historyOpen = false;
-    commandPaletteOpen = false;
+    globalSearchOpen = false;
     installedTool = null;
     managementSection = section;
     settingsOpen = true;
@@ -1234,7 +1236,7 @@
   const timelineColumnMin = 320;
   const inspectorColumnMin = 220;
   const splitterTrackWidth = 14;
-  let commandPaletteOpen = $state(false);
+  let globalSearchOpen = $state(false);
   let promptInFlight = $state(false);
   let activeAgentSessionIds = $state<string[]>([]);
   let agentActivityOverrides = $state<Record<string, string | undefined>>({});
@@ -1624,13 +1626,13 @@
   let presentationLayout = $state('standard');
   let presentationSwitching = $state(false);
 
-  const commandPaletteCommands = $derived.by((): CommandPaletteCommand[] => [
+  const searchCommands = $derived.by((): SearchCommand[] => [
     { id: 'focus-presentation', label: '切换专注会话', description: '显示或收起工作台侧边区域', run: () => { void workbenchPresentation?.switchPresentation(presentationLayout === 'focus' ? 'standard' : 'focus'); } },
     { id: 'restore-presentation', label: '恢复默认工作台', description: '恢复内置皮肤与标准布局，保留会话和草稿', shortcut: '⌘⇧⌫', run: () => { void workbenchPresentation?.restoreDefault(); } },
     { id: 'execution-history', label: '执行历史', description: '查看执行记录', run: openExecutionHistory },
     { id: 'session-history', label: '会话历史', description: '查找与恢复历史会话', run: openSessionHistory },
     ...installedContributions.map(item => ({ id: `installed:${item.installationId}:${item.contributionId}`, label: item.title, description: item.issue ?? '已安装的插件视图', disabled: !contributionAvailable(item),
-      run: () => { installedTool = item; settingsOpen = false; commandPaletteOpen = false; } })),
+      run: () => { installedTool = item; settingsOpen = false; globalSearchOpen = false; } })),
     {
       id: 'new-session',
       label: '新建会话',
@@ -1697,18 +1699,146 @@
     },
   ]);
 
+  let globalSearch = $state(emptySearch());
+  let searchPreview = $state<Awaited<ReturnType<typeof readSearchResult>> | null>(null);
+  let searchPreviewItem = $state<SearchResult | null>(null);
+  let searchPreviewLoading = $state(false);
+  let searchPreviewError = $state('');
+  let searchReadRevision = 0;
+  let searchTrigger: HTMLElement | null = null;
+  let searchTimer: ReturnType<typeof setTimeout> | undefined;
+  let recentSearchIds: string[] = [];
+  try { const stored = JSON.parse(localStorage.getItem('aibo.search.recent.v1') ?? '[]'); if (Array.isArray(stored)) recentSearchIds = stored.filter(id => typeof id === 'string').slice(0, 20); } catch { /* Optional recency never blocks search. */ }
+  const searchController = createSearchController({
+    currentWorkspace: () => selectedWorkspaceId, recent: () => recentSearchIds,
+    publish: state => { globalSearch = state; },
+    sources: [
+      { id: '附件与产物', search: async (request, signal) => {
+        if (!desktop || signal.aborted || (!request.query && !request.kind) || (request.kind && !['attachment', 'artifact'].includes(request.kind))) return { items: [], hasMore: false, warnings: [] };
+        return searchGlobalAssets(request);
+      } },
+      { id: '文件', search: async (request, signal) => {
+        if (!desktop || signal.aborted || (!request.query && request.kind !== 'file') || (request.kind && request.kind !== 'file')) return { items: [], hasMore: false, warnings: [] };
+        const requestId = crypto.randomUUID();
+        const cancel = () => { void cancelGlobalFileSearch(requestId).catch(() => {}); };
+        signal.addEventListener('abort', cancel, { once: true });
+        try { return await searchGlobalFiles(request, requestId); } finally { signal.removeEventListener('abort', cancel); }
+      } },
+      { id: '目录', search: async request => searchCatalog(searchCatalogItems(), request) },
+      { id: '历史', search: async (request, signal) => {
+        if (!desktop || signal.aborted || ['command', 'setting', 'file', 'attachment', 'artifact'].includes(request.kind ?? '')) return { items: [], hasMore: false, warnings: [] };
+        return searchGlobal(request);
+      } },
+    ],
+  });
+  function searchCatalogItems(): SearchResult[] {
+    const items: SearchResult[] = searchCommands.map(command => ({ id: `command:${command.id}`, kind: 'command', title: command.label,
+      description: command.description ?? '', shortcut: command.shortcut, disabledReason: command.disabled ? command.description ?? '当前不可用' : undefined,
+      score: 1, target: { source: 'command', id: command.id } }));
+    for (const [id, title, description] of [
+      ['appearance', '外观与主题', '浅色、深色、明暗主题、皮肤、恢复内置皮肤'], ['layout', '工作台布局', '侧栏位置、标准布局、专注会话'],
+      ['workspace', '工作区设置', '新增工作区默认信任'], ['extensions', '插件与能力', '安装、启用、禁用、卸载插件'], ['runtime', '运行与诊断', 'Agent 连接、执行历史、运行环境'],
+    ]) items.push({ id: `setting:${id}`, kind: 'setting', title, description, score: 1, target: { source: 'setting', id } });
+    for (const workspace of workspaces) items.push({ id: `workspace:${workspace.id}`, kind: 'workspace', title: workspace.label, description: workspace.path,
+      score: 1, target: { source: 'workspace', id: workspace.id, workspaceId: workspace.id } });
+    for (const command of visibleAgentCommands) items.push({ id: `agent-command:${selectedSessionId}:${command.name}`, kind: 'command', title: command.name,
+      description: `${command.description ?? ''} · ${selectedSession?.label ?? ''} · 填入输入框`, score: 1,
+      disabledReason: selectedSession?.archived ? '已归档会话不能输入命令' : undefined,
+      target: { source: 'agent-command', id: command.name, workspaceId: selectedWorkspaceId, sessionId: selectedSessionId } });
+    if (!desktop) for (const session of Object.values(workspaceSessionMap).flat()) items.push({ id: `session:${session.id}`, kind: 'session', title: session.label,
+      description: `${session.agent}${session.archived ? ' · 已归档' : ''}`, score: 1, target: { source: 'session', id: session.id, workspaceId: session.workspaceId, sessionId: session.id } });
+    return items;
+  }
+  function clearSearchPreview() { ++searchReadRevision; searchPreview = null; searchPreviewItem = null; searchPreviewLoading = false; searchPreviewError = ''; }
+  function runGlobalSearch(query: string, kind: SearchKind | null = null, workspaceId: string | null = null, limit = 50) {
+    clearTimeout(searchTimer); searchController.close(); clearSearchPreview();
+    globalSearch = { ...globalSearch, query, kind, workspaceId, limit, items: [], pending: ['搜索'] };
+    searchTimer = setTimeout(() => { void searchController.search(query, kind, workspaceId, limit); }, query ? 100 : 0);
+  }
+  function openGlobalSearch(query = '') {
+    if (archiveConfirmationSessionId || piNavigationEntryId || document.querySelector('dialog[open]:not(.global-search),[role="alertdialog"]')) return;
+    if (!globalSearchOpen) searchTrigger = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    globalSearchOpen = true; runGlobalSearch(query);
+  }
+  function closeGlobalSearch(restoreFocus = true) {
+    const trigger = searchTrigger;
+    clearTimeout(searchTimer); searchController.close(); clearSearchPreview(); globalSearchOpen = false;
+    if (restoreFocus) void tick().then(() => {
+      if (!globalSearchOpen && trigger?.isConnected && !trigger.closest('[hidden],[inert]')) trigger.focus();
+    });
+  }
+  async function openSearchSession(item: SearchResult) {
+    const { workspaceId, sessionId } = item.target;
+    if (!workspaceId || !sessionId) return;
+    const revision = ++searchReadRevision;
+    const found = desktop ? (await listAllSessions(workspaceId, { statusFilter: 'all' })).find(session => session.id === sessionId) : Object.values(workspaceSessionMap).flat().find(session => session.id === sessionId);
+    if (revision !== searchReadRevision || !globalSearchOpen) return;
+    if (!found) throw Error('会话已移除，请重新搜索');
+    if (found.archived || item.kind !== 'session') {
+      sessionHistoryTrigger = searchTrigger;
+      closeGlobalSearch(false);
+      historyOpen = false; capabilityHistoryOpen = false; settingsOpen = false;
+      sessionHistoryWorkspaceId = workspaceId; sessionHistoryOpen = true;
+      await tick(); await sessionHistoryController.open(workspaceId, sessionId, item.target.source === 'message' ? item.target.id : null);
+    } else {
+      workspaceSessionMap = { ...workspaceSessionMap, [workspaceId]: [...(workspaceSessionMap[workspaceId] ?? []).filter(session => session.id !== found.id), found] };
+      closeGlobalSearch(false); settingsOpen = false; historyOpen = false; sessionHistoryOpen = false; capabilityHistoryOpen = false; installedTool = null;
+      selectSession(found.id);
+    }
+  }
+  async function activateSearchResult(item: SearchResult) {
+    if (item.disabledReason) return;
+    recentSearchIds = [item.id, ...recentSearchIds.filter(id => id !== item.id)].slice(0, 20);
+    try { localStorage.setItem('aibo.search.recent.v1', JSON.stringify(recentSearchIds)); } catch { /* Search is still usable without storage. */ }
+    try {
+      if (item.target.source === 'command') {
+        const command = searchCommands.find(command => command.id === item.target.id);
+        if (!command || command.disabled) throw Error('此命令当前不可用');
+        closeGlobalSearch(false); await tick(); await command.run();
+      } else if (item.target.source === 'setting') { closeGlobalSearch(false); openManagementCenter(item.target.id as UiManagementSection); }
+      else if (item.target.source === 'agent-command') {
+        if (item.target.sessionId !== selectedSessionId || selectedSession?.archived) throw Error('命令所属会话已变化');
+        const command = visibleAgentCommands.find(command => command.name === item.target.id);
+        if (!command) throw Error('命令已不可用');
+        composerText = commandComposerInsertion(command) + composerText;
+        handleComposerInput(composerText); closeGlobalSearch(false); await tick();
+        document.querySelector<HTMLElement>('[data-composer-input]')?.focus();
+      } else if (item.kind === 'workspace') {
+        if (!workspaces.some(workspace => workspace.id === item.target.id)) throw Error('工作区已移除');
+        closeGlobalSearch(false); settingsOpen = false; historyOpen = false; sessionHistoryOpen = false; capabilityHistoryOpen = false; installedTool = null;
+        activateWorkspace(item.target.id); await refreshSessions(item.target.id);
+      } else if (item.kind === 'session') await openSearchSession(item);
+      else if (item.kind === 'plugin') { closeGlobalSearch(false); openManagementCenter('extensions'); }
+      else {
+        clearSearchPreview(); const revision = searchReadRevision; searchPreviewItem = item; searchPreviewLoading = true;
+        try { const detail = await readSearchResult(item.target); if (revision === searchReadRevision) searchPreview = detail; }
+        catch (error) { if (revision === searchReadRevision) searchPreviewError = toErrorMessage(error); }
+        finally { if (revision === searchReadRevision) searchPreviewLoading = false; }
+      }
+    } catch (error) { if (globalSearchOpen) searchPreviewError = toErrorMessage(error); else errorMessage = toErrorMessage(error); }
+  }
+  onMount(() => {
+    const doubleShift = createDoubleShift();
+    const handle = (event: KeyboardEvent) => { if (doubleShift.handle(event, performance.now())) { if (!globalSearchOpen) openGlobalSearch(); } };
+    const open = () => openGlobalSearch();
+    window.addEventListener('keydown', handle, true); window.addEventListener('keyup', handle, true);
+    window.addEventListener('blur', doubleShift.reset); window.addEventListener('compositionstart', doubleShift.reset, true);
+    window.addEventListener('aibo:global-search', open);
+    return () => { window.removeEventListener('keydown', handle, true); window.removeEventListener('keyup', handle, true); window.removeEventListener('blur', doubleShift.reset); window.removeEventListener('compositionstart', doubleShift.reset, true); window.removeEventListener('aibo:global-search', open); clearTimeout(searchTimer); searchController.close(); };
+  });
+
   function handleGlobalKeydown(event: KeyboardEvent): void {
     if (event.defaultPrevented) return;
     const key = event.key.toLocaleLowerCase();
     const modifier = event.metaKey || event.ctrlKey;
     if (modifier && key === 'k') {
       event.preventDefault();
-      commandPaletteOpen = !commandPaletteOpen;
+      if (globalSearchOpen) closeGlobalSearch(); else openGlobalSearch();
       return;
     }
 
-    if (commandPaletteOpen) {
-      if (key === 'escape') { event.preventDefault(); commandPaletteOpen = false; }
+    if (globalSearchOpen) {
+      if (key === 'escape') { event.preventDefault(); closeGlobalSearch(); }
       return;
     }
     if ((historyOpen || capabilityHistoryOpen) && !settingsOpen) {
@@ -3757,12 +3887,13 @@
   data-color-scheme={$activeTheme.colorScheme}
   style={$activeThemeStyle}
 >
-  <CommandPalette
-    open={commandPaletteOpen}
-    commands={commandPaletteCommands}
-    onClose={() => (commandPaletteOpen = false)}
-  />
+  {#if globalSearchOpen}
+    <GlobalSearchPanel state={globalSearch} {workspaces} onSearch={runGlobalSearch} onActivate={item => void activateSearchResult(item)} onClose={() => closeGlobalSearch()}
+      preview={searchPreview} previewLoading={searchPreviewLoading} previewError={searchPreviewError} onBack={clearSearchPreview}
+      onOpenContext={searchPreviewItem?.target.sessionId ? () => { if (searchPreviewItem) void openSearchSession(searchPreviewItem).catch(error => { searchPreviewError = toErrorMessage(error); }); } : undefined} />
+  {/if}
   <WindowTitlebar
+    onOpenSearch={() => openGlobalSearch()}
     onOpenManagement={() => openManagementCenter('appearance')}
     {managementNeedsAttention}
     themeLabel={$activeTheme.label}
@@ -3852,8 +3983,8 @@
       {/if}
     </HostPanel>
   {/if}
-<PresentationHost readAttachmentPreview={getSessionAttachmentPreview} onPasteImages={(files) => void pasteComposerImages(files)} hideWhenSuspended={sessionHistoryOpen} onRestore={() => void presentationOperation(() => presentationPackagesController.select(null))} bind:this={presentationHost} active={presentationPackages.active} themeId={presentationPackages.themeId} input={externalInput} suspended={historyOpen || sessionHistoryOpen || capabilityHistoryOpen || settingsOpen || commandPaletteOpen || archiveConfirmationSessionId !== null || piNavigationEntryId !== null} onIntent={externalIntent}>
-<WorkbenchPresentation hideWhenSuspended={sessionHistoryOpen} onRestore={() => desktop ? presentationPackagesController.select(null) : Promise.resolve()} bind:this={workbenchPresentation} bind:layout={presentationLayout} bind:switching={presentationSwitching} bind:gridElement={workspaceGridElement} navigationWidth={workspaceSidebarWidth} auxiliaryWidth={inspectorWidth} auxiliaryOpen={sidePanelOpen} suspended={historyOpen || sessionHistoryOpen || capabilityHistoryOpen || settingsOpen || commandPaletteOpen || archiveConfirmationSessionId !== null || piNavigationEntryId !== null} windowId={presentationWindowId()} snapshot={{ workspaceId: selectedWorkspaceId, sessionId: selectedSessionId, draft: composerText, navigation: sidePanelView, timelineRevision: timeline.length }}>
+<PresentationHost readAttachmentPreview={getSessionAttachmentPreview} onPasteImages={(files) => void pasteComposerImages(files)} hideWhenSuspended={sessionHistoryOpen} onRestore={() => void presentationOperation(() => presentationPackagesController.select(null))} bind:this={presentationHost} active={presentationPackages.active} themeId={presentationPackages.themeId} input={externalInput} suspended={historyOpen || sessionHistoryOpen || capabilityHistoryOpen || settingsOpen || globalSearchOpen || archiveConfirmationSessionId !== null || piNavigationEntryId !== null} onIntent={externalIntent}>
+<WorkbenchPresentation hideWhenSuspended={sessionHistoryOpen} onRestore={() => desktop ? presentationPackagesController.select(null) : Promise.resolve()} bind:this={workbenchPresentation} bind:layout={presentationLayout} bind:switching={presentationSwitching} bind:gridElement={workspaceGridElement} navigationWidth={workspaceSidebarWidth} auxiliaryWidth={inspectorWidth} auxiliaryOpen={sidePanelOpen} suspended={historyOpen || sessionHistoryOpen || capabilityHistoryOpen || settingsOpen || globalSearchOpen || archiveConfirmationSessionId !== null || piNavigationEntryId !== null} windowId={presentationWindowId()} snapshot={{ workspaceId: selectedWorkspaceId, sessionId: selectedSessionId, draft: composerText, navigation: sidePanelView, timelineRevision: timeline.length }}>
 {#snippet navigation(guard)}
     <WorkspaceSidebar
       presentationActions={navigationActions}
@@ -3870,14 +4001,11 @@
       threadBusy={threadBusy}
       archivingWorkspaceId={archivingWorkspaceId}
       archivingSessionId={archivingSessionId}
-      sessionSearchOpen={sessionSearchOpen}
       sessionFilterOpen={sessionFilterOpen}
-      bind:sessionSearch={() => sessionSearch, guard('bind:sessionSearch', (value) => { sessionSearch = value; })}
       bind:sessionFilter={() => sessionFilter, guard('bind:sessionFilter', (value) => { sessionFilter = value; })}
       createSessionWorkspaceId={createSessionWorkspaceId}
       renamingSessionId={renamingSessionId}
       bind:sessionLabelDraft={() => sessionLabelDraft, guard('bind:sessionLabelDraft', (value) => { sessionLabelDraft = value; })}
-      onToggleSearch={guard('onToggleSearch', () => (sessionSearchOpen = !sessionSearchOpen))}
       onToggleFilter={guard('onToggleFilter', () => (sessionFilterOpen = !sessionFilterOpen))}
       onApplyFilters={guard('onApplyFilters', () => void refreshExpandedSessions())}
       onChooseWorkspaceDirectory={guard('onChooseWorkspaceDirectory', () => void chooseWorkspaceDirectory())}

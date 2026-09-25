@@ -4,8 +4,7 @@ const states={active:'未归档',all:'全部',archived:'已归档',created:'已�
 export function renderNavigation(state,actions){
  const find=(operation,targetId)=>actions.find(action=>action.operation===operation&&action.targetId===targetId);
  const buttons=(operations,targetId)=>operations.flatMap(operation=>{const action=find(operation,targetId);return action?[button('navigation:'+operation+':'+(targetId??''),labels[operation],action)]:[]});
- const children=[node('h2','navigation:title','工作区'),node('nav','navigation:tools',null,buttons(['addWorkspace','toggleSearch','toggleFilter']))];
- if(state.sessionSearchOpen)children.push(field('navigation:search','搜索会话',state.sessionSearch,find('search')));
+ const children=[node('h2','navigation:title','工作区'),node('nav','navigation:tools',null,buttons(['addWorkspace','toggleFilter']))];
  if(state.sessionFilterOpen){const action=find('filter');children.push(node('label','navigation:filter-label',null,[text('navigation:filter-text','会话状态'),{...node('select','navigation:filter',null,(action?.options??[]).map(value=>node('option','navigation:filter:'+value,states[value]??value,[],{value,selected:state.sessionFilter===value})),{'aria-label':'会话状态',value:state.sessionFilter}),...(action?{events:{change:action.token}}:{})}]),...buttons(['applyFilters']));}
  for(const workspace of state.workspaces){
   const expanded=state.expandedWorkspaceIds.includes(workspace.id);

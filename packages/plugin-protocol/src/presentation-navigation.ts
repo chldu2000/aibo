@@ -11,8 +11,10 @@ export type PresentationNavigation = {
   threadBusy: boolean;
   archivingWorkspaceId: string | null;
   archivingSessionId: string | null;
+  /** Deprecated: fixed host global search owns this interaction; hosts send false. */
   sessionSearchOpen: boolean;
   sessionFilterOpen: boolean;
+  /** Deprecated compatibility field; hosts send an empty string. */
   sessionSearch: string;
   sessionFilter: string;
   createSessionWorkspaceId: string | null;

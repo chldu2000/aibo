@@ -2,12 +2,13 @@ import type { Session, SessionHistoryCursor, SessionHistoryPage } from '../types
 import { toErrorMessage } from './error-utils';
 export type SessionHistoryState = {
   sessions: Session[]; selectedId: string | null; page: SessionHistoryPage | null;
-  loading: boolean; error: string | null; pageNumber: number;
+  targetMessageId?: string | null; loading: boolean; error: string | null; pageNumber: number;
 };
 export const emptySessionHistory = (): SessionHistoryState => ({ sessions: [], selectedId: null, page: null, loading: false, error: null, pageNumber: 1 });
 export function createSessionHistoryController(ports: {
   list(workspaceId: string): Promise<Session[]>;
   read(workspaceId: string, sessionId: string, before: SessionHistoryCursor | null): Promise<SessionHistoryPage>;
+  readAround?(workspaceId: string, sessionId: string, messageId: string): Promise<SessionHistoryPage>;
   publish(state: SessionHistoryState): void;
 }) {
   type View = { workspaceId: string; state: SessionHistoryState; revision: number; before: SessionHistoryCursor | null; back: (SessionHistoryCursor | null)[] };
@@ -18,7 +19,9 @@ export function createSessionHistoryController(ports: {
     const revision = ++view.revision;
     view.state = { ...view.state, loading: true, error: null, pageNumber: view.back.length + 1 }; publish(view);
     try {
-      const page = await ports.read(view.workspaceId, id, view.before);
+      const page = view.state.targetMessageId && view.back.length === 0 && ports.readAround
+        ? await ports.readAround(view.workspaceId, id, view.state.targetMessageId)
+        : await ports.read(view.workspaceId, id, view.before);
       if (current !== view || view.revision !== revision) return;
       if (page.schema !== 'aibo.session-history-page/v1' || page.source !== 'persisted-core' || page.session.workspaceId !== view.workspaceId || page.session.id !== id || page.items.some(item => item.sessionId !== id)) throw Error('历史响应与当前会话不匹配');
       view.state = { ...view.state, page, sessions: view.state.sessions.map(session => session.id === id ? page.session : session) };
@@ -27,8 +30,8 @@ export function createSessionHistoryController(ports: {
   }
   return {
     close() { current = undefined; },
-    async open(workspaceId: string, preferredId: string | null = null): Promise<void> {
-      const view: View = { workspaceId, state: { ...emptySessionHistory(), loading: true }, revision: 0, before: null, back: [] }; current = view; publish(view);
+    async open(workspaceId: string, preferredId: string | null = null, targetMessageId: string | null = null): Promise<void> {
+      const view: View = { workspaceId, state: { ...emptySessionHistory(), loading: true, targetMessageId }, revision: 0, before: null, back: [] }; current = view; publish(view);
       try {
         const sessions = await ports.list(workspaceId);
         if (current !== view) return;
@@ -39,7 +42,7 @@ export function createSessionHistoryController(ports: {
     },
     async select(id: string): Promise<void> {
       const view = current; if (!view || !view.state.sessions.some(session => session.id === id)) return;
-      view.before = null; view.back = []; view.state.selectedId = id; view.state.page = null; await read(view);
+      view.before = null; view.back = []; view.state.targetMessageId = null; view.state.selectedId = id; view.state.page = null; await read(view);
     },
     refresh(): Promise<void> { return current ? read(current) : Promise.resolve(); },
     older(): Promise<void> {
@@ -51,6 +54,6 @@ export function createSessionHistoryController(ports: {
       const view = current; if (!view || view.state.loading || !view.back.length) return Promise.resolve();
       view.before = view.back.pop() ?? null; view.state.page = null; return read(view);
     },
-    latest(): Promise<void> { const view = current; if (!view) return Promise.resolve(); view.back = []; view.before = null; view.state.page = null; return read(view); },
+    latest(): Promise<void> { const view = current; if (!view) return Promise.resolve(); view.back = []; view.before = null; view.state.targetMessageId = null; view.state.page = null; return read(view); },
   };
 }

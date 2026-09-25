@@ -10,7 +10,7 @@ try {
   const errors = [];
   const runCommand = async label => {
     await page.keyboard.press('Control+k');
-    await page.locator('#command-palette-input').fill(label);
+    await page.locator('#global-search-input').fill(label);
     await page.getByRole('option').filter({hasText:label}).click();
   };
   page.on('pageerror', error => errors.push(String(error)));
@@ -58,7 +58,7 @@ try {
     const history = page.getByRole('region', { name: '执行历史', exact: true });
     await history.waitFor();
     await page.keyboard.press('Control+k');
-    await page.locator('#command-palette-input').waitFor();
+    await page.locator('#global-search-input').waitFor();
     await page.keyboard.press('Escape');
     assert.equal(await history.isVisible(), true, 'closing the palette must not close history');
     assert.equal(await page.locator('.host-panel-header h2').evaluate(node => document.activeElement === node), true);

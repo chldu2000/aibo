@@ -14,7 +14,7 @@ try {
   const row=await until(()=>Array.from(document.querySelectorAll('button')).find(node=>node.getAttribute('aria-label')?.startsWith(workspace.label+'，')),'workspace row');row.click();
   await tick();
   window.dispatchEvent(new KeyboardEvent('keydown',{key:'k',metaKey:true,bubbles:true}));
-  const command=await until(()=>Array.from(document.querySelectorAll('.command-palette-list button')).find(node=>node.textContent.includes('工作区变更（只读）')&&!node.disabled),'semantic command');command.click();
+  const command=await until(()=>Array.from(document.querySelectorAll('.global-search-result')).find(node=>node.textContent.includes('工作区变更（只读）')&&!node.disabled),'semantic command');command.click();
   const evidence=[];
   for(const kit of ['shadcn','material3']) {
     setUiKit(kit);await tick();

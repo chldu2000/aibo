@@ -12,8 +12,7 @@ export { default as SettingsPanel } from './SettingsPanel.svelte';
 export { default as DiagnosticsPanel } from './DiagnosticsPanel.svelte';
 export { default as WindowTitlebar } from './WindowTitlebar.svelte';
 export { default as AppOverlays } from './AppOverlays.svelte';
-export { default as CommandPalette } from './CommandPalette.svelte';
-export type { CommandPaletteCommand } from './command-palette';
+export { default as GlobalSearchPanel } from './GlobalSearchPanel.svelte';
 export { groupTimelineItems, isDiffContent, toolLabel } from './timeline-utils';
 export { isSessionRunning, relativeTimeLabel, sessionStateLabel, sessionStatusTone } from './session-utils';
 export {

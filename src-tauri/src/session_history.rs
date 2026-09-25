@@ -36,6 +36,24 @@ pub(crate) async fn read(db: &SqlitePool, workspace_id: String, session_id: Stri
     Ok(Page { schema: "aibo.session-history-page/v1", source: "persisted-core", session, items, next_before })
 }
 
+/// Locate a durable message without replaying or resuming its provider.
+pub(crate) async fn around(db: &SqlitePool, workspace_id: String, session_id: String, message_id: String) -> Result<Page, CoreError> {
+    let session = crate::session_by_id(db, &session_id).await?;
+    if session.workspace_id != workspace_id { return Err(CoreError::SessionOperation("消息不属于此工作区".into())); }
+    let target = sqlx::query("SELECT created_at,sequence,id FROM messages WHERE id=? AND session_id=?").bind(&message_id).bind(&session_id).fetch_optional(db).await?
+        .ok_or_else(||CoreError::SessionOperation("消息已移除".into()))?;
+    // The inclusive upper bound contains 24 newer neighbors, followed by the hit.
+    let newer = sqlx::query("SELECT created_at,sequence,id FROM messages WHERE session_id=? AND (created_at,sequence,id) >= (?,?,?) ORDER BY created_at,sequence,id LIMIT 25")
+        .bind(&session_id).bind(target.get::<String,_>("created_at")).bind(target.get::<i64,_>("sequence")).bind(&message_id).fetch_all(db).await?;
+    let upper = newer.last().unwrap_or(&target);
+    let mut rows=sqlx::query("SELECT id,session_id,turn_id,external_message_id,role,tool_name,content,status,created_at,updated_at,sequence FROM messages WHERE session_id=? AND (created_at,sequence,id)<=(?,?,?) ORDER BY created_at DESC,sequence DESC,id DESC LIMIT 51")
+        .bind(&session_id).bind(upper.get::<String,_>("created_at")).bind(upper.get::<i64,_>("sequence")).bind(upper.get::<String,_>("id")).fetch_all(db).await?;
+    let has_more=rows.len()>50;rows.truncate(50);
+    let next_before=if has_more {rows.last().map(|row|Cursor{schema:"aibo.session-history-cursor/v1".into(),workspace_id,session_id,created_at:row.get("created_at"),sequence:row.get::<i64,_>("sequence").to_string(),id:row.get("id")})}else{None};
+    let items=rows.iter().rev().map(crate::row_to_timeline_item).collect::<Result<Vec<_>,_>>()?;
+    Ok(Page{schema:"aibo.session-history-page/v1",source:"persisted-core",session,items,next_before})
+}
+
 pub(crate) async fn read_subagent(db: &SqlitePool, session_id: &str, agent_id: &str) -> Result<Vec<serde_json::Value>, CoreError> {
     crate::session_by_id(db, session_id).await?;
     // Fetch only the latest snapshot of each item, retaining first-seen order.
@@ -89,6 +107,10 @@ mod tests {
             }
             assert_eq!(pages,4); assert_eq!(seen.len(),151);
         }
+        let located = around(&readonly,"w".into(),"archived".into(),"archived-070".into()).await.unwrap();
+        assert!(located.items.iter().any(|item|item.id=="archived-070"));
+        assert!(located.items.len()<=50);
+        assert!(around(&readonly,"w".into(),"session".into(),"archived-070".into()).await.is_err());
         let page = read(&readonly,"w".into(),"session".into(),None).await.unwrap();
         assert!(read(&readonly,"other".into(),"session".into(),None).await.is_err());
         assert!(read(&readonly,"w".into(),"archived".into(),page.next_before).await.is_err());

@@ -70,7 +70,7 @@
   });
   window.addEventListener('blur',endResize);
   for(const name of ['pointerup','pointercancel','lostpointercapture'])root.addEventListener(name,()=>{drag=undefined;});
-  let active = false, suspended = false, pendingState, lastState, stateTimer, restoring = false, renderedContext, mayRestoreFocus = false;
+  let active = false, suspended = false, searchRequested = false, pendingState, lastState, stateTimer, restoring = false, renderedContext, mayRestoreFocus = false;
   function timelineViewport() {
     let element=root.querySelector('[data-presentation-key="conversation:timeline"]');
     while(element&&element!==root){
@@ -110,7 +110,7 @@
     for(const item of state.disclosures??[]) {const element=elements.get(item.key);if(element instanceof HTMLDetailsElement)element.open=item.open;}
     for(const item of state.scroll??[]) {const element=elements.get(item.key);if(element){element.scrollLeft=item.x;element.scrollTop=item.y;}}
     const element=state.focus&&elements.get(state.focus.key);
-    if(element){if(focus && !suspended)element.focus({preventScroll:true});if(state.focus.selection&&typeof element.setSelectionRange==='function')try{element.setSelectionRange(...state.focus.selection)}catch{}}
+    if(element){if(focus && document.hasFocus() && !suspended && !searchRequested)element.focus({preventScroll:true});if(state.focus.selection&&typeof element.setSelectionRange==='function')try{element.setSelectionRange(...state.focus.selection)}catch{}}
     window.scrollTo(...state.window);
     restoreTimeline(state.timeline);
     restoring=false;
@@ -132,6 +132,7 @@
   function fail(message) { stop(); send({ type: 'failure', message: String(message).slice(0, 512) }); }
   let previewScope = '', previews = new Map();
   function render(tree, context) {
+    const hadFocus = document.hasFocus();
     const scope = JSON.stringify([context.workspaceId,context.sessionId]);
     if (scope !== previewScope) { previewScope=scope; previews.clear(); }
 
@@ -269,7 +270,8 @@
     for(const entry of suggestions)bindSuggestions(entry,elements,clicks,interactive,context);
     const suggestionKeys=new Set(suggestions.map(entry=>entry.key));
     for(const key of suggestionStates.keys())if(!suggestionKeys.has(key))suggestionStates.delete(key);
-    restoreState(state,active&&mayRestoreFocus);
+    // A delayed render must not take focus back from a fixed host control.
+    restoreState(state,active&&mayRestoreFocus&&hadFocus);
     for(const [key,completion] of completions){
       const element=elements.get(key);
       if(!(element instanceof HTMLTextAreaElement)||completion.workspaceId!==context.workspaceId||completion.sessionId!==context.sessionId){completions.delete(key);continue;}
@@ -339,7 +341,7 @@
           for(const element of root.querySelectorAll('img[data-attachment-preview]'))if(element.dataset.attachmentPreview===data.id){if(url)element.src=url;else element.alt='图片无法预览 · '+element.alt;}
         }
         else if (data.type === 'start' && !worker) start(data);
-        else if(data.type==='suspended'){suspended=data.value===true;if(suspended)mayRestoreFocus=false;}
+        else if(data.type==='suspended'){suspended=data.value===true;if(suspended){mayRestoreFocus=false;searchRequested=false;}}
         else if(data.type==='activate'){active=true;mayRestoreFocus=data.restoreFocus===true;if(data.viewState){lastState=data.viewState;restoreState(lastState,data.restoreFocus===true);}}
         else if(data.type==='restore-focus'){mayRestoreFocus=true;restoreState(lastState,true);}
         else if (data.type === 'update' && worker) { mayRestoreFocus=data.restoreFocus===true;if('viewState' in data)pendingState=data.viewState; localInputActions = data.localInputActions; update(data.input, data.acceptedEdits); }
@@ -349,6 +351,25 @@
     port.start(); send({ type: 'connected' });
   }
   window.addEventListener('message', initialize);
+  let shiftPressed = null, shiftPrevious = null;
+  const resetSearchShortcut = () => { shiftPressed = null; shiftPrevious = null; };
+  function searchShortcut(event) {
+    if (!event.isTrusted || !active) { resetSearchShortcut(); return; }
+    if (event.type === 'keydown' && !event.isComposing && !event.repeat && (event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'k') {
+      event.preventDefault(); event.stopImmediatePropagation(); resetSearchShortcut(); searchRequested=true; mayRestoreFocus=false; send({type:'global-search'}); return;
+    }
+    if (event.key !== 'Shift' || event.repeat || event.isComposing || event.altKey || event.ctrlKey || event.metaKey) { resetSearchShortcut(); return; }
+    const now = performance.now();
+    if (event.type === 'keydown') { if (shiftPressed !== null) resetSearchShortcut(); shiftPressed = now; return; }
+    if (shiftPressed === null || now - shiftPressed > 400) { resetSearchShortcut(); return; }
+    shiftPressed = null;
+    if (shiftPrevious !== null && now - shiftPrevious <= 400) { resetSearchShortcut(); searchRequested=true; mayRestoreFocus=false; send({type:'global-search'}); }
+    else shiftPrevious = now;
+  }
+  window.addEventListener('keydown', searchShortcut, true);
+  window.addEventListener('keyup', searchShortcut, true);
+  window.addEventListener('blur', resetSearchShortcut);
+  window.addEventListener('compositionstart', resetSearchShortcut, true);
   window.addEventListener('keydown', event => {
     if (event.isTrusted && (event.ctrlKey || event.metaKey) && event.shiftKey && event.code === 'Backspace') {
       event.preventDefault(); event.stopImmediatePropagation(); send({ type: 'recovery' });

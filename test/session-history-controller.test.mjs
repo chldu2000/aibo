@@ -36,3 +36,15 @@ test('history paging retains read scope, returns to newer/latest messages, and r
     assert(calls.every(call=>call.workspaceId==='w'&&call.id==='archived'));
   }finally{controller?.close();await server.close();}
 });
+
+test('search anchor survives older/newer navigation and latest explicitly leaves the hit',async()=>{
+  const server=await createServer({server:{middlewareMode:true,ws:false,watch:null},appType:'custom'});
+  try {
+    const {createSessionHistoryController}=await server.ssrLoadModule('/src/lib/app/session-history-controller.ts');let state;const calls=[];
+    const cursor={schema:'aibo.session-history-cursor/v1',workspaceId:'w',sessionId:'s',createdAt:'time',sequence:'1',id:'boundary'};
+    const controller=createSessionHistoryController({list:async()=>[session('w','s')],read:async(w,s,before)=>{calls.push('read');return page(w,s,before?null:cursor);},readAround:async(w,s,id)=>{calls.push(id);return page(w,s,cursor);},publish:next=>state=next});
+    await controller.open('w','s','hit');assert.equal(state.targetMessageId,'hit');assert.equal(calls.at(-1),'hit');
+    await controller.older();assert.equal(calls.at(-1),'read');await controller.newer();assert.equal(calls.at(-1),'hit');
+    await controller.latest();assert.equal(state.targetMessageId,null);assert.equal(calls.at(-1),'read');controller.close();
+  }finally{await server.close();}
+});

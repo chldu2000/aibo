@@ -1,4 +1,4 @@
-export type CommandPaletteCommand = {
+export type SearchCommand = {
   id: string;
   label: string;
   description?: string;

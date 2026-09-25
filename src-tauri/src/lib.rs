@@ -8,6 +8,10 @@ mod core_turn_git;
 mod turn_restore;
 mod execution_history;
 mod session_history;
+mod global_search;
+mod database_migrations;
+mod search_files;
+mod search_assets;
 #[cfg(test)]
 mod session_activity_tests;
 mod session_context;
@@ -1132,7 +1136,7 @@ async fn open_database(path: &Path) -> Result<SqlitePool, CoreError> {
     // SQLite table rebuilds must not cascade-delete history. This connection is
     // never exposed to application queries; each migration remains transactional.
     let mut migration_connection = sqlx::SqliteConnection::connect_with(&options.clone().foreign_keys(false)).await?;
-    sqlx::migrate!("./migrations").run(&mut migration_connection).await?;
+    database_migrations::run(&mut migration_connection).await?;
     let violations = sqlx::query("PRAGMA foreign_key_check").fetch_all(&mut migration_connection).await?;
     if !violations.is_empty() { return Err(CoreError::Database("migration foreign key check failed".into())); }
     migration_connection.close().await?;
@@ -1266,6 +1270,31 @@ fn collect_workspace_paths(
             collect_workspace_paths(root, &path, query, results, depth + 1);
         }
     }
+}
+
+#[tauri::command]
+async fn search_global_assets(request: global_search::Request, window: tauri::Window, state: State<'_, AppState>) -> Result<global_search::Page, CoreError> {
+    search_assets::search(&state.db, &state.data_dir, window.label(), request).await
+}
+
+#[tauri::command]
+async fn search_global_files(request: global_search::Request, request_id: String, window: tauri::Window, state: State<'_, AppState>) -> Result<global_search::Page, CoreError> {
+    if request_id.len()>128 { return Err(CoreError::SessionOperation("搜索请求标识过长".into())); }
+    search_files::search(&state.db, window.label(), &format!("{}:{request_id}",window.label()), request).await
+}
+#[tauri::command]
+fn cancel_global_file_search(request_id: String, window: tauri::Window) { if request_id.len()<=128 {search_files::cancel(&format!("{}:{request_id}",window.label()));} }
+
+#[tauri::command]
+async fn search_global(request: global_search::Request, window: tauri::Window, state: State<'_, AppState>) -> Result<global_search::Page, CoreError> {
+    global_search::search(&state.db, window.label(), request).await
+}
+
+#[tauri::command]
+async fn read_search_result(target: global_search::Target, window: tauri::Window, state: State<'_, AppState>) -> Result<global_search::Detail, CoreError> {
+    if target.source == "attachment" || target.source == "artifact" { return search_assets::detail(&state.db, &state.data_dir, target).await; }
+    if target.source == "file" { return search_files::detail(&state.db, target).await; }
+    global_search::detail(&state.db, window.label(), target).await
 }
 
 #[tauri::command]
@@ -1887,6 +1916,11 @@ async fn rename_session(
         return Err(CoreError::SessionNotFound(session_id));
     }
     session_by_id(&state.db, &session_id).await
+}
+
+#[tauri::command]
+async fn read_session_history_around(workspace_id: String, session_id: String, message_id: String, state: State<'_, AppState>) -> Result<session_history::Page, CoreError> {
+    session_history::around(&state.db, workspace_id, session_id, message_id).await
 }
 
 #[tauri::command]
@@ -4480,6 +4514,11 @@ pub fn run() {
             invoke_agent_capability,
             list_workspaces,
             search_workspace_paths,
+            search_global,
+            search_global_files,
+            search_global_assets,
+            cancel_global_file_search,
+            read_search_result,
             add_workspace,
             read_workspace_preferences,
             save_workspace_preferences,
@@ -4496,6 +4535,7 @@ pub fn run() {
             get_timeline,
             get_subagent_history,
             read_session_history,
+            read_session_history_around,
             get_turn_change_set,
             list_turn_checkpoints,
             list_restore_operations,
@@ -4583,6 +4623,16 @@ mod tests {
         let path = std::env::temp_dir().join(format!("aibo-phase1-{}", Ulid::new()));
         fs::create_dir_all(&path).expect("create test directory");
         path
+    }
+
+    #[test]
+    #[ignore = "requires an isolated SQLite backup in AIBO_MIGRATION_PROBE_DB"]
+    fn database_upgrade_snapshot_probe() {
+        let path = PathBuf::from(env::var("AIBO_MIGRATION_PROBE_DB").expect("isolated backup path"));
+        tauri::async_runtime::block_on(async {
+            let pool = open_database(&path).await.expect("existing database must upgrade and reopen");
+            pool.close().await;
+        });
     }
 
     #[test]

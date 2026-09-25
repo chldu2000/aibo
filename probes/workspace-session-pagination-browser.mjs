@@ -65,8 +65,8 @@ try {
     await more.waitFor();
     assert.equal(await rows.count(), 5);
     await more.click();
-    await page.getByRole('button', { name: '搜索会话', exact: true }).click();
-    await page.getByRole('button', { name: '应用搜索和筛选', exact: true }).click();
+    await page.getByRole('button', { name: '筛选会话', exact: true }).click();
+    await page.getByRole('button', { name: '应用会话筛选', exact: true }).click();
     assert.equal(await rows.count(), 5);
     await page.getByRole('button', { name: 'small-workspace，可信', exact: true }).click();
     const small = page.locator('#workspace-sessions-small-workspace');

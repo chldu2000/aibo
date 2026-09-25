@@ -27,8 +27,8 @@
     }
   });
   function keydown(event: KeyboardEvent) {
-    // Native dialogs and the palette own the keyboard while they are on top; skin class names stay out of shared code.
-    if (event.defaultPrevented || [...document.querySelectorAll<HTMLElement>('dialog[open],.command-palette-overlay,[role="alertdialog"]')].some(node => node.getClientRects().length)) return;
+    // Native dialogs and global search own the keyboard while they are on top; skin class names stay out of shared code.
+    if (event.defaultPrevented || [...document.querySelectorAll<HTMLElement>('dialog[open],[role="alertdialog"]')].some(node => node.getClientRects().length)) return;
     if (event.key === 'Escape') { event.preventDefault(); event.stopPropagation(); onClose(); }
     if (event.key !== 'Tab') return;
     // Host approvals stay in the keyboard loop even while the workbench is inert.

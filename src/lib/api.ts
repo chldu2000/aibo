@@ -594,3 +594,13 @@ export const registerSessionClipboardImages = (sessionId: string, images: import
 
 export const getSessionAttachmentPreview = (sessionId: string, attachmentId: string): Promise<string> =>
   invoke<string>('get_session_attachment_preview', { sessionId, attachmentId });
+
+export const searchGlobal = (request: import('./app/global-search').SearchRequest): Promise<import('./app/global-search').SearchPage> => invoke('search_global', { request });
+export const readSearchResult = (target: import('./app/global-search').SearchTarget): Promise<{ title: string; content: string; target: import('./app/global-search').SearchTarget; truncated: boolean }> => invoke('read_search_result', { target });
+
+export const searchGlobalFiles = (request: import('./app/global-search').SearchRequest, requestId: string): Promise<import('./app/global-search').SearchPage> => invoke('search_global_files', { request, requestId });
+export const cancelGlobalFileSearch = (requestId: string): Promise<void> => invoke('cancel_global_file_search', { requestId });
+
+export const readSessionHistoryAround = (workspaceId: string, sessionId: string, messageId: string): Promise<import('./types').SessionHistoryPage> => invoke('read_session_history_around', { workspaceId, sessionId, messageId });
+
+export const searchGlobalAssets = (request: import('./app/global-search').SearchRequest): Promise<import('./app/global-search').SearchPage> => invoke('search_global_assets', { request });

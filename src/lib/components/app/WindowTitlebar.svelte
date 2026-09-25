@@ -3,6 +3,7 @@
 
   type WindowTitlebarProps = {
     onOpenManagement: () => void;
+    onOpenSearch?: () => void;
     onToggleTheme?: () => void;
     themeLabel?: string;
     managementNeedsAttention: boolean;
@@ -15,6 +16,7 @@
 
   let {
     onOpenManagement,
+    onOpenSearch,
     onToggleTheme,
     themeLabel,
     managementNeedsAttention,
@@ -39,6 +41,7 @@
 >
   <span class="window-title">Aibo</span>
   <div class="window-actions">
+    {#if onOpenSearch}<Button variant="ghost" size="icon" aria-label="全局搜索" title="全局搜索 · 双击 Shift" onclick={onOpenSearch}><Icon name="search" size={15} /></Button>{/if}
     {#if onToggleTheme}<Button variant="ghost" size="icon" aria-label="切换明暗主题" title={themeLabel} onclick={onToggleTheme}><Icon name="eye" size={15} /></Button>{/if}
     <Button variant={managementNeedsAttention ? 'secondary' : 'ghost'} size="icon" type="button" data-host-navigation="management" aria-label={managementNeedsAttention ? '打开工作台设置，有项目需要处理' : '打开工作台设置'} title={managementNeedsAttention ? '工作台设置 · 需要处理' : '工作台设置 ⌘,'} onclick={onOpenManagement}>
       <Icon name="settings" size={15} />

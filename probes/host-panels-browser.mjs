@@ -96,7 +96,7 @@ try {
     assert.equal(await details.getAttribute('open'),'');
     await page.waitForFunction(()=>document.querySelector('.host-panel-body').scrollTop===80);
     await page.keyboard.press('Control+k');
-    await page.locator('#command-palette-input').waitFor();
+    await page.locator('#global-search-input').waitFor();
     await page.keyboard.press('Escape');
     assert.ok(await panel.isVisible());
     await page.screenshot({path:`/tmp/aibo-host-history-${kit}.png`});

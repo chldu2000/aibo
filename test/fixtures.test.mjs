@@ -114,9 +114,9 @@ test("rendered Markdown stays in the safe component path", async () => {
   assert.match(renderer, /复制/);
 });
 
-test("command palette is wired through the UI kit seam", async () => {
+test("global search is wired through the UI kit seam", async () => {
   const palette = await readFile(
-    path.join(root, "src", "lib", "components", "app", "CommandPalette.svelte"),
+    path.join(root, "src", "lib", "components", "app", "GlobalSearchPanel.svelte"),
     "utf8",
   );
   assert.match(palette, /from '\$lib\/ui-kit'/);

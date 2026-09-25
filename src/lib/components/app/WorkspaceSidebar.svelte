@@ -22,14 +22,11 @@
     threadBusy: boolean;
     archivingWorkspaceId: string | null;
     archivingSessionId: string | null;
-    sessionSearchOpen: boolean;
     sessionFilterOpen: boolean;
-    sessionSearch?: string;
     sessionFilter?: SessionFilter;
     createSessionWorkspaceId: string | null;
     renamingSessionId: string | null;
     sessionLabelDraft?: string;
-    onToggleSearch: () => void;
     onToggleFilter: () => void;
     onApplyFilters: () => void;
     onChooseWorkspaceDirectory: () => void;
@@ -64,14 +61,11 @@
     threadBusy,
     archivingWorkspaceId,
     archivingSessionId,
-    sessionSearchOpen,
     sessionFilterOpen,
-    sessionSearch = $bindable(''),
     sessionFilter = $bindable<SessionFilter>('active'),
     createSessionWorkspaceId,
     renamingSessionId,
     sessionLabelDraft = $bindable(''),
-    onToggleSearch,
     onToggleFilter,
     onApplyFilters,
     onChooseWorkspaceDirectory,
@@ -220,18 +214,6 @@
         variant="ghost"
         size="icon"
         type="button"
-        class={sessionSearchOpen || sessionSearch ? 'active' : undefined}
-        aria-label="搜索会话"
-        title="搜索会话"
-        aria-pressed={sessionSearchOpen}
-        onclick={onToggleSearch}
-      >
-        <Icon name="search" size={16} />
-      </Button>
-      <Button
-        variant="ghost"
-        size="icon"
-        type="button"
         class={sessionFilterOpen || sessionFilter !== 'active' ? 'active' : undefined}
         aria-label="筛选会话"
         title="筛选会话"
@@ -254,7 +236,7 @@
     </div>
   </CardHeader>
 
-  {#if sessionSearchOpen || sessionFilterOpen}
+  {#if sessionFilterOpen}
     <form
       class="workspace-tool-panel session-filter-form"
       aria-label="会话搜索与筛选"
@@ -263,9 +245,6 @@
         onApplyFilters();
       }}
     >
-      {#if sessionSearchOpen}
-        <Input class="session-search-input" bind:value={sessionSearch} placeholder="搜索会话…" aria-label="搜索会话或消息" />
-      {/if}
       {#if sessionFilterOpen}
         <select
           class="session-filter-select"
@@ -284,8 +263,8 @@
           <option value="closed">已关闭</option>
         </select>
       {/if}
-      <Button variant="ghost" size="icon" type="submit" aria-label="应用搜索和筛选" disabled={!selectedWorkspaceId}>
-        <Icon name="search" size={14} />
+      <Button variant="ghost" size="icon" type="submit" aria-label="应用会话筛选" disabled={!selectedWorkspaceId}>
+        <Icon name="filter" size={14} />
       </Button>
     </form>
   {/if}
@@ -459,7 +438,7 @@
               {:else if sessionsLoadingWorkspaceIds.includes(workspace.id)}
                 <span class="session-filter-empty">加载会话…</span>
               {:else}
-                <span class="session-filter-empty">{sessionSearch || sessionFilter !== 'active' ? '没有匹配的会话' : '暂无会话'}</span>
+                <span class="session-filter-empty">{sessionFilter !== 'active' ? '没有匹配的会话' : '暂无会话'}</span>
               {/if}
             </section>
           {/if}

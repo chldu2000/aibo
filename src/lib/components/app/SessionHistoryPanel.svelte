@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { onMount } from 'svelte';
+  import { onMount, tick } from 'svelte';
   import { Badge, Button, Card, CardContent, CardHeader, CardTitle, Input, Textarea } from '$lib/ui-kit';
   import type { SessionHistoryState } from '$lib/app/session-history-controller';
   let { workspaces, workspaceId, state: history, desktop, onWorkspace, onSession, onRefresh, onOlder, onNewer, onLatest, onClose, onReload }: {
@@ -12,6 +12,11 @@
   const sessions = $derived(history.sessions.filter(session => `${session.label} ${session.agent}`.toLocaleLowerCase().includes(search.toLocaleLowerCase())));
   const roleLabel: Record<string,string> = {user:'用户',assistant:'助手',system:'系统',tool:'工具'};
   onMount(()=>heading?.focus());
+  $effect(() => {
+    const target = history.targetMessageId;
+    if (!target || history.loading || !history.page?.items.some(item => item.id === target)) return;
+    void tick().then(() => document.getElementById(`history-message-${target}`)?.scrollIntoView({ block: 'center' }));
+  });
 </script>
 <section aria-labelledby="session-history-heading" class="session-history" data-ui-component="session-history">
   <div class="history-heading">
@@ -47,7 +52,7 @@
         <h3>{history.page.session.label}</h3>
         {#if !history.page.items.length}<p>此会话尚无宿主保存的消息。</p>{/if}
         {#each history.page.items as item (item.id)}
-          <Card as="article" aria-label={`${roleLabel[item.role]??item.role}消息`}>
+          <Card as="article" id={`history-message-${item.id}`} data-search-hit={history.targetMessageId === item.id ? 'true' : undefined} aria-label={`${roleLabel[item.role]??item.role}消息`}>
             <CardHeader><CardTitle>{roleLabel[item.role]??item.role}{item.toolName?` · ${item.toolName}`:''}</CardTitle><Badge variant="outline">{item.status}</Badge></CardHeader>
             <CardContent>
               <p><time datetime={item.createdAt}>{new Date(item.createdAt).toLocaleString()}</time>{#if item.turnId} · 回合 {item.turnId}{/if}</p>
