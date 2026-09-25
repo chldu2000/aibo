@@ -1,7 +1,6 @@
 import type {
   ApprovalRequest,
   Session,
-  TimelineItem,
 } from '$lib/types';
 import {
   removeSession,
@@ -17,7 +16,6 @@ export type SessionLifecycleControllerContext = {
     forkCodexThread: (sessionId: string, throughTurnId?: string | null) => Promise<Session>;
     archiveSession: (sessionId: string) => Promise<Session>;
     unarchiveSession: (sessionId: string) => Promise<Session>;
-    getTimeline: (sessionId: string) => Promise<TimelineItem[]>;
   };
   getDesktop: () => boolean;
   getSelectedSessionId: () => string | null;
@@ -27,14 +25,10 @@ export type SessionLifecycleControllerContext = {
   getRenamingSessionId: () => string | null;
   getSessionLabelDraft: () => string;
   findSession: (sessionId: string) => Session | null;
-  getWorkspaceSessions: (workspaceId: string) => Session[];
   getWorkspaceSessionMap: () => Record<string, Session[]>;
   setWorkspaceSessionMap: (value: Record<string, Session[]>) => void;
-  setSelectedSessionId: (value: string | null) => void;
-  setTimeline: (value: TimelineItem[]) => void;
   getPendingApprovals: () => ApprovalRequest[];
   setPendingApprovals: (value: ApprovalRequest[]) => void;
-  setCodexThreadSnapshot: (value: null) => void;
   setBusy: (value: boolean) => void;
   setErrorMessage: (value: string | null) => void;
   setNotice: (value: string) => void;
@@ -44,10 +38,9 @@ export type SessionLifecycleControllerContext = {
   setRenamingSessionId: (value: string | null) => void;
   setSessionLabelDraft: (value: string) => void;
   clearSelectedSessionContext: () => void;
-  activateWorkspace: (workspaceId: string) => void;
+  selectSession: (sessionId: string) => void;
   refreshSessions: (workspaceId: string) => Promise<void>;
   refreshCodexThreads: (workspaceId: string, announce?: boolean) => Promise<void> | void;
-  refreshCodexThread: (sessionId: string, announce?: boolean) => Promise<void> | void;
   isSessionRunning: (session: Session) => boolean;
 };
 
@@ -119,15 +112,15 @@ export function createSessionLifecycleController(
     }
     context.setBusy(true);
     context.setErrorMessage(null);
+    const selectedId = context.getSelectedSessionId();
+    const workspaceId = context.getSelectedWorkspaceId();
     try {
       const forked = await context.api.forkCodexThread(target.id, throughTurnId);
       context.setWorkspaceSessionMap(upsertSession(context.getWorkspaceSessionMap(), forked));
-      context.activateWorkspace(forked.workspaceId);
-      context.setSelectedSessionId(forked.id);
-      context.setTimeline(await context.api.getTimeline(forked.id));
-      context.setCodexThreadSnapshot(null);
-      void context.refreshCodexThread(forked.id);
-      void context.refreshCodexThreads(context.getSelectedWorkspaceId() ?? forked.workspaceId);
+      if (context.getSelectedSessionId() === selectedId && context.getSelectedWorkspaceId() === workspaceId) {
+        context.selectSession(forked.id);
+      }
+      void context.refreshCodexThreads(forked.workspaceId);
       context.setNotice(throughTurnId
         ? '会话分支已创建，已复制到选定回复。'
         : '会话分支已创建，已复制最近一条已完成 turn。');
@@ -182,19 +175,16 @@ export function createSessionLifecycleController(
     if (!target || !context.getDesktop() || !target.archived) return;
     context.setBusy(true);
     context.setErrorMessage(null);
+    const selectedId = context.getSelectedSessionId();
+    const workspaceId = context.getSelectedWorkspaceId();
     try {
       const restored = await context.api.unarchiveSession(target.id);
-      context.activateWorkspace(restored.workspaceId);
-      context.setSelectedSessionId(restored.id);
-      context.setTimeline(await context.api.getTimeline(restored.id));
-      if (restored.capabilities.includes('session.snapshot')) {
-        void context.refreshCodexThread(restored.id, true);
-        void context.refreshCodexThreads(restored.workspaceId);
+      context.setWorkspaceSessionMap(upsertSession(context.getWorkspaceSessionMap(), restored));
+      if (context.getSelectedSessionId() === selectedId && context.getSelectedWorkspaceId() === workspaceId) {
+        context.selectSession(restored.id);
       }
+      if (restored.capabilities.includes('session.snapshot')) void context.refreshCodexThreads(restored.workspaceId);
       await context.refreshSessions(restored.workspaceId);
-      if (context.getWorkspaceSessions(restored.workspaceId).some((item) => item.id === restored.id)) {
-        context.setSelectedSessionId(restored.id);
-      }
       context.setNotice(`会话已取消归档，可以继续发送消息。`);
     } catch (error) {
       context.setErrorMessage(toErrorMessage(error));

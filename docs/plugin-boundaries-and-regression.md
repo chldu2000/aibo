@@ -69,7 +69,7 @@
 | 呈现/UiKit/共享工作台、动作桥 | 默认 ak-ui 浅/深主题与受影响的外部呈现一致保留业务；未覆盖 surface 继承；core 降级、草稿/焦点/锚点、过期动作、故障中审批/恢复可达 | `test/renderer-negotiation.test.mjs`、`test/presentation-package-controller.test.mjs`、`test/presentation-view-state.test.mjs`、`test/presentation-conversation.test.mjs`；`probes/presentation-full-skins-browser.mjs`、受影响 surface 探针 |
 | 输入、附件、建议列表 | 纯文本/图片/引用、输入法与快捷键、长列表/长历史可用；草稿、队列、历史附件相互隔离 | `test/message-draft-ownership.test.mjs`、`test/clipboard-images.test.mjs`、`test/attachment-previews.test.mjs`、`test/presentation-suggestions.test.mjs`；`probes/composer-input-browser.mjs`、`probes/composer-paste-browser.mjs` |
 | 安装、SDK、打包、升级 | 启用/禁用/卸载、旧 release 绑定、失败候选回滚、缺依赖、损坏资源、桌面启动与宿主 SDK 装载 | `test/plugin-management.test.mjs`、`test/host-sdk.test.mjs`、`test/external-plugin-build.test.mjs`、`test/presentation-build.test.mjs`；相关安装/原生桌面探针 |
-| 共享 workspace/导航/设置/Git 状态 | 切换会话/工作区不串数据；设置继承和并发冲突；仓库选择不改变会话绑定；默认与外部工作台同步 | `test/session-navigation.test.mjs`、`test/agent-settings.test.mjs`、`test/git-repositories.test.mjs`、`test/presentation-navigation.test.mjs`、`test/presentation-git.test.mjs` |
+| 共享 workspace/导航/设置/Git 状态 | 切换会话/工作区不串数据；设置继承和并发冲突；仓库选择不改变会话绑定；默认与外部工作台同步 | `test/session-navigation.test.mjs`、`test/session-lifecycle-navigation.test.mjs`、`probes/session-lifecycle-browser.mjs`、`test/agent-settings.test.mjs`、`test/git-repositories.test.mjs`、`test/presentation-navigation.test.mjs`、`test/presentation-git.test.mjs` |
 
 执行要求：
 

@@ -59,13 +59,14 @@ impl Graph {
         self.releases.values().filter(|release|release.installed && release.plugin == plugin && Self::compatible(release,dependency))
             .max_by(|a,b|a.enabled.cmp(&b.enabled).then(a.version.cmp(&b.version)).then(a.id.cmp(&b.id))).cloned()
     }
-    fn executable(&mut self, release: &Release) -> bool {
-        *self.health.entry(release.id.clone()).or_insert_with(|| {
-            plugin_manifest::activation_issues(&release.manifest).is_ok_and(|issues|issues.is_empty()) &&
-                (!self.probe_executables || plugin_registry::dependency_diagnostics(&release.manifest).iter().all(|dependency|!dependency.required || dependency.available))
-        })
+    async fn executable(&mut self, release: &Release) -> bool {
+        if let Some(healthy) = self.health.get(&release.id) { return *healthy; }
+        let healthy = plugin_manifest::activation_issues(&release.manifest).is_ok_and(|issues| issues.is_empty())
+            && (!self.probe_executables || plugin_registry::dependency_diagnostics(&release.manifest).await.iter().all(|dependency| !dependency.required || dependency.available));
+        self.health.insert(release.id.clone(), healthy);
+        healthy
     }
-    fn walk(&mut self, id: &str, stack: &mut Vec<String>) -> Result<Report,String> {
+    async fn walk(&mut self, id: &str, stack: &mut Vec<String>) -> Result<Report,String> {
         if stack.iter().any(|ancestor|ancestor == id) { return Err("dependency_cycle: package dependency cycle".into()); }
         self.visited.insert(id.into());
         if stack.len() >= MAX_DEPTH || self.visited.len() > MAX_VISITED { return Err("dependency_limit: dependency graph exceeds host limits".into()); }
@@ -81,11 +82,11 @@ impl Graph {
                 None => Some("dependency_missing: no compatible installed release".into()),
                 Some(candidate) if candidate.plugin != plugin || !Self::compatible(candidate,dependency) => Some("dependency_incompatible: pinned release no longer matches the declared range".into()),
                 Some(candidate) if !candidate.installed => Some("dependency_unavailable: pinned release was uninstalled".into()),
-                Some(candidate) => match self.walk(&candidate.id,stack) {
+                Some(candidate) => match Box::pin(self.walk(&candidate.id,stack)).await {
                     Err(issue) => Some(issue),
                     Ok(child) if !child.ready() => child.dependencies.iter().find(|item|item.required && !item.available).and_then(|item|item.issue.clone()),
                     Ok(_) if !candidate.enabled => Some("dependency_unavailable: selected release is disabled".into()),
-                    Ok(_) if !self.executable(candidate) => Some("dependency_unavailable: selected release cannot activate".into()),
+                    Ok(_) if !self.executable(candidate).await => Some("dependency_unavailable: selected release cannot activate".into()),
                     Ok(_) => None,
                 },
             };
@@ -163,7 +164,9 @@ async fn resolve_policy(db: &SqlitePool, root: &str, persist: bool, probe_execut
             }
         }
     }
-    let report = graph.walk(root,&mut vec![])?;
+    // Keep the recursive traversal and process I/O future off callers' stacks,
+    // including metadata-only resolution in a deeply nested capability call.
+    let report = Box::pin(graph.walk(root,&mut vec![])).await?;
     if persist && report.ready() {
         for (owner,plugin,id) in graph.planned {
             sqlx::query("INSERT INTO plugin_dependency_bindings(installation_id,dependency_plugin_id,dependency_installation_id,created_at) VALUES(?,?,?,?) ON CONFLICT(installation_id,dependency_plugin_id) DO NOTHING")

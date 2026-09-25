@@ -4,7 +4,7 @@ use serde::Serialize;
 use serde_json::Value;
 use sha2::{Digest, Sha256};
 use sqlx::{Row, SqlitePool};
-use std::{collections::HashSet, fs, io::Read, path::{Component, Path, PathBuf}, process::Stdio, thread, time::{Duration, Instant}};
+use std::{collections::HashSet, fs, io::Read, path::{Component, Path, PathBuf}, time::Duration};
 use tokio::sync::Mutex;
 
 static INSTALL_LOCK: Mutex<()> = Mutex::const_new(());
@@ -49,50 +49,50 @@ pub(crate) fn parse_dependency_version(output: &str) -> Option<semver::Version> 
     })
 }
 
-fn executable_version(path: &Path) -> Result<semver::Version, &'static str> {
-    let mut command = std::process::Command::new(path);
-    command.arg("--version").env_clear().stdout(Stdio::piped()).stderr(Stdio::piped());
+pub(crate) fn version_command(path: &Path) -> tokio::process::Command {
+    let mut command = tokio::process::Command::new(path);
+    command.arg("--version").env_clear();
     for name in ["SystemRoot", "WINDIR", "PATH", "LANG", "LC_ALL"] {
         if let Some(value) = std::env::var_os(name) { command.env(name, value); }
     }
-    let mut child = command.spawn().map_err(|_|"version probe failed")?;
-    let stdout = child.stdout.take().ok_or("version probe failed")?;
-    let stderr = child.stderr.take().ok_or("version probe failed")?;
-    let stdout = thread::spawn(move || { let mut bytes = Vec::new(); let _ = stdout.take(8192).read_to_end(&mut bytes); bytes });
-    let stderr = thread::spawn(move || { let mut bytes = Vec::new(); let _ = stderr.take(8192).read_to_end(&mut bytes); bytes });
-    let deadline = Instant::now() + Duration::from_secs(2);
-    let status = loop {
-        if let Some(status) = child.try_wait().map_err(|_|"version probe failed")? { break status; }
-        if Instant::now() >= deadline { let _ = child.kill(); let _ = child.wait(); return Err("version probe timed out"); }
-        thread::sleep(Duration::from_millis(10));
-    };
-    let mut bytes = stdout.join().map_err(|_|"version probe failed")?;
-    bytes.extend(stderr.join().map_err(|_|"version probe failed")?);
-    if !status.success() { return Err("version probe failed"); }
+    command
+}
+
+async fn executable_version(path: &Path) -> Result<semver::Version, &'static str> {
+    let output = crate::controlled_process::execute(version_command(path), Duration::from_secs(2), 8193)
+        .await.map_err(|_| "version probe failed")?;
+    if output.timed_out { return Err("version probe timed out"); }
+    if !output.success || output.stdout.len() > 8192 || output.stderr.len() > 8192 {
+        return Err("version probe failed");
+    }
+    let mut bytes = output.stdout;
+    bytes.extend(output.stderr);
     parse_dependency_version(&String::from_utf8_lossy(&bytes)).ok_or("version was not reported")
 }
 
-pub(crate) fn dependency_diagnostics(manifest: &Value) -> Vec<PluginDependencyDiagnostic> {
+pub(crate) async fn dependency_diagnostics(manifest: &Value) -> Vec<PluginDependencyDiagnostic> {
     let normalized = plugin_manifest::normalize(manifest).ok();
     let dependencies = normalized.as_ref().map(|model| model.executable_dependencies.as_slice())
         .unwrap_or_else(|| manifest["dependencies"].as_array().map(Vec::as_slice).unwrap_or_default());
-    dependencies.iter().map(|dependency| {
+    let mut diagnostics = Vec::with_capacity(dependencies.len());
+    for dependency in dependencies {
         let name = dependency["name"].as_str().unwrap().to_owned();
         let executable = crate::find_executable(&name).map(|path|path.to_string_lossy().into_owned());
         let version_range = dependency["versionRange"].as_str().map(ToOwned::to_owned);
         let (available, detected_version, issue) = match (executable.as_deref(), version_range.as_deref()) {
             (None, _) => (false, None, Some("executable was not found".to_owned())),
             (Some(_), None) => (true, None, None),
-            (Some(path), Some(range)) => match (executable_version(Path::new(path)), semver::VersionReq::parse(range)) {
+            (Some(path), Some(range)) => match (executable_version(Path::new(path)).await, semver::VersionReq::parse(range)) {
                 (Ok(version), Ok(requirement)) if requirement.matches(&version) => (true, Some(version.to_string()), None),
                 (Ok(version), Ok(_)) => (false, Some(version.to_string()), Some(format!("version does not satisfy {range}"))),
                 (Err(error), _) => (false, None, Some(error.to_owned())),
                 (_, Err(_)) => (false, None, Some("manifest version range is invalid".to_owned())),
             },
         };
-        PluginDependencyDiagnostic { kind: dependency["kind"].as_str().unwrap().to_owned(), name,
-            required: dependency["required"].as_bool().unwrap(), available, executable, version_range, detected_version, issue }
-    }).collect()
+        diagnostics.push(PluginDependencyDiagnostic { kind: dependency["kind"].as_str().unwrap().to_owned(), name,
+            required: dependency["required"].as_bool().unwrap(), available, executable, version_range, detected_version, issue });
+    }
+    diagnostics
 }
 
 pub(crate) fn platform() -> String {
@@ -216,7 +216,7 @@ pub(crate) async fn list(db: &SqlitePool) -> Result<Vec<PluginInstallation>, Str
         let normalized = plugin_manifest::normalize(&manifest)?;
         let activation_issues = plugin_manifest::activation_issues(&manifest)?;
         let package_dependencies = plugin_dependencies::resolve(db, row.get("id"), false).await?;
-        let dependencies = dependency_diagnostics(&manifest);
+        let dependencies = dependency_diagnostics(&manifest).await;
         let installed = row.get::<i64, _>("installed") != 0;
         installations.push(PluginInstallation { id: row.get("id"), plugin_id: row.get("plugin_id"), plugin_version: row.get("plugin_version"),
             package_digest: row.get("package_digest"), enabled: row.get::<i64, _>("enabled") != 0, installed,
@@ -279,7 +279,7 @@ pub(crate) async fn install(db: &SqlitePool, data_dir: &Path, source: &Path) -> 
     if let Err(error) = persist { let _ = fs::remove_dir_all(&staging); let _ = fs::remove_dir_all(&destination); return Err(error); }
     let retained = registry.join(format!(".retained-{id}"));
     if retained.exists() { fs::remove_dir_all(retained).map_err(io_error)?; }
-    let dependencies = dependency_diagnostics(&manifest);
+    let dependencies = dependency_diagnostics(&manifest).await;
     let activation_issues = plugin_manifest::activation_issues(&manifest)?;
     let package_dependencies = plugin_dependencies::resolve(db, &id, false).await?;
     let runnable = package_dependencies.ready() && activation_issues.is_empty() && dependencies.iter().all(|dependency|!dependency.required || dependency.available);
@@ -333,7 +333,7 @@ pub(crate) async fn enable(db: &SqlitePool, id: &str, enabled: bool) -> Result<(
         let manifest: Value = serde_json::from_str(&raw).map_err(io_error)?;
         let issues = plugin_manifest::activation_issues(&manifest)?;
         if !issues.is_empty() { return Err(format!("protocol_incompatible: {}", issues.join(" "))); }
-        if manifest["schema"] == "aibo.plugin-manifest/v2" && dependency_diagnostics(&manifest).iter().any(|dependency|dependency.required && !dependency.available) {
+        if manifest["schema"] == "aibo.plugin-manifest/v2" && dependency_diagnostics(&manifest).await.iter().any(|dependency|dependency.required && !dependency.available) {
             return Err("dependency_missing: required executable dependency is unavailable".into());
         }
     }
@@ -479,14 +479,30 @@ mod tests {
         }
     }
 
-    #[test]
-    fn reports_dependency_versions_and_incompatibility() {
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn version_probe_deadline_includes_descendant_pipes() {
+        use std::os::unix::fs::PermissionsExt;
+        let root = std::env::temp_dir().join(format!("aibo-version-probe-{}", ulid::Ulid::new()));
+        fs::create_dir(&root).unwrap();
+        let executable = root.join("version-probe");
+        fs::write(&executable, "#!/bin/sh\nprintf 'v1.2.3\\n'\nsleep 3 &\n").unwrap();
+        fs::set_permissions(&executable, fs::Permissions::from_mode(0o755)).unwrap();
+        let started = std::time::Instant::now();
+        let result = executable_version(&executable).await;
+        fs::remove_dir_all(root).unwrap();
+        assert_eq!(result, Err("version probe timed out"));
+        assert!(started.elapsed() < Duration::from_millis(2800));
+    }
+
+    #[tokio::test]
+    async fn reports_dependency_versions_and_incompatibility() {
         let manifest = serde_json::json!({"dependencies":[
             {"kind":"runtime","name":"node","versionRange":">=22","required":true},
             {"kind":"runtime","name":"node","versionRange":">=999","required":false},
             {"kind":"executable","name":"aibo-definitely-missing-agent-binary","required":false}
         ]});
-        let diagnostics = dependency_diagnostics(&manifest);
+        let diagnostics = dependency_diagnostics(&manifest).await;
         assert_eq!(diagnostics.len(), 3);
         assert!(diagnostics[0].required);
         assert!(diagnostics[0].available, "Node is a test prerequisite");

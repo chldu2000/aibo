@@ -110,10 +110,14 @@ export function createSessionContextController(context: SessionContextController
   }
 
   async function refreshTimeline(sessionId: string): Promise<void> {
-    const loadedTimeline = await context.api.getTimeline(sessionId);
-    if (sessionId === context.getSelectedSessionId()) {
-      context.setTimeline(loadedTimeline);
-      context.setTimelineVisibleCount(80);
+    try {
+      const loadedTimeline = await context.api.getTimeline(sessionId);
+      if (sessionId === context.getSelectedSessionId()) {
+        context.setTimeline(loadedTimeline);
+        context.setTimelineVisibleCount(80);
+      }
+    } catch (error) {
+      if (sessionId === context.getSelectedSessionId()) context.setErrorMessage(toErrorMessage(error));
     }
   }
 

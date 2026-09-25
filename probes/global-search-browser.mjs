@@ -80,9 +80,12 @@ try {
     await dialog.getByRole('button',{name:'← 搜索结果',exact:true}).focus();await page.keyboard.press('Tab');
     assert.equal(await dialog.getByRole('button',{name:'打开所属会话'}).evaluate(el=>el===document.activeElement),true);
     assert.equal(await selectedKind(),'全部');
+    const listsBefore = await page.evaluate(() => window.searchCalls.filter(call => call.command === 'list_sessions' && call.args.workspaceId === 'w2').length);
     await dialog.getByRole('button',{name:'打开所属会话'}).click();
     await page.locator('#history-message-m[data-search-hit="true"]').waitFor();
-    assert.ok(await page.evaluate(()=>window.searchCalls.some(call=>call.command==='read_session_history_around'&&call.args.messageId==='m'&&call.args.sessionId==='s2')));
+    assert.equal(await page.evaluate(()=>window.searchCalls.filter(call=>call.command==='read_session_history_around'&&call.args.messageId==='m'&&call.args.sessionId==='s2').length), 1);
+    assert.equal(await page.evaluate(()=>window.searchCalls.filter(call=>call.command==='read_session_history').length), 0, 'search must open only its target, without a preliminary current-session read');
+    assert.equal(await page.evaluate(()=>window.searchCalls.filter(call=>call.command==='list_sessions'&&call.args.workspaceId==='w2').length) - listsBefore, 2, 'one target revalidation and one history catalog read');
     assert.ok(!await page.evaluate(()=>window.searchCalls.some(call=>call.command==='resume_agent_session'||call.command==='send_agent_prompt')));
     await page.getByRole('button',{name:'返回工作台'}).click();
     await page.getByRole('button',{name:'全局搜索',exact:true}).click();

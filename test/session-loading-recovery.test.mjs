@@ -54,18 +54,6 @@ test('nested session list cannot collapse into its own zero-height scroll contai
   assert.match(source, /\.workspace-list\s*\{[^}]*overflow-y\s*:\s*auto/);
 });
 
-test('Pi creation timeout reloads and recovers a newly persisted idle session', async () => {
-  const source = await readFile(
-    new URL('../src/lib/app/agent-session-controller.ts', import.meta.url),
-    'utf8',
-  );
-
-  assert.match(source, /await context\.refreshSessions\(workspace\.id\)/);
-  assert.match(source, /!previousSessionIds\.has\(session\.id\)/);
-  assert.match(source, /session\.state === 'idle'/);
-  assert.match(source, /context\.setSelectedSessionId\(recovered\.id\)/);
-});
-
 test('an older empty refresh cannot erase a session created while it was pending', () => {
   const existing = session('existing');
   const created = session('created');

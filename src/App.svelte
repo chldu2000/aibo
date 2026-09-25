@@ -1064,7 +1064,8 @@
   }
   function closeHostPanel(): void { historyOpen = false; capabilityHistoryOpen = false; }
   let sessionHistoryOpen = $state(false);
-  let sessionHistoryWorkspaceId = $state<string | null>(null);
+  let sessionHistoryRequest = $state<{ workspaceId: string; sessionId: string | null; messageId: string | null } | null>(null);
+  const sessionHistoryWorkspaceId = $derived(sessionHistoryRequest?.workspaceId ?? null);
   let sessionHistory = $state(emptySessionHistory());
   let sessionHistoryTrigger: HTMLElement | null = null;
   const sessionHistoryController = createSessionHistoryController({
@@ -1072,15 +1073,17 @@
     publish: value => { sessionHistory = value; },
   });
   $effect(() => {
-    if (!sessionHistoryOpen || !desktop || !sessionHistoryWorkspaceId) return;
-    void sessionHistoryController.open(sessionHistoryWorkspaceId, untrack(() => selectedSessionId));
+    const request = sessionHistoryRequest;
+    if (!sessionHistoryOpen || !desktop || !request) return;
+    void sessionHistoryController.open(request.workspaceId, request.sessionId, request.messageId);
     return () => sessionHistoryController.close();
   });
   function openSessionHistory(): void {
     capabilityHistoryOpen = false;
     sessionHistoryTrigger = document.activeElement instanceof HTMLElement ? document.activeElement : null;
     historyOpen = false; settingsOpen = false; globalSearchOpen = false;
-    sessionHistoryWorkspaceId = selectedWorkspaceId ?? workspaces[0]?.id ?? null;
+    const workspaceId = selectedWorkspaceId ?? workspaces[0]?.id;
+    sessionHistoryRequest = workspaceId ? { workspaceId, sessionId: selectedSessionId, messageId: null } : null;
     sessionHistoryOpen = true;
   }
   async function closeSessionHistory(): Promise<void> {
@@ -1778,10 +1781,10 @@
       sessionHistoryTrigger = searchTrigger;
       closeGlobalSearch(false);
       historyOpen = false; capabilityHistoryOpen = false; settingsOpen = false;
-      sessionHistoryWorkspaceId = workspaceId; sessionHistoryOpen = true;
-      await tick(); await sessionHistoryController.open(workspaceId, sessionId, item.target.source === 'message' ? item.target.id : null);
+      sessionHistoryRequest = { workspaceId, sessionId, messageId: item.target.source === 'message' ? item.target.id : null };
+      sessionHistoryOpen = true;
     } else {
-      workspaceSessionMap = { ...workspaceSessionMap, [workspaceId]: [...(workspaceSessionMap[workspaceId] ?? []).filter(session => session.id !== found.id), found] };
+      workspaceSessionMap = upsertSession(workspaceSessionMap, found);
       closeGlobalSearch(false); settingsOpen = false; historyOpen = false; sessionHistoryOpen = false; capabilityHistoryOpen = false; installedTool = null;
       selectSession(found.id);
     }
@@ -3521,9 +3524,8 @@
       forkCodexThread,
       closeAgentSession,
       renameSession: renameSessionApi,
-        archiveSession: archiveSessionApi,
+      archiveSession: archiveSessionApi,
       unarchiveSession: unarchiveSessionApi,
-      getTimeline,
     },
     getDesktop: () => desktop,
     getSelectedSessionId: () => selectedSessionId,
@@ -3533,14 +3535,10 @@
     getRenamingSessionId: () => renamingSessionId,
     getSessionLabelDraft: () => sessionLabelDraft,
     findSession,
-    getWorkspaceSessions,
     getWorkspaceSessionMap: () => workspaceSessionMap,
     setWorkspaceSessionMap: (value) => (workspaceSessionMap = value),
-    setSelectedSessionId: (value) => (selectedSessionId = value),
-    setTimeline: (value) => (timeline = value),
     getPendingApprovals: () => pendingApprovals,
     setPendingApprovals: (value) => (pendingApprovals = value),
-    setCodexThreadSnapshot: (value) => (codexThreadSnapshot = value),
     setBusy: (value) => (busy = value),
     setErrorMessage: (value) => (errorMessage = value),
     setNotice: (value) => (notice = value),
@@ -3550,10 +3548,9 @@
     setRenamingSessionId: (value) => (renamingSessionId = value),
     setSessionLabelDraft: (value) => (sessionLabelDraft = value),
     clearSelectedSessionContext,
-    activateWorkspace,
+    selectSession: navigationController.selectSession,
     refreshSessions,
     refreshCodexThreads,
-    refreshCodexThread,
     isSessionRunning,
   });
 
@@ -3954,7 +3951,7 @@
   {#if sessionHistoryOpen}
     <div class="host-session-history-region" style="order:2; display:grid; flex:1; min-height:0; overflow:auto;">
       <SessionHistoryPanel {workspaces} workspaceId={sessionHistoryWorkspaceId} state={sessionHistory} {desktop}
-        onWorkspace={id=>{sessionHistoryWorkspaceId=id;}} onSession={id=>void sessionHistoryController.select(id)}
+        onWorkspace={id=>{sessionHistoryRequest={workspaceId:id,sessionId:null,messageId:null};}} onSession={id=>void sessionHistoryController.select(id)}
         onRefresh={()=>void sessionHistoryController.refresh()} onOlder={()=>void sessionHistoryController.older()}
         onNewer={()=>void sessionHistoryController.newer()} onLatest={()=>void sessionHistoryController.latest()} onClose={closeSessionHistory}
         onReload={()=>{if (sessionHistoryWorkspaceId) void sessionHistoryController.open(sessionHistoryWorkspaceId, sessionHistory.selectedId);}} />

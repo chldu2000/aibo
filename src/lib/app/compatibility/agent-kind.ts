@@ -1,7 +1,6 @@
 import type { Session } from '$lib/types';
 
 export type AgentKind = 'codex' | 'pi' | 'plugin';
-export type SessionModelBackend = 'pi' | 'plugin' | 'profile';
 
 /** Legacy presentation family only. Capabilities never identify a provider. */
 export function sessionAgentKind(
@@ -17,12 +16,4 @@ export function sessionAgentKind(
     || session.agent === 'dev.aibo.pi.agent'
   ) return 'pi';
   return 'plugin';
-}
-
-/** Deprecated compatibility selector. New model operations use model-configuration.ts. */
-export function sessionModelBackend(
-  session: Pick<Session, 'agent' | 'capabilities' | 'pluginInstallationId'>,
-): SessionModelBackend {
-  if (session.pluginInstallationId) return 'plugin';
-  return sessionAgentKind(session) === 'pi' ? 'pi' : 'profile';
 }

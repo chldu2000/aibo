@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { createServer } from 'vite';
-import { sessionAgentKind, sessionModelBackend } from '../src/lib/app/agent-kind.ts';
+import { sessionAgentKind } from '../src/lib/app/agent-kind.ts';
 import { createAgentFacade } from '../src/lib/app/agent-facade.ts';
 
 const session = {
@@ -11,7 +11,6 @@ const session = {
 
 test('queue, tree and sandbox capabilities do not identify Pi or Codex', () => {
   assert.equal(sessionAgentKind(session), 'plugin');
-  assert.equal(sessionModelBackend(session), 'plugin');
 });
 
 test('capability facade uses the bound plugin and never falls through to legacy transport', async () => {

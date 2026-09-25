@@ -48,6 +48,10 @@
 流式修改的时间，使用可确认的消息创建时间，不沿用可能已被维护操作污染的时间。
 
 异步读取和回调必须验证当前工作区、会话及请求代际；关闭、删除、切换后的迟到结果不得恢复旧状态。
+普通选择、创建分支及取消归档共用导航控制器的上下文清理与加载；生命周期操作先保存返回的会话，
+仅在用户选择未变化时导航到结果。时间线读取的成功与失败均核对当前会话。
+搜索打开活动会话复用会话状态转移的排序；打开历史时将工作区、会话及消息锚点作为一次请求，
+由同一个面板生命周期启动读取，避免 effect 与点击处理器重复加载。
 功能支持来自协商后的能力，忙碌、归档等状态决定此刻是否可执行；两者均不等于执行授权。
 能力发现、安装绑定和权限检查见[会话能力协商](session-capability-negotiation.md)与
 [宿主和插件边界](plugin-boundaries-and-regression.md)。
@@ -195,6 +199,7 @@ UI 实现变化需检查默认 ak-ui 浅/深主题，以及受影响外部包的
 | Composer 输入、引用、粘贴与附件 | `probes/composer-input-browser.mjs`、`probes/composer-paste-browser.mjs` |
 | 外部包继承、完整工作台与恢复 | `probes/presentation-app-browser.mjs`、`probes/presentation-full-skins-browser.mjs` |
 | 管理区域、焦点与审批访问 | `probes/host-panels-browser.mjs` |
+| 分支/取消归档、切换期间迟到时间线、默认与外部呈现导航 | `probes/session-lifecycle-browser.mjs` |
 | 五类设置、快捷入口、布局恢复焦点、插件草稿与继承 | `probes/settings-sections-browser.mjs`、`probes/workspace-preferences-browser.mjs` |
 
 `verify` 不运行浏览器或 Rust 测试；使用替身 IPC 的浏览器结果不能证明原生授权、持久化或 OS 行为。

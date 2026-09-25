@@ -73,6 +73,12 @@ try {
     assert.equal(await small.locator('.session-item-row').count(), 5);
     assert.equal(await small.getByRole('button', { name: '加载更多会话', exact: true }).count(), 0);
     const originalOrder = await first.locator('.session-item-label').allTextContents();
+    await page.getByRole('button', { name: '全局搜索', exact: true }).click();
+    await page.getByRole('combobox', { name: '全局搜索内容' }).fill('preview-workspace session 0');
+    await page.getByRole('option').filter({ hasText: 'preview-workspace session 0' }).first().click();
+    await page.getByRole('dialog', { name: '全局搜索', exact: true }).waitFor({ state: 'detached' });
+    assert.deepEqual(await first.locator('.session-item-label').allTextContents(), originalOrder,
+      'opening a search result must preserve content-activity ordering and pagination');
     await page.evaluate(() => window.updateOldSession(false));
     assert.deepEqual(await first.locator('.session-item-label').allTextContents(), originalOrder,
       'metadata-only updates must not bring a hidden old session into the first page');

@@ -39,9 +39,7 @@ impl Broker {
             let Some(range) = dependency["versionRange"].as_str() else { continue; };
             let remaining = chain.deadline.saturating_duration_since(Instant::now());
             if remaining.is_zero() { return Err(fail("timeout", "Dependency inspection deadline expired")); }
-            let mut command = tokio::process::Command::new(executable);
-            command.arg("--version").env_clear();
-            for name in ["SystemRoot", "WINDIR", "PATH", "LANG", "LC_ALL"] { if let Some(value) = std::env::var_os(name) { command.env(name,value); } }
+            let command = plugin_registry::version_command(&executable);
             let output = crate::controlled_process::execute_cancellable(command, remaining.min(Duration::from_secs(2)), 8193, chain.cancelled()).await.map_err(|_|fail("provider_unavailable", "Executable version probe failed"))?;
             if output.cancelled { return Err(fail("cancelled", "Dependency inspection cancelled")); }
             if output.timed_out { return Err(fail("timeout", "Dependency inspection timed out")); }
@@ -76,19 +74,7 @@ impl Broker {
         }
         let provider = self.provider(&request).await?;
         if provider.operation["effect"] == "read" { return self.invoke_selected_observed(caller, request, provider, None, None,observer).await; }
-        let workspace = self.workspace(&request.scope).await?.ok_or_else(||fail("permission_denied", "Capability writes require a workspace"))?;
-        self.validate_turn(&request).await?;
-        if !jsonschema::options().build(&provider.operation["inputSchema"]).map_err(database)?.is_valid(&request.input) { return Err(fail("invalid_input", "Input does not match the capability contract")); }
-        workspace_write_runs::execute_with_context(&self.db, &workspace, OPERATION, identity, approval,
-            || self.prepare_write(&request, &provider, &workspace, None, None),
-            |cancel| async {
-                if cancel.is_requested().await { return Err(CoreError::WriteReplay { code:"cancelled".into(),message:"Capability was cancelled before dispatch".into() }); }
-                // The runtime and its dependency probes are constructed only here,
-                // after durable admission, native approval and context comparison.
-                self.invoke_selected_observed(caller, request.clone(), provider.clone(), None, Some(WriteContext { cancellation:cancel, approval:approval.clone(), uncertain:Default::default() }),observer.clone()).await.map_err(|error| {
-                    CoreError::WriteOutcomeUnknown(format!("{}; invocation {}", error.message, error.invocation_id.as_deref().unwrap_or("not assigned")))
-                })
-            }).await.map_err(failure)
+        self.execute_authorized_write(caller, request, provider, approval, None, observer).await
     }
 
     /// Session turns already carry an immutable installation binding. Execute
@@ -115,11 +101,18 @@ impl Broker {
             .into_iter().find(|offer|offer.contribution_id == binding.contribution_id)
             .ok_or_else(||fail("provider_unavailable", "Bound contribution provider is unavailable"))?;
         if provider.operation["effect"] != "write" { return Err(fail("invalid_input", "Bound authorized invocation must be a write operation")); }
+        self.execute_authorized_write(caller, request, provider, approval, Some(binding), observer).await
+    }
+
+    // Both entry points perform replay before selecting a provider. Once selected,
+    // writes share ledger admission, cancellation and unknown-outcome handling.
+    async fn execute_authorized_write(&self, caller: &str, request: Request, provider: Provider,
+        approval: &workspace_write_runs::Request, binding: Option<&Binding>, observer: Option<EventObserver>) -> Result<Response, Failure> {
         let workspace = self.workspace(&request.scope).await?.ok_or_else(||fail("permission_denied", "Capability writes require a workspace"))?;
         self.validate_turn(&request).await?;
         if !jsonschema::options().build(&provider.operation["inputSchema"]).map_err(database)?.is_valid(&request.input) { return Err(fail("invalid_input", "Input does not match the capability contract")); }
-        workspace_write_runs::execute_with_context(&self.db, &workspace, OPERATION, identity, approval,
-            || self.prepare_write(&request, &provider, &workspace, None, Some(binding)),
+        workspace_write_runs::execute_with_context(&self.db, &workspace, OPERATION, input(&request), approval,
+            || self.prepare_write(&request, &provider, &workspace, None, binding),
             |cancel| async {
                 if cancel.is_requested().await { return Err(CoreError::WriteReplay { code:"cancelled".into(),message:"Capability was cancelled before dispatch".into() }); }
                 self.invoke_selected_observed(caller, request.clone(), provider.clone(), None, Some(WriteContext { cancellation:cancel, approval:approval.clone(), uncertain:Default::default() }),observer.clone()).await.map_err(|error| {

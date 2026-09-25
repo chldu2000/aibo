@@ -28,3 +28,23 @@ test('late startup completion cannot overwrite a newer session state',async()=>{
  f.sessions.set('s',{...f.starting,state:'running'});f.native.resolve({...f.starting,state:'idle'});await pending;
  assert.equal(f.sessions.get('s').state,'running');
 });
+
+test('preparing a provider session preserves its binding and cannot steal a newer workspace selection', async () => {
+  const prepared = deferred(), sessions = new Map(), calls = [];
+  let workspace = 'original', selected = null;
+  const session = { id: 'created', workspaceId: 'original', agent: 'external.contribution', pluginInstallationId: 'pinned-release', state: 'starting', archived: false };
+  const controller = createSessionStartupController({
+    prepare: (...args) => { calls.push(args); return prepared.promise; },
+    start: async id => { assert.equal(id, session.id); return { ...session, state: 'idle' }; },
+    getWorkspaceId: () => workspace, getSessionId: () => selected,
+    findSession: id => sessions.get(id), putSession: value => sessions.set(value.id, value),
+    selectSession: id => { selected = id; }, setCreating() {}, setError(error) { if (error) assert.fail(error); }, setNotice() {}, refreshProfile() {},
+  });
+  const pending = controller.create('original', 'external.contribution', 'pinned-release');
+  assert.deepEqual(calls, [['original', 'external.contribution', 'pinned-release']]);
+  workspace = 'other'; selected = 'other-session'; prepared.resolve(session);
+  await pending;
+  assert.equal(selected, 'other-session');
+  assert.equal(sessions.get('created').pluginInstallationId, 'pinned-release');
+  assert.equal(sessions.get('created').state, 'idle');
+});
