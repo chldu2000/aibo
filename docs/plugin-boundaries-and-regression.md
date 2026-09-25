@@ -67,6 +67,7 @@
 
 | 改动入口 | 必须保留的相邻行为 | 现有回归入口（按需补充缺失场景） |
 | --- | --- | --- |
+| 数据库结构、迁移与升级门禁 | 已应用 SQL 和历史样本不可变；旧会话、消息、草稿和校验值保留；新库初始化、重复启动、未知校验值拒绝 | [迁移规则](database-migrations.md)；`pnpm run check:migrations`、`test/migration-immutability.test.mjs`、`pnpm run test:migrations`；数据库迁移另跑完整 Rust `--lib` 测试 |
 | 能力、菜单、模式、模型协商 | 无此能力的会话正常使用；第三方与内置一致；旧 release、忙碌/归档门禁；模型/模式变化不丢历史和其他选择 | `test/session-capability-ui.test.mjs`、`test/agent-command-menu.test.mjs`、`test/model-catalog-navigation.test.mjs`、`test/model-configuration.test.mjs`、`test/composer-access-options.test.mjs`；`probes/plugin-command-menu-browser.mjs` |
 | Broker、执行配置、会话生命周期 | 只读/写入准入、拒绝/取消、固定绑定、热复用/重启恢复；其他 provider 的原有回合 | `src-tauri/src/session_host_tests.rs` 及对应 Broker/执行配置 Rust 测试；`test/session-capability-providers.test.mjs`、`test/pi-capability-workflow.test.mjs`、`test/approval-routing.test.mjs` |
 | 事件投影、队列、目标、子 Agent | 主回合唯一终态；历史重载、重复/迟到事件、FIFO/steering 区别、暂停/uncertain、普通对话与草稿不被消费 | `test/message-queue.test.mjs`、`test/session-goal.test.mjs`、`test/subagent-workflow.test.mjs`、`test/presentation-timeline.test.mjs` 及相应原生持久化测试 |

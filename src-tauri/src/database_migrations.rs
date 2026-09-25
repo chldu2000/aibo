@@ -40,6 +40,34 @@ mod tests {
     use sqlx::{Connection, Row};
 
     #[tokio::test]
+    async fn fresh_database_migrations_are_complete_and_repeatable() {
+        let root = std::env::temp_dir().join(format!("aibo-fresh-migration-{}", ulid::Ulid::new()));
+        let path = root.join("aibo.sqlite3");
+        let expected = sqlx::migrate!("./migrations").iter().count() as i64;
+        for _ in 0..2 {
+            let db = crate::open_database(&path).await.unwrap();
+            let count: i64 =
+                sqlx::query_scalar("SELECT count(*) FROM _sqlx_migrations WHERE success=1")
+                    .fetch_one(&db)
+                    .await
+                    .unwrap();
+            assert_eq!(count, expected);
+            let integrity: String = sqlx::query_scalar("PRAGMA integrity_check")
+                .fetch_one(&db)
+                .await
+                .unwrap();
+            assert_eq!(integrity, "ok");
+            assert!(sqlx::query("PRAGMA foreign_key_check")
+                .fetch_all(&db)
+                .await
+                .unwrap()
+                .is_empty());
+            db.close().await;
+        }
+        std::fs::remove_dir_all(root).unwrap();
+    }
+
+    #[tokio::test]
     async fn applied_search_versions_upgrade_without_losing_history() {
         for initial_version in [true, false] {
             let root = std::env::temp_dir().join(format!("aibo-migration-{}", ulid::Ulid::new()));
@@ -57,7 +85,15 @@ mod tests {
             let applied = if initial_version {
                 initial_search_migration()
             } else {
-                old.iter().find(|m| m.version == 51).unwrap().clone()
+                // Frozen applied SQL: constructing this from current migrations
+                // would let an accidental edit silently redefine the old database.
+                Migration::new(
+                    51,
+                    "global search".into(),
+                    MigrationType::Simple,
+                    include_str!("../../fixtures/migrations/0051_global_search.sql").into(),
+                    false,
+                )
             };
             migrations.push(applied.clone());
             old.migrations = migrations.into();
@@ -72,6 +108,11 @@ mod tests {
                 sqlx::query("INSERT INTO agent_events(event_id,session_id,generation_id,sequence,occurred_at,event_type,payload_json) VALUES (?,'s','generation',?,'now','subagent.message',?)")
                 .bind(format!("child-{sequence}")).bind(sequence).bind(payload.to_string()).execute(&mut connection).await.unwrap();
             }
+            let previous_history: Vec<(i64, Vec<u8>)> =
+                sqlx::query_as("SELECT version, checksum FROM _sqlx_migrations ORDER BY version")
+                    .fetch_all(&mut connection)
+                    .await
+                    .unwrap();
             connection.close().await.unwrap();
 
             let db = crate::open_database(&path)
@@ -121,11 +162,24 @@ mod tests {
                 .get("version");
             assert!(version >= 52);
             db.close().await;
-            crate::open_database(&path)
+            let reopened = crate::open_database(&path).await.expect("repeated startup");
+            let history: Vec<(i64, Vec<u8>)> = sqlx::query_as(
+                "SELECT version, checksum FROM _sqlx_migrations WHERE version <= 51 ORDER BY version",
+            ).fetch_all(&reopened).await.unwrap();
+            assert_eq!(
+                history, previous_history,
+                "upgrade must preserve all applied checksums"
+            );
+            let stored: (String, String, String) = sqlx::query_as(
+                "SELECT s.label, m.content, d.text FROM sessions s JOIN messages m ON m.session_id=s.id JOIN composer_drafts d ON d.session_id=s.id WHERE s.id='s'",
+            ).fetch_one(&reopened).await.unwrap();
+            assert_eq!(stored, ("Session".into(), content, draft));
+            let integrity: String = sqlx::query_scalar("PRAGMA integrity_check")
+                .fetch_one(&reopened)
                 .await
-                .expect("repeated startup")
-                .close()
-                .await;
+                .unwrap();
+            assert_eq!(integrity, "ok");
+            reopened.close().await;
             std::fs::remove_dir_all(root).unwrap();
         }
     }

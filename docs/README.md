@@ -8,6 +8,7 @@
 - [模型配置与上下文用量](model-configuration.md)：模型、推理、Fast、窗口选择及呈现动作边界。
 - [会话能力声明与协商](session-capability-negotiation.md)：可选功能合同、执行授权和插件迁移。
 - [原生引擎探针](native-engine-probes.md)：环境要求、运行命令与结果位置。
+- [数据库迁移规则](database-migrations.md)：迁移冻结、自动检查、旧库升级测试与异常修复。
 
 ## 当前架构与支持范围
 

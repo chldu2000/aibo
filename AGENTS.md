@@ -9,6 +9,7 @@ regression requirements. Historical records explain earlier versions, not curren
 | --- | --- |
 | Domain terminology, identity, or ownership | [Domain language](CONTEXT.md) |
 | Host business logic, plugin contracts, session routing, state, actions, or recovery | [Host/plugin boundaries](docs/plugin-boundaries-and-regression.md) |
+| Database schema, migration SQL, historical SQL fixtures, or migration validation | [Database migrations](docs/database-migrations.md) |
 | UI components, layout, styling, presentation lifecycle, or extension boundaries, including `src/lib/workbench/` | [UI architecture](docs/ui-architecture.md) |
 | Default ak-ui appearance or interaction | [Current ak-ui spec](docs/design/ak-ui-current-spec.md) |
 | Capability declarations, discovery, or negotiation | [Session negotiation](docs/session-capability-negotiation.md) |
@@ -26,6 +27,9 @@ regression requirements. Historical records explain earlier versions, not curren
 - Preserve host-owned state and pinned session bindings across presentation or
   configuration changes. Management, approval, and recovery remain reachable
   outside replaceable presentation surfaces.
+- Keep applied or committed database migrations byte-for-byte immutable. Change
+  the schema through a new migration with a higher version; preserve historical
+  SQL and upgrade fixtures under the [migration rules](docs/database-migrations.md).
 - App and trusted workbench components use `$lib/ui-kit` for visual components
   and only layout CSS. Business modules remain independent of Svelte, UI, and
   concrete API implementations. The UI architecture defines the complete boundary,

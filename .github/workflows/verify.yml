@@ -11,7 +11,7 @@ jobs:
   verify:
     runs-on: ubuntu-latest
     env:
-      AIBO_BASE_REF: ${{ github.event.pull_request.base.sha || github.event.before }}
+      AIBO_BASE_REF: ${{ github.event.pull_request.base.sha || (github.event.before != '0000000000000000000000000000000000000000' && github.event.before) || format('origin/{0}', github.event.repository.default_branch) }}
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -34,3 +34,26 @@ jobs:
 
       - name: Verify architecture and build
         run: pnpm run verify
+
+  database-migrations:
+    runs-on: macos-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Test database initialization and historical upgrades
+        run: pnpm run test:migrations
