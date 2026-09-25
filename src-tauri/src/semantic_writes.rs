@@ -63,7 +63,7 @@ impl SemanticPlugins {
 #[tauri::command]
 pub(crate) async fn write_semantic_contribution(action: SemanticAction, request_id: String, window: tauri::WebviewWindow, state: tauri::State<'_,crate::AppState>) -> Result<Response,String> {
     let owner = window.label().to_owned(); let db = state.db.clone(); let broker = state.capability_broker.clone(); let views = state.semantic_plugins.clone();
-    let approval = crate::host_write_request(request_id.clone(),window,"Aibo · 确认视图写入");
+    let approval = crate::host_write_request(request_id.clone(),window,db.clone(),crate::host_confirmation::Category::ViewWrite);
     // Disposing a renderer invalidates approval, but cannot abandon an approved write.
     tokio::spawn(async move {views.write_requested(&db,&broker,&owner,action,request_id,&approval).await}).await.map_err(|_|"outcome_unknown: semantic write task stopped".to_owned())?
 }

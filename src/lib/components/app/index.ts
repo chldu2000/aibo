@@ -46,3 +46,5 @@ export { default as CapabilityHistoryPanel } from './CapabilityHistoryPanel.svel
 
 export { default as SubagentDetails } from './SubagentDetails.svelte';
 export { default as WorkspacePreferencesPanel } from './WorkspacePreferencesPanel.svelte';
+
+export { default as HostConfirmationPanel } from './HostConfirmationPanel.svelte';

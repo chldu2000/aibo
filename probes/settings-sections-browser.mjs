@@ -28,6 +28,7 @@ try {
         if(command==='get_app_snapshot')return {platform:'macos',appVersion:'probe',workspaceCount:1,diagnostics:[]};
         if(command==='list_workspaces')return [workspace];
         if(command==='list_plugin_installations')return [installation];
+        if(command==='read_host_confirmation_preferences')return {git:'always-allow',projectAction:'always-allow',turnRestore:'always-allow',capabilityWrite:'always-allow',viewWrite:'always-allow'};
         if(command==='read_workspace_preferences')return {trustNewWorkspaces:trusted};
         if(command==='save_workspace_preferences'){trusted=args.trustNewWorkspaces;return {trustNewWorkspaces:trusted};}
         if(command==='get_presentation_selection'||command==='get_turn_change_set')return null;

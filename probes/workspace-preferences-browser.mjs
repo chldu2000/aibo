@@ -19,6 +19,7 @@ try {
       if(command.startsWith('plugin:event|'))return 1;
       if(command==='get_app_snapshot')return {platform:'macos',appVersion:'probe',workspaceCount:workspaces().length,diagnostics:[]};
       if(command==='list_workspaces')return workspaces();
+      if(command==='read_host_confirmation_preferences')return {git:'always-allow',projectAction:'always-allow',turnRestore:'always-allow',capabilityWrite:'always-allow',viewWrite:'always-allow'};
       if(command==='read_workspace_preferences'){if(window.failPreferenceRead)throw Error('读取工作区设置失败');return preferences()}
       if(command==='save_workspace_preferences'){
         await new Promise(resolve=>setTimeout(resolve,50));

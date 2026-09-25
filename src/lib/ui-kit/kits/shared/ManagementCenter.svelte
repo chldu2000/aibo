@@ -11,7 +11,7 @@
   const sections: readonly { id: UiManagementSection; label: string; description: string }[] = [
     { id: 'appearance', label: '外观', description: '主题与当前皮肤' },
     { id: 'layout', label: '布局', description: '侧边区域与工作台恢复' },
-    { id: 'workspace', label: '工作区', description: '新增工作区的默认行为' },
+    { id: 'workspace', label: '工作区', description: '默认信任与宿主操作确认' },
     { id: 'extensions', label: '插件与能力', description: '安装管理与插件配置' },
     { id: 'runtime', label: '运行与诊断', description: '环境、连接与执行记录' },
   ];

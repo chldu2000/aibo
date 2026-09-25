@@ -1,5 +1,6 @@
 mod agent_settings;
 mod workspace_preferences;
+mod host_confirmation;
 mod project_actions;
 mod controlled_process;
 mod workspace_git;
@@ -2193,7 +2194,7 @@ async fn restore_turn_change_set(
     window: tauri::WebviewWindow,
     state: State<'_, AppState>,
 ) -> Result<RestoreTurnChangeSetResult, CoreError> {
-    let request = host_write_request(request_id, window, "Aibo · 确认恢复本轮变更");
+    let request = host_write_request(request_id, window, state.db.clone(), host_confirmation::Category::TurnRestore);
     turn_restore::restore_requested(&state.db, &state.data_dir, &session_id, &turn_id, &request).await
 }
 
@@ -3001,7 +3002,7 @@ async fn apply_git_hunk_action(
     window: tauri::WebviewWindow,
     state: State<'_, AppState>,
 ) -> Result<GitHunkActionResult, CoreError> {
-    let request = git_write_request(request_id, window);
+    let request = git_write_request(request_id, window, state.db.clone());
     core_turn_git::apply_hunk(&state.db, &state.data_dir, &session_id, &turn_id, &path, hunk_index, &action, &request).await
 }
 
@@ -3015,7 +3016,7 @@ async fn apply_workspace_git_file_action(
     window: tauri::WebviewWindow,
     state: State<'_, AppState>,
 ) -> Result<GitFileActionResult, CoreError> {
-    let request = git_write_request(request_id, window);
+    let request = git_write_request(request_id, window, state.db.clone());
     workspace_git::apply_workspace_git_file_action_requested_in_repository(&state.db, workspace_id, path, action, &request, repository_id.as_deref()).await
 }
 
@@ -3028,7 +3029,7 @@ async fn apply_workspace_git_action(
     window: tauri::WebviewWindow,
     state: State<'_, AppState>,
 ) -> Result<GitWorkspaceActionResult, CoreError> {
-    let request = git_write_request(request_id, window);
+    let request = git_write_request(request_id, window, state.db.clone());
     workspace_git::apply_workspace_git_action_requested_in_repository(&state.db, workspace_id, action, &request, repository_id.as_deref()).await
 }
 
@@ -3041,7 +3042,7 @@ async fn commit_workspace_changes(
     window: tauri::WebviewWindow,
     state: State<'_, AppState>,
 ) -> Result<GitCommitResult, CoreError> {
-    let request = git_write_request(request_id, window);
+    let request = git_write_request(request_id, window, state.db.clone());
     workspace_git::commit_workspace_changes_requested_in_repository(&state.db, workspace_id, message, &request, repository_id.as_deref()).await
 }
 
@@ -3063,7 +3064,7 @@ async fn checkout_workspace_git_branch(
     window: tauri::WebviewWindow,
     state: State<'_, AppState>,
 ) -> Result<GitWorkspaceActionResult, CoreError> {
-    let request = git_write_request(request_id, window);
+    let request = git_write_request(request_id, window, state.db.clone());
     workspace_git::checkout_workspace_git_branch_requested_in_repository(&state.db, workspace_id, branch, &request, repository_id.as_deref()).await
 }
 
@@ -3076,7 +3077,7 @@ async fn create_workspace_git_branch(
     window: tauri::WebviewWindow,
     state: State<'_, AppState>,
 ) -> Result<GitWorkspaceActionResult, CoreError> {
-    let request = git_write_request(request_id, window);
+    let request = git_write_request(request_id, window, state.db.clone());
     workspace_git::create_workspace_git_branch_requested_in_repository(&state.db, workspace_id, branch, &request, repository_id.as_deref()).await
 }
 
@@ -3132,7 +3133,7 @@ async fn sync_workspace_git(
     window: tauri::WebviewWindow,
     state: State<'_, AppState>,
 ) -> Result<GitWorkspaceActionResult, CoreError> {
-    let request = git_write_request(request_id, window);
+    let request = git_write_request(request_id, window, state.db.clone());
     workspace_git::sync_workspace_git_requested_in_repository(&state.db, workspace_id, action, &request, repository_id.as_deref()).await
 }
 
@@ -3154,7 +3155,7 @@ async fn apply_workspace_git_stash(
     window: tauri::WebviewWindow,
     state: State<'_, AppState>,
 ) -> Result<GitWorkspaceActionResult, CoreError> {
-    let request = git_write_request(request_id, window);
+    let request = git_write_request(request_id, window, state.db.clone());
     workspace_git::apply_workspace_git_stash_requested_in_repository(&state.db, workspace_id, reference, &request, repository_id.as_deref()).await
 }
 
@@ -3167,7 +3168,7 @@ async fn stash_workspace_git(
     window: tauri::WebviewWindow,
     state: State<'_, AppState>,
 ) -> Result<GitWorkspaceActionResult, CoreError> {
-    let request = git_write_request(request_id, window);
+    let request = git_write_request(request_id, window, state.db.clone());
     workspace_git::stash_workspace_git_requested_in_repository(&state.db, workspace_id, message, &request, repository_id.as_deref()).await
 }
 
@@ -3181,7 +3182,7 @@ async fn apply_git_file_action(
     window: tauri::WebviewWindow,
     state: State<'_, AppState>,
 ) -> Result<GitFileActionResult, CoreError> {
-    let request = git_write_request(request_id, window);
+    let request = git_write_request(request_id, window, state.db.clone());
     core_turn_git::apply_file(&state.db, &state.data_dir, &session_id, &path, &action, turn_id.as_deref(), &request).await
 }
 
@@ -3558,12 +3559,15 @@ async fn run_project_action(
 ) -> Result<ProjectActionRun, CoreError> {
     use tauri_plugin_dialog::{DialogExt, MessageDialogButtons};
     let caller = window.label().to_owned();
+    let db = state.db.clone();
     project_actions::run_project_action_with_confirmation(&state.db, &state.data_dir, workspace_id, action_id, session_id, request_id, caller, |message| async move {
-        let (send, receive) = tokio::sync::oneshot::channel();
-        window.app_handle().dialog().message(message).parent(&window).title("Aibo · 确认工程动作")
-            .buttons(MessageDialogButtons::OkCancelCustom("允许本次执行".into(), "取消".into()))
-            .show(move |accepted| { let _ = send.send(accepted); });
-        receive.await.map_err(|_| "confirmation_unavailable".to_owned())
+        host_confirmation::confirm(&db, host_confirmation::Category::ProjectAction, || async move {
+            let (send, receive) = tokio::sync::oneshot::channel();
+            window.app_handle().dialog().message(message).parent(&window).title(host_confirmation::Category::ProjectAction.title())
+                .buttons(MessageDialogButtons::OkCancelCustom("允许本次执行".into(), "取消".into()))
+                .show(move |accepted| { let _ = send.send(accepted); });
+            receive.await.map_err(|_| "confirmation_unavailable".to_owned())
+        }).await
     }).await
 }
 
@@ -3574,20 +3578,23 @@ async fn cancel_project_action(
     project_actions::cancel_project_action(&state.db, workspace_id, run_id).await
 }
 
-fn git_write_request(request_id: String, window: tauri::WebviewWindow) -> workspace_write_runs::Request {
-    host_write_request(request_id, window, "Aibo · 确认 Git 写入")
+fn git_write_request(request_id: String, window: tauri::WebviewWindow, db: SqlitePool) -> workspace_write_runs::Request {
+    host_write_request(request_id, window, db, host_confirmation::Category::Git)
 }
 
-fn host_write_request(request_id: String, window: tauri::WebviewWindow, title: &'static str) -> workspace_write_runs::Request {
+fn host_write_request(request_id: String, window: tauri::WebviewWindow, db: SqlitePool, category: host_confirmation::Category) -> workspace_write_runs::Request {
     use tauri_plugin_dialog::{DialogExt, MessageDialogButtons};
     workspace_write_runs::Request::with_confirmation(request_id, window.label().into(), move |message| {
         let window = window.clone();
+        let db = db.clone();
         async move {
-            let (send, receive) = tokio::sync::oneshot::channel();
-            window.app_handle().dialog().message(message).parent(&window).title(title)
-                .buttons(MessageDialogButtons::OkCancelCustom("允许本次执行".into(), "取消".into()))
-                .show(move |accepted| { let _ = send.send(accepted); });
-            receive.await.map_err(|_| "confirmation_unavailable".to_owned())
+            host_confirmation::confirm(&db, category, || async move {
+                let (send, receive) = tokio::sync::oneshot::channel();
+                window.app_handle().dialog().message(message).parent(&window).title(category.title())
+                    .buttons(MessageDialogButtons::OkCancelCustom("允许本次执行".into(), "取消".into()))
+                    .show(move |accepted| { let _ = send.send(accepted); });
+                receive.await.map_err(|_| "confirmation_unavailable".to_owned())
+            }).await
         }
     })
 }
@@ -3717,7 +3724,7 @@ async fn bind_capability_provider(binding: capability_broker::Binding, state: St
 async fn invoke_capability(request: capability_broker::Request, window: tauri::WebviewWindow, state: State<'_, AppState>) -> Result<capability_broker::Response, capability_broker::Failure> {
     let broker = state.capability_broker.clone();
     let caller = window.label().to_owned();
-    let approval = host_write_request(request.request_id.clone(), window, "Aibo · 确认能力写入");
+    let approval = host_write_request(request.request_id.clone(), window, state.db.clone(), host_confirmation::Category::CapabilityWrite);
     // Execution belongs to Core even if the calling view disappears.
     tokio::spawn(async move { broker.invoke_authorized(&caller, request, &approval).await }).await.map_err(|_| capability_broker::Failure { code: "provider_unavailable".into(), message: "Capability task stopped".into(), invocation_id: None })?
 }
@@ -4520,6 +4527,8 @@ pub fn run() {
             cancel_global_file_search,
             read_search_result,
             add_workspace,
+            host_confirmation::read_host_confirmation_preferences,
+            host_confirmation::save_host_confirmation_preference,
             read_workspace_preferences,
             save_workspace_preferences,
             set_workspace_trust,

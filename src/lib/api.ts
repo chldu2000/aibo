@@ -151,6 +151,15 @@ export const getSessionModels = (sessionId: string): Promise<SessionModelCatalog
 
 
 
+export const readHostConfirmationPreferences = (): Promise<import('./app/host-confirmation-controller').HostConfirmationPreferences> =>
+  invoke('read_host_confirmation_preferences');
+
+export const saveHostConfirmationPreference = (
+  category: import('./app/host-confirmation-controller').HostConfirmationCategory,
+  policy: import('./app/host-confirmation-controller').HostConfirmationPolicy,
+): Promise<import('./app/host-confirmation-controller').HostConfirmationPreferences> =>
+  invoke('save_host_confirmation_preference', { category, policy });
+
 export const readWorkspacePreferences = (): Promise<import('./app/workspace-preferences-controller').WorkspacePreferences> =>
   invoke('read_workspace_preferences');
 

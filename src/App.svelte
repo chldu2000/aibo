@@ -14,9 +14,10 @@
 
   import { createAttachmentPreviews } from '$lib/app/attachment-previews';
   import { getSessionAttachmentPreview } from '$lib/api';
-  import { SubagentDetails, WorkspacePreferencesPanel } from '$lib/components/app';
+  import { SubagentDetails, WorkspacePreferencesPanel, HostConfirmationPanel } from '$lib/components/app';
   import { createWorkspacePreferencesController, emptyWorkspacePreferences } from '$lib/app/workspace-preferences-controller';
-  import { readWorkspacePreferences, saveWorkspacePreferences } from '$lib/api';
+  import { readWorkspacePreferences, saveWorkspacePreferences, readHostConfirmationPreferences, saveHostConfirmationPreference } from '$lib/api';
+  import { createHostConfirmationController, emptyHostConfirmation } from '$lib/app/host-confirmation-controller';
   import { getSubagentHistory } from '$lib/api';
   import { parseSubagent, mergeSubagentEntries, type SubagentEntry } from '$lib/app/subagents';
   let subagentSelection = $state<{sessionId:string; id:string} | null>(null);
@@ -1033,13 +1034,18 @@
   let retryReason = $state<string | null>(null);
   let lastSubmittedPrompt = $state<string | null>(null);
   let settingsOpen = $state(false);
+  let hostConfirmation = $state(emptyHostConfirmation());
+  const hostConfirmationController = createHostConfirmationController({
+    read: readHostConfirmationPreferences, save: saveHostConfirmationPreference,
+    changed: value => { hostConfirmation = value; },
+  });
   let workspacePreferences = $state(emptyWorkspacePreferences());
   const workspacePreferencesController = createWorkspacePreferencesController({
     read: readWorkspacePreferences, save: saveWorkspacePreferences,
     changed: value => { workspacePreferences = value; },
   });
   $effect(() => {
-    if (settingsOpen && desktop) untrack(() => { void workspacePreferencesController.load(); });
+    if (settingsOpen && desktop) untrack(() => { void workspacePreferencesController.load(); void hostConfirmationController.load(); });
   });
   let managementSection = $state<UiManagementSection>('appearance');
   const listSessions: typeof listAllSessions = listAllSessions;
@@ -3850,6 +3856,7 @@
 
 {#snippet workspaceSettings()}
   <WorkspacePreferencesPanel state={workspacePreferences} {desktop} onChange={trusted => void workspacePreferencesController.save(trusted)} onReload={() => void workspacePreferencesController.load()} />
+  <HostConfirmationPanel state={hostConfirmation} {desktop} onChange={(category, policy) => void hostConfirmationController.save(category, policy)} onReload={() => void hostConfirmationController.load()} />
 {/snippet}
 {#snippet appearanceActions()}
   <SettingsSection title="皮肤恢复" items={[{
