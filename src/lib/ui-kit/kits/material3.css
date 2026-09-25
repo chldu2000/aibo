@@ -19,7 +19,7 @@
   --aibo-selected-ink: color-mix(in srgb, var(--aibo-accent) 85%, var(--md-sys-color-scrim));
 }
 
-.app-shell[data-ui-kit='material3'][data-ui-theme='dark'] {
+.app-shell[data-ui-kit='material3'][data-color-scheme='dark'] {
   --aibo-selected-ink: var(--aibo-accent);
 }
 
@@ -2693,7 +2693,7 @@
   font-family: var(--md-aibo-font-sans);
   background: var(--aibo-surface-hover);
 }
-.app-shell[data-ui-kit='material3'][data-ui-theme='dark'] { --aibo-selected-ink: var(--md-sys-color-on-secondary-container); }
+.app-shell[data-ui-kit='material3'][data-color-scheme='dark'] { --aibo-selected-ink: var(--md-sys-color-on-secondary-container); }
 .app-shell[data-ui-kit='material3'] :is(button, input, select, textarea, summary):focus-visible { outline-offset: 2px; }
 .app-shell[data-ui-kit='material3'] .ui-button {
   border-radius: var(--md-sys-shape-corner-full);
@@ -2871,3 +2871,39 @@
 @media (prefers-reduced-motion: reduce) {
   .app-shell[data-ui-kit='material3'] .ui-button { transition: none; }
 }
+
+/* Brightness and palette are independent choices; their visuals belong to this kit. */
+.app-shell[data-ui-kit='material3'] .appearance-mode-control {
+  display: flex; width: fit-content; margin-inline: 20px; overflow: hidden;
+  border: 1px solid var(--md-sys-color-outline); border-radius: var(--md-sys-shape-corner-full);
+}
+.app-shell[data-ui-kit='material3'] .appearance-mode-option {
+  position: relative; display: flex; align-items: center; justify-content: center; gap: 8px;
+  min-width: 116px; min-height: 40px; padding: 8px 20px; cursor: pointer;
+  color: var(--aibo-text); font-size: var(--aibo-type-ui); font-weight: 500;
+}
+.app-shell[data-ui-kit='material3'] .appearance-mode-option + .appearance-mode-option { border-left: 1px solid var(--md-sys-color-outline); }
+.app-shell[data-ui-kit='material3'] .appearance-mode-option.active { background: var(--md-sys-color-secondary-container); color: var(--md-sys-color-on-secondary-container); }
+.app-shell[data-ui-kit='material3'] :is(.appearance-mode-option, .appearance-palette-option) > input {
+  position: absolute; inset: 0; width: 100%; height: 100%; margin: 0; opacity: 0; cursor: pointer;
+}
+.app-shell[data-ui-kit='material3'] .appearance-mode-option:focus-within { outline: 2px solid var(--aibo-focus); outline-offset: -3px; }
+.app-shell[data-ui-kit='material3'] .appearance-choice-mark { display: inline-flex; align-items: center; justify-content: center; width: 18px; height: 18px; flex: none; }
+.app-shell[data-ui-kit='material3'] .appearance-palette-heading { margin-top: 24px; }
+.app-shell[data-ui-kit='material3'] .appearance-palette-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 12px; margin-inline: 20px; }
+.app-shell[data-ui-kit='material3'] .appearance-palette-option {
+  position: relative; display: flex; flex-direction: column; gap: 10px; min-width: 0; padding: 12px;
+  border: 1px solid var(--md-sys-color-outline-variant); border-radius: var(--md-sys-shape-corner-large);
+  background: var(--aibo-bg); color: var(--aibo-text); cursor: pointer;
+}
+.app-shell[data-ui-kit='material3'] .appearance-palette-option:hover { background: var(--aibo-hover); }
+.app-shell[data-ui-kit='material3'] .appearance-palette-option.active { border-color: var(--aibo-focus); box-shadow: inset 0 0 0 1px var(--aibo-focus); background: var(--md-sys-color-primary-container); color: var(--md-sys-color-on-primary-container); }
+.app-shell[data-ui-kit='material3'] .appearance-palette-option:focus-within { outline: 2px solid var(--aibo-focus); outline-offset: 3px; }
+.app-shell[data-ui-kit='material3'] .appearance-palette-preview { display: grid; grid-template-columns: 2fr 1fr 1fr; height: 48px; overflow: hidden; border: 1px solid var(--md-sys-color-outline-variant); border-radius: var(--md-sys-shape-corner-small); }
+.app-shell[data-ui-kit='material3'] .appearance-palette-preview i { display: block; }
+.app-shell[data-ui-kit='material3'] .appearance-palette-name { display: flex; align-items: center; justify-content: space-between; gap: 8px; font-size: var(--aibo-type-ui); }
+.app-shell[data-ui-kit='material3'] .appearance-palette-name strong { font-weight: 500; }
+.app-shell[data-ui-kit='material3'] .appearance-palette-option small { color: var(--aibo-muted); font-size: var(--aibo-type-meta); line-height: 1.5; }
+.app-shell[data-ui-kit='material3'] .appearance-palette-option.active small { color: inherit; }
+.app-shell[data-ui-kit='material3'] :is(.appearance-mode-option, .appearance-palette-option).unavailable { opacity: .5; cursor: not-allowed; }
+.app-shell[data-ui-kit='material3'] :is(.appearance-mode-option, .appearance-palette-option) > input:disabled { cursor: not-allowed; }

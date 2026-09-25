@@ -43,7 +43,9 @@ export {
   availableUiKits,
   setUiKit,
   setUiTheme,
+  toggleUiColorScheme,
 } from './registry';
+export { themeForColorScheme, themePaletteOptions } from './theme-options';
 export type { UiKitName } from './registry';
 
 // Trusted local lifecycle shell; visuals continue to use the active kit.

@@ -33,6 +33,18 @@ test('built-in kits expose both themes, preserve brightness, and keep ak-ui as t
       registry.setUiKit('ak-ui');
       assert.deepEqual(get(registry.appearanceSelection), {kitId:'ak-ui', themeId:theme});
     }
+    for (const palette of ['forest', 'plum']) {
+      registry.setUiKit('material3');
+      registry.setUiTheme(`${palette}-light`);
+      registry.toggleUiColorScheme();
+      assert.deepEqual(get(registry.appearanceSelection), {kitId:'material3', themeId:`${palette}-dark`});
+      registry.toggleUiColorScheme();
+      assert.equal(get(registry.activeTheme).id, `${palette}-light`);
+    }
+    registry.setUiKit('ak-ui');
+    registry.toggleUiColorScheme();
+    assert.equal(get(registry.activeTheme).id, 'dark');
+    assert.deepEqual(registry.availableUiKits[0].themes.map(theme => theme.id), ['light', 'dark']);
     for (const role of ['Button','AlertDialog','WorkbenchChrome','ManagementCenter','SemanticView','ModelMatrix','RepositorySelect','SessionControlMark','SubagentDialog','AttachmentList']) assert.equal(typeof adapter[role], 'function', role);
   } finally { await server.close(); }
 });

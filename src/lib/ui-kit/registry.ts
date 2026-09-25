@@ -3,6 +3,7 @@ import type { AppearanceSelection, UiKitOption, UiKitRegistration } from './cont
 import { akUiKitRegistration } from './kits/ak-ui';
 import { material3UiKitRegistration } from './kits/material3';
 import { normalizeDefaultAppearance } from './appearance-selection';
+import { themeForColorScheme } from './theme-options';
 import { defaultPresentation } from '../workbench/plugins/default-presentation';
 import { resolvePresentationPlugin } from './presentation-plugin';
 
@@ -30,7 +31,7 @@ function fallbackSelection(): AppearanceSelection {
 function readInitialSelection(): AppearanceSelection {
   if (typeof window === 'undefined') return fallbackSelection();
   try {
-    const restored = normalizeDefaultAppearance(JSON.parse(window.localStorage.getItem(STORAGE_KEY) ?? 'null'));
+    const restored = normalizeDefaultAppearance(JSON.parse(window.localStorage.getItem(STORAGE_KEY) ?? 'null'), registrations);
     if (restored) persistSelection(restored);
     return restored ?? fallbackSelection();
   } catch {
@@ -89,4 +90,11 @@ export function setUiTheme(themeId: string) {
   const next = { ...current, themeId };
   selection.set(next);
   persistSelection(next);
+}
+
+export function toggleUiColorScheme() {
+  const current = get(activeTheme);
+  const next = themeForColorScheme(get(activeUiKitRegistration).themes, current.id,
+    current.colorScheme === 'light' ? 'dark' : 'light');
+  if (next) setUiTheme(next.id);
 }

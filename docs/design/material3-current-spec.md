@@ -6,7 +6,9 @@
 
 ## 接入与兼容
 
-- 注册 ID 为 `material3`，主题为 `light` / `dark`；入口是工作台设置 → 外观 → 界面皮肤。
+- 注册 ID 为 `material3`；入口是工作台设置 → 外观 → 界面皮肤。
+- 经典蓝保留 `light` / `dark`；新增森林绿 `forest-light` / `forest-dark` 与紫罗兰 `plum-light` / `plum-dark`。
+  所有配色均提供完整浅深版本，默认仍为经典蓝浅色。
 - ak-ui 仍为默认选择。切换内置皮肤保持当前明暗偏好，选择保存于原有外观存储键。
 - 旧 Material 3 的 `ocean` / `sage` / `violet` / `daylight` 偏好继续迁移到 ak-ui；新增主题不恢复旧实现。
 - 两种内置 adapter 共享无皮肤的行为组件，保留有状态组件身份；图标和状态图形分别实现。
@@ -14,9 +16,17 @@
 - 外部呈现包继续独立安装，未提供的 surface 继承当前内置选择；故障自动回退同样使用该选择。
   设置中的“恢复内置皮肤”继续显式选择默认 ak-ui。切换与恢复不得丢失宿主拥有的数据。
 
+## 配色选择
+
+- 明暗使用「浅色 / 深色」分段单选；配色使用带名称、说明、色板和勾选标记的三张卡片。
+- 切换配色保持明暗；设置与标题栏切换明暗均保持配色。选择立即生效并保存，下次启动恢复。
+- 卡片色板跟随当前亮度，键盘 Tab 与方向键沿用原生单选操作。缺失亮度版本不可选。
+- 新配色调整主色、选中容器、文字与中性表面，不改变几何、排版、交互或成功/警告/错误的语义。
+- ak-ui 的颜色令牌和原有两张主题卡片保持不变；外部皮肤继续使用已有主题列表。
+
 ## 组件外观
 
-- 使用设计稿中的蓝色主色、六级浅深表面和独立的成功、警告、错误语义色。
+- 经典蓝沿用设计稿；森林绿、紫罗兰各自提供主色与六级浅深表面，保留独立的成功、警告、错误语义色。
   `material3/themes.json` 是颜色与形状的唯一数据源，`--md-sys-*` 映射到宿主语义令牌，`--md-aibo-*` 提供本地密度、排版与动效。
 - 保留现有桌面三栏位置、列宽调节、标准/专注/审查布局、紧凑标题栏与 760px 阅读栏。
   桌面导航仍至少 44px，Git 文件行仍为 36px，元信息不低于 12px。
@@ -50,6 +60,7 @@
 
 ```sh
 node probes/material3-browser.mjs
+node probes/material3-palettes-browser.mjs
 node probes/material3-controls-browser.mjs
 node probes/material3-records-browser.mjs
 node probes/ak-ui-browser.mjs
@@ -60,3 +71,5 @@ AIBO_BUILTIN_KIT=material3 node probes/presentation-full-skins-browser.mjs
 ```
 
 Material 3 工作台、设置与窄窗口截图默认写入 `/tmp/aibo-material3/`。
+
+配色设置与六个工作台主题截图写入 `/tmp/aibo-material3-palettes/`。

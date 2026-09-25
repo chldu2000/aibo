@@ -792,6 +792,7 @@
     ColumnSplitter,
     setUiKit,
     setUiTheme,
+    toggleUiColorScheme,
   } from '$lib/ui-kit';
 
   const previewWorkspaces: Workspace[] = [
@@ -3894,10 +3895,7 @@
     onOpenManagement={() => openManagementCenter('appearance')}
     {managementNeedsAttention}
     themeLabel={$activeTheme.label}
-    onToggleTheme={() => {
-      const next = availableUiKits.find(kit => kit.id === $activeUiKitName)?.themes.find(theme => theme.colorScheme !== $activeTheme.colorScheme);
-      if (next) setUiTheme(next.id);
-    }}
+    onToggleTheme={toggleUiColorScheme}
     sidePanelOpen={sidePanelOpen}
     onToggleSidePanel={toggleSidePanel}
     onToggleMaximize={toggleMaximizeWindow}

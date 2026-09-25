@@ -73,7 +73,8 @@ Agent 名称和品牌图标来自绑定插件声明，缺失时使用通用回�
 按钮意图、状态标记、设置表单、工作台外壳等都在此边界统一；完整成员以
 [`contract.ts`](../src/lib/ui-kit/contract.ts)为准，不在本文重复维护组件清单。
 
-当前注册两个内置 kit：`ak-ui` 和 `material3`，均提供 `light` / `dark` 主题。
+当前注册两个内置 kit：`ak-ui` 和 `material3`，均支持浅色/深色。ak-ui 保留原有两套主题；
+Material 3 提供经典蓝、森林绿与紫罗兰三组配色，每组包含浅深版本。
 `ak-ui` 仍为默认与首次启动的回退，默认浅色；新增 Material 3 可在外观设置直接选择。
 两个注册入口各自装配 adapter。`kits/shared-controls.ts` 和 `kits/shared/` 只提供无皮肤的 DOM、
 可访问性与交互行为，`components/ui/` 的基础原语也不预置视觉 utility。图标和状态图形由各 kit
@@ -81,7 +82,8 @@ Agent 名称和品牌图标来自绑定插件声明，缺失时使用通用回�
 
 旧内置 shadcn 与基于 m3-svelte 的 Material 3 实现已移除。旧 shadcn 主题及旧 Material 3 的
 `ocean` / `sage` / `violet` / `daylight` 偏好仍由 `appearance-selection.ts` 迁移到 ak-ui；
-新的 `material3` 使用 `light` / `dark` 主题，保存后可直接恢复，与旧主题迁移区分。
+新的 `material3` 保留经典蓝的 `light` / `dark` ID，并新增 `forest-light` / `forest-dark`、
+`plum-light` / `plum-dark`，保存时按注册表校验，与旧主题迁移区分。
 迁移仅涉及旧外观存储，不改变外部包选择、工作区布局或会话数据。`VITE_AIBO_UI_KIT` 只查询内置注册表，
 不安装或加载外部皮肤。独立 shadcn / Material 3 呈现包仍通过包安装机制使用。
 
@@ -98,6 +100,20 @@ Agent 名称和品牌图标来自绑定插件声明，缺失时使用通用回�
 外部包未覆盖的 surface 继承当前选中的内置 kit；外部包失败时回到该内置选择。
 设置中的“恢复内置皮肤”沿用既有行为，显式选择默认 ak-ui。
 默认选择仍为 ak-ui，选择 Material 3 不修改外部包清单、发布身份或会话绑定。
+
+### 明暗与配色选择
+
+内置 `UiThemeRegistration.palette` 是可选的 `{ id, label, description }`，显式关联同一配色的浅深主题；
+不从主题 ID、名称或颜色值推断分组。所有主题都提供该字段时，设置显示「明暗模式」与「配色方案」；
+未分组的 kit 保留现有主题列表，因此 ak-ui 及外部呈现包的选择方式不变。
+
+切换明暗只查找同一 palette 的目标亮度；切换配色只查找当前亮度的目标主题。配色卡片的色板跟随亮度，
+缺失版本显示不可用，不能静默换另一配色。标题栏快捷按钮复用同一明暗解析函数。
+偏好继续保存 `{ kitId, themeId }`，主题 ID 唯一确定配色和亮度，避免分别保存后出现不一致。
+跨 kit 切换沿用现有规则，保留亮度并选择目标 kit 的对应默认配色；不会把某套 kit 的配色注入另一套。
+
+配色仅替换所属 kit 的颜色令牌，不改变组件身份、几何、字体或行为。选择控件的视觉也归当前 kit。
+`palette` 是可信内置元数据，本次不扩展外部 Presentation manifest；外部包继续使用已有平铺主题合同。
 
 ### 外部扩展合同
 
@@ -211,6 +227,8 @@ Windows 使用独立配置和自绘窗口按钮。呈现替换不接管原生窗
 `test/default-ui-kit.test.mjs` 保护两个内置 kit、完整 adapter、默认回退、切换时的明暗偏好及旧入口兼容。
 `test/material3-theme.test.mjs` 限制共享层视觉声明、跨 kit 选择器/令牌引用及全局动画名。
 `probes/material3-controls-browser.mjs` 验证按钮、输入、badge 等状态，并删除 ak-ui 规则与令牌后比较实际外观。
+`test/theme-options.test.mjs` 验证配色配对及缺失版本；`probes/material3-palettes-browser.mjs` 检查
+六个主题的实际颜色、明暗快捷切换、原生键盘选择、状态保留、重载与 ak-ui 不变。
 
 按[回归矩阵](plugin-boundaries-and-regression.md#regression-gate)选择受影响路径，验证改变的行为与必须保留的既有行为。
 UI 实现变化需检查默认 ak-ui 浅/深主题，以及受影响外部包的继承、协商与失败恢复。

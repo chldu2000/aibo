@@ -1,9 +1,11 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { normalizeDefaultAppearance } from '../src/lib/ui-kit/appearance-selection.ts';
+import { normalizeDefaultAppearance as normalizeAppearance } from '../src/lib/ui-kit/appearance-selection.ts';
 import { readFile } from 'node:fs/promises';
 
 const metadata = JSON.parse(await readFile(new URL('../src/lib/ui-kit/kits/ak-ui/themes.json', import.meta.url), 'utf8'));
+const material = JSON.parse(await readFile(new URL('../src/lib/ui-kit/kits/material3/themes.json', import.meta.url), 'utf8'));
+const normalizeDefaultAppearance = value => normalizeAppearance(value, [metadata, material]);
 
 test('old built-in appearances migrate brightness to the unified default', () => {
   for (const kitId of ['shadcn', 'material3']) {
@@ -18,7 +20,7 @@ test('old built-in appearances migrate brightness to the unified default', () =>
 });
 
 test('appearance migration is idempotent and rejects corrupt/unknown or external selections', () => {
-  for (const kitId of ['ak-ui', 'material3']) for (const themeId of ['light', 'dark']) {
+  for (const {id: kitId, themes} of [metadata, material]) for (const {id: themeId} of themes) {
     const next = { kitId, themeId };
     assert.deepEqual(normalizeDefaultAppearance(normalizeDefaultAppearance(next)), next);
   }

@@ -242,6 +242,8 @@ export type UiThemeRegistration = {
   label: string;
   description: string;
   colorScheme: 'dark' | 'light';
+  /** Explicit pairing within this kit; absent for the legacy flat theme picker. */
+  palette?: { id: string; label: string; description: string };
   swatches: readonly string[];
   tokens: Readonly<Record<`--${string}`, string>>;
 };
