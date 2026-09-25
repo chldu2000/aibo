@@ -28,6 +28,22 @@ const contrast=({bg,fg})=>{
  const lum=color=>{const rgb=color.match(/[\d.]+/g).slice(0,3).map(Number).map(n=>n/255).map(n=>n<=.04045?n/12.92:((n+.055)/1.055)**2.4);return rgb[0]*.2126+rgb[1]*.7152+rgb[2]*.0722};
  const values=[lum(bg),lum(fg)].sort((a,b)=>b-a);return (values[0]+.05)/(values[1]+.05);
 };
+async function assertTitlebarGeometry(page) {
+ const bar=await page.locator('.window-titlebar').boundingBox();
+ assert.equal(bar.height,32,'host titlebar keeps its approved compact height');
+ const buttons=await page.locator('.window-actions [data-slot="button"]:visible').all();
+ assert(buttons.length>0);
+ for(const button of buttons){
+  const bounds=await button.boundingBox();
+  assert.equal(bounds.height,28,'titlebar buttons use the desktop density exception');
+  // External presentation recovery can add a labelled host-navigation button.
+  if(await button.getAttribute('data-host-navigation')===null)assert.equal(bounds.width,28);
+  assert(bounds.y>=bar.y&&bounds.y+bounds.height<=bar.y+bar.height,'button fits inside the titlebar');
+  for(const icon of await button.locator('svg').all()){
+   const size=await icon.boundingBox();assert.equal(size.width,14);assert.equal(size.height,14);
+  }
+ }
+}
 try{
  const page=await browser.newPage({viewport:{width:1440,height:960}});const errors=[];page.on('pageerror',e=>errors.push(e.message));
  await page.addInitScript(()=>{
@@ -48,6 +64,17 @@ try{
  await input.fill('主题切换时保留这段草稿');
  for(const mode of ['light','dark']){
   if(await page.locator('.app-shell').getAttribute('data-ui-theme')!==mode)await page.getByRole('button',{name:'切换明暗主题',exact:true}).click();
+  await assertTitlebarGeometry(page);
+  const workspace=page.locator('.workspace-item');
+  if(await workspace.getAttribute('aria-expanded')!=='true')await workspace.click();
+  const rows=await page.locator('.workspace-item-row,.session-item-row').evaluateAll(nodes=>nodes.map(node=>{
+   const box=node.getBoundingClientRect();return {top:box.top,bottom:box.bottom,height:box.height};
+  }));
+  assert.equal(rows.length,3,'fixture has one workspace and two visible sessions');
+  rows.forEach((row,index)=>{
+   assert(row.height>=44,'navigation rows retain their regular target height');
+   if(index)assert.equal(row.top,rows[index-1].bottom,'adjacent workspace and session rows have no gap');
+  });
   assert.equal(await input.inputValue(),'主题切换时保留这段草稿');
   const backgrounds=await page.locator('.sidebar,.timeline,.inspector').evaluateAll(nodes=>nodes.map(n=>getComputedStyle(n).backgroundColor));
   for(const bg of backgrounds){const rgb=bg.match(/[\d.]+/g).slice(0,3).map(Number);assert.equal(rgb.every(c=>c>200),mode==='light',bg)}
@@ -62,6 +89,7 @@ try{
   assert(contrast(titlebarState)>=4.5,'active titlebar icon remains readable');
   await titlebarToggle.focus();await page.keyboard.press('Tab');await page.keyboard.press('Shift+Tab');
   assert.equal(await titlebarToggle.evaluate(e=>getComputedStyle(e).outlineColor),mode==='light'?'rgb(0, 117, 168)':'rgb(34, 187, 255)','active titlebar icon keeps its keyboard focus outline');
+  assert.equal(await titlebarToggle.evaluate(e=>getComputedStyle(e).outlineOffset),'-3px','focus stays inside the compact titlebar');
   const primary=page.locator('.sidebar-new-session');
   const primaryColors=await primary.evaluate(e=>{const s=getComputedStyle(e);return {bg:s.backgroundColor,fg:s.color}});
   assert.equal(primaryColors.bg,'rgb(255, 216, 2)','main action uses the ak-ui yellow palette');
@@ -127,8 +155,8 @@ try{
  assert.equal(await input.inputValue(),'主题切换时保留这段草稿');
  await page.getByRole('button',{name:'新建会话',exact:true}).click();
  await page.getByRole('group',{name:'选择 Agent 创建会话'}).waitFor();
- await page.getByRole('button',{name:'关闭 Agent 选择',exact:true}).click();
- assert.equal(await page.getByRole('button',{name:'新建会话',exact:true}).evaluate(e=>e===document.activeElement),true);
+ await page.locator('.window-title').click();
+ assert.equal(await page.getByRole('group',{name:'选择 Agent 创建会话'}).count(),0,'clicking outside dismisses the chooser without a dedicated close row');
  await page.getByRole('button',{name:'新建会话',exact:true}).click();
  await page.getByRole('group',{name:'选择 Agent 创建会话'}).waitFor();
  await page.keyboard.press('Escape');
@@ -149,6 +177,7 @@ try{
  await page.setViewportSize({width:390,height:844});
  for(const mode of ['light','dark']){
   if(await page.locator('.app-shell').getAttribute('data-ui-theme')!==mode)await page.getByRole('button',{name:'切换明暗主题',exact:true}).click();
+  await assertTitlebarGeometry(page);
   assert(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth));
   assert(await input.isVisible());
   assert((await input.boundingBox()).width>250);
@@ -193,5 +222,5 @@ try{
  await reference.close();
  await writeFile(`${output}/comparison.html`, `<!doctype html><meta charset="utf-8"><title>ak-ui 设计对照</title><style>body{font:16px sans-serif;margin:24px;background:#eee;color:#222}section{display:grid;grid-template-columns:1fr 1fr;gap:16px}img{max-width:100%;border:1px solid #aaa}h2{margin-top:40px}figure{margin:0}</style><h1>设计稿 / 实际应用</h1><p>内容不同，按层级、密度与表单规则对照；不是逐像素基准。</p>` + ['desktop','mobile'].flatMap(size=>['light','dark'].map(mode=>`<h2>${size} · ${mode}</h2><section><figure><figcaption>设计稿</figcaption><img src="reference-${size}-${mode}.png"></figure><figure><figcaption>实际应用</figcaption><img src="${size}-${mode}.png"></figure></section>`)).join(''));
  assert.deepEqual(errors,[]);
- console.log('PASS: actual App themes/migration, draft preservation, settings/native focus, provider chooser, layout recovery, responsive regions, reduced motion and clean browser console.');
+ console.log('PASS: actual App themes/migration, compact titlebar, gapless navigation, draft preservation, settings focus, provider chooser, layout recovery, responsive regions, reduced motion and clean browser console.');
 }finally{await browser.close();await server.close()}

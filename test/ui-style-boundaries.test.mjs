@@ -153,7 +153,7 @@ test('no ak-ui responsive rule is silently overridden by a later unconditional r
 test('the theme picker keeps a colour preview beside its radio', async () => {
   const source = await readFile(path.join(root, 'src/lib/ui-kit/kits/ak-ui.css'), 'utf8');
   const hidden = /\.appearance-theme-option\s+\.theme-swatches\s*\{[^}]*display:\s*none/s;
-  assert.doesNotMatch(source, hidden, 'swatches are the only colour preview once the check mark is dropped');
+  assert.doesNotMatch(source, hidden, 'theme swatches remain visible alongside the selection indicator');
 });
 
 test('shared skin code detects dialogs natively instead of by skin class name', async () => {
