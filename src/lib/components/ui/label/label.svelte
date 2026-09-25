@@ -6,6 +6,6 @@
   let { class: className, children, ...restProps }: HTMLLabelAttributes & { children?: Snippet } = $props();
 </script>
 
-<label data-slot="label" class={cn('select-none text-sm font-medium leading-none text-[var(--muted-foreground)]', className)} {...restProps}>
+<label data-slot="label" class={cn('select-none', className)} {...restProps}>
   {@render children?.()}
 </label>

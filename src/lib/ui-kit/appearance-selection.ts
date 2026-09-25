@@ -5,7 +5,7 @@ import type { AppearanceSelection } from './contract';
 export function normalizeDefaultAppearance(value: unknown): AppearanceSelection | null {
   if (!value || typeof value !== 'object') return null;
   const { kitId, themeId } = value as Partial<AppearanceSelection>;
-  if (kitId === 'ak-ui' && (themeId === 'light' || themeId === 'dark')) return { kitId, themeId };
+  if ((kitId === 'ak-ui' || kitId === 'material3') && (themeId === 'light' || themeId === 'dark')) return { kitId, themeId };
   const legacyThemes: Record<string, readonly string[]> = {
     shadcn: ['zinc', 'blue', 'emerald', 'light'],
     material3: ['ocean', 'sage', 'violet', 'daylight'],

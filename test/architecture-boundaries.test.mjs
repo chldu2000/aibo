@@ -215,11 +215,11 @@ test('session status uses agent-specific marks through the UI kit', async () => 
     readFile(path.join(root, 'src/lib/components/app/WorkspaceSidebar.svelte'), 'utf8'),
     readFile(path.join(root, 'src/lib/ui-kit/contract.ts'), 'utf8'),
     readFile(path.join(root, 'src/lib/ui-kit/kits/ak-ui.ts'), 'utf8'),
-    readFile(path.join(root, 'src/lib/ui-kit/kits/base.css'), 'utf8'),
+    readFile(path.join(root, 'src/lib/ui-kit/kits/ak-ui/foundation.css'), 'utf8'),
   ]);
   assert.match(sidebar, /<AgentStatusMark/, 'session rows must use the semantic agent status mark');
   assert.match(contract, /AgentStatusMark: Component<UiAgentStatusMarkProps>/, 'the mark must be part of the UI kit contract');
-  assert.match(ak, /AgentStatusMark:/, 'the active skin must implement the mark');
+  assert.match(ak, /AgentStatusMark/, 'the active skin must implement the mark');
   assert.match(styles, /prefers-reduced-motion: reduce/, 'running animation must respect reduced-motion preferences');
   const akStyles = await readFile(path.join(root, 'src/lib/ui-kit/kits/ak-ui.css'), 'utf8');
   assert.match(akStyles, /stroke-dashoffset/, 'the ak-ui running mark must animate along its circular track');
@@ -227,7 +227,7 @@ test('session status uses agent-specific marks through the UI kit', async () => 
 });
 
 test('the diff preview monospace token is defined in the UI kit', async () => {
-  const source = await readFile(path.join(root, 'src/lib/ui-kit/kits/base.css'), 'utf8');
+  const source = await readFile(path.join(root, 'src/lib/ui-kit/kits/base.css'), 'utf8') + await readFile(path.join(root, 'src/lib/ui-kit/kits/ak-ui/foundation.css'), 'utf8');
   assert.match(source, /--aibo-mono\s*:/, 'the shared UI kit must define the diff monospace token');
   assert.match(
     source,
@@ -257,7 +257,7 @@ test('business modules do not depend on Svelte, UI, or API implementations', asy
 test('management center layout is owned by the registered UI kit', async () => {
   const [contract, ak, styles, settings] = await Promise.all([
     readFile(path.join(root, 'src/lib/ui-kit/contract.ts'), 'utf8'),
-    readFile(path.join(root, 'src/lib/ui-kit/kits/ak-ui/ManagementCenter.svelte'), 'utf8'),
+    readFile(path.join(root, 'src/lib/ui-kit/kits/shared/ManagementCenter.svelte'), 'utf8'),
     readFile(path.join(root, 'src/lib/ui-kit/kits/ak-ui.css'), 'utf8'),
     readFile(path.join(root, 'src/lib/components/app/SettingsPanel.svelte'), 'utf8'),
   ]);
@@ -272,7 +272,7 @@ test('workbench visual character belongs to the UI kit without duplicating layou
   const [contract, host, ak, styles] = await Promise.all([
     readFile(path.join(root, 'src/lib/ui-kit/contract.ts'), 'utf8'),
     readFile(path.join(root, 'src/lib/workbench/WorkbenchPresentation.svelte'), 'utf8'),
-    readFile(path.join(root, 'src/lib/ui-kit/kits/ak-ui/WorkbenchChrome.svelte'), 'utf8'),
+    readFile(path.join(root, 'src/lib/ui-kit/kits/shared/WorkbenchChrome.svelte'), 'utf8'),
     readFile(path.join(root, 'src/lib/ui-kit/kits/ak-ui.css'), 'utf8'),
   ]);
   assert.match(contract, /WorkbenchChrome: Component<UiWorkbenchChromeProps>/);
@@ -305,10 +305,10 @@ test('composer goals use a semantic control implemented by every built-in kit', 
   assert.ok(source.indexOf('<GoalBar') > source.indexOf('</CardHeader>'));
   const contract = await readFile(path.join(root, 'src/lib/ui-kit/contract.ts'), 'utf8');
   assert.match(contract, /GoalBar: Component<UiGoalBarProps>/);
-  for (const kit of ['ak-ui']) {
-    const registration = await readFile(path.join(root, `src/lib/ui-kit/kits/${kit}.ts`), 'utf8');
+  for (const kit of ['ak-ui', 'material3']) {
+    const registration = await readFile(path.join(root, `src/lib/ui-kit/kits/${kit}.ts`), 'utf8') + await readFile(path.join(root, 'src/lib/ui-kit/kits/shared-controls.ts'), 'utf8');
     assert.match(registration, /\n  GoalBar,/);
-    const component = await readFile(path.join(root, `src/lib/ui-kit/kits/${kit}/GoalBar.svelte`), 'utf8');
+    const component = await readFile(path.join(root, `src/lib/ui-kit/kits/shared/GoalBar.svelte`), 'utf8');
     assert.match(component, /aria-expanded/);
     assert.match(component, /aria-label="清除目标"/);
     assert.match(component, /aria-label="暂停目标"/);
@@ -324,10 +324,10 @@ test('subagent cards and detail dialogs remain skin-owned semantic controls', as
     assert.ok(contract.includes(`${name}: Component<Ui${name}Props>`));
     const proxy = await readFile(path.join(root, `src/lib/ui-kit/runtime/${name}.svelte`), 'utf8');
     assert.ok(proxy.includes(`$activeUiKit.${name}`));
-    for (const skin of ['ak-ui']) {
-      const registration = await readFile(path.join(root, `src/lib/ui-kit/kits/${skin}.ts`), 'utf8');
+    for (const skin of ['ak-ui', 'material3']) {
+      const registration = await readFile(path.join(root, `src/lib/ui-kit/kits/${skin}.ts`), 'utf8') + await readFile(path.join(root, 'src/lib/ui-kit/kits/shared-controls.ts'), 'utf8');
       assert.ok(registration.includes(`\n  ${name},`));
-      assert.ok((await readFile(path.join(root, `src/lib/ui-kit/kits/${skin}/${name}.svelte`), 'utf8')).length);
+      assert.ok((await readFile(path.join(root, `src/lib/ui-kit/kits/shared/${name}.svelte`), 'utf8')).length);
     }
   }
 });
@@ -341,8 +341,8 @@ test('context window selector stays in the UI kit beside the Fast action', async
   assert.match(header, /sessionCapabilities.includes\('model.context-window'\)/);
   const contract = await readFile(path.join(root, 'src/lib/ui-kit/contract.ts'), 'utf8');
   assert.match(contract, /ModelContextSelect: Component<UiModelContextSelectProps>/);
-  for (const kit of ['ak-ui']) {
-    const source = await readFile(path.join(root, `src/lib/ui-kit/kits/${kit}/ModelContextSelect.svelte`), 'utf8');
+  for (const kit of ['ak-ui', 'material3']) {
+    const source = await readFile(path.join(root, `src/lib/ui-kit/kits/shared/ModelContextSelect.svelte`), 'utf8');
     assert.match(source, /<select/); assert.match(source, /disabled=\{disabled \|\| options.length === 0\}/);
   }
 });
@@ -354,8 +354,8 @@ test('Git repository selector is a required skin-owned composite', async () => {
   assert.match(contract, /RepositorySelect: Component<UiRepositorySelectProps>/);
   const proxy = await readFile(path.join(root, 'src/lib/ui-kit/runtime/RepositorySelect.svelte'), 'utf8');
   assert.match(proxy, /\$activeUiKit\.RepositorySelect/);
-  for (const kit of ['ak-ui']) {
-    const adapter = await readFile(path.join(root, `src/lib/ui-kit/kits/${kit}.ts`), 'utf8');
+  for (const kit of ['ak-ui', 'material3']) {
+    const adapter = await readFile(path.join(root, `src/lib/ui-kit/kits/${kit}.ts`), 'utf8') + await readFile(path.join(root, 'src/lib/ui-kit/kits/shared-controls.ts'), 'utf8');
     assert.match(adapter, /\n  RepositorySelect,/);
     const styles = await readFile(path.join(root, `src/lib/ui-kit/kits/${kit}.css`), 'utf8');
     assert.match(styles, /\.repository-select/);
@@ -367,8 +367,8 @@ test('session control marks belong to the active kit and external skins and are 
   assert.equal((composer.match(/<SessionControlMark /g) ?? []).length, 2);
   const contract = await readFile(path.join(root, 'src/lib/ui-kit/contract.ts'), 'utf8');
   assert.match(contract, /SessionControlMark: Component<UiSessionControlMarkProps>/);
-  for (const kit of ['ak-ui']) {
-    const adapter = await readFile(path.join(root, `src/lib/ui-kit/kits/${kit}.ts`), 'utf8');
+  for (const kit of ['ak-ui', 'material3']) {
+    const adapter = await readFile(path.join(root, `src/lib/ui-kit/kits/${kit}.ts`), 'utf8') + await readFile(path.join(root, 'src/lib/ui-kit/kits/shared-controls.ts'), 'utf8');
     assert.match(adapter, /\n  SessionControlMark,/);
   }
   for (const kit of ['shadcn', 'material3']) {

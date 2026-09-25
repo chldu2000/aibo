@@ -1,15 +1,12 @@
 <script>
   import '../../src/app.css';
-  import themes from '../../src/lib/ui-kit/kits/ak-ui/themes.json';
-  import GoalBar from '../../src/lib/ui-kit/kits/ak-ui/GoalBar.svelte';
-  import SubagentCard from '../../src/lib/ui-kit/kits/ak-ui/SubagentCard.svelte';
-  import SubagentDialog from '../../src/lib/ui-kit/kits/ak-ui/SubagentDialog.svelte';
-  import ModelMatrix from '../../src/lib/ui-kit/kits/ak-ui/ModelMatrix.svelte';
-  import ModelContextSelect from '../../src/lib/ui-kit/kits/ak-ui/ModelContextSelect.svelte';
-  import SettingsSection from '../../src/lib/ui-kit/kits/ak-ui/SettingsSection.svelte';
-  import Button from '../../src/lib/ui-kit/kits/ak-ui/Button.svelte';
-  import Input from '../../src/lib/components/ui/input/input.svelte';
-  import Textarea from '../../src/lib/components/ui/textarea/textarea.svelte';
+  import { GoalBar, SubagentCard, SubagentDialog, ModelMatrix, ModelContextSelect, SettingsSection, Button, Badge, Input, Textarea } from '../../src/lib/ui-kit';
+  import akThemes from '../../src/lib/ui-kit/kits/ak-ui/themes.json';
+  import materialThemes from '../../src/lib/ui-kit/kits/material3/themes.json';
+  import { setUiKit } from '../../src/lib/ui-kit/registry';
+  const kit = new URLSearchParams(location.search).get('kit') === 'material3' ? 'material3' : 'ak-ui';
+  const themes = kit === 'material3' ? materialThemes : akThemes;
+  setUiKit(kit);
   let theme = $state('light');
   let busy = $state(false);
   let open = $state(false);
@@ -24,7 +21,7 @@
   const columns = [{id:'high',label:'高',description:null},{id:'max',label:'最高',description:null}];
   const rows = $derived([{reference:'third-party/model',label:'第三方模型',isDefault:true,active:true,defaultActive:!selected,cells:columns.map(c=>({...c,available:c.id==='high',active:c.id===selected}))}]);
 </script>
-<div class="app-shell" data-ui-kit="ak-ui" data-ui-theme={theme} {style}>
+<div class="app-shell" data-ui-kit={kit} data-ui-theme={theme} {style}>
   <main class="fixture">
     <div><Button onclick={()=>theme=theme==='light'?'dark':'light'}>切换主题</Button><Button onclick={()=>busy=!busy}>切换忙碌</Button></div>
     <GoalBar objective={'检查长目标的换行和布局。'.repeat(12)} statusLabel="运行中" usageLabel="12 / 100" {busy} onPause={()=>result='pause'} onResume={()=>result='resume'} onClear={()=>result='clear'}/>
@@ -45,6 +42,14 @@
         <label class="choice"><input type="radio" name="choice" value="first" bind:group={choice} />第一个</label>
         <label class="choice"><input type="radio" name="choice" value="second" bind:group={choice} />第二个</label>
       </div>
+    </section>
+    <section class="variant-fixture" aria-label="按钮与状态标签">
+      {#each ['default', 'secondary', 'outline', 'ghost', 'destructive', 'send', 'queue', 'abort'] as variant}
+        <Button {variant} aria-label={`按钮 ${variant}`} onclick={() => result = variant}>{variant}</Button>
+      {/each}
+      {#each ['default', 'secondary', 'outline', 'success', 'warning', 'destructive'] as variant}
+        <Badge {variant} aria-label={`标签 ${variant}`}>{variant}</Badge>
+      {/each}
     </section>
     <output aria-label="操作结果">{result}</output>
   </main>

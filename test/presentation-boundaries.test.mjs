@@ -47,6 +47,9 @@ test('workbench obeys the same visual seam, layout CSS and business dependency r
       for(const [,style] of source.matchAll(/<style[^>]*>([\s\S]+?)<\/style>/g))assert.doesNotMatch(style,/\b(?:color|background|border|font|box-shadow|transition|animation|outline)[\w-]*\s*:/);
     }
   }
-  for(const skin of ['ak-ui']) assert.match(await readFile(`src/lib/ui-kit/kits/${skin}.ts`,'utf8'),/\bSemanticView\b/);
+  for(const skin of ['ak-ui', 'material3']) {
+    assert.match(await readFile(`src/lib/ui-kit/kits/${skin}.ts`,'utf8'), /\.\.\.sharedControls/);
+    assert.match(await readFile('src/lib/ui-kit/kits/shared-controls.ts','utf8'), /\bSemanticView\b/);
+  }
   assert.match(await readFile('src/lib/ui-kit/contract.ts','utf8'),/SemanticView: Component<PresentationProps>/);
 });

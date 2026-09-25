@@ -6,4 +6,4 @@
     variant?: UiButtonVariant; size?: 'default' | 'sm' | 'icon'; children?: Snippet;
   } = $props();
 </script>
-<button data-slot="button" data-variant={variant} data-size={size} class={`ak-button ${className}`} {type} {...rest}>{@render children?.()}</button>
+<button data-slot="button" data-variant={variant} data-size={size} class={`ui-button ${className}`} {type} {...rest}>{@render children?.()}</button>

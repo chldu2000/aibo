@@ -2,7 +2,7 @@
   import { onMount, tick } from 'svelte';
   import type { UiManagementCenterProps, UiManagementSection } from '../../contract';
   import Button from './Button.svelte';
-  import Icon from './Icon.svelte';
+  import Icon from '../../runtime/Icon.svelte';
   let { title, restoreTriggerFocus = true, activeSection, onSelectSection, onClose, appearance, layout, workspace, extensions, runtime, footer }: UiManagementCenterProps = $props();
   let dialog: HTMLDialogElement;
   // Capture before the sibling workbench becomes inert in this render.
@@ -52,7 +52,7 @@
     dialog.querySelector<HTMLButtonElement>(`#management-tab-${sections[next].id}`)?.focus();
   }
 </script>
-<dialog bind:this={dialog} class="ak-management management-shell" aria-labelledby="management-title" oncancel={event => { event.preventDefault(); onClose(); }} onclick={event => {
+<dialog bind:this={dialog} class="ui-management management-shell" aria-labelledby="management-title" oncancel={event => { event.preventDefault(); onClose(); }} onclick={event => {
   if (event.target !== dialog) return;
   const r = dialog.getBoundingClientRect();
   if (event.clientX < r.left || event.clientX > r.right || event.clientY < r.top || event.clientY > r.bottom) onClose();

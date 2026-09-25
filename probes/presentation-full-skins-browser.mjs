@@ -10,6 +10,11 @@ const server=await createServer({server:{host:'127.0.0.1',port:0,strictPort:fals
 const browser=await chromium.launch({headless:true});const page=await browser.newPage({viewport:{width:1280,height:900}});const errors=[];
 page.on('pageerror',error=>errors.push(error.stack ?? error.message));page.setDefaultTimeout(10000);
 try {
+  const builtInKit = process.env.AIBO_BUILTIN_KIT ?? 'ak-ui';
+  assert.ok(['ak-ui','material3'].includes(builtInKit));
+  await page.addInitScript(kit => {
+    if (window === window.top && !localStorage.getItem('aibo.appearance.v1')) localStorage.setItem('aibo.appearance.v1', JSON.stringify({kitId:kit,themeId:'light'}));
+  }, builtInKit);
   await page.addInitScript(pkg=>{
     let callback=0;window.presentationCopies=[];window.presentationLinks=[];Object.defineProperty(navigator,'clipboard',{value:{writeText:async value=>window.presentationCopies.push(value)},configurable:true});window.open=(...args)=>{window.presentationLinks.push(args);return null};window.presentationCommands=[];window.presentationInstallable=pkg;
     const workspaces = ['w1','w2'].map(id=>({id,label:id,path:'/probe/'+id,trust:'trusted',createdAt:'2026-09-13',updatedAt:'2026-09-13',lastOpenedAt:null}));
@@ -73,6 +78,7 @@ try {
       }};
   },pkg);
   await page.goto(`http://127.0.0.1:${server.httpServer.address().port}/`);
+  assert.equal(await page.locator('.app-shell').getAttribute('data-ui-kit'), builtInKit);
   await page.evaluate(()=>window.sessionTabsFixture=true);
   const workspaceButton=page.getByRole('button',{name:'w1，可信',exact:true});
   await workspaceButton.waitFor();
@@ -95,7 +101,7 @@ try {
     assert.equal(await sessionRow.locator('.agent-status-signal').count(),0);
     if(running) {
       assert.equal(await sessionRow.locator('.agent-status-orbit circle').count(),1);
-      assert.equal(await sessionRow.locator('.agent-status-orbit').evaluate(el=>getComputedStyle(el).animationName),'ak-status-track');
+      assert.equal(await sessionRow.locator('.agent-status-orbit').evaluate(el=>getComputedStyle(el).animationName),builtInKit === 'material3' ? 'md-status-track' : 'ak-status-track');
     } else {
       assert.equal(await sessionRow.locator('.agent-status-mark').evaluate(el=>getComputedStyle(el).outlineStyle),'none');
     }
@@ -257,7 +263,7 @@ try {
     const historyRegion=frame.getByRole('region',{name:'会话历史',exact:true});
     await historyRegion.focus();await historyRegion.press('PageDown');
     await page.waitForTimeout(200);
-    assert.ok(await historyRegion.evaluate(element=>element.scrollTop>0),'focused history scrolls through the keyboard');
+    assert.ok(await historyRegion.evaluate(element=>element.scrollTop>0), 'focused history scrolls through the keyboard: ' + JSON.stringify(await historyRegion.evaluate(element => ({scrollTop:element.scrollTop,scrollHeight:element.scrollHeight,clientHeight:element.clientHeight,active:element.ownerDocument.activeElement?.outerHTML.slice(0,250),overflow:getComputedStyle(element).overflowY}))));
     await historyRegion.evaluate(element=>{element.scrollTop=0;});
     const composerBounds=await composer.boundingBox();
     assert.ok(composerBounds&&composerBounds.y>=0&&composerBounds.y+composerBounds.height<=900,'long history does not push the editor outside the viewport');
@@ -276,7 +282,9 @@ try {
     });
     await page.waitForTimeout(50);
     await page.getByRole('button',{name:/^打开工作台设置/}).click();
-    await page.getByRole('button',{name:'恢复内置皮肤',exact:true}).click();
+    if (builtInKit === 'material3') await page.locator('.appearance-kit-option').filter({hasText:'Aibo · Material 3'}).click();
+    else await page.getByRole('button',{name:'恢复内置皮肤',exact:true}).click();
+    assert.equal(await page.locator('.app-shell').getAttribute('data-ui-kit'), builtInKit);
     assert.equal(await page.getByRole('button',{name:`调整工作区与会话宽度，当前 ${resized} 像素`,exact:true}).count(),1);
     await page.getByRole('button',{name:'关闭设置',exact:true}).click();
     const defaultComposer=page.locator('.presentation-fallback textarea[data-presentation-focus="composer"]');
@@ -330,7 +338,9 @@ try {
 
 
     await page.getByRole('button',{name:/^打开工作台设置/}).click();
-    await page.getByRole('button',{name:'恢复内置皮肤',exact:true}).click();
+    if (builtInKit === 'material3') await page.locator('.appearance-kit-option').filter({hasText:'Aibo · Material 3'}).click();
+    else await page.getByRole('button',{name:'恢复内置皮肤',exact:true}).click();
+    assert.equal(await page.locator('.app-shell').getAttribute('data-ui-kit'), builtInKit);
     await page.getByRole('button',{name:'关闭设置',exact:true}).click();
   }
   const approvalChecks=await probePresentationApprovalFault(page);

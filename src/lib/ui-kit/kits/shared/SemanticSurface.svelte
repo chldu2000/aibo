@@ -1,9 +1,6 @@
 <script lang="ts">
-  import View from '../shared/SemanticView.svelte';
+  import View from './SemanticView.svelte';
   import type { PresentationProps } from '../../presentation-props';
   let props: PresentationProps = $props();
 </script>
 <div class="semantic-skin"><View {...props} /></div>
-<style>
-  .semantic-skin { --semantic-radius: var(--ak-radius-subtle); height: 100%; min-height: 0; }
-</style>

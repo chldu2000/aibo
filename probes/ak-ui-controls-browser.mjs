@@ -42,9 +42,9 @@ try {
    assert.equal(await page.getByRole('radio',{name:'第二个'}).evaluate(e=>getComputedStyle(e).backgroundColor),'rgb(34, 187, 255)');
    await page.getByRole('switch',{name:'开关选择'}).scrollIntoViewIfNeeded();
    await page.screenshot({path:`/tmp/aibo-ak-controls/forms-${theme}.png`});
-   const shapes=await page.locator('.goal-bar,.subagent-card,.ak-model-matrix-wrap,.settings-rows').evaluateAll(es=>es.map(e=>parseFloat(getComputedStyle(e).borderTopLeftRadius)));
+   const shapes=await page.locator('.goal-bar,.subagent-card,.ui-model-matrix-wrap,.settings-rows').evaluateAll(es=>es.map(e=>parseFloat(getComputedStyle(e).borderTopLeftRadius)));
    assert(shapes.every(radius=>radius<=3),JSON.stringify(shapes));
-   const targets=await page.locator('.ak-model-matrix button,select').evaluateAll(es=>es.map(e=>e.getBoundingClientRect().height));assert(targets.every(h=>h>=44));
+   const targets=await page.locator('.ui-model-matrix button,select').evaluateAll(es=>es.map(e=>e.getBoundingClientRect().height));assert(targets.every(h=>h>=44));
    assert.equal(await page.locator('svg.lucide').count(),0);
    await page.screenshot({path:`/tmp/aibo-ak-controls/${theme}.png`});
  }

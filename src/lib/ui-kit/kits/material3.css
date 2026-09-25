@@ -1,0 +1,2860 @@
+@import './material3/primitives.css';
+@import './material3/foundation.css';
+@import './material3/components.css';
+
+/* Material 3 owns its complete visual treatment. No ak-ui stylesheet dependency. */
+
+
+
+
+.app-shell[data-ui-kit='material3'] {
+  padding: 0;
+  font-family: var(--md-aibo-font-sans);
+  font-size: var(--aibo-type-body);
+  letter-spacing: 0;
+  --workbench-splitter-width: 6px;
+
+  --workbench-content-inset: var(--md-aibo-space-5);
+  --workbench-content-width: 760px;
+  --aibo-selected-ink: color-mix(in srgb, var(--aibo-accent) 85%, var(--md-sys-color-scrim));
+}
+
+.app-shell[data-ui-kit='material3'][data-ui-theme='dark'] {
+  --aibo-selected-ink: var(--aibo-accent);
+}
+
+
+
+.app-shell[data-ui-kit='material3'] :is(button, input, select, textarea, summary):focus-visible {
+  outline: var(--md-aibo-focus-width) solid var(--aibo-focus);
+  outline-offset: 2px;
+}
+
+.app-shell[data-ui-kit='material3'] :is(button, input, textarea, select, [data-slot='card'], [data-slot='badge']) {
+  border-radius: var(--md-sys-shape-corner-small);
+}
+
+.app-shell[data-ui-kit='material3'] [data-slot='card'] {
+  box-shadow: none;
+}
+
+.app-shell[data-ui-kit='material3'] [data-slot='badge'] {
+  font-size: var(--md-aibo-type-label-size);
+  font-weight: 500;
+  letter-spacing: 0;
+}
+
+.app-shell[data-ui-kit='material3'] .ui-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--md-aibo-space-2);
+  flex-shrink: 0;
+  min-height: var(--md-aibo-density-control-height);
+  border: 1px solid transparent;
+  padding: 0 var(--md-aibo-space-3);
+  font-size: var(--aibo-type-meta);
+  font-weight: 500;
+  color: var(--aibo-text);
+  background: transparent;
+  transition: box-shadow var(--md-aibo-motion-fast) var(--md-aibo-ease-standard);
+}
+
+.app-shell[data-ui-kit='material3'] .ui-button[data-size='icon'] {
+  min-width: 44px;
+  width: 44px;
+  padding: 0;
+}
+
+.app-shell[data-ui-kit='material3'] .ui-button svg {
+  flex: none;
+}
+
+.app-shell[data-ui-kit='material3'] .ui-button:hover:not(:disabled) {
+  background: var(--aibo-hover, var(--aibo-surface-hover));
+}
+
+.app-shell[data-ui-kit='material3'] .ui-button:active:not(:disabled) {
+  transform: translateY(1px);
+}
+
+.app-shell[data-ui-kit='material3'] .ui-button:is([data-variant='default'], [data-variant='send']) {
+  background: var(--primary);
+  color: var(--primary-foreground);
+  font-weight: 600;
+}
+
+.app-shell[data-ui-kit='material3'] .ui-button:is([data-variant='default'], [data-variant='send']):hover:not(:disabled) {
+  background: var(--primary);
+  color: var(--primary-foreground);
+}
+
+.app-shell[data-ui-kit='material3'] .ui-button[data-variant='secondary'] {
+  background: var(--aibo-surface-hover);
+}
+
+.app-shell[data-ui-kit='material3'] .ui-button:is([data-variant='outline'], [data-variant='queue']) {
+  border-color: var(--aibo-border);
+}
+
+.app-shell[data-ui-kit='material3'] .ui-button:is([data-variant='destructive'], [data-variant='abort']) {
+  background: var(--aibo-danger-surface);
+  color: var(--aibo-danger-text);
+  border-color: var(--aibo-danger-border);
+}
+
+.app-shell[data-ui-kit='material3'] .ui-button:disabled {
+  color: var(--md-aibo-signal-disabled);
+  background: var(--aibo-surface-hover);
+  border-color: var(--aibo-border-strong);
+  cursor: not-allowed;
+}
+
+.app-shell[data-ui-kit='material3'] .window-titlebar {
+  margin: 0;
+  min-height: var(--aibo-titlebar-height);
+  padding-right: var(--md-aibo-space-3);
+  background: var(--aibo-surface-hover);
+  border-bottom: 1px solid var(--aibo-border);
+}
+
+.app-shell[data-ui-kit='material3'] .window-title {
+  font-weight: 500;
+  font-size: var(--md-aibo-type-label-size);
+  letter-spacing: 0;
+  color: var(--aibo-muted);
+}
+
+.app-shell[data-ui-kit='material3'] .window-actions [data-slot='button'] {
+  width: 28px;
+  height: 28px;
+  min-width: 28px;
+  min-height: 28px;
+}
+
+.app-shell[data-ui-kit='material3'] .window-actions [data-slot='button']:focus-visible {
+  outline-offset: -3px;
+}
+
+.app-shell[data-ui-kit='material3'] .window-actions svg {
+  width: 14px;
+  height: 14px;
+}
+
+.app-shell[data-ui-kit='material3'] .workspace-grid {
+  padding: 0;
+}
+
+.app-shell[data-ui-kit='material3'] :is(.sidebar, .timeline, .inspector) {
+  border: 0;
+  border-radius: var(--md-sys-shape-corner-small);
+  box-shadow: none;
+}
+
+.app-shell[data-ui-kit='material3'] .sidebar {
+
+  padding: 0;
+  background: var(--aibo-surface-hover);
+}
+
+.app-shell[data-ui-kit='material3'] .sidebar .panel-heading {
+  min-height: 44px;
+  padding: 0 var(--md-aibo-space-2) 0 var(--md-aibo-space-4);
+  flex-wrap: wrap;
+  gap: var(--md-aibo-space-2);
+  border: 0;
+}
+
+.app-shell[data-ui-kit='material3'] .sidebar .panel-heading [data-slot='card-title'] {
+  font-size: var(--md-aibo-type-label-size);
+  letter-spacing: 0;
+}
+
+.app-shell[data-ui-kit='material3'] .sidebar-new-session {
+  width: calc(100% - var(--md-aibo-space-3) * 2);
+  margin: var(--md-aibo-space-3) var(--md-aibo-space-3) 0;
+  justify-content: space-between;
+  min-height: 44px;
+  position: relative;
+  border-radius: var(--md-sys-shape-corner-small);
+}
+
+.app-shell[data-ui-kit='material3'] .sidebar-new-session {
+  clip-path: none;
+}
+
+.app-shell[data-ui-kit='material3'] .sidebar-new-session:is(:focus-visible, :disabled) {
+  clip-path: none;
+}
+
+.app-shell[data-ui-kit='material3'] .workspace-toolbar [data-slot='button'] {
+  width: 44px;
+  min-height: 44px;
+}
+
+.app-shell[data-ui-kit='material3'] .workspace-list {
+  padding: var(--md-aibo-space-1) 0;
+  gap: 0;
+}
+
+.app-shell[data-ui-kit='material3'] .workspace-item {
+  min-height: 44px;
+  padding: var(--md-aibo-space-2) 44px var(--md-aibo-space-2) var(--md-aibo-space-3);
+  border-radius: var(--md-sys-shape-corner-small);
+}
+
+.app-shell[data-ui-kit='material3'] .workspace-copy strong {
+  font-size: var(--aibo-type-ui);
+  font-weight: 600;
+}
+
+.app-shell[data-ui-kit='material3'] .workspace-session-group {
+
+  padding: 0;
+  margin: 0;
+  gap: 0;
+}
+
+.app-shell[data-ui-kit='material3'] .session-list {
+  gap: 0;
+}
+
+.app-shell[data-ui-kit='material3'] .session-item-row {
+  border-radius: var(--md-sys-shape-corner-small);
+  border: 0;
+}
+
+.app-shell[data-ui-kit='material3'] .session-item {
+  min-height: 44px;
+  padding: 0 var(--md-aibo-space-3) 0 28px;
+  border-radius: var(--md-sys-shape-corner-small);
+}
+
+
+
+.app-shell[data-ui-kit='material3'] :is(.workspace-item-row, .session-item-row):is(:hover, :focus-within) {
+  background: var(--aibo-hover);
+}
+
+.app-shell[data-ui-kit='material3'] :is(.workspace-item-row, .session-item-row) :is(.workspace-item, .session-item):is(:hover, :focus-visible):not(:disabled),
+.app-shell[data-ui-kit='material3'] :is(.workspace-item-row, .session-item-row):is(:hover, :focus-within) :is(.workspace-item, .session-item) {
+  background: transparent;
+  box-shadow: none;
+}
+
+.app-shell[data-ui-kit='material3'] .session-item-row.selected,
+.app-shell[data-ui-kit='material3'] .session-item-row.selected:is(:hover, :focus-within) {
+  background: var(--aibo-accent-soft);
+  box-shadow: none;
+}
+
+.app-shell[data-ui-kit='material3'] .session-item-row.selected .session-item {
+  background: transparent;
+}
+
+.app-shell[data-ui-kit='material3'] .sidebar-footer {
+  margin-top: var(--md-aibo-space-2);
+  padding: var(--md-aibo-space-1) 0;
+  border-top: 1px solid var(--aibo-border);
+}
+
+.app-shell[data-ui-kit='material3'] .sidebar-footer .ui-button {
+  width: 100%;
+  min-height: 44px;
+  justify-content: flex-start;
+  padding-left: var(--md-aibo-space-4);
+  border-radius: var(--md-sys-shape-corner-small);
+}
+
+.app-shell[data-ui-kit='material3'] .workspace-splitter {
+  background: var(--aibo-surface-hover);
+  border: 0;
+  padding: 0;
+}
+
+.app-shell[data-ui-kit='material3'] .workspace-splitter-line {
+  background: var(--aibo-border);
+}
+
+.app-shell[data-ui-kit='material3'] .workspace-splitter:hover .workspace-splitter-line {
+  background: var(--aibo-accent);
+  width: 3px;
+}
+
+.app-shell[data-ui-kit='material3'] .timeline {
+  background: var(--aibo-bg);
+}
+
+.app-shell[data-ui-kit='material3'] .timeline-heading {
+  align-items: flex-end;
+  border-bottom: 1px solid var(--aibo-border);
+  min-height: 64px;
+  gap: var(--md-aibo-space-4);
+  padding: 0 var(--md-aibo-space-5);
+  background: var(--aibo-surface);
+}
+
+.app-shell[data-ui-kit='material3'] .timeline-heading [data-slot='card-title'] {
+  overflow: hidden;
+  font: 700 20px/1.25 var(--md-aibo-font-command);
+  letter-spacing: 0;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.app-shell[data-ui-kit='material3'] .timeline-heading-copy {
+  flex: 1;
+  min-width: 0;
+  padding-block: 10px 12px;
+}
+
+.app-shell[data-ui-kit='material3'] .timeline-heading-copy > small {
+  display: block;
+  margin-bottom: 2px;
+  overflow: hidden;
+  font-size: var(--aibo-type-meta);
+  color: var(--aibo-muted);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.app-shell[data-ui-kit='material3'] .timeline-heading-actions {
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  align-self: center;
+}
+
+.app-shell[data-ui-kit='material3'] .timeline-session-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: var(--aibo-type-meta);
+  color: var(--md-aibo-text-secondary);
+  white-space: nowrap;
+}
+
+.app-shell[data-ui-kit='material3'] .timeline-session-signal {
+  flex: none;
+  width: 8px;
+  height: 8px;
+  background: var(--md-aibo-signal-disabled);
+}
+
+.app-shell[data-ui-kit='material3'] .timeline-session-status[data-tone='running'] .timeline-session-signal {
+  background: var(--md-aibo-focus-color);
+  animation: md-timeline-session-pulse 1.2s ease-in-out infinite;
+}
+
+.app-shell[data-ui-kit='material3'] .timeline-session-status[data-tone='attention'] {
+  color: var(--aibo-warning-text);
+}
+
+.app-shell[data-ui-kit='material3'] .timeline-session-status[data-tone='attention'] .timeline-session-signal {
+  background: var(--aibo-warning-border);
+}
+
+.app-shell[data-ui-kit='material3'] .timeline-session-status[data-tone='danger'] {
+  color: var(--md-aibo-signal-danger);
+}
+
+.app-shell[data-ui-kit='material3'] .timeline-session-status[data-tone='danger'] .timeline-session-signal {
+  background: var(--md-aibo-signal-danger);
+}
+
+@keyframes md-timeline-session-pulse {
+  50% { opacity: .3; }
+}
+
+.app-shell[data-ui-kit='material3'] .timeline-heading .conversation-navigation {
+  flex: none;
+  grid-auto-columns: max-content;
+  align-self: flex-end;
+  padding: 0;
+  border-bottom: 0;
+  background: transparent;
+}
+
+.app-shell[data-ui-kit='material3'] .timeline-feed {
+  padding: var(--md-aibo-space-5) var(--workbench-content-inset) var(--md-aibo-space-6);
+}
+
+
+
+.app-shell[data-ui-kit='material3'] .timeline-feed-content {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: var(--md-aibo-space-5);
+  max-width: var(--workbench-content-width);
+  margin-inline: auto;
+}
+.app-shell[data-ui-kit='material3'] .timeline-feed-content > * { min-width: 0; }
+
+
+.app-shell[data-ui-kit='material3'] .session-changes {
+  width: 100%;
+  max-width: var(--workbench-content-width);
+  margin-inline: auto;
+  gap: var(--md-aibo-space-3);
+}
+.app-shell[data-ui-kit='material3'] .session-changes-heading { min-height: 32px; }
+.app-shell[data-ui-kit='material3'] .session-changes-heading > .ui-button {
+  min-height: 32px;
+  min-width: 32px;
+  width: 32px;
+  padding: 0;
+  position: relative;
+}
+.app-shell[data-ui-kit='material3'] .session-changes-heading > .ui-button::before { content: ''; position: absolute; inset: -6px; }
+.app-shell[data-ui-kit='material3'] .session-changes-count {
+  min-height: 0;
+  height: 18px;
+  padding: 0 6px;
+  border-radius: var(--md-sys-shape-corner-small);
+  font-size: var(--aibo-type-meta);
+  font-weight: 500;
+  line-height: 1;
+}
+.app-shell[data-ui-kit='material3'] .session-changes-repo { border-radius: var(--md-sys-shape-corner-small); }
+.app-shell[data-ui-kit='material3'] .session-changes-repo-heading {
+  min-height: 36px;
+  padding: 0 var(--md-aibo-space-3);
+  gap: var(--md-aibo-space-2);
+  background: var(--md-aibo-surface-muted);
+}
+.app-shell[data-ui-kit='material3'] .session-change-row.ui-button {
+  height: 36px;
+  min-height: 36px;
+  justify-content: flex-start;
+  gap: var(--md-aibo-space-2);
+  padding: 0 var(--md-aibo-space-2) 0 var(--md-aibo-space-3);
+  border: 0;
+  border-radius: var(--md-sys-shape-corner-small);
+  font-size: var(--aibo-type-ui);
+  font-weight: 400;
+  text-align: left;
+}
+.app-shell[data-ui-kit='material3'] .session-change-file + .session-change-file > .session-change-row {
+  border-top: var(--md-aibo-line-hairline) solid var(--aibo-border);
+}
+.app-shell[data-ui-kit='material3'] .session-change-row[aria-expanded='true'],
+.app-shell[data-ui-kit='material3'] .session-change-row[aria-expanded='true']:hover:not(:disabled) {
+  background: var(--aibo-accent-soft);
+  box-shadow: none;
+}
+.app-shell[data-ui-kit='material3'] .session-change-row:focus-visible { outline-offset: -2px; }
+.app-shell[data-ui-kit='material3'] .file-change-mark {
+  display: grid;
+  place-items: center;
+  flex: none;
+  width: 18px;
+  height: 18px;
+  border: var(--md-aibo-line-hairline) solid currentColor;
+  border-radius: var(--md-sys-shape-corner-small);
+  background: transparent;
+  font: 600 var(--aibo-type-meta)/1 var(--md-aibo-font-mono);
+}
+.app-shell[data-ui-kit='material3'] .file-change-mark[data-kind='added'] { color: var(--md-aibo-signal-success); }
+.app-shell[data-ui-kit='material3'] .file-change-mark[data-kind='modified'] { color: var(--md-aibo-signal-accent); }
+.app-shell[data-ui-kit='material3'] .file-change-mark[data-kind='renamed'] { color: var(--aibo-info-text); }
+.app-shell[data-ui-kit='material3'] .file-change-mark:is([data-kind='deleted'], [data-kind='conflicted']) { color: var(--md-aibo-signal-danger); }
+.app-shell[data-ui-kit='material3'] .session-change-preview { border-top: var(--md-aibo-line-hairline) solid var(--aibo-border); }
+.app-shell[data-ui-kit='material3'] .session-change-preview-toolbar {
+  min-height: 36px;
+  border-bottom: var(--md-aibo-line-hairline) solid var(--aibo-border);
+  background: var(--md-aibo-surface-muted);
+}
+.app-shell[data-ui-kit='material3'] .session-change-sides > .ui-button { min-height: 36px; }
+.app-shell[data-ui-kit='material3'] .session-change-sides > .ui-button[aria-pressed='true'] { background: var(--aibo-accent-soft); color: var(--aibo-selected-ink); }
+
+.app-shell[data-ui-kit='material3'] .timeline-entry {
+  max-width: 100%;
+  padding: 0;
+  margin: 0;
+  border: 0;
+  background: transparent;
+  box-shadow: none;
+}
+
+
+
+.app-shell[data-ui-kit='material3'] .timeline-feed-content .timeline-entry.timeline-entry:is(.compact-record, .execution-record, .tool-group-entry) {
+  margin: 0;
+}
+
+.app-shell[data-ui-kit='material3'] .timeline-feed-content
+  :is(.compact-record, .execution-record, .tool-group-entry)
+  + :is(.compact-record, .execution-record, .tool-group-entry) {
+  margin-top: calc(var(--md-aibo-space-2) - var(--md-aibo-space-5));
+}
+
+.app-shell[data-ui-kit='material3'] .entry-meta {
+  margin-bottom: var(--md-aibo-space-2);
+  align-items: center;
+  color: var(--aibo-muted);
+  font-size: var(--aibo-type-meta);
+  justify-content: flex-start;
+  gap: var(--md-aibo-space-2);
+}
+
+.app-shell[data-ui-kit='material3'] .entry-meta-actions { margin-left: auto; }
+.app-shell[data-ui-kit='material3'] .entry-meta time { flex: none; font-variant-numeric: tabular-nums; }
+.app-shell[data-ui-kit='material3'] .assistant-entry .entry-meta {
+  position: relative;
+  min-height: 20px;
+  padding-right: 100px;
+}
+.app-shell[data-ui-kit='material3'] .assistant-entry .entry-meta-actions {
+  position: absolute;
+  right: 0;
+  top: 50%;
+  transform: translateY(-50%);
+}
+.app-shell[data-ui-kit='material3'] .assistant-entry .entry-meta-actions .ui-button {
+  opacity: 0;
+}
+.app-shell[data-ui-kit='material3'] .assistant-entry:is(:hover, :focus-within) .entry-meta-actions .ui-button {
+  opacity: 1;
+}
+@media (hover: none) {
+  .app-shell[data-ui-kit='material3'] .assistant-entry .entry-meta-actions .ui-button { opacity: 1; }
+}
+.app-shell[data-ui-kit='material3'] :is(.entry-meta, .agent-activity) .agent-status-logo {
+  width: 16px;
+  height: 16px;
+}
+
+.app-shell[data-ui-kit='material3'] .entry-author {
+  color: var(--aibo-text);
+  font-size: var(--aibo-type-meta);
+  font-weight: 600;
+}
+
+.app-shell[data-ui-kit='material3'] .entry-content {
+  font-size: var(--aibo-type-body);
+  line-height: 1.75;
+  margin: 0;
+}
+
+.app-shell[data-ui-kit='material3'] :is(.tool-output, .tool-group) > summary {
+  min-height: 44px;
+  align-content: center;
+  padding: 0 var(--md-aibo-space-3);
+  font-size: var(--aibo-type-ui);
+}
+
+
+
+.app-shell[data-ui-kit='material3'] .timeline-entry.timeline-entry.tool-group-entry {
+  padding: 0;
+  border: var(--md-aibo-line-hairline) solid var(--aibo-border);
+  border-radius: var(--md-sys-shape-corner-small);
+  background: var(--aibo-surface);
+}
+
+.app-shell[data-ui-kit='material3'] .tool-group > summary {
+  justify-content: flex-start;
+  gap: var(--md-aibo-space-2);
+  color: var(--aibo-text);
+  flex-wrap: wrap;
+}
+.app-shell[data-ui-kit='material3'] .tool-group > summary:hover { background: var(--aibo-surface-hover); }
+.app-shell[data-ui-kit='material3'] .disclosure-chevron {
+  transform: rotate(-90deg);
+  transition: transform var(--md-aibo-motion-fast);
+}
+.app-shell[data-ui-kit='material3'] details[open] > summary > .disclosure-chevron { transform: none; }
+.app-shell[data-ui-kit='material3'] .tool-group-meta {
+  color: var(--aibo-muted);
+  font-size: var(--aibo-type-meta);
+}
+
+.app-shell[data-ui-kit='material3'] :is(.tool-output pre, .entry-content pre) {
+  background: var(--aibo-surface-hover);
+  border: 1px solid var(--aibo-border);
+  border-radius: var(--md-sys-shape-corner-small);
+  font: var(--aibo-type-meta)/1.8 var(--aibo-mono);
+}
+
+.app-shell[data-ui-kit='material3'] .timeline-empty {
+  color: var(--aibo-muted);
+}
+
+.app-shell[data-ui-kit='material3'] .timeline-empty .orbit {
+  display: none;
+}
+
+.app-shell[data-ui-kit='material3'] .timeline-empty h3 {
+  color: var(--aibo-text);
+  font-size: 24px;
+  font-weight: 550;
+}
+
+.app-shell[data-ui-kit='material3'] .timeline-empty p {
+  font-size: var(--aibo-type-ui);
+  margin-top: var(--md-aibo-space-3);
+}
+
+
+
+.app-shell[data-ui-kit='material3'] .composer {
+
+  width: min(100% - var(--workbench-content-inset) * 2, var(--workbench-content-width));
+  margin: 0 auto var(--md-aibo-space-4);
+  padding: 0;
+  gap: 0;
+  border: var(--md-aibo-line-hairline) solid var(--aibo-border);
+  border-radius: var(--md-sys-shape-corner-small);
+  background: var(--md-aibo-surface-panel);
+  box-shadow: none;
+  transition: border-color var(--md-aibo-motion-fast) ease, box-shadow var(--md-aibo-motion-fast) ease;
+}
+
+.app-shell[data-ui-kit='material3'] .composer:hover {
+  border-color: var(--aibo-border-strong);
+}
+
+.app-shell[data-ui-kit='material3'] .composer-body {
+  gap: 0;
+}
+
+.app-shell[data-ui-kit='material3'] .composer-toolbar {
+  gap: var(--md-aibo-space-1);
+  padding: var(--md-aibo-space-1) var(--md-aibo-space-2) var(--md-aibo-space-2);
+}
+
+
+
+.app-shell[data-ui-kit='material3'] .composer .attachment-list {
+  margin: 0;
+  padding: var(--md-aibo-space-2) var(--md-aibo-space-3) 0;
+  gap: var(--md-aibo-space-2);
+}
+
+.app-shell[data-ui-kit='material3'] .composer .attachment-item {
+  width: auto;
+  max-width: 220px;
+  height: 32px;
+  gap: 6px;
+  padding: 0 0 0 6px;
+  border-radius: var(--md-sys-shape-corner-small);
+  background: var(--md-aibo-surface-raised);
+}
+
+.app-shell[data-ui-kit='material3'] .composer .attachment-item :is(img, .attachment-placeholder, .attachment-file-icon) {
+  width: 22px;
+  height: 22px;
+  border-radius: var(--md-sys-shape-corner-small);
+  border: 1px solid var(--aibo-border);
+  overflow: hidden;
+  white-space: nowrap;
+}
+
+.app-shell[data-ui-kit='material3'] .composer .attachment-file-icon {
+  font-size: 14px;
+}
+
+
+
+.app-shell[data-ui-kit='material3'] .composer .attachment-item a {
+  width: 22px;
+  height: 22px;
+  min-width: 0;
+  min-height: 0;
+}
+
+.app-shell[data-ui-kit='material3'] .composer .attachment-caption button {
+  width: 30px;
+  height: 30px;
+  border-radius: var(--md-sys-shape-corner-small);
+}
+
+.app-shell[data-ui-kit='material3'] .composer-toolbar [data-slot='button'] {
+  min-height: 44px;
+  font-size: var(--md-aibo-type-label-size);
+}
+
+.app-shell[data-ui-kit='material3'] :is(.composer-menu, .composer-suggestions) {
+  border-radius: var(--md-sys-shape-corner-small);
+  box-shadow: var(--md-aibo-shadow-panel);
+  background: var(--aibo-surface);
+}
+
+.app-shell[data-ui-kit='material3'] :is(.composer-menu, .composer-suggestions) button {
+  min-height: 44px;
+}
+
+.app-shell[data-ui-kit='material3'] .composer-attachment {
+  border-radius: var(--md-sys-shape-corner-small);
+}
+
+.app-shell[data-ui-kit='material3'] .inspector {
+
+  background: var(--aibo-surface);
+  border-left: 1px solid var(--aibo-border);
+}
+
+.app-shell[data-ui-kit='material3'] .inspector .panel-heading {
+  background: var(--aibo-surface-hover);
+  min-height: 56px;
+  padding: var(--md-aibo-space-2) var(--md-aibo-space-4);
+  border-bottom: 1px solid var(--aibo-border);
+}
+
+.app-shell[data-ui-kit='material3'] .side-panel-tabs-shell {
+  padding: 0 var(--md-aibo-space-2);
+  background: var(--aibo-surface-hover);
+}
+
+.app-shell[data-ui-kit='material3'] :is(.side-panel-tabs, .git-section-tabs, .conversation-navigation) {
+  --md-aibo-tabs-signal: var(--aibo-accent);
+  display: grid;
+  grid-auto-columns: minmax(0, 1fr);
+  grid-auto-flow: column;
+  gap: var(--md-aibo-space-1);
+  border-bottom: 1px solid var(--aibo-border);
+  background: var(--aibo-surface-hover);
+}
+
+.app-shell[data-ui-kit='material3'] :is(.side-panel-tabs, .git-section-tabs, .conversation-navigation) > .ui-button {
+  position: relative;
+  min-width: 0;
+  min-height: 44px;
+  border: 0;
+  border-radius: var(--md-sys-shape-corner-small);
+  padding: 0 var(--md-aibo-space-3);
+  background: transparent;
+  color: var(--aibo-muted);
+  box-shadow: none;
+  font-size: var(--aibo-type-ui);
+  font-weight: 600;
+}
+
+.app-shell[data-ui-kit='material3'] :is(.side-panel-tabs, .git-section-tabs, .conversation-navigation) > .ui-button:hover:not(:disabled) {
+  background: transparent;
+  color: var(--aibo-text);
+  box-shadow: none;
+}
+
+.app-shell[data-ui-kit='material3'] :is(.side-panel-tabs, .git-section-tabs, .conversation-navigation) > .ui-button:is([aria-selected='true'], [aria-current='page']) {
+  background: transparent;
+  color: var(--aibo-text);
+  box-shadow: none;
+}
+
+.app-shell[data-ui-kit='material3'] :is(.side-panel-tabs, .git-section-tabs, .conversation-navigation) > .ui-button:is([aria-selected='true'], [aria-current='page'])::after {
+  position: absolute;
+  right: var(--md-aibo-space-2);
+  bottom: 0;
+  left: var(--md-aibo-space-2);
+  height: var(--md-aibo-line-strong);
+  background: var(--md-aibo-tabs-signal);
+  content: '';
+}
+
+.app-shell[data-ui-kit='material3'] :is(.side-panel-tabs, .git-section-tabs, .conversation-navigation) > .ui-button:focus-visible {
+  z-index: 1;
+  outline: var(--md-aibo-focus-width) solid var(--aibo-focus);
+  outline-offset: -4px;
+}
+
+.app-shell[data-ui-kit='material3'] :is(.git-summary-card, .trust-card, .agent-card, .inspector-empty) {
+  border: 0;
+  border-bottom: 1px solid var(--aibo-border);
+  border-radius: var(--md-sys-shape-corner-small);
+  background: transparent;
+  box-shadow: none;
+}
+
+.app-shell[data-ui-kit='material3'] :is(.changeset-file-row, .git-commit-row) {
+  border-radius: var(--md-sys-shape-corner-small);
+}
+
+.app-shell[data-ui-kit='material3'] .inspector :is(.changeset-file-button, .git-commit-button) {
+  min-height: 44px;
+}
+
+.app-shell[data-ui-kit='material3'] :is(.git-commit-file, .git-commit-files-more) {
+  justify-content: flex-start;
+  text-align: left;
+}
+
+.app-shell[data-ui-kit='material3'] .git-commit-files {
+  gap: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+.app-shell[data-ui-kit='material3'] .git-commit-file.ui-button {
+  height: 36px;
+  min-height: 36px;
+  gap: var(--md-aibo-space-2);
+  padding: 0 var(--md-aibo-space-2) 0 var(--md-aibo-space-3);
+  border: 0;
+  border-bottom: var(--md-aibo-line-hairline) solid var(--aibo-border);
+  border-radius: var(--md-sys-shape-corner-small);
+  font-weight: 400;
+}
+.app-shell[data-ui-kit='material3'] .git-commit-file > .changeset-file-copy {
+  color: var(--aibo-text);
+  font-family: var(--md-aibo-font-sans);
+  font-size: var(--aibo-type-ui);
+}
+.app-shell[data-ui-kit='material3'] .git-commit-file .changeset-file-name {
+  font-family: var(--md-aibo-font-mono);
+  max-width: 65%;
+}
+.app-shell[data-ui-kit='material3'] .git-commit-file .changeset-file-name-only { max-width: 100%; }
+.app-shell[data-ui-kit='material3'] .git-commit-file:focus-visible { outline-offset: -2px; }
+
+@media (pointer: coarse) {
+  .app-shell[data-ui-kit='material3'] :is(.session-change-row, .git-commit-file).ui-button { height: 44px; min-height: 44px; }
+  .app-shell[data-ui-kit='material3'] .session-change-sides > .ui-button { min-height: 44px; }
+}
+
+
+.app-shell[data-ui-kit='material3'] .git-history :is(.git-history-item, .git-commit-file):hover:not(:disabled) {
+  box-shadow: none;
+}
+
+.app-shell[data-ui-kit='material3'] .git-history-more {
+  width: 100%;
+  margin-top: var(--md-aibo-space-2);
+}
+
+.app-shell[data-ui-kit='material3'] .workbench-status {
+  display: flex;
+  flex: none;
+  order: 3;
+
+  min-height: 28px;
+  min-width: 0;
+  align-items: center;
+  gap: var(--md-aibo-space-4);
+  padding: 0 var(--md-aibo-space-4);
+  background: var(--aibo-surface-hover);
+  border-top: 1px solid var(--aibo-border);
+  color: var(--aibo-muted);
+  font: var(--aibo-type-meta) var(--md-aibo-font-sans);
+  white-space: nowrap;
+}
+
+.app-shell[data-ui-kit='material3'] :is(.workbench-status-environment, .workbench-status-theme) {
+  flex: none;
+}
+
+.app-shell[data-ui-kit='material3'] .workbench-status-workspace {
+  min-width: 0;
+  max-width: 20%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.app-shell[data-ui-kit='material3'] .workbench-status-theme {
+  margin-left: auto;
+}
+
+.app-shell[data-ui-kit='material3'] .workbench-status.has-usage .workbench-status-theme {
+  margin-left: 0;
+}
+
+.app-shell[data-ui-kit='material3'] .workbench-status-divider {
+  height: 12px;
+  background: var(--aibo-border);
+}
+
+.app-shell[data-ui-kit='material3'] .workbench-status-usage {
+  display: flex;
+  align-items: center;
+  gap: var(--md-aibo-space-4);
+  min-width: 0;
+  min-height: 27px;
+  margin-left: auto;
+  overflow-x: auto;
+  scrollbar-width: none;
+  font-variant-numeric: tabular-nums;
+}
+
+.app-shell[data-ui-kit='material3'] .workbench-status-usage > span {
+  flex: none;
+}
+
+.app-shell[data-ui-kit='material3'] .workbench-status-usage:focus-visible {
+  outline: var(--md-aibo-focus-width) solid var(--aibo-focus);
+  outline-offset: -2px;
+}
+
+.app-shell[data-ui-kit='material3'] .composer-context-actions {
+  display: flex;
+  flex: none;
+  justify-content: flex-end;
+  margin-bottom: var(--md-aibo-space-2);
+}
+
+.app-shell[data-ui-kit='material3'] .agent-status-mark {
+  border-radius: 1px;
+}
+
+@keyframes md-status-track {
+
+  to {
+    stroke-dashoffset: -100;
+  }
+}
+
+.app-shell[data-ui-kit='material3'] .tone-attention:not(.agent-status-mark) {
+  outline: 1px solid var(--aibo-warning-text);
+}
+
+.app-shell[data-ui-kit='material3'] .tone-failed {
+  outline: 1px solid var(--aibo-danger-text);
+}
+
+.app-shell[data-ui-kit='material3'] :is(.ui-management, .ui-alert) {
+  padding: 0;
+  color: var(--aibo-text);
+  background: var(--aibo-surface);
+  border: 1px solid var(--aibo-border);
+  border-top: 3px solid var(--aibo-accent);
+  border-radius: var(--md-sys-shape-corner-small);
+  box-shadow: var(--md-aibo-shadow-panel);
+  margin: auto;
+}
+
+.app-shell[data-ui-kit='material3'] :is(.ui-management, .ui-alert)::backdrop {
+  background: color-mix(in srgb, var(--md-sys-color-scrim) 40%, transparent);
+  backdrop-filter: blur(3px);
+}
+
+.app-shell[data-ui-kit='material3'] .ui-management {
+  width: min(880px, calc(100vw - 32px));
+  height: min(620px, calc(100dvh - 64px));
+  font-size: var(--aibo-type-ui);
+  max-width: none;
+  max-height: none;
+}
+
+.app-shell[data-ui-kit='material3'] .ui-management[open] {
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr) auto;
+}
+
+.app-shell[data-ui-kit='material3'] .management-header {
+
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: var(--md-aibo-space-3);
+  padding: var(--md-aibo-space-3) var(--md-aibo-space-3) var(--md-aibo-space-3) var(--md-aibo-space-5);
+  border-bottom: 1px solid var(--aibo-border);
+}
+
+.app-shell[data-ui-kit='material3'] .management-header h1 {
+  font: 700 20px/1.3 var(--md-aibo-font-command);
+  margin: 0;
+}
+
+.app-shell[data-ui-kit='material3'] .management-body {
+  display: grid;
+  grid-template-columns: 200px minmax(0, 1fr);
+  min-height: 0;
+}
+
+.app-shell[data-ui-kit='material3'] .management-nav {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+  padding: var(--md-aibo-space-2) 0;
+  background: var(--aibo-surface-hover);
+  border-right: 1px solid var(--aibo-border);
+}
+
+
+
+.app-shell[data-ui-kit='material3'] .management-nav button {
+  display: flex;
+  align-items: center;
+  text-align: left;
+  min-height: 44px;
+  padding: 0 var(--md-aibo-space-4);
+  border: 0;
+  border-radius: var(--md-sys-shape-corner-small);
+  color: var(--aibo-muted);
+  background: transparent;
+}
+
+.app-shell[data-ui-kit='material3'] .management-nav [aria-selected='true'] {
+  background: var(--aibo-accent-soft);
+  color: var(--aibo-text);
+  box-shadow: none;
+}
+
+.app-shell[data-ui-kit='material3'] .management-nav .management-tools-start {
+  margin-top: var(--md-aibo-space-3);
+  border-top: 1px solid var(--aibo-border);
+}
+
+.app-shell[data-ui-kit='material3'] .settings-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--md-aibo-space-2);
+}
+
+.app-shell[data-ui-kit='material3'] .management-content > .settings-tab-panel > [role='alert'] {
+  color: var(--aibo-danger-text);
+}
+
+.app-shell[data-ui-kit='material3'] .management-nav strong {
+  font-size: var(--aibo-type-ui);
+  font-weight: 550;
+}
+
+.app-shell[data-ui-kit='material3'] .management-nav small {
+  display: none;
+}
+
+.app-shell[data-ui-kit='material3'] .management-content {
+  min-width: 0;
+  overflow: auto;
+  padding: var(--md-aibo-space-4) var(--md-aibo-space-5) var(--md-aibo-space-5);
+}
+
+.app-shell[data-ui-kit='material3'] .management-footer {
+  background: var(--aibo-surface-hover);
+  display: flex;
+  justify-content: flex-end;
+  padding: var(--md-aibo-space-4) var(--md-aibo-space-5);
+  border-top: 1px solid var(--aibo-border);
+}
+
+.app-shell[data-ui-kit='material3'] :is(.appearance-kit-option, .appearance-theme-option) {
+  transition: box-shadow var(--md-aibo-motion-fast) var(--md-aibo-ease-standard), transform var(--md-aibo-motion-fast) var(--md-aibo-ease-standard);
+  border-radius: var(--md-sys-shape-corner-small);
+  background: var(--aibo-surface);
+  border: 1px solid var(--aibo-border);
+  min-height: 64px;
+  padding: var(--md-aibo-space-3);
+}
+
+.app-shell[data-ui-kit='material3'] .theme-swatches {
+  width: 48px;
+  height: 28px;
+}
+
+.app-shell[data-ui-kit='material3'] :is(.appearance-kit-option, .appearance-theme-option).active {
+  border-color: var(--aibo-accent);
+  background: var(--aibo-accent-soft);
+  box-shadow: none;
+}
+
+.app-shell[data-ui-kit='material3'] .appearance-theme-grid {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+
+
+.app-shell[data-ui-kit='material3'] :is(.settings-section-heading, .appearance-kit-grid, .appearance-theme-grid, .settings-runtime-list) {
+  padding-inline: 0;
+}
+
+.app-shell[data-ui-kit='material3'] .theme-swatches i {
+  border-radius: var(--md-sys-shape-corner-small);
+}
+
+.app-shell[data-ui-kit='material3'] .ui-alert {
+  width: min(480px, calc(100vw - 32px));
+  padding: var(--md-aibo-space-5);
+}
+
+.app-shell[data-ui-kit='material3'] .ui-alert p {
+  margin-top: var(--md-aibo-space-4);
+  font-size: var(--aibo-type-ui);
+  color: var(--aibo-muted);
+}
+
+.app-shell[data-ui-kit='material3'] .alert-dialog-actions {
+  margin-top: var(--md-aibo-space-5);
+}
+
+@media (max-width: 1100px) {
+
+  .app-shell[data-ui-kit='material3'] .timeline-heading {
+    flex-wrap: wrap;
+    align-items: center;
+    padding: 0 var(--md-aibo-space-4);
+  }
+
+  .app-shell[data-ui-kit='material3'] .timeline-heading-copy {
+    flex-basis: 100%;
+    padding-bottom: 0;
+  }
+
+  .app-shell[data-ui-kit='material3'] .timeline-heading-actions {
+    margin-left: auto;
+  }
+
+  .app-shell[data-ui-kit='material3'] .timeline-heading-actions [data-slot='badge'] {
+    font-size: var(--md-aibo-type-label-size);
+  }
+}
+
+@media (max-width: 760px) {
+
+  .app-shell[data-ui-kit='material3'] {
+    --workbench-content-inset: var(--md-aibo-space-3);
+  }
+
+  .app-shell[data-ui-kit='material3'] .timeline-heading {
+    min-height: 0;
+    gap: 0 var(--md-aibo-space-2);
+    padding: 0 var(--md-aibo-space-3);
+  }
+
+  .app-shell[data-ui-kit='material3'] .timeline-heading-copy {
+    padding-top: 8px;
+  }
+
+  .app-shell[data-ui-kit='material3'] .timeline-heading-copy > small {
+    display: none;
+  }
+
+  .app-shell[data-ui-kit='material3'] .timeline-heading-actions {
+    gap: var(--md-aibo-space-1);
+  }
+
+  .app-shell[data-ui-kit='material3'] .timeline-heading [data-slot='card-title'] {
+    font-size: 17px;
+  }
+
+
+
+  .app-shell[data-ui-kit='material3'] .timeline-heading .conversation-navigation {
+    order: 3;
+    flex-basis: 100%;
+    overflow-x: auto;
+  }
+
+  .app-shell[data-ui-kit='material3'] .timeline-feed {
+    padding: var(--md-aibo-space-4) var(--md-aibo-space-3);
+  }
+
+  .app-shell[data-ui-kit='material3'] .composer {
+    width: calc(100% - var(--md-aibo-space-2) * 2);
+    margin-bottom: var(--md-aibo-space-2);
+  }
+
+  .app-shell[data-ui-kit='material3'] .composer-toolbar {
+    flex-wrap: wrap;
+  }
+
+  .app-shell[data-ui-kit='material3'] .composer-toolbar-start {
+    flex-wrap: wrap;
+  }
+
+  .app-shell[data-ui-kit='material3'] .management-body {
+    grid-template-columns: 1fr;
+    grid-template-rows: auto minmax(0, 1fr);
+  }
+
+  .app-shell[data-ui-kit='material3'] .management-nav {
+    flex-direction: row;
+    flex-wrap: wrap;
+    border-right: 0;
+    border-bottom: 1px solid var(--aibo-border);
+    padding: var(--md-aibo-space-2);
+    min-width: 0;
+  }
+
+  .app-shell[data-ui-kit='material3'] .management-nav button {
+    flex: 1 1 30%;
+    min-width: 90px;
+    justify-content: center;
+    padding-inline: var(--md-aibo-space-2);
+  }
+
+  .app-shell[data-ui-kit='material3'] .management-nav .management-tools-start {
+    margin-top: 0;
+    border-top: 0;
+  }
+
+  .app-shell[data-ui-kit='material3'] .management-content {
+    padding: var(--md-aibo-space-4);
+  }
+
+  .app-shell[data-ui-kit='material3'] .workbench-status {
+    display: none;
+  }
+
+  .app-shell[data-ui-kit='material3'] .workbench-status.has-usage {
+    display: flex;
+    padding-inline: var(--md-aibo-space-3);
+  }
+
+  .app-shell[data-ui-kit='material3'] .workbench-status :is(.workbench-status-environment, .workbench-status-workspace, .workbench-status-theme, .workbench-status-divider) {
+    display: none;
+  }
+
+  .app-shell[data-ui-kit='material3'] .workbench-status-usage {
+    flex: 1;
+    margin-left: 0;
+  }
+
+  .app-shell[data-ui-kit='material3'] .timeline-heading .conversation-navigation {
+    order: 3;
+    width: 100%;
+    grid-auto-columns: minmax(0, 1fr);
+  }
+
+  .app-shell[data-ui-kit='material3'] .timeline-heading-copy {
+    flex-basis: 0;
+  }
+
+  .app-shell[data-ui-kit='material3'] .composer .attachment-list {
+    flex-wrap: nowrap;
+    overflow-x: auto;
+  }
+
+  .app-shell[data-ui-kit='material3'] .composer .attachment-item {
+    flex: 0 0 220px;
+  }
+}
+
+
+
+.app-shell[data-ui-kit='material3'] .session-agent-wheel {
+  top: var(--agent-wheel-top);
+  left: clamp(12px, var(--agent-wheel-left), max(12px, calc(100vw - 252px)));
+  width: min(240px, calc(100vw - 24px));
+  height: auto;
+  max-height: min(400px, calc(100dvh - 24px));
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  padding: var(--md-aibo-space-1);
+  gap: 0;
+  transform: none;
+  border: 1px solid var(--aibo-border);
+  border-radius: var(--md-sys-shape-corner-small);
+  background: var(--aibo-surface);
+  box-shadow: var(--md-aibo-shadow-panel);
+}
+
+.app-shell[data-ui-kit='material3'] .session-agent-wheel::before {
+  display: none;
+}
+
+.app-shell[data-ui-kit='material3'] .session-agent-wheel [data-slot='button'].session-agent-option {
+  position: static;
+  width: 100%;
+  height: auto;
+  min-height: 44px;
+  transform: none;
+  clip-path: none;
+  border: 0;
+  border-radius: var(--md-sys-shape-corner-small);
+  display: flex;
+  justify-content: flex-start;
+  padding: var(--md-aibo-space-1) var(--md-aibo-space-3);
+  gap: var(--md-aibo-space-3);
+  font-size: var(--aibo-type-ui);
+  font-weight: 400;
+  white-space: normal;
+}
+
+.app-shell[data-ui-kit='material3'] .session-agent-wheel [data-slot='button'].session-agent-option:is(:hover, :focus-visible):not(:disabled) {
+  color: var(--aibo-text);
+  background: var(--aibo-hover);
+}
+
+.app-shell[data-ui-kit='material3'] .session-agent-option:focus-visible {
+  outline-offset: -2px;
+}
+
+.app-shell[data-ui-kit='material3'] .session-agent-wheel [data-slot='button'].session-agent-option:disabled {
+  color: var(--md-aibo-signal-disabled);
+  background: transparent;
+}
+
+.app-shell[data-ui-kit='material3'] .session-agent-option .agent-status-mark {
+  width: 20px;
+  height: 20px;
+  color: var(--md-aibo-text-secondary);
+}
+
+.app-shell[data-ui-kit='material3'] .session-agent-option:disabled :is(.agent-status-mark, small) {
+  color: var(--md-aibo-signal-disabled);
+}
+
+.app-shell[data-ui-kit='material3'] .session-agent-shortcut {
+  flex: none;
+  padding: 3px 5px;
+  border: 1px solid var(--aibo-border);
+  border-radius: var(--md-sys-shape-corner-small);
+  font: var(--aibo-type-meta)/1 var(--md-aibo-font-mono);
+  color: var(--aibo-muted);
+}
+
+.app-shell[data-ui-kit='material3'] .session-agent-empty {
+  position: static;
+  width: auto;
+  transform: none;
+  padding: var(--md-aibo-space-2) var(--md-aibo-space-3);
+  border: 0;
+  border-radius: var(--md-sys-shape-corner-small);
+  background: transparent;
+  color: var(--aibo-muted);
+  font-size: var(--aibo-type-meta);
+  line-height: 1.8;
+  text-align: left;
+}
+
+.app-shell[data-ui-kit='material3'] .sidebar .session-item {
+  gap: var(--md-aibo-space-3);
+  text-align: left;
+}
+
+.app-shell[data-ui-kit='material3'] .session-item-label {
+  font-size: var(--aibo-type-ui);
+  font-weight: 500;
+}
+
+.app-shell[data-ui-kit='material3'] .session-updated {
+  min-width: 32px;
+  margin: 0;
+  text-align: right;
+  font-size: var(--aibo-type-meta);
+}
+
+.app-shell[data-ui-kit='material3'] .inspector :is(.thread-card-heading, .thread-card-content) {
+  padding-inline: 0;
+}
+
+.app-shell[data-ui-kit='material3'] .inspector :is(.thread-card-content, .profile-card-content, .empty-detail, .thread-copy small) {
+  font-size: var(--md-aibo-type-label-size);
+  line-height: 1.8;
+}
+
+.app-shell[data-ui-kit='material3'] .markdown-heading-1 {
+  font-size: 24px;
+  font-weight: 600;
+}
+
+.app-shell[data-ui-kit='material3'] .markdown-heading-2 {
+  font-size: 17px;
+  font-weight: 650;
+  line-height: 1.4;
+}
+
+.app-shell[data-ui-kit='material3'] .markdown-list {
+  list-style: revert;
+  padding-left: 1.3em;
+  gap: var(--md-aibo-space-1);
+}
+
+.app-shell[data-ui-kit='material3'] .entry-content .markdown-content > p:not(:last-child) {
+  margin-bottom: var(--md-aibo-space-1);
+}
+.app-shell[data-ui-kit='material3'] .entry-content .markdown-content :not(pre) > code {
+  font: 12.5px var(--md-aibo-font-mono);
+  background: var(--md-aibo-surface-muted);
+  border-radius: var(--md-sys-shape-corner-small);
+}
+
+.app-shell[data-ui-kit='material3'] .appearance-kit-grid {
+  grid-template-columns: 1fr;
+}
+
+.app-shell[data-ui-kit='material3'] .md-agent-status-track {
+  stroke: currentColor;
+  stroke-width: 1.5;
+  fill: none;
+  border: 0;
+}
+
+.app-shell[data-ui-kit='material3'] .tone-running .md-agent-status-track {
+  stroke-dasharray: 72 28;
+  animation: md-status-track 1.6s linear infinite;
+  transform: none;
+}
+
+.app-shell[data-ui-kit='material3'] .host-panel {
+  border-radius: var(--md-sys-shape-corner-small);
+  border-top: 3px solid var(--aibo-accent);
+  box-shadow: var(--md-aibo-shadow-panel);
+}
+
+
+
+.app-shell[data-ui-kit='material3'] .inspector [data-slot='card-title'] {
+  font-size: var(--aibo-type-ui);
+  line-height: 1.4;
+  font-weight: 600;
+}
+
+.app-shell[data-ui-kit='material3'] .inspector .panel-heading + [data-slot='separator'] {
+  display: none;
+}
+
+.app-shell[data-ui-kit='material3'] .inspector :is(.thread-card-content, .profile-card-content, .session-context-content) {
+  padding: 0;
+  gap: var(--md-aibo-space-2);
+  font-size: var(--md-aibo-type-label-size);
+  line-height: 1.6;
+}
+
+.app-shell[data-ui-kit='material3'] .inspector .thread-empty {
+  margin: 0;
+  font-size: var(--md-aibo-type-label-size);
+  line-height: 1.6;
+}
+
+.app-shell[data-ui-kit='material3'] .workspace-capability-groups {
+  gap: var(--md-aibo-space-1);
+}
+
+.app-shell[data-ui-kit='material3'] .workspace-capability-group {
+  grid-template-columns: 64px minmax(0, 1fr);
+  align-items: baseline;
+  gap: var(--md-aibo-space-2);
+}
+
+.app-shell[data-ui-kit='material3'] .workspace-capability-group > strong {
+  font-size: var(--md-aibo-type-label-size);
+}
+
+.app-shell[data-ui-kit='material3'] .capability-list {
+  min-width: 0;
+  gap: var(--md-aibo-space-1);
+}
+
+.app-shell[data-ui-kit='material3'] .session-context-title > div {
+  min-width: 0;
+}
+
+.app-shell[data-ui-kit='material3'] .session-context-title [data-slot='card-title'] {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.app-shell[data-ui-kit='material3'] .session-context-content dl div {
+  margin-top: var(--md-aibo-space-1);
+  gap: var(--md-aibo-space-2);
+}
+
+.app-shell[data-ui-kit='material3'] .repository-select {
+  margin: var(--md-aibo-space-2) var(--md-aibo-space-4);
+  --repo-text: var(--aibo-text);
+  --repo-muted: var(--aibo-muted);
+  --repo-border: var(--aibo-border);
+  --repo-outline: var(--aibo-border-strong);
+  --repo-focus: var(--aibo-focus);
+  --repo-radius: var(--md-aibo-radius-subtle);
+  --repo-trigger: var(--aibo-surface);
+  --repo-hover: var(--aibo-surface-hover);
+  --repo-surface: var(--md-aibo-surface-raised);
+  --repo-shadow: var(--md-aibo-shadow-panel);
+}
+
+.app-shell[data-ui-kit='material3'] .git-section-toolbar {
+  margin: 0 var(--md-aibo-space-4);
+  gap: var(--md-aibo-space-2);
+  padding-bottom: var(--md-aibo-space-2);
+  border-bottom: 0;
+}
+
+.app-shell[data-ui-kit='material3'] .git-section-tabs .ui-button {
+  padding-inline: var(--md-aibo-space-2);
+}
+
+.app-shell[data-ui-kit='material3'] .git-review-button {
+  padding-inline: var(--md-aibo-space-2);
+  font-size: var(--md-aibo-type-label-size);
+}
+
+.app-shell[data-ui-kit='material3'] .git-branch-summary {
+  display: flex;
+  min-width: 0;
+  flex: 1;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0 var(--md-aibo-space-2);
+}
+
+.app-shell[data-ui-kit='material3'] .git-branch-trigger {
+  max-width: 100%;
+  padding-inline: 0;
+}
+
+.app-shell[data-ui-kit='material3'] .git-branch-summary .changeset-status {
+  margin: 0;
+  font: var(--md-aibo-type-label-size) var(--aibo-mono);
+}
+
+.app-shell[data-ui-kit='material3'] .git-remote-row {
+  margin: 0 var(--md-aibo-space-4);
+  min-height: 44px;
+  gap: var(--md-aibo-space-1);
+  font-size: var(--md-aibo-type-label-size);
+}
+
+.app-shell[data-ui-kit='material3'] .git-remote-row > span {
+  flex: 1 1 auto;
+}
+
+.app-shell[data-ui-kit='material3'] .git-remote-row > [data-slot='badge'] {
+  flex: none;
+}
+
+.app-shell[data-ui-kit='material3'] .git-remote-row .ui-button {
+  padding-inline: var(--md-aibo-space-2);
+  font-size: var(--md-aibo-type-label-size);
+}
+
+
+
+.app-shell[data-ui-kit='material3'] :is(.workspace-item-actions, .session-item-actions) {
+  right: 0;
+  gap: 0;
+  border-radius: var(--md-sys-shape-corner-small);
+  transform: translateY(-50%);
+}
+
+
+
+.app-shell[data-ui-kit='material3'] :is(.workspace-item-actions, .session-item-actions) {
+  background: transparent;
+  box-shadow: none;
+}
+
+.app-shell[data-ui-kit='material3'] .row-more-mark {
+  font-size: 20px;
+  line-height: 1;
+  letter-spacing: 0;
+}
+
+.app-shell[data-ui-kit='material3'] .row-action-menu {
+  position: fixed;
+  inset: auto;
+  top: clamp(12px, var(--row-menu-top), calc(100dvh - 224px));
+  left: clamp(12px, var(--row-menu-left), calc(100vw - 252px));
+  margin: 0;
+  width: min(240px, calc(100vw - 24px));
+  max-height: calc(100dvh - 24px);
+  overflow-y: auto;
+  padding: var(--md-aibo-space-1);
+  border: 1px solid var(--aibo-border);
+  border-radius: var(--md-sys-shape-corner-small);
+  background: var(--aibo-surface);
+  color: var(--aibo-text);
+  box-shadow: var(--md-aibo-shadow-panel);
+}
+
+.app-shell[data-ui-kit='material3'] .row-action-menu:popover-open {
+  display: grid;
+}
+
+.app-shell[data-ui-kit='material3'] .row-action-menu .ui-button {
+  width: 100%;
+  height: auto;
+  justify-content: flex-start;
+  padding: 0 var(--md-aibo-space-3);
+  gap: var(--md-aibo-space-3);
+  border: 0;
+  border-radius: var(--md-sys-shape-corner-small);
+  font-size: var(--aibo-type-ui);
+  font-weight: 400;
+  text-align: left;
+}
+
+.app-shell[data-ui-kit='material3'] .row-action-menu .ui-button:focus-visible {
+  outline-offset: -2px;
+}
+
+.app-shell[data-ui-kit='material3'] .row-action-menu .row-action-danger {
+  color: var(--md-aibo-signal-danger);
+}
+
+.app-shell[data-ui-kit='material3'] .row-action-menu [data-slot='separator'] {
+  margin-block: var(--md-aibo-space-1);
+  background: var(--aibo-border);
+}
+
+.app-shell[data-ui-kit='material3'] .workspace-item-actions:has(:popover-open),
+.app-shell[data-ui-kit='material3'] .session-item-actions:has(:popover-open) {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.app-shell[data-ui-kit='material3'] .session-agent-wheel-title {
+  padding: var(--md-aibo-space-2) var(--md-aibo-space-3) var(--md-aibo-space-1);
+  font-size: var(--aibo-type-meta);
+  font-weight: 400;
+  color: var(--aibo-muted);
+  overflow-wrap: anywhere;
+}
+
+.app-shell[data-ui-kit='material3'] .inspector .panel-heading > div:first-child {
+  min-width: 0;
+}
+
+.app-shell[data-ui-kit='material3'] .inspector .panel-heading small {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: var(--md-aibo-type-label-size);
+}
+
+.app-shell[data-ui-kit='material3'] .session-context-content :is(dt, dd) {
+  font-size: var(--md-aibo-type-label-size);
+  line-height: 1.6;
+}
+
+.app-shell[data-ui-kit='material3'] .workspace-preference-option > span {
+  flex: 1;
+  min-width: 0;
+}
+
+.app-shell[data-ui-kit='material3'] .workspace-preference-option strong {
+  display: block;
+  font-size: var(--aibo-type-meta);
+  font-weight: 500;
+}
+
+.app-shell[data-ui-kit='material3'] .workspace-preference-option small {
+  display: block;
+  margin-top: var(--md-aibo-space-1);
+  font-size: var(--md-aibo-type-label-size);
+  line-height: 1.6;
+  color: var(--aibo-muted);
+}
+
+.app-shell[data-ui-kit='material3'] .workspace-preference-option input {
+  flex: none;
+  width: 20px;
+  height: 20px;
+  accent-color: var(--aibo-accent);
+}
+
+.app-shell[data-ui-kit='material3'] .workspace-preference-option:focus-within {
+  outline: var(--md-aibo-focus-width) solid var(--aibo-focus);
+  outline-offset: 2px;
+}
+
+.app-shell[data-ui-kit='material3'] .workspace-preference-option:has(input:disabled) {
+  cursor: default;
+}
+
+.app-shell[data-ui-kit='material3'] .workspace-preference-status {
+  margin-inline: 20px;
+  font-size: var(--md-aibo-type-label-size);
+  color: var(--aibo-muted);
+}
+
+.app-shell[data-ui-kit='material3'] .workspace-preference-status [role='alert'] {
+  color: var(--aibo-danger-text);
+}
+
+
+
+.app-shell[data-ui-kit='material3'] :is(.goal-bar, .usage-strip, .timeline-retry, .agent-activity, .agent-queue, .composer-draft-status, .composer-context-actions) {
+
+  width: min(100% - var(--workbench-content-inset) * 2, var(--workbench-content-width));
+  margin-inline: auto;
+  border-radius: var(--md-sys-shape-corner-small);
+  font-size: var(--md-aibo-type-data-size);
+}
+
+.app-shell[data-ui-kit='material3'] :is(.workspace-tool-panel, .checkpoint-summary, .artifact-preview, .git-branch-menu, .git-stash-menu, .git-diff-view, .turn-diff-hunk, .empty-symbol, .theme-swatches) {
+  border-radius: var(--md-sys-shape-corner-small);
+}
+
+.app-shell[data-ui-kit='material3'] :is(.profile-warning, .composer-menu-warning, .approval-card code, .approval-card small, .project-action-run small, .project-action-run pre, .project-action-artifact, .turn-file-diff pre, .changeset-status, .composer-attachment, .trust-card p) {
+  font-size: var(--md-aibo-type-data-size);
+  line-height: 1.6;
+}
+
+.app-shell[data-ui-kit='material3'] :is(.session-filter-select, .project-action-editor select) {
+  min-height: var(--md-aibo-density-control-height);
+  font-size: var(--md-aibo-type-label-size);
+}
+
+.app-shell[data-ui-kit='material3'] .git-stash-trigger {
+  justify-content: space-between;
+  text-align: left;
+}
+
+.app-shell[data-ui-kit='material3'] .changeset-file-copy {
+  flex-direction: row;
+  align-items: baseline;
+  gap: var(--md-aibo-space-2);
+}
+
+.app-shell[data-ui-kit='material3'] .changeset-file-name {
+  flex: 0 1 auto;
+  min-width: 0;
+  max-width: none;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: var(--aibo-type-ui);
+}
+
+.app-shell[data-ui-kit='material3'] .changeset-file-location {
+  flex: 1 1 0;
+  min-width: 0;
+  overflow: hidden;
+  direction: rtl;
+  text-align: left;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: var(--aibo-type-meta);
+  color: var(--aibo-muted);
+}
+
+.app-shell[data-ui-kit='material3'] .git-change-list .changeset-file-button {
+  height: auto;
+}
+
+.app-shell[data-ui-kit='material3'] .subagent-dialog {
+  border-radius: var(--md-sys-shape-corner-small);
+  border-top: var(--md-aibo-line-strong) solid var(--aibo-accent);
+  box-shadow: var(--md-aibo-shadow-panel);
+}
+
+.app-shell[data-ui-kit='material3'] .subagent-dialog summary {
+  min-height: var(--md-aibo-density-control-height);
+  align-content: center;
+}
+
+
+
+.app-shell[data-ui-kit='material3'] :is(.row-action-menu, .composer-menu, .composer-suggestions, .session-agent-wheel) {
+  background: var(--md-aibo-surface-raised);
+  border-color: var(--aibo-border-strong);
+}
+
+.app-shell[data-ui-kit='material3'] :is(.tool-entry, .system-entry) {
+  border-block: 1px solid var(--aibo-border);
+  padding-block: var(--md-aibo-space-2);
+  background: var(--aibo-surface);
+  padding-inline: var(--md-aibo-space-3);
+}
+
+.app-shell[data-ui-kit='material3'] .tool-entry > .entry-meta {
+  color: var(--aibo-info-text);
+}
+
+.app-shell[data-ui-kit='material3'] .user-entry .entry-content {
+  border-left: 2px solid var(--aibo-border);
+  padding: var(--md-aibo-space-3) var(--md-aibo-space-4);
+  border: 1px solid var(--aibo-border);
+  background: var(--md-aibo-surface-raised);
+  line-height: 1.7;
+}
+
+.app-shell[data-ui-kit='material3'] :is(.goal-bar, .usage-strip, .agent-activity, .agent-queue) {
+  background: var(--aibo-surface);
+  border-color: var(--aibo-border-strong);
+}
+
+.app-shell[data-ui-kit='material3'] .agent-activity {
+  border: 0;
+  padding: 0;
+  background: transparent;
+  gap: var(--md-aibo-space-2);
+  overflow-wrap: anywhere;
+}
+.app-shell[data-ui-kit='material3'] .timeline-feed-content > .agent-activity {
+  width: 100%;
+  margin: 0;
+}
+.app-shell[data-ui-kit='material3'] .agent-activity .tone-running { color: var(--aibo-muted); }
+.app-shell[data-ui-kit='material3'] .agent-activity .md-agent-status-track {
+  color: var(--aibo-focus);
+  inset: -2px;
+  width: 24px;
+  height: 24px;
+}
+
+.app-shell[data-ui-kit='material3'] .goal-bar {
+}
+
+.app-shell[data-ui-kit='material3'] .inspector :is(.project-actions-card, .workspace-capabilities-card, .capability-checker-card, .capabilities-card, .session-context-card, .attachments-card, .artifacts-card, .thread-card, .profile-card, .changeset-card) {
+
+  margin: 0;
+  border: 0;
+  border-bottom: 1px solid var(--aibo-border);
+  padding: var(--md-aibo-space-2) var(--md-aibo-space-4) var(--md-aibo-space-4);
+  border-radius: var(--md-sys-shape-corner-small);
+  background: var(--aibo-surface);
+}
+
+.app-shell[data-ui-kit='material3'] .inspector :is(.thread-card-heading, .session-context-heading) {
+  padding: 0;
+  min-height: 28px;
+  flex-direction: row;
+  align-items: center;
+  gap: var(--md-aibo-space-2);
+  margin-bottom: var(--md-aibo-space-2);
+  border-left: 0;
+  padding-left: 0;
+}
+
+.app-shell[data-ui-kit='material3'] .capability-list [data-slot='badge'] {
+  max-width: 100%;
+  white-space: normal;
+  overflow-wrap: anywhere;
+  font-size: var(--md-aibo-type-label-size);
+  padding: 2px 5px;
+  background: var(--aibo-surface-hover);
+  border-color: var(--aibo-border);
+  color: var(--aibo-text);
+}
+
+.app-shell[data-ui-kit='material3'] .repository-trigger {
+  min-height: 44px;
+  padding-inline: var(--md-aibo-space-2);
+  background: var(--aibo-surface);
+  border: 1px solid var(--aibo-border);
+}
+
+.app-shell[data-ui-kit='material3'] .inspector .git-summary-card {
+  padding-block: var(--md-aibo-space-2);
+  background: var(--aibo-surface-hover);
+  border: 1px solid var(--aibo-border);
+}
+
+.app-shell[data-ui-kit='material3'] .git-summary-card .thread-card-heading {
+  margin: 0;
+  border-left: 0;
+  padding-inline: var(--md-aibo-space-2);
+}
+
+.app-shell[data-ui-kit='material3'] .git-branch-label {
+  color: var(--aibo-text);
+}
+
+.app-shell[data-ui-kit='material3'] :is(.git-change-group, .git-stash-section) {
+  margin-inline: var(--md-aibo-space-4);
+  background: var(--aibo-surface);
+  border: 1px solid var(--aibo-border);
+}
+
+.app-shell[data-ui-kit='material3'] :is(.git-change-group-heading, .git-stash-trigger) {
+  background: var(--aibo-surface-hover);
+}
+
+.app-shell[data-ui-kit='material3'] .git-change-group-trigger {
+  padding-inline: var(--md-aibo-space-2);
+}
+
+.app-shell[data-ui-kit='material3'] .changeset-file-row + .changeset-file-row {
+  border-top: 1px solid var(--aibo-border);
+}
+
+.app-shell[data-ui-kit='material3'] .changeset-file-row:is(:hover, :focus-within) {
+  background: var(--aibo-hover);
+}
+
+
+.app-shell[data-ui-kit='material3'] .git-change-list .changeset-file-button:hover:not(:disabled) {
+  background: transparent;
+  box-shadow: none;
+}
+
+.app-shell[data-ui-kit='material3'] .changeset-file-row.changeset-file-selected {
+  background: var(--aibo-accent-soft);
+  box-shadow: none;
+}
+
+.app-shell[data-ui-kit='material3'] .inspector .trust-card {
+  margin: 0 var(--md-aibo-space-4);
+  padding: var(--md-aibo-space-3) 0;
+  background: var(--aibo-warning-surface);
+  padding-inline: var(--md-aibo-space-3);
+}
+
+.app-shell[data-ui-kit='material3'] .inspector .trust-card[data-trust='trusted'] {
+  background: var(--aibo-success-surface);
+}
+
+.app-shell[data-ui-kit='material3'] .inspector .trust-card[data-trust='trusted'] :is(.trust-card-heading, .trust-card-heading svg, p) {
+  color: var(--aibo-success-text);
+}
+
+.app-shell[data-ui-kit='material3'] .settings-rows {
+
+  background: var(--md-aibo-surface-raised);
+}
+
+.app-shell[data-ui-kit='material3'] .workspace-preference-option {
+  display: flex;
+  align-items: center;
+  gap: var(--md-aibo-space-4);
+  min-height: 44px;
+  margin-inline: 0;
+  padding: var(--md-aibo-space-3);
+  border: 1px solid var(--aibo-border);
+  cursor: pointer;
+  background: var(--aibo-surface);
+}
+
+.app-shell[data-ui-kit='material3'] .workspace-preference-option:has(input:checked) {
+  border-color: var(--aibo-accent);
+  box-shadow: none;
+}
+
+
+
+
+.app-shell[data-ui-kit='material3'] :is([data-slot='input'], [data-slot='textarea']),
+.app-shell[data-ui-kit='material3'] select {
+  min-height: var(--md-aibo-density-control-height);
+  border: var(--md-aibo-line-hairline) solid var(--aibo-border);
+  border-radius: var(--md-sys-shape-corner-small);
+  padding-inline: var(--md-aibo-space-3);
+  background-color: var(--md-aibo-surface-panel);
+  color: var(--aibo-text);
+  box-shadow: none;
+  font: var(--aibo-type-body)/1.45 var(--md-aibo-font-sans);
+  caret-color: var(--aibo-focus);
+}
+
+.app-shell[data-ui-kit='material3'] :is([data-slot='input'], [data-slot='textarea'], select)::placeholder {
+  color: var(--aibo-muted);
+  opacity: 1;
+}
+
+.app-shell[data-ui-kit='material3'] :is([data-slot='input'], [data-slot='textarea'], select):hover:not(:disabled) {
+  border-color: var(--aibo-border-strong);
+}
+
+.app-shell[data-ui-kit='material3'] :is([data-slot='input'], [data-slot='textarea'], select):focus-visible {
+  border-color: var(--aibo-focus);
+  outline: none;
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--aibo-focus) 20%, transparent);
+}
+
+.app-shell[data-ui-kit='material3'] :is([data-slot='input'], [data-slot='textarea'], select)[aria-invalid='true'] {
+  border-color: var(--aibo-danger-border);
+  box-shadow: none;
+}
+
+.app-shell[data-ui-kit='material3'] :is([data-slot='input'], [data-slot='textarea'], select):disabled {
+  color: var(--aibo-muted);
+  background-color: var(--aibo-surface-hover);
+  opacity: .72;
+  cursor: not-allowed;
+}
+
+.app-shell[data-ui-kit='material3'] select {
+  appearance: none;
+  padding-right: var(--md-aibo-space-6);
+  background-image: linear-gradient(45deg, transparent 50%, var(--aibo-text) 50%), linear-gradient(135deg, var(--aibo-text) 50%, transparent 50%);
+  background-position: calc(100% - 18px) center, calc(100% - 13px) center;
+  background-size: 5px 5px;
+  background-repeat: no-repeat;
+}
+
+.app-shell[data-ui-kit='material3'] select option {
+  color: var(--aibo-text);
+  background: var(--md-aibo-surface-raised);
+}
+
+
+
+.app-shell[data-ui-kit='material3'] :is(.composer-textarea, .global-search-heading [data-slot='input'], .workspace-tool-panel [data-slot='input'], .repository-search input) {
+  border: 0;
+  background: transparent;
+  box-shadow: none;
+}
+
+.app-shell[data-ui-kit='material3'] :is(.composer-textarea, .global-search-heading [data-slot='input'], .workspace-tool-panel [data-slot='input'], .repository-search input):focus-visible {
+  border: 0;
+  outline: none;
+  box-shadow: none;
+}
+
+.app-shell[data-ui-kit='material3'] :is(.composer, .global-search-heading, .workspace-tool-panel, .repository-search):focus-within {
+  border-color: var(--aibo-focus);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--aibo-focus) 20%, transparent);
+}
+
+
+
+.app-shell[data-ui-kit='material3'] input[type='checkbox']:not([role='switch']),
+.app-shell[data-ui-kit='material3'] input[type='radio'] {
+  appearance: none;
+  position: relative;
+  flex: none;
+  width: 24px;
+  height: 24px;
+  margin: 0;
+  border: 2px solid var(--aibo-border-strong);
+  border-radius: var(--md-sys-shape-corner-small);
+  background: var(--md-aibo-surface-panel);
+  cursor: pointer;
+}
+
+.app-shell[data-ui-kit='material3'] input[type='radio'] {
+  border-radius: 50%;
+}
+
+.app-shell[data-ui-kit='material3'] input[type='checkbox']:not([role='switch']):checked,
+.app-shell[data-ui-kit='material3'] input[type='radio']:checked {
+  border-color: var(--aibo-focus);
+  background: var(--md-sys-color-primary);
+}
+
+.app-shell[data-ui-kit='material3'] input[type='checkbox']:not([role='switch']):checked::after {
+  position: absolute;
+  inset: 4px 3px 5px 5px;
+  border-bottom: 3px solid var(--md-sys-color-scrim);
+  border-left: 3px solid var(--md-sys-color-scrim);
+  content: '';
+  transform: rotate(-45deg);
+}
+
+.app-shell[data-ui-kit='material3'] input[type='radio']:checked::after {
+  position: absolute;
+  inset: 5px;
+  border-radius: 50%;
+  background: var(--md-sys-color-scrim);
+  content: '';
+}
+
+.app-shell[data-ui-kit='material3'] input[role='switch'] {
+  appearance: none;
+  position: relative;
+  flex: none;
+  width: 44px;
+  height: 24px;
+  margin: 0;
+  border: 2px solid var(--aibo-border-strong);
+  border-radius: 16px;
+  background: var(--aibo-surface-hover);
+  cursor: pointer;
+}
+
+.app-shell[data-ui-kit='material3'] input[role='switch']::after {
+  position: absolute;
+  top: 3px;
+  left: 3px;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: var(--aibo-text);
+  content: '';
+  transition: transform var(--md-aibo-motion-fast) var(--md-aibo-ease-standard);
+}
+
+.app-shell[data-ui-kit='material3'] input[role='switch']:checked {
+  border-color: var(--md-sys-color-primary);
+  background: var(--md-sys-color-primary);
+}
+
+.app-shell[data-ui-kit='material3'] input[role='switch']:checked::after {
+  background: var(--md-sys-color-on-primary);
+  transform: translateX(19px);
+}
+
+.app-shell[data-ui-kit='material3'] :is(input[type='checkbox'], input[type='radio']):focus-visible {
+  outline: var(--md-aibo-focus-width) solid var(--aibo-focus);
+  outline-offset: 2px;
+}
+
+.app-shell[data-ui-kit='material3'] :is(input[type='checkbox'], input[type='radio']):disabled {
+  opacity: .5;
+  cursor: not-allowed;
+}
+
+.app-shell[data-ui-kit='material3'] .workspace-preference-option input[role='switch'] {
+  width: 44px;
+  height: 24px;
+}
+
+.app-shell[data-ui-kit='material3'] .agent-settings-surface input[type='checkbox'] {
+  width: 24px;
+  height: 24px;
+}
+
+.app-shell[data-ui-kit='material3'] .agent-settings-surface select {
+  min-height: var(--md-aibo-density-control-height);
+  padding-inline: var(--md-aibo-space-3) var(--md-aibo-space-6);
+  border-radius: var(--md-sys-shape-corner-small);
+  background-color: var(--md-aibo-surface-panel);
+}
+
+
+
+.app-shell[data-ui-kit='material3'] :is(.management-nav [aria-selected='true'], .repository-option[aria-selected='true'], .composer-access-options [aria-checked='true'], .pi-navigation-mode-list [aria-checked='true']) {
+  background: var(--aibo-accent-soft);
+  box-shadow: none;
+  color: var(--aibo-selected-ink);
+}
+
+.app-shell[data-ui-kit='material3'] .repository-option[aria-selected='true'] .repository-option-name {
+  color: var(--aibo-selected-ink);
+}
+
+.app-shell[data-ui-kit='material3'] .ui-button[aria-pressed='true'],
+.app-shell[data-ui-kit='material3'] .ui-button[aria-pressed='true']:hover:not(:disabled) {
+  color: var(--aibo-selected-ink);
+  background: var(--aibo-accent-soft);
+  box-shadow: none;
+}
+
+
+
+.app-shell[data-ui-kit='material3'] .session-state-label {
+  flex: none;
+  padding: 1px var(--md-aibo-space-1);
+  border: var(--md-aibo-line-hairline) solid var(--aibo-warning-border);
+  border-radius: var(--md-sys-shape-corner-small);
+  font-size: var(--aibo-type-meta);
+  color: var(--aibo-warning-text);
+  background: var(--aibo-warning-surface);
+}
+
+.app-shell[data-ui-kit='material3'] .session-state-label[data-tone='danger'] {
+  border-color: var(--aibo-danger-border);
+  color: var(--aibo-danger-text);
+  background: var(--aibo-danger-surface);
+}
+
+.app-shell[data-ui-kit='material3'] .session-item .tone-running {
+  color: var(--aibo-accent);
+}
+
+.app-shell[data-ui-kit='material3'] .session-agent-label {
+  display: grid;
+  flex: 1;
+  min-width: 0;
+  line-height: 1.3;
+  overflow-wrap: anywhere;
+  text-align: left;
+}
+
+.app-shell[data-ui-kit='material3'] .session-agent-label small {
+  font-size: var(--aibo-type-meta);
+  color: var(--aibo-muted);
+}
+
+.app-shell[data-ui-kit='material3'] .session-context-title {
+  flex: 1;
+  min-width: 0;
+}
+
+.app-shell[data-ui-kit='material3'] .session-context-content dl > div {
+  display: grid;
+  grid-template-columns: 72px minmax(0, 1fr);
+}
+
+.app-shell[data-ui-kit='material3'] .session-context-content dd {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  text-align: left;
+  margin: 0;
+}
+
+
+.app-shell[data-ui-kit='material3'] .git-history-copy strong {
+  font-size: var(--aibo-type-ui);
+  color: var(--aibo-text);
+}
+
+.app-shell[data-ui-kit='material3'] .git-history-entry {
+  border-bottom: var(--md-aibo-line-hairline) solid var(--aibo-border);
+}
+.app-shell[data-ui-kit='material3'] .git-history-item {
+  border-radius: var(--md-sys-shape-corner-small);
+  padding: 6px var(--md-aibo-space-4);
+  background: transparent;
+}
+.app-shell[data-ui-kit='material3'] :is(.git-history-time, .git-history-meta) {
+  color: var(--aibo-muted);
+  font-size: var(--aibo-type-meta);
+}
+
+.app-shell[data-ui-kit='material3'] .appearance-kit-info {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--md-aibo-space-3);
+  margin-inline: 20px;
+  font-size: var(--aibo-type-ui);
+}
+
+.app-shell[data-ui-kit='material3'] .appearance-kit-info span {
+  color: var(--aibo-muted);
+}
+
+.app-shell[data-ui-kit='material3'] .appearance-theme-option {
+  position: relative;
+  cursor: pointer;
+}
+
+
+
+.app-shell[data-ui-kit='material3'] .appearance-theme-option > input {
+
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  opacity: 0;
+  cursor: pointer;
+}
+
+.app-shell[data-ui-kit='material3'] .appearance-theme-option > svg {
+  color: var(--aibo-accent);
+}
+
+.app-shell[data-ui-kit='material3'] .theme-option-copy small {
+  display: none;
+}
+
+.app-shell[data-ui-kit='material3'] .appearance-theme-option:focus-within {
+  outline: var(--md-aibo-focus-width) solid var(--aibo-focus);
+  outline-offset: 2px;
+}
+
+.app-shell[data-ui-kit='material3'] .git-file-tail {
+  display: grid;
+  min-width: 44px;
+}
+
+.app-shell[data-ui-kit='material3'] .git-file-tail > * {
+  grid-area: 1 / 1;
+}
+
+.app-shell[data-ui-kit='material3'] .git-line-stats {
+  display: flex;
+  align-items: center;
+  justify-content: end;
+  gap: var(--md-aibo-space-1);
+  font: var(--aibo-type-meta) var(--md-aibo-font-mono);
+}
+
+.app-shell[data-ui-kit='material3'] .git-line-stats span:first-child {
+  color: var(--aibo-success-text);
+}
+
+.app-shell[data-ui-kit='material3'] .git-line-stats span:last-child {
+  color: var(--aibo-danger-text);
+}
+
+.app-shell[data-ui-kit='material3'] .changeset-file-row:is(:hover, :focus-within) .git-line-stats {
+  visibility: hidden;
+}
+
+
+
+@media (hover: none), (pointer: coarse) {
+
+  .app-shell[data-ui-kit='material3'] :is(.workspace-item-actions, .session-item-actions) {
+    opacity: 1;
+    pointer-events: auto;
+  }
+
+  .app-shell[data-ui-kit='material3'] .git-file-tail {
+    display: flex;
+  }
+
+  .app-shell[data-ui-kit='material3'] .git-file-tail .changeset-actions {
+    opacity: 1;
+  }
+
+  .app-shell[data-ui-kit='material3'] .changeset-file-row .git-line-stats {
+    visibility: visible;
+  }
+}
+
+.app-shell[data-ui-kit='material3'] .composer-textarea {
+  min-height: 64px;
+  padding: var(--md-aibo-space-3) var(--md-aibo-space-4);
+  border: 0;
+  resize: none;
+  font: var(--aibo-type-body)/1.6 var(--md-aibo-font-sans);
+  background: transparent;
+  box-shadow: none;
+  field-sizing: content;
+  max-height: min(240px, 30dvh);
+  overflow-y: auto;
+
+  color: transparent;
+  caret-color: var(--aibo-text);
+}
+
+
+
+.app-shell[data-ui-kit='material3'] .composer-mention-layer {
+  padding: var(--md-aibo-space-3) var(--md-aibo-space-4);
+  border: 0;
+  font: var(--aibo-type-body)/1.6 var(--md-aibo-font-sans);
+  max-height: min(240px, 30dvh);
+}
+
+.app-shell[data-ui-kit='material3'] .composer-mention {
+  color: var(--aibo-selected-ink);
+  background: var(--aibo-accent-soft);
+  border-radius: var(--md-sys-shape-corner-small);
+  box-shadow: 0 0 0 1px var(--aibo-accent);
+}
+
+.app-shell[data-ui-kit='material3'] .composer-textarea::placeholder {
+  color: var(--aibo-muted);
+}
+
+.app-shell[data-ui-kit='material3'] .attachment-caption button {
+  width: 44px;
+  height: 44px;
+}
+
+.app-shell[data-ui-kit='material3'] .attachment-item a {
+  display: grid;
+  place-items: center;
+  min-width: 44px;
+  min-height: 44px;
+}
+
+
+
+.app-shell[data-ui-kit='material3'] .compact-region-navigation {
+  padding-inline: 0;
+}
+
+.app-shell[data-ui-kit='material3'] .compact-region-navigation .ui-button {
+  font-size: var(--aibo-type-ui);
+}
+
+
+.app-shell[data-ui-kit='material3'] .git-repository-toolbar {
+  display: flex;
+  align-items: center;
+  gap: var(--md-aibo-space-2);
+  padding: var(--md-aibo-space-3) var(--md-aibo-space-4) var(--md-aibo-space-2);
+}
+.app-shell[data-ui-kit='material3'] .git-repository-toolbar .repository-select {
+  flex: 1;
+  margin: 0;
+}
+.app-shell[data-ui-kit='material3'] .git-repository-toolbar .repository-trigger {
+  position: relative;
+  height: 36px;
+  min-height: 36px;
+  font-size: var(--aibo-type-ui);
+}
+.app-shell[data-ui-kit='material3'] .git-repository-toolbar .repository-trigger::before {
+  position: absolute;
+  inset: -4px -2px;
+  content: '';
+}
+.app-shell[data-ui-kit='material3'] .git-repository-toolbar > .ui-button[data-size='icon'] {
+  width: 32px;
+  min-width: 32px;
+  min-height: 32px;
+}
+.app-shell[data-ui-kit='material3'] .git-branch-bar {
+  display: flex;
+  align-items: center;
+  gap: var(--md-aibo-space-2);
+  min-width: 0;
+  padding: 0 var(--md-aibo-space-4) var(--md-aibo-space-2);
+}
+.app-shell[data-ui-kit='material3'] .git-branch-bar .git-branch-trigger {
+  flex: 0 1 auto;
+  min-width: 0;
+  min-height: 32px;
+  max-width: 40%;
+  font-family: var(--md-aibo-font-mono);
+  font-weight: 600;
+}
+.app-shell[data-ui-kit='material3'] .git-branch-label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.app-shell[data-ui-kit='material3'] .git-upstream {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--aibo-muted);
+  font: var(--aibo-type-meta) var(--md-aibo-font-mono);
+}
+.app-shell[data-ui-kit='material3'] .git-branch-bar > .ui-button:not(.git-branch-trigger) {
+  flex: none;
+  min-height: 32px;
+  padding-inline: var(--md-aibo-space-2);
+}
+.app-shell[data-ui-kit='material3'] .git-branch-create [data-slot='button'] {
+  min-height: 32px;
+}
+.app-shell[data-ui-kit='material3'] .git-branch-create {
+  align-items: center;
+}
+.app-shell[data-ui-kit='material3'] .git-branch-create [data-slot='input'] {
+  height: 36px;
+  min-height: 36px;
+}
+.app-shell[data-ui-kit='material3'] .git-section-toolbar {
+  margin: 0;
+  padding: 0 var(--md-aibo-space-4);
+  border-bottom: var(--md-aibo-line-hairline) solid var(--aibo-border);
+}
+.app-shell[data-ui-kit='material3'] .git-section-tabs {
+  display: flex;
+  flex: 1;
+  border: 0;
+  background: transparent;
+}
+.app-shell[data-ui-kit='material3'] .git-section-tabs > .ui-button {
+  flex: none;
+}
+.app-shell[data-ui-kit='material3'] .git-section-toolbar > .git-review-button {
+  min-height: 32px;
+}
+.app-shell[data-ui-kit='material3'] .git-commit-form {
+  margin: 0;
+  gap: var(--md-aibo-space-2);
+  padding: var(--md-aibo-space-3) var(--md-aibo-space-4);
+}
+.app-shell[data-ui-kit='material3'] .git-commit-form [data-slot='input'] {
+  height: 36px;
+  min-height: 36px;
+  font-size: var(--aibo-type-ui);
+}
+.app-shell[data-ui-kit='material3'] .git-commit-form [data-slot='button'] {
+  min-height: 32px;
+}
+.app-shell[data-ui-kit='material3'] .git-change-group {
+  margin: 0;
+  border: 0;
+}
+.app-shell[data-ui-kit='material3'] .git-change-group-heading {
+  display: flex;
+  align-items: center;
+  border-top: var(--md-aibo-line-hairline) solid var(--aibo-border);
+  background: var(--md-aibo-surface-muted);
+}
+.app-shell[data-ui-kit='material3'] .git-change-group-trigger {
+  flex: 1;
+  height: 35px;
+  min-height: 35px;
+  padding-inline: var(--md-aibo-space-3) var(--md-aibo-space-2);
+}
+.app-shell[data-ui-kit='material3'] .git-change-list .changeset-file-row {
+  gap: var(--md-aibo-space-2);
+  padding-inline: var(--md-aibo-space-3) var(--md-aibo-space-2);
+  border: 0;
+}
+.app-shell[data-ui-kit='material3'] .git-change-list .changeset-file-name {
+  flex: 0 1 auto;
+  max-width: none;
+}
+.app-shell[data-ui-kit='material3'] .git-change-list .changeset-file-name-only {
+  max-width: 100%;
+}
+.app-shell[data-ui-kit='material3'] .git-stash-section {
+  margin: var(--md-aibo-space-3) var(--md-aibo-space-4);
+}
+.app-shell[data-ui-kit='material3'] .git-stash-trigger {
+  min-height: 36px;
+}
+
+
+.app-shell[data-ui-kit='material3'] :is(
+  .git-repository-toolbar > .ui-button[data-size='icon'],
+  .git-branch-bar > .ui-button,
+  .git-branch-create [data-slot='button'],
+  .git-section-toolbar > .git-review-button,
+  .git-commit-form [data-slot='button']
+) {
+  position: relative;
+}
+.app-shell[data-ui-kit='material3'] :is(
+  .git-repository-toolbar > .ui-button[data-size='icon'],
+  .git-branch-bar > .ui-button,
+  .git-branch-create [data-slot='button'],
+  .git-section-toolbar > .git-review-button,
+  .git-commit-form [data-slot='button']
+)::before {
+  position: absolute;
+  inset: -6px -2px;
+  content: '';
+}
+.app-shell[data-ui-kit='material3'] .git-repository-toolbar > .ui-button[data-size='icon']::before {
+  inset: -6px;
+}
+
+.app-shell[data-ui-kit='material3'] .git-review-button:disabled {
+  border-color: transparent;
+  background: transparent;
+}
+.app-shell[data-ui-kit='material3'] :is(.side-panel-tabs, .git-section-tabs, .git-change-group-trigger) [data-slot='badge'] {
+  min-width: 20px;
+  padding: 0 var(--md-aibo-space-1);
+  border: var(--md-aibo-line-hairline) solid var(--aibo-border);
+  background: transparent;
+  color: var(--aibo-muted);
+  line-height: 1.4;
+}
+.app-shell[data-ui-kit='material3'] .git-change-list .changeset-file-button {
+  font-weight: 400;
+}
+
+
+.app-shell[data-ui-kit='material3'] .git-change-list .changeset-file-button {
+  height: 36px;
+  min-height: 36px;
+  padding-block: 0;
+}
+.app-shell[data-ui-kit='material3'] .git-change-list .changeset-file-row {
+  height: 36px;
+  min-height: 36px;
+}
+.app-shell[data-ui-kit='material3'] .git-change-group-heading {
+  position: relative;
+}
+.app-shell[data-ui-kit='material3'] .git-change-group-heading .git-change-group-action {
+  position: absolute;
+  right: var(--md-aibo-space-1);
+  top: 50%;
+  transform: translateY(-50%);
+  width: 32px;
+  min-width: 32px;
+  height: 32px;
+  min-height: 32px;
+  opacity: 0;
+  pointer-events: none;
+}
+.app-shell[data-ui-kit='material3'] .git-change-group-heading:has(.git-change-group-action):is(:hover, :focus-within) .git-change-group-count {
+  opacity: 0;
+}
+.app-shell[data-ui-kit='material3'] .git-change-group-heading:is(:hover, :focus-within) .git-change-group-action {
+  opacity: 1;
+  pointer-events: auto;
+}
+.app-shell[data-ui-kit='material3'] .git-change-list .changeset-actions .ui-button {
+  width: auto;
+  min-width: 0;
+  height: 36px;
+  min-height: 36px;
+  padding: 0 var(--md-aibo-space-1);
+  color: var(--aibo-muted);
+  font-weight: 400;
+}
+.app-shell[data-ui-kit='material3'] .git-change-list .changeset-actions .ui-button:hover:not(:disabled) {
+  color: var(--aibo-text);
+  background: transparent;
+  box-shadow: none;
+}
+
+.app-shell[data-ui-kit='material3'] .git-change-group-count {
+  transition: none;
+}
+
+
+.app-shell[data-ui-kit='material3'] .tool-group-items {
+  margin-top: 0;
+  padding-top: 0;
+}
+.app-shell[data-ui-kit='material3'] .tool-group-items .tool-output {
+  margin-top: 0;
+}
+.app-shell[data-ui-kit='material3'] .tool-group-items .tool-output + .tool-output {
+  border-top: var(--md-aibo-line-hairline) solid var(--aibo-border);
+}
+.app-shell[data-ui-kit='material3'] .tool-group-items .tool-output > summary {
+  min-height: 36px;
+  gap: var(--md-aibo-space-2);
+  padding-left: 36px;
+  font-size: var(--aibo-type-meta);
+}
+.app-shell[data-ui-kit='material3'] .tool-group-items .tool-output > summary:hover { background: var(--aibo-surface-hover); }
+.app-shell[data-ui-kit='material3'] .tool-record-status { flex: none; color: var(--aibo-muted); }
+.app-shell[data-ui-kit='material3'] .tool-record-status[data-status='completed'] { color: var(--md-aibo-signal-success); }
+.app-shell[data-ui-kit='material3'] .tool-record-status[data-status='failed'] { color: var(--md-aibo-signal-danger); }
+.app-shell[data-ui-kit='material3'] .tool-record-name {
+  width: 56px;
+  flex: none;
+  font-weight: 600;
+  color: var(--aibo-text);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.app-shell[data-ui-kit='material3'] .tool-record-target {
+  min-width: 0;
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-family: var(--md-aibo-font-mono);
+  color: var(--aibo-muted);
+}
+.app-shell[data-ui-kit='material3'] .tool-record-duration {
+  flex: none;
+  color: var(--aibo-muted);
+  font-variant-numeric: tabular-nums;
+}
+@media (prefers-reduced-motion: reduce) {
+  .app-shell[data-ui-kit='material3'] .disclosure-chevron { transition: none; }
+  .app-shell[data-ui-kit='material3'] .tone-running .md-agent-status-track { animation: none; }
+  .app-shell[data-ui-kit='material3'] .timeline-session-status[data-tone='running'] .timeline-session-signal { animation: none; }
+}
+.app-shell[data-ui-kit='material3'] .git-history .git-history-item[aria-expanded='true'],
+.app-shell[data-ui-kit='material3'] .git-history .git-history-item[aria-expanded='true']:hover:not(:disabled) {
+  background: var(--aibo-accent-soft);
+  box-shadow: none;
+  border-radius: var(--md-sys-shape-corner-small);
+}
+.app-shell[data-ui-kit='material3'] .execution-table {
+  width: 100%;
+  table-layout: fixed;
+  border-collapse: collapse;
+  border: var(--md-aibo-line-hairline) solid var(--aibo-border);
+  background: var(--md-aibo-surface-panel);
+  font-size: var(--aibo-type-meta);
+}
+.app-shell[data-ui-kit='material3'] .execution-status-column { width: 48px; }
+.app-shell[data-ui-kit='material3'] .execution-duration-column { width: 72px; }
+.app-shell[data-ui-kit='material3'] .execution-time-column { width: 64px; }
+.app-shell[data-ui-kit='material3'] .execution-table :is(th, td) {
+  padding: 0 var(--md-aibo-space-2);
+  height: 44px;
+  text-align: left;
+  border-bottom: var(--md-aibo-line-hairline) solid var(--aibo-border);
+}
+.app-shell[data-ui-kit='material3'] .execution-table th {
+  color: var(--aibo-muted);
+  font-weight: 500;
+}
+.app-shell[data-ui-kit='material3'] .execution-table :is(time, .execution-duration) {
+  color: var(--aibo-muted);
+  font-family: var(--md-aibo-font-mono);
+  white-space: nowrap;
+}
+.app-shell[data-ui-kit='material3'] .execution-status {
+  display: grid;
+  place-items: center;
+  width: 18px;
+  height: 18px;
+  border: var(--md-aibo-line-hairline) solid currentColor;
+  color: var(--aibo-muted);
+}
+.app-shell[data-ui-kit='material3'] .execution-record[data-status='completed'] .execution-status { color: var(--aibo-success-text); }
+.app-shell[data-ui-kit='material3'] .execution-record[data-status='failed'] .execution-status { color: var(--aibo-danger-text); }
+.app-shell[data-ui-kit='material3'] .execution-record[data-status='interrupted'] .execution-status { color: var(--aibo-warning-text); }
+.app-shell[data-ui-kit='material3'] .execution-record:is(:hover, :focus-within) { background: var(--aibo-hover); }
+.app-shell[data-ui-kit='material3'] .execution-table .execution-toggle {
+  width: 100%;
+  min-width: 0;
+  justify-content: space-between;
+  padding-inline: 0;
+  font-family: var(--md-aibo-font-mono);
+}
+.app-shell[data-ui-kit='material3'] .execution-toggle span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.app-shell[data-ui-kit='material3'] .execution-toggle:hover:not(:disabled) { background: transparent; box-shadow: none; }
+.app-shell[data-ui-kit='material3'] .execution-toggle[aria-expanded='true'] svg { transform: rotate(180deg); }
+.app-shell[data-ui-kit='material3'] .execution-detail pre {
+  max-height: 320px;
+  margin: 0;
+  overflow: auto;
+  padding: var(--md-aibo-space-3) 0;
+  font: var(--aibo-type-meta)/1.6 var(--md-aibo-font-mono);
+}
+
+
+.app-shell[data-ui-kit='material3'] {
+  --aibo-selected-ink: var(--md-sys-color-on-secondary-container);
+  font-family: var(--md-aibo-font-sans);
+  background: var(--aibo-surface-hover);
+}
+.app-shell[data-ui-kit='material3'][data-ui-theme='dark'] { --aibo-selected-ink: var(--md-sys-color-on-secondary-container); }
+.app-shell[data-ui-kit='material3'] :is(button, input, select, textarea, summary):focus-visible { outline-offset: 2px; }
+.app-shell[data-ui-kit='material3'] .ui-button {
+  border-radius: var(--md-sys-shape-corner-full);
+  font-size: var(--aibo-type-ui);
+  /* Theme/kit changes apply atomically, without blending the previous palette. */
+  transition: box-shadow var(--md-aibo-motion-fast);
+}
+.app-shell[data-ui-kit='material3'] .ui-button:active:not(:disabled) { transform: none; }
+.app-shell[data-ui-kit='material3'] .ui-button[data-size='icon'] { border-radius: 50%; }
+.app-shell[data-ui-kit='material3'] .ui-button:is([data-variant='default'], [data-variant='send']):hover:not(:disabled) {
+  background: color-mix(in srgb, var(--primary) 90%, var(--primary-foreground));
+}
+.app-shell[data-ui-kit='material3'] .ui-button[data-variant='outline'] { border-color: var(--md-sys-color-outline); color: var(--md-sys-color-primary); }
+.app-shell[data-ui-kit='material3'] .ui-button[data-variant='secondary'] { background: var(--md-sys-color-secondary-container); color: var(--md-sys-color-on-secondary-container); }
+.app-shell[data-ui-kit='material3'] .ui-button:is([data-variant='destructive'], [data-variant='abort']) { border-color: transparent; }
+.app-shell[data-ui-kit='material3'] .ui-button:disabled { border-color: transparent; background: var(--aibo-hover); color: var(--aibo-muted); opacity: .65; }
+.app-shell[data-ui-kit='material3'] :is([data-slot='badge'], .session-state-label) { border: 0; border-radius: 6px; }
+.app-shell[data-ui-kit='material3'] .window-titlebar { border-bottom: 0; background: var(--aibo-surface-hover); }
+.app-shell[data-ui-kit='material3'] .window-title { letter-spacing: 0; }
+.app-shell[data-ui-kit='material3'] .window-actions .ui-button { border-radius: 50%; }
+.app-shell[data-ui-kit='material3'] .window-actions .ui-button[data-host-navigation] { border-radius: var(--md-sys-shape-corner-full); }
+.app-shell[data-ui-kit='material3'] .workspace-grid { padding: 0 8px 8px 0; }
+.app-shell[data-ui-kit='material3'] .sidebar { background: var(--aibo-surface-hover); }
+.app-shell[data-ui-kit='material3'] .sidebar .panel-heading { padding-inline: 20px 12px; }
+.app-shell[data-ui-kit='material3'] .sidebar .panel-heading [data-slot='card-title'] { letter-spacing: 0; font-weight: 500; }
+.app-shell[data-ui-kit='material3'] .sidebar-new-session.ui-button {
+  min-height: 48px;
+  width: calc(100% - 32px);
+  margin: 16px 16px 8px;
+  padding-inline: 18px;
+  border: 0;
+  border-radius: var(--md-sys-shape-corner-large);
+  clip-path: none;
+  background: var(--md-sys-color-primary-container);
+  color: var(--md-sys-color-on-primary-container);
+}
+.app-shell[data-ui-kit='material3'] .sidebar-new-session.ui-button:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--md-sys-color-primary-container) 92%, var(--md-sys-color-primary));
+  color: var(--md-sys-color-on-primary-container);
+  box-shadow: none;
+}
+.app-shell[data-ui-kit='material3'] .workspace-list { padding-inline: 12px; }
+.app-shell[data-ui-kit='material3'] .workspace-item { padding-left: 12px; }
+.app-shell[data-ui-kit='material3'] .session-item { padding-left: 18px; }
+.app-shell[data-ui-kit='material3'] :is(.workspace-item-row, .session-item-row) { border-radius: var(--md-sys-shape-corner-full); }
+.app-shell[data-ui-kit='material3'] :is(.workspace-item-row, .session-item-row) .ui-button { border-radius: inherit; }
+.app-shell[data-ui-kit='material3'] .session-item-row.selected,
+.app-shell[data-ui-kit='material3'] .session-item-row.selected:is(:hover, :focus-within) { box-shadow: none; background: var(--md-sys-color-secondary-container); }
+.app-shell[data-ui-kit='material3'] .session-item-row.selected .session-item { color: var(--md-sys-color-on-secondary-container); }
+.app-shell[data-ui-kit='material3'] .sidebar-footer { margin: 8px 12px 0; padding-block: 4px; border: 0; }
+.app-shell[data-ui-kit='material3'] .sidebar-footer .ui-button { border-radius: var(--md-sys-shape-corner-full); }
+.app-shell[data-ui-kit='material3'] .workspace-splitter-line { background: transparent; }
+.app-shell[data-ui-kit='material3'] .workspace-splitter:focus-visible .workspace-splitter-line { background: var(--aibo-focus); }
+.app-shell[data-ui-kit='material3'] :is(.timeline, .inspector) { border-radius: var(--md-sys-shape-corner-large); }
+.app-shell[data-ui-kit='material3'] .timeline { background: var(--aibo-bg); }
+.app-shell[data-ui-kit='material3'] .timeline-heading { border-radius: var(--md-sys-shape-corner-large) var(--md-sys-shape-corner-large) 0 0; background: var(--aibo-bg); }
+.app-shell[data-ui-kit='material3'] .timeline-heading [data-slot='card-title'] { font-weight: 600; }
+.app-shell[data-ui-kit='material3'] .timeline-session-signal { border-radius: 50%; }
+.app-shell[data-ui-kit='material3'] .timeline-entry.timeline-entry.user-entry .entry-content {
+  border: 0;
+  border-radius: 4px 18px 18px 18px;
+  background: var(--aibo-surface-hover);
+  padding: 14px 18px;
+}
+.app-shell[data-ui-kit='material3'] .timeline-entry.timeline-entry.tool-group-entry { border-radius: var(--md-sys-shape-corner-medium); overflow: hidden; }
+.app-shell[data-ui-kit='material3'] .timeline-entry.timeline-entry.tool-entry { border-radius: var(--md-sys-shape-corner-medium); }
+.app-shell[data-ui-kit='material3'] :is(.tool-output pre, .entry-content pre) { border-radius: var(--md-sys-shape-corner-small); }
+.app-shell[data-ui-kit='material3'] .markdown-content a { color: var(--md-sys-color-primary); }
+.app-shell[data-ui-kit='material3'] .timeline-empty h3 { font-weight: 500; }
+.app-shell[data-ui-kit='material3'] :is(.conversation-navigation, .side-panel-tabs, .git-section-tabs) .ui-button[aria-selected='true'] {
+  color: var(--md-sys-color-primary);
+}
+.app-shell[data-ui-kit='material3'] :is(.conversation-navigation, .side-panel-tabs, .git-section-tabs) .ui-button[aria-selected='true']::after {
+  left: 14px; right: 14px; border-radius: 3px 3px 0 0;
+}
+.app-shell[data-ui-kit='material3'] .compact-region-navigation .ui-button[aria-pressed='true']::after { border-radius: 3px 3px 0 0; }
+.app-shell[data-ui-kit='material3'] .side-panel-tabs-shell { background: var(--aibo-surface); border-radius: var(--md-sys-shape-corner-large) var(--md-sys-shape-corner-large) 0 0; }
+.app-shell[data-ui-kit='material3'] .composer {
+  border: 1px solid var(--md-sys-color-outline-variant);
+  border-radius: 24px;
+  background: var(--aibo-surface);
+  box-shadow: none;
+}
+.app-shell[data-ui-kit='material3'] .composer:focus-within { border-color: var(--aibo-focus); box-shadow: 0 0 0 1px var(--aibo-focus); }
+/* The textarea and painted mention layer must retain exactly the same metrics. */
+.app-shell[data-ui-kit='material3'] :is(.composer-textarea, .composer-mention-layer) { padding: 14px 18px; }
+.app-shell[data-ui-kit='material3'] .composer .attachment-list { padding: 12px 14px 0; }
+.app-shell[data-ui-kit='material3'] .composer .attachment-item { border-radius: var(--md-sys-shape-corner-small); background: var(--md-sys-color-surface-container-lowest); }
+.app-shell[data-ui-kit='material3'] .composer .attachment-item :is(.attachment-image-preview, .attachment-image-placeholder) { border-radius: 4px; }
+.app-shell[data-ui-kit='material3'] .composer-toolbar { padding: 4px 10px 10px; }
+.app-shell[data-ui-kit='material3'] .composer-send-button.ui-button { border-radius: 50%; }
+.app-shell[data-ui-kit='material3'] :is(.composer-menu, .composer-suggestions, .workspace-row-menu, .session-row-menu, .sidebar-row-menu, .repository-menu, .model-context-menu, .session-agent-wheel) {
+  border: 0;
+  border-radius: var(--md-sys-shape-corner-medium);
+  background: var(--popover);
+  box-shadow: var(--md-sys-elevation-panel);
+}
+.app-shell[data-ui-kit='material3'] :is(.sidebar-row-menu, .workspace-row-menu, .session-row-menu, .session-agent-wheel) .ui-button { border-radius: var(--md-sys-shape-corner-small); }
+.app-shell[data-ui-kit='material3'] .composer-menu .ui-button { border-radius: var(--md-sys-shape-corner-small); }
+.app-shell[data-ui-kit='material3'] :is(.management-nav [aria-selected='true'], .repository-option[aria-selected='true'], .composer-access-options [aria-checked='true'], .pi-navigation-mode-list [aria-checked='true']) {
+  box-shadow: none;
+  background: var(--md-sys-color-secondary-container);
+  color: var(--md-sys-color-on-secondary-container);
+}
+.app-shell[data-ui-kit='material3'] :is([data-slot='input'], [data-slot='textarea'], select),
+.app-shell[data-ui-kit='material3'] .agent-settings-surface select {
+  border: 1px solid var(--md-sys-color-outline);
+  border-radius: var(--md-sys-shape-corner-small);
+  background-color: transparent;
+}
+.app-shell[data-ui-kit='material3'] :is([data-slot='input'], [data-slot='textarea'], select):focus-visible { box-shadow: 0 0 0 1px var(--aibo-focus); }
+.app-shell[data-ui-kit='material3'] :is([data-slot='input'], [data-slot='textarea'], select)[aria-invalid='true'] { box-shadow: 0 0 0 1px var(--aibo-danger-border); }
+.app-shell[data-ui-kit='material3'] :is(.composer-textarea, .global-search-heading [data-slot='input'], .workspace-tool-panel [data-slot='input'], .repository-search input),
+.app-shell[data-ui-kit='material3'] :is(.composer-textarea, .global-search-heading [data-slot='input'], .workspace-tool-panel [data-slot='input'], .repository-search input):focus-visible { border: 0; outline: 0; box-shadow: none; background: transparent; }
+.app-shell[data-ui-kit='material3'] input[type='checkbox']:not([role='switch']) { border-radius: 4px; }
+.app-shell[data-ui-kit='material3'] input[type='checkbox']:not([role='switch']):checked,
+.app-shell[data-ui-kit='material3'] input[type='radio']:checked { background: var(--md-sys-color-primary); }
+.app-shell[data-ui-kit='material3'] input[type='checkbox']:not([role='switch']):checked::after { border-color: var(--md-sys-color-on-primary); }
+.app-shell[data-ui-kit='material3'] input[type='radio']:checked::after { background: var(--md-sys-color-on-primary); }
+.app-shell[data-ui-kit='material3'] input[role='switch']:checked { border-color: var(--md-sys-color-primary); background: var(--md-sys-color-primary); }
+.app-shell[data-ui-kit='material3'] input[role='switch']:checked::after { background: var(--md-sys-color-on-primary); }
+.app-shell[data-ui-kit='material3'] :is(.approval-card, .user-input-card) { border-radius: var(--md-sys-shape-corner-large); }
+.app-shell[data-ui-kit='material3'] .approval-card { border: 0; }
+.app-shell[data-ui-kit='material3'] .approval-card code { border: 0; border-radius: var(--md-sys-shape-corner-small); }
+.app-shell[data-ui-kit='material3'] .inspector { background: var(--aibo-surface); }
+.app-shell[data-ui-kit='material3'] :is(.thread-card, .session-context-card, .profile-card, .attachments-card, .project-actions-card, .artifacts-card, .changeset-card) { background: transparent; }
+.app-shell[data-ui-kit='material3'] :is(.git-branch-menu, .git-stash-menu, .git-diff-view) { border-radius: var(--md-sys-shape-corner-small); }
+.app-shell[data-ui-kit='material3'] .git-repository-toolbar .repository-trigger { border: 1px solid var(--md-sys-color-outline); border-radius: var(--md-sys-shape-corner-small); background: transparent; }
+.app-shell[data-ui-kit='material3'] .git-change-group-heading { border-top: 0; background: var(--aibo-surface-hover); }
+.app-shell[data-ui-kit='material3'] .changeset-file-row.changeset-file-selected,
+.app-shell[data-ui-kit='material3'] .changeset-file-row.changeset-file-selected:is(:hover, :focus-within) { box-shadow: none; background: var(--md-sys-color-secondary-container); }
+.app-shell[data-ui-kit='material3'] :is(.side-panel-tabs, .git-section-tabs, .git-change-group-trigger) [data-slot='badge'] { border: 0; border-radius: 6px; background: var(--aibo-hover); }
+.app-shell[data-ui-kit='material3'] .file-change-mark { border-radius: 4px; }
+.app-shell[data-ui-kit='material3'] .session-change-row[aria-expanded='true'],
+.app-shell[data-ui-kit='material3'] .session-change-row[aria-expanded='true']:hover:not(:disabled) { box-shadow: none; }
+.app-shell[data-ui-kit='material3'] :is(.ui-management, .ui-alert) {
+  border: 0;
+  border-radius: var(--md-sys-shape-corner-extra-large);
+  background: var(--aibo-surface);
+  box-shadow: var(--md-sys-elevation-panel);
+}
+.app-shell[data-ui-kit='material3'] :is(.ui-management, .ui-alert)::backdrop { backdrop-filter: none; }
+.app-shell[data-ui-kit='material3'] .management-header { padding: 20px 24px; border: 0; }
+.app-shell[data-ui-kit='material3'] .management-header h1 { font-size: 22px; font-weight: 500; }
+.app-shell[data-ui-kit='material3'] .management-nav { padding: 8px 12px; border: 0; background: transparent; gap: 4px; }
+.app-shell[data-ui-kit='material3'] .management-nav button { border-radius: var(--md-sys-shape-corner-full); }
+.app-shell[data-ui-kit='material3'] .management-nav .management-tools-start { border: 0; margin-top: 0; }
+.app-shell[data-ui-kit='material3'] .management-content { padding-top: 8px; }
+.app-shell[data-ui-kit='material3'] .settings-section-heading h2 { font-weight: 500; }
+.app-shell[data-ui-kit='material3'] :is(.appearance-kit-option, .appearance-theme-option) {
+  border-radius: var(--md-sys-shape-corner-large);
+  min-height: 80px;
+  background: var(--md-sys-color-surface-container-lowest);
+}
+.app-shell[data-ui-kit='material3'] :is(.appearance-kit-option, .appearance-theme-option).active {
+  background: var(--md-sys-color-primary-container);
+  color: var(--md-sys-color-on-primary-container);
+  box-shadow: inset 0 0 0 1px var(--md-sys-color-primary);
+}
+.app-shell[data-ui-kit='material3'] .theme-swatches { height: 36px; border-radius: var(--md-sys-shape-corner-small); overflow: hidden; }
+.app-shell[data-ui-kit='material3'] :is(.settings-row, .workspace-preference-option) { border-radius: var(--md-sys-shape-corner-medium); background: var(--aibo-surface-hover); }
+.app-shell[data-ui-kit='material3'] :is(.host-panel, .global-search-panel) { border-radius: var(--md-sys-shape-corner-large); }
+.app-shell[data-ui-kit='material3'] .global-search-heading { border-left-width: 1px; border-radius: var(--md-sys-shape-corner-medium); }
+.app-shell[data-ui-kit='material3'] .global-search-result { border-radius: var(--md-sys-shape-corner-medium); }
+.app-shell[data-ui-kit='material3'] .global-search-result.active { box-shadow: none; }
+.app-shell[data-ui-kit='material3'] .workbench-status { background: var(--aibo-surface-hover); border: 0; }
+@media (max-width: 760px) {
+  .app-shell[data-ui-kit='material3'] .workspace-grid { padding: 0 8px 8px; }
+  .app-shell[data-ui-kit='material3'] .management-nav { padding: 8px 12px; gap: 4px; }
+  .app-shell[data-ui-kit='material3'] .management-header { padding: 16px; }
+  .app-shell[data-ui-kit='material3'] .management-content { padding: 16px; }
+  .app-shell[data-ui-kit='material3'] :is(.appearance-kit-option, .appearance-theme-option) { min-height: 72px; }
+  .app-shell[data-ui-kit='material3'] .timeline-heading { padding-inline: 16px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .app-shell[data-ui-kit='material3'] .ui-button { transition: none; }
+}

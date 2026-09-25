@@ -1,6 +1,7 @@
 import { derived, get, writable } from 'svelte/store';
 import type { AppearanceSelection, UiKitOption, UiKitRegistration } from './contract';
 import { akUiKitRegistration } from './kits/ak-ui';
+import { material3UiKitRegistration } from './kits/material3';
 import { normalizeDefaultAppearance } from './appearance-selection';
 import { defaultPresentation } from '../workbench/plugins/default-presentation';
 import { resolvePresentationPlugin } from './presentation-plugin';
@@ -8,13 +9,13 @@ import { resolvePresentationPlugin } from './presentation-plugin';
 const STORAGE_KEY = 'aibo.appearance.v1';
 
 const builtInDefault = { ...akUiKitRegistration, renderer: defaultPresentation };
-const presentationRegistrations = [akUiKitRegistration].map(
+const presentationRegistrations = [akUiKitRegistration, material3UiKitRegistration].map(
   ({ adapter, ...metadata }) => resolvePresentationPlugin({ ...metadata, components: adapter }, builtInDefault),
 );
 // Compatibility projection: existing appearance consumers keep their current interface.
 const registrations = presentationRegistrations;
 
-export type UiKitName = 'ak-ui';
+export type UiKitName = 'ak-ui' | 'material3';
 
 const registrationMap = new Map<string, UiKitRegistration>(
   registrations.map((registration) => [registration.id, registration]),
@@ -68,13 +69,14 @@ export const activeThemeStyle = derived(activeTheme, ($theme) =>
 );
 
 export function setUiKit(kitId: string) {
-  if (kitId === 'shadcn' || kitId === 'material3') kitId = 'ak-ui';
+  if (kitId === 'shadcn') kitId = 'ak-ui';
   const registration = registrationMap.get(kitId);
   if (!registration) return;
   const current = get(selection);
+  const currentScheme = get(activeTheme).colorScheme;
   const themeId = current.kitId === kitId && registration.themes.some((theme) => theme.id === current.themeId)
     ? current.themeId
-    : registration.defaultThemeId;
+    : registration.themes.find(theme => theme.colorScheme === currentScheme)?.id ?? registration.defaultThemeId;
   const next = { kitId: registration.id, themeId };
   selection.set(next);
   persistSelection(next);

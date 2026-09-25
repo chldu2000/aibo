@@ -122,10 +122,10 @@ try {
   const gitSize=selector=>page.locator(selector).first().evaluate(element=>element.getBoundingClientRect().height);
   for(const [selector,height] of [
     ['.git-repository-toolbar .repository-trigger',36],
-    ['.git-repository-toolbar > .ak-button',32],
+    ['.git-repository-toolbar > .ui-button',32],
     ['.git-branch-trigger',32],
-    ['.git-branch-bar > .ak-button:not(.git-branch-trigger)',32],
-    ['.git-section-tabs .ak-button',44],
+    ['.git-branch-bar > .ui-button:not(.git-branch-trigger)',32],
+    ['.git-section-tabs .ui-button',44],
     ['.git-review-button',32],
     ['.git-commit-form input',36],
     ['.git-commit-form button',32],
@@ -133,7 +133,7 @@ try {
     ['.git-stash-trigger',36],
     ['.changeset-file-row',36]
   ]) assert.equal(await gitSize(selector),height,`${selector} follows the design density`);
-  for(const [selector,overhang] of [['.git-repository-toolbar .repository-trigger',3],['.git-repository-toolbar > .ak-button',5]]) {
+  for(const [selector,overhang] of [['.git-repository-toolbar .repository-trigger',3],['.git-repository-toolbar > .ui-button',5]]) {
     assert(await page.locator(selector).evaluate((element,overhang)=>{
       const bounds=element.getBoundingClientRect();
       return document.elementFromPoint(bounds.x+bounds.width/2,bounds.y-overhang)===element;

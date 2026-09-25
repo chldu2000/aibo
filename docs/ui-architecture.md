@@ -73,13 +73,31 @@ Agent 名称和品牌图标来自绑定插件声明，缺失时使用通用回�
 按钮意图、状态标记、设置表单、工作台外壳等都在此边界统一；完整成员以
 [`contract.ts`](../src/lib/ui-kit/contract.ts)为准，不在本文重复维护组件清单。
 
-当前唯一注册的内置 kit 是 `ak-ui`，提供浅色与深色主题，默认浅色。
-`kits/ak-ui.ts` 注册 adapter，`kits/ak-ui/` 提供专属实现，`kits/shared/` 与仍使用的
-`components/ui/` 提供共享行为和基础原语。应用组件不直接导入这些实现目录。
+当前注册两个内置 kit：`ak-ui` 和 `material3`，均提供 `light` / `dark` 主题。
+`ak-ui` 仍为默认与首次启动的回退，默认浅色；新增 Material 3 可在外观设置直接选择。
+两个注册入口各自装配 adapter。`kits/shared-controls.ts` 和 `kits/shared/` 只提供无皮肤的 DOM、
+可访问性与交互行为，`components/ui/` 的基础原语也不预置视觉 utility。图标和状态图形由各 kit
+独立提供。应用组件不直接导入这些实现目录。
 
-旧内置 shadcn / Material 3 已移除，其外观偏好由 `appearance-selection.ts` 迁移到 ak-ui；
+旧内置 shadcn 与基于 m3-svelte 的 Material 3 实现已移除。旧 shadcn 主题及旧 Material 3 的
+`ocean` / `sage` / `violet` / `daylight` 偏好仍由 `appearance-selection.ts` 迁移到 ak-ui；
+新的 `material3` 使用 `light` / `dark` 主题，保存后可直接恢复，与旧主题迁移区分。
 迁移仅涉及旧外观存储，不改变外部包选择、工作区布局或会话数据。`VITE_AIBO_UI_KIT` 只查询内置注册表，
 不安装或加载外部皮肤。独立 shadcn / Material 3 呈现包仍通过包安装机制使用。
+
+### 内置 Material 3
+
+[Material 3 规范](design/material3-current-spec.md)以 [HTML 设计稿](design/material3-redesign.html)为视觉基准。
+`kits/material3.ts` 与 ak-ui 分别装配共享行为组件，保留输入、菜单与对话框的函数身份；
+没有交互状态的图标与状态图形使用各自的实现。Material 3 不导入 ak-ui adapter、CSS 或令牌；
+`--md-sys-*` 定义视觉角色，`--md-aibo-*` 定义本地排版、密度与动效，`--aibo-*` 保留宿主/外部主题语义。
+不改变应用层 props、事件、能力合同或宿主状态，也不引入已移除的 m3-svelte。
+
+两种内置外观切换时保留浅深偏好，不重建编辑器、菜单和管理对话框。工作区列宽、布局、草稿、
+附件、队列、历史及审批仍由原宿主管理。HTML 设计稿中的模拟交互不进入产品实现。
+外部包未覆盖的 surface 继承当前选中的内置 kit；外部包失败时回到该内置选择。
+设置中的“恢复内置皮肤”沿用既有行为，显式选择默认 ak-ui。
+默认选择仍为 ak-ui，选择 Material 3 不修改外部包清单、发布身份或会话绑定。
 
 ### 外部扩展合同
 
@@ -103,8 +121,12 @@ Agent 名称和品牌图标来自绑定插件声明，缺失时使用通用回�
 第三方原语的 DOM 和间距由 adapter 归一化，不能让应用组件散布具体库的覆盖补丁。
 
 - `src/app.css` 是样式入口。
-- `kits/base.css` 持有共享样式与默认继承所需的回退；删除前检查所有消费者，不能因为 ak-ui 覆盖了某条规则就移除它。
-- `kits/ak-ui.css` 与 `kits/ak-ui/themes.json` 持有默认 kit 的表现和主题令牌。
+- `kits/base.css` 只保留结构布局与文档启动时的根级回退，不放任何 kit 的颜色、边框、圆角、字体或状态样式。
+- `kits/ak-ui.css` 与 `kits/material3.css` 各自拥有完整外观，选择器只能匹配自己的 `data-ui-kit`。
+- 各 kit 的 `primitives.css`、`foundation.css`、`components.css` 分别提供基础原语、工作台表面和复合控件视觉；
+  `themes.json` 持有独立令牌。动画名也须使用 kit 前缀，防止全局 keyframes 互相覆盖。
+- 禁止把某个 kit 的视觉作为所有 kit 的基础，再用覆盖规则补差异；共享组件不得导入具体 kit，
+  不得携带皮肤 CSS、令牌或视觉 utility。外部包的缺省继承由当前内置 kit 提供，不由共享层指定外观。
 - `kits/motion.css` 统一减少动态效果；视觉动效偏好不改变业务执行行为。
 
 内置依赖随应用打包，不在运行时从 CDN 加载。第三方 CSS 通过作用域或 layer 接入，
@@ -169,8 +191,8 @@ Windows 使用独立配置和自绘窗口按钮。呈现替换不接管原生窗
 
 1. 先确定业务状态与动作的所有者；页面仅增加窄 props 和语义回调。
 2. 新增或修改语义接口时，同步 `UiKitAdapter` 及对应 props、runtime proxy、公开导出和当前所有注册 adapter。
-   仅调整样式或主题令牌时沿用现有接口。当前内置实现只有 ak-ui，必需成员不能改为 optional 来绕过完整性检查。
-3. 视觉与交互实现放入 kit；共享行为才进入 shared/base。默认 ak-ui 的具体视觉遵循现行规范。
+   仅调整样式或主题令牌时沿用现有接口。两个内置 adapter 都必须覆盖完整合同，必需成员不能改为 optional 来绕过完整性检查。
+3. 视觉实现放入对应 kit；共享行为进入 shared，共享布局进入 base。默认 ak-ui 的具体视觉遵循现行规范。
 4. 若影响外部呈现，分别检查未覆盖 surface 的继承，以及已覆盖 surface 的快照和动作是否仍完整。
    需要新增公共字段时，同时更新协议、验证器及消费者，不能把内部组件接口直接当作外部协议。
 5. 按下节验证；正式改变架构规则时同步 UI 合同、架构测试和本文。
@@ -179,14 +201,16 @@ Windows 使用独立配置和自绘窗口按钮。呈现替换不接管原生窗
 
 按[插件开发指引](plugin-development_zh.md)与[包合同](presentation-package.md)声明、打包和安装 Presentation 包，
 使用宿主提供的快照、动作及可选 surfaces。验证安装、激活、切换、禁用/卸载、缺失范围继承和故障恢复。
-增加新的可信内置 kit 属于宿主架构变更，需要同步注册、偏好兼容及唯一默认 kit 的测试约束，
+增加新的可信内置 kit 属于宿主架构变更，需要同步注册、偏好兼容、完整 adapter 与默认回退的测试约束，
 不是第三方外观的常规接入步骤。
 
 ## 验证要求
 
 从仓库根目录运行 `pnpm run verify`，包含架构检查、类型检查、Node 测试与构建；CI 使用同一入口。
 `check:architecture` 覆盖 app/workbench 的导入、CSS、公共纯数据边界、宿主区域与 generation guard；
-`test/default-ui-kit.test.mjs` 保护唯一内置 kit、主题及旧入口兼容。
+`test/default-ui-kit.test.mjs` 保护两个内置 kit、完整 adapter、默认回退、切换时的明暗偏好及旧入口兼容。
+`test/material3-theme.test.mjs` 限制共享层视觉声明、跨 kit 选择器/令牌引用及全局动画名。
+`probes/material3-controls-browser.mjs` 验证按钮、输入、badge 等状态，并删除 ak-ui 规则与令牌后比较实际外观。
 
 按[回归矩阵](plugin-boundaries-and-regression.md#regression-gate)选择受影响路径，验证改变的行为与必须保留的既有行为。
 UI 实现变化需检查默认 ak-ui 浅/深主题，以及受影响外部包的继承、协商与失败恢复。

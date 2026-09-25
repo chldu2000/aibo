@@ -15,7 +15,7 @@
   });
 </script>
 {#if open}
-<dialog bind:this={dialog} class={`ak-alert ${className}`} role="alertdialog" aria-labelledby="alert-dialog-title" aria-describedby={description ? 'alert-dialog-description' : undefined} {...rest} oncancel={event => { event.preventDefault(); onCancel?.(); }}>
+<dialog bind:this={dialog} class={`ui-alert ${className}`} role="alertdialog" aria-labelledby="alert-dialog-title" aria-describedby={description ? 'alert-dialog-description' : undefined} {...rest} oncancel={event => { event.preventDefault(); onCancel?.(); }}>
   <h2 id="alert-dialog-title">{title}</h2>
   {#if description}<p id="alert-dialog-description">{description}</p>{/if}
   <div class="alert-dialog-actions"><Button variant="ghost" onclick={() => onCancel?.()}>{cancelText}</Button><Button variant="destructive" onclick={() => onConfirm?.()}>{confirmText}</Button></div>

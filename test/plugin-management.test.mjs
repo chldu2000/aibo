@@ -63,7 +63,7 @@ test('management center owns plugin administration while plugin sessions stay in
   const app = await readFile(new URL('../src/App.svelte', import.meta.url), 'utf8');
   const titlebar = await readFile(new URL('../src/lib/components/app/WindowTitlebar.svelte', import.meta.url), 'utf8');
   const settings = await readFile(new URL('../src/lib/components/app/SettingsPanel.svelte', import.meta.url), 'utf8');
-  const management = await readFile(new URL('../src/lib/ui-kit/kits/ak-ui/ManagementCenter.svelte', import.meta.url), 'utf8');
+  const management = await readFile(new URL('../src/lib/ui-kit/kits/shared/ManagementCenter.svelte', import.meta.url), 'utf8');
   const manager = await readFile(new URL('../src/lib/components/app/PluginManagerPanel.svelte', import.meta.url), 'utf8');
 
   for (const callback of [

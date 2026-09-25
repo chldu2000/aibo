@@ -1,7 +1,9 @@
+@import './ak-ui/primitives.css';
+@import './ak-ui/foundation.css';
+@import './ak-ui/components.css';
 @import '@yunyoujun/ak-ui/tokens.css';
 
-/* Aibo's system-mode adaptation of ak-ui. Values live in ak-ui/themes.json;
-   use the host semantic aliases so theme-only external packages still inherit. */
+/* ak-ui owns this complete visual treatment. Never broaden its scope to another kit. */
 
 .app-shell[data-ui-kit='ak-ui'] {
   padding: 0;
@@ -41,7 +43,7 @@
   letter-spacing: .02em;
 }
 
-.app-shell[data-ui-kit='ak-ui'] .ak-button {
+.app-shell[data-ui-kit='ak-ui'] .ui-button {
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -57,50 +59,50 @@
   transition: box-shadow var(--ak-motion-fast) var(--ak-ease-standard);
 }
 
-.app-shell[data-ui-kit='ak-ui'] .ak-button[data-size='icon'] {
+.app-shell[data-ui-kit='ak-ui'] .ui-button[data-size='icon'] {
   min-width: 44px;
   width: 44px;
   padding: 0;
 }
 
-.app-shell[data-ui-kit='ak-ui'] .ak-button svg {
+.app-shell[data-ui-kit='ak-ui'] .ui-button svg {
   flex: none;
 }
 
-.app-shell[data-ui-kit='ak-ui'] .ak-button:hover:not(:disabled) {
+.app-shell[data-ui-kit='ak-ui'] .ui-button:hover:not(:disabled) {
   background: var(--aibo-hover, var(--aibo-surface-hover));
 }
 
-.app-shell[data-ui-kit='ak-ui'] .ak-button:active:not(:disabled) {
+.app-shell[data-ui-kit='ak-ui'] .ui-button:active:not(:disabled) {
   transform: translateY(1px);
 }
 
-.app-shell[data-ui-kit='ak-ui'] .ak-button:is([data-variant='default'], [data-variant='send']) {
+.app-shell[data-ui-kit='ak-ui'] .ui-button:is([data-variant='default'], [data-variant='send']) {
   background: var(--primary);
   color: var(--primary-foreground);
   font-weight: 600;
 }
 
-.app-shell[data-ui-kit='ak-ui'] .ak-button:is([data-variant='default'], [data-variant='send']):hover:not(:disabled) {
+.app-shell[data-ui-kit='ak-ui'] .ui-button:is([data-variant='default'], [data-variant='send']):hover:not(:disabled) {
   background: var(--primary);
   color: var(--primary-foreground);
 }
 
-.app-shell[data-ui-kit='ak-ui'] .ak-button[data-variant='secondary'] {
+.app-shell[data-ui-kit='ak-ui'] .ui-button[data-variant='secondary'] {
   background: var(--aibo-surface-hover);
 }
 
-.app-shell[data-ui-kit='ak-ui'] .ak-button:is([data-variant='outline'], [data-variant='queue']) {
+.app-shell[data-ui-kit='ak-ui'] .ui-button:is([data-variant='outline'], [data-variant='queue']) {
   border-color: var(--aibo-border);
 }
 
-.app-shell[data-ui-kit='ak-ui'] .ak-button:is([data-variant='destructive'], [data-variant='abort']) {
+.app-shell[data-ui-kit='ak-ui'] .ui-button:is([data-variant='destructive'], [data-variant='abort']) {
   background: var(--aibo-danger-surface);
   color: var(--aibo-danger-text);
   border-color: var(--aibo-danger-border);
 }
 
-.app-shell[data-ui-kit='ak-ui'] .ak-button:disabled {
+.app-shell[data-ui-kit='ak-ui'] .ui-button:disabled {
   color: var(--ak-signal-disabled);
   background: var(--aibo-surface-hover);
   border-color: var(--aibo-border-strong);
@@ -258,7 +260,7 @@
   border-top: 1px solid var(--aibo-border);
 }
 
-.app-shell[data-ui-kit='ak-ui'] .sidebar-footer .ak-button {
+.app-shell[data-ui-kit='ak-ui'] .sidebar-footer .ui-button {
   width: 100%;
   min-height: 44px;
   justify-content: flex-start;
@@ -342,7 +344,7 @@
 
 .app-shell[data-ui-kit='ak-ui'] .timeline-session-status[data-tone='running'] .timeline-session-signal {
   background: var(--ak-focus-color);
-  animation: timeline-session-pulse 1.2s ease-in-out infinite;
+  animation: ak-timeline-session-pulse 1.2s ease-in-out infinite;
 }
 
 .app-shell[data-ui-kit='ak-ui'] .timeline-session-status[data-tone='attention'] {
@@ -361,7 +363,7 @@
   background: var(--ak-signal-danger);
 }
 
-@keyframes timeline-session-pulse {
+@keyframes ak-timeline-session-pulse {
   50% { opacity: .3; }
 }
 
@@ -397,14 +399,14 @@
   gap: var(--ak-space-3);
 }
 .app-shell[data-ui-kit='ak-ui'] .session-changes-heading { min-height: 32px; }
-.app-shell[data-ui-kit='ak-ui'] .session-changes-heading > .ak-button {
+.app-shell[data-ui-kit='ak-ui'] .session-changes-heading > .ui-button {
   min-height: 32px;
   min-width: 32px;
   width: 32px;
   padding: 0;
   position: relative;
 }
-.app-shell[data-ui-kit='ak-ui'] .session-changes-heading > .ak-button::before { content: ''; position: absolute; inset: -6px; }
+.app-shell[data-ui-kit='ak-ui'] .session-changes-heading > .ui-button::before { content: ''; position: absolute; inset: -6px; }
 .app-shell[data-ui-kit='ak-ui'] .session-changes-count {
   min-height: 0;
   height: 18px;
@@ -421,7 +423,7 @@
   gap: var(--ak-space-2);
   background: var(--ak-surface-muted);
 }
-.app-shell[data-ui-kit='ak-ui'] .session-change-row.ak-button {
+.app-shell[data-ui-kit='ak-ui'] .session-change-row.ui-button {
   height: 36px;
   min-height: 36px;
   justify-content: flex-start;
@@ -463,8 +465,8 @@
   border-bottom: var(--ak-line-hairline) solid var(--aibo-border);
   background: var(--ak-surface-muted);
 }
-.app-shell[data-ui-kit='ak-ui'] .session-change-sides > .ak-button { min-height: 36px; }
-.app-shell[data-ui-kit='ak-ui'] .session-change-sides > .ak-button[aria-pressed='true'] { background: var(--aibo-accent-soft); color: var(--aibo-selected-ink); }
+.app-shell[data-ui-kit='ak-ui'] .session-change-sides > .ui-button { min-height: 36px; }
+.app-shell[data-ui-kit='ak-ui'] .session-change-sides > .ui-button[aria-pressed='true'] { background: var(--aibo-accent-soft); color: var(--aibo-selected-ink); }
 
 .app-shell[data-ui-kit='ak-ui'] .timeline-entry {
   max-width: 100%;
@@ -510,14 +512,14 @@
   top: 50%;
   transform: translateY(-50%);
 }
-.app-shell[data-ui-kit='ak-ui'] .assistant-entry .entry-meta-actions .ak-button {
+.app-shell[data-ui-kit='ak-ui'] .assistant-entry .entry-meta-actions .ui-button {
   opacity: 0;
 }
-.app-shell[data-ui-kit='ak-ui'] .assistant-entry:is(:hover, :focus-within) .entry-meta-actions .ak-button {
+.app-shell[data-ui-kit='ak-ui'] .assistant-entry:is(:hover, :focus-within) .entry-meta-actions .ui-button {
   opacity: 1;
 }
 @media (hover: none) {
-  .app-shell[data-ui-kit='ak-ui'] .assistant-entry .entry-meta-actions .ak-button { opacity: 1; }
+  .app-shell[data-ui-kit='ak-ui'] .assistant-entry .entry-meta-actions .ui-button { opacity: 1; }
 }
 .app-shell[data-ui-kit='ak-ui'] :is(.entry-meta, .agent-activity) .agent-status-logo {
   width: 16px;
@@ -718,7 +720,7 @@
   background: var(--aibo-surface-hover);
 }
 
-.app-shell[data-ui-kit='ak-ui'] :is(.side-panel-tabs, .git-section-tabs, .conversation-navigation) > .ak-button {
+.app-shell[data-ui-kit='ak-ui'] :is(.side-panel-tabs, .git-section-tabs, .conversation-navigation) > .ui-button {
   position: relative;
   min-width: 0;
   min-height: 44px;
@@ -732,19 +734,19 @@
   font-weight: 600;
 }
 
-.app-shell[data-ui-kit='ak-ui'] :is(.side-panel-tabs, .git-section-tabs, .conversation-navigation) > .ak-button:hover:not(:disabled) {
+.app-shell[data-ui-kit='ak-ui'] :is(.side-panel-tabs, .git-section-tabs, .conversation-navigation) > .ui-button:hover:not(:disabled) {
   background: transparent;
   color: var(--aibo-text);
   box-shadow: none;
 }
 
-.app-shell[data-ui-kit='ak-ui'] :is(.side-panel-tabs, .git-section-tabs, .conversation-navigation) > .ak-button:is([aria-selected='true'], [aria-current='page']) {
+.app-shell[data-ui-kit='ak-ui'] :is(.side-panel-tabs, .git-section-tabs, .conversation-navigation) > .ui-button:is([aria-selected='true'], [aria-current='page']) {
   background: transparent;
   color: var(--aibo-text);
   box-shadow: none;
 }
 
-.app-shell[data-ui-kit='ak-ui'] :is(.side-panel-tabs, .git-section-tabs, .conversation-navigation) > .ak-button:is([aria-selected='true'], [aria-current='page'])::after {
+.app-shell[data-ui-kit='ak-ui'] :is(.side-panel-tabs, .git-section-tabs, .conversation-navigation) > .ui-button:is([aria-selected='true'], [aria-current='page'])::after {
   position: absolute;
   right: var(--ak-space-2);
   bottom: 0;
@@ -754,7 +756,7 @@
   content: '';
 }
 
-.app-shell[data-ui-kit='ak-ui'] :is(.side-panel-tabs, .git-section-tabs, .conversation-navigation) > .ak-button:focus-visible {
+.app-shell[data-ui-kit='ak-ui'] :is(.side-panel-tabs, .git-section-tabs, .conversation-navigation) > .ui-button:focus-visible {
   z-index: 1;
   outline: var(--ak-focus-width) solid var(--aibo-focus);
   outline-offset: -4px;
@@ -787,7 +789,7 @@
   padding: 0;
   border: 0;
 }
-.app-shell[data-ui-kit='ak-ui'] .git-commit-file.ak-button {
+.app-shell[data-ui-kit='ak-ui'] .git-commit-file.ui-button {
   height: 36px;
   min-height: 36px;
   gap: var(--ak-space-2);
@@ -810,8 +812,8 @@
 .app-shell[data-ui-kit='ak-ui'] .git-commit-file:focus-visible { outline-offset: -2px; }
 
 @media (pointer: coarse) {
-  .app-shell[data-ui-kit='ak-ui'] :is(.session-change-row, .git-commit-file).ak-button { height: 44px; min-height: 44px; }
-  .app-shell[data-ui-kit='ak-ui'] .session-change-sides > .ak-button { min-height: 44px; }
+  .app-shell[data-ui-kit='ak-ui'] :is(.session-change-row, .git-commit-file).ui-button { height: 44px; min-height: 44px; }
+  .app-shell[data-ui-kit='ak-ui'] .session-change-sides > .ui-button { min-height: 44px; }
 }
 
 /* History entries and their files use row fills, without the generic button signal. */
@@ -912,7 +914,7 @@
   outline: 1px solid var(--aibo-danger-text);
 }
 
-.app-shell[data-ui-kit='ak-ui'] :is(.ak-management, .ak-alert) {
+.app-shell[data-ui-kit='ak-ui'] :is(.ui-management, .ui-alert) {
   padding: 0;
   color: var(--aibo-text);
   background: var(--aibo-surface);
@@ -923,12 +925,12 @@
   margin: auto;
 }
 
-.app-shell[data-ui-kit='ak-ui'] :is(.ak-management, .ak-alert)::backdrop {
+.app-shell[data-ui-kit='ak-ui'] :is(.ui-management, .ui-alert)::backdrop {
   background: color-mix(in srgb, var(--ak-color-black) 40%, transparent);
   backdrop-filter: blur(3px);
 }
 
-.app-shell[data-ui-kit='ak-ui'] .ak-management {
+.app-shell[data-ui-kit='ak-ui'] .ui-management {
   width: min(880px, calc(100vw - 32px));
   height: min(620px, calc(100dvh - 64px));
   font-size: var(--aibo-type-ui);
@@ -936,7 +938,7 @@
   max-height: none;
 }
 
-.app-shell[data-ui-kit='ak-ui'] .ak-management[open] {
+.app-shell[data-ui-kit='ak-ui'] .ui-management[open] {
   display: grid;
   grid-template-rows: auto minmax(0, 1fr) auto;
 }
@@ -1063,12 +1065,12 @@
   border-radius: 0;
 }
 
-.app-shell[data-ui-kit='ak-ui'] .ak-alert {
+.app-shell[data-ui-kit='ak-ui'] .ui-alert {
   width: min(480px, calc(100vw - 32px));
   padding: var(--ak-space-5);
 }
 
-.app-shell[data-ui-kit='ak-ui'] .ak-alert p {
+.app-shell[data-ui-kit='ak-ui'] .ui-alert p {
   margin-top: var(--ak-space-4);
   font-size: var(--aibo-type-ui);
   color: var(--aibo-muted);
@@ -1465,7 +1467,7 @@
   border-bottom: 0;
 }
 
-.app-shell[data-ui-kit='ak-ui'] .git-section-tabs .ak-button {
+.app-shell[data-ui-kit='ak-ui'] .git-section-tabs .ui-button {
   padding-inline: var(--ak-space-2);
 }
 
@@ -1508,7 +1510,7 @@
   flex: none;
 }
 
-.app-shell[data-ui-kit='ak-ui'] .git-remote-row .ak-button {
+.app-shell[data-ui-kit='ak-ui'] .git-remote-row .ui-button {
   padding-inline: var(--ak-space-2);
   font-size: var(--ak-type-label-size);
 }
@@ -1556,7 +1558,7 @@
   display: grid;
 }
 
-.app-shell[data-ui-kit='ak-ui'] .row-action-menu .ak-button {
+.app-shell[data-ui-kit='ak-ui'] .row-action-menu .ui-button {
   width: 100%;
   height: auto;
   justify-content: flex-start;
@@ -1569,7 +1571,7 @@
   text-align: left;
 }
 
-.app-shell[data-ui-kit='ak-ui'] .row-action-menu .ak-button:focus-visible {
+.app-shell[data-ui-kit='ak-ui'] .row-action-menu .ui-button:focus-visible {
   outline-offset: -2px;
 }
 
@@ -2108,8 +2110,8 @@
   color: var(--aibo-selected-ink);
 }
 
-.app-shell[data-ui-kit='ak-ui'] .ak-button[aria-pressed='true'],
-.app-shell[data-ui-kit='ak-ui'] .ak-button[aria-pressed='true']:hover:not(:disabled) {
+.app-shell[data-ui-kit='ak-ui'] .ui-button[aria-pressed='true'],
+.app-shell[data-ui-kit='ak-ui'] .ui-button[aria-pressed='true']:hover:not(:disabled) {
   color: var(--aibo-selected-ink);
   background: var(--aibo-accent-soft);
   box-shadow: none;
@@ -2337,7 +2339,7 @@
   padding-inline: 0;
 }
 
-.app-shell[data-ui-kit='ak-ui'] .compact-region-navigation .ak-button {
+.app-shell[data-ui-kit='ak-ui'] .compact-region-navigation .ui-button {
   font-size: var(--aibo-type-ui);
 }
 
@@ -2363,7 +2365,7 @@
   inset: -4px -2px;
   content: '';
 }
-.app-shell[data-ui-kit='ak-ui'] .git-repository-toolbar > .ak-button[data-size='icon'] {
+.app-shell[data-ui-kit='ak-ui'] .git-repository-toolbar > .ui-button[data-size='icon'] {
   width: 32px;
   min-width: 32px;
   min-height: 32px;
@@ -2397,7 +2399,7 @@
   color: var(--aibo-muted);
   font: var(--aibo-type-meta) var(--ak-font-mono);
 }
-.app-shell[data-ui-kit='ak-ui'] .git-branch-bar > .ak-button:not(.git-branch-trigger) {
+.app-shell[data-ui-kit='ak-ui'] .git-branch-bar > .ui-button:not(.git-branch-trigger) {
   flex: none;
   min-height: 32px;
   padding-inline: var(--ak-space-2);
@@ -2423,7 +2425,7 @@
   border: 0;
   background: transparent;
 }
-.app-shell[data-ui-kit='ak-ui'] .git-section-tabs > .ak-button {
+.app-shell[data-ui-kit='ak-ui'] .git-section-tabs > .ui-button {
   flex: none;
 }
 .app-shell[data-ui-kit='ak-ui'] .git-section-toolbar > .git-review-button {
@@ -2479,8 +2481,8 @@
 
 /* Compact toolbar buttons remain easy to hit without increasing their visible height. */
 .app-shell[data-ui-kit='ak-ui'] :is(
-  .git-repository-toolbar > .ak-button[data-size='icon'],
-  .git-branch-bar > .ak-button,
+  .git-repository-toolbar > .ui-button[data-size='icon'],
+  .git-branch-bar > .ui-button,
   .git-branch-create [data-slot='button'],
   .git-section-toolbar > .git-review-button,
   .git-commit-form [data-slot='button']
@@ -2488,8 +2490,8 @@
   position: relative;
 }
 .app-shell[data-ui-kit='ak-ui'] :is(
-  .git-repository-toolbar > .ak-button[data-size='icon'],
-  .git-branch-bar > .ak-button,
+  .git-repository-toolbar > .ui-button[data-size='icon'],
+  .git-branch-bar > .ui-button,
   .git-branch-create [data-slot='button'],
   .git-section-toolbar > .git-review-button,
   .git-commit-form [data-slot='button']
@@ -2498,7 +2500,7 @@
   inset: -6px -2px;
   content: '';
 }
-.app-shell[data-ui-kit='ak-ui'] .git-repository-toolbar > .ak-button[data-size='icon']::before {
+.app-shell[data-ui-kit='ak-ui'] .git-repository-toolbar > .ui-button[data-size='icon']::before {
   inset: -6px;
 }
 
@@ -2550,7 +2552,7 @@
   opacity: 1;
   pointer-events: auto;
 }
-.app-shell[data-ui-kit='ak-ui'] .git-change-list .changeset-actions .ak-button {
+.app-shell[data-ui-kit='ak-ui'] .git-change-list .changeset-actions .ui-button {
   width: auto;
   min-width: 0;
   height: 36px;
@@ -2559,7 +2561,7 @@
   color: var(--aibo-muted);
   font-weight: 400;
 }
-.app-shell[data-ui-kit='ak-ui'] .git-change-list .changeset-actions .ak-button:hover:not(:disabled) {
+.app-shell[data-ui-kit='ak-ui'] .git-change-list .changeset-actions .ui-button:hover:not(:disabled) {
   color: var(--aibo-text);
   background: transparent;
   box-shadow: none;

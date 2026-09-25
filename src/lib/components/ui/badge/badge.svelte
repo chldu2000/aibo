@@ -7,7 +7,7 @@
   import type { Snippet } from 'svelte';
   import type { HTMLAttributes } from 'svelte/elements';
   import { cn } from '$lib/utils';
-  import { badgeVariants, type BadgeVariant } from './badge-variants';
+  import { type BadgeVariant } from './badge-variants';
 
   type BadgeProps = HTMLAttributes & {
     variant?: BadgeVariant;
@@ -17,6 +17,6 @@
   let { class: className, variant = 'default', children, ...restProps }: BadgeProps = $props();
 </script>
 
-<span data-slot="badge" class={cn(badgeVariants({ variant }), className)} {...restProps}>
+<span data-slot="badge" data-variant={variant} class={cn(className)} {...restProps}>
   {@render children?.()}
 </span>

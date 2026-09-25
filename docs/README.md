@@ -14,6 +14,7 @@
 - [会话能力架构与迁移验收](capability-session-migration.md)：宿主、能力插件和呈现插件的职责、旧数据策略及验证限制。
 - [UI 架构与扩展边界](ui-architecture.md)：分层、状态所有权、内部 UI Kit、外部 Presentation 与验证入口。
 - [Aibo ak-ui 现行规范](design/ak-ui-current-spec.md)：默认工作台的视觉、密度、交互与响应式要求。
+- [内置 Material 3](design/material3-current-spec.md)：基于设计稿的第二套内置外观、主题兼容与交互保留规则。
 - [全局搜索](global-search.md)：统一检索、索引范围、结果定位与快捷键。
 - [工作区信任偏好](workspace-preferences.md)、[子 Agent 任务与过程历史](subagent-history.md)：专项行为与持久化合同。
 - [插件平台支持矩阵](plugin-platform-support-matrix.md)：协议、SDK、平台和发布范围。

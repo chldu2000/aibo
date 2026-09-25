@@ -99,9 +99,9 @@ test('the ak-ui skin draws colours from theme tokens, not raw values', async () 
 });
 
 test('skin text never drops below the 12px metadata floor', async () => {
-  const files = ['src/lib/ui-kit/kits/base.css', 'src/lib/ui-kit/kits/ak-ui.css'];
-  for (const kit of ['src/lib/ui-kit/kits/ak-ui', 'src/lib/ui-kit/kits/shared']) {
-    for (const name of await readdir(path.join(root, kit))) if (name.endsWith('.svelte')) files.push(path.join(kit, name));
+  const files = ['src/lib/ui-kit/kits/base.css', 'src/lib/ui-kit/kits/ak-ui.css', 'src/lib/ui-kit/kits/material3.css'];
+  for (const kit of ['src/lib/ui-kit/kits/ak-ui', 'src/lib/ui-kit/kits/material3', 'src/lib/ui-kit/kits/shared']) {
+    for (const name of await readdir(path.join(root, kit))) if (/\.(svelte|css)$/.test(name)) files.push(path.join(kit, name));
   }
   for (const file of files) {
     const source = await readFile(path.join(root, file), 'utf8');

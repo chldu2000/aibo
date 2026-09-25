@@ -2,15 +2,16 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import { createServer } from 'vite';
 
-test('one default kit exposes both themes and legacy callers cannot restore retired defaults', async () => {
+test('built-in kits expose both themes, preserve brightness, and keep ak-ui as the default', async () => {
   const server = await createServer({ server: { middlewareMode: true, ws: false, watch: null }, appType: 'custom' });
   try {
     const { get } = await server.ssrLoadModule('svelte/store');
     const registry = await server.ssrLoadModule('/src/lib/ui-kit/registry.ts');
-    assert.deepEqual(registry.availableUiKits.map(kit => kit.id), ['ak-ui']);
+    assert.deepEqual(registry.availableUiKits.map(kit => kit.id), ['ak-ui', 'material3']);
+    assert.equal(get(registry.activeUiKitName), 'ak-ui');
     for (const theme of ['light', 'dark']) {
       registry.setUiTheme(theme);
-      for (const legacy of ['shadcn', 'material3']) {
+      for (const legacy of ['shadcn']) {
         registry.setUiKit(legacy);
         assert.deepEqual(get(registry.appearanceSelection), { kitId: 'ak-ui', themeId: theme });
       }
@@ -20,14 +21,26 @@ test('one default kit exposes both themes and legacy callers cannot restore reti
       assert.equal(get(registry.activeTheme).colorScheme, theme);
     }
     const adapter = get(registry.activeUiKit);
+    for (const theme of ['light', 'dark']) {
+      registry.setUiTheme(theme);
+      registry.setUiKit('material3');
+      assert.deepEqual(get(registry.appearanceSelection), {kitId:'material3', themeId:theme});
+      assert.equal(get(registry.activePresentationPlugin).id, 'material3');
+      for (const role of Object.keys(adapter).filter(role => !['Icon', 'AgentStatusMark'].includes(role))) assert.equal(get(registry.activeUiKit)[role], adapter[role], `${role} preserves its component identity`);
+      for (const role of ['Icon', 'AgentStatusMark']) assert.notEqual(get(registry.activeUiKit)[role], adapter[role], `${role} artwork is kit-owned`);
+      registry.setUiKit('unregistered'); registry.setUiTheme('ocean');
+      assert.deepEqual(get(registry.appearanceSelection), {kitId:'material3', themeId:theme});
+      registry.setUiKit('ak-ui');
+      assert.deepEqual(get(registry.appearanceSelection), {kitId:'ak-ui', themeId:theme});
+    }
     for (const role of ['Button','AlertDialog','WorkbenchChrome','ManagementCenter','SemanticView','ModelMatrix','RepositorySelect','SessionControlMark','SubagentDialog','AttachmentList']) assert.equal(typeof adapter[role], 'function', role);
   } finally { await server.close(); }
 });
 
-test('retired built-in kits and their exclusive dependencies stay removed', async () => {
+test('retired implementations and their exclusive dependencies stay removed', async () => {
   const { readdir, readFile } = await import('node:fs/promises');
   const kits = await readdir('src/lib/ui-kit/kits');
-  for (const name of ['shadcn','material3','shadcn.ts','material3.ts','shadcn.css','material3.css','m3-functions.css']) assert(!kits.includes(name), name);
+  for (const name of ['shadcn','shadcn.ts','shadcn.css','m3-functions.css']) assert(!kits.includes(name), name);
   const pkg = JSON.parse(await readFile('package.json','utf8'));
   for (const dependency of ['m3-svelte','@ktibow/iconset-material-symbols','@lucide/svelte','vite-plugin-functions-mixins','shadcn-svelte']) {
     assert(!pkg.dependencies?.[dependency] && !pkg.devDependencies?.[dependency], dependency);
@@ -38,7 +51,7 @@ test('retired built-in kits and their exclusive dependencies stay removed', asyn
       if (entry.isDirectory()) await inspect(file);
       else if (/\.(ts|svelte|css)$/.test(file)) {
         const source = await readFile(file,'utf8');
-        assert.doesNotMatch(source, /(?:from|@import)\s*['"][^'"]*(?:kits\/(?:shadcn|material3)|\.\/(?:shadcn|material3)\/|m3-svelte|@lucide\/|@ktibow\/)/, file);
+        assert.doesNotMatch(source, /(?:from|@import)\s*['"][^'"]*(?:kits\/shadcn|\.\/shadcn\/|m3-svelte|@lucide\/|@ktibow\/)/, file);
       }
     }
   }

@@ -75,28 +75,3 @@
     {/if}
   {/if}
 </section>
-<style>
-  .semantic-view { display: flex; flex-direction: column; gap: 1rem; height: 100%; min-height: 0; padding: 1.25rem; border: 1px solid var(--border); border-radius: var(--semantic-radius); background: var(--card); color: var(--foreground); overflow: auto; }
-  header { display: flex; gap: 1rem; flex-wrap: wrap; align-items: center; justify-content: space-between; }
-  h2 { margin: 0; font-size: 1.125rem; font-weight: 650; }
-  .eyebrow, .summary, .label, dt { color: var(--muted-foreground); font-size: 0.8rem; }
-  p { margin: 0; }
-  nav { display: flex; gap: 0.5rem; flex-wrap: wrap; }
-  button { border: 1px solid var(--border); border-radius: var(--semantic-radius); padding: 0.5rem 0.75rem; background: var(--secondary); color: var(--foreground); font: inherit; cursor: pointer; }
-  button:hover { background: var(--accent); }
-  button:disabled { opacity: 0.5; cursor: default; }
-  :is(button, h2, .diff-content):focus-visible { outline: 2px solid var(--ring); outline-offset: 3px; }
-  .numbered-content { margin: 0; overflow: auto; white-space: pre; font-family: monospace; font-size: 0.8125rem; background: var(--muted); border: 1px solid var(--border); border-radius: var(--semantic-radius); padding: 1rem; }
-  .numbered-content:focus-visible { outline: 2px solid var(--ring); outline-offset: 3px; }
-  .text-line { display: flex; min-height: 1.25em; }
-  .line-number { display: inline-block; min-width: 4ch; margin-right: 1rem; text-align: right; color: var(--muted-foreground); user-select: none; }
-  .contents { overflow: auto; min-height: 0; }
-  table { width: 100%; border-collapse: collapse; text-align: left; font-size: 0.875rem; }
-  caption { text-align: left; color: var(--muted-foreground); padding-bottom: 0.75rem; }
-  th, td { padding: 0.75rem; border-bottom: 1px solid var(--border); overflow-wrap: anywhere; }
-  ul { list-style: none; padding: 0; margin: 0; display: flex; flex-direction: column; gap: 0.5rem; }
-  .file { display: flex; flex-direction: column; gap: 0.25rem; width: 100%; text-align: left; overflow-wrap: anywhere; }
-  dl { margin: 0; display: flex; gap: 1rem; flex-wrap: wrap; }
-  dd { margin: 0; overflow-wrap: anywhere; font-size: 0.875rem; }
-  .diff-content { border: 1px solid var(--border); color: var(--foreground); width: 100%; resize: vertical; overflow: auto; min-height: 6rem; white-space: pre; font-family: monospace; font-size: 0.8125rem; padding: 1rem; background: var(--muted); border-radius: var(--semantic-radius); }
-</style>

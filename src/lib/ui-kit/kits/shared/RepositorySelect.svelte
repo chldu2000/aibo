@@ -87,34 +87,3 @@
     </div>
   {/if}
 </div>
-
-<style>
-  .repository-select { position: relative; min-width: 0; margin: 8px 10px 10px; font-size: var(--aibo-type-meta, 12px); color: var(--repo-text); }
-  button { font: inherit; cursor: pointer; }
-  button:disabled { opacity: .5; cursor: not-allowed; }
-  .repository-trigger { display: flex; align-items: center; gap: 8px; width: 100%; min-width: 0; height: 34px; padding: 0 10px; border: 1px solid var(--repo-border); border-radius: var(--repo-radius); background: var(--repo-trigger); color: inherit; text-align: left; transition: background 120ms ease, border-color 120ms ease; }
-  .repository-trigger:hover:not(:disabled), .repository-trigger[aria-expanded='true'] { background: var(--repo-hover); border-color: var(--repo-outline); }
-  .repository-trigger:focus-visible { outline: 2px solid var(--repo-focus); outline-offset: 2px; }
-  .repository-trigger-name { flex: 1; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; font-weight: 500; }
-  .repository-total { color: var(--repo-muted); font-size: var(--aibo-type-meta, 12px); font-variant-numeric: tabular-nums; }
-  .repository-chevron { display: flex; flex: none; color: var(--repo-muted); transition: transform 120ms ease; }
-  .repository-chevron.is-open { transform: rotate(180deg); }
-  .repository-popup { position: absolute; inset: calc(100% + 5px) 0 auto; z-index: 30; overflow: hidden; border: 1px solid var(--repo-border); border-radius: var(--repo-radius); background: var(--repo-surface); box-shadow: var(--repo-shadow); }
-  .repository-search { display: flex; align-items: center; gap: 8px; min-height: 40px; padding: 0 10px; border-bottom: 1px solid var(--repo-border); color: var(--repo-muted); }
-  .repository-search:focus-within { box-shadow: inset 0 -1px var(--repo-focus); }
-  .repository-search input { width: 0; min-width: 0; flex: 1; height: 38px; margin: 0; border: 0; outline: none; padding: 0; border-radius: 0; background: transparent; color: var(--repo-text); font: inherit; box-shadow: none; }
-  .repository-search input::placeholder { color: var(--repo-muted); }
-  kbd { flex: none; border: 1px solid var(--repo-border); border-radius: 3px; padding: 0 3px; font: inherit; font-size: var(--aibo-type-meta, 12px); line-height: 16px; }
-  .repository-options { max-height: min(280px, 45vh); overflow-y: auto; overscroll-behavior: contain; padding: 4px; scrollbar-width: thin; }
-  .repository-option { display: flex; align-items: center; gap: 9px; width: 100%; min-height: 38px; border: 0; border-radius: calc(var(--repo-radius) - 3px); padding: 8px; background: transparent; color: var(--repo-muted); text-align: left; }
-  .repository-option.is-active, .repository-option:hover:not(:disabled) { background: var(--repo-hover); }
-  .repository-option[aria-selected='true'] { color: var(--repo-text); }
-  .repository-option-copy { display: grid; gap: 3px; flex: 1; min-width: 0; }
-  .repository-option-name { color: var(--repo-text); font-weight: 500; line-height: 16px; }
-  .repository-option-copy > * { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  .repository-option-copy small { font-size: var(--aibo-type-meta, 12px); line-height: 14px; color: var(--repo-muted); }
-  .repository-check { display: flex; flex: none; width: 14px; color: var(--repo-focus); }
-  .all-repositories { margin-bottom: 4px; }
-  .repository-empty { margin: 0; padding: 22px 12px; color: var(--repo-muted); font-size: var(--aibo-type-meta, 12px); text-align: center; }
-  @media (prefers-reduced-motion: reduce) { .repository-trigger, .repository-chevron { transition: none; } }
-</style>

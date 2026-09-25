@@ -18,11 +18,11 @@ test('old built-in appearances migrate brightness to the unified default', () =>
 });
 
 test('appearance migration is idempotent and rejects corrupt/unknown or external selections', () => {
-  for (const themeId of ['light', 'dark']) {
-    const next = { kitId: 'ak-ui', themeId };
+  for (const kitId of ['ak-ui', 'material3']) for (const themeId of ['light', 'dark']) {
+    const next = { kitId, themeId };
     assert.deepEqual(normalizeDefaultAppearance(normalizeDefaultAppearance(next)), next);
   }
-  for (const value of [null, false, 42, {}, {kitId:'shadcn',themeId:'unknown'}, {kitId:'external',themeId:'light'}, {kitId:'ak-ui',themeId:'zinc'}]) assert.equal(normalizeDefaultAppearance(value), null);
+  for (const value of [null, false, 42, {}, {kitId:'shadcn',themeId:'unknown'}, {kitId:'external',themeId:'light'}, {kitId:'ak-ui',themeId:'zinc'}, {kitId:'material3',themeId:'invalid'}]) assert.equal(normalizeDefaultAppearance(value), null);
   for (const kitId of ['__proto__', 'constructor', 'toString']) assert.equal(normalizeDefaultAppearance({ kitId, themeId: 'light' }), null);
 });
 

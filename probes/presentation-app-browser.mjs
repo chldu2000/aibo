@@ -37,14 +37,20 @@ try {
       }};
   },pkg);
   await page.goto(`http://127.0.0.1:${server.httpServer.address().port}/`);
+  let expectedKit='ak-ui';
   const assertMigrated=async()=>{
-    assert.equal(await page.locator('.app-shell').getAttribute('data-ui-kit'),'ak-ui');
+    assert.equal(await page.locator('.app-shell').getAttribute('data-ui-kit'),expectedKit);
     assert.equal(await page.locator('.app-shell').getAttribute('data-ui-theme'),'dark');
-    assert.deepEqual(await page.evaluate(()=>JSON.parse(localStorage.getItem('aibo.appearance.v1'))),{kitId:'ak-ui',themeId:'dark'});
+    assert.deepEqual(await page.evaluate(()=>JSON.parse(localStorage.getItem('aibo.appearance.v1'))),{kitId:expectedKit,themeId:'dark'});
   };
   await page.getByRole('button',{name:/^打开工作台设置/}).waitFor();
   await assertMigrated();
   await page.getByRole('button',{name:/^打开工作台设置/}).click();
+  if (process.env.AIBO_BUILTIN_KIT === 'material3') {
+    await page.locator('.appearance-kit-option').filter({hasText:'Aibo · Material 3'}).click();
+    expectedKit='material3';
+    await assertMigrated();
+  }
   await page.getByRole('tab',{name:'插件与能力',exact:true}).click();
   await page.getByRole('button',{name:'安装皮肤插件',exact:true}).click();
   await page.getByRole('tab',{name:'外观',exact:true}).click();
@@ -61,8 +67,14 @@ try {
   assert.equal(await editor.inputValue(),'saved draft quick typing');
   await page.getByRole('button',{name:/^打开工作台设置/}).click();
   await page.getByRole('button',{name:'恢复内置皮肤',exact:true}).click();
+  expectedKit='ak-ui'; // Explicit recovery keeps the established default entry.
   await page.waitForFunction(()=>document.querySelectorAll('iframe').length===0);
   await assertMigrated();
+  if (process.env.AIBO_BUILTIN_KIT === 'material3') {
+    await page.locator('.appearance-kit-option').filter({hasText:'Aibo · Material 3'}).click();
+    expectedKit='material3';
+    await assertMigrated();
+  }
   await page.getByRole('button',{name:'External skin 1.0.0',exact:true}).click();
   await page.getByRole('button',{name:'关闭设置',exact:true}).click();
   await editor.waitFor();assert.equal(await editor.inputValue(),'saved draft quick typing');
@@ -108,11 +120,13 @@ try {
   assert.equal(await page.locator('.presentation-fallback').evaluate(element=>getComputedStyle(element).getPropertyValue('--aibo-bg')),'#112233');
   assert.notEqual(await page.locator('.app-shell').evaluate(element=>getComputedStyle(element).getPropertyValue('--aibo-bg')),'#112233');
   assert.equal(await page.locator('iframe').count(),0);
+  assert.equal(await page.locator('.presentation-fallback .timeline').evaluate(element=>getComputedStyle(element).backgroundColor),'rgb(17, 34, 51)','inherited workbench actually paints the external surface override');
   await page.getByRole('button',{name:'恢复内置皮肤',exact:true}).click();
+  expectedKit='ak-ui'; // Explicit recovery keeps the established default entry.
   await page.waitForFunction(()=>JSON.parse(localStorage.getItem('probe.presentation.selection')||'null')===null);
   await assertMigrated();
   assert.equal(await page.locator('.appearance-kit-option[aria-pressed="true"]').count(),1);
-  assert.match(await page.locator('.appearance-kit-option[aria-pressed="true"]').textContent(),/Aibo · ak-ui/);
+  assert.match(await page.locator('.appearance-kit-option[aria-pressed="true"]').textContent(),expectedKit==='material3'?/Aibo · Material 3/:/Aibo · ak-ui/);
   assert.deepEqual(errors,[]);
   const result={passed:true,nativePort:'mocked; actual App.svelte and sandbox runtime',browser:browser.version(),checks:['legacy brightness migrates on startup and survives, external selection, restart and fallback through the unified selector','install and select through settings','draft typing and restoration across switches','selection reloaded after page restart','disable enable uninstall','host controls and keyboard recovery accessible','runtime failure clears persistent selection','theme-only package inherits workbench and cannot style host shell']};
   await writeFile('/tmp/aibo-presentation-app-browser.json',JSON.stringify(result,null,2));console.log(JSON.stringify(result));

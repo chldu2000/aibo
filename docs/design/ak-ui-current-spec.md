@@ -1,6 +1,6 @@
 # Aibo ak-ui 现行界面规范
 
-本文件记录 Aibo 默认工作台已确认的 ak-ui **system** 强度规则，适用于当前唯一注册的内置 `ak-ui` kit 的浅色和深色主题。它是 Aibo 的产品规范，不改写通用 ak-ui 令牌或公开的 `UiKitAdapter` 合同。[改版设计稿](ak-ui-redesign.html)是初版交互示例，[修复进度](ak-ui-repair-progress.md)是按时间记录的实施过程；两者与此处冲突时，以此处的后续决定为准。架构和实现边界见 [UI 架构](../ui-architecture.md)。
+本文件记录 Aibo 默认工作台已确认的 ak-ui **system** 强度规则，适用于默认内置 `ak-ui` kit 的浅色和深色主题。它是 Aibo 的产品规范，不改写通用 ak-ui 令牌或公开的 `UiKitAdapter` 合同。[改版设计稿](ak-ui-redesign.html)是初版交互示例，[修复进度](ak-ui-repair-progress.md)是按时间记录的实施过程；两者与此处冲突时，以此处的后续决定为准。架构和实现边界见 [UI 架构](../ui-architecture.md)。
 
 ## 适用范围与优先级
 
@@ -91,7 +91,7 @@ Git 面板从上到下为仓库选择/刷新、分支/上游/同步、变更/历
 - 消息、Composer 及目标/队列/重试等次级条共用 `--workbench-content-width` 阅读栏并居中；水平留白使用固定 `--workbench-content-inset`，不通过随视口变化的 `clamp()` 挤占栏宽。默认会话用量显示在底部状态栏，“压缩上下文”操作仍在输入区并保留能力、忙碌和归档限制。消息流用 grid 与单一 gap 控制节奏，条目不再叠加外边距。
 - Composer 是整体表单字段，无切角或额外装饰条。自身无内边距，文本区 `12px 16px`、工具条 `4px 8px 8px`、附件条 `8px 12px 0`。
 - 文本区使用 `field-sizing: content`，限制最大高度并保留内部滚动。附件为 32px 方角 raised 芯片、22px 缩略图、30px 移除按钮；显示名称与应用层格式化后传入的 `sizeLabel`，不另加上下文汇总行。
-- `@` 引用由 `.composer-mention-layer` 镜像层按 `@` 到下一空白的规则渲染为标签；文本区字形透明，保留光标和选区，并同步滚动。镜像层与文本区的内边距、边框、字体、行高、换行和滚动条槽必须一致，标签不增加水平内边距。共享机制位于 `base.css`，ak-ui 负责适配盒模型与配色；`probes/composer-input-browser.mjs` 检查对齐和滚动。
+- `@` 引用由 `.composer-mention-layer` 镜像层按 `@` 到下一空白的规则渲染为标签；文本区字形透明，保留光标和选区，并同步滚动。镜像层与文本区的内边距、边框、字体、行高、换行和滚动条槽必须一致，标签不增加水平内边距。共享布局机制位于 `base.css`，各 kit 的 `foundation.css` 与主样式负责文字绘制、盒模型与配色；`probes/composer-input-browser.mjs` 检查对齐和滚动。
 
 ## 设置中心与主题选择
 
