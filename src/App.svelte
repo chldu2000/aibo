@@ -142,10 +142,18 @@
     list: listPresentationPackages, read: readPresentationPackage, install: installPresentationPackage,
     enable: setPresentationPackageEnabled, uninstall: uninstallPresentationPackage,
     selection: getPresentationSelection, persist: selectPresentationPackage,
-    prepare: (value, theme, failure, signal) => presentationHost.prepare(value, theme, failure, signal),
+    fallback: releases => builtinSelection(releases, availableUiKits, $appearanceSelection),
+    prepare: async (value, theme, failure, signal) => {
+      if (value.release.source !== 'builtin') return presentationHost.prepare(value, theme, failure, signal);
+      // Built-in kits are trusted host code: activation only switches the compiled kit and theme.
+      const appearance = builtinAppearance(value.release, theme, availableUiKits);
+      return { activate() { setUiAppearance(appearance); }, dispose() {} };
+    },
     changed: state => { presentationPackages = state; },
   });
-  const presentationOptions = $derived([...availableUiKits, ...presentationPackages.releases.filter(release => release.enabled).map(release => ({
+  /** Built-in releases are listed through their kits; only isolated packages are external. */
+  const externalActive = $derived(presentationPackages.active?.release.source !== 'builtin' ? presentationPackages.active : null);
+  const presentationOptions = $derived([...availableUiKits, ...presentationPackages.releases.filter(release => release.enabled && release.source !== 'builtin').map(release => ({
     id: release.digest, label: release.manifest.displayName, description: release.manifest.version,
     defaultThemeId: release.manifest.defaultThemeId ?? '',
     themes: (release.manifest.themes ?? []).map(theme => ({ ...theme, description: '', swatches: [] })),
@@ -159,8 +167,22 @@
   }
   async function choosePresentation(id: string) {
     if (!desktop) { setUiKit(id); return; }
-    if (presentationPackages.releases.some(release => release.digest === id)) await presentationPackagesController.select(id);
+    if (presentationPackages.releases.some(release => release.digest === id && release.source !== 'builtin')) {
+      await presentationPackagesController.select(id);
+      return;
+    }
+    const choice = uiKitSwitchSelection(id);
+    if (!choice) return;
+    const release = builtinSelection(presentationPackages.releases, availableUiKits, choice);
+    if (release) await presentationPackagesController.select(release.digest, release.themeId);
     else { await presentationPackagesController.select(null); setUiKit(id); }
+  }
+  function toggleColorScheme() {
+    if (!desktop || presentationPackages.active?.release.source !== 'builtin') { toggleUiColorScheme(); return; }
+    const current = $activeTheme;
+    const themes = availableUiKits.find(kit => kit.id === $activeUiKitName)?.themes ?? [];
+    const next = themeForColorScheme(themes, current.id, current.colorScheme === 'light' ? 'dark' : 'light');
+    if (next) void presentationOperation(() => choosePresentationTheme(next.id));
   }
   async function choosePresentationTheme(id: string) {
     if (presentationPackages.active) await presentationPackagesController.select(presentationPackages.active.release.digest, id);
@@ -493,7 +515,7 @@
       const identity = JSON.stringify([presentationPackages.active?.release.digest, snapshot.schema]);
       if (incompatibleCapabilityRecovery === identity) return;
       incompatibleCapabilityRecovery = identity;
-      void presentationOperation(async () => { await presentationPackagesController.select(null); notice = '皮肤不支持此能力视图格式，已恢复默认呈现。'; });
+      void presentationOperation(async () => { await presentationPackagesController.restore(); notice = '皮肤不支持此能力视图格式，已恢复默认呈现。'; });
     } else incompatibleCapabilityRecovery = null;
   });
   const layoutDirectory = createLayoutDirectory();
@@ -795,10 +817,15 @@
     availableUiKits,
     defaultUiKitId,
     ColumnSplitter,
+    appearanceSelection,
+    setUiAppearance,
     setUiKit,
     setUiTheme,
+    themeForColorScheme,
     toggleUiColorScheme,
+    uiKitSwitchSelection,
   } from '$lib/ui-kit';
+  import { builtinAppearance, builtinSelection } from '$lib/app/builtin-presentation';
 
   const previewWorkspaces: Workspace[] = [
     {
@@ -3790,7 +3817,7 @@
   <SettingsSection title="皮肤插件" error={presentationPackages.error} items={[
     { id: 'install', title: '安装皮肤', description: '从本地目录添加新的外观插件。', icon: 'plugins',
       actions: [{ id: 'install', label: '安装皮肤插件', intent: 'install', disabled: !desktop || presentationPackages.busy }] },
-    ...presentationPackages.releases.map(release => ({ id: release.digest, title: release.manifest.displayName,
+    ...presentationPackages.releases.filter(release => release.source !== 'builtin').map(release => ({ id: release.digest, title: release.manifest.displayName,
       description: `${release.manifest.version} · ${release.enabled ? '已启用' : '已禁用'}`,
       actions: [
         { id: 'toggle', label: release.enabled ? '禁用' : '启用', intent: 'toggle' as const, disabled: presentationPackages.busy },
@@ -3871,7 +3898,7 @@
 {#snippet appearanceActions()}
   <SettingsSection title="皮肤恢复" items={[{
     id: 'builtin', title: '内置皮肤', description: '恢复内置皮肤，保留当前布局、会话和草稿。', icon: 'undo',
-    actions: [{ id: 'restore', label: '恢复内置皮肤', intent: 'restore', disabled: presentationPackages.busy || !presentationPackages.active }],
+    actions: [{ id: 'restore', label: '恢复内置皮肤', intent: 'restore', disabled: presentationPackages.busy || !externalActive }],
   }]} onAction={() => void presentationOperation(() => choosePresentation(defaultUiKitId))} />
 {/snippet}
 {#snippet layoutSettings()}{@render presentationActions('layout')}{/snippet}
@@ -3912,7 +3939,7 @@
     onOpenManagement={() => openManagementCenter('appearance')}
     {managementNeedsAttention}
     themeLabel={$activeTheme.label}
-    onToggleTheme={toggleUiColorScheme}
+    onToggleTheme={toggleColorScheme}
     sidePanelOpen={sidePanelOpen}
     onToggleSidePanel={toggleSidePanel}
     onToggleMaximize={toggleMaximizeWindow}
@@ -3931,8 +3958,8 @@
     open={settingsOpen}
     activeSection={managementSection}
     uiKits={presentationOptions}
-    activeUiKitName={presentationPackages.active?.release.digest ?? $activeUiKitName}
-    activeThemeId={presentationPackages.themeId ?? $activeTheme.id}
+    activeUiKitName={externalActive?.release.digest ?? $activeUiKitName}
+    activeThemeId={externalActive ? presentationPackages.themeId ?? $activeTheme.id : $activeTheme.id}
     onSelectUiKit={id => void presentationOperation(() => choosePresentation(id))}
     onSelectTheme={id => void presentationOperation(() => choosePresentationTheme(id))}
     onSelectSection={section => { managementSection = section; }}
@@ -3995,8 +4022,8 @@
       {/if}
     </HostPanel>
   {/if}
-<PresentationHost readAttachmentPreview={getSessionAttachmentPreview} onPasteImages={(files) => void pasteComposerImages(files)} hideWhenSuspended={sessionHistoryOpen} onRestore={() => void presentationOperation(() => presentationPackagesController.select(null))} bind:this={presentationHost} active={presentationPackages.active} themeId={presentationPackages.themeId} input={externalInput} suspended={historyOpen || sessionHistoryOpen || capabilityHistoryOpen || settingsOpen || globalSearchOpen || archiveConfirmationSessionId !== null || piNavigationEntryId !== null} onIntent={externalIntent}>
-<WorkbenchPresentation hideWhenSuspended={sessionHistoryOpen} onRestore={() => desktop ? presentationPackagesController.select(null) : Promise.resolve()} bind:this={workbenchPresentation} bind:layout={presentationLayout} bind:switching={presentationSwitching} bind:gridElement={workspaceGridElement} navigationWidth={workspaceSidebarWidth} auxiliaryWidth={inspectorWidth} auxiliaryOpen={sidePanelOpen} suspended={historyOpen || sessionHistoryOpen || capabilityHistoryOpen || settingsOpen || globalSearchOpen || archiveConfirmationSessionId !== null || piNavigationEntryId !== null} windowId={presentationWindowId()} snapshot={{ workspaceId: selectedWorkspaceId, sessionId: selectedSessionId, draft: composerText, navigation: sidePanelView, timelineRevision: timeline.length }}>
+<PresentationHost readAttachmentPreview={getSessionAttachmentPreview} onPasteImages={(files) => void pasteComposerImages(files)} hideWhenSuspended={sessionHistoryOpen} onRestore={() => void presentationOperation(() => presentationPackagesController.restore())} bind:this={presentationHost} active={externalActive} themeId={externalActive ? presentationPackages.themeId : null} input={externalInput} suspended={historyOpen || sessionHistoryOpen || capabilityHistoryOpen || settingsOpen || globalSearchOpen || archiveConfirmationSessionId !== null || piNavigationEntryId !== null} onIntent={externalIntent}>
+<WorkbenchPresentation hideWhenSuspended={sessionHistoryOpen} onRestore={() => desktop ? presentationPackagesController.restore() : Promise.resolve()} bind:this={workbenchPresentation} bind:layout={presentationLayout} bind:switching={presentationSwitching} bind:gridElement={workspaceGridElement} navigationWidth={workspaceSidebarWidth} auxiliaryWidth={inspectorWidth} auxiliaryOpen={sidePanelOpen} suspended={historyOpen || sessionHistoryOpen || capabilityHistoryOpen || settingsOpen || globalSearchOpen || archiveConfirmationSessionId !== null || piNavigationEntryId !== null} windowId={presentationWindowId()} snapshot={{ workspaceId: selectedWorkspaceId, sessionId: selectedSessionId, draft: composerText, navigation: sidePanelView, timelineRevision: timeline.length }}>
 {#snippet navigation(guard)}
     <WorkspaceSidebar
       presentationActions={navigationActions}

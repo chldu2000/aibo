@@ -1,6 +1,6 @@
 # 内置外观并入 Presentation 合同：迁移计划
 
-状态：提案，未实施。本文不改变现行规则；在各阶段验收并同步
+状态：P0 已实施（见下文"P0 实施记录"），P1–P3 未实施。本文不改变现行规则；在各阶段验收并同步
 [UI 架构](ui-architecture.md)、[Presentation 包合同](presentation-package.md)及对应测试前，
 以现行文档为准。
 
@@ -55,7 +55,8 @@ flowchart LR
 ```
 
 - **Release 身份**：内置外观提供 `presentation.json`（`aibo.presentation-package/v1`），
-  例如 `dev.aibo.presentation.material3`、`dev.aibo.presentation.ak-ui`，版本随宿主发布。
+  id 为 `dev.aibo.builtin.material3`、`dev.aibo.builtin.ak-ui`，版本随宿主发布。
+  不使用 `dev.aibo.presentation.*`：独立的 shadcn/Material 3 外部包已经占用这个命名空间。
   安装记录的来源标记为 `builtin`，只有这一来源允许在主 WebView 执行 Svelte 组件。
 - **控件合同**：`packages/plugin-protocol/src/presentation-controls.ts` 为每个公开控件定义
   `{ control, props, actions }`。`actions` 是宿主生成的 token 目录，与现有 ModelMatrix 一致。
@@ -88,6 +89,33 @@ flowchart LR
 - 主题 token 通过与外部包相同的纯数据 token 校验；不通过的 token 在本阶段修正，不放宽校验器。
 
 回滚：保留旧存储键，恢复旧 registry 读取即可，不涉及数据库不可逆变更。
+
+#### P0 实施记录
+
+与上文计划的差异：
+
+| 计划 | 实际 | 原因 |
+| --- | --- | --- |
+| 安装表新增 `source` 列 | 不改表结构；宿主按保留前缀 `dev.aibo.builtin.` 判定 `source` | 无需数据库迁移；本地安装拒绝该前缀，前缀足以区分 |
+| 同 ID 同版本内容不同时拒绝 | 内置行被新构建替换，各窗口的选择迁到新 release，主题不存在时回到默认主题 | 内置内容由宿主构建决定；开发构建常在不升版本时改主题 |
+| 选择记为 `{ packageId, version, themeId }` | 沿用现有 `{ digest, themeId }` 按窗口存储 | 与外部包完全同构，不引入第二种选择格式 |
+| 外部包失败时回到上一个内置选择 | 自动失败（运行时错误、禁用、不兼容快照、启动损坏）回到上一个内置选择；设置中的"恢复内置皮肤"仍选择产品默认 | 现有探针固定了"显式恢复选择产品默认"的规则 |
+
+新发现并已处理：
+
+- 两套主题的字体 token 带引号，不满足纯数据 token 规则。已去掉引号：多词字体族在 CSS 中不加引号同样有效，外部包构建也是这样做的。
+- Material 3 每个主题有 140 个 token，超过合同的 128 上限。`themes.json` 顶层新增 `tokens`，
+  存放所有配色共用的 114 个基础 token（主要是角色别名），每个主题只保留 26 个配色值；
+  注册表合并后的 token 集合与拆分前一致。ak-ui（111 个）不需要拆分。
+- 宿主没有登记内置 release 时（旧宿主、浏览器模拟），首次启动不写选择，行为与之前相同。
+
+验证：
+- `pnpm run verify`。
+- `cargo test --lib presentation_packages`：包含内置登记幂等、重建替换、选择迁移、停用 kit、保留前缀、禁止禁用/卸载。
+- `test/builtin-presentation.test.mjs`、`test/presentation-package-controller.test.mjs`。
+- 浏览器探针 `builtin-presentation-browser`（新增）、`presentation-app-browser`、`presentation-full-skins-browser`、`material3-palettes-browser`。
+
+未验证：macOS arm64 原生生命周期（真实安装表、多窗口、升级宿主版本后的替换）。
 
 ### P1：通用控件分发，取代手写桥接
 
@@ -145,8 +173,8 @@ ManagementCenter、HostPanel、WorkbenchChrome 属于宿主固定区域或布局
 
 ## 待决问题
 
-1. 内置 release 版本跟随宿主版本，还是独立版本号？建议跟随宿主，避免单独的升级路径。
-2. 是否允许用户"卸载"内置外观？建议只允许隐藏，默认 material3 始终可用作最终回退。
+1. ~~内置 release 版本跟随宿主版本，还是独立版本号？~~ P0 采用跟随宿主版本。
+2. ~~是否允许用户"卸载"内置外观？~~ P0 不允许禁用或卸载；是否提供"隐藏"留待需要时再定。
 3. 控件公开是否需要按控件粒度声明（`surfaces.controls: ["Select", ...]`）？
    现有 `controls` 角色加 render 返回 `null` 已能表达继承；若包作者反馈预检成本高，再考虑细化。
 

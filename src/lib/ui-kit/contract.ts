@@ -265,6 +265,8 @@ export type UiThemeRegistration = {
 
 export type UiKitRegistration = {
   id: string;
+  /** Preinstalled Presentation release identity; selection is persisted against this release. */
+  packageId?: string;
   label: string;
   description: string;
   adapter: UiKitAdapter;

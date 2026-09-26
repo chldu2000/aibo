@@ -29,6 +29,7 @@
     "generate:semantic-validator": "node scripts/build-semantic-validator.mjs",
     "generate:host-sdk": "node scripts/build-host-sdk.mjs",
     "generate:presentation-validator": "node scripts/build-presentation-validator.mjs",
+    "generate:builtin-presentations": "node scripts/build-builtin-presentations.mjs",
     "probe:semantic-ui": "node probes/semantic-ui-browser.mjs",
     "probe:presentation-sandbox": "node probes/presentation-sandbox-browser.mjs",
     "probe:presentation-app": "node probes/presentation-app-browser.mjs",

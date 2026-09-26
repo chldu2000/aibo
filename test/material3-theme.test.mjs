@@ -5,7 +5,9 @@ import { createRequire } from 'node:module';
 const require = createRequire(import.meta.url);
 const postcss = createRequire(require.resolve('vite'))('postcss');
 
-const { themes } = JSON.parse(await readFile('src/lib/ui-kit/kits/material3/themes.json', 'utf8'));
+const catalog = JSON.parse(await readFile('src/lib/ui-kit/kits/material3/themes.json', 'utf8'));
+// Each theme carries only its palette; the kit foundation supplies shared role aliases.
+const themes = catalog.themes.map(theme => ({ ...theme, tokens: { ...catalog.tokens, ...theme.tokens } }));
 
 function luminance(hex) {
   assert.match(hex, /^#[0-9a-f]{6}$/i);

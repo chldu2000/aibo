@@ -18,12 +18,26 @@ fn error(value: impl std::fmt::Display) -> String {
     value.to_string()
 }
 
+/// Preinstalled trusted releases. Their identity prefix is reserved, so a local
+/// package can never claim to be host-built presentation code.
+const BUILTIN_PREFIX: &str = "dev.aibo.builtin.";
+const BUILTINS: [&str; 2] = [
+    include_str!("../../src/lib/ui-kit/kits/material3/presentation.json"),
+    include_str!("../../src/lib/ui-kit/kits/ak-ui/presentation.json"),
+];
+
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub(crate) struct Release {
     pub digest: String,
     pub manifest: Value,
     pub enabled: bool,
+    /// `builtin` releases execute trusted host code; `local` ones stay isolated.
+    pub source: &'static str,
+}
+
+fn source_of(plugin_id: &str) -> &'static str {
+    if plugin_id.starts_with(BUILTIN_PREFIX) { "builtin" } else { "local" }
 }
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -168,29 +182,81 @@ fn load(root: &Path) -> Result<(String, Value, BTreeMap<String, Vec<u8>>, String
         }
         resources.insert(path.to_owned(), bytes);
     }
+    Ok((digest(&source, &resources), manifest, resources, source))
+}
+
+fn digest(source: &str, resources: &BTreeMap<String, Vec<u8>>) -> String {
     // Manifest carries every resource digest; length framing avoids concatenation ambiguity.
     let mut hash = Sha256::new();
     hash.update((source.len() as u64).to_be_bytes());
     hash.update(source.as_bytes());
-    for (path, bytes) in &resources {
+    for (path, bytes) in resources {
         hash.update((path.len() as u64).to_be_bytes());
         hash.update(path.as_bytes());
         hash.update((bytes.len() as u64).to_be_bytes());
         hash.update(bytes);
     }
-    Ok((
-        format!("{:x}", hash.finalize()),
-        manifest,
-        resources,
-        source,
-    ))
+    format!("{:x}", hash.finalize())
 }
 
 pub(crate) async fn list(db: &SqlitePool) -> Result<Vec<Release>, String> {
-    sqlx::query("SELECT digest,manifest_json,enabled FROM presentation_releases WHERE installed=1 ORDER BY plugin_id,version")
+    sqlx::query("SELECT digest,plugin_id,manifest_json,enabled FROM presentation_releases WHERE installed=1 ORDER BY plugin_id,version")
         .fetch_all(db).await.map_err(error)?.into_iter().map(|row| Ok(Release {
             digest: row.get("digest"), manifest: serde_json::from_str(row.get::<&str,_>("manifest_json")).map_err(error)?, enabled: row.get("enabled"),
+            source: source_of(row.get("plugin_id")),
         })).collect()
+}
+
+/// Register the releases compiled into this host build. Idempotent; a changed
+/// build replaces its own earlier built-in rows and keeps each window's choice.
+pub(crate) async fn register_builtins(db: &SqlitePool) -> Result<(), String> {
+    register(db, &BUILTINS).await
+}
+
+async fn register(db: &SqlitePool, sources: &[&str]) -> Result<(), String> {
+    let _guard = MUTATION.lock().await;
+    let mut tx = db.begin().await.map_err(error)?;
+    let mut current = Vec::new();
+    for source in sources {
+        let manifest = manifest(source)?;
+        let id = manifest["id"].as_str().unwrap();
+        if !id.starts_with(BUILTIN_PREFIX) || !manifest["resources"].as_array().unwrap().is_empty() {
+            return Err("invalid_builtin_presentation".into());
+        }
+        let digest = digest(source, &BTreeMap::new());
+        current.push(digest.clone());
+        let stale: Vec<String> = sqlx::query_scalar("SELECT digest FROM presentation_releases WHERE plugin_id=? AND digest<>?")
+            .bind(id).bind(&digest).fetch_all(&mut *tx).await.map_err(error)?;
+        // Free UNIQUE(plugin_id, version) before inserting a rebuilt release of the same version.
+        sqlx::query("UPDATE presentation_releases SET version=version||'+replaced.'||digest,installed=0 WHERE plugin_id=? AND digest<>?")
+            .bind(id).bind(&digest).execute(&mut *tx).await.map_err(error)?;
+        sqlx::query("INSERT INTO presentation_releases(digest,plugin_id,version,manifest_json) VALUES(?,?,?,?) ON CONFLICT(digest) DO UPDATE SET installed=1,enabled=1")
+            .bind(&digest).bind(id).bind(manifest["version"].as_str().unwrap()).bind(*source).execute(&mut *tx).await.map_err(error)?;
+        for old in stale {
+            let rows = sqlx::query("SELECT window_id,theme_id FROM presentation_selections WHERE digest=?")
+                .bind(&old).fetch_all(&mut *tx).await.map_err(error)?;
+            for row in rows {
+                let theme: Option<String> = row.get("theme_id");
+                let theme = theme.filter(|theme| manifest["themes"].as_array().is_some_and(|themes| themes.iter().any(|t| t["id"] == theme.as_str())));
+                sqlx::query("UPDATE presentation_selections SET digest=?,theme_id=? WHERE window_id=?")
+                    .bind(&digest).bind(theme).bind(row.get::<String, _>("window_id")).execute(&mut *tx).await.map_err(error)?;
+            }
+            sqlx::query("DELETE FROM presentation_releases WHERE digest=?").bind(&old).execute(&mut *tx).await.map_err(error)?;
+        }
+    }
+    // A kit removed from this build: its windows fall back to the host default.
+    let retired: Vec<String> = sqlx::query_scalar("SELECT digest FROM presentation_releases WHERE plugin_id LIKE 'dev.aibo.builtin.%'")
+        .fetch_all(&mut *tx).await.map_err(error)?;
+    for old in retired.into_iter().filter(|digest| !current.contains(digest)) {
+        sqlx::query("DELETE FROM presentation_selections WHERE digest=?").bind(&old).execute(&mut *tx).await.map_err(error)?;
+        sqlx::query("DELETE FROM presentation_releases WHERE digest=?").bind(&old).execute(&mut *tx).await.map_err(error)?;
+    }
+    tx.commit().await.map_err(error)
+}
+
+async fn plugin_id(db: &SqlitePool, digest: &str) -> Result<Option<String>, String> {
+    sqlx::query_scalar("SELECT plugin_id FROM presentation_releases WHERE digest=?")
+        .bind(digest).fetch_optional(db).await.map_err(error)
 }
 
 pub(crate) async fn install(
@@ -200,6 +266,9 @@ pub(crate) async fn install(
 ) -> Result<Release, String> {
     let _guard = MUTATION.lock().await;
     let (digest, manifest, resources, raw) = load(source)?;
+    if source_of(manifest["id"].as_str().unwrap()) == "builtin" {
+        return Err("reserved_presentation_id".into());
+    }
     let existing: Option<String> = sqlx::query_scalar(
         "SELECT digest FROM presentation_releases WHERE plugin_id=? AND version=?",
     )
@@ -241,6 +310,7 @@ pub(crate) async fn install(
         digest,
         manifest,
         enabled: true,
+        source: "local",
     })
 }
 
@@ -256,6 +326,19 @@ pub(crate) async fn package(db: &SqlitePool, data: &Path, digest: &str) -> Resul
     if exists != 1 || digest.len() != 64 || !digest.bytes().all(|b| b.is_ascii_hexdigit()) {
         return Err("presentation_unavailable".into());
     }
+    if plugin_id(db, digest).await?.is_some_and(|id| source_of(&id) == "builtin") {
+        // Built-in releases have no files: the registered manifest is data only and
+        // their executable code is the host build itself. Re-verify before serving.
+        let source: String = sqlx::query_scalar("SELECT manifest_json FROM presentation_releases WHERE digest=?")
+            .bind(digest).fetch_one(db).await.map_err(error)?;
+        if self::digest(&source, &BTreeMap::new()) != digest {
+            return Err("presentation_release_corrupt".into());
+        }
+        return Ok(Package {
+            release: Release { digest: digest.to_owned(), manifest: manifest(&source)?, enabled: true, source: "builtin" },
+            resources: BTreeMap::new(),
+        });
+    }
     let (actual, manifest, resources, _) = load(&data.join("presentation-packages").join(digest))?;
     if actual != digest {
         return Err("presentation_release_corrupt".into());
@@ -265,6 +348,7 @@ pub(crate) async fn package(db: &SqlitePool, data: &Path, digest: &str) -> Resul
             digest: actual,
             manifest,
             enabled: true,
+            source: "local",
         },
         resources: resources
             .into_iter()
@@ -278,8 +362,16 @@ pub(crate) async fn package(db: &SqlitePool, data: &Path, digest: &str) -> Resul
     })
 }
 
+async fn reject_builtin(db: &SqlitePool, digest: &str) -> Result<(), String> {
+    if plugin_id(db, digest).await?.is_some_and(|id| source_of(&id) == "builtin") {
+        return Err("builtin_presentation_immutable".into());
+    }
+    Ok(())
+}
+
 pub(crate) async fn enable(db: &SqlitePool, digest: &str, enabled: bool) -> Result<(), String> {
     let _guard = MUTATION.lock().await;
+    reject_builtin(db, digest).await?;
     let mut tx = db.begin().await.map_err(error)?;
     if sqlx::query("UPDATE presentation_releases SET enabled=? WHERE digest=? AND installed=1")
         .bind(enabled)
@@ -304,6 +396,7 @@ pub(crate) async fn enable(db: &SqlitePool, digest: &str, enabled: bool) -> Resu
 
 pub(crate) async fn uninstall(db: &SqlitePool, digest: &str) -> Result<(), String> {
     let _guard = MUTATION.lock().await;
+    reject_builtin(db, digest).await?;
     let mut tx = db.begin().await.map_err(error)?;
     sqlx::query("DELETE FROM presentation_selections WHERE digest=?")
         .bind(digest)
@@ -385,6 +478,66 @@ mod tests {
     }
     fn temp() -> std::path::PathBuf {
         std::env::temp_dir().join(format!("aibo-presentation-{}", ulid::Ulid::new()))
+    }
+
+    fn builtin(version: &str, token: &str) -> String {
+        json!({"schema":"aibo.presentation-package/v1","id":"dev.aibo.builtin.example","version":version,"displayName":"Example","hostApi":"1.0.0","coreSemantics":"1.0.0","snapshotSchemas":["aibo.semantic-view/v1"],"resources":[],"themes":[{"id":"light","label":"Light","colorScheme":"light","tokens":{"--primary":token}},{"id":"dark","label":"Dark","colorScheme":"dark","tokens":{"--primary":token}}],"defaultThemeId":"light"}).to_string()
+    }
+
+    #[tokio::test]
+    async fn builtin_releases_register_idempotently_and_keep_window_choice_across_rebuilds() {
+        let root = temp();
+        let db = crate::open_database(&root.join("aibo.sqlite3")).await.unwrap();
+        register_builtins(&db).await.unwrap();
+        register_builtins(&db).await.unwrap();
+        let shipped = list(&db).await.unwrap();
+        assert_eq!(shipped.iter().filter(|release| release.source == "builtin").count(), BUILTINS.len());
+        for release in &shipped {
+            let package = package(&db, &root, &release.digest).await.unwrap();
+            assert!(package.resources.is_empty(), "built-in content never comes from disk");
+            assert_eq!(package.release.manifest, release.manifest);
+            assert_eq!(enable(&db, &release.digest, false).await.unwrap_err(), "builtin_presentation_immutable");
+            assert_eq!(uninstall(&db, &release.digest).await.unwrap_err(), "builtin_presentation_immutable");
+        }
+
+        let first = builtin("1.0.0", "#111111");
+        register(&db, &[&first]).await.unwrap();
+        let old = list(&db).await.unwrap().into_iter().find(|release| release.manifest["id"] == "dev.aibo.builtin.example").unwrap();
+        assert!(list(&db).await.unwrap().iter().all(|release| release.source != "builtin" || release.digest == old.digest),
+            "kits missing from the build are retired");
+        select(&db, &root, "main", Some(&old.digest), Some("dark"), None).await.unwrap();
+        select(&db, &root, "other", Some(&old.digest), None, None).await.unwrap();
+
+        // A rebuilt host may change content without a version bump.
+        let rebuilt = builtin("1.0.0", "#222222");
+        register(&db, &[&rebuilt]).await.unwrap();
+        let new = list(&db).await.unwrap().into_iter().find(|release| release.manifest["id"] == "dev.aibo.builtin.example").unwrap();
+        assert_ne!(new.digest, old.digest);
+        let main = selection(&db, "main").await.unwrap().unwrap();
+        assert_eq!((main.digest.as_str(), main.theme_id.as_deref()), (new.digest.as_str(), Some("dark")));
+        assert_eq!(selection(&db, "other").await.unwrap().unwrap().digest, new.digest);
+        let count: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM presentation_releases WHERE plugin_id='dev.aibo.builtin.example'")
+            .fetch_one(&db).await.unwrap();
+        assert_eq!(count, 1);
+
+        register(&db, &[]).await.unwrap();
+        assert!(selection(&db, "main").await.unwrap().is_none(), "a retired kit falls back to the default");
+        db.close().await;
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[tokio::test]
+    async fn local_packages_cannot_claim_builtin_identity() {
+        let root = temp();
+        let source = root.join("source");
+        fs::create_dir_all(&source).unwrap();
+        fs::write(source.join("presentation.json"), builtin("1.0.0", "#333333")).unwrap();
+        let db = crate::open_database(&root.join("aibo.sqlite3")).await.unwrap();
+        assert_eq!(install(&db, &root, &source).await.unwrap_err(), "reserved_presentation_id");
+        let local = builtin("1.0.0", "#333333").replace("dev.aibo.builtin.example", "dev.example.skin");
+        assert_eq!(register(&db, &[&local]).await.unwrap_err(), "invalid_builtin_presentation");
+        db.close().await;
+        fs::remove_dir_all(root).unwrap();
     }
 
     #[tokio::test]

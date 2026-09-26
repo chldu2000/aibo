@@ -70,18 +70,33 @@ export const activeThemeStyle = derived(activeTheme, ($theme) =>
     .join('; '),
 );
 
-export function setUiKit(kitId: string) {
+/** The theme a kit switch lands on: keep the current theme, else the current brightness. */
+export function uiKitSwitchSelection(kitId: string): AppearanceSelection | null {
   if (kitId === 'shadcn') kitId = 'ak-ui';
   const registration = registrationMap.get(kitId);
-  if (!registration) return;
+  if (!registration) return null;
   const current = get(selection);
   const currentScheme = get(activeTheme).colorScheme;
   const themeId = current.kitId === kitId && registration.themes.some((theme) => theme.id === current.themeId)
     ? current.themeId
     : registration.themes.find(theme => theme.colorScheme === currentScheme)?.id ?? registration.defaultThemeId;
-  const next = { kitId: registration.id, themeId };
+  return { kitId: registration.id, themeId };
+}
+
+export function setUiKit(kitId: string) {
+  const next = uiKitSwitchSelection(kitId);
+  if (!next) return;
   selection.set(next);
   persistSelection(next);
+}
+
+/** Applies a committed built-in release selection; the cache only speeds up the next first paint. */
+export function setUiAppearance(next: AppearanceSelection): boolean {
+  const registration = registrationMap.get(next.kitId);
+  if (!registration?.themes.some(theme => theme.id === next.themeId)) return false;
+  selection.set({ kitId: registration.id, themeId: next.themeId });
+  persistSelection({ kitId: registration.id, themeId: next.themeId });
+  return true;
 }
 
 export function setUiTheme(themeId: string) {

@@ -42,6 +42,10 @@
 包的完整性身份还包含原始 manifest 与全部声明资源的摘要；同 ID/版本不同内容
 不得覆盖已有 release。manifest 字段不授予文件、网络或执行权限。
 
+`dev.aibo.builtin.` 前缀保留给宿主预装的内置外观，本地安装会以 `reserved_presentation_id` 拒绝。
+内置 release 由宿主构建提供，不能禁用或卸载（`builtin_presentation_immutable`），
+见 [UI 架构](ui-architecture.md#内置外观-release)。
+
 ## 可选定制与默认继承
 
 | 声明 | 行为 |

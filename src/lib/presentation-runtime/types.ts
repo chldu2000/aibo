@@ -4,6 +4,8 @@ export type PresentationRelease = {
   digest: string;
   manifest: PresentationPackageManifest;
   enabled: boolean;
+  /** Assigned by the host from the reserved identity prefix, never by the manifest. */
+  source: 'builtin' | 'local';
 };
 export type InstalledPresentationPackage = {
   release: PresentationRelease;

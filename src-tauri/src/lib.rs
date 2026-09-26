@@ -4461,6 +4461,8 @@ pub fn run() {
                 .map_err(|error| Box::new(error) as Box<dyn Error>)?;
             tauri::async_runtime::block_on(plugin_registry::install_builtins(&db, &data_dir))
                 .map_err(|error| Box::new(CoreError::Initialization(format!("install built-in plugins: {error}"))) as Box<dyn Error>)?;
+            tauri::async_runtime::block_on(presentation_packages::register_builtins(&db))
+                .map_err(|error| Box::new(CoreError::Initialization(format!("register built-in presentations: {error}"))) as Box<dyn Error>)?;
             tauri::async_runtime::block_on(recover_interrupted_turn_changes(&db)).map_err(
                 |error| {
                     Box::new(CoreError::Initialization(format!(

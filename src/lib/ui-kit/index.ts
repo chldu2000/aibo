@@ -43,9 +43,11 @@ export {
   appearanceSelection,
   availableUiKits,
   defaultUiKitId,
+  setUiAppearance,
   setUiKit,
   setUiTheme,
   toggleUiColorScheme,
+  uiKitSwitchSelection,
 } from './registry';
 export { themeForColorScheme, themePaletteOptions } from './theme-options';
 export type { UiKitName } from './registry';

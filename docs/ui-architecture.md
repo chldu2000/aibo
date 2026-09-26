@@ -96,6 +96,24 @@ Material 3 提供经典蓝、森林绿与紫罗兰三组配色，每组包含浅
 迁移仅涉及旧外观存储，不改变外部包选择、工作区布局或会话数据。`VITE_AIBO_UI_KIT` 只查询内置注册表，
 不安装或加载外部皮肤。独立 shadcn / Material 3 呈现包仍通过包安装机制使用。
 
+### 内置外观 release
+
+两个内置 kit 同时是宿主预装的可信 Presentation release，id 为 `dev.aibo.builtin.<kit>`。
+宿主启动时从编译进来的 `kits/<kit>/presentation.json` 登记这两个 release，与外部包共用
+`presentation_releases` 和按窗口的 `presentation_selections`。`dev.aibo.builtin.` 是保留前缀：
+本地包不能安装这类 id，内置 release 也不能被禁用或卸载。release 的 `source` 由宿主根据前缀判定，
+不来自 manifest。内置 release 没有资源文件，也不在隔离环境中运行；激活时只切换已编译的 kit 与主题。
+
+`presentation.json` 由 `pnpm run generate:builtin-presentations` 从 `themes.json` 生成，并按外部包的
+schema 与 token 规则校验。`themes.json` 顶层的可选 `tokens` 是 kit 的基础 token，每个主题只写自己改变的值；
+注册表合并两者后，得到完整的主题 token 集合。宿主版本变化或主题内容变化时，同 id 的旧内置行被替换，
+各窗口保留原选择；主题 id 不再存在时回到默认主题。
+
+选择以宿主记录为准。`localStorage` 中的 `aibo.appearance.v1` 只用于首帧渲染缓存和无原生宿主的浏览器环境；
+首次启动且宿主没有该窗口的记录时，将缓存中的 kit 与主题记录到对应的内置 release。
+外部包运行失败、被禁用或不兼容时，回到该窗口最近一次的内置选择；设置中的"恢复内置皮肤"
+仍然选择产品默认外观。宿主没有登记内置 release 时，沿用仅缓存的选择方式。
+
 ### 单选下拉控件
 
 应用中的单选下拉通过必需的 `UiKitAdapter.Select` 使用统一语义接口：`options`、确认后的

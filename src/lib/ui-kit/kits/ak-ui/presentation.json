@@ -1,19 +1,21 @@
 {
-  "id": "ak-ui",
-  "label": "Aibo · ak-ui",
-  "description": "清晰、克制的统一工作台。",
-  "defaultThemeId": "light",
+  "schema": "aibo.presentation-package/v1",
+  "id": "dev.aibo.builtin.ak-ui",
+  "version": "0.1.0",
+  "displayName": "Aibo · ak-ui",
+  "hostApi": "1.0.0",
+  "coreSemantics": "1.0.0",
+  "snapshotSchemas": [
+    "aibo.semantic-view/experimental-v1",
+    "aibo.semantic-view/v1",
+    "aibo.semantic-view/v1.1"
+  ],
+  "resources": [],
   "themes": [
     {
       "id": "light",
       "label": "浅色",
-      "description": "统一明暗，以明确的中性底色层级与功能信号色区分区域和状态。",
       "colorScheme": "light",
-      "swatches": [
-        "#e9ebe7",
-        "#dce0da",
-        "#ffd802"
-      ],
       "tokens": {
         "--ak-surface-canvas": "#e9ebe7",
         "--ak-surface-panel": "#f5f6f2",
@@ -131,13 +133,7 @@
     {
       "id": "dark",
       "label": "深色",
-      "description": "统一明暗，以明确的中性底色层级与功能信号色区分区域和状态。",
       "colorScheme": "dark",
-      "swatches": [
-        "#111315",
-        "#2c3237",
-        "#ffd802"
-      ],
       "tokens": {
         "--ak-surface-canvas": "#111315",
         "--ak-surface-panel": "#202428",
@@ -252,5 +248,6 @@
         "--aibo-type-meta": "12px"
       }
     }
-  ]
+  ],
+  "defaultThemeId": "light"
 }

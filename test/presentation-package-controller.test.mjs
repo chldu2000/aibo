@@ -14,6 +14,7 @@ function fixture() {
     async selection(){return saved;},
     async persist(digest,themeId,expected){assert.equal(saved?.digest??null,expected);saved=digest?{digest,themeId}:null;effects.push(['persist',digest]);},
     async prepare(value,_theme,failure){const id=value.release.digest;failures.set(id,failure);return{activate(){effects.push(['activate',id]);},dispose(){effects.push(['dispose',id]);}};},
+    fallback(){return null;},
     changed(next){state=next;},
   };
   const controller=createPresentationPackageController(ports);
@@ -59,4 +60,32 @@ test('late persistent commit after disposal is rolled back without activation',a
   f.ports.persist=async(...args)=>{if(args[0]==='b'){entered.resolve();await finish.promise;}return persist(...args);};
   const selection=f.controller.select('b');await entered.promise;f.controller.dispose();finish.resolve();await selection;
   assert.equal(f.saved,null);assert.ok(!f.effects.some(([event])=>event==='activate'));
+});
+
+function withBuiltin(f){
+  // The release list carries the preinstalled built-in; fallback resolves the cached kit against it.
+  f.ports.fallback=releases=>{const builtin=releases.find(r=>r.digest==='c');return builtin?{digest:'c',themeId:'dark'}:null;};
+  return f;
+}
+
+test('external failures return to the built-in release instead of clearing the selection',async()=>{
+  const f=withBuiltin(fixture());await f.controller.refresh();await f.controller.select('a');f.failures.get('a')(Error('worker stopped'));
+  for(let i=0;i<10&&f.saved?.digest!=='c';i++)await new Promise(resolve=>setImmediate(resolve));
+  assert.deepEqual(f.saved,{digest:'c',themeId:'dark'});assert.equal(f.state.active.release.digest,'c');
+  await f.controller.select('b');await f.controller.enable('b',false);assert.equal(f.state.active.release.digest,'c');
+});
+
+test('first start records the cached built-in choice; a broken startup package falls back to it',async()=>{
+  const first=withBuiltin(fixture());await first.controller.initialize();
+  assert.deepEqual(first.saved,{digest:'c',themeId:'dark'});
+  const broken=withBuiltin(fixture());await broken.ports.persist('a','dark',null);
+  const read=broken.ports.read;broken.ports.read=async digest=>{if(digest==='a')throw Error('corrupt package');return read(digest);};
+  await broken.controller.initialize();
+  assert.equal(broken.saved.digest,'c');assert.match(broken.state.error,/corrupt package/);
+});
+
+test('an unusable built-in release still leaves the host default',async()=>{
+  const f=withBuiltin(fixture());await f.controller.refresh();await f.controller.select('a');
+  const read=f.ports.read;f.ports.read=async digest=>{if(digest==='c')throw Error('builtin missing');return read(digest);};
+  await f.controller.restore();assert.equal(f.saved,null);assert.equal(f.state.active,null);
 });

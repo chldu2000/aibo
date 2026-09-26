@@ -18,6 +18,8 @@ export function createPresentationPackageController(ports: {
   uninstall(digest: string): Promise<void>;
   selection(): Promise<PresentationSelection | null>;
   persist(digest: string | null, themeId: string | null, expected: string | null): Promise<void>;
+  /** The built-in release and theme to return to; null when none is registered. */
+  fallback(releases: readonly PresentationRelease[]): PresentationSelection | null;
   prepare(value: InstalledPresentationPackage, themeId: string | null, failure: (error: Error) => void, signal: AbortSignal): Promise<PresentationInstance>;
   changed(state: PresentationPackageState): void;
 }) {
@@ -36,7 +38,7 @@ export function createPresentationPackageController(ports: {
       if (disposed || ticket !== refreshRequested) return;
       state.releases = releases;
       if (state.active && !state.releases.some(release => release.digest === state.active?.release.digest && release.enabled)) {
-        await select(null);
+        await restore();
       }
       emit();
     } catch (error) { report(error); }
@@ -62,7 +64,7 @@ export function createPresentationPackageController(ports: {
         if (value) candidate = await ports.prepare(value, themeId, error => {
           failed = error;
           if (candidate && instance === candidate && !disposed) {
-            void select(null).then(() => report(error), report);
+            void restore().then(() => report(error), report);
           }
         }, preparation.signal);
         if (disposed || ticket !== requested || preparation.signal.aborted) { candidate?.dispose(); return; }
@@ -95,21 +97,38 @@ export function createPresentationPackageController(ports: {
     return operation;
   }
 
+  /** Return to the built-in appearance; external failures never land on an arbitrary default. */
+  async function restore() {
+    const fallback = ports.fallback(state.releases);
+    if (fallback) {
+      try { await select(fallback.digest, fallback.themeId); return; }
+      catch { /* An unusable built-in release still leaves the host default. */ }
+    }
+    await select(null);
+  }
+
   async function initialize() {
     const ticket = requested;
     await refresh();
     const saved = await ports.selection();
-    if (!saved || disposed || ticket !== requested) return;
+    if (disposed || ticket !== requested) return;
+    // First start after the migration: record the cached built-in choice against its release.
+    if (!saved) {
+      const fallback = ports.fallback(state.releases);
+      if (fallback) await select(fallback.digest, fallback.themeId).catch(report);
+      return;
+    }
     try { await select(saved.digest, saved.themeId); }
     catch (error) {
       // Corrupt or missing startup candidates must not retry on every launch.
       await ports.persist(null, null, saved.digest);
+      await restore().catch(() => {});
       report(error);
     }
   }
 
   return {
-    initialize, refresh, select,
+    initialize, refresh, select, restore,
     async install(path: string) { const release = await ports.install(path); await refresh(); return release; },
     async enable(digest: string, enabled: boolean) { await ports.enable(digest, enabled); await refresh(); },
     async uninstall(digest: string) { await ports.uninstall(digest); await refresh(); },

@@ -5,6 +5,7 @@ import { validateRenderer } from '../app/renderer-descriptor.ts';
 /** Trusted local definition, not an installable manifest or a wire protocol. */
 export type PresentationPluginDefinition = {
   id: string;
+  packageId?: string;
   label: string;
   description: string;
   themes?: readonly UiThemeRegistration[];
@@ -35,6 +36,6 @@ export function resolvePresentationPlugin(
   }
   const renderer = definition.renderer ?? defaults.renderer;
   validateRenderer(renderer);
-  return { id: definition.id, label: definition.label, description: definition.description,
+  return { id: definition.id, packageId: definition.packageId, label: definition.label, description: definition.description,
     themes, defaultThemeId, adapter, renderer };
 }
