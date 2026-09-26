@@ -20,7 +20,10 @@ let provider = null;
 let session = null;
 let publish;
 let hostTool;
-export function configure(callbacks) { publish = callbacks.emit; hostTool = callbacks.requestTool; }
+let hostHistoryTool;
+let registeredHostTools=[];
+export function hostToolsRegistered() { return registeredHostTools.length>0 && !!session; }
+export function configure(callbacks) { publish = callbacks.emit; hostTool = callbacks.requestTool; hostHistoryTool=callbacks.requestHostTool; }
 const fail = (kind, message = kind) => { throw Object.assign(new Error(message), { kind }); };
 function requestCoreTool(tool, input) { return hostTool(tool, input); }
 const emit = (type, payload, turnId = null, correlation = null) => publish({
@@ -542,7 +545,7 @@ function onPi(message, startedProvider) {
     session.turn = null;  void updateRecovery();
   }
 }
-async function startPi(cwd, runtimeDataPath, sessionFile, executionProfile = {}) {
+async function startPi(cwd, runtimeDataPath, sessionFile, executionProfile = {}, hostTools = []) {
   const modelRuntime = await ModelRuntime.create();
   let manager;
   if (sessionFile) {
@@ -551,7 +554,8 @@ async function startPi(cwd, runtimeDataPath, sessionFile, executionProfile = {})
   manager ??= SessionManager.create(cwd, runtimeDataPath);
   const workspaceWriteEnabled = executionProfile.interactionMode === 'edit' && executionProfile.filesystemPolicy === 'workspace-write';
   const commandEnabled = executionProfile.interactionMode === 'edit' && executionProfile.commandPolicy !== 'disabled';
-  const customTools = [];
+  const customTools = hostTools.map(tool=>({name:tool.name,label:tool.name,description:tool.description,parameters:tool.inputSchema,
+    async execute(_id,input){const result=await hostHistoryTool(tool.name,input);return {content:[{type:'text',text:JSON.stringify(result)}]};}}));
   customTools.push(createReadToolDefinition(cwd, { operations: coreReadOperations() }));
   customTools.push(createCoreGrepTool());
   customTools.push(createFindToolDefinition(cwd, { operations: coreFindOperations() }));
@@ -571,7 +575,7 @@ async function startPi(cwd, runtimeDataPath, sessionFile, executionProfile = {})
       },
     },
   }));
-  const activeToolNames = ['read', 'grep', 'find', 'ls', ...(workspaceWriteEnabled ? ['write'] : []), ...(commandEnabled ? ['bash'] : [])];
+  const activeToolNames = [...hostTools.map(tool=>tool.name), 'read', 'grep', 'find', 'ls', ...(workspaceWriteEnabled ? ['write'] : []), ...(commandEnabled ? ['bash'] : [])];
   const created = await createAgentSession({ cwd, sessionManager: manager, modelRuntime, tools: activeToolNames,
     customTools: customTools.length > 0 ? customTools : undefined });
   const sdkSession = created.session;
@@ -624,7 +628,8 @@ export async function execute(action, p) {
     if (session || !p.workspace?.path || typeof p.executionProfile?.runtimeDataPath !== 'string') fail('permission_denied');
     const previous = action === 'resume' ? p.binding?.recovery : null;
     if (previous && (previous.schema !== 'dev.aibo.pi.recovery' || previous.version !== 1)) fail('invalid_recovery_data');
-    const state = await startPi(p.workspace.path, p.executionProfile.runtimeDataPath, previous?.data?.sessionFile ?? null, p.executionProfile);
+    const state = await startPi(p.workspace.path, p.executionProfile.runtimeDataPath, previous?.data?.sessionFile ?? null, p.executionProfile,p.hostTools??[]);
+    registeredHostTools=p.hostTools??[];
     const nativeId = state.data?.sessionId;
     if (!nativeId) fail('invalid_session', 'Pi did not return a session id');
     const configuredReference = typeof p.executionProfile.model === 'string' ? p.executionProfile.model : '';

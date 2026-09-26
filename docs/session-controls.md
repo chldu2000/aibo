@@ -97,3 +97,7 @@ read-only / disabled 描述原生模式行为，网络仍为 agent-managed；不
 允许编辑草稿、导航及管理。初始化失败保留同一会话并显示错误；应用重启将遗留 starting 状态
 恢复为 interrupted，后续执行仍通过同一绑定重新打开。初始创建完成不会抢回已离开的会话，
 也不会恢复已经关闭或移除的会话。历史、模式和附件等独立读取并行进行。
+
+宿主历史工具是独立只读路径，`host-tools` 不授予 Core 文件/命令权限。新接入工具的 provider
+须显式声明 `executionPolicy: "core-proxy"` 才能按原有合同协商 CoreProxy；已有可信原生授权
+和 agent-managed 路径优先。详见[历史工具合同](session-history-tool-design.md)。

@@ -18,10 +18,10 @@ pub(crate) struct SessionControl {
 }
 
 pub(crate) fn validate_declaration(entry: &Value) -> Result<(), String> {
-    if entry.get("executionPolicy").is_some() && (entry["executionPolicy"] != "agent-managed"
+    if entry.get("executionPolicy").is_some() && (!matches!(entry["executionPolicy"].as_str(),Some("agent-managed" | "core-proxy"))
         || entry["scope"] != "session"
         || !entry["operations"].as_array().is_some_and(|ops| ops.iter().any(|op| op["capability"]["id"] == "aibo.session.open"))) {
-        return Err("invalid_manifest: agent-managed execution requires a session provider".into());
+        return Err("invalid_manifest: execution policy requires a session provider".into());
     }
     let Some(raw) = entry.get("sessionControls") else { return Ok(()); };
     if entry["scope"] != "session" || !entry["operations"].as_array().is_some_and(|ops|

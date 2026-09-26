@@ -2,7 +2,7 @@
 use sha2::{Digest, Sha256};
 use std::{fs, path::{Path, PathBuf}, sync::Mutex};
 
-pub(crate) const VERSION: &str = "0.1.0";
+pub(crate) const VERSION: &str = "0.1.1";
 static PREPARE: Mutex<()> = Mutex::new(());
 const FILES: &[(&str, &[u8])] = &[
     ("register.mjs", include_bytes!("../../packages/plugin-host/register.mjs")),

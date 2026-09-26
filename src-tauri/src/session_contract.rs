@@ -74,6 +74,7 @@ pub(crate) fn negotiate(manifest: &Value, contribution: &str, claimed: &Value, h
             "session.create" | "session.resume" => standard("aibo.session.open"),
             "session.close" => standard("aibo.session.close"),
             "turn.send" | "stream.text" | "image.input" => standard("aibo.session.turn"),
+            "host-tools" => standard("aibo.session.open") && crate::session_history_tools::offered(manifest, contribution, handshake),
             "turn.cancel" => standard("aibo.session.cancel"),
             "goal.resume" => claims.contains(&"goal.manage") && optional("goal.manage") && standard("aibo.session.goal.resume"),
             "goal.pause" => claims.contains(&"goal.manage") && optional("goal.manage")

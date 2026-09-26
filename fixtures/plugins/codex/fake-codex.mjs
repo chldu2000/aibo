@@ -41,6 +41,10 @@ input.on('line', (line) => {
     if (interactiveTurn.kind === 'approval' && !['accept', 'cancel'].includes(request.result?.decision)) throw new Error('invalid approval response');
     if (interactiveTurn.kind === 'permissions' && request.result?.permissions?.fileSystem?.write?.[0] !== '.git') throw new Error('invalid permissions response');
     if (interactiveTurn.kind === 'user-input' && typeof request.result?.answers !== 'object') throw new Error('invalid user input response');
+    if(interactiveTurn.kind === 'host-history') {
+      if(typeof request.result?.success !== 'boolean') throw Error('Invalid dynamic tool response');
+      interactiveTurn.params.input[0].text=request.result.contentItems.map(item=>item.text).join('');
+    }
     completeTurn(interactiveTurn.params); interactiveTurn = null; return;
   }
   const { id, method, params = {} } = request;
@@ -57,6 +61,7 @@ input.on('line', (line) => {
       model_provider:process.env.CODEX_FAKE_CUSTOM_PROVIDER || null}}});
   }
   else if (method === 'account/rateLimits/read') write({ id, result: { rateLimits: { limitId: 'codex', limitName: '5 小时', planType: 'plus', primary: { usedPercent: 20, windowDurationMins: 300, resetsAt: 1900000000 }, secondary: { usedPercent: 40, windowDurationMins: 10080, resetsAt: 1900500000 }, credits: { balance: '12.5', hasCredits: true, unlimited: false } } } });
+  else if (method === 'thread/start' && process.env.CODEX_FAKE_EXPECT_HOST_TOOLS && !params.dynamicTools?.some(tool=>tool.type==='function' && tool.name==='aibo_read_session')) write({id,error:{code:-32602,message:'Dynamic tools not registered'}});
   else if (method === 'thread/start') write({ id, result: { thread: { id: process.env.CODEX_FAKE_THREAD_ID ?? 'native-thread' }, ...policy } });
   else if (method === 'thread/resume' && process.env.CODEX_FAKE_MISSING_ROLLOUT === '1') write({ id, error: { code: -32600, message: `no rollout found for thread id ${params.threadId}` } });
   else if (method === 'thread/resume' && process.env.CODEX_FAKE_REJECT_CONTEXT === '1' && process.argv.includes('model_context_window=872000')) write({id,error:{code:-32000,message:'Native context rejected'}});
@@ -96,7 +101,10 @@ input.on('line', (line) => {
     }
     write({ id, result: { turn: { id: nativeTurnId } } });
     write({ method: 'turn/started', params: { threadId: params.threadId, turn: { id: nativeTurnId, status: 'inProgress' } } });
-    if (params.input[0].text === 'host queue delay') { setTimeout(()=>completeTurn(params), 600); }
+    if (params.input[0].text === 'host history fixture') {
+      interactiveTurn={kind:'host-history',requestId:'history-call',params};
+      write({id:'history-call',method:'item/tool/call',params:{threadId:params.threadId,turnId:nativeTurnId,callId:'history-call',namespace:null,tool:'aibo_read_session',arguments:{referenceId:'ref',sessionId:'source'}}});
+    } else if (params.input[0].text === 'host queue delay') { setTimeout(()=>completeTurn(params), 600); }
     else if (params.input[0].text === 'subagent spawn fails') {
       write({method:'item/completed',params:{threadId:params.threadId,turnId:nativeTurnId,item:{type:'collabAgentToolCall',id:'failed-spawn',tool:'spawnAgent',status:'failed',receiverThreadIds:[],error:{message:'Agent limit reached'}}}});
       completeTurn(params);

@@ -68,7 +68,7 @@ pub(crate) async fn capture(db: &SqlitePool, target_id: &str, source_id: &str) -
         "messageLimit":message_limit,
         "totalMessageCount":count,"omittedMessageCount":count-items.len() as i64,
         "omittedToolMessageCount":tool_count,"toolOutputsIncluded":false,
-        "readAvailability":"on-demand reading is not available yet",
+        "readAvailability":"Use aibo_read_session only if present in the current provider tool catalog; pass snapshotId as referenceId and sourceSessionId as sessionId",
         "historyScope":"Aibo persisted history only; may not include native history before import",
         "messages":items
     }).to_string();

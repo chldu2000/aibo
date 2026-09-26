@@ -14,7 +14,7 @@ export async function buildExternalPlugin() {
   for(const name of ['package.json','README.md']) await copyFile(path.resolve('packages/plugin-protocol',name),path.join(protocol,name));
   execFileSync(process.execPath,[tsc,'-p',path.resolve('packages/plugin-protocol/tsconfig.json'),'--outDir',path.join(protocol,'dist')]);
   const protocolTar=path.join(protocol,pack(protocol).filename);
-  for(const name of ['package.json','README.md','runtime.mjs','stdio.mjs','runtime.d.ts','stdio.d.ts']) await copyFile(path.resolve('packages/capability-runtime',name),path.join(sdk,name));
+  for(const name of ['package.json','README.md','runtime.mjs','stdio.mjs','runtime.d.ts','stdio.d.ts','host-tools.mjs','host-tools.d.ts','host-tools-mcp.mjs','host-tools-mcp.d.ts']) await copyFile(path.resolve('packages/capability-runtime',name),path.join(sdk,name));
   const sdkTar=path.join(sdk,pack(sdk).filename);
   await cp(path.resolve('examples/capability-plugin'),consumer,{recursive:true});
   execFileSync('npm',['install','--save-dev','--offline','--ignore-scripts','--no-audit','--no-fund','--cache',cache,protocolTar,sdkTar],{cwd:consumer,stdio:'pipe'});

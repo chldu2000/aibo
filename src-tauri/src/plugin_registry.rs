@@ -583,11 +583,11 @@ mod tests {
         let installed = list(&db).await.unwrap();
         assert_eq!(installed.len(), 2);
         assert_eq!(installed.iter().map(|plugin|plugin.plugin_id.as_str()).collect::<std::collections::HashSet<_>>(), std::collections::HashSet::from(["dev.aibo.codex", "dev.aibo.pi"]));
-        assert_eq!(installed.iter().find(|plugin| plugin.plugin_id == "dev.aibo.codex").unwrap().plugin_version, "2.0.14");
-        assert_eq!(installed.iter().find(|plugin| plugin.plugin_id == "dev.aibo.pi").unwrap().plugin_version, "2.0.9");
+        assert_eq!(installed.iter().find(|plugin| plugin.plugin_id == "dev.aibo.codex").unwrap().plugin_version, "2.0.15");
+        assert_eq!(installed.iter().find(|plugin| plugin.plugin_id == "dev.aibo.pi").unwrap().plugin_version, "2.0.10");
         assert!(installed.iter().all(|plugin|plugin.enabled && plugin.installed));
         for plugin in &installed {
-            assert_eq!(plugin.manifest["hostSdk"]["min"], "0.1.0");
+            assert_eq!(plugin.manifest["hostSdk"]["min"], "0.1.1");
             let directory = root.join("plugins").join(&plugin.id);
             assert!(!directory.join("runtime.mjs").exists());
             assert!(!directory.join("stdio.mjs").exists());

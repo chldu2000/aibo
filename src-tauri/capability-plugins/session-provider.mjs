@@ -1,10 +1,12 @@
+import { createHostToolChannel, hostToolDefinitions } from '@aibo/capability-runtime/host-tools';
 /** Session domain implementation for the shared Capability runtime; no Agent wire protocol. */
 export function sessionProvider({engine, pluginId, actions}) {
   let owner, boundSession, nativeSessionId, executionProfile, nextTool = 0;
   const deferred = [];
+  const hostTools = createHostToolChannel();
   const pendingTools = new Map();
   const reject = message => { throw new Error(message); };
-  const snapshot = output => ({...output,recovery:engine.snapshot(),capabilities:engine.capabilities});
+  const snapshot = output => ({...output,recovery:engine.snapshot(),capabilities:[...engine.capabilities,...(engine.hostToolsRegistered?.() ? ['host-tools'] : [])]});
   function publish(event) {
     if (!owner) {
       // Native providers may finish a recovery update immediately after a turn.
@@ -31,7 +33,7 @@ export function sessionProvider({engine, pluginId, actions}) {
       pendingTools.delete(id);pending.reject(new Error(reason));
     }
   }
-  engine.configure({emit:publish,requestTool(tool,input) {
+  engine.configure({emit:publish,requestHostTool:hostTools.call,requestTool(tool,input) {
     const current=owner;
     if (!current || !current.request.context.turnId || current.tools.signal.aborted) return Promise.reject(new Error('No active turn for workspace request'));
     if (pendingTools.size >= 32) return Promise.reject(new Error('Workspace request limit'));
@@ -49,7 +51,7 @@ export function sessionProvider({engine, pluginId, actions}) {
     return {sessionId:request.scope.id,requestId:request.invocationId,turnId:context.turnId,
       workspace:{workspaceId:context.workspaceId,path:context.workspacePath,trusted:true},
       executionProfile:{...(request.input.executionProfile ?? {}),runtimeDataPath:tools.initialization.privateData.path},
-      binding:{pluginId,recovery:request.input.recovery},input:request.input};
+      binding:{pluginId,recovery:request.input.recovery},hostTools:hostToolDefinitions(context),input:request.input};
   }
   async function perform(request,tools) {
     const p=params(request,tools);
@@ -91,13 +93,16 @@ export function sessionProvider({engine, pluginId, actions}) {
       done.catch(()=>{});
       const current={request,tools,done,finish,fail,controls:0,terminal:null,settling:false};
       owner=current;
+      let endHostTools=()=>{};
       const abort=()=>{clearTools(current,'Session invocation cancelled');fail(new Error('Session invocation cancelled'));void engine.stop();};
       tools.signal.addEventListener('abort',abort,{once:true});
       try {
+        endHostTools=hostTools.begin(request,tools,()=>nativeSessionId);
         params(request,tools);
         while (deferred.length) publish(deferred.shift());
         return await perform(request,tools);
       } finally {
+        endHostTools();
         tools.signal.removeEventListener('abort',abort);
         clearTools(current,'Session invocation ended');
         if (owner===current) owner=undefined;
@@ -109,10 +114,11 @@ export function sessionProvider({engine, pluginId, actions}) {
       current.controls++;
       try {
         if (request.capability==='aibo.session.tool.respond') {
+          if (String(request.input.requestId).startsWith('host-history-')) return hostTools.respond(request.input);
           const pending=pendingTools.get(request.input.requestId);
           if (!pending || pending.owner!==current) reject('Workspace request is no longer pending');
           pendingTools.delete(request.input.requestId);
-          if (request.input.error) pending.reject(new Error('Host rejected workspace request'));
+          if (request.input.error) pending.reject(new Error(request.input.error));
           else pending.resolve(request.input.result);
           return {resolved:true};
         }

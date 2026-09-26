@@ -1,3 +1,4 @@
+mod session_history_tools;
 mod session_reference_preferences;
 mod agent_settings;
 mod workspace_preferences;

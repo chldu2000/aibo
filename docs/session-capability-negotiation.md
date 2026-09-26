@@ -50,6 +50,7 @@ console.log(JSON.stringify(operation, null, 2));
 
 | 功能 | 插件与宿主的约定 |
 | --- | --- |
+| `host-tools` | contribution 声明 `hostTools: ["aibo.host-tools/v1"]`，协商标准 tool.respond 并在原生注册成功后返回；详见[宿主工具接入](session-history-tool-design.md) |
 | `command.list` | 返回命令目录；命令的可选 insertionText 指定完整插入文本，缺省为 `/${name} `。agent 字段只是兼容元数据，不参与品牌筛选。宿主快捷命令合并后同名优先，普通 slash 文本仍通过 turn 发送 |
 | `session.tree` | 提供会话树查询和导航；不自动获得时间线功能 |
 | `session.timeline` | 独立返回 branch 数组，各项有稳定 id；宿主在回合前冻结分支快照并叠加持久化的当前回合记录 |
@@ -66,6 +67,7 @@ console.log(JSON.stringify(operation, null, 2));
 可选功能的 read effect 不是任意文件写入授权。权限执行后端由宿主决定：
 
 - 宿主可信授权绑定到具体 installation 与 contribution；插件不能通过 ID、品牌或自增清单字段领取原生执行后端。
+- 接入 hostTools 的新 provider 如需 Core 文件/命令代理，必须额外声明 `executionPolicy: "core-proxy"`；仅历史工具响应不授予该权限。旧 provider 无 hostTools 字段时保持原有协商。
 - 未获可信原生授权时，完整声明并真正实现标准 `aibo.session.tool.respond` 与 `aibo.session.turn.write` 的提供者可进入 CoreProxy 路径，由宿主工具网关落实执行边界。不能添加空实现来获取模式。
 - 声明 `executionPolicy: "agent-managed"` 的提供者走原生权限管理路径：宿主校验声明与执行配置、工作区信任和顶层写入准入，提供者管理原生工具权限，宿主只转发实际发出的审批。该声明不授予 Core 工具权限或宿主原生沙箱；`agentManagedPermissions` 与 `nativeSandbox` 的含义见 [会话控件](session-controls.md#agent-原生权限)。
 - 未协商执行后端的提供者只有 read-only 配置。CoreProxy 可提供 read-only、plan、workspace-write；可信原生后端的模式由宿主配置决定。具体动作仍受权限、工作区信任和审批约束。

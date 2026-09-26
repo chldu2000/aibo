@@ -128,3 +128,9 @@ When modifying Aibo, run `pnpm run verify` from the Aibo root and choose additio
 [regression matrix](plugin-boundaries-and-regression.md#regression-gate). `pnpm run probe:session:capabilities` tests session workflows
 with simulated engines; native probes are described in the [probe guide](native-engine-probes.md).
 Build success, mocked-engine success, native installation and real desktop interaction are distinct evidence levels.
+
+## 宿主工具接入
+
+新增 Agent 的历史查询能力通过 `aibo.host-tools/v1` 目录和 SDK 0.1.1 的通用工具通道接入，
+无需修改宿主按品牌路由。插件只实现 MCP 参数映射或动态工具注册；读取授权、分页和版本一致性
+由宿主管理。完整步骤及原生/打包测试见[会话历史工具](session-history-tool-design.md)。

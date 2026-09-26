@@ -12,7 +12,7 @@ export type CapabilityInitialization = {protocol:'2.0'|'2.1';instanceId:string;g
 export type CapabilityInvocation = {
   invocationId:string;instanceId:string;generationId:string;contributionId:string;
   capability:string;contractVersion:string;operationId:string;scope:CapabilityScope;deadlineUnixMs:number;
-  context:{settings?:AgentSettingsContext;turnId:string|null;workspaceId:string|null;workspacePath:string|null;originalCaller:{kind:'window';id:string};permissions:string[];callChain:{invocationId:string;installationId:string;contributionId:string}[]};
+  context:{hostTools?:{schema:'aibo.host-tools/v1';tools:{name:string;description:string;inputSchema:JsonValue;outputSchema?:JsonValue;annotations?:JsonValue}[]};settings?:AgentSettingsContext;turnId:string|null;workspaceId:string|null;workspacePath:string|null;originalCaller:{kind:'window';id:string};permissions:string[];callChain:{invocationId:string;installationId:string;contributionId:string}[]};
   input:JsonValue;
 };
 export type CapabilityCallTarget = {pluginId:string;contributionId:string;capability:string;version:string;input:JsonValue};

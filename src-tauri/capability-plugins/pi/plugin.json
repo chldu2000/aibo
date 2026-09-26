@@ -1,11 +1,11 @@
 {
   "schema": "aibo.plugin-manifest/v2",
   "pluginId": "dev.aibo.pi",
-  "version": "2.0.9",
+  "version": "2.0.10",
   "displayName": "Pi",
   "description": "Pi session capabilities.",
   "hostSdk": {
-    "min": "0.1.0",
+    "min": "0.1.1",
     "maxExclusive": "0.2.0"
   },
   "host": {
@@ -1002,7 +1002,11 @@
             "networkPolicy": "disabled"
           }
         }
-      ]
+      ],
+      "hostTools": [
+        "aibo.host-tools/v1"
+      ],
+      "executionPolicy": "core-proxy"
     }
   ]
 }

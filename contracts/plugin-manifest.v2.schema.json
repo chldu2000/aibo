@@ -690,9 +690,18 @@
         },
         "executionPolicy": {
           "enum": [
-            "agent-managed"
+            "agent-managed",
+            "core-proxy"
           ],
-          "description": "Provider owns native tool permissions. Does not grant host sandbox enforcement or host tool access."
+          "description": "Native permissions, or explicit Core file/command proxy support. Host tools alone do not grant Core proxy authority."
+        },
+        "hostTools": {
+          "type": "array",
+          "maxItems": 1,
+          "uniqueItems": true,
+          "items": {
+            "const": "aibo.host-tools/v1"
+          }
         }
       }
     },

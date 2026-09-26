@@ -1,11 +1,11 @@
 {
   "schema": "aibo.plugin-manifest/v2",
   "pluginId": "dev.aibo.codex",
-  "version": "2.0.14",
+  "version": "2.0.15",
   "displayName": "Codex",
   "description": "Codex session capabilities.",
   "hostSdk": {
-    "min": "0.1.0",
+    "min": "0.1.1",
     "maxExclusive": "0.2.0"
   },
   "host": {
@@ -1081,6 +1081,69 @@
           ],
           "timeoutMs": 120000,
           "idempotent": false
+        },
+        {
+          "id": "dev.aibo.codex.session.tool.respond",
+          "capability": {
+            "id": "aibo.session.tool.respond",
+            "version": "1.0.0"
+          },
+          "effect": "read",
+          "permissions": [
+            "workspace.read"
+          ],
+          "timeoutMs": 30000,
+          "inputSchema": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "requestId"
+            ],
+            "properties": {
+              "requestId": {
+                "type": "string",
+                "minLength": 1
+              },
+              "result": {},
+              "error": {
+                "type": "string"
+              }
+            },
+            "oneOf": [
+              {
+                "required": [
+                  "result"
+                ],
+                "not": {
+                  "required": [
+                    "error"
+                  ]
+                }
+              },
+              {
+                "required": [
+                  "error"
+                ],
+                "not": {
+                  "required": [
+                    "result"
+                  ]
+                }
+              }
+            ]
+          },
+          "outputSchema": {
+            "type": "object",
+            "required": [
+              "resolved"
+            ],
+            "properties": {
+              "resolved": {
+                "const": true
+              }
+            }
+          },
+          "idempotent": true
         }
       ],
       "sessionControls": [
@@ -1123,6 +1186,9 @@
             "networkPolicy": "agent-managed"
           }
         }
+      ],
+      "hostTools": [
+        "aibo.host-tools/v1"
       ]
     },
     {

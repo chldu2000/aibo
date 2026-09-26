@@ -183,6 +183,19 @@ class FakeSession {
       this.emit({ type: 'auto_retry_start', attempt: 1, maxAttempts: 2, delayMs: 0, errorMessage: 'transient provider error' });
       this.emit({ type: 'auto_retry_end', success: false, attempt: 1, finalError: 'transient provider error' });
     }
+    if (text.startsWith('host history fixture')) {
+      const tool=this.customTools.find(candidate=>candidate.name==='aibo_read_session');
+      if(!tool) throw Error('Host history tool not installed');
+      const envelope=text.split('[AIBO_SESSION_REFERENCES]\n')[1];
+      const ref=envelope?JSON.parse(envelope.split('\n')[1])[0]:{snapshotId:'ref',sourceSessionId:'source'};
+      let args={referenceId:ref.snapshotId,sessionId:ref.sourceSessionId,pageBytes:4096},content='';
+      for(let page=0;page<1000;page++){
+        const result=await tool.execute('host-history',args);
+        const data=JSON.parse(result.content[0].text);content+=data.content;
+        if(!data.nextCursor)break;args={cursor:data.nextCursor,pageBytes:4096};
+      }
+      text=content;
+    }
     if (text.startsWith('core plugin ')) {
       const toolName = text.includes('read') || text.includes('image') ? 'read' : text.includes('write') ? 'write' : 'bash';
       const tool = this.customTools.find((candidate) => candidate.name === toolName);

@@ -44,3 +44,9 @@ Handler exceptions can carry a supported `kind` (for example `unsupported`,
 in JSON-RPC `error.data.kind`, bounds the error message, and maps unknown native
 categories to `provider_unavailable`. This applies to invocation and control
 handlers; it does not grant authority or turn failures into successful outputs.
+
+Host SDK 0.1.1 exposes `@aibo/capability-runtime/host-tools` for generic native-tool and MCP adapters.
+Declare `hostTools: ["aibo.host-tools/v1"]` and the standard tool response operation; consume the
+trusted invocation catalog and bind calls to the invocation using `createHostToolChannel`.
+MCP uses `createHostToolMcpBridge`; its generated stdio module is included in the host SDK.
+See [the complete integration contract](../../docs/session-history-tool-design.md).

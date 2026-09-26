@@ -1,13 +1,41 @@
 {
-  "name":"@aibo/capability-runtime",
-  "version":"0.1.0",
-  "private":true,
-  "type":"module",
-  "files":["runtime.mjs","stdio.mjs","runtime.d.ts","stdio.d.ts","README.md"],
-  "exports":{
-    ".":{"types":"./runtime.d.ts","import":"./runtime.mjs"},
-    "./stdio":{"types":"./stdio.d.ts","import":"./stdio.mjs"}
+  "name": "@aibo/capability-runtime",
+  "version": "0.1.1",
+  "private": true,
+  "type": "module",
+  "files": [
+    "runtime.mjs",
+    "stdio.mjs",
+    "runtime.d.ts",
+    "stdio.d.ts",
+    "README.md",
+    "host-tools.mjs",
+    "host-tools.d.ts",
+    "host-tools-mcp.mjs",
+    "host-tools-mcp.d.ts"
+  ],
+  "exports": {
+    ".": {
+      "types": "./runtime.d.ts",
+      "import": "./runtime.mjs"
+    },
+    "./stdio": {
+      "types": "./stdio.d.ts",
+      "import": "./stdio.mjs"
+    },
+    "./host-tools": {
+      "types": "./host-tools.d.ts",
+      "import": "./host-tools.mjs"
+    },
+    "./host-tools-mcp": {
+      "types": "./host-tools-mcp.d.ts",
+      "import": "./host-tools-mcp.mjs"
+    }
   },
-  "dependencies":{"@aibo/plugin-protocol":"0.1.0"},
-  "engines":{"node":">=22"}
+  "dependencies": {
+    "@aibo/plugin-protocol": "0.1.0"
+  },
+  "engines": {
+    "node": ">=22"
+  }
 }

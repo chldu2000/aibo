@@ -13,6 +13,8 @@ Node，并不内置 Node 或替插件安装其他 CLI。此功能不改变呈现
 
 - `@aibo/capability-runtime`
 - `@aibo/capability-runtime/stdio`
+- `@aibo/capability-runtime/host-tools`（SDK 0.1.1 起，工具目录、invoke 通道和 MCP bridge）
+- `@aibo/capability-runtime/host-tools-mcp`（SDK 0.1.1 起，bridge stdio server）
 - `@aibo/plugin-protocol`
 - `@aibo/plugin-protocol/semantic`
 - `@aibo/plugin-protocol/presentation`
@@ -62,3 +64,5 @@ cargo test --lib
 2.0/2.1、SDK 复用及完整性校验；Node 测试覆盖公开 exports、私有路径拒绝和插件自带库。
 本地调试可以用 `node --import /absolute/path/to/packages/plugin-host/register.mjs worker.mjs`，
 但最终插件产物不能记录这个开发机路径。
+
+工具接入步骤、执行权限分离、分页和资源限额见[完整会话查询工具](session-history-tool-design.md)。

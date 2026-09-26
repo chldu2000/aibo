@@ -46,7 +46,10 @@ pub(crate) async fn installation_backend(db: &SqlitePool, installation: &str, co
     if provider.is_some_and(|entry| entry["executionPolicy"] == "agent-managed") {
         return Ok(EnforcementBackend::AgentManaged);
     }
-    Ok(if mediated { EnforcementBackend::CoreProxy } else { EnforcementBackend::Unnegotiated })
+    // Legacy tool.respond providers used Core file/command tools exclusively.
+    // New host-tool consumers must opt into that separate execution path.
+    let core_proxy = provider.is_some_and(|entry| entry.get("hostTools").is_none() || entry["executionPolicy"] == "core-proxy");
+    Ok(if mediated && core_proxy { EnforcementBackend::CoreProxy } else { EnforcementBackend::Unnegotiated })
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]

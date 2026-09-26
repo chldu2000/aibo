@@ -1,150 +1,126 @@
-# 完整会话查询工具接入设计（待实现）
+# 完整会话查询工具
 
-本次只实现[会话引用设置](session-context-and-handoff-plan.md)。本文是后续接入方案，
-不是已发布能力；当前引用仍明确告知 Agent 没有按需读取工具。
+已实现宿主工具目录、历史读取器和公共 SDK 传输。引用设置决定随提示发送全部或最近 N 条
+用户/assistant 消息；`aibo_read_session` 让支持工具的 Agent 按需读取来源会话的持久化原文。
+新增 Agent 只需在插件中适配工具注册，不修改宿主业务代码、SQL 或品牌分支。
 
-## 决策
+## 接入合同
 
-由宿主提供一个 `SessionHistoryReader` 模块，统一读取 Aibo 持久化原文、校验权限、
-冻结读取版本、分页及处理大消息。对 Agent 公开 `aibo_read_session` 工具。
-默认通过宿主随应用交付的 MCP stdio bridge 暴露；原生 SDK 工具适配器消费同一个工具目录。
-新增 Agent 只在它自己的插件内接入通用工具传输，不修改宿主读取逻辑或按 Agent 身份分支。
+- 最低宿主 SDK `0.1.1`，Manifest v2、Runtime 2.1。session contribution 声明
+  `hostTools: ["aibo.host-tools/v1"]` 和标准 `aibo.session.tool.respond` 操作，schema
+  必须精确匹配 [基础合同](../contracts/session-capabilities.v1.json)。initialize 返回对应操作三元组。
+- Broker 校验清单和握手后，在可信 `context.hostTools` 注入
+  [版本化工具目录](../contracts/host-tools.v1.json)，包含名称、描述、输入/输出 schema 和只读提示。
+- 插件通过 `@aibo/capability-runtime/host-tools` 的 `hostToolDefinitions(context)` 取得目录。
+  原生 SDK 从目录生成动态工具，回调使用 `createHostToolChannel().call(name, input)`。
+  MCP 客户端使用 `createHostToolMcpBridge({definitions, call})` 返回的 stdio 配置。
+- 每次 invoke 调用 `channel.begin(request, tools, getNativeSessionId)`，在 finally 执行返回的清理函数。
+  `aibo.session.tool.respond` control 转给 `channel.respond(input)`；通道自动发出
+  `workspace.requested`，绑定当前 invocation、nativeSessionId 和 turnId。
+- 原生注册成功后 open 返回 `host-tools` capability。宿主取返回值、清单及握手的交集。
+  缺少目录时不注册、不声明；旧 release 继续普通会话。引擎拒绝注册时保留真实错误，不能伪称支持。
+- 新接入宿主工具的 provider 不因声明 `tool.respond` 自动获得 Core 文件/命令代理。
+  如确实实现该代理，还须声明 `executionPolicy: "core-proxy"` 并满足原有操作合同；
+  没有 hostTools 字段的旧 provider 保持原有协商规则。原生可信授权与 agent-managed 路径保持独立。
 
 ```mermaid
 flowchart LR
-  A[Agent 插件：MCP 配置适配] --> B[随应用交付的 MCP bridge]
-  C[Agent 插件：原生工具适配] --> D[宿主通用工具网关]
-  B --> D
-  D --> E[SessionHistoryReader]
-  E --> F[Aibo 持久历史与读取快照]
+  A[插件的原生工具适配] --> D[SDK 工具通道]
+  B[插件的 MCP 客户端] --> C[宿主 SDK MCP stdio bridge]
+  C --> D
+  D --> E[Runtime 事件与 control]
+  E --> F[宿主授权与 HistoryReader]
+  F --> G[Aibo 持久历史与冻结快照]
 ```
 
-MCP 标准提供工具发现与调用；stdio 由客户端启动子进程，通过标准输入输出通信。
-协议实现应使用兼容目标客户端版本的官方 SDK，不能仅实现两条 RPC 并声称完整支持 MCP。
-参见 [MCP 工具规范](https://github.com/modelcontextprotocol/modelcontextprotocol/blob/main/docs/specification/2026-07-28/server/tools.mdx)
-与 [stdio 规范](https://github.com/modelcontextprotocol/modelcontextprotocol/blob/main/docs/specification/2026-07-28/basic/transports/stdio.mdx)。
-本文的授权、读取快照和分页是 Aibo 的应用合同，不依赖 MCP 连接是否有状态。
+工具名只在宿主目录和读取路由中定义。插件遍历目录，不复制业务 schema，不直接打开数据库。
+示例实现：[公共 SDK](../packages/capability-runtime/host-tools.mjs)、
+[Codex 原生适配](../src-tauri/capability-plugins/codex/engine.mjs)、
+[Pi 原生适配](../src-tauri/capability-plugins/pi/engine.mjs)。
 
-## 现有链路及需要补齐的接口
+## MCP 与原生适配
 
-- `src-tauri/src/session_context.rs` 已从 Core 数据库捕获引用，无需启动来源 Agent。
-- `src-tauri/capability-plugins/session-provider.mjs` 已提供 `requestTool`，经
-  `workspace.requested` 与 `aibo.session.tool.respond` 完成请求/响应。
-- `src-tauri/src/session_tools.rs` 当前处理文件/命令工具，并拒绝 agent-managed 执行后端。
-  **不能为接入会话读取而删除这道限制**：原生 Agent 权限不等于 Core 文件/命令授权。
-- 当前没有可向任意插件注入的宿主工具目录，也没有宿主会话历史 MCP server。
-  仅增加 Rust 读取函数不会让模型自动获得工具。
+SDK 使用官方 `@modelcontextprotocol/sdk`，随宿主发布编译后的 stdio bridge；外部插件无需
+携带 MCP SDK 或访问应用 node_modules。插件 Worker 建立仅绑定 `127.0.0.1` 的私有 relay，
+每次创建生成随机 bearer 凭证，通过子进程环境传递。relay 只提供目录和工具调用，不提供 SQL。
+凭证不进入模型提示、recovery 或宿主消息。连接关闭销毁监听器与 sockets；新进程生成新凭证。
+SDK 是分发边界，不是隔离恶意本地插件的 OS 沙箱。
 
-新增版本化的宿主工具接入合同，例如 `hostTools/v1`，与会话提供者自身的
-`session.snapshot` / `session.timeline` 能力区分。目录中的每个工具包含稳定 ID、版本、
-描述、输入/输出 schema、只读属性和所需宿主授权。宿主基于实际协商结果提供目录，
-不根据插件品牌推断支持。SDK 的通用适配器从目录生成模型工具定义并转发调用。
+Codex 在 `thread/start.dynamicTools` 注册，并将 `item/tool/call` 映射回宿主。恢复时按 recovery
+保存的工具名称和当前目录取交集；原生线程已持久化工具定义，导入的旧线程没有工具声明时安全降级。
+该接口是实验性协议，依据本机生成 schema 及 [官方 App Server 文档](https://developers.openai.com/codex/app-server/)。
+Pi 在 `createAgentSession` 中注册 custom tools，恢复时重新注册当前目录。
+Cursor 插件将公共 bridge 配置映射为 ACP `session/new` / `session/load` 的 `mcpServers`；
+厂商参数转换全部位于插件内。Cursor MCP 发现可能延迟到首个 prompt；恢复保留公开 server 标识，
+轮换私有凭证。只读自动许可按原生结构化 server/tool 标识及当前 tool_call ID 关联，
+仅允许私有宿主目录中的只读工具一次，标题、永久许可及其他工具不会获得该授权。
 
-宿主在 open/resume 的受控调用上下文中提供工具连接描述（bridge 可执行文件、参数、
-私有 IPC 地址、会话凭证、有效期及合同版本）；厂商的 MCP 参数或原生注册方式仅由
-对应插件转换。连接信息与凭证不进入模型提示、recovery、会话原文或普通日志。
-插件须返回实际注册成功的工具/合同版本；宿主据此生成引用中的读取说明。
-恢复、换代或重启重新签发凭证，不复用旧会话的连接信息。
+## 读取合同
 
-新增这些字段时，应同步更新协议类型/schema、Broker 上下文校验、SDK、插件握手、
-打包和开发文档；旧插件缺字段时保持不可读取状态。传输适配不能使原有工具权限扩大。
-
-## 单一工具的建议合同
-
-工具名称：`aibo_read_session`。第一版只读取当前回合明确引用的来源会话，避免开放全库。
-
-首次请求示例：
+首次调用：
 
 ```json
-{
-  "referenceId": "引用附件 snapshotId",
-  "sessionId": "sourceSessionId",
-  "pageBytes": 32768
-}
+{"referenceId":"引用附件的 snapshotId","sessionId":"sourceSessionId","pageBytes":32768}
 ```
 
-续页只提交宿主返回的 opaque `cursor`（和可选的较小 `pageBytes`），不能更换来源。
-`referenceId` 确定授权来源，`sessionId` 只用于防止误读，不作为授权依据。
-调用者 session/workspace/turn 身份由工具连接绑定，禁止模型传入或覆盖。
-工具 schema 显式区分首次请求和续页，拒绝混用与未知字段。
-
-建议输出：
+续页：
 
 ```json
-{
-  "source": "persisted-core",
-  "sessionId": "来源会话 ID",
-  "referenceCapturedAt": "引用创建时间",
-  "readSnapshotId": "读取时冻结的版本 ID",
-  "readCapturedAt": "查询原文时的时间",
-  "throughMessageId": "本次读取最后一条消息 ID",
-  "historyScope": "Aibo persisted history only",
-  "messages": [
-    {
-      "id": "消息 ID",
-      "role": "assistant",
-      "status": "completed",
-      "content": "原始正文的当前分片",
-      "contentOffset": 0,
-      "contentComplete": true
-    }
-  ],
-  "nextCursor": null,
-  "complete": true
-}
+{"cursor":"上次返回的 nextCursor","pageBytes":32768}
 ```
 
-“完整”指宿主已持久化的历史，包括用户、assistant、system 和 tool 记录；原文不摘要、
-不按 1500 字符截断、不递归展开嵌套引用。工具记录保留已存储的结构化字段，附件返回
-元数据及是否另需授权读取；不把外部文件字节或宿主未保存的原生历史冒充为完整内容。
-工具数据是参考材料，不增加执行授权。
+不允许混用 cursor 与来源字段。调用者身份来自宿主运行时，不接受模型覆盖。
+响应包含 `source: "persisted-core"`、`sessionId`、`referenceCapturedAt`、`readSnapshotId`、
+`readCapturedAt`、`throughMessageId`、`historyScope`、`format: "jsonl"`、`content`、字节 `offset`、
+`nextCursor` 和 `complete`。将 `content` 按 offset 拼接后按行解析 JSON；单页可以在一条
+JSONL 记录内部结束，UTF-8 字符不会被拆开。只有 `complete=true` 且 `nextCursor=null` 才代表结束。
 
-单页默认 32 KiB，上限建议 64 KiB，计算序列化后的完整响应大小。大消息分片，
-游标包含消息位置与 UTF-8 安全的分片偏移；不得因一条消息超限而永远无法读完。
-返回 `nextCursor=null` 且 `complete=true` 才代表遍历结束。首版不加全文搜索；
-未来搜索共用相同授权与读取版本，不单独读取数据库。
+消息记录保留宿主持久化的 user、assistant、system、tool 原文与已有工具字段、状态、时间、
+顺序及原生消息 ID；附件返回元数据和 `fileBytesIncluded: false`。不摘要、不递归展开嵌套引用。
+范围是 Aibo 已保存的主会话历史，不包含导入前未保存的原生历史、子 Agent 历史或附件文件字节。
+这些内容只是参考资料，不增加执行授权。
 
-## 一致性与资源界限
+## 一致性、授权和限额
 
-引用快照仅保存选中的对话，无法重建当时未保存的工具输出。首次查询在一个 SQLite
-读事务中建立**查询时**的不可变读取快照，以固定排序 `(created_at, sequence, id)`
-冻结消息、正文、状态及结构化字段。后续页读取该快照；来源继续流式输出不改变续页。
-`referenceCapturedAt` 与 `readCapturedAt` 必须同时明确，不能声称读取结果就是引用时原文。
-可以使用引用的消息边界限制成员，但仅限制 ID 范围不足以冻结可变的消息正文。
+首次查询在一个 SQLite 读事务中，按 `(created_at, sequence, id)` 冻结消息及附件元数据。
+它是**读取时**的版本，不是引用创建时的完整历史；响应分别标明两个时间。
+事务在生成快照后结束，来源继续流式输出不改变续页内容。
 
-快照写入宿主私有临时存储，流式复制以限制内存，按回合/会话设置磁盘配额、超时及 TTL。
-这些具体限额在实现时基于真实历史验证；配额不足明确失败，不静默省略。
-不为模型思考期间保留长时间 SQLite 事务。游标过期返回 `snapshot_expired`，要求明确
-重新读取；不静默换成新历史。首次建快照失败清理半成品，回合关闭与退出回收资源。
+首版采用有界内存快照：单个最多 16 MiB，总缓存最多 64 MiB，每回合最多 4 个快照，
+TTL 为 10 分钟（后续读取清理过期项），回合结算立即清理。重复首次请求复用相同冻结快照。
+附件记录最多 10,000 条；超限返回 `resource_limit`，不静默截断。尚未实现磁盘流式快照，
+因此超过限额的历史明确无法通过此工具读取。
 
-## 授权与运行时
+单页完整 JSON 响应默认 32 KiB，允许 4–64 KiB；游标签名绑定读取版本、字节偏移、
+调用会话、回合和运行代际。过期返回 `snapshot_expired`，需要明确开始新读取。
+SDK 每回合最多 8 个并发请求，输入最多 128 KiB，单次最长 30 秒且不超过 invocation deadline。
+取消或回合结束结算 pending；迟到响应和旧代际请求拒绝。
 
-1. 宿主根据已经接受的回合输入与真实附件归属建立可读来源集合。仅添加到草稿、
-   伪造提示中的 ID、同工作区任意 ID 都不自动授权；队列按实际被接受的消息绑定。
-2. 凭证由宿主生成、短期有效，绑定 installation/contribution、运行代际、工作区、
-   调用会话、当前回合和工具 allowlist。使用受控本地 IPC，不直接向 Agent 提供 SQLite 路径。
-3. 每次调用重新核验活跃回合、来源引用归属、工作区边界及信任撤销；过期、取消、
-   runtime 换代、跨会话/跨工作区或伪造 cursor 均拒绝。来源 Agent 不必在线，归档可读。
-4. 这是一条宿主只读历史权限路径，独立于 CoreProxy 的文件/命令权限。新工具路由只
-   接受目录中经授权的历史工具，不能通过参数任意转发到原有 `session_tools`。
-5. 请求/结果遵守大小、并发、速率和取消约束；审计记录来源、边界、版本和结果，不
-   再把完整工具响应复制进日志。断连结算 pending，取消阻止后续读取。
+每次读取，包括续页，都检查：
 
-## 新 Agent 的接入验收
+1. 活跃回合、nativeSessionId、实际协商的 host-tools 和运行代际。
+2. 真实引用附件属于调用会话和该回合；已接受的 user 消息携带相同 snapshotId/contentHash。
+   仅草稿、任意同工作区会话 ID 或伪造提示不能授权。
+3. 来源和目标在同一受信工作区，来源与目标不同；信任撤销立即拒绝。来源可归档、可离线。
+4. 历史工具专用只读路由先处理；Core 文件/命令路由仍保留 agent-managed 拒绝和原有审批。
 
-新增 Agent 的可重复流程应为：安装插件 → 声明支持的工具传输/合同 → 适配 MCP 配置
-或使用 SDK 动态工具注册 → 注册成功确认 → 正常调用。不编辑宿主 Agent 注册表、
-历史 SQL、业务控制器或按品牌补提示。新增工具也只扩展宿主目录，无需逐插件列出工具。
-不支持 MCP 或工具注册的引擎明确标为不支持；不能承诺任意引擎零适配即可使用。
+## 验证
 
-实现时至少验证：
+- `test/host-tools.test.mjs`：通道绑定、取消、官方 MCP 客户端发现/调用/错误/凭证、
+  不同工具名称的通用目录，Codex/Pi 注册、调用、跨进程恢复和无目录普通会话。
+- Rust `session_history_tools`：草稿/伪造/跨工作区拒绝、归档、大消息 Unicode 分片、tool/system、
+  冻结版本、游标篡改/过期/代际、信任撤销、资源限额、回合关闭与清理。
+- Rust `third_party_agent_managed_history_tools_use_host_scope_without_core_file_authority`：
+  改名第三方插件从清单/握手到数据库原文读取及恢复，同时证明不能调用 Core 文件工具。
+- 外部 Cursor 包 smoke：实际 MCP stdio 客户端经过打包 Worker 完成 tools/list、tools/call 和恢复。
+- `node probes/host-tools-native.mjs codex|pi|cursor`：临时工作区、合成历史的真实模型调用及重启恢复。
+  2026-09-26–27，macOS arm64、Node 24.18.0：Codex CLI 0.156.1、Pi SDK 0.84.4 和
+  Cursor CLI 2026.09.18-9a7762b 在 Ask/只读配置下的实际调用及跨进程恢复通过。
+  此探针验证原生工具传输；数据库授权由上面的 Rust 集成测试覆盖。
 
-- 两个不同身份的适配器通过相同合同读取；未知第三方、缺少支持与旧 release 安全降级。
-- tools/list / tools/call 或 SDK 等价路径，真实模型可见目录，打包 bridge 能独立启动。
-- 历史超过单页、单条超大、Unicode 分片、空历史、归档、工具消息与流式更新。
-- 游标篡改/过期、跨会话/跨工作区、草稿未发送、取消/信任撤销/换代、资源配额与清理。
-- 只读模式和 agent-managed 模式均可在明确历史授权后读取，而文件/命令权限保持原样。
-- 升级后新旧固定 release，进程重启恢复，普通回合、队列、附件及引用不可变性。
+本次不涉及 UI 控件变化，未做桌面点击和截图验收。新内置 release 为 Codex 2.0.15、Pi 2.0.10；
+外部 Cursor 0.1.18 需重新构建安装。已有会话仍固定原 release，使用新会话验证新能力。
 
-按[宿主回归门槛](plugin-boundaries-and-regression.md#regression-gate)运行 Node、Rust、
-打包 Worker、真实 CLI 与桌面检查。模拟回调通过不代表实际 Agent 已注册并调用工具。
+最终回归：宿主 `pnpm run verify` 通过（41 项架构检查、457 项 Node 测试、类型检查与构建）；
+`cargo test --manifest-path src-tauri/Cargo.toml --lib` 为 260 通过、1 项既有忽略；
+外部插件 `pnpm run verify` 通过（54 项测试与离线打包 MCP smoke）。修改文档的相对链接及 diff 检查通过。

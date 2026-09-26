@@ -71,6 +71,48 @@ async fn capability_session_projects_tools_and_recovers_after_process_restart() 
     fs::remove_dir_all(root).unwrap();
 }
 
+#[tokio::test]
+async fn third_party_agent_managed_history_tools_use_host_scope_without_core_file_authority() {
+    let root=std::env::temp_dir().join(format!("aibo-history-provider-{}",ulid::Ulid::new()));
+    let package=root.join("package");let workspace=root.join("workspace");
+    fs::create_dir_all(&package).unwrap();fs::create_dir_all(&workspace).unwrap();
+    for (name,source) in [
+        ("plugin.json",include_str!("../capability-plugins/pi/plugin.json")),
+        ("worker.mjs",include_str!("../capability-plugins/pi/worker.mjs")),
+        ("engine.mjs",include_str!("../capability-plugins/pi/engine.mjs")),
+        ("session-provider.mjs",include_str!("../capability-plugins/session-provider.mjs")),
+    ] {fs::write(package.join(name),source.replace("dev.aibo.pi","org.example.history")).unwrap();}
+    let mut manifest:Value=serde_json::from_str(&fs::read_to_string(package.join("plugin.json")).unwrap()).unwrap();
+    manifest["contributions"][0]["executionPolicy"]=json!("agent-managed");
+    fs::write(package.join("plugin.json"),manifest.to_string()).unwrap();
+    let db=crate::open_database(&root.join("data/db")).await.unwrap();
+    sqlx::query("INSERT INTO workspaces(id,path,label,trusted,created_at,updated_at) VALUES('w',?,'w',1,'now','now')")
+        .bind(workspace.to_string_lossy().as_ref()).execute(&db).await.unwrap();
+    sqlx::raw_sql("INSERT INTO sessions(id,workspace_id,agent,label,state,created_at,updated_at) VALUES('source','w','offline.agent','source','closed','now','now');
+        INSERT INTO messages(id,session_id,role,content,status,created_at,updated_at) VALUES('raw','source','tool','HOST_ONLY_ORIGINAL','completed','now','now');")
+        .execute(&db).await.unwrap();
+    let installed=plugin_registry::install(&db,&root.join("data"),&package).await.unwrap();
+    plugin_registry::enable(&db,&installed.id,true).await.unwrap();
+    let broker=Broker::new(db.clone()).with_sdk_module(Some(PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../fixtures/pi/fake-sdk.mjs")));
+    let host=SessionHost::new(db.clone(),broker.clone());
+    let target=host.create_with_profile_from("main","w",&installed.id,"org.example.history.agent",None).await.unwrap();
+    assert!(crate::session_by_id(&db,&target.id).await.unwrap().capabilities.contains(&"host-tools".into()));
+    assert_eq!(execution_profile::installation_backend(&db,&installed.id,"org.example.history.agent").await.unwrap(),execution_profile::EnforcementBackend::AgentManaged);
+    for _ in 0..2 {
+        let attachment=crate::session_context::capture(&db,&target.id,"source").await.unwrap();
+        let text=format!("host history fixture\n[AIBO_SESSION_REFERENCES]\nnotice\n{}\n[/AIBO_SESSION_REFERENCES]",json!([{"snapshotId":attachment.id,"sourceSessionId":"source","contentHash":attachment.content_hash}]));
+        host.send_from("main",&target.id,&text,None).await.unwrap();wait_for_turn(&host,&target.id).await;
+        let output:Option<String>=sqlx::query_scalar("SELECT content FROM messages WHERE session_id=? AND role='assistant' ORDER BY created_at DESC LIMIT 1")
+            .bind(&target.id).fetch_optional(&db).await.unwrap();
+        assert!(output.unwrap_or_default().contains("HOST_ONLY_ORIGINAL"));
+        broker.stop_session(&target.id).await.unwrap();host.resume_from("main",&target.id).await.unwrap();
+    }
+    host.send_from("main",&target.id,"core plugin read fixture",None).await.unwrap();wait_for_turn(&host,&target.id).await;
+    let events:Vec<String>=sqlx::query_scalar("SELECT payload_json FROM agent_events WHERE session_id=?").bind(&target.id).fetch_all(&db).await.unwrap();
+    assert!(events.iter().any(|event|event.contains("native provider permissions do not authorize Core tools")),"{events:?}");
+    broker.stop_session(&target.id).await.unwrap();db.close().await;fs::remove_dir_all(root).unwrap();
+}
+
 async fn wait_for_turn(host: &SessionHost, session: &str) {
     tokio::time::timeout(Duration::from_secs(15), async {
         while host.live.lock().await.contains_key(session) { tokio::time::sleep(Duration::from_millis(20)).await; }

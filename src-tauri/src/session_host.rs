@@ -70,12 +70,13 @@ impl SessionExecution {
 struct PendingPluginTool {runtime:SessionExecution,request_id:Value,session_id:String,workspace_id:String,generation_id:String,turn_id:Option<String>,tool:String,input:Value}
 #[derive(Clone)]
 pub(crate) struct SessionHost {
+    history_reader:crate::session_history_tools::HistoryReader,
     db:SqlitePool,broker:Broker,operations:Arc<Mutex<HashMap<String,Weak<Mutex<()>>>>>,database_writes:Arc<Mutex<()>>,
     live:Arc<Mutex<HashMap<String,LiveTurn>>>,pending_tools:Arc<Mutex<HashMap<String,PendingPluginTool>>>,
     turn_baselines:Arc<Mutex<HashMap<String,Option<WorkspaceSnapshot>>>>,app:Option<tauri::AppHandle>,
 }
 impl SessionHost {
-    pub fn new(db:SqlitePool,broker:Broker)->Self {Self {db,broker,operations:Default::default(),database_writes:Default::default(),live:Default::default(),pending_tools:Default::default(),turn_baselines:Default::default(),app:None}}
+    pub fn new(db:SqlitePool,broker:Broker)->Self {Self {db,broker,history_reader:Default::default(),operations:Default::default(),database_writes:Default::default(),live:Default::default(),pending_tools:Default::default(),turn_baselines:Default::default(),app:None}}
     // Serialize each session's open + operation + recovery persistence, not the
     // whole host. Weak entries disappear once callers and waiters have left.
     pub(crate) async fn session_operation(&self, session_id: &str) -> OwnedMutexGuard<()> {
@@ -317,6 +318,7 @@ impl SessionHost {
             if let Err(error) = host.finalize_turn_changes(&session.workspace_id,&session.id,&turn).await {
                 eprintln!("session change set persistence failed: {error}");
             }
+            host.history_reader.clear_turn(&turn).await;
             host.pending_tools.lock().await.retain(|_,pending|pending.session_id!=session.id);
             if let Err(error) = host.settle_queue_turn(&session.id, &turn, run.cancel.load(Ordering::Acquire)).await {
                 eprintln!("queue settlement failed: {error}");

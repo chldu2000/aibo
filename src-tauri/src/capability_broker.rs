@@ -483,6 +483,9 @@ impl Broker {
         }
         let settings = crate::agent_settings::invocation_context(&self.db, &provider.manifest, &provider.installation_id, &provider.contribution_id, &request.scope).await.map_err(|_| fail("provider_unavailable", "Agent settings could not be resolved"))?;
         let mut invocation = json!({"invocationId":id,"instanceId":slot.id,"generationId":runtime.generation_id,"contributionId":provider.contribution_id,"capability":request.capability,"contractVersion":request.version,"operationId":provider.operation["id"],"scope":request.scope,"deadlineUnixMs":chain.deadline_ms,"context":{"turnId":request.turn_id,"workspaceId":workspace.filter(|_|chain.permissions.iter().any(|permission|permission == "workspace.read" || permission == "workspace.write")).map(|workspace|&workspace.id),"workspacePath":workspace.filter(|_|chain.permissions.iter().any(|permission|permission == "workspace.read" || permission == "workspace.write")).map(|workspace|&workspace.path),"originalCaller":{"kind":"window","id":chain.caller},"permissions":chain.permissions,"callChain":chain.sites},"input":request.input});
+        if matches!(&request.scope, Scope::Session(_)) && protocol == "2.1" && crate::session_history_tools::offered(&provider.manifest, &provider.contribution_id, &negotiated_operations) {
+            invocation["context"]["hostTools"] = crate::session_history_tools::catalog().clone();
+        }
         if let Some(settings) = settings { invocation["context"]["settings"] = settings; }
         let call = runtime.request("capability.invoke", invocation, chain.deadline.saturating_duration_since(Instant::now()));
         tokio::pin!(call);

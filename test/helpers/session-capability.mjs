@@ -6,7 +6,7 @@ import {JsonlProcess} from '../../probes/lib/jsonl-process.mjs';
 import Ajv from 'ajv/dist/2020.js';
 
 let generation=0;
-export async function sessionCapability(t,name,extraEnv={},existingDirectory,contributionId) {
+export async function sessionCapability(t,name,extraEnv={},existingDirectory,contributionId,hostTools) {
   const directory=existingDirectory ?? await mkdtemp(path.join(tmpdir(),`aibo-${name}-capability-`));
   const pkg=path.join(directory,'package');await mkdir(pkg,{recursive:true});
   const data=path.join(directory,'data');await mkdir(data,{recursive:true});
@@ -35,7 +35,7 @@ export async function sessionCapability(t,name,extraEnv={},existingDirectory,con
   function request(capability,input,turnId=null,permissions=['workspace.read']) {
     const operation=contribution.operations.find(op=>op.capability.id===capability);
     if(!operation)throw Error(`Undeclared test capability: ${capability}`);
-    return {...identity,invocationId:`invocation-${++counter}`,capability,contractVersion:'1.0.0',operationId:operation.id,deadlineUnixMs:Date.now()+15000,scope:{kind:contribution.scope,id:contribution.scope==='session'?'session':'workspace'},context:{turnId,workspaceId:'workspace',workspacePath:directory,originalCaller:{kind:'window',id:'main'},permissions,callChain:[]},input};
+    return {...identity,invocationId:`invocation-${++counter}`,capability,contractVersion:'1.0.0',operationId:operation.id,deadlineUnixMs:Date.now()+15000,scope:{kind:contribution.scope,id:contribution.scope==='session'?'session':'workspace'},context:{...(hostTools?{hostTools}:{}),turnId,workspaceId:'workspace',workspacePath:directory,originalCaller:{kind:'window',id:'main'},permissions,callChain:[]},input};
   }
   async function invoke(capability,input={},turnId=null,permissions) {
     try{return output(capability,(await rpc('capability.invoke',request(capability,input,turnId,permissions))).output);}
@@ -50,6 +50,6 @@ export async function sessionCapability(t,name,extraEnv={},existingDirectory,con
     return output(capability,(await rpc('capability.control',{...identity,invocationId:turn.request.invocationId,capability,contractVersion:p.contractVersion,operationId:p.operationId,input})).output);
   }
   const wait=type=>client.waitFor(message=>message.method==='capability.event'&&message.params.event.type===type).then(message=>message.params.event);
-  const restart=async()=>{await client.close();return sessionCapability(t,name,extraEnv,directory,contributionId);};
+  const restart=async()=>{await client.close();return sessionCapability(t,name,extraEnv,directory,contributionId,hostTools);};
   return {directory,data,manifest,client,frames,events,invoke,startTurn,control,wait,request,rpc,restart,identity};
 }

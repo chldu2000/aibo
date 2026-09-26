@@ -133,6 +133,16 @@ impl SessionHost {
             )
             .await;
         }
+        if tool == "aibo_read_session" {
+            runtime.ensure_live().await?;
+            let session = crate::session_by_id(&self.db, session_id).await.map_err(|e|e.to_string())?;
+            if !session.capabilities.iter().any(|capability|capability=="host-tools") {
+                return Self::reply_tool_error(runtime,request_id,"unsupported: host tools were not registered by this provider").await;
+            }
+            let result = self.history_reader.read(&self.db,session_id,turn_id,&runtime.generation_id,&params["input"]).await;
+            runtime.ensure_live().await?;
+            return runtime.reply(request_id,result).await;
+        }
         let resolved = crate::session_execution_profile(&self.db, session_id)
             .await
             .map_err(|error| error.to_string())?

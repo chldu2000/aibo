@@ -5,7 +5,7 @@ import { homedir } from 'node:os';
 import path from 'node:path';
 
 const pluginId = 'dev.aibo.codex';
-const pluginVersion = '2.0.14';
+const pluginVersion = '2.0.15';
 
 export const capabilities = ['session.create', 'session.resume', 'session.close', 'turn.send', 'image.input', 'turn.cancel', 'queue.manage', 'stream.text', 'goal.manage', 'goal.pause', 'goal.resume', 'model.select', 'model.reasoning', 'model.service-tier', 'model.context-window', 'skill.list', 'approval.respond', 'user-input.respond', 'session.snapshot', 'session.fork'];
 let child = null;
@@ -17,8 +17,9 @@ const MODEL_CATALOG_TTL_MS = 60_000;
 const pending = new Map();
 const providerRequests = new Map();
 
-let publish;
-export function configure(callbacks) { publish = callbacks.emit; }
+let publish, hostHistoryTool;
+export function hostToolsRegistered() { return !!session?.hostTools?.length; }
+export function configure(callbacks) { publish = callbacks.emit; hostHistoryTool=callbacks.requestHostTool; }
 const fail = (kind, message = kind) => { throw Object.assign(new Error(message), { kind }); };
 const emit = (type, payload, turnId = null, correlation = null) => publish({
   nativeSessionId: session.eventSessionId ?? session.threadId, turnId, type, correlation, payload,
@@ -76,6 +77,7 @@ function recovery() {
     reasoningEffort: session.reasoningEffort,
     serviceTier: session.serviceTier,
     contextWindow: session.contextWindow,
+    hostToolNames:session.hostTools?.map(tool=>tool.name)??[],
   } };
 }
 // model/list omits context bounds. Use the native, freshly downloaded catalog,
@@ -122,10 +124,10 @@ async function switchContextWindow(contextWindow, targetModel = null) {
   const restore = async (window, selectedModel) => {
     await stopCodex(); session = null;
     await execute('resume', {sessionId:previous.id, workspace:{path:previous.cwd},
-      eventSessionId:previous.eventSessionId ?? previous.threadId, suppressStarted:true,
+      eventSessionId:previous.eventSessionId ?? previous.threadId, suppressStarted:true,hostTools:previous.hostTools,
       executionProfile:{...previous.executionProfile, model:selectedModel, reasoningEffort:previous.reasoningEffort},
       binding:{pluginId, recovery:{schema:'dev.aibo.codex.recovery',version:1,data:{
-        threadId:previous.threadId, model:selectedModel,
+        threadId:previous.threadId, model:selectedModel,hostToolNames:previous.hostTools?.map(tool=>tool.name)??[],
         reasoningEffort:previous.reasoningEffort, serviceTier:previous.serviceTier, contextWindow:window}}}});
   };
   try {
@@ -330,13 +332,14 @@ function validateThreadPolicy(result, approvalPolicy, approvalsReviewer, sandbox
   if (result?.approvalPolicy !== approvalPolicy || (approvalsReviewer && result?.approvalsReviewer !== approvalsReviewer) || !sandboxType || result?.sandbox?.type !== sandboxType) fail('invalid_output','Codex did not enforce the requested approval and sandbox policy');
   if (model && result.model !== model) fail('invalid_output','Codex did not select the requested model');
 }
-async function startThread(cwd, approvalPolicy, approvalsReviewer, sandbox, model) {
+async function startThread(cwd, approvalPolicy, approvalsReviewer, sandbox, model, hostTools=[]) {
   const result = await rpc('thread/start', {
     cwd,
     approvalPolicy,
     ...(approvalsReviewer ? {approvalsReviewer} : {}),
     sandbox,
     serviceName: 'aibo_codex_plugin',
+    ...(hostTools.length?{dynamicTools:hostTools.map(({name,description,inputSchema})=>({type:'function',name,description,inputSchema}))}:{}),
     ...(model ? {model} : {}),
   });
   validateThreadPolicy(result, approvalPolicy, approvalsReviewer, sandbox, model);
@@ -427,6 +430,17 @@ function onCodex(message) {
   if (message.id !== undefined && pending.has(String(message.id))) {
     const request = pending.get(String(message.id)); pending.delete(String(message.id));
     message.error ? request.reject(Object.assign(new Error(message.error.message ?? 'Codex request failed'), {nativeRejected:true})) : request.resolve(message.result);
+    return;
+  }
+  if (message.id !== undefined && message.method === 'item/tool/call') {
+    const p=message.params??{}, turn=session?.turn, process=child;
+    const reply=(success,text)=>{if(child===process && child?.stdin?.writable)child.stdin.write(`${JSON.stringify({jsonrpc:'2.0',id:message.id,result:{success,contentItems:[{type:'inputText',text}]}})}\n`);};
+    if(!turn || p.threadId!==session.threadId || p.turnId!==turn.nativeId || p.namespace != null || !session.hostTools?.some(tool=>tool.name===p.tool)) {
+      reply(false,'Host tool identity or availability mismatch');return;
+    }
+    Promise.resolve().then(()=>hostHistoryTool(p.tool,p.arguments)).then(result=>{
+      if(session?.turn!==turn)reply(false,'Host tool turn ended');else reply(true,JSON.stringify(result));
+    },error=>reply(false,String(error.message??error).slice(0,4096)));
     return;
   }
   if (message.id !== undefined && message.method?.endsWith('/requestApproval')) {
@@ -562,12 +576,14 @@ export async function execute(action, p) {
     const model = typeof p.executionProfile?.model === 'string' ? p.executionProfile.model : p.binding?.recovery?.data?.model ?? null;
     const reasoningEffort = typeof p.executionProfile?.reasoningEffort === 'string' ? p.executionProfile.reasoningEffort : p.binding?.recovery?.data?.reasoningEffort ?? null;
     const serviceTier = typeof p.binding?.recovery?.data?.serviceTier === 'string' ? p.binding.recovery.data.serviceTier : null;
+    let hostTools=p.hostTools??[];
     let threadId;
     let nativeModel = model;
     if (action === 'resume') {
       const recovery = p.binding?.recovery;
       if (p.binding?.pluginId !== pluginId || recovery?.schema !== 'dev.aibo.codex.recovery' || recovery?.version !== 1 || typeof recovery.data?.threadId !== 'string') fail('invalid_recovery_data');
       threadId = recovery.data.threadId;
+      hostTools=hostTools.filter(tool=>recovery.data.hostToolNames?.includes(tool.name));
       try {
         const result = await rpc('thread/resume', { threadId, approvalPolicy, ...(approvalsReviewer ? {approvalsReviewer} : {}), sandbox, ...(model ? {model} : {}) });
         validateThreadPolicy(result, approvalPolicy, approvalsReviewer, sandbox, model);
@@ -581,13 +597,13 @@ export async function execute(action, p) {
         // this session response, while the selected model/reasoning values
         // remain in the recovery payload below.
         if (!isMissingRolloutError(error)) throw error;
-        ({threadId, model:nativeModel} = await startThread(p.workspace.path, approvalPolicy, approvalsReviewer, sandbox, model));
+        ({threadId, model:nativeModel} = await startThread(p.workspace.path, approvalPolicy, approvalsReviewer, sandbox, model, hostTools));
       }
     } else {
-      ({threadId, model:nativeModel} = await startThread(p.workspace.path, approvalPolicy, approvalsReviewer, sandbox, model));
+      ({threadId, model:nativeModel} = await startThread(p.workspace.path, approvalPolicy, approvalsReviewer, sandbox, model, hostTools));
     }
     session = { id: p.sessionId, threadId, eventSessionId:p.eventSessionId, cwd: p.workspace.path,
-      model:nativeModel, reasoningEffort, serviceTier, contextWindow, executionProfile:p.executionProfile,
+      model:nativeModel, reasoningEffort, serviceTier, contextWindow, executionProfile:p.executionProfile,hostTools,
       revision: 0, turn: null, goal: null, tokenUsage: null, rateLimitUsage: null };
     if (!p.suppressStarted) emit('session.started', { state: 'idle' });
     void refreshRateLimits();
