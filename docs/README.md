@@ -30,6 +30,14 @@
 - [退出审计](presentation-plugin-exit-audit.md)：P0–P4 完成结论和浏览器、原生验收边界。
 - [重构实施记录](presentation-plugin-refactor.md)：按阶段保留的过程记录；早期未完成项以最终退出审计为准。
 
+## 迁移提案（未实施）
+
+以下计划尚未验收，不改变现行规则。
+
+- [内置外观并入 Presentation 合同](presentation-unification-migration.md)：内置 kit 成为预装可信 release，复合控件统一为纯数据合同。
+- [合同版本收敛](contract-version-consolidation.md)：每个合同族只保留当前版本与兼容读取版本，版本转换在边界完成。
+- [ACP 作为 Agent 接入主干](acp-first-agent-integration.md)：提取通用 ACP 适配层，支持 ACP 的 Agent 只写清单即可接入。
+
 ## 仍适用的设计决定
 
 - [0002-capability-and-semantic-contract-governance](adr/0002-capability-and-semantic-contract-governance.md)
