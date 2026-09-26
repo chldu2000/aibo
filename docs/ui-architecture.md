@@ -255,6 +255,9 @@ Windows 使用独立配置和自绘窗口按钮。呈现替换不接管原生窗
 3. 视觉实现放入对应 kit；共享行为进入 shared，共享布局进入 base。ak-ui 的具体视觉遵循现行规范。
 4. 若影响外部呈现，分别检查未覆盖 surface 的继承，以及已覆盖 surface 的快照和动作是否仍完整。
    需要新增公共字段时，同时更新协议、验证器及消费者，不能把内部组件接口直接当作外部协议。
+   把控件加入外部 controls 目录时，在 `presentation-runtime/controls.ts` 的注册表中提供纯数据投影、
+   按当前 props 重新解析意图的 `resolve` 和预检样例；runtime proxy 使用 `PublicControl` 包裹 kit 组件。
+   `ExternalControl` 与 `PublicControl` 不按控件名分支，由 `test/presentation-controls.test.mjs` 检查。
 5. 按下节验证；正式改变架构规则时同步 UI 合同、架构测试和本文。
 
 ### 开发外部外观或工作台

@@ -1,6 +1,6 @@
 # 内置外观并入 Presentation 合同：迁移计划
 
-状态：P0 已实施（见下文"P0 实施记录"），P1–P3 未实施。本文不改变现行规则；在各阶段验收并同步
+状态：P0、P1 已实施（见各阶段实施记录），P2–P3 未实施。本文不改变现行规则；在各阶段验收并同步
 [UI 架构](ui-architecture.md)、[Presentation 包合同](presentation-package.md)及对应测试前，
 以现行文档为准。
 
@@ -127,6 +127,19 @@ flowchart LR
 
 验收：现有 controls 外部包（shadcn/Material 3 0.3.x、`aibo-plugins/plugins/presentation`）无需重新构建即可继续工作；
 控件协议逐字节不变，通过 `test/presentation-*.test.mjs` 与完整外部皮肤探针验证。
+
+#### P1 实施记录
+
+- `presentation-runtime/controls.ts` 的注册表为每个公开控件提供 `project`（纯数据投影）、`resolve`（按当前 props
+  把真实用户事件解析为宿主回调）、`preflight` 样例，以及可选的 `decorative` 可访问名称。
+  `controlInput`、`controlPreflights`、`modelSelections` 的导出与输出保持不变。
+- `ExternalControl.svelte` 不再按控件名分支；新增 `PublicControl.svelte`，统一"有 controls 包时替换、否则由 kit 渲染"的判断，
+  ModelMatrix 与 AgentStatusMark 的 runtime proxy 改用它。
+- 本阶段没有改页面组件：内置实现仍然接收原有回调 props。
+
+验证：
+- `test/presentation-controls.test.mjs`：线上数据与冻结的旧投影逐字节一致；意图只在 click、token 有效且控件未禁用时解析；两个桥接组件中不出现控件名。
+- 浏览器探针 `presentation-controls-browser`（含伪造选项被忽略、禁用动作不可用、`null` 继承默认实现）、`presentation-full-skins-browser`。
 
 ### P2：逐个公开复合控件
 
