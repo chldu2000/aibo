@@ -1,11 +1,10 @@
 <script>
   import '../../src/app.css';
   import { Select, GoalBar, SubagentCard, SubagentDialog, ModelMatrix, ModelContextSelect, SettingsSection, Button, Badge, Input, Textarea } from '../../src/lib/ui-kit';
-  import akThemes from '../../src/lib/ui-kit/kits/ak-ui/themes.json';
-  import materialThemes from '../../src/lib/ui-kit/kits/material3/themes.json';
-  import { setUiKit } from '../../src/lib/ui-kit/registry';
+  import { availableUiKits, setUiKit } from '../../src/lib/ui-kit/registry';
   const kit = new URLSearchParams(location.search).get('kit') === 'material3' ? 'material3' : 'ak-ui';
-  const themes = kit === 'material3' ? materialThemes : akThemes;
+  // Registered themes include the kit foundation tokens; the raw catalog holds only per-theme values.
+  const themes = availableUiKits.find(candidate => candidate.id === kit);
   setUiKit(kit);
   let theme = $state('light');
   let busy = $state(false);
