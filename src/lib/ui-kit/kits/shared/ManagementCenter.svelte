@@ -30,7 +30,8 @@
       // Let the workbench finish its own focus recovery before returning to
       // a trigger inside it. Cross-presentation switches use semantic recovery.
       if (returnToTrigger) void tick().then(() => requestAnimationFrame(() => {
-        if (document.querySelector('dialog[open]')) return;
+        // Another host dialog (for example execution history opened from here) owns focus now.
+        if (document.querySelector('dialog[open], [role="dialog"]')) return;
         // Layout changes remount navigation. Resolve the same host-owned entry
         // in the new generation; skin switches still use semantic view recovery.
         const trigger = previous.isConnected ? previous : previousFocus

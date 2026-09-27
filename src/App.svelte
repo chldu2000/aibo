@@ -1098,14 +1098,23 @@
     executionHistoryController.open(historyWorkspaceId, presentationWindowId());
     return () => executionHistoryController.close();
   });
+  // A host panel opened from the management center outlives its trigger; closing it returns to the center's entry.
+  let hostPanelReturnFocus: HTMLElement | null = null;
   function openExecutionHistory(): void {
+    hostPanelReturnFocus = settingsOpen ? document.querySelector<HTMLElement>('[data-host-navigation="management"]') : null;
     capabilityHistoryOpen = false;
     sessionHistoryOpen = false;
     settingsOpen = false; globalSearchOpen = false;
     historyWorkspaceId = selectedWorkspaceId ?? workspaces[0]?.id ?? null;
     historyOpen = true;
   }
-  function closeHostPanel(): void { historyOpen = false; capabilityHistoryOpen = false; }
+  function closeHostPanel(): void {
+    historyOpen = false; capabilityHistoryOpen = false;
+    const target = hostPanelReturnFocus; hostPanelReturnFocus = null;
+    if (target) void tick().then(() => requestAnimationFrame(() => {
+      if (target.isConnected && !target.closest('[hidden],[inert]') && !document.querySelector('dialog[open], [role="dialog"]')) target.focus();
+    }));
+  }
   let sessionHistoryOpen = $state(false);
   let sessionHistoryRequest = $state<{ workspaceId: string; sessionId: string | null; messageId: string | null } | null>(null);
   const sessionHistoryWorkspaceId = $derived(sessionHistoryRequest?.workspaceId ?? null);
@@ -3812,6 +3821,30 @@
 
 </script>
 
+{#snippet hostApprovals()}
+  <section class="approval-list" aria-label="宿主审批" aria-live="assertive" style="max-height: {settingsOpen ? '30vh' : '40vh'}; overflow: auto; flex-shrink: 0;">
+    {#each pendingApprovals as approval (JSON.stringify([approval.sessionId, approval.requestId]))}
+      <Card class="approval-card">
+        <CardHeader class="approval-card-heading">
+          <CardTitle>需要确认 · {sessions.find(session => session.id === approval.sessionId)?.label ?? approval.sessionId}</CardTitle>
+          <Badge variant="warning">{approval.kind}</Badge>
+        </CardHeader>
+        <CardContent class="approval-card-content">
+          {#if approval.command}<code>{approval.command}</code>{/if}
+          {#if approval.cwd}<small>{approval.cwd}</small>{/if}
+          <div class="approval-actions">
+            {#if approval.availableDecisions.includes('cancel')}
+              <Button variant="ghost" size="sm" onclick={() => void resolveApproval(approval, 'cancel')} disabled={busy}>拒绝</Button>
+            {/if}
+            {#if approval.availableDecisions.includes('accept')}
+              <Button size="sm" onclick={() => void resolveApproval(approval, 'accept')} disabled={busy}>允许</Button>
+            {/if}
+          </div>
+        </CardContent>
+      </Card>
+    {/each}
+  </section>
+{/snippet}
 {#snippet presentationPackageManagement()}
   <section id="presentation-packages" aria-label="皮肤插件管理" tabindex="-1">
   <SettingsSection title="皮肤插件" error={presentationPackages.error} items={[
@@ -3964,32 +3997,10 @@
     onSelectTheme={id => void presentationOperation(() => choosePresentationTheme(id))}
     onSelectSection={section => { managementSection = section; }}
     onClose={() => (settingsOpen = false)}
+    footer={pendingApprovals.length > 0 ? hostApprovals : undefined}
   />
 
-  {#if pendingApprovals.length > 0}
-    <section class="approval-list" aria-label="宿主审批" aria-live="assertive" style="max-height: 40vh; overflow: auto; flex-shrink: 0;">
-      {#each pendingApprovals as approval (JSON.stringify([approval.sessionId, approval.requestId]))}
-        <Card class="approval-card">
-          <CardHeader class="approval-card-heading">
-            <CardTitle>需要确认 · {sessions.find(session => session.id === approval.sessionId)?.label ?? approval.sessionId}</CardTitle>
-            <Badge variant="warning">{approval.kind}</Badge>
-          </CardHeader>
-          <CardContent class="approval-card-content">
-            {#if approval.command}<code>{approval.command}</code>{/if}
-            {#if approval.cwd}<small>{approval.cwd}</small>{/if}
-            <div class="approval-actions">
-              {#if approval.availableDecisions.includes('cancel')}
-                <Button variant="ghost" size="sm" onclick={() => void resolveApproval(approval, 'cancel')} disabled={busy}>拒绝</Button>
-              {/if}
-              {#if approval.availableDecisions.includes('accept')}
-                <Button size="sm" onclick={() => void resolveApproval(approval, 'accept')} disabled={busy}>允许</Button>
-              {/if}
-            </div>
-          </CardContent>
-        </Card>
-      {/each}
-    </section>
-  {/if}
+  {#if pendingApprovals.length > 0 && !settingsOpen}{@render hostApprovals()}{/if}
   {#if sessionHistoryOpen}
     <div class="host-session-history-region" style="order:2; display:grid; flex:1; min-height:0; overflow:auto;">
       <SessionHistoryPanel {workspaces} workspaceId={sessionHistoryWorkspaceId} state={sessionHistory} {desktop}

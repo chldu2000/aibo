@@ -230,6 +230,8 @@ h1, h2, h3, p { margin: 0; }
 .composer-model-option-copy small { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .composer-menu button { display: flex; min-width: 0; align-items: center; gap: 8px; padding: 8px; }
 .approval-list { display: grid; gap: 8px; margin: 0 16px 12px; }
+/* Inside the modal management center, pending approvals span its footer. */
+.management-footer > .approval-list { flex: 1; margin: 0; }
 .user-input-list { display: grid; gap: 8px; margin: 0 16px 12px; }
 .user-input-card-heading { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
 .user-input-card-content { display: grid; gap: 12px; }

@@ -56,8 +56,17 @@ try {
     assert.ok(await page.locator(kit==='external'?'.presentation-external iframe':'.workspace-grid').isVisible());
     if(kit==='external')assert.equal(await page.locator('.presentation-external').getAttribute('inert'),'');
     assert.equal(await page.locator('.workbench-presentation').getAttribute('inert'),'');
-    // Open issue: the management center is a modal dialog, so host approvals outside it are unreachable
-    // while it is open. Approval reachability is checked on the non-modal execution history panel below.
+    // The management center is modal, so pending approvals render inside it while it is open.
+    await page.evaluate(()=>window.emitApproval());
+    const dialogApproval=management.getByRole('region',{name:'宿主审批'});
+    await dialogApproval.getByRole('button',{name:'允许',exact:true}).waitFor();
+    assert.equal(await page.getByRole('region',{name:'宿主审批'}).count(),1,'approvals render in one place');
+    await management.getByRole('button',{name:'Beta · 1.0.0',exact:true}).focus();
+    for(let n=0;n<30&&!(await dialogApproval.evaluate(el=>el.contains(document.activeElement)));n++)await page.keyboard.press('Tab');
+    assert.ok(await dialogApproval.evaluate(el=>el.contains(document.activeElement)),'Tab reaches approvals inside the modal management center');
+    await dialogApproval.getByRole('button',{name:'允许',exact:true}).click();
+    assert.deepEqual(await page.evaluate(()=>window.approvalDecisions),[{sessionId:'s1',requestId:'panel-approval',decision:'accept'}]);
+    await dialogApproval.waitFor({state:'detached'});
     await page.screenshot({path:`/tmp/aibo-host-plugins-${kit}.png`});
     await page.setViewportSize({width:480,height:780});
     await page.getByRole('button',{name:'← 插件列表',exact:true}).click();
@@ -78,6 +87,8 @@ try {
     await management.getByRole('button',{name:'执行历史',exact:true}).click();
     const history=page.locator('[data-ui-component="host-panel"]');
     await history.waitFor();await management.waitFor({state:'hidden'});
+    await page.waitForTimeout(100);
+    assert.ok(await history.evaluate(el=>el.contains(document.activeElement)),'focus moves into the history panel, not back to the closed center\'s entry');
     await page.getByRole('button',{name:'更早一页',exact:true}).click();
     await page.getByText('第 2 页',{exact:true}).waitFor();
     const details=page.locator('.host-history-region details').first();
@@ -107,14 +118,15 @@ try {
     await page.keyboard.press('Tab');
     assert.ok(await approval.evaluate(el=>el.contains(document.activeElement)), 'Tab reaches host approvals');
     await approval.getByRole('button',{name:'允许',exact:true}).click();
-    assert.deepEqual(await page.evaluate(()=>window.approvalDecisions),[{sessionId:'s1',requestId:'panel-approval',decision:'accept'}]);
+    assert.equal((await page.evaluate(()=>window.approvalDecisions)).length,2);
     await page.screenshot({path:`/tmp/aibo-host-history-${kit}.png`});
     await history.locator('.host-panel-body').focus();
     await page.keyboard.press('Escape');
     try { await history.waitFor({state:'detached'}); } catch(error) { console.log({kit,errors,active:await page.evaluate(()=>document.activeElement?.outerHTML),body:await page.locator('body').innerText()}); throw error; }
-    // Open issue: the trigger inside the closed management center is gone, so focus is not restored here.
+    // Its trigger lived in the closed management center, so focus returns to the center's entry.
+    await page.waitForFunction(()=>document.activeElement?.dataset.hostNavigation==='management');
     assert.deepEqual(errors,[]);
     await page.close();
-    console.log(`${kit}: management plugins, narrow navigation, retained history, folding, background and approvals passed`);
+    console.log(`${kit}: management plugins and in-dialog approvals, narrow navigation, retained history, folding, background, approvals and focus passed`);
   }
 } finally { await browser.close(); await server.close(); }
