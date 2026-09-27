@@ -319,8 +319,11 @@ try {
     if(await frame.locator('[data-presentation-key="workbench:layout"]').getAttribute('open')===null)await frame.getByText('布局',{exact:true}).click();
     await frame.getByRole('button',{name:'审阅布局',exact:true}).click();
     await page.waitForFunction(()=>localStorage.getItem('aibo.workbench-presentation.v1.main')==='review');
-    await frame.getByRole('button',{name:'侧边面板',exact:true}).click();
-    await page.waitForFunction(()=>JSON.parse(localStorage.getItem('aibo.workbench-layout.v1.main')||'null')?.auxiliaryOpen===false);
+    // The layout switch re-renders the Worker tree; a click on the superseded tree is rejected by design, so retry
+    // only while the panel is still open (never toggling twice).
+    const auxiliaryClosed=()=>page.evaluate(()=>JSON.parse(localStorage.getItem('aibo.workbench-layout.v1.main')||'null')?.auxiliaryOpen===false);
+    for(let n=0;n<10&&!(await auxiliaryClosed());n++){await frame.getByRole('button',{name:'侧边面板',exact:true}).click();for(let m=0;m<10&&!(await auxiliaryClosed());m++)await page.waitForTimeout(50);}
+    assert.ok(await auxiliaryClosed(),'side panel toggle persists');
     const savedLayout=await page.evaluate(()=>JSON.parse(localStorage.getItem('aibo.workbench-layout.v1.main')));
     const answerRequest={requestId:'reload-question',isBlocking:true,questions:[{id:'answer',header:null,question:'Persistent answer?',options:[],isOther:true}]};
     await page.evaluate(request=>window.emitAgent('user_input.requested',request),answerRequest);

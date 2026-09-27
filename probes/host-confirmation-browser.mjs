@@ -75,7 +75,8 @@ try {
   await page.getByRole('button', { name: '重新读取确认设置', exact: true }).click();
   await page.waitForFunction(() => !document.querySelector('button[aria-label="Git 操作确认策略"]').disabled);
   await page.getByRole('tab', { name: '外观', exact: true }).click();
-  await page.locator('.appearance-theme-option').filter({ hasText: '深色' }).click();
+  // Brightness is chosen in the 明暗模式 radio group; palettes are a separate list.
+  await page.getByRole('radiogroup', { name: '明暗模式' }).getByRole('radio', { name: '深色', exact: true }).check();
   await page.getByRole('tab', { name: '工作区', exact: true }).click();
   await page.screenshot({ path: '/tmp/aibo-host-confirmation/dark.png' });
   // Arrow navigation commits through the same save callback; Escape only dismisses the popup.
