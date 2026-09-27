@@ -1,6 +1,6 @@
 # ACP 作为 Agent 接入主干：迁移计划
 
-状态：A1、A2、A3 已实施，A4 的通用 Worker 接线已完成；A5、A6 未实施。宿主会话合同、能力协商与执行授权规则不因本文改变；现行规则见
+状态：A1、A2、A3 已实施，A4 的通用 Worker 接线已完成；A5、A6、A7 未实施。宿主会话合同、能力协商与执行授权规则不因本文改变；现行规则见
 [会话能力协商](session-capability-negotiation.md)与[宿主和插件边界](plugin-boundaries-and-regression.md)。
 
 ## 背景与问题
@@ -362,6 +362,40 @@ A4 剩余工作是将这段接线提供给 A2 的通用 Worker，并验证第二
 
 设计上下文重置与原生会话绑定的对应关系后再开放，不属于 A5 范围。
 
+### A7：ACP elicitation（Agent 向用户收集结构化输入）
+
+背景：ACP 定义了 Agent 向客户端请求用户输入的 `elicitation/create`。客户端在 `initialize` 的 `clientCapabilities.elicitation`
+中声明 `form: {}` 或 `url: {}` 后，Agent 才会发起。Claude Code 的 AskUserQuestion，以及 MCP 服务的表单与 OAuth 登录，都经由这条通道。
+通用层目前不声明也不处理它：Agent 收到 Method not found，Claude 的提问工具因此失败（A3 已知差距）。
+Cursor 的 `cursor/ask_question` 是厂商扩展，已由 Cursor 扩展映射到宿主提问，不受本阶段影响。
+
+范围与映射（`form` 模式）：
+
+| ACP | Aibo | 说明 |
+| --- | --- | --- |
+| `elicitation/create`，`mode: "form"` | `user_input.requested` | `message` 作为问题正文；关联 `toolCallId` |
+| `requestedSchema.properties` 的每个字段 | 一个问题 | 字段名作问题 ID，`title` 作标题，`description` 作正文 |
+| 字符串带 `enum` / `oneOf` | 单选选项 | 选项标签取 `title`，回复时换回原始值 |
+| 数组带 `items.enum` / `items.anyOf` | 多选 | 宿主问题界面暂无多选；须扩展宿主问题合同与界面，未扩展前只提交单个值并如实标注 |
+| 字符串、数字、整数、布尔 | 自由输入 / 是否 | 回复时按 schema 校验并转换类型；不满足 `required`、枚举或范围时拒绝提交，不猜测 |
+| 用户提交 / 拒绝 / 关闭 | `accept` + `content` / `decline` / `cancel` | 取消回合、会话关闭或迁移时统一回复 `cancel` |
+
+改动：
+
+- 通用层在扩展或 `acp.json` 声明支持时，于 `initialize` 声明 `elicitation: { form: {} }`，并声明 `user-input.respond` 能力；
+  插件清单须包含对应的 `<pluginId>.user-input.respond` 操作。未声明时保持现状（不宣称、Method not found）。
+- 请求沿用现有待处理交互的约束：绑定当前回合与原生会话、32 个上限、过期或跨会话回复明确拒绝。
+- 厂商在 `_meta` 中附加的语义（例如 Claude 为每个问题配对的"自定义回答"字段）不在通用层解析；
+  通用层把它当作普通字段，必要时由扩展钩子把配对字段合并为宿主问题的"其他"输入。
+- `url` 模式不在本阶段开放：打开外部链接涉及确认与安全提示，需要单独的宿主决策；通用层不声明 `url`，Agent 不会发起。
+
+验收：
+
+- 回显夹具增加 `elicitation/create` 表单请求（单选、多选、自由文本、数字、必填），覆盖提交、拒绝、取消、类型校验、回合取消时统一回复，
+  以及未声明能力时 Method not found 的现状。
+- 真实 Claude Code 中触发 AskUserQuestion，在宿主问题界面回答后，Claude 收到答案并继续回合。
+- 多选若未扩展宿主合同，验收记录中写明降级方式。
+
 ## 风险与缓解
 
 | 风险 | 缓解 |
@@ -371,6 +405,7 @@ A4 剩余工作是将这段接线提供给 A2 的通用 Worker，并验证第二
 | ACP 版本升级 | `protocolVersion` 精确匹配；新版本在通用层新增编解码，插件通过配置选择，不静默升级 |
 | 通用层成为隐形宿主合同 | `acp` 配置段只由插件进程读取；宿主测试断言清单校验不依赖该字段 |
 | Agent 在宿主不知情时切到可写模式 | A5 前插件拦截模式切换选项；非宿主发起的 `current_mode_update` 一律中止回合 |
+| elicitation 表单被当作任意 UI 注入 | 只映射 schema 中的基本类型字段为宿主问题，文本以纯文本显示；不开放 `url` 模式 |
 | 原生工具绕过 CoreProxy | 一致性测试检测原生工具绕过；无法证明时不声明 `core-proxy` |
 
 ## 待决问题
