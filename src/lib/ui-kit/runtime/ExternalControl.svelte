@@ -94,4 +94,6 @@
   .external-control.status-mark { display: inline-block; width: 20px; height: 20px; pointer-events: none; }
   .external-control.footprint { display: inline-block; vertical-align: middle; }
   .external-control[hidden] { display: none; }
+  /* A color-scheme mismatch with the frame document would make browsers paint an opaque canvas. */
+  .external-control :global(iframe) { color-scheme: normal; background: transparent; }
 </style>

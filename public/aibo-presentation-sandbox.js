@@ -387,7 +387,9 @@
     localInputActions = packet.localInputActions;
     allowInheritance = packet.allowInheritance;
     const style = document.createElement('style');
-    style.textContent = 'html,body{margin:0;min-height:100%;}*{box-sizing:border-box;}' + selectStyles + packet.css;
+    // Control frames sit inside host layouts, so their canvas stays transparent whatever the package paints.
+    const controlCanvas = packet.input?.surface === 'controls' ? 'html,body{background:transparent!important;}' : '';
+    style.textContent = 'html,body{margin:0;min-height:100%;}*{box-sizing:border-box;}' + selectStyles + packet.css + controlCanvas;
     document.head.append(style);
     // Worker blob inherits this document's CSP: no network, imports or eval.
     const source = packet.source + '\n;self.onmessage = async ({data}) => { if(data.ping) { self.postMessage({pong:true}); return; } try { if(data.local) await self.aiboPresentation.handle(data.local,data.input); const tree = await self.aiboPresentation.render(data.input); self.postMessage({ticket:data.ticket,tree}); } catch(error) { self.postMessage({ticket:data.ticket,error:String(error)}); } };';

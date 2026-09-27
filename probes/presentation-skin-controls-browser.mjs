@@ -49,6 +49,7 @@ try {
   const select=selects.nth(0).contentFrame(),context=selects.nth(1).contentFrame();
   await select.getByRole('button',{name:'Probe select：Alpha'}).waitFor();
   await context.getByRole('button',{name:'模型上下文大小：272K'}).waitFor();
+  for(const frame of [marks.nth(0),selects.nth(0)])assert.equal(await frame.contentFrame().locator('body').evaluate(body=>getComputedStyle(body).backgroundColor),'rgba(0, 0, 0, 0)','control frames keep a transparent canvas');
   await page.locator('#probe').screenshot({path:`/tmp/aibo-skin-controls-${pkg.release.manifest.id.split('.').at(-1)}.png`});
   await select.getByRole('button',{name:'Probe select：Alpha'}).click();
   const listbox=page.getByRole('listbox',{name:'Probe select'});await listbox.waitFor();
@@ -63,6 +64,6 @@ try {
   await page.evaluate(()=>window.controlPackageProbe.setChoice('a'));
  }
  await page.evaluate(()=>window.controlPackageProbe.dispose());assert.equal(await page.locator('iframe').count(),0);assert.deepEqual(errors,[]);
- const result={passed:true,browser:browser.version(),nativePort:'not exercised',checks:['independent packages preserve exact OpenAI and Pi paths','all five state tones','reduced-motion disables running animation','model selection calls host and disabled blocks selection','decorative iframe does not capture parent clicks or tab focus','trusted host controls untouched','file and session marks render package glyphs with host labels','select and context triggers open host menus and commit choices','dispose removes all external controls']};
+ const result={passed:true,browser:browser.version(),nativePort:'not exercised',checks:['independent packages preserve exact OpenAI and Pi paths','all five state tones','reduced-motion disables running animation','model selection calls host and disabled blocks selection','decorative iframe does not capture parent clicks or tab focus','trusted host controls untouched','file and session marks render package glyphs with host labels','control frames keep a transparent canvas','select and context triggers open host menus and commit choices','dispose removes all external controls']};
  await writeFile('/tmp/aibo-presentation-skin-controls-browser.json',JSON.stringify(result,null,2)+'\n');console.log(JSON.stringify(result));
 } finally {await browser.close();await server.close();await built.dispose();}

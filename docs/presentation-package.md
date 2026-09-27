@@ -199,6 +199,7 @@ ModelContextSelect 的 `props` 为 `{ options, current, disabled }`，`options` 
 控件 iframe 的尺寸由宿主决定：ModelMatrix 为固定高度的面板，三种标记为 20px 方框，
 Select 与 ModelContextSelect 使用默认控件在当前 kit 中测得的占位，因此替换后周围布局不移动。
 包需要在这个尺寸内排版，例如收紧内边距、对过长文字做省略，不能依赖自身内容撑开尺寸。
+控件 iframe 的画布由宿主设为透明，包样式表中的 `body` 背景不会显示在控件周围。
 
 AgentSettingsForm、GoalBar、SubagentCard、SubagentDialog 均为内部控件，
 未加入外部 controls 目录，不能通过声明同名控件取得其接口。
