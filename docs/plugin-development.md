@@ -95,6 +95,16 @@ Menus consume host-validated `executionProfile.sessionControls`; selection submi
 [Session controls](session-controls.md) defines native authorization, CoreProxy and `agent-managed` permission ownership;
 none can be inferred from a brand or feature label. Opening an edit mode alone does not authorize a write turn.
 
+### Connect an ACP agent
+
+Agents that speak the [Agent Client Protocol](https://agentclientprotocol.com) need no code. Start from
+`aibo-plugins/plugins/acp-template`: `plugin.json` declares the session operations and executable dependency,
+`acp.json` describes the launch command and mode mapping, and `worker.mjs` only calls `serveAcpAgent` from host SDK 0.1.3.
+Capabilities are narrowed by the agent's `initialize` response: resume only with `loadSession`, image input only with image prompts,
+and model or parameter selection only when the agent returns config options. An invalid `acp.json` stops the worker before
+the handshake, so the host reports it at startup. For vendor extension methods, pass an `extension` to `serveAcpAgent`
+as the Cursor plugin does; fields and hooks are described in [`@aibo/acp-adapter`](../packages/acp-adapter/README.md).
+
 ## Extend presentation
 
 External skins use a separate `presentation.json` package and the [presentation tools](../packages/presentation-tools/).

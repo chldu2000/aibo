@@ -17,6 +17,7 @@ Node，并不内置 Node 或替插件安装其他 CLI。此功能不改变呈现
 - `@aibo/capability-runtime/host-tools-mcp`（SDK 0.1.1 起，bridge stdio server）
 - `@aibo/acp-adapter`、`@aibo/acp-adapter/session`、`@aibo/acp-adapter/transport`、`@aibo/acp-adapter/config`、`@aibo/acp-adapter/image-input`
   （SDK 0.1.2 起，通用 ACP 客户端会话、传输、配置解析与图片输入，见[包说明](../packages/acp-adapter/README.md)）
+- `@aibo/acp-adapter/worker`（SDK 0.1.3 起，由 `plugin.json` 与 `acp.json` 驱动的通用 ACP Worker）
 - `@aibo/plugin-protocol`
 - `@aibo/plugin-protocol/semantic`
 - `@aibo/plugin-protocol/presentation`

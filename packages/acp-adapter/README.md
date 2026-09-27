@@ -1,8 +1,8 @@
 # @aibo/acp-adapter
 
 Generic [Agent Client Protocol](https://agentclientprotocol.com) client for Aibo session providers.
-Part of the host SDK from 0.1.2: plugins declaring `hostSdk` import it at runtime and keep it as a
-development dependency only (see [host SDK](../../docs/host-sdk.md)).
+Part of the host SDK from 0.1.2 (`worker` from 0.1.3): plugins declaring `hostSdk` import it at runtime and
+keep it as a development dependency only (see [host SDK](../../docs/host-sdk.md)).
 
 | Entry | Contents |
 | --- | --- |
@@ -10,6 +10,21 @@ development dependency only (see [host SDK](../../docs/host-sdk.md)).
 | `@aibo/acp-adapter/session` | `AcpSession`: initialize/authenticate, new/load, mode and model selection confirmed by the agent, prompts, messages, reasoning, tools, permission requests, cancellation and recovery |
 | `@aibo/acp-adapter/config` | Parsing of ACP session config options into models, reasoning levels and context windows |
 | `@aibo/acp-adapter/image-input` | Validation of host image descriptors into ACP image content blocks |
+| `@aibo/acp-adapter/worker` | `serveAcpAgent`: a Runtime 2.1 Worker driven by `plugin.json` plus `acp.json`, or by a code extension; host-tool MCP bridge included |
+
+## Configuration-only plugins
+
+`acp.json` (schema `aibo.acp-agent/v1`) holds `label`, `command` (an `executable` declared in
+`plugin.json` `executableDependencies`), optional `args`, and `modes` mapping Aibo's `ask`, `plan` and `edit` to
+native mode IDs; `edit` is the write mode. Optional: `authMethodId`, `clientMeta`, `persistsEmptySessions`
+(default `true`) and `requestPrefix`. The host manifest schema does not allow plugin fields, so this file is
+read only by the Worker; an invalid one stops it before the Runtime handshake. Recovery data uses
+`<pluginId>.recovery`, optional features use the manifest's `<pluginId>.<feature>` operations, and profiles follow
+`agent-managed` execution. Declaring `hostTools` and `aibo.session.tool.respond` connects Aibo's host tools through
+the SDK MCP bridge. See `aibo-plugins/plugins/acp-template`.
+
+Mode switching uses the agent's mode config option when it returns one, and the standard `session/set_mode`
+request when it only exposes the session modes API.
 
 ## Writing a provider
 

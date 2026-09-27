@@ -17,7 +17,7 @@ try {
   if (process.argv.includes('--check')) {
     if (await readFile(bridgePath,'utf8') !== bridge) throw Error('Host MCP bridge is stale');
   } else await writeFile(bridgePath,bridge);
-  const sdk = { version: '0.1.2', exports: {}, modules: {} };
+  const sdk = { version: '0.1.3', exports: {}, modules: {} };
   for (const name of ['capability-runtime', 'plugin-protocol', 'acp-adapter']) {
     const directory = path.join(root, 'packages', name);
     const manifest = JSON.parse(await readFile(path.join(directory, 'package.json'), 'utf8'));
@@ -25,7 +25,7 @@ try {
       sdk.exports[manifest.name + (entry === '.' ? '' : entry.slice(1))] = `${name}/${target.import.slice(2)}`;
     }
     const files = name === 'capability-runtime' ? ['runtime.mjs', 'stdio.mjs', 'host-tools.mjs', 'host-tools-mcp.mjs']
-      : name === 'acp-adapter' ? ['index.mjs', 'session.mjs', 'transport.mjs', 'config.mjs', 'image-input.mjs']
+      : name === 'acp-adapter' ? ['index.mjs', 'session.mjs', 'transport.mjs', 'config.mjs', 'image-input.mjs', 'worker.mjs']
       : (await readdir(temporary)).filter(file => file.endsWith('.js')).sort().map(file => `dist/${file}`);
     for (const file of files) {
       sdk.modules[`${name}/${file}`] = await readFile(name === 'plugin-protocol'

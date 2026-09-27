@@ -420,12 +420,17 @@ export class AcpSession {
     const values = new Set(available.map(option => option.value ?? option.id));
     if (!values.has(expected)) throw pluginError('unsupported', `${this.label} does not support ${expected} mode`);
     const current = mode?.currentValue ?? result?.modes?.currentModeId;
-    if (current !== expected) {
-      const changed = await this.transport.request('session/set_config_option', { sessionId: this.sessionId, configId: 'mode', value: expected });
-      this.#readModelConfig(changed);
-      const updated = changed?.configOptions?.find(option => option.id === 'mode')?.currentValue;
-      if (updated !== expected) throw pluginError('invalid_output', `${this.label} did not confirm the requested mode`);
+    if (current === expected) return;
+    if (!mode) {
+      // Agents exposing only the session modes API switch with session/set_mode; its
+      // successful response is the agent's confirmation that the mode is active.
+      await this.transport.request('session/set_mode', { sessionId: this.sessionId, modeId: expected });
+      return;
     }
+    const changed = await this.transport.request('session/set_config_option', { sessionId: this.sessionId, configId: 'mode', value: expected });
+    this.#readModelConfig(changed);
+    const updated = changed?.configOptions?.find(option => option.id === 'mode')?.currentValue;
+    if (updated !== expected) throw pluginError('invalid_output', `${this.label} did not confirm the requested mode`);
   }
 
   #validateRecovery(value, workspaceId, workspacePath) {

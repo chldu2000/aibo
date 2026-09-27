@@ -23,6 +23,7 @@ class FakeTransport {
     if (method === 'session/new') return { sessionId: 'echo-1', ...modes('ask') };
     if (method === 'session/load') return modes('ask');
     if (method === 'session/set_config_option') return { configOptions: [{ id: 'mode', currentValue: params.value }] };
+    if (method === 'session/set_mode') return {};
     if (method === 'session/prompt') return new Promise(resolve => { this.finishPrompt = resolve; });
     throw new Error(`Unexpected request: ${method}`);
   }
@@ -44,7 +45,9 @@ const open = (session, overrides = {}) => session.open({ mode: 'create', workspa
 test('agents without an auth method skip authenticate and send no client extension metadata', async () => {
   const { transport, session } = fixture();
   const opened = await open(session);
-  assert.deepEqual(transport.requests.map(request => request.method), ['initialize', 'session/new', 'session/set_config_option']);
+  // A modes-only agent switches with the standard session/set_mode request.
+  assert.deepEqual(transport.requests.map(request => request.method), ['initialize', 'session/new', 'session/set_mode']);
+  assert.deepEqual(transport.requests[2].params, { sessionId: 'echo-1', modeId: 'code' });
   const initialize = transport.requests[0].params;
   assert.equal(initialize.clientCapabilities._meta, undefined);
   assert.deepEqual(initialize.clientCapabilities.fs, { readTextFile: false, writeTextFile: false }, 'no client file or terminal tools');

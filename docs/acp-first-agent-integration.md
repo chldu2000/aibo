@@ -1,6 +1,6 @@
 # ACP 作为 Agent 接入主干：迁移计划
 
-状态：A1 代码已实施，真机验收见实施记录；A2、A3、A5、A6 未实施。A4 的 Cursor 接入已存在，通用 Worker 配置入口仍待实施。宿主会话合同、能力协商与执行授权规则不因本文改变；现行规则见
+状态：A1、A2 已实施，A4 的通用 Worker 接线已完成（第二个真实 Agent 的验证随 A3）；A3、A5、A6 未实施。宿主会话合同、能力协商与执行授权规则不因本文改变；现行规则见
 [会话能力协商](session-capability-negotiation.md)与[宿主和插件边界](plugin-boundaries-and-regression.md)。
 
 ## 背景与问题
@@ -55,31 +55,32 @@ flowchart LR
 | `transport` | 从 Cursor `acp-transport.mjs` 提取 | 子进程、NDJSON、双向 RPC、帧上限、背压、超时、stderr 有界尾部 |
 | `session` | 从 `cursor-session.mjs` 提取通用部分 | 握手、new/load 选择、prompt 串行、cancel、事件映射、审批与问答、recovery |
 | `config` | 从 `model-config.mjs` 提取 | `config_option` → 模型/推理/上下文窗口的归一化 |
-| `worker` | 新增 | 读取自身 `plugin.json` 的 `acp` 配置段，组装 Runtime 2.1 Worker |
+| `worker` | 新增 | 读取插件包内的 `acp.json`（或接受代码扩展），组装 Runtime 2.1 Worker |
 | `extensions` | 新增接口 | 认证、`_meta`、扩展方法、扩展通知的钩子 |
 
 插件形态：
 
 ```text
 plugins/<agent>/
-  plugin.json          # 清单 v2 + acp 配置段
-  worker.mjs           # 一行：export { default } from '@aibo/acp-adapter/worker'
-  extension.mjs        # 可选：厂商扩展
+  plugin.json          # 清单 v2：会话操作与可执行依赖
+  acp.json             # 插件自身的 ACP 配置
+  worker.mjs           # 一行：serveAcpAgent({ manifestUrl, configUrl })
 ```
 
-`plugin.json` 中的 `acp` 配置段属于插件自身配置，**不是宿主合同**，宿主不读取它：
+宿主清单 schema 不允许插件自定义字段，因此 ACP 配置放在独立的 `acp.json`，**不是宿主合同**，宿主不读取它
+（实施时从原计划的 `plugin.json` 配置段改为此文件）：
 
 ```json
 {
-  "acp": {
-    "command": ["agent", "acp"],
-    "protocolVersion": 1,
-    "auth": { "methodId": "cursor_login" },
-    "initializeMeta": { "parameterizedModelPicker": true },
-    "extension": "./extension.mjs"
-  }
+  "schema": "aibo.acp-agent/v1",
+  "label": "My Agent",
+  "command": "my-acp-agent",
+  "args": ["--acp"],
+  "modes": { "ask": "ask", "edit": "code" }
 }
 ```
+
+需要厂商扩展方法的 Agent 向 `serveAcpAgent` 传入代码扩展，Cursor 即如此。
 
 可执行文件仍须在 `executableDependencies` 中声明，以参数数组、`shell:false` 启动；cwd 取可信工作区。
 
@@ -300,6 +301,22 @@ A4 剩余工作是将这段接线提供给 A2 的通用 Worker，并验证第二
 
 验收：用仓库内的 ACP 回显夹具 Agent（新增，放在 `fixtures/`）完成完整生命周期。
 夹具 Agent 覆盖 loadSession 有/无、图片有/无、审批四种选项，以及未知扩展方法。
+
+#### A2 实施记录
+
+- `@aibo/acp-adapter/worker` 的 `serveAcpAgent` 随宿主 SDK 0.1.3 交付（0.1.2 已有复验基线，新增入口不并入该版本）。
+  它读取 `plugin.json` 与 `acp.json`，或接受代码扩展；功能按 `<pluginId>.<feature>` 路由，并包含宿主工具的 MCP bridge 接线（A4）。
+- `acp.json` 校验：`command` 必须是清单 `executableDependencies` 中声明的可执行文件，`modes` 把 `ask`/`plan`/`edit`
+  映射到原生模式 ID（`edit` 是写入模式），其余字段可选。无效时 Worker 在握手前以错误退出。执行配置沿用 `agent-managed` 规则。
+- 修正通用层的模式切换：Agent 返回模式配置项时沿用 `session/set_config_option`（Cursor 路径不变）；只提供 session modes API 时
+  改用标准 `session/set_mode`。此前后者会在打开会话时失败。
+- Cursor 0.2.2 的 Worker 改为调用 `serveAcpAgent` 并传入 `cursorExtension`，与模板共用同一套路由；要求 SDK 0.1.3。
+- `aibo-plugins/plugins/acp-template` 只有 `plugin.json`、`acp.json` 与一行 `worker.mjs`，随构建打包。
+- 验证：宿主 `test/acp-worker.test.mjs` 以回显夹具 `fixtures/acp/echo-agent.mjs` 与只靠配置的 `fixtures/plugins/acp-echo`
+  跑真实 Worker 进程，覆盖 loadSession 有/无、图片有/无、两种模式接口、审批四种选项只选 `allow_once`、未注册厂商方法得到
+  Method not found、跨进程恢复、取消、宿主工具经 MCP 传给 Agent，以及无效 `acp.json`；`aibo-plugins` 新增模板清单与合同一致性测试，
+  `pnpm run verify` 与 Cursor 打包 Worker 冒烟（含宿主工具）通过。
+- 未做：Cursor 0.2.2 的真实 CLI 与桌面复验（路由代码未变，只是改由 SDK 提供）。
 
 ### A3：第二个真实 ACP Agent
 

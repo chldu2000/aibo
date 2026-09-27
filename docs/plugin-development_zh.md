@@ -92,6 +92,16 @@ Control 必须在操作允许列表中；处理取消，并只在有效 invocati
 [会话控件](session-controls.md)定义原生授权、CoreProxy 和 `agent-managed` 权限归属；
 不能从品牌或功能标签推导。仅打开编辑模式不授予写轮次权限。
 
+### 接入 ACP Agent
+
+支持 [Agent Client Protocol](https://agentclientprotocol.com) 的 Agent 不需要编写代码。从
+`aibo-plugins/plugins/acp-template` 起步：`plugin.json` 声明会话操作与可执行依赖，`acp.json` 描述启动命令和模式映射，
+`worker.mjs` 只调用宿主 SDK 0.1.3 起提供的 `serveAcpAgent`。能力按 Agent 的 `initialize` 响应收窄：
+仅 `loadSession` 时声明恢复，仅支持图片提示时声明图片输入，仅返回配置项时声明模型与参数选择。
+`acp.json` 无效时 Worker 在握手前退出，宿主在启动阶段报告错误。
+需要厂商扩展方法时，向 `serveAcpAgent` 传入 `extension`，参考 Cursor 插件；字段与钩子见
+[`@aibo/acp-adapter`](../packages/acp-adapter/README.md)。
+
 ## 扩展呈现
 
 外部皮肤使用独立 `presentation.json` 包和[呈现打包工具](../packages/presentation-tools/)。

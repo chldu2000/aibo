@@ -1,4 +1,4 @@
-import {chmod,copyFile,mkdir,mkdtemp,readFile,rm} from 'node:fs/promises';
+import {chmod,copyFile,mkdir,mkdtemp,readFile,readdir,rm} from 'node:fs/promises';
 import {tmpdir} from 'node:os';
 import path from 'node:path';
 import {pathToFileURL} from 'node:url';
@@ -7,11 +7,17 @@ import Ajv from 'ajv/dist/2020.js';
 
 let generation=0;
 export async function sessionCapability(t,name,extraEnv={},existingDirectory,contributionId,hostTools) {
-  const directory=existingDirectory ?? await mkdtemp(path.join(tmpdir(),`aibo-${name}-capability-`));
+  const directory=existingDirectory ?? await mkdtemp(path.join(tmpdir(),`aibo-${path.basename(name)}-capability-`));
   const pkg=path.join(directory,'package');await mkdir(pkg,{recursive:true});
   const data=path.join(directory,'data');await mkdir(data,{recursive:true});
-  for (const file of ['engine.mjs','worker.mjs','plugin.json']) await copyFile(`src-tauri/capability-plugins/${name}/${file}`,path.join(pkg,file));
-  await copyFile('src-tauri/capability-plugins/session-provider.mjs',path.join(pkg,'session-provider.mjs'));
+  // A path names a plugin source directory (for example a configuration-only ACP fixture).
+  if (name.includes('/')) {
+    for (const file of await readdir(name)) await copyFile(path.join(name,file),path.join(pkg,file));
+    if (name.endsWith('acp-echo')) { await copyFile('fixtures/acp/echo-agent.mjs',path.join(directory,'echo-acp'));await chmod(path.join(directory,'echo-acp'),0o755); }
+  } else {
+    for (const file of ['engine.mjs','worker.mjs','plugin.json']) await copyFile(`src-tauri/capability-plugins/${name}/${file}`,path.join(pkg,file));
+    await copyFile('src-tauri/capability-plugins/session-provider.mjs',path.join(pkg,'session-provider.mjs'));
+  }
   if (name==='codex') {
     await copyFile('fixtures/plugins/codex/fake-codex.mjs',path.join(directory,'codex'));await chmod(path.join(directory,'codex'),0o755);
   }

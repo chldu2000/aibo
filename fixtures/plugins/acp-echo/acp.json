@@ -1,0 +1,7 @@
+{
+  "schema": "aibo.acp-agent/v1",
+  "label": "Echo",
+  "command": "echo-acp",
+  "args": ["--acp"],
+  "modes": { "ask": "ask", "edit": "code" }
+}

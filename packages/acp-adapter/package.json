@@ -1,6 +1,6 @@
 {
   "name": "@aibo/acp-adapter",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "private": true,
   "type": "module",
   "files": [
@@ -14,6 +14,8 @@
     "config.d.ts",
     "image-input.mjs",
     "image-input.d.ts",
+    "worker.mjs",
+    "worker.d.ts",
     "README.md"
   ],
   "exports": {
@@ -36,9 +38,16 @@
     "./image-input": {
       "types": "./image-input.d.ts",
       "import": "./image-input.mjs"
+    },
+    "./worker": {
+      "types": "./worker.d.ts",
+      "import": "./worker.mjs"
     }
   },
   "engines": {
     "node": ">=22"
+  },
+  "dependencies": {
+    "@aibo/capability-runtime": "0.1.1"
   }
 }
