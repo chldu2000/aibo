@@ -18,8 +18,12 @@ impl SessionHost {
                 "workspaceId":workspace_id,"sessionId":session_id,"nativeSessionId":p["nativeSessionId"],"turnId":p["turnId"],"type":p["type"],"correlation":p["correlation"],"payload":p["payload"],"rawRef":null});
             let emitted_event = event.clone();
             let kind = p["type"].as_str().unwrap();
-            if !["subagent.updated","subagent.message","session.started","session.info_changed","goal.updated","turn.started","message.delta","message.completed","reasoning.updated","reasoning.completed","tool.started","tool.updated","tool.completed","turn.completed","turn.failed","approval.requested","approval.resolved","user_input.requested","user_input.resolved","usage.updated","queue.updated","compaction.started","compaction.completed","retry.started","retry.completed","extension.updated","adapter.crashed"].contains(&kind) {
+            if !["subagent.updated","subagent.message","session.started","session.info_changed","goal.updated","turn.started","message.delta","message.completed","reasoning.updated","reasoning.completed","tool.started","tool.updated","tool.completed","turn.completed","turn.failed","approval.requested","approval.resolved","user_input.requested","user_input.resolved","usage.updated","queue.updated","compaction.started","compaction.completed","retry.started","retry.completed","extension.updated","adapter.crashed","session.control_changed"].contains(&kind) {
                 return Err("capability_unsupported: event outside minimal lifecycle".into());
+            }
+            // Only the host commits a session control; a provider cannot announce its own mode switch.
+            if kind == "session.control_changed" && origin != EventOrigin::Host {
+                return Err("permission_denied: session control changes are committed by the host".into());
             }
             let negotiated: Value = serde_json::from_str(&active.1).map_err(|_|"manifest_mismatch: negotiated capabilities missing")?;
             if event_capability_required(kind, origin).is_some_and(|capability|!negotiated.as_array().is_some_and(|items|items.contains(&json!(capability)))) {
@@ -55,7 +59,8 @@ impl SessionHost {
             }
             if let Some(turn) = turn_id {
                 let state: Option<String> = sqlx::query_scalar("SELECT status FROM turns WHERE id=? AND session_id=?").bind(turn).bind(session_id).fetch_optional(&mut *tx).await.map_err(|e|e.to_string())?;
-                if state.as_deref() != Some("running") && !(origin == EventOrigin::Host && kind == "adapter.crashed" && state.is_some()) { return Err("invalid_session: event for inactive turn".into()); }
+                // Host records may land after a fast turn ends: a crash report, or the control an answer already committed.
+                if state.as_deref() != Some("running") && !(origin == EventOrigin::Host && matches!(kind, "adapter.crashed" | "session.control_changed") && state.is_some()) { return Err("invalid_session: event for inactive turn".into()); }
                 if kind == "turn.started" {
                     if let Some(native_turn) = p["payload"]["nativeTurnId"].as_str().filter(|id| !id.is_empty()) {
                         sqlx::query("UPDATE turns SET external_turn_id=? WHERE id=? AND session_id=?")
@@ -127,6 +132,12 @@ impl SessionHost {
                     if request_id.is_empty() { return Err("invalid_request: request id".into()); }
                     let waiting = if kind == "approval.requested" { "waiting_approval" } else { "waiting_user" };
                     sqlx::query("UPDATE sessions SET state=?,updated_at=? WHERE id=?").bind(waiting).bind(&now).bind(session_id).execute(&mut *tx).await.map_err(|e|e.to_string())?;
+                } else if kind == "session.control_changed" {
+                    let request_id = p["payload"]["requestId"].as_str().unwrap_or_default();
+                    let label = p["payload"]["label"].as_str().unwrap_or_default();
+                    sqlx::query("INSERT INTO messages(id,session_id,turn_id,external_message_id,role,content,status,sequence,created_at,updated_at) VALUES(?,?,?,?,'system',?,'completed',?,?,?)")
+                        .bind(format!("{turn}:control:{request_id}")).bind(session_id).bind(turn).bind(scoped_external_item_id(turn, &format!("control:{request_id}")))
+                        .bind(format!("审批后切换到 {label}")).bind(sequence).bind(&now).bind(&now).execute(&mut *tx).await.map_err(|e|e.to_string())?;
                 } else if kind == "approval.resolved" || kind == "user_input.resolved" {
                     sqlx::query("UPDATE sessions SET state='running',updated_at=? WHERE id=?").bind(&now).bind(session_id).execute(&mut *tx).await.map_err(|e|e.to_string())?;
                 } else if kind == "compaction.started" {

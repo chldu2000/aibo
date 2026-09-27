@@ -48,6 +48,8 @@ const EXTENSION_DEFAULTS = {
   subagentFromTool: () => null,
   handleRequest: () => false,
   handleNotification: () => false,
+  // Native permission options with host labels or session-control effects; see `approvalOptions`.
+  approvalChoices: [],
 };
 
 /**
@@ -166,7 +168,9 @@ export class AcpSession {
 
   async prompt({ text, turnId, attachments = [], additionalInstructions = '', writable = false }) {
     if (this.phase !== 'ready' || !this.sessionId) throw pluginError('busy', `${this.label} session is not ready`);
-    const writeMode = this.modeId === this.extension.writableMode;
+    // A mode the agent changed on its own while idle is put back before the next prompt.
+    if (this.nativeMode !== this.modeId) await this.#restoreMode();
+    const writeMode = this.#writable(this.modeId);
     if (writable !== writeMode) throw pluginError('permission_denied', writable ? `${this.label} write turn requires edit mode` : `${this.label} edit mode requires a write-authorized turn`);
     const images = imageInput(attachments, this.agentCapabilities?.promptCapabilities?.image === true, this.label);
     this.phase = 'prompting';
@@ -179,6 +183,8 @@ export class AcpSession {
     this.hostPermissionReplies.clear();
     this.completedTools.clear();
     this.subagents.clear();
+    this.expectedMode = null;
+    this.modeViolation = null;
     this.#event('turn.started', {});
     // Agents parse leading slash commands before processing ordinary prompt text.
     // Prefixing settings would turn a native command into a model request.
@@ -192,15 +198,20 @@ export class AcpSession {
       if (this.messageText) this.#event('message.completed', { itemId: this.messageItemId, text: this.messageText }, { itemId: this.messageItemId });
       if (this.reasoningText) this.#event('reasoning.completed', { itemId: this.reasoningItemId, summary: this.reasoningText }, { itemId: this.reasoningItemId });
       const stopReason = result?.stopReason;
-      const status = stopReason === 'end_turn' || stopReason === 'refusal' ? 'completed'
+      const status = this.modeViolation ? 'failed' : stopReason === 'end_turn' || stopReason === 'refusal' ? 'completed'
         : ['cancelled', 'max_tokens', 'max_turn_requests'].includes(stopReason) ? 'interrupted' : 'failed';
       this.#finishSubagents(
         status === 'interrupted' ? 'interrupted' : status === 'failed' ? 'failed' : 'unavailable',
         status === 'interrupted' ? 'Parent turn was interrupted.' : status === 'failed' ? 'Parent turn failed.' : `${this.label} did not provide a final task notification.`,
       );
-      this.#event(status === 'failed' ? 'turn.failed' : 'turn.completed', { status, stopReason: stopReason ?? null });
+      this.#event(status === 'failed' ? 'turn.failed' : 'turn.completed', { status, stopReason: stopReason ?? null, ...(this.modeViolation ? { message: this.modeViolation } : {}) });
       return { status, recovery: this.recovery() };
     } catch (error) {
+      if (this.phase === 'cancelling' && this.modeViolation) {
+        this.#finishSubagents('failed', 'Parent turn failed.');
+        this.#event('turn.failed', { status: 'failed', message: this.modeViolation });
+        return { status: 'failed', recovery: this.recovery() };
+      }
       if (this.phase === 'cancelling') {
         this.#finishSubagents('interrupted', 'Parent turn was cancelled.');
         this.#event('turn.completed', { status: 'interrupted', stopReason: 'cancelled', forced: true });
@@ -214,6 +225,7 @@ export class AcpSession {
       clearTimeout(this.cancelTimer);
       if (this.phase !== 'stopped') this.phase = this.transport?.closed ? 'failed' : 'ready';
       this.turnId = null;
+      this.expectedMode = null;
       this.pendingInteractions.clear();
     }
   }
@@ -246,6 +258,9 @@ export class AcpSession {
     const chosen = typeof answer === 'object' && answer !== null ? pending.offered?.find(option => option.id === answer.optionId) : null;
     if (typeof answer === 'object' && answer !== null && !chosen) throw pluginError('invalid_input', `${this.label} approval option is not offered`);
     const decision = chosen ? (chosen.kind === 'allow' ? 'accept' : 'cancel') : answer;
+    // The host has already committed this option's session control; the agent's mode report must match it.
+    const transition = chosen && pending.transitions?.get(chosen.id);
+    if (transition) this.expectedMode = { mode: transition.mode, profile: { ...this.profile, ...transition.profile } };
     if (pending.kind === 'permission') {
       const kind = decision === 'accept' ? 'allow_once' : 'reject_once';
       const option = chosen ? pending.options.find(candidate => candidate.optionId === chosen.id) : pending.options.find(candidate => candidate.kind === kind);
@@ -435,6 +450,8 @@ export class AcpSession {
     const values = new Set(available.map(option => option.value ?? option.id));
     if (!values.has(expected)) throw pluginError('unsupported', `${this.label} does not support ${expected} mode`);
     const current = mode?.currentValue ?? result?.modes?.currentModeId;
+    this.modeApi = mode ? 'config' : 'modes';
+    this.nativeMode = expected;
     if (current === expected) return;
     if (!mode) {
       // Agents exposing only the session modes API switch with session/set_mode; its
@@ -446,6 +463,55 @@ export class AcpSession {
     this.#readModelConfig(changed);
     const updated = changed?.configOptions?.find(option => option.id === 'mode')?.currentValue;
     if (updated !== expected) throw pluginError('invalid_output', `${this.label} did not confirm the requested mode`);
+  }
+
+  #writable(mode) {
+    return mode != null && (this.extension.writableModes ?? [this.extension.writableMode]).includes(mode);
+  }
+
+  async #restoreMode() {
+    if (this.modeApi === 'config') {
+      const changed = await this.transport.request('session/set_config_option', { sessionId: this.sessionId, configId: 'mode', value: this.modeId });
+      this.#readModelConfig(changed);
+      if (changed?.configOptions?.find(option => option.id === 'mode')?.currentValue !== this.modeId) throw pluginError('invalid_output', `${this.label} did not confirm the requested mode`);
+    } else {
+      await this.transport.request('session/set_mode', { sessionId: this.sessionId, modeId: this.modeId });
+    }
+    this.nativeMode = this.modeId;
+  }
+
+  /**
+   * Native mode reports. A switch the host committed through an approval option is adopted; any
+   * other switch during a turn fails it, because the host still enforces the previous control.
+   */
+  #observeMode(mode) {
+    this.nativeMode = mode;
+    if (mode === this.modeId) return;
+    if (this.expectedMode?.mode === mode) {
+      this.modeId = mode;
+      this.profile = this.expectedMode.profile;
+      this.expectedMode = null;
+      return;
+    }
+    if (this.phase !== 'prompting' || this.modeViolation) return;
+    this.modeViolation = `${this.label} switched to ${String(mode).slice(0, 80)} mode without host approval; the turn was stopped`;
+    void this.cancel();
+  }
+
+  /** Approval options shown to the user: host labels, and session-control effects the host commits. */
+  #approvalOffer(params, options, writable) {
+    const toolKind = params.toolCall?.kind;
+    const offered = [], transitions = new Map();
+    for (const option of options) {
+      if (typeof option?.optionId !== 'string' || !option.optionId || option.optionId.length > 256 || offered.some(entry => entry.id === option.optionId)) continue;
+      const choice = this.extension.approvalChoices.find(entry => entry.optionId === option.optionId && (entry.toolKind === undefined || entry.toolKind === toolKind));
+      const allow = String(option.kind).startsWith('allow_');
+      const eligible = choice?.sessionControl ? true : writable ? ['allow_once', 'reject_once'].includes(option.kind) : option.kind === 'reject_once';
+      if (!eligible) continue;
+      offered.push({ id: option.optionId, kind: allow ? 'allow' : 'reject', ...(choice?.label ? { label: choice.label } : {}), ...(choice?.sessionControl ? { effects: { sessionControl: choice.sessionControl } } : {}) });
+      if (choice?.sessionControl) transitions.set(option.optionId, { mode: choice.mode, profile: choice.profile });
+    }
+    return { offered: offered.slice(0, 16), transitions };
   }
 
   #validateRecovery(value, workspaceId, workspacePath) {
@@ -485,15 +551,20 @@ export class AcpSession {
         this.transport.respond(message.id,allowed&&fresh?{outcome:{outcome:'selected',optionId:allowed.optionId}}:{outcome:{outcome:'cancelled'}});
         return true;
       }
-      if (this.modeId !== this.extension.writableMode || this.profile.approvalReviewer !== 'user') {
+      const writable = this.#writable(this.modeId) && ['user', 'auto-review'].includes(this.profile.approvalReviewer);
+      // Persistent allow_always / reject_always grants are never offered: the host approves each request.
+      // Outside a writable mode only declared transitions (for example approving a plan) reach the user.
+      const offer = this.extension.approvalOptions ? this.#approvalOffer(params, options, writable) : {
+        offered: options.filter(option => ['allow_once', 'reject_once'].includes(option.kind)).map(option => ({ id: option.optionId, kind: option.kind === 'allow_once' ? 'allow' : 'reject' })),
+        transitions: new Map(),
+      };
+      if (!writable && offer.transitions.size === 0) {
         const rejected = options.find(candidate => candidate.kind === 'reject_once');
         this.transport.respond(message.id, rejected ? { outcome: { outcome: 'selected', optionId: rejected.optionId } } : { outcome: { outcome: 'cancelled' } });
         return true;
       }
-      // Persistent allow_always / reject_always grants are never offered: the host approves each request.
-      const offered = options.filter(option => ['allow_once', 'reject_once'].includes(option.kind))
-        .map(option => ({ id: option.optionId, kind: option.kind === 'allow_once' ? 'allow' : 'reject' }));
-      if (!this.hooks.await(requestId, message.id, { kind: 'permission', options, offered })) return true;
+      const offered = offer.offered;
+      if (!this.hooks.await(requestId, message.id, { kind: 'permission', options, offered, transitions: offer.transitions })) return true;
       this.#event('approval.requested', { requestId, kind: params.toolCall?.kind ?? 'tool', command: params.toolCall?.title ?? null, availableDecisions: ['accept', 'cancel'],
         ...(this.extension.approvalOptions ? { options: offered } : {}) }, { requestId, toolCallId: params.toolCall?.toolCallId ?? null, approvalId: message.id });
       return true;
@@ -517,8 +588,14 @@ export class AcpSession {
       }
       return;
     }
+    if (message.method === 'session/update' && this.phase !== 'loading' && this.sessionId && message.params?.sessionId === this.sessionId && message.params?.update?.sessionUpdate === 'current_mode_update') {
+      if (typeof message.params.update.currentModeId === 'string') this.#observeMode(message.params.update.currentModeId);
+      return;
+    }
     if (message.method === 'session/update' && this.phase !== 'loading' && message.params?.sessionId === this.sessionId && message.params?.update?.sessionUpdate === 'config_option_update') {
       this.#readModelConfig(message.params.update);
+      const mode = Array.isArray(message.params.update.configOptions) ? message.params.update.configOptions.find(option => option?.id === 'mode')?.currentValue : undefined;
+      if (typeof mode === 'string' && this.modeApi === 'config') this.#observeMode(mode);
       return;
     }
     if (message.method !== 'session/update' || this.phase === 'loading' || message.params?.sessionId !== this.sessionId || !this.turnId) return;

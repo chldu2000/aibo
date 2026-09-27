@@ -104,7 +104,9 @@ Capabilities are narrowed by the agent's `initialize` response: resume only with
 and model or parameter selection only when the agent returns config options. An invalid `acp.json` stops the worker before
 the handshake, so the host reports it at startup. When `approval.respond` declares the `{ requestId, optionId }` input
 (host SDK 0.1.4), the approval card shows the agent's allow-once and reject-once options and answers with the chosen option ID;
-the `decision` input keeps the two-button approval. For vendor extension methods, pass an `extension` to `serveAcpAgent`
+the `decision` input keeps the two-button approval. `approvalOptions` in `acp.json` labels options and can map one to
+a session control (for example Manual after approving a plan); the host commits that switch, see
+[session controls](session-controls.md). For vendor extension methods, pass an `extension` to `serveAcpAgent`
 as the Cursor plugin does; fields and hooks are described in [`@aibo/acp-adapter`](../packages/acp-adapter/README.md).
 
 ## Extend presentation

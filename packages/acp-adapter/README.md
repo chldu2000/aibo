@@ -16,12 +16,21 @@ keep it as a development dependency only (see [host SDK](../../docs/host-sdk.md)
 
 `acp.json` (schema `aibo.acp-agent/v1`) holds `label`, `command` (an `executable` declared in
 `plugin.json` `executableDependencies`), optional `args`, and `modes` mapping Aibo's `ask`, `plan` and `edit` to
-native mode IDs; `edit` is the write mode. Optional: `authMethodId`, `clientMeta`, `persistsEmptySessions`
+native mode IDs; `edit` is the write mode, and `auto` (SDK 0.1.4) is a second write mode for controls whose
+profile sets `approvalReviewer: "auto-review"`. Optional: `authMethodId`, `clientMeta`, `persistsEmptySessions`
 (default `true`) and `requestPrefix`. The host manifest schema does not allow plugin fields, so this file is
 read only by the Worker; an invalid one stops it before the Runtime handshake. Recovery data uses
 `<pluginId>.recovery`, optional features use the manifest's `<pluginId>.<feature>` operations, and profiles follow
 `agent-managed` execution. Declaring `hostTools` and `aibo.session.tool.respond` connects Aibo's host tools through
 the SDK MCP bridge. See `aibo-plugins/plugins/acp-template`.
+
+`approvalOptions` (SDK 0.1.4) lists native permission options as `{ optionId, toolKind?, label?, sessionControl? }`.
+`label` replaces the agent's text on the approval card; `toolKind` limits the entry to requests for that ACP tool kind.
+`sessionControl` names a `plugin.json` session control that some control lists in `transitions`: the option is offered
+even outside a write mode, and choosing it lets the host commit that control before the agent is answered.
+The Worker rejects entries whose control is undeclared, unmapped in `modes`, or not a transition target, and requires
+the `{ requestId, optionId }` form of `approval.respond`. The agent's mode report for a committed switch is adopted
+and the turn continues; any other mode change during a turn fails it, and the host mode is restored before the next prompt.
 
 Mode switching uses the agent's mode config option when it returns one, and the standard `session/set_mode`
 request when it only exposes the session modes API. Reasoning and context-window capabilities are claimed only

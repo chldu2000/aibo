@@ -1040,6 +1040,17 @@
           "pattern": "^[a-z][a-z0-9-]*$",
           "maxLength": 40
         },
+        "transitions": {
+          "description": "Controls an in-turn approval may switch this control to. The host commits the switch; a plugin cannot change modes on its own.",
+          "type": "array",
+          "maxItems": 16,
+          "uniqueItems": true,
+          "items": {
+            "type": "string",
+            "pattern": "^[a-z][a-z0-9.-]*$",
+            "maxLength": 80
+          }
+        },
         "profile": {
           "type": "object",
           "additionalProperties": false,

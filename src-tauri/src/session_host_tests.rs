@@ -992,3 +992,74 @@ async fn prepared_session_is_visible_before_native_start_and_negotiates_only_whe
     broker.stop_session(&pending.id).await.unwrap();
     db.close().await;fs::remove_dir_all(root).unwrap();
 }
+
+#[tokio::test]
+async fn approved_plan_transition_is_committed_by_the_host_before_the_agent_switches() {
+    let root = std::env::temp_dir().join(format!("aibo-acp-transition-{}", ulid::Ulid::new()));
+    let package = root.join("package");
+    let workspace = root.join("workspace");
+    fs::create_dir_all(&package).unwrap();
+    fs::create_dir_all(&workspace).unwrap();
+    let fixtures = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../fixtures");
+    for name in ["plugin.json", "worker.mjs", "acp.json"] {
+        fs::copy(fixtures.join("plugins/acp-echo").join(name), package.join(name)).unwrap();
+    }
+    // The host PATH is shared by parallel tests, so the agent runs as `node <fixture>`.
+    let mut manifest: Value = serde_json::from_str(&fs::read_to_string(package.join("plugin.json")).unwrap()).unwrap();
+    manifest["executableDependencies"] = json!([{"kind":"runtime","name":"node","versionRange":">=22","required":true},{"kind":"executable","name":"node","required":true}]);
+    fs::write(package.join("plugin.json"), manifest.to_string()).unwrap();
+    let mut config: Value = serde_json::from_str(&fs::read_to_string(package.join("acp.json")).unwrap()).unwrap();
+    config["command"] = json!("node");
+    config["args"] = json!([fixtures.join("acp/echo-agent.mjs").to_string_lossy()]);
+    fs::write(package.join("acp.json"), config.to_string()).unwrap();
+    let db = crate::open_database(&root.join("data/db")).await.unwrap();
+    sqlx::query("INSERT INTO workspaces(id,path,label,trusted,created_at,updated_at) VALUES('w',?,'w',1,'now','now')")
+        .bind(workspace.to_string_lossy().as_ref()).execute(&db).await.unwrap();
+    let installed = plugin_registry::install(&db, &root.join("data"), &package).await.unwrap();
+    plugin_registry::enable(&db, &installed.id, true).await.unwrap();
+    let broker = Broker::new(db.clone());
+    let host = SessionHost::new(db.clone(), broker.clone());
+    let mut requested = execution_profile::default_requested_profile("generic").unwrap();
+    requested.interaction_mode = "plan".into();
+    requested.network_policy = "agent-managed".into();
+    let plan = execution_profile::resolve_with_backend(execution_profile::EnforcementBackend::AgentManaged, Some(requested), crate::now_iso()).unwrap();
+    let session = host.create_with_profile_from("main", "w", &installed.id, "dev.example.acp-echo.agent", Some(plan)).await.unwrap();
+    let mode = |db: SqlitePool, id: String| async move { crate::session_execution_profile(&db, &id).await.unwrap().profile.enforced.interaction_mode };
+    host.send_from("main", &session.id, "exitplan", None).await.unwrap();
+    let request_id = tokio::time::timeout(Duration::from_secs(15), async {
+        loop {
+            let events: Vec<String> = sqlx::query_scalar("SELECT payload_json FROM agent_events WHERE session_id=? AND event_type='approval.requested'")
+                .bind(&session.id).fetch_all(&db).await.unwrap();
+            if let Some(event) = events.first() { break serde_json::from_str::<Value>(event).unwrap()["payload"]["requestId"].as_str().unwrap().to_owned(); }
+            tokio::time::sleep(Duration::from_millis(20)).await;
+        }
+    }).await.expect("plan approval was not requested");
+    assert!(host.resolve_approval_option_from("other-window", &session.id, &request_id, "exit-plan-default").await.unwrap_err().contains("another window"));
+    sqlx::query("UPDATE workspaces SET trusted=0 WHERE id='w'").execute(&db).await.unwrap();
+    assert!(host.resolve_approval_option_from("main", &session.id, &request_id, "exit-plan-default").await.unwrap_err().contains("workspace_untrusted"));
+    assert_eq!(mode(db.clone(), session.id.clone()).await, "plan", "a refused transition leaves the host profile unchanged");
+    sqlx::query("UPDATE workspaces SET trusted=1 WHERE id='w'").execute(&db).await.unwrap();
+    host.resolve_approval_option_from("main", &session.id, &request_id, "exit-plan-default").await.unwrap();
+    wait_for_turn(&host, &session.id).await;
+    assert_eq!(mode(db.clone(), session.id.clone()).await, "edit");
+    let changed: String = sqlx::query_scalar("SELECT payload_json FROM agent_events WHERE session_id=? AND event_type='session.control_changed'")
+        .bind(&session.id).fetch_one(&db).await.unwrap();
+    let changed: Value = serde_json::from_str(&changed).unwrap();
+    assert_eq!(changed["payload"], json!({"controlId":"code","previousControlId":"plan","label":"Code","cause":"approval","requestId":request_id}));
+    let record: String = sqlx::query_scalar("SELECT content FROM messages WHERE session_id=? AND role='system'").bind(&session.id).fetch_one(&db).await.unwrap();
+    assert_eq!(record, "审批后切换到 Code");
+    let reply: String = sqlx::query_scalar("SELECT content FROM messages WHERE session_id=? AND role='assistant'").bind(&session.id).fetch_one(&db).await.unwrap();
+    assert!(reply.contains("exitplan:exit-plan-default"), "{reply}");
+    let status: String = sqlx::query_scalar("SELECT status FROM turns WHERE session_id=?").bind(&session.id).fetch_one(&db).await.unwrap();
+    assert_eq!(status, "completed");
+    let (generation, binding): (String, String) = sqlx::query_as("SELECT generation_id,plugin_binding_json FROM session_bindings WHERE session_id=?").bind(&session.id).fetch_one(&db).await.unwrap();
+    let binding: Value = serde_json::from_str(&binding).unwrap();
+    let turn: String = sqlx::query_scalar("SELECT id FROM turns WHERE session_id=?").bind(&session.id).fetch_one(&db).await.unwrap();
+    let forged = json!({"nativeSessionId":binding["nativeSessionId"],"turnId":turn,"type":"session.control_changed","correlation":null,
+        "payload":{"controlId":"code","previousControlId":"plan","label":"Code","cause":"approval","requestId":"r"}});
+    assert!(host.project_event(&session.id, "w", &generation, &binding, forged, EventOrigin::Plugin).await.unwrap_err().contains("committed by the host"),
+        "providers cannot announce control changes");
+    broker.stop_session(&session.id).await.unwrap();
+    db.close().await;
+    fs::remove_dir_all(root).unwrap();
+}

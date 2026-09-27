@@ -704,6 +704,7 @@ export interface AgentEvent {
     | 'retry.completed'
     | 'extension.updated'
     | 'session.info_changed'
+    | 'session.control_changed'
     | 'adapter.warning'
     | 'adapter.crashed';
   correlation: Record<string, string | number | null> | null;

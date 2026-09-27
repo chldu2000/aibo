@@ -217,7 +217,8 @@ pub(crate) fn resolve_with_backend(
             enforced.command_policy = if editing { "agent-managed" } else { "disabled" }.into();
             enforced.network_policy = "agent-managed".into();
             enforced.approval_policy = if editing { "on-request" } else { "never" }.into();
-            enforced.approval_reviewer = if editing { "user" } else { "none" }.into();
+            // Auto modes are reviewed by the agent's own classifier; requests it still raises go to the user.
+            enforced.approval_reviewer = if !editing { "none" } else if requested.approval_reviewer == "auto-review" { "auto-review" } else { "user" }.into();
             if requested != enforced { unsupported.push("permissions.agent-managed".into()); }
             (vec!["permissions.agentManaged".into(), "permissions.noNativeSandbox".into()], false)
         },
@@ -434,6 +435,15 @@ mod tests {
             let roundtrip = resolve_with_backend(EnforcementBackend::AgentManaged, Some(resolved.enforced.clone()), "later".into()).unwrap();
             assert!(roundtrip.unsupported.is_empty());
             assert_eq!(roundtrip.requested, roundtrip.enforced);
+        }
+        // Auto: the agent's classifier reviews edits; the mode stays exact. Read-only modes never review.
+        for (mode, reviewer, expected) in [("edit", "auto-review", "auto-review"), ("plan", "auto-review", "none")] {
+            let mut requested = editable_profile();
+            requested.interaction_mode = mode.into();
+            requested.approval_reviewer = reviewer.into();
+            let resolved = resolve_with_backend(EnforcementBackend::AgentManaged, Some(requested), "now".into()).unwrap();
+            assert_eq!(resolved.enforced.approval_reviewer, expected);
+            assert_eq!(resolved.enforced.approval_policy, if mode == "edit" { "on-request" } else { "never" });
         }
         let mut requested = editable_profile();
         requested.filesystem_policy = "agent-managed".into();

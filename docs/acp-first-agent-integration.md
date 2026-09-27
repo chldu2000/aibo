@@ -1,6 +1,6 @@
 # ACP 作为 Agent 接入主干：迁移计划
 
-状态：A1、A2、A3 已实施，A4 的通用 Worker 接线已完成；A5.1（多选项审批）已实施；A5.2、A6、A7 未实施。宿主会话合同、能力协商与执行授权规则不因本文改变；现行规则见
+状态：A1、A2、A3 已实施，A4 的通用 Worker 接线已完成；A5（多选项审批与回合内模式转换）已实施；A6、A7 未实施。宿主会话合同、能力协商与执行授权规则不因本文改变；现行规则见
 [会话能力协商](session-capability-negotiation.md)与[宿主和插件边界](plugin-boundaries-and-regression.md)。
 
 ## 背景与问题
@@ -151,6 +151,8 @@ ExitPlanMode 审批会**直接切换模式**。可选项包括：清空上下文
 自动接受编辑、手动审批编辑、继续规划。选中前几项后，Claude 在同一回合内切到对应模式并开始实施。
 
 ### 当前宿主的限制
+
+以下是 A5 之前的限制，A5 的处理方式见 [A5.2 实施记录](#a52-实施记录回合内模式转换2026-09-27)。
 
 | 限制 | 位置 |
 | --- | --- |
@@ -377,6 +379,42 @@ A5 分两步：A5.1 只接通多选项审批的通道，不改执行配置；A5.
 - 验证：`test/acp-adapter-session.test.mjs`、`test/acp-worker.test.mjs`、`test/approval-routing.test.mjs`、
   `session_host_tests`（Core 审批拒绝 optionId）；`pnpm run verify` 与 `cargo test --lib` 通过。
 
+#### A5.2 实施记录：回合内模式转换（2026-09-27）
+
+- 执行配置：agent-managed 的 edit 可以声明 `approvalReviewer: "auto-review"`，用于如实描述 Auto；ask / plan 的审核方仍为 `none`。
+- 清单：`sessionControls[].transitions` 列出审批可切换到的其他控件 ID，只能引用本贡献已声明的控件，不能指向自身，不能重复。
+  转换必须显式声明，因为 Manual 与 Accept edits 的执行配置相同，宿主无法从配置判断权限高低。
+- 合同：`approval.requested` 的 `options[]` 可带 `label`（80 字符以内）与 `effects: { sessionControl }`，由事件 schema 校验。
+  新增事件 `session.control_changed`，载荷为 `{ controlId, previousControlId, label, cause: "approval", requestId }`，只能由宿主产生；
+  插件发出时被拒绝。
+- 宿主提交：用户选择带效果的选项时，宿主从已记录的 `approval.requested` 读取效果，不采信窗口提交的内容。随后依次检查：
+  1. 调用属于当前窗口；
+  2. 审批属于当前代际和正在运行的回合；
+  3. 会话未归档；
+  4. 当前配置对应的控件声明了该转换；
+  5. 目标配置满足工作区信任。
+
+  检查通过后，宿主先保存新执行配置，再回应 Agent；回应失败则恢复原配置。最后写入 `session.control_changed`，
+  时间线增加一条系统记录"审批后切换到 {控件名}"。回合很快结束时，这条记录也可以落在刚结束的回合上。
+  已派发的调用保留原来的调用上下文，不补发写准入；Agent 自行管理写入（agent-managed），之后的写轮次按新配置走正常准入。
+- 适配层：`acp.json` 的 `modes` 新增 `auto`，并新增 `approvalOptions`：`[{ optionId, toolKind?, label?, sessionControl? }]`。
+  规则如下：
+  - 带 `sessionControl` 的选项即使不在可写模式也会交给用户，其他 `allow_always` 选项仍不提供。
+  - `toolKind` 把标签限定在某类工具请求上（Claude Code 的 ExitPlanMode 为 `switch_mode`），避免"继续规划"出现在普通拒绝按钮上。
+  - Worker 在启动时校验：目标控件已声明、有映射的原生模式、有控件声明了到它的转换，且 `approval.respond` 使用 optionId 形态。
+  - 宿主已提交的切换到达（`current_mode_update` 或 mode config option）后，适配层采用新模式与配置，回合继续，后续编辑审批按新模式处理。
+  - 未经提交的切换：回合进行中发生则取消回合并报告 `turn.failed`；空闲时发生，则在下一次 prompt 前按宿主模式重新设置。
+- 界面：收到 `session.control_changed` 后刷新执行配置，模式菜单的当前项随之更新，并提示"已切换到 {控件名}"。
+- Claude Code 0.2.0（SDK 0.1.4）：新增 Auto 控件；Plan 声明可转换到 Manual 与 Auto。ExitPlanMode 的
+  `exit-plan-default` / `exit-plan-auto` 分别映射到 Manual / Auto，`reject` 标为"继续规划"。清空上下文与 Bypass 选项不提供（A6）。
+- 未实施：`fallback` 声明（模型不支持时 Auto 降级为 Accept edits，目前会让回合失败）；按 open 结果动态收窄可用模式；标准计划载荷。
+- 验证：
+  - 适配层与 Worker 测试：计划批准、未映射的升级选项不提供、未经提交的切换、无效配置。
+  - `session_controls` 与 `execution_profile` 单元测试。
+  - `session_host_tests` 端到端覆盖其他窗口、工作区不可信、提交成功、插件伪造事件被拒。
+  - 前端事件处理测试；浏览器探针检查多选项审批卡按钮与提交内容。
+  - 真实 Claude Code 2.1.280（适配器 0.81.2）：Plan 中批准计划后，同一回合切到 Manual，编辑审批经 aibo 允许后写入文件。
+
 ### A6："清空上下文"类选项
 
 设计上下文重置与原生会话绑定的对应关系后再开放，不属于 A5 范围。
@@ -423,7 +461,7 @@ Cursor 的 `cursor/ask_question` 是厂商扩展，已由 Cursor 扩展映射到
 | 各家 ACP 实现对标准的偏离不同 | 偏离放在扩展模块；通用层发现未知内容时记录 `adapter.warning`，不猜测含义 |
 | ACP 版本升级 | `protocolVersion` 精确匹配；新版本在通用层新增编解码，插件通过配置选择，不静默升级 |
 | 通用层成为隐形宿主合同 | `acp` 配置段只由插件进程读取；宿主测试断言清单校验不依赖该字段 |
-| Agent 在宿主不知情时切到可写模式 | A5 前插件拦截模式切换选项；非宿主发起的 `current_mode_update` 一律中止回合 |
+| Agent 在宿主不知情时切到可写模式 | 只提供清单声明的转换选项，由宿主提交；未经提交的 `current_mode_update` 让回合失败，下次 prompt 前恢复宿主模式 |
 | elicitation 表单被当作任意 UI 注入 | 只映射 schema 中的基本类型字段为宿主问题，文本以纯文本显示；不开放 `url` 模式 |
 | 原生工具绕过 CoreProxy | 一致性测试检测原生工具绕过；无法证明时不声明 `core-proxy` |
 
@@ -435,7 +473,7 @@ Cursor 的 `cursor/ask_question` 是厂商扩展，已由 Cursor 扩展映射到
 3. 持久授权选项（`allow_always`）是否在某些会话策略下开放？
 4. 扩展 `aibo.host-tools/v1`，加入写文件与执行命令工具（执行后端情况 B）。
 5. Plan 模式的命令策略是否新增"由 Agent 审核"一类的值，避免界面显示"命令已禁用"而实际有命令执行？
-6. 模式转换的 `transitions` / `fallback` 声明放在每个模式控件上，还是作为 contribution 级的转换表？
+6. 已决定并实施：`transitions` 放在每个模式控件上。`fallback`（例如 Auto 自动降级）尚未声明，降级目前按未经提交的切换处理。
 
 ## 验证
 

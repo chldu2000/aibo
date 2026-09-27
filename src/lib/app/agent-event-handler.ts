@@ -35,6 +35,7 @@ export type AgentEventHandlerContext = {
   refreshTurnChangeSet?: (sessionId: string) => void | Promise<void>;
   refreshArtifacts?: (sessionId: string) => void | Promise<void>;
   refreshWorkspaceChanges?: (workspaceId: string) => void | Promise<void>;
+  refreshExecutionProfile?: (sessionId: string) => void | Promise<void>;
 };
 
 export function eventTimelineItemId(event: Pick<AgentEvent, 'turnId'>, itemId: string | null): string | null {
@@ -205,6 +206,14 @@ export function handleAgentEvent(event: AgentEvent, context: AgentEventHandlerCo
     if (event.sessionId === selectedSessionId) {
       context.setNotice('Codex 原线程不可恢复，已创建新的远端线程；本地时间线已保留。');
     }
+  }
+
+  // The host committed a session control from an approval; the mode indicator follows the saved profile.
+  if (event.type === 'session.control_changed' && event.sessionId === selectedSessionId) {
+    void context.refreshExecutionProfile?.(event.sessionId);
+    void context.refreshTimeline?.(event.sessionId);
+    const label = stringPayload(event.payload.label);
+    if (label) context.setNotice(`已切换到 ${label}。`);
   }
 
   if (event.type === 'approval.requested') {

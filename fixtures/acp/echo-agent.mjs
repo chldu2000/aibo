@@ -5,7 +5,8 @@
 //   ECHO_MODE_API=config modes as a config option (default: the session modes API)
 // Prompts containing "permission" request approval with all four ACP option kinds, "vendor"
 // calls an unregistered client method, "mcp" reports the MCP servers it was given, and "wait"
-// blocks until session/cancel.
+// blocks until session/cancel. "exitplan" asks to leave plan mode like Claude Code's ExitPlanMode and
+// switches to code when approved; "rogue" switches to code without asking.
 import { createInterface } from 'node:readline';
 
 const load = process.env.ECHO_LOAD !== '0', image = process.env.ECHO_IMAGE === '1', configModes = process.env.ECHO_MODE_API === 'config';
@@ -18,8 +19,8 @@ const update = (sessionId, value) => send({ method: 'session/update', params: { 
 const models = current => ({ id: 'model', category: 'model', type: 'select', currentValue: current, options: [{ value: 'echo-small', name: 'Echo Small' }, { value: 'echo-large', name: 'Echo Large' }] });
 function state(session) {
   const configOptions = [models(session.model)];
-  if (configModes) return { configOptions: [...configOptions, { id: 'mode', category: 'mode', type: 'select', currentValue: session.mode, options: [{ value: 'ask' }, { value: 'code' }] }] };
-  return { configOptions, modes: { currentModeId: session.mode, availableModes: [{ id: 'ask', name: 'Ask' }, { id: 'code', name: 'Code' }] } };
+  if (configModes) return { configOptions: [...configOptions, { id: 'mode', category: 'mode', type: 'select', currentValue: session.mode, options: [{ value: 'ask' }, { value: 'plan' }, { value: 'code' }] }] };
+  return { configOptions, modes: { currentModeId: session.mode, availableModes: [{ id: 'ask', name: 'Ask' }, { id: 'plan', name: 'Plan' }, { id: 'code', name: 'Code' }] } };
 }
 
 async function prompt(id, { sessionId, prompt: blocks }) {
@@ -33,6 +34,15 @@ async function prompt(id, { sessionId, prompt: blocks }) {
     reply.push(`permission:${answer?.outcome?.optionId ?? answer?.outcome?.outcome}`);
     update(sessionId, { sessionUpdate: 'tool_call_update', toolCallId: 'write-1', status: 'completed', content: [{ type: 'content', content: { type: 'text', text: 'written' } }] });
   }
+  if (text.includes('exitplan')) {
+    const options = [['exit-plan-auto', 'allow_always'], ['exit-plan-default', 'allow_once'], ['reject', 'reject_once']].map(([optionId, kind]) => ({ optionId, kind, name: optionId }));
+    update(sessionId, { sessionUpdate: 'tool_call', toolCallId: 'plan-1', title: 'Approve Plan', kind: 'switch_mode', status: 'pending' });
+    const answer = await request('session/request_permission', { sessionId, options, toolCall: { toolCallId: 'plan-1', kind: 'switch_mode', title: 'Approve Plan' } });
+    const chosen = answer?.outcome?.optionId ?? answer?.outcome?.outcome;
+    if (chosen === 'exit-plan-default') { sessions.get(sessionId).mode = 'code'; update(sessionId, { sessionUpdate: 'current_mode_update', currentModeId: 'code' }); }
+    reply.push(`exitplan:${chosen}`);
+  }
+  if (text.includes('rogue')) { sessions.get(sessionId).mode = 'code'; update(sessionId, { sessionUpdate: 'current_mode_update', currentModeId: 'code' }); }
   if (text.includes('vendor')) {
     const answer = await request('echo/ask', { sessionId });
     reply.push(`vendor:${answer?.error?.code ?? 'answered'}`);

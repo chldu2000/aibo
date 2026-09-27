@@ -172,3 +172,63 @@ test('option approvals offer only once options and answer by option ID', async (
   transport.finishPrompt({ stopReason: 'end_turn' });
   await turn;
 });
+
+const planning = {
+  ...extension, approvalOptions: true, writableModes: ['code'],
+  validateExecutionProfile: (profile) => ({ mode: profile.interactionMode === 'edit' ? 'code' : 'ask', profile }),
+  approvalChoices: [
+    { optionId: 'exit-plan-default', toolKind: 'switch_mode', label: '批准计划，手动审批编辑', sessionControl: 'manual', mode: 'code', profile: { interactionMode: 'edit', approvalReviewer: 'user' } },
+    { optionId: 'reject', toolKind: 'switch_mode', label: '继续规划' },
+  ],
+};
+const planProfile = { schema: 'aibo.execution-profile/v1', interactionMode: 'plan', approvalReviewer: 'none', networkPolicy: 'agent-managed' };
+
+test('a declared transition reaches the user from Plan and the committed mode is adopted in the same turn', async () => {
+  const transport = new FakeTransport(), events = [];
+  const session = new AcpSession({ extension: planning, transportFactory: () => transport, emit: event => events.push(event) });
+  await open(session, { executionProfile: planProfile });
+  const turn = session.prompt({ text: 'plan it', turnId: 't1' });
+  const options = [{ optionId: 'exit-plan-auto', kind: 'allow_always' }, { optionId: 'exit-plan-default', kind: 'allow_once' }, { optionId: 'reject', kind: 'reject_once' }];
+  transport.emitRequest({ jsonrpc: '2.0', id: 4, method: 'session/request_permission', params: { sessionId: 'echo-1', options, toolCall: { toolCallId: 'p', kind: 'switch_mode' } } });
+  assert.deepEqual(events.find(event => event.type === 'approval.requested').payload.options, [
+    { id: 'exit-plan-default', kind: 'allow', label: '批准计划，手动审批编辑', effects: { sessionControl: 'manual' } },
+    { id: 'reject', kind: 'reject', label: '继续规划' },
+  ], 'unmapped elevated options are never offered');
+  session.respondApproval('acp-n-4', { optionId: 'exit-plan-default' });
+  assert.deepEqual(transport.responses.at(-1), { id: 4, result: { outcome: { outcome: 'selected', optionId: 'exit-plan-default' } } });
+  transport.emitNotification({ method: 'session/update', params: { sessionId: 'echo-1', update: { sessionUpdate: 'current_mode_update', currentModeId: 'code' } } });
+  assert.equal(session.modeId, 'code');
+  assert.deepEqual({ mode: session.profile.interactionMode, reviewer: session.profile.approvalReviewer, network: session.profile.networkPolicy }, { mode: 'edit', reviewer: 'user', network: 'agent-managed' });
+  // Edits after the switch ask the user as in Manual; plan labels stay scoped to switch_mode requests.
+  transport.emitRequest({ jsonrpc: '2.0', id: 5, method: 'session/request_permission', params: { sessionId: 'echo-1', options: [{ optionId: 'allow', kind: 'allow_once' }, { optionId: 'reject', kind: 'reject_once' }], toolCall: { toolCallId: 'e', kind: 'edit' } } });
+  assert.deepEqual(events.filter(event => event.type === 'approval.requested').at(-1).payload.options, [{ id: 'allow', kind: 'allow' }, { id: 'reject', kind: 'reject' }]);
+  session.respondApproval('acp-n-5', { optionId: 'allow' });
+  transport.finishPrompt({ stopReason: 'end_turn' });
+  assert.equal((await turn).status, 'completed');
+  const requests = transport.requests.length;
+  const next = session.prompt({ text: 'implement', turnId: 't2', writable: true });
+  assert.equal(transport.requests.length, requests + 1, 'the adopted mode needs no correction');
+  transport.finishPrompt({ stopReason: 'end_turn' });
+  await next;
+});
+
+test('a mode switch the host did not commit fails the turn and is reverted before the next prompt', async () => {
+  const transport = new FakeTransport(), events = [];
+  const session = new AcpSession({ extension: planning, transportFactory: () => transport, emit: event => events.push(event) });
+  await open(session, { executionProfile: planProfile });
+  const turn = session.prompt({ text: 'plan it', turnId: 't1' });
+  transport.emitRequest({ jsonrpc: '2.0', id: 6, method: 'session/request_permission', params: { sessionId: 'echo-1', options: [{ optionId: 'exit-plan-default', kind: 'allow_once' }, { optionId: 'reject', kind: 'reject_once' }], toolCall: { toolCallId: 'p', kind: 'switch_mode' } } });
+  session.respondApproval('acp-n-6', { optionId: 'reject' });
+  transport.emitNotification({ method: 'session/update', params: { sessionId: 'echo-1', update: { sessionUpdate: 'current_mode_update', currentModeId: 'code' } } });
+  assert.equal(session.modeId, 'ask', 'a rejected transition is never adopted');
+  transport.finishPrompt({ stopReason: 'cancelled' });
+  const result = await turn;
+  assert.equal(result.status, 'failed');
+  assert.match(events.at(-1).payload.message, /switched to code mode without host approval/);
+  assert.equal(events.at(-1).type, 'turn.failed');
+  const next = session.prompt({ text: 'again', turnId: 't2' });
+  await new Promise(resolve => setImmediate(resolve));
+  assert.deepEqual(transport.requests.at(-2), { method: 'session/set_mode', params: { sessionId: 'echo-1', modeId: 'ask' } });
+  transport.finishPrompt({ stopReason: 'end_turn' });
+  assert.equal((await next).status, 'completed');
+});

@@ -75,6 +75,24 @@
             "approvalPolicy": "never",
             "approvalReviewer": "none"
           }
+        },
+        {
+          "id": "plan",
+          "kind": "mode",
+          "label": "Plan",
+          "description": "Plans without editing; approving the plan switches to Code.",
+          "command": "plan",
+          "transitions": [
+            "code"
+          ],
+          "profile": {
+            "interactionMode": "plan",
+            "filesystemPolicy": "read-only",
+            "commandPolicy": "disabled",
+            "networkPolicy": "agent-managed",
+            "approvalPolicy": "never",
+            "approvalReviewer": "none"
+          }
         }
       ],
       "operations": [

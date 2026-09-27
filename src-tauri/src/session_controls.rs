@@ -14,6 +14,8 @@ pub(crate) struct SessionControl {
     pub description: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub command: Option<String>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub transitions: Vec<String>,
     pub profile: Value,
 }
 
@@ -33,8 +35,17 @@ pub(crate) fn validate_declaration(entry: &Value) -> Result<(), String> {
     let mut commands = HashSet::new();
     // Plugins may add aliases for their controls, never replace host management commands.
     let reserved = ["settings","new","name","trust","session","resume","archive","tree","fork","compact","model","thinking","reload","goal","skills"];
+    for control in &controls {
+        if !ids.insert(control.id.clone()) { return Err("invalid_manifest: duplicate session control ID".into()); }
+    }
+    for control in &controls {
+        // Transitions are explicit: equal profiles (Manual and Accept edits) cannot be ordered by the host.
+        if control.transitions.iter().any(|target| target == &control.id || !ids.contains(target))
+            || control.transitions.iter().collect::<HashSet<_>>().len() != control.transitions.len() {
+            return Err("invalid_manifest: session control transitions must name other declared controls".into());
+        }
+    }
     for control in controls {
-        if !ids.insert(control.id) { return Err("invalid_manifest: duplicate session control ID".into()); }
         if let Some(command) = control.command {
             if reserved.contains(&command.as_str()) || !commands.insert(command) {
                 return Err("invalid_manifest: duplicate or reserved session control command".into());
@@ -81,6 +92,16 @@ pub(crate) fn select(profile: &ResolvedExecutionProfile, id: &str) -> Result<Res
     apply(profile.enforcement_backend, &profile.requested, option)
 }
 
+/// An in-turn switch to `target`, allowed only when a control matching the current profile
+/// declares it in `transitions`. Returns the source control and the resolved target profile.
+pub(crate) fn transition(profile: &ResolvedExecutionProfile, target: &str) -> Result<(SessionControl, ResolvedExecutionProfile), String> {
+    let next = select(profile, target)?;
+    let source = profile.session_controls.iter().find(|control| control.transitions.iter().any(|id| id == target)
+        && apply(profile.enforcement_backend, &profile.requested, control).is_ok_and(|applied| applied.enforced == profile.enforced))
+        .ok_or("permission_denied: the current session control does not allow this transition")?;
+    Ok((source.clone(), next))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -104,6 +125,12 @@ mod tests {
             for field in ["schema", "model", "reasoningEffort"] { profile.as_object_mut().unwrap().remove(field); }
             json!({"id":mode,"kind":"mode","label":mode,"description":"Native provider permissions","profile":profile})
         }));
+        entry["sessionControls"][1]["transitions"] = json!(["edit"]);
+        for invalid in [json!(["plan"]), json!(["missing"]), json!(["edit", "edit"])] {
+            let mut broken = entry.clone();
+            broken["sessionControls"][1]["transitions"] = invalid;
+            assert!(validate_declaration(&broken).is_err(), "transitions name other declared controls once");
+        }
         fs::write(source.join("plugin.json"), manifest.to_string()).unwrap();
         fs::write(source.join("worker.mjs"), "// metadata-only fixture").unwrap();
         let installed = crate::plugin_registry::install(&db, &root.join("data"), &source).await.unwrap();
@@ -133,6 +160,15 @@ mod tests {
             assert_eq!(current.enforcement_backend, EnforcementBackend::AgentManaged);
             assert!(!current.native_sandbox);
         }
+        current.session_controls = for_installation(&db, &installed.id, "org.example.native.agent", &current).await.unwrap();
+        assert!(transition(&current, "edit").is_err(), "ask declares no transitions");
+        current = select(&current, "plan").unwrap();
+        current.session_controls = for_installation(&db, &installed.id, "org.example.native.agent", &current).await.unwrap();
+        let (source, next) = transition(&current, "edit").unwrap();
+        assert_eq!(source.id, "plan");
+        assert_eq!((next.enforced.interaction_mode.as_str(), next.enforced.approval_reviewer.as_str()), ("edit", "user"));
+        assert_eq!(next.enforced.model.as_deref(), Some("chosen-model"));
+        assert!(transition(&current, "ask").is_err(), "plan may only switch to its declared targets");
         assert!(select(&current, "debug").is_err());
         crate::plugin_registry::enable(&db, &installed.id, false).await.unwrap();
         assert!(for_installation(&db, &installed.id, "org.example.native.agent", &current).await.unwrap().is_empty());

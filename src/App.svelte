@@ -2922,6 +2922,7 @@
       refreshTurnChangeSet,
       refreshWorkspaceChanges,
       refreshArtifacts,
+      refreshExecutionProfile,
     });
   }
 

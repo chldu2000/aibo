@@ -563,8 +563,49 @@ impl SessionHost {
         if option_id.is_empty() || option_id.len() > 256 {
             return Err("invalid_request: invalid approval option".into());
         }
-        self.invoke_capability_from(caller, session_id, "approval.respond", json!({"requestId": request_id, "optionId": option_id})).await?;
-        Ok(())
+        let answer = json!({"requestId": request_id, "optionId": option_id});
+        let Some(transition) = self.approval_transition(caller, session_id, request_id, option_id).await? else {
+            self.invoke_capability_from(caller, session_id, "approval.respond", answer).await?;
+            return Ok(());
+        };
+        // The host commits the new control before the agent may act on it; a refused answer restores it.
+        execution_profile::save_for_session(&self.db, session_id, &transition.target).await.map_err(|error| error.to_string())?;
+        if let Err(error) = self.invoke_capability_from(caller, session_id, "approval.respond", answer).await {
+            execution_profile::save_for_session(&self.db, session_id, &transition.previous).await.map_err(|error| error.to_string())?;
+            return Err(error);
+        }
+        let event = json!({"nativeSessionId":transition.binding["nativeSessionId"],"turnId":transition.turn_id,"type":"session.control_changed",
+            "correlation":{"requestId":request_id},
+            "payload":{"controlId":transition.to,"previousControlId":transition.from,"label":transition.label,"cause":"approval","requestId":request_id}});
+        self.project_event(session_id, &transition.workspace_id, &transition.generation, &transition.binding, event, EventOrigin::Host).await
+    }
+
+    /// Reads the offered option from the recorded request: the effect is what the provider offered,
+    /// never what the window claims. Options without effects answer the agent unchanged.
+    async fn approval_transition(&self, caller: &str, session_id: &str, request_id: &str, option_id: &str) -> Result<Option<ControlTransition>, String> {
+        let (generation, binding_json): (String, String) = sqlx::query_as("SELECT generation_id,plugin_binding_json FROM session_bindings WHERE session_id=?")
+            .bind(session_id).fetch_one(&self.db).await.map_err(|error| error.to_string())?;
+        let recorded: Vec<String> = sqlx::query_scalar("SELECT payload_json FROM agent_events WHERE session_id=? AND generation_id=? AND event_type='approval.requested' ORDER BY sequence DESC LIMIT 64")
+            .bind(session_id).bind(&generation).fetch_all(&self.db).await.map_err(|error| error.to_string())?;
+        let Some(event) = recorded.iter().filter_map(|raw| serde_json::from_str::<Value>(raw).ok()).find(|event| event["payload"]["requestId"] == request_id) else { return Ok(None); };
+        let Some(option) = event["payload"]["options"].as_array().and_then(|options| options.iter().find(|option| option["id"] == option_id)) else { return Ok(None); };
+        let Some(target) = option["effects"]["sessionControl"].as_str() else { return Ok(None); };
+        let turn_id = event["turnId"].as_str().ok_or("invalid_session: transition approval has no turn")?.to_owned();
+        let live = self.live.lock().await.get(session_id).cloned().ok_or("busy: the turn has finished accepting interactions")?;
+        if live.caller != caller { return Err("permission_denied: invocation belongs to another window".into()); }
+        let running: Option<String> = sqlx::query_scalar("SELECT id FROM turns WHERE session_id=? AND status='running'")
+            .bind(session_id).fetch_optional(&self.db).await.map_err(|error| error.to_string())?;
+        if running.as_deref() != Some(turn_id.as_str()) { return Err("invalid_session: approval belongs to another turn".into()); }
+        let session = crate::session_by_id(&self.db, session_id).await.map_err(|error| error.to_string())?;
+        if session.archived { return Err("invalid_session: archived sessions cannot switch controls".into()); }
+        let previous = crate::session_execution_profile(&self.db, session_id).await.map_err(|error| error.to_string())?.profile;
+        let (source, mut next) = crate::session_controls::transition(&previous, target)?;
+        next.adapter_capabilities = previous.adapter_capabilities.clone();
+        let workspace = crate::workspace_by_id(&self.db, &session.workspace_id).await.map_err(|error| error.to_string())?;
+        crate::require_trusted_workspace(&workspace, &next).map_err(|error| format!("workspace_untrusted: {error}"))?;
+        let label = previous.session_controls.iter().find(|control| control.id == target).map(|control| control.label.clone()).unwrap_or_else(|| target.to_owned());
+        let binding = serde_json::from_str(&binding_json).map_err(|_| "invalid_recovery_data: invalid plugin binding".to_owned())?;
+        Ok(Some(ControlTransition { previous, target: next, from: source.id, to: target.to_owned(), label, turn_id, generation, workspace_id: session.workspace_id, binding }))
     }
 
     pub async fn resolve_core_tool_approval_from(
@@ -622,4 +663,16 @@ impl SessionHost {
     }
 
 
+}
+
+struct ControlTransition {
+    previous: execution_profile::ResolvedExecutionProfile,
+    target: execution_profile::ResolvedExecutionProfile,
+    from: String,
+    to: String,
+    label: String,
+    turn_id: String,
+    generation: String,
+    workspace_id: String,
+    binding: Value,
 }

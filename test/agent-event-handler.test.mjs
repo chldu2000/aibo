@@ -102,3 +102,26 @@ for (const type of ['turn.completed', 'session.state_changed']) {
     } finally { await server.close(); }
   });
 }
+
+test('a host-committed control change refreshes the selected session profile and timeline', async () => {
+  const server = await createServer({ server: { middlewareMode: true, ws: false, watch: null }, appType: 'custom' });
+  try {
+    const { handleAgentEvent } = await server.ssrLoadModule('/src/lib/app/agent-event-handler.ts');
+    const calls = [];
+    const context = {
+      selectedSessionId: 'session', selectedAgent: 'Claude Code', timeline: [], pendingApprovals: [], pendingUserInputs: [], lastSubmittedPrompt: null,
+      setAgentActivity() {}, updateWorkspaceSessions() {}, setPendingApprovals() {}, setPendingUserInputs() {}, setUsageSnapshot() {}, setQueueSnapshot() {},
+      setTimeline() {}, setRetry() {}, refreshSessions() {},
+      refreshTimeline: id => calls.push(['timeline', id]), refreshExecutionProfile: id => calls.push(['profile', id]), setNotice: text => calls.push(['notice', text]),
+    };
+    const event = { eventId: 'e', workspaceId: 'workspace', sessionId: 'session', turnId: 'turn', type: 'session.control_changed', occurredAt: '2026-09-27T10:00:00.000Z',
+      source: {}, correlation: { requestId: 'r' }, payload: { controlId: 'auto', previousControlId: 'plan', label: 'Auto', cause: 'approval', requestId: 'r' } };
+    handleAgentEvent(event, context);
+    assert.deepEqual(calls, [['profile', 'session'], ['timeline', 'session'], ['notice', '已切换到 Auto。']]);
+    calls.length = 0;
+    handleAgentEvent({ ...event, sessionId: 'other' }, context);
+    assert.deepEqual(calls, [], 'background sessions reload their profile when selected');
+  } finally {
+    await server.close();
+  }
+});

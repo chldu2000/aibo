@@ -23,6 +23,8 @@ export interface SessionControl {
   label: string;
   description: string;
   command?: string;
+  /** Controls an approval inside a turn may switch to; the host commits the switch. */
+  transitions?: string[];
   profile: {
     interactionMode?: 'ask' | 'plan' | 'edit';
     approvalPolicy?: 'never' | 'untrusted' | 'on-request' | 'trusted';

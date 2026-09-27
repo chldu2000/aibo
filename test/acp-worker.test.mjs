@@ -75,6 +75,33 @@ test('declared host tools reach a configuration-only agent through the SDK MCP b
   await f.invoke('aibo.session.close', {});
 });
 
+const plan = { ...ask, interactionMode: 'plan' };
+
+test('approving a plan offers the declared transition and the committed mode runs the rest of the turn', async t => {
+  const f = await sessionCapability(t, plugin);
+  await f.invoke('aibo.session.open', { mode: 'create', executionProfile: plan });
+  const approval = f.wait('approval.requested');
+  const turn = f.startTurn('exitplan');
+  const requested = await approval;
+  assert.deepEqual(requested.payload.options, [
+    { id: 'exit-plan-default', kind: 'allow', label: '批准计划并编辑', effects: { sessionControl: 'code' } },
+    { id: 'reject', kind: 'reject', label: '继续规划' },
+  ]);
+  await f.control(turn, feature('approval.respond'), { requestId: requested.payload.requestId, optionId: 'exit-plan-default' });
+  assert.equal((await turn.done).status, 'completed');
+  assert.deepEqual(messages(f), ['echo: exitplan exitplan:exit-plan-default']);
+  assert.equal((await f.invoke('aibo.session.turn.write', { text: 'implement' }, 'turn-2', write)).status, 'completed', 'the adopted Code mode runs write turns');
+});
+
+test('a native mode switch without host approval fails the turn', async t => {
+  const f = await sessionCapability(t, plugin);
+  await f.invoke('aibo.session.open', { mode: 'create', executionProfile: plan });
+  const turn = f.startTurn('rogue');
+  const failed = f.wait('turn.failed');
+  assert.match((await failed).payload.message, /switched to code mode without host approval/);
+  assert.equal((await turn.done).status, 'failed');
+});
+
 test('cancel interrupts a waiting turn', async t => {
   const f = await sessionCapability(t, plugin);
   await f.invoke('aibo.session.open', { mode: 'create', executionProfile: ask });
@@ -90,6 +117,9 @@ test('an invalid acp.json stops the worker before the Runtime handshake', async 
   const source = path.join(root, 'acp-echo');
   await cp(plugin, source, { recursive: true });
   const config = JSON.parse(await readFile(path.join(source, 'acp.json'), 'utf8'));
-  await writeFile(path.join(source, 'acp.json'), JSON.stringify({ ...config, command: 'sh' }));
-  await assert.rejects(sessionCapability(t, source), error => /exit|closed|Invalid acp\.json/i.test(String(error)));
+  for (const invalid of [{ command: 'sh' }, { approvalOptions: [{ optionId: 'exit-plan-default', sessionControl: 'missing' }] },
+    { approvalOptions: [{ optionId: 'exit-plan-default', sessionControl: 'ask' }] }, { approvalOptions: [{ optionId: 'reject' }] }]) {
+    await writeFile(path.join(source, 'acp.json'), JSON.stringify({ ...config, ...invalid }));
+    await assert.rejects(sessionCapability(t, source), error => /exit|closed|Invalid acp\.json/i.test(String(error)), JSON.stringify(invalid));
+  }
 });

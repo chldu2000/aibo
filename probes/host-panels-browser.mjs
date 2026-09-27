@@ -18,7 +18,7 @@ try {
       localStorage.setItem('aibo.appearance.v1',JSON.stringify({kitId:kit,themeId:kit==='material3'?'sage':'graphite'}));
       let callback=0, agentHandler=null, sequence=0;
       window.approvalDecisions=[];
-      window.emitApproval=()=>window['_'+agentHandler]({event:'agent-event',id:1,payload:{schemaVersion:'2.0',eventId:'approval:'+ ++sequence,generationId:'generation',sequence,occurredAt:new Date().toISOString(),source:{pluginId:'dev.example.provider',pluginVersion:'1.0.0'},workspaceId:'w1',sessionId:'s1',turnId:'turn',type:'approval.requested',payload:{requestId:'panel-approval',kind:'command',command:'echo approval',availableDecisions:['accept','cancel']}}});
+      window.emitApproval=(options)=>window['_'+agentHandler]({event:'agent-event',id:1,payload:{schemaVersion:'2.0',eventId:'approval:'+ ++sequence,generationId:'generation',sequence,occurredAt:new Date().toISOString(),source:{pluginId:'dev.example.provider',pluginVersion:'1.0.0'},workspaceId:'w1',sessionId:'s1',turnId:'turn',type:'approval.requested',payload:{requestId:'panel-approval',kind:'command',command:'echo approval',availableDecisions:['accept','cancel'],...(options?{options}:{})}}});
       const workspace={id:'w1',label:'Panel test',path:'/probe/w1',trust:'trusted',createdAt:'2026-09-14',updatedAt:'2026-09-14',lastOpenedAt:null};
       const installations=['Alpha','Beta'].map((name,i)=>({id:`p${i}`,pluginId:`test.${name.toLowerCase()}`,pluginVersion:'1.0.0',enabled:false,installed:true,runnable:true,dependencies:[],contributions:[],manifest:{displayName:name}}));
       window.__TAURI_INTERNALS__={metadata:{currentWindow:{label:'main'},currentWebview:{label:'main'}},
@@ -110,15 +110,19 @@ try {
     await page.keyboard.press('Escape');
     assert.ok(await history.isVisible());
     assert.ok(await page.locator(kit==='external'?'.presentation-external iframe':'.workspace-grid').isVisible(),'workbench stays visible behind the panel');
-    await page.evaluate(()=>window.emitApproval());
+    // Option approvals (a plan exit) render the provider's labelled options and answer with one option ID.
+    await page.evaluate(()=>window.emitApproval([{id:'exit-plan-default',kind:'allow',label:'批准计划，手动审批编辑',effects:{sessionControl:'manual'}},{id:'reject',kind:'reject',label:'继续规划'}]));
     const approval=page.getByRole('region',{name:'宿主审批'});
-    await approval.getByRole('button',{name:'允许',exact:true}).waitFor();
+    await approval.getByRole('button',{name:'批准计划，手动审批编辑',exact:true}).waitFor();
+    assert.ok(await approval.getByRole('button',{name:'继续规划',exact:true}).isVisible());
+    assert.equal(await approval.getByRole('button',{name:'允许',exact:true}).count(),0,'offered options replace the decision buttons');
     const controls=history.locator('button:visible:not([disabled]),input:visible:not([disabled]),textarea:visible:not([disabled])');
     await controls.last().focus();
     await page.keyboard.press('Tab');
     assert.ok(await approval.evaluate(el=>el.contains(document.activeElement)), 'Tab reaches host approvals');
-    await approval.getByRole('button',{name:'允许',exact:true}).click();
-    assert.equal((await page.evaluate(()=>window.approvalDecisions)).length,2);
+    await approval.screenshot({path:`/tmp/aibo-option-approval-${kit}.png`});
+    await approval.getByRole('button',{name:'批准计划，手动审批编辑',exact:true}).click();
+    assert.deepEqual((await page.evaluate(()=>window.approvalDecisions))[1],{sessionId:'s1',requestId:'panel-approval',optionId:'exit-plan-default'});
     await page.screenshot({path:`/tmp/aibo-host-history-${kit}.png`});
     await history.locator('.host-panel-body').focus();
     await page.keyboard.press('Escape');

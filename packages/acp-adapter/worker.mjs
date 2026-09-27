@@ -4,7 +4,8 @@ import { createHostToolChannel, hostToolDefinitions, createHostToolMcpBridge } f
 import { AcpSession, BASE_CAPABILITIES, object, pluginError } from './session.mjs';
 
 export const ACP_AGENT_SCHEMA = 'aibo.acp-agent/v1';
-const INTERACTIONS = ['ask', 'plan', 'edit'];
+// `auto` is the edit mode reviewed by the agent's own classifier (approvalReviewer auto-review).
+const INTERACTIONS = ['ask', 'plan', 'edit', 'auto'];
 
 /**
  * Validates a plugin's `acp.json` against its manifest. Invalid configuration stops the Worker
@@ -22,12 +23,35 @@ export function acpAgentConfig(config, manifest) {
   if (!Array.isArray(args) || args.length > 32 || !args.every(arg => typeof arg === 'string' && arg.length <= 1024)) fail('args must be at most 32 strings');
   const modes = object(c.modes);
   const mapped = INTERACTIONS.filter(interaction => modes[interaction] !== undefined);
-  if (!mapped.length || Object.keys(modes).some(key => !INTERACTIONS.includes(key)) || !mapped.every(interaction => typeof modes[interaction] === 'string' && modes[interaction])) fail('modes must map ask, plan or edit to native mode IDs');
+  if (!mapped.length || Object.keys(modes).some(key => !INTERACTIONS.includes(key)) || !mapped.every(interaction => typeof modes[interaction] === 'string' && modes[interaction])) fail('modes must map ask, plan, edit or auto to native mode IDs');
   if (c.authMethodId !== undefined && (typeof c.authMethodId !== 'string' || !c.authMethodId)) fail('authMethodId must be a non-empty string');
   if (c.clientMeta !== undefined && (!c.clientMeta || typeof c.clientMeta !== 'object' || Array.isArray(c.clientMeta) || JSON.stringify(c.clientMeta).length > 8192)) fail('clientMeta must be an object under 8 KiB');
   if (c.persistsEmptySessions !== undefined && typeof c.persistsEmptySessions !== 'boolean') fail('persistsEmptySessions must be a boolean');
   if (c.requestPrefix !== undefined && !/^[a-z][a-z0-9-]{0,31}$/.test(c.requestPrefix)) fail('requestPrefix must be a lowercase identifier');
-  return { ...c, args, modes };
+  const approvalOptions = c.approvalOptions ?? [];
+  const controls = manifest.contributions?.find(entry => entry.kind === 'capabilityProvider' && entry.scope === 'session')?.sessionControls ?? [];
+  if (!Array.isArray(approvalOptions) || approvalOptions.length > 16) fail('approvalOptions must be at most 16 entries');
+  for (const entry of approvalOptions) {
+    const option = object(entry);
+    if (Object.keys(option).some(key => !['optionId', 'toolKind', 'label', 'sessionControl'].includes(key))) fail('approvalOptions entries take optionId, toolKind, label and sessionControl');
+    if (typeof option.optionId !== 'string' || !option.optionId || option.optionId.length > 256) fail('approvalOptions optionId must be a native option ID');
+    if (option.toolKind !== undefined && (typeof option.toolKind !== 'string' || !option.toolKind)) fail('approvalOptions toolKind must be an ACP tool kind');
+    if (option.label !== undefined && (typeof option.label !== 'string' || !option.label.trim() || option.label.length > 80)) fail('approvalOptions label must be 1-80 characters');
+    if (option.label === undefined && option.sessionControl === undefined) fail('approvalOptions entries need a label or a sessionControl');
+    if (option.sessionControl !== undefined) {
+      const control = controls.find(candidate => candidate.id === option.sessionControl);
+      if (!control) fail(`approvalOptions sessionControl ${option.sessionControl} is not declared in plugin.json`);
+      if (!modes[controlInteraction(control.profile)]) fail(`approvalOptions sessionControl ${option.sessionControl} has no mapped native mode`);
+      if (!controls.some(candidate => candidate.transitions?.includes(option.sessionControl))) fail(`no session control declares a transition to ${option.sessionControl}`);
+    }
+  }
+  return { ...c, args, modes, approvalOptions };
+}
+
+/** The `modes` key a session control profile runs in: Auto is edit reviewed by the agent. */
+function controlInteraction(profile) {
+  const p = object(profile);
+  return p.interactionMode === 'edit' && p.approvalReviewer === 'auto-review' ? 'auto' : p.interactionMode;
 }
 
 /**
@@ -38,14 +62,14 @@ export function agentManagedProfile(label, modes) {
   return (profile, permissions) => {
     const p = object(profile);
     if (p.schema !== 'aibo.execution-profile/v1') throw pluginError('invalid_input', `${label} requires execution profile v1`);
-    const mode = modes[p.interactionMode];
+    const mode = modes[controlInteraction(p)];
     if (!mode) throw pluginError('invalid_input', `${label} requires a supported interaction mode`);
     if (!permissions.includes('workspace.read')) throw pluginError('permission_denied', `${label} requires workspace.read`);
     if (p.model != null && (typeof p.model !== 'string' || !p.model.trim())) throw pluginError('invalid_input', `${label} model must be a non-empty reference`);
     if (p.reasoningEffort != null && (typeof p.reasoningEffort !== 'string' || !p.reasoningEffort)) throw pluginError('invalid_input', `${label} reasoning selection must be a non-empty ID`);
     if (p.interactionMode === 'edit') {
       if (p.filesystemPolicy !== 'agent-managed' || p.commandPolicy !== 'agent-managed') throw pluginError('unsupported', `${label} edit mode requires provider-managed file and command permissions`);
-      if (p.approvalReviewer !== 'user' || p.approvalPolicy !== 'on-request') throw pluginError('unsupported', `${label} edit mode requires user/on-request approval`);
+      if (!['user', 'auto-review'].includes(p.approvalReviewer) || p.approvalPolicy !== 'on-request') throw pluginError('unsupported', `${label} edit mode requires on-request approval`);
     } else if (p.filesystemPolicy !== 'read-only' || p.commandPolicy !== 'disabled' || p.approvalPolicy !== 'never' || p.approvalReviewer !== 'none') {
       throw pluginError('unsupported', `${label} ask and plan modes require read-only files, disabled commands, and no approvals`);
     }
@@ -69,8 +93,19 @@ export function extensionFromConfig(config, manifest) {
     capabilities: BASE_CAPABILITIES,
     // A plugin without an edit mapping never runs write-authorized turns.
     writableMode: config.modes.edit ?? null,
+    writableModes: [config.modes.edit, config.modes.auto].filter(Boolean),
     validateExecutionProfile: agentManagedProfile(config.label, config.modes),
+    approvalChoices: approvalChoices(config, manifest),
   };
+}
+
+/** Resolves `approvalOptions` to the native mode and profile patch each session-control effect selects. */
+function approvalChoices(config, manifest) {
+  const controls = manifest.contributions.find(entry => entry.kind === 'capabilityProvider' && entry.scope === 'session')?.sessionControls ?? [];
+  return (config.approvalOptions ?? []).map(({ optionId, toolKind, label, sessionControl }) => {
+    const control = sessionControl && controls.find(candidate => candidate.id === sessionControl);
+    return { optionId, toolKind, label, ...(control ? { sessionControl, mode: config.modes[controlInteraction(control.profile)], profile: control.profile } : {}) };
+  });
 }
 
 /** Per-turn additional instructions from the optional `additionalInstructions` setting. */
@@ -98,6 +133,7 @@ export function serveAcpAgent({ manifestUrl, configUrl, extension, additionalIns
   // The declared approval.respond variant decides how approvals are answered: by option or by decision.
   const approvalOperation = contribution.operations.find(operation => operation.capability.id === `${manifest.pluginId}.approval.respond`);
   const active = { ...configured, approvalOptions: approvalOperation?.inputSchema?.properties?.optionId !== undefined };
+  if (configured.approvalChoices?.length && !active.approvalOptions) throw new Error('Invalid acp.json: approvalOptions require the { requestId, optionId } approval.respond input');
   const label = active.label, feature = name => `${manifest.pluginId}.${name}`;
   const instructions = additionalInstructions ?? settingsInstructions(label);
   let owner, bridge;

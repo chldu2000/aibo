@@ -52,7 +52,8 @@
         "workspace.requested",
         "goal.updated",
         "subagent.updated",
-        "subagent.message"
+        "subagent.message",
+        "session.control_changed"
       ]
     },
     "correlation": {
@@ -242,6 +243,124 @@
                     ]
                   }
                 }
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "type": {
+            "const": "approval.requested"
+          }
+        },
+        "required": [
+          "type"
+        ]
+      },
+      "then": {
+        "properties": {
+          "payload": {
+            "properties": {
+              "options": {
+                "type": "array",
+                "maxItems": 16,
+                "items": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "required": [
+                    "id",
+                    "kind"
+                  ],
+                  "properties": {
+                    "id": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 256
+                    },
+                    "kind": {
+                      "enum": [
+                        "allow",
+                        "reject"
+                      ]
+                    },
+                    "label": {
+                      "type": "string",
+                      "maxLength": 80
+                    },
+                    "effects": {
+                      "type": "object",
+                      "additionalProperties": false,
+                      "required": [
+                        "sessionControl"
+                      ],
+                      "properties": {
+                        "sessionControl": {
+                          "type": "string",
+                          "pattern": "^[a-z][a-z0-9.-]*$",
+                          "maxLength": 80
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "type": {
+            "const": "session.control_changed"
+          }
+        },
+        "required": [
+          "type"
+        ]
+      },
+      "then": {
+        "properties": {
+          "turnId": {
+            "type": "string"
+          },
+          "payload": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "controlId",
+              "previousControlId",
+              "label",
+              "cause",
+              "requestId"
+            ],
+            "properties": {
+              "controlId": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 80
+              },
+              "previousControlId": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 80
+              },
+              "label": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 80
+              },
+              "cause": {
+                "const": "approval"
+              },
+              "requestId": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 256
               }
             }
           }

@@ -2,6 +2,25 @@
   "schema": "aibo.acp-agent/v1",
   "label": "Echo",
   "command": "echo-acp",
-  "args": ["--acp"],
-  "modes": { "ask": "ask", "edit": "code" }
+  "args": [
+    "--acp"
+  ],
+  "modes": {
+    "ask": "ask",
+    "plan": "plan",
+    "edit": "code"
+  },
+  "approvalOptions": [
+    {
+      "optionId": "exit-plan-default",
+      "toolKind": "switch_mode",
+      "label": "批准计划并编辑",
+      "sessionControl": "code"
+    },
+    {
+      "optionId": "reject",
+      "toolKind": "switch_mode",
+      "label": "继续规划"
+    }
+  ]
 }
