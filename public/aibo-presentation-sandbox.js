@@ -386,6 +386,14 @@
     assets = packet.assets;
     localInputActions = packet.localInputActions;
     allowInheritance = packet.allowInheritance;
+    if (packet.reportSize) {
+      // Content-sized control frames: report the rendered height once per frame; the host clamps it.
+      let pending = false, last = -1;
+      new ResizeObserver(() => {
+        if (pending) return; pending = true;
+        requestAnimationFrame(() => { pending = false; const height = Math.ceil(root.getBoundingClientRect().height); if (height !== last) { last = height; send({ type: 'size', height }); } });
+      }).observe(root);
+    }
     const style = document.createElement('style');
     // Control frames sit inside host layouts, so their canvas stays transparent whatever the package paints.
     const controlCanvas = packet.input?.surface === 'controls' ? 'html,body{background:transparent!important;}' : '';

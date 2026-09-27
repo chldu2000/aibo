@@ -95,3 +95,13 @@ tr[aria-selected=true]{background:var(--accent)}
 .select-control{display:flex;align-items:center;gap:8px;box-sizing:border-box;width:100vw;height:100vh;font-size:12px;color:var(--muted-foreground)}
 .select-control>button{display:flex;flex:1;min-width:0;height:100%;box-sizing:border-box;justify-content:space-between;align-items:center;gap:8px;padding:0 10px;text-align:left;background:var(--background);color:var(--foreground)}
 .select-control>button>span:first-child{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.select-control>button:disabled{opacity:.55;cursor:default}
+/* Content-sized controls: the frame follows the rendered height (the host caps it). */
+.attachments{display:flex;flex-wrap:wrap;gap:6px;margin:0;padding:4px 0;list-style:none}
+.attachment{display:flex;align-items:center;gap:6px;max-width:240px;padding:4px 8px;border:1px solid var(--border);border-radius:var(--radius);font-size:12px}
+.attachment>span:nth-child(2){overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.attachment>span:nth-child(3){color:var(--muted-foreground)}
+.attachment>button{padding:0 6px;line-height:18px}
+.goal{display:flex;align-items:center;gap:12px;padding:8px 12px;border:1px solid var(--border);border-radius:var(--radius)}
+.goal-copy{display:grid;flex:1;min-width:0;gap:2px}.goal-copy>p{margin:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-weight:600}.goal-copy>span{color:var(--muted-foreground);font-size:12px}
+.goal-actions{display:flex;gap:6px}
+.subagent{display:grid;width:100%;gap:4px;padding:10px 12px;text-align:left;background:var(--card)}.subagent.failed{border-color:var(--destructive)}
+.subagent-heading{display:flex;justify-content:space-between;gap:8px}.subagent-status,.subagent-activity{color:var(--muted-foreground);font-size:12px}

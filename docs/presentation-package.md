@@ -169,6 +169,9 @@ Enter 保持换行。禁用/只读输入框不触发，不能同时声明 keydow
 | SessionControlMark | 1.1.0 | 无 |
 | Select | 1.1.0 | `open`：请求宿主打开选项菜单 |
 | ModelContextSelect | 1.1.0 | `open`：请求宿主打开上下文大小菜单 |
+| AttachmentList | 1.1.0 | `remove`：移除一个上下文附件（token 为 `remove:<id>`） |
+| GoalBar | 1.1.0 | `pause` / `resume` / `clear`：仅列出宿主当前提供且非忙碌时可用的操作 |
+| SubagentCard | 1.1.0 | `open`：打开宿主的子 Agent 工作过程对话框 |
 
 宿主只向声明了对应或更高 hostApi 的包发送控件，并只预检这些控件。已发布的 1.0.0 包
 不会收到后来加入的控件，宿主升级不会因为新控件而让旧包激活失败。声明 1.1.0 的包无法安装到
@@ -201,8 +204,18 @@ Select 与 ModelContextSelect 使用默认控件在当前 kit 中测得的占位
 包需要在这个尺寸内排版，例如收紧内边距、对过长文字做省略，不能依赖自身内容撑开尺寸。
 控件 iframe 的画布由宿主设为透明，包样式表中的 `body` 背景不会显示在控件周围。
 
-AgentSettingsForm、GoalBar、SubagentCard、SubagentDialog 均为内部控件，
-未加入外部 controls 目录，不能通过声明同名控件取得其接口。
+AttachmentList、GoalBar、SubagentCard 的高度随内容变化：沙箱在每次渲染后上报根节点高度，
+宿主据此设置 iframe 高度，上限 480px，超出部分在 iframe 内滚动。宽度与所在容器一致。
+包不能让这些控件的内容按视口定高（例如 `100vh`、`height: 100%`），否则测得的高度就是 iframe 自身高度，无法随内容缩小。
+
+AttachmentList 的 `props` 为 `{ items, removable, disabled, label }`，每项只有 `id`、文件名 `name`、`mediaType`、`sizeLabel`；
+附件的宿主路径和图片预览不会发送给包，因此替换后的列表不显示图片缩略图。只读的消息附件没有 `remove` 动作。
+GoalBar 的 `props` 为 `{ objective, statusLabel, usageLabel, busy }`，展开长目标属于包的本地状态。
+SubagentCard 的 `props` 为 `{ name, task, statusLabel, activity, failed }`，工作过程由宿主对话框显示。
+
+AgentSettingsForm 暂为内部控件。SubagentDialog 不会公开：它是模态对话框，内容是宿主渲染的子 Agent 历史，
+交给外部 iframe 等于允许包在工作台上绘制覆盖层，与管理中心、历史面板一样属于宿主固定区域。
+未加入外部 controls 目录的控件不能通过声明同名控件取得其接口。
 
 控件 render 可以返回 null，表示继承该控件的完整默认实现；这是 controls 专属
 协议，semantic/workbench 仍须返回有效视觉树。宿主在候选提交前预检两个目录项，

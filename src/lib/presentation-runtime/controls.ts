@@ -1,4 +1,4 @@
-import type { UiAgentStatusMarkProps, UiFileChangeMarkProps, UiModelContextSelectProps, UiModelMatrixProps, UiSelectProps, UiSessionControlMarkProps } from '../ui-kit/contract';
+import type { UiAgentStatusMarkProps, UiAttachmentListProps, UiFileChangeMarkProps, UiGoalBarProps, UiModelContextSelectProps, UiModelMatrixProps, UiSelectProps, UiSessionControlMarkProps, UiSubagentCardProps } from '../ui-kit/contract';
 import type { PresentationPackageManifest } from '../../../packages/plugin-protocol/src/presentation-package';
 import { fileChangeStates } from '../ui-kit/file-change.ts';
 import { sessionControlAppearance } from '../ui-kit/session-control-appearance.ts';
@@ -43,8 +43,8 @@ type ControlDefinition<Name extends PresentationControlData['control'], Props> =
   /** Re-resolve against current props; stale or disabled tokens resolve to nothing. */
   resolve(props: Props, intent: Pick<PresentationIntent, 'id' | 'event'>): ControlEffect<Props> | null;
   preflight: Props;
-  /** Frame size: a fixed panel, a 20px mark, or the measured size of the default control. */
-  frame: 'panel' | 'mark' | 'footprint';
+  /** Frame size: a fixed panel, a 20px mark, the measured size of the default control, or the rendered content height. */
+  frame: 'panel' | 'mark' | 'footprint' | 'content';
   /** Decorative controls never take pointer input; a null label hides them from assistive technology. */
   decorative?: { label(props: Props): string | null };
 };
@@ -79,6 +79,15 @@ const contextMenu = (props: UiModelContextSelectProps): HostMenu | null =>
     options: props.options.map(option => ({ value: option.id, label: option.label, disabled: false })),
     value: props.options.some(option => option.id === props.current) ? props.current ?? '' : '',
   };
+/** Only the file name leaves the host: attachment paths may reveal local directories, and previews stay host-side. */
+const fileName = (path: string) => path.split(/[\\/]/).pop() || path;
+const removals = (props: UiAttachmentListProps) =>
+  props.onRemove && !props.disabled ? props.items.map(item => ({ token: `remove:${item.id}`, kind: 'remove' as const, id: item.id })) : [];
+const goalActions = (props: UiGoalBarProps) => props.busy ? [] : (['pause', 'resume', 'clear'] as const)
+  .filter(kind => ({ pause: props.onPause, resume: props.onResume, clear: props.onClear })[kind])
+  .map(kind => ({ token: kind, kind }));
+const click = (intent: Pick<PresentationIntent, 'event'>) => intent.event === 'click';
+
 const contextSelect = menuControl(contextMenu, (props: UiModelContextSelectProps, value) => () => { void props.onSelect(value); });
 
 export type ControlProps = {
@@ -88,6 +97,9 @@ export type ControlProps = {
   SessionControlMark: UiSessionControlMarkProps;
   Select: UiSelectProps;
   ModelContextSelect: UiModelContextSelectProps;
+  AttachmentList: UiAttachmentListProps;
+  GoalBar: UiGoalBarProps;
+  SubagentCard: UiSubagentCardProps;
 };
 export type PresentationControl = keyof ControlProps;
 
@@ -166,6 +178,43 @@ const registry: { [Name in PresentationControl]: ControlDefinition<Name, Control
     resolve: contextSelect.resolve,
     preflight: { options: [{ id: 'standard', label: '272K', description: null, tokens: 272000 }], current: 'standard', disabled: false, onSelect() {} },
     frame: 'footprint',
+  },
+  AttachmentList: {
+    since: '1.1.0',
+    project: props => ({
+      props: {
+        items: props.items.map(({ id, path, mediaType, sizeLabel }) => ({ id, name: fileName(path), mediaType, sizeLabel: sizeLabel ?? null })),
+        removable: Boolean(props.onRemove), disabled: Boolean(props.disabled), label: props.onRemove ? '上下文附件' : '消息附件',
+      },
+      actions: removals(props),
+    }),
+    resolve(props, intent) {
+      const action = click(intent) ? removals(props).find(action => action.token === intent.id) : undefined;
+      return action ? { kind: 'run', run: () => props.onRemove?.(action.id) } : null;
+    },
+    preflight: { items: [{ id: 'preflight', path: 'notes.md', mediaType: 'text/markdown', sizeLabel: '1 KB' }], onRemove() {} },
+    frame: 'content',
+  },
+  GoalBar: {
+    since: '1.1.0',
+    project: props => ({
+      props: { objective: props.objective, statusLabel: props.statusLabel, usageLabel: props.usageLabel ?? null, busy: Boolean(props.busy) },
+      actions: goalActions(props),
+    }),
+    resolve(props, intent) {
+      const action = click(intent) ? goalActions(props).find(action => action.token === intent.id) : undefined;
+      const run = action && ({ pause: props.onPause, resume: props.onResume, clear: props.onClear })[action.kind];
+      return run ? { kind: 'run', run } : null;
+    },
+    preflight: { objective: 'Preflight objective', statusLabel: '运行中', usageLabel: null, onPause() {}, onClear() {} },
+    frame: 'content',
+  },
+  SubagentCard: {
+    since: '1.1.0',
+    project: ({ name, task, statusLabel, activity, failed }) => ({ props: { name, task, statusLabel, activity, failed }, actions: [{ token: 'open', kind: 'open' }] }),
+    resolve: (props, intent) => click(intent) && intent.id === 'open' ? { kind: 'run', run: props.onOpen } : null,
+    preflight: { name: 'Preflight', task: 'Inspect', statusLabel: '运行中', activity: '', failed: false, onOpen() {} },
+    frame: 'content',
   },
 };
 

@@ -19,7 +19,7 @@ export async function preparePresentationSandbox(
   onIntent: (intent: PresentationIntent) => void,
   onFailure: (error: Error) => void,
   signal?: AbortSignal,
-  options: { readAttachmentPreview?: (sessionId: string, id: string) => Promise<string>; onPasteImages?: (files: File[]) => void; viewState?: ReturnType<typeof createPresentationViewStateStore>; localInputActions?: readonly string[] | ((input: PresentationInput) => readonly string[]); onRecover?: () => void; allowInheritance?: boolean; onInheritanceChange?: (inherited: boolean) => void; decorative?: boolean } = {},
+  options: { readAttachmentPreview?: (sessionId: string, id: string) => Promise<string>; onPasteImages?: (files: File[]) => void; viewState?: ReturnType<typeof createPresentationViewStateStore>; localInputActions?: readonly string[] | ((input: PresentationInput) => readonly string[]); onRecover?: () => void; allowInheritance?: boolean; onInheritanceChange?: (inherited: boolean) => void; onSize?: (height: number) => void; decorative?: boolean } = {},
 ): Promise<MountedSandbox> {
   const verified = await verifyPresentationPackage(JSON.stringify(installed.release.manifest), async path => {
     const value = installed.resources[path];
@@ -107,7 +107,8 @@ export async function preparePresentationSandbox(
   };
   channel.port1.onmessage = ({ data }) => {
     if (disposed || !data) return;
-    if (data.type === 'connected') { channel.port1.postMessage({ type: 'suspended', value: suspended }); channel.port1.postMessage({ type: 'start', source, css, assets, input, localInputActions, allowInheritance: options.allowInheritance === true && initial.surface === 'controls' }); }
+    if (data.type === 'connected') { channel.port1.postMessage({ type: 'suspended', value: suspended }); channel.port1.postMessage({ type: 'start', source, css, assets, input, localInputActions, allowInheritance: options.allowInheritance === true && initial.surface === 'controls', reportSize: options.onSize !== undefined }); }
+    else if (data.type === 'size') { if (typeof data.height === 'number' && Number.isFinite(data.height)) options.onSize?.(Math.max(0, Math.min(data.height, 100000))); }
     else if ((data.type === 'rendered' || (data.type === 'inherit' && options.allowInheritance && initial.surface === 'controls')) && data.revision === input.context.revision) {
       clearTimeout(timeout);
       inherited = data.type === 'inherit';

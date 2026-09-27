@@ -58,10 +58,24 @@ export type PresentationModelContextSelect = {
   disabled: boolean;
 };
 export type PresentationOpenAction = { token: 'open'; kind: 'open' };
+/** Host API 1.1.0. File names only: host paths and image previews never reach the package. */
+export type PresentationAttachmentList = {
+  items: readonly { id: string; name: string; mediaType: string; sizeLabel: string | null }[];
+  removable: boolean;
+  disabled: boolean;
+  label: string;
+};
+/** Host API 1.1.0. Expanding long objectives is local package state. */
+export type PresentationGoalBar = { objective: string; statusLabel: string; usageLabel: string | null; busy: boolean };
+/** Host API 1.1.0. `open` shows the host-owned subagent dialog. */
+export type PresentationSubagentCard = { name: string; task: string; statusLabel: string; activity: string; failed: boolean };
 export type PresentationControlData =
   | { control: 'ModelMatrix'; props: PresentationModelMatrix; actions: readonly ({ token: string; kind: 'model'; model: string; reasoningEffort: string | null } | { token: string; kind: 'serviceTier'; serviceTier: string })[] }
   | { control: 'AgentStatusMark'; props: PresentationStatusMark; actions: readonly [] }
   | { control: 'FileChangeMark'; props: PresentationFileChangeMark; actions: readonly [] }
   | { control: 'SessionControlMark'; props: PresentationSessionControlMark; actions: readonly [] }
   | { control: 'Select'; props: PresentationSelect; actions: readonly PresentationOpenAction[] }
-  | { control: 'ModelContextSelect'; props: PresentationModelContextSelect; actions: readonly PresentationOpenAction[] };
+  | { control: 'ModelContextSelect'; props: PresentationModelContextSelect; actions: readonly PresentationOpenAction[] }
+  | { control: 'AttachmentList'; props: PresentationAttachmentList; actions: readonly { token: string; kind: 'remove'; id: string }[] }
+  | { control: 'GoalBar'; props: PresentationGoalBar; actions: readonly { token: 'pause' | 'resume' | 'clear'; kind: 'pause' | 'resume' | 'clear' }[] }
+  | { control: 'SubagentCard'; props: PresentationSubagentCard; actions: readonly PresentationOpenAction[] };

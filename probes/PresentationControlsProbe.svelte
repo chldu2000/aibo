@@ -1,8 +1,12 @@
 <script>
- import {PresentationHost,ModelMatrix,AgentStatusMark,FileChangeMark,SessionControlMark,Select,ModelContextSelect} from '$lib/ui-kit';
+ import {PresentationHost,ModelMatrix,AgentStatusMark,FileChangeMark,SessionControlMark,Select,ModelContextSelect,AttachmentList,GoalBar,SubagentCard} from '$lib/ui-kit';
  let host,active=$state(null),disabled=$state(false),instance;
  const actions=[];
  let choice=$state('a');
+ const initialAttachments=()=>[{id:'one',path:'/Users/probe/Library/Application Support/aibo/clip/shot.png',mediaType:'image/png',sizeLabel:'2 KB'},{id:'two',path:'src/notes.md',mediaType:'text/markdown'}];
+ let attachments=$state(initialAttachments());
+ export function resetAttachments(){attachments=initialAttachments();}
+ export function addAttachments(count){attachments=[...attachments,...Array.from({length:count},(_,i)=>({id:'extra-'+attachments.length+'-'+i,path:`src/file-${attachments.length+i}.ts`,mediaType:'text/typescript'}))];}
  let mark=$state({agent:'plugin',tone:'idle',label:'Inherited mark'});
  import codex from '../src-tauri/capability-plugins/codex/plugin.json';
  import pi from '../src-tauri/capability-plugins/pi/plugin.json';
@@ -20,5 +24,10 @@
  <section id="replaceable"><ModelMatrix {...matrix}/><button aria-label="Select row" onclick={()=>actions.push(['row'])}><AgentStatusMark {...mark}/></button>
   <p id="selects"><Select aria-label="Probe select" value={choice} options={[{value:'a',label:'Alpha'},{value:'b',label:'Beta'},{value:'c',label:'Gamma',disabled:true}]} onSelect={value=>{choice=value;actions.push(['select',value]);}}/>
    <ModelContextSelect options={[{id:'std',label:'272K',description:null,tokens:272000},{id:'max',label:'1M',description:null,tokens:1000000}]} current="std" disabled={false} onSelect={id=>{actions.push(['context',id]);}}/></p>
+  <div id="content-controls" style="width:520px">
+   <AttachmentList items={attachments} onRemove={id=>{attachments=attachments.filter(item=>item.id!==id);actions.push(['remove',id]);}}/>
+   <GoalBar objective="Ship the release" statusLabel="运行中" usageLabel="1 / 10" onPause={()=>actions.push(['pause'])} onClear={()=>actions.push(['clear'])}/>
+   <SubagentCard name="Explorer" task="Map code" statusLabel="完成" activity="read 3 files" failed={false} onOpen={()=>actions.push(['open'])}/>
+  </div>
   <p id="marks"><FileChangeMark kind="conflicted"/><FileChangeMark kind="added" decorative/><SessionControlMark control={{kind:'mode',profile:{interactionMode:'plan'}}}/></p></section>
 </PresentationHost>

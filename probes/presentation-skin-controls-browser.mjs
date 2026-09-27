@@ -62,8 +62,35 @@ try {
   await page.waitForFunction(count=>window.controlPackageProbe.result().length===count,count+1);count++;
   assert.deepEqual(await page.evaluate(()=>window.controlPackageProbe.result().at(-1)),['context','max']);
   await page.evaluate(()=>window.controlPackageProbe.setChoice('a'));
+  // Content-sized controls: attachments, goal and subagent card.
+  await page.evaluate(()=>window.controlPackageProbe.resetAttachments());
+  const content=page.locator('#content-controls .external-control:not([hidden])');
+  await page.waitForFunction(()=>document.querySelectorAll('#content-controls .external-control:not([hidden]) iframe').length===3);
+  const attachmentFrame=content.nth(0).locator('iframe').contentFrame();
+  await attachmentFrame.getByText('notes.md',{exact:true}).waitFor();
+  assert.equal(await attachmentFrame.getByText(/Users|Library/).count(),0,'host paths never reach the package');
+  const heightOf=index=>content.nth(index).evaluate(el=>el.getBoundingClientRect().height);
+  // The previous package left hundreds of attachments; wait for the reset list to be reported before measuring.
+  await page.waitForFunction(()=>document.querySelector('#content-controls .external-control:not([hidden])').getBoundingClientRect().height<100);
+  const before=await heightOf(0);
+  await page.evaluate(()=>window.controlPackageProbe.addAttachments(24));
+  await page.waitForFunction(before=>document.querySelector('#content-controls .external-control:not([hidden])').getBoundingClientRect().height>before+10,before);
+  await page.evaluate(()=>window.controlPackageProbe.addAttachments(400));
+  await page.waitForFunction(()=>document.querySelector('#content-controls .external-control:not([hidden])').getBoundingClientRect().height===480);
+  await attachmentFrame.getByRole('button',{name:'移除附件 notes.md',exact:true}).click();
+  await page.waitForFunction(count=>window.controlPackageProbe.result().length===count,count+1);count++;
+  assert.deepEqual(await page.evaluate(()=>window.controlPackageProbe.result().at(-1)),['remove','two']);
+  await content.nth(1).locator('iframe').contentFrame().getByRole('button',{name:'暂停目标',exact:true}).click();
+  await page.waitForFunction(count=>window.controlPackageProbe.result().length===count,count+1);count++;
+  assert.deepEqual(await page.evaluate(()=>window.controlPackageProbe.result().at(-1)),['pause']);
+  const cardHeight=await heightOf(2);
+  assert.ok(cardHeight>30&&cardHeight<200,'card frame follows its content: '+cardHeight);
+  await content.nth(2).locator('iframe').contentFrame().getByRole('button',{name:'查看 Explorer 的工作过程',exact:true}).click();
+  await page.waitForFunction(count=>window.controlPackageProbe.result().length===count,count+1);count++;
+  assert.deepEqual(await page.evaluate(()=>window.controlPackageProbe.result().at(-1)),['open']);
+  await page.locator('#content-controls').screenshot({path:`/tmp/aibo-skin-content-${pkg.release.manifest.id.split('.').at(-1)}.png`});
  }
  await page.evaluate(()=>window.controlPackageProbe.dispose());assert.equal(await page.locator('iframe').count(),0);assert.deepEqual(errors,[]);
- const result={passed:true,browser:browser.version(),nativePort:'not exercised',checks:['independent packages preserve exact OpenAI and Pi paths','all five state tones','reduced-motion disables running animation','model selection calls host and disabled blocks selection','decorative iframe does not capture parent clicks or tab focus','trusted host controls untouched','file and session marks render package glyphs with host labels','control frames keep a transparent canvas','select and context triggers open host menus and commit choices','dispose removes all external controls']};
+ const result={passed:true,browser:browser.version(),nativePort:'not exercised',checks:['independent packages preserve exact OpenAI and Pi paths','all five state tones','reduced-motion disables running animation','model selection calls host and disabled blocks selection','decorative iframe does not capture parent clicks or tab focus','trusted host controls untouched','file and session marks render package glyphs with host labels','control frames keep a transparent canvas','select and context triggers open host menus and commit choices','content-sized frames follow attachments and cap at 480px; remove, pause and open reach the host; host paths stay hidden','dispose removes all external controls']};
  await writeFile('/tmp/aibo-presentation-skin-controls-browser.json',JSON.stringify(result,null,2)+'\n');console.log(JSON.stringify(result));
 } finally {await browser.close();await server.close();await built.dispose();}

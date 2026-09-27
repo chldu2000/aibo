@@ -27,6 +27,29 @@ function controls({control,props,actions}) {
     trigger.children=[node('span','trigger-value',current),node('span','trigger-caret','▾',[],{'aria-hidden':'true'})];
     return {...node('span','select-control',null,control==='Select'?[trigger]:[node('span','select-label','上下文'),trigger]),className:'select-control'};
   }
+  if(control==='AttachmentList') {
+    const remove=id=>actions.find(a=>a.kind==='remove'&&a.id===id)?.token;
+    return {...node('ul','attachments',null,props.items.map(item=>({...node('li','attachment:'+item.id,null,[
+      node('span','attachment-icon:'+item.id,item.mediaType.startsWith('image/')?'▣':'▤',[],{'aria-hidden':'true'}),
+      node('span','attachment-name:'+item.id,item.name,[],{title:item.name}),
+      ...(item.sizeLabel?[node('span','attachment-size:'+item.id,item.sizeLabel)]:[]),
+      ...(props.removable?[button('attachment-remove:'+item.id,'×',remove(item.id),{disabled:!remove(item.id),'aria-label':'移除附件 '+item.name})]:[]),
+    ]),className:'attachment'})),{'aria-label':props.label}),className:'attachments'};
+  }
+  if(control==='GoalBar') {
+    const token=kind=>actions.find(a=>a.kind===kind)?.token,labels={pause:'暂停目标',resume:'恢复目标',clear:'清除目标'};
+    return {...node('section','goal',null,[
+      {...node('div','goal-copy',null,[node('p','goal-objective',props.objective,[],{title:props.objective}),node('span','goal-status',props.statusLabel+(props.usageLabel?' · '+props.usageLabel:''),[],{role:'status'})]),className:'goal-copy'},
+      {...node('div','goal-actions',null,['pause','resume','clear'].filter(token).map(kind=>button('goal-'+kind,labels[kind],token(kind),{'aria-label':labels[kind]}))),className:'goal-actions'},
+    ],{'aria-label':'当前目标'}),className:'goal'};
+  }
+  if(control==='SubagentCard') {
+    const card=button('subagent',null,actions.find(a=>a.kind==='open')?.token,{'aria-label':'查看 '+props.name+' 的工作过程'});
+    const part=(key,text,attrs)=>({...node('span',key,text,[],attrs),className:key});
+    card.children=[{...node('span','subagent-heading',null,[node('strong','subagent-name',props.name),part('subagent-status',props.statusLabel,{role:'status'})]),className:'subagent-heading'},
+      part('subagent-task',props.task||'子 Agent 任务'),part('subagent-activity',props.activity||'等待活动记录…')];
+    return {...card,className:'subagent'+(props.failed?' failed':'')};
+  }
   if(control!=='ModelMatrix')return null;
   const choose=(row,cell)=>actions.find(a=>a.kind==='model'&&a.model===row.reference&&a.reasoningEffort===(cell?.id??null))?.token;
   const tier=actions.find(a=>a.kind==='serviceTier')?.token;

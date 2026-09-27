@@ -1,6 +1,6 @@
 # 内置外观并入 Presentation 合同：迁移计划
 
-状态：P0、P1 已实施；P2 已完成前两批（纯展示控件、Select 与 ModelContextSelect），其余控件与 P3 未实施。见各阶段实施记录。本文不改变现行规则；在各阶段验收并同步
+状态：P0、P1 已实施；P2 已完成前三批（纯展示控件、Select 与 ModelContextSelect、AttachmentList / GoalBar / SubagentCard），AgentSettingsForm 与 P3 未实施。见各阶段实施记录。本文不改变现行规则；在各阶段验收并同步
 [UI 架构](ui-architecture.md)、[Presentation 包合同](presentation-package.md)及对应测试前，
 以现行文档为准。
 
@@ -185,6 +185,17 @@ flowchart LR
 - 验证：`test/presentation-controls.test.mjs`；探针 `presentation-controls-browser`（占位一致、菜单在 iframe 外且未被裁剪、
   伪造 token 不打开菜单、键盘选择与 Escape、焦点回到控件）、`select-browser`、`ak-ui-controls-browser`、`agent-settings-browser`、`material3-palettes-browser`。
 - 已知与本次无关的失败：`material3-controls-browser` 第 42 行在 `main` 上同样失败；`presentation-full-skins-browser` 偶发的导航宽度断言在复跑时通过。
+
+#### P2 第三批实施记录（AttachmentList、GoalBar、SubagentCard）
+
+- 新增占位方式 `content`：这三个控件的高度随内容变化，固定尺寸或切换时测得的尺寸都不适用。沙箱用 `ResizeObserver`
+  监听渲染根节点并按帧上报高度，宿主设置 iframe 高度并限制在 480px，首次上报前沿用默认控件测得的尺寸。
+- AttachmentList 只发送文件名：粘贴图片存放在应用数据目录，绝对路径会暴露本机用户名；图片预览遵循既有的"Worker 不接收图片数据"规则。
+- 不公开 SubagentDialog：模态覆盖层会让包有机会伪造宿主界面，理由与 Select 菜单由宿主绘制相同。计划中的第 4 行因此只剩 SubagentCard。
+- 两个独立包实现了三个新控件（包版本仍为 0.4.0，因 hostApi 1.1.0 尚未发布）。实现时发现包必须为参与布局的节点设置
+  `className`，`node()` 只设置 key；这是包作者的常见错误，已在两个包中修正。
+- 验证：`test/presentation-controls.test.mjs`（投影不含路径与预览、只解析当前有效的 token）；
+  浏览器探针 `presentation-skin-controls-browser`（附件增多时 iframe 变高并在 480px 封顶、清空后缩回，移除、暂停、打开回到宿主）。
 
 #### 真实包验证：shadcn / Material 3 0.4.0
 

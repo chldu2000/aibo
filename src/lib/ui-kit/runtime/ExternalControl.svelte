@@ -17,6 +17,9 @@
   let fallback: HTMLSpanElement;
   let inherited = $state(true), failed = $state(false);
   let footprint = $state<{ width: number; height: number } | null>(null);
+  /** Rendered height reported by the frame for content-sized controls, clamped so a package cannot take over the layout. */
+  let contentHeight = $state<number | null>(null);
+  const MAX_CONTENT_HEIGHT = 480;
   let menu = $state<{ effect: MenuEffect; anchor: DOMRect } | null>(null);
   let mounted: MountedSandbox | null = null;
   let revision = 0;
@@ -61,10 +64,11 @@
         if (effect?.kind === 'run') void Promise.resolve().then(effect.run).catch(fail);
         else if (effect?.kind === 'menu') menu = { effect, anchor: target.getBoundingClientRect() };
       }, fail, abort.signal, { allowInheritance: true, onInheritanceChange: value => {
-        if (!value && controlFrame(kind) === 'footprint') measure();
+        if (!value && (controlFrame(kind) === 'footprint' || controlFrame(kind) === 'content')) measure();
         if (value) menu = null;
         inherited = value;
-      }, onRecover: registration.recover, decorative: isDecorativeControl(kind) }).then(instance => {
+      }, onRecover: registration.recover, decorative: isDecorativeControl(kind),
+        onSize: controlFrame(kind) === 'content' ? height => { contentHeight = Math.min(height, MAX_CONTENT_HEIGHT); } : undefined }).then(instance => {
         if (abort.signal.aborted) { instance.dispose(); return; }
         candidate = instance; mounted = instance; instance.activate();
         if (revision > version) { const next = $state.snapshot(input); instance.update({ ...next, context: { ...next.context, revision } }); }
@@ -81,7 +85,7 @@
 <span class="external-control-default" bind:this={fallback}>{#if inherited || failed}{@render children()}{/if}</span>
 <span class="external-control" class:status-mark={frame === 'mark'} class:footprint={frame === 'footprint'}
   style:width={frame === 'footprint' ? `${footprint?.width ?? 160}px` : undefined}
-  style:height={frame === 'footprint' ? `${footprint?.height ?? 32}px` : undefined}
+  style:height={frame === 'footprint' ? `${footprint?.height ?? 32}px` : frame === 'content' ? `${contentHeight ?? footprint?.height ?? 48}px` : undefined}
   role={label !== null ? 'img' : undefined} aria-label={label ?? undefined} aria-hidden={isDecorativeControl(control) && label === null ? 'true' : undefined}
   hidden={inherited || failed} bind:this={target}></span>
 {#if menu && menuSpec}

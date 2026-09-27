@@ -10,7 +10,7 @@ import {createConversationDirectory} from '../src/lib/presentation-runtime/conve
 import {createGitDirectory} from '../src/lib/presentation-runtime/git.ts';
 import {createInspectorDirectory} from '../src/lib/presentation-runtime/inspector.ts';
 import {createCapabilityWorkbenchDirectory} from '../src/lib/presentation-runtime/capability-workbench.ts';
-import {controlPreflights} from '../src/lib/presentation-runtime/controls.ts';
+import {controlPreflights,presentationControls} from '../src/lib/presentation-runtime/controls.ts';
 const flatten=tree=>[tree,...(tree.children??[]).flatMap(flatten)];
 test('independent skin tarballs build all themes and render core semantic content and host-bound controls',async t=>{
   const built=await buildPresentationSkins();t.after(built.dispose);
@@ -32,7 +32,7 @@ test('independent skin tarballs build all themes and render core semantic conten
     }
     assert.equal(pkg.release.manifest.hostApi,'1.1.0');
     const preflights=controlPreflights(pkg.release.manifest.hostApi);
-    assert.deepEqual(preflights.map(input=>input.data.control),['ModelMatrix','AgentStatusMark','FileChangeMark','SessionControlMark','Select','ModelContextSelect'],'packages customize the whole 1.1.0 catalog');
+    assert.deepEqual(preflights.map(input=>input.data.control),presentationControls,'packages customize the whole 1.1.0 catalog');
     for(const input of preflights) {
       const tree=render(input),nodes=flatten(tree);
       assert.ok(tree,`${input.data.control} is customized`);
@@ -42,6 +42,11 @@ test('independent skin tarballs build all themes and render core semantic conten
     const byControl=Object.fromEntries(preflights.map(input=>[input.data.control,input]));
     assert.ok(flatten(render(byControl.FileChangeMark)).some(n=>n.text==='M'&&n.attrs.title==='修改'),'file mark shows the host label');
     assert.ok(flatten(render(byControl.SessionControlMark)).some(n=>n.tag==='svg'&&n.attrs['aria-hidden']==='true'));
+    const attachment=flatten(render(byControl.AttachmentList));
+    assert.ok(attachment.some(n=>n.text==='notes.md')&&attachment.some(n=>n.events?.click==='remove:preflight'),'attachment names and removal');
+    assert.ok(flatten(render(byControl.GoalBar)).some(n=>n.events?.click==='pause'&&n.attrs['aria-label']==='暂停目标'));
+    const card=render(byControl.SubagentCard);
+    assert.equal(card.tag,'button');assert.equal(card.events.click,'open');
     for(const name of ['Select','ModelContextSelect']) {
       const input=byControl[name],trigger=flatten(render(input)).find(n=>n.tag==='button');
       assert.equal(trigger.events.click,'open');assert.equal(trigger.attrs.disabled,false);

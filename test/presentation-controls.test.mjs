@@ -41,7 +41,7 @@ test('the external control bridge never branches on control names',async()=>{
  }
 });
 test('controls added after host API 1.0.0 only reach packages declaring the newer API',()=>{
- assert.deepEqual(presentationControls,['ModelMatrix','AgentStatusMark','FileChangeMark','SessionControlMark','Select','ModelContextSelect']);
+ assert.deepEqual(presentationControls,['ModelMatrix','AgentStatusMark','FileChangeMark','SessionControlMark','Select','ModelContextSelect','AttachmentList','GoalBar','SubagentCard']);
  assert.deepEqual(controlPreflights().map(input=>input.data.control),['ModelMatrix','AgentStatusMark'],'published 1.0.0 packages see the original catalog');
  assert.deepEqual(controlPreflights('1.1.0').map(input=>input.data.control),presentationControls);
  assert.equal(controlAvailable('FileChangeMark','1.0.0'),false);assert.equal(controlAvailable('FileChangeMark','1.1.0'),true);
@@ -80,4 +80,26 @@ test('select controls expose only an open action and the host validates the choi
  await open.choose(context_,'max')();assert.deepEqual(windows,['max']);assert.equal(open.choose(context_,'std'),null);
  assert.equal(resolveControlIntent('ModelContextSelect',{...context_,options:[]},{id:'open',event:'click'}),null);
  assert.deepEqual(controlPreflights('1.1.0').map(input=>input.data.control),presentationControls);
+});
+test('attachment, goal and subagent controls project host data only and resolve live actions',async()=>{
+ const context={workspaceId:'w',sessionId:'s',revision:1};const calls=[];
+ const attachments={items:[{id:'a',path:'/Users/me/Library/Application Support/aibo/clip/shot.png',mediaType:'image/png',sizeLabel:'2 KB'},{id:'b',path:'src/app.ts',mediaType:'text/typescript'}],previews:{a:'data:image/png;base64,AAAA'},onRemove:id=>calls.push(['remove',id])};
+ const data=controlInput('AttachmentList',attachments,context).data;
+ assert.deepEqual(data.props,{items:[{id:'a',name:'shot.png',mediaType:'image/png',sizeLabel:'2 KB'},{id:'b',name:'app.ts',mediaType:'text/typescript',sizeLabel:null}],removable:true,disabled:false,label:'上下文附件'});
+ assert.ok(!JSON.stringify(data).includes('/Users/')&&!JSON.stringify(data).includes('base64'),'paths and previews never leave the host');
+ await resolveControlIntent('AttachmentList',attachments,{id:'remove:b',event:'click'}).run();
+ assert.deepEqual(calls,[['remove','b']]);
+ assert.equal(resolveControlIntent('AttachmentList',{...attachments,disabled:true},{id:'remove:b',event:'click'}),null);
+ assert.equal(resolveControlIntent('AttachmentList',{...attachments,items:attachments.items.slice(0,1)},{id:'remove:b',event:'click'}),null,'a removed item has no live token');
+ assert.deepEqual(controlInput('AttachmentList',{items:attachments.items},context).data.actions,[],'message attachments are read-only');
+ const goal={objective:'Ship it',statusLabel:'运行中',usageLabel:'1 / 10',busy:false,onPause:()=>calls.push(['pause']),onClear:()=>calls.push(['clear'])};
+ assert.deepEqual(controlInput('GoalBar',goal,context).data,{control:'GoalBar',props:{objective:'Ship it',statusLabel:'运行中',usageLabel:'1 / 10',busy:false},actions:[{token:'pause',kind:'pause'},{token:'clear',kind:'clear'}]});
+ await resolveControlIntent('GoalBar',goal,{id:'pause',event:'click'}).run();
+ assert.equal(resolveControlIntent('GoalBar',goal,{id:'resume',event:'click'}),null,'resume is not offered while running');
+ assert.deepEqual(controlInput('GoalBar',{...goal,busy:true},context).data.actions,[]);
+ const card={name:'Explorer',task:'Map code',statusLabel:'完成',activity:'read 3 files',failed:false,onOpen:()=>calls.push(['open'])};
+ assert.deepEqual(controlInput('SubagentCard',card,context).data,{control:'SubagentCard',props:{name:'Explorer',task:'Map code',statusLabel:'完成',activity:'read 3 files',failed:false},actions:[{token:'open',kind:'open'}]});
+ await resolveControlIntent('SubagentCard',card,{id:'open',event:'click'}).run();
+ assert.equal(resolveControlIntent('SubagentCard',card,{id:'open',event:'input'}),null);
+ assert.deepEqual(calls.slice(1),[['pause'],['open']]);
 });
