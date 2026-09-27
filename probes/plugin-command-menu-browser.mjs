@@ -6,6 +6,8 @@ import { chromium } from 'playwright';
 const server = await createServer({ server: { host: '127.0.0.1', port: 0, strictPort: false, hmr: false, watch: null }, plugins: [{
   name: 'cursor-command-menu-fixture', enforce: 'pre', transform(code, id) {
     if (!id.endsWith('/src/App.svelte')) return;
+    const commandCall = 'return visibleSessionCommands(sessionBuiltinCommands(selectedSession, executionProfile?.sessionId === selectedSession.id ? executionProfile.sessionControls : []), agentCommands);';
+    assert.ok(code.includes(commandCall), 'App command projection fixture anchor changed');
     return code.replace('workspaces = previewWorkspaces;', `workspaces = previewWorkspaces;
       workspaceSessionMap = { 'preview-workspace': [{
         id: 'cursor-menu', workspaceId: 'preview-workspace', agent: 'dev.aibo.cursor.agent',
@@ -14,13 +16,13 @@ const server = await createServer({ server: { host: '127.0.0.1', port: 0, strict
         createdAt: '2026-09-17', updatedAt: '2026-09-17'
       }] };
       setTimeout(() => { selectedSessionId = 'cursor-menu'; }, 100);`)
-      .replace('visibleSessionCommands(selectedKind, builtinCommands, agentCommands)', `visibleSessionCommands(selectedKind, builtinCommands, [{name:'copy-request-id',description:'Native command',source:'agent',category:'agent',execution:'prompt'}])`);
+      .replace(commandCall, `return visibleSessionCommands([], [{name:'copy-request-id',description:'Native command',source:'agent',category:'agent',execution:'prompt'}]);`);
   },
 }] });
 await server.listen();
 const browser = await chromium.launch({ headless: true });
 try {
-  for (const kit of ['shadcn', 'material3']) {
+  for (const kit of ['ak-ui', 'material3']) {
     const page = await browser.newPage();
     await page.goto(`http://127.0.0.1:${server.httpServer.address().port}/`);
     await page.evaluate(async kit => (await import('/src/lib/ui-kit/registry.ts')).setUiKit(kit), kit);

@@ -33,6 +33,7 @@ export type AcpExtension = {
   /** Namespace of `extension.updated` events for unrecognized updates. */
   namespace: string;
   requestPrefix?: string;
+  /** Candidate capabilities, narrowed by native negotiation. Declare user-input.respond only with a question handler. */
   capabilities?: readonly string[];
   /** Native mode that performs writes; only it may run write-authorized turns. */
   writableMode: string;

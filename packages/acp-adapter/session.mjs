@@ -2,10 +2,10 @@ import { imageInput } from './image-input.mjs';
 import { AcpTransport } from './transport.mjs';
 import { modelParameters, selectValues } from './config.mjs';
 
-/** Semantic capabilities every ACP session provides; extensions may replace the list. */
+/** Candidate capabilities; native negotiation narrows these before returning them to the host. */
 export const BASE_CAPABILITIES = [
   'session.create', 'session.resume', 'session.close', 'turn.send', 'turn.cancel',
-  'stream.text', 'approval.respond', 'user-input.respond', 'command.list',
+  'stream.text', 'approval.respond', 'command.list',
 ];
 
 export function pluginError(kind, message) { return Object.assign(new Error(message), { kind }); }
@@ -262,7 +262,12 @@ export class AcpSession {
     return { resolved: true, recovery: this.recovery(), capabilities: this.capabilities() };
   }
 
-  capabilities() { const capabilities = [...this.extension.capabilities, ...(this.hostToolsRegistered ? ['host-tools'] : []), ...(this.agentCapabilities?.promptCapabilities?.image === true ? ['image.input'] : [])]; return this.modelConfig ? [...capabilities, 'model.select', ...(this.parameterized ? ['model.reasoning', 'model.context-window'] : [])] : capabilities; }
+  capabilities() {
+    const capabilities = this.extension.capabilities.filter(capability => capability !== 'session.resume' || this.agentCapabilities?.loadSession === true);
+    if (this.hostToolsRegistered) capabilities.push('host-tools');
+    if (this.agentCapabilities?.promptCapabilities?.image === true) capabilities.push('image.input');
+    return this.modelConfig ? [...capabilities, 'model.select', ...(this.parameterized ? ['model.reasoning', 'model.context-window'] : [])] : capabilities;
+  }
 
   async commands() {
     if (!this.sessionId || !this.transport || this.transport.closed) throw pluginError('invalid_session', `${this.label} command directory requires an open session`);

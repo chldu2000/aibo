@@ -1,6 +1,6 @@
 # ACP 作为 Agent 接入主干：迁移计划
 
-状态：提案，未实施。宿主会话合同、能力协商与执行授权规则不因本文改变；现行规则见
+状态：A1 代码已实施，真机验收见实施记录；A2、A3、A5、A6 未实施。A4 的 Cursor 接入已存在，通用 Worker 配置入口仍待实施。宿主会话合同、能力协商与执行授权规则不因本文改变；现行规则见
 [会话能力协商](session-capability-negotiation.md)与[宿主和插件边界](plugin-boundaries-and-regression.md)。
 
 ## 背景与问题
@@ -242,9 +242,11 @@ Claude 的"清空上下文并使用 Auto/Accept edits"会重置上下文，可�
 
 ### 宿主工具
 
-ACP 的 `session/new` 接受 `mcpServers`。Cursor 插件目前传 `[]`。
-通用层可以把 `@aibo/capability-runtime/host-tools-mcp` 作为 MCP server 传入，让所有 ACP Agent 获得同一套宿主工具（`aibo.host-tools/v1`）。
-这会改变 Agent 能访问的数据范围，因此单独作为 A4 阶段，并需要宿主授权决策。
+ACP 的 `session/new` 接受 `mcpServers`。Cursor 0.1.18 已通过 SDK 私有 MCP bridge 接入
+宿主授权的 `aibo.host-tools/v1` 目录，并有真实调用及跨进程恢复证据；A1 保留这条路径。
+通用 `AcpSession` 已接收 `mcpServers`，但创建 bridge 和传入目录仍由 Cursor Worker 负责。
+A4 剩余工作是将这段接线提供给 A2 的通用 Worker，并验证第二个 Agent；不重复实现历史工具，
+也不扩大现有授权范围。新增文件写入或命令工具仍需单独决定。
 
 ## 阶段
 
@@ -273,7 +275,22 @@ ACP 的 `session/new` 接受 `mcpServers`。Cursor 插件目前传 `[]`。
   （含打包 Worker 冒烟）通过；传输、配置、图片输入测试迁到宿主 `test/acp-adapter-*.test.mjs`，另增通用会话测试
   （无认证、空会话恢复、默认前缀、厂商方法回退）；真实 Cursor CLI 2026.09.18 下 `probe-cursor-models`（40 个模型、切换、跨进程恢复）
   与 `probe-cursor-commands`（74 个命令、原生命令执行）通过。
-- 未做：会发送模型请求的 `probe-cursor-parameters`，以及桌面宿主中的完整会话交互复验。
+- 当时未做：会发送模型请求的 `probe-cursor-parameters`，以及桌面宿主中的完整会话交互复验。后续结果见下节。
+
+#### A1 复验与修正（2026-09-27）
+
+- 宿主 SDK 0.1.2 通用层仅在 `loadSession: true` 时声明恢复，不再默认声明厂商提问；
+  Cursor 0.2.1 显式声明已实现的提问扩展，并修正问题正文及显示标签到原生选项 ID 的映射。
+  版本为本地构建基线，尚未发布。
+- 两仓库 `pnpm run verify` 通过；宿主 491 项测试及独立架构检查通过，插件 40 项测试及打包 Worker smoke 通过。
+  Rust 会话合同 4 项、跨进程恢复 1 项通过。
+- 真实 CLI 参数探针通过 Auto 回合、GPT-5.5/Sonnet 4.6 推理与上下文配置及跨进程恢复。
+  隔离 macOS WKWebView 中，真实 App 通过发送、图片预览与理解、取消、两次审批、应用重启后上下文恢复；
+  新会话绑定 0.2.1，旧会话保留 0.1.18 并可重新打开。双皮肤浅/深色菜单与三种模式操作另有桌面证据。
+- 本机 CLI 在 Agent/Plan 探测中未发出结构化提问；适配器→宿主投影→真实问题界面的浏览器回放通过，
+  不能代替原生提问验收。多选、完整计划交互等仍未补齐，A1 不标为全部验收完成。
+- 精确环境、命令、分层结果和脱敏证据见[Cursor 当前复验记录](../../aibo-plugins/docs/cursor-acp-validation.md)
+  与[验收清单](../../aibo-plugins/docs/cursor-acp-checklist.md)。
 
 ### A2：清单驱动的通用 Worker
 
@@ -291,12 +308,12 @@ ACP 的 `session/new` 接受 `mcpServers`。Cursor 插件目前传 `[]`。
 
 验收：除 `plugin.json` 外不写任何代码；若需要代码，把需求提炼进通用层或扩展接口，而不是写进该插件。
 
-### A4：宿主工具经 MCP 提供给 ACP Agent（需单独决策）
+### A4：将已有 MCP 宿主工具接入通用 Worker
 
-- 通用层按配置把 host-tools MCP server 传入 `session/new`。
+- 复用 Cursor 0.1.18 已有的 SDK bridge，在 A2 Worker 中按配置建立、传入并关闭 MCP server；恢复时重建凭证并保留公开 server 身份。
 - 宿主授权按现有 host-tools 规则执行；Agent 调用宿主工具时仍校验调用归属、代际与信任。
 
-前提：宿主确认 ACP Agent 使用宿主工具的授权模型，并更新 [会话历史工具设计](session-history-tool-design.md)。
+前提：沿用 [会话历史工具设计](session-history-tool-design.md)的现行授权模型；新增工具或扩大数据范围须另行决策。
 
 ### A5：多选项审批与回合内模式转换
 
@@ -327,7 +344,7 @@ ACP 的 `session/new` 接受 `mcpServers`。Cursor 插件目前传 `[]`。
 
 1. 标准计划载荷的结构：独立的会话功能合同（例如 `plan.view`），还是作为审批载荷的一部分？
    两者都需要走合同变更门。
-2. `@aibo/acp-adapter` 放在宿主仓库还是 `aibo-plugins`？建议放宿主仓库：映射属于宿主会话合同的一部分，应与合同一起演进和发布。
+2. 已决定并实施：`@aibo/acp-adapter` 位于宿主仓库，随宿主 SDK 0.1.2 交付。
 3. 持久授权选项（`allow_always`）是否在某些会话策略下开放？
 4. 扩展 `aibo.host-tools/v1`，加入写文件与执行命令工具（执行后端情况 B）。
 5. Plan 模式的命令策略是否新增"由 Agent 审核"一类的值，避免界面显示"命令已禁用"而实际有命令执行？

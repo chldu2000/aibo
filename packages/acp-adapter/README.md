@@ -30,3 +30,9 @@ Client file and terminal capabilities are advertised as unsupported, and only `a
 `reject_once` permission options are selected: the host approves each request, and persistent
 agent-side grants are never chosen on the user's behalf. The Cursor plugin in `aibo-plugins`
 is the reference extension.
+
+`BASE_CAPABILITIES` is a candidate list: `session.resume` is returned only when initialize
+advertises `loadSession: true`. An agent without load support can still create and run sessions;
+restoring a persisted session fails explicitly rather than creating a replacement.
+Vendor questions are not part of the default capability set. An extension implementing question
+requests through `handleRequest` and `await` must add `user-input.respond` to its `capabilities`.

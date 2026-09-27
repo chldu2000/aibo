@@ -13,13 +13,13 @@ const extension = {
 const modes = current => ({ modes: { currentModeId: current, availableModes: [{ id: 'ask' }, { id: 'code' }] } });
 
 class FakeTransport {
-  constructor() { this.requests = []; this.responses = []; this.requestHandlers = []; this.notificationHandlers = []; this.closed = false; }
+  constructor(agentCapabilities = { loadSession: true }) { this.agentCapabilities = agentCapabilities; this.requests = []; this.responses = []; this.requestHandlers = []; this.notificationHandlers = []; this.closed = false; }
   start() { return this; }
   onRequest(handler) { this.requestHandlers.push(handler); return () => {}; }
   onNotification(handler) { this.notificationHandlers.push(handler); return () => {}; }
   async request(method, params) {
     this.requests.push({ method, params });
-    if (method === 'initialize') return { protocolVersion: 1, agentCapabilities: { loadSession: true } };
+    if (method === 'initialize') return { protocolVersion: 1, agentCapabilities: this.agentCapabilities };
     if (method === 'session/new') return { sessionId: 'echo-1', ...modes('ask') };
     if (method === 'session/load') return modes('ask');
     if (method === 'session/set_config_option') return { configOptions: [{ id: 'mode', currentValue: params.value }] };
@@ -34,8 +34,8 @@ class FakeTransport {
 }
 
 const profile = interactionMode => ({ schema: 'aibo.execution-profile/v1', interactionMode, approvalReviewer: 'user' });
-function fixture() {
-  const transport = new FakeTransport(), events = [];
+function fixture(agentCapabilities) {
+  const transport = new FakeTransport(agentCapabilities), events = [];
   const session = new AcpSession({ extension, transportFactory: () => transport, emit: event => events.push(event) });
   return { transport, events, session };
 }
@@ -61,6 +61,23 @@ test('agents that persist empty sessions load them on resume', async () => {
   const second = fixture();
   await open(second.session, { mode: 'resume', recovery });
   assert.ok(second.transport.requests.some(request => request.method === 'session/load' && request.params.sessionId === 'echo-1'));
+});
+
+test('agents without native load support remain usable but never advertise resume', async () => {
+  for (const agentCapabilities of [{ loadSession: false }, {}]) {
+    const first = fixture(agentCapabilities);
+    const opened = await open(first.session);
+    assert.ok(!opened.capabilities.includes('session.resume'));
+    assert.ok(!opened.capabilities.includes('user-input.respond'), 'vendor questions require an explicit extension');
+    const turn = first.session.prompt({ text: 'hello', turnId: 't1', writable: true });
+    first.transport.finishPrompt({ stopReason: 'end_turn' });
+    const result = await turn;
+    assert.equal(result.status, 'completed');
+    await first.session.close();
+    const second = fixture(agentCapabilities);
+    await assert.rejects(open(second.session, { mode: 'resume', recovery: result.recovery }), /cannot restore ACP sessions/);
+    assert.ok(!second.transport.requests.some(request => ['session/new', 'session/load'].includes(request.method)), 'never replace an unrestorable session');
+  }
 });
 
 test('standard permission requests map to once options, and only the write mode asks the user', async () => {

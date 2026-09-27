@@ -205,7 +205,7 @@ P2 最终在 hostApi 1.1.0 公开 7 个控件：FileChangeMark、SessionControlM
 
 #### 真实包验证：shadcn / Material 3 0.4.0
 
-两个独立包升到 0.4.0，声明 hostApi 1.1.0，定制全部六个公开控件。用真实包实现后得到的反馈：
+两个独立包升到 0.4.0，声明 hostApi 1.1.0，最初定制六个公开控件；P2 第三批补齐后共九个（原有两个 + 新增七个）。用真实包实现后得到的反馈：
 
 - 数据字段够用：两个包都只用了已公开的字段，没有需要再补的数据。
 - "只定制触发器"对这两个包够用：触发器的外观、当前值和禁用状态都能完整表达。
@@ -214,7 +214,7 @@ P2 最终在 hostApi 1.1.0 公开 7 个控件：FileChangeMark、SessionControlM
 - 已修复：标记类 iframe 曾显示包的 `body` 背景，标记周围能看到浅色方块（`AgentStatusMark` 原本就有）。
   沙箱现在只对 controls surface 注入透明画布，宿主同时把控件 iframe 的 `color-scheme` 设为 `normal`，避免浏览器因配色方案不一致绘制不透明底色。
 
-验证：`test/presentation-skins.test.mjs`（两个包声明 1.1.0、定制全部六个控件，触发器只在有 `open` 动作时可点击）；
+验证：`test/presentation-skins.test.mjs`（两个包声明 1.1.0、定制全部九个控件，触发器只在有 `open` 动作时可点击）；
 浏览器探针 `presentation-skin-controls-browser`（两个真实包的标记、菜单选择与回写）。原生端：`builtin-presentation-desktop` 验证了两个 0.4.0 包被原生安装器接受，shadcn 0.4.0 在 WKWebView 中预检 1.1.0 控件目录后激活并在重启后恢复。
   控件替换的原生验证见 `probes/presentation-controls-native.mjs`：外部包 iframe 只接受可信事件，页面脚本无法点击其中的按钮，
   因此探针用 Swift 助手（`probes/native-input.swift`）发送系统级鼠标和键盘事件（CGEvent）。两个 0.4.0 包在 WKWebView 中：
