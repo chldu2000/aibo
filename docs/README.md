@@ -36,7 +36,7 @@
 
 - [内置外观并入 Presentation 合同](presentation-unification-migration.md)：内置 kit 成为预装可信 release（P0 已实施），复合控件统一为纯数据合同。
 - [合同版本收敛](contract-version-consolidation.md)：每个合同族只保留当前版本与兼容读取版本，版本转换在边界完成。
-- [ACP 作为 Agent 接入主干](acp-first-agent-integration.md)：提取通用 ACP 适配层，支持 ACP 的 Agent 只写清单即可接入。
+- [ACP 作为 Agent 接入主干](acp-first-agent-integration.md)：提取通用 ACP 适配层（A1 已实施），支持 ACP 的 Agent 只写清单即可接入。
 
 ## 仍适用的设计决定
 

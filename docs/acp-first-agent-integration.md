@@ -259,6 +259,22 @@ ACP 的 `session/new` 接受 `mcpServers`。Cursor 插件目前传 `[]`。
 进程退出清理行为不变。运行 `aibo-plugins` 的 `pnpm run verify`，并按
 [Cursor 验收清单](../../aibo-plugins/docs/cursor-acp-checklist.md)做 macOS arm64 真机复验。
 
+#### A1 实施记录
+
+- 新增 `packages/acp-adapter`，作为宿主 SDK 0.1.2 的一部分交付（插件以 `hostSdk` 运行时导入，开发时作为 devDependency），
+  与迁移计划"随 SDK 发布"的决定一致。入口：`session`、`transport`、`config`、`image-input`。SDK 仅新增导出，
+  声明 `< 0.2.0` 的已有插件不受影响。
+- `AcpSession` 通过扩展对象接入厂商差异，而不是计划中的独立 `extension.mjs` 文件：必填 `label`、`command`、
+  `recoverySchema`、`namespace`、`writableMode`、`validateExecutionProfile`；可选钩子覆盖认证、客户端元数据、
+  空会话持久化、命令分类、参数化模型判定、子 Agent 识别，以及厂商请求和通知。钩子只拿到一个窄接口。
+- 错误信息中的产品名由 `label` 生成；审批请求 ID 前缀可配置，Cursor 保持 `cursor-`，避免宿主审批记录变化。
+- Cursor 插件 0.2.0 只保留 `cursorExtension`，要求宿主 SDK 0.1.2；测试和探针通过 `scripts/host-sdk.mjs` 加载目标宿主 SDK。
+- 验证：Cursor 插件原有 38 项会话与清单测试未改一行，经宿主 SDK 加载器全部通过；`aibo-plugins` 的 `pnpm run verify`
+  （含打包 Worker 冒烟）通过；传输、配置、图片输入测试迁到宿主 `test/acp-adapter-*.test.mjs`，另增通用会话测试
+  （无认证、空会话恢复、默认前缀、厂商方法回退）；真实 Cursor CLI 2026.09.18 下 `probe-cursor-models`（40 个模型、切换、跨进程恢复）
+  与 `probe-cursor-commands`（74 个命令、原生命令执行）通过。
+- 未做：会发送模型请求的 `probe-cursor-parameters`，以及桌面宿主中的完整会话交互复验。
+
 ### A2：清单驱动的通用 Worker
 
 - 实现 `worker` 模块与 `acp` 配置段的校验（在插件进程启动时校验，失败时握手报错，而不是运行中失败）。

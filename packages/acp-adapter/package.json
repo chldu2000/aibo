@@ -1,0 +1,44 @@
+{
+  "name": "@aibo/acp-adapter",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "files": [
+    "index.mjs",
+    "index.d.ts",
+    "session.mjs",
+    "session.d.ts",
+    "transport.mjs",
+    "transport.d.ts",
+    "config.mjs",
+    "config.d.ts",
+    "image-input.mjs",
+    "image-input.d.ts",
+    "README.md"
+  ],
+  "exports": {
+    ".": {
+      "types": "./index.d.ts",
+      "import": "./index.mjs"
+    },
+    "./session": {
+      "types": "./session.d.ts",
+      "import": "./session.mjs"
+    },
+    "./transport": {
+      "types": "./transport.d.ts",
+      "import": "./transport.mjs"
+    },
+    "./config": {
+      "types": "./config.d.ts",
+      "import": "./config.mjs"
+    },
+    "./image-input": {
+      "types": "./image-input.d.ts",
+      "import": "./image-input.mjs"
+    }
+  },
+  "engines": {
+    "node": ">=22"
+  }
+}
