@@ -7,6 +7,26 @@ function controls({control,props,actions}) {
       : node('svg','logo',null,[node('polygon','logo-path',null,[],{points:'12,2 22,12 12,22 2,12',fill:'none',stroke:'currentColor','stroke-width':'2'})],{viewBox:'0 0 24 24','aria-hidden':'true'});
     return {...node('span','status',null,[node('span','orbit'),logo,node('span','signal')],{'aria-label':props.label,title:props.label}),className:'status '+props.tone};
   }
+  // Host API 1.1.0 controls. Marks are decorative data; select triggers only bind the host `open` action.
+  if(control==='FileChangeMark') {
+    const symbol={added:'A',modified:'M',deleted:'D',renamed:'R',conflicted:'U'}[props.kind]??'?';
+    return {...node('span','file-change',symbol,[],{title:props.label}),className:'file-change '+props.kind};
+  }
+  if(control==='SessionControlMark') {
+    const glyph={edit:'M4 20h4L19 9l-4-4L4 16z',review:'M5 5h14M5 12h14M5 19h9',eye:'M2 12s4-7 10-7 10 7 10 7-4 7-10 7S2 12 2 12z','shield-question':'M12 3l8 3v6c0 5-3.5 8-8 9-4.5-1-8-4-8-9V6z','shield-alert':'M12 3l8 3v6c0 5-3.5 8-8 9-4.5-1-8-4-8-9V6zM12 8v5M12 16v.5',trust:'M12 3l8 3v6c0 5-3.5 8-8 9-4.5-1-8-4-8-9V6zM8.5 12l2.5 2.5 4.5-5'}[props.appearance.icon];
+    const icon=glyph?node('path','session-glyph',null,[],{d:glyph}):node('circle','session-glyph',null,[],{cx:'12',cy:'12',r:'7'});
+    return {...node('span','session-control',null,[node('svg','session-icon',null,[icon],{viewBox:'0 0 24 24',fill:'none',stroke:'currentColor','stroke-width':'2','stroke-linecap':'round','stroke-linejoin':'round','aria-hidden':'true'})]),className:'session-control '+props.appearance.tone+(props.compact?' compact':'')};
+  }
+  if(control==='Select'||control==='ModelContextSelect') {
+    const open=actions.find(a=>a.kind==='open')?.token;
+    const current=control==='Select'
+      ? props.options.find(o=>o.value===props.value)?.label??props.placeholder
+      : props.options.find(o=>o.id===props.current)?.label??(props.options.length?'未提供当前值':'不支持');
+    const name=control==='Select'?props.label:'模型上下文大小';
+    const trigger=button('trigger',null,open,{disabled:!open,'aria-expanded':'false','aria-label':name+'：'+current,title:name});
+    trigger.children=[node('span','trigger-value',current),node('span','trigger-caret','▾',[],{'aria-hidden':'true'})];
+    return {...node('span','select-control',null,control==='Select'?[trigger]:[node('span','select-label','上下文'),trigger]),className:'select-control'};
+  }
   if(control!=='ModelMatrix')return null;
   const choose=(row,cell)=>actions.find(a=>a.kind==='model'&&a.model===row.reference&&a.reasoningEffort===(cell?.id??null))?.token;
   const tier=actions.find(a=>a.kind==='serviceTier')?.token;

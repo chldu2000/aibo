@@ -11,6 +11,7 @@
  const matrix=$derived({columns:[{id:'high',label:'High',description:null}],rows:[{reference:'model-a',label:'Model A',isDefault:true,active:true,defaultActive:true,cells:[{id:'high',label:'High',description:null,available:true,active:false}]}],defaultLabel:'Default',defaultTitle:'Default',disabled,onSelect:(...selection)=>actions.push(selection)});
  export async function select(value){const next=await host.prepare(value,null,()=>{},new AbortController().signal);next.activate();instance?.dispose();instance=next;active=value;}
  export function setDisabled(value){disabled=value;}
+ export function setChoice(value){choice=value;}
  export function result(){return actions;}
  export function dispose(){instance?.dispose();active=null;instance=null;}
 </script>

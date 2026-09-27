@@ -12,13 +12,13 @@ try {
  for(const pkg of built.packages) {
   await page.evaluate(()=>window.controlPackageProbe.setDisabled(false));
   await page.evaluate(pkg=>window.controlPackageProbe.select(pkg),pkg);
-  const matrix=page.frameLocator('#replaceable .external-control:not(.status-mark):not([hidden]) iframe');
+  const matrix=page.frameLocator('#replaceable > .external-control:not([hidden]) iframe');
   await matrix.getByRole('button',{name:'High',exact:true}).click();
   await page.waitForFunction(count=>window.controlPackageProbe.result().length===count,count+1);count++;
   assert.deepEqual(await page.evaluate(()=>window.controlPackageProbe.result().at(-1)),['model-a','high']);
   await page.evaluate(()=>window.controlPackageProbe.setDisabled(true));
   await matrix.getByRole('button',{name:'High',exact:true}).evaluate(element=>new Promise(resolve=>{const check=()=>element.disabled?resolve():requestAnimationFrame(check);check()}));
-  const mark=page.frameLocator('#replaceable .status-mark:not([hidden]) iframe');
+  const mark=page.frameLocator('#replaceable button .status-mark:not([hidden]) iframe');
   for(const agent of ['codex','pi']) {
    const expected=JSON.parse(await readFile(`src-tauri/capability-plugins/${agent}/plugin.json`,'utf8')).contributions[0].icon.path;
    for(const tone of ['idle','running','attention','danger','muted']) {
@@ -33,12 +33,36 @@ try {
     }
    }
   }
-  assert.equal(await page.locator('#replaceable .status-mark iframe').getAttribute('tabindex'),'-1');
+  assert.equal(await page.locator('#replaceable button .status-mark iframe').getAttribute('tabindex'),'-1');
   await page.getByRole('button',{name:'Select row'}).click();
   assert.deepEqual(await page.evaluate(()=>window.controlPackageProbe.result().at(-1)),['row']);count++;
   assert.equal(await page.locator('#trusted iframe').count(),0);
+  // Host API 1.1.0: file and session marks, and select triggers with host-drawn menus.
+  const marks=page.locator('#marks .external-control:not([hidden]) iframe');
+  await page.waitForFunction(()=>document.querySelectorAll('#marks .external-control:not([hidden]) iframe').length===3);
+  assert.equal(await marks.nth(0).contentFrame().locator('.file-change.conflicted').getAttribute('title'),'合并冲突');
+  assert.equal(await marks.nth(0).contentFrame().locator('.file-change').textContent(),'U');
+  assert.equal(await marks.nth(1).contentFrame().locator('.file-change.added').count(),1);
+  assert.equal(await marks.nth(2).contentFrame().locator('.session-control.plan svg path').count(),1);
+  const selects=page.locator('#selects .external-control:not([hidden]) iframe');
+  await page.waitForFunction(()=>document.querySelectorAll('#selects .external-control:not([hidden]) iframe').length===2);
+  const select=selects.nth(0).contentFrame(),context=selects.nth(1).contentFrame();
+  await select.getByRole('button',{name:'Probe select：Alpha'}).waitFor();
+  await context.getByRole('button',{name:'模型上下文大小：272K'}).waitFor();
+  await page.locator('#probe').screenshot({path:`/tmp/aibo-skin-controls-${pkg.release.manifest.id.split('.').at(-1)}.png`});
+  await select.getByRole('button',{name:'Probe select：Alpha'}).click();
+  const listbox=page.getByRole('listbox',{name:'Probe select'});await listbox.waitFor();
+  await listbox.getByRole('option',{name:'Beta'}).click();
+  await page.waitForFunction(count=>window.controlPackageProbe.result().length===count,count+1);count++;
+  assert.deepEqual(await page.evaluate(()=>window.controlPackageProbe.result().at(-1)),['select','b']);
+  await select.getByRole('button',{name:'Probe select：Beta'}).waitFor();
+  await context.getByRole('button',{name:'模型上下文大小：272K'}).click();
+  await page.getByRole('listbox',{name:'模型上下文大小'}).getByRole('option',{name:'1M'}).click();
+  await page.waitForFunction(count=>window.controlPackageProbe.result().length===count,count+1);count++;
+  assert.deepEqual(await page.evaluate(()=>window.controlPackageProbe.result().at(-1)),['context','max']);
+  await page.evaluate(()=>window.controlPackageProbe.setChoice('a'));
  }
  await page.evaluate(()=>window.controlPackageProbe.dispose());assert.equal(await page.locator('iframe').count(),0);assert.deepEqual(errors,[]);
- const result={passed:true,browser:browser.version(),nativePort:'not exercised',checks:['independent packages preserve exact OpenAI and Pi paths','all five state tones','reduced-motion disables running animation','model selection calls host and disabled blocks selection','decorative iframe does not capture parent clicks or tab focus','trusted host controls untouched','dispose removes all external controls']};
+ const result={passed:true,browser:browser.version(),nativePort:'not exercised',checks:['independent packages preserve exact OpenAI and Pi paths','all five state tones','reduced-motion disables running animation','model selection calls host and disabled blocks selection','decorative iframe does not capture parent clicks or tab focus','trusted host controls untouched','file and session marks render package glyphs with host labels','select and context triggers open host menus and commit choices','dispose removes all external controls']};
  await writeFile('/tmp/aibo-presentation-skin-controls-browser.json',JSON.stringify(result,null,2)+'\n');console.log(JSON.stringify(result));
 } finally {await browser.close();await server.close();await built.dispose();}

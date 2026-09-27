@@ -186,6 +186,20 @@ flowchart LR
   伪造 token 不打开菜单、键盘选择与 Escape、焦点回到控件）、`select-browser`、`ak-ui-controls-browser`、`agent-settings-browser`、`material3-palettes-browser`。
 - 已知与本次无关的失败：`material3-controls-browser` 第 42 行在 `main` 上同样失败；`presentation-full-skins-browser` 偶发的导航宽度断言在复跑时通过。
 
+#### 真实包验证：shadcn / Material 3 0.4.0
+
+两个独立包升到 0.4.0，声明 hostApi 1.1.0，定制全部六个公开控件。用真实包实现后得到的反馈：
+
+- 数据字段够用：两个包都只用了已公开的字段，没有需要再补的数据。
+- "只定制触发器"对这两个包够用：触发器的外观、当前值和禁用状态都能完整表达。
+- 占位约束需要写明：Material 3 包原本的胶囊内边距在默认占位里会把文字截断，已收紧；
+  合同中已补充"包必须在宿主给定的尺寸内排版"。
+- 待改进：标记类 iframe 的 `body` 背景与宿主页面略有差异，标记周围能看到浅色方块
+  （`AgentStatusMark` 原本就有）。样式表无法区分 controls 与整窗 surface，需要宿主为控件 iframe 提供透明背景，留作后续。
+
+验证：`test/presentation-skins.test.mjs`（两个包声明 1.1.0、定制全部六个控件，触发器只在有 `open` 动作时可点击）；
+浏览器探针 `presentation-skin-controls-browser`（两个真实包的标记、菜单选择与回写）。未做：两个包的原生安装与生命周期验收。
+
 ManagementCenter、HostPanel、WorkbenchChrome 属于宿主固定区域或布局外壳，**不公开**，
 继续由内置实现提供。
 

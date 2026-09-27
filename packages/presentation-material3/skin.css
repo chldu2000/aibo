@@ -88,3 +88,11 @@ button{border-radius:9999px;border-color:transparent;padding:10px 20px}.collecti
 .workbench .markdown-list { display: grid; gap: 6px; }
 .workbench .markdown-content .markdown-task-check { position: static; float: inline-start; margin-inline-end: .4em; }
 .workbench .markdown-content pre { max-width: 100%; overflow: auto; white-space: pre; padding: 12px; }
+/* Host API 1.1.0 controls: marks fill their 20px frame, select triggers fill the default control footprint. */
+.file-change{display:grid;width:20px;height:20px;place-items:center;box-sizing:border-box;border-radius:9999px;font:600 11px/1 ui-monospace,monospace;color:var(--muted-foreground);background:color-mix(in srgb,currentColor 14%,transparent)}
+.file-change.added{color:var(--aibo-success-text,#1b6c3a)}.file-change.deleted,.file-change.conflicted{color:var(--destructive)}.file-change.renamed{color:var(--primary)}
+.session-control{display:grid;width:20px;height:20px;place-items:center;border-radius:9999px;color:var(--muted-foreground)}.session-control svg{width:14px;height:14px}
+.session-control.plan{color:var(--aibo-session-plan,var(--primary))}.session-control.write{color:var(--aibo-session-write,var(--primary))}.session-control.elevated{color:var(--destructive)}.session-control.info{color:var(--aibo-session-info,var(--muted-foreground))}
+.select-control{display:flex;align-items:center;gap:8px;box-sizing:border-box;width:100vw;height:100vh;font-size:12px;color:var(--muted-foreground)}
+.select-control>button{display:flex;flex:1;min-width:0;height:100%;box-sizing:border-box;justify-content:space-between;align-items:center;gap:6px;padding:0 10px;border-radius:9999px;text-align:left;background:var(--secondary);color:var(--secondary-foreground)}
+.select-control>button>span:first-child{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.select-control>button:disabled{opacity:.55;cursor:default}

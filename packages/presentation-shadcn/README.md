@@ -3,12 +3,14 @@
 独立构建的皮肤包，当前版本迁移原有全部主题、四类核心语义视图、模型矩阵和状态标记。
 0.2.0 开始同时声明 workbench，装配独立导航、会话、Git、Inspector 和能力视图。
 0.3.0 已通过桌面工作台浏览器交互与 macOS arm64 原生生命周期验收。
+0.4.0 声明 hostApi 1.1.0，另外定制文件变更标记、会话权限标记，以及 Select / ModelContextSelect 的触发器（选项菜单由宿主绘制）；
+需要支持 hostApi 1.1.0 的宿主，旧宿主会拒绝安装。0.4.0 目前只有浏览器探针证据，尚未做原生生命周期验收。
 未提供的独立控件继续继承宿主；其他平台与屏幕阅读器认证不在这些证据范围内。
 
 将本包与 `@aibo/presentation-tools`、`@aibo/presentation-workbench` 本地 tarball 安装到仓库外项目后：
 
 ```sh
-node node_modules/@aibo/presentation-shadcn/build.mjs ./dist/shadcn-0.3.0 0.3.0
+node node_modules/@aibo/presentation-shadcn/build.mjs ./dist/shadcn-0.4.0 0.4.0
 ```
 
 在 App 外观设置中安装输出目录。升级使用相同包 ID 和新的版本/输出目录。

@@ -30,9 +30,24 @@ test('independent skin tarballs build all themes and render core semantic conten
       if(snapshot.view.kind!=='collection')assert.ok(nodes.some(n=>n.text===snapshot.view.content));
       for(const action of input.data.actions)assert.ok(nodes.some(n=>n.events?.click===action.token));
     }
-    for(const input of controlPreflights()) {
-      const nodes=flatten(render(input));
+    assert.equal(pkg.release.manifest.hostApi,'1.1.0');
+    const preflights=controlPreflights(pkg.release.manifest.hostApi);
+    assert.deepEqual(preflights.map(input=>input.data.control),['ModelMatrix','AgentStatusMark','FileChangeMark','SessionControlMark','Select','ModelContextSelect'],'packages customize the whole 1.1.0 catalog');
+    for(const input of preflights) {
+      const tree=render(input),nodes=flatten(tree);
+      assert.ok(tree,`${input.data.control} is customized`);
+      assert.equal(new Set(nodes.map(n=>n.key)).size,nodes.length);
       for(const action of input.data.actions)assert.ok(nodes.some(n=>n.events?.click===action.token));
+    }
+    const byControl=Object.fromEntries(preflights.map(input=>[input.data.control,input]));
+    assert.ok(flatten(render(byControl.FileChangeMark)).some(n=>n.text==='M'&&n.attrs.title==='修改'),'file mark shows the host label');
+    assert.ok(flatten(render(byControl.SessionControlMark)).some(n=>n.tag==='svg'&&n.attrs['aria-hidden']==='true'));
+    for(const name of ['Select','ModelContextSelect']) {
+      const input=byControl[name],trigger=flatten(render(input)).find(n=>n.tag==='button');
+      assert.equal(trigger.events.click,'open');assert.equal(trigger.attrs.disabled,false);
+      const closed=structuredClone(input);closed.data.actions=[];
+      const inert=flatten(render(closed)).find(n=>n.tag==='button');
+      assert.equal(inert.attrs.disabled,true);assert.equal(inert.events,undefined,'no open action, no menu request');
     }
     for(const agent of ['codex','pi']) {
       const manifest=JSON.parse(await readFile(`src-tauri/capability-plugins/${agent}/plugin.json`,'utf8'));

@@ -196,6 +196,10 @@ Select 与 ModelContextSelect 只定制收起状态的触发器。控件 iframe 
 控件禁用或没有可选项时 `actions` 为空。Select 的 `props` 为 `{ options, value, placeholder, disabled, label }`，
 ModelContextSelect 的 `props` 为 `{ options, current, disabled }`，`options` 中 `tokens` 缺省为 `null`。
 
+控件 iframe 的尺寸由宿主决定：ModelMatrix 为固定高度的面板，三种标记为 20px 方框，
+Select 与 ModelContextSelect 使用默认控件在当前 kit 中测得的占位，因此替换后周围布局不移动。
+包需要在这个尺寸内排版，例如收紧内边距、对过长文字做省略，不能依赖自身内容撑开尺寸。
+
 AgentSettingsForm、GoalBar、SubagentCard、SubagentDialog 均为内部控件，
 未加入外部 controls 目录，不能通过声明同名控件取得其接口。
 
