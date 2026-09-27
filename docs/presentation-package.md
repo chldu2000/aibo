@@ -213,7 +213,8 @@ AttachmentList 的 `props` 为 `{ items, removable, disabled, label }`，每项�
 GoalBar 的 `props` 为 `{ objective, statusLabel, usageLabel, busy }`，展开长目标属于包的本地状态。
 SubagentCard 的 `props` 为 `{ name, task, statusLabel, activity, failed }`，工作过程由宿主对话框显示。
 
-AgentSettingsForm 暂为内部控件。SubagentDialog 不会公开：它是模态对话框，内容是宿主渲染的子 Agent 历史，
+AgentSettingsForm 不会公开：它只出现在管理中心的插件设置中，属于宿主固定区域，不在工作台控件替换范围内。
+SubagentDialog 也不会公开：它是模态对话框，内容是宿主渲染的子 Agent 历史，
 交给外部 iframe 等于允许包在工作台上绘制覆盖层，与管理中心、历史面板一样属于宿主固定区域。
 未加入外部 controls 目录的控件不能通过声明同名控件取得其接口。
 

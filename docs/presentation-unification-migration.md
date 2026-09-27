@@ -1,6 +1,6 @@
 # 内置外观并入 Presentation 合同：迁移计划
 
-状态：P0、P1 已实施；P2 已完成前三批（纯展示控件、Select 与 ModelContextSelect、AttachmentList / GoalBar / SubagentCard），AgentSettingsForm 与 P3 未实施。见各阶段实施记录。本文不改变现行规则；在各阶段验收并同步
+状态：P0、P1、P2 已实施（P2 公开 7 个控件，SubagentDialog 与 AgentSettingsForm 经评估不公开），P3 未实施。见各阶段实施记录。本文不改变现行规则；在各阶段验收并同步
 [UI 架构](ui-architecture.md)、[Presentation 包合同](presentation-package.md)及对应测试前，
 以现行文档为准。
 
@@ -196,6 +196,12 @@ flowchart LR
   `className`，`node()` 只设置 key；这是包作者的常见错误，已在两个包中修正。
 - 验证：`test/presentation-controls.test.mjs`（投影不含路径与预览、只解析当前有效的 token）；
   浏览器探针 `presentation-skin-controls-browser`（附件增多时 iframe 变高并在 480px 封顶、清空后缩回，移除、暂停、打开回到宿主）。
+
+#### P2 收尾：不公开 AgentSettingsForm
+
+计划中的第 5 行 AgentSettingsForm 只在管理中心的插件设置中使用。管理中心是宿主固定区域，外部控件替换只在工作台上下文生效，
+公开后不会有任何实际效果；而且管理入口必须由宿主持有（见 AGENTS.md 的跨领域约束）。因此它保持为内部控件。
+P2 最终在 hostApi 1.1.0 公开 7 个控件：FileChangeMark、SessionControlMark、Select、ModelContextSelect、AttachmentList、GoalBar、SubagentCard。
 
 #### 真实包验证：shadcn / Material 3 0.4.0
 
