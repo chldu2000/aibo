@@ -6,12 +6,14 @@
 // Prompts containing "permission" request approval with all four ACP option kinds, "vendor"
 // calls an unregistered client method, "mcp" reports the MCP servers it was given, and "wait"
 // blocks until session/cancel. "exitplan" asks to leave plan mode like Claude Code's ExitPlanMode and
-// switches to code when approved; "rogue" switches to code without asking.
+// switches to code when approved; "rogue" switches to code without asking. With client elicitation,
+// "question" sends an AskUserQuestion-style form plus a typed field, and "nestedform" a form with a
+// nested object field.
 import { createInterface } from 'node:readline';
 
 const load = process.env.ECHO_LOAD !== '0', image = process.env.ECHO_IMAGE === '1', configModes = process.env.ECHO_MODE_API === 'config';
 const sessions = new Map();
-let nextId = 1, cancelled = null;
+let nextId = 1, cancelled = null, elicitation = false;
 const pending = new Map();
 const send = message => process.stdout.write(`${JSON.stringify({ jsonrpc: '2.0', ...message })}\n`);
 const request = (method, params) => new Promise(resolve => { const id = `agent-${nextId++}`; pending.set(id, resolve); send({ id, method, params }); });
@@ -43,6 +45,19 @@ async function prompt(id, { sessionId, prompt: blocks }) {
     reply.push(`exitplan:${chosen}`);
   }
   if (text.includes('rogue')) { sessions.get(sessionId).mode = 'code'; update(sessionId, { sessionUpdate: 'current_mode_update', currentModeId: 'code' }); }
+  if (elicitation && text.includes('question')) {
+    const answer = await request('elicitation/create', { sessionId, mode: 'form', toolCallId: 'ask-1', message: 'Pick a colour and a count.', requestedSchema: { type: 'object', required: ['count'], properties: {
+      question_0: { type: 'string', title: 'Colour', description: 'Which colour?', oneOf: [{ const: 'red', title: 'Red', description: 'Warm' }, { const: 'blue', title: 'Blue' }] },
+      question_0_custom: { type: 'string', title: 'Other', _meta: { _askUserQuestionCustomAnswer: { questionId: 'question_0', isCustomAnswer: true } } },
+      count: { type: 'integer', title: 'Count', description: 'How many?', minimum: 1, maximum: 5 },
+    } } });
+    if (answer?.action === 'cancel') return send({ id, result: { stopReason: 'cancelled' } });
+    reply.push(`question:${JSON.stringify(answer)}`);
+  }
+  if (elicitation && text.includes('nestedform')) {
+    const answer = await request('elicitation/create', { sessionId, mode: 'form', message: 'Nested', requestedSchema: { type: 'object', properties: { address: { type: 'object', properties: {} } } } });
+    reply.push(`nested:${answer?.action}`);
+  }
   if (text.includes('vendor')) {
     const answer = await request('echo/ask', { sessionId });
     reply.push(`vendor:${answer?.error?.code ?? 'answered'}`);
@@ -65,7 +80,7 @@ createInterface({ input: process.stdin }).on('line', line => {
   const { id, method, params } = message;
   const session = sessions.get(params?.sessionId);
   switch (method) {
-    case 'initialize': return send({ id, result: { protocolVersion: 1, agentCapabilities: { loadSession: load, promptCapabilities: { image } }, authMethods: [] } });
+    case 'initialize': elicitation = params.clientCapabilities?.elicitation?.form !== undefined; return send({ id, result: { protocolVersion: 1, agentCapabilities: { loadSession: load, promptCapabilities: { image } }, authMethods: [] } });
     case 'session/new': {
       const sessionId = `echo-${sessions.size + 1}`, created = { mode: 'ask', model: 'echo-small', mcpServers: params.mcpServers ?? [] };
       sessions.set(sessionId, created);

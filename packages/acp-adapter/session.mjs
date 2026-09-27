@@ -1,6 +1,11 @@
 import { imageInput } from './image-input.mjs';
 import { AcpTransport } from './transport.mjs';
 import { modelParameters, selectValues } from './config.mjs';
+import { elicitationForm } from './elicitation.mjs';
+
+// Reply that dismisses a pending request of each kind: permissions select no option, elicitations cancel.
+const CANCELLED = { outcome: { outcome: 'cancelled' } };
+const cancelReply = pending => pending?.cancelled ?? CANCELLED;
 
 /** Candidate capabilities; native negotiation narrows these before returning them to the host. */
 export const BASE_CAPABILITIES = [
@@ -50,6 +55,8 @@ const EXTENSION_DEFAULTS = {
   handleNotification: () => false,
   // Native permission options with host labels or session-control effects; see `approvalOptions`.
   approvalChoices: [],
+  // Declares ACP form elicitation and answers it through host questions (user-input.respond).
+  elicitation: false,
 };
 
 /**
@@ -89,7 +96,7 @@ export class AcpSession {
       respond: (id, result) => this.transport.respond(id, result),
       /** Registers a pending interaction; answers `cancelled` once 32 are waiting. */
       await: (requestId, rpcId, interaction) => {
-        if (this.pendingInteractions.size >= 32) { this.transport.respond(rpcId, { outcome: { outcome: 'cancelled' } }); return false; }
+        if (this.pendingInteractions.size >= 32) { this.transport.respond(rpcId, cancelReply(interaction)); return false; }
         this.pendingInteractions.set(requestId, { ...interaction, rpcId, turnId: this.turnId });
         return true;
       },
@@ -125,7 +132,7 @@ export class AcpSession {
       this.phase = 'initializing';
       const initialized = await transport.request('initialize', {
         protocolVersion: 1,
-        clientCapabilities: { fs: { readTextFile: false, writeTextFile: false }, terminal: false, ...(this.extension.clientMeta ? { _meta: this.extension.clientMeta } : {}) },
+        clientCapabilities: { fs: { readTextFile: false, writeTextFile: false }, terminal: false, ...(this.extension.elicitation ? { elicitation: { form: {} } } : {}), ...(this.extension.clientMeta ? { _meta: this.extension.clientMeta } : {}) },
         clientInfo: { name: this.extension.clientName, version: this.pluginVersion },
       });
       if (initialized?.protocolVersion !== 1) throw pluginError('incompatible_version', `${this.label} ACP protocol v1 is required`);
@@ -233,7 +240,7 @@ export class AcpSession {
   async cancel() {
     if (!this.sessionId || this.phase !== 'prompting') return { accepted: true };
     for (const [requestId, pending] of this.pendingInteractions) {
-      this.transport.respond(pending.rpcId, { outcome: { outcome: 'cancelled' } });
+      this.transport.respond(pending.rpcId, cancelReply(pending));
       this.#event(pending.kind === 'question' ? 'user_input.resolved' : 'approval.resolved', { requestId, decision: 'cancel' }, { requestId, ...(pending.kind === 'permission' ? { approvalId: pending.rpcId } : {}) });
     }
     this.pendingInteractions.clear();
@@ -286,6 +293,7 @@ export class AcpSession {
 
   capabilities() {
     const capabilities = this.extension.capabilities.filter(capability => capability !== 'session.resume' || this.agentCapabilities?.loadSession === true);
+    if (this.extension.elicitation && !capabilities.includes('user-input.respond')) capabilities.push('user-input.respond');
     if (this.hostToolsRegistered) capabilities.push('host-tools');
     if (this.agentCapabilities?.promptCapabilities?.image === true) capabilities.push('image.input');
     if (!this.modelConfig) return capabilities;
@@ -423,7 +431,7 @@ export class AcpSession {
     const transport = this.transport;
     if (transport && !transport.closed) {
       for (const pending of this.pendingInteractions.values()) {
-        try { transport.respond(pending.rpcId, { outcome: { outcome: 'cancelled' } }); } catch { /* process is already unavailable */ }
+        try { transport.respond(pending.rpcId, cancelReply(pending)); } catch { /* process is already unavailable */ }
       }
     }
     this.removeRequest?.(); this.removeNotification?.();
@@ -524,13 +532,15 @@ export class AcpSession {
   }
 
   #handleRequest(message) {
+    const elicitation = message.method === 'elicitation/create' && this.extension.elicitation;
+    const dismiss = elicitation ? { action: 'cancel' } : CANCELLED;
     if (!this.turnId || this.phase === 'loading') {
-      this.transport.respond(message.id, { outcome: { outcome: 'cancelled' } });
+      this.transport.respond(message.id, dismiss);
       return true;
     }
     const params = object(message.params);
     if (params.sessionId != null && params.sessionId !== this.sessionId) {
-      this.transport.respond(message.id, { outcome: { outcome: 'cancelled' } });
+      this.transport.respond(message.id, dismiss);
       return true;
     }
     const requestId = `${this.extension.requestPrefix}-${typeof message.id === 'number' ? 'n' : 's'}-${String(message.id)}`;
@@ -567,6 +577,14 @@ export class AcpSession {
       if (!this.hooks.await(requestId, message.id, { kind: 'permission', options, offered, transitions: offer.transitions })) return true;
       this.#event('approval.requested', { requestId, kind: params.toolCall?.kind ?? 'tool', command: params.toolCall?.title ?? null, availableDecisions: ['accept', 'cancel'],
         ...(this.extension.approvalOptions ? { options: offered } : {}) }, { requestId, toolCallId: params.toolCall?.toolCallId ?? null, approvalId: message.id });
+      return true;
+    }
+    if (elicitation) {
+      // Only form mode is declared; a form the host question model cannot express is cancelled, never approximated.
+      const form = params.mode === 'form' || params.mode === undefined ? elicitationForm(params) : null;
+      if (!form) { this.transport.respond(message.id, dismiss); return true; }
+      if (!this.hooks.await(requestId, message.id, { kind: 'question', answer: form.answer, cancelled: dismiss })) return true;
+      this.#event('user_input.requested', { requestId, title: form.title, questions: form.questions }, { requestId, toolCallId: typeof params.toolCallId === 'string' ? params.toolCallId : null });
       return true;
     }
     return this.extension.handleRequest(this.hooks, message, params, requestId) === true;

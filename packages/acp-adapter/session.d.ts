@@ -52,6 +52,8 @@ export type AcpExtension = {
    * Any other native mode change during a turn fails the turn. `contextReset` marks options after
    * which the agent continues in a fresh context under the same native session.
    */
+  /** Declare ACP form elicitation and ask its questions through `user-input.respond`. */
+  elicitation?: boolean;
   approvalChoices?: readonly { optionId: string; toolKind?: string; label?: string; sessionControl?: string; contextReset?: boolean; mode?: string; profile?: Record<string, unknown> }[];
   /** The agent exposes parameters per model: claim reasoning and context-window even when the current model has none. */
   parameterizedPicker?: boolean;

@@ -1,6 +1,6 @@
 # ACP 作为 Agent 接入主干：迁移计划
 
-状态：A1、A2、A3 已实施，A4 的通用 Worker 接线已完成；A5（多选项审批与回合内模式转换）、A6（清空上下文类选项）已实施；A7 未实施。宿主会话合同、能力协商与执行授权规则不因本文改变；现行规则见
+状态：A1、A2、A3 已实施，A4 的通用 Worker 接线已完成；A5（多选项审批与回合内模式转换）、A6（清空上下文类选项）、A7（ACP elicitation 表单）已实施。宿主会话合同、能力协商与执行授权规则不因本文改变；现行规则见
 [会话能力协商](session-capability-negotiation.md)与[宿主和插件边界](plugin-boundaries-and-regression.md)。
 
 ## 背景与问题
@@ -474,6 +474,38 @@ Cursor 的 `cursor/ask_question` 是厂商扩展，已由 Cursor 扩展映射到
   以及未声明能力时 Method not found 的现状。
 - 真实 Claude Code 中触发 AskUserQuestion，在宿主问题界面回答后，Claude 收到答案并继续回合。
 - 多选若未扩展宿主合同，验收记录中写明降级方式。
+
+#### A7 实施记录（2026-09-27）
+
+- 声明：`acp.json` 的 `elicitation: true`（代码扩展为 `extension.elicitation`）会在 `initialize` 声明 `elicitation: { form: {} }`，
+  并在能力中加入 `user-input.respond`。Worker 启动时校验清单里存在 `<pluginId>.user-input.respond` 操作。
+  未声明时行为不变，Cursor 不受影响。随宿主 SDK 0.1.5 交付，映射代码在 `@aibo/acp-adapter` 内部模块 `elicitation.mjs`。
+- 映射（每个字段对应一个宿主问题，宿主每题只提交一个值）：
+
+  | 字段 | 宿主问题 | 回复 |
+  | --- | --- | --- |
+  | 字符串 `oneOf` / `enum` | 单选，标签取 `title` | 按标签换回原始值；标签重复的表单不提供 |
+  | 数组 `items.anyOf` / `oneOf` / `enum` | 单选，题目注明"可多选；aibo 目前每题只能选择一项" | `[值]`；`minItems > 1` 的表单不提供 |
+  | 布尔 | 是 / 否 | `true` / `false` |
+  | 字符串 | 自由输入 | 校验 `minLength`、`maxLength` 与 `email`、`uri`、`date`、`date-time` 格式 |
+  | 数字 / 整数 | 自由输入 | 校验数字、整数与 `minimum` / `maximum` |
+
+  - 带 `_meta._askUserQuestionCustomAnswer.questionId` 的字符串字段，并入对应问题的"其他"输入，不单独成题。
+    这个标记没有厂商前缀，由 claude-agent-acp 提出，供各家的 AskUserQuestion 桥共用，所以通用层识别它。
+    必填的选择题不能只填"其他"。
+  - 宿主问题卡片没有表单级正文，所以 `message` 放在第一题开头。
+  - 超过 8 个字段、嵌套对象、无法对应的类型、`url` 模式，都直接回复 `cancel`，不询问用户，也不做近似。
+    前端问题上限从 3 提高到 8，与适配层上限一致，确保不会截断问题。
+- 回复：答案不合法时抛出 `invalid_input`，请求保持待处理，用户可以改后重交。回合取消、会话关闭或迁移时回复 `{ action: "cancel" }`。
+  每个待处理交互携带自己的取消回复，审批仍然使用 `outcome: cancelled`。宿主问题界面没有"拒绝"入口，因此不会发出 `decline`。
+- 已知限制：
+  - 多选只能选一项。
+  - 可选字段在宿主界面中也需要填写：前端要求每题都有答案，选填文本字段可以填 AskUserQuestion 的"其他"项，其余类型需要作答。
+  - Claude Code 声明表单支持后，也会通过同一通道转发 MCP 服务的表单，以及"模型拒绝后改用备用模型重试"的确认。
+    后者选择重试后，Claude 在会话内换用备用模型，宿主执行配置里的模型不随之更新。
+- 验证：
+  - `test/acp-elicitation.test.mjs`（映射与校验）；`test/acp-worker.test.mjs`（回显夹具的 AskUserQuestion 式表单、类型字段、不可表达表单被取消、取消回合）。
+  - 真实 Claude Code 2.1.280（适配器 0.81.2）：AskUserQuestion 以宿主问题出现（Red / Blue，带"其他"），回答后 Claude 使用了答案。
 
 ## 风险与缓解
 

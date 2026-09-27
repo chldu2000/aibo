@@ -18,7 +18,7 @@ test('capabilities follow the native handshake and a modes-only agent switches w
   const f = await sessionCapability(t, plugin, { ECHO_LOAD: '0' });
   const opened = await f.invoke('aibo.session.open', { mode: 'create', executionProfile: ask });
   assert.equal(opened.nativeSessionId, 'echo-1');
-  assert.deepEqual(opened.capabilities.sort(), ['approval.respond', 'command.list', 'model.select', 'session.close', 'session.create', 'stream.text', 'turn.cancel', 'turn.send']);
+  assert.deepEqual(opened.capabilities.sort(), ['approval.respond', 'command.list', 'model.select', 'session.close', 'session.create', 'stream.text', 'turn.cancel', 'turn.send', 'user-input.respond']);
   assert.equal(opened.recovery.schema, 'dev.example.acp-echo.recovery');
   assert.deepEqual((await f.invoke(feature('command.list'), { action: 'get' })).commands.map(command => command.insertionText), ['/echo-help ']);
   const models = await f.invoke(feature('model.select'), { action: 'set', reference: 'echo-large' });
@@ -103,6 +103,40 @@ test('a native mode switch without host approval fails the turn', async t => {
   assert.equal((await turn.done).status, 'failed');
 });
 
+test('form elicitations become host questions and answers are validated and converted back', async t => {
+  const f = await sessionCapability(t, plugin);
+  await f.invoke('aibo.session.open', { mode: 'create', executionProfile: ask });
+  const asked = f.wait('user_input.requested');
+  const turn = f.startTurn('question');
+  const requested = await asked;
+  assert.equal(requested.correlation.toolCallId, 'ask-1');
+  assert.equal(requested.payload.title, 'Pick a colour and a count.');
+  assert.deepEqual(requested.payload.questions, [
+    { id: 'question_0', header: 'Colour', question: 'Pick a colour and a count.\n\nWhich colour?', options: [{ label: 'Red', description: 'Warm' }, { label: 'Blue', description: null }], isOther: true },
+    { id: 'count', header: 'Count', question: 'How many?', options: [], isOther: true },
+  ], 'the custom-answer companion becomes the question\'s other input');
+  const answer = answers => f.control(turn, feature('user-input.respond'), { requestId: requested.payload.requestId, answers });
+  await assert.rejects(answer({ question_0: ['Red'], count: ['9'] }), /range 1–5/);
+  await assert.rejects(answer({ question_0: ['Red'], count: ['2'], extra: ['x'] }), /unknown question/);
+  await assert.rejects(answer({ question_0: ['Red'], count: [''] }), /required/);
+  await answer({ question_0: ['Teal, please'], count: ['2'] });
+  assert.equal((await turn.done).status, 'completed');
+  assert.deepEqual(messages(f), ['echo: question question:{"action":"accept","content":{"question_0_custom":"Teal, please","count":2}}']);
+});
+
+test('elicitations the host cannot express are cancelled, and cancelling a turn cancels open forms', async t => {
+  const f = await sessionCapability(t, plugin);
+  await f.invoke('aibo.session.open', { mode: 'create', executionProfile: ask });
+  assert.equal((await f.invoke('aibo.session.turn', { text: 'nestedform' }, 'turn-1')).status, 'completed');
+  assert.deepEqual(messages(f), ['echo: nestedform nested:cancel']);
+  assert.ok(!f.events.some(entry => entry.event.type === 'user_input.requested'));
+  const asked = f.wait('user_input.requested');
+  const turn = f.startTurn('question', 'turn-2');
+  await asked;
+  await f.control(turn, 'aibo.session.cancel', {});
+  assert.equal((await turn.done).status, 'interrupted', 'the agent received action: cancel');
+});
+
 test('cancel interrupts a waiting turn', async t => {
   const f = await sessionCapability(t, plugin);
   await f.invoke('aibo.session.open', { mode: 'create', executionProfile: ask });
@@ -120,7 +154,7 @@ test('an invalid acp.json stops the worker before the Runtime handshake', async 
   const config = JSON.parse(await readFile(path.join(source, 'acp.json'), 'utf8'));
   for (const invalid of [{ command: 'sh' }, { approvalOptions: [{ optionId: 'exit-plan-default', sessionControl: 'missing' }] },
     { approvalOptions: [{ optionId: 'exit-plan-default', sessionControl: 'ask' }] }, { approvalOptions: [{ optionId: 'reject' }] },
-    { approvalOptions: [{ optionId: 'reject', label: '继续规划', contextReset: true }] }]) {
+    { approvalOptions: [{ optionId: 'reject', label: '继续规划', contextReset: true }] }, { elicitation: 'form' }]) {
     await writeFile(path.join(source, 'acp.json'), JSON.stringify({ ...config, ...invalid }));
     await assert.rejects(sessionCapability(t, source), error => /exit|closed|Invalid acp\.json/i.test(String(error)), JSON.stringify(invalid));
   }

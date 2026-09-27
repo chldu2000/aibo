@@ -29,7 +29,13 @@ the SDK MCP bridge. See `aibo-plugins/plugins/acp-template`.
 `sessionControl` names a `plugin.json` session control that some control lists in `transitions`: the option is offered
 even outside a write mode, and choosing it lets the host commit that control before the agent is answered.
 The Worker rejects entries whose control is undeclared, unmapped in `modes`, or not a transition target, and requires
-the `{ requestId, optionId }` form of `approval.respond`. `contextReset: true` (only with `sessionControl`) marks an
+the `{ requestId, optionId }` form of `approval.respond`.
+
+`elicitation: true` (SDK 0.1.5; `extension.elicitation` in code) declares ACP form elicitation and claims
+`user-input.respond`, which the manifest must declare. Each form field becomes one host question: selects and
+booleans as options, strings and numbers as validated free text, a multi-select as a single pick, and a
+`_askUserQuestionCustomAnswer` companion as the question's "other" input. Forms the host cannot express
+(nested objects, more than 8 fields, duplicate labels, `url` mode) are cancelled without asking. `contextReset: true` (only with `sessionControl`) marks an
 option after which the agent continues in a fresh context under the same session; the host records it and notes
 on the first later resume that the restored context may predate the reset. The agent's mode report for a committed switch is adopted
 and the turn continues; any other mode change during a turn fails it, and the host mode is restored before the next prompt.

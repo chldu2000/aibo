@@ -5,7 +5,7 @@
   "displayName": "ACP Echo",
   "description": "Configuration-only ACP provider used by host tests.",
   "hostSdk": {
-    "min": "0.1.4",
+    "min": "0.1.5",
     "maxExclusive": "0.2.0"
   },
   "host": {
@@ -593,6 +593,62 @@
               "optionId": {
                 "type": "string",
                 "minLength": 1
+              }
+            }
+          },
+          "outputSchema": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "resolved",
+              "recovery",
+              "capabilities"
+            ],
+            "properties": {
+              "resolved": {
+                "const": true
+              },
+              "recovery": {
+                "type": [
+                  "object",
+                  "null"
+                ]
+              },
+              "capabilities": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "effect": "read",
+          "permissions": [
+            "workspace.read"
+          ],
+          "timeoutMs": 120000,
+          "idempotent": false
+        },
+        {
+          "id": "dev.example.acp-echo.operation.user-input",
+          "capability": {
+            "id": "dev.example.acp-echo.user-input.respond",
+            "version": "1.0.0"
+          },
+          "inputSchema": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "requestId",
+              "answers"
+            ],
+            "properties": {
+              "requestId": {
+                "type": "string",
+                "minLength": 1
+              },
+              "answers": {
+                "type": "object"
               }
             }
           },

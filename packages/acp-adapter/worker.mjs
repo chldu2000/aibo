@@ -28,6 +28,10 @@ export function acpAgentConfig(config, manifest) {
   if (c.clientMeta !== undefined && (!c.clientMeta || typeof c.clientMeta !== 'object' || Array.isArray(c.clientMeta) || JSON.stringify(c.clientMeta).length > 8192)) fail('clientMeta must be an object under 8 KiB');
   if (c.persistsEmptySessions !== undefined && typeof c.persistsEmptySessions !== 'boolean') fail('persistsEmptySessions must be a boolean');
   if (c.requestPrefix !== undefined && !/^[a-z][a-z0-9-]{0,31}$/.test(c.requestPrefix)) fail('requestPrefix must be a lowercase identifier');
+  if (c.elicitation !== undefined && c.elicitation !== true) fail('elicitation must be true when present');
+  const contribution = manifest.contributions?.find(entry => entry.kind === 'capabilityProvider' && entry.scope === 'session');
+  // Answering elicitations is the manifest's user-input.respond operation; without it the agent is never asked.
+  if (c.elicitation && !contribution?.operations?.some(operation => operation.capability?.id === `${manifest.pluginId}.user-input.respond`)) fail('elicitation requires the user-input.respond operation in plugin.json');
   const approvalOptions = c.approvalOptions ?? [];
   const controls = manifest.contributions?.find(entry => entry.kind === 'capabilityProvider' && entry.scope === 'session')?.sessionControls ?? [];
   if (!Array.isArray(approvalOptions) || approvalOptions.length > 16) fail('approvalOptions must be at most 16 entries');
@@ -97,6 +101,7 @@ export function extensionFromConfig(config, manifest) {
     writableModes: [config.modes.edit, config.modes.auto].filter(Boolean),
     validateExecutionProfile: agentManagedProfile(config.label, config.modes),
     approvalChoices: approvalChoices(config, manifest),
+    elicitation: config.elicitation === true,
   };
 }
 

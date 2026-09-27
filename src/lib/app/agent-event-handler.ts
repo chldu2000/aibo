@@ -481,7 +481,7 @@ function userInputFromEvent(event: AgentEvent): UserInputRequest | null {
   const rawQuestions = Array.isArray(event.payload.questions) ? event.payload.questions : [];
   if (!requestId || rawQuestions.length === 0) return null;
   const questions = rawQuestions
-    .slice(0, 3)
+    .slice(0, 8)
     .flatMap((value, index) => {
       if (!value || typeof value !== 'object') return [];
       const record = value as Record<string, unknown>;

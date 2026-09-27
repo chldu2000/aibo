@@ -106,7 +106,8 @@ the handshake, so the host reports it at startup. When `approval.respond` declar
 (host SDK 0.1.4), the approval card shows the agent's allow-once and reject-once options and answers with the chosen option ID;
 the `decision` input keeps the two-button approval. `approvalOptions` in `acp.json` labels options and can map one to
 a session control (for example Manual after approving a plan); the host commits that switch, see
-[session controls](session-controls.md). For vendor extension methods, pass an `extension` to `serveAcpAgent`
+[session controls](session-controls.md). `elicitation: true` (host SDK 0.1.5, with a `user-input.respond`
+operation) shows the agent's form requests, such as Claude Code's AskUserQuestion, as host questions. For vendor extension methods, pass an `extension` to `serveAcpAgent`
 as the Cursor plugin does; fields and hooks are described in [`@aibo/acp-adapter`](../packages/acp-adapter/README.md).
 
 ## Extend presentation
