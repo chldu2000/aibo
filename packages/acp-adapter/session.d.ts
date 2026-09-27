@@ -41,6 +41,8 @@ export type AcpExtension = {
   validateExecutionProfile(profile: unknown, permissions: readonly string[]): { mode: string; profile: Record<string, any> };
   commandCategory?(command: Record<string, any>): string;
   parameterized?(config: Record<string, any>, result: Record<string, any>): boolean;
+  /** The agent exposes parameters per model: claim reasoning and context-window even when the current model has none. */
+  parameterizedPicker?: boolean;
   subagentFromTool?(update: Record<string, any>): { name: string; task: string; activity: string; [key: string]: unknown } | null;
   handleRequest?(session: AcpSessionHooks, message: Record<string, any>, params: Record<string, any>, requestId: string): boolean;
   handleNotification?(session: AcpSessionHooks, message: Record<string, any>): boolean;

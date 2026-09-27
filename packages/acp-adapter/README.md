@@ -24,7 +24,9 @@ read only by the Worker; an invalid one stops it before the Runtime handshake. R
 the SDK MCP bridge. See `aibo-plugins/plugins/acp-template`.
 
 Mode switching uses the agent's mode config option when it returns one, and the standard `session/set_mode`
-request when it only exposes the session modes API.
+request when it only exposes the session modes API. Reasoning and context-window capabilities are claimed only
+when the agent returned those options, unless the extension sets `parameterizedPicker` (Cursor exposes
+parameters per model).
 
 ## Writing a provider
 
@@ -36,7 +38,7 @@ An `AcpSession` is configured with an extension object. Required fields:
 - `writableMode`: the native mode that may run write-authorized turns.
 - `validateExecutionProfile(profile, permissions)`: maps the host execution profile to a native mode.
 
-Optional hooks cover agent differences: `authMethodId`, `clientMeta`, `persistsEmptySessions`,
+Optional hooks cover agent differences: `authMethodId`, `clientMeta`, `persistsEmptySessions`, `parameterizedPicker`,
 `commandCategory`, `parameterized`, `subagentFromTool`, `handleRequest` and `handleNotification`
 for vendor methods. Hooks receive a narrow session surface (`event`, `respond`, `await`,
 `updateSubagent`, `subagents`, `turnId`, `sessionId`); the session keeps all other state private.

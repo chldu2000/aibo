@@ -1,6 +1,6 @@
 # ACP 作为 Agent 接入主干：迁移计划
 
-状态：A1、A2 已实施，A4 的通用 Worker 接线已完成（第二个真实 Agent 的验证随 A3）；A3、A5、A6 未实施。宿主会话合同、能力协商与执行授权规则不因本文改变；现行规则见
+状态：A1、A2、A3 已实施，A4 的通用 Worker 接线已完成；A5、A6 未实施。宿主会话合同、能力协商与执行授权规则不因本文改变；现行规则见
 [会话能力协商](session-capability-negotiation.md)与[宿主和插件边界](plugin-boundaries-and-regression.md)。
 
 ## 背景与问题
@@ -324,6 +324,22 @@ A4 剩余工作是将这段接线提供给 A2 的通用 Worker，并验证第二
 本机可安装、有稳定的 ACP 入口、许可允许本地调用。具体选型在实施时确定并记录。
 
 验收：除 `plugin.json` 外不写任何代码；若需要代码，把需求提炼进通用层或扩展接口，而不是写进该插件。
+
+#### A3 实施记录（Claude Code）
+
+- 第二个真实 Agent 选用 Claude Code，经 `@agentclientprotocol/claude-agent-acp` 0.81.2 接入（Claude Code 2.1.280）。
+  `aibo-plugins/plugins/claude-code` 只有 `plugin.json`、`acp.json` 和模板的一行 Worker，未写插件代码。
+- `acp.json`：命令 `claude-agent-acp`；`edit` 映射 Claude 的 `default`（Manual，编辑与命令发审批），`plan` 映射 `plan`；
+  不映射 `ask`（Claude 没有无工具的只读模式）；不设 `authMethodId`（沿用本机 Claude Code 登录）；`persistsEmptySessions: false`。
+  Accept edits、Auto 与 Bypass 不暴露，理由见"会话模式与回合内转换"。
+- 接入暴露并修正了一个通用层缺陷：此前只要识别为参数化模型配置就同时声明推理强度与上下文窗口。Claude 没有上下文窗口选项，
+  宿主会显示一个空控件。现在只声明 Agent 实际返回的参数；Cursor 以 `parameterizedPicker: true` 保持原有行为。
+- 验证：`aibo-plugins/scripts/probe-claude-code.mjs` 用真实 Claude Code 跑打包前的插件 Worker：Plan 会话能力按握手收窄
+  （含恢复、图片、模型、推理强度，不含上下文窗口与提问），44 个命令、5 个模型、6 档推理强度；Plan 回合按要求回复；
+  Manual 写入回合经 aibo 审批一次后写出文件，审批 ID 前缀为 `claude-`；新 Worker 进程经 `session/load` 恢复会话。
+  证据见 `aibo-plugins/docs/baselines/claude-code-a3/probe.json`。插件仓库新增只靠配置插件的清单与合同一致性测试。
+- 已知差距：Claude 的 AskUserQuestion 走 ACP elicitation，通用层未实现，Agent 收到 Method not found；
+  Plan 中批准计划会请求切换模式并被拒绝，需在 aibo 中手动切到 Manual（A5）。未做桌面宿主中的完整会话交互复验。
 
 ### A4：将已有 MCP 宿主工具接入通用 Worker
 

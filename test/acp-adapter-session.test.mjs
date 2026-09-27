@@ -134,3 +134,24 @@ test('the default transport runs the extension command and names errors after th
   assert.deepEqual(spawned, ['echo-agent', []]);
   await assert.rejects(session.prompt({ text: 'x', turnId: 't' }), /Echo session is not ready/);
 });
+
+test('parameter capabilities follow the options the agent returned unless it declares a per-model picker', async () => {
+  const configOptions = [
+    { id: 'model', category: 'model', type: 'select', currentValue: 'm1', options: [{ value: 'm1' }, { value: 'm2' }] },
+    { id: 'effort', category: 'thought_level', type: 'select', currentValue: 'low', options: [{ value: 'low' }, { value: 'high' }] },
+  ];
+  class ConfigTransport extends FakeTransport {
+    async request(method, params) {
+      if (method === 'session/new') { this.requests.push({ method, params }); return { sessionId: 'echo-1', ...modes('ask'), configOptions }; }
+      return super.request(method, params);
+    }
+  }
+  const capabilities = async picker => {
+    const session = new AcpSession({ extension: { ...extension, parameterizedPicker: picker }, transportFactory: () => new ConfigTransport() });
+    return (await open(session)).capabilities;
+  };
+  const plain = await capabilities(false);
+  assert.ok(plain.includes('model.select') && plain.includes('model.reasoning'));
+  assert.ok(!plain.includes('model.context-window'), 'no context option, no context-window capability');
+  assert.ok((await capabilities(true)).includes('model.context-window'), 'a per-model picker claims both');
+});

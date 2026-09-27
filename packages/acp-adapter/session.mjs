@@ -266,7 +266,15 @@ export class AcpSession {
     const capabilities = this.extension.capabilities.filter(capability => capability !== 'session.resume' || this.agentCapabilities?.loadSession === true);
     if (this.hostToolsRegistered) capabilities.push('host-tools');
     if (this.agentCapabilities?.promptCapabilities?.image === true) capabilities.push('image.input');
-    return this.modelConfig ? [...capabilities, 'model.select', ...(this.parameterized ? ['model.reasoning', 'model.context-window'] : [])] : capabilities;
+    if (!this.modelConfig) return capabilities;
+    capabilities.push('model.select');
+    if (!this.parameterized) return capabilities;
+    // A parameterized picker exposes parameters per model, so it may claim both before the current
+    // model has any; otherwise only parameters the agent actually returned are claimed.
+    const parameters = this.parameters(), picker = this.extension.parameterizedPicker === true;
+    if (picker || parameters.levels.length) capabilities.push('model.reasoning');
+    if (picker || parameters.context) capabilities.push('model.context-window');
+    return capabilities;
   }
 
   async commands() {
