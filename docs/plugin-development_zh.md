@@ -26,7 +26,7 @@
 | 语义视图 | 支持的 contract 与快照格式，独立于包版本 |
 | 宿主 SDK | 声明 `hostSdk` 时需宿主实现该功能并满足范围；当前样例要求 SDK `>=0.1.0 <0.2.0` |
 | 会话功能与权限 | 清单、握手、open 结果与宿主 schema 一致；原生权限归属另需[会话控件合同](session-controls.md) |
-| 呈现 | `presentation.json` 的 hostApi/coreSemantics 和快照声明，见包合同 |
+| 呈现 | `presentation.json` 的 hostApi（1.0.0 或 1.1.0，决定宿主发送哪些控件）/coreSemantics 和快照声明，见包合同 |
 
 开发版本的宿主版本号本身不能证明包含哪些源码改动。
 验证时记录精确宿主提交/构建、插件 release、SDK 和原生 CLI 版本；历史说明中的提交不是已发布的最低宿主版本。

@@ -30,6 +30,21 @@ export type PresentationStatusMark = {
   tone: 'idle' | 'running' | 'attention' | 'danger' | 'muted';
   label: string;
 };
+/** Host API 1.1.0. The host supplies the label; decorative marks are hidden from assistive technology. */
+export type PresentationFileChangeMark = {
+  kind: 'added' | 'modified' | 'deleted' | 'renamed' | 'conflicted';
+  label: string;
+  decorative: boolean;
+};
+/** Host API 1.1.0. `appearance` is the host's classification of the declared policy; always decorative. */
+export type PresentationSessionControlMark = {
+  kind: 'permission' | 'mode';
+  profile: Readonly<Record<string, string | undefined>>;
+  compact: boolean;
+  appearance: { icon: string; tone: 'info' | 'plan' | 'write' | 'elevated' | 'neutral' };
+};
 export type PresentationControlData =
   | { control: 'ModelMatrix'; props: PresentationModelMatrix; actions: readonly ({ token: string; kind: 'model'; model: string; reasoningEffort: string | null } | { token: string; kind: 'serviceTier'; serviceTier: string })[] }
-  | { control: 'AgentStatusMark'; props: PresentationStatusMark; actions: readonly [] };
+  | { control: 'AgentStatusMark'; props: PresentationStatusMark; actions: readonly [] }
+  | { control: 'FileChangeMark'; props: PresentationFileChangeMark; actions: readonly [] }
+  | { control: 'SessionControlMark'; props: PresentationSessionControlMark; actions: readonly [] };

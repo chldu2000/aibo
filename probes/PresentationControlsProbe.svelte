@@ -1,5 +1,5 @@
 <script>
- import {PresentationHost,ModelMatrix,AgentStatusMark} from '$lib/ui-kit';
+ import {PresentationHost,ModelMatrix,AgentStatusMark,FileChangeMark,SessionControlMark} from '$lib/ui-kit';
  let host,active=$state(null),disabled=$state(false),instance;
  const actions=[];
  let mark=$state({agent:'plugin',tone:'idle',label:'Inherited mark'});
@@ -15,5 +15,6 @@
 </script>
 <section id="trusted"><ModelMatrix {...matrix}/></section>
 <PresentationHost bind:this={host} {active} themeId={null} {input} onIntent={()=>{}} onRestore={dispose}>
- <section id="replaceable"><ModelMatrix {...matrix}/><button aria-label="Select row" onclick={()=>actions.push(['row'])}><AgentStatusMark {...mark}/></button></section>
+ <section id="replaceable"><ModelMatrix {...matrix}/><button aria-label="Select row" onclick={()=>actions.push(['row'])}><AgentStatusMark {...mark}/></button>
+  <p id="marks"><FileChangeMark kind="conflicted"/><FileChangeMark kind="added" decorative/><SessionControlMark control={{kind:'mode',profile:{interactionMode:'plan'}}}/></p></section>
 </PresentationHost>

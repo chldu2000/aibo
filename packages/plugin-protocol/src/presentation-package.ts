@@ -4,7 +4,8 @@ export type PresentationPackageManifest = {
   id: string;
   version: string;
   displayName: string;
-  hostApi: '1.0.0';
+  /** Controls introduced in a later version are only sent to packages declaring it. */
+  hostApi: '1.0.0' | '1.1.0';
   coreSemantics: '1.0.0';
   snapshotSchemas: readonly ('aibo.semantic-view/experimental-v1' | 'aibo.semantic-view/v1' | 'aibo.semantic-view/v1.1')[];
   resources: readonly PresentationResource[];

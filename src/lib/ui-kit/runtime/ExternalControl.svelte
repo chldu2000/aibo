@@ -49,7 +49,7 @@
   });
 </script>
 {#if inherited || failed}{@render children()}{/if}
-<span class="external-control" class:status-mark={isDecorativeControl(control)} role={isDecorativeControl(control) ? 'img' : undefined} aria-label={label ?? undefined} hidden={inherited || failed} bind:this={target}></span>
+<span class="external-control" class:status-mark={isDecorativeControl(control)} role={label !== null ? 'img' : undefined} aria-label={label ?? undefined} aria-hidden={isDecorativeControl(control) && label === null ? 'true' : undefined} hidden={inherited || failed} bind:this={target}></span>
 <style>
   .external-control { display: block; width: 100%; height: 250px; }
   .external-control.status-mark { display: inline-block; width: 20px; height: 20px; pointer-events: none; }

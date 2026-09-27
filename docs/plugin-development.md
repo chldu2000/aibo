@@ -26,7 +26,7 @@ Capabilities describe support, not execution authorization. See [domain language
 | Semantic views | Supported contract and snapshot format, independently of package versions |
 | Host SDK | If declaring `hostSdk`, a host that implements it and satisfies the range; the current example requires SDK `>=0.1.0 <0.2.0` |
 | Session features and permissions | Matching manifest, handshake, open response and host schemas; provider-managed permissions additionally require the [session-controls contract](session-controls.md) |
-| Presentation | `presentation.json`, its hostApi/coreSemantics and declared snapshot formats; see the package contract |
+| Presentation | `presentation.json`, its hostApi (1.0.0 or 1.1.0; decides which controls are sent)/coreSemantics and declared snapshot formats; see the package contract |
 
 A matching host version alone does not identify which source changes a development build contains.
 Record the exact host commit/build, plugin release, SDK and native CLI versions used for validation.

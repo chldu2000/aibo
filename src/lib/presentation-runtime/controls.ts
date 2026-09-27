@@ -1,4 +1,7 @@
-import type { UiAgentStatusMarkProps, UiModelMatrixProps } from '../ui-kit/contract';
+import type { UiAgentStatusMarkProps, UiFileChangeMarkProps, UiModelMatrixProps, UiSessionControlMarkProps } from '../ui-kit/contract';
+import type { PresentationPackageManifest } from '../../../packages/plugin-protocol/src/presentation-package';
+import { fileChangeStates } from '../ui-kit/file-change.ts';
+import { sessionControlAppearance } from '../ui-kit/session-control-appearance.ts';
 import type { PresentationControlData } from '../../../packages/plugin-protocol/src/presentation-controls';
 import type { PresentationContext, PresentationInput, PresentationIntent } from '../../../packages/plugin-protocol/src/presentation-runtime';
 
@@ -23,23 +26,31 @@ type ControlData<Name extends PresentationControlData['control']> = Extract<Pres
  * One public control: how host props project to pure data, how a trusted user event
  * maps back to a host callback, and a preflight sample. Callbacks never leave the host.
  */
+type HostApi = PresentationPackageManifest['hostApi'];
+const hostApis: readonly HostApi[] = ['1.0.0', '1.1.0'];
+
 type ControlDefinition<Name extends PresentationControlData['control'], Props> = {
+  /** First host API that sends this control; older packages keep inheriting the kit rendering. */
+  since: HostApi;
   project(props: Props): Omit<ControlData<Name>, 'control'>;
   /** Re-resolve against current props; stale or disabled tokens resolve to nothing. */
   resolve(props: Props, intent: Pick<PresentationIntent, 'id' | 'event'>): (() => void | Promise<void>) | null;
   preflight: Props;
-  /** Decorative controls are images named by the host label and never take pointer input. */
-  decorative?: { label(props: Props): string };
+  /** Decorative controls never take pointer input; a null label hides them from assistive technology. */
+  decorative?: { label(props: Props): string | null };
 };
 
 export type ControlProps = {
   ModelMatrix: UiModelMatrixProps;
   AgentStatusMark: UiAgentStatusMarkProps;
+  FileChangeMark: UiFileChangeMarkProps;
+  SessionControlMark: UiSessionControlMarkProps;
 };
 export type PresentationControl = keyof ControlProps;
 
 const registry: { [Name in PresentationControl]: ControlDefinition<Name, ControlProps[Name]> } = {
   ModelMatrix: {
+    since: '1.0.0',
     project(props) {
       const { onSelect: _select, onSelectServiceTier: _tier, ...data } = props;
       return { props: data, actions: modelSelections(props) };
@@ -58,16 +69,41 @@ const registry: { [Name in PresentationControl]: ControlDefinition<Name, Control
       defaultLabel: 'Default', defaultTitle: 'Default reasoning', fastTier: null, disabled: false, onSelect() {}, onSelectServiceTier() {} },
   },
   AgentStatusMark: {
+    since: '1.0.0',
     project: props => ({ props, actions: [] }),
     resolve: () => null,
     preflight: { agent: 'plugin', tone: 'idle', label: 'Plugin' },
     decorative: { label: props => props.label },
+  },
+  FileChangeMark: {
+    since: '1.1.0',
+    project: ({ kind, decorative = false }) => ({ props: { kind, label: fileChangeStates[kind].label, decorative }, actions: [] }),
+    resolve: () => null,
+    preflight: { kind: 'modified' },
+    decorative: { label: ({ kind, decorative }) => decorative ? null : fileChangeStates[kind].label },
+  },
+  SessionControlMark: {
+    since: '1.1.0',
+    // Only the fields the mark classifies; labels and descriptions stay beside it in the host.
+    project: ({ control, compact = false }) => ({
+      props: { kind: control.kind, profile: { ...control.profile }, compact, appearance: sessionControlAppearance(control) },
+      actions: [],
+    }),
+    resolve: () => null,
+    preflight: { control: { kind: 'mode', profile: { interactionMode: 'plan' } } },
+    decorative: { label: () => null },
   },
 };
 
 const definition = <Name extends PresentationControl>(control: Name) => registry[control] as ControlDefinition<Name, ControlProps[Name]>;
 
 export const presentationControls = Object.keys(registry) as PresentationControl[];
+
+/** Whether a package declaring `hostApi` receives this control; unknown versions receive nothing. */
+export function controlAvailable(control: PresentationControl, hostApi: string) {
+  const declared = hostApis.indexOf(hostApi as HostApi);
+  return declared >= 0 && hostApis.indexOf(registry[control].since) <= declared;
+}
 
 export function controlInput<Name extends PresentationControl>(control: Name, props: ControlProps[Name],
   context: PresentationContext, theme: Readonly<Record<string, string>> = {}): PresentationInput {
@@ -86,7 +122,8 @@ export function decorativeLabel<Name extends PresentationControl>(control: Name,
   return definition(control).decorative?.label(props) ?? null;
 }
 
-export function controlPreflights(): PresentationInput[] {
+export function controlPreflights(hostApi: string = '1.0.0'): PresentationInput[] {
   const context = { workspaceId: 'preflight', sessionId: 'preflight', revision: 1 };
-  return presentationControls.map(control => controlInput(control, definition(control).preflight, context));
+  return presentationControls.filter(control => controlAvailable(control, hostApi))
+    .map(control => controlInput(control, definition(control).preflight, context));
 }

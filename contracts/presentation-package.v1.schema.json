@@ -34,7 +34,8 @@
       "maxLength": 128
     },
     "hostApi": {
-      "const": "1.0.0"
+      "description": "Host message bridge version. 1.1.0 adds the FileChangeMark and SessionControlMark controls.",
+      "enum": ["1.0.0", "1.1.0"]
     },
     "coreSemantics": {
       "const": "1.0.0"

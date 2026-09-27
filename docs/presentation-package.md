@@ -35,7 +35,7 @@
 | schema | manifest 格式；当前只接受 v1 |
 | id | 稳定插件身份，小写点号或连字符分段 |
 | version | release 版本，当前采用三段非负整数，拒绝前导零 |
-| hostApi | 外部呈现消息桥接口版本，当前精确 1.0.0 |
+| hostApi | 外部呈现消息桥接口版本，接受 1.0.0 或 1.1.0；决定宿主向包发送哪些 controls，见[独立控件呈现](#独立控件呈现) |
 | coreSemantics | 必须保留的业务信息结构，当前精确 1.0.0 |
 | snapshotSchemas | 显式可读快照格式；必须包含稳定 v1，不能从语义版本推断 v1.1 写动作支持 |
 
@@ -158,9 +158,19 @@ Enter 保持换行。禁用/只读输入框不触发，不能同时声明 keydow
 
 ## 独立控件呈现
 
-声明 controls 角色后，宿主以 `surface: 'controls'` 调用同一个入口。当前公开目录
-包含 ModelMatrix 和 AgentStatusMark，纯数据联合类型为
-`PresentationControlData`；其他内部 UiKitAdapter 控件继续继承默认实现。
+声明 controls 角色后，宿主以 `surface: 'controls'` 调用同一个入口。公开目录按 hostApi 分版本，
+纯数据联合类型为 `PresentationControlData`；其他内部 UiKitAdapter 控件继续继承默认实现。
+
+| 控件 | 起始 hostApi | 动作 |
+| --- | --- | --- |
+| ModelMatrix | 1.0.0 | 模型、推理强度与服务层级选择 |
+| AgentStatusMark | 1.0.0 | 无 |
+| FileChangeMark | 1.1.0 | 无 |
+| SessionControlMark | 1.1.0 | 无 |
+
+宿主只向声明了对应或更高 hostApi 的包发送控件，并只预检这些控件。已发布的 1.0.0 包
+不会收到后来加入的控件，宿主升级不会因为新控件而让旧包激活失败。声明 1.1.0 的包无法安装到
+只认识 1.0.0 的旧宿主。
 `data.control` 标识控件，`data.props` 包含完整展示数据，业务回调不会交付 Worker。
 模型选择通过 `data.actions` 的宿主 token 绑定 click，宿主重新检查当前可用选项
 及 disabled 状态后执行。ModelMatrix actions 按 `kind: model | serviceTier` 区分，
@@ -171,6 +181,12 @@ AgentStatusMark 仅提供展示，没有业务动作。消费可选 `props.icon:
 在 24 × 24 viewBox 内用受限 svg/path 节点和 currentColor 绘制；缺失可用通用图标或文本。
 保留宿主 label 作为文字或可访问名称，不根据兼容字段 `agent` 硬编码品牌图标。
 精确 props/actions 类型见 [presentation-controls.ts](../packages/plugin-protocol/src/presentation-controls.ts)。
+FileChangeMark 的 `props` 为 `{ kind, label, decorative }`：`label` 由宿主提供；`decorative` 为 true 时，
+宿主将该控件对辅助技术隐藏，否则以 `label` 作为可访问名称。SessionControlMark 的 `props` 为
+`{ kind, profile, compact, appearance }`，其中 `appearance.icon` / `appearance.tone` 是宿主对声明策略的分类，
+包不应自行从 profile 推断权限含义；该标记始终对辅助技术隐藏，文字说明由宿主显示在旁边。
+两个标记与 AgentStatusMark 一样不接收指针输入，也不进入 Tab 顺序。
+
 AgentSettingsForm、ModelContextSelect、GoalBar、SubagentCard、SubagentDialog 均为内部控件，
 未加入外部 controls 目录，不能通过声明同名控件取得其接口。
 

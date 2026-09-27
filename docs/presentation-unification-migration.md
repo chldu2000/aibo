@@ -1,6 +1,6 @@
 # 内置外观并入 Presentation 合同：迁移计划
 
-状态：P0、P1 已实施（见各阶段实施记录），P2–P3 未实施。本文不改变现行规则；在各阶段验收并同步
+状态：P0、P1 已实施；P2 已完成第一批（纯展示控件），其余控件与 P3 未实施。见各阶段实施记录。本文不改变现行规则；在各阶段验收并同步
 [UI 架构](ui-architecture.md)、[Presentation 包合同](presentation-package.md)及对应测试前，
 以现行文档为准。
 
@@ -160,8 +160,17 @@ flowchart LR
 3. 宿主预检该控件（render 返回 `null` 表示继承）；
 4. 更新 [Presentation 包合同](presentation-package.md#独立控件呈现)，并按 hostApi 规则判断是否需要升版本。
 
-公开新控件属于新增能力。旧包没有声明该控件时继承默认实现，不需要 hostApi 大版本。
-是否引入 hostApi 1.1 由 [ADR-0005](adr/0005-plugin-protocol-stability-and-compatibility.md) 的变更门决定。
+公开新控件属于新增能力，按 hostApi 次版本区分（已决定，见下方实施记录）：新控件只发给声明对应版本的包。
+
+#### P2 第一批实施记录
+
+- 兼容规则：宿主激活 controls 包时会预检目录中的每个控件。现有三个包对未知控件返回 `null`，但合同并未要求这样做；
+  若直接扩充目录，遇到未知控件就抛错的第三方包会在宿主升级后激活失败。因此 manifest 的 `hostApi` 改为接受
+  `1.0.0` 或 `1.1.0`，每个控件在注册表中记录起始版本，宿主只向声明了对应版本的包发送并预检该控件。
+- hostApi 1.1.0 公开 FileChangeMark 与 SessionControlMark，均无动作。前者由宿主提供可访问名称，后者携带宿主的策略分类结果。
+- 验证：`test/presentation-controls.test.mjs`（版本门控、投影内容）；浏览器探针 `presentation-controls-browser`
+  增加"1.0.0 包收不到新控件"和"1.1.0 包替换标记并保留宿主名称与隐藏语义"。
+- 未做：独立 shadcn/Material 3 包尚未升级到 1.1.0，仍然只定制两个原有控件。
 
 ManagementCenter、HostPanel、WorkbenchChrome 属于宿主固定区域或布局外壳，**不公开**，
 继续由内置实现提供。

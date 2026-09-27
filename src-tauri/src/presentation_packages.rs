@@ -526,6 +526,14 @@ mod tests {
         fs::remove_dir_all(root).unwrap();
     }
 
+    #[test]
+    fn host_api_accepts_known_bridge_versions_only() {
+        for (version, accepted) in [("1.0.0", true), ("1.1.0", true), ("1.2.0", false), ("2.0.0", false)] {
+            let source = builtin("1.0.0", "#444444").replace("\"hostApi\":\"1.0.0\"", &format!("\"hostApi\":\"{version}\""));
+            assert_eq!(manifest(&source).is_ok(), accepted, "hostApi {version}");
+        }
+    }
+
     #[tokio::test]
     async fn local_packages_cannot_claim_builtin_identity() {
         let root = temp();

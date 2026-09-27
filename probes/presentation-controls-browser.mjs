@@ -4,7 +4,7 @@ import {writeFile} from 'node:fs/promises';
 import {createServer} from 'vite';
 import {chromium} from 'playwright';
 const source="self.aiboPresentation={render(input){if(input.data.control==='AgentStatusMark')return null;return {tag:'section',key:'matrix',children:[{tag:'h2',key:'title',text:'External matrix'},...input.data.actions.map(action=>({tag:'button',key:action.token,text:action.reasoningEffort||'Default',events:{click:action.token}})),{tag:'button',key:'forged',text:'Forged option',events:{click:'model:999'}}]}}};";
-const packageOf=source=>({release:{digest:createHash('sha256').update(source).digest('hex'),enabled:true,manifest:{schema:'aibo.presentation-package/v1',id:'dev.example.controls',displayName:'Controls',version:'1.0.0',hostApi:'1.0.0',coreSemantics:'1.0.0',snapshotSchemas:['aibo.semantic-view/v1'],entry:'skin.js',surfaces:['controls'],resources:[{path:'skin.js',bytes:Buffer.byteLength(source),sha256:createHash('sha256').update(source).digest('hex'),mediaType:'text/javascript'}]}},resources:{'skin.js':Buffer.from(source).toString('base64')}});
+const packageOf=(source,hostApi='1.0.0')=>({release:{digest:createHash('sha256').update(source+hostApi).digest('hex'),enabled:true,manifest:{schema:'aibo.presentation-package/v1',id:'dev.example.controls',displayName:'Controls',version:'1.0.0',hostApi,coreSemantics:'1.0.0',snapshotSchemas:['aibo.semantic-view/v1'],entry:'skin.js',surfaces:['controls'],resources:[{path:'skin.js',bytes:Buffer.byteLength(source),sha256:createHash('sha256').update(source).digest('hex'),mediaType:'text/javascript'}]}},resources:{'skin.js':Buffer.from(source).toString('base64')}});
 const server=await createServer({server:{host:'127.0.0.1',port:0,hmr:false,watch:null}});await server.listen();const browser=await chromium.launch({headless:true});const page=await browser.newPage();const errors=[];page.on('pageerror',e=>errors.push(e.message));
 try{
  await page.goto(`http://127.0.0.1:${server.httpServer.address().port}/probes/presentation-controls.html`);await page.waitForFunction(()=>window.controlPackageProbe);
@@ -27,8 +27,21 @@ try{
  assert.equal(await page.locator('#replaceable .status-mark iframe').getAttribute('tabindex'),'-1');
  await page.getByRole('button',{name:'Select row'}).click();
  assert.deepEqual(await page.evaluate(()=>window.controlPackageProbe.result().at(-1)),['row']);
+ // Host API 1.1.0 marks: a 1.0.0 package that replaces everything still never receives them.
+ const everything="self.aiboPresentation={render(input){return {tag:'span',key:'mark',text:input.data.control==='FileChangeMark'?input.data.props.label:'X'}}};";
+ const marks=page.locator('#marks');
+ await page.evaluate(pkg=>window.controlPackageProbe.select(pkg),packageOf(everything));
+ await page.locator('#replaceable .status-mark:not([hidden]) iframe').first().waitFor();
+ assert.equal(await marks.locator('iframe').count(),0,'1.0.0 packages keep kit file and session marks');
+ assert.equal(await marks.locator('.file-change-mark').count(),2);
+ await page.evaluate(pkg=>window.controlPackageProbe.select(pkg),packageOf(everything,'1.1.0'));
+ await page.waitForFunction(()=>document.querySelectorAll('#marks .external-control:not([hidden]) iframe').length===3);
+ assert.equal(await marks.locator('.file-change-mark').count(),0,'1.1.0 packages replace the marks');
+ assert.equal(await marks.getByRole('img',{name:'合并冲突'}).count(),1,'host label names the replaced mark');
+ assert.equal(await marks.locator('.external-control[aria-hidden="true"]').count(),2,'decorative file mark and session mark stay hidden');
+ assert.equal(await page.frameLocator('#marks .external-control:not([hidden]) iframe').first().getByText('合并冲突').count(),1);
  await page.evaluate(()=>window.controlPackageProbe.dispose());
  assert.equal(await page.locator('iframe').count(),0);assert.deepEqual(errors,[]);
- const result={passed:true,browser:browser.version(),checks:['controls-only package activates','workbench matrix replaced','trusted controls remain native','valid option calls host','forged option ignored','disabled actions unavailable','null inherits complete defaults','decorative status keeps parent row clickable and skips tab focus','disposal removes control instances']};
+ const result={passed:true,browser:browser.version(),checks:['controls-only package activates','workbench matrix replaced','trusted controls remain native','valid option calls host','forged option ignored','disabled actions unavailable','null inherits complete defaults','decorative status keeps parent row clickable and skips tab focus','1.0.0 packages never receive 1.1.0 controls','1.1.0 packages replace file and session marks with host labels and hidden decorative marks','disposal removes control instances']};
  await writeFile('/tmp/aibo-presentation-controls-browser.json',JSON.stringify(result,null,2));console.log(JSON.stringify(result));
 }finally{await browser.close();await server.close();}

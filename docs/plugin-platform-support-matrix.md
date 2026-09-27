@@ -39,7 +39,7 @@
 ## UI 信任与扩展边界
 
 宿主保留可信默认呈现与兼容适配器。独立 Presentation 包使用
-`aibo.presentation-package/v1`，hostApi/coreSemantics 均为 1.0.0；同一个包身份
+`aibo.presentation-package/v1`，hostApi 为 1.0.0 或 1.1.0（1.1.0 增加两个展示控件），coreSemantics 为 1.0.0；同一个包身份
 可以提供主题、controls、semantic 和 workbench。能力包 v2 的 presentation 描述
 仍不授予 UI 执行资格，这一规则与独立 Presentation 包入口分别验证。
 

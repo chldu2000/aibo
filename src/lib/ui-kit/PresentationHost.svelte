@@ -41,7 +41,7 @@
     const surfaces = value.release.manifest.surfaces ?? [];
     if (surfaces.includes('controls')) {
       const { controlPreflights } = await import('../presentation-runtime/controls');
-      for (const snapshot of controlPreflights()) {
+      for (const snapshot of controlPreflights(value.release.manifest.hostApi)) {
         const candidate = await preparePresentationSandbox(target, value, { ...snapshot, theme }, () => {}, failure, signal, { allowInheritance: true });
         candidate.dispose();
       }
