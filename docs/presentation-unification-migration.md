@@ -198,7 +198,13 @@ flowchart LR
   （`AgentStatusMark` 原本就有）。样式表无法区分 controls 与整窗 surface，需要宿主为控件 iframe 提供透明背景，留作后续。
 
 验证：`test/presentation-skins.test.mjs`（两个包声明 1.1.0、定制全部六个控件，触发器只在有 `open` 动作时可点击）；
-浏览器探针 `presentation-skin-controls-browser`（两个真实包的标记、菜单选择与回写）。原生端：`builtin-presentation-desktop` 验证了两个 0.4.0 包被原生安装器接受，shadcn 0.4.0 在 WKWebView 中预检 1.1.0 控件目录后激活并在重启后恢复；控件替换在原生端尚未单独验证。
+浏览器探针 `presentation-skin-controls-browser`（两个真实包的标记、菜单选择与回写）。原生端：`builtin-presentation-desktop` 验证了两个 0.4.0 包被原生安装器接受，shadcn 0.4.0 在 WKWebView 中预检 1.1.0 控件目录后激活并在重启后恢复。
+  控件替换的原生验证见 `probes/presentation-controls-native.mjs`：外部包 iframe 只接受可信事件，页面脚本无法点击其中的按钮，
+  因此探针用 Swift 助手（`probes/native-input.swift`）发送系统级鼠标和键盘事件（CGEvent）。两个 0.4.0 包在 WKWebView 中：
+  预检 1.1.0 目录后下拉占位与默认控件一致；真实点击打开 iframe 外的宿主菜单并接管焦点；方向键加回车经宿主提交，Escape 不做选择，
+  焦点都回到控件 iframe；指针在宿主菜单中选择能提交；装饰性标记让点击到达父按钮且不进入 Tab 顺序。
+  另外观察到 AXPress（VoiceOver 等辅助技术激活按钮的方式）同样能打开宿主菜单，说明沙箱对辅助技术的激活事件视为可信。
+  证据见 [原生控件记录](baselines/builtin-presentation/native-controls.json)。未覆盖：控件在真实输入框、Git 面板中的集成位置；屏幕阅读器的朗读内容。
 
 ManagementCenter、HostPanel、WorkbenchChrome 属于宿主固定区域或布局外壳，**不公开**，
 继续由内置实现提供。

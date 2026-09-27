@@ -1,0 +1,5 @@
+<!doctype html><html lang="zh-CN"><head><meta charset="utf-8"><title>Aibo native controls probe</title></head><body style="margin:0"><div id="probe" style="height:700px"></div><script type="module">
+import '/src/app.css';import {mount} from 'svelte';import Probe from './PresentationControlsProbe.svelte';
+window.controlPackageProbe=mount(Probe,{target:document.getElementById('probe')});
+await import('./presentation-controls-native-client.mjs');
+</script></body></html>

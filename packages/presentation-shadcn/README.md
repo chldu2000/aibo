@@ -4,7 +4,7 @@
 0.2.0 开始同时声明 workbench，装配独立导航、会话、Git、Inspector 和能力视图。
 0.3.0 已通过桌面工作台浏览器交互与 macOS arm64 原生生命周期验收。
 0.4.0 声明 hostApi 1.1.0，另外定制文件变更标记、会话权限标记，以及 Select / ModelContextSelect 的触发器（选项菜单由宿主绘制）；
-需要支持 hostApi 1.1.0 的宿主，旧宿主会拒绝安装。0.4.0 已通过原生安装与激活（见 docs/baselines/builtin-presentation/native-lifecycle.json），控件替换在原生端尚未单独验证。
+需要支持 hostApi 1.1.0 的宿主，旧宿主会拒绝安装。0.4.0 已通过原生安装与激活（见 docs/baselines/builtin-presentation/native-lifecycle.json），控件替换已在 WKWebView 中用系统级输入验证（见 docs/baselines/builtin-presentation/native-controls.json）。
 未提供的独立控件继续继承宿主；其他平台与屏幕阅读器认证不在这些证据范围内。
 
 将本包与 `@aibo/presentation-tools`、`@aibo/presentation-workbench` 本地 tarball 安装到仓库外项目后：
