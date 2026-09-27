@@ -309,7 +309,9 @@ try {
     await page.getByRole('button',{name:pkg.release.manifest.displayName+' '+pkg.release.manifest.version,exact:true}).click();
     await page.getByRole('button',{name:'关闭设置',exact:true}).click();
     await frame.locator('.navigation').waitFor({state:'visible'});
-    assert.equal(await frame.locator('.navigation').evaluate(element=>Math.round(element.getBoundingClientRect().width)),resized);
+    // After a skin switch the new Worker applies the stored width on its next render; poll instead of reading once.
+    let navigationWidth;for(let n=0;n<100&&(navigationWidth=await frame.locator('.navigation').evaluate(element=>Math.round(element.getBoundingClientRect().width)))!==resized;n++)await page.waitForTimeout(50);
+    assert.equal(navigationWidth,resized);
     await composer.waitFor();assert.equal(await composer.inputValue(),'换肤保留');
     await frame.locator('textarea:focus').waitFor({timeout:3000});
     assert.ok(Math.abs(await frame.locator('[data-presentation-key="message:scroll-10"]').evaluate(element=>element.getBoundingClientRect().top-element.closest('.conversation-history').getBoundingClientRect().top)+18)<2,'default anchor maps into external center viewport');

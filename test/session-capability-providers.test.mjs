@@ -11,7 +11,8 @@ test('Codex auto-review profile uses the native approve-for-me reviewer',async t
 test('Codex capability provider streams turns, controls native requests and restores native recovery',async t=>{
   const f=await sessionCapability(t,'codex');
   await assert.rejects(f.rpc('aibo.initialize',{}),/Unsupported/);
-  const initialUsageReady=f.wait('usage.updated');
+  // Account limits are read asynchronously at open; turn token usage may be published first.
+  const initialUsageReady=f.wait('usage.updated',event=>event.payload.usage.plan!==undefined);
   const opened=await f.invoke('aibo.session.open',{mode:'create',executionProfile:profile});
   assert.equal(opened.nativeSessionId,'native-thread');
   assert.ok(opened.capabilities.includes('approval.respond'));

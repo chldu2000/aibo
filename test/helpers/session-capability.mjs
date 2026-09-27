@@ -49,7 +49,7 @@ export async function sessionCapability(t,name,extraEnv={},existingDirectory,con
     const p=request(capability,input);
     return output(capability,(await rpc('capability.control',{...identity,invocationId:turn.request.invocationId,capability,contractVersion:p.contractVersion,operationId:p.operationId,input})).output);
   }
-  const wait=type=>client.waitFor(message=>message.method==='capability.event'&&message.params.event.type===type).then(message=>message.params.event);
+  const wait=(type,matches=()=>true)=>client.waitFor(message=>message.method==='capability.event'&&message.params.event.type===type&&matches(message.params.event)).then(message=>message.params.event);
   const restart=async()=>{await client.close();return sessionCapability(t,name,extraEnv,directory,contributionId,hostTools);};
   return {directory,data,manifest,client,frames,events,invoke,startTurn,control,wait,request,rpc,restart,identity};
 }

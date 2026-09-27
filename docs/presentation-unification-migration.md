@@ -194,8 +194,8 @@ flowchart LR
 - "只定制触发器"对这两个包够用：触发器的外观、当前值和禁用状态都能完整表达。
 - 占位约束需要写明：Material 3 包原本的胶囊内边距在默认占位里会把文字截断，已收紧；
   合同中已补充"包必须在宿主给定的尺寸内排版"。
-- 待改进：标记类 iframe 的 `body` 背景与宿主页面略有差异，标记周围能看到浅色方块
-  （`AgentStatusMark` 原本就有）。样式表无法区分 controls 与整窗 surface，需要宿主为控件 iframe 提供透明背景，留作后续。
+- 已修复：标记类 iframe 曾显示包的 `body` 背景，标记周围能看到浅色方块（`AgentStatusMark` 原本就有）。
+  沙箱现在只对 controls surface 注入透明画布，宿主同时把控件 iframe 的 `color-scheme` 设为 `normal`，避免浏览器因配色方案不一致绘制不透明底色。
 
 验证：`test/presentation-skins.test.mjs`（两个包声明 1.1.0、定制全部六个控件，触发器只在有 `open` 动作时可点击）；
 浏览器探针 `presentation-skin-controls-browser`（两个真实包的标记、菜单选择与回写）。原生端：`builtin-presentation-desktop` 验证了两个 0.4.0 包被原生安装器接受，shadcn 0.4.0 在 WKWebView 中预检 1.1.0 控件目录后激活并在重启后恢复。
@@ -203,7 +203,7 @@ flowchart LR
   因此探针用 Swift 助手（`probes/native-input.swift`）发送系统级鼠标和键盘事件（CGEvent）。两个 0.4.0 包在 WKWebView 中：
   预检 1.1.0 目录后下拉占位与默认控件一致；真实点击打开 iframe 外的宿主菜单并接管焦点；方向键加回车经宿主提交，Escape 不做选择，
   焦点都回到控件 iframe；指针在宿主菜单中选择能提交；装饰性标记让点击到达父按钮且不进入 Tab 顺序。
-  另外观察到 AXPress（VoiceOver 等辅助技术激活按钮的方式）同样能打开宿主菜单，说明沙箱对辅助技术的激活事件视为可信。
+  AXPress（VoiceOver 等辅助技术激活按钮的方式）同样能打开宿主菜单；这一项是硬性检查，辅助技术无法操作外部控件时探针失败。
   证据见 [原生控件记录](baselines/builtin-presentation/native-controls.json)。未覆盖：控件在真实输入框、Git 面板中的集成位置；屏幕阅读器的朗读内容。
 
 ManagementCenter、HostPanel、WorkbenchChrome 属于宿主固定区域或布局外壳，**不公开**，

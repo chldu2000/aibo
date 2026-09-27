@@ -50,7 +50,7 @@ try{
   console.log('CONTROLS_NATIVE_REPORT '+JSON.stringify(result));
   if(!result.ok)throw Error(result.error);
   const summary={ok:true,platform:process.platform,architecture:process.arch,identifier,packages:built.packages.map(pkg=>pkg.release.manifest.id+'@'+pkg.release.manifest.version),
-    checks:result.checks,observations:result.observations,interaction:'system mouse and keyboard events (CGEvent) and AXPress into the isolated WKWebView; screen reader output not claimed'};
+    checks:result.checks,interaction:'system mouse and keyboard events (CGEvent) and AXPress into the isolated WKWebView; screen reader output not claimed'};
   await writeFile('/tmp/aibo-presentation-controls-native-result.json',JSON.stringify(summary,null,2)+'\n');
   console.log('CONTROLS_NATIVE_RESULT '+JSON.stringify(summary));
 }finally{

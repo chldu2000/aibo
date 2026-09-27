@@ -15,7 +15,7 @@ try{
   const {packages}=await(await fetch('/__controls_native_config')).json();
   await until(()=>probe(),'harness mounted');
   const defaults=[...document.querySelectorAll('#selects .ui-select, #selects .context-window-select')].map(box);
-  const checks=[],observations=[];
+  const checks=[];
   for(const pkg of packages){
     const name=pkg.release.manifest.id.split('.').at(-1);
     await probe().select(pkg);
@@ -60,18 +60,17 @@ try{
     if(rowMark.getAttribute('tabindex')!=='-1')throw Error(name+': decorative frame is focusable');
     checks.push(name+': decorative mark lets real clicks reach the parent and stays out of Tab order');
 
-    // Assistive technology activates web buttons with AXPress; record whether the sandbox accepts it.
+    // Assistive technology (VoiceOver and others) activates web buttons with AXPress; it must reach the host too.
     await probe().setChoice('a');
     await until(()=>frames('#selects .external-control iframe').length===2,name+': trigger refreshed');
     const axStart=results().length;
-    const pressed=await fetch('/__native_input',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'axpress',name:'Probe select：Alpha'})}).then(response=>response.json());
-    let opened=false;
-    if(pressed.ok){for(let n=0;n<40&&!opened;n++){opened=Boolean(listbox('Probe select'));await delay(50);}}
-    observations.push({skin:name,axpress:pressed.ok?(opened?'opened the host menu':'reached the button but the sandbox ignored it'):'button not exposed: '+pressed.error});
-    if(opened){await key('Escape');await until(()=>!listbox('Probe select'),name+': close AX menu');}
+    await input({action:'axpress',name:'Probe select：Alpha'});
+    await until(()=>listbox('Probe select'),name+': AXPress on the package trigger opens the host menu');
+    await key('Escape');await until(()=>!listbox('Probe select'),name+': close AX menu');
     if(results().length!==axStart)throw Error(name+': AXPress must not choose');
+    checks.push(name+': AXPress on the package trigger opens the host menu for assistive technology');
   }
   await probe().dispose();
   if(errors.length)throw Error(errors.join('\n'));
-  await report({ok:true,checks,observations});
+  await report({ok:true,checks});
 }catch(error){await report({ok:false,error:String(error),errors,text:document.body.innerText.slice(0,2000)});}

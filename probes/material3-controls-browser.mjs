@@ -38,8 +38,10 @@ try {
     assert.equal(focused.borderLeftWidth,'1px');
     assert.equal(focused.borderTopColor,theme==='light'?'rgb(36, 94, 167)':'rgb(167, 200, 255)');
     assert.doesNotMatch(focused.boxShadow,/inset/);
-    await page.getByRole('combobox',{name:'模型上下文大小'}).click(); await page.getByRole('option',{name:'扩展',exact:true}).click();
-    assert.equal(await page.getByLabel('操作结果').textContent(),'large');
+    // Re-choosing the current option is a no-op, so each theme pass picks the other context size.
+    const [contextLabel,contextId]=theme==='light'?['扩展','large']:['标准','normal'];
+    await page.getByRole('combobox',{name:'模型上下文大小'}).click(); await page.getByRole('option',{name:contextLabel,exact:true}).click();
+    assert.equal(await page.getByLabel('操作结果').textContent(),contextId);
     await page.getByRole('button',{name:'第三方模型，高',exact:true}).click();
     assert.equal(await page.getByRole('button',{name:'第三方模型，高',exact:true}).getAttribute('aria-pressed'),'true');
     assert.equal(await page.locator('.effort-selection').evaluate(e=>getComputedStyle(e).display),'none');

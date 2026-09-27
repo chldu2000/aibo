@@ -2,7 +2,7 @@
   "ok": true,
   "platform": "darwin",
   "architecture": "arm64",
-  "identifier": "local.aibo.controlsprobe.1790482221778",
+  "identifier": "local.aibo.controlsprobe.1790483738436",
   "packages": [
     "dev.aibo.presentation.shadcn@0.4.0",
     "dev.aibo.presentation.material3@0.4.0"
@@ -14,22 +14,14 @@
     "shadcn: Escape closes without choosing and returns focus",
     "shadcn: context trigger and pointer choice in the host menu commit",
     "shadcn: decorative mark lets real clicks reach the parent and stays out of Tab order",
+    "shadcn: AXPress on the package trigger opens the host menu for assistive technology",
     "material3: package preflights the 1.1.0 catalog in WKWebView and select replacements keep the default footprint",
     "material3: trusted click in the isolated frame opens a host menu outside it and moves focus to the menu",
     "material3: ArrowDown and Enter commit through the host and return focus to the frame",
     "material3: Escape closes without choosing and returns focus",
     "material3: context trigger and pointer choice in the host menu commit",
-    "material3: decorative mark lets real clicks reach the parent and stays out of Tab order"
-  ],
-  "observations": [
-    {
-      "skin": "shadcn",
-      "axpress": "opened the host menu"
-    },
-    {
-      "skin": "material3",
-      "axpress": "opened the host menu"
-    }
+    "material3: decorative mark lets real clicks reach the parent and stays out of Tab order",
+    "material3: AXPress on the package trigger opens the host menu for assistive technology"
   ],
   "interaction": "system mouse and keyboard events (CGEvent) and AXPress into the isolated WKWebView; screen reader output not claimed"
 }
