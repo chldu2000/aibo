@@ -1,0 +1,54 @@
+{
+  "ok": true,
+  "platform": "darwin",
+  "architecture": "arm64",
+  "identifier": "local.aibo.builtinprobe.1790481180341",
+  "evidence": [
+    {
+      "ok": true,
+      "phase": 0,
+      "checks": [
+        "host registers both built-in releases on a fresh database",
+        "built-ins cannot be disabled or uninstalled; local packages cannot claim the reserved prefix",
+        "native installer accepts hostApi 1.1.0 packages: dev.aibo.presentation.shadcn@0.4.0, dev.aibo.presentation.material3@0.4.0",
+        "first start commits the legacy cached ak-ui dark choice to the built-in release",
+        "kit switch and titlebar brightness toggle commit to the native release store",
+        "hostApi 1.1.0 workbench package activates natively after preflighting the 1.1.0 control catalog"
+      ],
+      "expected": {
+        "shadcn": "25b05d8fe8a4a8896b04d1502b6ea0cbf9a8c51586b14f7ca06a83f8910b45ee",
+        "material3": "c4893ea975862d3834b50c018b1413f7f9a6128dd04c88672131f5a8783c695c",
+        "akUi": "a4242908ef2baa957e664d0ef7982d0c723933c09dddad003119033d7e9b3e9e"
+      }
+    },
+    {
+      "ok": true,
+      "phase": 1,
+      "checks": [
+        "new process restores the selected hostApi 1.1.0 package",
+        "post-activation Worker failure returns to material3 light, the window's last built-in choice, instead of clearing it",
+        "second window starts with no selection and records the cached ak-ui kit for itself",
+        "second window commits Material 3 independently",
+        "main window keeps ak-ui light while the second window selects Material 3"
+      ],
+      "expected": {
+        "dataPath": "/Users/chldu/Library/Application Support/local.aibo.builtinprobe.1790481180341"
+      }
+    },
+    {
+      "tamper": "ak-ui row rewritten as an older build; retired built-in selected by the second window"
+    },
+    {
+      "ok": true,
+      "phase": 2,
+      "checks": [
+        "host rebuild replaces the older ak-ui row and migrates the selection with its theme",
+        "retired built-in rows are removed at startup"
+      ]
+    },
+    {
+      "database": "no stale or retired built-in rows; retired selection removed; main window migrated to the rebuilt ak-ui release with its theme"
+    }
+  ],
+  "interaction": "scripted native host DOM clicks and real Tauri IPC in WKWebView; physical input and screen reader not claimed"
+}

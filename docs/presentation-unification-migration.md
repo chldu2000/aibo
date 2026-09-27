@@ -115,7 +115,7 @@ flowchart LR
 - `test/builtin-presentation.test.mjs`、`test/presentation-package-controller.test.mjs`。
 - 浏览器探针 `builtin-presentation-browser`（新增）、`presentation-app-browser`、`presentation-full-skins-browser`、`material3-palettes-browser`。
 
-未验证：macOS arm64 原生生命周期（真实安装表、多窗口、升级宿主版本后的替换）。
+原生验收：`probes/builtin-presentation-desktop.mjs` 在 macOS arm64 上用隔离的应用标识分三个进程运行，通过真实 Tauri IPC 与 WKWebView 验证了旧缓存迁移、内置不可变与保留前缀、切换 kit 与明暗写入宿主记录、外部包运行故障回到该窗口最近一次的内置选择、第二个窗口独立保存选择，以及宿主重建后内置行替换、选择与主题迁移、已停用内置 kit 的行与选择被清除。证据见 [原生生命周期记录](baselines/builtin-presentation/native-lifecycle.json)。未覆盖：物理输入、屏幕阅读器、其他平台。
 
 ### P1：通用控件分发，取代手写桥接
 
@@ -198,7 +198,7 @@ flowchart LR
   （`AgentStatusMark` 原本就有）。样式表无法区分 controls 与整窗 surface，需要宿主为控件 iframe 提供透明背景，留作后续。
 
 验证：`test/presentation-skins.test.mjs`（两个包声明 1.1.0、定制全部六个控件，触发器只在有 `open` 动作时可点击）；
-浏览器探针 `presentation-skin-controls-browser`（两个真实包的标记、菜单选择与回写）。未做：两个包的原生安装与生命周期验收。
+浏览器探针 `presentation-skin-controls-browser`（两个真实包的标记、菜单选择与回写）。原生端：`builtin-presentation-desktop` 验证了两个 0.4.0 包被原生安装器接受，shadcn 0.4.0 在 WKWebView 中预检 1.1.0 控件目录后激活并在重启后恢复；控件替换在原生端尚未单独验证。
 
 ManagementCenter、HostPanel、WorkbenchChrome 属于宿主固定区域或布局外壳，**不公开**，
 继续由内置实现提供。
