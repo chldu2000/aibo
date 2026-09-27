@@ -5,7 +5,7 @@
   "displayName": "ACP Echo",
   "description": "Configuration-only ACP provider used by host tests.",
   "hostSdk": {
-    "min": "0.1.3",
+    "min": "0.1.4",
     "maxExclusive": "0.2.0"
   },
   "host": {
@@ -565,18 +565,16 @@
             "additionalProperties": false,
             "required": [
               "requestId",
-              "decision"
+              "optionId"
             ],
             "properties": {
               "requestId": {
                 "type": "string",
                 "minLength": 1
               },
-              "decision": {
-                "enum": [
-                  "accept",
-                  "cancel"
-                ]
+              "optionId": {
+                "type": "string",
+                "minLength": 1
               }
             }
           },

@@ -94,7 +94,10 @@ export function serveAcpAgent({ manifestUrl, configUrl, extension, additionalIns
   const manifest = JSON.parse(readFileSync(manifestUrl, 'utf8'));
   const contribution = manifest.contributions.find(entry => entry.kind === 'capabilityProvider' && entry.scope === 'session');
   if (!contribution) throw new Error('plugin.json has no session capability provider');
-  const active = extension ?? extensionFromConfig(acpAgentConfig(JSON.parse(readFileSync(configUrl, 'utf8')), manifest), manifest);
+  const configured = extension ?? extensionFromConfig(acpAgentConfig(JSON.parse(readFileSync(configUrl, 'utf8')), manifest), manifest);
+  // The declared approval.respond variant decides how approvals are answered: by option or by decision.
+  const approvalOperation = contribution.operations.find(operation => operation.capability.id === `${manifest.pluginId}.approval.respond`);
+  const active = { ...configured, approvalOptions: approvalOperation?.inputSchema?.properties?.optionId !== undefined };
   const label = active.label, feature = name => `${manifest.pluginId}.${name}`;
   const instructions = additionalInstructions ?? settingsInstructions(label);
   let owner, bridge;
@@ -173,7 +176,7 @@ export function serveAcpAgent({ manifestUrl, configUrl, extension, additionalIns
     if (request.capability === feature('command.list')) return await commandDirectory();
     if (request.capability.startsWith(feature('model.'))) throw Object.assign(new Error(`${label} model configuration requires an idle session`), { kind: 'busy' });
     if (request.capability === 'aibo.session.cancel') return session.cancel();
-    if (request.capability === feature('approval.respond')) return session.respondApproval(input.requestId, input.decision);
+    if (request.capability === feature('approval.respond')) return session.respondApproval(input.requestId, input.optionId !== undefined ? { optionId: input.optionId } : input.decision);
     if (request.capability === feature('user-input.respond')) return session.respondUserInput(input.requestId, input.answers);
     throw Object.assign(new Error(`Unsupported ${label} control`), { kind: 'unsupported' });
   }

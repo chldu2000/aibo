@@ -767,7 +767,7 @@
     AgentCommand,
     AgentDiagnostic,
     AgentEvent,
-    ApprovalDecision,
+    ApprovalChoice,
     ApprovalRequest,
     UserInputRequest,
     ContextAttachment,
@@ -3408,8 +3408,8 @@
     }
   }
 
-  async function resolveApproval(approval: ApprovalRequest, decision: ApprovalDecision) {
-    await approvalController.resolveApproval(approval, decision);
+  async function resolveApproval(approval: ApprovalRequest, choice: ApprovalChoice) {
+    await approvalController.resolveApproval(approval, choice);
   }
 
   async function resolveUserInput(request: UserInputRequest, answers: Record<string, string[]>): Promise<void> {
@@ -3833,11 +3833,18 @@
           {#if approval.command}<code>{approval.command}</code>{/if}
           {#if approval.cwd}<small>{approval.cwd}</small>{/if}
           <div class="approval-actions">
-            {#if approval.availableDecisions.includes('cancel')}
-              <Button variant="ghost" size="sm" onclick={() => void resolveApproval(approval, 'cancel')} disabled={busy}>拒绝</Button>
-            {/if}
-            {#if approval.availableDecisions.includes('accept')}
-              <Button size="sm" onclick={() => void resolveApproval(approval, 'accept')} disabled={busy}>允许</Button>
+            {#if approval.options.length > 0}
+              <!-- Provider-offered options: reject kinds first and muted, allow kinds as the primary action. -->
+              {#each [...approval.options].sort((left, right) => left.kind === right.kind ? 0 : left.kind === 'reject' ? -1 : 1) as option (option.id)}
+                <Button variant={option.kind === 'reject' ? 'ghost' : 'default'} size="sm" onclick={() => void resolveApproval(approval, { optionId: option.id })} disabled={busy}>{option.label ?? (option.kind === 'allow' ? '允许' : '拒绝')}</Button>
+              {/each}
+            {:else}
+              {#if approval.availableDecisions.includes('cancel')}
+                <Button variant="ghost" size="sm" onclick={() => void resolveApproval(approval, 'cancel')} disabled={busy}>拒绝</Button>
+              {/if}
+              {#if approval.availableDecisions.includes('accept')}
+                <Button size="sm" onclick={() => void resolveApproval(approval, 'accept')} disabled={busy}>允许</Button>
+              {/if}
             {/if}
           </div>
         </CardContent>

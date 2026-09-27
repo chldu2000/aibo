@@ -554,6 +554,19 @@ impl SessionHost {
         Ok(())
     }
 
+    /// Option approvals answer with one offered option ID. The provider's declared
+    /// approval.respond variant rejects the shape it does not accept; Core tools use decisions only.
+    pub async fn resolve_approval_option_from(&self, caller: &str, session_id: &str, request_id: &str, option_id: &str) -> Result<(), String> {
+        if request_id.starts_with("pi-tool:") {
+            return Err("invalid_request: Core tool approvals take a decision".into());
+        }
+        if option_id.is_empty() || option_id.len() > 256 {
+            return Err("invalid_request: invalid approval option".into());
+        }
+        self.invoke_capability_from(caller, session_id, "approval.respond", json!({"requestId": request_id, "optionId": option_id})).await?;
+        Ok(())
+    }
+
     pub async fn resolve_core_tool_approval_from(
         &self,
         caller: &str,

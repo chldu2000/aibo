@@ -102,7 +102,9 @@ Agents that speak the [Agent Client Protocol](https://agentclientprotocol.com) n
 `acp.json` describes the launch command and mode mapping, and `worker.mjs` only calls `serveAcpAgent` from host SDK 0.1.3.
 Capabilities are narrowed by the agent's `initialize` response: resume only with `loadSession`, image input only with image prompts,
 and model or parameter selection only when the agent returns config options. An invalid `acp.json` stops the worker before
-the handshake, so the host reports it at startup. For vendor extension methods, pass an `extension` to `serveAcpAgent`
+the handshake, so the host reports it at startup. When `approval.respond` declares the `{ requestId, optionId }` input
+(host SDK 0.1.4), the approval card shows the agent's allow-once and reject-once options and answers with the chosen option ID;
+the `decision` input keeps the two-button approval. For vendor extension methods, pass an `extension` to `serveAcpAgent`
 as the Cursor plugin does; fields and hooks are described in [`@aibo/acp-adapter`](../packages/acp-adapter/README.md).
 
 ## Extend presentation

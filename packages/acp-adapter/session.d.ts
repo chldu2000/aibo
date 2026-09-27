@@ -41,6 +41,8 @@ export type AcpExtension = {
   validateExecutionProfile(profile: unknown, permissions: readonly string[]): { mode: string; profile: Record<string, any> };
   commandCategory?(command: Record<string, any>): string;
   parameterized?(config: Record<string, any>, result: Record<string, any>): boolean;
+  /** Approval events carry `options` and replies select one by `optionId` (approval.respond option variant). */
+  approvalOptions?: boolean;
   /** The agent exposes parameters per model: claim reasoning and context-window even when the current model has none. */
   parameterizedPicker?: boolean;
   subagentFromTool?(update: Record<string, any>): { name: string; task: string; activity: string; [key: string]: unknown } | null;
@@ -55,7 +57,7 @@ export declare class AcpSession {
   open(options: { mode: 'create' | 'resume'; workspaceId: string; workspacePath: string; executionProfile: unknown; recovery?: unknown; permissions: readonly string[]; mcpServers?: unknown[]; hostMcpTools?: { providerIdentifier: string; toolName: string }[] }): Promise<{ nativeSessionId: string; recovery: unknown; capabilities: string[] }>;
   prompt(options: { text: string; turnId: string; attachments?: unknown[]; additionalInstructions?: string; writable?: boolean }): Promise<{ status: 'completed' | 'interrupted' | 'failed'; recovery: unknown }>;
   cancel(): Promise<{ accepted: true }>;
-  respondApproval(requestId: string, decision: 'accept' | 'cancel'): { resolved: true; recovery: unknown; capabilities: string[] };
+  respondApproval(requestId: string, answer: 'accept' | 'cancel' | { optionId: string }): { resolved: true; recovery: unknown; capabilities: string[] };
   respondUserInput(requestId: string, answers: unknown): { resolved: true; recovery: unknown; capabilities: string[] };
   capabilities(): string[];
   commands(): Promise<{ commands: Record<string, any>[] }>;

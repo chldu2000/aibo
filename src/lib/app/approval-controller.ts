@@ -1,4 +1,4 @@
-import type { ApprovalDecision, ApprovalRequest } from '$lib/types';
+import type { ApprovalChoice, ApprovalRequest } from '$lib/types';
 import { toErrorMessage } from './error-utils';
 
 export type ApprovalControllerContext = {
@@ -6,7 +6,7 @@ export type ApprovalControllerContext = {
     resolveAgentApproval: (
       sessionId: string,
       requestId: string,
-      decision: ApprovalDecision,
+      choice: ApprovalChoice,
     ) => Promise<void>;
   };
   getDesktop: () => boolean;
@@ -23,10 +23,11 @@ export function createApprovalController(context: ApprovalControllerContext) {
   const sameRequest = (left: ApprovalRequest, right: ApprovalRequest) =>
     left.sessionId === right.sessionId && left.requestId === right.requestId
     && left.turnId === right.turnId && left.kind === right.kind
-    && left.command === right.command && left.cwd === right.cwd;
+    && left.command === right.command && left.cwd === right.cwd
+    && JSON.stringify(left.options) === JSON.stringify(right.options);
   async function resolveApproval(
     approval: ApprovalRequest,
-    decision: ApprovalDecision,
+    choice: ApprovalChoice,
   ): Promise<void> {
     if (!context.getDesktop()) {
       context.setNotice('当前是 Web 预览；审批操作需要在 Tauri 桌面模式中执行。');
@@ -36,21 +37,24 @@ export function createApprovalController(context: ApprovalControllerContext) {
     const current = context.getPendingApprovals().find(item =>
       item.sessionId === approval.sessionId && item.requestId === approval.requestId);
     // A detached card cannot approve a replaced request or change its advertised choices.
-    if (!current || resolving.has(key) || !current.availableDecisions.includes(decision)) return;
+    const option = typeof choice === 'object' ? current?.options.find(item => item.id === choice.optionId) : undefined;
+    const offered = typeof choice === 'object' ? option !== undefined : current?.availableDecisions.includes(choice) === true;
+    if (!current || resolving.has(key) || !offered) return;
     if (!sameRequest(current, approval)) return;
     resolving.add(key);
 
     context.setBusy(true);
     context.setErrorMessage(null);
     try {
-      await context.api.resolveAgentApproval(approval.sessionId, approval.requestId, decision);
+      await context.api.resolveAgentApproval(approval.sessionId, approval.requestId, choice);
       context.setPendingApprovals(
         context.getPendingApprovals().filter(
           (item) =>
             !sameRequest(item, current),
         ),
       );
-      context.setNotice(decision === 'accept' ? '已允许本次操作。' : '已拒绝本次操作。');
+      const allowed = option ? option.kind === 'allow' : choice === 'accept';
+      context.setNotice(option?.label ? `已选择：${option.label}。` : allowed ? '已允许本次操作。' : '已拒绝本次操作。');
     } catch (error) {
       context.setErrorMessage(toErrorMessage(error));
     } finally {

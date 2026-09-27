@@ -1,6 +1,6 @@
 # ACP 作为 Agent 接入主干：迁移计划
 
-状态：A1、A2、A3 已实施，A4 的通用 Worker 接线已完成；A5、A6、A7 未实施。宿主会话合同、能力协商与执行授权规则不因本文改变；现行规则见
+状态：A1、A2、A3 已实施，A4 的通用 Worker 接线已完成；A5.1（多选项审批）已实施；A5.2、A6、A7 未实施。宿主会话合同、能力协商与执行授权规则不因本文改变；现行规则见
 [会话能力协商](session-capability-negotiation.md)与[宿主和插件边界](plugin-boundaries-and-regression.md)。
 
 ## 背景与问题
@@ -357,6 +357,25 @@ A4 剩余工作是将这段接线提供给 A2 的通用 Worker，并验证第二
 - 夹具 ACP Agent 覆盖：批准后切到 Auto、Manual、Accept edits；继续规划；工作区不可信时拒绝升级；
   未经提交的升级触发中止；切模型导致 Auto 降级；等待审批期间重启；代际变化后迟到的审批响应。
 - 浏览器探针检查模式指示器与时间线；在 macOS arm64 上用真实 Claude CLI 走完"规划 → 批准 → 实施"。
+
+#### A5.1 实施记录：多选项审批（2026-09-27）
+
+A5 分两步：A5.1 只接通多选项审批的通道，不改执行配置；A5.2 再做回合内模式转换。
+
+- 合同：`approval.respond` 新增第二个输入形态 `{ requestId, optionId }`（两字段均为非空字符串，不允许其他字段），
+  输出不变。插件在清单中声明哪个形态，Broker 就按哪个形态校验；旧插件仍走 `decision`。
+- 适配层：Worker 根据清单中 `approval.respond` 的 `inputSchema` 是否包含 `optionId` 开启 `approvalOptions`。
+  开启后 `approval.requested` 带 `options: [{ id, kind: allow | reject }]`，只列出 `allow_once` / `reject_once`；
+  `allow_always` / `reject_always` 不提供，因为宿主没有"记住此决定"的授权记录。
+  回应的 optionId 必须属于本次请求的 `offered` 列表，否则抛错；扩展自定义审批收到 `{ optionId }`。
+- 宿主：`resolve_agent_approval` 要求 `decision` 与 `optionId` 二选一。`pi-tool:` 开头的 Core 工具审批只接受 decision。
+  optionId 长度限制为 1–256。
+- 前端：`ApprovalRequest.options` 最多保留 16 项，丢弃重复 ID、未知 kind 与格式错误项，标签截到 80 字符。
+  审批卡把拒绝类渲染为次要按钮、批准类渲染为主按钮，没有标签时回退为"允许 / 拒绝"。
+  只能提交请求中实际提供的选项；没有 options 的请求仍显示原来的两个按钮。
+- 此阶段选项还不带 `effects`，所以不会改变模式；`fixtures/plugins/acp-echo` 已改用 optionId 形态。
+- 验证：`test/acp-adapter-session.test.mjs`、`test/acp-worker.test.mjs`、`test/approval-routing.test.mjs`、
+  `session_host_tests`（Core 审批拒绝 optionId）；`pnpm run verify` 与 `cargo test --lib` 通过。
 
 ### A6："清空上下文"类选项
 

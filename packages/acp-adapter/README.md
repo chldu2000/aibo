@@ -1,7 +1,7 @@
 # @aibo/acp-adapter
 
 Generic [Agent Client Protocol](https://agentclientprotocol.com) client for Aibo session providers.
-Part of the host SDK from 0.1.2 (`worker` from 0.1.3): plugins declaring `hostSdk` import it at runtime and
+Part of the host SDK from 0.1.2 (`worker` from 0.1.3, option approvals from 0.1.4): plugins declaring `hostSdk` import it at runtime and
 keep it as a development dependency only (see [host SDK](../../docs/host-sdk.md)).
 
 | Entry | Contents |
@@ -47,6 +47,11 @@ Client file and terminal capabilities are advertised as unsupported, and only `a
 `reject_once` permission options are selected: the host approves each request, and persistent
 agent-side grants are never chosen on the user's behalf. The Cursor plugin in `aibo-plugins`
 is the reference extension.
+
+With `approvalOptions: true` (the Worker sets it when the manifest's `approval.respond` declares
+`optionId`), `approval.requested` carries `options: [{ id, kind: 'allow' | 'reject' }]` for those once options, and
+`respondApproval(requestId, { optionId })` answers with one of them; any other option ID is rejected.
+Extension approvals receive `{ optionId }` instead of `accept` / `cancel`.
 
 `BASE_CAPABILITIES` is a candidate list: `session.resume` is returned only when initialize
 advertises `loadSession: true`. An agent without load support can still create and run sessions;

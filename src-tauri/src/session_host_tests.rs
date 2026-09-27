@@ -281,6 +281,8 @@ async fn capability_session_write_requires_host_authorization_and_owned_tool_app
         }).await.expect("tool approval was not requested");
         assert!(!target.exists(), "write must wait for its tool approval");
         assert!(host.resolve_approval_from("other-window", &session.id, &request_id, "accept").await.is_err());
+        assert!(host.resolve_approval_option_from("main", &session.id, &request_id, "allow").await.unwrap_err().contains("take a decision"),
+            "Core tool approvals never accept a provider option ID");
         assert!(host.pending_tools.lock().await.contains_key(&request_id));
         host.resolve_approval_from("main", &session.id, &request_id, decision).await.unwrap();
         wait_for_turn(&host, &session.id).await;

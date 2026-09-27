@@ -576,6 +576,16 @@ export interface GitStashEntry {
 
 export type ApprovalDecision = 'accept' | 'cancel';
 
+/** One choice a provider offers for an approval; `label` is provider text, otherwise the kind names it. */
+export interface ApprovalOption {
+  id: string;
+  kind: 'allow' | 'reject';
+  label: string | null;
+}
+
+/** A host decision, or one offered option for providers that answer approvals by option. */
+export type ApprovalChoice = ApprovalDecision | { optionId: string };
+
 export interface ApprovalRequest {
   requestId: string;
   sessionId: string;
@@ -584,6 +594,8 @@ export interface ApprovalRequest {
   command: string | null;
   cwd: string | null;
   availableDecisions: ApprovalDecision[];
+  /** Empty for providers answering by decision. */
+  options: ApprovalOption[];
 }
 
 export interface UserInputOption {

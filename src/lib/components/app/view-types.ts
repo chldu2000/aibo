@@ -44,7 +44,7 @@ export type TimelineViewItem = Pick<TimelineItem, 'id' | 'turnId' | 'role' | 'to
 
 export type ApprovalView = Pick<
   ApprovalRequest,
-  'requestId' | 'kind' | 'command' | 'cwd' | 'availableDecisions'
+  'requestId' | 'kind' | 'command' | 'cwd' | 'availableDecisions' | 'options'
 >;
 
 export type CodexThreadView = Pick<CodexThreadSnapshot, 'id' | 'turnCount'>;

@@ -8,7 +8,7 @@ import type {
   WorkspaceCapabilityInventory,
   AgentEvent,
   AgentName,
-  ApprovalDecision,
+  ApprovalChoice,
   AppSnapshot,
   CodexThreadSnapshot,
   CodexThreadSummary,
@@ -561,8 +561,10 @@ export const releaseSemanticGit = (generation: string): Promise<void> => invoke(
 export const resolveAgentApproval = (
   sessionId: string,
   requestId: string,
-  decision: ApprovalDecision,
-): Promise<void> => invoke('resolve_agent_approval', { sessionId, requestId, decision });
+  choice: ApprovalChoice,
+): Promise<void> => invoke('resolve_agent_approval', typeof choice === 'string'
+  ? { sessionId, requestId, decision: choice }
+  : { sessionId, requestId, optionId: choice.optionId });
 
 export const resolveAgentUserInput = (
   sessionId: string,

@@ -55,3 +55,31 @@ test('host approvals reject stale cards and duplicate submissions without discar
     assert.equal(calls.length, 1, 'removed approval cannot be replayed');
   } finally { await server.close(); }
 });
+
+test('option approvals parse provider options and answer only with an offered option ID', async () => {
+  const server = await createServer({ server: { middlewareMode: true, ws: false, watch: null }, appType: 'custom' });
+  try {
+    const { createApprovalController } = await server.ssrLoadModule('/src/lib/app/approval-controller.ts');
+    const { approvalFromEvent } = await server.ssrLoadModule('/src/lib/app/agent-event-handler.ts');
+    const approval = approvalFromEvent({ sessionId: 's', turnId: 't', source: {}, payload: { requestId: 'r', kind: 'edit', availableDecisions: ['accept', 'cancel'], options: [
+      { id: 'yes', kind: 'allow' }, { id: 'plan', kind: 'allow', label: '  批准计划并用 Manual 实施  ' }, { id: 'no', kind: 'reject' },
+      { id: 'yes', kind: 'reject' }, { id: 'odd', kind: 'always' }, { kind: 'allow' }, 'bad',
+    ] } });
+    assert.deepEqual(approval.options, [{ id: 'yes', kind: 'allow', label: null }, { id: 'plan', kind: 'allow', label: '批准计划并用 Manual 实施' }, { id: 'no', kind: 'reject', label: null }],
+      'malformed, duplicate and unknown-kind options are dropped');
+    assert.deepEqual(approvalFromEvent({ sessionId: 's', turnId: 't', source: {}, payload: { requestId: 'legacy' } }).options, []);
+    let pending = [approval];
+    const calls = [], notices = [];
+    const controller = createApprovalController({
+      api: { resolveAgentApproval: async (...args) => { calls.push(args); } },
+      getDesktop: () => true, getPendingApprovals: () => pending,
+      setPendingApprovals: value => { pending = value; }, setBusy() {}, setErrorMessage() {}, setNotice: value => notices.push(value),
+    });
+    await controller.resolveApproval(approval, { optionId: 'always' });
+    assert.deepEqual(calls, [], 'an option the provider did not offer is never sent');
+    await controller.resolveApproval(approval, { optionId: 'plan' });
+    assert.deepEqual(calls, [['s', 'r', { optionId: 'plan' }]]);
+    assert.equal(notices.at(-1), '已选择：批准计划并用 Manual 实施。');
+    assert.deepEqual(pending, []);
+  } finally { await server.close(); }
+});

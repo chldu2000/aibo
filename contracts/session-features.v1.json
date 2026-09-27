@@ -788,6 +788,52 @@
             }
           }
         }
+      },
+      {
+        "inputSchema": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "requestId",
+            "optionId"
+          ],
+          "properties": {
+            "requestId": {
+              "type": "string",
+              "minLength": 1
+            },
+            "optionId": {
+              "type": "string",
+              "minLength": 1
+            }
+          }
+        },
+        "outputSchema": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "resolved",
+            "recovery",
+            "capabilities"
+          ],
+          "properties": {
+            "resolved": {
+              "const": true
+            },
+            "recovery": {
+              "type": [
+                "object",
+                "null"
+              ]
+            },
+            "capabilities": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            }
+          }
+        }
       }
     ],
     "user-input.respond": [

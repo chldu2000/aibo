@@ -35,8 +35,9 @@ test('write turns ask the user, answer with the once option, and unknown vendor 
   const turn = f.startTurn('permission vendor', 'turn-1', 'aibo.session.turn.write', write);
   const requested = await approval;
   assert.equal(requested.payload.requestId, 'acp-s-agent-1');
-  assert.deepEqual(requested.payload.availableDecisions, ['accept', 'cancel']);
-  await f.control(turn, feature('approval.respond'), { requestId: requested.payload.requestId, decision: 'accept' });
+  // The fixture declares the option variant of approval.respond: only once options are offered.
+  assert.deepEqual(requested.payload.options, [{ id: 'yes', kind: 'allow' }, { id: 'no', kind: 'reject' }]);
+  await f.control(turn, feature('approval.respond'), { requestId: requested.payload.requestId, optionId: 'yes' });
   assert.equal((await turn.done).status, 'completed');
   assert.deepEqual(messages(f), ['echo: permission vendor permission:yes vendor:-32601'], 'never allow_always; the client does not implement echo/ask');
   await assert.rejects(f.invoke('aibo.session.turn', { text: 'read only' }, 'turn-2'), /write-authorized turn/, 'the write mode needs a write turn');

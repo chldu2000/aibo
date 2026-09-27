@@ -17,7 +17,7 @@ try {
   if (process.argv.includes('--check')) {
     if (await readFile(bridgePath,'utf8') !== bridge) throw Error('Host MCP bridge is stale');
   } else await writeFile(bridgePath,bridge);
-  const sdk = { version: '0.1.3', exports: {}, modules: {} };
+  const sdk = { version: '0.1.4', exports: {}, modules: {} };
   for (const name of ['capability-runtime', 'plugin-protocol', 'acp-adapter']) {
     const directory = path.join(root, 'packages', name);
     const manifest = JSON.parse(await readFile(path.join(directory, 'package.json'), 'utf8'));

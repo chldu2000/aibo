@@ -99,6 +99,8 @@ Control 必须在操作允许列表中；处理取消，并只在有效 invocati
 `worker.mjs` 只调用宿主 SDK 0.1.3 起提供的 `serveAcpAgent`。能力按 Agent 的 `initialize` 响应收窄：
 仅 `loadSession` 时声明恢复，仅支持图片提示时声明图片输入，仅返回配置项时声明模型与参数选择。
 `acp.json` 无效时 Worker 在握手前退出，宿主在启动阶段报告错误。
+`approval.respond` 声明 `{ requestId, optionId }` 输入形态时（SDK 0.1.4 起），审批卡显示 Agent 提供的单次允许 / 拒绝选项，
+回应所选 option ID；声明 `decision` 形态时仍为二选一。
 需要厂商扩展方法时，向 `serveAcpAgent` 传入 `extension`，参考 Cursor 插件；字段与钩子见
 [`@aibo/acp-adapter`](../packages/acp-adapter/README.md)。
 

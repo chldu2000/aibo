@@ -4,6 +4,7 @@ import type {
   AgentQueueSnapshot,
   AgentEvent,
   ApprovalDecision,
+  ApprovalOption,
   ApprovalRequest,
   Session,
   TimelineItem,
@@ -447,7 +448,23 @@ export function approvalFromEvent(event: AgentEvent): ApprovalRequest | null {
     command: payloadString(event.payload.command),
     cwd: payloadString(event.payload.cwd),
     availableDecisions: availableDecisions.length > 0 ? availableDecisions : ['accept', 'cancel'],
+    options: approvalOptions(event.payload.options),
   };
+}
+
+/** Provider-offered approval options; malformed or duplicate entries are dropped, never guessed. */
+function approvalOptions(value: unknown): ApprovalOption[] {
+  if (!Array.isArray(value)) return [];
+  const seen = new Set<string>();
+  return value.slice(0, 16).flatMap((option) => {
+    if (!option || typeof option !== 'object') return [];
+    const item = option as Record<string, unknown>;
+    const id = payloadString(item.id);
+    if (!id || id.length > 256 || seen.has(id) || (item.kind !== 'allow' && item.kind !== 'reject')) return [];
+    seen.add(id);
+    const label = payloadString(item.label)?.trim();
+    return [{ id, kind: item.kind, label: label ? label.slice(0, 80) : null }];
+  });
 }
 
 function userInputFromEvent(event: AgentEvent): UserInputRequest | null {

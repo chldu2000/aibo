@@ -3894,17 +3894,19 @@ async fn invoke_agent_capability(session_id: String, capability: String, input: 
 async fn resolve_agent_approval(
     session_id: String,
     request_id: String,
-    decision: String,
+    decision: Option<String>,
+    option_id: Option<String>,
     window: tauri::WebviewWindow,
     state: State<'_, AppState>,
 ) -> Result<(), CoreError> {
     let session = session_by_id(&state.db, &session_id).await?;
     if session.plugin_installation_id.is_some() {
-        state
-            .plugins
-            .resolve_approval_from(window.label(), &session_id, &request_id, &decision)
-            .await
-            .map_err(CoreError::SessionOperation)?;
+        let result = match (decision, option_id) {
+            (Some(decision), None) => state.plugins.resolve_approval_from(window.label(), &session_id, &request_id, &decision).await,
+            (None, Some(option)) => state.plugins.resolve_approval_option_from(window.label(), &session_id, &request_id, &option).await,
+            _ => Err("invalid_request: answer an approval with either a decision or an option".into()),
+        };
+        result.map_err(CoreError::SessionOperation)?;
         return Ok(());
     }
     Err(CoreError::SessionOperation("history_only: old native session cannot execute".into()))

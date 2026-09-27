@@ -155,3 +155,20 @@ test('parameter capabilities follow the options the agent returned unless it dec
   assert.ok(!plain.includes('model.context-window'), 'no context option, no context-window capability');
   assert.ok((await capabilities(true)).includes('model.context-window'), 'a per-model picker claims both');
 });
+
+test('option approvals offer only once options and answer by option ID', async () => {
+  const transport = new FakeTransport(), events = [];
+  const session = new AcpSession({ extension: { ...extension, approvalOptions: true }, transportFactory: () => transport, emit: event => events.push(event) });
+  await open(session);
+  const turn = session.prompt({ text: 'go', turnId: 't1', writable: true });
+  const options = [{ optionId: 'yes', kind: 'allow_once' }, { optionId: 'always', kind: 'allow_always' }, { optionId: 'no', kind: 'reject_once' }, { optionId: 'never', kind: 'reject_always' }];
+  transport.emitRequest({ jsonrpc: '2.0', id: 3, method: 'session/request_permission', params: { sessionId: 'echo-1', options, toolCall: { toolCallId: 'c', kind: 'edit' } } });
+  const requested = events.find(event => event.type === 'approval.requested');
+  assert.deepEqual(requested.payload.options, [{ id: 'yes', kind: 'allow' }, { id: 'no', kind: 'reject' }]);
+  assert.throws(() => session.respondApproval('acp-n-3', { optionId: 'always' }), /approval option is not offered/);
+  session.respondApproval('acp-n-3', { optionId: 'no' });
+  assert.deepEqual(transport.responses.at(-1), { id: 3, result: { outcome: { outcome: 'selected', optionId: 'no' } } });
+  assert.equal(events.at(-1).payload.decision, 'cancel');
+  transport.finishPrompt({ stopReason: 'end_turn' });
+  await turn;
+});

@@ -235,17 +235,24 @@ export class AcpSession {
     return { accepted: true };
   }
 
-  /** Standard permission requests pick the once options; extension approvals encode their own outcome. */
-  respondApproval(requestId, decision) {
+  /**
+   * Answers an approval with a host decision (`accept` / `cancel`) or, for option approvals, the
+   * `{ optionId }` of one offered option. Standard permission requests only ever select the once
+   * options; extension approvals encode their own outcome.
+   */
+  respondApproval(requestId, answer) {
     const pending = this.pendingInteractions.get(requestId);
     if (!pending || pending.turnId !== this.turnId || !(pending.kind === 'permission' || pending.approve)) throw pluginError('invalid_input', `${this.label} approval request is no longer pending`);
+    const chosen = typeof answer === 'object' && answer !== null ? pending.offered?.find(option => option.id === answer.optionId) : null;
+    if (typeof answer === 'object' && answer !== null && !chosen) throw pluginError('invalid_input', `${this.label} approval option is not offered`);
+    const decision = chosen ? (chosen.kind === 'allow' ? 'accept' : 'cancel') : answer;
     if (pending.kind === 'permission') {
       const kind = decision === 'accept' ? 'allow_once' : 'reject_once';
-      const option = pending.options.find(candidate => candidate.kind === kind);
+      const option = chosen ? pending.options.find(candidate => candidate.optionId === chosen.id) : pending.options.find(candidate => candidate.kind === kind);
       if (!option) this.transport.respond(pending.rpcId, { outcome: { outcome: 'cancelled' } });
       else this.transport.respond(pending.rpcId, { outcome: { outcome: 'selected', optionId: option.optionId } });
     } else {
-      this.transport.respond(pending.rpcId, pending.approve(decision));
+      this.transport.respond(pending.rpcId, pending.approve(chosen ? { optionId: chosen.id } : decision));
     }
     this.pendingInteractions.delete(requestId);
     this.#event('approval.resolved', { requestId, decision }, { requestId, approvalId: pending.rpcId });
@@ -483,8 +490,12 @@ export class AcpSession {
         this.transport.respond(message.id, rejected ? { outcome: { outcome: 'selected', optionId: rejected.optionId } } : { outcome: { outcome: 'cancelled' } });
         return true;
       }
-      if (!this.hooks.await(requestId, message.id, { kind: 'permission', options })) return true;
-      this.#event('approval.requested', { requestId, kind: params.toolCall?.kind ?? 'tool', command: params.toolCall?.title ?? null, availableDecisions: ['accept', 'cancel'] }, { requestId, toolCallId: params.toolCall?.toolCallId ?? null, approvalId: message.id });
+      // Persistent allow_always / reject_always grants are never offered: the host approves each request.
+      const offered = options.filter(option => ['allow_once', 'reject_once'].includes(option.kind))
+        .map(option => ({ id: option.optionId, kind: option.kind === 'allow_once' ? 'allow' : 'reject' }));
+      if (!this.hooks.await(requestId, message.id, { kind: 'permission', options, offered })) return true;
+      this.#event('approval.requested', { requestId, kind: params.toolCall?.kind ?? 'tool', command: params.toolCall?.title ?? null, availableDecisions: ['accept', 'cancel'],
+        ...(this.extension.approvalOptions ? { options: offered } : {}) }, { requestId, toolCallId: params.toolCall?.toolCallId ?? null, approvalId: message.id });
       return true;
     }
     return this.extension.handleRequest(this.hooks, message, params, requestId) === true;
