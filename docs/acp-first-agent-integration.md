@@ -1,6 +1,6 @@
 # ACP 作为 Agent 接入主干：迁移计划
 
-状态：A1、A2、A3 已实施，A4 的通用 Worker 接线已完成；A5（多选项审批与回合内模式转换）已实施；A6、A7 未实施。宿主会话合同、能力协商与执行授权规则不因本文改变；现行规则见
+状态：A1、A2、A3 已实施，A4 的通用 Worker 接线已完成；A5（多选项审批与回合内模式转换）、A6（清空上下文类选项）已实施；A7 未实施。宿主会话合同、能力协商与执行授权规则不因本文改变；现行规则见
 [会话能力协商](session-capability-negotiation.md)与[宿主和插件边界](plugin-boundaries-and-regression.md)。
 
 ## 背景与问题
@@ -240,8 +240,8 @@ sequenceDiagram
 
 ### "清空上下文"类选项
 
-Claude 的"清空上下文并使用 Auto/Accept edits"会重置上下文，可能对应新的原生会话，涉及原生会话绑定的更新规则。
-第一期隐藏这类选项，单独设计后再开放（A6）。
+Claude 的"清空上下文并使用 Auto/Accept edits"会重置上下文。适配器保留对外的 ACP 会话 ID，在内部换用新的 Claude 会话继续同一回合。
+A6 开放了这类选项，恢复时的限制见 [A6 实施记录](#a6-实施记录2026-09-27)。
 
 ### 宿主工具
 
@@ -417,7 +417,29 @@ A5 分两步：A5.1 只接通多选项审批的通道，不改执行配置；A5.
 
 ### A6："清空上下文"类选项
 
-设计上下文重置与原生会话绑定的对应关系后再开放，不属于 A5 范围。
+#### A6 实施记录（2026-09-27）
+
+实测（Claude Code 2.1.280，适配器 0.81.2，当时的最新版）：
+- 选择 `exit-plan-clear-auto` 后，适配器关闭原查询，用随机的内部会话 ID 新建 Claude 会话。
+  对外 ACP 会话 ID 不变，同一个 `session/prompt` 继续执行，先发 `current_mode_update`，再发 `config_option_update`。
+- 同一进程内，后续回合都在新上下文中进行。
+- 进程重启后，`session/load` 按对外 ID 读取的是清空前的记录（到 ExitPlanMode 被中断为止）。
+  清空之后的对话保存在另一个内部 ID 下，ACP 中没有任何途径取得这个 ID。
+
+决定：开放这类选项，恢复时如实提示，不猜测、不查找内部会话。
+- 合同：选项 `effects` 与 `session.control_changed` 载荷新增 `contextReset: true`。
+  `contextReset` 必须与 `sessionControl` 同时出现，原生会话绑定不变。
+- 宿主：提交路径与 A5.2 相同，时间线记录为"审批后清空上下文并切换到 {控件名}"。
+  重置之后，如果会话在新的运行时代际中恢复，宿主在时间线写入一条系统说明：Agent 的上下文可能不包含清空之后的对话与操作，
+  时间线保留了完整记录。每次重置只写一次，消息 ID 由重置事件决定。宿主不解析插件恢复数据，只依据自己的事件记录。
+- 适配层：`approvalOptions[].contextReset`（必须为 `true`，且需要 `sessionControl`），选项效果中带上这个标记。
+  重置后 Agent 回报的模式切换按 A5.2 的规则采用。
+- Claude Code：`exit-plan-clear-auto` 映射为"清空上下文，批准计划并使用 Auto"。`exit-plan-clear-accept-edits`
+  只在 Auto 不可用时出现，因为 Accept edits 未暴露而不提供；Bypass 也不提供。
+- 验证：
+  - Worker 与宿主测试：选项效果、时间线文本、两次恢复只提示一次、配置校验。
+  - 真实 Claude Code（`PROBE_PLAN_CHOICE=clear-auto`）：清空上下文后，同一回合在 Auto 下创建了文件。
+- 待上游解决：适配器按对外 ID 恢复时应读取重置后的会话。上游修复后，去掉恢复提示的前提需要重新评估。
 
 ### A7：ACP elicitation（Agent 向用户收集结构化输入）
 

@@ -577,6 +577,8 @@ impl SessionHost {
         let event = json!({"nativeSessionId":transition.binding["nativeSessionId"],"turnId":transition.turn_id,"type":"session.control_changed",
             "correlation":{"requestId":request_id},
             "payload":{"controlId":transition.to,"previousControlId":transition.from,"label":transition.label,"cause":"approval","requestId":request_id}});
+        let mut event = event;
+        if transition.context_reset { event["payload"]["contextReset"] = json!(true); }
         self.project_event(session_id, &transition.workspace_id, &transition.generation, &transition.binding, event, EventOrigin::Host).await
     }
 
@@ -605,7 +607,8 @@ impl SessionHost {
         crate::require_trusted_workspace(&workspace, &next).map_err(|error| format!("workspace_untrusted: {error}"))?;
         let label = previous.session_controls.iter().find(|control| control.id == target).map(|control| control.label.clone()).unwrap_or_else(|| target.to_owned());
         let binding = serde_json::from_str(&binding_json).map_err(|_| "invalid_recovery_data: invalid plugin binding".to_owned())?;
-        Ok(Some(ControlTransition { previous, target: next, from: source.id, to: target.to_owned(), label, turn_id, generation, workspace_id: session.workspace_id, binding }))
+        let context_reset = option["effects"]["contextReset"] == true;
+        Ok(Some(ControlTransition { previous, target: next, from: source.id, to: target.to_owned(), label, context_reset, turn_id, generation, workspace_id: session.workspace_id, binding }))
     }
 
     pub async fn resolve_core_tool_approval_from(
@@ -671,6 +674,8 @@ struct ControlTransition {
     from: String,
     to: String,
     label: String,
+    /// The agent continues in a fresh context under the same native session.
+    context_reset: bool,
     turn_id: String,
     generation: String,
     workspace_id: String,

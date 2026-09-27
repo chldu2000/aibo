@@ -178,8 +178,23 @@ impl SessionHost {
         let mut tx=self.db.begin_with("BEGIN IMMEDIATE").await.map_err(|e|e.to_string())?;
         sqlx::query("INSERT INTO session_bindings(session_id,external_session_id,generation_id,adapter_version,bound_at,plugin_binding_json,plugin_capabilities_json) VALUES(?,?,?,'2.1',?,?,?) ON CONFLICT(session_id) DO UPDATE SET external_session_id=excluded.external_session_id,generation_id=excluded.generation_id,adapter_version='2.1',bound_at=excluded.bound_at,plugin_binding_json=excluded.plugin_binding_json,plugin_capabilities_json=excluded.plugin_capabilities_json")
             .bind(session_id).bind(result.output["nativeSessionId"].as_str()).bind(&result.generation_id).bind(&now).bind(document.to_string()).bind(json!(negotiated).to_string()).execute(&mut *tx).await.map_err(|e|e.to_string())?;
-        sqlx::query("UPDATE sessions SET state='idle',updated_at=? WHERE id=?").bind(now).bind(session_id).execute(&mut *tx).await.map_err(|e|e.to_string())?;
+        sqlx::query("UPDATE sessions SET state='idle',updated_at=? WHERE id=?").bind(&now).bind(session_id).execute(&mut *tx).await.map_err(|e|e.to_string())?;
+        if previous.is_some() { Self::note_context_resets(&mut tx, session_id, &result.generation_id, &now).await?; }
         tx.commit().await.map_err(|e|e.to_string())?;Ok(())
+    }
+    /// A context reset keeps the native session binding, so a resume in a new runtime restores
+    /// whatever the agent stored under it. The first resume after each reset says so once.
+    async fn note_context_resets(tx:&mut sqlx::SqliteConnection,session_id:&str,generation:&str,now:&str)->Result<(),String> {
+        let resets:Vec<String>=sqlx::query_scalar("SELECT event_id FROM agent_events WHERE session_id=? AND generation_id<>? AND event_type='session.control_changed' AND json_extract(payload_json,'$.payload.contextReset')=1")
+            .bind(session_id).bind(generation).fetch_all(&mut *tx).await.map_err(|e|e.to_string())?;
+        for event_id in resets {
+            let sequence:i64=sqlx::query_scalar("SELECT COALESCE(MAX(sequence),0)+1 FROM messages WHERE session_id=?").bind(session_id).fetch_one(&mut *tx).await.map_err(|e|e.to_string())?;
+            sqlx::query("INSERT OR IGNORE INTO messages(id,session_id,turn_id,role,content,status,sequence,created_at,updated_at) VALUES(?,?,NULL,'system',?,'completed',?,?,?)")
+                .bind(format!("{session_id}:context-reset-resumed:{event_id}")).bind(session_id)
+                .bind("会话已恢复。之前批准计划时清空过上下文，恢复后 Agent 的上下文可能不包含清空之后的对话与操作；时间线保留了完整记录。")
+                .bind(sequence).bind(now).bind(now).execute(&mut *tx).await.map_err(|e|e.to_string())?;
+        }
+        Ok(())
     }
     fn observer(&self,session:Session,binding:Value,caller:String,request_id:String,turn_id:Option<String>,write_authorized:bool)->EventObserver {
         let host=self.clone();

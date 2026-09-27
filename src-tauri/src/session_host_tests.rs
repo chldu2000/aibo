@@ -993,8 +993,9 @@ async fn prepared_session_is_visible_before_native_start_and_negotiates_only_whe
     db.close().await;fs::remove_dir_all(root).unwrap();
 }
 
-#[tokio::test]
-async fn approved_plan_transition_is_committed_by_the_host_before_the_agent_switches() {
+/// The configuration-only echo ACP plugin, opened in Plan mode. The agent runs as `node <fixture>`
+/// because the host PATH is shared by parallel tests.
+async fn acp_echo_plan_session() -> (PathBuf, SqlitePool, Broker, SessionHost, Session) {
     let root = std::env::temp_dir().join(format!("aibo-acp-transition-{}", ulid::Ulid::new()));
     let package = root.join("package");
     let workspace = root.join("workspace");
@@ -1004,7 +1005,6 @@ async fn approved_plan_transition_is_committed_by_the_host_before_the_agent_swit
     for name in ["plugin.json", "worker.mjs", "acp.json"] {
         fs::copy(fixtures.join("plugins/acp-echo").join(name), package.join(name)).unwrap();
     }
-    // The host PATH is shared by parallel tests, so the agent runs as `node <fixture>`.
     let mut manifest: Value = serde_json::from_str(&fs::read_to_string(package.join("plugin.json")).unwrap()).unwrap();
     manifest["executableDependencies"] = json!([{"kind":"runtime","name":"node","versionRange":">=22","required":true},{"kind":"executable","name":"node","required":true}]);
     fs::write(package.join("plugin.json"), manifest.to_string()).unwrap();
@@ -1024,16 +1024,26 @@ async fn approved_plan_transition_is_committed_by_the_host_before_the_agent_swit
     requested.network_policy = "agent-managed".into();
     let plan = execution_profile::resolve_with_backend(execution_profile::EnforcementBackend::AgentManaged, Some(requested), crate::now_iso()).unwrap();
     let session = host.create_with_profile_from("main", "w", &installed.id, "dev.example.acp-echo.agent", Some(plan)).await.unwrap();
-    let mode = |db: SqlitePool, id: String| async move { crate::session_execution_profile(&db, &id).await.unwrap().profile.enforced.interaction_mode };
-    host.send_from("main", &session.id, "exitplan", None).await.unwrap();
-    let request_id = tokio::time::timeout(Duration::from_secs(15), async {
+    (root, db, broker, host, session)
+}
+
+async fn pending_approval(db: &SqlitePool, session: &str) -> String {
+    tokio::time::timeout(Duration::from_secs(15), async {
         loop {
             let events: Vec<String> = sqlx::query_scalar("SELECT payload_json FROM agent_events WHERE session_id=? AND event_type='approval.requested'")
-                .bind(&session.id).fetch_all(&db).await.unwrap();
+                .bind(session).fetch_all(db).await.unwrap();
             if let Some(event) = events.first() { break serde_json::from_str::<Value>(event).unwrap()["payload"]["requestId"].as_str().unwrap().to_owned(); }
             tokio::time::sleep(Duration::from_millis(20)).await;
         }
-    }).await.expect("plan approval was not requested");
+    }).await.expect("plan approval was not requested")
+}
+
+#[tokio::test]
+async fn approved_plan_transition_is_committed_by_the_host_before_the_agent_switches() {
+    let (root, db, broker, host, session) = acp_echo_plan_session().await;
+    let mode = |db: SqlitePool, id: String| async move { crate::session_execution_profile(&db, &id).await.unwrap().profile.enforced.interaction_mode };
+    host.send_from("main", &session.id, "exitplan", None).await.unwrap();
+    let request_id = pending_approval(&db, &session.id).await;
     assert!(host.resolve_approval_option_from("other-window", &session.id, &request_id, "exit-plan-default").await.unwrap_err().contains("another window"));
     sqlx::query("UPDATE workspaces SET trusted=0 WHERE id='w'").execute(&db).await.unwrap();
     assert!(host.resolve_approval_option_from("main", &session.id, &request_id, "exit-plan-default").await.unwrap_err().contains("workspace_untrusted"));
@@ -1059,6 +1069,32 @@ async fn approved_plan_transition_is_committed_by_the_host_before_the_agent_swit
         "payload":{"controlId":"code","previousControlId":"plan","label":"Code","cause":"approval","requestId":"r"}});
     assert!(host.project_event(&session.id, "w", &generation, &binding, forged, EventOrigin::Plugin).await.unwrap_err().contains("committed by the host"),
         "providers cannot announce control changes");
+    broker.stop_session(&session.id).await.unwrap();
+    db.close().await;
+    fs::remove_dir_all(root).unwrap();
+}
+
+#[tokio::test]
+async fn clear_context_approval_is_recorded_and_the_first_resume_says_what_was_restored() {
+    let (root, db, broker, host, session) = acp_echo_plan_session().await;
+    host.send_from("main", &session.id, "exitplan", None).await.unwrap();
+    let request_id = pending_approval(&db, &session.id).await;
+    host.resolve_approval_option_from("main", &session.id, &request_id, "exit-plan-clear-default").await.unwrap();
+    wait_for_turn(&host, &session.id).await;
+    let changed: String = sqlx::query_scalar("SELECT payload_json FROM agent_events WHERE session_id=? AND event_type='session.control_changed'")
+        .bind(&session.id).fetch_one(&db).await.unwrap();
+    assert_eq!(serde_json::from_str::<Value>(&changed).unwrap()["payload"]["contextReset"], true);
+    let notes = |db: SqlitePool, id: String| async move {
+        sqlx::query_scalar::<_, String>("SELECT content FROM messages WHERE session_id=? AND role='system' ORDER BY created_at,sequence").bind(id).fetch_all(&db).await.unwrap()
+    };
+    assert_eq!(notes(db.clone(), session.id.clone()).await, ["审批后清空上下文并切换到 Code"]);
+    for _ in 0..2 {
+        broker.stop_session(&session.id).await.unwrap();
+        host.resume_from("main", &session.id).await.unwrap();
+    }
+    let recorded = notes(db.clone(), session.id.clone()).await;
+    assert_eq!(recorded.len(), 2, "one notice per reset, however often the session resumes: {recorded:?}");
+    assert!(recorded[1].starts_with("会话已恢复。之前批准计划时清空过上下文"));
     broker.stop_session(&session.id).await.unwrap();
     db.close().await;
     fs::remove_dir_all(root).unwrap();

@@ -84,6 +84,7 @@ test('approving a plan offers the declared transition and the committed mode run
   const turn = f.startTurn('exitplan');
   const requested = await approval;
   assert.deepEqual(requested.payload.options, [
+    { id: 'exit-plan-clear-default', kind: 'allow', label: '清空上下文，批准计划并编辑', effects: { sessionControl: 'code', contextReset: true } },
     { id: 'exit-plan-default', kind: 'allow', label: '批准计划并编辑', effects: { sessionControl: 'code' } },
     { id: 'reject', kind: 'reject', label: '继续规划' },
   ]);
@@ -118,7 +119,8 @@ test('an invalid acp.json stops the worker before the Runtime handshake', async 
   await cp(plugin, source, { recursive: true });
   const config = JSON.parse(await readFile(path.join(source, 'acp.json'), 'utf8'));
   for (const invalid of [{ command: 'sh' }, { approvalOptions: [{ optionId: 'exit-plan-default', sessionControl: 'missing' }] },
-    { approvalOptions: [{ optionId: 'exit-plan-default', sessionControl: 'ask' }] }, { approvalOptions: [{ optionId: 'reject' }] }]) {
+    { approvalOptions: [{ optionId: 'exit-plan-default', sessionControl: 'ask' }] }, { approvalOptions: [{ optionId: 'reject' }] },
+    { approvalOptions: [{ optionId: 'reject', label: '继续规划', contextReset: true }] }]) {
     await writeFile(path.join(source, 'acp.json'), JSON.stringify({ ...config, ...invalid }));
     await assert.rejects(sessionCapability(t, source), error => /exit|closed|Invalid acp\.json/i.test(String(error)), JSON.stringify(invalid));
   }

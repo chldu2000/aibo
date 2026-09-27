@@ -24,12 +24,14 @@ read only by the Worker; an invalid one stops it before the Runtime handshake. R
 `agent-managed` execution. Declaring `hostTools` and `aibo.session.tool.respond` connects Aibo's host tools through
 the SDK MCP bridge. See `aibo-plugins/plugins/acp-template`.
 
-`approvalOptions` (SDK 0.1.4) lists native permission options as `{ optionId, toolKind?, label?, sessionControl? }`.
+`approvalOptions` (SDK 0.1.4) lists native permission options as `{ optionId, toolKind?, label?, sessionControl?, contextReset? }`.
 `label` replaces the agent's text on the approval card; `toolKind` limits the entry to requests for that ACP tool kind.
 `sessionControl` names a `plugin.json` session control that some control lists in `transitions`: the option is offered
 even outside a write mode, and choosing it lets the host commit that control before the agent is answered.
 The Worker rejects entries whose control is undeclared, unmapped in `modes`, or not a transition target, and requires
-the `{ requestId, optionId }` form of `approval.respond`. The agent's mode report for a committed switch is adopted
+the `{ requestId, optionId }` form of `approval.respond`. `contextReset: true` (only with `sessionControl`) marks an
+option after which the agent continues in a fresh context under the same session; the host records it and notes
+on the first later resume that the restored context may predate the reset. The agent's mode report for a committed switch is adopted
 and the turn continues; any other mode change during a turn fails it, and the host mode is restored before the next prompt.
 
 Mode switching uses the agent's mode config option when it returns one, and the standard `session/set_mode`

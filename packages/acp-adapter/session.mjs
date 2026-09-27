@@ -508,7 +508,7 @@ export class AcpSession {
       const allow = String(option.kind).startsWith('allow_');
       const eligible = choice?.sessionControl ? true : writable ? ['allow_once', 'reject_once'].includes(option.kind) : option.kind === 'reject_once';
       if (!eligible) continue;
-      offered.push({ id: option.optionId, kind: allow ? 'allow' : 'reject', ...(choice?.label ? { label: choice.label } : {}), ...(choice?.sessionControl ? { effects: { sessionControl: choice.sessionControl } } : {}) });
+      offered.push({ id: option.optionId, kind: allow ? 'allow' : 'reject', ...(choice?.label ? { label: choice.label } : {}), ...(choice?.sessionControl ? { effects: { sessionControl: choice.sessionControl, ...(choice.contextReset ? { contextReset: true } : {}) } } : {}) });
       if (choice?.sessionControl) transitions.set(option.optionId, { mode: choice.mode, profile: choice.profile });
     }
     return { offered: offered.slice(0, 16), transitions };

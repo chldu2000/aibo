@@ -213,7 +213,7 @@ export function handleAgentEvent(event: AgentEvent, context: AgentEventHandlerCo
     void context.refreshExecutionProfile?.(event.sessionId);
     void context.refreshTimeline?.(event.sessionId);
     const label = stringPayload(event.payload.label);
-    if (label) context.setNotice(`已切换到 ${label}。`);
+    if (label) context.setNotice(event.payload.contextReset === true ? `已清空上下文并切换到 ${label}。` : `已切换到 ${label}。`);
   }
 
   if (event.type === 'approval.requested') {

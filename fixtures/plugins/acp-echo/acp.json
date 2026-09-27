@@ -12,6 +12,13 @@
   },
   "approvalOptions": [
     {
+      "optionId": "exit-plan-clear-default",
+      "toolKind": "switch_mode",
+      "label": "清空上下文，批准计划并编辑",
+      "sessionControl": "code",
+      "contextReset": true
+    },
+    {
       "optionId": "exit-plan-default",
       "toolKind": "switch_mode",
       "label": "批准计划并编辑",

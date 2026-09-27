@@ -301,6 +301,9 @@
                           "type": "string",
                           "pattern": "^[a-z][a-z0-9.-]*$",
                           "maxLength": 80
+                        },
+                        "contextReset": {
+                          "const": true
                         }
                       }
                     }
@@ -361,6 +364,9 @@
                 "type": "string",
                 "minLength": 1,
                 "maxLength": 256
+              },
+              "contextReset": {
+                "const": true
               }
             }
           }

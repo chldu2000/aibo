@@ -49,9 +49,10 @@ export type AcpExtension = {
    * Native options shown with a host label, optionally scoped to an ACP tool kind. An option with
    * `sessionControl` is offered even outside writable modes; the host commits that control before the
    * agent is answered, and the matching `current_mode_update` to `mode` is adopted with `profile`.
-   * Any other native mode change during a turn fails the turn.
+   * Any other native mode change during a turn fails the turn. `contextReset` marks options after
+   * which the agent continues in a fresh context under the same native session.
    */
-  approvalChoices?: readonly { optionId: string; toolKind?: string; label?: string; sessionControl?: string; mode?: string; profile?: Record<string, unknown> }[];
+  approvalChoices?: readonly { optionId: string; toolKind?: string; label?: string; sessionControl?: string; contextReset?: boolean; mode?: string; profile?: Record<string, unknown> }[];
   /** The agent exposes parameters per model: claim reasoning and context-window even when the current model has none. */
   parameterizedPicker?: boolean;
   subagentFromTool?(update: Record<string, any>): { name: string; task: string; activity: string; [key: string]: unknown } | null;

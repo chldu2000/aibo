@@ -137,7 +137,7 @@ impl SessionHost {
                     let label = p["payload"]["label"].as_str().unwrap_or_default();
                     sqlx::query("INSERT INTO messages(id,session_id,turn_id,external_message_id,role,content,status,sequence,created_at,updated_at) VALUES(?,?,?,?,'system',?,'completed',?,?,?)")
                         .bind(format!("{turn}:control:{request_id}")).bind(session_id).bind(turn).bind(scoped_external_item_id(turn, &format!("control:{request_id}")))
-                        .bind(format!("审批后切换到 {label}")).bind(sequence).bind(&now).bind(&now).execute(&mut *tx).await.map_err(|e|e.to_string())?;
+                        .bind(if p["payload"]["contextReset"] == true { format!("审批后清空上下文并切换到 {label}") } else { format!("审批后切换到 {label}") }).bind(sequence).bind(&now).bind(&now).execute(&mut *tx).await.map_err(|e|e.to_string())?;
                 } else if kind == "approval.resolved" || kind == "user_input.resolved" {
                     sqlx::query("UPDATE sessions SET state='running',updated_at=? WHERE id=?").bind(&now).bind(session_id).execute(&mut *tx).await.map_err(|e|e.to_string())?;
                 } else if kind == "compaction.started" {

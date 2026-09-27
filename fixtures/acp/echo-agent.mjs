@@ -35,11 +35,11 @@ async function prompt(id, { sessionId, prompt: blocks }) {
     update(sessionId, { sessionUpdate: 'tool_call_update', toolCallId: 'write-1', status: 'completed', content: [{ type: 'content', content: { type: 'text', text: 'written' } }] });
   }
   if (text.includes('exitplan')) {
-    const options = [['exit-plan-auto', 'allow_always'], ['exit-plan-default', 'allow_once'], ['reject', 'reject_once']].map(([optionId, kind]) => ({ optionId, kind, name: optionId }));
+    const options = [['exit-plan-clear-default', 'allow_always'], ['exit-plan-auto', 'allow_always'], ['exit-plan-default', 'allow_once'], ['reject', 'reject_once']].map(([optionId, kind]) => ({ optionId, kind, name: optionId }));
     update(sessionId, { sessionUpdate: 'tool_call', toolCallId: 'plan-1', title: 'Approve Plan', kind: 'switch_mode', status: 'pending' });
     const answer = await request('session/request_permission', { sessionId, options, toolCall: { toolCallId: 'plan-1', kind: 'switch_mode', title: 'Approve Plan' } });
     const chosen = answer?.outcome?.optionId ?? answer?.outcome?.outcome;
-    if (chosen === 'exit-plan-default') { sessions.get(sessionId).mode = 'code'; update(sessionId, { sessionUpdate: 'current_mode_update', currentModeId: 'code' }); }
+    if (chosen === 'exit-plan-default' || chosen === 'exit-plan-clear-default') { sessions.get(sessionId).mode = 'code'; update(sessionId, { sessionUpdate: 'current_mode_update', currentModeId: 'code' }); }
     reply.push(`exitplan:${chosen}`);
   }
   if (text.includes('rogue')) { sessions.get(sessionId).mode = 'code'; update(sessionId, { sessionUpdate: 'current_mode_update', currentModeId: 'code' }); }

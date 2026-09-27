@@ -33,7 +33,8 @@ export function acpAgentConfig(config, manifest) {
   if (!Array.isArray(approvalOptions) || approvalOptions.length > 16) fail('approvalOptions must be at most 16 entries');
   for (const entry of approvalOptions) {
     const option = object(entry);
-    if (Object.keys(option).some(key => !['optionId', 'toolKind', 'label', 'sessionControl'].includes(key))) fail('approvalOptions entries take optionId, toolKind, label and sessionControl');
+    if (Object.keys(option).some(key => !['optionId', 'toolKind', 'label', 'sessionControl', 'contextReset'].includes(key))) fail('approvalOptions entries take optionId, toolKind, label, sessionControl and contextReset');
+    if (option.contextReset !== undefined && (option.contextReset !== true || option.sessionControl === undefined)) fail('approvalOptions contextReset must be true and needs a sessionControl');
     if (typeof option.optionId !== 'string' || !option.optionId || option.optionId.length > 256) fail('approvalOptions optionId must be a native option ID');
     if (option.toolKind !== undefined && (typeof option.toolKind !== 'string' || !option.toolKind)) fail('approvalOptions toolKind must be an ACP tool kind');
     if (option.label !== undefined && (typeof option.label !== 'string' || !option.label.trim() || option.label.length > 80)) fail('approvalOptions label must be 1-80 characters');
@@ -102,9 +103,9 @@ export function extensionFromConfig(config, manifest) {
 /** Resolves `approvalOptions` to the native mode and profile patch each session-control effect selects. */
 function approvalChoices(config, manifest) {
   const controls = manifest.contributions.find(entry => entry.kind === 'capabilityProvider' && entry.scope === 'session')?.sessionControls ?? [];
-  return (config.approvalOptions ?? []).map(({ optionId, toolKind, label, sessionControl }) => {
+  return (config.approvalOptions ?? []).map(({ optionId, toolKind, label, sessionControl, contextReset }) => {
     const control = sessionControl && controls.find(candidate => candidate.id === sessionControl);
-    return { optionId, toolKind, label, ...(control ? { sessionControl, mode: config.modes[controlInteraction(control.profile)], profile: control.profile } : {}) };
+    return { optionId, toolKind, label, ...(control ? { sessionControl, contextReset: contextReset === true, mode: config.modes[controlInteraction(control.profile)], profile: control.profile } : {}) };
   });
 }
 

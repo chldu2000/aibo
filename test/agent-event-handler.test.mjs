@@ -119,6 +119,9 @@ test('a host-committed control change refreshes the selected session profile and
     handleAgentEvent(event, context);
     assert.deepEqual(calls, [['profile', 'session'], ['timeline', 'session'], ['notice', '已切换到 Auto。']]);
     calls.length = 0;
+    handleAgentEvent({ ...event, payload: { ...event.payload, contextReset: true } }, context);
+    assert.deepEqual(calls.at(-1), ['notice', '已清空上下文并切换到 Auto。']);
+    calls.length = 0;
     handleAgentEvent({ ...event, sessionId: 'other' }, context);
     assert.deepEqual(calls, [], 'background sessions reload their profile when selected');
   } finally {
