@@ -75,7 +75,7 @@ Fast 旁的上下文下拉框只有在会话声明能力、当前模型提供非
 ModelMatrix 的动作先按 `kind: model | serviceTier` 区分，Fast 缺失时不绘制开关。
 整窗工作台使用宿主模型目录与 `selectServiceTier` / `selectContextWindow` 动作；
 上下文选择是 change 动作，不是 ModelMatrix 的额外 click kind。只能绑定宿主当前提供的 token，
-不能构造参数权限或跳过模型/revision 校验。内部 `ModelContextSelect` 不属于外部 controls 目录。
+不能构造参数权限或跳过模型/revision 校验。`ModelContextSelect` 自 hostApi 1.1.0 起属于外部 controls 目录，但外部包只能定制触发器，选项菜单与选择由宿主处理，见 [Presentation 包合同](presentation-package.md#独立控件呈现)。
 具体数据类型和动作见[呈现包合同](presentation-package.md)。
 
 ## 验证

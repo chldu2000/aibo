@@ -167,6 +167,8 @@ Enter 保持换行。禁用/只读输入框不触发，不能同时声明 keydow
 | AgentStatusMark | 1.0.0 | 无 |
 | FileChangeMark | 1.1.0 | 无 |
 | SessionControlMark | 1.1.0 | 无 |
+| Select | 1.1.0 | `open`：请求宿主打开选项菜单 |
+| ModelContextSelect | 1.1.0 | `open`：请求宿主打开上下文大小菜单 |
 
 宿主只向声明了对应或更高 hostApi 的包发送控件，并只预检这些控件。已发布的 1.0.0 包
 不会收到后来加入的控件，宿主升级不会因为新控件而让旧包激活失败。声明 1.1.0 的包无法安装到
@@ -187,7 +189,14 @@ FileChangeMark 的 `props` 为 `{ kind, label, decorative }`：`label` 由宿主
 包不应自行从 profile 推断权限含义；该标记始终对辅助技术隐藏，文字说明由宿主显示在旁边。
 两个标记与 AgentStatusMark 一样不接收指针输入，也不进入 Tab 顺序。
 
-AgentSettingsForm、ModelContextSelect、GoalBar、SubagentCard、SubagentDialog 均为内部控件，
+Select 与 ModelContextSelect 只定制收起状态的触发器。控件 iframe 与默认控件占用同样大小的位置，
+菜单若画在 iframe 内会被裁掉，因此选项列表由宿主在 iframe 外绘制，外观取自当前 kit。
+包把 `data.actions` 中的 `open` token 绑定到自己按钮的 click；宿主收到真实点击后打开菜单并接管焦点，
+用户在宿主菜单中完成选择，宿主按当前 props 校验选项存在、可用且与当前值不同后才执行，菜单关闭后焦点回到控件。
+控件禁用或没有可选项时 `actions` 为空。Select 的 `props` 为 `{ options, value, placeholder, disabled, label }`，
+ModelContextSelect 的 `props` 为 `{ options, current, disabled }`，`options` 中 `tokens` 缺省为 `null`。
+
+AgentSettingsForm、GoalBar、SubagentCard、SubagentDialog 均为内部控件，
 未加入外部 controls 目录，不能通过声明同名控件取得其接口。
 
 控件 render 可以返回 null，表示继承该控件的完整默认实现；这是 controls 专属

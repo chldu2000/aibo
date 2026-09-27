@@ -1,7 +1,8 @@
 <script>
- import {PresentationHost,ModelMatrix,AgentStatusMark,FileChangeMark,SessionControlMark} from '$lib/ui-kit';
+ import {PresentationHost,ModelMatrix,AgentStatusMark,FileChangeMark,SessionControlMark,Select,ModelContextSelect} from '$lib/ui-kit';
  let host,active=$state(null),disabled=$state(false),instance;
  const actions=[];
+ let choice=$state('a');
  let mark=$state({agent:'plugin',tone:'idle',label:'Inherited mark'});
  import codex from '../src-tauri/capability-plugins/codex/plugin.json';
  import pi from '../src-tauri/capability-plugins/pi/plugin.json';
@@ -16,5 +17,7 @@
 <section id="trusted"><ModelMatrix {...matrix}/></section>
 <PresentationHost bind:this={host} {active} themeId={null} {input} onIntent={()=>{}} onRestore={dispose}>
  <section id="replaceable"><ModelMatrix {...matrix}/><button aria-label="Select row" onclick={()=>actions.push(['row'])}><AgentStatusMark {...mark}/></button>
+  <p id="selects"><Select aria-label="Probe select" value={choice} options={[{value:'a',label:'Alpha'},{value:'b',label:'Beta'},{value:'c',label:'Gamma',disabled:true}]} onSelect={value=>{choice=value;actions.push(['select',value]);}}/>
+   <ModelContextSelect options={[{id:'std',label:'272K',description:null,tokens:272000},{id:'max',label:'1M',description:null,tokens:1000000}]} current="std" disabled={false} onSelect={id=>{actions.push(['context',id]);}}/></p>
   <p id="marks"><FileChangeMark kind="conflicted"/><FileChangeMark kind="added" decorative/><SessionControlMark control={{kind:'mode',profile:{interactionMode:'plan'}}}/></p></section>
 </PresentationHost>

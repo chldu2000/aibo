@@ -25,9 +25,7 @@ test('registry projection keeps the published control wire format byte for byte'
 test('intents resolve against current props to host callbacks only for live click tokens',async()=>{
  const calls=[];const live={...props,onSelect:(...args)=>calls.push(['model',...args]),onSelectServiceTier:tier=>calls.push(['tier',tier])};
  const [tier,plain,high]=modelSelections(live).map(action=>action.token);
- await resolveControlIntent('ModelMatrix',live,{id:high,event:'click'})();
- await resolveControlIntent('ModelMatrix',live,{id:plain,event:'click'})();
- await resolveControlIntent('ModelMatrix',live,{id:tier,event:'click'})();
+ for(const id of [high,plain,tier]){const effect=resolveControlIntent('ModelMatrix',live,{id,event:'click'});assert.equal(effect.kind,'run');await effect.run();}
  assert.deepEqual(calls,[['model','model-a','high'],['model','model-a',null],['tier','priority']]);
  assert.equal(resolveControlIntent('ModelMatrix',live,{id:high,event:'input'}),null,'only click selects');
  assert.equal(resolveControlIntent('ModelMatrix',live,{id:'model:99',event:'click'}),null,'unknown token');
@@ -39,11 +37,11 @@ test('intents resolve against current props to host callbacks only for live clic
 test('the external control bridge never branches on control names',async()=>{
  for(const file of ['src/lib/ui-kit/runtime/ExternalControl.svelte','src/lib/ui-kit/runtime/PublicControl.svelte']){
   const source=await readFile(file,'utf8');
-  for(const control of presentationControls) assert.ok(!source.includes(control),`${file} must dispatch through the control registry, found ${control}`);
+  for(const control of presentationControls) assert.doesNotMatch(source,new RegExp(`['"]${control}['"]`),`${file} must dispatch through the control registry, found ${control}`);
  }
 });
 test('controls added after host API 1.0.0 only reach packages declaring the newer API',()=>{
- assert.deepEqual(presentationControls,['ModelMatrix','AgentStatusMark','FileChangeMark','SessionControlMark']);
+ assert.deepEqual(presentationControls,['ModelMatrix','AgentStatusMark','FileChangeMark','SessionControlMark','Select','ModelContextSelect']);
  assert.deepEqual(controlPreflights().map(input=>input.data.control),['ModelMatrix','AgentStatusMark'],'published 1.0.0 packages see the original catalog');
  assert.deepEqual(controlPreflights('1.1.0').map(input=>input.data.control),presentationControls);
  assert.equal(controlAvailable('FileChangeMark','1.0.0'),false);assert.equal(controlAvailable('FileChangeMark','1.1.0'),true);
@@ -59,4 +57,27 @@ test('display-only marks project host labels and policy classification, never ca
  assert.deepEqual(data,{control:'SessionControlMark',props:{kind:'mode',profile:control.profile,compact:true,appearance:{icon:'edit',tone:'write'}},actions:[]});
  assert.equal(decorativeLabel('SessionControlMark',{control}),null);
  for(const name of ['FileChangeMark','SessionControlMark']){assert.equal(isDecorativeControl(name),true);assert.equal(resolveControlIntent(name,{kind:'added',control},{id:'x',event:'click'}),null);}
+});
+test('select controls expose only an open action and the host validates the choice against current props',async()=>{
+ const context={workspaceId:'w',sessionId:'s',revision:1};const chosen=[];
+ const props={options:[{value:'a',label:'Alpha'},{value:'b',label:'Beta'},{value:'c',label:'Gamma',disabled:true}],value:'a','aria-label':'Branch',onSelect:value=>chosen.push(value)};
+ assert.deepEqual(controlInput('Select',props,context).data,{control:'Select',props:{options:[{value:'a',label:'Alpha',disabled:false},{value:'b',label:'Beta',disabled:false},{value:'c',label:'Gamma',disabled:true}],value:'a',placeholder:'请选择',disabled:false,label:'Branch'},actions:[{token:'open',kind:'open'}]});
+ const effect=resolveControlIntent('Select',props,{id:'open',event:'click'});
+ assert.equal(effect.kind,'menu');
+ assert.deepEqual(effect.menu(props),{label:'Branch',options:controlInput('Select',props,context).data.props.options,value:'a'});
+ await effect.choose(props,'b')();assert.deepEqual(chosen,['b']);
+ for(const value of ['a','c','missing']) assert.equal(effect.choose(props,value),null,`${value} is not a live choice`);
+ assert.equal(effect.choose({...props,disabled:true},'b'),null,'disabled after the menu opened');
+ assert.equal(effect.menu({...props,disabled:true}),null);
+ assert.equal(resolveControlIntent('Select',props,{id:'open',event:'input'}),null);
+ assert.equal(resolveControlIntent('Select',props,{id:'forged',event:'click'}),null);
+ assert.deepEqual(controlInput('Select',{...props,disabled:true},context).data.actions,[]);
+ assert.deepEqual(controlInput('Select',{...props,options:[{value:'c',label:'Gamma',disabled:true}]},context).data.actions,[],'no enabled option, no open action');
+ const windows=[];const context_={options:[{id:'std',label:'272K',description:'Standard',tokens:272000},{id:'max',label:'1M',description:null}],current:'std',disabled:false,onSelect:async id=>{windows.push(id);}};
+ assert.deepEqual(controlInput('ModelContextSelect',context_,context).data,{control:'ModelContextSelect',props:{options:[{id:'std',label:'272K',description:'Standard',tokens:272000},{id:'max',label:'1M',description:null,tokens:null}],current:'std',disabled:false},actions:[{token:'open',kind:'open'}]});
+ const open=resolveControlIntent('ModelContextSelect',context_,{id:'open',event:'click'});
+ assert.equal(open.menu(context_).label,'模型上下文大小');assert.equal(open.menu({...context_,current:'unknown'}).value,'');
+ await open.choose(context_,'max')();assert.deepEqual(windows,['max']);assert.equal(open.choose(context_,'std'),null);
+ assert.equal(resolveControlIntent('ModelContextSelect',{...context_,options:[]},{id:'open',event:'click'}),null);
+ assert.deepEqual(controlPreflights('1.1.0').map(input=>input.data.control),presentationControls);
 });

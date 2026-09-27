@@ -2,6 +2,7 @@
   import { onMount, tick } from 'svelte';
   import Icon from '../../runtime/Icon.svelte';
   import type { UiSelectProps } from '../../contract';
+  import { createTypeahead, stepEnabledOption } from './select-navigation';
   let { options, value, placeholder = '请选择', disabled = false, onSelect, ...attrs }: UiSelectProps = $props();
   const uid = $props.id();
   let trigger: HTMLButtonElement;
@@ -9,8 +10,7 @@
   let open = $state(false);
   let active = $state(-1);
   let anchor: DOMRect;
-  let query = '';
-  let typedAt = 0;
+  const typeahead = createTypeahead();
   const selected = $derived(options.find(option => option.value === value));
   function close() { if (popup?.matches(':popover-open')) popup.hidePopover(); open = false; }
   function position() {
@@ -25,7 +25,7 @@
   }
   function reveal() {
     if (disabled || !options.some(option => !option.disabled)) return;
-    query = '';
+    typeahead.reset();
     active = Math.max(0, options.findIndex(option => option.value === value && !option.disabled));
     if (options[active]?.disabled) active = options.findIndex(option => !option.disabled);
     popup.showPopover(); open = true; position();
@@ -41,20 +41,16 @@
     if (disabled || event.isComposing || event.ctrlKey || event.metaKey) return;
     if (event.key === 'Escape' && open) { event.preventDefault(); event.stopPropagation(); close(); return; }
     if (event.key === 'Tab') { close(); return; }
-    const typingSpace = event.key === ' ' && query && Date.now() - typedAt <= 700;
-    if (!typingSpace && ['Enter', ' ', 'ArrowDown', 'ArrowUp', 'Home', 'End'].includes(event.key)) {
+    if (!typeahead.continues(event.key) && ['Enter', ' ', 'ArrowDown', 'ArrowUp', 'Home', 'End'].includes(event.key)) {
       event.preventDefault(); event.stopPropagation();
       if (!open) { reveal(); return; }
       if (event.key === 'Enter' || event.key === ' ') { choose(active); return; }
-      const enabled = options.map((option, index) => option.disabled ? -1 : index).filter(index => index >= 0);
-      const index = enabled.indexOf(active);
-      active = event.key === 'Home' ? enabled[0] : event.key === 'End' ? enabled.at(-1)! : enabled[(index + (event.key === 'ArrowDown' ? 1 : -1) + enabled.length) % enabled.length];
+      active = stepEnabledOption(options, active, event.key as 'ArrowDown' | 'ArrowUp' | 'Home' | 'End');
       void tick().then(scrollActive);
     } else if (event.key.length === 1 && !event.altKey) {
       event.preventDefault();
       if (!open) reveal();
-      query = Date.now() - typedAt > 700 ? event.key : query + event.key; typedAt = Date.now();
-      const match = options.findIndex(option => !option.disabled && option.label.toLocaleLowerCase().startsWith(query.toLocaleLowerCase()));
+      const match = typeahead.match(options, event.key);
       if (match >= 0) { active = match; void tick().then(scrollActive); }
     }
   }

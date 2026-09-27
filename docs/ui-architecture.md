@@ -126,7 +126,11 @@ Enter/Space 确认、Escape 取消及 Tab 离开；滚动祖先或调整窗口�
 同类自定义菜单，保留语义 key、原始值、动作 token、revision 与真实用户事件校验。
 旧包通过现有主题令牌获得菜单的基础外观；独立 shadcn / Material 3 包从 0.3.2 提供
 `.ui-select-*` 样式，安装新版后使用包自己的菜单细节。
-多选节点继续保留原协议行为，本次未新增外部 controls surface。
+多选节点继续保留原协议行为。
+
+外部 controls 包定制 Select 或 ModelContextSelect 时，只绘制触发器；选项菜单由 `UiKitAdapter.SelectMenu`
+在 iframe 外绘制。它与 Select 共用 `.ui-select-*` 样式和 `kits/shared/select-navigation.ts` 中的键盘规则，
+挂载即打开并接管焦点，关闭后焦点回到控件 iframe。
 
 ### 内置 Material 3
 

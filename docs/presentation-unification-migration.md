@@ -1,6 +1,6 @@
 # 内置外观并入 Presentation 合同：迁移计划
 
-状态：P0、P1 已实施；P2 已完成第一批（纯展示控件），其余控件与 P3 未实施。见各阶段实施记录。本文不改变现行规则；在各阶段验收并同步
+状态：P0、P1 已实施；P2 已完成前两批（纯展示控件、Select 与 ModelContextSelect），其余控件与 P3 未实施。见各阶段实施记录。本文不改变现行规则；在各阶段验收并同步
 [UI 架构](ui-architecture.md)、[Presentation 包合同](presentation-package.md)及对应测试前，
 以现行文档为准。
 
@@ -171,6 +171,20 @@ flowchart LR
 - 验证：`test/presentation-controls.test.mjs`（版本门控、投影内容）；浏览器探针 `presentation-controls-browser`
   增加"1.0.0 包收不到新控件"和"1.1.0 包替换标记并保留宿主名称与隐藏语义"。
 - 未做：独立 shadcn/Material 3 包尚未升级到 1.1.0，仍然只定制两个原有控件。
+
+#### P2 第二批实施记录（Select、ModelContextSelect）
+
+- 发现的限制：可信绘制桥把单选菜单画在 iframe 文档内。控件 iframe 只有触发器大小，菜单会被裁掉。
+  已决定：外部包只定制触发器，菜单由宿主在 iframe 外绘制，选择在宿主界面内完成、不经过外部包。
+  不采用"打开时放大为覆盖层"，因为那样会允许包在打开期间盖住整个工作台。
+- 两个控件都在 hostApi 1.1.0 公开（1.1.0 尚未发布，没有另开版本），唯一动作是 `open`。
+- 注册表的 `resolve` 现在返回效果：`run`（直接执行宿主回调）或 `menu`（打开宿主菜单，选择时再按当前 props 校验）。
+  每个控件声明占位方式：`panel`（固定 250px）、`mark`（20px 标记），或 `footprint`（测量默认控件实际占位，外部替换后周围布局不移动）。
+- 新增 kit 成员 `SelectMenu`；键盘规则抽到 `select-navigation.ts`，`Select` 与 `SelectMenu` 共用。
+- 修正了 P0 遗留问题：控件探针夹具直接读取原始 `themes.json`，缺少 Material 3 的基础 token；改为读取注册表合并后的主题。
+- 验证：`test/presentation-controls.test.mjs`；探针 `presentation-controls-browser`（占位一致、菜单在 iframe 外且未被裁剪、
+  伪造 token 不打开菜单、键盘选择与 Escape、焦点回到控件）、`select-browser`、`ak-ui-controls-browser`、`agent-settings-browser`、`material3-palettes-browser`。
+- 已知与本次无关的失败：`material3-controls-browser` 第 42 行在 `main` 上同样失败；`presentation-full-skins-browser` 偶发的导航宽度断言在复跑时通过。
 
 ManagementCenter、HostPanel、WorkbenchChrome 属于宿主固定区域或布局外壳，**不公开**，
 继续由内置实现提供。

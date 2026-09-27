@@ -1,4 +1,4 @@
-import type { UiAgentStatusMarkProps, UiFileChangeMarkProps, UiModelMatrixProps, UiSessionControlMarkProps } from '../ui-kit/contract';
+import type { UiAgentStatusMarkProps, UiFileChangeMarkProps, UiModelContextSelectProps, UiModelMatrixProps, UiSelectProps, UiSessionControlMarkProps } from '../ui-kit/contract';
 import type { PresentationPackageManifest } from '../../../packages/plugin-protocol/src/presentation-package';
 import { fileChangeStates } from '../ui-kit/file-change.ts';
 import { sessionControlAppearance } from '../ui-kit/session-control-appearance.ts';
@@ -29,22 +29,65 @@ type ControlData<Name extends PresentationControlData['control']> = Extract<Pres
 type HostApi = PresentationPackageManifest['hostApi'];
 const hostApis: readonly HostApi[] = ['1.0.0', '1.1.0'];
 
+type Run = () => void | Promise<void>;
+/** Options for a listbox the host draws outside the isolated frame; the choice never passes through the package. */
+export type HostMenu = { label: string; options: { value: string; label: string; disabled: boolean }[]; value: string };
+export type ControlEffect<Props> =
+  | { kind: 'run'; run: Run }
+  | { kind: 'menu'; menu(props: Props): HostMenu | null; choose(props: Props, value: string): Run | null };
+
 type ControlDefinition<Name extends PresentationControlData['control'], Props> = {
   /** First host API that sends this control; older packages keep inheriting the kit rendering. */
   since: HostApi;
   project(props: Props): Omit<ControlData<Name>, 'control'>;
   /** Re-resolve against current props; stale or disabled tokens resolve to nothing. */
-  resolve(props: Props, intent: Pick<PresentationIntent, 'id' | 'event'>): (() => void | Promise<void>) | null;
+  resolve(props: Props, intent: Pick<PresentationIntent, 'id' | 'event'>): ControlEffect<Props> | null;
   preflight: Props;
+  /** Frame size: a fixed panel, a 20px mark, or the measured size of the default control. */
+  frame: 'panel' | 'mark' | 'footprint';
   /** Decorative controls never take pointer input; a null label hides them from assistive technology. */
   decorative?: { label(props: Props): string | null };
 };
+
+/** A menu control opens only when enabled with at least one enabled option. */
+function menuControl<Props>(menu: (props: Props) => HostMenu | null, select: (props: Props, value: string) => Run): Pick<ControlDefinition<never, Props>, 'resolve'> & { actions(props: Props): { token: 'open'; kind: 'open' }[] } {
+  const effect: ControlEffect<Props> = {
+    kind: 'menu', menu,
+    choose(props, value) {
+      const current = menu(props);
+      const option = current?.options.find(option => option.value === value);
+      return current && option && !option.disabled && value !== current.value ? select(props, value) : null;
+    },
+  };
+  return {
+    actions: props => menu(props) ? [{ token: 'open', kind: 'open' }] : [],
+    resolve: (props, intent) => intent.event === 'click' && intent.id === 'open' && menu(props) ? effect : null,
+  };
+}
+
+const selectMenu = (props: UiSelectProps): HostMenu | null =>
+  props.disabled || !props.options.some(option => !option.disabled) ? null : {
+    label: props['aria-label'] ?? props.title ?? props.placeholder ?? '请选择',
+    options: props.options.map(({ value, label, disabled }) => ({ value, label, disabled: Boolean(disabled) })),
+    value: props.value,
+  };
+const select = menuControl(selectMenu, (props: UiSelectProps, value) => () => props.onSelect(value));
+
+const contextMenu = (props: UiModelContextSelectProps): HostMenu | null =>
+  props.disabled || props.options.length === 0 ? null : {
+    label: '模型上下文大小',
+    options: props.options.map(option => ({ value: option.id, label: option.label, disabled: false })),
+    value: props.options.some(option => option.id === props.current) ? props.current ?? '' : '',
+  };
+const contextSelect = menuControl(contextMenu, (props: UiModelContextSelectProps, value) => () => { void props.onSelect(value); });
 
 export type ControlProps = {
   ModelMatrix: UiModelMatrixProps;
   AgentStatusMark: UiAgentStatusMarkProps;
   FileChangeMark: UiFileChangeMarkProps;
   SessionControlMark: UiSessionControlMarkProps;
+  Select: UiSelectProps;
+  ModelContextSelect: UiModelContextSelectProps;
 };
 export type PresentationControl = keyof ControlProps;
 
@@ -59,20 +102,22 @@ const registry: { [Name in PresentationControl]: ControlDefinition<Name, Control
       if (intent.event !== 'click') return null;
       const action = modelSelections(props).find(action => action.token === intent.id);
       if (!action) return null;
-      return action.kind === 'serviceTier'
+      return { kind: 'run', run: action.kind === 'serviceTier'
         ? () => props.onSelectServiceTier(action.serviceTier)
-        : () => props.onSelect(action.model, action.reasoningEffort);
+        : () => props.onSelect(action.model, action.reasoningEffort) };
     },
     preflight: { columns: [{ id: 'medium', label: 'Medium', description: null }],
       rows: [{ reference: 'model', label: 'Model', isDefault: true, active: true, defaultActive: true,
         cells: [{ id: 'medium', label: 'Medium', description: null, available: true, active: false }] }],
       defaultLabel: 'Default', defaultTitle: 'Default reasoning', fastTier: null, disabled: false, onSelect() {}, onSelectServiceTier() {} },
+    frame: 'panel',
   },
   AgentStatusMark: {
     since: '1.0.0',
     project: props => ({ props, actions: [] }),
     resolve: () => null,
     preflight: { agent: 'plugin', tone: 'idle', label: 'Plugin' },
+    frame: 'mark',
     decorative: { label: props => props.label },
   },
   FileChangeMark: {
@@ -80,6 +125,7 @@ const registry: { [Name in PresentationControl]: ControlDefinition<Name, Control
     project: ({ kind, decorative = false }) => ({ props: { kind, label: fileChangeStates[kind].label, decorative }, actions: [] }),
     resolve: () => null,
     preflight: { kind: 'modified' },
+    frame: 'mark',
     decorative: { label: ({ kind, decorative }) => decorative ? null : fileChangeStates[kind].label },
   },
   SessionControlMark: {
@@ -91,7 +137,35 @@ const registry: { [Name in PresentationControl]: ControlDefinition<Name, Control
     }),
     resolve: () => null,
     preflight: { control: { kind: 'mode', profile: { interactionMode: 'plan' } } },
+    frame: 'mark',
     decorative: { label: () => null },
+  },
+  Select: {
+    since: '1.1.0',
+    project: props => ({
+      props: {
+        options: props.options.map(({ value, label, disabled }) => ({ value, label, disabled: Boolean(disabled) })),
+        value: props.value, placeholder: props.placeholder ?? '请选择', disabled: Boolean(props.disabled),
+        label: props['aria-label'] ?? props.title ?? props.placeholder ?? '请选择',
+      },
+      actions: select.actions(props),
+    }),
+    resolve: select.resolve,
+    preflight: { options: [{ value: 'a', label: 'A' }, { value: 'b', label: 'B' }], value: 'a', 'aria-label': 'Preflight', onSelect() {} },
+    frame: 'footprint',
+  },
+  ModelContextSelect: {
+    since: '1.1.0',
+    project: props => ({
+      props: {
+        options: props.options.map(({ id, label, description, tokens }) => ({ id, label, description, tokens: tokens ?? null })),
+        current: props.current, disabled: Boolean(props.disabled),
+      },
+      actions: contextSelect.actions(props),
+    }),
+    resolve: contextSelect.resolve,
+    preflight: { options: [{ id: 'standard', label: '272K', description: null, tokens: 272000 }], current: 'standard', disabled: false, onSelect() {} },
+    frame: 'footprint',
   },
 };
 
@@ -116,6 +190,7 @@ export function resolveControlIntent<Name extends PresentationControl>(control: 
 }
 
 export const isDecorativeControl = (control: PresentationControl) => Boolean(registry[control].decorative);
+export const controlFrame = (control: PresentationControl) => registry[control].frame;
 
 /** Accessible name for decorative controls; null for interactive ones. */
 export function decorativeLabel<Name extends PresentationControl>(control: Name, props: ControlProps[Name]) {

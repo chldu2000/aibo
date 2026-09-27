@@ -100,6 +100,17 @@ export type UiSelectProps = {
   onSelect: (value: string) => void;
 };
 
+/** A host-drawn listbox anchored to a trigger the host does not render (an isolated control frame). */
+export type UiSelectMenuProps = {
+  anchor: Pick<DOMRect, 'top' | 'left' | 'bottom' | 'width'>;
+  options: readonly { value: string; label: string; disabled?: boolean }[];
+  value: string;
+  label: string;
+  onSelect: (value: string) => void;
+  /** Called once when the menu closes for any reason, including after a selection. */
+  onClose: () => void;
+};
+
 export type UiModelContextSelectProps = {
   options: readonly { id: string; label: string; description: string | null; tokens?: number | null }[];
   current: string | null;
@@ -220,6 +231,7 @@ export type UiSubagentDialogProps = {
  * executionProfile.sessionControls; Agent names select branding only. */
 export type UiKitAdapter = {
   Select: Component<UiSelectProps>;
+  SelectMenu: Component<UiSelectMenuProps>;
   FileChangeMark: Component<UiFileChangeMarkProps>;
   SubagentCard: Component<UiSubagentCardProps>;
   AttachmentList: Component<UiAttachmentListProps>;
