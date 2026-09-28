@@ -16,6 +16,12 @@ use tokio::{
 
 const MAX_MESSAGE: usize = 1_048_576;
 const MAX_PENDING: usize = 64;
+/// Inherited system and user-identity variables. Agent CLIs locate their own login state
+/// through them (macOS keychain entries are keyed by `USER`); everything else stays cleared.
+const PLUGIN_ENVIRONMENT: [&str; 11] = [
+    "SystemRoot", "WINDIR", "TEMP", "TMP", "TMPDIR", "LANG", "LC_ALL",
+    "HOME", "USER", "LOGNAME", "USERPROFILE",
+];
 type Reply = oneshot::Sender<Result<Value, String>>;
 
 fn process_argument(value: &str) -> Cow<'_, str> {
@@ -65,7 +71,7 @@ impl PluginRuntime {
         let directory = process_path(directory);
         let mut command = Command::new(executable.as_ref());
         command.env_clear();
-        for name in ["SystemRoot", "WINDIR", "TEMP", "TMP", "LANG", "LC_ALL"] {
+        for name in PLUGIN_ENVIRONMENT {
             if let Some(value) = std::env::var_os(name) { command.env(name, value); }
         }
         command.env("PATH", crate::executable_search_path());
@@ -354,6 +360,17 @@ mod tests {
             assert!(result.unwrap_err().contains("invalid_request"));
             runtime.stop().await;
         }
+    }
+
+    #[tokio::test]
+    async fn passes_user_identity_without_inheriting_other_environment() {
+        let script = "process.stdin.once('data',d=>{const {id}=JSON.parse(d);const e=process.env;process.stdout.write(JSON.stringify({jsonrpc:'2.0',id,result:{home:e.HOME??null,user:e.USER??null,manifest:e.CARGO_MANIFEST_DIR??null}})+'\\n');});";
+        let runtime = PluginRuntime::spawn_capability(Path::new("node"), &["-e".into(), script.into()], Path::new(env!("CARGO_MANIFEST_DIR"))).unwrap();
+        let result = runtime.request("capability.initialize", json!({}), Duration::from_secs(5)).await.unwrap();
+        assert_eq!(result["home"], json!(std::env::var("HOME").ok()));
+        assert_eq!(result["user"], json!(std::env::var("USER").ok()));
+        assert!(std::env::var_os("CARGO_MANIFEST_DIR").is_some() && result["manifest"].is_null());
+        runtime.stop().await;
     }
 
     #[tokio::test]
