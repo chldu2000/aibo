@@ -36,7 +36,8 @@
     "probe:presentation-typing": "node probes/presentation-typing-browser.mjs",
     "probe:presentation-semantic": "node probes/presentation-semantic-browser.mjs",
     "probe:session:desktop": "node probes/session-desktop.mjs",
-    "probe:semantic-desktop": "node probes/semantic-desktop.mjs"
+    "probe:semantic-desktop": "node probes/semantic-desktop.mjs",
+    "prepare:node": "node scripts/prepare-node.mjs"
   },
   "engines": {
     "node": ">=22"

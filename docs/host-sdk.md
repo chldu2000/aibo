@@ -6,8 +6,9 @@ Node ESM 能力插件可在 `plugin.json` 声明：
 "hostSdk": { "min": "0.1.0", "maxExclusive": "0.2.0" }
 ```
 
-仍需声明 `.mjs` 或 ESM `.js` 入口，以及 Node.js `>=22` 运行依赖。Aibo 当前使用系统
-Node，并不内置 Node 或替插件安装其他 CLI。此功能不改变呈现 Worker 的加载合同。
+仍需声明 `.mjs` 或 ESM `.js` 入口，以及 Node.js `>=22` 运行依赖。Aibo 内置私有 Node 24.18.0，
+依赖检查、Worker 与后代进程使用同一运行时，不回退系统 Node。用户无需安装 Node/npm。
+第三方运行依赖由插件构建时携带；宿主安装只复制和校验，不执行 npm。呈现 Worker 合同不变。
 
 声明后，可直接使用以下公开入口，不需要把这些 npm 包放进安装产物：
 
@@ -17,7 +18,7 @@ Node，并不内置 Node 或替插件安装其他 CLI。此功能不改变呈现
 - `@aibo/capability-runtime/host-tools-mcp`（SDK 0.1.1 起，bridge stdio server）
 - `@aibo/acp-adapter`、`@aibo/acp-adapter/session`、`@aibo/acp-adapter/transport`、`@aibo/acp-adapter/config`、`@aibo/acp-adapter/image-input`
   （SDK 0.1.2 起，通用 ACP 客户端会话、传输、配置解析与图片输入，见[包说明](../packages/acp-adapter/README.md)）
-- `@aibo/acp-adapter/worker`（SDK 0.1.3 起，由 `plugin.json` 与 `acp.json` 驱动的通用 ACP Worker；0.1.4 起按 `approval.respond` 的声明形态提供多选项审批，0.1.5 起支持 ACP 表单 elicitation）
+- `@aibo/acp-adapter/worker`（SDK 0.1.3 起，由 `plugin.json` 与 `acp.json` 驱动的通用 ACP Worker；0.1.4 起按 `approval.respond` 的声明形态提供多选项审批，0.1.5 起支持 ACP 表单 elicitation；0.1.6 起支持包内 Node 启动入口）
 - `@aibo/plugin-protocol`
 - `@aibo/plugin-protocol/semantic`
 - `@aibo/plugin-protocol/presentation`
@@ -69,3 +70,21 @@ cargo test --lib
 但最终插件产物不能记录这个开发机路径。
 
 工具接入步骤、执行权限分离、分页和资源限额见[完整会话查询工具](session-history-tool-design.md)。
+
+## 私有运行时的构建与分发
+
+开发环境仍需 Node、pnpm、Rust。首次原生测试前运行 `pnpm prepare:node`；Tauri dev/build
+钩子自动执行。脚本按 `scripts/node-runtime.json` 的固定版本和 SHA-256 下载官方发行包，
+仅将 Node 可执行文件、LICENSE、校验元数据放入 `src-tauri/resources/node-runtime/`。
+Tauri 将它们映射到应用 resource directory 下的 `node-runtime/`。不携带 npm。
+Rust 构建核对目标平台、版本和文件摘要；安装后的应用不下载运行时，也不读取源码目录。
+
+离线构建可设置 `AIBO_NODE_ARCHIVE=/absolute/path/to/official-archive`（仍校验固定摘要），
+或预填 `.runtime-cache/`。交叉构建使用 `AIBO_NODE_TARGET=darwin-arm64` 等；默认读取
+Tauri target triple。当前提供 macOS/Linux glibc/Windows 的 x64、arm64 发行包映射，
+不支持 musl；每个平台独立构建和验收，不将已有 macOS arm64 证据推广到其他平台。
+开发/测试模式在未初始化应用 resource directory 时使用准备好的源码资源。
+
+运行时升级需修改版本及官方摘要、重新准备并执行 Node/原生/桌面回归。
+旧插件的 `runtime: node` 依赖现在检查内置 Node，版本要求不满足时明确拒绝，
+不偷偷使用用户全局 Node。其他外部 CLI 的搜索行为保持不变。

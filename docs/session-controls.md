@@ -105,6 +105,13 @@ read-only / disabled 描述原生模式行为，网络仍为 agent-managed；不
 
 ## 初始化期间的显示
 
+新建会话未传 `requestedProfile` 时，宿主先检查绑定贡献的可用 mode 声明。
+支持宿主默认 Ask 的提供者继续使用 Ask；不支持 Ask 时，从声明中选择保持相同权限约束的
+只读模式（例如 Plan）。不会因为 Manual/Auto 排在列表前面就自动选择写入模式；
+存在 mode 声明但没有兼容的只读候选时，要求调用方显式提供受支持的配置。
+没有可用 mode 声明的旧插件保持原行为。明确请求的配置和已有会话保存的配置不做这种替换。
+创建 IPC 必须保留 `requestedProfile` 的缺省状态，不能先将其转换成 Ask 再传入 SessionHost。
+
 桌面新建入口使用两阶段创建：`create_agent_session` 携带 `deferStart: true` 时仅保存
 宿主会话身份、固定 installation/contribution 和执行配置，返回 `starting` 状态；随后
 `resume_agent_session` 创建原生会话并返回协商后的 Session。未指定 deferStart 的已有调用

@@ -1,4 +1,4 @@
-import {chmod,copyFile,mkdir,mkdtemp,readFile,readdir,rm} from 'node:fs/promises';
+import {chmod,copyFile,cp,mkdir,mkdtemp,readFile,readdir,rm} from 'node:fs/promises';
 import {tmpdir} from 'node:os';
 import path from 'node:path';
 import {pathToFileURL} from 'node:url';
@@ -12,7 +12,7 @@ export async function sessionCapability(t,name,extraEnv={},existingDirectory,con
   const data=path.join(directory,'data');await mkdir(data,{recursive:true});
   // A path names a plugin source directory (for example a configuration-only ACP fixture).
   if (name.includes('/')) {
-    for (const file of await readdir(name)) await copyFile(path.join(name,file),path.join(pkg,file));
+    for (const file of await readdir(name)) await cp(path.join(name,file),path.join(pkg,file),{recursive:true});
     if (name.endsWith('acp-echo')) { await copyFile('fixtures/acp/echo-agent.mjs',path.join(directory,'echo-acp'));await chmod(path.join(directory,'echo-acp'),0o755); }
   } else {
     for (const file of ['engine.mjs','worker.mjs','plugin.json']) await copyFile(`src-tauri/capability-plugins/${name}/${file}`,path.join(pkg,file));

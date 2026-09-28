@@ -1,3 +1,4 @@
+mod node_runtime;
 mod session_history_tools;
 mod session_reference_preferences;
 mod agent_settings;
@@ -3842,11 +3843,12 @@ async fn create_agent_session(workspace_id: String, agent_id: String, installati
             .ok_or("provider_unavailable: no enabled installation for this contribution")?,
     };
     let backend = execution_profile::installation_backend(&state.db, &installation_id, &agent_id).await?;
-    let profile = execution_profile::resolve_with_backend(backend, requested_profile, now_iso())?;
+    // Preserve absence: SessionHost chooses a compatible declared initial mode.
+    let profile = requested_profile.map(|requested| execution_profile::resolve_with_backend(backend, Some(requested), now_iso())).transpose()?;
     if defer_start == Some(true) {
-        return state.plugins.prepare_with_profile(&workspace_id, &installation_id, &agent_id, Some(profile)).await;
+        return state.plugins.prepare_with_profile(&workspace_id, &installation_id, &agent_id, profile).await;
     }
-    let session = state.plugins.create_with_profile_from(window.label(), &workspace_id, &installation_id, &agent_id, Some(profile)).await?;
+    let session = state.plugins.create_with_profile_from(window.label(), &workspace_id, &installation_id, &agent_id, profile).await?;
     Ok(session)
 }
 
@@ -4074,6 +4076,7 @@ async fn navigate_pi_session_tree(
 
 
 fn find_executable(name: &str) -> Option<PathBuf> {
+    if name == "node" { return node_runtime::executable(); }
     for directory in env::split_paths(&executable_search_path()) {
         let candidate = directory.join(name);
         if is_executable(&candidate) {
@@ -4091,7 +4094,13 @@ fn find_executable(name: &str) -> Option<PathBuf> {
 }
 
 pub(crate) fn executable_search_path() -> std::ffi::OsString {
-    executable_search_path_from(env::var_os("PATH"), env::var_os("HOME"))
+    let inherited = executable_search_path_from(env::var_os("PATH"), env::var_os("HOME"));
+    let mut paths = Vec::new();
+    if let Some(node) = node_runtime::executable() {
+        if let Some(parent) = node.parent() { paths.push(parent.to_path_buf()); }
+    }
+    paths.extend(env::split_paths(&inherited));
+    env::join_paths(paths).unwrap_or(inherited)
 }
 
 fn executable_search_path_from(
@@ -4453,6 +4462,7 @@ pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
         .setup(|app| {
+            node_runtime::initialize(app.path().resource_dir()?);
             let data_dir = app.path().app_data_dir().map_err(|error| {
                 Box::new(CoreError::Initialization(format!(
                     "resolve app data directory: {error}"

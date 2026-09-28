@@ -471,6 +471,35 @@ mod tests {
         db.close().await;fs::remove_dir_all(root).unwrap();
     }
 
+    #[tokio::test]
+    #[ignore = "requires a built package in AIBO_TEST_PLUGIN_PATH"]
+    async fn packaged_node_plugin_installs_and_initializes() {
+        let source = PathBuf::from(std::env::var("AIBO_TEST_PLUGIN_PATH").unwrap());
+        let root = std::env::temp_dir().join(format!("aibo-package-native-{}", ulid::Ulid::new()));
+        let db = crate::open_database(&root.join("aibo.sqlite3")).await.unwrap();
+        let installed = install(&db, &root, &source).await.unwrap();
+        assert!(installed.runnable, "{}", serde_json::to_string(&installed.dependencies).unwrap());
+        enable(&db, &installed.id, true).await.unwrap();
+        let directory = root.join("plugins").join(&installed.id);
+        let (manifest, _, _) = inspect(&directory.canonicalize().unwrap()).unwrap();
+        let preload = crate::plugin_sdk::prepare(&root.join("plugins")).unwrap();
+        let runtime = crate::plugin_runtime::PluginRuntime::spawn_interactive(
+            &crate::node_runtime::executable().unwrap(),
+            &["--import".into(), tauri::Url::from_file_path(preload).unwrap().to_string(),
+                directory.join(manifest["entrypoint"]["executable"].as_str().unwrap()).to_string_lossy().into_owned()],
+            &directory, None).unwrap();
+        let reply = runtime.request("capability.initialize", serde_json::json!({
+            "protocol":"2.1", "pluginId":manifest["pluginId"], "pluginVersion":manifest["version"],
+            "instanceId":"native-package", "generationId":runtime.generation_id, "installationId":installed.id,
+            "contributionId":manifest["contributions"][0]["id"], "privateData":{"path":root,"formatVersion":1}
+        }), Duration::from_secs(10)).await.unwrap();
+        assert_eq!(reply["pluginVersion"], manifest["version"]);
+        runtime.stop_and_wait().await;
+        uninstall(&db, &root, &installed.id).await.unwrap();
+        db.close().await;
+        fs::remove_dir_all(root).unwrap();
+    }
+
     #[test]
     fn rejects_escaping_and_ambiguous_package_paths() {
         let root = std::env::temp_dir().canonicalize().unwrap();

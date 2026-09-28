@@ -75,3 +75,20 @@ advertises `loadSession: true`. An agent without load support can still create a
 restoring a persisted session fails explicitly rather than creating a replacement.
 Vendor questions are not part of the default capability set. An extension implementing question
 requests through `handleRequest` and `await` must add `user-input.respond` to its `capabilities`.
+
+## Package-owned ACP runtime (host SDK 0.1.6)
+
+Instead of an external `command`, a configuration-only plugin can declare:
+
+```json
+{ "launch": { "kind": "node", "entry": "vendor/node_modules/example-acp/dist/index.js" } }
+```
+
+This is a fragment of `acp.json`; label, schema and modes remain required. `command` and `launch`
+are mutually exclusive. `args` are passed after the package entry. The entry is resolved against
+`plugin.json`, checked to remain inside the package, and started with `process.execPath` (the host's
+private Node). The child's working directory remains the user workspace. Missing entries fail startup.
+No shell, npm, npx or global executable is needed. External `command` still requires an executable
+manifest dependency. A package launch only needs the Node runtime dependency, plus any genuine external
+tools it uses. Declare `hostSdk >=0.1.6`; ship the locked production dependency graph and platform assets.
+`extensionFromConfig` accepts a third `manifestUrl` argument for package launches.

@@ -996,6 +996,10 @@ async fn prepared_session_is_visible_before_native_start_and_negotiates_only_whe
 /// The configuration-only echo ACP plugin, opened in Plan mode. The agent runs as `node <fixture>`
 /// because the host PATH is shared by parallel tests.
 async fn acp_echo_plan_session() -> (PathBuf, SqlitePool, Broker, SessionHost, Session) {
+    acp_echo_initial_session(false).await
+}
+
+async fn acp_echo_initial_session(without_ask: bool) -> (PathBuf, SqlitePool, Broker, SessionHost, Session) {
     let root = std::env::temp_dir().join(format!("aibo-acp-transition-{}", ulid::Ulid::new()));
     let package = root.join("package");
     let workspace = root.join("workspace");
@@ -1007,10 +1011,17 @@ async fn acp_echo_plan_session() -> (PathBuf, SqlitePool, Broker, SessionHost, S
     }
     let mut manifest: Value = serde_json::from_str(&fs::read_to_string(package.join("plugin.json")).unwrap()).unwrap();
     manifest["executableDependencies"] = json!([{"kind":"runtime","name":"node","versionRange":">=22","required":true},{"kind":"executable","name":"node","required":true}]);
+    if without_ask {
+        let controls = manifest["contributions"][0]["sessionControls"].as_array_mut().unwrap();
+        controls.retain(|control| control["profile"]["interactionMode"] != "ask");
+        // A write mode listed first must never become an implicit authorization.
+        controls.sort_by_key(|control| control["profile"]["interactionMode"] == "plan");
+    }
     fs::write(package.join("plugin.json"), manifest.to_string()).unwrap();
     let mut config: Value = serde_json::from_str(&fs::read_to_string(package.join("acp.json")).unwrap()).unwrap();
     config["command"] = json!("node");
     config["args"] = json!([fixtures.join("acp/echo-agent.mjs").to_string_lossy()]);
+    if without_ask { config["modes"].as_object_mut().unwrap().remove("ask"); }
     fs::write(package.join("acp.json"), config.to_string()).unwrap();
     let db = crate::open_database(&root.join("data/db")).await.unwrap();
     sqlx::query("INSERT INTO workspaces(id,path,label,trusted,created_at,updated_at) VALUES('w',?,'w',1,'now','now')")
@@ -1023,8 +1034,61 @@ async fn acp_echo_plan_session() -> (PathBuf, SqlitePool, Broker, SessionHost, S
     requested.interaction_mode = "plan".into();
     requested.network_policy = "agent-managed".into();
     let plan = execution_profile::resolve_with_backend(execution_profile::EnforcementBackend::AgentManaged, Some(requested), crate::now_iso()).unwrap();
-    let session = host.create_with_profile_from("main", "w", &installed.id, "dev.example.acp-echo.agent", Some(plan)).await.unwrap();
+    let session = host.create_with_profile_from("main", "w", &installed.id, "dev.example.acp-echo.agent", if without_ask { None } else { Some(plan) }).await.unwrap();
     (root, db, broker, host, session)
+}
+
+#[tokio::test]
+async fn new_session_without_requested_profile_uses_declared_read_only_mode() {
+    let (root, db, broker, host, session) = acp_echo_initial_session(true).await;
+    let profile = crate::session_execution_profile(&db, &session.id).await.unwrap().profile;
+    assert_eq!(profile.requested.interaction_mode, "plan");
+    assert_eq!(profile.enforced.filesystem_policy, "read-only");
+    assert_eq!(profile.enforced.command_policy, "disabled");
+    assert_eq!(session.state, "idle");
+    host.send_from("main", &session.id, "default mode", None).await.unwrap();
+    wait_for_turn(&host, &session.id).await;
+    assert_eq!(crate::session_by_id(&db, &session.id).await.unwrap().state, "idle");
+    let explicit = execution_profile::resolve_with_backend(execution_profile::EnforcementBackend::AgentManaged, None, crate::now_iso()).unwrap();
+    let pending = host.prepare_with_profile("w", session.plugin_installation_id.as_deref().unwrap(), &session.agent, Some(explicit)).await.unwrap();
+    assert_eq!(crate::session_execution_profile(&db, &pending.id).await.unwrap().profile.requested.interaction_mode, "ask");
+    assert!(host.resume_from("main", &pending.id).await.is_err());
+    let status: String = sqlx::query_scalar("SELECT status FROM capability_invocations WHERE scope_id=? AND capability_id='aibo.session.open'")
+        .bind(&pending.id).fetch_one(&db).await.unwrap();
+    assert_eq!(status, "invalid_input", "explicit Ask must be rejected, not silently become Plan");
+    broker.stop_session(&session.id).await.unwrap();
+    db.close().await;
+    fs::remove_dir_all(root).unwrap();
+}
+
+#[tokio::test]
+#[ignore = "requires a built session plugin in AIBO_TEST_PLUGIN_PATH and native authentication"]
+async fn packaged_session_opens_with_implicit_profile() {
+    let root = std::env::temp_dir().join(format!("aibo-packaged-session-{}", ulid::Ulid::new()));
+    let workspace = root.join("workspace");
+    fs::create_dir_all(&workspace).unwrap();
+    let db = crate::open_database(&root.join("data/db")).await.unwrap();
+    sqlx::query("INSERT INTO workspaces(id,path,label,trusted,created_at,updated_at) VALUES('w',?,'w',1,'now','now')")
+        .bind(workspace.to_string_lossy().as_ref()).execute(&db).await.unwrap();
+    let source = PathBuf::from(std::env::var("AIBO_TEST_PLUGIN_PATH").unwrap());
+    let installed = plugin_registry::install(&db, &root.join("data"), &source).await.unwrap();
+    plugin_registry::enable(&db, &installed.id, true).await.unwrap();
+    let contribution = installed.manifest["contributions"].as_array().unwrap().iter()
+        .find(|entry| entry["kind"] == "capabilityProvider" && entry["scope"] == "session").unwrap()["id"].as_str().unwrap();
+    let broker = Broker::new(db.clone());
+    let host = SessionHost::new(db.clone(), broker.clone());
+    // Same two-stage path as the desktop create action; no hand-written Plan profile.
+    let pending = host.prepare_with_profile("w", &installed.id, contribution, None).await.unwrap();
+    let result = host.resume_from("main", &pending.id).await;
+    let session = crate::session_by_id(&db, &pending.id).await.unwrap();
+    let profile = crate::session_execution_profile(&db, &pending.id).await.unwrap().profile;
+    broker.stop_session(&pending.id).await.unwrap();
+    db.close().await;
+    fs::remove_dir_all(root).unwrap();
+    result.unwrap();
+    assert_eq!(session.state, "idle");
+    assert_eq!(profile.enforced.interaction_mode, "plan");
+    assert!(session.capabilities.contains(&"session.create".into()));
 }
 
 async fn pending_approval(db: &SqlitePool, session: &str) -> String {

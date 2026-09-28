@@ -6,3 +6,5 @@ target/
 src-tauri/gen/
 .DS_Store
 Thumbs.db
+src-tauri/resources/node-runtime/
+.runtime-cache/

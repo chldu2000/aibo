@@ -77,10 +77,11 @@ shadcn 与 Material 3 独立呈现包当前为 **0.3.0**，共享工作台模块
 
 ## 本地运行
 
-需要 Node.js 22+、pnpm、Rust 工具链及 Tauri 2 对应平台的构建依赖。
+开发需要 Node.js 22+、pnpm、Rust 工具链及 Tauri 2 对应平台的构建依赖。
 Codex 会话需要 `PATH` 中可用的 `codex` 和原生认证；Pi 会话使用项目锁定版本的
 `@earendil-works/pi-coding-agent` SDK，模型调用需要配置提供商凭据。
-Pi CLI 只用于独立的 RPC 探针。
+Pi CLI 只用于独立的 RPC 探针。发布应用内置私有 Node，用户无需安装系统 Node；
+第三方插件在构建时携带自己的运行依赖，安装时不执行 npm。
 
 ```sh
 pnpm install
@@ -90,6 +91,7 @@ pnpm tauri dev
 ```sh
 pnpm dev          # 浏览器 UI 预览；实际桌面执行需要 Tauri
 pnpm run verify   # 架构、TypeScript、Node 测试与前端构建
+pnpm prepare:node # Prepare bundled runtime before standalone Rust tests
 cargo test --manifest-path src-tauri/Cargo.toml
 ```
 

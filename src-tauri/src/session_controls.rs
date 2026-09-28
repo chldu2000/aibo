@@ -92,6 +92,24 @@ pub(crate) fn select(profile: &ResolvedExecutionProfile, id: &str) -> Result<Res
     apply(profile.enforcement_backend, &profile.requested, option)
 }
 
+/// Only for new sessions with no explicit profile. Never infer write authorization
+/// from declaration order, and never rewrite a saved session during resume.
+pub(crate) fn initial_profile(profile: ResolvedExecutionProfile) -> Result<ResolvedExecutionProfile, String> {
+    let modes: Vec<_> = profile.session_controls.iter().filter(|option| option.kind == "mode")
+        .filter_map(|option| apply(profile.enforcement_backend, &profile.requested, option).ok()).collect();
+    if modes.is_empty() || modes.iter().any(|candidate| candidate.enforced == profile.enforced) {
+        return Ok(profile);
+    }
+    for candidate in modes {
+        let mut comparable = candidate.enforced.clone();
+        comparable.interaction_mode = profile.enforced.interaction_mode.clone();
+        if matches!(candidate.enforced.interaction_mode.as_str(), "ask" | "plan") && comparable == profile.enforced {
+            return Ok(candidate);
+        }
+    }
+    Err("unsupported: provider has no compatible read-only initial mode; request an explicit supported profile".into())
+}
+
 /// An in-turn switch to `target`, allowed only when a control matching the current profile
 /// declares it in `transitions`. Returns the source control and the resolved target profile.
 pub(crate) fn transition(profile: &ResolvedExecutionProfile, target: &str) -> Result<(SessionControl, ResolvedExecutionProfile), String> {
@@ -107,6 +125,28 @@ mod tests {
     use super::*;
     use serde_json::json;
     use std::fs;
+
+    #[test]
+    fn initial_mode_preserves_defaults_and_never_selects_a_write_mode() {
+        let backend = EnforcementBackend::AgentManaged;
+        let base = execution_profile::resolve_with_backend(backend, None, "now".into()).unwrap();
+        let control = |mode: &str| {
+            let mut requested = base.requested.clone();
+            requested.interaction_mode = mode.into();
+            let resolved = execution_profile::resolve_with_backend(backend, Some(requested), "now".into()).unwrap();
+            let mut patch = serde_json::to_value(resolved.enforced).unwrap();
+            for key in ["schema", "model", "reasoningEffort"] { patch.as_object_mut().unwrap().remove(key); }
+            SessionControl { id: format!("opaque-{mode}"), kind:"mode".into(), label:mode.into(), description:"test".into(), command:None, transitions:vec![], profile:patch }
+        };
+        assert_eq!(initial_profile(base.clone()).unwrap().enforced, base.enforced, "legacy declarations are unchanged");
+        let mut declared = base.clone();
+        declared.session_controls = vec![control("edit"), control("plan"), control("ask")];
+        assert_eq!(initial_profile(declared.clone()).unwrap().enforced, base.enforced, "Ask stays the default when declared");
+        declared.session_controls.pop();
+        assert_eq!(initial_profile(declared.clone()).unwrap().enforced.interaction_mode, "plan");
+        declared.session_controls.pop();
+        assert!(initial_profile(declared).unwrap_err().contains("read-only initial mode"));
+    }
 
     #[tokio::test]
     async fn agent_managed_installation_exposes_modes_and_persists_without_native_grants() {

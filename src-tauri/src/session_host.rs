@@ -141,7 +141,12 @@ impl SessionHost {
         let id=ulid::Ulid::new().to_string();let now=crate::now_iso();
         let _guard=self.session_operation(&id).await;
         let backend = execution_profile::installation_backend(&self.db, installation_id, contribution_id).await?;
-        let profile = execution_profile::resolve_with_backend(backend, profile.map(|value| value.requested), now.clone())?;
+        let use_default = profile.is_none();
+        let mut profile = execution_profile::resolve_with_backend(backend, profile.map(|value| value.requested), now.clone())?;
+        if use_default {
+            profile.session_controls = crate::session_controls::for_installation(&self.db, installation_id, contribution_id, &profile).await?;
+            profile = crate::session_controls::initial_profile(profile)?;
+        }
         sqlx::query("INSERT INTO sessions(id,workspace_id,agent,label,state,created_at,updated_at,plugin_installation_id) VALUES(?,?,?,?,'starting',?,?,?)")
             .bind(&id).bind(workspace_id).bind(contribution_id).bind(crate::DEFAULT_CAPABILITY_SESSION_LABEL).bind(&now).bind(&now).bind(installation_id).execute(&self.db).await.map_err(|e|e.to_string())?;
         execution_profile::save_for_session(&self.db,&id,&profile).await.map_err(|e|e.to_string())?;

@@ -84,8 +84,9 @@ other-platform, physical-input or full screen-reader support.
 
 ## Run locally
 
-Requirements: Node.js 22+, pnpm, a Rust toolchain, and the platform build dependencies
+Development requirements: Node.js 22+, pnpm, a Rust toolchain, and the platform build dependencies
 for Tauri 2. Codex sessions require `codex` on `PATH` and native authentication.
+Released apps include a private Node runtime; users do not need a system Node installation.
 Pi sessions use the project-locked `@earendil-works/pi-coding-agent` SDK; configure
 provider credentials for model requests. The Pi CLI is only required for its RPC probe.
 
@@ -97,6 +98,7 @@ pnpm tauri dev
 ```sh
 pnpm dev          # Browser UI preview; desktop execution requires Tauri
 pnpm run verify   # Architecture, TypeScript, Node tests, frontend build
+pnpm prepare:node # Prepare bundled runtime before standalone Rust tests
 cargo test --manifest-path src-tauri/Cargo.toml
 ```
 

@@ -1,4 +1,6 @@
-import { readFileSync } from 'node:fs';
+import { readFileSync, realpathSync, statSync } from 'node:fs';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { serveCapability } from '@aibo/capability-runtime/stdio';
 import { createHostToolChannel, hostToolDefinitions, createHostToolMcpBridge } from '@aibo/capability-runtime/host-tools';
 import { AcpSession, BASE_CAPABILITIES, object, pluginError } from './session.mjs';
@@ -17,8 +19,14 @@ export function acpAgentConfig(config, manifest) {
   if (c.schema !== ACP_AGENT_SCHEMA) fail(`schema must be ${ACP_AGENT_SCHEMA}`);
   if (typeof c.label !== 'string' || !c.label.trim() || c.label.length > 64) fail('label must be 1-64 characters');
   const dependencies = Array.isArray(manifest.executableDependencies) ? manifest.executableDependencies : [];
-  // The spawned program is exactly a declared executable; the host checks it before enabling the plugin.
-  if (typeof c.command !== 'string' || !dependencies.some(entry => entry?.kind === 'executable' && entry.name === c.command)) fail('command must name an executable declared in plugin.json executableDependencies');
+  // An external command or a plugin-owned JS entry, never both.
+  if (c.launch !== undefined) {
+    const launch = object(c.launch);
+    if (c.command !== undefined || launch.kind !== 'node' || Object.keys(launch).some(key => !['kind', 'entry'].includes(key))) fail('launch must be { kind: node, entry } without command');
+    if (typeof launch.entry !== 'string' || launch.entry.length > 1024 || /[\\\\:\x00-\x1f]/.test(launch.entry)
+        || launch.entry.split('/').some(part => !part || part === '.' || part === '..' || /[. ]$/.test(part))
+        || !/\.(mjs|cjs|js)$/.test(launch.entry)) fail('launch.entry must be a package-relative JavaScript path');
+  } else if (typeof c.command !== 'string' || !dependencies.some(entry => entry?.kind === 'executable' && entry.name === c.command)) fail('command must name an executable declared in plugin.json executableDependencies');
   const args = c.args ?? [];
   if (!Array.isArray(args) || args.length > 32 || !args.every(arg => typeof arg === 'string' && arg.length <= 1024)) fail('args must be at most 32 strings');
   const modes = object(c.modes);
@@ -84,11 +92,21 @@ export function agentManagedProfile(label, modes) {
 }
 
 /** Builds the session extension a configuration-only plugin runs with. */
-export function extensionFromConfig(config, manifest) {
+export function extensionFromConfig(config, manifest, manifestUrl) {
+  let command = config.command, args = config.args;
+  if (config.launch) {
+    if (!manifestUrl) throw new Error('Package launch requires manifestUrl');
+    const root = realpathSync(path.dirname(fileURLToPath(manifestUrl)));
+    const entry = realpathSync(path.join(root, config.launch.entry));
+    const relative = path.relative(root, entry);
+    if (relative.startsWith(`..${path.sep}`) || relative === '..' || path.isAbsolute(relative) || !statSync(entry).isFile()) throw new Error('ACP launch entry escapes plugin package');
+    command = process.execPath;
+    args = [entry, ...args];
+  }
   return {
     label: config.label,
-    command: config.command,
-    args: config.args,
+    command,
+    args,
     authMethodId: config.authMethodId,
     clientMeta: config.clientMeta,
     persistsEmptySessions: config.persistsEmptySessions ?? true,
@@ -135,7 +153,7 @@ export function serveAcpAgent({ manifestUrl, configUrl, extension, additionalIns
   const manifest = JSON.parse(readFileSync(manifestUrl, 'utf8'));
   const contribution = manifest.contributions.find(entry => entry.kind === 'capabilityProvider' && entry.scope === 'session');
   if (!contribution) throw new Error('plugin.json has no session capability provider');
-  const configured = extension ?? extensionFromConfig(acpAgentConfig(JSON.parse(readFileSync(configUrl, 'utf8')), manifest), manifest);
+  const configured = extension ?? extensionFromConfig(acpAgentConfig(JSON.parse(readFileSync(configUrl, 'utf8')), manifest), manifest, manifestUrl);
   // The declared approval.respond variant decides how approvals are answered: by option or by decision.
   const approvalOperation = contribution.operations.find(operation => operation.capability.id === `${manifest.pluginId}.approval.respond`);
   const active = { ...configured, approvalOptions: approvalOperation?.inputSchema?.properties?.optionId !== undefined };

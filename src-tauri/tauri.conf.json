@@ -4,9 +4,9 @@
   "version": "0.1.0",
   "identifier": "local.aibo.desktop",
   "build": {
-    "beforeDevCommand": "pnpm dev",
+    "beforeDevCommand": "pnpm prepare:node && pnpm dev",
     "devUrl": "http://127.0.0.1:1420",
-    "beforeBuildCommand": "pnpm build",
+    "beforeBuildCommand": "pnpm prepare:node && pnpm build",
     "frontendDist": "../dist"
   },
   "app": {
@@ -31,8 +31,11 @@
   "bundle": {
     "active": true,
     "resources": {
-      "../node_modules/@earendil-works/pi-coding-agent/dist/bundle/": "pi-sdk-bundle/"
+      "../node_modules/@earendil-works/pi-coding-agent/dist/bundle/": "pi-sdk-bundle/",
+      "resources/node-runtime/": "node-runtime/"
     },
-    "icon": ["icons/icon.png"]
+    "icon": [
+      "icons/icon.png"
+    ]
   }
 }
