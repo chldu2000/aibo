@@ -4100,7 +4100,10 @@ fn find_executable(name: &str) -> Option<PathBuf> {
 }
 
 pub(crate) fn executable_search_path() -> std::ffi::OsString {
-    let inherited = executable_search_path_from(env::var_os("PATH"), env::var_os("HOME"));
+    let inherited = executable_search_path_from(
+        env::var_os("PATH"),
+        env::var_os("HOME").or_else(|| env::var_os("USERPROFILE")),
+    );
     let mut paths = Vec::new();
     if let Some(node) = node_runtime::executable() {
         if let Some(parent) = node.parent() { paths.push(parent.to_path_buf()); }
@@ -4130,6 +4133,10 @@ fn executable_search_path_from(
     }
     if let Some(home) = home {
         let home = PathBuf::from(home);
+        #[cfg(windows)]
+        for relative in ["AppData/Local/nvs/default", "AppData/Roaming/npm"] {
+            append(home.join(relative));
+        }
         for relative in [
             ".local/bin",
             ".volta/bin",
@@ -4821,14 +4828,18 @@ mod tests {
 
     #[test]
     fn executable_search_path_adds_gui_missing_user_tool_directories() {
+        let home = if cfg!(windows) { PathBuf::from(r"C:\Users\aibo-test") } else { PathBuf::from("/Users/aibo-test") };
+        let first = PathBuf::from("first");
         let path = executable_search_path_from(
-            Some(std::ffi::OsString::from("/usr/bin:/bin")),
-            Some(std::ffi::OsString::from("/Users/aibo-test")),
+            Some(env::join_paths([first.clone(), PathBuf::from("second")]).unwrap()),
+            Some(home.as_os_str().to_owned()),
         );
         let directories: Vec<_> = env::split_paths(&path).collect();
-        assert_eq!(directories[0], PathBuf::from("/usr/bin"));
-        assert!(directories.contains(&PathBuf::from("/Users/aibo-test/.local/bin")));
-        assert!(directories.contains(&PathBuf::from("/Users/aibo-test/.volta/bin")));
+        assert_eq!(directories[0], first);
+        assert!(directories.contains(&home.join(".local/bin")));
+        assert!(directories.contains(&home.join(".volta/bin")));
+        #[cfg(windows)]
+        assert!(directories.contains(&home.join("AppData/Local/nvs/default")));
         #[cfg(target_os = "macos")]
         assert!(directories.contains(&PathBuf::from("/opt/homebrew/bin")));
     }
