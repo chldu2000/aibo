@@ -387,6 +387,7 @@ export class AcpSession {
     } else if (input.action !== 'list') throw pluginError('invalid_input', `Unknown ${this.label} model action`);
     const parameters = this.parameters();
     return { current: this.modelConfig.current, currentContextWindow: parameters.context?.currentValue ?? null,
+      ...(this.extension.parameterScope ? { parameterScope: this.extension.parameterScope } : {}),
       models: this.modelConfig.models.map(model => ({ ...model, reasoningEfforts: model.reference === this.modelConfig.current ? parameters.levels.map(({ values, ...level }) => level) : [], contextWindows: model.reference === this.modelConfig.current ? parameters.contextWindows : [] })), recovery: this.recovery(parameters), capabilities: this.capabilities() };
   }
 

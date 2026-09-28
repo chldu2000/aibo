@@ -92,3 +92,12 @@ No shell, npm, npx or global executable is needed. External `command` still requ
 manifest dependency. A package launch only needs the Node runtime dependency, plus any genuine external
 tools it uses. Declare `hostSdk >=0.1.6`; ship the locked production dependency graph and platform assets.
 `extensionFromConfig` accepts a third `manifestUrl` argument for package launches.
+
+## Sequential model parameters (host SDK 0.1.7)
+
+Declare `"parameterScope": "current-model"` in `acp.json`, or `parameterScope: 'current-model'`
+in the extension. Use the new `model.select` output contract variant requiring this field.
+The adapter returns it on list and set; options still belong only to the current model.
+The host selects and confirms a model before offering its reasoning options. This adapter does
+not accept `all-models` in acp.json because ACP session configuration is not a complete matrix.
+Omission preserves legacy behavior. Require hostSdk >=0.1.7 for this declaration.

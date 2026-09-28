@@ -101,3 +101,34 @@ test('context windows use a separate capability, revalidate the model, and requi
   catalog = { ...catalog, current: { ...option, contextWindows: [] } };
   await assert.rejects(service.apply(capable, change, catalog, null), /不支持/);
 }));
+
+test('current-model catalogs require sequential selection, refreshed options and native confirmation', () => withModule(async ({ createModelConfigurationService, reasoningEffortLabel }) => {
+  const level = model => JSON.stringify([model, [{ id: 'effort', value: 'medium' }]]);
+  const model = id => ({ ...option, reference: id, id, reasoningEfforts: [{ id: level(id), label: 'Medium' }] });
+  const first = model('first'), second = model('second');
+  let catalog = { ...initialCatalog, parameterScope: 'current-model', models: [first, second], current: first, currentReasoningEffort: level('first'), reasoningEfforts: first.reasoningEfforts };
+  const calls = [];
+  let confirm = true;
+  const service = createModelConfigurationService({
+    getSessionModels: async () => structuredClone(catalog), getSessionExecutionProfile: async () => null,
+    facade: { invoke: async (_session, capability, input) => {
+      calls.push([capability, input]);
+      if (confirm && capability === 'model.select') catalog = { ...catalog, current: second, currentReasoningEffort: null, reasoningEfforts: second.reasoningEfforts };
+      if (confirm && capability === 'model.reasoning') catalog.currentReasoningEffort = input.level;
+    } },
+  });
+  await assert.rejects(service.apply(session, { kind: 'configuration', model: 'second', reasoningEffort: level('second') }, catalog, null), /先切换模型/);
+  assert.equal(calls.length, 0);
+  const stale = structuredClone(catalog);
+  const changed = await service.apply(session, { kind: 'configuration', model: 'second', reasoningEffort: null }, catalog, null);
+  assert.equal(changed.catalog.current.reference, 'second');
+  await assert.rejects(service.apply(session, { kind: 'configuration', model: 'first', reasoningEffort: level('first') }, stale, null), /先切换模型/);
+  const result = await service.apply(session, { kind: 'configuration', model: 'second', reasoningEffort: level('second') }, catalog, null);
+  assert.deepEqual(calls.map(([cap]) => cap), ['model.select', 'model.reasoning'], 'reasoning does not reselect the model');
+  assert.equal(reasoningEffortLabel(result.catalog, result.catalog.currentReasoningEffort), 'Medium');
+  assert.equal(reasoningEffortLabel(result.catalog, level('first')), null, 'never display an unrecognized opaque ID');
+  confirm = false;
+  catalog.currentReasoningEffort = null;
+  await assert.rejects(service.apply(session, { kind: 'configuration', model: 'second', reasoningEffort: level('second') }, catalog, null), /未确认/);
+  await assert.rejects(service.apply(session, { kind: 'model', model: 'first' }, catalog, null), /未确认/);
+}));

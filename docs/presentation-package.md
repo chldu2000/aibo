@@ -156,6 +156,12 @@ Ctrl/Command+Shift+Backspace 是宿主保留的恢复快捷键。固定绘制桥
 Enter 保持换行。禁用/只读输入框不触发，不能同时声明 keydown 事件。生成的意图
 仍受宿主当前动作目录和严格版本门禁控制，不授予新的业务能力。
 
+模型目录可含 `parameterScope: "current-model"`（见 [模型合同](model-configuration.md)）。
+此时工作台先提供模型选择，再提供当前模型的推理选项，所有动作继续使用宿主 token；
+不得根据其他模型的空列表推断不支持。默认工作台复用两个公开 `Select` 控件，
+只定制 `ModelMatrix` 的旧皮肤继续继承这些选择器；整窗皮肤消费相同目录范围。
+该可选快照字段不改变 wire protocol 版本，旧包的动作仍受当前模型及 revision 门禁限制。
+
 ## 独立控件呈现
 
 声明 controls 角色后，宿主以 `surface: 'controls'` 调用同一个入口。公开目录按 hostApi 分版本，

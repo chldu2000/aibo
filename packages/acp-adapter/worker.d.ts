@@ -15,6 +15,8 @@ export type AcpAgentConfig = {
   authMethodId?: string;
   clientMeta?: Record<string, unknown>;
   persistsEmptySessions?: boolean;
+  /** SDK 0.1.7: parameters are discovered after selecting a model. */
+  parameterScope?: 'current-model';
   requestPrefix?: string;
 };
 export declare function acpAgentConfig(config: unknown, manifest: Record<string, any>): AcpAgentConfig & { args: string[] };

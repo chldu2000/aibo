@@ -41,7 +41,9 @@ export function conversationActions(state: PresentationConversation): Spec[] {
     if (!state.modelCatalogLoading) add('loadModels');
     if (!state.modelCatalogLoading && capable('model.select')) for (const model of state.modelCatalog?.models ?? []) {
       add('selectModel', [model.reference, null]);
-      if (capable('model.reasoning')) for (const effort of model.reasoningEfforts) add('selectModel', [model.reference, effort.id]);
+      if (capable('model.reasoning') && (state.modelCatalog?.parameterScope !== 'current-model' || model.reference === state.modelCatalog.current?.reference)) {
+        for (const effort of model.reasoningEfforts) add('selectModel', [model.reference, effort.id]);
+      }
     }
     const fastTier = state.modelCatalog?.current?.serviceTiers.find(tier => tier.label.trim().toLowerCase() === 'fast');
     if (!state.modelCatalogLoading && capable('model.service-tier') && fastTier) add('selectServiceTier', [state.modelCatalog?.currentServiceTier === fastTier.id ? 'default' : fastTier.id]);

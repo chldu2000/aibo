@@ -100,6 +100,7 @@ interface SessionServiceTierOption {
 }
 
 interface SessionModelCatalog {
+  parameterScope?: 'all-models' | 'current-model';
   current: SessionModelOption | null;
   models: SessionModelOption[];
   currentReasoningEffort: string | null;

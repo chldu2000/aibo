@@ -34,6 +34,7 @@ export function acpAgentConfig(config, manifest) {
   if (!mapped.length || Object.keys(modes).some(key => !INTERACTIONS.includes(key)) || !mapped.every(interaction => typeof modes[interaction] === 'string' && modes[interaction])) fail('modes must map ask, plan, edit or auto to native mode IDs');
   if (c.authMethodId !== undefined && (typeof c.authMethodId !== 'string' || !c.authMethodId)) fail('authMethodId must be a non-empty string');
   if (c.clientMeta !== undefined && (!c.clientMeta || typeof c.clientMeta !== 'object' || Array.isArray(c.clientMeta) || JSON.stringify(c.clientMeta).length > 8192)) fail('clientMeta must be an object under 8 KiB');
+  if (c.parameterScope !== undefined && c.parameterScope !== 'current-model') fail('parameterScope must be current-model for ACP session options');
   if (c.persistsEmptySessions !== undefined && typeof c.persistsEmptySessions !== 'boolean') fail('persistsEmptySessions must be a boolean');
   if (c.requestPrefix !== undefined && !/^[a-z][a-z0-9-]{0,31}$/.test(c.requestPrefix)) fail('requestPrefix must be a lowercase identifier');
   if (c.elicitation !== undefined && c.elicitation !== true) fail('elicitation must be true when present');
@@ -109,6 +110,7 @@ export function extensionFromConfig(config, manifest, manifestUrl) {
     args,
     authMethodId: config.authMethodId,
     clientMeta: config.clientMeta,
+    parameterScope: config.parameterScope,
     persistsEmptySessions: config.persistsEmptySessions ?? true,
     requestPrefix: config.requestPrefix ?? 'acp',
     recoverySchema: `${manifest.pluginId}.recovery`,

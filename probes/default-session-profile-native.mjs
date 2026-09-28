@@ -30,14 +30,21 @@ try {
   check(profile.enforced.interactionMode==='plan','default must be declared Plan');
   const ready=await api.resumeAgentSession(pending.id);
   check(ready.state==='idle'&&ready.capabilities.includes('session.create'),'native session must open');
+  let parameterScope=null;
+  if(config.expectedParameterScope){
+    const catalog=await api.getSessionModels(ready.id);
+    parameterScope=catalog.parameterScope;
+    check(parameterScope===config.expectedParameterScope,'native model projection must preserve parameter scope');
+    check(catalog.current&&catalog.models.length,'native model catalog must have a current model');
+  }
   await api.closeAgentSession(ready.id);
-  await fetch('/__default_report',{method:'POST',body:JSON.stringify({ok:true,pluginVersion:plugin.pluginVersion,mode:profile.enforced.interactionMode,deferred:true,nativeOpen:true,closed:true})});
+  await fetch('/__default_report',{method:'POST',body:JSON.stringify({ok:true,pluginVersion:plugin.pluginVersion,mode:profile.enforced.interactionMode,deferred:true,nativeOpen:true,closed:true,parameterScope})});
 } catch(error) {
   await fetch('/__default_report',{method:'POST',body:JSON.stringify({ok:false,error:String(error)})});
 }`;
-const server = await createServer({ server: { host:'127.0.0.1', port:0, hmr:false, watch:null }, plugins:[{
+const server = await createServer({ server: { host:'127.0.0.1', port:0, strictPort:false, hmr:false, watch:null }, plugins:[{
   name:'default-session-profile-probe', configureServer(server) {
-    server.middlewares.use('/__default_config', (_req,res) => { res.setHeader('Content-Type','application/json'); res.end(JSON.stringify({workspacePath,packagePath})); });
+    server.middlewares.use('/__default_config', (_req,res) => { res.setHeader('Content-Type','application/json'); res.end(JSON.stringify({workspacePath,packagePath,expectedParameterScope:process.env.AIBO_EXPECT_PARAMETER_SCOPE??null})); });
     server.middlewares.use('/__default_report', (req,res) => { let body=''; req.on('data',chunk=>body+=chunk); req.on('end',()=>{res.end('ok');finish(JSON.parse(body));}); });
     server.middlewares.use('/__default_session', (_req,res) => { res.setHeader('Content-Type','text/html');res.end('<!doctype html><html><body>Default session profile probe<script type="module">'+script+'</script></body></html>'); });
   },

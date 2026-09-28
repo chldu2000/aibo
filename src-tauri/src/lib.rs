@@ -223,6 +223,7 @@ pub(crate) struct SessionModelOption {
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub(crate) struct SessionModelCatalog {
+    pub(crate) parameter_scope: String,
     pub(crate) current: Option<SessionModelOption>,
     pub(crate) models: Vec<SessionModelOption>,
     pub(crate) current_reasoning_effort: Option<String>,
@@ -3971,6 +3972,11 @@ async fn get_session_models(
 }
 
 fn plugin_model_catalog(result: &serde_json::Value, reasoning: Option<&serde_json::Value>) -> Result<SessionModelCatalog, CoreError> {
+    let parameter_scope = match result.get("parameterScope") {
+        None => "all-models",
+        Some(serde_json::Value::String(scope)) if scope == "all-models" || scope == "current-model" => scope.as_str(),
+        _ => return Err(CoreError::SessionOperation("plugin model catalog returned invalid parameterScope".into())),
+    }.to_owned();
     let raw_models = result.get("models").and_then(serde_json::Value::as_array)
         .ok_or_else(|| CoreError::SessionOperation("plugin model catalog did not return models".to_owned()))?;
     let models = raw_models.iter().filter_map(|item| {
@@ -4028,7 +4034,7 @@ fn plugin_model_catalog(result: &serde_json::Value, reasoning: Option<&serde_jso
     }).collect::<Vec<_>>();
     let current_service_tier = result.get("currentServiceTier").and_then(serde_json::Value::as_str).map(ToOwned::to_owned);
     let current_context_window = result.get("currentContextWindow").and_then(serde_json::Value::as_str).map(ToOwned::to_owned);
-    Ok(SessionModelCatalog { current, models, current_reasoning_effort, reasoning_efforts, current_service_tier, current_context_window })
+    Ok(SessionModelCatalog { parameter_scope, current, models, current_reasoning_effort, reasoning_efforts, current_service_tier, current_context_window })
 }
 
 
@@ -5693,6 +5699,21 @@ mod tests {
         let old = plugin_model_catalog(&serde_json::json!({"models":[{"id":"old"}]}), None).unwrap();
         assert_eq!(old.current_context_window, None);
         assert!(old.models[0].context_windows.is_empty());
+    }
+
+    #[test]
+    fn plugin_model_catalog_validates_parameter_scope_and_keeps_legacy_matrix() {
+        let mut value = serde_json::json!({"models":[{"id":"one"},{"id":"two"}],"current":"one"});
+        assert_eq!(plugin_model_catalog(&value, None).unwrap().parameter_scope, "all-models");
+        for scope in ["all-models", "current-model"] {
+            value["parameterScope"] = serde_json::json!(scope);
+            let catalog = plugin_model_catalog(&value, None).unwrap();
+            assert_eq!(serde_json::to_value(catalog).unwrap()["parameterScope"], scope);
+        }
+        for invalid in [serde_json::json!("matrix"), serde_json::json!(null), serde_json::json!(true)] {
+            value["parameterScope"] = invalid;
+            assert!(plugin_model_catalog(&value, None).is_err());
+        }
     }
 
     #[test]

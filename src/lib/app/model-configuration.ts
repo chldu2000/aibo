@@ -14,6 +14,13 @@ export type ModelConfigurationState = {
   defaultAction: 'preserve' | 'reset';
 };
 
+/** IDs may encode model-specific parameter combinations; only labels are display text. */
+export function reasoningEffortLabel(catalog: SessionModelCatalog | null, id: string | null): string | null {
+  if (!id) return null;
+  return [...(catalog?.current?.reasoningEfforts ?? []), ...(catalog?.reasoningEfforts ?? [])]
+    .find(option => option.id === id)?.label ?? null;
+}
+
 /** The bound plugin owns its configuration; an old execution profile is not a fallback. */
 export function modelConfigurationState(
   session: Pick<CapabilitySession, 'pluginInstallationId'> | null,
@@ -68,7 +75,8 @@ export function createModelConfigurationService(ports: {
       if (changesTier && !session.capabilities.includes('model.service-tier')) throw new Error('capability_unsupported: model.service-tier');
       if (change.kind === 'reasoning' && level === null) throw new Error('此插件未提供恢复默认推理强度的能力。');
       if (changesModel && !change.model) throw new Error('此插件未提供恢复默认模型的能力。');
-      const available = catalog ?? await ports.getSessionModels(session.id);
+      const available = !catalog || catalog.parameterScope === 'current-model'
+        ? await ports.getSessionModels(session.id) : catalog;
       if (changesTier) {
         const supported = change.serviceTier === 'default'
           || available.current?.serviceTiers.some(option => option.id === change.serviceTier);
@@ -78,16 +86,24 @@ export function createModelConfigurationService(ports: {
       }
       const selected = changesModel ? available.models.find(option => option.reference === change.model) : available.current;
       if (changesModel && !selected) throw new Error('所选模型不在当前模型目录中，请刷新后重试。');
+      const sequential = available.parameterScope === 'current-model';
+      if (sequential && level !== null && selected?.reference !== available.current?.reference) {
+        throw new Error('请先切换模型，读取该模型的推理选项后再选择强度。');
+      }
       if (level !== null && !(selected?.reasoningEfforts ?? available.reasoningEfforts).some(option => option.id === level)) {
         throw new Error('所选模型不支持此推理强度。');
       }
-      if (changesModel && selected) {
+      if (changesModel && selected && !(sequential && level !== null)) {
         await ports.facade.invoke(session, 'model.select', selected.provider
           ? { action: 'set', provider: selected.provider, modelId: selected.id }
           : { action: 'set', reference: selected.reference });
       }
       if (level !== null) await ports.facade.invoke(session, 'model.reasoning', { action: 'set', level });
       const updatedCatalog = await ports.getSessionModels(session.id);
+      if (sequential && (updatedCatalog.current?.reference !== selected?.reference
+        || level !== null && updatedCatalog.currentReasoningEffort !== level)) {
+        throw new Error('插件未确认所选模型或推理强度，请刷新模型配置。');
+      }
       return { catalog: updatedCatalog, profile: await ports.getSessionExecutionProfile(session.id) };
     },
   };

@@ -6,8 +6,8 @@
   import { commandComposerInsertion } from '$lib/app/agent-commands';
   import { sessionAgentKind } from '$lib/app/agent-kind';
   import { filterMentionSuggestions, type MentionCategory } from '$lib/app/mention-suggestions';
-  import type { ModelConfigurationState } from '$lib/app/model-configuration';
-  import { AgentStatusMark, Button, Card, Icon, ModelContextSelect, ModelMatrix, SessionControlMark, Textarea } from '$lib/ui-kit';
+  import { reasoningEffortLabel, type ModelConfigurationState } from '$lib/app/model-configuration';
+  import { AgentStatusMark, Button, Card, Icon, ModelContextSelect, ModelMatrix, Select, SessionControlMark, Textarea } from '$lib/ui-kit';
   import type { UiModelMatrixRow } from '$lib/ui-kit';
   import type { AgentCommand, AgentCommandCategory, ContextAttachment, SessionControlId, SessionExecutionProfile, SessionModelCatalog, Session, WorkspacePathSuggestion } from '$lib/types';
   import { scrollActiveOptionIntoView } from './active-option-scroll';
@@ -194,7 +194,8 @@
     modelOverride || modelCatalog?.current?.label || activeProfile?.model || (modelCatalogLoading ? '正在读取模型…' : '默认模型'),
   );
   const currentReasoningEffort = $derived(modelConfiguration.currentReasoningEffort);
-  const reasoningLabel = $derived(currentReasoningEffort ? ` · ${currentReasoningEffort}` : '');
+  const currentEffortLabel = $derived(reasoningEffortLabel(modelCatalog, currentReasoningEffort));
+  const reasoningLabel = $derived(currentEffortLabel ? ` · ${currentEffortLabel}` : '');
   const selectedReasoningEffort = $derived(modelConfiguration.selectedReasoningEffort);
   const reasoningOptions = $derived(
     modelCatalog?.current?.reasoningEfforts?.length
@@ -618,6 +619,26 @@
                 <div class="composer-suggestions-empty">{modelCatalog ? '正在更新模型配置，以下为上次确认的信息…' : '正在读取可用模型…'}</div>
               {/if}
               {#if modelCatalog && modelCatalog.models.length > 0}
+                {#if modelCatalog.parameterScope === 'current-model'}
+                  <div class="composer-model-selectors">
+                    <Select
+                      aria-label="模型"
+                      options={modelCatalog.models.map(model => ({ value: model.reference, label: model.label }))}
+                      value={modelCatalog.current?.reference ?? ''}
+                      placeholder="选择模型"
+                      disabled={matrixDisabled || modelCatalogLoading || !sessionCapabilities.includes('model.select')}
+                      onSelect={(model) => void onSelectModelConfiguration(model, null)}
+                    />
+                    <Select
+                      aria-label="推理强度"
+                      options={reasoningOptions.map(option => ({ value: option.id, label: option.label }))}
+                      value={selectedReasoningEffort ?? ''}
+                      placeholder={modelCatalogLoading || busy ? '正在更新…' : reasoningOptions.length ? '选择推理强度' : '此模型无可选推理强度'}
+                      disabled={matrixDisabled || modelCatalogLoading || !modelCatalog.current || !reasoningOptions.length || !sessionCapabilities.includes('model.reasoning')}
+                      onSelect={(effort) => { if (modelCatalog?.current) void onSelectModelConfiguration(modelCatalog.current.reference, effort); }}
+                    />
+                  </div>
+                {:else}
                 <ModelMatrix
                   columns={matrixReasoningOptions}
                   rows={matrixRows}
@@ -631,6 +652,7 @@
                   }}
                   onSelectServiceTier={(serviceTier) => void onSelectServiceTier(serviceTier)}
                 />
+                {/if}
               {:else if sessionRunning}
                 <div class="composer-suggestions-empty">尚无已确认的模型配置，回合结束后将自动读取。</div>
               {:else if !modelCatalogLoading}
@@ -688,6 +710,13 @@
     justify-content: space-between;
     gap: 12px;
     padding-right: 8px;
+  }
+
+  .composer-model-selectors {
+    display: grid;
+    grid-template-columns: minmax(0, 2fr) minmax(0, 1fr);
+    gap: 12px;
+    padding: 8px;
   }
 
   .composer-model-options {

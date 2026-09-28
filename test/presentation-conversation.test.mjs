@@ -164,3 +164,23 @@ test('starting sessions keep the draft editor but expose no execution or configu
  assert.ok(!operations(refreshing).includes('selectModel'));
  assert.ok(operations(refreshing).includes('draft'));
 });
+
+test('sequential model selection exposes only current parameters and retires old effort actions',()=>{
+ const first={reference:'first',label:'First',reasoningEfforts:[{id:'first-high',label:'High'}],serviceTiers:[]};
+ const second={reference:'second',label:'Second',reasoningEfforts:[{id:'second-low',label:'Low'}],serviceTiers:[]};
+ const scoped={...state,modelCatalog:{...state.modelCatalog,parameterScope:'current-model',current:first,models:[first,second]},modelConfiguration:{...state.modelConfiguration,currentReasoningEffort:'first-high'}};
+ const directory=createConversationDirectory();
+ const actions=directory.project(scoped);
+ assert.deepEqual(actions.filter(a=>a.operation==='selectModel').map(a=>a.args),[['first',null],['first','first-high'],['second',null]]);
+ const token=actions.find(a=>a.args[1]==='first-high').token;
+ const switched={...scoped,modelCatalog:{...scoped.modelCatalog,current:second}};
+ directory.project(switched);
+ assert.equal(directory.resolve(switched,context,{id:token,event:'click',context}),null);
+ assert.ok(!conversationActions({...scoped,modelCatalogLoading:true}).some(a=>a.operation==='selectModel'));
+ const tree=renderConversation(scoped,actions);
+ const nodes=[];function visit(node){if(!node)return;nodes.push(node);for(const child of node.children??[])visit(child);}visit(tree);
+ assert.equal(nodes.find(n=>n.key==='models:title').text,'First · High');
+ assert.ok(nodes.some(n=>n.key==='model:select:second'));
+ assert.ok(nodes.some(n=>n.key==='models:reasoning'));
+ assert.ok(!nodes.some(n=>n.key==='model:effort:second:second-low'));
+});

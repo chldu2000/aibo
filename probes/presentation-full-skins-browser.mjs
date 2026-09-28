@@ -13,9 +13,10 @@ page.on('pageerror',error=>errors.push(error.stack ?? error.message));page.setDe
 try {
   const builtInKit = process.env.AIBO_BUILTIN_KIT ?? 'material3';
   assert.ok(['ak-ui','material3'].includes(builtInKit));
-  await page.addInitScript(kit => {
-    if (window === window.top && !localStorage.getItem('aibo.appearance.v1')) localStorage.setItem('aibo.appearance.v1', JSON.stringify({kitId:kit,themeId:'light'}));
-  }, builtInKit);
+  const builtInTheme = process.env.AIBO_BUILTIN_THEME ?? 'light';
+  await page.addInitScript(({kit,theme}) => {
+    if (window === window.top && !localStorage.getItem('aibo.appearance.v1')) localStorage.setItem('aibo.appearance.v1', JSON.stringify({kitId:kit,themeId:theme}));
+  }, {kit:builtInKit,theme:builtInTheme});
   await page.addInitScript(pkg=>{
     let callback=0;window.presentationCopies=[];window.presentationLinks=[];Object.defineProperty(navigator,'clipboard',{value:{writeText:async value=>window.presentationCopies.push(value)},configurable:true});window.open=(...args)=>{window.presentationLinks.push(args);return null};window.presentationCommands=[];window.presentationInstallable=pkg;
     const workspaces = ['w1','w2'].map(id=>({id,label:id,path:'/probe/'+id,trust:'trusted',createdAt:'2026-09-13',updatedAt:'2026-09-13',lastOpenedAt:null}));
@@ -23,6 +24,15 @@ try {
     window.navigationCalls=[];
     const model={reference:'model-a',label:'Model A',id:'a',provider:'probe',description:null,isDefault:true,defaultReasoningEffort:null,serviceTiers:[],contextWindows:[],reasoningEfforts:[{id:'high',label:'High',description:null}]};
     const catalog={current:model,models:[model],currentReasoningEffort:null,reasoningEfforts:model.reasoningEfforts};
+    window.modelMutations=[];
+    window.setSequentialCatalog=()=>{
+      const make=(reference,label,levels)=>({...model,reference,id:reference,provider:null,label,isDefault:false,reasoningEfforts:levels.map(value=>({id:JSON.stringify([reference,[{id:'effort',value}]]),label:value==='high'?'High':'Medium',description:null}))});
+      const first=make('first','First Model',['high']);
+      const second=make('second','Second Model',['medium','high']);
+      Object.assign(catalog,{parameterScope:'current-model',current:first,models:[first,second],currentReasoningEffort:first.reasoningEfforts[0].id,reasoningEfforts:first.reasoningEfforts});
+      window.modelMutations=[];
+    };
+    window.setSequentialCatalog();
     let agentHandler=null,sequence=0;
     window.emitAgent=(type,payload)=>{const event={schemaVersion:'2.0',eventId:'event:'+ ++sequence,generationId:'generation',sequence,occurredAt:new Date().toISOString(),source:{pluginId:'dev.example.provider',pluginVersion:'1.0.0'},workspaceId:'w1',sessionId:'s1',turnId:'turn',type,payload};if(type==='session.state_changed')sessions[0].state=payload.state;window['_'+agentHandler]({event:'agent-event',id:1,payload:event});};
 
@@ -46,7 +56,18 @@ try {
         if(command==='invoke_agent_capability'&&args.capability==='command.list')return {commands:[{name:'help',description:'Help command',source:'agent'},{name:'hello',description:'Hello command',source:'agent'},{name:'heal',description:'Healing skill',source:'skill'},{name:'height',description:'Height prompt',source:'prompt'}]};
         if(command==='search_workspace_paths')return [{path:'src/one.ts',isDirectory:false},{path:'src/two.ts',isDirectory:false}];
         if(command==='get_timeline')return [{id:'message',sessionId:args.sessionId,turnId:'turn',externalMessageId:null,role:'assistant',toolName:'tool-name',entryType:'note',content:'Complete timeline data\n\n## Rich heading\n\n**Bold message** and `inline` [Reference](https://example.invalid)\n\n- Item one\n- Item two\n\n```js\nconst answer = 42;\n```\n[AIBO_CONTEXT_ATTACHMENTS]internal metadata[/AIBO_CONTEXT_ATTACHMENTS]\n\n'+pkg.markdownTechnical,status:'completed',createdAt:'2026-09-13',updatedAt:'2026-09-13'},...([{id:'tool-message',role:'tool',toolName:'commandExecution',entryType:'tool_call',content:'**literal tool arguments**\n<script>literal</script>'},{id:'tool-result',role:'tool',toolName:'commandExecution',entryType:'tool_result',content:'literal tool result'},{id:'reasoning-message',role:'system',toolName:'reasoning',entryType:'note',content:'## Reasoning detail'}].map(item=>({...item,sessionId:args.sessionId,turnId:'turn',externalMessageId:null,status:'completed',createdAt:'2026-09-13',updatedAt:'2026-09-13'}))),...Array.from({length:16},(_,index)=>({id:'scroll-'+index,sessionId:args.sessionId,turnId:'turn',externalMessageId:null,role:'assistant',toolName:null,entryType:'note',content:'Scroll message '+index+'\n\n'+('Anchor paragraph. '.repeat(30)),status:'completed',createdAt:'2026-09-13',updatedAt:'2026-09-13'}))];
-        if(command==='invoke_agent_capability'){if(args.capability==='model.reasoning')catalog.currentReasoningEffort=args.input.level;return {};}
+        if(command==='invoke_agent_capability'){
+          if(['model.select','model.reasoning'].includes(args.capability)){
+            window.modelMutations.push(args);
+            await new Promise(resolve=>setTimeout(resolve,400));
+            if(args.capability==='model.select'){
+              catalog.current=catalog.models.find(model=>model.reference===args.input.reference||model.id===args.input.modelId);
+              catalog.reasoningEfforts=catalog.current.reasoningEfforts;
+              catalog.currentReasoningEffort=catalog.reasoningEfforts[0]?.id??null;
+            } else catalog.currentReasoningEffort=args.input.level;
+          }
+          return {};
+        }
         if(command==='send_agent_prompt')return {...sessions.find(session=>session.id===args.sessionId),state:'idle'};
         if(command==='resolve_agent_user_input')return;
         if(command==='get_composer_draft')return null;
@@ -108,6 +129,52 @@ try {
     }
   }
   await page.evaluate(()=>window.emitAgent('session.state_changed',{state:'idle'}));
+  await page.evaluate(()=>window.setSequentialCatalog());
+  await page.locator('.composer-model-control').click();
+  const modelSelect=page.getByRole('combobox',{name:'模型',exact:true});
+  await modelSelect.waitFor();
+  assert.equal(await page.getByRole('table',{name:'模型与推理强度'}).count(),0);
+  await modelSelect.click();
+  await page.getByRole('option',{name:'Second Model',exact:true}).click();
+  const reasoningSelect=page.getByRole('combobox',{name:'推理强度',exact:true});
+  assert.equal(await reasoningSelect.isDisabled(),true,'old options disabled while native model change is pending');
+  await page.waitForFunction(()=>!document.querySelector('[role="combobox"][aria-label="推理强度"]').disabled);
+  await reasoningSelect.click();
+  await page.getByRole('option',{name:'High',exact:true}).click();
+  await page.getByRole('button',{name:'Second Model · High',exact:true}).waitFor();
+  assert.deepEqual(await page.evaluate(()=>window.modelMutations.map(call=>call.capability)),['model.select','model.reasoning']);
+  await page.screenshot({path:`/tmp/aibo-sequential-${builtInKit}-${builtInTheme}.png`});
+  await page.locator('.composer-model-control').click();
+  if (process.env.AIBO_MODEL_ONLY === '1') {
+    const external=[];
+    if (process.env.AIBO_MODEL_EXTERNAL === '1') for (const pkg of built.packages) {
+      await page.evaluate(pkg=>window.presentationInstallable=pkg,pkg);
+      await page.getByRole('button',{name:/^打开工作台设置/}).click();
+      await page.getByRole('tab',{name:'插件与能力',exact:true}).click();
+      await page.getByRole('button',{name:'安装皮肤插件',exact:true}).click();
+      await page.getByRole('tab',{name:'外观',exact:true}).click();
+      await page.getByRole('button',{name:pkg.release.manifest.displayName+' '+pkg.release.manifest.version,exact:true}).click();
+      await page.getByRole('button',{name:'关闭设置',exact:true}).click();
+      const frame=page.frameLocator('.presentation-external iframe');
+      await frame.getByRole('heading',{name:'工作区',exact:true}).waitFor();
+      if(!await frame.getByRole('button',{name:'s1',exact:true}).count())await frame.getByRole('button',{name:'w1',exact:true}).click();
+      await frame.getByRole('button',{name:'s1',exact:true}).click();
+      await page.evaluate(()=>window.setSequentialCatalog());
+      if(await frame.locator('[data-presentation-key="conversation:models"]').getAttribute('open')===null)await frame.locator('[data-presentation-key="models:title"]').click();
+      await frame.getByRole('button',{name:'刷新模型',exact:true}).click();
+      await frame.getByRole('button',{name:'Second Model',exact:true}).click();
+      await frame.locator('[data-presentation-key="models:reasoning"]').getByRole('button',{name:'High',exact:true}).click();
+      await frame.getByText('Second Model · High',{exact:true}).waitFor();
+      assert.deepEqual(await page.evaluate(()=>window.modelMutations.map(call=>call.capability)),['model.select','model.reasoning']);
+      await page.screenshot({path:`/tmp/aibo-sequential-external-${pkg.release.manifest.id.split('.').at(-1)}.png`});
+      external.push(pkg.release.manifest.id);
+      await page.getByRole('button',{name:/^打开工作台设置/}).click();
+      await page.getByRole('button',{name:'恢复内置皮肤',exact:true}).click();
+      await page.getByRole('button',{name:'关闭设置',exact:true}).click();
+    }
+    assert.deepEqual(errors,[]);
+    console.log(JSON.stringify({ok:true,kit:builtInKit,theme:builtInTheme,sequential:true,external,nativePort:'mocked; actual App'}));
+  } else {
   const tabs=page.getByRole('tablist',{name:'会话视图'});
   const toolGroup=page.locator('.tool-group').filter({hasText:'2 个工具调用'}).first();
   await toolGroup.locator(':scope > summary').click();
@@ -173,6 +240,14 @@ try {
     await auxiliarySplitter.focus();await auxiliarySplitter.press('ArrowRight');
     await frame.locator(`[role="separator"][aria-label="调整侧边面板宽度"][aria-valuenow="${auxiliaryWidth-16}"]`).waitFor();
 
+    await page.evaluate(()=>window.setSequentialCatalog());
+    await frame.locator('[data-presentation-key="models:title"]').click();
+    await frame.getByRole('button',{name:'刷新模型',exact:true}).click();
+    await frame.getByRole('button',{name:'Second Model',exact:true}).click();
+    await frame.locator('[data-presentation-key="models:reasoning"]').getByRole('button',{name:'High',exact:true}).click();
+    await frame.getByText('Second Model · High',{exact:true}).waitFor();
+    assert.deepEqual(await page.evaluate(()=>window.modelMutations.map(call=>call.capability)),['model.select','model.reasoning']);
+    await frame.locator('[data-presentation-key="models:title"]').click();
     const composer=frame.getByRole('textbox',{name:'消息',exact:true});await composer.waitFor();
     await composer.fill('/he');await frame.getByRole('listbox',{name:'命令建议'}).waitFor();
     await composer.press('ArrowDown');await composer.press('Enter');
@@ -359,6 +434,7 @@ try {
   const approvalChecks=await probePresentationApprovalFault(page);
   await writeFile('/tmp/aibo-presentation-approval-fault-browser.json',JSON.stringify({passed:true,browser:browser.version(),nativePort:'mocked; actual App, real Worker infinite loop, Playwright pointer input',checks:approvalChecks},null,2)+'\n');
   assert.deepEqual(errors,[]);
-  const result={passed:true,nativePort:'mocked; actual App and independently built full skin Workers',browser:browser.version(),packages:built.packages.map(({release})=>({id:release.manifest.id,version:release.manifest.version,digest:release.digest})),checks:[...approvalChecks,'command filters are separate pressed buttons, editor controls only the option list, history supports PageDown','desktop history and composer scroll independently, send remains visible, named history and editor appear in the accessibility tree','ordinary message and tool group anchors transfer across different scroll containers','default and external composer focus and selection transfer in both directions','command category Tab and reverse Tab, mouse focus return, primary path confirmation','command and path keyboard completion, caret placement and Escape newline','answer draft reload waits for matching live request and clears after submit','focus and review modes, reversed drag, draft preservation and mode reload','reload restores both widths, panel visibility and selected view','both splitter drag directions and auxiliary keyboard resize','keyboard width adjustment and default/external width retention','primary Enter submits through host action','consecutive tool group with completion count','literal tool payloads and native reasoning disclosure in both skins','both full packages install and activate','workspace and session navigation','rich timeline headings, lists, inline and fenced code','host-bound code copy and link actions','attachment transport metadata hidden','rapid Chinese/English input and send','Git/context panel switching','requested and enforced permissions remain distinct','attachment status, strategy and size','diagnostic details remain visible','default/external switch retains host draft']};
+  const result={passed:true,nativePort:'mocked; actual App and independently built full skin Workers',browser:browser.version(),packages:built.packages.map(({release})=>({id:release.manifest.id,version:release.manifest.version,digest:release.digest})),checks:['sequential model and reasoning selection through actual App and both external workbenches; native boundary mocked',...approvalChecks,'command filters are separate pressed buttons, editor controls only the option list, history supports PageDown','desktop history and composer scroll independently, send remains visible, named history and editor appear in the accessibility tree','ordinary message and tool group anchors transfer across different scroll containers','default and external composer focus and selection transfer in both directions','command category Tab and reverse Tab, mouse focus return, primary path confirmation','command and path keyboard completion, caret placement and Escape newline','answer draft reload waits for matching live request and clears after submit','focus and review modes, reversed drag, draft preservation and mode reload','reload restores both widths, panel visibility and selected view','both splitter drag directions and auxiliary keyboard resize','keyboard width adjustment and default/external width retention','primary Enter submits through host action','consecutive tool group with completion count','literal tool payloads and native reasoning disclosure in both skins','both full packages install and activate','workspace and session navigation','rich timeline headings, lists, inline and fenced code','host-bound code copy and link actions','attachment transport metadata hidden','rapid Chinese/English input and send','Git/context panel switching','requested and enforced permissions remain distinct','attachment status, strategy and size','diagnostic details remain visible','default/external switch retains host draft']};
   await writeFile('/tmp/aibo-full-skins-browser.json',JSON.stringify(result,null,2)+'\n');console.log(JSON.stringify(result));
-} catch(error) {console.error(JSON.stringify({errors}));throw error;} finally {await browser.close();await server.close();await built.dispose();}
+}
+} catch(error) {await page.screenshot({path:'/tmp/aibo-full-skins-failure.png'});console.error(JSON.stringify({errors}));throw error;} finally {await browser.close();await server.close();await built.dispose();}

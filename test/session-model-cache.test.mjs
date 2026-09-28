@@ -38,3 +38,11 @@ test('concurrent catalog consumers share discovery, errors are retryable and mut
   await assert.rejects(cache.load('one',async()=>{throw Error('offline')}),/offline/);
   assert.deepEqual(await cache.load('one',async()=>catalog),catalog);
 });
+
+test('parameter scope survives persistence and invalid scope cannot enable stale selectors',()=>{
+ const disk=storage();const cache=createSessionModelCache(disk);
+ cache.set('new',{...catalog,parameterScope:'current-model'});
+ assert.equal(createSessionModelCache(disk).get('new').parameterScope,'current-model');
+ cache.set('invalid',{...catalog,parameterScope:'invented'});
+ assert.equal(createSessionModelCache(disk).get('invalid'),undefined);
+});

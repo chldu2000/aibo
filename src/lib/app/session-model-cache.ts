@@ -21,6 +21,7 @@ function model(value: unknown): value is SessionModelOption {
 }
 function catalog(value: unknown): value is SessionModelCatalog {
   return record(value) && (value.current === null || model(value.current))
+    && (value.parameterScope === undefined || value.parameterScope === 'all-models' || value.parameterScope === 'current-model')
     && Array.isArray(value.models) && value.models.every(model)
     && Array.isArray(value.reasoningEfforts) && value.reasoningEfforts.every(option)
     && nullableString(value.currentReasoningEffort) && nullableString(value.currentServiceTier)

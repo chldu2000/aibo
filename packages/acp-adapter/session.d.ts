@@ -40,6 +40,8 @@ export type AcpExtension = {
   /** All native modes that may run write-authorized turns (for example Manual and Auto); defaults to `[writableMode]`. */
   writableModes?: readonly string[];
   persistsEmptySessions?: boolean;
+  /** SDK 0.1.7: parameters are discovered after selecting a model. */
+  parameterScope?: 'current-model';
   validateExecutionProfile(profile: unknown, permissions: readonly string[]): { mode: string; profile: Record<string, any> };
   commandCategory?(command: Record<string, any>): string;
   parameterized?(config: Record<string, any>, result: Record<string, any>): boolean;

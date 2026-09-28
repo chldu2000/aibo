@@ -662,7 +662,7 @@
   import { createSessionLifecycleController } from '$lib/app/session-lifecycle-controller';
   import { createSessionContextController } from '$lib/app/session-context-controller';
   import { createRefreshController } from '$lib/app/refresh-controller';
-  import { createModelConfigurationService, modelConfigurationState } from '$lib/app/model-configuration';
+  import { createModelConfigurationService, modelConfigurationState, reasoningEffortLabel } from '$lib/app/model-configuration';
   import type { ModelConfigurationChange } from '$lib/app/model-configuration';
   import { listCodexThreads, readCodexThread, forkCodexThread, getPiSessionTree, navigatePiSessionTree } from '$lib/api';
   import { createAgentFacade } from '$lib/app/agent-facade';
@@ -3051,7 +3051,7 @@
       sessionModelCatalogs.set(session.id, result.catalog);
       sessionModelCatalog = result.catalog;
       sessionModelOverride = null;
-      notice = `当前模型：${result.catalog.current?.label ?? '默认'} · ${result.catalog.currentReasoningEffort ?? '模型默认'}。`;
+      notice = `当前模型：${result.catalog.current?.label ?? '默认'} · ${reasoningEffortLabel(result.catalog, result.catalog.currentReasoningEffort) ?? '模型默认'}。`;
     } catch (error) {
       // A model update may have succeeded before a reasoning update failed.
       // Re-read the owner so the matrix does not pretend the combined operation rolled back.

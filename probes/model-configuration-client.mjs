@@ -2,14 +2,14 @@ import '/src/app.css';
 import { mount, unmount } from 'svelte';
 import { get } from 'svelte/store';
 import Composer from '/src/lib/components/app/Composer.svelte';
-import { setUiKit, activeThemeStyle } from '/src/lib/ui-kit/registry.ts';
+import { setUiKit, setUiTheme, activeThemeStyle } from '/src/lib/ui-kit/registry.ts';
 import { createAgentFacade } from '/src/lib/app/agent-facade.ts';
 import { createModelConfigurationService, modelConfigurationState } from '/src/lib/app/model-configuration.ts';
 const option = { reference: 'model', id: 'model', provider: null, label: 'Test Model', isDefault: true, defaultReasoningEffort: 'medium', reasoningEfforts: ['low', 'medium', 'high'].map(id => ({ id, label: id })) };
 const session = { id: 'codex-plugin-session', agent: 'dev.aibo.codex.agent', pluginInstallationId: 'release', capabilities: ['model.select', 'model.reasoning'] };
 const staleProfile = { requested: { reasoningEffort: null }, enforced: { reasoningEffort: null } };
 let catalog = { models: [option], current: option, currentReasoningEffort: 'high', reasoningEfforts: option.reasoningEfforts };
-let component, kit = 'shadcn';
+let component, kit = 'material3', theme = 'light';
 const calls = [];
 const service = createModelConfigurationService({
   getSessionExecutionProfile: async () => staleProfile,
@@ -23,14 +23,15 @@ const service = createModelConfigurationService({
 });
 window.modelProbe = {
   calls,
-  async render(nextKit = kit) {
+  async render(nextKit = kit, nextTheme = theme) {
+    theme = nextTheme;
     kit = nextKit;
     if (component) await unmount(component);
-    setUiKit(kit);
+    setUiKit(kit); setUiTheme(theme);
     document.body.dataset.uiKit = kit;
     document.body.style.cssText = get(activeThemeStyle) + ';padding:220px 32px 32px';
     component = mount(Composer, { target: document.getElementById('probe'), props: {
-      selectedAgent: 'codex', selectedSession: true, selectedSessionId: session.id,
+      selectedAgent: 'codex', selectedSession: true, sessionCapabilities: session.capabilities, selectedSessionId: session.id,
       sessionArchived: false, sessionRunning: false, selectedSessionArchiving: false, busy: false,
       attachments: [], executionProfile: staleProfile, modelCatalog: catalog, modelCatalogLoading: false,
       modelConfiguration: modelConfigurationState(session, catalog, staleProfile),

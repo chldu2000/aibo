@@ -175,6 +175,7 @@ export interface SessionServiceTierOption {
 }
 
 export interface SessionModelCatalog {
+  parameterScope?: 'all-models' | 'current-model';
   current: SessionModelOption | null;
   models: SessionModelOption[];
   currentReasoningEffort: string | null;

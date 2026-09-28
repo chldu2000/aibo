@@ -232,3 +232,33 @@ test('a mode switch the host did not commit fails the turn and is reverted befor
   transport.finishPrompt({ stopReason: 'end_turn' });
   assert.equal((await next).status, 'completed');
 });
+
+test('declared current-model catalogs refresh parameters on selection without copying other model options', async () => {
+  class ScopedTransport extends FakeTransport {
+    selected = 'one';
+    configs() { return [
+      {id:'model',category:'model',type:'select',currentValue:this.selected,options:[{value:'one'},{value:'two'}]},
+      {id:'effort',category:'thought_level',type:'select',currentValue:this.selected==='one'?'low':'high',options:[{value:this.selected==='one'?'low':'high'}]},
+    ]; }
+    async request(method, params) {
+      if(method==='session/new')return {sessionId:'scoped',...modes('ask'),configOptions:this.configs()};
+      if(method==='session/set_config_option'){this.selected=params.value;return {configOptions:this.configs()};}
+      return super.request(method,params);
+    }
+  }
+  for (const scope of [undefined, 'current-model']) {
+    const session=new AcpSession({extension:{...extension,parameterScope:scope},transportFactory:()=>new ScopedTransport()});
+    try {
+      await open(session,{executionProfile:profile('ask')});
+      const first=await session.models({action:'list'});
+      assert.equal(first.parameterScope,scope);
+      assert.equal(first.models[0].reasoningEfforts.length,1);
+      assert.equal(first.models[1].reasoningEfforts.length,0);
+      const second=await session.models({action:'set',reference:'two'});
+      assert.equal(second.current,'two');
+      assert.equal(second.models[0].reasoningEfforts.length,0);
+      assert.equal(second.models[1].reasoningEfforts[0].label,'high');
+      await assert.rejects(session.configure('reasoning',{action:'set',level:first.models[0].reasoningEfforts[0].id}),/current model catalog/);
+    } finally {await session.close();}
+  }
+});

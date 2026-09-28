@@ -15,6 +15,27 @@ Auto 的显示名不能用于推断实际模型或路由。
 保留已确认状态并报告错误；恢复和换模型必须重新核对参数归属，不能串用旧模型的选项。
 运行中的配置修改应在普通 invoke 和 control 路径一致拒绝。
 
+## 参数目录范围与选择顺序
+
+宿主 SDK 0.1.7 支持 `model.select` 输出中的 `parameterScope`：
+
+- `all-models`：按模型提供完整参数目录，宿主保留模型矩阵。
+- `current-model`：参数仅描述当前模型，宿主先选择模型，原生确认并重新读取目录后，才允许选择该模型的推理强度。
+
+未声明的旧目录沿用矩阵行为（归一化为 `all-models`），不据此补造任何模型参数；
+未知值拒绝。新插件使用 [功能合同](../contracts/session-features.v1.json) 中要求
+`parameterScope` 的新增输出变体，旧变体保持兼容。ACP 配置插件在 `acp.json` 中
+声明 `"parameterScope": "current-model"`；代码插件在 AcpExtension 中声明同名字段。
+通用 ACP adapter 仅支持此范围，因为 session config options 只描述当前模型。
+
+声明表达数据范围，能力插件不指定视觉控件。默认工作台使用模型与推理强度两个选择器，
+外部呈现消费相同字段与宿主动作。当前模型之外不提供带推理参数的组合动作。
+修改强度前刷新目录并验证所属模型；只设置强度，不重复选择模型。切换期间禁用旧选项，
+失败重新读取真实状态；空参数目录显示“此模型无可选推理强度”。旧会话继续绑定原 release。
+
+内部参数 ID 可以是不透明的组合编码；显示文字必须读取对应 label，不能展示 JSON ID。
+`Default` 原生选项与旧矩阵的“保留”动作含义不同，不能混用。
+
 ## Fast 与服务层级
 
 `model.service-tier` 的输入为 `{ action: "list" }` 或 `{ action: "set", tier: "…" }`。
