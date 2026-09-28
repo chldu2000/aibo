@@ -163,9 +163,9 @@ async fn codex_branch_uses_native_boundary_and_copies_host_history_and_profile()
     manifest["executableDependencies"] = json!([{"kind":"runtime","name":"node","versionRange":">=22","required":true}]);
     fs::write(package.join("plugin.json"),manifest.to_string()).unwrap();
     let engine = include_str!("../capability-plugins/codex/engine.mjs");
-    let native_start = "spawn('codex', ['app-server', '--stdio',";
+    let native_start = "const launcher = codexLauncher();";
     assert!(engine.contains(native_start));
-    fs::write(package.join("engine.mjs"),engine.replace(native_start,"spawn(process.execPath, [new URL('./fake-codex.mjs', import.meta.url).pathname,")).unwrap();
+    fs::write(package.join("engine.mjs"),engine.replace(native_start,"const launcher = { command: process.execPath, prefix: [path.join(import.meta.dirname, 'fake-codex.mjs')], shell: false };")).unwrap();
     for (name, source) in [
         ("worker.mjs",include_str!("../capability-plugins/codex/worker.mjs")),
         ("fake-codex.mjs",include_str!("../../fixtures/plugins/codex/fake-codex.mjs")),
@@ -634,9 +634,9 @@ async fn goal_resume_and_pause_use_host_execution_ownership_and_policy() {
     manifest["executableDependencies"] = json!([{"kind":"runtime","name":"node","versionRange":">=22","required":true}]);
     fs::write(package.join("plugin.json"),manifest.to_string()).unwrap();
     let engine = include_str!("../capability-plugins/codex/engine.mjs");
-    let native_start = "spawn('codex', ['app-server', '--stdio',";
+    let native_start = "const launcher = codexLauncher();";
     assert!(engine.contains(native_start));
-    fs::write(package.join("engine.mjs"),engine.replace(native_start,"spawn(process.execPath, [new URL('./fake-codex.mjs', import.meta.url).pathname,")).unwrap();
+    fs::write(package.join("engine.mjs"),engine.replace(native_start,"const launcher = { command: process.execPath, prefix: [path.join(import.meta.dirname, 'fake-codex.mjs')], shell: false };")).unwrap();
     for (name, source) in [
         ("worker.mjs",include_str!("../capability-plugins/codex/worker.mjs")),
         ("fake-codex.mjs",include_str!("../../fixtures/plugins/codex/fake-codex.mjs")),
@@ -709,9 +709,9 @@ async fn subagent_history_survives_restart_without_a_running_provider() {
     manifest["executableDependencies"] = json!([{"kind":"runtime","name":"node","versionRange":">=22","required":true}]);
     fs::write(package.join("plugin.json"),manifest.to_string()).unwrap();
     let engine = include_str!("../capability-plugins/codex/engine.mjs");
-    let native_start = "spawn('codex', ['app-server', '--stdio',";
+    let native_start = "const launcher = codexLauncher();";
     assert!(engine.contains(native_start));
-    fs::write(package.join("engine.mjs"),engine.replace(native_start,"spawn(process.execPath, [new URL('./fake-codex.mjs', import.meta.url).pathname,")).unwrap();
+    fs::write(package.join("engine.mjs"),engine.replace(native_start,"const launcher = { command: process.execPath, prefix: [path.join(import.meta.dirname, 'fake-codex.mjs')], shell: false };")).unwrap();
     for (name, source) in [
         ("worker.mjs",include_str!("../capability-plugins/codex/worker.mjs")),
         ("fake-codex.mjs",include_str!("../../fixtures/plugins/codex/fake-codex.mjs")),
