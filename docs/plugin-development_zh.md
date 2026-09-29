@@ -111,7 +111,26 @@ Control 必须在操作允许列表中；处理取消，并只在有效 invocati
 外部皮肤使用独立 `presentation.json` 包和[呈现打包工具](../packages/presentation-tools/)。
 从[包合同](presentation-package.md)、[shadcn](../packages/presentation-shadcn/)或
 [Material 3](../packages/presentation-material3/)样例开始。Worker 返回受限视觉树，可信桥绘制并转发宿主动作 token。
-包不能直接访问 DOM、网络、存储或 Tauri IPC；未提供的 surface 继承宿主默认实现，管理、审批和恢复仍由宿主持有。
+包不能直接访问 DOM、网络、存储或 Tauri IPC；未提供的 surface 继承宿主默认实现，管理和恢复仍由宿主持有。
+
+### 渲染会话审批
+
+提供 `workbench` surface 的包拥有会话区域，因此必须渲染待处理的 Agent 审批。
+宿主不再把审批显示在窗口顶部或管理面板上。
+
+- `data.conversation.approvalRequests` 只包含当前会话的待处理审批：`requestId`、`kind`、可选的 `command` 与 `cwd`、
+  `availableDecisions` 和 `options`。显示 `kind`、`command`、`cwd`，让用户知道自己在批准什么；
+  卡片放在输入框附近，与 Agent 提问（`userInputRequests`）一致。
+- 每个当前可选结果对应一个 `resolveApproval` 动作，参数为 `[requestId, 'option' | 'decision', value, turnId]`。
+  带 `options` 的请求只按选项作答（`value` 为选项 ID；`label` 可能为 null，此时按 `kind` 显示允许/拒绝）；
+  没有选项时，`value` 为 `availableDecisions` 中的 `accept` 或 `cancel`。拒绝类排在前面，允许类作为主操作。
+- 按钮只绑定宿主下发的动作 token。会话忙、归档中或未绑定插件时不提供动作，此时禁用或省略按钮。
+  请求结束后 token 失效；宿主会重新核对每次选择。
+- [`@aibo/presentation-workbench`](../packages/presentation-workbench/) 的 `renderConversation` 已渲染审批，
+  基于它构建的包无需额外处理。
+
+包没有渲染审批或 Worker 故障时，用户只能按 Ctrl/⌘+Shift+Backspace 回到默认呈现后作答。
+详见[包合同](presentation-package.md#工作台会话与-composer)。
 
 `UiKitAdapter`、kit 注册表与 [web-presentation 类型](../packages/web-presentation/)用于可信宿主开发，
 不属于外部包安装机制。修改这些边界遵循 [UI 架构](ui-architecture.md)。新增内部组件不会自动扩展公共 controls surface。

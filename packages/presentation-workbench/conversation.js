@@ -24,6 +24,13 @@ export function renderConversation(state,actions){
   });
   children.push(section('request:'+request.requestId,'需要你的回答',[...questions,...['submitAnswers','cancelAnswers'].map(operation=>{const action=find(operation,request.requestId);return action?button('request:'+request.requestId+':'+operation,labels[operation],action):null;})]));
  }
+ for(const request of (state.approvalRequests??[]).filter(request=>request.sessionId===state.session?.id)){
+  const prefix='approval:'+request.requestId;
+  // Reject kinds come first, matching the default workbench; decisions answer providers without options.
+  const choices=request.options.length?[...request.options].sort((a,b)=>a.kind===b.kind?0:a.kind==='reject'?-1:1).map(option=>['option',option.id,option.label??(option.kind==='allow'?'允许':'拒绝')]):request.availableDecisions.map(decision=>['decision',decision,decision==='accept'?'允许':'拒绝']);
+  children.push(section(prefix,'需要确认',[text(prefix+':kind',request.kind),request.command?text(prefix+':command',request.command):null,request.cwd?text(prefix+':cwd',request.cwd):null,
+   ...choices.map(([kind,value,label])=>{const action=find('resolveApproval',request.requestId,kind,value);return action?button(prefix+':'+kind+':'+value,label,action):null;})]));
+ }
  if(state.queue && (state.queue.items?.length || state.queue.steering.length || state.queue.followUp.length))children.push(section('conversation:queue','待处理消息',[
   state.queue.paused?text('queue:paused','自动发送已暂停'):null,
   ...(state.queue.items?.length?state.queue.items.map(item=>section('queue:item:'+item.id,item.status==='sending'?'正在发送':item.status==='uncertain'?'投递结果未知':item.status==='failed'?'发送失败':'等待发送',[

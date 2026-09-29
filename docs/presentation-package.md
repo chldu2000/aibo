@@ -54,7 +54,7 @@
 | entry | 自包含 Worker JavaScript bundle，路径必须对应声明为 text/javascript 的资源 |
 | surfaces: controls | 使用宿主控件消息合同定制视觉；未处理控件使用默认实现 |
 | surfaces: semantic | 实现核心 collection/detail/settings/inspector；缺失必需语义拒绝激活 |
-| surfaces: workbench | 使用宿主快照和动作组织整个工作台；管理、审批、恢复区域留在宿主 |
+| surfaces: workbench | 使用宿主快照和动作组织整个工作台，包括当前会话的审批；管理、恢复区域留在宿主 |
 
 entry 与 surfaces 必须同时提供，themes 与 defaultThemeId 同样成对。
 包至少提供 themes 或 entry。不提供某个 surface 时继承宿主实现；声明提供后
@@ -229,7 +229,7 @@ SubagentDialog 也不会公开：它是模态对话框，内容是宿主渲染�
 运行时异常或超时也恢复同一份 props 的默认控件。继承实例继续接收数据更新，
 后续 render 可以提供定制。
 
-控件替换仅在 PresentationHost 的工作台上下文内生效。宿主管理与审批区域不消费
+控件替换仅在 PresentationHost 的工作台上下文内生效。宿主管理区域不消费
 外部控件。状态标记的可访问名称由宿主 props 提供，其 iframe 不进入 Tab 顺序，
 也不截获父行的点击。当前每个控件独立运行实例；大型列表的资源开销仍需后续验收。
 
@@ -280,10 +280,16 @@ args 是宿主已选定的目标和选项；点击携带的 value 不能替换�
 操作获取新 token；切换会话也重新分配 token，因此回到同一会话不恢复旧输入权限。
 用户问题操作还绑定 turnId，避免相同 requestId 在后续轮次复用时接收旧回答。
 
+`approvalRequests` 只包含当前会话的待处理 Agent 审批。每个可选结果对应一个 `resolveApproval` 动作，
+参数为 `[requestId, 'option' | 'decision', optionId 或 accept/cancel, turnId]`：提供 `options` 的请求只按选项作答，
+否则按 `availableDecisions` 作答。会话忙、归档中或未绑定插件时不提供动作；请求结束后旧 token 失效。
+呈现包只能点击宿主下发的 token，不能构造审批值；宿主提交前重新核对待处理请求与允许决定。
+不渲染审批的外部呈现会让审批不可见，用户可经默认恢复入口回到默认呈现处理。
+
 回答草稿键为 `JSON.stringify([sessionId, requestId, questionId, turnId])`。
 默认 TimelinePanel 和外部呈现共用宿主草稿：切换皮肤不清空，提交失败继续保留，
 请求结束后清理。回答草稿按窗口持久化，重载时仅为身份匹配的实时请求恢复，
-不会重建 Agent 待答请求。只有当前问题的草稿交付当前呈现。确认和审批仍位于固定宿主区域。
+不会重建 Agent 待答请求。只有当前问题的草稿交付当前呈现。宿主操作确认仍位于固定宿主区域。
 
 ### 会话专项消费规则
 
@@ -405,7 +411,7 @@ node /path/to/package/build.mjs presentation.source.json dist/skin-1.0.0
 1024 个滚动节点和 1024 个展开节点。只接受活动实例当前上下文/revision 的桥消息，
 Worker 不能直接写入此缓存。新皮肤通过相同节点 key 恢复能够匹配的状态。
 
-激活和更新时宿主明确决定是否允许恢复焦点，固定管理/审批控件持有焦点时不会
+激活和更新时宿主明确决定是否允许恢复焦点，固定管理控件持有焦点时不会
 被外部 iframe 抢走。换会话使用独立状态，不把原会话位置带入新会话。
 当前缓存不写盘。默认 composer 与外置 `conversation:draft:input` 共享焦点和选区；
 普通消息 `message:<id>`、分组 `message-group:<group-id>` 通过可见消息及相对顶部

@@ -180,6 +180,25 @@ interface UserInputRequest {
   isBlocking: boolean;
 }
 
+interface ApprovalOption {
+  id: string;
+  kind: 'allow' | 'reject';
+  label: string | null;
+}
+
+/** A pending Agent approval of the selected session; the host revalidates every submitted choice. */
+interface ApprovalRequest {
+  requestId: string;
+  sessionId: string;
+  turnId: string | null;
+  kind: string;
+  command: string | null;
+  cwd: string | null;
+  availableDecisions: ('accept' | 'cancel')[];
+  /** Empty for providers answering by decision. */
+  options: ApprovalOption[];
+}
+
 interface QueuedMessage {
   id: string;
   text: string;
@@ -241,6 +260,7 @@ export type PresentationConversation = {
   retryPrompt: string | null;
   retryReason: string | null;
   userInputRequests: UserInputRequest[];
+  approvalRequests: ApprovalRequest[];
   answerDrafts: Record<string, string>;
   queue: AgentQueueSnapshot | null;
   activityLabel: string | null;
@@ -268,7 +288,7 @@ export type PresentationConversation = {
 export type PresentationConversationOperation = 'copyCode' | 'openLink' | 'draft' | 'send' | 'stop' | 'retry' | 'queueSteer' | 'queueFollowUp' | 'clearQueue' | 'removeQueuedMessage' | 'sendQueuedMessage' | 'resumeQueue' | 'clearGoal' | 'pauseGoal' | 'resumeGoal'
   | 'addAttachments' | 'addDirectory' | 'removeAttachment' | 'selectPath' | 'selectSessionReference' | 'selectCommand'
   | 'openSubagent' | 'loadOlder' | 'fork' | 'loadModels' | 'selectModel' | 'selectServiceTier' | 'selectContextWindow' | 'selectAccess' | 'compact'
-  | 'answer' | 'chooseAnswer' | 'submitAnswers' | 'cancelAnswers'
+  | 'answer' | 'chooseAnswer' | 'submitAnswers' | 'cancelAnswers' | 'resolveApproval'
   | 'openTree' | 'closeTree' | 'refreshTree' | 'selectTreeNode';
 
 export type PresentationConversationAction = {

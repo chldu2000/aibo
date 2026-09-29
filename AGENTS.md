@@ -25,8 +25,10 @@ regression requirements. Historical records explain earlier versions, not curren
 - Keep feature support, current action availability, and execution authorization
   separate. Declarations do not grant permissions; the host revalidates execution.
 - Preserve host-owned state and pinned session bindings across presentation or
-  configuration changes. Management, approval, and recovery remain reachable
-  outside replaceable presentation surfaces.
+  configuration changes. Management and recovery remain reachable outside
+  replaceable presentation surfaces. Agent approvals render in their session
+  area; the default-presentation recovery keeps them reachable, and the host
+  revalidates every choice.
 - Keep applied or committed database migrations byte-for-byte immutable. Change
   the schema through a new migration with a higher version; preserve historical
   SQL and upgrade fixtures under the [migration rules](docs/database-migrations.md).

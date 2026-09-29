@@ -116,7 +116,27 @@ External skins use a separate `presentation.json` package and the [presentation 
 Start with the [package contract](presentation-package.md), [shadcn](../packages/presentation-shadcn/) or
 [Material 3](../packages/presentation-material3/) examples. Workers return restricted visual trees; the trusted bridge
 renders them and forwards host action tokens. Packages cannot directly access DOM, network, storage or Tauri IPC.
-Unprovided surfaces inherit the host default; management, approval and recovery remain host-owned.
+Unprovided surfaces inherit the host default; management and recovery remain host-owned.
+
+### Render session approvals
+
+A package that provides the `workbench` surface owns the conversation area, so it must render pending Agent approvals.
+The host no longer shows them at the top of the window or over management panels.
+
+- `data.conversation.approvalRequests` lists only the selected session's pending approvals: `requestId`, `kind`,
+  optional `command` and `cwd`, `availableDecisions` and `options`. Show `kind`, `command` and `cwd` so the user
+  knows what they are approving, and place the card near the composer, like Agent questions (`userInputRequests`).
+- Each current choice is a `resolveApproval` action with args `[requestId, 'option' | 'decision', value, turnId]`.
+  Requests with `options` are answered only by option (`value` is the option ID; `label` may be null, so fall back
+  to allow/reject wording by `kind`). Without options, `value` is `accept` or `cancel` from `availableDecisions`.
+  List reject kinds before allow kinds and give the allow choice the primary emphasis.
+- Bind buttons to the host action tokens only. No action is offered while the session is busy, archiving or unbound;
+  render the choice disabled or omit it. Tokens retire when the request resolves; the host revalidates every choice.
+- `renderConversation` in [`@aibo/presentation-workbench`](../packages/presentation-workbench/) already renders approvals,
+  so packages built on it need no extra work.
+
+If a package omits approvals, or its Worker fails, the user can only answer them after returning to the default
+presentation with Ctrl/⌘+Shift+Backspace. See the [package contract](presentation-package.md#工作台会话与-composer).
 
 `UiKitAdapter`, the kit registry and [web-presentation types](../packages/web-presentation/) are for trusted host development,
 not the external installation mechanism. Changes to those boundaries follow [UI architecture](ui-architecture.md).

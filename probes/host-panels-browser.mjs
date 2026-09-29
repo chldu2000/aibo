@@ -56,17 +56,11 @@ try {
     assert.ok(await page.locator(kit==='external'?'.presentation-external iframe':'.workspace-grid').isVisible());
     if(kit==='external')assert.equal(await page.locator('.presentation-external').getAttribute('inert'),'');
     assert.equal(await page.locator('.workbench-presentation').getAttribute('inert'),'');
-    // The management center is modal, so pending approvals render inside it while it is open.
+    // Agent approvals belong to their session area; the modal management center does not carry them.
     await page.evaluate(()=>window.emitApproval());
-    const dialogApproval=management.getByRole('region',{name:'宿主审批'});
-    await dialogApproval.getByRole('button',{name:'允许',exact:true}).waitFor();
-    assert.equal(await page.getByRole('region',{name:'宿主审批'}).count(),1,'approvals render in one place');
-    await management.getByRole('button',{name:'Beta · 1.0.0',exact:true}).focus();
-    for(let n=0;n<30&&!(await dialogApproval.evaluate(el=>el.contains(document.activeElement)));n++)await page.keyboard.press('Tab');
-    assert.ok(await dialogApproval.evaluate(el=>el.contains(document.activeElement)),'Tab reaches approvals inside the modal management center');
-    await dialogApproval.getByRole('button',{name:'允许',exact:true}).click();
-    assert.deepEqual(await page.evaluate(()=>window.approvalDecisions),[{sessionId:'s1',requestId:'panel-approval',decision:'accept'}]);
-    await dialogApproval.waitFor({state:'detached'});
+    await page.waitForTimeout(100);
+    assert.equal(await page.getByRole('region',{name:'宿主审批'}).count(),0,'no window-level approval region');
+    assert.equal(await management.getByRole('region',{name:'会话审批'}).count(),0,'management center carries no approvals');
     await page.screenshot({path:`/tmp/aibo-host-plugins-${kit}.png`});
     await page.setViewportSize({width:480,height:780});
     await page.getByRole('button',{name:'← 插件列表',exact:true}).click();
@@ -110,19 +104,8 @@ try {
     await page.keyboard.press('Escape');
     assert.ok(await history.isVisible());
     assert.ok(await page.locator(kit==='external'?'.presentation-external iframe':'.workspace-grid').isVisible(),'workbench stays visible behind the panel');
-    // Option approvals (a plan exit) render the provider's labelled options and answer with one option ID.
-    await page.evaluate(()=>window.emitApproval([{id:'exit-plan-default',kind:'allow',label:'批准计划，手动审批编辑',effects:{sessionControl:'manual'}},{id:'reject',kind:'reject',label:'继续规划'}]));
-    const approval=page.getByRole('region',{name:'宿主审批'});
-    await approval.getByRole('button',{name:'批准计划，手动审批编辑',exact:true}).waitFor();
-    assert.ok(await approval.getByRole('button',{name:'继续规划',exact:true}).isVisible());
-    assert.equal(await approval.getByRole('button',{name:'允许',exact:true}).count(),0,'offered options replace the decision buttons');
-    const controls=history.locator('button:visible:not([disabled]),input:visible:not([disabled]),textarea:visible:not([disabled])');
-    await controls.last().focus();
-    await page.keyboard.press('Tab');
-    assert.ok(await approval.evaluate(el=>el.contains(document.activeElement)), 'Tab reaches host approvals');
-    await approval.screenshot({path:`/tmp/aibo-option-approval-${kit}.png`});
-    await approval.getByRole('button',{name:'批准计划，手动审批编辑',exact:true}).click();
-    assert.deepEqual((await page.evaluate(()=>window.approvalDecisions))[1],{sessionId:'s1',requestId:'panel-approval',optionId:'exit-plan-default'});
+    assert.equal(await history.getByRole('region',{name:'会话审批'}).count(),0,'host panels carry no approvals');
+    assert.deepEqual(await page.evaluate(()=>window.approvalDecisions),[],'no approval was answered outside a session');
     await page.screenshot({path:`/tmp/aibo-host-history-${kit}.png`});
     await history.locator('.host-panel-body').focus();
     await page.keyboard.press('Escape');
@@ -131,6 +114,6 @@ try {
     await page.waitForFunction(()=>document.activeElement?.dataset.hostNavigation==='management');
     assert.deepEqual(errors,[]);
     await page.close();
-    console.log(`${kit}: management plugins and in-dialog approvals, narrow navigation, retained history, folding, background, approvals and focus passed`);
+    console.log(`${kit}: management plugins without approval layers, narrow navigation, retained history, folding, background and focus passed`);
   }
 } finally { await browser.close(); await server.close(); }

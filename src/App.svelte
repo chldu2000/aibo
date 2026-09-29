@@ -82,7 +82,7 @@
   let workbenchDrafts = $state(readWorkbenchDrafts(draftStorage, presentationWindowId()));
   $effect(() => { writeWorkbenchDrafts(draftStorage, presentationWindowId(), workbenchDrafts); });
   import type { UiManagementSection } from '$lib/ui-kit';
-  import { SettingsSection, HostPanel, PresentationHost, WorkbenchPresentation, DefaultPresentationActions, FileChangeMark, Badge, Button, Card, CardHeader, CardTitle, CardContent } from '$lib/ui-kit';
+  import { SettingsSection, HostPanel, PresentationHost, WorkbenchPresentation, DefaultPresentationActions, FileChangeMark, Badge, Button } from '$lib/ui-kit';
   import { createPresentationPackageController, type PresentationPackageState } from '$lib/app/presentation-package-controller';
   import { listPresentationPackages, readPresentationPackage, installPresentationPackage, setPresentationPackageEnabled, uninstallPresentationPackage, getPresentationSelection, selectPresentationPackage } from '$lib/api';
   import { createCapabilityWorkbenchDirectory } from '$lib/presentation-runtime/capability-workbench';
@@ -226,7 +226,7 @@
     workspace: selectedWorkspace, session: selectedSession, goal: codexGoal, goalBusy,
     thread: codexThreadSnapshot && { id: codexThreadSnapshot.id, turnCount: codexThreadSnapshot.turnCount },
     timeline, timelineVisibleCount, groupSystemItems: selectedSession?.capabilities.includes('session.timeline') ?? false, usage: usageValues, retryPrompt, retryReason,
-    userInputRequests: selectedUserInputRequests, answerDrafts: Object.fromEntries(selectedUserInputRequests.flatMap(request => request.questions.map(question => {
+    userInputRequests: selectedUserInputRequests, approvalRequests: selectedApprovals, answerDrafts: Object.fromEntries(selectedUserInputRequests.flatMap(request => request.questions.map(question => {
       const key = userInputDraftKey(request, question.id); return [key, userInputDrafts[key] ?? ''];
     }))), queue: queueSnapshot,
     activityLabel: agentActivityLabel, compacting: contextCompacting, running: sessionRunning,
@@ -292,6 +292,11 @@
         break;
       }
       case 'cancelAnswers': await abortPrompt(); break;
+      case 'resolveApproval': {
+        const approval = selectedApprovals.find(approval => approval.requestId === target);
+        if (approval) await resolveApproval(approval, detail === 'option' ? { optionId: option! } : option as ApprovalDecision);
+        break;
+      }
       case 'openTree': openPiTree(); break;
       case 'closeTree': piTreeOpen = false; break;
       case 'refreshTree': if (selectedSessionId) await refreshPiTree(selectedSessionId); break;
@@ -768,6 +773,7 @@
     AgentDiagnostic,
     AgentEvent,
     ApprovalChoice,
+    ApprovalDecision,
     ApprovalRequest,
     UserInputRequest,
     ContextAttachment,
@@ -3822,37 +3828,6 @@
 
 </script>
 
-{#snippet hostApprovals()}
-  <section class="approval-list" aria-label="宿主审批" aria-live="assertive" style="max-height: {settingsOpen ? '30vh' : '40vh'}; overflow: auto; flex-shrink: 0;">
-    {#each pendingApprovals as approval (JSON.stringify([approval.sessionId, approval.requestId]))}
-      <Card class="approval-card">
-        <CardHeader class="approval-card-heading">
-          <CardTitle>需要确认 · {sessions.find(session => session.id === approval.sessionId)?.label ?? approval.sessionId}</CardTitle>
-          <Badge variant="warning">{approval.kind}</Badge>
-        </CardHeader>
-        <CardContent class="approval-card-content">
-          {#if approval.command}<code>{approval.command}</code>{/if}
-          {#if approval.cwd}<small>{approval.cwd}</small>{/if}
-          <div class="approval-actions">
-            {#if approval.options.length > 0}
-              <!-- Provider-offered options: reject kinds first and muted, allow kinds as the primary action. -->
-              {#each [...approval.options].sort((left, right) => left.kind === right.kind ? 0 : left.kind === 'reject' ? -1 : 1) as option (option.id)}
-                <Button variant={option.kind === 'reject' ? 'ghost' : 'default'} size="sm" onclick={() => void resolveApproval(approval, { optionId: option.id })} disabled={busy}>{option.label ?? (option.kind === 'allow' ? '允许' : '拒绝')}</Button>
-              {/each}
-            {:else}
-              {#if approval.availableDecisions.includes('cancel')}
-                <Button variant="ghost" size="sm" onclick={() => void resolveApproval(approval, 'cancel')} disabled={busy}>拒绝</Button>
-              {/if}
-              {#if approval.availableDecisions.includes('accept')}
-                <Button size="sm" onclick={() => void resolveApproval(approval, 'accept')} disabled={busy}>允许</Button>
-              {/if}
-            {/if}
-          </div>
-        </CardContent>
-      </Card>
-    {/each}
-  </section>
-{/snippet}
 {#snippet presentationPackageManagement()}
   <section id="presentation-packages" aria-label="皮肤插件管理" tabindex="-1">
   <SettingsSection title="皮肤插件" error={presentationPackages.error} items={[
@@ -4005,10 +3980,8 @@
     onSelectTheme={id => void presentationOperation(() => choosePresentationTheme(id))}
     onSelectSection={section => { managementSection = section; }}
     onClose={() => (settingsOpen = false)}
-    footer={pendingApprovals.length > 0 ? hostApprovals : undefined}
   />
 
-  {#if pendingApprovals.length > 0 && !settingsOpen}{@render hostApprovals()}{/if}
   {#if sessionHistoryOpen}
     <div class="host-session-history-region" style="order:2; display:grid; flex:1; min-height:0; overflow:auto;">
       <SessionHistoryPanel {workspaces} workspaceId={sessionHistoryWorkspaceId} state={sessionHistory} {desktop}
@@ -4149,6 +4122,7 @@
       retryReason={retryReason}
       onOpenSubagent={guard('onOpenSubagent', (id) => void openSubagent(id))}
       userInputRequests={selectedUserInputRequests}
+      approvalRequests={selectedApprovals}
       {userInputDrafts}
       onUserInputDraftChange={guard('onUserInputDraftChange', (value) => { userInputDrafts = value; })}
       queueSnapshot={queueSnapshot}
@@ -4187,6 +4161,7 @@
       onCancelUserInput={guard('onCancelUserInput', (request) => {
         if (request.sessionId === selectedSessionId) void abortPrompt();
       })}
+      onResolveApproval={guard('onResolveApproval', (approval, choice) => resolveApproval(approval, choice))}
       onSend={guard('onSend', () => void sendPrompt())}
       onQueue={guard('onQueue', (mode) => void queuePrompt(mode))}
       onClearQueue={guard('onClearQueue', () => void clearPromptQueue())}

@@ -64,6 +64,7 @@
       "isBlocking": true
     }
   ],
+  "approvalRequests": [],
   "answerDrafts": {
     "[\"s\",\"request\",\"q\",\"t\"]": "Yes"
   },

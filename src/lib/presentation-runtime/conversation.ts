@@ -87,6 +87,12 @@ export function conversationActions(state: PresentationConversation): Spec[] {
     if (answeredRequest(request, state.answerDrafts)) add('submitAnswers', [request.requestId, request.turnId]);
     add('cancelAnswers', [request.requestId, request.turnId]);
   }
+  for (const request of state.approvalRequests) {
+    if (request.sessionId !== session.id || !bound || state.archiving || state.busy) continue;
+    // Providers answer either by one offered option or by a host decision, never both.
+    if (request.options.length) for (const option of request.options) add('resolveApproval', [request.requestId, 'option', option.id, request.turnId]);
+    else for (const decision of request.availableDecisions) add('resolveApproval', [request.requestId, 'decision', decision, request.turnId]);
+  }
   if (capable('session.tree') && !state.archiving) {
     add('openTree');
     if (state.treeOpen && !state.treeNavigationStatus) {

@@ -7,7 +7,7 @@ import { renderConversation } from '../packages/presentation-workbench/conversat
 const request = {requestId:'request',sessionId:'s',turnId:'t',questions:[{id:'q',question:'Choice?',header:null,options:[{label:'Yes',description:null}],isOther:true}],isBlocking:true};
 const state = {
  workspace:{id:'w',label:'Workspace',path:'/workspace',trust:'trusted'},session:{id:'s',workspaceId:'w',agent:'plugin',label:'Session',state:'idle',archived:false,externalSessionId:null,pluginInstallationId:'installed',capabilities:['queue.manage','queue.steer','model.select','model.reasoning','session.fork','session.tree','compaction.run'],createdAt:'',updatedAt:''},
- goal:null,thread:null,timeline:[{id:'m',turnId:'t',role:'assistant',toolName:null,entryType:null,content:'complete',status:'completed'}],timelineVisibleCount:0,usage:null,retryPrompt:'retry',retryReason:null,userInputRequests:[request],answerDrafts:{},queue:{sessionId:'s',steering:['later'],followUp:[],updatedAt:''},activityLabel:null,compacting:false,running:false,archiving:false,busy:false,
+ goal:null,thread:null,timeline:[{id:'m',turnId:'t',role:'assistant',toolName:null,entryType:null,content:'complete',status:'completed'}],timelineVisibleCount:0,usage:null,retryPrompt:'retry',retryReason:null,userInputRequests:[request],approvalRequests:[],answerDrafts:{},queue:{sessionId:'s',steering:['later'],followUp:[],updatedAt:''},activityLabel:null,compacting:false,running:false,archiving:false,busy:false,
  attachments:[{id:'pending',sessionId:'s',turnId:null},{id:'submitted',sessionId:'s',turnId:'t'},{id:'other',sessionId:'elsewhere',turnId:null}],executionProfile:{sessionId:"s",sessionControls:controls(["read-only","plan","workspace-write"]),requested:{interactionMode:"ask",approvalPolicy:"never",approvalReviewer:"none",filesystemPolicy:"read-only",commandPolicy:"disabled",networkPolicy:"disabled"},enforced:{interactionMode:"ask",approvalPolicy:"never",approvalReviewer:"none",filesystemPolicy:"read-only",commandPolicy:"disabled",networkPolicy:"disabled"},unsupported:[],adapterCapabilities:[],nativeSandbox:false},modelConfiguration:{currentReasoningEffort:null,selectedReasoningEffort:null,defaultAction:'preserve'},modelCatalog:{current:null,currentReasoningEffort:null,reasoningEfforts:[],models:[{reference:'model',reasoningEfforts:[{id:'high'}]}]},modelCatalogLoading:false,modelOverride:null,workspacePathSuggestions:[{path:'README.md',isDirectory:false}],agentCommands:[{name:'help',enabled:true},{name:'disabled',enabled:false}],agentCommandsLoading:false,draft:'draft',draftFailed:false,tree:{sessionId:'s',tree:[{id:'node',children:[]}]},treeOpen:true,treeNavigationStatus:null,
 };
 const context={workspaceId:'w',sessionId:'s',revision:5};
@@ -75,6 +75,22 @@ test('host answer drafts preserve independent sessions and only clear the comple
  const answer=directory.project(state).find(a=>a.operation==='answer');
  assert.equal(directory.resolve({...state,userInputRequests:[{...request,turnId:'new-turn'}]},context,{id:answer.token,event:'input',value:'late',context}),null);
  assert.equal(directory.resolve({...state,userInputRequests:[]},context,{id:answer.token,event:'input',value:'late',context}),null);
+});
+
+test('session approvals offer only current choices and render inside the conversation',()=>{
+ const byOption={requestId:'plan',sessionId:'s',turnId:'t',kind:'switch_mode',command:'Exit plan',cwd:null,availableDecisions:['accept','cancel'],options:[{id:'allow-auto',kind:'allow',label:'Use Auto'},{id:'keep',kind:'reject',label:null}]};
+ const byDecision={...byOption,requestId:'command',kind:'execute',command:'ls',options:[],availableDecisions:['accept']};
+ const approving={...state,approvalRequests:[byOption,byDecision,{...byDecision,requestId:'foreign',sessionId:'elsewhere'}]};
+ assert.deepEqual(conversationActions(approving).filter(a=>a.operation==='resolveApproval').map(a=>a.args),
+  [['plan','option','allow-auto','t'],['plan','option','keep','t'],['command','decision','accept','t']]);
+ for(const blocked of [{busy:true},{archiving:true},{session:{...state.session,pluginInstallationId:null}}])
+  assert.ok(!operations({...approving,...blocked}).includes('resolveApproval'));
+ const directory=createConversationDirectory();
+ const action=directory.project(approving).find(a=>a.operation==='resolveApproval');
+ assert.equal(directory.resolve({...approving,approvalRequests:[]},context,{id:action.token,event:'click',context}),null,'a resolved approval retires its choices');
+ const tree=JSON.stringify(renderConversation(approving,directory.project(approving)));
+ assert.match(tree,/"approval:plan"/);assert.match(tree,/Use Auto/);assert.match(tree,/"approval:plan:option:keep"/);
+ assert.doesNotMatch(tree,/approval:foreign/,'other sessions stay out of this conversation');
 });
 
 test('session reference actions reject foreign sessions and retire after selection or navigation',()=>{

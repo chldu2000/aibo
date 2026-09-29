@@ -10,15 +10,13 @@ test('workbench callbacks and writable bindings cross the generation gate', asyn
   let hostCallbacks = 0;
   const hostComponents = new Set(['HostPanel', 'AppOverlays', 'GlobalSearchPanel', 'WindowTitlebar', 'SettingsPanel', 'DiagnosticsPanel', 'PluginManagerPanel', 'ExecutionHistoryPanel', 'SessionHistoryPanel', 'CapabilityHistoryPanel']);
   const foundHost = new Set();
-  let hostApprovalRegion = false;
   const slots = new Set(['navigation', 'navigationResize', 'content', 'auxiliaryResize', 'auxiliary', 'overlays']);
   const foundSlots = new Set();
   function visit(node, inside = false, replaceable = false) {
     if (!node || typeof node !== 'object') return;
     if (node.type === 'Component' && ['PresentationHost', 'WorkbenchPresentation'].includes(node.name)) replaceable = true;
     if (node.type === 'RegularElement' && node.attributes?.some(attribute => attribute.name === 'aria-label' && attribute.value?.[0]?.data === '宿主审批')) {
-      assert.equal(inside, false, 'approvals must remain outside replaceable presentation');
-      hostApprovalRegion = true;
+      assert.fail('Agent approvals belong to their session area, not a window-level host region');
     }
     if (node.type === 'Component' && hostComponents.has(node.name)) {
       assert.equal(inside || replaceable, false, `${node.name} must survive renderer disposal`);
@@ -53,10 +51,10 @@ test('workbench callbacks and writable bindings cross the generation gate', asyn
   }
   visit(tree.fragment);
   assert.deepEqual(foundSlots, slots, 'all named workbench slots retain generation guards');
-  assert.equal(hostApprovalRegion, true);
   assert.deepEqual(foundHost, hostComponents);
   const timeline = await readFile('src/lib/components/app/TimelinePanel.svelte', 'utf8');
-  assert.doesNotMatch(timeline, /onResolveApproval|availableDecisions/, 'presentation cannot own approval controls');
+  assert.match(timeline, /aria-label="会话审批"/, 'the session area renders its pending approvals');
+  assert.match(source, /onResolveApproval=\{guard\('onResolveApproval'/, 'approval choices cross the generation gate');
   assert.ok(guarded + hostCallbacks >= 100, 'all workbench and independent host callbacks must be covered');
   assert.match(source, /listenToAgentEvents/);
   const shell = await readFile('src/lib/workbench/WorkbenchPresentation.svelte', 'utf8');

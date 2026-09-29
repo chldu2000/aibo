@@ -21,11 +21,9 @@
     onSelectTheme: (themeId: string) => void;
     onSelectSection: (section: UiManagementSection) => void;
     onClose: () => void;
-    /** Host-owned content that must stay reachable while the modal center is open, such as pending approvals. */
-    footer?: Snippet;
   };
 
-  let { layoutSettings, appearanceActions, appearanceError, appearanceBusy = false, workspaceSettings, packageManagement, extensions, runtime, open, activeSection, uiKits, activeUiKitName, activeThemeId, onSelectUiKit, onSelectTheme, onSelectSection, onClose, footer }: SettingsPanelProps = $props();
+  let { layoutSettings, appearanceActions, appearanceError, appearanceBusy = false, workspaceSettings, packageManagement, extensions, runtime, open, activeSection, uiKits, activeUiKitName, activeThemeId, onSelectUiKit, onSelectTheme, onSelectSection, onClose }: SettingsPanelProps = $props();
   let openedKit = $state<string | null>(null);
   let requestedKit = $state<string | null>(null);
   $effect.pre(() => { if (open) { openedKit = untrack(() => activeUiKitName); requestedKit = null; } });
@@ -110,5 +108,5 @@
 {#snippet runtimeContent()}<div class="settings-tab-panel">{@render runtime?.()}</div>{/snippet}
 
 {#if open}
-  <ManagementCenter title="工作台设置" restoreTriggerFocus={openedKit === activeUiKitName && (requestedKit === null || requestedKit === openedKit)} {activeSection} {onSelectSection} {onClose} appearance={appearanceContent} layout={layoutContent} workspace={workspaceContent} extensions={extensionContent} runtime={runtimeContent} {footer} />
+  <ManagementCenter title="工作台设置" restoreTriggerFocus={openedKit === activeUiKitName && (requestedKit === null || requestedKit === openedKit)} {activeSection} {onSelectSection} {onClose} appearance={appearanceContent} layout={layoutContent} workspace={workspaceContent} extensions={extensionContent} runtime={runtimeContent} />
 {/if}

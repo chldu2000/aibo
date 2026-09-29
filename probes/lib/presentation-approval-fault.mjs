@@ -26,17 +26,19 @@ export async function probePresentationApprovalFault(page) {
   await page.evaluate(()=>{
     for(const requestId of ['during-fault','after-fault'])window.emitAgent('approval.requested',{requestId,kind:'command',command:'echo '+requestId,cwd:'/probe/w1',availableDecisions:['accept','cancel']});
   });
-  const cards=page.getByRole('region',{name:'宿主审批'});
-  await cards.getByText('echo during-fault',{exact:true}).waitFor();
+  const cards=page.getByRole('region',{name:'会话审批'});
+  assert.equal(await cards.count(),0,'approvals belong to the session area, not a window-level layer above the package');
   await frame.getByRole('button',{name:'Forged approval'}).click();
   assert.equal(await page.evaluate(()=>window.navigationCalls.filter(call=>call.command==='resolve_agent_approval').length),0,'package cannot manufacture approval authority');
   const entered=page.waitForEvent('console',{predicate:message=>message.text()==='aibo-probe-approval-loop-entered'});
   await frame.getByRole('textbox',{name:'Fault trigger'}).fill('freeze approvals');
   await entered;
-  await cards.locator('.approval-card').filter({hasText:'echo during-fault'}).getByRole('button',{name:'允许',exact:true}).click();
-  assert.equal(await page.locator('.presentation-external iframe').count(),1,'approval is operable before the blocked Worker is removed');
-  await page.waitForFunction(()=>window.navigationCalls.some(call=>call.command==='resolve_agent_approval'&&call.args.requestId==='during-fault'));
+  // The blocked Worker falls back to the default presentation, which renders the session's pending approvals.
   await page.waitForFunction(()=>!document.querySelector('.presentation-external iframe')&&JSON.parse(localStorage.getItem('probe.presentation.selection')||'null')===null);
+  await cards.getByText('echo during-fault',{exact:true}).waitFor();
+  assert.ok(await cards.evaluate(el=>Boolean(el.closest('.workbench-presentation'))),'approvals render inside the session area');
+  await cards.locator('.approval-card').filter({hasText:'echo during-fault'}).getByRole('button',{name:'允许',exact:true}).click();
+  await page.waitForFunction(()=>window.navigationCalls.some(call=>call.command==='resolve_agent_approval'&&call.args.requestId==='during-fault'));
   await cards.getByText('echo after-fault',{exact:true}).waitFor();
   await cards.getByRole('button',{name:'拒绝',exact:true}).click();
   await page.waitForFunction(()=>window.navigationCalls.filter(call=>call.command==='resolve_agent_approval').length===2);
@@ -44,11 +46,22 @@ export async function probePresentationApprovalFault(page) {
     {sessionId:'s1',requestId:'during-fault',decision:'accept'},
     {sessionId:'s1',requestId:'after-fault',decision:'cancel'},
   ]);
+  // Labelled provider options (a plan exit) replace the decision buttons and answer with one option ID.
+  await page.evaluate(()=>window.emitAgent('approval.requested',{requestId:'plan-exit',kind:'switch_mode',command:'Exit plan',availableDecisions:['accept','cancel'],
+    options:[{id:'exit-plan-default',kind:'allow',label:'批准计划，手动审批编辑'},{id:'keep-planning',kind:'reject',label:'继续规划'}]}));
+  const plan=cards.locator('.approval-card').filter({hasText:'Exit plan'});
+  await plan.getByRole('button',{name:'批准计划，手动审批编辑',exact:true}).waitFor();
+  assert.ok(await plan.getByRole('button',{name:'继续规划',exact:true}).isVisible());
+  assert.equal(await plan.getByRole('button',{name:'允许',exact:true}).count(),0,'offered options replace the decision buttons');
+  await page.screenshot({path:'/tmp/aibo-session-approval.png'});
+  await plan.getByRole('button',{name:'批准计划，手动审批编辑',exact:true}).click();
+  await page.waitForFunction(()=>window.navigationCalls.filter(call=>call.command==='resolve_agent_approval').length===3);
+  assert.deepEqual(await page.evaluate(()=>window.navigationCalls.filter(call=>call.command==='resolve_agent_approval').at(-1).args),{sessionId:'s1',requestId:'plan-exit',optionId:'exit-plan-default'});
   await cards.waitFor({state:'detached'});
   await page.getByRole('button',{name:/^打开工作台设置/}).click();
   await page.getByRole('tab',{name:'插件与能力',exact:true}).click();
   await page.getByRole('button',{name:'卸载',exact:true}).click();
   await page.getByRole('tab',{name:'外观',exact:true}).click();
   await page.getByRole('button',{name:'关闭设置',exact:true}).click();
-  return ['forged package approval token is ignored','fixed approval remains clickable while Worker is blocked despite viewport-filling package CSS','fallback retains the other pending approval and permits rejection','exact host request identities and decisions reach the native IPC substitute'];
+  return ['forged package approval token is ignored','no window-level approval layer covers the package','blocked Worker fallback renders both pending approvals in the session area','exact host request identities and decisions reach the native IPC substitute','labelled plan-exit options answer by option ID in the session area'];
 }

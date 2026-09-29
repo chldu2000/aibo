@@ -236,16 +236,21 @@ Windows 使用独立配置和自绘窗口按钮。呈现替换不接管原生窗
 
 ### 固定宿主区域
 
-窗口标题栏、管理中心、历史面板、全局搜索面板、审批、确认与默认恢复入口位于可替换工作台之外。
-呈现故障、禁用或卸载时，这些入口仍可达；审批由宿主重新核对待处理请求和可选决定，最终授权由原生宿主执行。
+窗口标题栏、管理中心、历史面板、全局搜索面板、宿主操作确认与默认恢复入口位于可替换工作台之外。
+呈现故障、禁用或卸载时，这些入口仍可达。
+
+Agent 会话审批与 Agent 提问一样属于会话区域：宿主只把当前会话的待处理审批交给工作台，
+默认 `TimelinePanel` 在消息与输入框之间渲染，外部呈现通过 `approvalRequests` 快照与 `resolveApproval`
+动作渲染（见[包合同](presentation-package.md#工作台会话与-composer)）。审批不再在窗口顶部、管理中心或宿主面板上处处可见；
+其他会话的待处理审批只通过会话状态提示，后续由系统通知补足。外部呈现故障或不渲染审批时，
+用户经默认恢复入口回到默认呈现继续审批。无论在哪里提交，宿主都重新核对待处理请求和可选决定，最终授权由原生宿主执行。
 架构检查覆盖组件的祖先区域和所有槽位，不能仅靠 snippet 内部约定维持隔离。
 
 打开管理中心或执行/调用历史时，工作台保持挂载、可见且 inert；会话历史另通过 `hideWhenSuspended` 隐藏工作台。
 暂停输入与隐藏布局分别控制，隔离绘制桥同步祖先的 inert/hidden 状态，迟到绘制不得抢走宿主焦点。
 显式恢复外部呈现焦点时，宿主先校验当前焦点归属并聚焦 iframe，再通知绘制桥恢复内部控件；重绘只有在隔离文档仍持有焦点时才能恢复控件焦点，过时许可不能覆盖用户后来选中的宿主控件。
-管理和审批的键盘访问优先于被暂停工作台。
-管理中心是模态对话框，打开期间对话框外的内容不可交互，因此待处理审批改为渲染在管理中心底部（`footer`），
-关闭后回到工作台区域；同一时刻只在一处渲染。审批的核对与执行不因位置改变。
+管理的键盘访问优先于被暂停工作台。管理中心是模态对话框，打开期间工作台及其中的会话审批不可交互，
+关闭后回到会话区域继续处理。
 
 普通关闭恢复触发焦点；设置期间更换呈现时，将焦点与选区恢复交还宿主视图状态存储。
 从管理中心打开执行历史时，管理中心不再把焦点还给自己的入口，焦点留在新面板内；
@@ -271,7 +276,8 @@ Windows 使用独立配置和自绘窗口按钮。呈现替换不接管原生窗
 ### 开发外部外观或工作台
 
 按[插件开发指引](plugin-development_zh.md)与[包合同](presentation-package.md)声明、打包和安装 Presentation 包，
-使用宿主提供的快照、动作及可选 surfaces。验证安装、激活、切换、禁用/卸载、缺失范围继承和故障恢复。
+使用宿主提供的快照、动作及可选 surfaces。提供 workbench surface 的包须渲染当前会话的 `approvalRequests`
+（见[插件开发指引](plugin-development_zh.md#渲染会话审批)）。验证安装、激活、切换、禁用/卸载、缺失范围继承和故障恢复。
 增加新的可信内置 kit 属于宿主架构变更，需要同步注册、偏好兼容、完整 adapter 与默认回退的测试约束，
 不是第三方外观的常规接入步骤。
 
@@ -296,7 +302,8 @@ UI 实现变化需检查默认 Material 3 与 ak-ui 的浅/深主题，以及受
 | 两套内置主题、响应式、密度与控件交互 | `probes/default-appearance-browser.mjs`、`probes/material3-browser.mjs`、`probes/ak-ui-browser.mjs`、`probes/ak-ui-density-browser.mjs`、`probes/ak-ui-controls-browser.mjs` |
 | Composer 输入、引用、粘贴与附件 | `probes/composer-input-browser.mjs`、`probes/composer-paste-browser.mjs` |
 | 外部包继承、完整工作台与恢复 | `probes/presentation-app-browser.mjs`、`probes/presentation-full-skins-browser.mjs` |
-| 管理区域、焦点与审批访问 | `probes/host-panels-browser.mjs` |
+| 管理区域与焦点；宿主面板不承载审批 | `probes/host-panels-browser.mjs` |
+| 会话区域审批、故障回退后审批与选项作答 | `probes/presentation-full-skins-browser.mjs`（`probes/lib/presentation-approval-fault.mjs`） |
 | 分支/取消归档、切换期间迟到时间线、默认与外部呈现导航 | `probes/session-lifecycle-browser.mjs` |
 | 五类设置、快捷入口、布局恢复焦点、插件草稿与继承 | `probes/settings-sections-browser.mjs`、`probes/workspace-preferences-browser.mjs` |
 

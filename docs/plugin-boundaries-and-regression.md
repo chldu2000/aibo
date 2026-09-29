@@ -10,7 +10,7 @@
 | 宿主业务控制器与投影 | 管理已验证状态、可恢复草稿/浏览位置、加载与错误状态，生成当前动作目录 | 呈现切换不重建能力实例或丢弃业务状态；读请求与写结果分别处理 |
 | 能力插件/原生 Adapter | 提供准确能力和数据，映射原生协议、配置、事件、审批及恢复 | 厂商兼容逻辑留在 Adapter；能力结果保持语义数据，不输出 HTML/CSS 或宿主 UI 实现 |
 | 呈现插件与皮肤 | 消费宿主快照及动作，组织布局、视觉、局部筛选/展开等瞬时状态 | 不持有权威执行状态、不访问通用 IPC、不拼造动作或权限；跨切换/重启状态进入宿主合同 |
-| 可信宿主界面与绘制桥 | 保有管理、审批、恢复入口；将真实用户事件转换为受限意图 | 入口位于可替换 surface 外；Worker 只计算受限视觉树，外部脚本/CSS 不进入固定宿主区域 |
+| 可信宿主界面与绘制桥 | 保有管理、恢复入口；把当前会话审批交给会话区域；将真实用户事件转换为受限意图 | 管理与恢复入口位于可替换 surface 外；审批选择由宿主 token 下发并重新核对；Worker 只计算受限视觉树，外部脚本/CSS 不进入固定宿主区域 |
 
 出现“只有某个 Agent/皮肤需要例外”时，先检查是否遗漏能力、状态或展示语义。共享层扩展通用合同，由插件提供实现；厂商原生参数在 Adapter 中转换。新插件满足相同合同后，应无需修改宿主业务分支。
 
@@ -38,7 +38,7 @@
 ### 呈现更换不能改变业务事实
 
 - `27d383a`、`1090d2a`、`a16a738`：默认/外部呈现切换需要恢复语义焦点、消息锚点和仍有效的回答草稿。状态按窗口、工作区、会话、贡献或请求的实际作用域隔离；同名控件或相同文本不能充当完整身份。
-- `33dfe69`：真实 Worker 死循环时，宿主审批仍须可见且可操作；恢复快捷键和管理入口不依赖故障 Worker。审批提交重新核对待处理请求与允许决定，旧 token、旧 turn 或伪造请求无效。
+- `33dfe69`：真实 Worker 死循环时，恢复快捷键和管理入口不依赖故障 Worker。审批提交重新核对待处理请求与允许决定，旧 token、旧 turn 或伪造请求无效。审批现位于会话区域：故障回退到默认呈现后，待处理审批仍在会话内可见且可操作。
 - `71d1e42`：长历史曾遮住编辑器和发送入口。布局改动要在真实尺寸检查可见性、滚动、键盘和焦点，不能只断言视觉树有对应节点。
 - `0789562`：外部呈现缺少专业阅读能力时须明确降为 core；仍使用完整规范数据及原动作，不能为了适配皮肤丢字段、操作或能力实例。
 
@@ -71,7 +71,7 @@
 | 能力、菜单、模式、模型协商 | 无此能力的会话正常使用；第三方与内置一致；旧 release、忙碌/归档门禁；模型/模式变化不丢历史和其他选择 | `test/session-capability-ui.test.mjs`、`test/agent-command-menu.test.mjs`、`test/model-catalog-navigation.test.mjs`、`test/model-configuration.test.mjs`、`test/composer-access-options.test.mjs`；`probes/plugin-command-menu-browser.mjs` |
 | Broker、执行配置、会话生命周期 | 只读/写入准入、拒绝/取消、固定绑定、热复用/重启恢复；其他 provider 的原有回合 | `src-tauri/src/session_host_tests.rs` 及对应 Broker/执行配置 Rust 测试；`test/session-capability-providers.test.mjs`、`test/pi-capability-workflow.test.mjs`、`test/approval-routing.test.mjs` |
 | 事件投影、队列、目标、子 Agent | 主回合唯一终态；历史重载、重复/迟到事件、FIFO/steering 区别、暂停/uncertain、普通对话与草稿不被消费 | `test/message-queue.test.mjs`、`test/session-goal.test.mjs`、`test/subagent-workflow.test.mjs`、`test/presentation-timeline.test.mjs` 及相应原生持久化测试 |
-| 呈现/UiKit/共享工作台、动作桥 | 默认 Material 3 与 ak-ui 浅/深主题与受影响的外部呈现一致保留业务；未覆盖 surface 继承；core 降级、草稿/焦点/锚点、过期动作、故障中审批/恢复可达 | `test/renderer-negotiation.test.mjs`、`test/presentation-package-controller.test.mjs`、`test/presentation-view-state.test.mjs`、`test/presentation-conversation.test.mjs`；`probes/presentation-full-skins-browser.mjs`、受影响 surface 探针 |
+| 呈现/UiKit/共享工作台、动作桥 | 默认 Material 3 与 ak-ui 浅/深主题与受影响的外部呈现一致保留业务；未覆盖 surface 继承；core 降级、草稿/焦点/锚点、过期动作、故障回退后会话审批可达、恢复可达 | `test/renderer-negotiation.test.mjs`、`test/presentation-package-controller.test.mjs`、`test/presentation-view-state.test.mjs`、`test/presentation-conversation.test.mjs`；`probes/presentation-full-skins-browser.mjs`、受影响 surface 探针 |
 | 输入、附件、建议列表 | 纯文本/图片/引用、输入法与快捷键、长列表/长历史可用；草稿、队列、历史附件相互隔离 | `test/message-draft-ownership.test.mjs`、`test/clipboard-images.test.mjs`、`test/attachment-previews.test.mjs`、`test/presentation-suggestions.test.mjs`；`probes/composer-input-browser.mjs`、`probes/composer-paste-browser.mjs` |
 | 安装、SDK、打包、升级 | 启用/禁用/卸载、旧 release 绑定、失败候选回滚、缺依赖、损坏资源、桌面启动与宿主 SDK 装载 | `test/plugin-management.test.mjs`、`test/host-sdk.test.mjs`、`test/external-plugin-build.test.mjs`、`test/presentation-build.test.mjs`；相关安装/原生桌面探针 |
 | 共享 workspace/导航/设置/Git 状态 | 切换会话/工作区不串数据；设置继承和并发冲突；仓库选择不改变会话绑定；默认与外部工作台同步 | `test/session-navigation.test.mjs`、`test/session-lifecycle-navigation.test.mjs`、`probes/session-lifecycle-browser.mjs`、`test/agent-settings.test.mjs`、`test/git-repositories.test.mjs`、`test/presentation-navigation.test.mjs`、`test/presentation-git.test.mjs` |

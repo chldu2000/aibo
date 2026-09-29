@@ -32,6 +32,10 @@ Chromium 浏览器交互已有验收记录，未宣称其他 OS 或所有屏幕�
 连续工具按组显示数量与完成数；系统消息按宿主 `groupSystemItems` 提示分组，
 推理、分支摘要和压缩摘要保持独立。内置呈现与插件共用 `./timeline-model` 的纯数据规则。
 
+`renderConversation` 在消息与输入框之间渲染当前会话的待处理审批，只显示与 `state.session`
+匹配的请求。按钮只绑定目录中的 `resolveApproval` token：带选项的请求按选项作答，
+拒绝类在前；否则按 `availableDecisions` 显示允许/拒绝。没有 token 时不渲染按钮。
+
 编辑器支持 ⌘/Ctrl+Enter：空闲时绑定发送，运行时绑定宿主可用的立即引导；
 没有对应动作时不声明快捷键。普通 Enter 仍换行。
 

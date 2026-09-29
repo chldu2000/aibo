@@ -11,7 +11,7 @@
   import { goalStatusLabel, goalCanResume } from '$lib/app/session-goal';
   import { sessionAgentKind } from '$lib/app/agent-kind';
   import { AgentStatusMark, GoalBar, Badge, Button, Card, CardContent, CardHeader, CardTitle, Icon, Input, Separator } from '$lib/ui-kit';
-  import type { AgentCommand, AgentGoal, AgentQueueSnapshot, ContextAttachment, SessionControlId, SessionExecutionProfile, SessionModelCatalog, Session, UserInputRequest, WorkspacePathSuggestion } from '$lib/types';
+  import type { AgentCommand, AgentGoal, AgentQueueSnapshot, ContextAttachment, SessionControlId, SessionExecutionProfile, SessionModelCatalog, Session, UserInputRequest, ApprovalRequest, ApprovalChoice, WorkspacePathSuggestion } from '$lib/types';
   import type { UsageValues } from './view-models';
   import Composer from './Composer.svelte';
   import { splitSessionReferences } from '../../../../packages/presentation-workbench/session-references.js';
@@ -52,6 +52,8 @@
     retryPrompt: string | null;
     retryReason: string | null;
     userInputRequests: UserInputRequest[];
+    /** Pending approvals of this session; the host revalidates every submitted choice. */
+    approvalRequests: ApprovalRequest[];
     userInputDrafts: Record<string, string>;
     onUserInputDraftChange: (value: Record<string, string>) => void;
     queueSnapshot: AgentQueueSnapshot | null;
@@ -86,6 +88,7 @@
     onRetry: () => void;
     onResolveUserInput: (request: UserInputRequest, answers: Record<string, string[]>) => void | Promise<void>;
     onCancelUserInput: (request: UserInputRequest) => void;
+    onResolveApproval: (approval: ApprovalRequest, choice: ApprovalChoice) => void | Promise<void>;
     onSend: () => void;
     onQueue: (mode: 'steer' | 'followUp') => void;
     onClearQueue: () => void;
@@ -126,6 +129,7 @@
     retryPrompt,
     retryReason,
     userInputRequests,
+    approvalRequests,
     userInputDrafts,
     onUserInputDraftChange,
     queueSnapshot,
@@ -155,6 +159,7 @@
     onRetry,
     onResolveUserInput,
     onCancelUserInput,
+    onResolveApproval,
     onSend,
     onQueue,
     onClearQueue,
@@ -494,6 +499,38 @@
     <div role="tabpanel" id="session-panel-changes" aria-labelledby="session-tab-changes" class="timeline-feed" tabindex="0">
       {#if session && changesPanel}{@render changesPanel()}{:else}<p role="status">请先选择会话。</p>{/if}
     </div>
+  {/if}
+
+  {#if approvalRequests.length > 0}
+    <section class="approval-list" aria-label="会话审批" aria-live="assertive">
+      {#each approvalRequests as approval (approval.requestId)}
+        <Card class="approval-card">
+          <CardHeader class="approval-card-heading">
+            <CardTitle>需要确认</CardTitle>
+            <Badge variant="warning">{approval.kind}</Badge>
+          </CardHeader>
+          <CardContent class="approval-card-content">
+            {#if approval.command}<code>{approval.command}</code>{/if}
+            {#if approval.cwd}<small>{approval.cwd}</small>{/if}
+            <div class="approval-actions">
+              {#if approval.options.length > 0}
+                <!-- Provider-offered options: reject kinds first and muted, allow kinds as the primary action. -->
+                {#each [...approval.options].sort((left, right) => left.kind === right.kind ? 0 : left.kind === 'reject' ? -1 : 1) as option (option.id)}
+                  <Button variant={option.kind === 'reject' ? 'ghost' : 'default'} size="sm" onclick={() => void onResolveApproval(approval, { optionId: option.id })} disabled={busy}>{option.label ?? (option.kind === 'allow' ? '允许' : '拒绝')}</Button>
+                {/each}
+              {:else}
+                {#if approval.availableDecisions.includes('cancel')}
+                  <Button variant="ghost" size="sm" onclick={() => void onResolveApproval(approval, 'cancel')} disabled={busy}>拒绝</Button>
+                {/if}
+                {#if approval.availableDecisions.includes('accept')}
+                  <Button size="sm" onclick={() => void onResolveApproval(approval, 'accept')} disabled={busy}>允许</Button>
+                {/if}
+              {/if}
+            </div>
+          </CardContent>
+        </Card>
+      {/each}
+    </section>
   {/if}
 
   {#if userInputRequests.length > 0}

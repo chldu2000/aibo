@@ -31,9 +31,7 @@
     if (event.defaultPrevented || [...document.querySelectorAll<HTMLElement>('dialog[open],[role="alertdialog"]')].some(node => node.getClientRects().length)) return;
     if (event.key === 'Escape') { event.preventDefault(); event.stopPropagation(); onClose(); }
     if (event.key !== 'Tab') return;
-    // Host approvals stay in the keyboard loop even while the workbench is inert.
-    const candidates = [...panel.querySelectorAll<HTMLElement>('button,input,textarea,select,a[href],[tabindex]'),
-      ...document.querySelectorAll<HTMLElement>('.approval-list button')]
+    const candidates = [...panel.querySelectorAll<HTMLElement>('button,input,textarea,select,a[href],[tabindex]')]
       .filter(node => node.tabIndex >= 0 && !node.matches(':disabled') && !node.closest('[hidden],[inert]') && node.getClientRects().length);
     event.preventDefault();
     if (!candidates.length) { heading.focus(); return; }
