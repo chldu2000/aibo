@@ -4,13 +4,13 @@
   import { parseSubagent, subagentStatusLabels } from '$lib/app/subagents';
   import { SubagentCard } from '$lib/ui-kit';
   import { tick } from 'svelte';
-  import { userInputDraftKey, answeredRequest } from '$lib/app/user-input-drafts';
+  import UserInputCard from './UserInputCard.svelte';
   import { createTimelineStickiness } from '$lib/app/timeline-stickiness';
   import type { Snippet } from 'svelte';
   import type { ModelConfigurationState } from '$lib/app/model-configuration';
   import { goalStatusLabel, goalCanResume } from '$lib/app/session-goal';
   import { sessionAgentKind } from '$lib/app/agent-kind';
-  import { AgentStatusMark, GoalBar, Badge, Button, Card, CardContent, CardHeader, CardTitle, Icon, Input, Separator } from '$lib/ui-kit';
+  import { AgentStatusMark, GoalBar, Badge, Button, Card, CardContent, CardHeader, CardTitle, Icon, Separator } from '$lib/ui-kit';
   import type { AgentCommand, AgentGoal, AgentQueueSnapshot, ContextAttachment, SessionControlId, SessionExecutionProfile, SessionModelCatalog, Session, UserInputRequest, ApprovalRequest, ApprovalChoice, WorkspacePathSuggestion } from '$lib/types';
   import type { UsageValues } from './view-models';
   import Composer from './Composer.svelte';
@@ -226,22 +226,6 @@
     }
     return new Set(lastCompletedAssistantByTurn.values());
   });
-  function userInputKey(request: UserInputRequest, questionId: string): string {
-    return userInputDraftKey(request, questionId);
-  }
-
-  function setUserInputDraft(request: UserInputRequest, questionId: string, value: string): void {
-    onUserInputDraftChange({ ...userInputDrafts, [userInputKey(request, questionId)]: value });
-  }
-
-  async function submitUserInput(request: UserInputRequest): Promise<void> {
-    const answers = answeredRequest(request, userInputDrafts);
-    if (!answers) return;
-    try { await onResolveUserInput(request, answers); } catch {
-      // The host keeps drafts when the provider rejects or loses the request.
-    }
-  }
-
   function countStatus(items: readonly TimelineViewItem[], ...statuses: TimelineViewItem['status'][]): number {
     return items.filter((item) => statuses.includes(item.status)).length;
   }
@@ -540,48 +524,9 @@
 
   {#if userInputRequests.length > 0}
     <div class="user-input-list" aria-live="assertive">
-      {#each userInputRequests as request (request.requestId)}
-        <Card class="user-input-card">
-          <CardHeader class="user-input-card-heading">
-            <CardTitle>Agent 需要你的回答</CardTitle>
-            <Badge variant="warning">{request.isBlocking ? '等待输入' : '可选输入'}</Badge>
-          </CardHeader>
-          <CardContent class="user-input-card-content">
-            {#each request.questions as question (question.id)}
-              <fieldset class="user-input-question">
-                <legend>{question.header ?? '问题'}</legend>
-                <p>{question.question}</p>
-                {#if question.options.length > 0}
-                  <div class="user-input-options">
-                    {#each question.options as option (option.label)}
-                      {@const key = userInputKey(request, question.id)}
-                      <Button
-                        type="button"
-                        size="sm"
-                        variant={userInputDrafts[key] === option.label ? 'secondary' : 'outline'}
-                        onclick={() => setUserInputDraft(request, question.id, option.label)}
-                      >
-                        {option.label}
-                      </Button>
-                    {/each}
-                  </div>
-                {/if}
-                {#if question.options.length === 0 || question.isOther}
-                  <Input
-                    value={userInputDrafts[userInputKey(request, question.id)] ?? ''}
-                    placeholder={question.isOther ? '补充其他回答…' : '输入回答…'}
-                    aria-label={question.question}
-                    oninput={(event) => setUserInputDraft(request, question.id, (event.currentTarget as HTMLInputElement).value)}
-                  />
-                {/if}
-              </fieldset>
-            {/each}
-            <div class="user-input-actions">
-              <Button type="button" size="sm" variant="ghost" onclick={() => onCancelUserInput(request)} disabled={busy}>停止并取消</Button>
-              <Button type="button" size="sm" onclick={() => submitUserInput(request)} disabled={busy}>提交回答</Button>
-            </div>
-          </CardContent>
-        </Card>
+      {#each userInputRequests as request (JSON.stringify([request.sessionId, request.requestId, request.turnId]))}
+        <UserInputCard {request} drafts={userInputDrafts} {busy}
+          onDraftChange={onUserInputDraftChange} onResolve={onResolveUserInput} onCancel={onCancelUserInput} />
       {/each}
     </div>
   {/if}
