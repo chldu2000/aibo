@@ -510,8 +510,13 @@
             <Badge variant="warning">{approval.kind}</Badge>
           </CardHeader>
           <CardContent class="approval-card-content">
-            {#if approval.command}<code>{approval.command}</code>{/if}
-            {#if approval.cwd}<small>{approval.cwd}</small>{/if}
+            {#if approval.command || approval.cwd}
+              <!-- svelte-ignore a11y_no_noninteractive_tabindex (Scrollable approval text must be keyboard accessible.) -->
+              <div class="approval-details" role="region" aria-label="审批详情" tabindex="0">
+                {#if approval.command}<code>{approval.command}</code>{/if}
+                {#if approval.cwd}<small>{approval.cwd}</small>{/if}
+              </div>
+            {/if}
             <div class="approval-actions">
               {#if approval.options.length > 0}
                 <!-- Provider-offered options: reject kinds first and muted, allow kinds as the primary action. -->

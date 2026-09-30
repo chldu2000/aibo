@@ -229,7 +229,8 @@ h1, h2, h3, p { margin: 0; }
 .composer-model-option-copy strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .composer-model-option-copy small { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .composer-menu button { display: flex; min-width: 0; align-items: center; gap: 8px; padding: 8px; }
-.approval-list { display: grid; gap: 8px; margin: 0 16px 12px; }
+.approval-list { display: grid; grid-auto-rows: minmax(140px, 1fr); flex: 0 1 auto; min-height: 0; max-height: 70%; overflow-y: auto; overscroll-behavior: contain; gap: 8px; margin: 0 16px 12px; }
+.approval-card { display: flex; flex-direction: column; flex: none; min-height: 0; max-height: min(60dvh, 480px); }
 .user-input-list { display: grid; gap: 8px; margin: 0 16px 12px; }
 .user-input-card-heading { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
 .user-input-card-content { display: grid; gap: 12px; }
@@ -237,12 +238,13 @@ h1, h2, h3, p { margin: 0; }
 .user-input-question p { margin: 0; }
 .user-input-options { display: flex; flex-wrap: wrap; gap: 6px; }
 .user-input-actions { display: flex; justify-content: flex-end; }
-.approval-card-heading { flex-direction: row; justify-content: space-between; gap: 8px; padding: 12px 13px 8px; }
+.approval-card-heading { flex: none; flex-direction: row; justify-content: space-between; gap: 8px; padding: 12px 13px 8px; }
 .approval-card-heading > :not(:first-child) { margin-top: 0; }
-.approval-card-content { display: grid; gap: 8px; padding: 0 13px 13px; }
-.approval-card code { overflow: auto; padding: 7px 8px; white-space: pre-wrap; overflow-wrap: anywhere; }
+.approval-card-content { display: flex; flex-direction: column; min-height: 0; gap: 8px; padding: 0 13px 13px; }
+.approval-details { display: grid; min-height: 0; overflow: auto; overscroll-behavior: contain; gap: 8px; }
+.approval-card code { padding: 7px 8px; white-space: pre-wrap; overflow-wrap: anywhere; }
 .approval-card small { overflow-wrap: anywhere; }
-.approval-actions { display: flex; justify-content: flex-end; gap: 6px; }
+.approval-actions { display: flex; flex: none; flex-wrap: wrap; justify-content: flex-end; gap: 6px; }
 .inspector { min-width: 0; overflow-y: auto; overscroll-behavior: contain; }
 .inspector-empty { margin: 12px; padding: 18px 14px; }
 .session-context-card { margin: 12px 12px 10px; }
