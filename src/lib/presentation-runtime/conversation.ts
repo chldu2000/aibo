@@ -20,7 +20,7 @@ export function conversationActions(state: PresentationConversation): Spec[] {
   if (state.timeline.length > state.timelineVisibleCount) add('loadOlder');
   if (!session) return entries;
   const bound = Boolean(session.pluginInstallationId);
-  const available = bound && !session.archived && !state.archiving && !state.busy;
+  const available = bound && !session.archived && !session.historyOnly && !state.archiving && !state.busy;
   const hasImage = state.attachments.some(item => item.sessionId === session.id && item.turnId === null && item.sendStrategy === 'inline' && item.mediaType.startsWith('image/'));
   const capable = (name: string) => bound && session.capabilities.includes(name);
   if (available && (!state.running || capable('queue.manage'))) {

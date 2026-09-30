@@ -360,7 +360,8 @@ mod tests {
         let linked: String = sqlx::query_scalar("SELECT write_run_id FROM capability_invocations WHERE id=?").bind(&result.invocation_id).fetch_one(&f.db).await.unwrap();
         assert_eq!(f.rows().await.iter().find(|row|row["requestId"] == "once").unwrap()["id"],linked);
         plugin_registry::enable(&f.db,&f.installation,false).await.unwrap();
-        plugin_registry::uninstall(&f.db,&f.root.join("data"),&f.installation).await.unwrap();
+        let impact=crate::plugin_lifecycle::impact(&f.db,&f.installation).await.unwrap();
+        crate::session_host::SessionHost::new(f.db.clone(),f.broker.clone()).remove_release(&f.root.join("data"),&impact,true).await.unwrap();
         sqlx::query("UPDATE workspaces SET trusted=0 WHERE id='a'").execute(&f.db).await.unwrap();
         let never = workspace_write_runs::Request::with_confirmation("once".into(),"main".into(), |_|async {panic!("replay must not prompt")});
         let replay = Broker::new(f.db.clone()).invoke_authorized("main",request("once","normal"),&never).await.unwrap();

@@ -1,6 +1,273 @@
 use super::*;
 use std::fs;
 
+fn replacement_package(root:&Path, version:&str) {
+    let path=root.join("package/plugin.json");
+    let mut manifest:Value=serde_json::from_str(&fs::read_to_string(&path).unwrap()).unwrap();
+    manifest["version"]=json!(version);fs::write(path,manifest.to_string()).unwrap();
+}
+
+#[tokio::test]
+async fn plugin_replacement_is_single_version_and_undo_restores_history_and_bindings() {
+    let (root,db,broker,host,session)=concurrent_session_fixture().await;
+    let source=session.plugin_installation_id.clone().unwrap();
+    let pending=host.prepare_with_profile("w",&source,&session.agent,None).await.unwrap();
+    let before=host.saved_binding(&session.id).await.unwrap();
+    replacement_package(&root,"99.0.0");
+    let preview=crate::plugin_replacement::preview(&db,&root.join("package")).await.unwrap();
+    assert_eq!(preview.kind,"upgrade");
+    let target=host.replace_plugin(&root.join("data"),&root.join("package"),Some(&preview.token),false).await.unwrap();
+    assert_ne!(target.id,source);assert!(target.enabled);
+    let count:i64=sqlx::query_scalar("SELECT count(*) FROM plugin_installations WHERE installed=1").fetch_one(&db).await.unwrap();assert_eq!(count,1);
+    assert_eq!(crate::session_by_id(&db,&session.id).await.unwrap().plugin_installation_id.as_deref(),Some(target.id.as_str()));
+    assert_eq!(crate::session_by_id(&db,&pending.id).await.unwrap().plugin_installation_id.as_deref(),Some(target.id.as_str()));
+    assert_eq!(crate::plugin_replacement::undo_targets(&db).await.unwrap(),vec![target.id.clone()]);
+    crate::plugin_replacement::recover(&db,&root.join("data")).await.unwrap();
+    host.undo_plugin_replacement(&root.join("data"),&target.id).await.unwrap();
+    assert_eq!(host.saved_binding(&session.id).await.unwrap(),before);
+    assert_eq!(crate::session_by_id(&db,&pending.id).await.unwrap().plugin_installation_id.as_deref(),Some(source.as_str()));
+    assert!(!root.join("data/plugins").join(&target.id).exists());
+    host.invoke_capability_from("main",&session.id,"model.select",json!({"action":"list"})).await.unwrap();
+    broker.stop_session(&session.id).await.unwrap();db.close().await;fs::remove_dir_all(root).unwrap();
+}
+
+#[tokio::test]
+async fn plugin_replacement_partial_failure_restores_every_session_and_retries() {
+    let (root,db,broker,host,first)=concurrent_session_fixture().await;
+    let source=first.plugin_installation_id.clone().unwrap();
+    let second=host.create_with_profile_from("main","w",&source,&first.agent,None).await.unwrap();
+    let first_before=host.saved_binding(&first.id).await.unwrap();
+    sqlx::query("UPDATE session_bindings SET plugin_binding_json=json_set(plugin_binding_json,'$.nativeSessionId','broken-recovery') WHERE session_id=?").bind(&second.id).execute(&db).await.unwrap();
+    let second_before=host.saved_binding(&second.id).await.unwrap();
+    replacement_package(&root,"99.0.0");
+    let preview=crate::plugin_replacement::preview(&db,&root.join("package")).await.unwrap();
+    let error=host.replace_plugin(&root.join("data"),&root.join("package"),Some(&preview.token),false).await.err().unwrap();
+    assert!(error.contains("原会话"),"{error}");
+    assert_eq!(host.saved_binding(&first.id).await.unwrap(),first_before);
+    assert_eq!(host.saved_binding(&second.id).await.unwrap(),second_before);
+    assert_eq!(crate::session_by_id(&db,&first.id).await.unwrap().plugin_installation_id.as_deref(),Some(source.as_str()));
+    let count:i64=sqlx::query_scalar("SELECT count(*) FROM plugin_installations WHERE installed=1").fetch_one(&db).await.unwrap();assert_eq!(count,1);
+    assert!(crate::plugin_replacement::undo_targets(&db).await.unwrap().is_empty());
+    // Removing the corrupted test session allows a retry of the same candidate identity.
+    sqlx::query("DELETE FROM sessions WHERE id=?").bind(&second.id).execute(&db).await.unwrap();
+    let preview=crate::plugin_replacement::preview(&db,&root.join("package")).await.unwrap();
+    host.replace_plugin(&root.join("data"),&root.join("package"),Some(&preview.token),false).await.unwrap();
+    broker.stop_session(&first.id).await.unwrap();db.close().await;fs::remove_dir_all(root).unwrap();
+}
+
+#[tokio::test]
+async fn plugin_replacement_downgrade_requires_reinstall_and_keeps_business_history() {
+    let (root,db,broker,host,session)=concurrent_session_fixture().await;
+    sqlx::query("INSERT INTO messages(id,session_id,role,content,status,created_at,updated_at) VALUES('retained',?,'assistant','business history','completed','now','now')").bind(&session.id).execute(&db).await.unwrap();
+    replacement_package(&root,"0.0.0");
+    let preview=crate::plugin_replacement::preview(&db,&root.join("package")).await.unwrap();assert_eq!(preview.kind,"downgrade");
+    assert!(host.replace_plugin(&root.join("data"),&root.join("package"),Some(&preview.token),false).await.err().unwrap().contains("直接降级"));
+    let target=host.replace_plugin(&root.join("data"),&root.join("package"),Some(&preview.token),true).await.unwrap();assert!(!target.enabled);
+    assert!(crate::session_by_id(&db,&session.id).await.unwrap().history_only);
+    let content:String=sqlx::query_scalar("SELECT content FROM messages WHERE id='retained'").fetch_one(&db).await.unwrap();assert_eq!(content,"business history");
+    assert!(!root.join("data/plugins").join(session.plugin_installation_id.unwrap()).exists());
+    assert!(host.undo_plugin_replacement(&root.join("data"),&target.id).await.is_err());
+    broker.stop_session(&session.id).await.unwrap();db.close().await;fs::remove_dir_all(root).unwrap();
+}
+
+#[tokio::test]
+async fn plugin_replacement_use_invalidates_undo_and_cleans_backup() {
+    let (root,db,broker,host,session)=concurrent_session_fixture().await;
+    let source=session.plugin_installation_id.clone().unwrap();
+    replacement_package(&root,"99.0.0");
+    let preview=crate::plugin_replacement::preview(&db,&root.join("package")).await.unwrap();
+    let target=host.replace_plugin(&root.join("data"),&root.join("package"),Some(&preview.token),false).await.unwrap();
+    host.invoke_capability_from("main",&session.id,"model.select",json!({"action":"list"})).await.unwrap();
+    assert!(crate::plugin_replacement::undo_targets(&db).await.unwrap().is_empty());
+    assert!(host.undo_plugin_replacement(&root.join("data"),&target.id).await.is_err());
+    assert!(!root.join("data/plugins").join(source).exists());
+    broker.stop_session(&session.id).await.unwrap();db.close().await;fs::remove_dir_all(root).unwrap();
+}
+
+#[tokio::test]
+async fn plugin_replacement_duplicate_same_version_and_stale_confirmation() {
+    let (root,db,broker,host,session)=concurrent_session_fixture().await;
+    let preview=crate::plugin_replacement::preview(&db,&root.join("package")).await.unwrap();assert_eq!(preview.kind,"installed");
+    let same=host.replace_plugin(&root.join("data"),&root.join("package"),None,false).await.unwrap();assert_eq!(Some(same.id),session.plugin_installation_id);
+    let path=root.join("package/worker.mjs");let worker=fs::read_to_string(&path).unwrap();fs::write(&path,format!("{worker}\n// replacement bytes\n")).unwrap();
+    let preview=crate::plugin_replacement::preview(&db,&root.join("package")).await.unwrap();assert_eq!(preview.kind,"replace");
+    fs::write(&path,format!("{worker}\n// another package\n")).unwrap();
+    assert!(host.replace_plugin(&root.join("data"),&root.join("package"),Some(&preview.token),false).await.err().unwrap().contains("确认"));
+    let preview=crate::plugin_replacement::preview(&db,&root.join("package")).await.unwrap();
+    host.replace_plugin(&root.join("data"),&root.join("package"),Some(&preview.token),false).await.unwrap();
+    broker.stop_session(&session.id).await.unwrap();db.close().await;fs::remove_dir_all(root).unwrap();
+}
+
+#[tokio::test]
+async fn plugin_replacement_crash_recovery_restores_partially_migrated_sessions() {
+    let (root,db,broker,host,session)=concurrent_session_fixture().await;
+    let before=host.saved_binding(&session.id).await.unwrap();
+    let saved=crate::plugin_replacement::snapshot(&db,"dev.aibo.pi").await.unwrap();
+    let source=session.plugin_installation_id.clone().unwrap();
+    let target=install_test_upgrade(&root,&db,false).await;
+    sqlx::query("INSERT INTO plugin_replacements VALUES('dev.aibo.pi',?,?,'preparing','now')")
+        .bind(&target).bind(serde_json::to_string(&saved).unwrap()).execute(&db).await.unwrap();
+    host.migrate_session_for_replacement(&root.join("data"),&session.id,&source,&target).await.unwrap();
+    broker.stop_installation(&target).await.unwrap();
+    db.close().await;
+    let reopened=crate::open_database(&root.join("data/aibo.sqlite3")).await.unwrap();
+    crate::plugin_replacement::recover(&reopened,&root.join("data")).await.unwrap();
+    crate::plugin_replacement::recover(&reopened,&root.join("data")).await.unwrap();
+    let recovered=SessionHost::new(reopened.clone(),Broker::new(reopened.clone()));
+    assert_eq!(recovered.saved_binding(&session.id).await.unwrap(),before);
+    assert_eq!(crate::session_by_id(&reopened,&session.id).await.unwrap().plugin_installation_id.as_deref(),Some(source.as_str()));
+    assert!(!root.join("data/plugins").join(target).exists());
+    assert!(sqlx::query("PRAGMA foreign_key_check").fetch_all(&reopened).await.unwrap().is_empty());
+    reopened.close().await;fs::remove_dir_all(root).unwrap();
+}
+
+#[tokio::test]
+async fn plugin_replacement_preserves_closed_archived_sessions_and_blocks_running_work() {
+    let (root,db,broker,host,session)=concurrent_session_fixture().await;
+    replacement_package(&root,"99.0.0");
+    sqlx::query("UPDATE sessions SET state='running' WHERE id=?").bind(&session.id).execute(&db).await.unwrap();
+    let preview=crate::plugin_replacement::preview(&db,&root.join("package")).await.unwrap();
+    assert!(host.replace_plugin(&root.join("data"),&root.join("package"),Some(&preview.token),false).await.err().unwrap().contains("停止"));
+    sqlx::query("UPDATE sessions SET state='closed',archived=1 WHERE id=?").bind(&session.id).execute(&db).await.unwrap();
+    let preview=crate::plugin_replacement::preview(&db,&root.join("package")).await.unwrap();
+    let target=host.replace_plugin(&root.join("data"),&root.join("package"),Some(&preview.token),false).await.unwrap();
+    let after=crate::session_by_id(&db,&session.id).await.unwrap();assert!(after.archived);assert_eq!(after.state,"closed");assert!(!after.history_only);assert_eq!(after.plugin_installation_id.as_deref(),Some(target.id.as_str()));
+    broker.stop_session(&session.id).await.unwrap();db.close().await;fs::remove_dir_all(root).unwrap();
+}
+
+#[tokio::test]
+async fn plugin_replacement_preserves_disabled_state_and_bootstrap_does_not_resurrect_versions() {
+    let (root,db,broker,host,session)=concurrent_session_fixture().await;
+    let old=session.plugin_installation_id.clone().unwrap();
+    plugin_registry::enable(&db,&old,false).await.unwrap();
+    replacement_package(&root,"99.0.0");
+    let preview=crate::plugin_replacement::preview(&db,&root.join("package")).await.unwrap();
+    let target=host.replace_plugin(&root.join("data"),&root.join("package"),Some(&preview.token),false).await.unwrap();
+    assert!(!target.enabled);
+    plugin_registry::install_builtins(&db,&root.join("data")).await.unwrap();
+    let rows:Vec<(String,i64)>=sqlx::query_as("SELECT id,enabled FROM plugin_installations WHERE plugin_id='dev.aibo.pi' AND installed=1").fetch_all(&db).await.unwrap();assert_eq!(rows,vec![(target.id.clone(),0)]);
+    assert_eq!(crate::plugin_replacement::undo_targets(&db).await.unwrap(),vec![target.id.clone()]);
+    let impact=crate::plugin_lifecycle::impact(&db,&target.id).await.unwrap();host.remove_release(&root.join("data"),&impact,true).await.unwrap();
+    plugin_registry::install_builtins(&db,&root.join("data")).await.unwrap();
+    let count:i64=sqlx::query_scalar("SELECT count(*) FROM plugin_installations WHERE plugin_id='dev.aibo.pi' AND installed=1").fetch_one(&db).await.unwrap();assert_eq!(count,0);
+    assert!(crate::plugin_replacement::undo_targets(&db).await.unwrap().is_empty());
+    broker.stop_session(&session.id).await.unwrap();db.close().await;fs::remove_dir_all(root).unwrap();
+}
+
+#[tokio::test]
+async fn plugin_replacement_host_edits_invalidate_undo_before_execution() {
+    for change in ["message","queue","profile","binding"] {
+        let (root,db,broker,host,session)=concurrent_session_fixture().await;
+        replacement_package(&root,"99.0.0");
+        let preview=crate::plugin_replacement::preview(&db,&root.join("package")).await.unwrap();
+        let target=host.replace_plugin(&root.join("data"),&root.join("package"),Some(&preview.token),false).await.unwrap();
+        let sql=match change {
+            "message"=>"INSERT INTO messages(id,session_id,role,content,status,created_at,updated_at) VALUES('new',?,'user','new content','completed','now','now')",
+            "queue"=>"INSERT INTO queued_messages(id,session_id,caller,text,created_at) VALUES('queued',?,'main','new work','now')",
+            "profile"=>"UPDATE session_execution_profiles SET updated_at=updated_at WHERE session_id=?",
+            _=>"UPDATE session_bindings SET plugin_binding_json=plugin_binding_json WHERE session_id=?",
+        };
+        sqlx::query(sql).bind(&session.id).execute(&db).await.unwrap();
+        assert!(host.undo_plugin_replacement(&root.join("data"),&target.id).await.is_err(),"{change}");
+        crate::plugin_replacement::collect(&db,&root.join("data")).await.unwrap();
+        broker.stop_session(&session.id).await.unwrap();db.close().await;fs::remove_dir_all(root).unwrap();
+    }
+}
+
+#[tokio::test]
+async fn plugin_replacement_preserves_other_session_scoped_private_state() {
+    let (root,db,broker,host,session)=concurrent_session_fixture().await;
+    let source=session.plugin_installation_id.clone().unwrap();
+    let instance=ulid::Ulid::new().to_string();
+    sqlx::query("INSERT INTO capability_instances(id,installation_id,contribution_id,scope_kind,scope_id,created_at) VALUES(?,?,'session-tool','session',?,'now')")
+        .bind(&instance).bind(&source).bind(&session.id).execute(&db).await.unwrap();
+    let old=crate::plugin_storage::directory(&root.join("data/plugins").join(&source),"dev.aibo.pi",&source,&instance).unwrap();
+    fs::write(old.join("state.json"),"private session tool data").unwrap();
+    replacement_package(&root,"99.0.0");
+    let preview=crate::plugin_replacement::preview(&db,&root.join("package")).await.unwrap();
+    let target=host.replace_plugin(&root.join("data"),&root.join("package"),Some(&preview.token),false).await.unwrap();
+    let copied:String=sqlx::query_scalar("SELECT id FROM capability_instances WHERE installation_id=? AND contribution_id='session-tool'").bind(&target.id).fetch_one(&db).await.unwrap();
+    let path=root.join("data/plugin-data/dev.aibo.pi").join(&target.id).join("v1").join(copied).join("state.json");
+    assert_eq!(fs::read_to_string(path).unwrap(),"private session tool data");
+    assert_eq!(fs::read_to_string(old.join("state.json")).unwrap(),"private session tool data");
+    broker.stop_session(&session.id).await.unwrap();db.close().await;fs::remove_dir_all(root).unwrap();
+}
+
+async fn install_test_upgrade(root: &Path, db: &SqlitePool, broken: bool) -> String {
+    let package=root.join("package");
+    let mut manifest:Value=serde_json::from_str(&fs::read_to_string(package.join("plugin.json")).unwrap()).unwrap();
+    manifest["version"]=json!("99.0.0");
+    fs::write(package.join("plugin.json"),manifest.to_string()).unwrap();
+    if broken { fs::write(package.join("worker.mjs"),"process.exit(1);").unwrap(); }
+    let target=plugin_registry::install(db,&root.join("data"),&package).await.unwrap();
+    plugin_registry::enable(db,&target.id,true).await.unwrap();
+    target.id
+}
+
+#[tokio::test]
+async fn plugin_upgrade_migrates_recovery_before_removing_old_private_data() {
+    let (root,db,broker,host,session)=concurrent_session_fixture().await;
+    let source=session.plugin_installation_id.clone().unwrap();
+    let before=host.saved_binding(&session.id).await.unwrap().unwrap();
+    let target=install_test_upgrade(&root,&db,false).await;
+    let report=host.upgrade_enabled(&root.join("data"),&target).await.unwrap();
+    assert!(report.failed.is_empty(),"{:?}",report.failed.iter().map(|e|&e.label).collect::<Vec<_>>());
+    assert_eq!(report.migrated,vec![session.id.clone()]);
+    let after=host.saved_binding(&session.id).await.unwrap().unwrap();
+    assert_eq!(before["nativeSessionId"],after["nativeSessionId"]);
+    assert_eq!(after["pluginInstallationId"],target);
+    assert!(!after["recovery"].to_string().contains(&source));
+    let impact=crate::plugin_lifecycle::impact(&db,&source).await.unwrap();
+    assert!(impact.sessions.is_empty());
+    host.remove_release(&root.join("data"),&impact,false).await.unwrap();
+    assert!(!root.join("data/plugin-data/dev.aibo.pi").join(&source).exists());
+    host.invoke_capability_from("main",&session.id,"model.select",json!({"action":"list"})).await.unwrap();
+    let audit:i64=sqlx::query_scalar("SELECT COUNT(*) FROM plugin_session_migrations WHERE session_id=?").bind(&session.id).fetch_one(&db).await.unwrap();
+    assert_eq!(audit,1);
+    broker.stop_session(&session.id).await.unwrap();db.close().await;fs::remove_dir_all(root).unwrap();
+}
+
+#[tokio::test]
+async fn plugin_upgrade_failure_and_pinned_policy_preserve_original_binding() {
+    let (root,db,broker,host,session)=concurrent_session_fixture().await;
+    let source=session.plugin_installation_id.clone().unwrap();
+    let before=host.saved_binding(&session.id).await.unwrap();
+    let target=install_test_upgrade(&root,&db,true).await;
+    crate::plugin_lifecycle::save_policy(&db,crate::plugin_lifecycle::UpgradePolicy::Pinned).await.unwrap();
+    assert!(host.upgrade_enabled(&root.join("data"),&target).await.unwrap().migrated.is_empty());
+    crate::plugin_lifecycle::save_policy(&db,crate::plugin_lifecycle::UpgradePolicy::Ask).await.unwrap();
+    assert!(host.upgrade_enabled(&root.join("data"),&target).await.unwrap().migrated.is_empty());
+    let report=host.migrate_release(&root.join("data"),&source,&target).await.unwrap();
+    assert_eq!(report.failed.len(),1);
+    assert_eq!(host.saved_binding(&session.id).await.unwrap(),before);
+    assert_eq!(crate::session_by_id(&db,&session.id).await.unwrap().plugin_installation_id.as_deref(),Some(source.as_str()));
+    host.invoke_capability_from("main",&session.id,"model.select",json!({"action":"list"})).await.unwrap();
+    broker.stop_session(&session.id).await.unwrap();db.close().await;fs::remove_dir_all(root).unwrap();
+}
+
+#[tokio::test]
+async fn plugin_removal_requires_current_confirmation_and_keeps_history_after_reinstall() {
+    let (root,db,broker,host,session)=concurrent_session_fixture().await;
+    let source=session.plugin_installation_id.clone().unwrap();
+    sqlx::query("INSERT INTO messages(id,session_id,role,content,status,created_at,updated_at) VALUES('history',?,'assistant','keep this history','completed','now','now')").bind(&session.id).execute(&db).await.unwrap();
+    let impact=crate::plugin_lifecycle::impact(&db,&source).await.unwrap();
+    assert!(host.remove_release(&root.join("data"),&impact,false).await.is_err());
+    sqlx::query("INSERT INTO capability_provider_bindings VALUES('application','application','test','1.0.0',?,'test','now')").bind(&source).execute(&db).await.unwrap();
+    assert!(host.remove_release(&root.join("data"),&impact,true).await.unwrap_err().contains("引用已变化"));
+    let impact=crate::plugin_lifecycle::impact(&db,&source).await.unwrap();
+    host.remove_release(&root.join("data"),&impact,true).await.unwrap();
+    let content:String=sqlx::query_scalar("SELECT content FROM messages WHERE id='history'").fetch_one(&db).await.unwrap();
+    assert_eq!(content,"keep this history");
+    let history=serde_json::to_value(crate::session_history::read(&db,"w".into(),session.id.clone(),None).await.unwrap()).unwrap();
+    assert_eq!(history["session"]["historyOnly"],true);
+    assert!(history["items"].as_array().unwrap().iter().any(|item|item["content"]=="keep this history"));
+    let restored=plugin_registry::install(&db,&root.join("data"),&root.join("package")).await.unwrap();
+    assert_eq!(restored.id,source);
+    plugin_registry::enable(&db,&source,true).await.unwrap();
+    assert!(host.resume_from("main",&session.id).await.unwrap_err().contains("history_only"));
+    broker.stop_session(&session.id).await.unwrap();db.close().await;fs::remove_dir_all(root).unwrap();
+}
+
 #[tokio::test]
 async fn capability_session_projects_tools_and_recovers_after_process_restart() {
     let root = std::env::temp_dir().join(format!("aibo-session-host-{}", ulid::Ulid::new()));

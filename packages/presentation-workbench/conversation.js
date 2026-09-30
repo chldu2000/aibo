@@ -8,6 +8,7 @@ export function renderConversation(state,actions){
  const find=(operation,...args)=>actionFor(actions,operation,...args);
  const controls=(operations)=>operations.flatMap(operation=>{const action=actions.find(a=>a.operation===operation&&!a.args.length);return action?[button('conversation:action:'+operation,labels[operation],action)]:[]});
  const children=[node('header','conversation:header',null,[node('h1','conversation:title',state.session?.label??'选择或创建会话'),text('conversation:activity',state.activityLabel),node('nav','conversation:tools',null,controls(['fork','compact','openTree']))])];
+ if(state.session?.historyOnly)children.push(text('conversation:history-only','插件数据已清除，此会话仅保留历史。'));
  children.push(renderSessionMetadata(state.session,'conversation:session-metadata'));
  const messages=renderTimeline(state.timelineVisibleCount>0?state.timeline.slice(-state.timelineVisibleCount):[],actions,state.groupSystemItems===true,state.attachments);
  children.push({...node('section','conversation:timeline',null,[...controls(['loadOlder']),...messages],{'aria-label':'会话消息'}),className:'timeline'});

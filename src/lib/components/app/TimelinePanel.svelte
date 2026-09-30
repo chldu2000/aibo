@@ -585,10 +585,10 @@
     <div class="agent-queue" role="status" aria-label="待处理消息队列">
       <div class="agent-queue-heading">
         <span>队列 · {queueSnapshot.items?.length || queueSnapshot.steering.length + queueSnapshot.followUp.length}</span>
-        <Button variant="ghost" size="sm" type="button" onclick={onClearQueue} disabled={busy || sessionArchived || selectedSessionArchiving}>清空</Button>
+        <Button variant="ghost" size="sm" type="button" onclick={onClearQueue} disabled={busy || sessionArchived || session?.historyOnly || selectedSessionArchiving}>清空</Button>
       </div>
       {#if queueSnapshot.paused}
-        <div class="agent-queue-item"><span>自动发送已暂停</span><Button variant="ghost" size="sm" onclick={onResumeQueue} disabled={busy || sessionArchived || selectedSessionArchiving || queueSnapshot.items?.some(item => item.status === 'uncertain')}>继续队列</Button></div>
+        <div class="agent-queue-item"><span>自动发送已暂停</span><Button variant="ghost" size="sm" onclick={onResumeQueue} disabled={busy || sessionArchived || session?.historyOnly || selectedSessionArchiving || queueSnapshot.items?.some(item => item.status === 'uncertain')}>继续队列</Button></div>
       {/if}
       {#if queueSnapshot.items?.length}
         {#each queueSnapshot.items as item (item.id)}
@@ -596,9 +596,9 @@
             <Badge variant="outline">{item.status === 'sending' ? '发送中' : item.status === 'uncertain' ? '结果未知' : item.status === 'failed' ? '发送失败' : '等待'}</Badge>
             <span title={item.text}>{item.text.split('[AIBO_SESSION_REFERENCES]')[0].split('[AIBO_CONTEXT_ATTACHMENTS]')[0].trim()}</span>
             {#if !sessionRunning || session?.capabilities.includes('queue.steer')}
-            <Button variant="ghost" size="sm" onclick={() => onSendQueuedMessage(item.id)} disabled={busy || sessionArchived || selectedSessionArchiving || item.status === 'sending' || item.status === 'uncertain'}>立即发送</Button>
+            <Button variant="ghost" size="sm" onclick={() => onSendQueuedMessage(item.id)} disabled={busy || sessionArchived || session?.historyOnly || selectedSessionArchiving || item.status === 'sending' || item.status === 'uncertain'}>立即发送</Button>
             {/if}
-            <Button variant="ghost" size="sm" onclick={() => onRemoveQueuedMessage(item.id)} disabled={busy || sessionArchived || selectedSessionArchiving || item.status === 'sending'}>删除</Button>
+            <Button variant="ghost" size="sm" onclick={() => onRemoveQueuedMessage(item.id)} disabled={busy || sessionArchived || session?.historyOnly || selectedSessionArchiving || item.status === 'sending'}>删除</Button>
           </div>
           <AttachmentList items={splitMessageAttachments(item.text, attachments).attachments} previews={attachmentPreviews} />
           {#if item.error}<div role="status">{item.error}</div>{/if}
@@ -628,6 +628,7 @@
       onClear={sessionArchived || sessionRunning ? undefined : onClearGoal} />
   {/if}
   <Composer
+    historyOnly={session?.historyOnly ?? false}
     selectedAgent={sessionKind === 'plugin' ? null : sessionKind}
     selectedSession={session !== null}
     sessionCapabilities={session?.capabilities ?? []}

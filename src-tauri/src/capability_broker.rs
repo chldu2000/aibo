@@ -215,6 +215,10 @@ impl Broker {
     }
     async fn offers(&self, scope: &Scope, capability: &str, version: &str, installation: Option<&str>) -> Result<Vec<Provider>, Failure> {
         Self::identity(scope, capability, version)?;
+        if let Scope::Session(id)=scope {
+            let retired:bool=sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM plugin_session_retirements WHERE session_id=?)").bind(id).fetch_one(&self.db).await.map_err(database)?;
+            if retired { return Err(fail("provider_unavailable","Session plugin data was removed; only business history remains")); }
+        }
         self.workspace(scope).await?;
         let rows = sqlx::query("SELECT id,plugin_id,manifest_json,install_path,package_digest FROM plugin_installations WHERE installed=1 AND enabled=1 AND (? IS NULL OR id=?)")
             .bind(installation).bind(installation).fetch_all(&self.db).await.map_err(database)?;
@@ -306,6 +310,13 @@ impl Broker {
             .bind(crate::now_iso()).bind(caller).bind(request_id).execute(&self.db).await.is_ok_and(|result|result.rows_affected() > 0);
         self.flights.lock().await.get(&(caller.into(),request_id.into())).is_some_and(|flight|flight.cancel.send(true).is_ok()) || durable
     }
+    pub(crate) async fn claim_plugin_undo(&self,target:&str)->Result<String,String>{
+        let flights=self.flights.lock().await;
+        if flights.values().any(|flight|flight.installation_id==target){return Err("新版正在使用，不能撤销升级".into());}
+        let plugin:Option<String>=sqlx::query_scalar("UPDATE plugin_replacements SET phase='preparing' WHERE target_id=? AND phase='ready' RETURNING plugin_id")
+            .bind(target).fetch_optional(&self.db).await.map_err(|e|e.to_string())?;
+        plugin.ok_or("新版已开始使用或没有可撤销的升级；如需降级，请选择清除数据重装".into())
+    }
     pub async fn stop_installation(&self, installation: &str) -> Result<(), Failure> {
         self.stop_contributions(installation,None).await
     }
@@ -386,6 +397,21 @@ impl Broker {
         let (cancel,cancelled) = watch::channel(false);
         {
             let mut flights = self.flights.lock().await;
+            let available: bool = sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM plugin_installations WHERE id=? AND installed=1 AND enabled=1)")
+                .bind(&provider.installation_id).fetch_one(&self.db).await.map_err(database)?;
+            if !available { return Err(fail("provider_unavailable", "Provider was disabled before admission")); }
+            let replacing:bool=sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM plugin_replacements r JOIN plugin_installations p ON p.plugin_id=r.plugin_id WHERE p.id=? AND r.phase='preparing')")
+                .bind(&provider.installation_id).fetch_one(&self.db).await.map_err(database)?;
+            if replacing && !(caller=="plugin-upgrade" && request.capability=="aibo.session.open") {
+                return Err(fail("busy","Plugin replacement is in progress"));
+            }
+            if let Scope::Session(session)=&request.scope {
+                let candidate:Option<String>=sqlx::query_scalar("SELECT installation_id FROM plugin_session_candidates WHERE session_id=?")
+                    .bind(session).fetch_optional(&self.db).await.map_err(database)?;
+                if candidate.is_some() && !(candidate.as_deref()==Some(provider.installation_id.as_str()) && caller=="plugin-upgrade" && request.capability=="aibo.session.open") {
+                    return Err(fail("busy", "Session is migrating to another plugin release"));
+                }
+            }
             if flights.len() >= MAX_ACTIVE || flights.contains_key(&key) { return Err(fail("busy", "Invocation limit or duplicate request ID")); }
             flights.insert(key.clone(),Flight { cancel, installation_id: provider.installation_id.clone(), contribution_id: provider.contribution_id.clone(), workspace_id: workspace.as_ref().map(|workspace|workspace.id.clone()), scope:request.scope.clone(), interaction:None });
         }
@@ -417,6 +443,11 @@ impl Broker {
         self.flights.lock().await.remove(&key);
         let status = match &result { Ok(_) => "completed", Err(error) => error.code.as_str() };
         sqlx::query("UPDATE capability_invocations SET status=?,finished_at=? WHERE id=?").bind(status).bind(crate::now_iso()).bind(&id).execute(&self.db).await.map_err(database)?;
+        if caller!="plugin-upgrade" {
+            if let Some(data)=provider.directory.parent().and_then(|p|p.parent()) {
+                if let Err(error)=crate::plugin_replacement::collect(&self.db,data).await {tracing::warn!(%error,"replacement backup cleanup deferred");}
+            }
+        }
         if let Err(error) = &mut result { error.invocation_id = Some(id); }
         result
         })
@@ -953,12 +984,13 @@ mod tests {
         assert_eq!(new.output["value"], "3.0.0");
         assert_ne!(old.instance_id, new.instance_id);
         for release in &releases { fixture.broker.stop_installation(release).await.unwrap(); }
-        // Uninstall the new code without cleaning its data, then explicitly select
-        // the old release. A fresh Broker must reuse the old release's identity.
-        plugin_registry::uninstall(&fixture.db, &fixture.root.join("data"), &releases[1]).await.unwrap();
+        // Switch the binding first; the referenced release cannot be removed.
+        assert!(plugin_registry::uninstall(&fixture.db, &fixture.root.join("data"), &releases[1]).await.is_err());
         fixture.bind(Scope::Workspace("a".into()), &releases[0]).await;
         let rollback = fixture.broker.invoke("main", request("a", "confirm-rollback", json!({"value":"unused"}))).await.unwrap();
         assert_eq!(rollback.installation_id, releases[0]);
+        plugin_registry::uninstall(&fixture.db, &fixture.root.join("data"), &releases[1]).await.unwrap();
+        assert!(!fixture.root.join("data/plugin-data/dev.aibo.capability-echo").join(&releases[1]).exists());
         fixture.broker.stop_installation(&releases[0]).await.unwrap();
         fixture.db.close().await;
         fixture.db = crate::open_database(&fixture.root.join("data/aibo.sqlite3")).await.unwrap();
@@ -969,7 +1001,7 @@ mod tests {
         assert_eq!(restored.installation_id, releases[0]);
         assert_eq!(restored.instance_id, old.instance_id);
         assert_eq!(restored.output["value"], "2.0.0");
-        for (release, instance, expected) in [(&releases[0], &old.instance_id, "2.0.0"), (&releases[1], &new.instance_id, "3.0.0")] {
+        for (release, instance, expected) in [(&releases[0], &old.instance_id, "2.0.0")] {
             let data = crate::plugin_storage::directory(&fixture.root.join("data/plugins").join(release), "dev.aibo.capability-echo", release, instance).unwrap();
             assert_eq!(fs::read_to_string(data.join("state")).unwrap(), expected);
         }

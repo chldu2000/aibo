@@ -264,6 +264,9 @@ try {
     assert.equal(await composer.getAttribute('aria-controls'),await frame.getByRole('listbox',{name:'命令建议',exact:true}).getAttribute('id'));
     await frame.getByRole('option',{name:'/height',exact:true}).click();
     await frame.locator('textarea[aria-label="消息"][value="/height "]').waitFor();
+    // The Worker can replace the textarea after its value is committed.
+    // Wait for the replacement's focus restoration before checking the caret.
+    await frame.locator('textarea[aria-label="消息"]:focus').waitFor();
     assert.equal(await composer.evaluate(element=>element===document.activeElement&&element.selectionStart===element.value.length),true);
 
     await composer.fill('/he');await frame.getByRole('listbox',{name:'命令建议'}).waitFor();

@@ -1,0 +1,46 @@
+import type { PluginRemovalImpact } from './plugin-lifecycle-controller';
+export type PluginInstallPreview = {
+  pluginId: string; version: string; kind: 'install' | 'installed' | 'upgrade' | 'replace' | 'downgrade';
+  token: string; previous: string[]; impacts: PluginRemovalImpact[]; blockers: string[];
+};
+export type PluginInstallState = { preview: PluginInstallPreview | null; busy: boolean; error: string; notice: string; undoTargets: string[] };
+export function createPluginInstallController(ports: {
+  preview(path: string): Promise<PluginInstallPreview>;
+  install(path: string, token: string, reinstall: boolean): Promise<unknown>;
+  undo(id: string): Promise<void>;
+  undoTargets(): Promise<string[]>;
+  refresh(): Promise<void>;
+  publish(state: PluginInstallState): void;
+}) {
+  let state: PluginInstallState = {preview:null,busy:false,error:'',notice:'',undoTargets:[]};
+  let path = '';
+  const emit = () => ports.publish({...state});
+  async function run(action: () => Promise<void>) {
+    if (state.busy) return;
+    state = {...state,busy:true,error:'',notice:''}; emit();
+    try {await action();} catch (error) {state.error = String(error instanceof Error ? error.message : error);}
+    finally {state.busy=false;emit();}
+  }
+  return {
+    review: (source: string) => run(async () => {
+      path=source;state.preview=null;
+      const preview=await ports.preview(source);
+      if (preview.kind==='installed') state.notice='已安装相同版本和内容，无需重复安装。';
+      else state.preview=preview;
+    }),
+    confirm: (reinstall=false) => run(async () => {
+      const preview=state.preview;
+      if (!preview || preview.blockers.length || (preview.kind==='downgrade')!==reinstall) return;
+      state.preview=null; // Failed or stale confirmation must be reviewed again.
+      await ports.install(path,preview.token,reinstall);
+      await ports.refresh();
+      state.undoTargets=await ports.undoTargets();
+      state.notice=reinstall ? '已安装旧版，原会话仅保留历史。启用后可创建新会话。' : '安装完成；同一插件只保留一个当前版本。';
+    }),
+    undo: (id: string) => run(async () => {
+      await ports.undo(id);await ports.refresh();state.undoTargets=await ports.undoTargets();state.notice='已撤销升级并恢复旧版本。';
+    }),
+    refreshUndo: async () => {const targets=await ports.undoTargets();state.undoTargets=targets;emit();},
+    cancel: () => {if(!state.busy){state.preview=null;state.error='';emit();}},
+  };
+}

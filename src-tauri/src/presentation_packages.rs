@@ -282,6 +282,7 @@ pub(crate) async fn install(
     }
     let packages = data.join("presentation-packages");
     fs::create_dir_all(&packages).map_err(error)?;
+    cleanup_removed(db,data,&digest).await?;
     let destination = packages.join(&digest);
     if destination.exists() {
         if load(&destination)?.0 != digest {
@@ -394,9 +395,28 @@ pub(crate) async fn enable(db: &SqlitePool, digest: &str, enabled: bool) -> Resu
     tx.commit().await.map_err(error)
 }
 
-pub(crate) async fn uninstall(db: &SqlitePool, digest: &str) -> Result<(), String> {
+pub(crate) async fn removal_windows(db: &SqlitePool, digest: &str) -> Result<Vec<String>,String> {
+    sqlx::query_scalar("SELECT window_id FROM presentation_selections WHERE digest=? ORDER BY window_id").bind(digest).fetch_all(db).await.map_err(error)
+}
+async fn cleanup_removed(db:&SqlitePool,data:&Path,digest:&str)->Result<(),String> {
+    let pending:bool=sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM presentation_removals WHERE digest=?)").bind(digest).fetch_one(db).await.map_err(error)?;
+    if pending {
+        crate::plugin_lifecycle::remove_owned(data,&["presentation-packages",digest])?;
+        sqlx::query("DELETE FROM presentation_removals WHERE digest=?").bind(digest).execute(db).await.map_err(error)?;
+    }
+    Ok(())
+}
+pub(crate) async fn collect_removed(db:&SqlitePool,data:&Path)->Result<(),String> {
+    let _guard=MUTATION.lock().await;
+    let digests:Vec<String>=sqlx::query_scalar("SELECT digest FROM presentation_removals").fetch_all(db).await.map_err(error)?;
+    for digest in digests {cleanup_removed(db,data,&digest).await?;}
+    Ok(())
+}
+pub(crate) async fn uninstall(db: &SqlitePool, data: &Path, digest: &str, expected_windows: &[String]) -> Result<(), String> {
     let _guard = MUTATION.lock().await;
     reject_builtin(db, digest).await?;
+    if removal_windows(db,digest).await? != expected_windows { return Err("皮肤引用已变化，请重新确认卸载".into()); }
+    crate::plugin_lifecycle::owned_path(data,&["presentation-packages",digest])?;
     let mut tx = db.begin().await.map_err(error)?;
     sqlx::query("DELETE FROM presentation_selections WHERE digest=?")
         .bind(digest)
@@ -408,8 +428,9 @@ pub(crate) async fn uninstall(db: &SqlitePool, digest: &str) -> Result<(), Strin
         .execute(&mut *tx)
         .await
         .map_err(error)?;
-    tx.commit().await.map_err(error)
-    // Retain immutable assets for rollback/reinstall. Business data is never deleted here.
+    sqlx::query("INSERT INTO presentation_removals VALUES(?) ON CONFLICT DO NOTHING").bind(digest).execute(&mut *tx).await.map_err(error)?;
+    tx.commit().await.map_err(error)?;
+    cleanup_removed(db,data,digest).await
 }
 
 #[derive(Serialize)]
@@ -497,7 +518,7 @@ mod tests {
             assert!(package.resources.is_empty(), "built-in content never comes from disk");
             assert_eq!(package.release.manifest, release.manifest);
             assert_eq!(enable(&db, &release.digest, false).await.unwrap_err(), "builtin_presentation_immutable");
-            assert_eq!(uninstall(&db, &release.digest).await.unwrap_err(), "builtin_presentation_immutable");
+            assert_eq!(uninstall(&db, &root, &release.digest, &[]).await.unwrap_err(), "builtin_presentation_immutable");
         }
 
         let first = builtin("1.0.0", "#111111");
@@ -606,7 +627,9 @@ mod tests {
         select(&db, &root, "main", Some(&first.digest), None, None)
             .await
             .unwrap();
-        uninstall(&db, &first.digest).await.unwrap();
+        let windows=removal_windows(&db,&first.digest).await.unwrap();
+        uninstall(&db, &root, &first.digest, &windows).await.unwrap();
+        assert!(!root.join("presentation-packages").join(&first.digest).exists());
         assert!(selection(&db, "main").await.unwrap().is_none());
         assert!(package(&db, &root, &first.digest).await.is_err());
         fixture(&source, "1.0.0");

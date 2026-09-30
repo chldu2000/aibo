@@ -242,6 +242,14 @@ mod tests {
     fn dependency(plugin: &str, owner: &str, required: bool, optional_contribution: bool) -> Value {
         json!([{"pluginId":plugin,"version":{"min":"1.0.0","maxExclusive":"2.0.0"},"required":required,"contributionIds":[format!("{owner}.{}",if optional_contribution {"optional"} else {"read"})]}])
     }
+    // Reconstruct the pre-cleanup uninstall format to protect historical recovery.
+    async fn legacy_removed(f: &Fixture, id: &str) {
+        let path=f.root.join("data/plugins").join(id);
+        let retained=f.root.join("data/plugins").canonicalize().unwrap().join(format!(".retained-{id}"));
+        fs::rename(path,&retained).unwrap();
+        sqlx::query("UPDATE plugin_installations SET installed=0,enabled=0,install_path=? WHERE id=?")
+            .bind(retained.to_string_lossy().as_ref()).bind(id).execute(&f.db).await.unwrap();
+    }
     #[tokio::test]
     async fn retired_dependency_chain_survives_for_session_recovery() {
         let f=Fixture::new().await;
@@ -249,8 +257,10 @@ mod tests {
         let parent=f.install("dev.test.parent","1.0.0",dependency("dev.test.leaf","dev.test.parent",true,false),false).await;plugin_registry::enable(&f.db,&parent,true).await.unwrap();
         sqlx::query("INSERT INTO sessions(id,workspace_id,agent,label,state,created_at,updated_at,plugin_installation_id) VALUES('recovery','w','test','test','closed',?,?,?)")
             .bind(crate::now_iso()).bind(crate::now_iso()).bind(&parent).execute(&f.db).await.unwrap();
-        plugin_registry::uninstall(&f.db,&f.root.join("data"),&parent).await.unwrap();
-        plugin_registry::uninstall(&f.db,&f.root.join("data"),&leaf).await.unwrap();
+        assert!(plugin_registry::uninstall(&f.db,&f.root.join("data"),&parent).await.is_err());
+        legacy_removed(&f,&parent).await;
+        assert!(plugin_registry::uninstall(&f.db,&f.root.join("data"),&leaf).await.is_err());
+        legacy_removed(&f,&leaf).await;
         plugin_registry::collect_retired(&f.db,&f.root.join("data")).await.unwrap();
         let retained=|id:&str| f.root.join("data/plugins").join(format!(".retained-{id}"));
         assert!(retained(&parent).is_dir() && retained(&leaf).is_dir(),"session recovery retains transitive package dependencies");
@@ -291,8 +301,10 @@ mod tests {
         assert_eq!(resolve(&f.db, &parent, false).await.unwrap().dependencies[0].installation_id.as_deref(), Some(leaf.as_str()));
         assert_eq!(f.broker.invoke("main", request("still-old")).await.unwrap().installation_id, parent);
         f.broker.stop_installation(&parent).await.unwrap();
-        plugin_registry::uninstall(&f.db, &f.root.join("data"), &parent).await.unwrap();
-        plugin_registry::uninstall(&f.db, &f.root.join("data"), &leaf).await.unwrap();
+        assert!(plugin_registry::uninstall(&f.db, &f.root.join("data"), &parent).await.is_err());
+        legacy_removed(&f,&parent).await;
+        assert!(plugin_registry::uninstall(&f.db, &f.root.join("data"), &leaf).await.is_err());
+        legacy_removed(&f,&leaf).await;
         plugin_registry::collect_retired(&f.db, &f.root.join("data")).await.unwrap();
         for release in [&parent, &leaf] {
             assert!(f.root.join("data/plugins").join(format!(".retained-{release}")).join("worker.mjs").is_file());
@@ -339,7 +351,7 @@ mod tests {
         f.finish().await;
     }
     #[tokio::test]
-    async fn pins_survive_new_releases_disable_uninstall_and_reinstall() {
+    async fn pins_survive_new_releases_and_block_uninstall_until_dependencies_are_resolved() {
         let f=Fixture::new().await;
         let first=f.install("dev.test.leaf","1.0.0",json!([]),false).await;plugin_registry::enable(&f.db,&first,true).await.unwrap();
         let chosen=f.install("dev.test.leaf","1.2.0",json!([]),false).await;plugin_registry::enable(&f.db,&chosen,true).await.unwrap();
@@ -351,8 +363,9 @@ mod tests {
         assert_eq!(resolve(&f.db,&parent,true).await.unwrap().dependencies[0].installation_id.as_deref(),Some(chosen.as_str()));
         plugin_registry::enable(&f.db,&chosen,false).await.unwrap();
         let report=resolve(&f.db,&parent,true).await.unwrap();assert!(!report.ready());assert_eq!(report.dependencies[0].installation_id.as_deref(),Some(chosen.as_str()));
-        plugin_registry::uninstall(&f.db,&f.root.join("data"),&chosen).await.unwrap();assert!(!resolve(&f.db,&parent,true).await.unwrap().ready());
-        let reinstalled=plugin_registry::install(&f.db,&f.root.join("data"),&f.root.join("dev.test.leaf-1.2.0")).await.unwrap();assert_eq!(reinstalled.id,chosen);
+        assert!(plugin_registry::uninstall(&f.db,&f.root.join("data"),&chosen).await.unwrap_err().contains("plugin_references"));
+        let impact=crate::plugin_lifecycle::impact(&f.db,&chosen).await.unwrap();
+        assert_eq!(impact.dependencies[0].id,parent);
         plugin_registry::enable(&f.db,&chosen,true).await.unwrap();assert!(resolve(&f.db,&parent,true).await.unwrap().ready());
         f.finish().await;
     }

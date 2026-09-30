@@ -200,3 +200,13 @@ test('sequential model selection exposes only current parameters and retires old
  assert.ok(nodes.some(n=>n.key==='models:reasoning'));
  assert.ok(!nodes.some(n=>n.key==='model:effort:second:second-low'));
 });
+
+test('history-only conversations retain readable history without executable actions',()=>{
+  const history={...state,session:{...state.session,historyOnly:true},userInputRequests:[],approvalRequests:[]};
+  const actions=conversationActions(history);
+  for(const operation of ['send','retry','resumeQueue','fork','loadModels','selectAccess','composerInput']) {
+    assert.equal(actions.some(action=>action.operation===operation),false,operation);
+  }
+  const rendered=JSON.stringify(renderConversation(history,actions));
+  assert.match(rendered,/插件数据已清除，此会话仅保留历史/);
+});

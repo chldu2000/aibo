@@ -52,6 +52,21 @@ CI 获取完整历史；缺少基线或全零 SHA 会使检查失败，不会静
 
 ## 升级回归
 
+0057 增加持久替换记录及撤销失效触发器，0058 补全宿主配置、能力绑定和启用状态变化的失效规则，
+0059 覆盖会话重绑、恢复数据、执行配置及队列新增。
+替换记录只保存版本/绑定恢复信息，不回滚业务历史；中断在 runtime 启动前恢复，清理任务可重试。
+`plugin_replacement_crash_recovery_restores_partially_migrated_sessions` 覆盖部分完成后的重开恢复。
+既有冻结 0055 升级回归继续验证升级到最新结构时历史、设置和全部旧 checksum 不变。
+
+0055 增加插件升级策略、历史只读标记、版本迁移记录和可重试的清理任务。
+开发库曾应用缺少 `presentation_removals` 和 `plugin_session_candidates` 的 0055 中间版本；
+其原始 SQL 冻结于 `migration-history/0055_plugin_lifecycle_initial.sql`，仅按完整 checksum 识别。
+0056 为这份历史版本补齐两张表，对完整的 0055 保持幂等，不改写已有迁移记录或用户数据。
+`lifecycle_migration_versions_preserve_data_and_checksums` 覆盖两种 0055 的升级和重复打开，
+检查历史、草稿、只读标记、升级策略及全部旧 checksum 保留；未知 0055/0056 checksum 仍拒绝。
+`plugin_lifecycle_migration_preserves_history_and_policy_across_reopen` 从冻结的 0054 及之前 SQL 建库，
+验证升级和重开后的历史、设置、旧校验值、外键及完整性。
+
 `pnpm run test:migrations` 执行 Rust 中名称包含 `migration` 的测试，已作为独立 macOS CI 任务执行，
 覆盖空库、历史 0049、初版与正式版 0051 升级、数据及校验值保留、重复启动，以及未知 checksum 拒绝。
 `verify` 保持为 Node 检查和前端构建入口；本地涉及迁移的变更还必须执行迁移测试和完整 Rust 库测试：

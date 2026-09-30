@@ -21,6 +21,7 @@
     sessionCapabilities: string[];
     selectedSessionId: string | null;
     sessionArchived: boolean;
+    historyOnly?: boolean;
     sessionRunning: boolean;
     sessionStarting?: boolean;
     selectedSessionArchiving: boolean;
@@ -61,6 +62,7 @@
     sessionCapabilities,
     selectedSessionId,
     sessionArchived,
+    historyOnly = false,
     sessionRunning,
     sessionStarting = false,
     selectedSessionArchiving,
@@ -226,7 +228,7 @@
       })),
     })),
   );
-  const matrixDisabled = $derived(busy || sessionStarting || sessionArchived || selectedSessionArchiving || sessionRunning);
+  const matrixDisabled = $derived(busy || sessionStarting || sessionArchived || historyOnly || selectedSessionArchiving || sessionRunning);
   const matrixFastTier = $derived.by(() => {
     if (!sessionCapabilities.includes('model.service-tier')) return null;
     const tier = modelCatalog?.current?.serviceTiers.find((option) => option.label.trim().toLowerCase() === 'fast') ?? null;
@@ -306,8 +308,8 @@
       data-composer-input="true"
       bind:value={text}
       rows="2"
-      placeholder={sessionStarting ? '会话正在初始化，可以先编写消息…' : sessionArchived ? '该会话已归档，请取消归档或创建分支继续…' : selectedSession ? '输入消息，⌘/Ctrl + Enter 发送…' : '先新建或选择一个 Agent 会话…'}
-      disabled={!selectedSession || sessionArchived || selectedSessionArchiving || (sessionRunning && !sessionCapabilities.includes('queue.manage')) || busy}
+      placeholder={historyOnly ? '插件数据已清除，此会话仅保留历史。' : sessionStarting ? '会话正在初始化，可以先编写消息…' : sessionArchived ? '该会话已归档，请取消归档或创建分支继续…' : selectedSession ? '输入消息，⌘/Ctrl + Enter 发送…' : '先新建或选择一个 Agent 会话…'}
+      disabled={!selectedSession || sessionArchived || historyOnly || selectedSessionArchiving || (sessionRunning && !sessionCapabilities.includes('queue.manage')) || busy}
       onpaste={(event) => {
         const files = clipboardImageFiles(event.clipboardData);
         if (!files.length) return;
@@ -483,7 +485,7 @@
           type="button"
           class="composer-toolbar-icon"
           onclick={() => { attachmentMenuOpen = !attachmentMenuOpen; sessionMenuOpen = false; modelMenuOpen = false; }}
-          disabled={!selectedSession || sessionArchived || selectedSessionArchiving || busy}
+          disabled={!selectedSession || sessionArchived || historyOnly || selectedSessionArchiving || busy}
           aria-label="添加上下文"
           aria-haspopup="menu"
           aria-expanded={attachmentMenuOpen}
@@ -542,7 +544,7 @@
                       sessionMenuOpen = false;
                       if (!active) void onSelectAccess(option.id);
                     }}
-                    disabled={busy || sessionStarting || selectedSessionArchiving || sessionRunning}
+                    disabled={busy || historyOnly || sessionStarting || selectedSessionArchiving || sessionRunning}
                   >
                     <SessionControlMark control={option} />
                     <span class="composer-access-option-copy">
@@ -674,7 +676,7 @@
           <Icon name="stop" size={13} />
         </Button>
       {:else}
-        <Button variant="send" class="composer-action composer-action-send" size="icon" type="submit" disabled={!selectedSession || sessionStarting || sessionArchived || selectedSessionArchiving || (!text.trim() && !hasImage) || busy} aria-label="发送">
+        <Button variant="send" class="composer-action composer-action-send" size="icon" type="submit" disabled={!selectedSession || sessionStarting || sessionArchived || historyOnly || selectedSessionArchiving || (!text.trim() && !hasImage) || busy} aria-label="发送">
           <Icon name="send" size={16} />
         </Button>
       {/if}

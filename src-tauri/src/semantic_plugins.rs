@@ -863,9 +863,8 @@ mod tests {
             .stop_installation(&fixture.git)
             .await
             .unwrap();
-        crate::plugin_registry::uninstall(&fixture.db, &fixture.root.join("data"), &fixture.git)
-            .await
-            .unwrap();
+        assert!(crate::plugin_registry::uninstall(&fixture.db, &fixture.root.join("data"), &fixture.git)
+            .await.unwrap_err().contains("plugin_references"), "referenced providers cannot be silently removed");
         let catalog = catalog(&fixture.db).await.unwrap();
         assert_eq!(catalog.len(), 1);
         assert!(!catalog[0].available);

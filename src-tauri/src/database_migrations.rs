@@ -1,25 +1,26 @@
-//! Compatibility for the exact search migration applied during development.
+//! Compatibility for exact historical migrations applied during development.
 use sqlx::migrate::{Migrate, MigrateError, Migration, MigrationType};
 
 pub(crate) async fn run(connection: &mut sqlx::SqliteConnection) -> Result<(), MigrateError> {
     let mut migrator = sqlx::migrate!("./migrations");
     connection.ensure_migrations_table().await?;
     let applied = connection.list_applied_migrations().await?;
-    let initial = initial_search_migration();
-    if applied
-        .iter()
-        .any(|m| m.version == 51 && m.checksum == initial.checksum)
-    {
-        // Validate against the actual historical SQL, retaining its recorded checksum.
-        // Migration 52 brings this exact development version to the current schema.
-        // All other mismatches still go through SQLx's normal rejection path.
-        let migration = migrator
-            .migrations
-            .to_mut()
-            .iter_mut()
-            .find(|m| m.version == 51)
-            .expect("embedded search migration");
-        *migration = initial;
+    for historical in [initial_search_migration(), initial_lifecycle_migration()] {
+        if applied
+            .iter()
+            .any(|m| m.version == historical.version && m.checksum == historical.checksum)
+        {
+            // Validate exact historical SQL without rewriting its recorded checksum.
+            // Subsequent migrations converge the known versions to the current schema.
+            // Unknown checksums retain SQLx's normal rejection behavior.
+            let migration = migrator
+                .migrations
+                .to_mut()
+                .iter_mut()
+                .find(|m| m.version == historical.version)
+                .expect("embedded historical migration");
+            *migration = historical;
+        }
     }
     migrator.run(connection).await
 }
@@ -34,10 +35,101 @@ fn initial_search_migration() -> Migration {
     )
 }
 
+fn initial_lifecycle_migration() -> Migration {
+    Migration::new(
+        55,
+        "plugin lifecycle".into(),
+        MigrationType::Simple,
+        include_str!("../migration-history/0055_plugin_lifecycle_initial.sql").into(),
+        false,
+    )
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
     use sqlx::{Connection, Row};
+
+    #[tokio::test]
+    async fn lifecycle_migration_versions_preserve_data_and_checksums() {
+        for sql in [
+            include_str!("../migration-history/0055_plugin_lifecycle_initial.sql"),
+            include_str!("../../fixtures/migrations/0055_plugin_lifecycle.sql"),
+        ] {
+            let root = std::env::temp_dir()
+                .join(format!("aibo-lifecycle-migration-{}", ulid::Ulid::new()));
+            std::fs::create_dir_all(&root).unwrap();
+            let path = root.join("aibo.sqlite3");
+            let options = sqlx::sqlite::SqliteConnectOptions::new()
+                .filename(&path)
+                .create_if_missing(true)
+                .foreign_keys(false);
+            let mut connection = sqlx::SqliteConnection::connect_with(&options)
+                .await
+                .unwrap();
+            let mut old = sqlx::migrate!("./migrations");
+            let mut migrations: Vec<_> = old.iter().filter(|m| m.version < 55).cloned().collect();
+            migrations.push(Migration::new(
+                55,
+                "plugin lifecycle".into(),
+                MigrationType::Simple,
+                sql.into(),
+                false,
+            ));
+            old.migrations = migrations.into();
+            old.run(&mut connection).await.unwrap();
+            sqlx::raw_sql("UPDATE plugin_upgrade_preferences SET policy='pinned';
+                INSERT INTO workspaces(id,path,label,trusted,created_at,updated_at) VALUES ('w','/missing','Legacy',0,'before','before');
+                INSERT INTO sessions(id,workspace_id,agent,label,state,created_at,updated_at) VALUES ('s','w','disabled','Session','closed','before','before');
+                INSERT INTO messages(id,session_id,role,content,status,sequence,created_at,updated_at) VALUES ('m','s','assistant','历史内容','completed',0,'before','before');
+                INSERT INTO composer_drafts(session_id,text,updated_at) VALUES ('s','草稿','before');
+                INSERT INTO plugin_session_retirements VALUES ('s','before');")
+                .execute(&mut connection).await.unwrap();
+            let before: Vec<(i64, Vec<u8>)> =
+                sqlx::query_as("SELECT version,checksum FROM _sqlx_migrations ORDER BY version")
+                    .fetch_all(&mut connection)
+                    .await
+                    .unwrap();
+            connection.close().await.unwrap();
+            for _ in 0..2 {
+                let db = crate::open_database(&path)
+                    .await
+                    .expect("applied lifecycle migration must upgrade");
+                let after: Vec<(i64, Vec<u8>)> = sqlx::query_as("SELECT version,checksum FROM _sqlx_migrations WHERE version<=55 ORDER BY version").fetch_all(&db).await.unwrap();
+                assert_eq!(before, after);
+                let data: (String,String,String,String) = sqlx::query_as("SELECT m.content,d.text,r.retired_at,p.policy FROM messages m JOIN composer_drafts d ON d.session_id=m.session_id JOIN plugin_session_retirements r ON r.session_id=m.session_id CROSS JOIN plugin_upgrade_preferences p WHERE m.id='m'").fetch_one(&db).await.unwrap();
+                assert_eq!(
+                    data,
+                    (
+                        "历史内容".into(),
+                        "草稿".into(),
+                        "before".into(),
+                        "pinned".into()
+                    )
+                );
+                sqlx::query("SELECT session_id,installation_id FROM plugin_session_candidates")
+                    .fetch_all(&db)
+                    .await
+                    .unwrap();
+                sqlx::query("SELECT digest FROM presentation_removals")
+                    .fetch_all(&db)
+                    .await
+                    .unwrap();
+                let integrity: String = sqlx::query_scalar("PRAGMA integrity_check")
+                    .fetch_one(&db)
+                    .await
+                    .unwrap();
+                assert_eq!(integrity, "ok");
+                assert!(sqlx::query("PRAGMA foreign_key_check")
+                    .fetch_all(&db)
+                    .await
+                    .unwrap()
+                    .is_empty());
+                db.close().await;
+            }
+            std::fs::remove_dir_all(root).unwrap();
+        }
+    }
 
     #[tokio::test]
     async fn fresh_database_migrations_are_complete_and_repeatable() {
@@ -186,7 +278,7 @@ mod tests {
 
     #[tokio::test]
     async fn unknown_checksums_are_still_rejected() {
-        for version in [50_i64, 51] {
+        for version in [50_i64, 51, 55, 56, 57, 58, 59] {
             let root = std::env::temp_dir().join(format!("aibo-migration-{}", ulid::Ulid::new()));
             let path = root.join("aibo.sqlite3");
             let db = crate::open_database(&path).await.unwrap();

@@ -84,8 +84,8 @@ async fn workspace(db: &SqlitePool, target: &Target) -> Result<Option<String>, S
     let id = match &target.scope {
         Scope::Application => return Ok(None),
         Scope::Workspace(id) => id.clone(),
-        Scope::Session(id) => sqlx::query_scalar::<_,String>("SELECT workspace_id FROM sessions WHERE id=? AND agent=? AND plugin_installation_id=? AND archived=0")
-            .bind(id).bind(&target.contribution_id).bind(&target.installation_id).fetch_optional(db).await.map_err(db_error)?.ok_or("settings_unavailable: 会话不属于此 Agent 或已归档")?,
+        Scope::Session(id) => sqlx::query_scalar::<_,String>("SELECT workspace_id FROM sessions WHERE id=? AND agent=? AND (plugin_installation_id=? OR EXISTS(SELECT 1 FROM plugin_session_candidates c WHERE c.session_id=sessions.id AND c.installation_id=?)) AND (archived=0 OR EXISTS(SELECT 1 FROM plugin_session_candidates c WHERE c.session_id=sessions.id AND c.installation_id=?))")
+            .bind(id).bind(&target.contribution_id).bind(&target.installation_id).bind(&target.installation_id).bind(&target.installation_id).fetch_optional(db).await.map_err(db_error)?.ok_or("settings_unavailable: 会话不属于此 Agent 或已归档")?,
     };
     let exists: bool = sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM workspaces WHERE id=?)").bind(&id).fetch_one(db).await.map_err(db_error)?;
     if !exists { return Err("settings_unavailable: 项目不存在".into()); }

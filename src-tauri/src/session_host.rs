@@ -7,6 +7,10 @@ mod fork;
 mod tools;
 #[path = "session_queue.rs"]
 mod queue;
+#[path = "session_plugin_lifecycle.rs"]
+mod plugin_lifecycle;
+#[path = "session_plugin_replacement.rs"]
+mod plugin_replacement;
 use crate::{capability_broker::{Binding, Broker, CapabilityControl, EventObserver, Request, Response, Scope},
     change_set::{capture as capture_workspace, persist as persist_change_set, WorkspaceSnapshot}, execution_profile, plugin_registry, Session};
 use serde_json::{json,Value};
@@ -95,16 +99,13 @@ impl SessionHost {
         gate.lock_owned().await
     }
     pub fn with_app(db:SqlitePool,broker:Broker,app:tauri::AppHandle)->Self {Self {app:Some(app),..Self::new(db,broker)}}
-    pub async fn uninstall(&self,data_dir:&Path,installation:&str)->Result<(),String> {
-        let ids:Vec<String>=sqlx::query_scalar("SELECT id FROM sessions WHERE plugin_installation_id=?").bind(installation).fetch_all(&self.db).await.map_err(|e|e.to_string())?;
-        for id in ids {let caller=self.live.lock().await.get(&id).map(|run|run.caller.clone()).unwrap_or("main".into());self.close_from(&caller,&id).await?;}
-        plugin_registry::uninstall(&self.db,data_dir,installation).await
-    }
     pub async fn close_workspace(&self,workspace:&str)->Result<(),String> {
         let ids:Vec<String>=sqlx::query_scalar("SELECT id FROM sessions WHERE workspace_id=?").bind(workspace).fetch_all(&self.db).await.map_err(|e|e.to_string())?;
         for id in ids {let caller=self.live.lock().await.get(&id).map(|run|run.caller.clone()).unwrap_or("main".into());self.close_from(&caller,&id).await?;}Ok(())
     }
     async fn metadata(&self,session_id:&str)->Result<(Session,Value),String> {
+        let retired: bool = sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM plugin_session_retirements WHERE session_id=?)").bind(session_id).fetch_one(&self.db).await.map_err(|e|e.to_string())?;
+        if retired { return Err("history_only: 此会话的插件数据已清除，仅保留业务历史".into()); }
         let session=crate::session_by_id(&self.db,session_id).await.map_err(|e|e.to_string())?;
         let installation=session.plugin_installation_id.as_deref().ok_or("history_only: create a new capability session")?;
         let raw:Option<String>=sqlx::query_scalar("SELECT manifest_json FROM plugin_installations WHERE id=? AND enabled=1 AND installed=1").bind(installation).fetch_optional(&self.db).await.map_err(|e|e.to_string())?;

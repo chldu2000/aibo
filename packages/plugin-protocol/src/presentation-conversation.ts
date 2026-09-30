@@ -60,6 +60,7 @@ interface Session {
   label: string;
   state: SessionState;
   archived: boolean;
+  historyOnly?: boolean;
   externalSessionId: string | null;
   pluginInstallationId: string | null;
   capabilities: string[];

@@ -97,13 +97,21 @@ export const listPresentationPackages = (): Promise<PresentationRelease[]> => in
 export const installPresentationPackage = (path: string): Promise<PresentationRelease> => invoke('install_presentation_package', { path });
 export const readPresentationPackage = (digest: string): Promise<InstalledPresentationPackage> => invoke('read_presentation_package', { digest });
 export const setPresentationPackageEnabled = (digest: string, enabled: boolean): Promise<void> => invoke('set_presentation_package_enabled', { digest, enabled });
-export const uninstallPresentationPackage = (digest: string): Promise<void> => invoke('uninstall_presentation_package', { digest });
+export const previewPresentationRemoval = (digest: string): Promise<string[]> => invoke('preview_presentation_removal', { digest });
+export const uninstallPresentationPackage = (digest: string, expectedWindows: string[]): Promise<void> => invoke('uninstall_presentation_package', { digest, expectedWindows });
 export const getPresentationSelection = (): Promise<PresentationSelection | null> => invoke('get_presentation_selection');
 export const selectPresentationPackage = (digest: string | null, themeId: string | null, expectedDigest: string | null): Promise<void> =>
   invoke('select_presentation_package', { digest, themeId, expectedDigest });
-export const installAgentPlugin = (path: string): Promise<PluginInstallation> => invoke('install_agent_plugin', { path });
-export const setAgentPluginEnabled = (id: string, enabled: boolean): Promise<void> => invoke('set_agent_plugin_enabled', { id, enabled });
-export const uninstallAgentPlugin = (id: string): Promise<void> => invoke('uninstall_agent_plugin', { id });
+export const installAgentPlugin = (path: string, token?: string, reinstall = false): Promise<PluginInstallation> => invoke('install_agent_plugin', { path, token, reinstall });
+export const previewPluginInstall = (path: string): Promise<import('./app/plugin-install-controller').PluginInstallPreview> => invoke('preview_plugin_install', {path});
+export const listPluginUndoTargets = (): Promise<string[]> => invoke('list_plugin_undo_targets');
+export const undoPluginReplacement = (id: string): Promise<void> => invoke('undo_plugin_replacement', {id});
+export const setAgentPluginEnabled = (id: string, enabled: boolean): Promise<import('./app/plugin-lifecycle-controller').PluginMigrationReport> => invoke('set_agent_plugin_enabled', { id, enabled });
+export const uninstallAgentPlugin = (id: string, token: string, keepHistory: boolean): Promise<void> => invoke('uninstall_agent_plugin', { id, token, keepHistory });
+export const previewPluginRemoval = (id: string): Promise<import('./app/plugin-lifecycle-controller').PluginRemovalImpact> => invoke('preview_plugin_removal', { id });
+export const readPluginUpgradePolicy = (): Promise<import('./app/plugin-lifecycle-controller').PluginUpgradePolicy> => invoke('read_plugin_upgrade_policy');
+export const savePluginUpgradePolicy = (policy: import('./app/plugin-lifecycle-controller').PluginUpgradePolicy): Promise<import('./app/plugin-lifecycle-controller').PluginUpgradePolicy> => invoke('save_plugin_upgrade_policy', { policy });
+export const migratePluginSessions = (id: string, target: string): Promise<import('./app/plugin-lifecycle-controller').PluginMigrationReport> => invoke('migrate_plugin_sessions', { id, target });
 export const createAgentSession = (workspaceId: string, agentId: string, installationId?: string, requestedProfile?: ExecutionProfile | null, deferStart = false): Promise<Session> => invoke('create_agent_session', { workspaceId, agentId, installationId, requestedProfile, deferStart });
 export const sendAgentPrompt = (sessionId: string, input: string): Promise<Session> => invoke('send_agent_prompt', { sessionId, input });
 export const cancelAgentTurn = (sessionId: string): Promise<void> => invoke('cancel_agent_turn', { sessionId });

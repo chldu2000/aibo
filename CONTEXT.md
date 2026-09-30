@@ -14,7 +14,7 @@ An installable package that supplies domain behavior, business data, and optiona
 A capability plugin that supplies one or more session providers. It is not a separate runtime or authorization model.
 
 **Plugin Release**:
-An immutable combination of plugin identity, version, and package integrity digest. A session's provider binding remains pinned to its release.
+An immutable combination of plugin identity, version, and package integrity digest. A session's provider binding identifies one release until a successful host-managed migration.
 _Avoid_: Using “current plugin” or “latest plugin” for a pinned release.
 
 **Plugin Installation**:
@@ -63,6 +63,12 @@ _Avoid_: Confusing the binding with the native session identifier alone.
 
 **History Projection**:
 The host-owned durable record of normalized session activity, readable even when its provider is disabled, missing, or incompatible. It is distinct from plugin-owned recovery data.
+
+**Session Release Migration**:
+A host-managed transition to a newer release of the same provider after that release successfully restores the existing native session. A failed migration preserves the previous binding and recovery data.
+
+**History-only Session**:
+A conversation whose plugin recovery data has been explicitly removed while its host-owned business history remains readable. Reinstalling a plugin does not restore its ability to execute.
 
 ### Semantics and presentation
 

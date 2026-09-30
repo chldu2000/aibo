@@ -1,5 +1,9 @@
 # Presentation 包合同 v1
 
+会话快照的可选 `historyOnly` 表示用户卸载时已清除插件恢复数据，缺省为 `false`。
+这种会话继续展示宿主历史，但不提供发送、恢复和 Agent 操作；宿主动作目录和原生准入共同执行此限制。
+卸载外部皮肤会确认正在使用的窗口、清除资源文件并恢复内置呈现，保留业务历史和发布身份记录。
+
 本合同已接入 App 安装、隔离执行与故障恢复。独立 shadcn / Material 3 呈现包及共享工作台
 的历史交付基线见[交付说明](presentation-release-0.3.0.md)，实现与验收边界见
 [退出审计](presentation-plugin-exit-audit.md)。阶段过程另见[重构记录](presentation-plugin-refactor.md)。

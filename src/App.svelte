@@ -1,4 +1,6 @@
 <script lang="ts">
+  import { createPluginLifecycleController, type PluginLifecycleState } from '$lib/app/plugin-lifecycle-controller';
+  import { previewPluginRemoval, readPluginUpgradePolicy, savePluginUpgradePolicy, migratePluginSessions } from '$lib/api';
   import NodeRuntimePanel from '$lib/components/app/NodeRuntimePanel.svelte';
   import { createNodeRuntimeController, emptyNodeRuntime } from '$lib/app/node-runtime-controller';
   import { getNodeRuntime, selectNodeRuntime, downloadNodeRuntime } from '$lib/api';
@@ -98,7 +100,7 @@
   import type { UiManagementSection } from '$lib/ui-kit';
   import { SettingsSection, HostPanel, PresentationHost, WorkbenchPresentation, DefaultPresentationActions, FileChangeMark, Badge, Button } from '$lib/ui-kit';
   import { createPresentationPackageController, type PresentationPackageState } from '$lib/app/presentation-package-controller';
-  import { listPresentationPackages, readPresentationPackage, installPresentationPackage, setPresentationPackageEnabled, uninstallPresentationPackage, getPresentationSelection, selectPresentationPackage } from '$lib/api';
+  import { listPresentationPackages, readPresentationPackage, installPresentationPackage, setPresentationPackageEnabled, uninstallPresentationPackage, previewPresentationRemoval, getPresentationSelection, selectPresentationPackage } from '$lib/api';
   import { createCapabilityWorkbenchDirectory } from '$lib/presentation-runtime/capability-workbench';
   import type { PresentationCapabilityWorkbench } from '../packages/plugin-protocol/src/presentation-capability';
   const capabilityWorkbenchDirectory = createCapabilityWorkbenchDirectory();
@@ -154,7 +156,12 @@
   let externalInput = $state<PresentationInput>({ surface: 'workbench', context: { workspaceId: null, sessionId: null, revision: 0 }, data: null, theme: {} });
   const presentationPackagesController = createPresentationPackageController({
     list: listPresentationPackages, read: readPresentationPackage, install: installPresentationPackage,
-    enable: setPresentationPackageEnabled, uninstall: uninstallPresentationPackage,
+    enable: setPresentationPackageEnabled, uninstall: async digest => {
+      const windows = await previewPresentationRemoval(digest);
+      if (await confirm(`将删除此皮肤版本的资源文件，保留业务历史。${windows.length ? `正在使用的窗口：${windows.join('、')}，将恢复内置皮肤。` : '没有窗口引用此版本。'}`, {title:'卸载皮肤并清除资源',kind:'warning'})) {
+        await uninstallPresentationPackage(digest, windows);
+      }
+    },
     selection: getPresentationSelection, persist: selectPresentationPackage,
     fallback: releases => builtinSelection(releases, availableUiKits, $appearanceSelection),
     prepare: async (value, theme, failure, signal) => {
@@ -636,7 +643,7 @@
     setItem: (key, value) => window.localStorage.setItem(key, value),
   }, presentationWindowId());
   import { onDestroy, onMount, tick, untrack } from 'svelte';
-  import { open } from '@tauri-apps/plugin-dialog';
+  import { open, confirm } from '@tauri-apps/plugin-dialog';
   import {
     AppOverlays,
     GlobalSearchPanel,
@@ -755,7 +762,7 @@
     updateSessionExecutionProfile,
     listSessions as listAllSessions,
     listPluginInstallations,
-    installAgentPlugin,
+    installAgentPlugin, previewPluginInstall, listPluginUndoTargets, undoPluginReplacement,
     setAgentPluginEnabled,
     uninstallAgentPlugin,
     createAgentSession,
@@ -1176,7 +1183,22 @@
   function openCapabilityHistory():void { historyOpen=true;sessionHistoryOpen=false;settingsOpen=false;capabilityHistoryOpen=true; }
   function backFromCapabilityHistory():void { capabilityHistoryOpen=false;historyOpen=true; }
 
+  import {createPluginInstallController, type PluginInstallState} from '$lib/app/plugin-install-controller';
+  let pluginInstall = $state<PluginInstallState>({preview:null,busy:false,error:'',notice:'',undoTargets:[]});
+  const pluginInstallController=createPluginInstallController({
+    preview:previewPluginInstall, install:installAgentPlugin, undo:undoPluginReplacement, undoTargets:listPluginUndoTargets,
+    refresh:async()=>{await refreshPluginInstallations();for(const workspace of workspaces)await refreshSessions(workspace.id);},
+    publish:value=>{pluginInstall=value;},
+  });
   let pluginInstallations = $state<PluginInstallation[]>([]);
+  let pluginLifecycle = $state<PluginLifecycleState>({policy:null,impact:null,busy:false,report:null,error:''});
+  const pluginLifecycleController = createPluginLifecycleController({
+    readPolicy:readPluginUpgradePolicy, savePolicy:savePluginUpgradePolicy, preview:previewPluginRemoval,
+    remove:uninstallAgentPlugin, migrate:migratePluginSessions,
+    refresh:async () => { await refreshPluginInstallations(); for (const workspace of workspaces) await refreshSessions(workspace.id); },
+    publish:value => { pluginLifecycle=value; },
+  });
+  $effect(() => { if (desktop) void pluginLifecycleController.initialize(); });
   const agentChoices = $derived(readySessionProviders(pluginInstallations));
   let pluginRefreshRevision = 0;
   async function refreshPluginInstallations(): Promise<void> {
@@ -1184,6 +1206,7 @@
     const revision = ++pluginRefreshRevision;
     const installations = await listPluginInstallations();
     if (revision === pluginRefreshRevision) pluginInstallations = installations;
+    await pluginInstallController.refreshUndo();
   }
   $effect(() => {
     if (!desktop) return;
@@ -1198,7 +1221,7 @@
   let pluginError = $state('');
 
   async function pluginOperation(operation: () => Promise<void>): Promise<void> {
-    if (pluginBusy || !desktop) return;
+    if (pluginBusy || pluginLifecycle.busy || pluginInstall.busy || !desktop) return;
     pluginBusy = true;
     pluginError = '';
     try { await operation(); }
@@ -1230,24 +1253,22 @@
     await pluginOperation(async () => {
       const path = await open({ directory: true, multiple: false, title: '选择能力插件目录' });
       if (typeof path !== 'string') return;
-      await installAgentPlugin(path);
-      await refreshPluginInstallations();
+      await pluginInstallController.review(path);
     });
   }
 
   async function enablePlugin(id: string, enabled: boolean): Promise<void> {
     await pluginOperation(async () => {
-      await setAgentPluginEnabled(id, enabled);
+      const report = await setAgentPluginEnabled(id, enabled);
+      if (report) pluginLifecycleController.report(report);
       await refreshPluginInstallations();
+      for (const workspace of workspaces) await refreshSessions(workspace.id);
+
     });
   }
 
   async function uninstallPlugin(id: string): Promise<void> {
-    await pluginOperation(async () => {
-      await uninstallAgentPlugin(id);
-      await refreshPluginInstallations();
-      if (selectedWorkspaceId) await refreshSessions(selectedWorkspaceId);
-    });
+    if (!pluginBusy && desktop) await pluginLifecycleController.review(id);
   }
 
   const sessionStartupController = createSessionStartupController({
@@ -3875,7 +3896,16 @@
 {#snippet extensionManagement()}
   <PluginManagerPanel
     installations={pluginManagerInstallations}
-    busy={pluginBusy || !desktop}
+    busy={pluginBusy || pluginLifecycle.busy || pluginInstall.busy || !desktop}
+    installation={pluginInstall}
+    onInstallConfirm={hostGuard('onInstallConfirm', reinstall=>void pluginInstallController.confirm(reinstall))}
+    onInstallCancel={hostGuard('onInstallCancel', ()=>pluginInstallController.cancel())}
+    onUndo={hostGuard('onUndo', id=>void pluginInstallController.undo(id))}
+    lifecycle={pluginLifecycle}
+    onPolicyChange={hostGuard('onPolicyChange', value => void pluginLifecycleController.savePolicy(value))}
+    onRemovalCancel={hostGuard('onRemovalCancel', () => pluginLifecycleController.cancel())}
+    onRemovalConfirm={hostGuard('onRemovalConfirm', keepHistory => void pluginLifecycleController.remove(keepHistory))}
+    onMigrate={hostGuard('onMigrate', target => void pluginLifecycleController.migrate(target))}
     onInstall={hostGuard('onInstall', () => void installPlugin())}
     onEnabledChange={hostGuard('onEnabledChange', (id, enabled) => void enablePlugin(id, enabled))}
     onUninstall={hostGuard('onUninstall', (id) => void uninstallPlugin(id))}

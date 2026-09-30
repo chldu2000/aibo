@@ -186,31 +186,17 @@ pub(crate) fn inspect(root: &Path) -> Result<(Value, Vec<PathBuf>, String), Stri
 }
 
 pub(crate) async fn list(db: &SqlitePool) -> Result<Vec<PluginInstallation>, String> {
-    // The registry keeps immutable releases so active sessions can remain
-    // pinned to an older package. The manager, however, should present only
-    // the current bundled release instead of showing every development digest
-    // produced from the same built-in plugin version. External tombstones stay
-    // visible so the user can see that a package was removed and reinstall the
-    // same release; bundled tombstones remain internal recovery records.
+    // A preparing candidate and rollback backups are never current installations.
     let rows = sqlx::query(
         "SELECT id, plugin_id, plugin_version, package_digest, enabled, installed, manifest_json
          FROM plugin_installations p
-         WHERE p.source NOT LIKE '%bundled-plugin-sources%'
-            OR (
-             p.installed=1
-             AND p.id = (
-               SELECT current.id
-               FROM plugin_installations current
-               WHERE current.plugin_id=p.plugin_id
-                 AND current.installed=1
-                 AND current.source LIKE '%bundled-plugin-sources%'
-               ORDER BY current.enabled_at DESC, current.created_at DESC, current.id DESC
-               LIMIT 1
-             )
-           )
-         ORDER BY p.created_at, p.id",
-    )
-        .fetch_all(db).await.map_err(|e| e.to_string())?;
+         WHERE NOT EXISTS(SELECT 1 FROM plugin_replacements r WHERE r.target_id=p.id AND r.phase='preparing')
+           AND (p.source NOT LIKE '%bundled-plugin-sources%' OR (
+             p.installed=1 AND p.id=(SELECT current.id FROM plugin_installations current
+             WHERE current.plugin_id=p.plugin_id AND current.installed=1
+             ORDER BY current.enabled_at DESC,current.created_at DESC,current.id DESC LIMIT 1)))
+         ORDER BY p.created_at,p.id",
+    ).fetch_all(db).await.map_err(io_error)?;
     let mut installations = Vec::new();
     for row in rows {
         let manifest: Value = serde_json::from_str(row.get::<&str, _>("manifest_json")).map_err(io_error)?;
@@ -227,6 +213,11 @@ pub(crate) async fn list(db: &SqlitePool) -> Result<Vec<PluginInstallation>, Str
 }
 
 pub(crate) async fn install(db: &SqlitePool, data_dir: &Path, source: &Path) -> Result<PluginInstallation, String> {
+    install_reserved(db, data_dir, source, None, None).await
+}
+
+// The replacement journal reserves the candidate identity before touching files.
+pub(crate) async fn install_reserved(db: &SqlitePool, data_dir: &Path, source: &Path, reserved: Option<&str>, confirmed_digest: Option<&str>) -> Result<PluginInstallation, String> {
     let _lock = INSTALL_LOCK.lock().await;
     let source = source.canonicalize().map_err(io_error)?;
     let registry = data_dir.join("plugins");
@@ -234,11 +225,14 @@ pub(crate) async fn install(db: &SqlitePool, data_dir: &Path, source: &Path) -> 
     let registry = registry.canonicalize().map_err(io_error)?;
     if source.starts_with(&registry) || registry.starts_with(&source) { return Err("invalid_request: package and registry must be separate".into()); }
     let (manifest, entries, expected_digest) = inspect(&source)?;
+    if confirmed_digest.is_some_and(|confirmed|confirmed!=expected_digest) {return Err("安装包已变化，请重新确认".into());}
     let normalized = plugin_manifest::normalize(&manifest)?;
     let existing: Option<String> = sqlx::query_scalar("SELECT id FROM plugin_installations WHERE plugin_id=? AND plugin_version=? AND package_digest=? AND installed=0")
         .bind(manifest["pluginId"].as_str().unwrap()).bind(manifest["version"].as_str().unwrap()).bind(&expected_digest)
         .fetch_optional(db).await.map_err(io_error)?;
-    let id = existing.unwrap_or_else(|| ulid::Ulid::new().to_string());
+    let id = reserved.map(str::to_owned).or(existing).unwrap_or_else(|| ulid::Ulid::new().to_string());
+    let pending:bool=sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM plugin_removals WHERE installation_id=?)").bind(&id).fetch_one(db).await.map_err(io_error)?;
+    if pending { cleanup_removed(db,data_dir,&id,manifest["pluginId"].as_str().unwrap()).await?; }
     let staging = registry.join(format!(".staging-{id}"));
     let destination = registry.join(&id);
     fs::create_dir(&staging).map_err(io_error)?;
@@ -305,6 +299,11 @@ pub(crate) async fn install_builtins(db: &SqlitePool, data_dir: &Path) -> Result
             fs::write(target, contents).map_err(io_error)?;
         }
         let (manifest, _, digest) = inspect(&source)?;
+        // Bootstrap only. Never resurrect an uninstalled package, re-enable a disabled
+        // package, or silently add the bundled version beside a user replacement.
+        let known:bool=sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM plugin_installations WHERE plugin_id=?)")
+            .bind(manifest["pluginId"].as_str().unwrap()).fetch_one(db).await.map_err(io_error)?;
+        if known {continue;}
         let existing: Option<String> = sqlx::query_scalar("SELECT id FROM plugin_installations WHERE plugin_id=? AND plugin_version=? AND package_digest=? AND installed=1")
             .bind(manifest["pluginId"].as_str().unwrap()).bind(manifest["version"].as_str().unwrap()).bind(digest)
             .fetch_optional(db).await.map_err(io_error)?;
@@ -355,7 +354,7 @@ pub(crate) async fn enable(db: &SqlitePool, id: &str, enabled: bool) -> Result<(
 async fn recovery_references(db: &SqlitePool, id: &str) -> Result<i64,String> {
     sqlx::query_scalar("WITH RECURSIVE retained(id) AS (
         SELECT id FROM plugin_installations WHERE installed=1 AND id<>?
-        UNION SELECT plugin_installation_id FROM sessions WHERE plugin_installation_id IS NOT NULL
+        UNION SELECT plugin_installation_id FROM sessions WHERE plugin_installation_id IS NOT NULL AND id NOT IN (SELECT session_id FROM plugin_session_retirements)
         UNION SELECT installation_id FROM capability_invocations WHERE status='running'
         UNION SELECT installation_id FROM capability_provider_bindings
         UNION SELECT installation_id FROM capability_binding_candidates
@@ -367,6 +366,9 @@ async fn recovery_references(db: &SqlitePool, id: &str) -> Result<i64,String> {
 /// Reclaim only tombstoned releases whose exact-release recovery references are gone.
 pub(crate) async fn collect_retired(db: &SqlitePool, data_dir: &Path) -> Result<(),String> {
     let _lock = INSTALL_LOCK.lock().await;
+    let pending: Vec<(String,String)> = sqlx::query_as("SELECT p.id,p.plugin_id FROM plugin_removals r JOIN plugin_installations p ON p.id=r.installation_id WHERE p.installed=0")
+        .fetch_all(db).await.map_err(io_error)?;
+    for (id,plugin) in pending { cleanup_removed(db,data_dir,&id,&plugin).await?; }
     let registry=data_dir.join("plugins");
     if !registry.exists() { return Ok(()); }
     let registry=registry.canonicalize().map_err(io_error)?;
@@ -380,9 +382,20 @@ pub(crate) async fn collect_retired(db: &SqlitePool, data_dir: &Path) -> Result<
     Ok(())
 }
 
+async fn cleanup_removed(db: &SqlitePool, data_dir: &Path, id: &str, plugin: &str) -> Result<(),String> {
+    crate::plugin_lifecycle::remove_owned(data_dir,&["plugins",id])?;
+    crate::plugin_lifecycle::remove_owned(data_dir,&["plugins",&format!(".retained-{id}")])?;
+    crate::plugin_lifecycle::remove_owned(data_dir,&["plugin-data",plugin,id])?;
+    // Shared configuration belongs to the plugin identity, not one release.
+    sqlx::query("DELETE FROM agent_settings WHERE plugin_id=? AND scope_kind<>'session' AND NOT EXISTS(SELECT 1 FROM plugin_installations WHERE plugin_id=? AND installed=1)")
+        .bind(plugin).bind(plugin).execute(db).await.map_err(io_error)?;
+    sqlx::query("DELETE FROM plugin_removals WHERE installation_id=?").bind(id).execute(db).await.map_err(io_error)?;
+    Ok(())
+}
+
 pub(crate) async fn uninstall(db: &SqlitePool, data_dir: &Path, id: &str) -> Result<(), String> {
     let _lock = INSTALL_LOCK.lock().await;
-    let row = sqlx::query("SELECT install_path, installed FROM plugin_installations WHERE id=?")
+    let row = sqlx::query("SELECT install_path, installed, plugin_id FROM plugin_installations WHERE id=?")
         .bind(id).fetch_optional(db).await.map_err(io_error)?
         .ok_or("invalid_request: installation not found")?;
     if row.get::<i64, _>("installed") == 0 { return Err("invalid_request: plugin is already uninstalled".into()); }
@@ -394,18 +407,25 @@ pub(crate) async fn uninstall(db: &SqlitePool, data_dir: &Path, id: &str) -> Res
     }
     let active:i64=sqlx::query_scalar("SELECT COUNT(*) FROM capability_invocations WHERE installation_id=? AND status='running'").bind(id).fetch_one(db).await.map_err(io_error)?;
     if active != 0 {return Err("busy: capability invocations must drain before uninstall".into());}
-    let retained = recovery_references(db,id).await? > 0;
+    if recovery_references(db,id).await? > 0 { return Err("plugin_references: 插件仍有引用，请先迁移或明确保留历史并停用".into()); }
+    let plugin: String = row.get("plugin_id");
+    crate::plugin_lifecycle::owned_path(data_dir,&["plugins",id])?;
+    crate::plugin_lifecycle::owned_path(data_dir,&["plugin-data",&plugin,id])?;
     let trash = parent.join(format!(".retained-{id}"));
-    if path.exists() { fs::rename(&path, &trash).map_err(io_error)?; }
-    let result = sqlx::query("UPDATE plugin_installations SET installed=0,enabled=0,enabled_at=NULL,removed_at=?,install_path=? WHERE id=? AND installed=1")
-        .bind(crate::now_iso()).bind(trash.to_string_lossy().as_ref()).bind(id).execute(db).await.map_err(io_error);
+    let result = async {
+        let mut tx=db.begin().await.map_err(io_error)?;
+        let changed=sqlx::query("UPDATE plugin_installations SET installed=0,enabled=0,enabled_at=NULL,removed_at=?,install_path=? WHERE id=? AND installed=1")
+            .bind(crate::now_iso()).bind(trash.to_string_lossy().as_ref()).bind(id).execute(&mut *tx).await.map_err(io_error)?;
+        sqlx::query("INSERT INTO plugin_removals VALUES(?,?)").bind(id).bind(crate::now_iso()).execute(&mut *tx).await.map_err(io_error)?;
+        tx.commit().await.map_err(io_error)?;
+        Ok::<_,String>(changed)
+    }.await;
     match result {
         Ok(changed) if changed.rows_affected() == 1 => {
-            if !retained && trash.exists() { fs::remove_dir_all(trash).map_err(io_error)?; }
+            cleanup_removed(db,data_dir,id,&plugin).await?;
             Ok(())
         }
         _ => {
-            if trash.exists() { let _ = fs::rename(&trash, &path); }
             Err("invalid_request: plugin uninstall failed".into())
         }
     }
@@ -448,28 +468,46 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn retired_release_is_retained_until_recovery_references_disappear() {
-        let root=std::env::temp_dir().join(format!("aibo-release-{}",ulid::Ulid::new()));
-        let db=crate::open_database(&root.join("aibo.sqlite3")).await.unwrap();
+    async fn removal_rejects_references_and_cleans_private_data_after_detachment() {
+        let root=tempfile::tempdir().unwrap();
+        let data=root.path();
+        let db=crate::open_database(&data.join("aibo.sqlite3")).await.unwrap();
         let source=Path::new(env!("CARGO_MANIFEST_DIR")).join("../fixtures/plugins/capability-echo");
-        let release=install(&db,&root,&source).await.unwrap();
+        let release=install(&db,data,&source).await.unwrap();
         sqlx::query("INSERT INTO capability_provider_bindings(scope_kind,scope_id,capability_id,contract_version,installation_id,contribution_id,updated_at) VALUES('application','application','test','1.0.0',?,'test',?)")
             .bind(&release.id).bind(crate::now_iso()).execute(&db).await.unwrap();
-        let data=crate::plugin_storage::directory(&root.join("plugins").join(&release.id),&release.plugin_id,&release.id,"instance").unwrap();
-        fs::write(data.join("cache"),"retained").unwrap();
-        uninstall(&db,&root,&release.id).await.unwrap();
-        let retained=root.join("plugins").join(format!(".retained-{}",release.id));
-        collect_retired(&db,&root).await.unwrap();assert!(retained.is_dir());
-        assert!(!list(&db).await.unwrap()[0].installed);
-        let restored=install(&db,&root,&source).await.unwrap();
-        assert_eq!(restored.id,release.id);
-        assert!(!retained.exists());
-        assert_eq!(fs::read_to_string(data.join("cache")).unwrap(),"retained");
-        uninstall(&db,&root,&release.id).await.unwrap();
+        let private=crate::plugin_storage::directory(&data.join("plugins").join(&release.id),&release.plugin_id,&release.id,"instance").unwrap();
+        fs::write(private.join("cache"),"old").unwrap();
+        assert!(uninstall(&db,data,&release.id).await.unwrap_err().contains("plugin_references"));
+        assert!(private.join("cache").exists());
         sqlx::query("DELETE FROM capability_provider_bindings WHERE installation_id=?").bind(&release.id).execute(&db).await.unwrap();
-        collect_retired(&db,&root).await.unwrap();assert!(!retained.exists());
-        assert!(data.join("cache").exists(),"package collection never cleans private data");
-        db.close().await;fs::remove_dir_all(root).unwrap();
+        uninstall(&db,data,&release.id).await.unwrap();
+        assert!(!private.exists());
+        assert!(!data.join("plugins").join(&release.id).exists());
+        assert!(!list(&db).await.unwrap()[0].installed);
+        let restored=install(&db,data,&source).await.unwrap();
+        assert_eq!(restored.id,release.id);
+        assert!(!private.exists(),"reinstallation does not resurrect removed data");
+        db.close().await;
+    }
+
+    #[tokio::test]
+    async fn interrupted_removal_resumes_cleanup_without_deleting_business_assets() {
+        let root=tempfile::tempdir().unwrap();let data=root.path();
+        let db=crate::open_database(&data.join("aibo.sqlite3")).await.unwrap();
+        let source=Path::new(env!("CARGO_MANIFEST_DIR")).join("../fixtures/plugins/capability-echo");
+        let release=install(&db,data,&source).await.unwrap();
+        let private=crate::plugin_storage::directory(&data.join("plugins").join(&release.id),&release.plugin_id,&release.id,"instance").unwrap();
+        fs::write(private.join("cache"),"private").unwrap();
+        fs::create_dir(data.join("artifacts")).unwrap();fs::write(data.join("artifacts/history"),"business").unwrap();
+        // Simulate process exit after committing removal, before filesystem cleanup.
+        sqlx::query("UPDATE plugin_installations SET installed=0,enabled=0 WHERE id=?").bind(&release.id).execute(&db).await.unwrap();
+        sqlx::query("INSERT INTO plugin_removals VALUES(?,'now')").bind(&release.id).execute(&db).await.unwrap();
+        collect_retired(&db,data).await.unwrap();collect_retired(&db,data).await.unwrap();
+        assert!(!private.exists());assert!(!data.join("plugins").join(&release.id).exists());
+        assert_eq!(fs::read_to_string(data.join("artifacts/history")).unwrap(),"business");
+        assert_eq!(sqlx::query_scalar::<_,i64>("SELECT COUNT(*) FROM plugin_removals").fetch_one(&db).await.unwrap(),0);
+        db.close().await;
     }
 
     #[tokio::test]

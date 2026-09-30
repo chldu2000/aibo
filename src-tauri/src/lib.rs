@@ -42,6 +42,8 @@ mod capability_broker;
 mod plugin_registry;
 mod presentation_packages;
 mod plugin_storage;
+mod plugin_lifecycle;
+mod plugin_replacement;
 mod workspace_guard;
 mod semantic_git;
 mod semantic_plugins;
@@ -163,6 +165,7 @@ pub struct Session {
     pub(crate) label: String,
     pub(crate) state: String,
     pub(crate) archived: bool,
+    pub(crate) history_only: bool,
     pub(crate) external_session_id: Option<String>,
     pub(crate) plugin_installation_id: Option<String>,
     pub(crate) capabilities: Vec<String>,
@@ -1548,6 +1551,8 @@ fn row_to_session(row: &sqlx::sqlite::SqliteRow) -> Result<Session, CoreError> {
     capabilities.retain(|capability| capability != "queue.manage" && capability != "queue.steer");
     if queue { capabilities.push("queue.manage".into()); }
     if steering { capabilities.push("queue.steer".into()); }
+    let history_only=row.try_get::<i64,_>("history_only")?!=0;
+    if history_only { capabilities.clear(); }
     Ok(Session {
         id: row.try_get("id")?,
         workspace_id: row.try_get("workspace_id")?,
@@ -1555,6 +1560,7 @@ fn row_to_session(row: &sqlx::sqlite::SqliteRow) -> Result<Session, CoreError> {
         label: row.try_get("label")?,
         state: row.try_get("state")?,
         archived: row.try_get::<i64, _>("archived")? != 0,
+        history_only,
         external_session_id: row.try_get("external_session_id")?,
         plugin_installation_id: row.try_get("plugin_installation_id")?,
         capabilities,
@@ -1674,6 +1680,7 @@ async fn session_by_id(db: &SqlitePool, id: &str) -> Result<Session, CoreError> 
         "SELECT s.id, s.workspace_id, s.agent, s.label, s.state, s.archived,
                 b.external_session_id, s.plugin_installation_id, b.plugin_capabilities_json, b.plugin_binding_json,
                 p.manifest_json AS queue_manifest_json,
+                EXISTS(SELECT 1 FROM plugin_session_retirements r WHERE r.session_id=s.id) AS history_only,
                 s.created_at, COALESCE(s.content_updated_at, s.created_at) AS updated_at
          FROM sessions s
          LEFT JOIN session_bindings b ON b.session_id = s.id
@@ -1872,6 +1879,7 @@ async fn list_sessions_from_db(
         "SELECT s.id, s.workspace_id, s.agent, s.label, s.state, s.archived,
                 b.external_session_id, s.plugin_installation_id, b.plugin_capabilities_json, b.plugin_binding_json,
                 p.manifest_json AS queue_manifest_json,
+                EXISTS(SELECT 1 FROM plugin_session_retirements r WHERE r.session_id=s.id) AS history_only,
                 s.created_at, COALESCE(s.content_updated_at, s.created_at) AS updated_at
          FROM sessions s
          LEFT JOIN session_bindings b ON b.session_id = s.id
@@ -3733,6 +3741,7 @@ async fn list_capability_providers(scope: capability_broker::Scope, capability: 
 }
 #[tauri::command]
 async fn bind_capability_provider(binding: capability_broker::Binding, state: State<'_, AppState>) -> Result<(), capability_broker::Failure> {
+    let _guard = state.capability_broker.mutation_guard().await;
     state.capability_broker.bind(binding).await
 }
 #[tauri::command]
@@ -3794,8 +3803,12 @@ async fn set_presentation_package_enabled(digest: String, enabled: bool, state: 
     presentation_packages::enable(&state.db, &digest, enabled).await
 }
 #[tauri::command]
-async fn uninstall_presentation_package(digest: String, state: State<'_, AppState>) -> Result<(), String> {
-    presentation_packages::uninstall(&state.db, &digest).await
+async fn preview_presentation_removal(digest: String, state: State<'_, AppState>) -> Result<Vec<String>, String> {
+    presentation_packages::removal_windows(&state.db,&digest).await
+}
+#[tauri::command]
+async fn uninstall_presentation_package(digest: String, expected_windows: Vec<String>, state: State<'_, AppState>) -> Result<(), String> {
+    presentation_packages::uninstall(&state.db, &state.data_dir, &digest, &expected_windows).await
 }
 #[tauri::command]
 async fn get_presentation_selection(window: tauri::WebviewWindow, state: State<'_, AppState>) -> Result<Option<presentation_packages::Selection>, String> {
@@ -3807,12 +3820,33 @@ async fn select_presentation_package(digest: Option<String>, theme_id: Option<St
 }
 
 #[tauri::command]
-async fn install_agent_plugin(path: String, state: State<'_, AppState>) -> Result<plugin_registry::PluginInstallation, String> {
-    plugin_registry::install(&state.db, &state.data_dir, Path::new(&path)).await
+async fn install_agent_plugin(path: String, token: Option<String>, reinstall: Option<bool>, state: State<'_, AppState>) -> Result<plugin_registry::PluginInstallation, String> {
+    let _guard = state.capability_broker.mutation_guard().await;
+    let previous=plugin_replacement::preview(&state.db,Path::new(&path)).await?.impacts;
+    let installed=state.plugins.replace_plugin(&state.data_dir, Path::new(&path), token.as_deref(), reinstall.unwrap_or(false)).await?;
+    for old in previous {if old.id!=installed.id {state.semantic_plugins.invalidate(&state.capability_broker,&old.id,None).await;}}
+    Ok(installed)
 }
 
 #[tauri::command]
-async fn set_agent_plugin_enabled(id: String, enabled: bool, state: State<'_, AppState>) -> Result<(), String> {
+async fn preview_plugin_install(path:String,state:State<'_,AppState>)->Result<plugin_replacement::Preview,String>{
+    plugin_replacement::preview(&state.db,Path::new(&path)).await
+}
+#[tauri::command]
+async fn list_plugin_undo_targets(state:State<'_,AppState>)->Result<Vec<String>,String>{
+    plugin_replacement::collect(&state.db,&state.data_dir).await?;
+    plugin_replacement::undo_targets(&state.db).await
+}
+#[tauri::command]
+async fn undo_plugin_replacement(id:String,state:State<'_,AppState>)->Result<(),String>{
+    let _guard=state.capability_broker.mutation_guard().await;
+    state.plugins.undo_plugin_replacement(&state.data_dir,&id).await?;
+    state.semantic_plugins.invalidate(&state.capability_broker,&id,None).await;
+    Ok(())
+}
+
+#[tauri::command]
+async fn set_agent_plugin_enabled(id: String, enabled: bool, state: State<'_, AppState>) -> Result<plugin_lifecycle::MigrationReport, String> {
     let _guard = state.capability_broker.mutation_guard().await;
     plugin_registry::enable(&state.db, &id, enabled).await?;
     if !enabled {
@@ -3821,22 +3855,40 @@ async fn set_agent_plugin_enabled(id: String, enabled: bool, state: State<'_, Ap
             state.capability_broker.stop_contributions(&installation,contributions.as_deref()).await.map_err(|error|error.message)?;
         }
     }
+    Ok(plugin_lifecycle::MigrationReport::default())
+}
+
+#[tauri::command]
+async fn preview_plugin_removal(id: String, state: State<'_, AppState>) -> Result<plugin_lifecycle::Impact, String> {
+    plugin_lifecycle::impact(&state.db,&id).await
+}
+#[tauri::command]
+async fn read_plugin_upgrade_policy(state: State<'_, AppState>) -> Result<plugin_lifecycle::UpgradePolicy, String> {
+    plugin_lifecycle::policy(&state.db).await
+}
+#[tauri::command]
+async fn save_plugin_upgrade_policy(policy: plugin_lifecycle::UpgradePolicy, state: State<'_, AppState>) -> Result<plugin_lifecycle::UpgradePolicy, String> {
+    let _guard = state.capability_broker.mutation_guard().await;
+    plugin_lifecycle::save_policy(&state.db,policy).await
+}
+#[tauri::command]
+async fn migrate_plugin_sessions(id: String, target: String, state: State<'_, AppState>) -> Result<plugin_lifecycle::MigrationReport, String> {
+    let _guard = state.capability_broker.mutation_guard().await;
+    state.plugins.migrate_release(&state.data_dir,&id,&target).await
+}
+#[tauri::command]
+async fn uninstall_agent_plugin(id: String, token: String, keep_history: bool, state: State<'_, AppState>) -> Result<(), String> {
+    let _guard = state.capability_broker.mutation_guard().await;
+    let impact=plugin_lifecycle::impact(&state.db,&id).await?;
+    if impact.token!=token { return Err("引用已变化，请重新查看卸载影响".into()); }
+    state.plugins.remove_release(&state.data_dir,&impact,keep_history).await?;
+    state.semantic_plugins.invalidate(&state.capability_broker,&id,None).await;
     Ok(())
 }
 
 #[tauri::command]
-async fn uninstall_agent_plugin(id: String, state: State<'_, AppState>) -> Result<(), String> {
-    let _guard = state.capability_broker.mutation_guard().await;
-    plugin_registry::enable(&state.db, &id, false).await?;
-    for (installation,contributions) in plugin_dependencies::invalidations(&state.db,&id).await? {
-        state.semantic_plugins.invalidate(&state.capability_broker,&installation,contributions.as_deref()).await;
-            state.capability_broker.stop_contributions(&installation,contributions.as_deref()).await.map_err(|error|error.message)?;
-    }
-    state.plugins.uninstall(&state.data_dir, &id).await
-}
-
-#[tauri::command]
 async fn create_agent_session(workspace_id: String, agent_id: String, installation_id: Option<String>, requested_profile: Option<ExecutionProfile>, defer_start: Option<bool>, window: tauri::WebviewWindow, state: State<'_, AppState>) -> Result<Session, String> {
+    let _guard = state.capability_broker.mutation_guard().await;
     let installation_id = match installation_id {
         Some(id) => id,
         None => sqlx::query_scalar(
@@ -3847,11 +3899,11 @@ async fn create_agent_session(workspace_id: String, agent_id: String, installati
     let backend = execution_profile::installation_backend(&state.db, &installation_id, &agent_id).await?;
     // Preserve absence: SessionHost chooses a compatible declared initial mode.
     let profile = requested_profile.map(|requested| execution_profile::resolve_with_backend(backend, Some(requested), now_iso())).transpose()?;
-    if defer_start == Some(true) {
-        return state.plugins.prepare_with_profile(&workspace_id, &installation_id, &agent_id, profile).await;
-    }
-    let session = state.plugins.create_with_profile_from(window.label(), &workspace_id, &installation_id, &agent_id, profile).await?;
-    Ok(session)
+    let session = state.plugins.prepare_with_profile(&workspace_id, &installation_id, &agent_id, profile).await?;
+    drop(_guard);
+    if defer_start == Some(true) { return Ok(session); }
+    state.plugins.resume_from(window.label(), &session.id).await?;
+    session_by_id(&state.db,&session.id).await.map_err(|error|error.to_string())
 }
 
 #[tauri::command]
@@ -4486,10 +4538,15 @@ pub fn run() {
             let db_path = data_dir.join("aibo.sqlite3");
             let db = tauri::async_runtime::block_on(open_database(&db_path))
                 .map_err(|error| Box::new(error) as Box<dyn Error>)?;
+            tauri::async_runtime::block_on(plugin_replacement::recover(&db,&data_dir))
+                .map_err(|error| Box::new(CoreError::Initialization(error)) as Box<dyn Error>)?;
             tauri::async_runtime::block_on(plugin_registry::install_builtins(&db, &data_dir))
                 .map_err(|error| Box::new(CoreError::Initialization(format!("install built-in plugins: {error}"))) as Box<dyn Error>)?;
             tauri::async_runtime::block_on(presentation_packages::register_builtins(&db))
                 .map_err(|error| Box::new(CoreError::Initialization(format!("register built-in presentations: {error}"))) as Box<dyn Error>)?;
+            if let Err(error)=tauri::async_runtime::block_on(presentation_packages::collect_removed(&db,&data_dir)) {
+                warn!(%error,"presentation resource cleanup deferred");
+            }
             tauri::async_runtime::block_on(recover_interrupted_turn_changes(&db)).map_err(
                 |error| {
                     Box::new(CoreError::Initialization(format!(
@@ -4507,6 +4564,8 @@ pub fn run() {
             tauri::async_runtime::block_on(workspace_write_runs::recover(&db))
                 .map_err(|error| Box::new(CoreError::Initialization(format!("recover workspace writes: {error}"))) as Box<dyn Error>)?;
             tauri::async_runtime::block_on(capability_broker::Broker::recover(&db))
+                .map_err(|error| Box::new(CoreError::Initialization(error)) as Box<dyn Error>)?;
+            tauri::async_runtime::block_on(plugin_lifecycle::recover_candidates(&db,&data_dir))
                 .map_err(|error| Box::new(CoreError::Initialization(error)) as Box<dyn Error>)?;
             if let Err(error) = tauri::async_runtime::block_on(plugin_registry::collect_retired(&db, &data_dir)) {
                 warn!(%error, "retired plugin collection deferred");
@@ -4542,6 +4601,10 @@ pub fn run() {
             list_capability_history_scopes,
             read_capability_history,
             list_plugin_installations,
+            preview_plugin_removal,
+            read_plugin_upgrade_policy,
+            save_plugin_upgrade_policy,
+            migrate_plugin_sessions,
             read_agent_settings,
             save_agent_settings,
             list_presentation_packages,
@@ -4549,9 +4612,13 @@ pub fn run() {
             read_presentation_package,
             set_presentation_package_enabled,
             uninstall_presentation_package,
+            preview_presentation_removal,
             get_presentation_selection,
             select_presentation_package,
             install_agent_plugin,
+            preview_plugin_install,
+            list_plugin_undo_targets,
+            undo_plugin_replacement,
             set_agent_plugin_enabled,
             uninstall_agent_plugin,
             create_agent_session,

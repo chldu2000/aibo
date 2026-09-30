@@ -76,7 +76,10 @@ test('generic host routing requires capability sessions and rejects unbound hist
   }
   const create = source.slice(source.indexOf('async fn create_agent_session(')).split('#[tauri::command]')[0];
   assert.match(create, /requested_profile/);
-  assert.match(create, /create_with_profile/);
+  assert.match(create, /prepare_with_profile/);
+  assert.match(create, /resume_from\(window\.label\(\)/);
+  assert.ok(create.indexOf('drop(_guard)') > create.indexOf('prepare_with_profile'));
+  assert.ok(create.indexOf('drop(_guard)') < create.indexOf('resume_from'), 'slow session startup must not hold the plugin lifecycle lock');
   assert.doesNotMatch(create, /create_codex_session|create_pi_session/);
   const app = await readFile('src/App.svelte', 'utf8');
   assert.doesNotMatch(app, /\b(?:sendCodexPrompt|sendPiPrompt|abortCodexTurn|abortPiTurn|setPiModel|setPiThinkingLevel|sessionModelBackend)\b/);

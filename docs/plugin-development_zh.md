@@ -72,7 +72,9 @@ macOS 原生安装验收可从 Aibo 根目录运行 `node probes/external-plugin
    [`build-external-plugin.mjs`](../probes/build-external-plugin.mjs)演示无第三方运行依赖样例的完整流程。
 
 Release 不可变。包内容改变时递增 release 版本；既有会话固定 installation/contribution，
-安装更新不迁移既有会话或恢复数据。
+同一 pluginId 的安装是单版本替换：先预览引用并确认，全部会话恢复成功才切换，失败整体保留原版本。
+相同包重复安装无操作；同版本不同内容明确按替换处理。降级仅支持显式清除插件数据重装，业务历史保留。
+卸载会清除该 release 的文件和私有数据；有引用时需先处理。详见[卸载与迁移规则](plugin-boundaries-and-regression.md#插件卸载与会话迁移)。
 
 ## 接入会话提供者
 

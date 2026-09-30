@@ -73,8 +73,11 @@ Use the matching [manifest](../examples/capability-plugin/plugin.json) and [work
 7. Inspect the unpacked artifact for missing dependencies, developer paths and symlinks before installation.
    [`build-external-plugin.mjs`](../probes/build-external-plugin.mjs) is the complete dependency-free example flow.
 
-Releases are immutable. Update release versions for changed package contents; existing sessions remain pinned to their
-installation/contribution. Installing an upgrade does not migrate existing sessions or their recovery data.
+Releases are immutable. Increment the release version when package contents change. Installing the same `pluginId`
+replaces its current version after a reference preview and confirmation. All session recovery and binding checks must
+succeed before switching; failure restores every original binding. An identical package is a no-op; changed contents
+at the same version are an explicit replacement. Downgrades require an explicit clean reinstall, retaining business
+history while permanently retiring old sessions. See the [replacement and removal rules](plugin-boundaries-and-regression.md#插件卸载与会话迁移).
 
 ## Implement a session provider
 
