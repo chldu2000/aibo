@@ -88,6 +88,9 @@ pnpm install
 pnpm tauri dev
 ```
 
+开发运行与 debug 构建使用独立的 `development/` 应用数据目录，首次启动为空数据库；
+正式 release 打包继续使用原有正式数据。详见[数据库隔离与迁移规则](docs/database-migrations.md)。
+
 ```sh
 pnpm dev          # 浏览器 UI 预览；实际桌面执行需要 Tauri
 pnpm run verify   # 架构、TypeScript、Node 测试与前端构建

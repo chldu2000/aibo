@@ -1,5 +1,22 @@
 # 数据库迁移规则
 
+## 开发与正式数据隔离
+
+启动宿主时先选择数据目录，再初始化 SQLite、Node runtime、插件、附件和恢复数据。
+`tauri dev`（包括 `--release`）、debug 构建及测试构建使用应用数据目录下的 `development/`；
+正式 release 打包继续使用原应用数据目录。macOS 默认路径为：
+
+- 正式：`~/Library/Application Support/local.aibo.desktop/aibo.sqlite3`
+- 开发：`~/Library/Application Support/local.aibo.desktop/development/aibo.sqlite3`
+
+Windows 和 Linux 使用各自的 Tauri 应用数据目录，隔离规则相同。首次开发启动创建空库，
+不会复制、迁移或删除原正式库；工作区、会话和插件需在开发环境单独配置。
+数据库单元测试继续使用独立临时目录或内存库；原生探针使用独立应用 identifier，
+预置数据库也必须放在其 `development/` 目录下。
+
+此隔离保护正式实例免受开发启动时的 migration 和恢复操作影响。
+正式 release 新版本启动仍会迁移正式库；隔离不改变下述迁移冻结与追加规则。
+
 ## 冻结与追加
 
 迁移一旦提交到 Git，或应用到需要保留数据的数据库，即按原始字节冻结。开发数据库同样适用。

@@ -1,4 +1,5 @@
 mod node_runtime;
+mod app_storage;
 mod session_history_tools;
 mod session_reference_preferences;
 mod agent_settings;
@@ -4480,6 +4481,7 @@ pub fn run() {
                     "resolve app data directory: {error}"
                 ))) as Box<dyn Error>
             })?;
+            let data_dir = app_storage::data_dir(data_dir);
             node_runtime::initialize(data_dir.clone());
             let db_path = data_dir.join("aibo.sqlite3");
             let db = tauri::async_runtime::block_on(open_database(&db_path))

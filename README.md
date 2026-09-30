@@ -95,6 +95,10 @@ pnpm install
 pnpm tauri dev
 ```
 
+Development runs and debug builds use a separate `development/` app data directory,
+starting with an empty database. Release bundles retain the existing production data.
+See [database isolation and migration rules](docs/database-migrations.md).
+
 ```sh
 pnpm dev          # Browser UI preview; desktop execution requires Tauri
 pnpm run verify   # Architecture, TypeScript, Node tests, frontend build

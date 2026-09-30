@@ -20,7 +20,7 @@ const port=server.httpServer.address().port;
 const identifier=`local.aibo.searchprobe.${Date.now()}`;
 // Optional closed, checkpointed fixture exercises the real desktop upgrade path.
 if(process.env.AIBO_SEARCH_PROBE_DB){
-  const dataDir=path.join(homedir(),'Library','Application Support',identifier);
+  const dataDir=path.join(homedir(),'Library','Application Support',identifier,'development');
   await mkdir(dataDir,{recursive:true});
   await copyFile(process.env.AIBO_SEARCH_PROBE_DB,path.join(dataDir,'aibo.sqlite3'));
 }

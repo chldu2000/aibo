@@ -8,7 +8,7 @@ const mode = process.argv[2] ?? 'hunk';
 if (!['hunk', 'file', 'turn-git', 'turn-plain'].includes(mode)) throw Error('Expected hunk, file, turn-git or turn-plain mode');
 const turnMode = mode.startsWith('turn-'); const isGit = mode !== 'turn-plain';
 const identifier = `local.aibo.corehunk.${Date.now()}`;
-const dataDir = path.join(homedir(), 'Library', 'Application Support', identifier);
+const dataDir = path.join(homedir(), 'Library', 'Application Support', identifier, 'development');
 const root = await mkdtemp(path.join(tmpdir(), 'aibo-core-hunk-'));
 const workspacePath = path.join(root, 'workspace');
 await mkdir(workspacePath);
