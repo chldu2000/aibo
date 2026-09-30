@@ -4475,12 +4475,12 @@ pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
         .setup(|app| {
-            node_runtime::initialize(app.path().resource_dir()?);
             let data_dir = app.path().app_data_dir().map_err(|error| {
                 Box::new(CoreError::Initialization(format!(
                     "resolve app data directory: {error}"
                 ))) as Box<dyn Error>
             })?;
+            node_runtime::initialize(data_dir.clone());
             let db_path = data_dir.join("aibo.sqlite3");
             let db = tauri::async_runtime::block_on(open_database(&db_path))
                 .map_err(|error| Box::new(error) as Box<dyn Error>)?;
@@ -4575,6 +4575,9 @@ pub fn run() {
             set_workspace_trust,
             remove_workspace,
             open_workspace_location,
+            node_runtime::get_node_runtime,
+            node_runtime::select_node_runtime,
+            node_runtime::download_node_runtime,
             probe_agents,
             inspect_workspace_capabilities,
             get_app_snapshot,

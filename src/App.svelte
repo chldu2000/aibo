@@ -1,4 +1,18 @@
 <script lang="ts">
+  import NodeRuntimePanel from '$lib/components/app/NodeRuntimePanel.svelte';
+  import { createNodeRuntimeController, emptyNodeRuntime } from '$lib/app/node-runtime-controller';
+  import { getNodeRuntime, selectNodeRuntime, downloadNodeRuntime } from '$lib/api';
+  let nodeRuntime = $state(emptyNodeRuntime());
+  const nodeRuntimeController = createNodeRuntimeController({
+    read: getNodeRuntime, select: selectNodeRuntime, download: downloadNodeRuntime,
+    pick: async () => { const path = await open({ directory: false, multiple: false, title: '选择 Node 可执行文件' }); return typeof path === 'string' ? path : null; },
+    refreshDependencies: async () => { await refreshPluginInstallations(); },
+    changed: value => { nodeRuntime = value; },
+  });
+  $effect(() => {
+    if (desktop && settingsOpen && managementSection === 'runtime') untrack(() => { void nodeRuntimeController.load(); });
+  });
+
   import { createSessionStartupController } from '$lib/app/session-startup-controller';
   import { createSessionModelCache } from '$lib/app/session-model-cache';
   import { createSessionDiffController, emptySessionDiff } from '$lib/app/session-diff-controller';
@@ -3878,6 +3892,9 @@
 {/snippet}
 
 {#snippet runtimeStatus()}
+  <NodeRuntimePanel state={nodeRuntime} {desktop}
+    onDetect={() => void nodeRuntimeController.load()} onChoose={() => void nodeRuntimeController.choose()}
+    onAutomatic={() => void nodeRuntimeController.automatic()} onDownload={() => void nodeRuntimeController.download()} />
   <div class="management-runtime-actions">
     <Button variant="outline" size="sm" type="button" onclick={() => void refresh()} disabled={busy}>
       刷新运行状态

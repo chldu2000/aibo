@@ -77,10 +77,11 @@ pub(crate) async fn dependency_diagnostics(manifest: &Value) -> Vec<PluginDepend
     let mut diagnostics = Vec::with_capacity(dependencies.len());
     for dependency in dependencies {
         let name = dependency["name"].as_str().unwrap().to_owned();
-        let executable = crate::find_executable(&name).map(|path|path.to_string_lossy().into_owned());
+        let executable = (if name == "node" { crate::node_runtime::for_manifest(manifest) } else { crate::find_executable(&name) })
+            .map(|path|path.to_string_lossy().into_owned());
         let version_range = dependency["versionRange"].as_str().map(ToOwned::to_owned);
         let (available, detected_version, issue) = match (executable.as_deref(), version_range.as_deref()) {
-            (None, _) => (false, None, Some("executable was not found".to_owned())),
+            (None, _) => (false, None, Some(if name == "node" { "未找到满足要求的 Node；请前往设置 → 运行与诊断，下载运行时、选择文件或重新检测。" } else { "executable was not found" }.to_owned())),
             (Some(_), None) => (true, None, None),
             (Some(path), Some(range)) => match (executable_version(Path::new(path)).await, semver::VersionReq::parse(range)) {
                 (Ok(version), Ok(requirement)) if requirement.matches(&version) => (true, Some(version.to_string()), None),

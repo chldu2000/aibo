@@ -449,7 +449,7 @@ impl Broker {
                     let url = tauri::Url::from_file_path(preload).map_err(|_|fail("provider_unavailable", "Host SDK path is invalid"))?;
                     args.splice(0..0, ["--import".into(), url.to_string()]);
                 }
-                crate::find_executable("node").ok_or_else(||fail("provider_unavailable", "Node is unavailable"))?
+                crate::node_runtime::for_manifest(&provider.manifest).ok_or_else(||fail("provider_unavailable", "Compatible Node is unavailable; open Settings → Runtime to download or select Node"))?
             } else { entrypoint };
             let runtime = if protocol == "2.1" { PluginRuntime::spawn_interactive(&executable,&args,&provider.directory,self.sdk_module.as_deref()) }
                 else { PluginRuntime::spawn_capability(&executable,&args,&provider.directory) }

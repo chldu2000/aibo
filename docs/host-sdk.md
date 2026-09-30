@@ -6,8 +6,8 @@ Node ESM 能力插件可在 `plugin.json` 声明：
 "hostSdk": { "min": "0.1.0", "maxExclusive": "0.2.0" }
 ```
 
-仍需声明 `.mjs` 或 ESM `.js` 入口，以及 Node.js `>=22` 运行依赖。Aibo 内置私有 Node 24.18.0，
-依赖检查、Worker 与后代进程使用同一运行时，不回退系统 Node。用户无需安装 Node/npm。
+仍需声明 `.mjs` 或 ESM `.js` 入口，以及 Node.js `>=22` 运行依赖。Aibo 优先查找本机兼容 Node；缺失时在设置的“运行与诊断”中
+下载专用运行时或手动选择文件。默认安装包不含 Node，也无需 npm。
 第三方运行依赖由插件构建时携带；宿主安装只复制和校验，不执行 npm。呈现 Worker 合同不变。
 
 声明后，可直接使用以下公开入口，不需要把这些 npm 包放进安装产物：
@@ -71,20 +71,31 @@ cargo test --lib
 
 工具接入步骤、执行权限分离、分页和资源限额见[完整会话查询工具](session-history-tool-design.md)。
 
-## 私有运行时的构建与分发
+## Node 运行时查找与按需下载
 
-开发环境仍需 Node、pnpm、Rust。首次原生测试前运行 `pnpm prepare:node`；Tauri dev/build
-钩子自动执行。脚本按 `scripts/node-runtime.json` 的固定版本和 SHA-256 下载官方发行包，
-仅将 Node 可执行文件、LICENSE、校验元数据放入 `src-tauri/resources/node-runtime/`。
-Tauri 将它们映射到应用 resource directory 下的 `node-runtime/`。不携带 npm。
-Rust 构建核对目标平台、版本和文件摘要；安装后的应用不下载运行时，也不读取源码目录。
+默认顺序为进程 PATH、GUI 常见安装目录、已下载的 Aibo 专用 Node。自动模式跳过不能启动、
+不满足宿主 `>=22` 或目标插件版本要求的候选。诊断与实际 Worker 启动使用相同解析规则；
+Worker 的目录置于子进程 PATH 最前面，包内 ACP 继续使用 Worker 的 `process.execPath`。
+本机 Node 不受 Aibo 版本固定；升级/删除后重新检测，或下次启动时按文件变化重新校验。
 
-离线构建可设置 `AIBO_NODE_ARCHIVE=/absolute/path/to/official-archive`（仍校验固定摘要），
-或预填 `.runtime-cache/`。交叉构建使用 `AIBO_NODE_TARGET=darwin-arm64` 等；默认读取
-Tauri target triple。当前提供 macOS/Linux glibc/Windows 的 x64、arm64 发行包映射，
-不支持 musl；每个平台独立构建和验收，不将已有 macOS arm64 证据推广到其他平台。
-开发/测试模式在未初始化应用 resource directory 时使用准备好的源码资源。
+管理中心“运行与诊断”显示当前路径、版本和来源，提供重新检测、下载和文件选择。
+手动选择是显式覆盖，保存在应用数据中；无效或不兼容时明确阻止启动，用户可恢复自动查找。
+无效的新选择不覆盖原设置，取消文件对话框不清除设置。更新选择只影响新启动的进程，
+已有插件进程和会话 release 绑定保持不变。插件的版本要求高于当前默认 Node 时，
+自动模式可以选择满足其要求的专用版本；插件诊断显示实际选择的路径。
 
-运行时升级需修改版本及官方摘要、重新准备并执行 Node/原生/桌面回归。
-旧插件的 `runtime: node` 依赖现在检查内置 Node，版本要求不满足时明确拒绝，
-不偷偷使用用户全局 Node。其他外部 CLI 的搜索行为保持不变。
+下载由 Rust 宿主完成，无 Node、npm、curl 或外部解压程序的引导依赖。
+`scripts/node-runtime.json` 固定官方发行版本、目标平台和 SHA-256。显式点击下载后通过
+HTTPS 获取压缩包，校验摘要，只解压普通文件中的 Node 与 LICENSE，做启动/版本验证；
+随后发布到应用数据 `node-runtime/` 的独立目录，原子更新选择记录。失败清理暂存目录，
+保留旧设置；不需要管理员权限，不修改系统 PATH，也不安装 npm。支持通过系统代理环境
+访问下载地址；网络失败可以重试或手动选择本机文件。
+
+启动应用不自动下载，缺 Node 不妨碍管理和历史查看。下载操作在设置关闭后继续，重新打开
+可查看操作结果。重新下载不会覆盖运行中的二进制；旧专用目录暂时保留，以保护已有进程。
+专用程序检测会核对下载元数据及二进制摘要。当前提供 macOS/Linux glibc/Windows 的
+x64、arm64 映射；musl 等未覆盖平台只能手动选择兼容 Node，各平台仍需独立验收。
+
+Tauri dev/build 不再执行 `prepare:node`，应用资源不再携带 Node。开发环境仍需 Node、pnpm、Rust。
+`pnpm prepare:node` 仅保留为可选的旧插件探针测试夹具准备工具，不进入发布包。
+升级专用版本需更新固定版本及官方摘要，执行查找/安装/打包/桌面回归。

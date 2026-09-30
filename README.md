@@ -98,9 +98,10 @@ pnpm tauri dev
 ```sh
 pnpm dev          # Browser UI preview; desktop execution requires Tauri
 pnpm run verify   # Architecture, TypeScript, Node tests, frontend build
-pnpm prepare:node # Prepare bundled runtime before standalone Rust tests
 cargo test --manifest-path src-tauri/Cargo.toml
 ```
+
+Aibo uses a compatible local Node first. In Settings → Runtime, download a private runtime or select an existing Node executable if needed. Release packages do not bundle Node.
 
 macOS arm64 has native acceptance evidence. Other architectures and operating systems
 have different validation and execution limits; consult the [support matrix](docs/plugin-platform-support-matrix.md).

@@ -18,6 +18,19 @@ const script = `import * as api from '/src/lib/api.ts';
 const check=(value,label)=>{if(!value)throw Error(label)};
 try {
   const config=await (await fetch('/__default_config')).json();
+  let nodeRuntime=null;
+  if(config.nodePath){
+    const detected=await api.getNodeRuntime(true);
+    check(detected.selected?.source==='system','must find local Node without bundled resources');
+    const selected=await api.selectNodeRuntime(config.nodePath);
+    check(selected.selected?.source==='manual'&&selected.manualPath===config.nodePath,'manual Node must be selected');
+    try { await api.selectNodeRuntime(config.workspacePath); throw Error('directory accepted as Node'); }
+    catch(error){check(!String(error).includes('directory accepted'),'must reject directory');}
+    check((await api.getNodeRuntime(true)).manualPath===config.nodePath,'failed selection must retain previous Node');
+    const automatic=await api.selectNodeRuntime(null);
+    check(automatic.selected?.source==='system'&&automatic.manualPath===null,'must return to local Node');
+    nodeRuntime={local:true,manual:true,invalidPreserved:true,automatic:true,version:automatic.selected.version};
+  }
   const workspace=await api.addWorkspace(config.workspacePath);
   await api.setWorkspaceTrust(workspace.id,true);
   const plugin=await api.installAgentPlugin(config.packagePath);
@@ -38,13 +51,13 @@ try {
     check(catalog.current&&catalog.models.length,'native model catalog must have a current model');
   }
   await api.closeAgentSession(ready.id);
-  await fetch('/__default_report',{method:'POST',body:JSON.stringify({ok:true,pluginVersion:plugin.pluginVersion,mode:profile.enforced.interactionMode,deferred:true,nativeOpen:true,closed:true,parameterScope})});
+  await fetch('/__default_report',{method:'POST',body:JSON.stringify({ok:true,pluginVersion:plugin.pluginVersion,mode:profile.enforced.interactionMode,deferred:true,nativeOpen:true,closed:true,parameterScope,nodeRuntime})});
 } catch(error) {
   await fetch('/__default_report',{method:'POST',body:JSON.stringify({ok:false,error:String(error)})});
 }`;
 const server = await createServer({ server: { host:'127.0.0.1', port:0, strictPort:false, hmr:false, watch:null }, plugins:[{
   name:'default-session-profile-probe', configureServer(server) {
-    server.middlewares.use('/__default_config', (_req,res) => { res.setHeader('Content-Type','application/json'); res.end(JSON.stringify({workspacePath,packagePath,expectedParameterScope:process.env.AIBO_EXPECT_PARAMETER_SCOPE??null})); });
+    server.middlewares.use('/__default_config', (_req,res) => { res.setHeader('Content-Type','application/json'); res.end(JSON.stringify({workspacePath,packagePath,expectedParameterScope:process.env.AIBO_EXPECT_PARAMETER_SCOPE??null,nodePath:process.env.AIBO_VERIFY_NODE_RUNTIME==='1'?process.execPath:null})); });
     server.middlewares.use('/__default_report', (req,res) => { let body=''; req.on('data',chunk=>body+=chunk); req.on('end',()=>{res.end('ok');finish(JSON.parse(body));}); });
     server.middlewares.use('/__default_session', (_req,res) => { res.setHeader('Content-Type','text/html');res.end('<!doctype html><html><body>Default session profile probe<script type="module">'+script+'</script></body></html>'); });
   },

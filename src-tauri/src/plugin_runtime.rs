@@ -74,7 +74,10 @@ impl PluginRuntime {
         for name in PLUGIN_ENVIRONMENT {
             if let Some(value) = std::env::var_os(name) { command.env(name, value); }
         }
-        command.env("PATH", crate::executable_search_path());
+        let search = crate::executable_search_path();
+        let mut paths: Vec<_> = executable.parent().into_iter().map(Path::to_path_buf).collect();
+        paths.extend(std::env::split_paths(&search));
+        command.env("PATH", std::env::join_paths(paths).unwrap_or(search));
         if let Some(sdk_module) = sdk_module {
             command.env("AIBO_PI_SDK_MODULE", process_path(sdk_module).as_ref());
         }

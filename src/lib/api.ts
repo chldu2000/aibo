@@ -620,3 +620,9 @@ export const readSessionReferencePreferences = (): Promise<import('./app/session
   invoke('read_session_reference_preferences');
 export const saveSessionReferencePreferences = (messageLimit: number | null): Promise<import('./app/session-reference-preferences-controller').SessionReferencePreferences> =>
   invoke('save_session_reference_preferences', { messageLimit });
+
+// Application-owned runtime management; never exposed through presentation actions.
+import type { NodeRuntimeStatus } from './app/node-runtime-controller';
+export const getNodeRuntime = (refresh: boolean): Promise<NodeRuntimeStatus> => invoke('get_node_runtime', { refresh });
+export const selectNodeRuntime = (path: string | null): Promise<NodeRuntimeStatus> => invoke('select_node_runtime', { path });
+export const downloadNodeRuntime = (): Promise<NodeRuntimeStatus> => invoke('download_node_runtime');

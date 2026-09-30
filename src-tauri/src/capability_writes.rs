@@ -35,7 +35,7 @@ impl Broker {
     pub(super) async fn check_executables(&self, manifest: &Value, chain: &Chain) -> Result<(), Failure> {
         for dependency in manifest["executableDependencies"].as_array().into_iter().flatten() {
             if dependency["required"] != true { continue; }
-            let executable = crate::find_executable(dependency["name"].as_str().unwrap()).ok_or_else(||fail("provider_unavailable", "Executable dependency is unavailable"))?;
+            let executable = (if dependency["name"] == "node" { crate::node_runtime::for_manifest(manifest) } else { crate::find_executable(dependency["name"].as_str().unwrap()) }).ok_or_else(||fail("provider_unavailable", "Executable dependency is unavailable"))?;
             let Some(range) = dependency["versionRange"].as_str() else { continue; };
             let remaining = chain.deadline.saturating_duration_since(Instant::now());
             if remaining.is_zero() { return Err(fail("timeout", "Dependency inspection deadline expired")); }
@@ -276,7 +276,7 @@ mod tests {
             }
             fs::write(package.join("plugin.json"),manifest.to_string()).unwrap();
             fs::write(package.join("worker.mjs"),include_str!("../../fixtures/plugins/capability-write/worker.mjs")).unwrap();
-            let installed = plugin_registry::install(&db,&root.join("data"),&package).await.unwrap(); assert!(installed.runnable);
+            let installed = plugin_registry::install(&db,&root.join("data"),&package).await.unwrap(); assert!(installed.runnable, "{}", serde_json::to_string(&installed.dependencies).unwrap());
             plugin_registry::enable(&db,&installed.id,true).await.unwrap();
             let broker = Broker::new(db.clone());
             for id in ["a", "b"] { broker.bind(Binding {scope:Scope::Workspace(id.into()),capability:CAP.into(),version:"1.0.0".into(),installation_id:installed.id.clone(),contribution_id:CONTRIBUTION.into()}).await.unwrap(); }

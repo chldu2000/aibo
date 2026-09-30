@@ -1,4 +1,5 @@
-// Build-time only. The installed app never downloads or installs a runtime.
+// Optional development fixture for legacy plugin probes. Not bundled in release apps.
+// Installed applications manage on-demand downloads in src-tauri/src/node_runtime.rs.
 import { createHash } from 'node:crypto';
 import { chmod, copyFile, mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { execFileSync } from 'node:child_process';

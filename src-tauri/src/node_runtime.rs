@@ -1,39 +1,372 @@
-//! The app owns Node. Never fall back to a user/global installation.
-use std::{path::{Path, PathBuf}, sync::OnceLock};
+//! Resolve compatible local Node installations, with an explicitly downloaded private fallback.
+//! All callers use the same resolver; running processes retain their executable.
+use std::{collections::HashMap, ffi::OsString, fs, io::{Read, Write}, path::{Path, PathBuf}, sync::{Mutex, OnceLock}, time::Duration};
+use serde::{Deserialize, Serialize};
+use sha2::{Digest, Sha256};
 
-static RESOURCE_ROOT: OnceLock<PathBuf> = OnceLock::new();
+const HOST_REQUIREMENT: &str = ">=22";
+const LOCK: &str = include_str!("../../scripts/node-runtime.json");
+const MAX_ARCHIVE: u64 = 128 * 1024 * 1024;
+const MAX_BINARY: u64 = 256 * 1024 * 1024;
+static RUNTIME: OnceLock<Runtime> = OnceLock::new();
 
-pub(crate) fn initialize(resources: PathBuf) {
-    let _ = RESOURCE_ROOT.set(resources);
+#[derive(Clone, Default, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct Preferences { manual_path: Option<PathBuf>, managed_directory: Option<PathBuf> }
+#[derive(Clone, Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct Selection { pub path: PathBuf, pub version: String, pub source: String }
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct Status {
+    selected: Option<Selection>, manual_path: Option<PathBuf>, host_requirement: &'static str,
+    download_version: String, download_supported: bool, issues: Vec<String>,
+}
+struct Cached { fingerprint: String, resolved_stamp: Option<(u64, Option<std::time::SystemTime>)>, checked_at: std::time::Instant, result: Result<(String, PathBuf), String> }
+struct Runtime { root: Option<PathBuf>, cache: Mutex<HashMap<PathBuf, Cached>>, mutation: Mutex<()> }
+
+pub(crate) fn initialize(data_dir: PathBuf) { let _ = RUNTIME.set(Runtime::new(Some(data_dir.join("node-runtime")))) ; }
+fn runtime() -> &'static Runtime { RUNTIME.get_or_init(|| Runtime::new(None)) }
+fn binary_name() -> &'static str { if cfg!(windows) { "node.exe" } else { "node" } }
+fn file_stamp(path: &Path) -> Option<(u64, Option<std::time::SystemTime>)> {
+    fs::metadata(path).ok().map(|meta|(meta.len(), meta.modified().ok()))
+}
+fn local_path() -> OsString {
+    crate::executable_search_path_from(std::env::var_os("PATH"), std::env::var_os("HOME").or_else(||std::env::var_os("USERPROFILE")))
+}
+pub(crate) fn executable() -> Option<PathBuf> { resolve(None) }
+pub(crate) fn resolve(requirement: Option<&str>) -> Option<PathBuf> {
+    runtime().select(&local_path(), requirement).0.map(|entry|entry.path)
+}
+pub(crate) fn for_manifest(manifest: &serde_json::Value) -> Option<PathBuf> {
+    let dependencies = manifest.get("executableDependencies").or_else(||manifest.get("dependencies"));
+    let requirement = dependencies.and_then(|value|value.as_array()).into_iter().flatten()
+        .find(|dependency|dependency["name"] == "node").and_then(|dependency|dependency["versionRange"].as_str());
+    resolve(requirement)
 }
 
-fn at(root: &Path) -> Option<PathBuf> {
-    let path = root.join("node-runtime").join(if cfg!(windows) { "node.exe" } else { "node" });
-    crate::is_executable(&path).then_some(path)
+impl Runtime {
+    fn new(root: Option<PathBuf>) -> Self { Self { root, cache: Mutex::new(HashMap::new()), mutation: Mutex::new(()) } }
+    fn preferences(&self) -> Result<Preferences, String> {
+        let Some(root) = &self.root else { return Ok(Preferences::default()); };
+        match fs::read(root.join("selection.json")) {
+            Ok(bytes) => serde_json::from_slice(&bytes).map_err(|_|"Node 设置损坏，请重新选择文件或恢复自动查找。".into()),
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(Preferences::default()),
+            Err(error) => Err(error.to_string()),
+        }
+    }
+    fn save(&self, value: &Preferences) -> Result<(), String> {
+        let root = self.root.as_ref().ok_or("运行时管理尚未初始化")?;
+        fs::create_dir_all(root).map_err(|e|e.to_string())?;
+        let mut file = tempfile::NamedTempFile::new_in(root).map_err(|e|e.to_string())?;
+        file.write_all(&serde_json::to_vec(value).map_err(|e|e.to_string())?).map_err(|e|e.to_string())?;
+        file.as_file().sync_all().map_err(|e|e.to_string())?;
+        file.persist(root.join("selection.json")).map_err(|e|e.to_string())?;
+        Ok(())
+    }
+    fn inspect(&self, candidate: &Path, managed: bool) -> Result<(String, PathBuf), String> {
+        if !candidate.is_absolute() || !crate::is_executable(candidate) { return Err("文件不存在或不可执行".into()); }
+        let path = fs::canonicalize(candidate).map_err(|e|e.to_string())?;
+        let meta = fs::metadata(&path).map_err(|e|e.to_string())?;
+        let record = if managed { Some(fs::read(path.with_file_name("runtime.json")).map_err(|e|e.to_string())?) } else { None };
+        let fingerprint = format!("{}:{:?}:{:?}", meta.len(), meta.modified(), record);
+        let mut cache = self.cache.lock().unwrap();
+        if let Some(entry) = cache.get(&path).filter(|entry|entry.fingerprint == fingerprint && entry.checked_at.elapsed() < Duration::from_secs(30)
+            && entry.result.as_ref().map_or(true, |(_, executable)|crate::is_executable(executable) && file_stamp(executable) == entry.resolved_stamp)) { return entry.result.clone(); }
+        let result = (|| {
+            if let Some(record) = record {
+                let record: serde_json::Value = serde_json::from_slice(&record).map_err(|e|e.to_string())?;
+                let spec = distribution()?;
+                if record["archiveSha256"] != spec.sha256 || record["version"] != spec.version || record["target"] != spec.target
+                    || record["binarySha256"] != digest_file(&path)? { return Err("专用 Node 校验失败，请重新下载。".into()); }
+            }
+            probe(&path)
+        })();
+        let resolved_stamp = result.as_ref().ok().and_then(|(_, path)|file_stamp(path));
+        cache.insert(path, Cached { fingerprint, resolved_stamp, checked_at: std::time::Instant::now(), result: result.clone() });
+        result
+    }
+    fn select(&self, search: &OsString, requirement: Option<&str>) -> (Option<Selection>, Vec<String>) {
+        let mut issues = Vec::new();
+        let preferences = match self.preferences() { Ok(value) => value, Err(error) => return (None, vec![error]) };
+        let host = semver::VersionReq::parse(HOST_REQUIREMENT).unwrap();
+        let required = match semver::VersionReq::parse(requirement.unwrap_or("*")) {
+            Ok(value) => value, Err(_) => return (None, vec!["插件的 Node 版本要求无效".into()]),
+        };
+        let mut candidates = Vec::new();
+        if let Some(path) = preferences.manual_path { candidates.push((path, "manual")); }
+        else {
+            for directory in std::env::split_paths(search).filter(|path|path.is_absolute()) {
+                let path = directory.join(binary_name());
+                if path.exists() && !candidates.iter().any(|(existing, _)|existing == &path) { candidates.push((path, "system")); }
+            }
+            if let Some(directory) = preferences.managed_directory { candidates.push((directory.join(binary_name()), "managed")); }
+        }
+        for (path, source) in candidates {
+            match self.inspect(&path, source == "managed") {
+                Ok((version, executable)) if semver::Version::parse(&version).is_ok_and(|version|host.matches(&version) && required.matches(&version)) =>
+                    return (Some(Selection { path: executable, version, source: source.into() }), issues),
+                Ok((version, _)) => issues.push(format!("{}：Node {version} 不满足 {}{}", path.display(), HOST_REQUIREMENT,
+                    requirement.map(|value|format!(" 和插件要求 {value}")).unwrap_or_default())),
+                Err(error) => issues.push(format!("{}：{error}", path.display())),
+            }
+        }
+        if issues.is_empty() { issues.push("未找到兼容的 Node，请下载运行时或选择已有文件。".into()); }
+        (None, issues)
+    }
+    fn status(&self, search: &OsString) -> Status {
+        let (selected, issues) = self.select(search, None);
+        let lock: serde_json::Value = serde_json::from_str(LOCK).unwrap();
+        Status { selected, issues, manual_path: self.preferences().ok().and_then(|value|value.manual_path),
+            host_requirement: HOST_REQUIREMENT, download_version: lock["version"].as_str().unwrap().into(), download_supported: distribution().is_ok() }
+    }
+    fn choose(&self, path: Option<PathBuf>) -> Result<(), String> {
+        let _guard = self.mutation.try_lock().map_err(|_|"正在更新 Node 运行时，请稍后重试。")?;
+        self.cache.lock().unwrap().clear();
+        if let Some(path) = &path {
+            let (version, _) = self.inspect(path, false)?;
+            if !semver::VersionReq::parse(HOST_REQUIREMENT).unwrap().matches(&semver::Version::parse(&version).unwrap()) {
+                return Err(format!("Node {version} 不满足 {HOST_REQUIREMENT}，原设置已保留。"));
+            }
+        }
+        let mut preferences = self.preferences().unwrap_or_default();
+        preferences.manual_path = path;
+        self.save(&preferences)
+    }
+    fn install(&self, bytes: &[u8], spec: &Distribution) -> Result<(), String> {
+        if bytes.len() as u64 > MAX_ARCHIVE || format!("{:x}", Sha256::digest(bytes)) != spec.sha256 { return Err("Node 下载文件校验失败，请重试。".into()); }
+        let root = self.root.as_ref().ok_or("运行时管理尚未初始化")?;
+        fs::create_dir_all(root).map_err(|e|e.to_string())?;
+        let stage = tempfile::Builder::new().prefix("download-").tempdir_in(root).map_err(|e|e.to_string())?;
+        extract(bytes, spec, stage.path())?;
+        let binary = stage.path().join(binary_name());
+        #[cfg(unix)] { use std::os::unix::fs::PermissionsExt; fs::set_permissions(&binary, fs::Permissions::from_mode(0o755)).map_err(|e|e.to_string())?; }
+        let (version, _) = probe(&binary)?;
+        if version != spec.version { return Err("下载的 Node 版本与发布清单不一致".into()); }
+        let record = serde_json::json!({"version":spec.version,"target":spec.target,"archiveSha256":spec.sha256,"binarySha256":digest_file(&binary)?});
+        fs::write(stage.path().join("runtime.json"), serde_json::to_vec(&record).unwrap()).map_err(|e|e.to_string())?;
+        // Publish a new directory instead of replacing a running executable (also safe on Windows).
+        let destination = root.join(format!("{}-{}", spec.version, ulid::Ulid::new()));
+        fs::rename(stage.path(), &destination).map_err(|e|e.to_string())?;
+        let mut preferences = self.preferences().unwrap_or_default();
+        preferences.managed_directory = Some(destination.clone());
+        if let Err(error) = self.save(&preferences) { let _ = fs::remove_dir_all(destination); return Err(error); }
+        self.cache.lock().unwrap().clear();
+        Ok(())
+    }
+    fn download(&self) -> Result<(), String> {
+        let _guard = self.mutation.try_lock().map_err(|_|"正在下载或更新 Node，请稍后重试。")?;
+        let spec = distribution()?;
+        let client = reqwest::blocking::Client::builder().https_only(true).connect_timeout(Duration::from_secs(20))
+            .timeout(Duration::from_secs(300)).redirect(reqwest::redirect::Policy::limited(3)).build().map_err(|e|e.to_string())?;
+        let response = client.get(format!("https://nodejs.org/dist/v{}/{}", spec.version, spec.archive)).send()
+            .and_then(|response|response.error_for_status()).map_err(|e|format!("Node 下载失败：{e}。可以重试或手动选择已有 Node。"))?;
+        let mut bytes = Vec::new();
+        response.take(MAX_ARCHIVE + 1).read_to_end(&mut bytes).map_err(|e|format!("Node 下载中断：{e}"))?;
+        self.install(&bytes, &spec)
+    }
 }
 
-pub(crate) fn executable() -> Option<PathBuf> {
-    if let Some(root) = RESOURCE_ROOT.get() { return at(root); }
-    // Cargo tests and source development use the same prepared distribution.
-    #[cfg(debug_assertions)]
-    { return at(&PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("resources")); }
-    #[cfg(not(debug_assertions))]
-    { None }
+fn probe(path: &Path) -> Result<(String, PathBuf), String> {
+    // Isolate the synchronous resolver from any caller's Tokio runtime. Probes are cached by file identity.
+    let path = path.to_owned();
+    std::thread::spawn(move || {
+        tokio::runtime::Builder::new_current_thread().enable_all().build().map_err(|e|e.to_string())?.block_on(async {
+            // Test features used by the host SDK, not just a potentially misleading --version banner.
+            let mut command = tokio::process::Command::new(&path);
+            command.env_clear().stdin(std::process::Stdio::null());
+            for name in ["SystemRoot", "WINDIR", "PATH", "HOME", "USERPROFILE", "LANG", "VOLTA_HOME", "ASDF_DATA_DIR", "NVM_DIR"] {
+                if let Some(value) = std::env::var_os(name) { command.env(name, value); }
+            }
+            command.current_dir(std::env::temp_dir()).args(["--input-type=module", "-e",
+                "import {register} from 'node:module'; if(typeof register!=='function')process.exit(1); console.log(JSON.stringify({version:process.versions.node,executable:process.execPath}))"]);
+            let output = crate::controlled_process::execute(command, Duration::from_secs(3), 1024).await.map_err(|e|e.to_string())?;
+            if output.timed_out || !output.success || output.stdout.len() >= 1024 { return Err("Node 启动或 SDK 功能检查失败".into()); }
+            #[derive(Deserialize)] struct Identity { version: String, executable: PathBuf }
+            let identity: Identity = serde_json::from_slice(&output.stdout).map_err(|_|"文件不是可用的 Node 程序")?;
+            semver::Version::parse(&identity.version).map_err(|_|"Node 版本无效")?;
+            if !identity.executable.is_absolute() || !crate::is_executable(&identity.executable) { return Err("Node 返回的程序路径不可用".into()); }
+            Ok((identity.version, identity.executable))
+        })
+    }).join().map_err(|_|"Node 检测失败")?
+}
+fn digest_file(path: &Path) -> Result<String, String> {
+    let mut file = fs::File::open(path).map_err(|e|e.to_string())?;
+    let mut hash = Sha256::new(); std::io::copy(&mut file, &mut hash).map_err(|e|e.to_string())?;
+    Ok(format!("{:x}", hash.finalize()))
+}
+struct Distribution { version: String, target: String, archive: String, sha256: String }
+fn distribution() -> Result<Distribution, String> {
+    let target = format!("{}-{}", if cfg!(target_os="macos") { "darwin" } else if cfg!(windows) { "win" } else { std::env::consts::OS },
+        match std::env::consts::ARCH { "aarch64" => "arm64", "x86_64" => "x64", other => other });
+    let lock: serde_json::Value = serde_json::from_str(LOCK).unwrap();
+    let spec = &lock["targets"][&target];
+    if cfg!(target_env="musl") || spec.is_null() { return Err("当前平台暂不提供专用 Node 下载，请选择本机兼容的 Node。".into()); }
+    Ok(Distribution { version: lock["version"].as_str().unwrap().into(), archive: spec["archive"].as_str().unwrap().into(), sha256: spec["sha256"].as_str().unwrap().into(), target })
+}
+fn extract(bytes: &[u8], spec: &Distribution, destination: &Path) -> Result<(), String> {
+    let prefix = spec.archive.trim_end_matches(".tar.gz").trim_end_matches(".zip");
+    let binary = if spec.target.starts_with("win-") { "node.exe" } else { "bin/node" };
+    let entries = [(format!("{prefix}/{binary}"), binary_name()), (format!("{prefix}/LICENSE"), "LICENSE")];
+    let copy = |reader: &mut dyn Read, name: &str| -> Result<(), String> {
+        let mut file = fs::File::create(destination.join(name)).map_err(|e|e.to_string())?;
+        let count = std::io::copy(&mut reader.take(MAX_BINARY + 1), &mut file).map_err(|e|e.to_string())?;
+        if count > MAX_BINARY { return Err("Node 解压文件过大".into()); }
+        Ok(())
+    };
+    if spec.archive.ends_with(".zip") {
+        let mut archive = zip::ZipArchive::new(std::io::Cursor::new(bytes)).map_err(|e|e.to_string())?;
+        for (entry, name) in &entries {
+            let mut file = archive.by_name(entry).map_err(|e|e.to_string())?;
+            if !file.is_file() || file.is_symlink() { return Err("Node 压缩包文件类型无效".into()); }
+            copy(&mut file, name)?;
+        }
+    } else {
+        let mut archive = tar::Archive::new(flate2::read::GzDecoder::new(bytes));
+        for entry in archive.entries().map_err(|e|e.to_string())? {
+            let mut entry = entry.map_err(|e|e.to_string())?;
+            let path = entry.path().map_err(|e|e.to_string())?.to_path_buf();
+            if let Some((_, name)) = entries.iter().find(|(expected, _)|path == Path::new(expected)) {
+                if !entry.header().entry_type().is_file() { return Err("Node 压缩包文件类型无效".into()); }
+                copy(&mut entry, name)?;
+            }
+        }
+    }
+    if !destination.join(binary_name()).is_file() || !destination.join("LICENSE").is_file() { return Err("Node 压缩包缺少程序或许可证".into()); }
+    Ok(())
 }
 
-#[cfg(test)]
+#[tauri::command]
+pub(crate) async fn get_node_runtime(refresh: bool) -> Result<Status, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        if refresh { runtime().cache.lock().unwrap().clear(); }
+        runtime().status(&local_path())
+    }).await.map_err(|e|e.to_string())
+}
+#[tauri::command]
+pub(crate) async fn select_node_runtime(path: Option<PathBuf>) -> Result<Status, String> {
+    tauri::async_runtime::spawn_blocking(move || { runtime().choose(path)?; Ok(runtime().status(&local_path())) }).await.map_err(|e|e.to_string())?
+}
+#[tauri::command]
+pub(crate) async fn download_node_runtime() -> Result<Status, String> {
+    tauri::async_runtime::spawn_blocking(|| { runtime().download()?; Ok(runtime().status(&local_path())) }).await.map_err(|e|e.to_string())?
+}
+
+#[cfg(all(test, unix))]
 mod tests {
     use super::*;
-    #[test]
-    fn missing_runtime_does_not_resolve_system_node() {
-        assert!(at(&std::env::temp_dir().join(ulid::Ulid::new().to_string())).is_none());
+    use std::os::unix::fs::PermissionsExt;
+    fn fake(root: &Path, name: &str, version: &str) -> PathBuf {
+        let directory = root.join(name); fs::create_dir_all(&directory).unwrap();
+        let path = directory.join("node");
+        let identity = serde_json::json!({"version":version,"executable":path}).to_string().replace('\'', "'\\''");
+        fs::write(&path, format!("#!/bin/sh\nprintf '%s\\n' '{identity}'\n")).unwrap();
+        fs::set_permissions(&path, fs::Permissions::from_mode(0o755)).unwrap(); path
+    }
+    fn managed(runtime: &Runtime, version: &str) -> PathBuf {
+        let path = fake(runtime.root.as_ref().unwrap(), "managed fixture", version);
+        let spec = distribution().unwrap();
+        fs::write(path.with_file_name("runtime.json"), serde_json::to_vec(&serde_json::json!({
+            "version":spec.version,"target":spec.target,"archiveSha256":spec.sha256,"binarySha256":digest_file(&path).unwrap()
+        })).unwrap()).unwrap();
+        runtime.save(&Preferences { manual_path: None, managed_directory: Some(path.parent().unwrap().into()) }).unwrap();
+        path
     }
     #[test]
-    fn prepared_node_runs_without_path() {
-        let node = executable().expect("run pnpm prepare:node before Cargo tests");
-        let output = std::process::Command::new(node).env_clear()
-            .args(["--input-type=module", "-e", "console.log(process.versions.node)"]).output().unwrap();
-        assert!(output.status.success());
-        assert_eq!(String::from_utf8_lossy(&output.stdout).trim(), "24.18.0");
+    fn resolves_local_then_managed_using_host_and_plugin_requirements() {
+        let root = tempfile::tempdir().unwrap(); let runtime = Runtime::new(Some(root.path().join("app")));
+        let old = fake(root.path(), "old", "18.0.0"); let local = fake(root.path(), "with spaces", "22.20.0");
+        let backup = managed(&runtime, "24.18.0");
+        let search = std::env::join_paths([old.parent().unwrap(), local.parent().unwrap()]).unwrap();
+        let selected = runtime.select(&search, None).0.unwrap();
+        assert_eq!(selected.path, local); assert_eq!(selected.source, "system");
+        assert_eq!(runtime.select(&search, Some(">=24")).0.unwrap().path, backup);
+        assert!(runtime.select(&search, Some(">=99")).0.is_none());
+        assert!(runtime.select(&search, Some("invalid")).0.is_none());
+        fs::remove_file(local).unwrap(); assert_eq!(runtime.select(&search, None).0.unwrap().path, backup);
+        fs::write(&backup, "tampered").unwrap(); assert!(runtime.select(&search, None).0.is_none());
+    }
+    #[test]
+    fn manual_choice_persists_and_failed_choice_keeps_previous_setting() {
+        let root = tempfile::tempdir().unwrap(); let runtime = Runtime::new(Some(root.path().join("app")));
+        let local = fake(root.path(), "local", "24.18.0"); let manual = fake(root.path(), "manual", "22.20.0");
+        let old = fake(root.path(), "old", "18.0.0"); let search = local.parent().unwrap().as_os_str().to_owned();
+        runtime.choose(Some(manual.clone())).unwrap();
+        let reopened = Runtime::new(runtime.root.clone());
+        assert_eq!(reopened.select(&search, None).0.unwrap().source, "manual");
+        assert_eq!(reopened.select(&search, None).0.unwrap().path, manual);
+        assert!(reopened.select(&search, Some(">=24")).0.is_none(), "explicit selections do not silently switch");
+        assert!(reopened.choose(Some(old)).is_err());
+        assert_eq!(reopened.preferences().unwrap().manual_path.as_ref(), Some(&manual));
+        fs::remove_file(manual).unwrap(); assert!(reopened.select(&search, None).0.is_none());
+        reopened.choose(None).unwrap(); assert_eq!(reopened.select(&search, None).0.unwrap().path, local);
+    }
+    #[test]
+    fn version_manager_shim_resolves_the_actual_node_and_rechecks_changed_target() {
+        let root = tempfile::tempdir().unwrap(); let runtime = Runtime::new(None);
+        let actual = fake(root.path(), "engine", "24.18.0");
+        let shim = fake(root.path(), "shim", "0.0.0");
+        fs::write(&shim, format!("#!/bin/sh\nexec '{}' \"$@\"\n", actual.display())).unwrap();
+        let search = shim.parent().unwrap().as_os_str().to_owned();
+        assert_eq!(runtime.select(&search, None).0.unwrap().path, actual);
+        fake(root.path(), "engine", "18.0.0");
+        assert!(runtime.select(&search, None).0.is_none());
+        fs::remove_file(actual).unwrap();
+        assert!(runtime.select(&search, None).0.is_none());
+    }
+    #[test]
+    fn empty_relative_broken_and_wrong_executables_are_not_selected() {
+        let root = tempfile::tempdir().unwrap(); let runtime = Runtime::new(Some(root.path().join("app")));
+        assert!(runtime.select(&OsString::from(":.:relative"), None).0.is_none());
+        let path = fake(root.path(), "wrong", "not-node");
+        assert!(runtime.choose(Some(path)).is_err());
+        assert!(runtime.preferences().unwrap().manual_path.is_none());
+        let path = fake(root.path(), "no access", "24.18.0");
+        fs::set_permissions(&path, fs::Permissions::from_mode(0o644)).unwrap();
+        assert!(runtime.choose(Some(path)).is_err());
+    }
+    #[test]
+    fn install_checks_digest_and_does_not_publish_incomplete_archives() {
+        let root = tempfile::tempdir().unwrap(); let runtime = Runtime::new(Some(root.path().join("app")));
+        let previous = managed(&runtime, "24.18.0");
+        assert!(runtime.install(b"incomplete", &distribution().unwrap()).is_err());
+        let mut spec = distribution().unwrap(); spec.sha256 = format!("{:x}", Sha256::digest(b"incomplete"));
+        assert!(runtime.install(b"incomplete", &spec).is_err());
+        assert_eq!(runtime.select(&OsString::new(), None).0.unwrap().path, previous);
+        assert_eq!(fs::read_dir(runtime.root.as_ref().unwrap()).unwrap().count(), 2, "failed staging directories cleaned up");
+    }
+    #[test]
+    fn extraction_only_writes_expected_regular_files() {
+        let root = tempfile::tempdir().unwrap(); let spec = distribution().unwrap();
+        let prefix = spec.archive.trim_end_matches(".tar.gz");
+        let encoder = flate2::write::GzEncoder::new(Vec::new(), flate2::Compression::default());
+        let mut tar = tar::Builder::new(encoder);
+        for (name, data) in [(format!("{prefix}/bin/node"), "node"), (format!("{prefix}/LICENSE"), "license"), ("unrelated".into(), "ignored")] {
+            let mut header = tar::Header::new_gnu(); header.set_size(data.len() as u64); header.set_mode(0o755); header.set_cksum();
+            tar.append_data(&mut header, name, data.as_bytes()).unwrap();
+        }
+        let bytes = tar.into_inner().unwrap().finish().unwrap(); extract(&bytes, &spec, root.path()).unwrap();
+        assert_eq!(fs::read_dir(root.path()).unwrap().count(), 2);
+        assert_eq!(fs::read_to_string(root.path().join("node")).unwrap(), "node");
+        let encoder = flate2::write::GzEncoder::new(Vec::new(), flate2::Compression::default()); let mut tar = tar::Builder::new(encoder);
+        let mut header = tar::Header::new_gnu(); header.set_size(0); header.set_mode(0o755); header.set_entry_type(tar::EntryType::Symlink); header.set_link_name("/tmp/not-node").unwrap(); header.set_cksum();
+        tar.append_data(&mut header, format!("{prefix}/bin/node"), std::io::empty()).unwrap();
+        let bytes = tar.into_inner().unwrap().finish().unwrap(); assert!(extract(&bytes, &spec, root.path()).is_err());
+    }
+    #[test]
+    fn native_node_passes_feature_probe_without_node_options() {
+        let node = executable().expect("Install a compatible Node for runtime integration tests");
+        assert!(semver::Version::parse(&probe(&node).unwrap().0).unwrap().major >= 22);
+    }
+    #[test]
+    #[ignore = "downloads official Node into isolated temporary application data"]
+    fn official_download_runs_with_empty_search_path_and_survives_restart() {
+        let root = tempfile::tempdir().unwrap(); let runtime = Runtime::new(Some(root.path().join("app")));
+        runtime.download().unwrap();
+        let reopened = Runtime::new(runtime.root.clone());
+        let selection = reopened.select(&OsString::new(), None).0.unwrap();
+        assert_eq!(selection.source, "managed"); assert_eq!(selection.version, distribution().unwrap().version);
+        let result = std::process::Command::new(selection.path).env_clear().arg("--version").output().unwrap();
+        assert!(result.status.success());
     }
 }
