@@ -75,3 +75,5 @@ AIBO_BUILTIN_KIT=material3 node probes/presentation-full-skins-browser.mjs
 Material 3 工作台、设置与窄窗口截图默认写入 `/tmp/aibo-material3/`。
 
 配色设置与六个工作台主题截图写入 `/tmp/aibo-material3-palettes/`。
+
+侧栏支持按窗口记忆的 56px 收起状态，顶部操作行保留 16px 上边距。展开时顶部切换按钮与新建会话并排；收起时上下排列，切换按钮位置固定。保留顶部切换、新建会话、工作区与会话入口，以及底部插件与设置。展开恢复原列宽，列表保持挂载以保留滚动位置；收起时隐藏列表、筛选和导航拖动分隔条。等待审批或输入的会话在导航入口显示提示标记。

@@ -2919,3 +2919,17 @@
 .app-shell[data-ui-kit='material3'] .ui-select-option[aria-selected='true'] { color: var(--aibo-selected-ink); background: var(--aibo-selected); }
 .app-shell[data-ui-kit='material3'] .ui-select-option.is-active { outline: 2px solid var(--aibo-focus); outline-offset: -2px; }
 .app-shell[data-ui-kit='material3'] .ui-select-option:disabled { color: var(--aibo-muted); cursor: not-allowed; }
+
+/* Keep the navigation tree mounted so expanding restores its scroll position. */
+.app-shell[data-ui-kit='material3'] .sidebar .sidebar-primary-actions { display: flex; align-items: center; gap: 6px; padding: 16px 6px 0; flex-shrink: 0; }
+.app-shell[data-ui-kit='material3'] .sidebar .sidebar-toggle { flex: 0 0 44px; width: 44px; height: 44px; padding: 0; }
+.app-shell[data-ui-kit='material3'] .sidebar .sidebar-primary-actions .sidebar-new-session { flex: 1; min-width: 0; width: auto; height: 44px; min-height: 44px; margin: 0; padding-inline: 12px; justify-content: flex-start; gap: 8px; }
+.app-shell[data-ui-kit='material3'] .sidebar.sidebar-collapsed .sidebar-primary-actions { flex-direction: column; gap: 8px; }
+.app-shell[data-ui-kit='material3'] .sidebar.sidebar-collapsed { min-width: 0; padding: 0; gap: 0; }
+.app-shell[data-ui-kit='material3'] .sidebar.sidebar-collapsed > :is(.panel-heading, .workspace-tool-panel, .workspace-list) { display: none; }
+.app-shell[data-ui-kit='material3'] .sidebar.sidebar-collapsed .sidebar-primary-actions .sidebar-new-session { flex: 0 0 44px; width: 44px; min-width: 44px; height: 44px; margin: 0; padding: 0; justify-content: center; }
+.app-shell[data-ui-kit='material3'] .sidebar.sidebar-collapsed :is(.sidebar-new-session, .sidebar-footer .ui-button) > span { display: none; }
+.app-shell[data-ui-kit='material3'] .sidebar.sidebar-collapsed .sidebar-browse { position: relative; width: 44px; height: 44px; margin: 8px 6px; padding: 0; }
+.app-shell[data-ui-kit='material3'] .sidebar.sidebar-collapsed .sidebar-footer { margin: auto 6px 8px; padding: 0; }
+.app-shell[data-ui-kit='material3'] .sidebar.sidebar-collapsed .sidebar-footer .ui-button { width: 44px; min-width: 44px; height: 44px; padding: 0; justify-content: center; }
+.app-shell[data-ui-kit='material3'] .sidebar .sidebar-attention { position: absolute; top: 8px; right: 8px; width: 6px; height: 6px; border-radius: 50%; background: var(--aibo-warning-text); }

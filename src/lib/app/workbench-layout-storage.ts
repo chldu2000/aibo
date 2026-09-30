@@ -1,18 +1,20 @@
 export type WorkbenchLayoutState = {
   navigationWidth: number;
+  navigationCollapsed: boolean;
   auxiliaryWidth: number;
   auxiliaryOpen: boolean;
   activeView: 'git' | 'context';
 };
 type StoragePort = { getItem(key: string): string | null; setItem(key: string, value: string): void };
 const key = (windowId: string) => `aibo.workbench-layout.v1.${encodeURIComponent(windowId)}`;
-export const defaultWorkbenchLayout = (): WorkbenchLayoutState => ({ navigationWidth: 260, auxiliaryWidth: 340, auxiliaryOpen: true, activeView: 'git' });
+export const defaultWorkbenchLayout = (): WorkbenchLayoutState => ({ navigationCollapsed: false, navigationWidth: 260, auxiliaryWidth: 340, auxiliaryOpen: true, activeView: 'git' });
 function normalize(value: unknown): WorkbenchLayoutState {
   const defaults = defaultWorkbenchLayout();
   if (!value || typeof value !== 'object') return defaults;
   const record = value as Record<string, unknown>;
   const width = (value: unknown, min: number, fallback: number) => typeof value === 'number' && Number.isFinite(value) ? Math.max(min, Math.min(4096, value)) : fallback;
   return {
+    navigationCollapsed: record.navigationCollapsed === true,
     navigationWidth: width(record.navigationWidth, 180, defaults.navigationWidth),
     auxiliaryWidth: width(record.auxiliaryWidth, 220, defaults.auxiliaryWidth),
     auxiliaryOpen: typeof record.auxiliaryOpen === 'boolean' ? record.auxiliaryOpen : defaults.auxiliaryOpen,

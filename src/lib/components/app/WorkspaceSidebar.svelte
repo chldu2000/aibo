@@ -8,6 +8,8 @@
   import { WORKSPACE_SESSION_PAGE_SIZE } from '$lib/app/session-transitions';
 
   type WorkspaceSidebarProps = {
+    collapsed?: boolean;
+    onToggleCollapsed?: () => void;
     presentationActions?: Snippet;
     footerActions?: Snippet;
     workspaces: WorkspaceListItem[];
@@ -47,6 +49,8 @@
   };
 
   let {
+    collapsed = false,
+    onToggleCollapsed,
     presentationActions,
     footerActions,
     workspaces,
@@ -196,16 +200,23 @@
 
 </script>
 
-<Card as="aside" class="sidebar" data-ui-component="workspace-sidebar" aria-label="工作区">
-  <Button class="sidebar-new-session" type="button" disabled={busy}
-    aria-expanded={Boolean(createSessionWorkspaceId)}
-    aria-controls={createSessionWorkspaceId ? `session-agent-wheel-${createSessionWorkspaceId}` : undefined}
-    onclick={(event) => {
-      const workspaceId = selectedWorkspaceId ?? workspaces[0]?.id;
-      if (!workspaceId) { onChooseWorkspaceDirectory(); return; }
-      primaryLauncher = event.currentTarget;
-      onToggleSessionCreator(workspaceId);
-    }}><span>新建会话</span><Icon name="add" size={16} /></Button>
+<Card as="aside" class={collapsed ? 'sidebar sidebar-collapsed' : 'sidebar'} data-ui-component="workspace-sidebar" aria-label="工作区">
+  <div class="sidebar-primary-actions">
+    <Button class="sidebar-toggle" variant="ghost" size="icon" aria-label={collapsed ? '展开侧栏' : '收起侧栏'} title={collapsed ? '展开侧栏' : '收起侧栏'} aria-expanded={!collapsed} onclick={onToggleCollapsed}><Icon name="panel-left" size={20} /></Button>
+    <Button aria-label="新建会话" title={'新建会话 · ' + (workspaces.find(workspace => workspace.id === selectedWorkspaceId)?.label ?? workspaces[0]?.label ?? '添加工作区')} class="sidebar-new-session" type="button" disabled={busy}
+      aria-expanded={Boolean(createSessionWorkspaceId)}
+      aria-controls={createSessionWorkspaceId ? `session-agent-wheel-${createSessionWorkspaceId}` : undefined}
+      onclick={(event) => {
+        const workspaceId = selectedWorkspaceId ?? workspaces[0]?.id;
+        if (!workspaceId) { onChooseWorkspaceDirectory(); return; }
+        primaryLauncher = event.currentTarget;
+        onToggleSessionCreator(workspaceId);
+      }}><Icon name="add" size={16} /><span>新建会话</span></Button>
+  </div>
+  {#if collapsed}
+    {@const waiting = Object.values(sessionsByWorkspace).flat().filter(session => !session.archived && ['waiting_approval', 'waiting_user'].includes(session.state)).length}
+    <Button class="sidebar-browse" variant="ghost" size="icon" aria-label={waiting ? `工作区与会话，${waiting} 个会话等待处理` : '工作区与会话'} title={waiting ? `工作区与会话 · ${waiting} 个等待处理` : '工作区与会话'} onclick={onToggleCollapsed}><Icon name="folder" size={20} />{#if waiting}<span class="sidebar-attention" aria-hidden="true"></span>{/if}</Button>
+  {/if}
   <CardHeader class="panel-heading">
     <CardTitle>工作区</CardTitle>
     <div class="workspace-toolbar" aria-label="工作区工具">

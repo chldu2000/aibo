@@ -36,6 +36,7 @@ export type UiIconName =
   | 'focus'
   | 'folder'
   | 'folder-add'
+  | 'panel-left'
   | 'panel-right'
   | 'plugins'
   | 'refresh'

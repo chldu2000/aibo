@@ -1289,14 +1289,21 @@
   let sidePanelOpen = $state(savedWorkbenchLayout.auxiliaryOpen);
   let sidePanelView = $state<SidePanelView>(savedWorkbenchLayout.activeView);
   const inspectorOpen = $derived(sidePanelOpen);
+  let navigationCollapsed = $state(savedWorkbenchLayout.navigationCollapsed);
+  const navigationDisplayWidth = $derived(navigationCollapsed ? 56 : workspaceSidebarWidth);
+  function toggleNavigation() {
+    endColumnResize();
+    createSessionWorkspaceId = null;
+    navigationCollapsed = !navigationCollapsed;
+  }
   let workspaceSidebarWidth = $state(savedWorkbenchLayout.navigationWidth);
   let inspectorWidth = $state(savedWorkbenchLayout.auxiliaryWidth);
   let viewportWidth = $state(1280);
   let workspaceGridElement = $state<HTMLElement | null>(null);
-  $effect(() => { writeWorkbenchLayout(draftStorage, presentationWindowId(), { navigationWidth: workspaceSidebarWidth, auxiliaryWidth: inspectorWidth, auxiliaryOpen: sidePanelOpen, activeView: sidePanelView }); });
+  $effect(() => { writeWorkbenchLayout(draftStorage, presentationWindowId(), { navigationCollapsed, navigationWidth: workspaceSidebarWidth, auxiliaryWidth: inspectorWidth, auxiliaryOpen: sidePanelOpen, activeView: sidePanelView }); });
   $effect(() => {
     const width = viewportWidth; sidePanelOpen;
-    untrack(() => { if (width >= 700) { setColumnWidth('workspace', workspaceSidebarWidth); setColumnWidth('inspector', inspectorWidth); } });
+    untrack(() => { if (width >= 700) { if (!navigationCollapsed) setColumnWidth('workspace', workspaceSidebarWidth); setColumnWidth('inspector', inspectorWidth); } });
   });
   type ColumnResizeTarget = 'workspace' | 'inspector';
   type ColumnResizeState = {
@@ -1353,8 +1360,8 @@
   function maxColumnWidth(target: ColumnResizeTarget): number {
     const availableWidth = viewportWidth;
     const totalWidth = workspaceGridElement?.clientWidth || availableWidth;
-    const splitterWidth = splitterTrackWidth * (sidePanelOpen ? 2 : 1);
-    const otherColumnWidth = target === 'workspace' ? (sidePanelOpen ? inspectorWidth : 0) : workspaceSidebarWidth;
+    const splitterWidth = splitterTrackWidth * ((navigationCollapsed ? 0 : 1) + (sidePanelOpen ? 1 : 0));
+    const otherColumnWidth = target === 'workspace' ? (sidePanelOpen ? inspectorWidth : 0) : navigationDisplayWidth;
     return Math.min(4096, totalWidth - splitterWidth - otherColumnWidth - timelineColumnMin);
   }
 
@@ -3937,8 +3944,8 @@
 {#snippet layoutSettings()}{@render presentationActions('layout')}{/snippet}
 {#snippet diagnosticsActions()}{@render presentationActions('diagnostics')}{/snippet}
 {#snippet navigationFooter()}
-  <Button variant="ghost" data-presentation-focus="settings-extensions" onclick={() => openManagementCenter('extensions')}><Icon name="plugins" />插件与能力</Button>
-  <Button variant="ghost" data-presentation-focus="settings-appearance" onclick={() => openManagementCenter('appearance')}><Icon name="settings" />工作台设置</Button>
+  <Button variant="ghost" data-presentation-focus="settings-extensions" aria-label="插件与能力" title="插件与能力" onclick={() => openManagementCenter('extensions')}><Icon name="plugins" /><span>插件与能力</span></Button>
+  <Button variant="ghost" data-presentation-focus="settings-appearance" aria-label="工作台设置" title="工作台设置" onclick={() => openManagementCenter('appearance')}><Icon name="settings" /><span>工作台设置</span></Button>
 {/snippet}
 {#snippet navigationActions()}{@render presentationActions('navigation')}{/snippet}
 {#snippet conversationActions()}{@render presentationActions('conversation')}{/snippet}
@@ -4032,9 +4039,11 @@
     </HostPanel>
   {/if}
 <PresentationHost readAttachmentPreview={getSessionAttachmentPreview} onPasteImages={(files) => void pasteComposerImages(files)} hideWhenSuspended={sessionHistoryOpen} onRestore={() => void presentationOperation(() => presentationPackagesController.restore())} bind:this={presentationHost} active={externalActive} themeId={externalActive ? presentationPackages.themeId : null} input={externalInput} suspended={historyOpen || sessionHistoryOpen || capabilityHistoryOpen || settingsOpen || globalSearchOpen || archiveConfirmationSessionId !== null || piNavigationEntryId !== null} onIntent={externalIntent}>
-<WorkbenchPresentation hideWhenSuspended={sessionHistoryOpen} onRestore={() => desktop ? presentationPackagesController.restore() : Promise.resolve()} bind:this={workbenchPresentation} bind:layout={presentationLayout} bind:switching={presentationSwitching} bind:gridElement={workspaceGridElement} navigationWidth={workspaceSidebarWidth} auxiliaryWidth={inspectorWidth} auxiliaryOpen={sidePanelOpen} suspended={historyOpen || sessionHistoryOpen || capabilityHistoryOpen || settingsOpen || globalSearchOpen || archiveConfirmationSessionId !== null || piNavigationEntryId !== null} windowId={presentationWindowId()} snapshot={{ workspaceId: selectedWorkspaceId, sessionId: selectedSessionId, draft: composerText, navigation: sidePanelView, timelineRevision: timeline.length }}>
+<WorkbenchPresentation hideWhenSuspended={sessionHistoryOpen} onRestore={() => desktop ? presentationPackagesController.restore() : Promise.resolve()} bind:this={workbenchPresentation} bind:layout={presentationLayout} bind:switching={presentationSwitching} bind:gridElement={workspaceGridElement} navigationWidth={navigationDisplayWidth} {navigationCollapsed} auxiliaryWidth={inspectorWidth} auxiliaryOpen={sidePanelOpen} suspended={historyOpen || sessionHistoryOpen || capabilityHistoryOpen || settingsOpen || globalSearchOpen || archiveConfirmationSessionId !== null || piNavigationEntryId !== null} windowId={presentationWindowId()} snapshot={{ workspaceId: selectedWorkspaceId, sessionId: selectedSessionId, draft: composerText, navigation: sidePanelView, timelineRevision: timeline.length }}>
 {#snippet navigation(guard)}
     <WorkspaceSidebar
+      collapsed={navigationCollapsed}
+      onToggleCollapsed={guard('toggleNavigation', toggleNavigation)}
       presentationActions={navigationActions}
       footerActions={navigationFooter}
       workspaces={workspaceItems}

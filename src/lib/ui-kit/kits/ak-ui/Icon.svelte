@@ -28,6 +28,7 @@
     focus: 'M8 3H3v5m13-5h5v5M3 16v5h5m13-5v5h-5',
     folder: 'M3 7V5h6l2 3h10v12H3Z',
     'folder-add': 'M3 7V5h6l2 3h10v12H3ZM12 11v6m-3-3h6',
+    'panel-left': 'M3 4h18v16H3ZM9 4v16',
     'panel-right': 'M3 4h18v16H3ZM15 4v16',
     plugins: 'M4 4h6v6H4Zm10 0h6v6h-6ZM4 14h6v6H4Zm10 0h6v6h-6Z',
     refresh: 'M20 9a8 8 0 0 0-14-3L3 9m0-5v5h5M4 15a8 8 0 0 0 14 3l3-3m0 5v-5h-5',
