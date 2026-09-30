@@ -45,6 +45,7 @@ export function renderConversation(state,actions){
  if(state.session){
   const draftField=field('conversation:draft','消息',state.draft,find('draft'),true);
   const submit=find(state.running?'queueFollowUp':'send');
+  draftField.children[1].submitOnEnter=true;
   if(submit)draftField.children[1].primaryEnter=submit.token;
   const goal = state.goal && state.goal.status !== 'cleared' ? {...node('details','conversation:goal',null,[
    node('summary','goal:summary',state.goal.objective),
@@ -52,7 +53,7 @@ export function renderConversation(state,actions){
    text('goal:budget',state.goal.tokenBudget == null ? null : `Token：${state.goal.tokensUsed??0} / ${state.goal.tokenBudget}`),
    ...controls(['pauseGoal','resumeGoal','clearGoal']),
   ],{open:true,'aria-label':'当前目标'}),className:'goal-bar'} : null;
-  const composer=[goal,draftField,text('conversation:shortcut','⌘/Ctrl+Enter '+(state.running?'排队发送':'发送')+' · Enter 换行'),state.draftFailed?node('p','conversation:draft-error','草稿保存失败',[],{role:'alert'}):null];
+  const composer=[goal,draftField,text('conversation:shortcut','Enter '+(state.running?'排队发送':'发送')+' · Shift/Ctrl+Enter 换行'),state.draftFailed?node('p','conversation:draft-error','草稿保存失败',[],{role:'alert'}):null];
 
   composer.push(node('nav','conversation:composer-tools',null,controls(['addAttachments','addDirectory','send','stop','queueSteer','queueFollowUp'])));
   const pendingAttachments=state.attachments.filter(item=>item.turnId===null && item.sessionId===state.session.id);

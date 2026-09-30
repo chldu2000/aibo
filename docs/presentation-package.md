@@ -160,6 +160,11 @@ Ctrl/Command+Shift+Backspace 是宿主保留的恢复快捷键。固定绘制桥
 Enter 保持换行。禁用/只读输入框不触发，不能同时声明 keydown 事件。生成的意图
 仍受宿主当前动作目录和严格版本门禁控制，不授予新的业务能力。
 
+textarea 可设置 `submitOnEnter: true`，将 `primaryEnter` token 改为普通 Enter（兼容 ⌘+Enter）触发；
+Shift/Ctrl+Enter 始终换行，即使建议列表打开也不确认选项。普通 Enter 优先确认当前建议。
+未提供 token 时不提交；输入法组合和重复按键不提交。省略该字段的旧包保持原快捷键语义。
+默认内置编辑器和共享外部工作台使用这一模式。
+
 模型目录可含 `parameterScope: "current-model"`（见 [模型合同](model-configuration.md)）。
 此时工作台先提供模型选择，再提供当前模型的推理选项，所有动作继续使用宿主 token；
 不得根据其他模型的空列表推断不支持。默认工作台复用两个公开 `Select` 控件，

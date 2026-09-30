@@ -23,6 +23,8 @@ export type PresentationNode = {
   localEvents?: Partial<Record<'click' | 'input' | 'change' | 'keydown', string>>;
   /** Textarea-only primary-modifier Enter shortcut, using an existing host click token. */
   primaryEnter?: string;
+  /** Opt into Enter submission and Shift/Ctrl+Enter newline; legacy shortcut behavior is the default. */
+  submitOnEnter?: boolean;
   /** Textarea suggestion list; keys reference existing host-action buttons in listKey. */
   suggestions?: { listKey: string; keys: readonly string[]; confirmWithTab?: boolean; confirmWithPrimary?: boolean; categories?: readonly { key: string; options: readonly string[] }[] };
   children?: readonly PresentationNode[];

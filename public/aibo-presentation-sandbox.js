@@ -121,7 +121,8 @@
     paint();
     element.addEventListener('input',()=>{completions.delete(key);paint();});
     element.addEventListener('keydown',event=>{
-      if(!event.isTrusted||event.isComposing||event.altKey||element.disabled||element.readOnly||element.value!==expectedValue)return;
+      if(!event.isTrusted||event.isComposing||event.keyCode===229||event.altKey||element.disabled||element.readOnly||element.value!==expectedValue)return;
+      if(element.dataset.submitOnEnter==='true'&&event.key==='Enter'&&(event.shiftKey||event.ctrlKey))return;
       if((event.metaKey||event.ctrlKey)&&!(config.confirmWithPrimary&&event.key==='Enter'))return;
       if(event.key==='Tab'&&categories.length){event.preventDefault();state.category=(state.category+(event.shiftKey?-1:1)+categories.length)%categories.length;state.index=0;state.dismissed=false;paint();return;}
       if(event.key==='Escape'&&!state.dismissed){event.preventDefault();state.dismissed=true;paint();return;}
@@ -275,13 +276,30 @@
         if (!Number.isFinite(value.inlineSize) || value.inlineSize < 0 || value.inlineSize > 4096) throw Error('invalid_presentation_size');
         element.style.setProperty('--presentation-inline-size', value.inlineSize+'px');
       }
-      if (value.primaryEnter !== undefined) {
-        if (value.tag !== 'textarea' || typeof value.primaryEnter !== 'string' || !value.primaryEnter || value.primaryEnter.length > 256 || value.events?.keydown || value.localEvents?.keydown) throw Error('invalid_presentation_shortcut');
+      if (value.primaryEnter !== undefined || value.submitOnEnter !== undefined) {
+        if (value.tag !== 'textarea' || (value.submitOnEnter !== undefined && typeof value.submitOnEnter !== 'boolean') || (value.primaryEnter !== undefined && (typeof value.primaryEnter !== 'string' || !value.primaryEnter || value.primaryEnter.length > 256)) || value.events?.keydown || value.localEvents?.keydown) throw Error('invalid_presentation_shortcut');
+        element.dataset.submitOnEnter = String(value.submitOnEnter === true);
         element.addEventListener('keydown', event => {
-          if (!event.isTrusted || event.isComposing || event.repeat || event.key !== 'Enter' || !(event.metaKey || event.ctrlKey) || event.altKey || element.disabled || element.readOnly) return;
-          if(value.suggestions?.confirmWithPrimary&&element.hasAttribute('aria-activedescendant'))return;
+          if (!event.isTrusted || event.isComposing || event.keyCode === 229 || event.key !== 'Enter' || event.altKey || element.disabled || element.readOnly) return;
+          if (value.submitOnEnter && (event.shiftKey || event.ctrlKey)) {
+            if (event.ctrlKey) {
+              event.preventDefault();
+              if (!document.execCommand('insertText', false, '\n')) {
+                element.setRangeText('\n', element.selectionStart, element.selectionEnd, 'end');
+                const id = value.events?.input;
+                if (id) {
+                  const edited = localInputActions.includes(id) ? ++editSequence : undefined;
+                  if (edited) edits.set(value.key, { sequence: edited, value: element.value });
+                  send({ type:'intent', intent:{ id, event:'input', context, value:element.value, ...(edited ? { editSequence:edited } : {}) } });
+                }
+              }
+            }
+            return;
+          }
+          if (event.repeat || (!value.submitOnEnter && !(event.metaKey || event.ctrlKey))) return;
+          if(element.hasAttribute('aria-activedescendant') && (value.submitOnEnter || value.suggestions?.confirmWithPrimary))return;
           event.preventDefault(); event.stopPropagation();
-          send({ type:'intent', intent:{ id:value.primaryEnter, event:'click', context } });
+          if(value.primaryEnter)send({ type:'intent', intent:{ id:value.primaryEnter, event:'click', context } });
         });
       }
       if (value.text !== undefined) {

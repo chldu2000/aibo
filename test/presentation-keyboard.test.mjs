@@ -13,6 +13,7 @@ test('composer shortcut uses current host send or queue authority and disappears
   const editor=nodes.find(node=>node.key==='conversation:draft:input');
   const action=actions.find(action=>action.operation===(variant.running?'queueFollowUp':'send'));
   assert.equal(editor.primaryEnter,action?.token);
+  assert.equal(editor.submitOnEnter,true);
   if(action)assert.equal(action.event,'click');
  }
 });

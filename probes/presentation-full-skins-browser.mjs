@@ -271,7 +271,7 @@ try {
 
     await composer.fill('/he');await frame.getByRole('listbox',{name:'命令建议'}).waitFor();
     await composer.press('Escape');await frame.getByRole('listbox',{name:'命令建议'}).waitFor({state:'hidden'});
-    await composer.press('Enter');assert.equal(await composer.inputValue(),'/he\n');
+    await composer.press('Shift+Enter');assert.equal(await composer.inputValue(),'/he\n');
     await composer.fill('@src');await frame.getByRole('listbox',{name:'引用建议'}).waitFor();
     await frame.getByRole('option',{name:'src/two.ts',exact:true}).waitFor();
     await composer.press('ArrowDown');await composer.press('Enter');
@@ -281,7 +281,7 @@ try {
     await composer.fill('@src');await frame.getByRole('listbox',{name:'引用建议'}).waitFor();
     await frame.getByRole('option',{name:'src/two.ts',exact:true}).waitFor();
     const sendsBeforePath=await page.evaluate(()=>window.navigationCalls.filter(call=>call.command==='send_agent_prompt').length);
-    await composer.press('Control+Enter');
+    await composer.press('Enter');
     await frame.locator('textarea[aria-label="消息"][value="@src/one.ts "]').waitFor();
     assert.equal(await page.evaluate(()=>window.navigationCalls.filter(call=>call.command==='send_agent_prompt').length),sendsBeforePath);
 
@@ -327,6 +327,8 @@ try {
     await composer.fill('');await composer.pressSequentially('完整皮肤 keeps draft',{delay:12});
     await page.waitForTimeout(200);assert.equal(await composer.inputValue(),'完整皮肤 keeps draft');
     await composer.press('Control+Enter');
+    assert.equal(await composer.inputValue(),'完整皮肤 keeps draft\n');
+    await composer.press('Enter');
     await page.waitForFunction(()=>window.navigationCalls.some(c=>c.command==='send_agent_prompt'&&c.args.input.startsWith('完整皮肤 keeps draft')&&c.args.input.includes('[AIBO_CONTEXT_ATTACHMENTS]')));
     await frame.locator('textarea[aria-label="消息"][value=""]:enabled').waitFor();
     await composer.fill('换肤保留');

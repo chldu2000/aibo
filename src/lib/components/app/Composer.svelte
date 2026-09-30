@@ -308,7 +308,7 @@
       data-composer-input="true"
       bind:value={text}
       rows="2"
-      placeholder={historyOnly ? '插件数据已清除，此会话仅保留历史。' : sessionStarting ? '会话正在初始化，可以先编写消息…' : sessionArchived ? '该会话已归档，请取消归档或创建分支继续…' : selectedSession ? '输入消息，⌘/Ctrl + Enter 发送…' : '先新建或选择一个 Agent 会话…'}
+      placeholder={historyOnly ? '插件数据已清除，此会话仅保留历史。' : sessionStarting ? '会话正在初始化，可以先编写消息…' : sessionArchived ? '该会话已归档，请取消归档或创建分支继续…' : selectedSession ? '输入消息，Enter 发送，Shift/Ctrl + Enter 换行…' : '先新建或选择一个 Agent 会话…'}
       disabled={!selectedSession || sessionArchived || historyOnly || selectedSessionArchiving || (sessionRunning && !sessionCapabilities.includes('queue.manage')) || busy}
       onpaste={(event) => {
         const files = clipboardImageFiles(event.clipboardData);
@@ -317,6 +317,19 @@
         onPasteImages(files);
       }}
       onkeydown={(event) => {
+        if (event.isComposing || event.keyCode === 229) return;
+        if (event.key === 'Enter' && (event.shiftKey || event.ctrlKey)) {
+          if (event.ctrlKey) {
+            event.preventDefault();
+            if (!document.execCommand('insertText', false, '\n')) {
+              const input = event.currentTarget as HTMLTextAreaElement;
+              input.setRangeText('\n', input.selectionStart, input.selectionEnd, 'end');
+              updateComposerInput(input.value);
+            }
+          }
+          return;
+        }
+        if (event.key === 'Enter' && (event.repeat || event.altKey)) return;
         if (showMentionSuggestions) {
           if (event.key === 'Tab') {
             event.preventDefault();
@@ -388,7 +401,7 @@
             return;
           }
         }
-        if ((event.metaKey || event.ctrlKey) && event.key === 'Enter') {
+        if (event.key === 'Enter') {
           event.preventDefault();
           if (sessionRunning && sessionCapabilities.includes('queue.manage')) onQueue('followUp');
           else onSend();

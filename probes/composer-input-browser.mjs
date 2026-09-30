@@ -7,7 +7,7 @@ const server = await createServer({
   server: { host: '127.0.0.1', port: 0, strictPort: false, hmr: false, watch: null },
   plugins: [{ name: 'composer-preview-session', enforce: 'pre', transform(code, id) {
     if (!id.endsWith('/src/App.svelte')) return;
-    return code.replace('workspaces = previewWorkspaces;', `workspaces = previewWorkspaces;
+    return code.replace("onSend={guard('onSend', () => void sendPrompt())}", "onSend={guard('onSend', () => { window.dispatchEvent(new CustomEvent('probe-send', { detail: composerText })); })}").replace('workspaces = previewWorkspaces;' , `workspaces = previewWorkspaces;
       workspaceSessionMap = { 'preview-workspace': ['a', 'b'].map(id => ({
         id, workspaceId: 'preview-workspace', agent: 'dev.aibo.codex.agent',
         label: 'Input session ' + id, state: 'idle', archived: false,
@@ -20,14 +20,31 @@ const server = await createServer({
 await server.listen();
 const browser = await chromium.launch({ headless: true });
 try {
-  for (const kit of ['light', 'dark']) {
+  for (const skin of ['material3', 'ak-ui']) for (const kit of ['light', 'dark']) {
   const page = await browser.newPage();
   const errors = [];
   page.on('pageerror', error => errors.push(error.message));
   await page.goto(`http://127.0.0.1:${server.httpServer.address().port}`);
-  await page.evaluate(async kit => (await import('/src/lib/ui-kit/registry.ts')).setUiTheme(kit), kit);
+  await page.evaluate(async ({skin, kit}) => { const registry = await import('/src/lib/ui-kit/registry.ts'); registry.setUiKit(skin); registry.setUiTheme(kit); window.probeSends = []; window.addEventListener('probe-send', event => window.probeSends.push(event.detail)); }, {skin, kit});
   const input = page.locator('[data-composer-input]');
   await input.waitFor();
+  await input.fill('leftRIGHT');
+  await input.evaluate(element => element.setSelectionRange(4, 9));
+  await input.press('Control+Enter');
+  assert.equal(await input.inputValue(), 'left\n', 'Ctrl+Enter replaces selection with newline');
+  await input.press('Shift+Enter');
+  assert.equal(await input.inputValue(), 'left\n\n');
+  assert.deepEqual(await page.evaluate(() => window.probeSends), []);
+  await input.fill('发送消息');
+  await input.press('Enter');
+  assert.deepEqual(await page.evaluate(() => window.probeSends), ['发送消息']);
+  const ime = await page.context().newCDPSession(page);
+  await ime.send('Input.imeSetComposition', {text:'拼音',selectionStart:2,selectionEnd:2});
+  await input.press('Enter');
+  assert.equal(await page.evaluate(() => window.probeSends.length), 1, 'IME confirmation does not send');
+  await ime.send('Input.imeSetComposition', {text:'',selectionStart:0,selectionEnd:0});
+  await ime.detach();
+  await input.fill('');
   await input.click();
   await page.keyboard.type('hello');
   assert.equal(await input.inputValue(), 'hello');
