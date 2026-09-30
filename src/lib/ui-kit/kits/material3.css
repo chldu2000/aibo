@@ -147,7 +147,7 @@
 
 .app-shell[data-ui-kit='material3'] :is(.sidebar, .timeline, .inspector) {
   border: 0;
-  border-radius: var(--md-sys-shape-corner-small);
+  border-radius: 0;
   box-shadow: none;
 }
 
@@ -687,7 +687,6 @@
 .app-shell[data-ui-kit='material3'] .inspector {
 
   background: var(--aibo-surface);
-  border-left: 1px solid var(--aibo-border);
 }
 
 .app-shell[data-ui-kit='material3'] .inspector .panel-heading {
@@ -2715,7 +2714,7 @@
 .app-shell[data-ui-kit='material3'] .window-title { letter-spacing: 0; }
 .app-shell[data-ui-kit='material3'] .window-actions .ui-button { border-radius: 50%; }
 .app-shell[data-ui-kit='material3'] .window-actions .ui-button[data-host-navigation] { border-radius: var(--md-sys-shape-corner-full); }
-.app-shell[data-ui-kit='material3'] .workspace-grid { padding: 0 8px 8px 0; }
+.app-shell[data-ui-kit='material3'] .workspace-grid { padding: 0 8px 0 0; background: var(--aibo-surface-hover); }
 .app-shell[data-ui-kit='material3'] .sidebar { background: var(--aibo-surface-hover); }
 .app-shell[data-ui-kit='material3'] .sidebar .panel-heading { padding-inline: 20px 12px; }
 .app-shell[data-ui-kit='material3'] .sidebar .panel-heading [data-slot='card-title'] { letter-spacing: 0; font-weight: 500; }
@@ -2747,9 +2746,9 @@
 .app-shell[data-ui-kit='material3'] .sidebar-footer .ui-button { border-radius: var(--md-sys-shape-corner-full); }
 .app-shell[data-ui-kit='material3'] .workspace-splitter-line { background: transparent; }
 .app-shell[data-ui-kit='material3'] .workspace-splitter:focus-visible .workspace-splitter-line { background: var(--aibo-focus); }
-.app-shell[data-ui-kit='material3'] :is(.timeline, .inspector) { border-radius: var(--md-sys-shape-corner-large); }
-.app-shell[data-ui-kit='material3'] .timeline { background: var(--aibo-bg); }
-.app-shell[data-ui-kit='material3'] .timeline-heading { border-radius: var(--md-sys-shape-corner-large) var(--md-sys-shape-corner-large) 0 0; background: var(--aibo-bg); }
+.app-shell[data-ui-kit='material3'] .timeline { border-radius: 20px 0 0 20px; overflow: hidden; background: var(--aibo-bg); }
+.app-shell[data-ui-kit='material3'] .workbench-chrome[data-layout='focus'] .timeline { border-radius: 20px; }
+.app-shell[data-ui-kit='material3'] .timeline-heading { border-radius: 0; background: var(--aibo-bg); }
 .app-shell[data-ui-kit='material3'] .timeline-heading [data-slot='card-title'] { font-weight: 600; }
 .app-shell[data-ui-kit='material3'] .timeline-session-signal { border-radius: 50%; }
 .app-shell[data-ui-kit='material3'] .timeline-entry.timeline-entry.user-entry .entry-content {
@@ -2860,8 +2859,12 @@
 .app-shell[data-ui-kit='material3'] .global-search-result { border-radius: var(--md-sys-shape-corner-medium); }
 .app-shell[data-ui-kit='material3'] .global-search-result.active { box-shadow: none; }
 .app-shell[data-ui-kit='material3'] .workbench-status { background: var(--aibo-surface-hover); border: 0; }
+@media (min-width: 761px) and (max-width: 1000px) {
+  .app-shell[data-ui-kit='material3'] .timeline { border-radius: 20px; }
+}
 @media (max-width: 760px) {
-  .app-shell[data-ui-kit='material3'] .workspace-grid { padding: 0 8px 8px; }
+  .app-shell[data-ui-kit='material3'] .workspace-grid { padding: 0 8px; }
+  .app-shell[data-ui-kit='material3'] .workbench-chrome[data-layout] .timeline { border-radius: var(--md-sys-shape-corner-large); }
   .app-shell[data-ui-kit='material3'] .management-nav { padding: 8px 12px; gap: 4px; }
   .app-shell[data-ui-kit='material3'] .management-header { padding: 16px; }
   .app-shell[data-ui-kit='material3'] .management-content { padding: 16px; }
