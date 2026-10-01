@@ -286,11 +286,11 @@
 :where(.app-shell[data-ui-kit='ak-ui']) .settings-runtime-list div:first-child { border-top: 0; }
 :where(.app-shell[data-ui-kit='ak-ui']) .settings-footer { border-top: 1px solid var(--aibo-border); }
 :where(.app-shell[data-ui-kit='ak-ui']) .toast-region { transform: translateX(-50%); }
-:where(.app-shell[data-ui-kit='ak-ui']) .toast { box-shadow: 0 12px 36px #00000066; font-size: var(--aibo-type-meta, 12px); line-height: 1.5; animation: ak-toast-enter 160ms ease-out; }
-:where(.app-shell[data-ui-kit='ak-ui']) .error-toast { border-color: var(--aibo-danger-border); color: var(--aibo-danger-text); background: var(--aibo-danger-surface); }
-:where(.app-shell[data-ui-kit='ak-ui']) .notice-toast { border-color: var(--aibo-success-border); color: var(--aibo-success-text); background: var(--aibo-success-surface); }
+.app-shell[data-ui-kit='ak-ui'] [data-slot='card'].toast { box-shadow: 0 12px 36px #00000066; font-size: var(--aibo-type-meta, 12px); line-height: 1.5; animation: ak-toast-enter 160ms ease-out; }
+.app-shell[data-ui-kit='ak-ui'] [data-slot='card'].error-toast { border-color: var(--aibo-danger-border); color: var(--aibo-danger-text); background: var(--aibo-danger-surface); }
+.app-shell[data-ui-kit='ak-ui'] [data-slot='card'].notice-toast { border-color: var(--aibo-success-border); color: var(--aibo-success-text); background: var(--aibo-success-surface); }
 @keyframes ak-toast-enter { from { opacity: 0; transform: translateY(-6px); } to { opacity: 1; transform: translateY(0); } }
-@media (prefers-reduced-motion: reduce) { :where(.app-shell[data-ui-kit='ak-ui']) .toast { animation: none; } }
+@media (prefers-reduced-motion: reduce) { .app-shell[data-ui-kit='ak-ui'] [data-slot='card'].toast { animation: none; } }
 :where(.app-shell[data-ui-kit='ak-ui']) .alert-dialog-overlay { background: #00000099; }
 :where(.app-shell[data-ui-kit='ak-ui']) .alert-dialog { border-color: var(--aibo-border-strong); background: var(--aibo-surface); box-shadow: 0 20px 60px #00000066; }
 :where(.app-shell[data-ui-kit='ak-ui']) .alert-dialog-content { color: var(--aibo-muted); font-size: var(--aibo-type-meta, 12px); line-height: 1.6; }
