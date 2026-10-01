@@ -41,3 +41,11 @@ test('Codex cumulative thread usage is not treated as the live context size', ()
   assert.equal(usage?.contextLimit, 258_400);
   assert.equal(usage?.contextEstimated, false);
 });
+
+test('ACP adapter snapshots report the live context, not an input estimate', () => {
+  const usage = toUsageValues({ contextTokens: 42_000, contextWindow: 200_000, input: 1_000, output: 50, totalTokens: 1_050 });
+  assert.equal(usage?.contextUsed, 42_000);
+  assert.equal(usage?.contextLimit, 200_000);
+  assert.equal(usage?.contextEstimated, false);
+  assert.equal(usage?.total, 1_050);
+});

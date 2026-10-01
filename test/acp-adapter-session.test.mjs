@@ -262,3 +262,31 @@ test('declared current-model catalogs refresh parameters on selection without co
     } finally {await session.close();}
   }
 });
+
+test('ACP usage becomes a whole Aibo usage snapshot with live context and session totals', async () => {
+  const { transport, events, session } = fixture();
+  await open(session);
+  const usageUpdate = update => transport.emitNotification({ jsonrpc: '2.0', method: 'session/update', params: { sessionId: 'echo-1', update } });
+  const snapshots = () => events.filter(event => event.type === 'usage.updated').map(event => event.payload.usage);
+
+  const first = session.prompt({ text: 'go', turnId: 't1', writable: true });
+  usageUpdate({ sessionUpdate: 'usage_update', used: 42_000, size: 200_000, cost: { amount: 0.12, currency: 'USD' } });
+  assert.deepEqual(snapshots().at(-1), { contextTokens: 42_000, contextWindow: 200_000, cost: { amount: 0.12, currency: 'USD' } });
+  transport.finishPrompt({ stopReason: 'end_turn', usage: { inputTokens: 10, cachedReadTokens: 900, cachedWriteTokens: 90, outputTokens: 50, totalTokens: 1_050 } });
+  await first;
+  assert.deepEqual(snapshots().at(-1), { contextTokens: 42_000, contextWindow: 200_000, cost: { amount: 0.12, currency: 'USD' }, input: 1_000, output: 50, totalTokens: 1_050 });
+  assert.ok(events.findIndex(event => event.type === 'usage.updated' && event.payload.usage.totalTokens) < events.findIndex(event => event.type === 'turn.completed'), 'totals land before the turn settles');
+
+  const second = session.prompt({ text: 'again', turnId: 't2', writable: true });
+  usageUpdate({ sessionUpdate: 'usage_update', used: 'many', size: 200_000 });
+  assert.equal(snapshots().at(-1).contextTokens, 42_000, 'a malformed value keeps the last known one');
+  transport.finishPrompt({ stopReason: 'end_turn', usage: { inputTokens: 5, outputTokens: 5, totalTokens: 10 } });
+  await second;
+  assert.deepEqual({ ...snapshots().at(-1), cost: undefined }, { contextTokens: 42_000, contextWindow: 200_000, cost: undefined, input: 1_005, output: 55, totalTokens: 1_060 });
+
+  const count = snapshots().length;
+  const third = session.prompt({ text: 'quiet', turnId: 't3', writable: true });
+  transport.finishPrompt({ stopReason: 'end_turn' });
+  await third;
+  assert.equal(snapshots().length, count, 'a prompt result without usage emits nothing');
+});

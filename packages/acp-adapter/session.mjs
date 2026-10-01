@@ -19,6 +19,7 @@ export function bounded(value, max = 12_000) {
   const text = typeof value === 'string' ? value : value == null ? '' : JSON.stringify(value);
   return text.length > max ? `${text.slice(0, max)}…` : text;
 }
+const count = value => typeof value === 'number' && Number.isFinite(value) && value >= 0 ? value : null;
 function toolPayload(label, tool, update = {}) {
   const content = update.content ?? tool.content ?? [];
   const text = Array.isArray(content) ? content.map(part => part?.content?.text ?? part?.text ?? (part?.type === 'diff' ? `${part.path ?? ''}\n${part.newText ?? ''}` : '')).filter(Boolean).join('\n') : bounded(content);
@@ -81,6 +82,8 @@ export class AcpSession {
     this.hostPermissionReplies = new Set();
     this.completedTools = new Set();
     this.subagents = new Map();
+    // Aibo usage snapshot for this process: live context from usage_update, session totals from prompt results.
+    this.usage = {};
     this.phase = 'stopped';
     this.modelConfig = null;
     this.configOptions = [];
@@ -204,6 +207,7 @@ export class AcpSession {
       }, 12 * 60 * 60 * 1_000);
       if (this.messageText) this.#event('message.completed', { itemId: this.messageItemId, text: this.messageText }, { itemId: this.messageItemId });
       if (this.reasoningText) this.#event('reasoning.completed', { itemId: this.reasoningItemId, summary: this.reasoningText }, { itemId: this.reasoningItemId });
+      this.#addTurnUsage(result?.usage);
       const stopReason = result?.stopReason;
       const status = this.modeViolation ? 'failed' : stopReason === 'end_turn' || stopReason === 'refusal' ? 'completed'
         : ['cancelled', 'max_tokens', 'max_turn_requests'].includes(stopReason) ? 'interrupted' : 'failed';
@@ -673,11 +677,30 @@ export class AcpSession {
       return;
     }
     if (update.sessionUpdate === 'usage_update') {
-      this.#event('usage.updated', { usage: update });
+      // ACP reports the live context as `used` of `size` tokens.
+      this.#updateUsage({ contextTokens: count(update.used), contextWindow: count(update.size), cost: update.cost && typeof update.cost === 'object' ? update.cost : null });
       return;
     }
     if (String(update.sessionUpdate).includes('available_')) return;
     this.#event('extension.updated', { namespace: this.extension.namespace, update });
+  }
+
+  /** Adds a prompt result's per-turn usage to the session totals; cached prompt tokens count as input. */
+  #addTurnUsage(usage) {
+    const turn = object(usage);
+    const total = count(turn.totalTokens);
+    if (total === null) return;
+    const output = count(turn.outputTokens) ?? 0;
+    const input = (count(turn.inputTokens) ?? 0) + (count(turn.cachedReadTokens) ?? 0) + (count(turn.cachedWriteTokens) ?? 0);
+    this.#updateUsage({ input: (this.usage.input ?? 0) + input, output: (this.usage.output ?? 0) + output, totalTokens: (this.usage.totalTokens ?? 0) + total });
+  }
+
+  /** Merges known values into the usage snapshot; each event carries the whole snapshot because the host replaces it. */
+  #updateUsage(values) {
+    const known = Object.entries(values).filter(([, value]) => value !== null);
+    if (!known.length) return;
+    this.usage = { ...this.usage, ...Object.fromEntries(known) };
+    this.#event('usage.updated', { usage: { ...this.usage } });
   }
 
   #event(type, payload, correlation = null) {
