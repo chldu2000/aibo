@@ -1,10 +1,15 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="128" height="128" viewBox="0 0 128 128">
+<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024">
+  <!-- Aibo app icon: a geometric "a" built from two strokes (相棒, partners).
+       Body follows the macOS icon grid; see docs/design/app-icon-options.html. -->
   <defs>
-    <linearGradient id="aibo-gradient" x1="0" y1="0" x2="1" y2="1">
-      <stop offset="0" stop-color="#8e7dff"/>
-      <stop offset="1" stop-color="#4f91ff"/>
-    </linearGradient>
+    <filter id="aibo-shadow" x="-10%" y="-10%" width="120%" height="130%">
+      <feGaussianBlur in="SourceAlpha" stdDeviation="10"/>
+      <feOffset dy="10"/>
+      <feComponentTransfer><feFuncA type="linear" slope="0.3"/></feComponentTransfer>
+      <feMerge><feMergeNode/><feMergeNode in="SourceGraphic"/></feMerge>
+    </filter>
   </defs>
-  <rect width="128" height="128" rx="34" fill="#0b1020"/>
-  <path d="M64 20 34 98h16l6-17h16l6 17h16L64 20Zm0 26 5 20H59l5-20Z" fill="url(#aibo-gradient)"/>
+  <path d="M641.2 100C722.63 100 763.34 100 807.17 113.86C855.03 131.28 892.72 168.97 910.14 216.83C924 260.66 924 301.37 924 382.8L924 641.2C924 722.63 924 763.34 910.14 807.17C892.72 855.03 855.03 892.72 807.17 910.14C763.34 924 722.63 924 641.2 924L382.8 924C301.37 924 260.66 924 216.83 910.14C168.97 892.72 131.28 855.03 113.86 807.17C100 763.34 100 722.63 100 641.2L100 382.8C100 301.37 100 260.66 113.86 216.83C131.28 168.97 168.97 131.28 216.83 113.86C260.66 100 301.37 100 382.8 100Z" fill="#18181b" filter="url(#aibo-shadow)"/>
+  <circle cx="512" cy="512" r="148" fill="none" stroke="#eee8dc" stroke-width="88"/>
+  <rect x="616" y="320" width="88" height="384" fill="#e4472b"/>
 </svg>

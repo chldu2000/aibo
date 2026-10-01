@@ -34,7 +34,9 @@
       "../node_modules/@earendil-works/pi-coding-agent/dist/bundle/": "pi-sdk-bundle/"
     },
     "icon": [
-      "icons/icon.png"
+      "icons/icon.png",
+      "icons/icon.icns",
+      "icons/icon.ico"
     ]
   }
 }
