@@ -1,10 +1,12 @@
 <script lang="ts">
-  import { AlertDialog, Button, Card, CardContent, CardHeader, CardTitle, Textarea } from '$lib/ui-kit';
+  import { AlertDialog, Button, Card, CardContent, CardHeader, CardTitle, Icon, Textarea } from '$lib/ui-kit';
+  import type { AppNotification, NotificationType } from '$lib/app/notifications';
+  import type { UiIconName } from '$lib/ui-kit';
   import type { PiTreeNavigationMode, PiTreeNavigationOptions } from '$lib/types';
 
   type AppOverlaysProps = {
     errorMessage: string | null;
-    notice: string | null;
+    notice: AppNotification | null;
     archiveConfirmationOpen: boolean;
     piNavigationOpen: boolean;
     piNavigationMode: PiTreeNavigationMode;
@@ -31,20 +33,32 @@
     onConfirmPiNavigation,
     onCancelPiNavigation,
   }: AppOverlaysProps = $props();
+
+  const notificationLabels: Record<NotificationType, string> = {
+    success: '成功', info: '信息', warning: '警告', error: '错误',
+  };
+  const notificationIcons: Record<NotificationType, UiIconName> = {
+    success: 'check', info: 'info', warning: 'warning', error: 'error',
+  };
+  const notifications = $derived<AppNotification[]>([
+    ...(errorMessage ? [{ type: 'error' as const, message: errorMessage }] : []),
+    ...(notice ? [notice] : []),
+  ]);
 </script>
 
-{#if errorMessage || notice}
+{#if notifications.length}
   <div class="toast-region" aria-label="应用通知">
-    {#if errorMessage}
-      <Card class="toast error-toast" role="alert" aria-live="assertive" aria-atomic="true">
-        {errorMessage}
+    {#each notifications as notification}
+      <Card class={`toast ${notification.type}-toast`} data-notification-type={notification.type}
+        role={notification.type === 'error' ? 'alert' : 'status'}
+        aria-live={notification.type === 'error' ? 'assertive' : 'polite'} aria-atomic="true">
+        <Icon name={notificationIcons[notification.type]} />
+        <div class="toast-copy">
+          <strong class="toast-label">{notificationLabels[notification.type]}</strong>
+          <span>{notification.message}</span>
+        </div>
       </Card>
-    {/if}
-    {#if notice}
-      <Card class="toast notice-toast" role="status" aria-live="polite" aria-atomic="true">
-        {notice}
-      </Card>
-    {/if}
+    {/each}
   </div>
 {/if}
 

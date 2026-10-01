@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { notificationDuration, type AppNotification, type NotificationType } from '$lib/app/notifications';
   import { createPluginLifecycleController, type PluginLifecycleState } from '$lib/app/plugin-lifecycle-controller';
   import { previewPluginRemoval, readPluginUpgradePolicy, savePluginUpgradePolicy, migratePluginSessions } from '$lib/api';
   import NodeRuntimePanel from '$lib/components/app/NodeRuntimePanel.svelte';
@@ -264,7 +265,7 @@
     const [target, detail, option] = action.args;
     switch (action.operation) {
       case 'draft': composerText = intent.value!; handleComposerInput(composerText); break;
-      case 'copyCode': await navigator.clipboard.writeText(action.args[2]!); notice = '代码已复制'; break;
+      case 'copyCode': await navigator.clipboard.writeText(action.args[2]!); setNotice('代码已复制', 'success'); break;
       case 'openLink': window.open(action.args[2]!, '_blank', 'noopener,noreferrer'); break;
       case 'send': await sendPrompt(); break;
       case 'stop': await abortPrompt(); break;
@@ -453,7 +454,16 @@
       projectActionRuns = [result, ...projectActionRuns.filter((item) => item.id !== result.id)].slice(0, 20);
       if (sessionId && selectedSessionId === sessionId) await refreshArtifacts(sessionId);
       if (selectedWorkspaceId !== workspaceId) return;
-      notice = result.status === 'rejected' ? '工程动作未执行，请查看审批结果。' : result.status === 'awaiting_approval' ? '工程动作正在等待宿主批准。' : result.status === 'running' ? '工程动作正在执行。' : result.status === 'outcome_unknown' ? '工程动作结果未知，请核对实际更改后再操作。' : result.status === 'completed' ? '工程动作已完成。' : `工程动作${result.status === 'timed_out' ? '超时' : '失败'}。`;
+      const notificationType: NotificationType = result.status === 'completed' ? 'success'
+        : result.status === 'running' || result.status === 'awaiting_approval' ? 'info'
+        : result.status === 'rejected' || result.status === 'outcome_unknown' ? 'warning' : 'error';
+      const message = result.status === 'rejected' ? '工程动作未执行，请查看审批结果。'
+        : result.status === 'awaiting_approval' ? '工程动作正在等待宿主批准。'
+        : result.status === 'running' ? '工程动作正在执行。'
+        : result.status === 'outcome_unknown' ? '工程动作结果未知，请核对实际更改后再操作。'
+        : result.status === 'completed' ? '工程动作已完成。'
+        : `工程动作${result.status === 'timed_out' ? '超时' : '失败'}。`;
+      setNotice(message, notificationType);
     } catch (error) {
       if (selectedWorkspaceId === workspaceId) errorMessage = toErrorMessage(error);
     } finally {
@@ -465,7 +475,7 @@
     if (!workspaceId) return;
     try {
       const requested = await cancelProjectAction(workspaceId, runId);
-      if (selectedWorkspaceId === workspaceId) notice = requested ? '已请求停止，正在等待执行结束；已有更改不会自动撤销。' : '该执行已结束或不属于当前工作区。';
+      if (selectedWorkspaceId === workspaceId) setNotice(requested ? '已请求停止，正在等待执行结束；已有更改不会自动撤销。' : '该执行已结束或不属于当前工作区。', 'info');
     } catch (error) {
       if (selectedWorkspaceId === workspaceId) errorMessage = toErrorMessage(error);
     }
@@ -541,7 +551,7 @@
       const identity = JSON.stringify([presentationPackages.active?.release.digest, snapshot.schema]);
       if (incompatibleCapabilityRecovery === identity) return;
       incompatibleCapabilityRecovery = identity;
-      void presentationOperation(async () => { await presentationPackagesController.restore(); notice = '皮肤不支持此能力视图格式，已恢复默认呈现。'; });
+      void presentationOperation(async () => { await presentationPackagesController.restore(); setNotice('皮肤不支持此能力视图格式，已恢复默认呈现。', 'warning'); });
     } else incompatibleCapabilityRecovery = null;
   });
   const layoutDirectory = createLayoutDirectory();
@@ -1068,7 +1078,12 @@
   let commandSearchGeneration = 0;
   let busy = $state(false);
   let errorMessage = $state<string | null>(null);
-  let notice = $state<string | null>(null);
+  let notice = $state<AppNotification | null>(null);
+  function setNotice(message: null): void;
+  function setNotice(message: string, type: NotificationType): void;
+  function setNotice(message: string | null, type: NotificationType = 'info'): void {
+    notice = message === null ? null : { message, type };
+  }
   let desktop = $state(false);
   let threadBusy = $state(false);
   let archiveConfirmationSessionId = $state<string | null>(null);
@@ -1281,7 +1296,7 @@
     selectSession: id => { navigationController.selectSession(id); settingsOpen = false; createSessionWorkspaceId = null; },
     setCreating: value => { pluginBusy = value; },
     setError: value => { pluginError = value; errorMessage = value; },
-    setNotice: value => { notice = value; },
+    setNotice,
     refreshProfile: refreshExecutionProfile,
   });
   async function createPluginSession(installationId: string, agentId: string, workspaceId = selectedWorkspaceId): Promise<void> {
@@ -1520,7 +1535,7 @@
     draftHydratingSessionId = enabled && id ? id : null;
     untrack(() => {
       composerText = draft;
-      if (enabled && id && draft) notice = '已恢复当前会话草稿。';
+      if (enabled && id && draft) setNotice('已恢复当前会话草稿。', 'success');
     });
     if (!enabled || !id) return;
     void getComposerDraft(id)
@@ -1542,7 +1557,7 @@
         };
         composerDrafts = next;
         composerText = remoteDraft.text;
-        if (remoteDraft.sendFailed) notice = '上次发送未完成，已恢复草稿。';
+        if (remoteDraft.sendFailed) setNotice('上次发送未完成，已恢复草稿。', 'warning');
       })
       .catch(() => {
         // localStorage remains the offline/preview fallback; a stale desktop
@@ -1988,7 +2003,7 @@
     const timer = setTimeout(() => {
       if (notice === message) notice = null;
       noticeTimer = undefined;
-    }, 3600);
+    }, notificationDuration(message.type));
     noticeTimer = timer;
     return () => clearTimeout(timer);
   });
@@ -2225,7 +2240,7 @@
         composerText = draft.replace(/(^|\s)@([^\s]*)$/, '$1');
         handleComposerInput(composerText);
       }
-      notice = '已添加会话引用：将传递对话摘录，不包含工具输出正文。';
+      setNotice('已添加会话引用：将传递对话摘录，不包含工具输出正文。', 'success');
     } catch (error) { errorMessage = toErrorMessage(error); }
     finally { busy = false; }
   }
@@ -2468,7 +2483,7 @@
         errorMessage = result.message;
         return;
       }
-      notice = `已切换到 ${branch}。`;
+      setNotice(`已切换到 ${branch}。`, 'success');
       await Promise.all([refreshWorkspaceChanges(workspaceId), refreshWorkspaceGitMetadata(workspaceId)]);
       if (workspaceId === selectedWorkspaceId && targetRepository === repositoryId) closeWorkspaceFileDiff();
     } catch (error) {
@@ -2493,7 +2508,7 @@
       }
       const draft = workbenchDrafts.git[repositoryDraftKey(workspaceId, targetRepository ?? null)];
       if (draft?.branchDraft.trim() === branch.trim()) workbenchDrafts.git[repositoryDraftKey(workspaceId, targetRepository ?? null)] = { ...draft, branchDraft: '' };
-      notice = `已创建并切换到 ${branch}。`;
+      setNotice(`已创建并切换到 ${branch}。`, 'success');
       await Promise.all([refreshWorkspaceChanges(workspaceId), refreshWorkspaceGitMetadata(workspaceId)]);
       if (workspaceId === selectedWorkspaceId && targetRepository === repositoryId) closeWorkspaceFileDiff();
     } catch (error) {
@@ -2516,7 +2531,7 @@
         errorMessage = result.message;
         return;
       }
-      notice = action === 'fetch' ? '已刷新远端状态。' : action === 'pull' ? '已拉取远端更改。' : '已推送本地更改。';
+      setNotice(action === 'fetch' ? '已刷新远端状态。' : action === 'pull' ? '已拉取远端更改。' : '已推送本地更改。', 'success');
       await Promise.all([refreshWorkspaceChanges(workspaceId), refreshWorkspaceGitMetadata(workspaceId)]);
     } catch (error) {
       errorMessage = toErrorMessage(error);
@@ -2538,7 +2553,7 @@
         errorMessage = result.message;
         return;
       }
-      notice = '已保存当前更改到暂存栈。';
+      setNotice('已保存当前更改到暂存栈。', 'success');
       await Promise.all([refreshWorkspaceChanges(workspaceId), refreshWorkspaceGitMetadata(workspaceId)]);
     } catch (error) {
       errorMessage = toErrorMessage(error);
@@ -2560,7 +2575,7 @@
         errorMessage = result.message;
         return;
       }
-      notice = `已应用 ${reference}。`;
+      setNotice(`已应用 ${reference}。`, 'success');
       await Promise.all([refreshWorkspaceChanges(workspaceId), refreshWorkspaceGitMetadata(workspaceId)]);
     } catch (error) {
       errorMessage = toErrorMessage(error);
@@ -2627,7 +2642,7 @@
       workspaceSessionMap = upsertSession(workspaceSessionMap, reviewSession);
       void refreshTimeline(reviewSession.id);
       void refreshExecutionProfile(reviewSession.id);
-      notice = '已在独立的只读会话中请求 Agent 审查 Git 变更。';
+      setNotice('已在独立的只读会话中请求 Agent 审查 Git 变更。', 'info');
     } catch (error) {
       errorMessage = toErrorMessage(error);
     } finally {
@@ -2718,7 +2733,7 @@
         errorMessage = result.message;
         return;
       }
-      notice = action === 'stage' ? `已暂存 ${path}` : `已取消暂存 ${path}`;
+      setNotice(action === 'stage' ? `已暂存 ${path}` : `已取消暂存 ${path}`, 'success');
       await refreshWorkspaceChanges(workspaceId);
     } catch (error) {
       errorMessage = toErrorMessage(error);
@@ -2744,7 +2759,7 @@
         errorMessage = result.message;
         return;
       }
-      notice = { stage_all: '已暂存仓库中的全部更改。', stage_changed: '已暂存“更改”分组中的文件。', stage_untracked: '已暂存未跟踪的文件。', unstage_all: '已取消全部暂存。' }[action];
+      setNotice({ stage_all: '已暂存仓库中的全部更改。', stage_changed: '已暂存“更改”分组中的文件。', stage_untracked: '已暂存未跟踪的文件。', unstage_all: '已取消全部暂存。' }[action], 'success');
       await refreshWorkspaceChanges(workspaceId);
     } catch (error) {
       errorMessage = toErrorMessage(error);
@@ -2768,7 +2783,7 @@
       }
       const draft = workbenchDrafts.git[repositoryDraftKey(workspaceId, targetRepository ?? null)];
       if (draft?.commitMessage.trim() === message.trim()) workbenchDrafts.git[repositoryDraftKey(workspaceId, targetRepository ?? null)] = { ...draft, commitMessage: '' };
-      notice = result.hash ? `已创建提交 ${result.hash.slice(0, 8)}。` : '已创建提交。';
+      setNotice(result.hash ? `已创建提交 ${result.hash.slice(0, 8)}。` : '已创建提交。', 'success');
       await refreshWorkspaceChanges(workspaceId);
       await refreshWorkspaceGitMetadata(workspaceId);
       if (workspaceId === selectedWorkspaceId && targetRepository === repositoryId) closeWorkspaceFileDiff();
@@ -2790,7 +2805,7 @@
       const registered = await registerSessionClipboardImages(session.id, images);
       if (selectedSessionId === session.id) {
         attachments = [...attachments, ...registered];
-        notice = `已添加 ${registered.length} 张图片。`;
+        setNotice(`已添加 ${registered.length} 张图片。`, 'success');
       }
     } catch (error) {
       if (selectedSessionId === session.id) errorMessage = toErrorMessage(error);
@@ -2805,7 +2820,7 @@
       const registered = await registerSessionAttachments(session.id, paths);
       const existing = new Set(attachments.map((item) => item.id));
       attachments = [...attachments, ...registered.filter((item) => !existing.has(item.id))];
-      notice = registered.length > 0 ? `已添加 ${registered.length} 个上下文附件。` : '没有添加新的上下文附件。';
+      setNotice(registered.length > 0 ? `已添加 ${registered.length} 个上下文附件。` : '没有添加新的上下文附件。', registered.length > 0 ? 'success' : 'info');
     } catch (error) {
       errorMessage = toErrorMessage(error);
     }
@@ -2874,7 +2889,7 @@
     try {
       const result = await applyGitFileAction(sessionId, path, action, turnId);
       if (result.applied) {
-        notice = action === 'stage' ? '文件已暂存。' : action === 'unstage' ? '已取消暂存。' : '文件变更已撤销。';
+        setNotice(action === 'stage' ? '文件已暂存。' : action === 'unstage' ? '已取消暂存。' : '文件变更已撤销。', 'success');
         const session = findSession(sessionId);
         if (session) await refreshWorkspaceChanges(session.workspaceId);
       } else {
@@ -2895,7 +2910,7 @@
     try {
       const result = await applyGitHunkAction(sessionId, turnId, path, hunkIndex, action);
       if (result.applied) {
-        notice = action === 'stage' ? 'hunk 已暂存。' : action === 'unstage' ? 'hunk 已取消暂存。' : 'hunk 变更已撤销。';
+        setNotice(action === 'stage' ? 'hunk 已暂存。' : action === 'unstage' ? 'hunk 已取消暂存。' : 'hunk 变更已撤销。', 'success');
         const session = findSession(sessionId);
         if (session) await refreshWorkspaceChanges(session.workspaceId);
       } else {
@@ -2911,13 +2926,13 @@
     try {
       const result = await restoreTurnChangeSetApi(sessionId, turnId);
       if (result.applied) {
-        notice = result.restored.length > 0 ? `已恢复 ${result.restored.length} 个文件。` : '本轮没有可恢复的文件。';
+        setNotice(result.restored.length > 0 ? `已恢复 ${result.restored.length} 个文件。` : '本轮没有可恢复的文件。', result.restored.length > 0 ? 'success' : 'info');
         await refreshTimeline(sessionId);
         await refreshTurnChangeSet(sessionId);
       } else if (result.conflicts.length > 0) {
-        notice = `恢复已阻止：${result.conflicts.length} 个文件在本轮后发生了变化。`;
+        setNotice(`恢复已阻止：${result.conflicts.length} 个文件在本轮后发生了变化。`, 'warning');
       } else {
-        notice = `恢复已阻止：${result.unsupported.join('、') || '当前变更无法安全恢复'}。`;
+        setNotice(`恢复已阻止：${result.unsupported.join('、') || '当前变更无法安全恢复'}。`, 'warning');
       }
     } catch (error) {
       errorMessage = toErrorMessage(error);
@@ -2965,7 +2980,7 @@
         retryPrompt = prompt;
         retryReason = reason;
       },
-      setNotice: (message) => (notice = message),
+      setNotice,
       refreshSessions,
       refreshTurnChangeSet,
       refreshWorkspaceChanges,
@@ -3019,7 +3034,7 @@
       // every session in the workspace (which also reloads unrelated list and
       // conversation context on this path).
       markSessionIdle(session);
-      notice = '会话设置已更新。';
+      setNotice('会话设置已更新。', 'success');
     } catch (error) {
       errorMessage = toErrorMessage(error);
     } finally {
@@ -3099,7 +3114,7 @@
       sessionModelCatalogs.set(session.id, result.catalog);
       sessionModelCatalog = result.catalog;
       sessionModelOverride = null;
-      notice = `当前模型：${result.catalog.current?.label ?? '默认'} · ${reasoningEffortLabel(result.catalog, result.catalog.currentReasoningEffort) ?? '模型默认'}。`;
+      setNotice(`当前模型：${result.catalog.current?.label ?? '默认'} · ${reasoningEffortLabel(result.catalog, result.catalog.currentReasoningEffort) ?? '模型默认'}。`, 'info');
     } catch (error) {
       // A model update may have succeeded before a reasoning update failed.
       // Re-read the owner so the matrix does not pretend the combined operation rolled back.
@@ -3194,7 +3209,7 @@
           updateWorkspaceSessions(session.workspaceId, (items) =>
             items.map((item) => (item.id === renamed.id ? renamed : item)),
           );
-          notice = '会话名称已更新。';
+          setNotice('会话名称已更新。', 'success');
         });
         return true;
       case 'trust':
@@ -3224,7 +3239,7 @@
             await refreshPiTree(session.id);
             piTreeOpen = true;
           } else await refreshCodexThread(session.id);
-          notice = '会话已刷新。';
+          setNotice('会话已刷新。', 'success');
         });
         return true;
       case 'session':
@@ -3232,7 +3247,7 @@
           errorMessage = '/session 不接受参数。';
           return true;
         }
-        notice = `${session.label} · ${session.externalSessionId ?? '尚未绑定远端会话 ID'}`;
+        setNotice(`${session.label} · ${session.externalSessionId ?? '尚未绑定远端会话 ID'}`, 'info');
         composerText = '';
         return true;
       case 'resume':
@@ -3247,21 +3262,21 @@
         await run(async () => {
           activateWorkspace(workspace.id);
           await refreshSessions(workspace.id);
-          notice = '会话列表已刷新。';
+          setNotice('会话列表已刷新。', 'success');
         });
         return true;
       case 'compact':
         await run(async () => {
           await agentFacade.invoke(session, 'compaction.run', { instructions: command.args });
           timeline = await getTimeline(session.id);
-          notice = '上下文压缩已完成。';
+          setNotice('上下文压缩已完成。', 'success');
         });
         return true;
       case 'thinking':
         if (command.args) await applySessionReasoningEffort(command.args);
         else {
           await loadSessionModels();
-          if (selectedSessionId === session.id && !errorMessage) notice = `当前推理强度：${sessionModelCatalog?.currentReasoningEffort ?? '模型默认'}。`;
+          if (selectedSessionId === session.id && !errorMessage) setNotice(`当前推理强度：${sessionModelCatalog?.currentReasoningEffort ?? '模型默认'}。`, 'info');
         }
         if (selectedSessionId === session.id && composerText === input) composerText = '';
         return true;
@@ -3269,7 +3284,7 @@
         if (command.args) await applySessionModel(command.args);
         else {
           await loadSessionModels();
-          if (selectedSessionId === session.id && !errorMessage) notice = `当前模型：${sessionModelCatalog?.current?.label ?? '默认'}。`;
+          if (selectedSessionId === session.id && !errorMessage) setNotice(`当前模型：${sessionModelCatalog?.current?.label ?? '默认'}。`, 'info');
         }
         if (selectedSessionId === session.id && composerText === input) composerText = '';
         return true;
@@ -3283,7 +3298,7 @@
           if (Array.isArray(result.commands)) {
             agentCommands = result.commands.filter((item): item is AgentCommand => Boolean(item && typeof item === 'object' && typeof item.name === 'string'));
           }
-          notice = '会话资源已重新加载。';
+          setNotice('会话资源已重新加载。', 'success');
         });
         return true;
       case 'fork':
@@ -3306,15 +3321,15 @@
           if (command.args.toLocaleLowerCase() === 'clear') {
             await agentFacade.invoke(session, 'goal.manage', { action: 'clear' });
             codexGoal = null;
-            notice = '当前目标已清除。';
+            setNotice('当前目标已清除。', 'success');
             return;
           }
           if (!command.args) {
             const result = await agentFacade.invoke(session, 'goal.manage', { action: 'get' });
             const goal = normalizeAgentGoal(result);
-            notice = goal?.objective
+            setNotice(goal?.objective
               ? `当前目标：${goal.objective}${goal.status ? ` · ${goal.status}` : ''}`
-              : '当前会话没有目标。';
+              : '当前会话没有目标。', 'info');
             return;
           }
           const result = await agentFacade.invoke(session, 'goal.manage', { action: 'set', objective: command.args });
@@ -3329,7 +3344,7 @@
             await agentFacade.invoke(session, 'goal.resume', {});
             await refreshSessions(session.workspaceId);
           }
-          notice = `目标已设置：${command.args}`;
+          setNotice(`目标已设置：${command.args}`, 'success');
         });
         return true;
       case 'skills':
@@ -3339,7 +3354,7 @@
         }
         await run(async () => {
           agentCommands = await loadSessionCommands(session);
-          notice = `已刷新 Skills（${agentCommands.length} 项）。`;
+          setNotice(`已刷新 Skills（${agentCommands.length} 项）。`, 'success');
         });
         return true;
       default:
@@ -3348,7 +3363,7 @@
   }
 
   async function sendPrompt() {
-    if (selectedSession?.state === 'starting') { notice = '会话正在初始化，草稿已保留，请就绪后发送。'; return; }
+    if (selectedSession?.state === 'starting') { setNotice('会话正在初始化，草稿已保留，请就绪后发送。', 'info'); return; }
     if (await executeBuiltinCommand(composerText)) return;
     await messageController.sendPrompt();
     await refreshPromptQueue();
@@ -3380,7 +3395,7 @@
       await agentFacade.invoke(session, 'compaction.run', {});
       if (selectedSessionId === session.id) timeline = await getTimeline(session.id);
       setAgentActivity(session.id, false);
-      notice = '上下文压缩已完成。';
+      setNotice('上下文压缩已完成。', 'success');
     } catch (error) {
       errorMessage = toErrorMessage(error);
       setAgentActivity(session.id, false);
@@ -3471,7 +3486,7 @@
         (item) => item.sessionId !== request.sessionId || item.requestId !== request.requestId,
       );
       userInputDrafts = clearRequestDrafts(request, userInputDrafts);
-      notice = '已提交你的回答，Agent 将继续执行。';
+      setNotice('已提交你的回答，Agent 将继续执行。', 'success');
     } catch (error) {
       errorMessage = toErrorMessage(error);
       throw error;
@@ -3584,7 +3599,7 @@
     setTimelineVisibleCount: (value) => (timelineVisibleCount = value),
     setThreadBusy: (value) => (threadBusy = value),
     setErrorMessage: (value) => (errorMessage = value),
-    setNotice: (value) => (notice = value),
+    setNotice,
   });
 
   const navigationController = createNavigationController({
@@ -3604,7 +3619,7 @@
     setProjectActions: (value) => (projectActions = value),
     setProjectActionRuns: (value) => (projectActionRuns = value),
     setWorkspaceCapabilities: (value) => (workspaceCapabilities = value),
-    setNotice: (value) => (notice = value),
+    setNotice,
     clearSelectedSessionContext,
     refreshSessions,
     refreshCodexThreads,
@@ -3642,7 +3657,7 @@
     setPendingApprovals: (value) => (pendingApprovals = value),
     setBusy: (value) => (busy = value),
     setErrorMessage: (value) => (errorMessage = value),
-    setNotice: (value) => (notice = value),
+    setNotice,
     setArchiveConfirmationSessionId: (value) => (archiveConfirmationSessionId = value),
     setArchivingSessionId: (value) => (archivingSessionId = value),
     setArchivingWorkspaceId: (value) => (archivingWorkspaceId = value),
@@ -3693,7 +3708,7 @@
     refreshCodexThreads,
     setBusy: (value) => (busy = value),
     setErrorMessage: (value) => (errorMessage = value),
-    setNotice: (value) => (notice = value),
+    setNotice,
     selectWorkspace,
   });
 
@@ -3727,7 +3742,7 @@
     setSessionsLoadingWorkspaceIds: (value) => (sessionsLoadingWorkspaceIds = value),
     setBusy: (value) => (busy = value),
     setErrorMessage: (value) => (errorMessage = value),
-    setNotice: (value) => (notice = value),
+    setNotice,
     clearSelectedSessionContext,
     refreshTimeline,
     refreshCodexThreads,
@@ -3818,7 +3833,7 @@
     refreshTurnChangeSet,
     setBusy: (value) => (busy = value),
     setErrorMessage: (value) => (errorMessage = value),
-    setNotice: (value) => (notice = value),
+    setNotice,
   });
 
   $effect(() => {
@@ -3847,7 +3862,7 @@
     setPendingApprovals: (value) => (pendingApprovals = value),
     setBusy: (value) => (busy = value),
     setErrorMessage: (value) => (errorMessage = value),
-    setNotice: (value) => (notice = value),
+    setNotice,
   });
 
   const piTreeController = createPiTreeController({
@@ -3865,7 +3880,7 @@
     setComposerText: (value) => (composerText = value),
     setBusy: (value) => (busy = value),
     setErrorMessage: (value) => (errorMessage = value),
-    setNotice: (value) => (notice = value),
+    setNotice,
   });
 
 </script>

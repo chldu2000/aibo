@@ -55,7 +55,7 @@ test('accepted sends and queued messages stay accepted when the following refres
         getAttachments: () => [], getWorkspaceSessionMap: () => ({ workspace: [session] }),
         setWorkspaceSessionMap() {}, setBusy() {}, setLastSubmittedPrompt() {}, setPromptInFlight() {}, updateWorkspaceSessions() {},
         setComposerDraftStatus: (_id, value) => failed.push(value),
-        setErrorMessage: error => errors.push(error), setNotice: notice => notices.push(notice),
+        setErrorMessage: error => errors.push(error), setNotice: (message, type) => notices.push({ message, type }),
         refreshTimeline: async () => { throw Error('timeline temporarily unavailable'); },
         refreshAttachments: async () => {},
       });
@@ -64,7 +64,7 @@ test('accepted sends and queued messages stay accepted when the following refres
       assert.equal(composer, '', 'accepted draft must be consumed despite refresh failure');
       assert.ok(!failed.includes(true), 'a refresh error cannot label the send failed');
       assert.ok(errors.every(error => error === null));
-      assert.ok(notices.some(notice => notice.includes('刷新')));
+      assert.ok(notices.some(notice => notice.message.includes('刷新') && notice.type === 'warning'));
     }
   } finally { await server.close(); }
 });

@@ -1,3 +1,4 @@
+import type { SetNotice } from './notifications';
 import type { ApprovalChoice, ApprovalRequest } from '$lib/types';
 import { toErrorMessage } from './error-utils';
 
@@ -14,7 +15,7 @@ export type ApprovalControllerContext = {
   setPendingApprovals: (value: ApprovalRequest[]) => void;
   setBusy: (value: boolean) => void;
   setErrorMessage: (value: string | null) => void;
-  setNotice: (value: string) => void;
+  setNotice: SetNotice;
 };
 
 /** Coordinates approval resolution without depending on Svelte state or UI. */
@@ -30,7 +31,7 @@ export function createApprovalController(context: ApprovalControllerContext) {
     choice: ApprovalChoice,
   ): Promise<void> {
     if (!context.getDesktop()) {
-      context.setNotice('当前是 Web 预览；审批操作需要在 Tauri 桌面模式中执行。');
+      context.setNotice('当前是 Web 预览；审批操作需要在 Tauri 桌面模式中执行。', 'warning');
       return;
     }
     const key = JSON.stringify([approval.sessionId, approval.requestId]);
@@ -54,7 +55,7 @@ export function createApprovalController(context: ApprovalControllerContext) {
         ),
       );
       const allowed = option ? option.kind === 'allow' : choice === 'accept';
-      context.setNotice(option?.label ? `已选择：${option.label}。` : allowed ? '已允许本次操作。' : '已拒绝本次操作。');
+      context.setNotice(option?.label ? `已选择：${option.label}。` : allowed ? '已允许本次操作。' : '已拒绝本次操作。', 'success');
     } catch (error) {
       context.setErrorMessage(toErrorMessage(error));
     } finally {

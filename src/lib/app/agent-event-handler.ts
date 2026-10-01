@@ -1,3 +1,4 @@
+import type { SetNotice } from './notifications';
 import { normalizeMessageQueue } from './message-queue.ts';
 import { parseSubagent } from './subagents.ts';
 import type {
@@ -30,7 +31,7 @@ export type AgentEventHandlerContext = {
   setTimeline: (timeline: TimelineItem[]) => void;
   refreshTimeline?: (sessionId: string) => void | Promise<void>;
   setRetry: (prompt: string | null, reason: string | null) => void;
-  setNotice: (notice: string) => void;
+  setNotice: SetNotice;
   refreshSessions: (workspaceId: string) => void | Promise<void>;
   refreshTurnChangeSet?: (sessionId: string) => void | Promise<void>;
   refreshArtifacts?: (sessionId: string) => void | Promise<void>;
@@ -204,7 +205,7 @@ export function handleAgentEvent(event: AgentEvent, context: AgentEventHandlerCo
       ),
     );
     if (event.sessionId === selectedSessionId) {
-      context.setNotice('Codex 原线程不可恢复，已创建新的远端线程；本地时间线已保留。');
+      context.setNotice('Codex 原线程不可恢复，已创建新的远端线程；本地时间线已保留。', 'warning');
     }
   }
 
@@ -213,7 +214,7 @@ export function handleAgentEvent(event: AgentEvent, context: AgentEventHandlerCo
     void context.refreshExecutionProfile?.(event.sessionId);
     void context.refreshTimeline?.(event.sessionId);
     const label = stringPayload(event.payload.label);
-    if (label) context.setNotice(event.payload.contextReset === true ? `已清空上下文并切换到 ${label}。` : `已切换到 ${label}。`);
+    if (label) context.setNotice(event.payload.contextReset === true ? `已清空上下文并切换到 ${label}。` : `已切换到 ${label}。`, 'success');
   }
 
   if (event.type === 'approval.requested') {
@@ -268,7 +269,7 @@ export function handleAgentEvent(event: AgentEvent, context: AgentEventHandlerCo
     context.setNotice(
       discarded > 0
         ? `${agentLabel} 进程已退出，${discarded} 个待审批请求已清除；请重新发送。`
-        : `${agentLabel} 进程已退出，会话已中断；可重新发送以恢复。`,
+        : `${agentLabel} 进程已退出，会话已中断；可重新发送以恢复。`, 'error',
     );
     context.setRetry(
       latestUserPrompt(context.timeline, context.lastSubmittedPrompt, event.turnId),

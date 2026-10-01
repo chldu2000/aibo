@@ -1,3 +1,4 @@
+import type { SetNotice } from './notifications';
 import type { Session } from '$lib/types';
 
 type Ports = {
@@ -10,7 +11,7 @@ type Ports = {
   selectSession: (id: string) => void;
   setCreating: (creating: boolean) => void;
   setError: (message: string | null) => void;
-  setNotice: (message: string) => void;
+  setNotice: SetNotice;
   refreshProfile: (id: string) => void | Promise<void>;
 };
 
@@ -27,7 +28,7 @@ export function createSessionStartupController(ports: Ports) {
         ports.putSession(session);
         if (ports.getWorkspaceId() === workspaceId && ports.getSessionId() === previousSelection) {
           ports.selectSession(session.id);
-          ports.setNotice('会话正在初始化，可以先编写消息。');
+          ports.setNotice('会话正在初始化，可以先编写消息。', 'info');
         }
       } catch (error) {
         if (ports.getWorkspaceId() === workspaceId) ports.setError(String(error));
@@ -40,7 +41,7 @@ export function createSessionStartupController(ports: Ports) {
         if (current.state === 'starting') ports.putSession({...ready, label: current.label});
         if (ports.getSessionId() === session.id) {
           void ports.refreshProfile(session.id);
-          ports.setNotice('会话已就绪，可以发送消息。');
+          ports.setNotice('会话已就绪，可以发送消息。', 'success');
         }
       } catch (error) {
         const current = ports.findSession(session.id);

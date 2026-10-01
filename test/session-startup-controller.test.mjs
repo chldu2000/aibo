@@ -3,12 +3,12 @@ import assert from 'node:assert/strict';
 import {createSessionStartupController} from '../src/lib/app/session-startup-controller.ts';
 const deferred=()=>{let resolve,reject;const promise=new Promise((a,b)=>{resolve=a;reject=b});return {promise,resolve,reject}};
 function fixture(){
- const native=deferred(), sessions=new Map();let selected=null,workspace='w',creating=false,error=null;
+ const native=deferred(), sessions=new Map(), notices=[];let selected=null,workspace='w',creating=false,error=null;
  const starting={id:'s',workspaceId:'w',agent:'external',pluginInstallationId:'p',state:'starting',archived:false,capabilities:[]};
  const controller=createSessionStartupController({prepare:async()=>starting,start:()=>native.promise,
  getWorkspaceId:()=>workspace,getSessionId:()=>selected,findSession:id=>sessions.get(id),putSession:s=>sessions.set(s.id,s),selectSession:id=>selected=id,
- setCreating:value=>creating=value,setError:value=>error=value,setNotice(){},refreshProfile(){}});
- return {controller,native,sessions,starting,get selected(){return selected},get creating(){return creating},get error(){return error},navigate(){workspace='other';selected='other'}};
+ setCreating:value=>creating=value,setError:value=>error=value,setNotice:(message,type)=>notices.push({message,type}),refreshProfile(){}});
+ return {controller,native,sessions,starting,notices,get selected(){return selected},get creating(){return creating},get error(){return error},navigate(){workspace='other';selected='other'}};
 }
 test('slow native startup exposes a host session immediately and does not lock navigation',async()=>{
  const f=fixture(),pending=f.controller.create('w','external','p');await Promise.resolve();
@@ -47,4 +47,14 @@ test('preparing a provider session preserves its binding and cannot steal a newe
   assert.equal(selected, 'other-session');
   assert.equal(sessions.get('created').pluginInstallationId, 'pinned-release');
   assert.equal(sessions.get('created').state, 'idle');
+});
+
+
+test('session startup distinguishes progress information from readiness success', async () => {
+ const f=fixture(),pending=f.controller.create('w','external','p');
+ await Promise.resolve();
+ assert.deepEqual(f.notices.map(notice=>notice.type),['info']);
+ f.native.resolve({...f.starting,state:'idle'});
+ await pending;
+ assert.deepEqual(f.notices.map(notice=>notice.type),['info','success']);
 });

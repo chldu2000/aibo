@@ -1,3 +1,4 @@
+import type { SetNotice } from './notifications';
 import type {
   CodexThreadSnapshot,
   CodexThreadSummary,
@@ -55,7 +56,7 @@ export type SessionContextControllerContext = {
   setTimelineVisibleCount: (value: number) => void;
   setThreadBusy: (value: boolean) => void;
   setErrorMessage: (value: string | null) => void;
-  setNotice: (value: string) => void;
+  setNotice: SetNotice;
 };
 
 /** Reads selected-session context and normalizes refresh feedback for the UI. */
@@ -71,7 +72,7 @@ export function createSessionContextController(context: SessionContextController
       if (workspaceId === context.getSelectedWorkspaceId()) {
         context.setCodexThreads(loadedThreads);
       }
-      if (announce) context.setNotice(`已读取 ${loadedThreads.length} 个远端会话。`);
+      if (announce) context.setNotice(`已读取 ${loadedThreads.length} 个远端会话。`, 'success');
     } catch (error) {
       if (announce) context.setErrorMessage(toErrorMessage(error));
     }
@@ -100,7 +101,7 @@ export function createSessionContextController(context: SessionContextController
       if (sessionId === context.getSelectedSessionId()) {
         context.setCodexThreadSnapshot(snapshot);
       }
-      if (announce) context.setNotice(snapshot.turnCount === null ? '已读取远端线程，原生引擎未提供轮次统计。' : `已读取远端线程，共 ${snapshot.turnCount} 轮。`);
+      if (announce) context.setNotice(snapshot.turnCount === null ? '已读取远端线程，原生引擎未提供轮次统计。' : `已读取远端线程，共 ${snapshot.turnCount} 轮。`, 'success');
     } catch (error) {
       if (sessionId === context.getSelectedSessionId()) {
         context.setCodexThreadSnapshot(null);
@@ -242,7 +243,7 @@ export function createSessionContextController(context: SessionContextController
       if (sessionId === context.getSelectedSessionId()) context.setPiTree(snapshot);
     } catch (error) {
       if (sessionId === context.getSelectedSessionId()) {
-        context.setNotice('会话树暂时无法读取，请稍后点击“刷新”重试。');
+        context.setNotice('会话树暂时无法读取，请稍后点击“刷新”重试。', 'warning');
       }
       console.warn('unable to read Pi session tree', error);
     }

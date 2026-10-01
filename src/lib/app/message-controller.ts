@@ -1,3 +1,4 @@
+import type { SetNotice } from './notifications';
 import type { ApprovalRequest, ContextAttachment, ContextAttachmentValidation, Session, Workspace } from '$lib/types';
 import { withSessionReferenceContext } from './session-references';
 import { createAgentFacade } from './agent-facade';
@@ -40,7 +41,7 @@ export type MessageControllerContext = {
   refreshTurnChangeSet?: (sessionId: string) => Promise<void>;
   setBusy: (value: boolean) => void;
   setErrorMessage: (value: string | null) => void;
-  setNotice: (value: string) => void;
+  setNotice: SetNotice;
 };
 
 export function createMessageController(context: MessageControllerContext) {
@@ -85,7 +86,7 @@ export function createMessageController(context: MessageControllerContext) {
     }
     const selectedSession = context.getSelectedSession();
     if (selectedSession?.state === 'starting') {
-      context.setNotice('会话正在初始化，草稿已保留，请就绪后发送。');
+      context.setNotice('会话正在初始化，草稿已保留，请就绪后发送。', 'info');
       return;
     }
     const draftSessionId = selectedSession?.id ?? null;
@@ -98,7 +99,7 @@ export function createMessageController(context: MessageControllerContext) {
       return;
     }
     if (!context.getDesktop()) {
-      context.setNotice('当前是 Web 预览；请在 Tauri 桌面模式中发送真实 Codex 请求。');
+      context.setNotice('当前是 Web 预览；请在 Tauri 桌面模式中发送真实 Codex 请求。', 'warning');
       return;
     }
 
@@ -145,7 +146,7 @@ export function createMessageController(context: MessageControllerContext) {
     } catch (error) {
       if (acceptedSession) {
         if (context.getSelectedSession()?.id === acceptedSession.id) {
-          context.setNotice('消息已发送，但会话信息刷新失败，请刷新后查看。');
+          context.setNotice('消息已发送，但会话信息刷新失败，请刷新后查看。', 'warning');
         }
       } else {
         if (draftSessionId) context.setComposerDraftStatus?.(draftSessionId, true);
@@ -220,7 +221,7 @@ export function createMessageController(context: MessageControllerContext) {
       await Promise.all([context.refreshTimeline(session.id), context.refreshAttachments(session.id)]);
     } catch (error) {
       if (accepted) {
-        if (context.getSelectedSession()?.id === session.id) context.setNotice('消息已加入队列，但会话信息刷新失败，请刷新后查看。');
+        if (context.getSelectedSession()?.id === session.id) context.setNotice('消息已加入队列，但会话信息刷新失败，请刷新后查看。', 'warning');
       } else context.setErrorMessage(toErrorMessage(error));
     } finally {
       context.setBusy(false);

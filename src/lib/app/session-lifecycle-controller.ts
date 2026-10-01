@@ -1,3 +1,4 @@
+import type { SetNotice } from './notifications';
 import type {
   ApprovalRequest,
   Session,
@@ -31,7 +32,7 @@ export type SessionLifecycleControllerContext = {
   setPendingApprovals: (value: ApprovalRequest[]) => void;
   setBusy: (value: boolean) => void;
   setErrorMessage: (value: string | null) => void;
-  setNotice: (value: string) => void;
+  setNotice: SetNotice;
   setArchiveConfirmationSessionId: (value: string | null) => void;
   setArchivingSessionId: (value: string | null) => void;
   setArchivingWorkspaceId: (value: string | null) => void;
@@ -71,7 +72,7 @@ export function createSessionLifecycleController(
       const renamed = await context.api.renameSession(sessionId, label);
       context.setWorkspaceSessionMap(replaceSession(context.getWorkspaceSessionMap(), renamed));
       cancelRenameSession();
-      context.setNotice('会话名称已更新。');
+      context.setNotice('会话名称已更新。', 'success');
     } catch (error) {
       context.setErrorMessage(toErrorMessage(error));
     } finally {
@@ -94,7 +95,7 @@ export function createSessionLifecycleController(
       ));
       if (context.getSelectedSessionId() === closingId) context.clearSelectedSessionContext();
       context.setNotice(
-        '会话已关闭；已保存的时间线仍可在下次启动时读取。',
+        '会话已关闭；已保存的时间线仍可在下次启动时读取。', 'success',
       );
     } catch (error) {
       context.setErrorMessage(toErrorMessage(error));
@@ -123,7 +124,7 @@ export function createSessionLifecycleController(
       void context.refreshCodexThreads(forked.workspaceId);
       context.setNotice(throughTurnId
         ? '会话分支已创建，已复制到选定回复。'
-        : '会话分支已创建，已复制最近一条已完成 turn。');
+        : '会话分支已创建，已复制最近一条已完成 turn。', 'success');
     } catch (error) {
       context.setErrorMessage(toErrorMessage(error));
     } finally {
@@ -159,7 +160,7 @@ export function createSessionLifecycleController(
       if (invalidatedCurrentSession) context.clearSelectedSessionContext();
       void context.refreshCodexThreads(archived.workspaceId);
       await context.refreshSessions(archived.workspaceId);
-      context.setNotice(`会话已归档；本地时间线仍保留。`);
+      context.setNotice(`会话已归档；本地时间线仍保留。`, 'success');
     } catch (error) {
       context.setErrorMessage(toErrorMessage(error));
     } finally {
@@ -185,7 +186,7 @@ export function createSessionLifecycleController(
       }
       if (restored.capabilities.includes('session.snapshot')) void context.refreshCodexThreads(restored.workspaceId);
       await context.refreshSessions(restored.workspaceId);
-      context.setNotice(`会话已取消归档，可以继续发送消息。`);
+      context.setNotice(`会话已取消归档，可以继续发送消息。`, 'success');
     } catch (error) {
       context.setErrorMessage(toErrorMessage(error));
     } finally {

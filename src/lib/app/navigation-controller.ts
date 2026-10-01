@@ -1,3 +1,4 @@
+import type { SetNotice } from './notifications';
 import type {
   CodexThreadSummary,
   ProjectAction,
@@ -27,7 +28,7 @@ export type NavigationControllerContext = {
   setProjectActions: (value: ProjectAction[]) => void;
   setProjectActionRuns: (value: ProjectActionRun[]) => void;
   setWorkspaceCapabilities: (value: WorkspaceCapabilityInventory | null) => void;
-  setNotice: (value: string | null) => void;
+  setNotice: SetNotice;
   clearSelectedSessionContext: () => void;
   refreshSessions: (workspaceId: string) => Promise<void> | void;
   refreshCodexThreads: (workspaceId: string) => Promise<void> | void;

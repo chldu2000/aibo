@@ -449,7 +449,8 @@ dd { max-width: 68%; overflow: hidden; margin: 0; text-overflow: ellipsis; white
 .settings-runtime-list div:first-child { padding-top: 0; }
 .settings-footer { display: flex; justify-content: flex-end; gap: 8px; padding: 13px 20px; }
 .toast-region { position: fixed; z-index: 50; top: calc(var(--aibo-titlebar-height) + 10px); left: 50%; display: grid; width: min(520px, calc(100vw - 32px)); gap: 8px; pointer-events: none; }
-.toast { width: 100%; max-width: none; padding: 11px 14px; overflow-wrap: anywhere; }
+.toast { display: flex; align-items: flex-start; gap: 10px; width: 100%; max-width: none; padding: 11px 14px; overflow-wrap: anywhere; }
+.toast-copy { display: grid; min-width: 0; gap: 2px; }
 .alert-dialog-overlay { position: fixed; z-index: 20; inset: 0; display: grid; place-items: center; padding: 24px; }
 .alert-dialog { width: min(420px, 100%); }
 .alert-dialog-header { padding: 18px 18px 8px; }

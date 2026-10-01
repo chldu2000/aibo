@@ -1,3 +1,4 @@
+import type { SetNotice } from './notifications';
 import type {
   AgentDiagnostic,
   CodexThreadSummary,
@@ -51,7 +52,7 @@ export type RefreshControllerContext = {
   setSessionsLoadingWorkspaceIds: (value: string[]) => void;
   setBusy: (value: boolean) => void;
   setErrorMessage: (value: string | null) => void;
-  setNotice: (value: string) => void;
+  setNotice: SetNotice;
   clearSelectedSessionContext: () => void;
   refreshTimeline: (sessionId: string) => Promise<void>;
   refreshCodexThreads: (workspaceId: string) => Promise<void> | void;
@@ -189,7 +190,7 @@ export function createRefreshController(context: RefreshControllerContext) {
 
   async function refresh(): Promise<void> {
     if (!context.getDesktop()) {
-      context.setNotice('当前是 Web 预览；请在 Tauri 桌面模式中刷新本机诊断。');
+      context.setNotice('当前是 Web 预览；请在 Tauri 桌面模式中刷新本机诊断。', 'warning');
       return;
     }
     context.setBusy(true);
