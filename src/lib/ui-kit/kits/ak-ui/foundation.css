@@ -286,11 +286,12 @@
 :where(.app-shell[data-ui-kit='ak-ui']) .settings-runtime-list div:first-child { border-top: 0; }
 :where(.app-shell[data-ui-kit='ak-ui']) .settings-footer { border-top: 1px solid var(--aibo-border); }
 :where(.app-shell[data-ui-kit='ak-ui']) .toast-region { transform: translateX(-50%); }
-.app-shell[data-ui-kit='ak-ui'] [data-slot='card'].toast { box-shadow: 0 12px 36px #00000066; font-size: var(--aibo-type-meta, 12px); line-height: 1.5; animation: ak-toast-enter 160ms ease-out; }
-.app-shell[data-ui-kit='ak-ui'] [data-slot='card'].error-toast { border-color: var(--aibo-danger-border); color: var(--aibo-danger-text); background: var(--aibo-danger-surface); }
-.app-shell[data-ui-kit='ak-ui'] [data-slot='card'].success-toast { border-color: var(--aibo-success-border); color: var(--aibo-success-text); background: var(--aibo-success-surface); }
-.app-shell[data-ui-kit='ak-ui'] [data-slot='card'].info-toast { border-color: var(--aibo-accent-border); color: var(--aibo-info-text); background: var(--aibo-info-surface); }
-.app-shell[data-ui-kit='ak-ui'] [data-slot='card'].warning-toast { border-color: var(--aibo-warning-border); color: var(--aibo-warning-text); background: var(--aibo-warning-surface); }
+.app-shell[data-ui-kit='ak-ui'] [data-slot='card'].toast { border: 1px solid var(--aibo-border-strong); border-left: 3px solid var(--toast-signal); border-radius: 0; background: var(--ak-surface-raised); color: var(--aibo-text); box-shadow: var(--ak-shadow-panel); font-size: var(--aibo-type-ui, 13px); line-height: 1.5; animation: ak-toast-enter 160ms ease-out; }
+.app-shell[data-ui-kit='ak-ui'] .toast-symbol, .app-shell[data-ui-kit='ak-ui'] .toast-label { color: var(--toast-signal); }
+.app-shell[data-ui-kit='ak-ui'] [data-slot='card'].success-toast { --toast-signal: var(--aibo-success-text); --toast-symbol-surface: var(--aibo-success-surface); }
+.app-shell[data-ui-kit='ak-ui'] [data-slot='card'].info-toast { --toast-signal: var(--aibo-info-text); --toast-symbol-surface: var(--aibo-info-surface); }
+.app-shell[data-ui-kit='ak-ui'] [data-slot='card'].warning-toast { --toast-signal: var(--aibo-warning-text); --toast-symbol-surface: var(--aibo-warning-surface); }
+.app-shell[data-ui-kit='ak-ui'] [data-slot='card'].error-toast { --toast-signal: var(--aibo-danger-text); --toast-symbol-surface: var(--aibo-danger-surface); }
 .app-shell[data-ui-kit='ak-ui'] .toast-label { font-weight: 600; }
 @keyframes ak-toast-enter { from { opacity: 0; transform: translateY(-6px); } to { opacity: 1; transform: translateY(0); } }
 @media (prefers-reduced-motion: reduce) { .app-shell[data-ui-kit='ak-ui'] [data-slot='card'].toast { animation: none; } }

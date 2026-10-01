@@ -52,7 +52,7 @@
       <Card class={`toast ${notification.type}-toast`} data-notification-type={notification.type}
         role={notification.type === 'error' ? 'alert' : 'status'}
         aria-live={notification.type === 'error' ? 'assertive' : 'polite'} aria-atomic="true">
-        <Icon name={notificationIcons[notification.type]} />
+        <span class="toast-symbol"><Icon name={notificationIcons[notification.type]} /></span>
         <div class="toast-copy">
           <strong class="toast-label">{notificationLabels[notification.type]}</strong>
           <span>{notification.message}</span>

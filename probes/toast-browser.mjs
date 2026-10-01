@@ -44,27 +44,31 @@ try {
         const toast = page.locator(`[data-notification-type="${type}"]`);
         await toast.waitFor();
         const semantic = type === 'error' ? 'danger' : type;
-        const actual = await toast.evaluate((element, semantic) => {
+        const actual = await toast.evaluate((element, { semantic, kit }) => {
           const style = getComputedStyle(element);
           const reference = document.createElement('div');
-          const border = semantic === 'info' ? '--aibo-accent-border' : `--aibo-${semantic}-border`;
-          reference.style.cssText = `background:var(--aibo-${semantic}-surface);color:var(--aibo-${semantic}-text);border:1px solid var(${border})`;
+          const surface = kit === 'ak-ui' ? '--ak-surface-raised' : '--md-aibo-surface-inverse';
+          const text = kit === 'ak-ui' ? '--aibo-text' : '--md-aibo-text-inverse';
+          reference.style.cssText = `background:var(${surface});color:var(${text});border:1px solid var(--aibo-${semantic}-text)`;
           element.parentElement.append(reference);
           const expected = getComputedStyle(reference);
           const result = {
             background: style.backgroundColor, expectedBackground: expected.backgroundColor,
             color: style.color, expectedColor: expected.color,
-            border: style.borderTopColor, expectedBorder: expected.borderTopColor,
+            signal: getComputedStyle(element.querySelector('.toast-symbol')).color, expectedSignal: expected.borderTopColor,
+            borderWidth: style.borderLeftWidth, border: style.borderLeftColor,
             shadow: style.boxShadow,
           };
           reference.remove();
           return result;
-        }, semantic);
+        }, { semantic, kit });
         assert.equal(actual.background, actual.expectedBackground, `${kit}/${theme} ${type} background`);
         assert.equal(actual.color, actual.expectedColor, `${kit}/${theme} ${type} text`);
-        assert.equal(actual.border, actual.expectedBorder, `${kit}/${theme} ${type} border`);
+        assert.equal(actual.signal, actual.expectedSignal, `${kit}/${theme} ${type} signal`);
+        assert.equal(actual.borderWidth, kit === 'ak-ui' ? '3px' : '0px');
+        if (kit === 'ak-ui') assert.equal(actual.border, actual.expectedSignal);
         assert.notEqual(actual.shadow, 'none', `${kit}/${theme} ${type} elevation`);
-        colors.push(actual.background);
+        colors.push(actual.signal);
         assert.equal(await toast.locator('.toast-label').textContent(), labels[type]);
         assert.ok(await toast.locator('svg path').getAttribute('d'));
         assert.equal(await toast.getAttribute('role'), type === 'error' ? 'alert' : 'status');
@@ -80,7 +84,7 @@ try {
         await page.screenshot({ animations: 'disabled', path: `/tmp/aibo-notifications/${kit}-${theme}-${type}.png` });
         await page.setViewportSize({ width: 1280, height: 900 });
       }
-      assert.equal(new Set(colors).size, 4, 'all four semantic surfaces are distinct');
+      assert.equal(new Set(colors).size, 4, 'all four status signals are distinct');
       // The existing exception channel remains visible alongside typed feedback.
       await page.evaluate(() => {
         window.__toastProbe.notify('设置已保存', 'success');
