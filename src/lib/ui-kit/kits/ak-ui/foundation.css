@@ -126,7 +126,7 @@
 :where(.app-shell[data-ui-kit='ak-ui']) .composer-textarea:focus-visible { border-color: transparent; box-shadow: none; }
 :where(.app-shell[data-ui-kit='ak-ui']) .composer-body .composer-textarea { color: transparent; caret-color: var(--aibo-text); }
 :where(.app-shell[data-ui-kit='ak-ui']) .composer-textarea::placeholder { color: var(--aibo-subtle); }
-:where(.app-shell[data-ui-kit='ak-ui']) .composer-textarea::selection { color: transparent; }
+:where(.app-shell[data-ui-kit='ak-ui']) .composer-textarea::selection { color: transparent; background: color-mix(in srgb, var(--aibo-accent) 35%, transparent); }
 :where(.app-shell[data-ui-kit='ak-ui']) .composer-mention-layer { border: 1px solid transparent; color: var(--aibo-text); font-family: inherit; font-size: var(--aibo-type-body, 14px); line-height: 1.55; scrollbar-color: transparent transparent; }
 :where(.app-shell[data-ui-kit='ak-ui']) .composer-mention { color: inherit; background: var(--aibo-accent-soft); border-radius: 3px; box-shadow: 0 0 0 1px var(--aibo-accent-border); }
 :where(.app-shell[data-ui-kit='ak-ui']) .composer-suggestions { border: 1px solid var(--aibo-border-strong); border-radius: 8px; background: var(--aibo-surface); box-shadow: 0 12px 28px rgb(0 0 0 / 28%); }
