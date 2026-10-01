@@ -1,4 +1,9 @@
 <script lang="ts">
+  import { openExternalLink } from '$lib/api';
+  async function handleOpenLink(url: string): Promise<void> {
+    try { await openExternalLink(url); }
+    catch (error) { setNotice(`无法打开链接：${String(error)}`, 'error'); }
+  }
   import { notificationDuration, type AppNotification, type NotificationType } from '$lib/app/notifications';
   import { createPluginLifecycleController, type PluginLifecycleState } from '$lib/app/plugin-lifecycle-controller';
   import { previewPluginRemoval, readPluginUpgradePolicy, savePluginUpgradePolicy, migratePluginSessions } from '$lib/api';
@@ -266,7 +271,7 @@
     switch (action.operation) {
       case 'draft': composerText = intent.value!; handleComposerInput(composerText); break;
       case 'copyCode': await navigator.clipboard.writeText(action.args[2]!); setNotice('代码已复制', 'success'); break;
-      case 'openLink': window.open(action.args[2]!, '_blank', 'noopener,noreferrer'); break;
+      case 'openLink': await handleOpenLink(action.args[2]!); break;
       case 'send': await sendPrompt(); break;
       case 'stop': await abortPrompt(); break;
       case 'retry': await retryLastPrompt(); break;
@@ -4167,6 +4172,7 @@
     <!-- Input callbacks refresh their session guard; a function-binding setter
          is initialized once and would reject edits after session navigation. -->
     <TimelinePanel
+      onOpenLink={guard('onOpenLink', (url) => void handleOpenLink(url))}
       presentationActions={conversationActions}
       activeTab={sessionTabs[selectedSessionId ?? ''] ?? 'conversation'}
       onSelectTab={guard('onSelectTab', (tab) => {
@@ -4446,6 +4452,7 @@
 
 {#if selectedSubagent}
   <SubagentDetails open={subagentOpen} agent={selectedSubagent} entries={subagentEntries} loading={subagentLoading} error={subagentError}
+    onOpenLink={handleOpenLink}
     onClose={() => subagentOpen = false} onRetry={() => void openSubagent(selectedSubagent!.id)} />
 {/if}
 

@@ -2,7 +2,7 @@ import { createServer } from 'vite';
 
 // Preview fixture shared by built-in appearance probes. The real App owns all
 // interactions; this transform supplies only local workspace/session data.
-export function createBuiltinWorkbenchServer({markdown} = {}) {
+export function createBuiltinWorkbenchServer({markdown, plugins = []} = {}) {
   return createServer({server:{host:'127.0.0.1',port:0,strictPort:false,hmr:false,watch:null},plugins:[{
   name:'ak-ui-preview-data',enforce:'pre',transform(code,id){
     if(!id.endsWith('/src/App.svelte'))return;
@@ -19,5 +19,5 @@ export function createBuiltinWorkbenchServer({markdown} = {}) {
       ];attachments = [{id:'image-fixture',sessionId:'a',turnId:null,path:'clipboard-wide.png',mediaType:'image/png',size:2400,source:'picker',sendStrategy:'inline',createdAt:'now'},{id:'file-fixture',sessionId:'a',turnId:null,path:'pnpm-lock.yaml',mediaType:'text/plain',size:1200,source:'picker',sendStrategy:'reference',createdAt:'now'}];},350);`);
     return markdown === undefined ? transformed : transformed.replace(/(id:'a1'[\s\S]*?content:)'(?:[^'\\]|\\.)*'/, (_, prefix) => prefix + JSON.stringify(markdown).replaceAll('<', '\\u003c'));
   }
-}]});
+}, ...plugins]});
 }

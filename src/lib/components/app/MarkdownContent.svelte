@@ -3,7 +3,7 @@
   import { Badge, Button } from '$lib/ui-kit';
   import {parseMarkdown,displayMarkdown, type InlineSegment, type MarkdownBlock} from '../../../../packages/presentation-workbench/markdown.js';
   import {highlightCode, type CodeSegment} from '../../../../packages/presentation-workbench/code-highlight.js';
-  let { content = '' }: { content?: string } = $props();
+  let { content = '', onOpenLink }: { content?: string; onOpenLink?: (url: string) => void } = $props();
   let copiedBlockIndex = $state<number | null>(null);
   let copyResetTimer: ReturnType<typeof setTimeout> | undefined;
   const blocks = $derived(parseMarkdown(displayMarkdown(content)));
@@ -26,7 +26,9 @@
     {:else if segment.kind === 'strong'}<strong>{@render inline(segment.children ?? [])}</strong>
     {:else if segment.kind === 'em'}<em>{@render inline(segment.children ?? [])}</em>
     {:else if segment.kind === 'del'}<del>{@render inline(segment.children ?? [])}</del>
-    {:else if segment.kind === 'link'}<a href={segment.href} target="_blank" rel="noreferrer">{@render inline(segment.children ?? [])}</a>
+    {:else if segment.kind === 'link'}<a href={segment.href} target="_blank" rel="noreferrer" onclick={(event) => {
+      if (onOpenLink) { event.preventDefault(); onOpenLink(segment.href!); }
+    }}>{@render inline(segment.children ?? [])}</a>
     {:else}{segment.value}{/if}
   {/each}
 {/snippet}

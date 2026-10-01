@@ -4527,6 +4527,7 @@ pub fn run() {
 
     tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
+        .plugin(tauri_plugin_opener::Builder::new().open_js_links_on_click(false).build())
         .setup(|app| {
             let data_dir = app.path().app_data_dir().map_err(|error| {
                 Box::new(CoreError::Initialization(format!(

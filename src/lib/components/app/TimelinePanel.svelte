@@ -28,6 +28,7 @@
   } from './view-types';
 
   type TimelinePanelProps = {
+    onOpenLink?: (url: string) => void;
     onOpenSubagent?: (id: string) => void;
     presentationActions?: Snippet;
     activeTab?: 'conversation' | 'executions' | 'changes';
@@ -107,6 +108,7 @@
   };
 
   let {
+    onOpenLink,
     onOpenSubagent,
     presentationActions,
     activeTab = 'conversation',
@@ -365,7 +367,7 @@
                         <span class="tool-output-name">{systemItem.content.split('\n')[0] || '系统消息'}</span>
                         <span class="tool-output-action">查看详情</span>
                       </summary>
-                      <div class="entry-content"><MarkdownContent content={systemItem.content} /></div>
+                      <div class="entry-content"><MarkdownContent {onOpenLink} content={systemItem.content} /></div>
                     </details>
                   {/each}
                 </div>
@@ -399,7 +401,7 @@
               {#if item.toolName === 'reasoning' && item.role === 'system'}
                 <details class="tool-output">
                   <summary>思考 · 查看详情</summary>
-                  <div class="entry-content"><MarkdownContent content={item.content} /></div>
+                  <div class="entry-content"><MarkdownContent {onOpenLink} content={item.content} /></div>
                 </details>
               {:else if item.role === 'tool'}
                 <details class="tool-output">
@@ -412,7 +414,7 @@
               {:else}
                 {@const attached = item.role === 'user' ? splitMessageAttachments(item.content, attachments) : { body:item.content, attachments:[] }}
                 {@const message = item.role === 'user' ? splitSessionReferences(attached.body) : { body: item.content, references: [] }}
-                <div class="entry-content">{#if message.body}<MarkdownContent content={message.body} />{:else if !message.references.length && !attached.attachments.length}…{/if}</div>
+                <div class="entry-content">{#if message.body}<MarkdownContent {onOpenLink} content={message.body} />{:else if !message.references.length && !attached.attachments.length}…{/if}</div>
                 <AttachmentList items={attached.attachments} previews={attachmentPreviews} />
                 {#each message.references as reference, index (`${reference.id}-${index}`)}
                   <details class="tool-output">

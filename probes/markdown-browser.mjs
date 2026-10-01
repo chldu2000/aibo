@@ -42,6 +42,24 @@ try {
     assert.equal(await message.locator('script').count(),0);
     assert.equal(await page.evaluate(() => window.markdownInjected),undefined);
     assert.equal(await message.locator('a[href^="javascript"]').count(),0);
+    await page.context().route('https://example.invalid/**', route => route.fulfill({body:'link destination'}));
+    const popupPromise = page.waitForEvent('popup');
+    await message.getByRole('link',{name:'文档',exact:true}).click();
+    const popup = await popupPromise;
+    await popup.waitForLoadState('domcontentloaded');
+    assert.equal(popup.url(),'https://example.invalid/docs?a=1&b=2');
+    await popup.close();
+    // Exercise the same App callback with the native port substituted after startup.
+    await page.evaluate(() => {
+      window.linkCalls = [];
+      window.__TAURI_INTERNALS__ = {invoke:async (command,args) => {
+        window.linkCalls.push({command,args}); throw Error('opener unavailable');
+      }};
+    });
+    await message.getByRole('link',{name:'文档',exact:true}).click();
+    await page.getByText('无法打开链接：Error: opener unavailable',{exact:true}).waitFor();
+    assert.deepEqual(await page.evaluate(() => window.linkCalls),[{command:'plugin:opener|open_url',args:{url:'https://example.invalid/docs?a=1&b=2',with:undefined}}]);
+    await page.evaluate(() => { delete window.__TAURI_INTERNALS__; });
     const code = await message.locator('pre code').textContent();
     await message.getByRole('button',{name:'复制',exact:true}).click();
     assert.equal(await page.evaluate(() => window.markdownCopies.at(-1)),code);

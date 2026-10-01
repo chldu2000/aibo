@@ -64,9 +64,14 @@ Agent 名称和品牌图标来自绑定插件声明，缺失时使用通用回�
 Markdown 也在 `packages/presentation-workbench/markdown.js` 共享解析，支持技术回答常用的
 GFM 表格、编号/嵌套/任务列表、引用、完整标题、强调和代码；内置组件与外部视觉树分别
 安全绘制同一份数据，不注入 HTML。代码高亮使用纯文本节点，复制保留完整源代码。
+回答中的网页/邮件链接由宿主统一打开：内置时间线和子 Agent 详情上报 `onOpenLink`，
+外部工作台沿用已校验的 `openLink` 动作。桌面通过 Tauri opener 调用系统默认应用，
+原生权限仅允许 `http`、`https`、`mailto`，不授予文件路径打开权限；浏览器预览使用新标签页。
+打开失败由宿主显示通知，不依赖 WebView 的 `target="_blank"` 新窗口行为。
 布局在 UI kit 的 base 层，颜色和排版在各 kit 中定义，外部包提供自己的样式。
 公式、Mermaid 和远程图片预览不在此渲染范围。验证入口为
 `test/markdown-technical.test.mjs`、`probes/markdown-browser.mjs` 和完整外部皮肤探针。
+`probes/markdown-links-native.mjs` 用隔离桌面实例验证回答链接实际到达系统浏览器。
 
 用户消息通过持久化的附件 ID 关联附件，不能按可能共享的 turnId 批量关联。预览请求只传会话与附件 ID，
 由宿主校验所有权、工作区边界、格式、大小和哈希；切换会话后丢弃迟到预览，失败时仍保留文件名。

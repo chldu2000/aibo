@@ -46,6 +46,7 @@
     "@earendil-works/pi-coding-agent": "0.84.4",
     "@tauri-apps/api": "^2.8.0",
     "@tauri-apps/plugin-dialog": "^2.7.3",
+    "@tauri-apps/plugin-opener": "^2.7.0",
     "@yunyoujun/ak-ui": "1.1.0",
     "clsx": "^2.1.1",
     "entities": "^8.1.0",

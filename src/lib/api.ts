@@ -1,6 +1,7 @@
 import { createWorkspaceWriteController } from './app/workspace-write-controller';
 import type { PresentationRelease, InstalledPresentationPackage, PresentationSelection } from './presentation-runtime/types';
 import { invoke } from '@tauri-apps/api/core';
+import { openUrl } from '@tauri-apps/plugin-opener';
 import { listen, type UnlistenFn } from '@tauri-apps/api/event';
 import { getCurrentWindow } from '@tauri-apps/api/window';
 import type {
@@ -60,6 +61,14 @@ const workspaceWrites = createWorkspaceWriteController({
 
 export const isTauri = (): boolean =>
   typeof window !== 'undefined' && '__TAURI_INTERNALS__' in window;
+
+export async function openExternalLink(url: string): Promise<void> {
+  if (!/^(?:https?:\/\/|mailto:)/i.test(url) || /[\u0000-\u0020\u007f]/.test(url)) {
+    throw new Error('不支持的链接地址');
+  }
+  if (isTauri()) await openUrl(url);
+  else window.open(url, '_blank', 'noopener,noreferrer');
+}
 
 export interface PluginInstallation {
   id: string;

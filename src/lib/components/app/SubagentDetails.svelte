@@ -3,9 +3,10 @@
   import { SubagentDialog, Badge, Button } from '$lib/ui-kit';
   import MarkdownContent from './MarkdownContent.svelte';
   import { subagentStatusLabels, type SubagentTask, type SubagentEntry } from '$lib/app/subagents';
-  let {open, agent, entries, loading, error, onClose, onRetry}: {
+  let {open, agent, entries, loading, error, onClose, onRetry, onOpenLink}: {
     open: boolean; agent: SubagentTask; entries: SubagentEntry[]; loading: boolean; error: string | null;
     onClose: () => void; onRetry: () => void;
+    onOpenLink?: (url: string) => void;
   } = $props();
   const agentId = $derived(agent.id);
   let feed: HTMLDivElement;
@@ -40,8 +41,8 @@
       <article class="subagent-entry">
         <div class="entry-meta"><Badge variant="outline">{entry.role === 'assistant' ? agent.name : entry.role === 'tool' ? '工具' : entry.role === 'system' ? '思考摘要' : '任务'}</Badge><Badge variant={entry.status === 'failed' ? 'destructive' : 'outline'}>{entry.status === 'streaming' ? '进行中' : entry.status === 'failed' ? '失败' : entry.status === 'interrupted' ? '已中断' : '完成'}</Badge></div>
         {#if entry.role === 'tool' || entry.role === 'system'}
-          <details class="tool-output"><summary>{entry.toolName === 'reasoning' ? '查看思考摘要' : entry.toolName || '查看工具输出'}</summary>{#if entry.role === 'system'}<MarkdownContent content={entry.content}/>{:else}<pre>{entry.content || '等待工具输出…'}</pre>{/if}</details>
-        {:else}<div class="entry-content"><MarkdownContent content={entry.content}/></div>{/if}
+          <details class="tool-output"><summary>{entry.toolName === 'reasoning' ? '查看思考摘要' : entry.toolName || '查看工具输出'}</summary>{#if entry.role === 'system'}<MarkdownContent {onOpenLink} content={entry.content}/>{:else}<pre>{entry.content || '等待工具输出…'}</pre>{/if}</details>
+        {:else}<div class="entry-content"><MarkdownContent {onOpenLink} content={entry.content}/></div>{/if}
       </article>
     {/each}
     {#if !entries.length && !loading && !error}<p class="subagent-feedback">尚无过程消息，新的活动会显示在这里。</p>{/if}

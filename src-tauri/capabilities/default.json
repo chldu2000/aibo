@@ -9,6 +9,10 @@
     "core:window:allow-toggle-maximize",
     "core:window:allow-minimize",
     "core:window:allow-close",
-    "dialog:default"
+    "dialog:default",
+    {
+      "identifier": "opener:allow-open-url",
+      "allow": [{ "url": "http://*" }, { "url": "https://*" }, { "url": "mailto:*" }]
+    }
   ]
 }

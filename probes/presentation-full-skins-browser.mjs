@@ -41,6 +41,7 @@ try {
     window.__TAURI_INTERNALS__={metadata:{currentWindow:{label:'main'},currentWebview:{label:'main'}},
       transformCallback(fn){const id=++callback;window['_'+id]=fn;return id;},unregisterCallback(id){delete window['_'+id];},
       async invoke(command,args={}){
+        if(command==='plugin:opener|open_url'){window.presentationLinks.push([args.url]);return;}
         if(command==='read_workspace_preferences')return {trustNewWorkspaces:true};
         window.presentationCommands.push(command);window.navigationCalls.push({command,args});
         if(command==='plugin:event|listen'){if(args.event==='agent-event')agentHandler=args.handler;return 1;}
@@ -321,6 +322,7 @@ try {
     assert.ok(await frame.locator('.markdown-content .hljs-keyword').count());
     await frame.getByRole('button',{name:'复制代码',exact:true}).first().click();
     await page.waitForFunction(()=>window.presentationCopies.includes('const answer = 42;'));
+    await page.evaluate(() => { window.open = () => { throw Error('Desktop links must use the native opener'); }; });
     await frame.getByRole('link',{name:'Reference',exact:true}).click();
     await page.waitForFunction(()=>window.presentationLinks.some(args=>args[0]==='https://example.invalid'));
     assert.equal(await frame.getByText('internal metadata',{exact:true}).count(),0);

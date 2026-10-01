@@ -26,6 +26,7 @@ sha2 = "0.10"
 sqlx = { version = "0.8", default-features = false, features = ["runtime-tokio-rustls", "sqlite", "migrate", "macros"] }
 tauri = { version = "2.11.5", features = [] }
 tauri-plugin-dialog = "2.0.0-rc.8"
+tauri-plugin-opener = "2"
 thiserror = "2.0"
 time = { version = "0.3", features = ["formatting", "macros"] }
 tokio = { version = "1.53", features = ["io-util", "macros", "process", "sync", "time"] }
