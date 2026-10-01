@@ -288,7 +288,7 @@ pub(crate) async fn install_builtins(db: &SqlitePool, data_dir: &Path) -> Result
         .execute(db).await.map_err(io_error)?;
     for (directory, files) in [
         ("codex-2.0.16", vec![("NOTICE.md", include_bytes!("../capability-plugins/codex/NOTICE.md").as_slice()), ("plugin.json", include_bytes!("../capability-plugins/codex/plugin.json").as_slice()), ("engine.mjs", include_bytes!("../capability-plugins/codex/engine.mjs").as_slice()), ("worker.mjs", include_bytes!("../capability-plugins/codex/worker.mjs").as_slice()), ("session-provider.mjs", include_bytes!("../capability-plugins/session-provider.mjs").as_slice())]),
-        ("pi-2.0.9", vec![("NOTICE.md", include_bytes!("../capability-plugins/pi/NOTICE.md").as_slice()), ("plugin.json", include_bytes!("../capability-plugins/pi/plugin.json").as_slice()), ("engine.mjs", include_bytes!("../capability-plugins/pi/engine.mjs").as_slice()), ("worker.mjs", include_bytes!("../capability-plugins/pi/worker.mjs").as_slice()), ("session-provider.mjs", include_bytes!("../capability-plugins/session-provider.mjs").as_slice())]),
+        ("pi-2.0.10", vec![("NOTICE.md", include_bytes!("../capability-plugins/pi/NOTICE.md").as_slice()), ("plugin.json", include_bytes!("../capability-plugins/pi/plugin.json").as_slice()), ("engine.mjs", include_bytes!("../capability-plugins/pi/engine.mjs").as_slice()), ("worker.mjs", include_bytes!("../capability-plugins/pi/worker.mjs").as_slice()), ("session-provider.mjs", include_bytes!("../capability-plugins/session-provider.mjs").as_slice())]),
     ] {
         let source = data_dir.join("bundled-plugin-sources").join(directory);
         fs::create_dir_all(&source).map_err(io_error)?;
