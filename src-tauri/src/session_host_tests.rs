@@ -210,7 +210,7 @@ async fn plugin_upgrade_migrates_recovery_before_removing_old_private_data() {
     let source=session.plugin_installation_id.clone().unwrap();
     let before=host.saved_binding(&session.id).await.unwrap().unwrap();
     let target=install_test_upgrade(&root,&db,false).await;
-    let report=host.upgrade_enabled(&root.join("data"),&target).await.unwrap();
+    let report=host.migrate_release(&root.join("data"),&source,&target).await.unwrap();
     assert!(report.failed.is_empty(),"{:?}",report.failed.iter().map(|e|&e.label).collect::<Vec<_>>());
     assert_eq!(report.migrated,vec![session.id.clone()]);
     let after=host.saved_binding(&session.id).await.unwrap().unwrap();
@@ -228,15 +228,11 @@ async fn plugin_upgrade_migrates_recovery_before_removing_old_private_data() {
 }
 
 #[tokio::test]
-async fn plugin_upgrade_failure_and_pinned_policy_preserve_original_binding() {
+async fn plugin_upgrade_failure_preserves_original_binding() {
     let (root,db,broker,host,session)=concurrent_session_fixture().await;
     let source=session.plugin_installation_id.clone().unwrap();
     let before=host.saved_binding(&session.id).await.unwrap();
     let target=install_test_upgrade(&root,&db,true).await;
-    crate::plugin_lifecycle::save_policy(&db,crate::plugin_lifecycle::UpgradePolicy::Pinned).await.unwrap();
-    assert!(host.upgrade_enabled(&root.join("data"),&target).await.unwrap().migrated.is_empty());
-    crate::plugin_lifecycle::save_policy(&db,crate::plugin_lifecycle::UpgradePolicy::Ask).await.unwrap();
-    assert!(host.upgrade_enabled(&root.join("data"),&target).await.unwrap().migrated.is_empty());
     let report=host.migrate_release(&root.join("data"),&source,&target).await.unwrap();
     assert_eq!(report.failed.len(),1);
     assert_eq!(host.saved_binding(&session.id).await.unwrap(),before);

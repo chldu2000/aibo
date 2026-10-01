@@ -17,7 +17,6 @@ for(const kitId of ['material3','ak-ui'])for(const themeId of ['light','dark']){
    if(command==='get_app_snapshot')return {platform:'macos',appVersion:'probe',workspaceCount:0,diagnostics:[]};
    if(command==='list_plugin_installations')return [current];
    if(command==='list_plugin_undo_targets')return undo;
-   if(command==='read_plugin_upgrade_policy')return 'automatic';
    if(command==='preview_plugin_install')return {pluginId:'third.party',version:window.installKind==='downgrade'?'0.5.0':'2.0.0',kind:window.installKind,previous:[current.pluginVersion],token:'reviewed',blockers:[],impacts:[{id:current.id,sessions:[{id:'s',label:'Important history'}],bindings:[],dependencies:[],active:0,targets:[]}]};
    if(command==='install_agent_plugin'){if(args.token!=='reviewed')throw Error('unreviewed');if(window.installKind==='downgrade'&&!args.reinstall)throw Error('unsafe downgrade');current={...current,id:'new',pluginVersion:args.reinstall?'0.5.0':'2.0.0',enabled:!args.reinstall};undo=args.reinstall?[]:['new'];return current;}
    if(command==='undo_plugin_replacement'){current={...current,id:'old',pluginVersion:'1.0.0'};undo=[];return;}

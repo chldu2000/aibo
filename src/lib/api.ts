@@ -121,8 +121,6 @@ export const undoPluginReplacement = (id: string): Promise<void> => invoke('undo
 export const setAgentPluginEnabled = (id: string, enabled: boolean): Promise<import('./app/plugin-lifecycle-controller').PluginMigrationReport> => invoke('set_agent_plugin_enabled', { id, enabled });
 export const uninstallAgentPlugin = (id: string, token: string, keepHistory: boolean): Promise<void> => invoke('uninstall_agent_plugin', { id, token, keepHistory });
 export const previewPluginRemoval = (id: string): Promise<import('./app/plugin-lifecycle-controller').PluginRemovalImpact> => invoke('preview_plugin_removal', { id });
-export const readPluginUpgradePolicy = (): Promise<import('./app/plugin-lifecycle-controller').PluginUpgradePolicy> => invoke('read_plugin_upgrade_policy');
-export const savePluginUpgradePolicy = (policy: import('./app/plugin-lifecycle-controller').PluginUpgradePolicy): Promise<import('./app/plugin-lifecycle-controller').PluginUpgradePolicy> => invoke('save_plugin_upgrade_policy', { policy });
 export const migratePluginSessions = (id: string, target: string): Promise<import('./app/plugin-lifecycle-controller').PluginMigrationReport> => invoke('migrate_plugin_sessions', { id, target });
 export const createAgentSession = (workspaceId: string, agentId: string, installationId?: string, requestedProfile?: ExecutionProfile | null, deferStart = false): Promise<Session> => invoke('create_agent_session', { workspaceId, agentId, installationId, requestedProfile, deferStart });
 export const sendAgentPrompt = (sessionId: string, input: string): Promise<Session> => invoke('send_agent_prompt', { sessionId, input });

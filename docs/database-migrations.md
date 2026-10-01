@@ -58,7 +58,7 @@ CI 获取完整历史；缺少基线或全零 SHA 会使检查失败，不会静
 `plugin_replacement_crash_recovery_restores_partially_migrated_sessions` 覆盖部分完成后的重开恢复。
 既有冻结 0055 升级回归继续验证升级到最新结构时历史、设置和全部旧 checksum 不变。
 
-0055 增加插件升级策略、历史只读标记、版本迁移记录和可重试的清理任务。
+0055 增加插件升级策略（已退役，表保留但不再读取）、历史只读标记、版本迁移记录和可重试的清理任务。
 开发库曾应用缺少 `presentation_removals` 和 `plugin_session_candidates` 的 0055 中间版本；
 其原始 SQL 冻结于 `migration-history/0055_plugin_lifecycle_initial.sql`，仅按完整 checksum 识别。
 0056 为这份历史版本补齐两张表，对完整的 0055 保持幂等，不改写已有迁移记录或用户数据。

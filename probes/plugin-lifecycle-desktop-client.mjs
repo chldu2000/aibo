@@ -2,9 +2,7 @@ import { invoke } from '@tauri-apps/api/core';
 const check=(condition,message)=>{if(!condition)throw Error(message);};
 try {
   const {workspacePath,packagePath,upgradePath,downgradePath}=await(await fetch('/__plugin_lifecycle_config')).json();
-  check(await invoke('read_plugin_upgrade_policy')==='automatic','default policy');
-  check(await invoke('save_plugin_upgrade_policy',{policy:'pinned'})==='pinned','save policy');
-  check(await invoke('read_plugin_upgrade_policy')==='pinned','read saved policy');
+  check(await invoke('read_plugin_upgrade_policy').then(()=>false,()=>true),'retired upgrade policy command is not registered');
   const workspace=await invoke('add_workspace',{path:workspacePath});
   let plugin=await invoke('install_agent_plugin',{path:packagePath});
   await invoke('set_agent_plugin_enabled',{id:plugin.id,enabled:true});

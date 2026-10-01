@@ -1,41 +1,9 @@
-//! Host-owned removal previews and upgrade policy. Package history is not recovery data.
-use serde::{Deserialize, Serialize};
+//! Host-owned removal previews and session migration. Package history is not recovery data.
+use serde::Serialize;
 use sha2::{Digest, Sha256};
 use sqlx::{Row, SqlitePool};
 use std::path::{Path, PathBuf};
 
-#[derive(Clone, Copy, Debug, Deserialize, Serialize, PartialEq, Eq)]
-#[serde(rename_all = "camelCase")]
-pub(crate) enum UpgradePolicy {
-    Automatic,
-    Ask,
-    Pinned,
-}
-
-pub(crate) async fn policy(db: &SqlitePool) -> Result<UpgradePolicy, String> {
-    let value: String =
-        sqlx::query_scalar("SELECT policy FROM plugin_upgrade_preferences WHERE id=1")
-            .fetch_one(db)
-            .await
-            .map_err(error)?;
-    serde_json::from_value(serde_json::Value::String(value)).map_err(error)
-}
-pub(crate) async fn save_policy(
-    db: &SqlitePool,
-    policy: UpgradePolicy,
-) -> Result<UpgradePolicy, String> {
-    sqlx::query("UPDATE plugin_upgrade_preferences SET policy=? WHERE id=1")
-        .bind(
-            serde_json::to_value(policy)
-                .map_err(error)?
-                .as_str()
-                .unwrap(),
-        )
-        .execute(db)
-        .await
-        .map_err(error)?;
-    Ok(policy)
-}
 pub(crate) fn error(value: impl std::fmt::Display) -> String {
     value.to_string()
 }
@@ -205,12 +173,22 @@ mod tests {
                 .await
                 .unwrap();
         connection.close().await.unwrap();
+        // The retired upgrade policy row is no longer read, but migration 55 still creates and keeps it.
+        let stored = |db: SqlitePool| async move {
+            sqlx::query_scalar::<_, String>("SELECT policy FROM plugin_upgrade_preferences WHERE id=1")
+                .fetch_one(&db)
+                .await
+                .unwrap()
+        };
         let db = crate::open_database(&path).await.unwrap();
-        assert_eq!(policy(&db).await.unwrap(), UpgradePolicy::Automatic);
-        save_policy(&db, UpgradePolicy::Pinned).await.unwrap();
+        assert_eq!(stored(db.clone()).await, "automatic");
+        sqlx::query("UPDATE plugin_upgrade_preferences SET policy='pinned' WHERE id=1")
+            .execute(&db)
+            .await
+            .unwrap();
         db.close().await;
         let db = crate::open_database(&path).await.unwrap();
-        assert_eq!(policy(&db).await.unwrap(), UpgradePolicy::Pinned);
+        assert_eq!(stored(db.clone()).await, "pinned");
         let after: Vec<(i64, Vec<u8>)> = sqlx::query_as(
             "SELECT version,checksum FROM _sqlx_migrations WHERE version<=54 ORDER BY version",
         )

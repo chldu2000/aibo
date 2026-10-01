@@ -23,7 +23,7 @@
   }
   import { notificationDuration, type AppNotification, type NotificationType } from '$lib/app/notifications';
   import { createPluginLifecycleController, type PluginLifecycleState } from '$lib/app/plugin-lifecycle-controller';
-  import { previewPluginRemoval, readPluginUpgradePolicy, savePluginUpgradePolicy, migratePluginSessions } from '$lib/api';
+  import { previewPluginRemoval, migratePluginSessions } from '$lib/api';
   import NodeRuntimePanel from '$lib/components/app/NodeRuntimePanel.svelte';
   import { createNodeRuntimeController, emptyNodeRuntime } from '$lib/app/node-runtime-controller';
   import { getNodeRuntime, selectNodeRuntime, downloadNodeRuntime } from '$lib/api';
@@ -1228,14 +1228,13 @@
     publish:value=>{pluginInstall=value;},
   });
   let pluginInstallations = $state<PluginInstallation[]>([]);
-  let pluginLifecycle = $state<PluginLifecycleState>({policy:null,impact:null,busy:false,report:null,error:''});
+  let pluginLifecycle = $state<PluginLifecycleState>({impact:null,busy:false,report:null,error:''});
   const pluginLifecycleController = createPluginLifecycleController({
-    readPolicy:readPluginUpgradePolicy, savePolicy:savePluginUpgradePolicy, preview:previewPluginRemoval,
+    preview:previewPluginRemoval,
     remove:uninstallAgentPlugin, migrate:migratePluginSessions,
     refresh:async () => { await refreshPluginInstallations(); for (const workspace of workspaces) await refreshSessions(workspace.id); },
     publish:value => { pluginLifecycle=value; },
   });
-  $effect(() => { if (desktop) void pluginLifecycleController.initialize(); });
   const agentChoices = $derived(readySessionProviders(pluginInstallations));
   let pluginRefreshRevision = 0;
   async function refreshPluginInstallations(): Promise<void> {
@@ -3942,7 +3941,6 @@
     onInstallCancel={hostGuard('onInstallCancel', ()=>pluginInstallController.cancel())}
     onUndo={hostGuard('onUndo', id=>void pluginInstallController.undo(id))}
     lifecycle={pluginLifecycle}
-    onPolicyChange={hostGuard('onPolicyChange', value => void pluginLifecycleController.savePolicy(value))}
     onRemovalCancel={hostGuard('onRemovalCancel', () => pluginLifecycleController.cancel())}
     onRemovalConfirm={hostGuard('onRemovalConfirm', keepHistory => void pluginLifecycleController.remove(keepHistory))}
     onMigrate={hostGuard('onMigrate', target => void pluginLifecycleController.migrate(target))}

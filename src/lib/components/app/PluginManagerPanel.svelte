@@ -1,6 +1,6 @@
 <script lang="ts">
   import { Badge, Button, Card, CardContent, CardHeader, CardTitle } from '$lib/ui-kit';
-  import type { PluginLifecycleState, PluginUpgradePolicy } from '$lib/app/plugin-lifecycle-controller';
+  import type { PluginLifecycleState } from '$lib/app/plugin-lifecycle-controller';
 
   import type {PluginInstallState} from '$lib/app/plugin-install-controller';
 
@@ -32,13 +32,12 @@
     onConfigure: (installationId: string, contributionId: string) => void;
     onCreateSession: (installationId: string, agentId: string) => void;
     lifecycle?: PluginLifecycleState;
-    onPolicyChange?: (policy: PluginUpgradePolicy) => void;
     onRemovalCancel?: () => void;
     onRemovalConfirm?: (keepHistory: boolean) => void;
     onMigrate?: (target: string) => void;
   };
 
-  let { installation, onInstallConfirm, onInstallCancel, onUndo, installations, busy, onInstall, onEnabledChange, onUninstall, onCreateSession, onConfigure, lifecycle, onPolicyChange, onRemovalCancel, onRemovalConfirm, onMigrate }: Props = $props();
+  let { installation, onInstallConfirm, onInstallCancel, onUndo, installations, busy, onInstall, onEnabledChange, onUninstall, onCreateSession, onConfigure, lifecycle, onRemovalCancel, onRemovalConfirm, onMigrate }: Props = $props();
   let selectedId = $state<string | null>(null);
   const installedPlugins = $derived(installations.filter(item => item.installed));
   const selected = $derived(installedPlugins.find(item => item.id === selectedId) ?? installedPlugins[0]);

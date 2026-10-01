@@ -1,4 +1,3 @@
-export type PluginUpgradePolicy = 'automatic' | 'ask' | 'pinned';
 export type PluginReference = { id: string; label: string };
 export type PluginRemovalImpact = {
   id: string; token: string; sessions: PluginReference[]; dependencies: PluginReference[];
@@ -6,20 +5,18 @@ export type PluginRemovalImpact = {
 };
 export type PluginMigrationReport = { migrated: string[]; failed: PluginReference[] };
 export type PluginLifecycleState = {
-  policy: PluginUpgradePolicy | null; impact: PluginRemovalImpact | null; busy: boolean;
+  impact: PluginRemovalImpact | null; busy: boolean;
   report: PluginMigrationReport | null; error: string;
 };
 
 export function createPluginLifecycleController(ports: {
-  readPolicy(): Promise<PluginUpgradePolicy>;
-  savePolicy(policy: PluginUpgradePolicy): Promise<PluginUpgradePolicy>;
   preview(id: string): Promise<PluginRemovalImpact>;
   remove(id: string, token: string, keepHistory: boolean): Promise<void>;
   migrate(id: string, target: string): Promise<PluginMigrationReport>;
   refresh(): Promise<void>;
   publish(state: PluginLifecycleState): void;
 }) {
-  let state: PluginLifecycleState = { policy: null, impact: null, busy: false, report: null, error: '' };
+  let state: PluginLifecycleState = { impact: null, busy: false, report: null, error: '' };
   let revision = 0;
   const emit = () => ports.publish({ ...state });
   async function run(operation: () => Promise<void>) {
@@ -30,8 +27,6 @@ export function createPluginLifecycleController(ports: {
     finally { state.busy = false; emit(); }
   }
   return {
-    initialize: () => run(async () => { state.policy = await ports.readPolicy(); }),
-    savePolicy: (policy: PluginUpgradePolicy) => run(async () => { state.policy = await ports.savePolicy(policy); }),
     review: (id: string) => run(async () => {
       const ticket = ++revision; state.impact = null; state.report = null;
       const impact = await ports.preview(id);

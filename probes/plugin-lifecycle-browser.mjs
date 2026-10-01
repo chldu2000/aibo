@@ -13,7 +13,7 @@ try {
     const errors=[];page.on('pageerror',error=>errors.push(error.message));
     await page.addInitScript(({kitId,themeId})=>{
       localStorage.setItem('aibo.appearance.v1',JSON.stringify({kitId,themeId}));
-      let callback=0,policy='automatic',removed=false,migrated=false,block=false;
+      let callback=0,removed=false,migrated=false,block=false;
       window.lifecycleCalls=[];window.blockDependency=()=>{block=true;};window.clearDependency=()=>{block=false;};
       const old={id:'old',pluginId:'third.party',pluginVersion:'1.0.0',installed:true,enabled:true,runnable:true,dependencies:[],contributions:[],manifest:{displayName:'Third Party'}};
       window.__TAURI_INTERNALS__={metadata:{currentWindow:{label:'main'},currentWebview:{label:'main'}},transformCallback(fn){const id=++callback;window['_'+id]=fn;return id;},unregisterCallback(id){delete window['_'+id];},async invoke(command,args={}){
@@ -21,8 +21,6 @@ try {
         if(command.startsWith('plugin:event|'))return 1;
         if(command==='get_app_snapshot')return {platform:'macos',appVersion:'probe',workspaceCount:0,diagnostics:[]};
         if(command==='list_plugin_installations')return removed?[]:[old];
-        if(command==='read_plugin_upgrade_policy')return policy;
-        if(command==='save_plugin_upgrade_policy'){policy=args.policy;return policy;}
         if(command==='preview_plugin_removal')return {id:'old',token:migrated?'after':'before',sessions:migrated?[]:[{id:'session-1',label:'Important history'}],bindings:[],dependencies:block?[{id:'tool',label:'Dependent Tool'}]:[],active:0,targets:[{id:'new',label:'2.0.0'}]};
         if(command==='migrate_plugin_sessions'){migrated=true;return {migrated:['session-1'],failed:[]};}
         if(command==='uninstall_agent_plugin'){if(args.token!==(migrated?'after':'before'))throw Error('stale');removed=true;return;}

@@ -1,31 +1,7 @@
 use super::*;
-use crate::plugin_lifecycle::{error, Impact, MigrationReport, Reference, UpgradePolicy};
+use crate::plugin_lifecycle::{error, Impact, MigrationReport, Reference};
 
 impl SessionHost {
-    pub(crate) async fn upgrade_enabled(
-        &self,
-        data: &Path,
-        target: &str,
-    ) -> Result<MigrationReport, String> {
-        if crate::plugin_lifecycle::policy(&self.db).await? != UpgradePolicy::Automatic {
-            return Ok(MigrationReport::default());
-        }
-        let (plugin,version): (String,String)=sqlx::query_as("SELECT plugin_id,plugin_version FROM plugin_installations WHERE id=? AND installed=1 AND enabled=1")
-            .bind(target).fetch_one(&self.db).await.map_err(error)?;
-        let version = semver::Version::parse(&version).map_err(error)?;
-        let old:Vec<(String,String)>=sqlx::query_as("SELECT id,plugin_version FROM plugin_installations WHERE plugin_id=? AND id<>? AND installed=1")
-            .bind(plugin).bind(target).fetch_all(&self.db).await.map_err(error)?;
-        let mut report = MigrationReport::default();
-        for (id, previous) in old {
-            if semver::Version::parse(&previous).is_ok_and(|previous| previous < version) {
-                let result = self.migrate_release(data, &id, target).await?;
-                report.migrated.extend(result.migrated);
-                report.failed.extend(result.failed);
-            }
-        }
-        Ok(report)
-    }
-
     pub(crate) async fn migrate_release(
         &self,
         data: &Path,

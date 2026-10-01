@@ -3874,15 +3874,6 @@ async fn preview_plugin_removal(id: String, state: State<'_, AppState>) -> Resul
     plugin_lifecycle::impact(&state.db,&id).await
 }
 #[tauri::command]
-async fn read_plugin_upgrade_policy(state: State<'_, AppState>) -> Result<plugin_lifecycle::UpgradePolicy, String> {
-    plugin_lifecycle::policy(&state.db).await
-}
-#[tauri::command]
-async fn save_plugin_upgrade_policy(policy: plugin_lifecycle::UpgradePolicy, state: State<'_, AppState>) -> Result<plugin_lifecycle::UpgradePolicy, String> {
-    let _guard = state.capability_broker.mutation_guard().await;
-    plugin_lifecycle::save_policy(&state.db,policy).await
-}
-#[tauri::command]
 async fn migrate_plugin_sessions(id: String, target: String, state: State<'_, AppState>) -> Result<plugin_lifecycle::MigrationReport, String> {
     let _guard = state.capability_broker.mutation_guard().await;
     state.plugins.migrate_release(&state.data_dir,&id,&target).await
@@ -4614,8 +4605,6 @@ pub fn run() {
             read_capability_history,
             list_plugin_installations,
             preview_plugin_removal,
-            read_plugin_upgrade_policy,
-            save_plugin_upgrade_policy,
             migrate_plugin_sessions,
             read_agent_settings,
             save_agent_settings,
