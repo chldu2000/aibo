@@ -60,7 +60,7 @@ flowchart LR
   安装记录的来源标记为 `builtin`，只有这一来源允许在主 WebView 执行 Svelte 组件。
 - **控件合同**：`packages/plugin-protocol/src/presentation-controls.ts` 为每个公开控件定义
   `{ control, props, actions }`。`actions` 是宿主生成的 token 目录，与现有 ModelMatrix 一致。
-- **统一分发**：新增 `presentation-runtime/control-dispatch.ts`，按控件注册表把 token 解析回宿主意图，
+- **统一分发**：新增 `presentation-runtime/control-dispatch.ts`（实施时并入 `presentation-runtime/controls.ts`），按控件注册表把 token 解析回宿主意图，
   并重新检查 disabled、上下文与 revision。内置实现拿到的回调由分发器生成，
   不再由页面组件直接传入业务回调。
 - **`UiKitAdapter` 收缩**：只保留无业务语义的原语（Button、Input、Textarea、Card、Badge、Label、Separator、
@@ -170,14 +170,14 @@ flowchart LR
 - hostApi 1.1.0 公开 FileChangeMark 与 SessionControlMark，均无动作。前者由宿主提供可访问名称，后者携带宿主的策略分类结果。
 - 验证：`test/presentation-controls.test.mjs`（版本门控、投影内容）；浏览器探针 `presentation-controls-browser`
   增加"1.0.0 包收不到新控件"和"1.1.0 包替换标记并保留宿主名称与隐藏语义"。
-- 未做：独立 shadcn/Material 3 包尚未升级到 1.1.0，仍然只定制两个原有控件。
+- 未做：独立 shadcn/Material 3 包尚未升级到 1.1.0，仍然只定制两个原有控件。（已由包 0.4.0 完成，当前为 0.4.1。）
 
 #### P2 第二批实施记录（Select、ModelContextSelect）
 
 - 发现的限制：可信绘制桥把单选菜单画在 iframe 文档内。控件 iframe 只有触发器大小，菜单会被裁掉。
   已决定：外部包只定制触发器，菜单由宿主在 iframe 外绘制，选择在宿主界面内完成、不经过外部包。
   不采用"打开时放大为覆盖层"，因为那样会允许包在打开期间盖住整个工作台。
-- 两个控件都在 hostApi 1.1.0 公开（1.1.0 尚未发布，没有另开版本），唯一动作是 `open`。
+- 两个控件都在 hostApi 1.1.0 公开（当时 1.1.0 尚未发布，没有另开版本；现已随包 0.4.0 发布），唯一动作是 `open`。
 - 注册表的 `resolve` 现在返回效果：`run`（直接执行宿主回调）或 `menu`（打开宿主菜单，选择时再按当前 props 校验）。
   每个控件声明占位方式：`panel`（固定 250px）、`mark`（20px 标记），或 `footprint`（测量默认控件实际占位，外部替换后周围布局不移动）。
 - 新增 kit 成员 `SelectMenu`；键盘规则抽到 `select-navigation.ts`，`Select` 与 `SelectMenu` 共用。
@@ -192,7 +192,7 @@ flowchart LR
   监听渲染根节点并按帧上报高度，宿主设置 iframe 高度并限制在 480px，首次上报前沿用默认控件测得的尺寸。
 - AttachmentList 只发送文件名：粘贴图片存放在应用数据目录，绝对路径会暴露本机用户名；图片预览遵循既有的"Worker 不接收图片数据"规则。
 - 不公开 SubagentDialog：模态覆盖层会让包有机会伪造宿主界面，理由与 Select 菜单由宿主绘制相同。计划中的第 4 行因此只剩 SubagentCard。
-- 两个独立包实现了三个新控件（包版本仍为 0.4.0，因 hostApi 1.1.0 尚未发布）。实现时发现包必须为参与布局的节点设置
+- 两个独立包实现了三个新控件（当时包版本仍为 0.4.0，因 hostApi 1.1.0 尚未发布；现为 0.4.1）。实现时发现包必须为参与布局的节点设置
   `className`，`node()` 只设置 key；这是包作者的常见错误，已在两个包中修正。
 - 验证：`test/presentation-controls.test.mjs`（投影不含路径与预览、只解析当前有效的 token）；
   浏览器探针 `presentation-skin-controls-browser`（附件增多时 iframe 变高并在 480px 封顶、清空后缩回，移除、暂停、打开回到宿主）。
@@ -230,8 +230,9 @@ ManagementCenter、HostPanel、WorkbenchChrome 属于宿主固定区域或布局
 
 - 复合控件全部经注册表后，`UiKitAdapter` 只保留原语；`kits/shared/` 中的复合组件移到
   `ui-kit/controls/`，作为 builtin release 的实现。
-- 独立 shadcn/Material 3 包与内置 kit 的主题共用同一份 `themes.json` 源（构建时复制），
-  消除双重来源。
+- ~~独立 shadcn/Material 3 包与内置 kit 的主题共用同一份 `themes.json` 源~~：内置 kit 已改为 Material 3（六个主题）
+  与 ak-ui（浅/深），独立包仍为 shadcn（`zinc`/`blue`/`emerald`/`light`）与旧 Material 3（`ocean`/`sage`/`violet`/`daylight`），
+  主题集不再相同，宿主也不读取包内 `themes.json`。是否需要共享来源须重新定义后再实施。
 - 更新 [UI 架构](ui-architecture.md)的分层表和边界守卫测试（`test/presentation-boundaries.test.mjs`）：
   页面组件不得向复合控件传业务回调。
 
@@ -241,7 +242,7 @@ ManagementCenter、HostPanel、WorkbenchChrome 属于宿主固定区域或布局
 | --- | --- |
 | 回调改为 token 后，交互增加一层间接，异步确认时机可能变化 | P1 先迁已有协议的两个控件；每个控件都有"确认前显示宿主值"的回归 |
 | AgentSettingsForm 草稿在 revision 更新时丢失输入 | 复用已验证的 localInputActions / editSequence 机制，不新造 |
-| 内置 release 登记失败导致无外观可用 | 登记失败时仍以宿主构建内的默认实现启动，并在运行时区显示诊断；这个兜底不经过安装表 |
+| 内置 release 登记失败导致无外观可用 | 原生宿主中登记失败会以 Initialization 错误终止启动（`lib.rs` 的 `register_builtins`），不会进入无外观状态；浏览器或无原生宿主时沿用缓存的内置选择 |
 | 主题 token 校验收紧后，现有 ak-ui token 不合规 | P0 验收前修正 token 值，不为内置放宽规则 |
 
 ## 待决问题

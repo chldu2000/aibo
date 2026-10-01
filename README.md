@@ -3,18 +3,23 @@
 [English](README.md) | [简体中文](README_zh.md)
 
 Aibo is a local coding workbench built from a **plugin host, capability plugins,
-and presentation plugins**. Use Codex and Pi in one workspace, with host-owned
-sessions, permissions, timelines, and execution history.
+and presentation plugins**. Use Codex, Pi, and agents that speak the Agent Client
+Protocol (ACP) in one workspace, with host-owned sessions, permissions, timelines,
+and execution history.
 
 ## What it does
 
 - Manage workspaces and multiple Agent sessions; name conversations from the first message.
 - Stream replies and tool activity, restore sessions, and inspect durable history.
-- Use provider capabilities such as Codex approvals and branching, or Pi queues and tree navigation.
+- Use provider capabilities such as Codex approvals and branching, Pi tree navigation, durable
+  message queues, goals, and subagent history.
 - Control workspace trust and session permissions. Broad access is confirmed when enabled;
   ordinary messages do not need a separate turn confirmation. Tool approvals follow the selected policy.
-- Switch workbench layouts and shadcn / Material 3 skins through the presentation layer.
-- Install capability plugins that expose versioned operations and declarative semantic views.
+- Search sessions, messages and files globally; inspect and operate multiple Git repositories.
+- Switch workbench layouts and appearances: built-in Material 3 (default) and ak-ui, plus
+  installable shadcn / Material 3 skin packages.
+- Install capability plugins that expose versioned operations and declarative semantic views;
+  replace an installed version with a recoverable upgrade that migrates its sessions.
 
 Capabilities vary by provider. See the [architecture and migration record](docs/capability-session-migration.md)
 and [platform support matrix](docs/plugin-platform-support-matrix.md) for supported behavior and limits.
@@ -26,7 +31,7 @@ flowchart TB
     user[User] --> presentation
     subgraph presentation[Presentation — host defaults and isolated packages]
         shell[Workbench layout and semantic renderer]
-        kit[UI kit — shadcn / Material 3]
+        kit[UI kit — Material 3 / ak-ui and skin packages]
         shell --> kit
     end
     subgraph host[Aibo plugin host]
@@ -42,6 +47,7 @@ flowchart TB
     subgraph plugins[Capability plugins — supervised processes]
         codex[Codex capability provider]
         pi[Pi capability provider]
+        acp[ACP agent plugins]
         extra[Other capability providers]
     end
     presentation -->|User intents| actions
@@ -50,6 +56,7 @@ flowchart TB
     broker <-->|Pi workspace tool requests and results| gateway
     codex <--> native[Codex app-server]
     pi <--> sdk[Pi SDK]
+    acp <--> agent[ACP agent process]
 ```
 
 The host owns business state and authorization. Capability plugins implement operations
@@ -66,29 +73,33 @@ its native branch with persisted messages from the current turn.
 **Current extension boundary:** capability and presentation packages can be installed locally
 through separate installation paths. External presentation code runs in a terminable Worker
 and returns a restricted visual tree, drawn by a trusted iframe bridge. It has no direct DOM,
-network, storage or Tauri IPC access. The host retains management, approvals and recovery;
-unprovided presentation surfaces inherit the host defaults. The old Agent Runtime v1 is
+network, storage or Tauri IPC access. The host retains management and recovery; Agent approvals
+render in their session area and the host revalidates every choice. Unprovided presentation
+surfaces inherit the host defaults. The old Agent Runtime v1 is
 retired, and sessions without current capability bindings remain read-only history.
 
-## Presentation release
+## Presentation packages
 
-The shadcn and Material 3 presentation packages are **0.3.0**, with shared workbench modules
-at **0.2.0**. They support three layouts, draft and layout persistence, focus and message-anchor
-restoration, and core semantic fallback. A theme-only Ocean example is also included.
+Aibo ships two built-in appearances, Material 3 (default) and ak-ui, registered as preinstalled
+trusted releases. The installable shadcn and Material 3 skin packages are **0.4.1** (host API
+**1.1.0**), with shared workbench modules at **0.2.2**. They support three layouts, draft and
+layout persistence, focus and message-anchor restoration, core semantic fallback, and all nine
+public controls. A theme-only Ocean example is also included.
 
 Unzip a skin package, choose “安装皮肤插件” in Aibo settings, select the directory containing
-`presentation.json`, then select the installed skin. See the [0.3.0 release guide](docs/presentation-release-0.3.0.md)
-for local ZIPs, offline SDK tarballs and rebuild instructions, and the [exit audit](docs/presentation-plugin-exit-audit.md)
-for verification evidence. Native acceptance covers macOS arm64; it does not establish
+`presentation.json`, then select the installed skin. See the [package READMEs](packages/presentation-shadcn/README.md)
+for build instructions and the [package contract](docs/presentation-package.md) for the current scope.
+The [0.3.0 release guide](docs/presentation-release-0.3.0.md) and [exit audit](docs/presentation-plugin-exit-audit.md)
+record the first delivery baseline and its verification evidence. Native acceptance covers macOS arm64; it does not establish
 other-platform, physical-input or full screen-reader support.
 
 ## Run locally
 
 Development requirements: Node.js 22+, pnpm, a Rust toolchain, and the platform build dependencies
 for Tauri 2. Codex sessions require `codex` on `PATH` and native authentication.
-Released apps include a private Node runtime; users do not need a system Node installation.
 Pi sessions use the project-locked `@earendil-works/pi-coding-agent` SDK; configure
 provider credentials for model requests. The Pi CLI is only required for its RPC probe.
+Third-party plugins carry their own runtime dependencies; installation does not run npm.
 
 ```sh
 pnpm install
@@ -101,11 +112,13 @@ See [database isolation and migration rules](docs/database-migrations.md).
 
 ```sh
 pnpm dev          # Browser UI preview; desktop execution requires Tauri
-pnpm run verify   # Architecture, TypeScript, Node tests, frontend build
+pnpm run verify   # Migration check, architecture, TypeScript, Node tests, frontend build
 cargo test --manifest-path src-tauri/Cargo.toml
 ```
 
-Aibo uses a compatible local Node first. In Settings → Runtime, download a private runtime or select an existing Node executable if needed. Release packages do not bundle Node.
+Release packages do not bundle Node. Aibo uses a compatible local Node first (`PATH` and common
+install locations); under Settings → 运行与诊断 (Run & diagnostics) you can download a private
+runtime or select a Node executable. See the [host SDK guide](docs/host-sdk.md).
 
 macOS arm64 has native acceptance evidence. Other architectures and operating systems
 have different validation and execution limits; consult the [support matrix](docs/plugin-platform-support-matrix.md).
@@ -122,6 +135,8 @@ manifest and runtime contracts, packaging, installation, session providers, and 
 | [Plugin protocol](packages/plugin-protocol/) | Framework-independent data contracts |
 | [Capability runtime](packages/capability-runtime/) | Node stdio runtime helper, including streaming and controls |
 | [Web presentation types](packages/web-presentation/) | Local interface for trusted presentation implementations |
+| [Host SDK](docs/host-sdk.md) | Host-provided runtime modules, version ranges and Node resolution |
+| [ACP adapter](packages/acp-adapter/) | Generic ACP client and Worker for agent plugins |
 | [Presentation packages](docs/presentation-package.md) | Isolated package contract, Worker entry and build tools |
 | [UI architecture](docs/ui-architecture.md) | UI kit boundaries and skin extension rules |
 
@@ -138,7 +153,8 @@ pnpm probe:pi:sdk
 
 Real-model smoke probes are separate and require credentials. See the
 [native engine probe guide](docs/native-engine-probes.md) for CLI requirements,
-approval probes, executable overrides, and output locations.
+approval probes, executable overrides, and output locations. Raw probe output may contain local
+metadata and is written to the Git-ignored `.aibo/probe/runs/`; commit only redacted summaries and fixtures.
 
 ## Repository map
 

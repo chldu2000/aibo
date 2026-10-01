@@ -1,7 +1,7 @@
 # 插件平台版本与平台支持矩阵
 
-本表对应宿主 0.1.0、双皮肤包 0.3.0、共享工作台 0.2.0，以及协议、能力 Runtime、
-可信 Web 呈现类型和呈现打包工具各 0.1.0。包版本、线协议版本与业务能力版本分别管理，不能互相推导。当前发行方式为单仓库构建、本地 tarball；尚未发布公共包注册表。
+本表对应宿主 0.1.0、宿主 SDK 0.1.7、双皮肤包 0.4.1、共享工作台 0.2.2、能力 Runtime 0.1.1、
+ACP 适配器 0.1.1，以及协议、可信 Web 呈现类型和呈现打包工具各 0.1.0。包版本、线协议版本与业务能力版本分别管理，不能互相推导。当前发行方式为单仓库构建、本地 tarball；尚未发布公共包注册表。
 
 ## 当前可用组合
 
@@ -13,10 +13,13 @@
 | Capability runtime | 2.0、2.1 | min/max 必须精确匹配同一受支持版本；2.1 增加 invocation 流与执行中控制，内置 Codex/Pi 及线程读取、分支、目录已接入共享 Broker；旧原生管理器已删除。实际初始化校验插件、release、generation 和操作身份；支持与验证限制见[会话能力迁移](./capability-session-migration.md) |
 | 语义视图 | contract 1.0.0 / protocol 1.0；contract 1.1.0 / protocol 1.1 | 每种组合要求 semanticView min/max 精确匹配；核心为 collection、detail、settings、inspector；1.1 增加受控写操作 |
 | 会话可选功能 | 1.0.0 | 清单、Runtime 握手、open 声明与宿主精确 schema 共同协商；功能不授予执行权限，见[迁移指南](session-capability-negotiation.md) |
-| 业务 capability | 插件声明的版本化契约 | 不设全局业务版本；命名空间、输入/输出 schema、提供者依赖范围与具体绑定共同约束选择，不因安装新版本自动换绑 |
+| 业务 capability | 插件声明的版本化契约 | 不设全局业务版本；命名空间、输入/输出 schema、提供者依赖范围与具体绑定共同约束选择；安装新版本不会静默换绑，同一 pluginId 的替换须经宿主确认的可恢复替换事务 |
 | 默认 renderer | dev.aibo.ui-default 1.0.0，semanticVersion 1.0.0 | 显式接受 experimental-v1、v1、v1.1 快照；四个核心语义必需；numbered-detail 1.0.0 可选，失败回退核心 detail |
-| 公共数据 SDK | @aibo/plugin-protocol 0.1.0 | 纯数据，不导出 DOM、框架或函数；包含 capability、semantic、presentation、renderer 数据合同 |
-| 插件本地运行 helper | @aibo/capability-runtime 0.1.0 | Node >=22；函数与取消协作接口仅存在于本地 helper；不是公共数据协议的一部分 |
+| 公共数据 SDK | @aibo/plugin-protocol 0.1.0 | 纯数据，不导出 DOM、框架或函数；包含 capability、semantic、presentation、renderer、settings 数据合同 |
+| 插件本地运行 helper | @aibo/capability-runtime 0.1.1 | Node >=22；函数与取消协作接口仅存在于本地 helper；不是公共数据协议的一部分 |
+| 宿主 SDK | 0.1.7 | 插件以 `hostSdk` 范围声明，运行时由宿主提供 capability-runtime 与 acp-adapter；见[宿主 SDK](host-sdk.md) |
+| ACP 适配器 | @aibo/acp-adapter 0.1.1 | 随宿主 SDK 提供（0.1.2 起，Worker 0.1.3 起）；通用 ACP 客户端与清单驱动 Worker |
+| Node 运行时 | 宿主要求 >=22 | 发布包不内置 Node；依次使用本机 PATH、常见安装位置、手动选择，最后为按需下载的 24.18.0（darwin、linux、win 的 x64/arm64） |
 | 可信 Web renderer 本地接口 | @aibo/web-presentation 0.1.0 | 仅类型包，mount 接收 HTMLElement；不从公共数据 SDK 重导出，消费者自行提供 DOM 类型 |
 
 上述支持表是当前明确接受的组合，不代表任意协议范围都能协商成功。未知必需贡献或不支持的版本不可启用；可选呈现按声明协商并局部降级。插件登记成功、启用成功和子进程握手成功是不同阶段，不能将元数据检查当作实际运行成功证明。
@@ -39,7 +42,7 @@
 ## UI 信任与扩展边界
 
 宿主保留可信默认呈现与兼容适配器。独立 Presentation 包使用
-`aibo.presentation-package/v1`，hostApi 为 1.0.0 或 1.1.0（1.1.0 增加两个展示控件），coreSemantics 为 1.0.0；同一个包身份
+`aibo.presentation-package/v1`，hostApi 为 1.0.0 或 1.1.0（1.0.0 两个公开控件，1.1.0 增至九个），coreSemantics 为 1.0.0；同一个包身份
 可以提供主题、controls、semantic 和 workbench。能力包 v2 的 presentation 描述
 仍不授予 UI 执行资格，这一规则与独立 Presentation 包入口分别验证。
 
@@ -49,7 +52,7 @@
 [Presentation 包](presentation-package.md)。`@aibo/web-presentation` 仍只是可信
 本地接口类型，不是该外部加载器。
 
-当前交付为 shadcn/Material 3 独立包 0.3.0；最终证据见本节末尾。以下 0.2.x
+当前 shadcn/Material 3 独立包为 0.4.1（hostApi 1.1.0）、共享工作台 0.2.2；下文为 0.3.0 首次交付的验收证据。以下 0.2.x
 记录保留此前生命周期与故障验证过程：0.2.0 已通过仓库外构建与实际 App 浏览器流程。
 [macOS arm64 原生生命周期记录](baselines/presentation-p4/native-lifecycle.json)
 验证真实安装、双包激活、0.2.1 升级、0.2.2 失败候选保留旧选择、退出进程后恢复、

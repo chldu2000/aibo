@@ -1,5 +1,10 @@
 # Presentation 插件退出审计
 
+> 历史记录：2026-09-14 的退出快照，保留当时的证据与结论。此后内置外观改为 Material 3（默认）与 ak-ui，
+> 宿主 release 记录决定外观选择（localStorage 仅作首帧缓存），旧 Material 3 主题迁移到 ak-ui；
+> Agent 审批改在会话区域呈现（b4abafd）；表中“后续版本仅为测试”的 0.3.1/0.3.2 后来用作正式版本号。
+> 现行规则见 [UI 架构](ui-architecture.md)与[内置外观并入 Presentation 合同](presentation-unification-migration.md)。
+
 本表核对 [原始目标与 P0–P4 清单](presentation-plugin-refactor.md)，不是重新定义范围。
 2026-09-14 最终复核：原始 P0–P4 目标已完成。浏览器证据使用真实 App 与 Worker、替身原生
 IPC；原生记录使用 macOS arm64 WebView 与真实 Tauri IPC，操作为 DOM 脚本。

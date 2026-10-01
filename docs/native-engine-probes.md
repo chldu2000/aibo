@@ -42,7 +42,18 @@ the probe client reject the approval request:
 pnpm probe:codex:approval
 ```
 
-Probe output is written below `.aibo/probe/runs/` and is ignored by Git because raw agent events can contain local metadata. Only redacted summaries and fixtures may be committed.
+The Codex lifecycle probe runs a smoke turn, then forks the thread from a second
+app-server client, archives the fork and checks the thread listing:
+
+```powershell
+pnpm probe:codex:lifecycle
+```
+
+`pnpm probe` runs the Codex probe and the Pi probe (`probes/run-pi.mjs`) in sequence;
+`pnpm probe -- --smoke` passes `--smoke` to both.
+
+Probe output is written below `.aibo/probe/runs/` and is ignored by Git because raw agent events can contain local metadata. Only redacted summaries and fixtures may be committed. The Pi SDK and RPC probes keep
+their sessions under `.aibo/probe/pi-sdk-sessions/` and `.aibo/probe/pi-sessions/`.
 
 Executable paths can be overridden with `AIBO_CODEX_BIN` and `AIBO_PI_BIN`.
 

@@ -1,11 +1,7 @@
 # Presentation 包合同 v1
 
-会话快照的可选 `historyOnly` 表示用户卸载时已清除插件恢复数据，缺省为 `false`。
-这种会话继续展示宿主历史，但不提供发送、恢复和 Agent 操作；宿主动作目录和原生准入共同执行此限制。
-卸载外部皮肤会确认正在使用的窗口、清除资源文件并恢复内置呈现，保留业务历史和发布身份记录。
-
-本合同已接入 App 安装、隔离执行与故障恢复。独立 shadcn / Material 3 呈现包及共享工作台
-的历史交付基线见[交付说明](presentation-release-0.3.0.md)，实现与验收边界见
+本合同已接入 App 安装、隔离执行与故障恢复。独立 shadcn / Material 3 呈现包当前为 0.4.1（hostApi 1.1.0），共享工作台为 0.2.2；
+首次交付基线见[0.3.0 交付说明](presentation-release-0.3.0.md)，实现与验收边界见
 [退出审计](presentation-plugin-exit-audit.md)。阶段过程另见[重构记录](presentation-plugin-refactor.md)。
 
 包根目录使用 `presentation.json`。主题、控件和整窗呈现使用同一 manifest，
@@ -88,6 +84,8 @@ manifest 最大 128 KiB，最多 128 个资源、单个资源最大 8 MiB、资�
 隔离决策见 [ADR-0009](adr/0009-presentation-package-isolation.md)。宿主验证包后，
 创建新的隔离呈现代际，通过 ready/preflight 确认兼容后提交选择。消息必须校验
 来源、代际、工作区/会话上下文和动作权限；不接受任意 Tauri 命令名称。
+
+卸载外部皮肤会确认正在使用的窗口、清除资源文件并恢复内置呈现，保留业务历史和发布身份记录。
 
 包缺失、校验失败、不兼容、初始化超时和执行故障都需要实际 App 验证。
 本合同文档不代替消息桥实现、安装事务或沙箱逃逸与可用性探针。
@@ -239,7 +237,7 @@ SubagentDialog 也不会公开：它是模态对话框，内容是宿主渲染�
 未加入外部 controls 目录的控件不能通过声明同名控件取得其接口。
 
 控件 render 可以返回 null，表示继承该控件的完整默认实现；这是 controls 专属
-协议，semantic/workbench 仍须返回有效视觉树。宿主在候选提交前预检两个目录项，
+协议，semantic/workbench 仍须返回有效视觉树。宿主在候选提交前预检该包 hostApi 可见的全部控件目录项（1.0.0 为两个，1.1.0 为九个），
 运行时异常或超时也恢复同一份 props 的默认控件。继承实例继续接收数据更新，
 后续 render 可以提供定制。
 
@@ -283,6 +281,9 @@ SubagentDialog 也不会公开：它是模态对话框，内容是宿主渲染�
 会话的用户问题、回答草稿和会话树。`data.conversationActions` 是宿主生成的操作
 目录，覆盖 Composer、发送/停止/重试、队列、附件、模型与访问模式、压缩、分支、
 用户回答和会话树操作。原首批顶层 draft/timeline 字段暂保留兼容。
+
+会话快照的可选 `historyOnly` 表示用户卸载时已清除插件恢复数据，缺省为 `false`。
+这种会话继续展示宿主历史，但不提供发送、恢复和 Agent 操作；宿主动作目录和原生准入共同执行此限制。
 
 token 是不透明句柄，插件按 operation 和 args 选择控件，不解析或自行拼接 token。
 args 是宿主已选定的目标和选项；点击携带的 value 不能替换模型、路径或回答选项。
@@ -411,8 +412,9 @@ node /path/to/package/build.mjs presentation.source.json dist/skin-1.0.0
 脚本能成功初始化。安装及运行验收仍通过实际 App 完成。
 
 独立双皮肤包现位于 `packages/presentation-shadcn` 和
-`packages/presentation-material3`，各自有构建入口和说明。当前发布范围是全部
-主题、四类核心语义视图、模型矩阵和状态标记；双皮肤 0.3.0 装配共享工作台 0.2.0。
+`packages/presentation-material3`，各自有构建入口和说明。当前 0.4.1 声明 hostApi 1.1.0，
+提供全部主题、四类核心语义视图、整窗工作台及全部九个公开控件，装配共享工作台 0.2.2；
+0.3.0（共享工作台 0.2.0）是首次交付基线。
 这两包的整工作台已进入 App 浏览器流程；macOS arm64 原生安装、升级、重启、
 禁用/卸载和启动/运行故障恢复已有证据。整体视觉和交互退出验收仍见
 [退出审计](presentation-plugin-exit-audit.md)。

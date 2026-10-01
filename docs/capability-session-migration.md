@@ -23,7 +23,7 @@ flowchart TB
 | 职责 | 所有者与实现 |
 | --- | --- |
 | 运行协议 | Capability runtime 2.0/2.1 共用 PluginRuntime；2.1 增加 invocation 流和执行中控制 |
-| 能力选择 | Broker 根据贡献、契约、作用域、精确安装版本绑定；不因安装新版本自动换绑 |
+| 能力选择 | Broker 根据贡献、契约、作用域、精确安装版本绑定；普通调用从不换绑。同一 pluginId 的新版本只经宿主确认的可恢复替换事务迁移会话，见[插件替换规则](plugin-boundaries-and-regression.md#插件卸载与会话迁移) |
 | 会话状态 | SessionHost 管理会话身份、轮次准入、归档、恢复入口和原生分支与宿主历史的对应关系 |
 | 历史 | 宿主先持久化能力事件，再做会话事件投影；失败状态与事件同事务保存 |
 | 原生执行 | Codex 插件持有 app-server；Pi 插件持有锁定 SDK。旧 Rust 原生管理器和 CLI RPC 备用实现已删除 |

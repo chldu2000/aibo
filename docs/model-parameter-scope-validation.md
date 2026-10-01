@@ -1,7 +1,7 @@
 # 模型参数范围验证（2026-09-28）
 
 基线提交：宿主 `842b151`、插件仓库 `e2edac0`；本记录对应其后的 SDK 0.1.7 扩展。
-目标平台 macOS arm64，宿主私有 Node 24.18.0；Claude Code 插件 0.4.1，Cursor 插件 0.2.3。
+目标平台 macOS arm64，宿主私有 Node 24.18.0（当时随包携带；2d86a1f 起发布包不再内置 Node，改为优先使用本机 Node 并按需下载）；Claude Code 插件 0.4.1，Cursor 插件 0.2.3。
 合同见[模型配置](model-configuration.md)。
 
 ## 改动与证据

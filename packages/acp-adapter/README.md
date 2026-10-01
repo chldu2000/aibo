@@ -1,13 +1,14 @@
 # @aibo/acp-adapter
 
 Generic [Agent Client Protocol](https://agentclientprotocol.com) client for Aibo session providers.
-Part of the host SDK from 0.1.2 (`worker` from 0.1.3, option approvals from 0.1.4): plugins declaring `hostSdk` import it at runtime and
+Part of the host SDK from 0.1.2 (`worker` from 0.1.3, option approvals from 0.1.4, form elicitation
+from 0.1.5, package-owned launch from 0.1.6, `parameterScope` from 0.1.7): plugins declaring `hostSdk` import it at runtime and
 keep it as a development dependency only (see [host SDK](../../docs/host-sdk.md)).
 
 | Entry | Contents |
 | --- | --- |
 | `@aibo/acp-adapter/transport` | `AcpTransport`: NDJSON JSON-RPC to the agent process, bounded frames (8 MiB, 32 MiB prompts), write backpressure, stderr tail, timeouts; every failure settles pending requests |
-| `@aibo/acp-adapter/session` | `AcpSession`: initialize/authenticate, new/load, mode and model selection confirmed by the agent, prompts, messages, reasoning, tools, permission requests, cancellation and recovery |
+| `@aibo/acp-adapter/session` | `AcpSession`: initialize/authenticate, new/load, mode and model selection confirmed by the agent, prompts, messages, reasoning, tools, permission requests, cancellation and recovery; `usage_update` and per-turn prompt usage map to the Aibo usage snapshot (`contextTokens`/`contextWindow`, accumulated input/output/total) |
 | `@aibo/acp-adapter/config` | Parsing of ACP session config options into models, reasoning levels and context windows |
 | `@aibo/acp-adapter/image-input` | Validation of host image descriptors into ACP image content blocks |
 | `@aibo/acp-adapter/worker` | `serveAcpAgent`: a Runtime 2.1 Worker driven by `plugin.json` plus `acp.json`, or by a code extension; host-tool MCP bridge included |
@@ -86,8 +87,8 @@ Instead of an external `command`, a configuration-only plugin can declare:
 
 This is a fragment of `acp.json`; label, schema and modes remain required. `command` and `launch`
 are mutually exclusive. `args` are passed after the package entry. The entry is resolved against
-`plugin.json`, checked to remain inside the package, and started with `process.execPath` (the host's
-private Node). The child's working directory remains the user workspace. Missing entries fail startup.
+`plugin.json`, checked to remain inside the package, and started with `process.execPath` (the Node
+resolved for the Worker: a local installation, a manual selection or the Aibo-managed download). The child's working directory remains the user workspace. Missing entries fail startup.
 No shell, npm, npx or global executable is needed. External `command` still requires an executable
 manifest dependency. A package launch only needs the Node runtime dependency, plus any genuine external
 tools it uses. Declare `hostSdk >=0.1.6`; ship the locked production dependency graph and platform assets.

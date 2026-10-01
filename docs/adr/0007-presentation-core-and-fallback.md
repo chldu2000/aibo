@@ -28,3 +28,7 @@ status: accepted
 | 安装包中的 presentation 声明 | 尚不开放执行 | 不能将字符串变成主 WebView 内的任意代码 |
 
 布局所有权已通过命名槽位及 standard/focus/review 实际重排验证；宿主仍拥有上下文、草稿、写入结果、批准与恢复入口，skin 拥有视觉表达。以上能力声明不是跨平台验收证明：P4 原生证据来自 macOS，通用 Capability 写入实现按 Unix 平台开放；其他平台的发布支持矩阵继续由 P5 明确。
+
+**后续变更（2026-09-29，b4abafd）：** Agent 审批改为在所属会话区域呈现，不再是可替换呈现之外的固定区域。
+外部工作台从 `conversation.approvalRequests` 渲染审批并绑定宿主动作 token，宿主复核每次选择；插件管理与恢复入口仍在可替换呈现之外，
+默认呈现恢复（Ctrl/⌘+Shift+Backspace）保证审批可达。见 [UI 架构](../ui-architecture.md)。

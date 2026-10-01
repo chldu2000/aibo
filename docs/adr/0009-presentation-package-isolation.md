@@ -44,3 +44,11 @@ entry，迁移时必须用视觉树接口表达，或提供针对该接口的编
 外部执行已具备生产支持。
 
 规范依据：[HTML sandbox 与 opaque origin](https://html.spec.whatwg.org/multipage/iframe-embed-object.html#attr-iframe-sandbox)。
+
+**后续变更：**
+
+- 2026-09-14：P2–P4 已通过退出审计，外部 Presentation 执行在 macOS arm64 有浏览器与原生验收证据，
+  见[退出审计](../presentation-plugin-exit-audit.md)；其他平台仍按[支持矩阵](../plugin-platform-support-matrix.md)判定。
+- 2026-09-29（b4abafd）：Agent 审批改在所属会话区域呈现。外部工作台接收 `approvalRequests` 并绘制审批，
+  只能绑定宿主下发的 `resolveApproval` 动作 token；授权、复核与执行仍在宿主。上文“审批留在宿主”“固定审批区域”
+  指当时的设计，现行规则是：呈现可以绘制审批，但不能授予或执行审批；管理与恢复入口仍固定由宿主提供。

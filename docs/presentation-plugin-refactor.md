@@ -1,5 +1,8 @@
 # Presentation 插件重构
 
+> 过程记录：按阶段保留 2026-09-13 起的目标与实施过程，完成结论以[退出审计](presentation-plugin-exit-audit.md)为准。
+> 文中“审批不受可替换代码控制”为当时约束；现行规则是审批在会话区域由呈现绘制、由宿主复核与执行（b4abafd）。
+
 目标确认于 2026-09-13。决策依据：[ADR-0008](adr/0008-unified-presentation-plugins.md)。
 
 ## 产品目标

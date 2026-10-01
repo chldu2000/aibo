@@ -7,7 +7,11 @@ or [中文指引](../docs/plugin-development_zh.md).
 
 - [Manifest v2](plugin-manifest.v2.schema.json): package identity, capability providers and semantic contributions.
 - [Runtime 2.0](capability-runtime.experimental.schema.json) and [Runtime 2.1](capability-runtime.v2.1.schema.json): requests, results, and interactive streams/controls.
-- [Session capabilities](session-capabilities.v1.json), [session events](session-event.v1.schema.json) and [session binding v2](session-binding.v2.schema.json): the current Codex/Pi session path.
+- [Session capabilities](session-capabilities.v1.json), [session features](session-features.v1.json), [session events](session-event.v1.schema.json) and [session binding v2](session-binding.v2.schema.json): the current session path for Codex, Pi and ACP agent plugins.
+- [Host tools](host-tools.v1.json): host-provided tools such as `aibo_read_session`, exposed to agents that negotiate them.
+- [Agent settings](agent-settings.v1.schema.json): plugin-declared settings fields and scopes.
+- [Capability events](capability-event.v1.schema.json): host capability lifecycle events.
+- [Presentation package v1](presentation-package.v1.schema.json): installable presentation manifests; see the [package contract](../docs/presentation-package.md).
 - [Semantic View 1.0](semantic-view.v1.schema.json) and [Semantic View 1.1](semantic-view.v1.1.schema.json): declarative views and controlled actions.
 
 Exact accepted combinations and platform limits are listed in the [support matrix](../docs/plugin-platform-support-matrix.md).
@@ -52,10 +56,10 @@ Contract invariants:
 - a change set is scoped to one Aibo session and turn; partial or failed capture remains visible through `captureStatus` and `captureError`.
 - a plugin declaration is not a permission grant; Core records `granted`, `denied`, or `unsupported` and the actual enforcement layer.
 - plugin stdout contains protocol messages only. Core assigns durable event IDs, sequences, generation association, and timestamps after validation.
-- active sessions remain pinned to a Plugin Release; plugin upgrades do not silently reinterpret recovery data.
+- sessions are bound to an exact Plugin Release; upgrades never silently reinterpret recovery data. Replacing a release with a new version of the same plugin migrates sessions only through the host's confirmed, recoverable replacement transaction.
 
 ## Experimental semantic views (P1)
-+
-+`semantic-view.experimental-v1.schema.json` and `semantic-action.experimental-v1.schema.json` define the bounded collection/detail workspace-tool slice. They coexist with PluginView v1; they are not Manifest v2 or an installable third-party UI ABI. See [P1 behavior and limits](../docs/archive/plugin-platform-p1-semantic-slice.md).
-+
-+After editing the view schema, run `pnpm run generate:semantic-validator`. The generated browser validator is checked against its source schema in tests and requires no runtime code compilation under the desktop CSP. Fixtures include collection/detail, loading/empty/error/unavailable, partial content and a syntactically valid stale action that the host must reject.
+
+`semantic-view.experimental-v1.schema.json` and `semantic-action.experimental-v1.schema.json` define the bounded collection/detail workspace-tool slice. They predate Semantic View 1.0 and are not Manifest v2 or an installable third-party UI ABI. See [P1 behavior and limits](../docs/archive/plugin-platform-p1-semantic-slice.md).
+
+After editing the view schema, run `pnpm run generate:semantic-validator`. The generated browser validator is checked against its source schema in tests and requires no runtime code compilation under the desktop CSP. Fixtures include collection/detail, loading/empty/error/unavailable, partial content and a syntactically valid stale action that the host must reject.

@@ -1,25 +1,27 @@
 # material3 Presentation
 
-独立构建的皮肤包，当前版本迁移原有全部主题、四类核心语义视图、模型矩阵和状态标记。
+独立构建的皮肤包，当前版本 0.4.1：提供全部主题、四类核心语义视图、整窗工作台及 hostApi 1.1.0 的全部九个公开控件。
 0.2.0 开始同时声明 workbench，装配独立导航、会话、Git、Inspector 和能力视图。
 0.3.0 已通过桌面工作台浏览器交互与 macOS arm64 原生生命周期验收。
-0.4.0 声明 hostApi 1.1.0，另外定制文件变更标记、会话权限标记，以及 Select / ModelContextSelect 的触发器（选项菜单由宿主绘制）；
+0.4.0 声明 hostApi 1.1.0，另外定制文件变更标记、会话权限标记、Select / ModelContextSelect 的触发器（选项菜单由宿主绘制），
+以及附件列表（AttachmentList）、目标条（GoalBar）与子 Agent 卡片（SubagentCard）；
 需要支持 hostApi 1.1.0 的宿主，旧宿主会拒绝安装。0.4.0 已通过原生安装与激活（见 docs/baselines/builtin-presentation/native-lifecycle.json），控件替换已在 WKWebView 中用系统级输入验证（见 docs/baselines/builtin-presentation/native-controls.json）。
 未提供的独立控件继续继承宿主；其他平台与屏幕阅读器认证不在这些证据范围内。
+0.4.1 装配共享工作台 0.2.2：回答中的网页、邮件与工作区文件链接显示类型图标，文件链接交由宿主预览面板打开。
 
 将本包与 `@aibo/presentation-tools`、`@aibo/presentation-workbench` 本地 tarball 安装到仓库外项目后：
 
 ```sh
-node node_modules/@aibo/presentation-material3/build.mjs ./dist/material3-0.4.0 0.4.0
+node node_modules/@aibo/presentation-material3/build.mjs ./dist/material3-0.4.1 0.4.1
 ```
 
 在 App 外观设置中安装输出目录。升级使用相同包 ID 和新的版本/输出目录。
-`themes.json` 是主题的唯一数据源，宿主内置兼容入口也读取此文件。
+`themes.json` 是本包主题的唯一数据源；宿主内置 kit 使用各自的 `src/lib/ui-kit/kits/*/themes.json`，与本包无关。
 包脚本仅产生受限视觉树，不导入宿主源码、Svelte 或 DOM；宿主负责验证和执行动作。
 字体 token 在输出时去掉引号以满足纯数据 token 合同，多词 CSS 字体族仍可用。
 
-`assets` 携带原有 OpenAI/Pi SVG 与来源说明，构建将路径数据编入受摘要保护的
-Worker 入口。运行时使用宿主允许的 SVG 视觉树，不加载宿主资产 URL 或任意 SVG 文档。
+Agent 图标来自插件声明的单色路径（`props.icon.path`），包内不维护品牌图标。
+运行时使用宿主允许的 SVG 视觉树，不加载宿主资产 URL 或任意 SVG 文档。
 状态轨迹、运行/关注/故障信号及减少动画偏好由包样式负责。
 
 构建的可选第四参数为逗号分隔的 surfaces，例如 `controls,semantic` 可构建

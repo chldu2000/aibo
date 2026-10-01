@@ -73,7 +73,8 @@ macOS 原生安装验收可从 Aibo 根目录运行 `node probes/external-plugin
 
 Release 不可变。包内容改变时递增 release 版本；既有会话固定 installation/contribution，
 同一 pluginId 的安装是单版本替换：先预览引用并确认，全部会话恢复成功才切换，失败整体保留原版本。
-相同包重复安装无操作；同版本不同内容明确按替换处理。降级仅支持显式清除插件数据重装，业务历史保留。
+相同包重复安装无操作；同版本不同内容明确按替换处理。降级仅支持显式清除插件数据重装，业务历史保留，
+旧会话永久转为只读历史。
 卸载会清除该 release 的文件和私有数据；有引用时需先处理。详见[卸载与迁移规则](plugin-boundaries-and-regression.md#插件卸载与会话迁移)。
 
 ## 接入会话提供者
@@ -98,8 +99,11 @@ Control 必须在操作允许列表中；处理取消，并只在有效 invocati
 
 支持 [Agent Client Protocol](https://agentclientprotocol.com) 的 Agent 不需要编写代码。从
 `aibo-plugins/plugins/acp-template` 起步：`plugin.json` 声明会话操作与可执行依赖，`acp.json` 描述启动命令和模式映射，
-`worker.mjs` 只调用宿主 SDK 0.1.3 起提供的 `serveAcpAgent`。能力按 Agent 的 `initialize` 响应收窄：
+`worker.mjs` 只调用宿主 SDK 0.1.3 起提供的 `serveAcpAgent`。`acp.json` 也可以用
+`launch: { kind: "node", entry }`（SDK 0.1.6 起）代替外部 `command`，用 Worker 的 Node 运行包内携带的 ACP Agent，
+此时无需声明可执行依赖。能力按 Agent 的 `initialize` 响应收窄：
 仅 `loadSession` 时声明恢复，仅支持图片提示时声明图片输入，仅返回配置项时声明模型与参数选择。
+`parameterScope: "current-model"`（SDK 0.1.7 起）让宿主先确认模型，再提供该模型的推理选项。
 `acp.json` 无效时 Worker 在握手前退出，宿主在启动阶段报告错误。
 `approval.respond` 声明 `{ requestId, optionId }` 输入形态时（SDK 0.1.4 起），审批卡显示 Agent 提供的单次允许 / 拒绝选项，
 回应所选 option ID；声明 `decision` 形态时仍为二选一。`acp.json` 的 `approvalOptions` 可以为选项提供中文标签，
@@ -157,3 +161,11 @@ Control 必须在操作允许列表中；处理取消，并只在有效 invocati
 修改 Aibo 时从 Aibo 根目录运行 `pnpm run verify`，并按[回归矩阵](plugin-boundaries-and-regression.md#regression-gate)
 选择 Rust、浏览器和原生检查。`pnpm run probe:session:capabilities` 使用模拟引擎验证会话工作流；
 原生探针见[探针说明](native-engine-probes.md)。构建、模拟引擎、原生安装和真实桌面交互属于不同证据层级。
+
+## 宿主工具接入
+
+新增 Agent 的历史查询能力通过 `aibo.host-tools/v1` 目录和 SDK 0.1.1 的通用工具通道接入，
+无需修改宿主按品牌路由。插件只实现 MCP 参数映射或动态工具注册；读取授权、分页和版本一致性
+由宿主管理。基于 `@aibo/acp-adapter/worker`（SDK 0.1.3 起）的 ACP 插件自动获得这条接线：宿主在会话上下文中
+下发工具目录时，Worker 启动 MCP bridge 并交给 Agent。
+完整步骤及原生/打包测试见[会话历史工具](session-history-tool-design.md)。

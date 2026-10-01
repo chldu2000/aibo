@@ -1,6 +1,6 @@
 # 宿主与插件边界：踩坑记录及回归约束
 
-本规范由根目录 [AGENTS.md](../AGENTS.md) 引用，适用于宿主业务、能力插件、呈现插件及共享合同的修改。依据截至 `0ee10c5` 的相关提交和 [呈现退出审计](presentation-plugin-exit-audit.md)；历史提交用于解释约束来源，不表示本次重新验收过其全部行为。合同细节以目标版本的 schema、类型、实现及现行文档为准，archive 与早期阶段记录不能直接当作现行限制。
+本规范由根目录 [AGENTS.md](../AGENTS.md) 引用，适用于宿主业务、能力插件、呈现插件及共享合同的修改。依据截至 `e59ee7f`（2026-10-01）的相关提交和 [呈现退出审计](presentation-plugin-exit-audit.md)；历史提交用于解释约束来源，不表示本次重新验收过其全部行为。合同细节以目标版本的 schema、类型、实现及现行文档为准，archive 与早期阶段记录不能直接当作现行限制。
 
 ## 先确定谁拥有状态、谁执行动作
 
@@ -116,13 +116,17 @@
 | 事件投影、队列、目标、子 Agent | 主回合唯一终态；历史重载、重复/迟到事件、FIFO/steering 区别、暂停/uncertain、普通对话与草稿不被消费 | `test/message-queue.test.mjs`、`test/session-goal.test.mjs`、`test/subagent-workflow.test.mjs`、`test/presentation-timeline.test.mjs` 及相应原生持久化测试 |
 | 呈现/UiKit/共享工作台、动作桥 | 默认 Material 3 与 ak-ui 浅/深主题与受影响的外部呈现一致保留业务；未覆盖 surface 继承；core 降级、草稿/焦点/锚点、过期动作、故障回退后会话审批可达、恢复可达 | `test/renderer-negotiation.test.mjs`、`test/presentation-package-controller.test.mjs`、`test/presentation-view-state.test.mjs`、`test/presentation-conversation.test.mjs`；`probes/presentation-full-skins-browser.mjs`、受影响 surface 探针 |
 | 输入、附件、建议列表 | 纯文本/图片/引用、输入法与快捷键、长列表/长历史可用；草稿、队列、历史附件相互隔离 | `test/message-draft-ownership.test.mjs`、`test/clipboard-images.test.mjs`、`test/attachment-previews.test.mjs`、`test/presentation-suggestions.test.mjs`；`probes/composer-input-browser.mjs`、`probes/composer-paste-browser.mjs` |
-| 安装、SDK、打包、升级 | 启用/禁用/卸载、旧 release 绑定、失败候选回滚、缺依赖、损坏资源、桌面启动与宿主 SDK 装载 | `test/plugin-management.test.mjs`、`test/host-sdk.test.mjs`、`test/external-plugin-build.test.mjs`、`test/presentation-build.test.mjs`；相关安装/原生桌面探针 |
+| 安装、SDK、打包、升级 | 启用/禁用/卸载、旧 release 绑定、失败候选回滚、缺依赖、损坏资源、桌面启动与宿主 SDK 装载 | `test/plugin-management.test.mjs`、`test/plugin-lifecycle-controller.test.mjs`、`test/host-sdk.test.mjs`、`test/external-plugin-build.test.mjs`、`test/presentation-build.test.mjs`；`session_host_tests.rs` 的 `plugin_replacement_*`；`probes/plugin-replacement-browser.mjs` 及相关安装/原生桌面探针 |
+| Node 运行时查找、下载与手动选择 | 本机/手动/专用 Node 的选择顺序、无效选择不覆盖原设置、插件可用性刷新、已禁用插件不被启用 | `test/node-runtime-controller.test.mjs`、`cargo test … --lib node_runtime`；`probes/node-runtime-browser.mjs` |
+| ACP 适配器与通用 Worker | 能力按 initialize 收窄、审批选项、模式转换、elicitation、包内启动、宿主工具 MCP 接线、恢复与取消；Cursor/Claude Code 等现有插件行为 | `test/acp-adapter-*.test.mjs`、`test/acp-worker.test.mjs`、`test/acp-elicitation.test.mjs`、`test/acp-package-launch.test.mjs`；插件仓库 `pnpm run verify` |
+| 宿主工具与会话历史读取 | 读取授权、分页与快照一致性、未协商的 provider 不受影响、重启恢复 | `test/host-tools.test.mjs`、`session_history_tools` Rust 测试；`probes/host-tools-native.mjs` |
+| 全局搜索与宿主操作确认 | 索引范围、结果定位与快捷键；五类确认的默认允许与逐类询问，不影响 Agent 审批 | `test/global-search.test.mjs`、`test/host-confirmation.test.mjs`；`probes/global-search-browser.mjs`、`probes/search-desktop.mjs`、`probes/host-confirmation-browser.mjs`、`probes/host-confirmation-native.mjs` |
 | 共享 workspace/导航/设置/Git 状态 | 切换会话/工作区不串数据；设置继承和并发冲突；仓库选择不改变会话绑定；默认与外部工作台同步 | `test/session-navigation.test.mjs`、`test/session-lifecycle-navigation.test.mjs`、`probes/session-lifecycle-browser.mjs`、`test/agent-settings.test.mjs`、`test/git-repositories.test.mjs`、`test/presentation-navigation.test.mjs`、`test/presentation-git.test.mjs` |
 
 执行要求：
 
 1. 修复缺陷时优先加入能复现原故障的回归；新特性同时覆盖成功、拒绝/缺失及至少一条共享路径上的旧行为。测试断言外部可观察结果，不能只匹配实现字符串或证明新字段存在。
-2. 运行根目录要求的 `pnpm run verify`，覆盖架构、类型、Node 测试与构建。对原生执行/持久化变更，另运行相关 `cargo test --manifest-path src-tauri/Cargo.toml --lib <filter>`；跨模块生命周期或数据库迁移需运行完整 `--lib` 测试。
+2. 运行根目录要求的 `pnpm run verify`，覆盖迁移检查、架构、类型、Node 测试与构建。对原生执行/持久化变更，另运行相关 `cargo test --manifest-path src-tauri/Cargo.toml --lib <filter>`；跨模块生命周期或数据库迁移需运行完整 `--lib` 测试。
 3. UI 或呈现桥变化另跑实际 App/浏览器探针，覆盖内置 Material 3 与 ak-ui 的浅/深主题，以及受影响的外部工作台/控件/语义 surface。未声明 surface 的继承与故障回退也是功能；仅默认 kit 通过不代表外部包通过。
 4. 真实 CLI/原生 IPC/桌面安装受影响时，用隔离数据和临时工作区验证；浏览器替身 IPC 不能证明原生授权、持久化或 OS 行为。仅文档修改执行根目录 verify 并检查引用，无需启动无关原生或浏览器探针。
 5. 对失败先确认是本次引入、原有失败还是环境阻塞，保留证据并修复本次引入的回归；不能删除旧用例、降低断言或修改基线掩盖变化。预期行为确实改变时，同步合同、迁移说明及新旧兼容用例。

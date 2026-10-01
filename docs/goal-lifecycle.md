@@ -50,9 +50,11 @@ Native `thread/goal/updated` and `thread/goal/cleared` notifications become
 `usageLimited`, `budgetLimited`, and maps native `complete` to `completed`.
 Budget exhaustion is never silently bypassed by resume.
 
-The bundled Codex capability package is version 2.0.6. Existing sessions remain
-pinned to their installed release; older releases do not acquire the new buttons
-until their binding uses a release advertising the new capabilities.
+Goal controls were introduced in the bundled Codex capability package 2.0.6
+(currently 2.0.16). A session only shows them when its bound release advertises
+the capabilities. Sessions on an older release acquire them when that plugin is
+replaced through the confirmed, recoverable upgrade, which migrates their bindings;
+see [plugin replacement](plugin-boundaries-and-regression.md#插件卸载与会话迁移).
 
 Protocol reference: [Codex App Server goal management](https://learn.chatgpt.com/docs/app-server#manage-a-thread-goal).
 Native behavior reference: [Codex Python SDK goal operations](https://github.com/openai/codex/blob/main/sdk/python/src/openai_codex/client.py).

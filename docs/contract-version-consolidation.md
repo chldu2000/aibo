@@ -14,9 +14,9 @@
 | 插件清单 | `plugin-manifest.v1`、`plugin-manifest.v2` | v2 可执行；v1 只读元数据（`plugin_contract.rs`） |
 | 语义视图 | `semantic-view.experimental-v1`、`v1`、`v1.1` | 三者都被默认 renderer 接受；宿主 Git 视图（`semantic_git.rs`）仍产出 experimental-v1 |
 | 语义动作/提供者 | `semantic-action.experimental-v1`、`semantic-provider.experimental` | 代码无引用 |
-| 旧 Agent 运行时 | `agent-runtime-protocol.v1`、`plugin-view-protocol.v1`、`plugin-session-binding.v1` | 执行已移除，仅 `test/plugin-contract.test.mjs` 引用 |
+| 旧 Agent 运行时 | `agent-runtime-protocol.v1`、`plugin-view-protocol.v1`、`plugin-session-binding.v1` | 执行已移除，仅测试引用：`test/plugin-contract.test.mjs`、`test/plugin-management.test.mjs`，`plugin-session-binding` 另见 `test/echo-plugin-process.test.mjs` |
 | Agent 事件 | `agent-event.v1`、`agent-event.v2` | 仅测试引用；`agent_events` 表仍为持久化历史存储 |
-| 会话 | `session-capabilities.v1`、`session-features.v1`、`session-event.v1`、`session-binding.v2` | 当前唯一版本 |
+| 会话 | `session-capabilities.v1`、`session-features.v1`、`session-event.v1`、`session-binding.v2`、`host-tools.v1` | 当前唯一版本 |
 
 问题：
 
@@ -52,9 +52,10 @@
 前提：确认没有外部插件产出 experimental-v1。支持矩阵已写明语义贡献只接受 contract 1.0/1.1，
 P1 切片也声明过它不是第三方 ABI。仍需搜索 `aibo-plugins` 与 fixtures 确认。
 
-验收：Git 视图的 collection/detail/empty/error/loading/unavailable/partial 七个夹具在新 schema 下通过；
+验收：`fixtures/semantic-git/` 的全部十个夹具（collection、detail、empty、error、loading、unavailable、partial，
+以及 partial-detail、source-page、stale-action）在新 schema 下通过；
 `test/presentation-semantic.test.mjs`、`presentation-git.test.mjs` 和完整外部皮肤探针通过；
-外部 0.3.x 包无需重建。
+外部 0.4.x 包无需重建。
 
 ### C2：Runtime 2.0 → 兼容读取，2.1 为当前版本
 

@@ -27,6 +27,8 @@ nativeSessionId/协商能力，模式可读取；就绪后同一宿主身份获�
 
 浏览器替身不证明原生执行；隔离原生探针不证明付费模型调用或用户日常安装包已经更新。
 旧会话继续固定原 release，不迁移其绑定；新建 Codex 会话才能使用 2.0.14。
+（2026-09-25 时的行为。此后随包插件只在没有安装记录时引导，版本升级改由可恢复替换事务迁移会话，
+见[插件替换规则](plugin-boundaries-and-regression.md#插件卸载与会话迁移)。）
 
 本次结果：`pnpm run verify` 通过（40 项架构检查、390 项 Node 测试、类型检查及构建）；
 `cargo test --manifest-path src-tauri/Cargo.toml --lib` 239 项通过；上述两个浏览器探针与隔离桌面探针通过。

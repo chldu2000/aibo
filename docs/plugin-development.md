@@ -73,11 +73,12 @@ Use the matching [manifest](../examples/capability-plugin/plugin.json) and [work
 7. Inspect the unpacked artifact for missing dependencies, developer paths and symlinks before installation.
    [`build-external-plugin.mjs`](../probes/build-external-plugin.mjs) is the complete dependency-free example flow.
 
-Releases are immutable. Increment the release version when package contents change. Installing the same `pluginId`
-replaces its current version after a reference preview and confirmation. All session recovery and binding checks must
-succeed before switching; failure restores every original binding. An identical package is a no-op; changed contents
-at the same version are an explicit replacement. Downgrades require an explicit clean reinstall, retaining business
-history while permanently retiring old sessions. See the [replacement and removal rules](plugin-boundaries-and-regression.md#插件卸载与会话迁移).
+Releases are immutable. Increment the release version when package contents change. Sessions stay bound to an exact
+installation and contribution; installing the same `pluginId` is a single-version replacement after a reference preview
+and confirmation. All session recovery and binding checks must succeed before switching; failure restores every original
+binding. An identical package is a no-op; changed contents at the same version are an explicit replacement. Downgrades
+require an explicit clean reinstall, retaining business history while permanently retiring old sessions. Uninstalling
+removes the release files and private data; resolve existing references first. See the [replacement and removal rules](plugin-boundaries-and-regression.md#插件卸载与会话迁移).
 
 ## Implement a session provider
 
@@ -102,9 +103,12 @@ none can be inferred from a brand or feature label. Opening an edit mode alone d
 
 Agents that speak the [Agent Client Protocol](https://agentclientprotocol.com) need no code. Start from
 `aibo-plugins/plugins/acp-template`: `plugin.json` declares the session operations and executable dependency,
-`acp.json` describes the launch command and mode mapping, and `worker.mjs` only calls `serveAcpAgent` from host SDK 0.1.3.
+`acp.json` describes the launch command and mode mapping, and `worker.mjs` only calls `serveAcpAgent` from host SDK 0.1.3. Instead of an external `command`, `acp.json` may declare
+`launch: { kind: "node", entry }` (host SDK 0.1.6) to run an ACP agent shipped inside the package with the Worker's Node;
+it then needs no executable dependency.
 Capabilities are narrowed by the agent's `initialize` response: resume only with `loadSession`, image input only with image prompts,
-and model or parameter selection only when the agent returns config options. An invalid `acp.json` stops the worker before
+and model or parameter selection only when the agent returns config options. `parameterScope: "current-model"`
+(host SDK 0.1.7) makes the host confirm a model before offering its reasoning options. An invalid `acp.json` stops the worker before
 the handshake, so the host reports it at startup. When `approval.respond` declares the `{ requestId, optionId }` input
 (host SDK 0.1.4), the approval card shows the agent's allow-once and reject-once options and answers with the chosen option ID;
 the `decision` input keeps the two-button approval. `approvalOptions` in `acp.json` labels options and can map one to
@@ -167,8 +171,11 @@ When modifying Aibo, run `pnpm run verify` from the Aibo root and choose additio
 with simulated engines; native probes are described in the [probe guide](native-engine-probes.md).
 Build success, mocked-engine success, native installation and real desktop interaction are distinct evidence levels.
 
-## 宿主工具接入
+## Connect host tools
 
-新增 Agent 的历史查询能力通过 `aibo.host-tools/v1` 目录和 SDK 0.1.1 的通用工具通道接入，
-无需修改宿主按品牌路由。插件只实现 MCP 参数映射或动态工具注册；读取授权、分页和版本一致性
-由宿主管理。完整步骤及原生/打包测试见[会话历史工具](session-history-tool-design.md)。
+New agents gain history access through the `aibo.host-tools/v1` catalog and the generic tool channel in host SDK 0.1.1,
+without host-side routing by brand. A plugin only maps MCP parameters or registers dynamic tools; read authorization,
+paging and version consistency stay with the host. ACP plugins built on `@aibo/acp-adapter/worker` (SDK 0.1.3 or later)
+get this wiring automatically: when the host passes a tool catalog in the session context, the Worker
+starts the MCP bridge and hands it to the agent. See [session history tools](session-history-tool-design.md) for the full steps
+and native/packaged tests.

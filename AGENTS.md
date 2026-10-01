@@ -11,7 +11,8 @@ regression requirements. Historical records explain earlier versions, not curren
 | Host business logic, plugin contracts, session routing, state, actions, or recovery | [Host/plugin boundaries](docs/plugin-boundaries-and-regression.md) |
 | Database schema, migration SQL, historical SQL fixtures, or migration validation | [Database migrations](docs/database-migrations.md) |
 | UI components, layout, styling, presentation lifecycle, or extension boundaries, including `src/lib/workbench/` | [UI architecture](docs/ui-architecture.md) |
-| Default ak-ui appearance or interaction | [Current ak-ui spec](docs/design/ak-ui-current-spec.md) |
+| Built-in Material 3 (default) appearance or interaction | [Current Material 3 spec](docs/design/material3-current-spec.md) |
+| Optional built-in ak-ui appearance or interaction | [Current ak-ui spec](docs/design/ak-ui-current-spec.md) |
 | Capability declarations, discovery, or negotiation | [Session negotiation](docs/session-capability-negotiation.md) |
 | Session modes, permission controls, or execution policy | [Session controls](docs/session-controls.md) |
 | External presentation packages, snapshots, actions, or rendering | [Presentation package contract](docs/presentation-package.md) |

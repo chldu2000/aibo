@@ -10,4 +10,5 @@ status: accepted
 
 选择统一模型，避免两套安装、选择和兼容机制及其组合爆炸。代价是必须设计可执行 UI 包的兼容、加载与信任机制；能力包的安装授权不自动允许执行前端代码。既有可信构建注册只是迁移起点，不代表外部皮肤包已经可用。
 
-实施范围和进度见 [Presentation 插件重构](../presentation-plugin-refactor.md)。
+实施范围和进度见 [Presentation 插件重构](../presentation-plugin-refactor.md)。内置外观随后按同一模型登记为预装可信 release，
+见[内置外观并入 Presentation 合同](../presentation-unification-migration.md)。

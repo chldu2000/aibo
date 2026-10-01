@@ -2,7 +2,7 @@
 
 本文件定义子任务事件、持久化与界面交互；整体 UI 边界见 [UI 架构](ui-architecture.md)。
 
-`SubagentCard` 和 `SubagentDialog` 是 `UiKitAdapter` 的语义控件，内置 ak-ui kit 提供实现。应用只传入任务、状态、最近活动和打开/关闭回调，不选择皮肤或提供视觉参数。详情沿用消息 Markdown、工具输出和思考摘要的展示方式；原生 modal dialog 提供焦点约束、Escape 关闭和返回触发按钮，关闭不会停止任务。阅读历史时保留滚动位置，实时更新以“有新内容”按钮提示。
+`SubagentCard` 和 `SubagentDialog` 是 `UiKitAdapter` 的语义控件，内置 Material 3 与 ak-ui 共用 `kits/shared` 中的实现；`SubagentCard` 自 hostApi 1.1.0 起也是外部 Presentation 可定制的公开控件，见[呈现包合同](presentation-package.md)。应用只传入任务、状态、最近活动和打开/关闭回调，不选择皮肤或提供视觉参数。详情沿用消息 Markdown、工具输出和思考摘要的展示方式；原生 modal dialog 提供焦点约束、Escape 关闭和返回触发按钮，关闭不会停止任务。阅读历史时保留滚动位置，实时更新以“有新内容”按钮提示。
 
 ## 提供者事件合同
 
@@ -21,6 +21,6 @@ Codex 插件把父子线程关联转换为上述事件，子线程完成不会�
 
 任务卡片存入主时间线，过程消息独立保存在事件历史中。`get_subagent_history` 只读取本地持久化历史，合并相同子线程 item 的最新内容，因此归档、重启或插件不可用时仍可回看。分叉会话保留分叉边界内的子任务过程。单条过程内容沿用有界输出策略，超过 48,000 个字符以省略号标记；界面展示提供方公开的思考摘要。
 
-第一版接入 Codex 的结构化子 Agent 协议，其他提供方可以通过相同事件契约接入。普通文本中的“子 Agent”描述不会被推测成真实任务。
+Codex 接入结构化子 Agent 协议，事件与过程消息完整。通用 ACP 适配器在插件扩展提供 `subagentFromTool` 时，把对应工具调用投影为 `subagent.updated` 任务状态，但不产生 `subagent.message` 过程消息。其他提供方可以通过相同事件契约接入。普通文本中的“子 Agent”描述不会被推测成真实任务。
 
 回归入口：`test/subagent-workflow.test.mjs`；涉及原生事件投影或持久化时，按[回归要求](plugin-boundaries-and-regression.md#regression-gate)补充相关 Rust 测试。

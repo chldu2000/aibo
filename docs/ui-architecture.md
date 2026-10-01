@@ -30,7 +30,7 @@
 | --- | --- | --- |
 | 会话、历史、执行、队列、附件与审批 | 宿主及绑定的能力调用链 | 展示宿主快照，提交当前允许的语义意图。 |
 | Composer、Git、工程动作、问答草稿及异步读取 | 宿主状态和注入式控制器 | 默认与外部工作台消费同一份状态；可替换组件不维护第二套业务副本。 |
-| 布局选择、列宽与辅助区域开关 | 宿主按窗口保存 | 呈现实现排列区域并消费尺寸偏好；切换外观不重置偏好。 |
+| 布局选择、列宽、导航栏收起状态与辅助区域开关 | 宿主按窗口保存 | 呈现实现排列区域并消费尺寸偏好；切换外观不重置偏好。收起状态仅用于内置工作台（收起时隐藏 `navigationResize` 槽位），不属于外部布局合同。 |
 | 焦点、选区、滚动锚点与可恢复展开状态 | 宿主视图状态存储 | 通过稳定语义 key 恢复可匹配状态，不从其他会话或皮肤猜测身份。 |
 | 颜色、字体、几何、图标、交互视觉 | UI kit 或对应的外部呈现 surface | 保留语义、可访问性和动作边界。 |
 
@@ -214,8 +214,8 @@ Enter/Space 确认、Escape 取消及 Tab 离开；滚动祖先或调整窗口�
 - `kits/motion.css` 统一减少动态效果；视觉动效偏好不改变业务执行行为。
 
 内置依赖随应用打包，不在运行时从 CDN 加载。第三方 CSS 通过作用域或 layer 接入，
-外部包 CSS 只能作用于隔离呈现，不能覆盖固定宿主区域。颜色值、尺寸和断点细则见
-[ak-ui 现行规范](design/ak-ui-current-spec.md)。
+外部包 CSS 只能作用于隔离呈现，不能覆盖固定宿主区域。颜色值、尺寸和断点细则分别见
+[Material 3 现行规范](design/material3-current-spec.md)与 [ak-ui 现行规范](design/ak-ui-current-spec.md)。
 
 可信 `WorkbenchPresentation` 本地接口用 `navigation`、`navigationResize`、`content`、
 `auxiliaryResize`、`auxiliary` 和 `overlays` 命名槽位装配工作台。
@@ -258,13 +258,21 @@ Windows 使用独立配置和自绘窗口按钮。呈现替换不接管原生窗
 
 ### 固定宿主区域
 
-窗口标题栏、管理中心、历史面板、全局搜索面板、文件预览面板、宿主操作确认与默认恢复入口位于可替换工作台之外。
+窗口标题栏、管理中心、历史面板、全局搜索面板、文件预览面板、宿主操作确认、应用通知与默认恢复入口位于可替换工作台之外。
 呈现故障、禁用或卸载时，这些入口仍可达。
+
+#### 应用通知
+
+应用通知是宿主持有的瞬时反馈（`src/lib/app/notifications.ts`），位于 `AppOverlays` 的 `toast-region`。
+产生方只选择语义类型 `success`、`info`、`warning` 或 `error`，不选择视觉；warning 与 error 显示 6 秒，
+其余 3.6 秒。各内置 kit 自行定义样式：Material 3 使用反色表面、8px 圆角和圆形状态图标；
+ak-ui 使用中性直角表面和 3px 语义色左侧标记。两者都遵守减少动态效果偏好。
+验证入口为 `probes/toast-browser.mjs`。
 
 Agent 会话审批与 Agent 提问一样属于会话区域：宿主只把当前会话的待处理审批交给工作台，
 默认 `TimelinePanel` 在消息与输入框之间渲染，外部呈现通过 `approvalRequests` 快照与 `resolveApproval`
 动作渲染（见[包合同](presentation-package.md#工作台会话与-composer)）。审批不再在窗口顶部、管理中心或宿主面板上处处可见；
-其他会话的待处理审批只通过会话状态提示，后续由系统通知补足。外部呈现故障或不渲染审批时，
+其他会话的待处理审批只通过会话状态提示；导航栏收起时，入口按钮以标记和可访问名称提示等待审批或输入的会话数，后续由系统通知补足。外部呈现故障或不渲染审批时，
 用户经默认恢复入口回到默认呈现继续审批。无论在哪里提交，宿主都重新核对待处理请求和可选决定，最终授权由原生宿主执行。
 
 内置提问面板一次展示一道问题，多题时显示题号、回答状态和上一个/下一个操作，题号可直接跳转。
@@ -295,7 +303,7 @@ Agent 会话审批与 Agent 提问一样属于会话区域：宿主只把当前�
 1. 先确定业务状态与动作的所有者；页面仅增加窄 props 和语义回调。
 2. 新增或修改语义接口时，同步 `UiKitAdapter` 及对应 props、runtime proxy、公开导出和当前所有注册 adapter。
    仅调整样式或主题令牌时沿用现有接口。两个内置 adapter 都必须覆盖完整合同，必需成员不能改为 optional 来绕过完整性检查。
-3. 视觉实现放入对应 kit；共享行为进入 shared，共享布局进入 base。ak-ui 的具体视觉遵循现行规范。
+3. 视觉实现放入对应 kit；共享行为进入 shared，共享布局进入 base。Material 3 与 ak-ui 的具体视觉分别遵循各自现行规范。
 4. 若影响外部呈现，分别检查未覆盖 surface 的继承，以及已覆盖 surface 的快照和动作是否仍完整。
    需要新增公共字段时，同时更新协议、验证器及消费者，不能把内部组件接口直接当作外部协议。
    把控件加入外部 controls 目录时，在 `presentation-runtime/controls.ts` 的注册表中提供纯数据投影、
@@ -313,7 +321,7 @@ Agent 会话审批与 Agent 提问一样属于会话区域：宿主只把当前�
 
 ## 验证要求
 
-从仓库根目录运行 `pnpm run verify`，包含架构检查、类型检查、Node 测试与构建；CI 使用同一入口。
+从仓库根目录运行 `pnpm run verify`，包含迁移检查、架构检查、类型检查、Node 测试与构建；CI 使用同一入口。
 `check:architecture` 覆盖 app/workbench 的导入、CSS、公共纯数据边界、宿主区域与 generation guard；
 `test/default-ui-kit.test.mjs` 保护两个内置 kit、完整 adapter、默认回退、切换时的明暗偏好及旧入口兼容。
 `test/material3-theme.test.mjs` 限制共享层视觉声明、跨 kit 选择器/令牌引用及全局动画名。
@@ -334,6 +342,13 @@ UI 实现变化需检查默认 Material 3 与 ak-ui 的浅/深主题，以及受
 | 外部包继承、完整工作台与恢复 | `probes/presentation-app-browser.mjs`、`probes/presentation-full-skins-browser.mjs` |
 | 管理区域与焦点；宿主面板不承载审批 | `probes/host-panels-browser.mjs` |
 | 会话区域审批、故障回退后审批与选项作答 | `probes/presentation-full-skins-browser.mjs`（`probes/lib/presentation-approval-fault.mjs`） |
+| 长命令审批的高度限制、命令详情滚动与按钮换行 | `probes/approval-layout-browser.mjs` |
+| 多题提问分页与回答草稿 | `probes/user-input-pagination-browser.mjs` |
+| 导航栏收起、等待提示与布局恢复 | `probes/sidebar-collapse-browser.mjs` |
+| 应用通知类型与各 kit 样式 | `probes/toast-browser.mjs` |
+| 回答中的文件链接、类型图标与预览面板 | `probes/file-links-browser.mjs` |
+| 内置外观作为预装 release 的选择与回退 | `probes/builtin-presentation-browser.mjs` |
+| hostApi 1.1.0 公开控件的定制与预检 | `probes/presentation-controls-browser.mjs`、`probes/presentation-skin-controls-browser.mjs` |
 | 分支/取消归档、切换期间迟到时间线、默认与外部呈现导航 | `probes/session-lifecycle-browser.mjs` |
 | 五类设置、快捷入口、布局恢复焦点、插件草稿与继承 | `probes/settings-sections-browser.mjs`、`probes/workspace-preferences-browser.mjs` |
 

@@ -1,6 +1,6 @@
 # Aibo 内置 Material 3
 
-以 [Material 3 交互设计稿](material3-redesign.html)为视觉基准，在现有工作台上增加一套内置外观。
+以 [Material 3 交互设计稿](material3-redesign.html)为视觉基准，是 Aibo 的默认内置外观。
 本规范定义 Material 3 独立拥有的完整视觉；状态、功能与布局所有权继续遵循 [UI 架构](../ui-architecture.md)。
 可选 ak-ui 的规则见 [ak-ui 规范](ak-ui-current-spec.md)。
 
@@ -47,7 +47,19 @@
   触屏保持 44px 点击高度；更窄窗口保留横向滚动、固定模型列、默认选择、不可用项与键盘操作。
 - 输入框使用 8px 圆角轮廓和等宽边框，不使用粗左侧信号边；聚焦和错误状态强调完整边框；单选、复选与开关保留原生键盘语义。
 - 菜单使用 12px 圆角和抬高的表面，管理与确认对话框使用 28px 圆角。
-  五类设置、审批、全局搜索、恢复入口仍由宿主提供。
+  五类设置、全局搜索、恢复入口由宿主固定区域提供；Agent 审批在会话区域呈现，选择由宿主复核。
+- 侧栏支持按窗口记忆的 56px 收起状态，顶部操作行保留 16px 上边距。展开时顶部切换按钮与新建会话并排；
+  收起时上下排列，切换按钮位置固定。保留顶部切换、新建会话、工作区与会话入口，以及底部插件与设置。
+  展开恢复原列宽，列表保持挂载以保留滚动位置；收起时隐藏列表、筛选和导航拖动分隔条，
+  此时有等待审批或输入的会话，工作区与会话入口显示提示标记。
+- 审批卡片使用警告色调表面，命令以等宽圆角代码块显示。卡片高度受可用空间限制，长命令详情独立滚动，
+  操作按钮在窄窗口换行并始终可达。
+- Agent 提问一次显示一题，标题、分页和底部操作固定在滚动内容外；规则见 [UI 架构](../ui-architecture.md#固定宿主区域)。
+- 模型目录声明 `current-model` 时使用两个顺序选择器：先模型、后推理强度，复用 Select；规则与 ak-ui 相同。
+- 回答中的网页、邮件与工作区文件链接显示对应类型图标；文件链接在右侧宿主预览面板打开，
+  面板使用表面色、左侧分隔线和投影，当前行以悬浮底色加主色描边标出。
+- Composer 选区使用 35% 透明度的主色背景，保证在提及绘制层之上可见。
+- 应用通知使用反色表面、8px 圆角和圆形状态图标，按 success / info / warning / error 着色。
 - 减少动态效果偏好继续生效。窄桌面窗口保持所有操作可达，沿用现有区域切换方式。
 
 ## 验证
@@ -66,6 +78,11 @@ node probes/material3-palettes-browser.mjs
 node probes/material3-controls-browser.mjs
 node probes/material3-records-browser.mjs
 node probes/ak-ui-browser.mjs
+node probes/sidebar-collapse-browser.mjs
+node probes/approval-layout-browser.mjs
+node probes/user-input-pagination-browser.mjs
+node probes/toast-browser.mjs
+node probes/file-links-browser.mjs
 node probes/presentation-app-browser.mjs
 AIBO_BUILTIN_KIT=material3 node probes/presentation-app-browser.mjs
 node probes/presentation-full-skins-browser.mjs
@@ -75,5 +92,3 @@ AIBO_BUILTIN_KIT=material3 node probes/presentation-full-skins-browser.mjs
 Material 3 工作台、设置与窄窗口截图默认写入 `/tmp/aibo-material3/`。
 
 配色设置与六个工作台主题截图写入 `/tmp/aibo-material3-palettes/`。
-
-侧栏支持按窗口记忆的 56px 收起状态，顶部操作行保留 16px 上边距。展开时顶部切换按钮与新建会话并排；收起时上下排列，切换按钮位置固定。保留顶部切换、新建会话、工作区与会话入口，以及底部插件与设置。展开恢复原列宽，列表保持挂载以保留滚动位置；收起时隐藏列表、筛选和导航拖动分隔条。等待审批或输入的会话在导航入口显示提示标记。

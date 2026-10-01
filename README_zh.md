@@ -3,16 +3,17 @@
 [English](README.md) | [简体中文](README_zh.md)
 
 Aibo 是由 **插件宿主、能力插件和呈现插件**组成的本地编程工作台。
-它将 Codex、Pi 等 Agent 接入同一工作区，由宿主管理会话、权限、时间线和执行历史。
+它将 Codex、Pi 以及支持 Agent Client Protocol（ACP）的 Agent 接入同一工作区，由宿主管理会话、权限、时间线和执行历史。
 
 ## 主要能力
 
 - 管理工作区和多个 Agent 会话，根据用户首条消息自动命名会话。
 - 流式展示回复和工具活动，恢复会话，查看持久化历史。
-- 使用不同提供者的能力，例如 Codex 审批与分支、Pi 队列与树导航。
+- 使用不同提供者的能力，例如 Codex 审批与分支、Pi 树导航，以及持久消息队列、目标和子 Agent 历史。
 - 管理工作区信任与会话权限。启用宽泛权限时确认，正常发送不逐条确认；具体工具仍遵循所选审批策略。
-- 通过呈现层切换工作台布局和 shadcn / Material 3 皮肤。
-- 安装提供版本化操作和声明式语义视图的能力插件。
+- 全局搜索会话、消息与文件；查看并操作多个 Git 仓库。
+- 切换工作台布局与外观：内置 Material 3（默认）与 ak-ui，也可安装 shadcn / Material 3 皮肤包。
+- 安装提供版本化操作和声明式语义视图的能力插件；可用可恢复的升级替换已安装版本，并迁移其会话。
 
 各提供者的能力并不完全相同，具体支持范围见[架构与迁移记录](docs/capability-session-migration.md)
 和[平台支持矩阵](docs/plugin-platform-support-matrix.md)。
@@ -24,7 +25,7 @@ flowchart TB
     user[用户] --> presentation
     subgraph presentation[呈现层 — 宿主默认实现与隔离包]
         shell[工作台布局与语义渲染]
-        kit[UI Kit — shadcn / Material 3]
+        kit[UI Kit — Material 3 / ak-ui 与皮肤包]
         shell --> kit
     end
     subgraph host[Aibo 插件宿主]
@@ -40,6 +41,7 @@ flowchart TB
     subgraph plugins[能力插件 — 受宿主监督的进程]
         codex[Codex 能力提供者]
         pi[Pi 能力提供者]
+        acp[ACP Agent 插件]
         extra[其他能力提供者]
     end
     presentation -->|用户意图| actions
@@ -48,6 +50,7 @@ flowchart TB
     broker <-->|Pi 工作区工具请求与结果| gateway
     codex <--> native[Codex app-server]
     pi <--> sdk[Pi SDK]
+    acp <--> agent[ACP Agent 进程]
 ```
 
 宿主拥有业务状态和授权决定；能力插件实现具体操作及原生引擎接入；呈现插件决定
@@ -60,19 +63,21 @@ flowchart TB
 
 **当前扩展边界：**能力包与呈现包均支持本地安装，使用独立安装入口。外部呈现代码
 在可终止 Worker 中生成受限视觉树，由可信 iframe 桥绘制，不能直接访问 DOM、网络、
-存储或 Tauri IPC。管理、审批和恢复由宿主保留，未覆盖的呈现范围继承宿主默认实现。
+存储或 Tauri IPC。管理和恢复由宿主保留；Agent 审批在所属会话区域呈现，每次选择由宿主复核。
+未覆盖的呈现范围继承宿主默认实现。
 旧 Agent Runtime v1 已退役，没有当前能力绑定的旧会话仅保留历史读取。
 
 ## 呈现插件交付
 
-shadcn 与 Material 3 独立呈现包当前为 **0.3.0**，共享工作台模块为 **0.2.0**。
-支持三种布局、草稿与布局持久化、焦点和消息锚点恢复，以及核心语义降级；另有
-仅定制主题的 Ocean 样例。
+Aibo 内置 Material 3（默认）与 ak-ui 两套外观，以预装可信 release 登记。可安装的
+shadcn 与 Material 3 独立皮肤包当前为 **0.4.1**（宿主 API **1.1.0**），共享工作台模块为
+**0.2.2**。支持三种布局、草稿与布局持久化、焦点和消息锚点恢复、核心语义降级以及全部
+九个公开控件；另有仅定制主题的 Ocean 样例。
 
 解压皮肤包，在 Aibo 设置中点击“安装皮肤插件”，选择包含 `presentation.json` 的
-目录，再选中已安装皮肤。本地 ZIP、离线 SDK tarball 和重建方式见
-[0.3.0 交付说明](docs/presentation-release-0.3.0.md)，逐项验证证据见
-[退出审计](docs/presentation-plugin-exit-audit.md)。原生验收覆盖 macOS arm64，
+目录，再选中已安装皮肤。构建方式见[皮肤包说明](packages/presentation-shadcn/README.md)，
+当前范围见[呈现包合同](docs/presentation-package.md)。[0.3.0 交付说明](docs/presentation-release-0.3.0.md)
+与[退出审计](docs/presentation-plugin-exit-audit.md)保留首次交付基线及验证证据。原生验收覆盖 macOS arm64，
 不代表其他平台、物理输入或完整屏幕阅读器支持已通过。
 
 ## 本地运行
@@ -80,8 +85,7 @@ shadcn 与 Material 3 独立呈现包当前为 **0.3.0**，共享工作台模块
 开发需要 Node.js 22+、pnpm、Rust 工具链及 Tauri 2 对应平台的构建依赖。
 Codex 会话需要 `PATH` 中可用的 `codex` 和原生认证；Pi 会话使用项目锁定版本的
 `@earendil-works/pi-coding-agent` SDK，模型调用需要配置提供商凭据。
-Pi CLI 只用于独立的 RPC 探针。发布应用内置私有 Node，用户无需安装系统 Node；
-第三方插件在构建时携带自己的运行依赖，安装时不执行 npm。
+Pi CLI 只用于独立的 RPC 探针。第三方插件在构建时携带自己的运行依赖，安装时不执行 npm。
 
 ```sh
 pnpm install
@@ -93,10 +97,12 @@ pnpm tauri dev
 
 ```sh
 pnpm dev          # 浏览器 UI 预览；实际桌面执行需要 Tauri
-pnpm run verify   # 架构、TypeScript、Node 测试与前端构建
-pnpm prepare:node # Prepare bundled runtime before standalone Rust tests
+pnpm run verify   # 迁移检查、架构、TypeScript、Node 测试与前端构建
 cargo test --manifest-path src-tauri/Cargo.toml
 ```
+
+发布包不内置 Node。Aibo 优先使用兼容的本机 Node（`PATH` 与常见安装位置）；必要时在
+设置 → 运行与诊断中下载专用运行时或选择 Node 可执行文件，详见[宿主 SDK](docs/host-sdk.md)。
 
 目前 macOS arm64 有原生验收证据。其他架构和操作系统的验证、执行限制不同，
 请查阅[平台支持矩阵](docs/plugin-platform-support-matrix.md)。
@@ -112,6 +118,8 @@ cargo test --manifest-path src-tauri/Cargo.toml
 | [插件协议包](packages/plugin-protocol/) | 不依赖 UI 框架的数据契约 |
 | [能力 Runtime](packages/capability-runtime/) | Node stdio helper，支持流与执行中控制 |
 | [Web 呈现类型](packages/web-presentation/) | 可信呈现实现的本地接口 |
+| [宿主 SDK](docs/host-sdk.md) | 宿主提供的运行模块、版本范围与 Node 解析 |
+| [ACP 适配器](packages/acp-adapter/) | 通用 ACP 客户端与 Agent 插件 Worker |
 | [呈现包合同](docs/presentation-package.md) | 隔离包格式、Worker 入口与打包工具 |
 | [UI 架构](docs/ui-architecture.md) | UI Kit 边界与皮肤扩展规则 |
 

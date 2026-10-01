@@ -120,5 +120,5 @@ async function invoke(request: CapabilityInvocation) {
   数据库重开、升级与版本隔离、卸载与会话身份。
 - `cargo test --lib capability_session_projects_tools_and_recovers_after_process_restart`：
   实际安装包、Broker、SQLite、Pi 提供者进程与假 SDK 的完整发送链路。
-- `node probes/agent-settings-browser.mjs`：双皮肤表单编辑、保存、重置和错误展示。
+- `node probes/agent-settings-browser.mjs`：内置 Material 3 与 ak-ui 两套外观表单编辑、保存、重置和错误展示。
 - 交付前运行 `pnpm run verify`。

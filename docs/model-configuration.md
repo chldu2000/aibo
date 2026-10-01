@@ -91,6 +91,10 @@ Fast 旁的上下文下拉框只有在会话声明能力、当前模型提供非
 呈现须保留估算标记，不能自行用累计 token 数替换上下文占用。
 实现入口为 [`session-usage.ts`](../src/lib/app/session-usage.ts)。
 
+ACP 插件由 `@aibo/acp-adapter` 映射：`usage_update` 的 `used` / `size` 成为 `contextTokens` /
+`contextWindow`；每轮 prompt 结果的 input（含缓存读写）、output 与 total 在进程内累加为会话累计值。
+累计值不跨进程恢复，Agent 未报告时保持未知。
+
 ## 外部呈现
 
 ModelMatrix 的动作先按 `kind: model | serviceTier` 区分，Fast 缺失时不绘制开关。
@@ -109,13 +113,13 @@ ModelMatrix 的动作先按 `kind: model | serviceTier` 区分，Fast 缺失时�
 
 ## 启动与目录缓存
 
-宿主按不可变的 Aibo session ID 保存最近确认的模型目录，最多 30 个会话、1 MB、7 天。
+前端按不可变的 Aibo session ID 在本地存储（`aibo.session-models.v1`，[`session-model-cache.ts`](../src/lib/app/session-model-cache.ts)）保存最近确认的模型目录，最多 30 个会话、1 MB、7 天。
 应用重启或切换会话时先展示该快照，再读取绑定 provider 的实时目录；刷新期间明确标识旧快照，
 默认与外部呈现均不提供模型修改动作。缓存不授予能力或执行权限，不能替换原生确认。
 实际修改模型配置前重新读取当前目录；同一会话的并发显示读取合并，配置修改会隔离旧请求。
 重复点击当前会话不清空已经加载的模型和模式。
 
-内置 Codex 2.0.14 在单个原生进程内共用模型发现请求，目录最多缓存 60 秒，进程关闭时清除，
+内置 Codex（2.0.14 起）在单个原生进程内共用模型发现请求，目录最多缓存 60 秒，进程关闭时清除，
 失败结果不缓存。模型、推理强度和服务层级不再各自重复发现。初始额度查询最多等待 5 秒，
 在后台进行且不阻塞 session open；结果仍经过当前会话和进程身份检查。没有活动 invocation 时，
 共享 provider 将用量事件保留到下一次调用，不发送无所属的事件。

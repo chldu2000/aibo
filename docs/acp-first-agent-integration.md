@@ -5,7 +5,10 @@
 
 ## 背景与问题
 
-Agent 现在有两种接入方式：
+本节描述 A1 之前（2026-09-27 前）的状态。现在 Cursor 插件只保留 `cursor-session.mjs` 中的厂商扩展和一行 Worker，
+通用逻辑已移入 `@aibo/acp-adapter`。
+
+当时 Agent 有两种接入方式：
 
 | 插件 | 位置 | 原生协议 | 规模 |
 | --- | --- | --- | --- |
@@ -48,13 +51,16 @@ flowchart LR
   worker <-->|ACP NDJSON| agent[agent acp / gemini --acp / ...]
 ```
 
-新增包 `packages/acp-adapter`（`@aibo/acp-adapter`），随 `@aibo/capability-runtime` 一起以本地 tarball 发布：
+新增包 `packages/acp-adapter`（`@aibo/acp-adapter`），作为宿主 SDK 快照（0.1.2 起）的一部分随宿主交付，
+插件以 `hostSdk` 在运行时导入，开发时作为 devDependency（见[宿主 SDK](host-sdk.md)）：
 
 | 模块 | 来源 | 职责 |
 | --- | --- | --- |
 | `transport` | 从 Cursor `acp-transport.mjs` 提取 | 子进程、NDJSON、双向 RPC、帧上限、背压、超时、stderr 有界尾部 |
 | `session` | 从 `cursor-session.mjs` 提取通用部分 | 握手、new/load 选择、prompt 串行、cancel、事件映射、审批与问答、recovery |
 | `config` | 从 `model-config.mjs` 提取 | `config_option` → 模型/推理/上下文窗口的归一化 |
+| `image-input` | 新增 | 宿主图片描述符校验并转换为 ACP 图片内容块 |
+| `elicitation`（内部） | A7 新增 | ACP 表单 elicitation ↔ 宿主问题的映射与回复校验 |
 | `worker` | 新增 | 读取插件包内的 `acp.json`（或接受代码扩展），组装 Runtime 2.1 Worker |
 | `extensions` | 新增接口 | 认证、`_meta`、扩展方法、扩展通知的钩子 |
 
@@ -82,7 +88,9 @@ plugins/<agent>/
 
 需要厂商扩展方法的 Agent 向 `serveAcpAgent` 传入代码扩展，Cursor 即如此。
 
-可执行文件仍须在 `executableDependencies` 中声明，以参数数组、`shell:false` 启动；cwd 取可信工作区。
+使用外部 `command` 时，可执行文件仍须在 `executableDependencies` 中声明，以参数数组、`shell:false` 启动；cwd 取可信工作区。
+宿主 SDK 0.1.6 起，`acp.json` 也可以改用 `"launch": { "kind": "node", "entry": "<包内路径>" }`（与 `command` 互斥），
+由 Worker 解析到的 Node 运行插件包内携带的 ACP Agent，只需 Node 运行依赖；Claude Code 插件即采用此方式。
 
 ## ACP ↔ Aibo 会话映射
 
@@ -100,7 +108,7 @@ plugins/<agent>/
 | `tool_call` / `tool_call_update` | `tool.started` / `tool.updated` / `tool.completed` | 按 toolCallId 关联 |
 | `session/request_permission` | `approval.requested` → `approval.respond` | 选项映射见下文"授权" |
 | `available_commands_update` | `command.list` | |
-| `config_option_update` / `session/set_config_option` | `model.select`、`model.reasoning`、`model.context-window` | 由 `config` 模块归一化，选择 ID 保持不透明 |
+| `config_option_update` / `session/set_config_option` | `model.select`、`model.reasoning`、`model.context-window` | 由 `config` 模块归一化，选择 ID 保持不透明；`parameterScope: "current-model"`（SDK 0.1.7）声明参数只属于当前模型，宿主先确认模型再提供推理选项 |
 | 模式（`session/set_mode` 或模式类 config option） | `sessionControls` 中 `kind: mode` | 模式列表来自清单声明，并与 Agent 实际宣告取交集；当前宿主只支持静态声明，见"会话模式与回合内转换" |
 | `current_mode_update` | `session.control_changed`（新增） | 宿主按"回合内转换"规则核对，不直接采信 |
 | `usage_update`、`session/prompt` 结果的 `usage` | `usage.updated` | `used`/`size` 映射为 `contextTokens`/`contextWindow`，`cost` 原样保留；每回合 `usage` 累加为会话级 `input`/`output`/`totalTokens`（`input` 含缓存读写）。每次事件携带完整快照 |
@@ -236,7 +244,8 @@ sequenceDiagram
 - 审批卡支持多选项：批准类与拒绝类使用不同的按钮意图，计划正文用共享 Markdown 渲染；
   未通过信任检查的升级选项置灰并说明原因。
 - Composer 的模式指示器绑定宿主执行配置，收到 `session.control_changed` 后实时更新并短暂高亮。
-- 审批属于宿主固定区域；外部呈现只需从快照读取新的当前模式与时间线条目，快照新增字段属于小版本变更。
+- 审批在所属会话区域呈现（b4abafd 起，外部工作台从 `conversation.approvalRequests` 渲染），每次选择由宿主复核；
+  外部呈现从快照读取新的当前模式与时间线条目，快照新增字段属于小版本变更。
 
 ### "清空上下文"类选项
 
@@ -247,9 +256,9 @@ A6 开放了这类选项，恢复时的限制见 [A6 实施记录](#a6-实施记
 
 ACP 的 `session/new` 接受 `mcpServers`。Cursor 0.1.18 已通过 SDK 私有 MCP bridge 接入
 宿主授权的 `aibo.host-tools/v1` 目录，并有真实调用及跨进程恢复证据；A1 保留这条路径。
-通用 `AcpSession` 已接收 `mcpServers`，但创建 bridge 和传入目录仍由 Cursor Worker 负责。
-A4 剩余工作是将这段接线提供给 A2 的通用 Worker，并验证第二个 Agent；不重复实现历史工具，
-也不扩大现有授权范围。新增文件写入或命令工具仍需单独决定。
+A4 已把这段接线移入通用 Worker：宿主在会话上下文中下发目录时，`@aibo/acp-adapter/worker` 创建 bridge、
+以 `mcpServers` 传给 Agent，并把只读工具交给会话做自动许可，见 [A4 实施记录](#a4-实施记录)。
+不重复实现历史工具，也不扩大现有授权范围。新增文件写入或命令工具仍需单独决定。
 
 ## 阶段
 
@@ -331,7 +340,9 @@ A4 剩余工作是将这段接线提供给 A2 的通用 Worker，并验证第二
 
 - 第二个真实 Agent 选用 Claude Code，经 `@agentclientprotocol/claude-agent-acp` 0.81.2 接入（Claude Code 2.1.280）。
   `aibo-plugins/plugins/claude-code` 只有 `plugin.json`、`acp.json` 和模板的一行 Worker，未写插件代码。
-- `acp.json`：命令 `claude-agent-acp`；`edit` 映射 Claude 的 `default`（Manual，编辑与命令发审批），`plan` 映射 `plan`；
+  （A3 时的形态。插件此后升级到 0.4.x：以 `launch: { kind: "node", entry: "launch-acp.mjs" }` 运行包内携带的适配器，
+  并按 A5–A7 增加 Auto 模式、`approvalOptions` 与 `elicitation`。）
+- `acp.json`（A3 时）：命令 `claude-agent-acp`；`edit` 映射 Claude 的 `default`（Manual，编辑与命令发审批），`plan` 映射 `plan`；
   不映射 `ask`（Claude 没有无工具的只读模式）；不设 `authMethodId`（沿用本机 Claude Code 登录）；`persistsEmptySessions: false`。
   Accept edits、Auto 与 Bypass 不暴露，理由见"会话模式与回合内转换"。
 - 接入暴露并修正了一个通用层缺陷：此前只要识别为参数化模型配置就同时声明推理强度与上下文窗口。Claude 没有上下文窗口选项，
@@ -342,6 +353,7 @@ A4 剩余工作是将这段接线提供给 A2 的通用 Worker，并验证第二
   证据见 `aibo-plugins/docs/baselines/claude-code-a3/probe.json`。插件仓库新增只靠配置插件的清单与合同一致性测试。
 - 已知差距：Claude 的 AskUserQuestion 走 ACP elicitation，通用层未实现，Agent 收到 Method not found；
   Plan 中批准计划会请求切换模式并被拒绝，需在 aibo 中手动切到 Manual（A5）。未做桌面宿主中的完整会话交互复验。
+  （两项差距已分别由 A7 与 A5 解决。）
 
 ### A4：将已有 MCP 宿主工具接入通用 Worker
 
@@ -349,6 +361,14 @@ A4 剩余工作是将这段接线提供给 A2 的通用 Worker，并验证第二
 - 宿主授权按现有 host-tools 规则执行；Agent 调用宿主工具时仍校验调用归属、代际与信任。
 
 前提：沿用 [会话历史工具设计](session-history-tool-design.md)的现行授权模型；新增工具或扩大数据范围须另行决策。
+
+#### A4 实施记录
+
+- 接线随 A2 的 `serveAcpAgent`（宿主 SDK 0.1.3）一并交付：`aibo.session.open` 时若宿主上下文带有 `aibo.host-tools/v1` 目录，
+  Worker 用 `@aibo/capability-runtime/host-tools` 创建私有 MCP bridge，以 `mcpServers` 传给 `session/new` / `session/load`；
+  恢复时保留 recovery 中的公开 server 名称并轮换凭证。只读且非破坏性的工具作为 `hostMcpTools` 交给会话做一次性自动许可。
+- 宿主工具调用经同一 host-tools 通道回到宿主，仍校验调用归属、代际与信任；会话关闭时关闭 bridge。
+- 验证：`test/acp-worker.test.mjs` 以回显夹具经 MCP 调用宿主工具；Cursor 打包 Worker 冒烟含宿主工具。
 
 ### A5：多选项审批与回合内模式转换
 

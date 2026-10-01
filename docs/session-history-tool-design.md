@@ -50,8 +50,10 @@ Codex 在 `thread/start.dynamicTools` 注册，并将 `item/tool/call` 映射回
 保存的工具名称和当前目录取交集；原生线程已持久化工具定义，导入的旧线程没有工具声明时安全降级。
 该接口是实验性协议，依据本机生成 schema 及 [官方 App Server 文档](https://developers.openai.com/codex/app-server/)。
 Pi 在 `createAgentSession` 中注册 custom tools，恢复时重新注册当前目录。
-Cursor 插件将公共 bridge 配置映射为 ACP `session/new` / `session/load` 的 `mcpServers`；
-厂商参数转换全部位于插件内。Cursor MCP 发现可能延迟到首个 prompt；恢复保留公开 server 标识，
+ACP 插件由 `@aibo/acp-adapter/worker`（宿主 SDK 0.1.3 起）统一完成接线：宿主在会话上下文中下发目录时，
+Worker 创建公共 bridge 并映射为 ACP `session/new` / `session/load` 的 `mcpServers`，同时把私有目录中的
+只读工具交给会话做自动许可；Cursor、Claude Code 等插件无需各自实现。厂商参数转换仍位于插件扩展内。
+ACP 的 MCP 发现可能延迟到首个 prompt（Cursor 即如此）；恢复保留公开 server 标识，
 轮换私有凭证。只读自动许可按原生结构化 server/tool 标识及当前 tool_call ID 关联，
 仅允许私有宿主目录中的只读工具一次，标题、永久许可及其他工具不会获得该授权。
 
@@ -120,6 +122,10 @@ SDK 每回合最多 8 个并发请求，输入最多 128 KiB，单次最长 30 �
 
 本次不涉及 UI 控件变化，未做桌面点击和截图验收。新内置 release 为 Codex 2.0.15、Pi 2.0.10；
 外部 Cursor 0.1.18 需重新构建安装。已有会话仍固定原 release，使用新会话验证新能力。
+
+> 以上为 2026-09-26–27 的验收记录。此后内置 Codex 已为 2.0.16；内置包只在数据库中没有
+> 该插件记录时引导安装，同一 pluginId 的新版本通过宿主确认的可恢复替换迁移会话，
+> 见[宿主与插件边界](plugin-boundaries-and-regression.md#插件卸载与会话迁移)。
 
 最终回归：宿主 `pnpm run verify` 通过（41 项架构检查、457 项 Node 测试、类型检查与构建）；
 `cargo test --manifest-path src-tauri/Cargo.toml --lib` 为 260 通过、1 项既有忽略；

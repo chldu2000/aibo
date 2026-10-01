@@ -10,7 +10,8 @@ session scope `capabilityProvider` contribution，由 installation ID 和 contri
 
 部分现有 API、会话数据与 binding 仍沿用 `agentId` 或 `agent` 字段名；在当前会话提供者路径中，
 它们承载 contribution ID，不表示品牌枚举或独立 Agent 运行协议。绑定保留具体 installation，
-因此升级安装不会将已有会话改绑到新的 release。字段名兼容不构成旧插件模型仍可执行的依据。
+普通调用和配置变化不会改绑。同一 pluginId 安装新版本时走宿主确认的替换事务：全部会话恢复通过才迁移，
+未使用新版前可撤销；降级须清除插件数据重装，旧会话转为只读历史，见[插件替换规则](plugin-boundaries-and-regression.md#插件卸载与会话迁移)。字段名兼容不构成旧插件模型仍可执行的依据。
 
 ## 三层声明必须一致
 
@@ -78,7 +79,7 @@ console.log(JSON.stringify(operation, null, 2));
 
 1. 核对目标宿主包含 `7865fad` 对应合同，逐项对照清单、握手和 open 返回值；移除未实现的声明，补齐响应 envelope。
 2. 为命令插入、树、时间线、快照、分支分别声明实际能力；功能间不靠品牌隐式关联。
-3. 增加插件版本并重新构建、安装，新建会话验证。既有会话固定旧 release，不因安装更新自动换绑。
+3. 增加插件版本并重新构建、安装。安装预览确认后，既有会话随替换事务迁移到新版；新建会话与迁移后的旧会话都需验证。
 4. 验证实际打包 Worker 的初始化握手、open 能力与操作响应 schema，覆盖参数缺失和原生不支持情况，再进行真实引擎与桌面验收。
 5. 宿主修改运行 `pnpm run verify`；涉及 Rust 协商或执行边界时运行对应 Rust 测试。模拟引擎验证不等于真实引擎、权限隔离或桌面端到端验收。
 6. 按 [跨层回归要求](plugin-boundaries-and-regression.md#regression-gate) 检查未新增该能力的提供者、旧声明及原有操作；目录响应成功后，还要验证真实组件是否显示并能执行相应动作。
@@ -88,7 +89,7 @@ console.log(JSON.stringify(operation, null, 2));
 | 已安装但功能未出现 | open 是否声明功能；manifest schema 是否精确匹配；握手 ID、版本和 operationId 是否一致 |
 | 功能出现但响应失败 | 是否返回 recovery/capabilities 及专用字段；是否使用正确输入变体；原生引擎是否真正实现 |
 | 无写入或 Plan 模式 | 查看绑定 release 的 sessionControls、宿主过滤结果及执行后端，功能标签不能授予权限 |
-| 更新后旧会话仍用旧行为 | 检查固定 release，使用新会话验证新安装 |
+| 更新后旧会话仍用旧行为 | 检查替换是否已提交或被撤销、会话绑定的 installation，以及新版 open 是否声明该功能 |
 | 支持功能但按钮暂不可用 | 检查会话忙碌、运行、归档状态与动作准入 |
 
 实现依据：[协商器](../src-tauri/src/session_contract.rs)、[执行配置](../src-tauri/src/execution_profile.rs)。

@@ -88,7 +88,9 @@ Presentation workbenches use public `queue.manage` for queue controls and
 `queue.steer` for running `queueSteer`/`sendQueuedMessage`. Idle send-now does not
 require steering. Stable-ID actions remain bound to host tokens. Attachment
 ownership is host-managed; supported attachment content is still limited by the
-normal session delivery path (currently queued image context is rejected).
+normal session delivery path. Queued images are validated against the session's
+negotiated `image.input` capability and delivered with the turn when the provider
+also adopts the queue contract variant with `attachments`.
 
 No automatic reconciliation or idempotent resend protocol is added here.
 Unknown delivery results still pause the queue and require history review.
