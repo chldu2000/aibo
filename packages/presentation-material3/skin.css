@@ -106,3 +106,5 @@ button{border-radius:9999px;border-color:transparent;padding:10px 20px}.collecti
 .goal-actions{display:flex;gap:6px}.goal-actions>button{padding:6px 12px}
 .subagent{display:grid;width:100%;gap:4px;padding:12px 16px;border-radius:16px;text-align:left}.subagent.failed{outline:2px solid var(--destructive)}
 .subagent-heading{display:flex;justify-content:space-between;gap:8px}.subagent-status,.subagent-activity{opacity:.75;font-size:12px}
+
+.workbench .markdown-link-icon { display: inline-block; width: 13px; height: 13px; margin-inline-end: 4px; vertical-align: -2px; }

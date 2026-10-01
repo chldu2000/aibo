@@ -1,13 +1,16 @@
 import {node,button,actionFor} from './tree.js';
 import {parseMarkdown,displayMarkdown} from './markdown.js';
 import {highlightCode} from './code-highlight.js';
+import {linkTarget,linkLabels,linkIconPaths} from './links.js';
 
 export function renderRichText(content,key,entryId,actions) {
   const inline = (segments,prefix) => segments.map((segment,index) => {
     const id = prefix+':'+index;
     if (segment.kind === 'link') {
       const action = actions.find(action => action.operation === 'openLink' && action.args[0] === entryId && action.args[2] === segment.href);
-      return {...button(id,null,action,{role:'link',title:segment.href}),children:inline(segment.children,id+':label'),className:'markdown-link'};
+      const kind = linkTarget(segment.href).kind;
+      const icon = {...node('svg',id+':icon',null,[node('path',id+':icon:path',null,[],{d:linkIconPaths[kind]})],{viewBox:'0 0 24 24',width:'13',height:'13',fill:'none',stroke:'currentColor','stroke-width':'1.6','aria-hidden':'true'}),className:'markdown-link-icon'};
+      return {...button(id,null,action,{role:'link',title:linkLabels[kind]+'：'+segment.href}),children:[icon,...inline(segment.children,id+':label')],className:'markdown-link'};
     }
     const tag = {code:'code',strong:'strong',em:'em',del:'del'}[segment.kind] ?? 'span';
     return {...node(tag,id,segment.children ? null : segment.value,segment.children ? inline(segment.children,id) : []),

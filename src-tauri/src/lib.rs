@@ -16,6 +16,8 @@ mod session_history;
 mod global_search;
 mod database_migrations;
 mod search_files;
+mod text_preview;
+mod file_preview;
 mod search_assets;
 #[cfg(test)]
 mod session_activity_tests;
@@ -1304,6 +1306,15 @@ async fn read_search_result(target: global_search::Target, window: tauri::Window
     if target.source == "attachment" || target.source == "artifact" { return search_assets::detail(&state.db, &state.data_dir, target).await; }
     if target.source == "file" { return search_files::detail(&state.db, target).await; }
     global_search::detail(&state.db, window.label(), target).await
+}
+
+#[tauri::command]
+async fn read_linked_file(session_id: String, path: String, line: Option<u32>, state: State<'_, AppState>) -> Result<file_preview::FilePreview, CoreError> {
+    // Resolve ownership from the persisted session, never a caller-provided workspace root.
+    let session = session_by_id(&state.db, &session_id).await?;
+    let workspace = workspace_by_id(&state.db, &session.workspace_id).await?;
+    tauri::async_runtime::spawn_blocking(move || file_preview::read(std::path::Path::new(&workspace.path), std::path::Path::new(&path), line))
+        .await.map_err(|error| CoreError::SessionOperation(error.to_string()))?
 }
 
 #[tauri::command]
@@ -4635,6 +4646,7 @@ pub fn run() {
             search_global_assets,
             cancel_global_file_search,
             read_search_result,
+            read_linked_file,
             add_workspace,
             host_confirmation::read_host_confirmation_preferences,
             host_confirmation::save_host_confirmation_preference,

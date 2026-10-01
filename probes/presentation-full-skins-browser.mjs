@@ -41,6 +41,7 @@ try {
     window.__TAURI_INTERNALS__={metadata:{currentWindow:{label:'main'},currentWebview:{label:'main'}},
       transformCallback(fn){const id=++callback;window['_'+id]=fn;return id;},unregisterCallback(id){delete window['_'+id];},
       async invoke(command,args={}){
+        if(command==='read_linked_file'){window.presentationFileRead=args;return {path:'/workspace/'+args.path,content:'const local = 42;',startLine:42,totalLines:42,truncated:false,targetLine:42};}
         if(command==='plugin:opener|open_url'){window.presentationLinks.push([args.url]);return;}
         if(command==='read_workspace_preferences')return {trustNewWorkspaces:true};
         window.presentationCommands.push(command);window.navigationCalls.push({command,args});
@@ -56,7 +57,7 @@ try {
         if(command==='get_session_models')return catalog;
         if(command==='invoke_agent_capability'&&args.capability==='command.list')return {commands:[{name:'help',description:'Help command',source:'agent'},{name:'hello',description:'Hello command',source:'agent'},{name:'heal',description:'Healing skill',source:'skill'},{name:'height',description:'Height prompt',source:'prompt'}]};
         if(command==='search_workspace_paths')return [{path:'src/one.ts',isDirectory:false},{path:'src/two.ts',isDirectory:false}];
-        if(command==='get_timeline')return [{id:'message',sessionId:args.sessionId,turnId:'turn',externalMessageId:null,role:'assistant',toolName:'tool-name',entryType:'note',content:'Complete timeline data\n\n## Rich heading\n\n**Bold message** and `inline` [Reference](https://example.invalid)\n\n- Item one\n- Item two\n\n```js\nconst answer = 42;\n```\n[AIBO_CONTEXT_ATTACHMENTS]internal metadata[/AIBO_CONTEXT_ATTACHMENTS]\n\n'+pkg.markdownTechnical,status:'completed',createdAt:'2026-09-13',updatedAt:'2026-09-13'},...([{id:'tool-message',role:'tool',toolName:'commandExecution',entryType:'tool_call',content:'**literal tool arguments**\n<script>literal</script>'},{id:'tool-result',role:'tool',toolName:'commandExecution',entryType:'tool_result',content:'literal tool result'},{id:'reasoning-message',role:'system',toolName:'reasoning',entryType:'note',content:'## Reasoning detail'}].map(item=>({...item,sessionId:args.sessionId,turnId:'turn',externalMessageId:null,status:'completed',createdAt:'2026-09-13',updatedAt:'2026-09-13'}))),...Array.from({length:16},(_,index)=>({id:'scroll-'+index,sessionId:args.sessionId,turnId:'turn',externalMessageId:null,role:'assistant',toolName:null,entryType:'note',content:'Scroll message '+index+'\n\n'+('Anchor paragraph. '.repeat(30)),status:'completed',createdAt:'2026-09-13',updatedAt:'2026-09-13'}))];
+        if(command==='get_timeline')return [{id:'message',sessionId:args.sessionId,turnId:'turn',externalMessageId:null,role:'assistant',toolName:'tool-name',entryType:'note',content:'Complete timeline data\n\n## Rich heading\n\n**Bold message** and `inline` [Reference](https://example.invalid) and [Local file](src/sample.ts:42)\n\n- Item one\n- Item two\n\n```js\nconst answer = 42;\n```\n[AIBO_CONTEXT_ATTACHMENTS]internal metadata[/AIBO_CONTEXT_ATTACHMENTS]\n\n'+pkg.markdownTechnical,status:'completed',createdAt:'2026-09-13',updatedAt:'2026-09-13'},...([{id:'tool-message',role:'tool',toolName:'commandExecution',entryType:'tool_call',content:'**literal tool arguments**\n<script>literal</script>'},{id:'tool-result',role:'tool',toolName:'commandExecution',entryType:'tool_result',content:'literal tool result'},{id:'reasoning-message',role:'system',toolName:'reasoning',entryType:'note',content:'## Reasoning detail'}].map(item=>({...item,sessionId:args.sessionId,turnId:'turn',externalMessageId:null,status:'completed',createdAt:'2026-09-13',updatedAt:'2026-09-13'}))),...Array.from({length:16},(_,index)=>({id:'scroll-'+index,sessionId:args.sessionId,turnId:'turn',externalMessageId:null,role:'assistant',toolName:null,entryType:'note',content:'Scroll message '+index+'\n\n'+('Anchor paragraph. '.repeat(30)),status:'completed',createdAt:'2026-09-13',updatedAt:'2026-09-13'}))];
         if(command==='invoke_agent_capability'){
           if(['model.select','model.reasoning'].includes(args.capability)){
             window.modelMutations.push(args);
@@ -325,6 +326,12 @@ try {
     await page.evaluate(() => { window.open = () => { throw Error('Desktop links must use the native opener'); }; });
     await frame.getByRole('link',{name:'Reference',exact:true}).click();
     await page.waitForFunction(()=>window.presentationLinks.some(args=>args[0]==='https://example.invalid'));
+    await frame.getByRole('link',{name:'Local file',exact:true}).click();
+    const filePreview=page.getByRole('complementary',{name:'文件预览',exact:true});
+    await filePreview.locator('[data-line="42"][aria-current="true"]').waitFor();
+    assert.equal(await filePreview.locator('pre').textContent(),'42const local = 42;');
+    assert.deepEqual(await page.evaluate(()=>window.presentationFileRead),{sessionId:'s1',path:'src/sample.ts',line:42});
+    await filePreview.getByRole('button',{name:'关闭文件预览'}).click();
     assert.equal(await frame.getByText('internal metadata',{exact:true}).count(),0);
     await composer.fill('');await composer.pressSequentially('完整皮肤 keeps draft',{delay:12});
     await page.waitForTimeout(200);assert.equal(await composer.inputValue(),'完整皮肤 keeps draft');

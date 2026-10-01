@@ -36,6 +36,8 @@ export type UiIconName =
   | 'shield-alert'
   | 'filter'
   | 'file'
+  | 'globe'
+  | 'mail'
   | 'focus'
   | 'folder'
   | 'folder-add'

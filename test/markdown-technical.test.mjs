@@ -61,7 +61,7 @@ test('nested links and code copies bind exact current content and revoke stale a
 test('escaping, entities, reference links and raw HTML remain text without unsafe actions', () => {
   assert.equal(plain(inlineSegments('a &amp; b \\*literal\\*')), 'a & b *literal*');
   assert.equal(plain(inlineSegments('`&amp; <script>`')), '&amp; <script>');
-  for (const content of ['[bad](javascript:alert(1))','[bad](java&#x73;cript:alert)','[bad](data:text/html,test)','[bad](file:///tmp/test)','<img src=x onerror=alert(1)>']) {
+  for (const content of ['[bad](javascript:alert(1))','[bad](java&#x73;cript:alert)','[bad](data:text/html,test)','[bad](file://remote/tmp/test)','<img src=x onerror=alert(1)>']) {
     assert.deepEqual(markdownTargets(content),[]);
     const tree = renderRichText(content,'unsafe','entry',[]);
     assert.ok(!flatten(tree).some(node => node.events || node.tag === 'img' || node.tag === 'script'));

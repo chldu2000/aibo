@@ -107,8 +107,11 @@ test("rendered Markdown stays in the safe component path", async () => {
   assert.doesNotMatch(renderer, /\{@html/);
   const parser = await readFile(path.join(root, "packages", "presentation-workbench", "markdown.js"), "utf8");
   assert.match(renderer, /presentation-workbench\/markdown\.js/);
-  assert.match(parser, /SAFE_LINK/);
-  assert.match(parser, /https\?:\\\/\\\//);
+  assert.match(parser, /linkTarget\(href\)/);
+  const {markdownTargets} = await import('../packages/presentation-workbench/markdown.js');
+  assert.deepEqual(markdownTargets('[bad](javascript:alert(1))'), []);
+  assert.deepEqual(markdownTargets('[bad](file://remote/path)'), []);
+  assert.equal(markdownTargets('[file](src/main.ts:42)')[0].value, 'src/main.ts:42');
   assert.match(renderer, /rel="noreferrer"/);
   assert.match(renderer, /navigator\.clipboard/);
   assert.match(renderer, /复制/);

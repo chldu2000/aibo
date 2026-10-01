@@ -1,6 +1,6 @@
 {
   "name": "@aibo/presentation-workbench",
-  "version": "0.2.1",
+  "version": "0.2.2",
   "private": true,
   "type": "module",
   "exports": {
@@ -26,6 +26,7 @@
     "README.md",
     "bundle.mjs",
     "markdown.d.ts",
+    "links.d.ts",
     "timeline-model.d.ts",
     "code-highlight.d.ts"
   ],

@@ -1,7 +1,24 @@
 <script lang="ts">
-  import { openExternalLink } from '$lib/api';
+  import { openExternalLink, readLinkedFile } from '$lib/api';
+  import {linkTarget} from '../packages/presentation-workbench/links.js';
+  import {createFilePreviewController,emptyFilePreview} from '$lib/app/file-preview-controller';
+  import FilePreviewPanel from '$lib/components/app/FilePreviewPanel.svelte';
+  let filePreview = $state(emptyFilePreview());
+  const filePreviewController = createFilePreviewController(readLinkedFile, value => { filePreview = value; });
+  $effect(() => { selectedSessionId; selectedWorkspaceId; filePreviewController.close(); });
+  async function copyPreviewPath() {
+    try { await navigator.clipboard.writeText(filePreview.preview?.path ?? filePreview.path ?? ''); setNotice('路径已复制','success'); }
+    catch (error) { setNotice(`无法复制路径：${String(error)}`,'error'); }
+  }
   async function handleOpenLink(url: string): Promise<void> {
-    try { await openExternalLink(url); }
+    try {
+      const target = linkTarget(url);
+      if (!target) throw Error('不支持的链接地址');
+      if (target.kind === 'file') {
+        if (!selectedSessionId) throw Error('请先选择文件所属会话');
+        await filePreviewController.open(selectedSessionId,target.path,target.line);
+      } else await openExternalLink(url);
+    }
     catch (error) { setNotice(`无法打开链接：${String(error)}`, 'error'); }
   }
   import { notificationDuration, type AppNotification, type NotificationType } from '$lib/app/notifications';
@@ -1963,6 +1980,9 @@
     if (globalSearchOpen) {
       if (key === 'escape') { event.preventDefault(); closeGlobalSearch(); }
       return;
+    }
+    if (key === 'escape' && filePreview.path !== null && !settingsOpen && !historyOpen && !capabilityHistoryOpen && !sessionHistoryOpen && !piNavigationEntryId && !archiveConfirmationSessionId && !document.querySelector('dialog[open]')) {
+      event.preventDefault(); filePreviewController.close(); return;
     }
     if ((historyOpen || capabilityHistoryOpen) && !settingsOpen) {
       if (key === 'escape') { event.preventDefault(); closeHostPanel(); }
@@ -4450,9 +4470,15 @@
     onCancelPiNavigation={() => (piNavigationEntryId = null)}
   />
 
+{#if filePreview.path !== null}
+  <FilePreviewPanel state={filePreview} onClose={() => filePreviewController.close()}
+    onReadLine={line => { if (filePreview.sessionId && filePreview.path) void filePreviewController.open(filePreview.sessionId,filePreview.path,line); }}
+    onCopyPath={() => void copyPreviewPath()}/>
+{/if}
+
 {#if selectedSubagent}
   <SubagentDetails open={subagentOpen} agent={selectedSubagent} entries={subagentEntries} loading={subagentLoading} error={subagentError}
-    onOpenLink={handleOpenLink}
+    onOpenLink={url => { if (linkTarget(url)?.kind === 'file') subagentOpen = false; void handleOpenLink(url); }}
     onClose={() => subagentOpen = false} onRetry={() => void openSubagent(selectedSubagent!.id)} />
 {/if}
 

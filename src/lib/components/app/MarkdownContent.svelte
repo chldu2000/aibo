@@ -1,6 +1,7 @@
 <script lang="ts">
   import { onDestroy } from 'svelte';
-  import { Badge, Button } from '$lib/ui-kit';
+  import { Badge, Button, Icon } from '$lib/ui-kit';
+  import {linkTarget,linkIcons,linkLabels} from '../../../../packages/presentation-workbench/links.js';
   import {parseMarkdown,displayMarkdown, type InlineSegment, type MarkdownBlock} from '../../../../packages/presentation-workbench/markdown.js';
   import {highlightCode, type CodeSegment} from '../../../../packages/presentation-workbench/code-highlight.js';
   let { content = '', onOpenLink }: { content?: string; onOpenLink?: (url: string) => void } = $props();
@@ -26,9 +27,12 @@
     {:else if segment.kind === 'strong'}<strong>{@render inline(segment.children ?? [])}</strong>
     {:else if segment.kind === 'em'}<em>{@render inline(segment.children ?? [])}</em>
     {:else if segment.kind === 'del'}<del>{@render inline(segment.children ?? [])}</del>
-    {:else if segment.kind === 'link'}<a href={segment.href} target="_blank" rel="noreferrer" onclick={(event) => {
+    {:else if segment.kind === 'link'}
+    {@const kind = linkTarget(segment.href!)!.kind}
+    <a href={segment.href} target={kind === 'file' ? undefined : '_blank'} rel="noreferrer" title={`${linkLabels[kind]}：${segment.href}`} onclick={(event) => {
+      if (kind === 'file') event.preventDefault();
       if (onOpenLink) { event.preventDefault(); onOpenLink(segment.href!); }
-    }}>{@render inline(segment.children ?? [])}</a>
+    }}><span class="markdown-link-icon"><Icon name={linkIcons[kind]} size={13}/></span>{@render inline(segment.children ?? [])}</a>
     {:else}{segment.value}{/if}
   {/each}
 {/snippet}

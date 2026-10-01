@@ -411,3 +411,9 @@
 :where(.app-shell[data-ui-kit='ak-ui']) .markdown-content :is(.hljs-number, .hljs-literal, .hljs-symbol, .hljs-bullet) { color: var(--aibo-warning-text); }
 :where(.app-shell[data-ui-kit='ak-ui']) .markdown-content :is(.hljs-title, .hljs-type, .hljs-built_in, .hljs-attr) { color: var(--ak-signal-info); }
 :where(.app-shell[data-ui-kit='ak-ui']) .markdown-content .hljs-deletion { color: var(--aibo-danger-text); }
+
+:where(.app-shell[data-ui-kit='ak-ui']) .file-preview-panel { color: var(--aibo-text); background: var(--aibo-surface); border-left: 1px solid var(--aibo-border); box-shadow: -8px 0 24px rgb(0 0 0 / 0.12); }
+:where(.app-shell[data-ui-kit='ak-ui']) .file-preview-header h2 { font-size: 14px; font-weight: 650; }
+:where(.app-shell[data-ui-kit='ak-ui']) .file-preview-toolbar { font-size: 12px; color: var(--aibo-muted); }
+:where(.app-shell[data-ui-kit='ak-ui']) .file-preview-line-number { color: var(--aibo-muted); }
+:where(.app-shell[data-ui-kit='ak-ui']) .file-preview-line[aria-current='true'] { background: var(--aibo-surface-hover); outline: 1px solid var(--aibo-accent-text); outline-offset: -1px; }

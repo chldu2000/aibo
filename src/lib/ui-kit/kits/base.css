@@ -595,3 +595,14 @@ dd { max-width: 68%; overflow: hidden; margin: 0; text-overflow: ellipsis; white
 .markdown-table th, .markdown-table td { padding: 8px 12px; min-width: 100px; vertical-align: top; }
 .markdown-code-block .markdown-code { padding: 12px; }
 .markdown-content .markdown-rule { margin-block: 8px; }
+
+/* Answer links and host-owned file reading surface. */
+.markdown-link-icon { display: inline-block; width: 13px; height: 13px; margin-inline-end: 4px; vertical-align: -2px; }
+.file-preview-panel { position: fixed; z-index: 12; top: var(--aibo-titlebar-height, 32px); right: 0; bottom: 0; width: min(620px, 75vw); display: flex; flex-direction: column; min-height: 0; padding: 12px; gap: 8px; }
+.file-preview-header, .file-preview-toolbar { display: flex; align-items: center; gap: 8px; min-width: 0; }
+.file-preview-header h2 { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; margin: 0; }
+.file-preview-path { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.file-preview-content { flex: 1; min-height: 0; overflow: hidden; }
+.file-preview-content pre { min-height: 0; margin: 0; overflow: auto; padding: 8px 0; }
+.file-preview-line { display: grid; grid-template-columns: 5em 1fr; min-width: max-content; }
+.file-preview-line-number { text-align: right; padding-inline: 8px 12px; user-select: none; }

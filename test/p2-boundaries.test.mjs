@@ -8,7 +8,7 @@ test('workbench callbacks and writable bindings cross the generation gate', asyn
   const tree = parse(source, { modern: true });
   let guarded = 0;
   let hostCallbacks = 0;
-  const hostComponents = new Set(['HostPanel', 'AppOverlays', 'GlobalSearchPanel', 'WindowTitlebar', 'SettingsPanel', 'DiagnosticsPanel', 'PluginManagerPanel', 'ExecutionHistoryPanel', 'SessionHistoryPanel', 'CapabilityHistoryPanel']);
+  const hostComponents = new Set(['HostPanel', 'FilePreviewPanel', 'AppOverlays', 'GlobalSearchPanel', 'WindowTitlebar', 'SettingsPanel', 'DiagnosticsPanel', 'PluginManagerPanel', 'ExecutionHistoryPanel', 'SessionHistoryPanel', 'CapabilityHistoryPanel']);
   const foundHost = new Set();
   const slots = new Set(['navigation', 'navigationResize', 'content', 'auxiliaryResize', 'auxiliary', 'overlays']);
   const foundSlots = new Set();

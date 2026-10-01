@@ -62,6 +62,9 @@ const workspaceWrites = createWorkspaceWriteController({
 export const isTauri = (): boolean =>
   typeof window !== 'undefined' && '__TAURI_INTERNALS__' in window;
 
+export const readLinkedFile = (sessionId:string,path:string,line:number|null): Promise<import('./app/file-preview-controller').FilePreview> =>
+  invoke('read_linked_file', {sessionId,path,line});
+
 export async function openExternalLink(url: string): Promise<void> {
   if (!/^(?:https?:\/\/|mailto:)/i.test(url) || /[\u0000-\u0020\u007f]/.test(url)) {
     throw new Error('不支持的链接地址');

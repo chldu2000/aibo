@@ -8,6 +8,8 @@
 
   // Original 24-unit geometry, matching docs/design/ak-ui-preview.html.
   const paths: Record<UiIconName, string> = {
+    globe: 'M21 12a9 9 0 1 1-18 0 9 9 0 1 1 18 0M3 12h18M12 3c-5 5-5 13 0 18 5-5 5-13 0-18Z',
+    mail: 'M3 5h18v14H3ZM3 5l9 7 9-7',
     add: 'M12 5v14M5 12h14',
     archive: 'M3 4h18v4H3ZM5 8v13h14V8M9 12h6',
     'archive-restore': 'M3 4h18v4H3ZM5 8v13h14V8M12 18v-7m-3 3 3-3 3 3',

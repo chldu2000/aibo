@@ -1,7 +1,7 @@
 import {Lexer} from 'marked';
 import {decodeHTML} from 'entities';
+import {linkTarget} from './links.js';
 
-const SAFE_LINK = /^(?:https?:\/\/|mailto:)/i;
 const options = {gfm: true, breaks: true};
 
 // Only data leaves the lexer. HTML is displayed literally, never interpreted.
@@ -15,7 +15,7 @@ function segments(tokens) {
     }
     if (token.type === 'link' || token.type === 'image') {
       const href = decodeHTML(token.href);
-      if (!SAFE_LINK.test(href) || /[\u0000-\u0020\u007f]/.test(href)) return {kind: 'text', value: token.raw};
+      if (!linkTarget(href)) return {kind: 'text', value: token.raw};
       // Images stay explicit links: remote fetching is not part of Markdown rendering.
       const children = token.type === 'image'
         ? [{kind: 'text', value: `图片：${decodeHTML(token.text) || href}`}]
