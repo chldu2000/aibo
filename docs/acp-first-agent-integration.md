@@ -111,7 +111,7 @@ plugins/<agent>/
 | `config_option_update` / `session/set_config_option` | `model.select`、`model.reasoning`、`model.context-window` | 由 `config` 模块归一化，选择 ID 保持不透明；`parameterScope: "current-model"`（SDK 0.1.7）声明参数只属于当前模型，宿主先确认模型再提供推理选项 |
 | 模式（`session/set_mode` 或模式类 config option） | `sessionControls` 中 `kind: mode` | 模式列表来自清单声明，并与 Agent 实际宣告取交集；当前宿主只支持静态声明，见"会话模式与回合内转换" |
 | `current_mode_update` | `session.control_changed`（新增） | 宿主按"回合内转换"规则核对，不直接采信 |
-| `usage_update`、`session/prompt` 结果的 `usage` | `usage.updated` | `used`/`size` 映射为 `contextTokens`/`contextWindow`，`cost` 原样保留；每回合 `usage` 累加为会话级 `input`/`output`/`totalTokens`（`input` 含缓存读写）。每次事件携带完整快照 |
+| `usage_update`、`session/prompt` 结果的 `usage` | `usage.updated` | `used`/`size` 映射为 `contextTokens`/`contextWindow`，`cost` 原样保留；每回合 `usage` 累加为会话级 `input`/`output`/`totalTokens`（`input` 含缓存读写）。每次事件携带完整快照；随宿主 SDK 0.1.8 交付 |
 | `promptCapabilities.image` | `image.input` | 仅在 Agent 宣告时声明 |
 | `plan` 更新、计划审批正文 | 标准计划载荷（新增） | 贴近原生体验需要统一的计划视图，`extension.updated` 不足；见"会话模式与回合内转换" |
 | `<vendor>/*` 扩展方法 / 通知 | 扩展模块 | 未注册的 request 返回 Method not found，未注册的 notification 忽略 |

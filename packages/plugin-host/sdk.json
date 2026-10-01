@@ -1,5 +1,5 @@
 {
-  "version": "0.1.7",
+  "version": "0.1.8",
   "exports": {
     "@aibo/capability-runtime": "capability-runtime/runtime.mjs",
     "@aibo/capability-runtime/stdio": "capability-runtime/stdio.mjs",

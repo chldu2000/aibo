@@ -18,7 +18,7 @@ Node ESM 能力插件可在 `plugin.json` 声明：
 - `@aibo/capability-runtime/host-tools-mcp`（SDK 0.1.1 起，bridge stdio server）
 - `@aibo/acp-adapter`、`@aibo/acp-adapter/session`、`@aibo/acp-adapter/transport`、`@aibo/acp-adapter/config`、`@aibo/acp-adapter/image-input`
   （SDK 0.1.2 起，通用 ACP 客户端会话、传输、配置解析与图片输入，见[包说明](../packages/acp-adapter/README.md)）
-- `@aibo/acp-adapter/worker`（SDK 0.1.3 起，由 `plugin.json` 与 `acp.json` 驱动的通用 ACP Worker；0.1.4 起按 `approval.respond` 的声明形态提供多选项审批，0.1.5 起支持 ACP 表单 elicitation；0.1.6 起支持包内 Node 启动入口；0.1.7 起支持 current-model 参数范围声明。ACP `usage_update` 到 Aibo 用量快照的映射随后加入 0.1.7 快照，未单独提升 SDK 版本，插件不能用 `hostSdk` 下限要求它）
+- `@aibo/acp-adapter/worker`（SDK 0.1.3 起，由 `plugin.json` 与 `acp.json` 驱动的通用 ACP Worker；0.1.4 起按 `approval.respond` 的声明形态提供多选项审批，0.1.5 起支持 ACP 表单 elicitation；0.1.6 起支持包内 Node 启动入口；0.1.7 起支持 current-model 参数范围声明；0.1.8 起把 ACP `usage_update` 与每轮 prompt 用量映射到 Aibo 用量快照）
 - `@aibo/plugin-protocol`
 - `@aibo/plugin-protocol/semantic`
 - `@aibo/plugin-protocol/presentation`
