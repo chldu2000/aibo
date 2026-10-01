@@ -275,6 +275,39 @@
     onComposerInput(text);
   }
 
+  function showSessionMenu(menu: HTMLDivElement) {
+    const trigger = menu.parentElement?.querySelector<HTMLButtonElement>('.composer-access-control');
+    if (!trigger) return;
+    const close = () => { sessionMenuOpen = false; };
+    const position = () => {
+      const anchor = trigger.getBoundingClientRect();
+      const bounds = menu.getBoundingClientRect();
+      menu.style.left = `${Math.max(8, Math.min(anchor.left, innerWidth - bounds.width - 8))}px`;
+      const above = anchor.top - bounds.height - 8;
+      const below = anchor.bottom + 8;
+      menu.style.top = `${Math.max(8, Math.min(above >= 8 ? above : below, innerHeight - bounds.height - 8))}px`;
+    };
+    const onToggle = (event: ToggleEvent) => { if (event.newState === 'closed') close(); };
+    const onScroll = (event: Event) => {
+      if (event.target instanceof Node && menu.contains(event.target)) return;
+      position();
+    };
+    menu.addEventListener('toggle', onToggle);
+    menu.showPopover();
+    position();
+    const initialOption = menu.querySelector<HTMLButtonElement>('[aria-checked="true"]:not(:disabled)')
+      ?? menu.querySelector<HTMLButtonElement>('button:not(:disabled)');
+    initialOption?.focus({ preventScroll: true });
+    window.addEventListener('resize', close);
+    window.addEventListener('scroll', onScroll, true);
+    return { destroy() {
+      menu.removeEventListener('toggle', onToggle);
+      window.removeEventListener('resize', close);
+      window.removeEventListener('scroll', onScroll, true);
+      if (menu.contains(document.activeElement)) trigger.focus({ preventScroll: true });
+    } };
+  }
+
   function handleWindowClick(event: MouseEvent): void {
     const target = event.target;
     if (target instanceof Element && target.closest('.composer-menu-anchor')) return;
@@ -540,7 +573,7 @@
             {/each}
           </Button>
           {#if sessionMenuOpen}
-            <div class="composer-menu composer-profile-menu" role="menu" aria-label="会话设置">
+            <div use:showSessionMenu popover="auto" class="composer-menu composer-profile-menu" role="menu" aria-label="会话设置">
               <div class="composer-menu-heading">会话设置</div>
               <div class="composer-menu-detail">{accessDetail}</div>
               {#each accessGroups as group (group.kind)}

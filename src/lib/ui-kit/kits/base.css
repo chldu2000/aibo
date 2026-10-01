@@ -214,7 +214,9 @@ h1, h2, h3, p { margin: 0; }
 .composer-model-label { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .composer-menu { position: absolute; z-index: 35; bottom: calc(100% + 8px); display: grid; width: min(240px, calc(100vw - 32px)); min-width: 0; gap: 3px; padding: 5px; }
 .composer-attachment-menu { left: 0; }
-.composer-profile-menu, .composer-model-menu { right: 0; }
+.composer-model-menu { right: 0; }
+.composer-profile-menu[popover] { position: fixed; inset: auto; margin: 0; max-height: calc(100dvh - 16px); overflow-y: auto; overscroll-behavior: contain; }
+.composer-profile-menu[popover]:not(:popover-open) { display: none; }
 .composer-model-menu { width: min(540px, calc(100vw - 32px)); }
 .composer-menu-heading { padding: 6px 8px 3px; }
 .composer-menu-detail { overflow-wrap: anywhere; padding: 0 8px 6px; }
