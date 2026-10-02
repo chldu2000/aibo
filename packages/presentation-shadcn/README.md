@@ -9,10 +9,10 @@
 未提供的独立控件继续继承宿主；其他平台与屏幕阅读器认证不在这些证据范围内。
 0.4.1 装配共享工作台 0.2.2：回答中的网页、邮件与工作区文件链接显示类型图标，文件链接交由宿主预览面板打开。
 
-将本包与 `@aibo/presentation-tools`、`@aibo/presentation-workbench` 本地 tarball 安装到仓库外项目后：
+将本包与 `@aibolabs/presentation-tools`、`@aibolabs/presentation-workbench` 本地 tarball 安装到仓库外项目后：
 
 ```sh
-node node_modules/@aibo/presentation-shadcn/build.mjs ./dist/shadcn-0.4.1 0.4.1
+node node_modules/@aibolabs/presentation-shadcn/build.mjs ./dist/shadcn-0.4.1 0.4.1
 ```
 
 在 App 外观设置中安装输出目录。升级使用相同包 ID 和新的版本/输出目录。

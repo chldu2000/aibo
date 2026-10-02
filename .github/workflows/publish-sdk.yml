@@ -1,0 +1,55 @@
+name: Publish SDK
+
+# sdk-v<version> publishes the host SDK packages; presentation-v<tag> publishes presentation tooling.
+# Publishing uses npm Trusted Publishing (OIDC); configure it for each @aibolabs package on npmjs.com.
+on:
+  push:
+    tags:
+      - 'sdk-v*'
+      - 'presentation-v*'
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+          registry-url: https://registry.npmjs.org/
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Use an npm release with Trusted Publishing
+        run: npm install -g npm@latest
+
+      - name: Verify
+        run: pnpm run verify
+
+      - name: Check the tag matches the host SDK version
+        if: startsWith(github.ref_name, 'sdk-v')
+        run: |
+          version="$(node -p "require('./packages/plugin-host/sdk.json').version")"
+          test "sdk-v${version}" = "${GITHUB_REF_NAME}"
+
+      - name: Publish host SDK packages
+        if: startsWith(github.ref_name, 'sdk-v')
+        run: node scripts/publish-sdk.mjs --runtime --provenance
+
+      - name: Publish presentation tooling
+        if: startsWith(github.ref_name, 'presentation-v')
+        run: node scripts/publish-sdk.mjs --presentation --provenance

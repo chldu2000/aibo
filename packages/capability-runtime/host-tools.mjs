@@ -75,7 +75,7 @@ export async function createHostToolMcpBridge({definitions,call}) {
   await new Promise((resolve,reject)=>{server.once('error',reject);server.listen(0,'127.0.0.1',resolve);});
   const moduleUrl=new URL('./host-tools-mcp.mjs',import.meta.url).href;
   // In an installed plugin use the public host SDK export; local source tests use a file URL.
-  const specifier=moduleUrl.startsWith('aibo-sdk:')?'@aibo/capability-runtime/host-tools-mcp':moduleUrl;
+  const specifier=moduleUrl.startsWith('aibo-sdk:')?'@aibolabs/capability-runtime/host-tools-mcp':moduleUrl;
   return {
     ready,
     configuration:{name:`aibo-${randomBytes(8).toString('hex')}`,command:process.execPath,args:[...process.execArgv,'--input-type=module','-e',`import { serveHostToolMcp } from ${JSON.stringify(specifier)}; await serveHostToolMcp();`],

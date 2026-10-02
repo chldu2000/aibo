@@ -1,9 +1,9 @@
-# @aibo/capability-runtime
+# @aibolabs/capability-runtime
 
-Node 22+ Capability Runtime 2.0/2.1 helper，开发包当前仅本地打包。声明 `hostSdk` 的插件由宿主提供此包，开发时安装为 `devDependencies`，发布时不携带 SDK。版本、公开入口和迁移见[宿主 SDK](../../docs/host-sdk.md)。`serveCapability` 使用标准输入/输出 JSON-RPC；日志请写入 stderr。每个实例注册一个 contribution 及明确的 capability/version/operationId 列表。
+Node 22+ Capability Runtime 2.0/2.1 helper。声明 `hostSdk` 的插件由宿主提供此包，开发时用 `npm install -D @aibolabs/capability-runtime` 安装为 `devDependencies`，发布时不携带 SDK；包版本等于宿主 SDK 版本，即应声明的 `hostSdk.min`。版本、公开入口和迁移见[宿主 SDK](https://github.com/chldu2000/aibo/blob/main/docs/host-sdk.md)。`serveCapability` 使用标准输入/输出 JSON-RPC；日志请写入 stderr。每个实例注册一个 contribution 及明确的 capability/version/operationId 列表。
 
 ```js
-import { serveCapability } from '@aibo/capability-runtime/stdio';
+import { serveCapability } from '@aibolabs/capability-runtime/stdio';
 serveCapability({
   pluginId: 'dev.example.echo', pluginVersion: '1.0.0',
   contributionId: 'dev.example.echo.worker',
@@ -45,8 +45,8 @@ in JSON-RPC `error.data.kind`, bounds the error message, and maps unknown native
 categories to `provider_unavailable`. This applies to invocation and control
 handlers; it does not grant authority or turn failures into successful outputs.
 
-Host SDK 0.1.1 exposes `@aibo/capability-runtime/host-tools` for generic native-tool and MCP adapters.
+Host SDK 0.1.1 exposes `@aibolabs/capability-runtime/host-tools` for generic native-tool and MCP adapters.
 Declare `hostTools: ["aibo.host-tools/v1"]` and the standard tool response operation; consume the
 trusted invocation catalog and bind calls to the invocation using `createHostToolChannel`.
 MCP uses `createHostToolMcpBridge`; its generated stdio module is included in the host SDK.
-See [the complete integration contract](../../docs/session-history-tool-design.md).
+See [the complete integration contract](https://github.com/chldu2000/aibo/blob/main/docs/session-history-tool-design.md).

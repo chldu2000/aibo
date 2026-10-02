@@ -43,7 +43,7 @@
 
 - [内置外观并入 Presentation 合同](presentation-unification-migration.md)：内置 kit 成为预装可信 release（P0–P2 已实施，P3 未实施），复合控件统一为纯数据合同。
 - [合同版本收敛](contract-version-consolidation.md)：每个合同族只保留当前版本与兼容读取版本，版本转换在边界完成。
-- [SDK 公开发布与按仓库安装插件](sdk-and-plugin-distribution.md)：SDK 发布到公共注册表并与宿主 SDK 版本对齐；按 Git 仓库的 Release 索引下载、校验并安装插件，未实施。
+- [SDK 公开发布与按仓库安装插件](sdk-and-plugin-distribution.md)：D1 已实施，SDK 以 `@aibolabs/*` 0.1.8 发布到 npm 并与宿主 SDK 版本对齐；按 Git 仓库的 Release 索引下载、校验并安装插件（D2–D4）未实施。
 - [ACP 作为 Agent 接入主干](acp-first-agent-integration.md)：A1–A7 已实施（通用适配层、清单驱动 Worker、Claude Code 接入、宿主工具接线、多选项审批与回合内模式转换、清空上下文、表单提问）；剩余缺口见计划正文。
 
 ## 验收记录

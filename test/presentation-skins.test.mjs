@@ -20,7 +20,7 @@ test('independent skin tarballs build all themes and render core semantic conten
     const skin=pkg.release.manifest.id.split('.').at(-1);
     const metadata=JSON.parse(await readFile('packages/presentation-'+skin+'/package.json','utf8'));
     assert.equal(pkg.release.manifest.version,metadata.version,'default build uses the package release version');
-    assert.equal(metadata.dependencies['@aibo/presentation-workbench'],JSON.parse(await readFile('packages/presentation-workbench/package.json','utf8')).version);
+    assert.equal(metadata.dependencies['@aibolabs/presentation-workbench'],JSON.parse(await readFile('packages/presentation-workbench/package.json','utf8')).version);
     const context={self:{}};vm.runInNewContext(Buffer.from(pkg.resources['skin.js'],'base64').toString(),context);
     const render=context.self.aiboPresentation.render;
     for(const snapshot of [...semanticPreflightSnapshots(),...await Promise.all(['collection','detail','partial-detail','loading','empty','error','unavailable'].map(async name=>JSON.parse(await readFile(`fixtures/semantic-git/${name}.json`,'utf8'))))]) {

@@ -1,7 +1,12 @@
 {
-  "name": "@aibo/acp-adapter",
-  "version": "0.1.1",
-  "private": true,
+  "name": "@aibolabs/acp-adapter",
+  "version": "0.1.8",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/chldu2000/aibo.git",
+    "directory": "packages/acp-adapter"
+  },
   "type": "module",
   "files": [
     "index.mjs",
@@ -49,6 +54,10 @@
     "node": ">=22"
   },
   "dependencies": {
-    "@aibo/capability-runtime": "0.1.1"
+    "@aibolabs/capability-runtime": "0.1.8"
+  },
+  "publishConfig": {
+    "access": "public",
+    "registry": "https://registry.npmjs.org/"
   }
 }

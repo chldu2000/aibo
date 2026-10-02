@@ -1,5 +1,5 @@
 {
-  "name": "@aibo/presentation-material3",
+  "name": "@aibolabs/presentation-material3",
   "version": "0.4.1",
   "private": true,
   "type": "module",
@@ -15,7 +15,7 @@
     "build": "node build.mjs"
   },
   "dependencies": {
-    "@aibo/presentation-tools": "0.1.0",
-    "@aibo/presentation-workbench": "0.2.2"
+    "@aibolabs/presentation-tools": "0.1.0",
+    "@aibolabs/presentation-workbench": "0.2.2"
   }
 }

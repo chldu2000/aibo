@@ -1,7 +1,12 @@
 {
-  "name": "@aibo/presentation-workbench",
+  "name": "@aibolabs/presentation-workbench",
   "version": "0.2.2",
-  "private": true,
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/chldu2000/aibo.git",
+    "directory": "packages/presentation-workbench"
+  },
   "type": "module",
   "exports": {
     "./git": "./git.js",
@@ -35,5 +40,9 @@
     "entities": "^8.1.0",
     "lowlight": "^3.3.0",
     "esbuild": "^0.28.2"
+  },
+  "publishConfig": {
+    "access": "public",
+    "registry": "https://registry.npmjs.org/"
   }
 }

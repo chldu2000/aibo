@@ -1,4 +1,4 @@
-import type { PresentationPackageManifest } from '@aibo/plugin-protocol';
+import type { PresentationPackageManifest } from '@aibolabs/plugin-protocol';
 export const PRESENTATION_PACKAGE_LIMIT: number;
 export const PRESENTATION_MANIFEST_LIMIT: number;
 export function isPresentationToken(value: string): boolean;

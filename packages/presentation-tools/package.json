@@ -1,11 +1,38 @@
 {
-  "name": "@aibo/presentation-tools",
+  "name": "@aibolabs/presentation-tools",
   "version": "0.1.0",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/chldu2000/aibo.git",
+    "directory": "packages/presentation-tools"
+  },
   "type": "module",
-  "private": true,
-  "bin": {"aibo-presentation-build": "./build.mjs"},
-  "exports": {"./build": "./build.mjs","./manifest": {"types": "./manifest.d.ts", "default": "./manifest.js"}},
-  "files": ["build.mjs", "manifest.js", "manifest.d.ts", "package-validator.js", "README.md"],
-  "dependencies": {"@aibo/plugin-protocol": "0.1.0"},
-  "engines": {"node": ">=22"}
+  "bin": {
+    "aibo-presentation-build": "build.mjs"
+  },
+  "exports": {
+    "./build": "./build.mjs",
+    "./manifest": {
+      "types": "./manifest.d.ts",
+      "default": "./manifest.js"
+    }
+  },
+  "files": [
+    "build.mjs",
+    "manifest.js",
+    "manifest.d.ts",
+    "package-validator.js",
+    "README.md"
+  ],
+  "dependencies": {
+    "@aibolabs/plugin-protocol": "0.1.8"
+  },
+  "engines": {
+    "node": ">=22"
+  },
+  "publishConfig": {
+    "access": "public",
+    "registry": "https://registry.npmjs.org/"
+  }
 }

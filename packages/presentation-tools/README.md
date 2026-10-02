@@ -1,11 +1,11 @@
-# @aibo/presentation-tools
+# @aibolabs/presentation-tools
 
-独立的 Presentation 目录打包工具。当前通过本地 tarball 分发，尚未发布注册表。
-CLI 只依赖 Node.js 22+；类型声明依赖 `@aibo/plugin-protocol`。
+独立的 Presentation 目录打包工具，通过 `npm install -D @aibolabs/presentation-tools` 安装。
+CLI 只依赖 Node.js 22+；类型声明依赖 `@aibolabs/plugin-protocol`。
 
 ```sh
-npm pack --ignore-scripts
-node /path/to/unpacked/package/build.mjs ./presentation.source.json ./dist/skin-1.0.0
+npm install -D @aibolabs/presentation-tools
+npx aibo-presentation-build ./presentation.source.json ./dist/skin-1.0.0
 ```
 
 源 JSON 使用正式 manifest 字段；`resources` 中只需提供 `path` 与 `mediaType`，

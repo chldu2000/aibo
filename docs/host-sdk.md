@@ -12,28 +12,35 @@ Node ESM 能力插件可在 `plugin.json` 声明：
 
 声明后，可直接使用以下公开入口，不需要把这些 npm 包放进安装产物：
 
-- `@aibo/capability-runtime`
-- `@aibo/capability-runtime/stdio`
-- `@aibo/capability-runtime/host-tools`（SDK 0.1.1 起，工具目录、invoke 通道和 MCP bridge）
-- `@aibo/capability-runtime/host-tools-mcp`（SDK 0.1.1 起，bridge stdio server）
-- `@aibo/acp-adapter`、`@aibo/acp-adapter/session`、`@aibo/acp-adapter/transport`、`@aibo/acp-adapter/config`、`@aibo/acp-adapter/image-input`
+- `@aibolabs/capability-runtime`
+- `@aibolabs/capability-runtime/stdio`
+- `@aibolabs/capability-runtime/host-tools`（SDK 0.1.1 起，工具目录、invoke 通道和 MCP bridge）
+- `@aibolabs/capability-runtime/host-tools-mcp`（SDK 0.1.1 起，bridge stdio server）
+- `@aibolabs/acp-adapter`、`@aibolabs/acp-adapter/session`、`@aibolabs/acp-adapter/transport`、`@aibolabs/acp-adapter/config`、`@aibolabs/acp-adapter/image-input`
   （SDK 0.1.2 起，通用 ACP 客户端会话、传输、配置解析与图片输入，见[包说明](../packages/acp-adapter/README.md)）
-- `@aibo/acp-adapter/worker`（SDK 0.1.3 起，由 `plugin.json` 与 `acp.json` 驱动的通用 ACP Worker；0.1.4 起按 `approval.respond` 的声明形态提供多选项审批，0.1.5 起支持 ACP 表单 elicitation；0.1.6 起支持包内 Node 启动入口；0.1.7 起支持 current-model 参数范围声明；0.1.8 起把 ACP `usage_update` 与每轮 prompt 用量映射到 Aibo 用量快照）
-- `@aibo/plugin-protocol`
-- `@aibo/plugin-protocol/semantic`
-- `@aibo/plugin-protocol/presentation`
-- `@aibo/plugin-protocol/renderer`
-- `@aibo/plugin-protocol/settings`
+- `@aibolabs/acp-adapter/worker`（SDK 0.1.3 起，由 `plugin.json` 与 `acp.json` 驱动的通用 ACP Worker；0.1.4 起按 `approval.respond` 的声明形态提供多选项审批，0.1.5 起支持 ACP 表单 elicitation；0.1.6 起支持包内 Node 启动入口；0.1.7 起支持 current-model 参数范围声明；0.1.8 起把 ACP `usage_update` 与每轮 prompt 用量映射到 Aibo 用量快照）
+- `@aibolabs/plugin-protocol`
+- `@aibolabs/plugin-protocol/semantic`
+- `@aibolabs/plugin-protocol/presentation`
+- `@aibolabs/plugin-protocol/renderer`
+- `@aibolabs/plugin-protocol/settings`
 
-开发时仍将 SDK 安装为 `devDependencies`，以提供类型和本地开发工具；TypeScript
+开发时从 npm 安装 SDK 为 `devDependencies`，以提供类型和本地开发工具，例如
+`npm install -D @aibolabs/capability-runtime@0.1.8 @aibolabs/plugin-protocol@0.1.8`（ACP 插件另加
+`@aibolabs/acp-adapter`）。宿主提供的这三个包版本等于宿主 SDK 版本，插件的 `hostSdk.min`
+应不低于所用版本。TypeScript
 仍需编译为 JavaScript。使用 bundler 时将上述入口标记为 external，不能内联 SDK。
 插件额外使用的第三方运行库仍放在插件自身 `node_modules`，或编入业务 bundle。
 不要把它们一并改为开发依赖。Aibo 不会运行 `npm install`，也不公开应用自身的
-`node_modules`。`@aibo/` 命名空间保留给宿主，未公开的包名、深层路径不能导入。
+`node_modules`。`@aibolabs/` 命名空间保留给宿主，未公开的包名、深层路径不能导入。
+
+SDK 0.1.8 起包名为 `@aibolabs/*`。此前未公开发布的 `@aibo/*` 名称作为弃用别名继续解析到同一模块，
+使已安装的旧插件可以启动；新插件只能导入 `@aibolabs/*`，并声明 `hostSdk.min` 不低于 0.1.8，
+因为更早的宿主不认识新名称。
 
 宿主在启动插件的独立 Node 进程前加载自己的 ESM resolver。只有以上公开入口会
 映射到宿主 SDK；普通第三方包和 `node:` 内置模块继续使用 Node 默认解析。
-`require('@aibo/...')` 不在本版支持范围内。此解析机制是公开 API 边界，不是新的
+`require('@aibolabs/...')` 不在本版支持范围内。此解析机制是公开 API 边界，不是新的
 进程安全沙箱，也不会赋予插件额外的宿主调用权限。
 
 ## 插件进程环境
@@ -51,7 +58,7 @@ Node ESM 能力插件可在 `plugin.json` 声明：
 不兼容的 SDK 范围会出现在插件激活诊断中，插件不能启用或被选择执行。
 不声明 `hostSdk` 的已有插件继续沿用自己的运行依赖和原有模块解析方式。
 迁移插件时递增插件版本，删除 SDK 的 `bundledDependencies`，并确认产物不包含
-`node_modules/@aibo`；旧宿主不认识这个新清单字段，会拒绝安装，应先升级 Aibo。
+`node_modules/@aibolabs`；旧宿主不认识这个新清单字段，会拒绝安装，应先升级 Aibo。
 
 宿主升级后，兼容范围内的新 SDK 用于新启动的插件进程；这不是按插件安装固定 SDK
 实现版本。破坏性 API 变更必须提升 SDK 兼容版本，不能复用已有版本悄悄改变合同。
@@ -108,3 +115,18 @@ x64、arm64 映射；musl 等未覆盖平台只能手动选择兼容 Node，各�
 Tauri dev/build 不再执行 `prepare:node`，应用资源不再携带 Node。开发环境仍需 Node、pnpm、Rust。
 `pnpm prepare:node` 仅保留为可选的旧插件探针测试夹具准备工具，不进入发布包。
 升级专用版本需更新固定版本及官方摘要，执行查找/安装/打包/桌面回归。
+
+## 发布 SDK
+
+`@aibolabs/plugin-protocol`、`@aibolabs/capability-runtime`、`@aibolabs/acp-adapter` 的版本必须等于
+`packages/plugin-host/sdk.json` 的版本；`pnpm run check:sdk`（包含在 `verify` 中）检查这一点，并按
+`packages/plugin-host/sdk-releases.json` 拒绝修改已发布版本的快照内容。发布新版本：
+
+1. 同步提升 `scripts/build-host-sdk.mjs`、`src-tauri/src/plugin_sdk.rs` 与三个包的版本，运行 `node scripts/build-host-sdk.mjs`。
+2. 运行 `node scripts/check-sdk-release.mjs --record` 记录快照摘要，与版本变更一起提交。
+3. 推送 `sdk-v<version>` tag，由 `.github/workflows/publish-sdk.yml` 发布；手动发布使用
+   `pnpm run publish:sdk -- --runtime`（显式使用 `https://registry.npmjs.org/`，已发布版本自动跳过）。
+
+呈现工具包（`web-presentation`、`presentation-tools`、`presentation-workbench`）独立编号，使用
+`presentation-v<tag>` 或 `pnpm run publish:sdk -- --presentation` 发布。CI 发布依赖 npm Trusted Publishing，
+需在 npm 上为每个包绑定本仓库与该工作流。

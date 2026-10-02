@@ -39,7 +39,7 @@
 node --input-type=module -e 'import { buildExternalPlugin } from "./probes/build-external-plugin.mjs"; const result = await buildExternalPlugin(); console.log(JSON.stringify({ developmentRoot: result.root, installPath: result.packagePath }, null, 2));'
 ```
 
-构建器打包本地 SDK tarball，在临时开发副本中离线安装为开发依赖，编译 worker，输出解包安装目录。
+仓库内构建器从源码打包本地 SDK tarball（用于验证未发布的改动），在临时开发副本中离线安装为开发依赖，编译 worker，输出解包安装目录。
 greeting 包包含 `plugin.json` 和 `dist/worker.js`，没有 Aibo SDK 副本或 `node_modules`；该样例没有第三方运行依赖。
 公开 SDK 由宿主通过 [hostSdk](host-sdk.md) 提供。构建不启动 Aibo 或调用模型。
 长期开发前将临时开发目录复制到固定位置。
@@ -63,8 +63,8 @@ macOS 原生安装验收可从 Aibo 根目录运行 `node probes/external-plugin
    `{ actionId: "refresh", itemId: null, offset: 0 }`，返回 `state`、`view`、`actions`，
    快照身份和 revision 由宿主补齐。受控写入参考[能力写入](../fixtures/plugins/capability-write/)与
    [语义写入](../fixtures/plugins/semantic-write/)夹具。
-5. 构建并本地打包 `packages/plugin-protocol` 与 `packages/capability-runtime`，将 tarball 安装为开发依赖，
-   再编译 Worker。SDK 当前未通过公共包注册表分发。
+5. 从 npm 安装 SDK 为开发依赖，例如 `npm install -D @aibolabs/plugin-protocol@0.1.8 @aibolabs/capability-runtime@0.1.8`，
+   再编译 Worker。这些包的版本等于宿主 SDK 版本，`hostSdk.min` 应不低于所用版本。
 6. 声明 `hostSdk`，打包已编译入口和清单；使用 bundler 时将公开 SDK 入口设为 external。
    第三方运行库须编入业务 bundle 或显式包含在安装产物中；只写 dependencies 不会提供库文件，
    Aibo 不执行 `npm install`。详见[SDK 打包规则](host-sdk.md)。
@@ -110,7 +110,7 @@ Control 必须在操作允许列表中；处理取消，并只在有效 invocati
 并把选项映射到会话控件，例如批准计划后切到 Manual。切换由宿主提交，见[会话控件](session-controls.md)的"回合内切换"。`elicitation: true`（SDK 0.1.5 起，需要 `user-input.respond` 操作）
 把 Agent 的表单请求作为宿主问题呈现，例如 Claude Code 的 AskUserQuestion。
 需要厂商扩展方法时，向 `serveAcpAgent` 传入 `extension`，参考 Cursor 插件；字段与钩子见
-[`@aibo/acp-adapter`](../packages/acp-adapter/README.md)。
+[`@aibolabs/acp-adapter`](../packages/acp-adapter/README.md)。
 
 ## 扩展呈现
 
@@ -132,7 +132,7 @@ Control 必须在操作允许列表中；处理取消，并只在有效 invocati
   没有选项时，`value` 为 `availableDecisions` 中的 `accept` 或 `cancel`。拒绝类排在前面，允许类作为主操作。
 - 按钮只绑定宿主下发的动作 token。会话忙、归档中或未绑定插件时不提供动作，此时禁用或省略按钮。
   请求结束后 token 失效；宿主会重新核对每次选择。
-- [`@aibo/presentation-workbench`](../packages/presentation-workbench/) 的 `renderConversation` 已渲染审批，
+- [`@aibolabs/presentation-workbench`](../packages/presentation-workbench/) 的 `renderConversation` 已渲染审批，
   基于它构建的包无需额外处理。
 
 包没有渲染审批或 Worker 故障时，用户只能按 Ctrl/⌘+Shift+Backspace 回到默认呈现后作答。
@@ -166,6 +166,6 @@ Control 必须在操作允许列表中；处理取消，并只在有效 invocati
 
 新增 Agent 的历史查询能力通过 `aibo.host-tools/v1` 目录和 SDK 0.1.1 的通用工具通道接入，
 无需修改宿主按品牌路由。插件只实现 MCP 参数映射或动态工具注册；读取授权、分页和版本一致性
-由宿主管理。基于 `@aibo/acp-adapter/worker`（SDK 0.1.3 起）的 ACP 插件自动获得这条接线：宿主在会话上下文中
+由宿主管理。基于 `@aibolabs/acp-adapter/worker`（SDK 0.1.3 起）的 ACP 插件自动获得这条接线：宿主在会话上下文中
 下发工具目录时，Worker 启动 MCP bridge 并交给 Agent。
 完整步骤及原生/打包测试见[会话历史工具](session-history-tool-design.md)。

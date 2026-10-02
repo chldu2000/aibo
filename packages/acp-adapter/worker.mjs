@@ -1,8 +1,8 @@
 import { readFileSync, realpathSync, statSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { serveCapability } from '@aibo/capability-runtime/stdio';
-import { createHostToolChannel, hostToolDefinitions, createHostToolMcpBridge } from '@aibo/capability-runtime/host-tools';
+import { serveCapability } from '@aibolabs/capability-runtime/stdio';
+import { createHostToolChannel, hostToolDefinitions, createHostToolMcpBridge } from '@aibolabs/capability-runtime/host-tools';
 import { AcpSession, BASE_CAPABILITIES, object, pluginError } from './session.mjs';
 
 export const ACP_AGENT_SCHEMA = 'aibo.acp-agent/v1';

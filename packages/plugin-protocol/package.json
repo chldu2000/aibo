@@ -1,16 +1,45 @@
 {
-  "name": "@aibo/plugin-protocol",
-  "version": "0.1.0",
-  "private": true,
+  "name": "@aibolabs/plugin-protocol",
+  "version": "0.1.8",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/chldu2000/aibo.git",
+    "directory": "packages/plugin-protocol"
+  },
   "type": "module",
   "description": "Aibo JSON semantic and presentation contracts, independent of UI frameworks",
-  "files": ["dist", "README.md"],
+  "files": [
+    "dist",
+    "README.md"
+  ],
   "exports": {
-    ".": {"types": "./dist/index.d.ts", "import": "./dist/index.js"},
-    "./semantic": {"types": "./dist/semantic.d.ts", "import": "./dist/semantic.js"},
-    "./presentation": {"types": "./dist/presentation.d.ts", "import": "./dist/presentation.js"},
-    "./renderer": {"types": "./dist/renderer.d.ts", "import": "./dist/renderer.js"},
-    "./settings": {"types": "./dist/settings.d.ts", "import": "./dist/settings.js"}
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    },
+    "./semantic": {
+      "types": "./dist/semantic.d.ts",
+      "import": "./dist/semantic.js"
+    },
+    "./presentation": {
+      "types": "./dist/presentation.d.ts",
+      "import": "./dist/presentation.js"
+    },
+    "./renderer": {
+      "types": "./dist/renderer.d.ts",
+      "import": "./dist/renderer.js"
+    },
+    "./settings": {
+      "types": "./dist/settings.d.ts",
+      "import": "./dist/settings.js"
+    }
   },
-  "scripts": {"build": "tsc -p tsconfig.json"}
+  "scripts": {
+    "build": "tsc -p tsconfig.json"
+  },
+  "publishConfig": {
+    "access": "public",
+    "registry": "https://registry.npmjs.org/"
+  }
 }

@@ -2,9 +2,9 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { elicitationForm, MAX_QUESTIONS } from '../packages/acp-adapter/elicitation.mjs';
-// worker.mjs imports @aibo/* through the host SDK resolver, as a plugin process does.
+// worker.mjs imports @aibolabs/* through the host SDK resolver, as a plugin process does.
 await import('../packages/plugin-host/register.mjs');
-const { acpAgentConfig } = await import('@aibo/acp-adapter/worker');
+const { acpAgentConfig } = await import('@aibolabs/acp-adapter/worker');
 
 const form = (properties, extra = {}) => elicitationForm({ mode: 'form', message: 'Answer please', requestedSchema: { type: 'object', properties, ...extra } });
 

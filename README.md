@@ -140,7 +140,7 @@ manifest and runtime contracts, packaging, installation, session providers, and 
 | [Presentation packages](docs/presentation-package.md) | Isolated package contract, Worker entry and build tools |
 | [UI architecture](docs/ui-architecture.md) | UI kit boundaries and skin extension rules |
 
-SDKs currently ship as local tarballs, not public registry packages.
+SDK packages are published on npm under `@aibolabs/*`; their versions equal the host SDK version (currently 0.1.8).
 
 ## Validation and engine probes
 

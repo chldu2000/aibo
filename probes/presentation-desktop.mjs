@@ -8,7 +8,7 @@ import {buildPresentation} from '../packages/presentation-tools/build.mjs';
 if(process.platform!=='darwin')throw Error('Native Presentation probe currently targets macOS');
 const built=await buildPresentationSkins();const root=await mkdtemp(path.join(tmpdir(),'aibo-presentation-native-'));const workspacePath=path.join(root,'workspace');await mkdir(workspacePath);execFileSync('git',['init','-q',workspacePath]);
 const upgrade=path.join(root,'upgrade');
-execFileSync(process.execPath,[path.join(built.root,'node_modules/@aibo/presentation-shadcn/build.mjs'),upgrade,'0.4.1'],{cwd:built.root,stdio:'pipe'});
+execFileSync(process.execPath,[path.join(built.root,'node_modules/@aibolabs/presentation-shadcn/build.mjs'),upgrade,'0.4.1'],{cwd:built.root,stdio:'pipe'});
 const brokenSource=path.join(root,'broken-source');await cp(upgrade,brokenSource,{recursive:true});
 await writeFile(path.join(brokenSource,'skin.js'),(await readFile(path.join(brokenSource,'skin.js'),'utf8'))+'\nself.aiboPresentation.render=()=>{throw Error("native_candidate_failure")};\n');
 const manifest=JSON.parse(await readFile(path.join(brokenSource,'presentation.json'),'utf8'));manifest.version='0.4.2';await writeFile(path.join(brokenSource,'source.json'),JSON.stringify(manifest));const broken=path.join(root,'broken');await buildPresentation(path.join(brokenSource,'source.json'),broken);

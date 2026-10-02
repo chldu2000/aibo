@@ -752,8 +752,8 @@ mod tests {
             fs::write(source.join("plugin.json"), manifest.to_string()).unwrap();
             fs::write(source.join("worker.mjs"), r#"
                 import {readFileSync} from 'node:fs';
-                import {serveCapability} from '@aibo/capability-runtime/stdio';
-                import {SEMANTIC_SCHEMA} from '@aibo/plugin-protocol';
+                import {serveCapability} from '@aibolabs/capability-runtime/stdio';
+                import {SEMANTIC_SCHEMA} from '@aibolabs/plugin-protocol';
                 const m=JSON.parse(readFileSync(new URL('./plugin.json',import.meta.url),'utf8'));
                 const c=m.contributions[0];
                 serveCapability({pluginId:m.pluginId,pluginVersion:m.version,contributionId:c.id,

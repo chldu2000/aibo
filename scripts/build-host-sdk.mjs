@@ -22,7 +22,10 @@ try {
     const directory = path.join(root, 'packages', name);
     const manifest = JSON.parse(await readFile(path.join(directory, 'package.json'), 'utf8'));
     for (const [entry, target] of Object.entries(manifest.exports)) {
-      sdk.exports[manifest.name + (entry === '.' ? '' : entry.slice(1))] = `${name}/${target.import.slice(2)}`;
+      const specifier = manifest.name + (entry === '.' ? '' : entry.slice(1));
+      sdk.exports[specifier] = `${name}/${target.import.slice(2)}`;
+      // Deprecated pre-publication names stay resolvable for plugins installed before the rename.
+      sdk.exports[specifier.replace(/^@aibolabs\//, '@aibo/')] = `${name}/${target.import.slice(2)}`;
     }
     const files = name === 'capability-runtime' ? ['runtime.mjs', 'stdio.mjs', 'host-tools.mjs', 'host-tools-mcp.mjs']
       : name === 'acp-adapter' ? ['index.mjs', 'session.mjs', 'transport.mjs', 'config.mjs', 'image-input.mjs', 'elicitation.mjs', 'worker.mjs']

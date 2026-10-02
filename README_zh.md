@@ -123,7 +123,7 @@ cargo test --manifest-path src-tauri/Cargo.toml
 | [呈现包合同](docs/presentation-package.md) | 隔离包格式、Worker 入口与打包工具 |
 | [UI 架构](docs/ui-architecture.md) | UI Kit 边界与皮肤扩展规则 |
 
-SDK 目前通过本地 tarball 分发，尚未发布公共包注册表。
+SDK 以 `@aibolabs/*` 发布到 npm，包版本等于宿主 SDK 版本（当前 0.1.8）。
 
 ## 验证与引擎探针
 

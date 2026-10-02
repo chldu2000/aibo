@@ -1,6 +1,6 @@
 # SDK 公开发布与按仓库安装插件：迁移计划
 
-状态：提案，未实施。本文不改变现行安装、授权与版本规则；现行规则见
+状态：D1 已实施（2026-10-02 发布 `@aibolabs/*` SDK 0.1.8）；D2–D4 为提案，未实施。本文不改变现行安装、授权与版本规则；现行规则见
 [宿主 SDK](host-sdk.md)、[插件开发指引](plugin-development_zh.md)与
 [宿主和插件边界](plugin-boundaries-and-regression.md#插件卸载与会话迁移)。
 
@@ -189,6 +189,23 @@ flowchart LR
 
 验收：仓库外的新目录只依赖注册表即可构建 `acp-template` 与能力示例，安装到同版本 Aibo 后
 握手与会话流程通过；以旧前缀 `@aibo/` 构建的已安装插件仍能启动；修改 SDK 快照而不升版本时 `verify` 失败。
+
+#### D1 实施记录（2026-10-02）
+
+- 包名改为 `@aibolabs/*`，`sdk.json` 为每个公开入口保留指向同一模块的 `@aibo/*` 弃用别名，resolver 同时拒绝两种前缀下的未公开路径。
+- `plugin-protocol`、`capability-runtime`、`acp-adapter` 对齐为 0.1.8；`web-presentation`、`presentation-tools` 0.1.0 与
+  `presentation-workbench` 0.2.2 独立编号。六个包以 MIT 许可、`repository` 指向 `chldu2000/aibo` 发布到 npm，
+  registry 上的 integrity 与本地打包结果一致。首次发布为手动执行 `scripts/publish-sdk.mjs`（需要 npm 2FA）。
+- `check:sdk` 加入 `verify`：检查三个包版本与 SDK 快照一致，并按 `packages/plugin-host/sdk-releases.json` 拒绝修改已发布版本；
+  实测改动快照内容而不升版本时失败。CI 发布工作流为 `.github/workflows/publish-sdk.yml`，待在 npm 上配置 Trusted Publishing。
+- 导入新前缀的插件需要宿主 SDK 0.1.8，因此 `hostSdk.min` 提升到 0.1.8，内容变化的插件同时升版本：内置 Codex 2.0.17、Pi 2.0.11；
+  `aibo-plugins` 的 Cursor 0.2.4、Claude Code 0.4.4、模板 0.1.1、能力示例 1.0.2。
+- `aibo-plugins` 的构建按各插件 lockfile 从 npm 安装 SDK（项目 `.npmrc` 把 `@aibolabs` 固定到官方 registry，
+  `npm ci` 使用 `--replace-registry-host=never` 防止镜像改写），`AIBO_SDK=local` 保留源码 tarball 模式；
+  TypeScript 与 `@aibolabs/presentation-tools` 成为其根依赖。测试与 smoke 仍通过 `../aibo` 的 SDK resolver 模拟运行时。
+- 验收：在两个仓库之外的临时目录中只从 npm 安装 SDK，构建模板与能力示例；归档不含 SDK 副本，解包后在宿主 resolver 下
+  `capability.initialize` 握手成功（模板 2.1 / 10 项操作，能力示例 2.0 / 1 项操作）。该验收发现能力示例 Worker 内写死的
+  `pluginVersion` 未随清单升级，已修正并增加一致性测试。旧前缀解析由 `test/host-sdk.test.mjs` 覆盖；未在桌面应用中安装验证。
 
 ### D2：从归档 URL 安装
 

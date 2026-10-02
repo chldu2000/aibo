@@ -1,7 +1,12 @@
 {
-  "name": "@aibo/capability-runtime",
-  "version": "0.1.1",
-  "private": true,
+  "name": "@aibolabs/capability-runtime",
+  "version": "0.1.8",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/chldu2000/aibo.git",
+    "directory": "packages/capability-runtime"
+  },
   "type": "module",
   "files": [
     "runtime.mjs",
@@ -33,9 +38,13 @@
     }
   },
   "dependencies": {
-    "@aibo/plugin-protocol": "0.1.0"
+    "@aibolabs/plugin-protocol": "0.1.8"
   },
   "engines": {
     "node": ">=22"
+  },
+  "publishConfig": {
+    "access": "public",
+    "registry": "https://registry.npmjs.org/"
   }
 }

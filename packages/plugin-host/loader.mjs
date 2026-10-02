@@ -11,7 +11,8 @@ export function resolve(specifier, context, nextResolve) {
     const url = new URL(specifier, context.parentURL).href;
     if (Object.hasOwn(sdk.modules, url.slice(prefix.length))) return { url, shortCircuit: true };
   }
-  if (specifier.startsWith('@aibo/') || specifier.startsWith('aibo-sdk:')) {
+  // `@aibo/` is the pre-publication prefix; installed plugins built against it still resolve through legacy aliases.
+  if (specifier.startsWith('@aibolabs/') || specifier.startsWith('@aibo/') || specifier.startsWith('aibo-sdk:')) {
     throw Object.assign(new Error(`Aibo SDK does not expose ${specifier}`), { code: 'ERR_PACKAGE_PATH_NOT_EXPORTED' });
   }
   return nextResolve(specifier, context);

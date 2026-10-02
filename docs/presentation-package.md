@@ -93,7 +93,7 @@ manifest 最大 128 KiB，最多 128 个资源、单个资源最大 8 MiB、资�
 ## 可执行入口
 
 包代码运行于 Worker，定义 `self.aiboPresentation.render(input)`，同步或异步返回
-`PresentationNode`。输入与视觉树类型从 `@aibo/plugin-protocol` 导出，不需要 DOM
+`PresentationNode`。输入与视觉树类型从 `@aibolabs/plugin-protocol` 导出，不需要 DOM
 类型。下面的语义呈现入口只绑定输入中的宿主动作：
 
 ```js
@@ -398,10 +398,11 @@ Inspector 的 `projectEditor` 和 `runningActionId` 由宿主持有。编辑器�
 
 ## 独立打包工具
 
-`packages/presentation-tools` 可打包为本地 npm tarball，在仓库外使用 Node.js CLI：
+`@aibolabs/presentation-tools` 可从 npm 安装，在仓库外使用 Node.js CLI：
 
 ```sh
-node /path/to/package/build.mjs presentation.source.json dist/skin-1.0.0
+npm install -D @aibolabs/presentation-tools
+npx aibo-presentation-build presentation.source.json dist/skin-1.0.0
 ```
 
 源 manifest 的资源列表提供路径和媒体类型，工具读取实际字节并生成大小与 SHA-256，

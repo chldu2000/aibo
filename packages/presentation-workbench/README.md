@@ -1,4 +1,4 @@
-# @aibo/presentation-workbench
+# @aibolabs/presentation-workbench
 
 两套独立皮肤共用的纯数据工作台呈现模块。模块只将公开 Presentation 数据和
 宿主动作目录转换成视觉树，不引用宿主代码、DOM、框架或业务执行端口。

@@ -40,7 +40,7 @@ From the Aibo repository root, run `pnpm install`; Node.js 22+, npm and `tar` ar
 node --input-type=module -e 'import { buildExternalPlugin } from "./probes/build-external-plugin.mjs"; const result = await buildExternalPlugin(); console.log(JSON.stringify({ developmentRoot: result.root, installPath: result.packagePath }, null, 2));'
 ```
 
-The builder packs local SDK tarballs, installs them offline as development dependencies in a temporary consumer,
+The in-repository builder packs the SDK from source as local tarballs (so it tests unreleased changes), installs them offline as development dependencies in a temporary consumer,
 compiles the worker and prints an unpacked installation directory. The greeting package contains `plugin.json`
 and `dist/worker.js`, without Aibo SDK copies or `node_modules`; it has no third-party runtime dependencies.
 The host supplies public SDK imports through [hostSdk](host-sdk.md). This build does not launch Aibo or call a model.
@@ -65,8 +65,9 @@ Use the matching [manifest](../examples/capability-plugin/plugin.json) and [work
    The example receives `{ actionId: "refresh", itemId: null, offset: 0 }` and returns `state`, `view`, `actions`;
    the host supplies snapshot identity and revision. See the [write](../fixtures/plugins/capability-write/) and
    [semantic-write](../fixtures/plugins/semantic-write/) fixtures for host-approved writes.
-5. Build and locally pack `packages/plugin-protocol` and `packages/capability-runtime`, install those tarballs as
-   development dependencies, then compile your worker. Public SDK packages are not currently distributed through a public registry.
+5. Install the SDK from npm as development dependencies, for example
+   `npm install -D @aibolabs/plugin-protocol@0.1.8 @aibolabs/capability-runtime@0.1.8`, then compile your worker.
+   These package versions equal the host SDK version; declare a `hostSdk.min` no lower than the version you use.
 6. Declare `hostSdk` and package the compiled entry and manifest. Keep public SDK imports external to bundles.
    Third-party runtime libraries must be bundled into business code or explicitly included in the installation artifact;
    merely listing dependencies does not supply their files, and Aibo does not run `npm install`. See [SDK packaging rules](host-sdk.md).
@@ -115,7 +116,7 @@ the `decision` input keeps the two-button approval. `approvalOptions` in `acp.js
 a session control (for example Manual after approving a plan); the host commits that switch, see
 [session controls](session-controls.md). `elicitation: true` (host SDK 0.1.5, with a `user-input.respond`
 operation) shows the agent's form requests, such as Claude Code's AskUserQuestion, as host questions. For vendor extension methods, pass an `extension` to `serveAcpAgent`
-as the Cursor plugin does; fields and hooks are described in [`@aibo/acp-adapter`](../packages/acp-adapter/README.md).
+as the Cursor plugin does; fields and hooks are described in [`@aibolabs/acp-adapter`](../packages/acp-adapter/README.md).
 
 ## Extend presentation
 
@@ -139,7 +140,7 @@ The host no longer shows them at the top of the window or over management panels
   List reject kinds before allow kinds and give the allow choice the primary emphasis.
 - Bind buttons to the host action tokens only. No action is offered while the session is busy, archiving or unbound;
   render the choice disabled or omit it. Tokens retire when the request resolves; the host revalidates every choice.
-- `renderConversation` in [`@aibo/presentation-workbench`](../packages/presentation-workbench/) already renders approvals,
+- `renderConversation` in [`@aibolabs/presentation-workbench`](../packages/presentation-workbench/) already renders approvals,
   so packages built on it need no extra work.
 
 If a package omits approvals, or its Worker fails, the user can only answer them after returning to the default
@@ -175,7 +176,7 @@ Build success, mocked-engine success, native installation and real desktop inter
 
 New agents gain history access through the `aibo.host-tools/v1` catalog and the generic tool channel in host SDK 0.1.1,
 without host-side routing by brand. A plugin only maps MCP parameters or registers dynamic tools; read authorization,
-paging and version consistency stay with the host. ACP plugins built on `@aibo/acp-adapter/worker` (SDK 0.1.3 or later)
+paging and version consistency stay with the host. ACP plugins built on `@aibolabs/acp-adapter/worker` (SDK 0.1.3 or later)
 get this wiring automatically: when the host passes a tool catalog in the session context, the Worker
 starts the MCP bridge and hands it to the agent. See [session history tools](session-history-tool-design.md) for the full steps
 and native/packaged tests.

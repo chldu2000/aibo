@@ -5,7 +5,7 @@
   "displayName": "ACP Echo",
   "description": "Configuration-only ACP provider used by host tests.",
   "hostSdk": {
-    "min": "0.1.5",
+    "min": "0.1.8",
     "maxExclusive": "0.2.0"
   },
   "host": {

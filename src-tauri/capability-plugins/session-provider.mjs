@@ -1,4 +1,4 @@
-import { createHostToolChannel, hostToolDefinitions } from '@aibo/capability-runtime/host-tools';
+import { createHostToolChannel, hostToolDefinitions } from '@aibolabs/capability-runtime/host-tools';
 /** Session domain implementation for the shared Capability runtime; no Agent wire protocol. */
 export function sessionProvider({engine, pluginId, actions}) {
   let owner, boundSession, nativeSessionId, executionProfile, nextTool = 0;

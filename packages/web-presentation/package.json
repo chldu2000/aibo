@@ -1,9 +1,27 @@
 {
-  "name":"@aibo/web-presentation",
-  "version":"0.1.0",
-  "private":true,
-  "type":"module",
-  "files":["index.d.ts","README.md"],
-  "exports":{".":{"types":"./index.d.ts"}},
-  "dependencies":{"@aibo/plugin-protocol":"0.1.0"}
+  "name": "@aibolabs/web-presentation",
+  "version": "0.1.0",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/chldu2000/aibo.git",
+    "directory": "packages/web-presentation"
+  },
+  "type": "module",
+  "files": [
+    "index.d.ts",
+    "README.md"
+  ],
+  "exports": {
+    ".": {
+      "types": "./index.d.ts"
+    }
+  },
+  "dependencies": {
+    "@aibolabs/plugin-protocol": "0.1.8"
+  },
+  "publishConfig": {
+    "access": "public",
+    "registry": "https://registry.npmjs.org/"
+  }
 }

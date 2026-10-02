@@ -1,4 +1,4 @@
-import type { Snapshot, ActionMessage } from '@aibo/plugin-protocol';
+import type { Snapshot, ActionMessage } from '@aibolabs/plugin-protocol';
 /** Trusted, in-process Web interfaces. Never serialize these as plugin messages. */
 export type PresentationProps = {
   snapshot:Snapshot;

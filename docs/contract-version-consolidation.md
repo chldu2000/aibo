@@ -62,7 +62,7 @@ P1 切片也声明过它不是第三方 ABI。仍需搜索 `aibo-plugins` 与 fi
 - 将 `capability-runtime.experimental.schema.json` 重命名为 `capability-runtime.v2.0.schema.json`（保留 `$id`）。
 - `PluginRuntime` 内部只使用 2.1 语义：2.0 插件视为"没有 invocation 流与执行中控制"的 2.1 插件，
   由握手结果决定，不在调用路径中按版本分支。
-- 新插件模板、开发指南和 `@aibo/capability-runtime` 默认生成 2.1 清单。
+- 新插件模板、开发指南和 `@aibolabs/capability-runtime` 默认生成 2.1 清单。
 - 在发行说明中标记 2.0 弃用：列出影响（仍用 2.0 的插件）、替代方式（改用 2.1，清单改 `protocols.runtime`）
   和迁移证据（capability 示例插件改到 2.1 后的回归结果）。**移除 2.0 另行决策。**
 

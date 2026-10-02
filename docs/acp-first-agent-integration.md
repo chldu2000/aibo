@@ -6,7 +6,7 @@
 ## 背景与问题
 
 本节描述 A1 之前（2026-09-27 前）的状态。现在 Cursor 插件只保留 `cursor-session.mjs` 中的厂商扩展和一行 Worker，
-通用逻辑已移入 `@aibo/acp-adapter`。
+通用逻辑已移入 `@aibolabs/acp-adapter`。
 
 当时 Agent 有两种接入方式：
 
@@ -46,12 +46,12 @@ Cursor 插件的代码大部分是通用 ACP 逻辑，并不专属于 Cursor：
 
 ```mermaid
 flowchart LR
-  host[Aibo 宿主<br/>Runtime 2.1 + 会话合同] <-->|stdio| worker[通用 ACP Worker<br/>@aibo/acp-adapter]
+  host[Aibo 宿主<br/>Runtime 2.1 + 会话合同] <-->|stdio| worker[通用 ACP Worker<br/>@aibolabs/acp-adapter]
   worker --> ext[厂商扩展模块<br/>可选]
   worker <-->|ACP NDJSON| agent[agent acp / gemini --acp / ...]
 ```
 
-新增包 `packages/acp-adapter`（`@aibo/acp-adapter`），作为宿主 SDK 快照（0.1.2 起）的一部分随宿主交付，
+新增包 `packages/acp-adapter`（`@aibolabs/acp-adapter`），作为宿主 SDK 快照（0.1.2 起）的一部分随宿主交付，
 插件以 `hostSdk` 在运行时导入，开发时作为 devDependency（见[宿主 SDK](host-sdk.md)）：
 
 | 模块 | 来源 | 职责 |
@@ -256,13 +256,13 @@ A6 开放了这类选项，恢复时的限制见 [A6 实施记录](#a6-实施记
 
 ACP 的 `session/new` 接受 `mcpServers`。Cursor 0.1.18 已通过 SDK 私有 MCP bridge 接入
 宿主授权的 `aibo.host-tools/v1` 目录，并有真实调用及跨进程恢复证据；A1 保留这条路径。
-A4 已把这段接线移入通用 Worker：宿主在会话上下文中下发目录时，`@aibo/acp-adapter/worker` 创建 bridge、
+A4 已把这段接线移入通用 Worker：宿主在会话上下文中下发目录时，`@aibolabs/acp-adapter/worker` 创建 bridge、
 以 `mcpServers` 传给 Agent，并把只读工具交给会话做自动许可，见 [A4 实施记录](#a4-实施记录)。
 不重复实现历史工具，也不扩大现有授权范围。新增文件写入或命令工具仍需单独决定。
 
 ## 阶段
 
-### A1：提取 `@aibo/acp-adapter`（行为不变）
+### A1：提取 `@aibolabs/acp-adapter`（行为不变）
 
 - 从 Cursor 插件提取 transport、session 通用部分、config 到 `packages/acp-adapter`。Cursor 专属逻辑移到 `extension.mjs`。
 - Cursor 插件改为依赖该包，版本升到 0.2.0，manifest 能力声明不变。
@@ -315,7 +315,7 @@ A4 已把这段接线移入通用 Worker：宿主在会话上下文中下发目�
 
 #### A2 实施记录
 
-- `@aibo/acp-adapter/worker` 的 `serveAcpAgent` 随宿主 SDK 0.1.3 交付（0.1.2 已有复验基线，新增入口不并入该版本）。
+- `@aibolabs/acp-adapter/worker` 的 `serveAcpAgent` 随宿主 SDK 0.1.3 交付（0.1.2 已有复验基线，新增入口不并入该版本）。
   它读取 `plugin.json` 与 `acp.json`，或接受代码扩展；功能按 `<pluginId>.<feature>` 路由，并包含宿主工具的 MCP bridge 接线（A4）。
 - `acp.json` 校验：`command` 必须是清单 `executableDependencies` 中声明的可执行文件，`modes` 把 `ask`/`plan`/`edit`
   映射到原生模式 ID（`edit` 是写入模式），其余字段可选。无效时 Worker 在握手前以错误退出。执行配置沿用 `agent-managed` 规则。
@@ -365,7 +365,7 @@ A4 已把这段接线移入通用 Worker：宿主在会话上下文中下发目�
 #### A4 实施记录
 
 - 接线随 A2 的 `serveAcpAgent`（宿主 SDK 0.1.3）一并交付：`aibo.session.open` 时若宿主上下文带有 `aibo.host-tools/v1` 目录，
-  Worker 用 `@aibo/capability-runtime/host-tools` 创建私有 MCP bridge，以 `mcpServers` 传给 `session/new` / `session/load`；
+  Worker 用 `@aibolabs/capability-runtime/host-tools` 创建私有 MCP bridge，以 `mcpServers` 传给 `session/new` / `session/load`；
   恢复时保留 recovery 中的公开 server 名称并轮换凭证。只读且非破坏性的工具作为 `hostMcpTools` 交给会话做一次性自动许可。
 - 宿主工具调用经同一 host-tools 通道回到宿主，仍校验调用归属、代际与信任；会话关闭时关闭 bridge。
 - 验证：`test/acp-worker.test.mjs` 以回显夹具经 MCP 调用宿主工具；Cursor 打包 Worker 冒烟含宿主工具。
@@ -499,7 +499,7 @@ Cursor 的 `cursor/ask_question` 是厂商扩展，已由 Cursor 扩展映射到
 
 - 声明：`acp.json` 的 `elicitation: true`（代码扩展为 `extension.elicitation`）会在 `initialize` 声明 `elicitation: { form: {} }`，
   并在能力中加入 `user-input.respond`。Worker 启动时校验清单里存在 `<pluginId>.user-input.respond` 操作。
-  未声明时行为不变，Cursor 不受影响。随宿主 SDK 0.1.5 交付，映射代码在 `@aibo/acp-adapter` 内部模块 `elicitation.mjs`。
+  未声明时行为不变，Cursor 不受影响。随宿主 SDK 0.1.5 交付，映射代码在 `@aibolabs/acp-adapter` 内部模块 `elicitation.mjs`。
 - 映射（每个字段对应一个宿主问题，宿主每题只提交一个值）：
 
   | 字段 | 宿主问题 | 回复 |
@@ -543,7 +543,7 @@ Cursor 的 `cursor/ask_question` 是厂商扩展，已由 Cursor 扩展映射到
 
 1. 标准计划载荷的结构：独立的会话功能合同（例如 `plan.view`），还是作为审批载荷的一部分？
    两者都需要走合同变更门。
-2. 已决定并实施：`@aibo/acp-adapter` 位于宿主仓库，随宿主 SDK 0.1.2 交付。
+2. 已决定并实施：`@aibolabs/acp-adapter` 位于宿主仓库，随宿主 SDK 0.1.2 交付。
 3. 持久授权选项（`allow_always`）是否在某些会话策略下开放？
 4. 扩展 `aibo.host-tools/v1`，加入写文件与执行命令工具（执行后端情况 B）。
 5. Plan 模式的命令策略是否新增"由 Agent 审核"一类的值，避免界面显示"命令已禁用"而实际有命令执行？

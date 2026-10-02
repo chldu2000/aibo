@@ -1,8 +1,8 @@
 import {readFile,writeFile,copyFile,mkdtemp,rm} from 'node:fs/promises';
 import {tmpdir} from 'node:os';
 import path from 'node:path';
-import {workbenchSource} from '@aibo/presentation-workbench/bundle';
-import {buildPresentation} from '@aibo/presentation-tools/build';
+import {workbenchSource} from '@aibolabs/presentation-workbench/bundle';
+import {buildPresentation} from '@aibolabs/presentation-tools/build';
 const metadata=JSON.parse(await readFile(new URL('./themes.json',import.meta.url),'utf8'));
 const packageVersion=JSON.parse(await readFile(new URL('./package.json',import.meta.url),'utf8')).version;
 const version=process.argv[3]??packageVersion;

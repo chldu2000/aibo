@@ -1,5 +1,5 @@
 import type { InvocationTools } from './runtime.js';
-import type { CapabilityInvocation } from '@aibo/plugin-protocol';
+import type { CapabilityInvocation } from '@aibolabs/plugin-protocol';
 export type HostToolDefinition = {name:string;description:string;inputSchema:Record<string,unknown>;outputSchema?:Record<string,unknown>;annotations?:Record<string,unknown>};
 export function hostToolDefinitions(context: unknown): HostToolDefinition[];
 export function createHostToolChannel(): {

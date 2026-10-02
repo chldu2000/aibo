@@ -11,7 +11,7 @@
   必须精确匹配 [基础合同](../contracts/session-capabilities.v1.json)。initialize 返回对应操作三元组。
 - Broker 校验清单和握手后，在可信 `context.hostTools` 注入
   [版本化工具目录](../contracts/host-tools.v1.json)，包含名称、描述、输入/输出 schema 和只读提示。
-- 插件通过 `@aibo/capability-runtime/host-tools` 的 `hostToolDefinitions(context)` 取得目录。
+- 插件通过 `@aibolabs/capability-runtime/host-tools` 的 `hostToolDefinitions(context)` 取得目录。
   原生 SDK 从目录生成动态工具，回调使用 `createHostToolChannel().call(name, input)`。
   MCP 客户端使用 `createHostToolMcpBridge({definitions, call})` 返回的 stdio 配置。
 - 每次 invoke 调用 `channel.begin(request, tools, getNativeSessionId)`，在 finally 执行返回的清理函数。
@@ -50,7 +50,7 @@ Codex 在 `thread/start.dynamicTools` 注册，并将 `item/tool/call` 映射回
 保存的工具名称和当前目录取交集；原生线程已持久化工具定义，导入的旧线程没有工具声明时安全降级。
 该接口是实验性协议，依据本机生成 schema 及 [官方 App Server 文档](https://developers.openai.com/codex/app-server/)。
 Pi 在 `createAgentSession` 中注册 custom tools，恢复时重新注册当前目录。
-ACP 插件由 `@aibo/acp-adapter/worker`（宿主 SDK 0.1.3 起）统一完成接线：宿主在会话上下文中下发目录时，
+ACP 插件由 `@aibolabs/acp-adapter/worker`（宿主 SDK 0.1.3 起）统一完成接线：宿主在会话上下文中下发目录时，
 Worker 创建公共 bridge 并映射为 ACP `session/new` / `session/load` 的 `mcpServers`，同时把私有目录中的
 只读工具交给会话做自动许可；Cursor、Claude Code 等插件无需各自实现。厂商参数转换仍位于插件扩展内。
 ACP 的 MCP 发现可能延迟到首个 prompt（Cursor 即如此）；恢复保留公开 server 标识，

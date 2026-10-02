@@ -1,8 +1,8 @@
-import { serveCapability } from '@aibo/capability-runtime/stdio';
-import type { Snapshot } from '@aibo/plugin-protocol';
+import { serveCapability } from '@aibolabs/capability-runtime/stdio';
+import type { Snapshot } from '@aibolabs/plugin-protocol';
 
 serveCapability({
-  pluginId:'dev.example.greeting',pluginVersion:'1.0.1',contributionId:'dev.example.greeting.provider',
+  pluginId:'dev.example.greeting',pluginVersion:'1.0.2',contributionId:'dev.example.greeting.provider',
   operations:[{capability:'dev.example.greeting.read',version:'1.0.0',operationId:'dev.example.greeting.read'}],
   async invoke(request) {
     const output: Pick<Snapshot,'state'|'view'|'actions'> = {

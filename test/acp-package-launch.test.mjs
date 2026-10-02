@@ -5,7 +5,7 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
 import '../packages/plugin-host/register.mjs';
-const { acpAgentConfig, extensionFromConfig } = await import('@aibo/acp-adapter/worker');
+const { acpAgentConfig, extensionFromConfig } = await import('@aibolabs/acp-adapter/worker');
 import { sessionCapability } from './helpers/session-capability.mjs';
 
 async function fixture(t) {

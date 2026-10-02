@@ -22,7 +22,7 @@ export async function buildExternalPlugin() {
   execFileSync(process.execPath,[tsc,'-p','tsconfig.json'],{cwd:consumer,stdio:'pipe'});
   const archive=pack(consumer);
   if(!archive.files.some(file=>file.path==='dist/worker.js')) throw Error('External archive is missing its worker');
-  if(archive.files.some(file=>file.path.startsWith('node_modules/@aibo/'))) throw Error('Host SDK must not be bundled');
+  if(archive.files.some(file=>file.path.startsWith('node_modules/@aibolabs/'))) throw Error('Host SDK must not be bundled');
   if(archive.files.some(file=>/svelte|\.css$|\.tsx?$/.test(file.path.replace(/\.d\.ts$/,'.types')))) throw Error('External runtime archive contains frontend or uncompiled source');
   const packagePath=path.join(root,'unpacked');await mkdir(packagePath);
   execFileSync('tar',['-xzf',path.join(consumer,archive.filename),'-C',packagePath,'--strip-components=1']);

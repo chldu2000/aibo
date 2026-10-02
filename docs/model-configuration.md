@@ -91,7 +91,7 @@ Fast 旁的上下文下拉框只有在会话声明能力、当前模型提供非
 呈现须保留估算标记，不能自行用累计 token 数替换上下文占用。
 实现入口为 [`session-usage.ts`](../src/lib/app/session-usage.ts)。
 
-ACP 插件由 `@aibo/acp-adapter`（宿主 SDK 0.1.8 起）映射：`usage_update` 的 `used` / `size` 成为 `contextTokens` /
+ACP 插件由 `@aibolabs/acp-adapter`（宿主 SDK 0.1.8 起）映射：`usage_update` 的 `used` / `size` 成为 `contextTokens` /
 `contextWindow`；每轮 prompt 结果的 input（含缓存读写）、output 与 total 在进程内累加为会话累计值。
 累计值不跨进程恢复，Agent 未报告时保持未知。
 

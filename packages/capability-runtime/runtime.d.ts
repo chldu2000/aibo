@@ -1,4 +1,4 @@
-import type { JsonValue, CapabilityInitialization, CapabilityInvocation, CapabilityOperation, CapabilityCallTarget, CapabilityResult, CapabilityControl } from '@aibo/plugin-protocol';
+import type { JsonValue, CapabilityInitialization, CapabilityInvocation, CapabilityOperation, CapabilityCallTarget, CapabilityResult, CapabilityControl } from '@aibolabs/plugin-protocol';
 /** Structural cancellation port; no DOM or Node type library is required. */
 export interface CancellationSignal {
   readonly aborted:boolean;
