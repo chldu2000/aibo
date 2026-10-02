@@ -36,3 +36,22 @@ test('failed reads surface errors and a successful retry clears them', async () 
   fail = false; await controller.open('w', 'repo', 'file', false);
   assert.equal(state.error, null); assert.equal(state.diff.diff, 'ok');
 });
+
+test('repository refresh retargets a staged file and closes removed or unreadable previews', async () => {
+  let state;
+  const calls = [];
+  const controller = createSessionDiffController(async (...args) => { calls.push(args); return {diff:'current'}; }, value => state = value);
+  await controller.open('w', 'repo', 'file.txt', false);
+  const repo = {id:'repo',error:null,changes:{captureStatus:'captured',files:[{path:'file.txt',kind:'modified',staged:true,unstaged:false}]}};
+  controller.reconcile('w', [repo], true);
+  assert.equal(state.staged, false, 'discovery must settle before retargeting');
+  controller.reconcile('w', [repo], false);
+  await new Promise(resolve => setImmediate(resolve));
+  assert.equal(state.staged, true);
+  assert.deepEqual(calls.at(-1), ['w', 'file.txt', true, 'repo']);
+  controller.reconcile('w', [{...repo,error:'unreadable'}], false);
+  assert.deepEqual(state, emptySessionDiff());
+  await controller.open('w', 'repo', 'file.txt', true);
+  controller.reconcile('w', [], false);
+  assert.deepEqual(state, emptySessionDiff());
+});

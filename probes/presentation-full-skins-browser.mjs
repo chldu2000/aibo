@@ -292,7 +292,13 @@ try {
     await frame.locator('textarea[aria-label="消息"][value="布局保留草稿"]').waitFor();
     await frame.getByRole('button',{name:'审阅布局',exact:true}).click();
     await frame.locator('button[data-presentation-key="layout:mode:review"][aria-pressed="true"]').waitFor();
-    assert.ok((await frame.locator('.navigation').boundingBox()).x>(await frame.locator('.workbench-inspector').boundingBox()).x);
+    // Read both positions from one rendered tree; a Worker update may replace
+    // the inspector between two separate boundingBox round trips.
+    assert.ok(await frame.locator('body').evaluate(body => {
+      const navigation = body.querySelector('.navigation');
+      const inspector = body.querySelector('.workbench-inspector');
+      return navigation && inspector && navigation.getBoundingClientRect().x > inspector.getBoundingClientRect().x;
+    }));
     resized=await dragBoundary('调整导航宽度',-16,-1);
     await frame.getByRole('button',{name:'专注会话',exact:true}).click();
     await frame.locator('button[data-presentation-key="layout:mode:focus"][aria-pressed="true"]').waitFor();
@@ -433,7 +439,11 @@ try {
     await frame.getByRole('button',{name:'侧边面板',exact:true}).click();
     await frame.locator('.workbench-inspector').waitFor({state:'visible'});
     assert.equal(await frame.locator('.workbench-inspector').evaluate(element=>Math.round(element.getBoundingClientRect().width)),savedLayout.auxiliaryWidth);
-    assert.ok((await frame.locator('.navigation').boundingBox()).x>(await frame.locator('.workbench-inspector').boundingBox()).x);
+    assert.ok(await frame.locator('body').evaluate(body => {
+      const navigation = body.querySelector('.navigation');
+      const inspector = body.querySelector('.workbench-inspector');
+      return navigation && inspector && navigation.getBoundingClientRect().x > inspector.getBoundingClientRect().x;
+    }));
     if(await frame.locator('[data-presentation-key="workbench:layout"]').getAttribute('open')===null)await frame.getByText('布局',{exact:true}).click();
     await frame.getByRole('button',{name:'标准布局',exact:true}).click();
     await frame.locator('button[data-presentation-key="layout:mode:standard"][aria-pressed="true"]').waitFor();

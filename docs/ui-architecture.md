@@ -56,6 +56,17 @@
 能力发现、安装绑定和权限检查见[会话能力协商](session-capability-negotiation.md)与
 [宿主和插件边界](plugin-boundaries-and-regression.md)。
 
+Git 工作区状态由 `src/lib/app/workspace-git-controller.ts` 持有：仓库发现与选择、
+仓库草稿、历史分页、提交文件列表、diff 读取和写入完成后的刷新都经过同一个注入式控制器。
+`App.svelte` 注入原生调用与存储、订阅快照、接入导航及呈现动作；内置与外部工作台消费
+同一份状态。控制器按窗口保存仓库偏好，沿用工作区/仓库草稿键，呈现切换不会重建控制器。
+工作区或仓库切换撤销旧读取结果；写入保留提交时的目标，离开页面后仍报告结果，
+但不刷新或关闭新视图。提交与建分支成功后仅清除仍与提交值相同的原仓库草稿。
+回归入口为 `test/workspace-git-controller.test.mjs`、`test/presentation-git.test.mjs`
+及 `probes/presentation-git-browser.mjs`。Inspector 的回合 diff、文件/hunk 动作及
+回合恢复由 `turn-change-controller.ts` 持有，通过 `test/turn-change-controller.test.mjs`
+及 `probes/presentation-inspector-browser.mjs` 验证；App 仅连接会话导航与完成后的刷新。
+
 跨默认与外部工作台共享的展示投影只维护一份：时间线分组规则位于
 `packages/presentation-workbench/timeline-model.js`，内置时间线通过兼容导出使用同一实现。
 系统消息分组由宿主提示控制，推理、分支摘要和压缩摘要保持各自语义；皮肤不按 Agent 身份选择规则。

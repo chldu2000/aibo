@@ -109,17 +109,14 @@
     if (agentSettings.target) void agentSettingsController.select({...agentSettings.target,scope});
   }
 
-  import type { GitRepositoryState } from '../packages/plugin-protocol/src/presentation-git';
-  import { repositoryDraftKey, readRepositoryViews, writeRepositoryViews } from '$lib/app/git-repository-state';
+  import { createWorkspaceGitController, emptyWorkspaceGit } from '$lib/app/workspace-git-controller';
+  import { createTurnChangeController, emptyTurnChange } from '$lib/app/turn-change-controller';
   import { encodeClipboardImages } from '$lib/app/clipboard-images';
   import { registerSessionClipboardImages } from '$lib/api';
   import { listWorkspaceGitRepositories } from '$lib/api';
-  import { readWorkbenchDrafts, writeWorkbenchDrafts, emptyGitPanelState } from '$lib/app/workbench-drafts';
   const draftStorage = { getItem: (key: string) => window.localStorage.getItem(key), setItem: (key: string, value: string) => window.localStorage.setItem(key, value) };
   import { readWorkbenchLayout, writeWorkbenchLayout } from '$lib/app/workbench-layout-storage';
   const savedWorkbenchLayout = readWorkbenchLayout(draftStorage, presentationWindowId());
-  let workbenchDrafts = $state(readWorkbenchDrafts(draftStorage, presentationWindowId()));
-  $effect(() => { writeWorkbenchDrafts(draftStorage, presentationWindowId(), workbenchDrafts); });
   import type { UiManagementSection } from '$lib/ui-kit';
   import { SettingsSection, HostPanel, PresentationHost, WorkbenchPresentation, DefaultPresentationActions, FileChangeMark, Badge, Button } from '$lib/ui-kit';
   import { createPresentationPackageController, type PresentationPackageState } from '$lib/app/presentation-package-controller';
@@ -347,66 +344,80 @@
       case 'selectTreeNode': requestPiTreeNavigation(target!); break;
     }
   }
-  let repositoryViews = $state(readRepositoryViews(draftStorage, presentationWindowId()));
-  let gitRepositories = $state<GitRepositoryState[]>([]);
-  let gitRepositoriesWorkspace = $state<string | null>(null);
-  let repositorySearch = $state('');
-  let repositoryPickerOpen = $state(false);
-  let repositoryPendingSection: 'changes' | 'history' | undefined;
-  let discoveryLimited = $state(false);
-  let discoveryWarnings = $state<string[]>([]);
-  let repositoryScanBudget = $state(2000);
-  const gitHistoryPageSize = 16;
-  const repositoryId = $derived(selectedWorkspaceId ? repositoryViews[selectedWorkspaceId]?.selected ?? null : null);
-  const gitDraftKey = $derived(repositoryDraftKey(selectedWorkspaceId ?? '', repositoryId));
-  const visibleRepositories = $derived(gitRepositoriesWorkspace === selectedWorkspaceId ? gitRepositories : []);
-  const sessionChangesCount = $derived(!desktop || !selectedWorkspaceId || gitRepositoriesWorkspace !== selectedWorkspaceId || workspaceChangesLoading || workspaceChangesError || discoveryLimited
+  let git = $state.raw(emptyWorkspaceGit());
+  const workspaceGit = createWorkspaceGitController({
+    api: {
+      listWorkspaceGitRepositories, getWorkspaceChanges, getWorkspaceFileDiff, listWorkspaceGitBranches,
+      listWorkspaceGitHistory, getWorkspaceGitRemoteStatus, listWorkspaceGitStashes, listWorkspaceGitCommitFiles,
+      getWorkspaceGitCommitFileDiff, checkoutWorkspaceGitBranch, createWorkspaceGitBranch, syncWorkspaceGit,
+      stashWorkspaceGit, applyWorkspaceGitStash, applyWorkspaceGitFileAction,
+      applyWorkspaceGitAction: applyWorkspaceGitActionApi, commitWorkspaceChanges,
+    },
+    desktop: () => desktop, storage: draftStorage, windowId: presentationWindowId(),
+    changed: value => { git = value; }, error: value => { errorMessage = value; }, notice: setNotice,
+    reviewContext: () => ({ session: selectedSession, running: sessionRunning, profile: executionProfile?.requested ?? null }),
+    startReview: async ({ workspaceId, session, profile, prompt }) => {
+      const originSession = session.id;
+      let reviewSession = await createAgentSession(workspaceId, session.agent, session.pluginInstallationId ?? undefined, profile);
+      workspaceSessionMap = upsertSession(workspaceSessionMap, reviewSession);
+      if (selectedWorkspaceId === workspaceId && selectedSessionId === originSession) {
+        clearSelectedSessionContext();
+        selectedSessionId = reviewSession.id;
+      }
+      reviewSession = await sendAgentPrompt(reviewSession.id, prompt);
+      workspaceSessionMap = upsertSession(workspaceSessionMap, reviewSession);
+      if (selectedSessionId === reviewSession.id) {
+        void refreshTimeline(reviewSession.id);
+        void refreshExecutionProfile(reviewSession.id);
+      }
+    },
+  });
+  const {
+    selectRepository, toggleRepository, refreshWorkspaceChanges, refreshWorkspaceGitMetadata,
+    loadMoreWorkspaceGitHistory, openWorkspaceFileDiff, closeWorkspaceFileDiff, loadWorkspaceCommitFiles,
+    closeWorkspaceCommitFiles, openWorkspaceCommitFileDiff, checkoutWorkspaceBranch, createWorkspaceBranch,
+    syncWorkspaceBranch, saveWorkspaceStash, applyWorkspaceStash, applyWorkspaceGitAction,
+    applyWorkspaceGitWorkspaceAction, commitWorkspaceGitChanges, requestWorkspaceAgentReview,
+  } = workspaceGit;
+  const repositoryId = $derived(git.repositoryId);
+  const repositorySearch = $derived(git.repositorySearch);
+  const repositoryPickerOpen = $derived(git.repositoryPickerOpen);
+  const discoveryLimited = $derived(git.discoveryLimited);
+  const discoveryWarnings = $derived(git.discoveryWarnings);
+  const visibleRepositories = $derived(git.repositories);
+  const workspaceChanges = $derived(git.changes);
+  const workspaceChangesLoading = $derived(git.loading);
+  const workspaceChangesError = $derived(git.error);
+  const workspaceFileDiff = $derived(git.fileDiff);
+  const workspaceFileDiffLoading = $derived(git.fileDiffLoading);
+  const workspaceFileDiffError = $derived(git.fileDiffError);
+  const workspaceFileDiffPath = $derived(git.fileDiffPath);
+  const workspaceFileDiffStaged = $derived(git.fileDiffStaged);
+  const workspaceFileDiffContextLabel = $derived(git.fileDiffContextLabel);
+  const previewRepositoryId = $derived(git.previewRepositoryId);
+  const workspaceGitBranches = $derived(git.branches);
+  const workspaceGitHistory = $derived(git.history);
+  const workspaceGitHistoryHasMore = $derived(git.historyHasMore);
+  const workspaceGitHistoryLoadingMore = $derived(git.historyLoadingMore);
+  const workspaceGitHistoryLoadMoreError = $derived(git.historyLoadMoreError);
+  const workspaceGitMetadataLoading = $derived(git.metadataLoading);
+  const workspaceGitMetadataError = $derived(git.metadataError);
+  const workspaceGitCommitFiles = $derived(git.commitFiles);
+  const workspaceGitCommitFilesLoading = $derived(git.commitFilesLoading);
+  const workspaceGitRemoteStatus = $derived(git.remoteStatus);
+  const workspaceGitStashes = $derived(git.stashes);
+  const workspaceGitOperationBusy = $derived(git.operationBusy);
+  const workspaceGitReviewBusy = $derived(git.reviewBusy);
+  const sessionChangesCount = $derived(!desktop || !selectedWorkspaceId || git.workspaceId !== selectedWorkspaceId || workspaceChangesLoading || workspaceChangesError || discoveryLimited
     || visibleRepositories.some(repo => repo.error || repo.changes?.captureStatus !== 'captured')
     ? null : visibleRepositories.reduce((total, repo) => total + (repo.changes?.files.length ?? 0), 0));
   $effect(() => {
-    const { repositoryId: previewRepository, path, staged } = sessionDiff;
-    if (!path || workspaceChangesLoading) return;
-    const repo = visibleRepositories.find(item => item.id === previewRepository);
-    const file = repo?.changes?.files.find(item => item.path === path);
-    if (!file || repo?.error || repo?.changes?.captureStatus !== 'captured' || !(file.staged || file.unstaged || file.untracked || file.conflicted)) sessionDiffController.close();
-    else if (selectedWorkspaceId && (staged ? !file.staged : !(file.unstaged || file.untracked || file.conflicted))) {
-      void sessionDiffController.open(selectedWorkspaceId, repo.id, path, sessionChangeFile(file).defaultStaged);
-    }
+    sessionDiff;
+    sessionDiffController.reconcile(selectedWorkspaceId, visibleRepositories, workspaceChangesLoading);
   });
-  $effect(() => { writeRepositoryViews(draftStorage, presentationWindowId(), repositoryViews); });
-  function toggleRepository(id: string) {
-    if (!selectedWorkspaceId) return;
-    const view = repositoryViews[selectedWorkspaceId] ?? { selected: null, collapsed: [] };
-    repositoryViews[selectedWorkspaceId] = { ...view, collapsed: view.collapsed.includes(id) ? view.collapsed.filter(value => value !== id) : [...view.collapsed, id] };
-  }
-  function selectRepository(id: string | null, section?: 'changes' | 'history') {
-    if (!selectedWorkspaceId || workspaceGitOperationBusy || (id !== null && !visibleRepositories.some(repo => repo.id === id))) return;
-    repositoryViews[selectedWorkspaceId] = { ...repositoryViews[selectedWorkspaceId], selected: id, collapsed: repositoryViews[selectedWorkspaceId]?.collapsed ?? [] };
-    ++workspaceGitMetadataRequestGeneration;
-    workspaceGitBranches = []; clearWorkspaceGitHistory(); workspaceGitRemoteStatus = null; workspaceGitStashes = [];
-    workspaceGitMetadataLoading = false; workspaceGitMetadataError = null;
-    closeWorkspaceCommitFiles(); closeWorkspaceFileDiff();
-    workspaceChanges = visibleRepositories.find(repo => repo.id === id)?.changes ?? null;
-    repositoryPickerOpen = false;
-    section ??= repositoryPendingSection; repositoryPendingSection = undefined;
-    if (id !== null) {
-      if (section) {
-        const key = repositoryDraftKey(selectedWorkspaceId, id);
-        workbenchDrafts.git[key] = { ...(workbenchDrafts.git[key] ?? emptyGitPanelState()), gitSection: section };
-      }
-      void refreshWorkspaceGitMetadata(selectedWorkspaceId);
-      restoreRepositoryFile(selectedWorkspaceId, id);
-    }
-  }
-  function restoreRepositoryFile(workspaceId: string, id: string) {
-    const saved = repositoryViews[workspaceId]?.files?.[id];
-    if (saved && visibleRepositories.find(repo => repo.id === id)?.changes?.files.some(file => file.path === saved.path && (saved.staged ? file.staged : file.unstaged || file.untracked || file.conflicted))) {
-      void openWorkspaceFileDiff(workspaceId, saved.path, saved.staged, id);
-    }
-  }
   const externalGit = $derived<PresentationGit>({
     repositories: visibleRepositories, repositoryId, repositorySearch, repositoryPickerOpen,
-    collapsedRepositories: repositoryViews[selectedWorkspaceId ?? '']?.collapsed ?? [], discoveryLimited, discoveryWarnings,
+    collapsedRepositories: git.collapsedRepositories, discoveryLimited, discoveryWarnings,
     workspace: selectedWorkspace, sessionId: selectedSessionId, desktop, open: sidePanelOpen, activeView: sidePanelView,
     changes: workspaceChanges, loading: workspaceChangesLoading, error: visibleRepositories.find(repo => repo.id === repositoryId)?.error ?? workspaceChangesError,
     branches: workspaceGitBranches, history: workspaceGitHistory, historyHasMore: workspaceGitHistoryHasMore,
@@ -416,7 +427,7 @@
     remoteStatus: workspaceGitRemoteStatus, stashes: workspaceGitStashes, operationBusy: workspaceGitOperationBusy,
     reviewBusy: workspaceGitReviewBusy,
     canRequestReview: Boolean(selectedSession?.pluginInstallationId) && selectedSession?.workspaceId === selectedWorkspaceId && !selectedSession?.archived && !sessionRunning,
-    draft: workbenchDrafts.git[gitDraftKey] ?? emptyGitPanelState(),
+    draft: git.draft,
     preview: { fileDiff: workspaceFileDiff, loading: workspaceFileDiffLoading, error: workspaceFileDiffError,
       selectedPath: workspaceFileDiffPath, staged: workspaceFileDiffStaged, contextLabel: workspaceFileDiffContextLabel },
   });
@@ -425,12 +436,11 @@
     if (!action) return;
     const [target, detail] = action.args;
     const workspaceId = selectedWorkspaceId!;
-    const draft = externalGit.draft;
     switch (action.operation) {
       case 'selectRepository': selectRepository(target); break;
-      case 'repositorySearch': repositorySearch = intent.value!; break;
+      case 'repositorySearch': workspaceGit.searchRepositories(intent.value!); break;
       case 'toggleRepository': toggleRepository(target!); break;
-      case 'continueDiscovery': repositoryScanBudget = Math.min(repositoryScanBudget * 4, 100000); await refreshWorkspaceChanges(workspaceId); break;
+      case 'continueDiscovery': await workspaceGit.continueDiscovery(); break;
       case 'repositoryDiff': await openWorkspaceFileDiff(workspaceId, detail!, action.args[2] === 'staged', target!); break;
       case 'repositoryStage': await applyWorkspaceGitAction(workspaceId, detail!, 'stage', target!); break;
       case 'repositoryUnstage': await applyWorkspaceGitAction(workspaceId, detail!, 'unstage', target!); break;
@@ -438,15 +448,12 @@
       case 'repositoryUnstageAll': await applyWorkspaceGitWorkspaceAction(workspaceId, 'unstage_all', target!); break;
       case 'togglePanel': toggleSidePanel(); break;
       case 'selectView': selectSidePanelView(target as SidePanelView); break;
-      case 'selectSection':
-        if (repositoryId === null) { repositoryPickerOpen = true; repositoryPendingSection = target as 'changes' | 'history'; break; }
-        workbenchDrafts.git[gitDraftKey] = { ...draft, gitSection: target as 'changes' | 'history' };
-        if (target === 'history' && !workspaceGitHistory.length && !workspaceGitMetadataLoading) await refreshWorkspaceGitMetadata(workspaceId); break;
+      case 'selectSection': workspaceGit.selectSection(target as 'changes' | 'history'); break;
       case 'refresh': await refreshWorkspaceChanges(workspaceId); break;
       case 'refreshMetadata': await refreshWorkspaceGitMetadata(workspaceId); break;
       case 'loadMoreHistory': await loadMoreWorkspaceGitHistory(workspaceId); break;
-      case 'commitMessage': workbenchDrafts.git[gitDraftKey] = { ...draft, commitMessage: intent.value! }; break;
-      case 'branchDraft': workbenchDrafts.git[gitDraftKey] = { ...draft, branchDraft: intent.value! }; break;
+      case 'commitMessage': workspaceGit.changeDraft({ commitMessage: intent.value! }); break;
+      case 'branchDraft': workspaceGit.changeDraft({ branchDraft: intent.value! }); break;
       case 'commit': await commitWorkspaceGitChanges(workspaceId, target!); break;
       case 'createBranch': await createWorkspaceBranch(workspaceId, target!); break;
       case 'checkoutBranch': await checkoutWorkspaceBranch(workspaceId, target!); break;
@@ -456,7 +463,7 @@
       case 'unstageAll': await applyWorkspaceGitWorkspaceAction(workspaceId, 'unstage_all'); break;
       case 'openDiff': await openWorkspaceFileDiff(workspaceId, target!, detail === 'staged'); break;
       case 'closeDiff': closeWorkspaceFileDiff(); break;
-      case 'selectCommit': workbenchDrafts.git[gitDraftKey] = { ...draft, selectedCommit: target! }; await loadWorkspaceCommitFiles(workspaceId, target!); break;
+      case 'selectCommit': workspaceGit.changeDraft({ selectedCommit: target! }); await loadWorkspaceCommitFiles(workspaceId, target!); break;
       case 'loadMoreCommitFiles': await loadWorkspaceCommitFiles(workspaceId, target!, true); break;
       case 'openCommitDiff': await openWorkspaceCommitFileDiff(workspaceId, target!, detail!); break;
       case 'fetch': case 'pull': case 'push': await syncWorkspaceBranch(workspaceId, action.operation); break;
@@ -844,17 +851,7 @@
     AgentGoal,
     TurnChangeSet,
     RestoreOperation,
-    WorkspaceChanges,
-    WorkspaceFileDiff,
-    GitWorkspaceAction,
-    GitBranch,
-    GitCommit,
-    GitCommitFileList,
-    GitRemoteStatus,
-    GitSyncAction,
-    GitStashEntry,
     GitFileAction,
-    TurnFileDiff,
     SessionFilter,
     InteractionMode,
     PiSessionTreeSnapshot,
@@ -982,53 +979,24 @@
   let turnChangeSet = $state<TurnChangeSet | null>(null);
   let checkpoints = $state<CheckpointFile[]>([]);
   let restoreOperations = $state<RestoreOperation[]>([]);
-  let workspaceChanges = $state<WorkspaceChanges | null>(null);
-  let workspaceChangesLoading = $state(false);
-  let workspaceChangesError = $state<string | null>(null);
-  let workspaceGitBusyPath = $state<string | null>(null);
-  let workspaceChangesRequestGeneration = 0;
-  let workspaceChangesBackgroundRefreshing = false;
-  let workspaceFileDiff = $state<WorkspaceFileDiff | null>(null);
-  let workspaceFileDiffLoading = $state(false);
-  let workspaceFileDiffError = $state<string | null>(null);
-  let workspaceFileDiffPath = $state<string | null>(null);
-  let previewRepositoryId = $state<string | null>(null);
-  let workspaceFileDiffStaged = $state(false);
-  let workspaceFileDiffContextLabel = $state<string | null>(null);
-  let workspaceFileDiffRequestGeneration = 0;
-  let workspaceGitCommitBusy = $state(false);
-  let workspaceGitBranches = $state<GitBranch[]>([]);
-  let workspaceGitHistory = $state<GitCommit[]>([]);
-  let workspaceGitHistoryHasMore = $state(false);
-  let workspaceGitHistoryLoadingMore = $state(false);
-  let workspaceGitHistoryLoadMoreError = $state<string | null>(null);
-  let workspaceGitHistoryNextOffset = 0;
-  let workspaceGitMetadataLoading = $state(false);
-  let workspaceGitMetadataError = $state<string | null>(null);
-  let workspaceGitMetadataRequestGeneration = 0;
-  let workspaceGitMetadataBackgroundRefreshing = false;
-  function clearWorkspaceGitHistory(): void {
-    workspaceGitHistory = [];
-    workspaceGitHistoryHasMore = false;
-    workspaceGitHistoryLoadingMore = false;
-    workspaceGitHistoryLoadMoreError = null;
-    workspaceGitHistoryNextOffset = 0;
-  }
-  let workspaceGitCommitFiles = $state<GitCommitFileList | null>(null);
-  let workspaceGitCommitFilesLoading = $state(false);
-  let workspaceGitCommitFilesRequestGeneration = 0;
-  let workspaceGitRemoteStatus = $state<GitRemoteStatus | null>(null);
-  let workspaceGitStashes = $state<GitStashEntry[]>([]);
-  let workspaceGitSyncBusy = $state(false);
-  let workspaceGitReviewBusy = $state(false);
-  let turnFileDiff = $state<TurnFileDiff | null>(null);
-  let turnFileDiffLoading = $state(false);
-  let turnFileDiffError = $state<string | null>(null);
-  let turnFileDiffGeneration = 0;
-  $effect(() => {
-    selectedSessionId; turnChangeSet?.turnId;
-    untrack(() => { ++turnFileDiffGeneration; turnFileDiff = null; turnFileDiffLoading = false; turnFileDiffError = null; });
+  let turnChange = $state.raw(emptyTurnChange());
+  const turnChanges = createTurnChangeController({
+    api: { getTurnFileDiff, applyGitFileAction, applyGitHunkAction, restoreTurnChangeSet: restoreTurnChangeSetApi },
+    desktop: () => desktop,
+    context: () => ({ sessionId: selectedSessionId, changeSet: turnChangeSet }),
+    changed: value => { turnChange = value; }, error: value => { errorMessage = value; }, notice: setNotice,
+    workspaceChanged: async sessionId => {
+      const session = findSession(sessionId);
+      if (session) await refreshWorkspaceChanges(session.workspaceId);
+    },
+    restored: async sessionId => { await refreshTimeline(sessionId); await refreshTurnChangeSet(sessionId); },
   });
+  const { showDiff: showTurnFileDiff, applyFile: applyGitFileActionFromInspector,
+    applyHunk: applyGitHunkActionFromInspector, restore: restoreTurnChangeSet } = turnChanges;
+  const turnFileDiff = $derived(turnChange.diff);
+  const turnFileDiffLoading = $derived(turnChange.loading);
+  const turnFileDiffError = $derived(turnChange.error);
+  $effect(() => { selectedSessionId; turnChangeSet?.turnId; untrack(() => turnChanges.reset()); });
   let attachments = $state<ContextAttachment[]>([]);
   let attachmentPreviews = $state<Record<string, string | null>>({});
   const previewController = createAttachmentPreviews(getSessionAttachmentPreview, values => { attachmentPreviews = values; });
@@ -1060,31 +1028,10 @@
   let pathSearchGeneration = 0;
   let pathSearchTimer: ReturnType<typeof setTimeout> | undefined;
 
-  const workspaceGitOperationBusy = $derived(
-    workspaceGitBusyPath !== null || workspaceGitCommitBusy || workspaceGitSyncBusy,
-  );
-
-  function resetWorkspaceGitView(): void {
-    ++workspaceChangesRequestGeneration;
-    repositorySearch = ''; discoveryLimited = false; discoveryWarnings = []; repositoryScanBudget = 2000;
-    workspaceChanges = null;
-    workspaceChangesLoading = false;
-    workspaceChangesError = null;
-    closeWorkspaceFileDiff();
-    ++workspaceGitMetadataRequestGeneration;
-    workspaceGitBranches = [];
-    clearWorkspaceGitHistory();
-    workspaceGitRemoteStatus = null;
-    workspaceGitStashes = [];
-    workspaceGitMetadataLoading = false;
-    workspaceGitMetadataError = null;
-    closeWorkspaceCommitFiles();
-  }
-
   function setSelectedWorkspace(value: string | null): void {
     if (value === selectedWorkspaceId) return;
-    resetWorkspaceGitView();
     selectedWorkspaceId = value;
+    workspaceGit.selectWorkspace(value);
     if (value && desktop) {
       void refreshWorkspaceChanges(value);
       if (sidePanelOpen && sidePanelView === 'git') {
@@ -2059,7 +2006,6 @@
     composerDrafts = readPersistedComposerDrafts();
     let stopListening: (() => void) | undefined;
     let disposed = false;
-    let lastGitMetadataPollAt = 0;
 
     const refreshVisibleGitPanel = (forceMetadata = false): void => {
       if (
@@ -2069,13 +2015,7 @@
         || !selectedWorkspaceId
         || document.visibilityState !== 'visible'
       ) return;
-      const workspaceId = selectedWorkspaceId;
-      void refreshWorkspaceChanges(workspaceId, true);
-      const now = Date.now();
-      if (forceMetadata || now - lastGitMetadataPollAt >= 5000) {
-        lastGitMetadataPollAt = now;
-        void refreshWorkspaceGitMetadata(workspaceId, true);
-      }
+      workspaceGit.refreshVisible(forceMetadata);
     };
     const handleWindowFocus = () => refreshVisibleGitPanel(true);
     const handleVisibilityChange = () => {
@@ -2192,7 +2132,7 @@
     turnChangeSet = null;
     checkpoints = [];
     restoreOperations = [];
-    turnFileDiff = null;
+    turnChanges.reset();
     attachments = [];
     artifacts = [];
     piNavigationEntryId = null;
@@ -2314,417 +2254,6 @@
     await sessionContextController.refreshArtifacts(sessionId);
   }
 
-  async function refreshWorkspaceChanges(workspaceId: string, background = false) {
-    if (workspaceId !== selectedWorkspaceId) return;
-    if (background && (workspaceChangesLoading || workspaceChangesBackgroundRefreshing)) return;
-    const generation = ++workspaceChangesRequestGeneration;
-    if (!desktop) {
-      if (workspaceId === selectedWorkspaceId) {
-        workspaceChanges = null;
-        workspaceChangesError = null;
-        workspaceChangesLoading = false;
-      }
-      return;
-    }
-    if (background) workspaceChangesBackgroundRefreshing = true;
-    if (workspaceId === selectedWorkspaceId) {
-      if (workspaceChanges?.workspaceId !== workspaceId) workspaceChanges = null;
-      if (!background) workspaceChangesLoading = true;
-      workspaceChangesError = null;
-    }
-    try {
-      const discovery = await listWorkspaceGitRepositories(workspaceId, repositoryScanBudget);
-      if (generation !== workspaceChangesRequestGeneration || workspaceId !== selectedWorkspaceId) return;
-      discoveryLimited = discovery.limited; discoveryWarnings = discovery.warnings;
-      const restoringWorkspace = gitRepositoriesWorkspace !== workspaceId;
-      const previous = gitRepositoriesWorkspace === workspaceId ? gitRepositories : [];
-      gitRepositoriesWorkspace = workspaceId;
-      gitRepositories = discovery.repositories.map(repo => ({ ...repo, changes: previous.find(old => old.id === repo.id)?.changes ?? null, error: null }));
-      const remembered = repositoryViews[workspaceId];
-      const next = remembered && (remembered.selected === null || gitRepositories.some(repo => repo.id === remembered.selected))
-        ? remembered.selected : gitRepositories.length === 1 ? gitRepositories[0].id : null;
-      if (!remembered || next !== remembered.selected) {
-        repositoryViews[workspaceId] = { ...remembered, selected: next, collapsed: remembered?.collapsed ?? [] };
-        ++workspaceGitMetadataRequestGeneration;
-        workspaceGitBranches = []; clearWorkspaceGitHistory(); workspaceGitRemoteStatus = null; workspaceGitStashes = [];
-        closeWorkspaceCommitFiles(); closeWorkspaceFileDiff();
-      }
-      workspaceChanges = gitRepositories.find(repo => repo.id === repositoryId)?.changes ?? null;
-      // Publish discovery immediately; each repository settles independently.
-      const pendingRepositories = [...gitRepositories];
-      for (let offset = 0; offset < pendingRepositories.length; offset += 4) {
-        if (generation !== workspaceChangesRequestGeneration || workspaceId !== selectedWorkspaceId) break;
-        await Promise.all(pendingRepositories.slice(offset, offset + 4).map(async repo => {
-        let changes: WorkspaceChanges | null = null; let error: string | null = null;
-        try { changes = await getWorkspaceChanges(workspaceId, repo.id); } catch (failure) { error = toErrorMessage(failure); }
-        if (generation !== workspaceChangesRequestGeneration || workspaceId !== selectedWorkspaceId) return;
-        gitRepositories = gitRepositories.map(current => current.id === repo.id ? { ...current, changes, error } : current);
-        workspaceChanges = gitRepositories.find(current => current.id === repositoryId)?.changes ?? null;
-        }));
-      }
-      if (generation === workspaceChangesRequestGeneration && workspaceId === selectedWorkspaceId && repositoryId !== null) {
-        if (!background) void refreshWorkspaceGitMetadata(workspaceId);
-        if (restoringWorkspace) restoreRepositoryFile(workspaceId, repositoryId);
-      }
-
-    } catch (error) {
-      if (generation === workspaceChangesRequestGeneration && workspaceId === selectedWorkspaceId) {
-        if (!background) workspaceChanges = null;
-        if (!background) workspaceChangesError = toErrorMessage(error);
-      }
-      console.warn('unable to read workspace changes', error);
-    } finally {
-      if (generation === workspaceChangesRequestGeneration && workspaceId === selectedWorkspaceId) {
-        if (!background) workspaceChangesLoading = false;
-      }
-      if (background) workspaceChangesBackgroundRefreshing = false;
-    }
-  }
-
-  async function openWorkspaceFileDiff(
-    workspaceId: string,
-    path: string,
-    staged: boolean,
-    explicitRepository?: string,
-  ): Promise<void> {
-    const targetRepository = explicitRepository ?? repositoryId ?? undefined;
-
-    if (targetRepository) {
-      const view = repositoryViews[workspaceId] ?? { selected: null, collapsed: [] };
-      repositoryViews[workspaceId] = { ...view, files: { ...view.files, [targetRepository]: { path, staged } } };
-    }
-    const generation = ++workspaceFileDiffRequestGeneration;
-    previewRepositoryId = targetRepository ?? null;
-    workspaceFileDiffPath = path;
-    workspaceFileDiffStaged = staged;
-    workspaceFileDiffContextLabel = `${visibleRepositories.find(repo => repo.id === targetRepository)?.name ?? ''} · ${path}`;
-    workspaceFileDiff = null;
-    workspaceFileDiffLoading = true;
-    workspaceFileDiffError = null;
-    try {
-      const diff = await getWorkspaceFileDiff(workspaceId, path, staged, targetRepository);
-      if (generation === workspaceFileDiffRequestGeneration && workspaceId === selectedWorkspaceId) {
-        workspaceFileDiff = diff;
-      }
-    } catch (error) {
-      if (generation === workspaceFileDiffRequestGeneration && workspaceId === selectedWorkspaceId) {
-        workspaceFileDiff = null;
-        workspaceFileDiffError = toErrorMessage(error);
-      }
-    } finally {
-      if (generation === workspaceFileDiffRequestGeneration) workspaceFileDiffLoading = false;
-    }
-  }
-
-  function closeWorkspaceFileDiff(): void {
-    ++workspaceFileDiffRequestGeneration;
-    workspaceFileDiff = null;
-    workspaceFileDiffPath = null;
-    previewRepositoryId = null;
-    workspaceFileDiffStaged = false;
-    workspaceFileDiffContextLabel = null;
-    workspaceFileDiffError = null;
-    workspaceFileDiffLoading = false;
-  }
-
-  async function refreshWorkspaceGitMetadata(workspaceId: string, background = false): Promise<void> {
-    const targetRepository = repositoryId ?? undefined;
-    if (!targetRepository) return;
-
-    if (background && (workspaceGitMetadataLoading || workspaceGitMetadataBackgroundRefreshing || workspaceGitHistoryLoadingMore)) return;
-    if (background) workspaceGitMetadataBackgroundRefreshing = true;
-    const generation = ++workspaceGitMetadataRequestGeneration;
-    if (!background) { workspaceGitMetadataLoading = true; workspaceGitHistoryLoadingMore = false; }
-    workspaceGitMetadataError = null;
-    workspaceGitHistoryLoadMoreError = null;
-    try {
-      const [branches, historyPage, remoteStatus, stashes] = await Promise.all([
-        listWorkspaceGitBranches(workspaceId, targetRepository),
-        listWorkspaceGitHistory(workspaceId, gitHistoryPageSize + 1, targetRepository),
-        getWorkspaceGitRemoteStatus(workspaceId, targetRepository),
-        listWorkspaceGitStashes(workspaceId, targetRepository),
-      ]);
-      if (generation === workspaceGitMetadataRequestGeneration && workspaceId === selectedWorkspaceId && targetRepository === repositoryId) {
-        workspaceGitBranches = branches;
-        const newest = historyPage.slice(0, gitHistoryPageSize);
-        const boundary = newest.at(-1)?.hash;
-        const previousBoundary = boundary && historyPage.length > gitHistoryPageSize && workspaceGitHistory.length > gitHistoryPageSize
-          ? workspaceGitHistory.findIndex(commit => commit.hash === boundary) : -1;
-        if (previousBoundary >= 0) {
-          workspaceGitHistory = [...newest, ...workspaceGitHistory.slice(previousBoundary + 1)];
-        } else {
-          workspaceGitHistory = newest;
-          workspaceGitHistoryHasMore = historyPage.length > gitHistoryPageSize;
-        }
-        workspaceGitHistoryNextOffset = workspaceGitHistory.length;
-        workspaceGitRemoteStatus = remoteStatus;
-        workspaceGitStashes = stashes;
-      }
-    } catch (error) {
-      if (generation === workspaceGitMetadataRequestGeneration && workspaceId === selectedWorkspaceId && targetRepository === repositoryId) {
-        if (!background) workspaceGitMetadataError = toErrorMessage(error);
-      }
-    } finally {
-      if (generation === workspaceGitMetadataRequestGeneration && !background) workspaceGitMetadataLoading = false;
-      if (background) workspaceGitMetadataBackgroundRefreshing = false;
-    }
-  }
-
-  async function loadMoreWorkspaceGitHistory(workspaceId: string): Promise<void> {
-    const targetRepository = repositoryId;
-    if (!targetRepository || !workspaceGitHistoryHasMore || workspaceGitHistoryLoadingMore || workspaceGitMetadataLoading) return;
-    const generation = ++workspaceGitMetadataRequestGeneration;
-    const offset = workspaceGitHistoryNextOffset;
-    workspaceGitHistoryLoadingMore = true;
-    workspaceGitHistoryLoadMoreError = null;
-    try {
-      const page = await listWorkspaceGitHistory(workspaceId, gitHistoryPageSize + 1, targetRepository, offset);
-      if (generation !== workspaceGitMetadataRequestGeneration || workspaceId !== selectedWorkspaceId || targetRepository !== repositoryId) return;
-      const next = page.slice(0, gitHistoryPageSize);
-      const seen = new Set(workspaceGitHistory.map(commit => commit.hash));
-      workspaceGitHistory = [...workspaceGitHistory, ...next.filter(commit => !seen.has(commit.hash))];
-      workspaceGitHistoryNextOffset = offset + next.length;
-      workspaceGitHistoryHasMore = page.length > gitHistoryPageSize;
-    } catch (error) {
-      if (generation === workspaceGitMetadataRequestGeneration && workspaceId === selectedWorkspaceId && targetRepository === repositoryId)
-        workspaceGitHistoryLoadMoreError = toErrorMessage(error);
-    } finally {
-      if (generation === workspaceGitMetadataRequestGeneration && workspaceId === selectedWorkspaceId && targetRepository === repositoryId)
-        workspaceGitHistoryLoadingMore = false;
-    }
-  }
-
-  async function checkoutWorkspaceBranch(workspaceId: string, branch: string): Promise<void> {
-    const targetRepository = repositoryId ?? undefined;
-    if (!targetRepository) return;
-
-    if (workspaceGitOperationBusy) return;
-    workspaceGitBusyPath = '*';
-    errorMessage = null;
-    try {
-      const result = await checkoutWorkspaceGitBranch(workspaceId, branch, undefined, targetRepository);
-      if (!result.applied) {
-        errorMessage = result.message;
-        return;
-      }
-      setNotice(`已切换到 ${branch}。`, 'success');
-      await Promise.all([refreshWorkspaceChanges(workspaceId), refreshWorkspaceGitMetadata(workspaceId)]);
-      if (workspaceId === selectedWorkspaceId && targetRepository === repositoryId) closeWorkspaceFileDiff();
-    } catch (error) {
-      errorMessage = toErrorMessage(error);
-    } finally {
-      workspaceGitBusyPath = null;
-    }
-  }
-
-  async function createWorkspaceBranch(workspaceId: string, branch: string): Promise<void> {
-    const targetRepository = repositoryId ?? undefined;
-    if (!targetRepository) return;
-
-    if (workspaceGitOperationBusy) return;
-    workspaceGitBusyPath = '*';
-    errorMessage = null;
-    try {
-      const result = await createWorkspaceGitBranch(workspaceId, branch, undefined, targetRepository);
-      if (!result.applied) {
-        errorMessage = result.message;
-        return;
-      }
-      const draft = workbenchDrafts.git[repositoryDraftKey(workspaceId, targetRepository ?? null)];
-      if (draft?.branchDraft.trim() === branch.trim()) workbenchDrafts.git[repositoryDraftKey(workspaceId, targetRepository ?? null)] = { ...draft, branchDraft: '' };
-      setNotice(`已创建并切换到 ${branch}。`, 'success');
-      await Promise.all([refreshWorkspaceChanges(workspaceId), refreshWorkspaceGitMetadata(workspaceId)]);
-      if (workspaceId === selectedWorkspaceId && targetRepository === repositoryId) closeWorkspaceFileDiff();
-    } catch (error) {
-      errorMessage = toErrorMessage(error);
-    } finally {
-      workspaceGitBusyPath = null;
-    }
-  }
-
-  async function syncWorkspaceBranch(workspaceId: string, action: GitSyncAction): Promise<void> {
-    const targetRepository = repositoryId ?? undefined;
-    if (!targetRepository) return;
-
-    if (workspaceGitOperationBusy) return;
-    workspaceGitSyncBusy = true;
-    errorMessage = null;
-    try {
-      const result = await syncWorkspaceGit(workspaceId, action, undefined, targetRepository);
-      if (!result.applied) {
-        errorMessage = result.message;
-        return;
-      }
-      setNotice(action === 'fetch' ? '已刷新远端状态。' : action === 'pull' ? '已拉取远端更改。' : '已推送本地更改。', 'success');
-      await Promise.all([refreshWorkspaceChanges(workspaceId), refreshWorkspaceGitMetadata(workspaceId)]);
-    } catch (error) {
-      errorMessage = toErrorMessage(error);
-    } finally {
-      workspaceGitSyncBusy = false;
-    }
-  }
-
-  async function saveWorkspaceStash(workspaceId: string): Promise<void> {
-    const targetRepository = repositoryId ?? undefined;
-    if (!targetRepository) return;
-
-    if (workspaceGitOperationBusy) return;
-    workspaceGitSyncBusy = true;
-    errorMessage = null;
-    try {
-      const result = await stashWorkspaceGit(workspaceId, undefined, undefined, targetRepository);
-      if (!result.applied) {
-        errorMessage = result.message;
-        return;
-      }
-      setNotice('已保存当前更改到暂存栈。', 'success');
-      await Promise.all([refreshWorkspaceChanges(workspaceId), refreshWorkspaceGitMetadata(workspaceId)]);
-    } catch (error) {
-      errorMessage = toErrorMessage(error);
-    } finally {
-      workspaceGitSyncBusy = false;
-    }
-  }
-
-  async function applyWorkspaceStash(workspaceId: string, reference: string): Promise<void> {
-    const targetRepository = repositoryId ?? undefined;
-    if (!targetRepository) return;
-
-    if (workspaceGitOperationBusy) return;
-    workspaceGitSyncBusy = true;
-    errorMessage = null;
-    try {
-      const result = await applyWorkspaceGitStash(workspaceId, reference, undefined, targetRepository);
-      if (!result.applied) {
-        errorMessage = result.message;
-        return;
-      }
-      setNotice(`已应用 ${reference}。`, 'success');
-      await Promise.all([refreshWorkspaceChanges(workspaceId), refreshWorkspaceGitMetadata(workspaceId)]);
-    } catch (error) {
-      errorMessage = toErrorMessage(error);
-    } finally {
-      workspaceGitSyncBusy = false;
-    }
-  }
-
-  async function requestWorkspaceAgentReview(workspaceId: string): Promise<void> {
-    const targetRepository = repositoryId ?? undefined;
-    if (!targetRepository) return;
-
-    const session = selectedSession;
-    if (!session || session.workspaceId !== workspaceId || session.archived) {
-      errorMessage = '请先选择当前工作区中的可用 Agent 会话。';
-      return;
-    }
-    if (sessionRunning || workspaceGitReviewBusy) return;
-    workspaceGitReviewBusy = true;
-    errorMessage = null;
-    const reviewProfile: ExecutionProfile = {
-      schema: 'aibo.execution-profile/v1',
-      interactionMode: 'ask',
-      approvalPolicy: 'never',
-      approvalReviewer: 'none',
-      filesystemPolicy: 'read-only',
-      commandPolicy: 'disabled',
-      networkPolicy: 'disabled',
-      model: executionProfile?.requested.model ?? null,
-      reasoningEffort: executionProfile?.requested.reasoningEffort ?? null,
-    };
-    const changedFiles = workspaceChanges?.workspaceId === workspaceId ? workspaceChanges.files : [];
-    const diffSections: string[] = [];
-    let diffLength = 0;
-    const maxReviewDiffLength = 120_000;
-    for (const file of changedFiles) {
-      for (const staged of file.staged ? [true, ...(file.unstaged ? [false] : [])] : [false]) {
-        if (diffLength >= maxReviewDiffLength) break;
-        try {
-          const result = await getWorkspaceFileDiff(workspaceId, file.path, staged, targetRepository);
-          if (!result.available || !result.diff) continue;
-          const section = `\n\n### ${staged ? '暂存区' : '工作区'}：${file.path}\n${result.diff}`;
-          const remaining = maxReviewDiffLength - diffLength;
-          diffSections.push(section.slice(0, remaining));
-          diffLength += Math.min(section.length, remaining);
-        } catch {
-          // A single unreadable file should not prevent reviewing the remaining changes.
-        }
-      }
-    }
-    const prompt = [
-      '请审查当前工作区的 Git 变更。',
-      '重点关注正确性、潜在回归、安全风险和缺失的测试；按优先级列出具体文件与行号，并在没有问题时明确说明。',
-      '这是一个受执行策略约束的只读审查会话。请仅根据下方 diff 审查，不要尝试修改文件或执行命令。',
-      diffSections.length > 0 ? diffSections.join('') : '当前没有可供审查的文本 diff。',
-      diffLength >= maxReviewDiffLength ? '\n\n部分 diff 因长度限制已截断。' : '',
-    ].join('\n');
-    try {
-      let reviewSession = await createAgentSession(workspaceId, session.agent, session.pluginInstallationId ?? undefined, reviewProfile);
-      workspaceSessionMap = upsertSession(workspaceSessionMap, reviewSession);
-      clearSelectedSessionContext();
-      selectedSessionId = reviewSession.id;
-      reviewSession = await sendAgentPrompt(reviewSession.id, prompt);
-      workspaceSessionMap = upsertSession(workspaceSessionMap, reviewSession);
-      void refreshTimeline(reviewSession.id);
-      void refreshExecutionProfile(reviewSession.id);
-      setNotice('已在独立的只读会话中请求 Agent 审查 Git 变更。', 'info');
-    } catch (error) {
-      errorMessage = toErrorMessage(error);
-    } finally {
-      workspaceGitReviewBusy = false;
-    }
-  }
-
-  async function loadWorkspaceCommitFiles(workspaceId: string, commit: string, append = false): Promise<void> {
-    const targetRepository = repositoryId ?? undefined;
-
-    const generation = ++workspaceGitCommitFilesRequestGeneration;
-    workspaceGitCommitFilesLoading = true;
-    workspaceGitMetadataError = null;
-    const offset = append && workspaceGitCommitFiles?.commit === commit ? workspaceGitCommitFiles.files.length : 0;
-    if (!append) workspaceGitCommitFiles = null;
-    try {
-      const result = await listWorkspaceGitCommitFiles(workspaceId, commit, offset, 10, targetRepository);
-      if (generation === workspaceGitCommitFilesRequestGeneration && workspaceId === selectedWorkspaceId && targetRepository === repositoryId) {
-        workspaceGitCommitFiles = append && workspaceGitCommitFiles?.commit === commit
-          ? { ...result, files: [...workspaceGitCommitFiles.files, ...result.files] }
-          : result;
-      }
-    } catch (error) {
-      if (generation === workspaceGitCommitFilesRequestGeneration && workspaceId === selectedWorkspaceId && targetRepository === repositoryId) {
-        workspaceGitMetadataError = toErrorMessage(error);
-      }
-    } finally {
-      if (generation === workspaceGitCommitFilesRequestGeneration) workspaceGitCommitFilesLoading = false;
-    }
-  }
-
-  function closeWorkspaceCommitFiles(): void {
-    ++workspaceGitCommitFilesRequestGeneration;
-    workspaceGitCommitFiles = null;
-    workspaceGitCommitFilesLoading = false;
-  }
-
-  async function openWorkspaceCommitFileDiff(workspaceId: string, commit: string, path: string): Promise<void> {
-    const targetRepository = repositoryId ?? undefined;
-
-    const generation = ++workspaceFileDiffRequestGeneration;
-    previewRepositoryId = targetRepository ?? null;
-    workspaceFileDiffPath = path;
-    workspaceFileDiffStaged = false;
-    workspaceFileDiffContextLabel = `${visibleRepositories.find(repo => repo.id === targetRepository)?.name ?? ''} · 提交 ${commit.slice(0, 8)} · ${path}`;
-    workspaceFileDiff = null;
-    workspaceFileDiffLoading = true;
-    workspaceFileDiffError = null;
-    try {
-      const diff = await getWorkspaceGitCommitFileDiff(workspaceId, commit, path, targetRepository);
-      if (generation === workspaceFileDiffRequestGeneration && workspaceId === selectedWorkspaceId && targetRepository === repositoryId) workspaceFileDiff = diff;
-    } catch (error) {
-      if (generation === workspaceFileDiffRequestGeneration && workspaceId === selectedWorkspaceId && targetRepository === repositoryId) workspaceFileDiffError = toErrorMessage(error);
-    } finally {
-      if (generation === workspaceFileDiffRequestGeneration) workspaceFileDiffLoading = false;
-    }
-  }
-
   function toggleSidePanel(): void {
     sidePanelOpen = !sidePanelOpen;
   }
@@ -2736,87 +2265,6 @@
     if (view === 'git' && selectedWorkspaceId) {
       void refreshWorkspaceChanges(selectedWorkspaceId);
       void refreshWorkspaceGitMetadata(selectedWorkspaceId);
-    }
-  }
-
-  async function applyWorkspaceGitAction(
-    workspaceId: string,
-    path: string,
-    action: 'stage' | 'unstage',
-    explicitRepository?: string,
-  ): Promise<void> {
-    const targetRepository = explicitRepository ?? repositoryId ?? undefined;
-    if (!targetRepository) return;
-
-    if (workspaceGitOperationBusy) return;
-    workspaceGitBusyPath = path;
-    errorMessage = null;
-    try {
-      const result = await applyWorkspaceGitFileAction(workspaceId, path, action, undefined, targetRepository);
-      if (!result.applied) {
-        errorMessage = result.message;
-        return;
-      }
-      setNotice(action === 'stage' ? `已暂存 ${path}` : `已取消暂存 ${path}`, 'success');
-      await refreshWorkspaceChanges(workspaceId);
-    } catch (error) {
-      errorMessage = toErrorMessage(error);
-    } finally {
-      workspaceGitBusyPath = null;
-    }
-  }
-
-  async function applyWorkspaceGitWorkspaceAction(
-    workspaceId: string,
-    action: GitWorkspaceAction,
-    explicitRepository?: string,
-  ): Promise<void> {
-    const targetRepository = explicitRepository ?? repositoryId ?? undefined;
-    if (!targetRepository) return;
-
-    if (workspaceGitOperationBusy) return;
-    workspaceGitBusyPath = '*';
-    errorMessage = null;
-    try {
-      const result = await applyWorkspaceGitActionApi(workspaceId, action, undefined, targetRepository);
-      if (!result.applied) {
-        errorMessage = result.message;
-        return;
-      }
-      setNotice({ stage_all: '已暂存仓库中的全部更改。', stage_changed: '已暂存“更改”分组中的文件。', stage_untracked: '已暂存未跟踪的文件。', unstage_all: '已取消全部暂存。' }[action], 'success');
-      await refreshWorkspaceChanges(workspaceId);
-    } catch (error) {
-      errorMessage = toErrorMessage(error);
-    } finally {
-      workspaceGitBusyPath = null;
-    }
-  }
-
-  async function commitWorkspaceGitChanges(workspaceId: string, message: string): Promise<boolean> {
-    const targetRepository = repositoryId ?? undefined;
-    if (!targetRepository) return false;
-
-    if (workspaceGitOperationBusy) return false;
-    workspaceGitCommitBusy = true;
-    errorMessage = null;
-    try {
-      const result = await commitWorkspaceChanges(workspaceId, message, undefined, targetRepository);
-      if (!result.committed) {
-        errorMessage = result.message;
-        return false;
-      }
-      const draft = workbenchDrafts.git[repositoryDraftKey(workspaceId, targetRepository ?? null)];
-      if (draft?.commitMessage.trim() === message.trim()) workbenchDrafts.git[repositoryDraftKey(workspaceId, targetRepository ?? null)] = { ...draft, commitMessage: '' };
-      setNotice(result.hash ? `已创建提交 ${result.hash.slice(0, 8)}。` : '已创建提交。', 'success');
-      await refreshWorkspaceChanges(workspaceId);
-      await refreshWorkspaceGitMetadata(workspaceId);
-      if (workspaceId === selectedWorkspaceId && targetRepository === repositoryId) closeWorkspaceFileDiff();
-      return true;
-    } catch (error) {
-      errorMessage = toErrorMessage(error);
-      return false;
-    } finally {
-      workspaceGitCommitBusy = false;
     }
   }
 
@@ -2887,77 +2335,6 @@
     try {
       await removeSessionAttachment(session.id, attachmentId);
       attachments = attachments.filter((item) => item.id !== attachmentId);
-    } catch (error) {
-      errorMessage = toErrorMessage(error);
-    }
-  }
-
-  async function showTurnFileDiff(sessionId: string, turnId: string, path: string) {
-    if (selectedSessionId !== sessionId || turnChangeSet?.turnId !== turnId || !turnChangeSet.files.some(file => file.path === path)) return;
-    const owner = ++turnFileDiffGeneration;
-    const owns = () => owner === turnFileDiffGeneration && selectedSessionId === sessionId && turnChangeSet?.turnId === turnId;
-    turnFileDiff = null; turnFileDiffError = null; turnFileDiffLoading = true;
-    try {
-      const diff = await getTurnFileDiff(sessionId, turnId, path);
-      if (!owns()) return;
-      if (diff.path !== path) throw Error('turn_diff_identity_mismatch');
-      turnFileDiff = diff;
-    } catch (error) {
-      if (owns()) { turnFileDiffError = toErrorMessage(error); errorMessage = turnFileDiffError; }
-    } finally {
-      if (owns()) turnFileDiffLoading = false;
-    }
-  }
-
-  async function applyGitFileActionFromInspector(sessionId: string, turnId: string, path: string, action: GitFileAction) {
-    try {
-      const result = await applyGitFileAction(sessionId, path, action, turnId);
-      if (result.applied) {
-        setNotice(action === 'stage' ? '文件已暂存。' : action === 'unstage' ? '已取消暂存。' : '文件变更已撤销。', 'success');
-        const session = findSession(sessionId);
-        if (session) await refreshWorkspaceChanges(session.workspaceId);
-      } else {
-        errorMessage = result.message;
-      }
-    } catch (error) {
-      errorMessage = toErrorMessage(error);
-    }
-  }
-
-  async function applyGitHunkActionFromInspector(
-    sessionId: string,
-    turnId: string,
-    path: string,
-    hunkIndex: number,
-    action: GitFileAction,
-  ) {
-    try {
-      const result = await applyGitHunkAction(sessionId, turnId, path, hunkIndex, action);
-      if (result.applied) {
-        setNotice(action === 'stage' ? 'hunk 已暂存。' : action === 'unstage' ? 'hunk 已取消暂存。' : 'hunk 变更已撤销。', 'success');
-        const session = findSession(sessionId);
-        if (session) await refreshWorkspaceChanges(session.workspaceId);
-      } else {
-        errorMessage = result.message;
-      }
-    } catch (error) {
-      errorMessage = toErrorMessage(error);
-    }
-  }
-
-  async function restoreTurnChangeSet(sessionId: string, turnId: string) {
-    if (!desktop) return;
-    try {
-      const result = await restoreTurnChangeSetApi(sessionId, turnId);
-      if (result.applied) {
-        setNotice(result.restored.length > 0 ? `已恢复 ${result.restored.length} 个文件。` : '本轮没有可恢复的文件。', result.restored.length > 0 ? 'success' : 'info');
-        await refreshTimeline(sessionId);
-        await refreshTurnChangeSet(sessionId);
-      } else if (result.conflicts.length > 0) {
-        setNotice(`恢复已阻止：${result.conflicts.length} 个文件在本轮后发生了变化。`, 'warning');
-      } else {
-        setNotice(`恢复已阻止：${result.unsupported.join('、') || '当前变更无法安全恢复'}。`, 'warning');
-      }
     } catch (error) {
       errorMessage = toErrorMessage(error);
     }
@@ -3744,7 +3121,6 @@
       inspectWorkspaceCapabilities,
       getSessionExecutionProfile,
       getTurnChangeSet,
-      getWorkspaceChanges,
     },
     getDesktop: () => desktop,
     getRestoringSelection: () => restoringSelection,
@@ -3784,7 +3160,6 @@
     setPiTree: (value) => (piTree = value),
     setExecutionProfile: (value) => (executionProfile = value),
     setTurnChangeSet: (value) => (turnChangeSet = value),
-    setWorkspaceChanges: (value) => (workspaceChanges = value),
     setAttachments: (value) => (attachments = value),
     setArtifacts: (value) => (artifacts = value),
     setProjectActions: (value) => (projectActions = value),
@@ -4383,11 +3758,11 @@
       />
       {:else if sidePanelView === 'git'}
         {#key `${selectedWorkspaceId}:${repositoryId}`}
-        <WorkspaceGitPanel draftState={workbenchDrafts.git[gitDraftKey] ?? emptyGitPanelState()} onDraftChange={guard('onDraftChange', (value) => { if (selectedWorkspaceId) workbenchDrafts.git[gitDraftKey] = value; })}
+        <WorkspaceGitPanel draftState={git.draft} onDraftChange={guard('onDraftChange', (value) => workspaceGit.changeDraft(value))}
           repositories={visibleRepositories} {repositoryId} {repositorySearch} {discoveryLimited} {discoveryWarnings}
-          collapsedRepositories={repositoryViews[selectedWorkspaceId ?? '']?.collapsed ?? []}
-          onSelectRepository={guard('onSelectRepository', selectRepository)} onRepositorySearch={guard('onRepositorySearch', (value) => repositorySearch = value)} onToggleRepository={guard('onToggleRepository', toggleRepository)}
-          onContinueDiscovery={guard('onContinueDiscovery', () => { repositoryScanBudget = Math.min(repositoryScanBudget * 4, 100000); if (selectedWorkspaceId) void refreshWorkspaceChanges(selectedWorkspaceId); })}
+          collapsedRepositories={git.collapsedRepositories}
+          onSelectRepository={guard('onSelectRepository', selectRepository)} onRepositorySearch={guard('onRepositorySearch', (value) => workspaceGit.searchRepositories(value))} onToggleRepository={guard('onToggleRepository', toggleRepository)}
+          onContinueDiscovery={guard('onContinueDiscovery', () => void workspaceGit.continueDiscovery())}
           workspace={selectedWorkspace}
           desktop={desktop}
           changes={workspaceChanges}

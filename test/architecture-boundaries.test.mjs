@@ -204,7 +204,7 @@ test('Branch timelines group ordinary system nodes without folding summaries', a
 test('visible Git panel refreshes external repository changes promptly', async () => {
   const app = await readFile(path.join(root, 'src/App.svelte'), 'utf8');
   assert.match(app, /setInterval\(\(\) => refreshVisibleGitPanel\(\), 1250\)/, 'visible Git changes must refresh frequently');
-  assert.match(app, /now - lastGitMetadataPollAt >= 5000/, 'Git metadata must refresh without running every status poll');
+  assert.match(app, /workspaceGit\.refreshVisible\(forceMetadata\)/, 'The visible panel delegates polling policy to its host controller');
   assert.match(app, /window\.addEventListener\('focus', handleWindowFocus\)/, 'window focus must trigger an immediate Git refresh');
   assert.match(app, /document\.visibilityState !== 'visible'/, 'hidden windows must not keep polling Git');
   assert.match(app, /sidePanelView !== 'git'/, 'hidden Git panels must not keep polling');

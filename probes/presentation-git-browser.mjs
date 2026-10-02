@@ -196,7 +196,7 @@ try {
   await page.evaluate(()=>{window.selectorFixture=true;});
   await page.getByRole('button',{name:'刷新 Git 状态',exact:true}).click();
   await page.waitForFunction(()=>document.querySelector('[data-repository-select-trigger]')?.textContent.includes('aibo'));
-  for (const [kit,theme] of [['ak-ui','light'],['ak-ui','dark']]) {
+  for (const [kit,theme] of [['material3','light'],['material3','dark'],['ak-ui','light'],['ak-ui','dark']]) {
     await page.evaluate(async ({kit,theme})=>{const registry=await import('/src/lib/ui-kit/registry.ts');registry.setUiKit(kit);registry.setUiTheme(theme);},{kit,theme});
     const picker=page.getByRole('button',{name:'选择仓库',exact:true});
     await picker.click();
@@ -303,7 +303,7 @@ try {
   await panel.screenshot({path:'/tmp/aibo-git-history-density.png'});
 
   assert.deepEqual(errors,[]);
-  const result={passed:true,nativePort:'mocked; actual App.svelte and Worker, no repository operations performed',browser:browser.version(),checks:['complete Git metadata and truncated hunk preview','stage targets host-selected file','forged action rejected','commit draft survives external/default/external switch','rejected commit keeps draft and successful commit clears it','branch draft and creation','history pagination through external action plus commit-file paging and preview','fetch dispatch through existing host controller','same-named file actions carry repository identity','drafts survive repository switches','delayed previous-repository history cannot overwrite selection','native all-repository grouping and scoped stage','history picker opens the selected repository history','repository picker layout and keyboard/search/dismissal in ak-ui light/dark themes','Git toolbar order, inline commit form and compact file rows at 300px and 350px']};
+  const result={passed:true,nativePort:'mocked; actual App.svelte and Worker, no repository operations performed',browser:browser.version(),checks:['complete Git metadata and truncated hunk preview','stage targets host-selected file','forged action rejected','commit draft survives external/default/external switch','rejected commit keeps draft and successful commit clears it','branch draft and creation','history pagination through external action plus commit-file paging and preview','fetch dispatch through existing host controller','same-named file actions carry repository identity','drafts survive repository switches','delayed previous-repository history cannot overwrite selection','native all-repository grouping and scoped stage','history picker opens the selected repository history','repository picker layout and keyboard/search/dismissal in Material 3 and ak-ui light/dark themes','Git toolbar order, inline commit form and compact file rows at 300px and 350px']};
   await writeFile('/tmp/aibo-presentation-git-browser.json',JSON.stringify(result,null,2));console.log(JSON.stringify(result));
 
 } catch(error) { console.error(JSON.stringify({errors,body:await page.locator('body').innerText()})); throw error; } finally {await browser.close();await server.close();}

@@ -11,7 +11,6 @@ import type {
   SessionExecutionProfile,
   SessionFilter,
   TurnChangeSet,
-  WorkspaceChanges,
   Workspace,
   WorkspaceCapabilityInventory,
   RestoreOperation,
@@ -30,7 +29,6 @@ export type RefreshControllerContext = {
     probeAgents: () => Promise<AgentDiagnostic[]>;
     listSessions: (workspaceId: string, options: { search: string; statusFilter: SessionFilter }) => Promise<Session[]>;
     getTurnChangeSet: (sessionId: string, turnId?: string | null) => Promise<TurnChangeSet | null>;
-    getWorkspaceChanges: (workspaceId: string) => Promise<WorkspaceChanges>;
   };
   getDesktop: () => boolean;
   getRestoringSelection: () => boolean;
@@ -70,7 +68,6 @@ export type RefreshControllerContext = {
   setPiTree: (value: PiSessionTreeSnapshot | null) => void;
   setExecutionProfile: (value: SessionExecutionProfile | null) => void;
   setTurnChangeSet: (value: TurnChangeSet | null) => void;
-  setWorkspaceChanges: (value: WorkspaceChanges | null) => void;
   setAttachments: (value: ContextAttachment[]) => void;
   setArtifacts: (value: Artifact[]) => void;
   setProjectActions: (value: ProjectAction[]) => void;
@@ -234,7 +231,6 @@ export function createRefreshController(context: RefreshControllerContext) {
         context.setPiTree(null);
         context.setExecutionProfile(null);
         context.setTurnChangeSet(null);
-        context.setWorkspaceChanges(null);
         context.setAttachments([]);
         context.setArtifacts([]);
         context.setProjectActions([]);
