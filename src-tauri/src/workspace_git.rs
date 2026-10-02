@@ -1,8 +1,9 @@
 //! Workspace Git operations, independent of Tauri command state.
+use crate::text_diff::{parse_unified_hunks, truncate_diff_with_marker};
+use crate::text_diff::{command_output_bounded, WORKSPACE_DIFF_MAX_BYTES};
 use crate::{CoreError, GitFileActionResult, GitWorkspaceActionResult, GitCommitResult,
     GitBranch, GitCommit, GitCommitFile, GitCommitFileList, WorkspaceFileDiff, GitRemoteStatus,
-    GitStashEntry, workspace_by_id, command_output_bounded, WORKSPACE_DIFF_MAX_BYTES,
-    truncate_diff_with_marker, parse_unified_hunks};
+    GitStashEntry, workspace_by_id};
 use sqlx::SqlitePool;
 use std::{path::Path, process::Command, time::{Duration, Instant}};
 use tokio::process::Command as TokioCommand;

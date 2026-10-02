@@ -2,7 +2,6 @@
 //! mechanism, never the source of truth for the waiting queue.
 use super::*;
 use sqlx::Row;
-use sha2::{Digest, Sha256};
 
 // Only explicit protocol rejection markers establish that delivery never happened.
 // Diagnostic text mentioning a native parameter is not an acknowledgement.
@@ -69,14 +68,7 @@ impl SessionHost {
         sqlx::query("INSERT INTO session_queues(session_id) VALUES(?) ON CONFLICT DO NOTHING").bind(session_id).execute(&mut *tx).await.map_err(|e|e.to_string())?;
         sqlx::query("INSERT INTO queued_messages(id,session_id,caller,text,created_at) VALUES(?,?,?,?,?)")
             .bind(&id).bind(session_id).bind(caller).bind(text).bind(crate::now_iso()).execute(&mut *tx).await.map_err(|e|e.to_string())?;
-        // Only references frozen into this submitted message are owned by it.
-        let ids: Vec<String> = sqlx::query_scalar("SELECT id FROM attachments WHERE session_id=? AND turn_id IS NULL AND queued_message_id IS NULL")
-            .bind(session_id).fetch_all(&mut *tx).await.map_err(|e|e.to_string())?;
-        for attachment in ids {
-            if text.contains(&format!("[attachment:{attachment}]")) || text.contains(&format!("\"snapshotId\":\"{attachment}\"")) {
-                sqlx::query("UPDATE attachments SET queued_message_id=? WHERE id=?").bind(&id).bind(attachment).execute(&mut *tx).await.map_err(|e|e.to_string())?;
-            }
-        }
+        crate::session_attachments::freeze_for_queue(&mut tx, session_id, &id, text).await.map_err(|e| e.to_string())?;
         tx.commit().await.map_err(|e|e.to_string())?;
         // A failed UI notification must not turn durable acceptance into a retry.
         if let Err(error) = self.publish_queue(session_id).await { eprintln!("queue notification failed: {error}"); }
@@ -133,27 +125,6 @@ impl SessionHost {
         }
         self.publish_queue(session_id).await
     }
-    async fn validate_queued_attachments(&self, session_id: &str, id: &str) -> Result<(), String> {
-        let session = crate::session_by_id(&self.db, session_id).await.map_err(|e|e.to_string())?;
-        let workspace = crate::workspace_by_id(&self.db, &session.workspace_id).await.map_err(|e|e.to_string())?;
-        let root = std::fs::canonicalize(&workspace.path).map_err(|e|e.to_string())?;
-        let rows = sqlx::query("SELECT id,path,content_hash,size,media_type,inline_context FROM attachments WHERE session_id=? AND queued_message_id=?")
-            .bind(session_id).bind(id).fetch_all(&self.db).await.map_err(|e|e.to_string())?;
-        for row in rows {
-            if row.get::<String,_>("media_type").starts_with("image/") { crate::clipboard_images::turn_attachment(&row, &session.capabilities)?; continue; }
-            if row.get::<Option<String>,_>("inline_context").is_some() { continue; }
-            let path: String = row.get("path");
-            let target = crate::workspace_guard::canonicalize_target(&root, Path::new(&path))?;
-            let metadata = std::fs::metadata(&target).map_err(|e|format!("附件不可用：{path}: {e}"))?;
-            if row.get::<Option<i64>,_>("size").is_some_and(|size|metadata.is_dir() || size != metadata.len() as i64) { return Err(format!("附件大小已变化：{path}")); }
-            if let Some(hash) = row.get::<Option<String>,_>("content_hash") {
-                if metadata.len()>10*1024*1024 { return Err(format!("附件大小已变化：{path}")); }
-                let bytes = std::fs::read(&target).map_err(|e|e.to_string())?;
-                if format!("sha256:{:x}", Sha256::digest(bytes)) != hash { return Err(format!("附件内容已变化：{path}")); }
-            }
-        }
-        Ok(())
-    }
     async fn fail_queued(&self, session_id: &str, id: &str, error: &str, uncertain: bool) -> Result<(), String> {
         sqlx::query("UPDATE queued_messages SET status=?,error=? WHERE session_id=? AND id=?")
             .bind(if uncertain {"uncertain"} else {"failed"}).bind(error).bind(session_id).bind(id).execute(&self.db).await.map_err(|e|e.to_string())?;
@@ -169,7 +140,7 @@ impl SessionHost {
         let Some((text,status)) = row else { return Err("invalid_input: queued message no longer exists".into()); };
         if status == "sending" { return Err("busy: message is already being sent".into()); }
         if status == "uncertain" { return Err("消息投递结果未知，请核对会话记录后删除该条，避免重复发送。".into()); }
-        if let Err(error) = self.validate_queued_attachments(session_id, id).await {
+        if let Err(error) = crate::session_attachments::validate_queued(&self.db, session_id, id).await {
             self.fail_queued(session_id, id, &error, false).await?; return Ok(());
         }
         // A finishing invocation may still be persisting history. Wait for its
@@ -189,9 +160,7 @@ impl SessionHost {
                 return Err("capability_unsupported: queue.steer".into());
             }
             if run.cancel.load(Ordering::Acquire) { return Err("busy: session is stopping".into()); }
-            let rows = sqlx::query("SELECT id,media_type,inline_context,content_hash FROM attachments WHERE session_id=? AND queued_message_id=?")
-                .bind(session_id).bind(id).fetch_all(&self.db).await.map_err(|e|e.to_string())?;
-            let attachments = rows.iter().map(|row|crate::clipboard_images::turn_attachment(row,&session.capabilities)).collect::<Result<Vec<_>,_>>()?;
+            let attachments = crate::session_attachments::inputs(&self.db, session_id, Some(id), &session.capabilities).await?;
             sqlx::query("UPDATE queued_messages SET status='sending',delivery='steer',turn_id=?,error=NULL WHERE id=?")
                 .bind(&run.request_id).bind(id).execute(&self.db).await.map_err(|e|e.to_string())?;
             let mut input = json!({"action":"steer","message":text});
@@ -205,7 +174,7 @@ impl SessionHost {
                     let mut tx = self.db.begin_with("BEGIN IMMEDIATE").await.map_err(|e|e.to_string())?;
                     sqlx::query("INSERT INTO messages(id,session_id,turn_id,role,content,status,created_at,updated_at) VALUES(?,?,?,'user',?,'completed',?,?)")
                         .bind(format!("queued:{id}")).bind(session_id).bind(&run.request_id).bind(&text).bind(&now).bind(&now).execute(&mut *tx).await.map_err(|e|e.to_string())?;
-                    sqlx::query("UPDATE attachments SET turn_id=? WHERE queued_message_id=?").bind(&run.request_id).bind(id).execute(&mut *tx).await.map_err(|e|e.to_string())?;
+                    crate::session_attachments::bind_to_turn(&mut tx, session_id, Some(id), &run.request_id).await.map_err(|e|e.to_string())?;
                     sqlx::query("DELETE FROM queued_messages WHERE id=?").bind(id).execute(&mut *tx).await.map_err(|e|e.to_string())?;
                     tx.commit().await.map_err(|e|e.to_string())?;
                 }

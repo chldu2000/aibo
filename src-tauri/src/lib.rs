@@ -1,3 +1,8 @@
+mod session_attachments;
+mod session_recovery;
+mod text_diff;
+mod workspace_diff;
+mod turn_changes;
 mod node_runtime;
 mod app_storage;
 mod session_history_tools;
@@ -51,30 +56,34 @@ mod semantic_git;
 mod semantic_plugins;
 mod git_capability_guard;
 
-use change_set::{
-    capture as capture_workspace, checkpoint_file_path, persist as persist_change_set,
-    workspace_changes, FileState, WorkspaceSnapshot,
+// Preserve the existing serialized types at the crate root while their
+// implementation and invariants live with the owning business modules.
+pub use session_attachments::{ContextAttachment, ContextAttachmentValidation};
+pub use text_diff::TurnDiffHunk;
+pub use turn_changes::{
+    ChangeSetState, CheckpointFile, CommandRunRef, FileChange, RestoreOperation,
+    TurnChangeSet, TurnFileDiff, VerificationRef,
 };
+pub use workspace_diff::WorkspaceFileDiff;
+
+use change_set::{checkpoint_file_path, workspace_changes};
+use workspace_diff::workspace_file_diff;
 use execution_profile::{
     from_row as profile_from_row, resolve as resolve_profile,
     save_for_session as save_session_profile, ExecutionProfile, ResolvedExecutionProfile,
     SessionExecutionProfile,
 };
 use serde::{Serialize, Deserialize};
-use sha2::{Digest, Sha256};
 use sqlx::{
     sqlite::{SqliteConnectOptions, SqliteJournalMode, SqlitePoolOptions},
     Connection, Row, SqlitePool,
 };
 use std::{
-    collections::BTreeSet,
     env,
     error::Error,
     fs,
-    io::{self, Read},
     path::{Path, PathBuf},
-    process::{Command, ExitStatus, Stdio},
-    thread,
+    process::Command,
     time::Duration,
 };
 use tauri::{Manager, State};
@@ -254,86 +263,6 @@ pub struct TimelineItem {
     pub(crate) updated_at: String,
 }
 
-#[derive(Debug, Clone, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct ChangeSetState {
-    pub(crate) head: Option<String>,
-    pub(crate) dirty: Option<bool>,
-    pub(crate) captured_at: Option<String>,
-}
-
-#[derive(Debug, Clone, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct FileChange {
-    pub(crate) path: String,
-    pub(crate) previous_path: Option<String>,
-    pub(crate) kind: String,
-    pub(crate) baseline_exists: bool,
-    pub(crate) baseline_hash: Option<String>,
-    pub(crate) baseline_size: Option<i64>,
-    pub(crate) baseline_dirty: bool,
-    pub(crate) result_exists: bool,
-    pub(crate) result_hash: Option<String>,
-    pub(crate) result_size: Option<i64>,
-}
-
-#[derive(Debug, Clone, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct CommandRunRef {
-    pub(crate) id: String,
-    pub(crate) tool_name: Option<String>,
-    pub(crate) command: Option<String>,
-    pub(crate) cwd: Option<String>,
-    pub(crate) exit_code: Option<i64>,
-    pub(crate) status: String,
-    pub(crate) output: String,
-}
-
-#[derive(Debug, Clone, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct VerificationRef {
-    pub(crate) id: String,
-    pub(crate) status: String,
-    pub(crate) output: String,
-}
-
-#[derive(Debug, Clone, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct TurnChangeSet {
-    pub(crate) id: String,
-    pub(crate) schema: String,
-    pub(crate) workspace_id: String,
-    pub(crate) session_id: String,
-    pub(crate) turn_id: String,
-    pub(crate) baseline: ChangeSetState,
-    pub(crate) result: ChangeSetState,
-    pub(crate) files: Vec<FileChange>,
-    pub(crate) commands: Vec<CommandRunRef>,
-    pub(crate) verification: Vec<VerificationRef>,
-    pub(crate) attribution: String,
-    pub(crate) capture_status: String,
-    pub(crate) capture_error: Option<String>,
-}
-
-#[derive(Debug, Clone, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct CheckpointFile {
-    pub(crate) schema: String,
-    pub(crate) id: String,
-    pub(crate) workspace_id: String,
-    pub(crate) session_id: String,
-    pub(crate) turn_id: String,
-    pub(crate) path: String,
-    pub(crate) file_exists: bool,
-    pub(crate) content_hash: Option<String>,
-    pub(crate) size: Option<i64>,
-    pub(crate) storage_path: Option<String>,
-    pub(crate) baseline_dirty: bool,
-    pub(crate) available: bool,
-    pub(crate) reason: Option<String>,
-    pub(crate) created_at: String,
-}
-
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct RestoreTurnChangeSetResult {
@@ -341,21 +270,6 @@ pub struct RestoreTurnChangeSetResult {
     pub(crate) restored: Vec<String>,
     pub(crate) conflicts: Vec<String>,
     pub(crate) unsupported: Vec<String>,
-}
-
-#[derive(Debug, Clone, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct RestoreOperation {
-    pub(crate) schema: String,
-    pub(crate) id: String,
-    pub(crate) workspace_id: String,
-    pub(crate) session_id: String,
-    pub(crate) turn_id: String,
-    pub(crate) status: String,
-    pub(crate) restored: Vec<String>,
-    pub(crate) conflicts: Vec<String>,
-    pub(crate) unsupported: Vec<String>,
-    pub(crate) created_at: String,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -383,18 +297,6 @@ pub struct WorkspaceChanges {
     pub(crate) files: Vec<WorkspaceFileChange>,
     pub(crate) capture_status: String,
     pub(crate) capture_error: Option<String>,
-}
-
-#[derive(Debug, Clone, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct WorkspaceFileDiff {
-    pub(crate) path: String,
-    pub(crate) staged: bool,
-    pub(crate) available: bool,
-    pub(crate) truncated: bool,
-    pub(crate) diff: String,
-    pub(crate) hunks: Vec<TurnDiffHunk>,
-    pub(crate) reason: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -447,24 +349,6 @@ pub struct GitStashEntry {
     pub(crate) message: String,
 }
 
-#[derive(Debug, Clone, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct TurnFileDiff {
-    pub(crate) path: String,
-    pub(crate) available: bool,
-    pub(crate) diff: String,
-    pub(crate) hunks: Vec<TurnDiffHunk>,
-    pub(crate) reason: Option<String>,
-}
-
-#[derive(Debug, Clone, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct TurnDiffHunk {
-    pub(crate) index: i64,
-    pub(crate) header: String,
-    pub(crate) content: String,
-}
-
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct GitFileActionResult {
@@ -498,35 +382,6 @@ pub struct GitHunkActionResult {
     pub(crate) action: String,
     pub(crate) applied: bool,
     pub(crate) message: String,
-}
-
-#[derive(Debug, Clone, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct ContextAttachment {
-    pub(crate) schema: String,
-    pub(crate) id: String,
-    pub(crate) workspace_id: String,
-    pub(crate) session_id: String,
-    pub(crate) turn_id: Option<String>,
-    pub(crate) path: String,
-    pub(crate) content_hash: Option<String>,
-    pub(crate) size: Option<i64>,
-    pub(crate) media_type: String,
-    pub(crate) source: String,
-    pub(crate) send_strategy: String,
-    pub(crate) inline_context: Option<String>,
-    pub(crate) created_at: String,
-}
-
-#[derive(Debug, Clone, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct ContextAttachmentValidation {
-    pub(crate) id: String,
-    pub(crate) path: String,
-    pub(crate) status: String,
-    pub(crate) reason: Option<String>,
-    pub(crate) current_hash: Option<String>,
-    pub(crate) size: Option<i64>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -750,298 +605,6 @@ pub(crate) async fn auto_name_session_from_first_message(
     .execute(db)
     .await?;
     Ok(updated.rows_affected() == 1)
-}
-
-/// A process-local runtime cannot survive an application restart. Normalize
-/// durable running state before exposing the database to the UI so a stale
-/// session is recoverable instead of appearing to be actively executing.
-async fn recover_interrupted_sessions(db: &SqlitePool) -> Result<u64, sqlx::Error> {
-    sqlx::query("UPDATE session_queues SET paused=1").execute(db).await?;
-    sqlx::query("UPDATE queued_messages SET status='uncertain',error='应用已重启，投递结果未知，请核对会话记录。' WHERE status='sending'").execute(db).await?;
-    let now = now_iso();
-    sqlx::query(
-        "UPDATE process_runs SET state = 'crashed', ended_at = ?
-         WHERE state IN ('starting', 'running', 'stopping') AND session_id IN (
-           SELECT id FROM sessions WHERE archived = 0
-             AND state IN ('starting', 'running', 'waiting_approval', 'waiting_user', 'compacting')
-         )",
-    )
-    .bind(&now)
-    .execute(db)
-    .await?;
-    sqlx::query(
-        "UPDATE messages SET status = 'failed', updated_at = ?
-         WHERE status IN ('streaming', 'queued') AND session_id IN (
-           SELECT id FROM sessions WHERE archived = 0
-             AND state IN ('starting', 'running', 'waiting_approval', 'waiting_user', 'compacting')
-         )",
-    )
-    .bind(&now)
-    .execute(db)
-    .await?;
-    sqlx::query(
-        "UPDATE turns SET status = 'interrupted', completed_at = ?
-         WHERE status = 'running' AND session_id IN (
-           SELECT id FROM sessions WHERE archived = 0
-             AND state IN ('starting', 'running', 'waiting_approval', 'waiting_user', 'compacting')
-         )",
-    )
-    .bind(&now)
-    .execute(db)
-    .await?;
-    let result = sqlx::query(
-        "UPDATE sessions SET state = 'interrupted', updated_at = ?
-         WHERE archived = 0 AND state IN ('starting', 'running', 'waiting_approval', 'waiting_user', 'compacting')",
-    )
-    .bind(now)
-    .execute(db)
-    .await?;
-    Ok(result.rows_affected())
-}
-
-/// Normalize an adapter crash while the application is still running. Startup
-/// recovery covers the same durable states after a process restart, but an
-/// in-process crash must not leave the active turn looking as if it is still
-/// streaming until the next launch.
-pub(crate) async fn mark_turn_interrupted(
-    db: &SqlitePool,
-    session_id: &str,
-    turn_id: &str,
-) -> Result<(), sqlx::Error> {
-    let now = now_iso();
-    sqlx::query(
-        "UPDATE turns SET status = 'interrupted', completed_at = ?
-         WHERE id = ? AND session_id = ? AND status = 'running'",
-    )
-    .bind(&now)
-    .bind(turn_id)
-    .bind(session_id)
-    .execute(db)
-    .await?;
-    sqlx::query(
-        "UPDATE messages SET status = 'failed', updated_at = ?
-         WHERE session_id = ? AND turn_id = ? AND status IN ('streaming', 'queued')",
-    )
-    .bind(now)
-    .bind(session_id)
-    .bind(turn_id)
-    .execute(db)
-    .await?;
-    Ok(())
-}
-
-/// Rebuild a durable, unknown-attribution change set for turns that were
-/// interrupted before an adapter could emit its terminal event. The baseline
-/// bytes/metadata already captured before the restart remain authoritative;
-/// the post-restart workspace snapshot is intentionally not attributed to the
-/// Agent because it may include edits made after the crash.
-async fn recover_interrupted_turn_changes(db: &SqlitePool) -> Result<u64, String> {
-    let rows = sqlx::query(
-        "SELECT turns.id, turns.session_id, turns.external_turn_id,
-                sessions.workspace_id, workspaces.path
-         FROM turns
-         JOIN sessions ON sessions.id = turns.session_id
-         JOIN workspaces ON workspaces.id = sessions.workspace_id
-         WHERE turns.status = 'running'",
-    )
-    .fetch_all(db)
-    .await
-    .map_err(|error| format!("read interrupted turns: {error}"))?;
-    let mut recovered = 0_u64;
-    for row in rows {
-        let turn_id: String = row
-            .try_get("id")
-            .map_err(|error| format!("read interrupted turn id: {error}"))?;
-        let session_id: String = row
-            .try_get("session_id")
-            .map_err(|error| format!("read interrupted session id: {error}"))?;
-        let workspace_id: String = row
-            .try_get("workspace_id")
-            .map_err(|error| format!("read interrupted workspace id: {error}"))?;
-        let workspace_path: String = row
-            .try_get("path")
-            .map_err(|error| format!("read interrupted workspace path: {error}"))?;
-        let existing: i64 = sqlx::query_scalar(
-            "SELECT COUNT(*) FROM turn_change_sets WHERE session_id = ? AND turn_id = ?",
-        )
-        .bind(&session_id)
-        .bind(&turn_id)
-        .fetch_one(db)
-        .await
-        .map_err(|error| format!("check interrupted change set: {error}"))?;
-        if existing > 0 {
-            continue;
-        }
-        let checkpoint_rows = sqlx::query(
-            "SELECT path, file_exists, content_hash, size, baseline_head, baseline_dirty,
-                    created_at
-             FROM checkpoints WHERE session_id = ? AND turn_id = ? ORDER BY path ASC",
-        )
-        .bind(&session_id)
-        .bind(&turn_id)
-        .fetch_all(db)
-        .await
-        .map_err(|error| format!("read interrupted checkpoint: {error}"))?;
-        if checkpoint_rows.is_empty() {
-            // A crash can happen before the adapter finishes writing the
-            // baseline checkpoint. Keep a durable, non-restorable record so
-            // the interrupted turn is still visible after restart instead of
-            // silently disappearing from Changes.
-            let (result, capture_error) = match capture_workspace(Path::new(&workspace_path)).await
-            {
-                Ok(snapshot) => (
-                    Some(snapshot),
-                    Some("应用重启后重建；turn 基线 checkpoint 未持久化".to_owned()),
-                ),
-                Err(error) => (None, Some(format!("应用重启后重建；无法采集结果：{error}"))),
-            };
-            let change_set_id = persist_change_set(
-                db,
-                &workspace_id,
-                &session_id,
-                &turn_id,
-                None,
-                result.as_ref(),
-                capture_error.as_deref(),
-            )
-            .await
-            .map_err(|error| format!("persist interrupted change set: {error}"))?;
-            sqlx::query(
-                "UPDATE turn_change_sets
-                 SET attribution = 'unknown', updated_at = ?
-                 WHERE id = ?",
-            )
-            .bind(now_iso())
-            .bind(&change_set_id)
-            .execute(db)
-            .await
-            .map_err(|error| format!("mark interrupted change set unknown: {error}"))?;
-            recovered = recovered.saturating_add(1);
-            continue;
-        }
-        let mut files = Vec::with_capacity(checkpoint_rows.len());
-        let mut dirty_paths = BTreeSet::new();
-        let mut baseline_head = None;
-        let mut baseline_dirty = false;
-        let mut captured_at = None;
-        for checkpoint in checkpoint_rows {
-            let path: String = checkpoint
-                .try_get("path")
-                .map_err(|error| format!("read checkpoint path: {error}"))?;
-            let exists = checkpoint
-                .try_get::<i64, _>("file_exists")
-                .map_err(|error| format!("read checkpoint existence: {error}"))?
-                != 0;
-            let hash: Option<String> = checkpoint
-                .try_get("content_hash")
-                .map_err(|error| format!("read checkpoint hash: {error}"))?;
-            let size = checkpoint
-                .try_get::<Option<i64>, _>("size")
-                .map_err(|error| format!("read checkpoint size: {error}"))?
-                .and_then(|value| u64::try_from(value).ok());
-            let dirty = checkpoint
-                .try_get::<i64, _>("baseline_dirty")
-                .map_err(|error| format!("read checkpoint attribution: {error}"))?
-                != 0;
-            if dirty {
-                dirty_paths.insert(path.clone());
-                baseline_dirty = true;
-            }
-            if baseline_head.is_none() {
-                baseline_head = checkpoint
-                    .try_get::<Option<String>, _>("baseline_head")
-                    .map_err(|error| format!("read checkpoint head: {error}"))?;
-            }
-            if captured_at.is_none() {
-                captured_at = checkpoint
-                    .try_get::<Option<String>, _>("created_at")
-                    .map_err(|error| format!("read checkpoint timestamp: {error}"))?;
-            }
-            files.push(FileState {
-                path,
-                exists,
-                hash,
-                size,
-            });
-        }
-        let baseline = WorkspaceSnapshot {
-            head: baseline_head,
-            dirty: baseline_dirty,
-            captured_at: captured_at.unwrap_or_else(now_iso),
-            files,
-            dirty_paths,
-        };
-        let (result, capture_error) = match capture_workspace(Path::new(&workspace_path)).await {
-            Ok(snapshot) => (Some(snapshot), None),
-            Err(error) => (None, Some(error)),
-        };
-        let change_set_id = persist_change_set(
-            db,
-            &workspace_id,
-            &session_id,
-            &turn_id,
-            Some(&baseline),
-            result.as_ref(),
-            capture_error.as_deref(),
-        )
-        .await
-        .map_err(|error| format!("persist interrupted change set: {error}"))?;
-        sqlx::query(
-            "UPDATE turn_change_sets
-             SET attribution = 'unknown',
-                 capture_error = COALESCE(capture_error, ?), updated_at = ?
-             WHERE id = ?",
-        )
-        .bind("应用重启后重建；结果可能包含崩溃后的用户修改")
-        .bind(now_iso())
-        .bind(&change_set_id)
-        .execute(db)
-        .await
-        .map_err(|error| format!("mark interrupted change set unknown: {error}"))?;
-        recovered = recovered.saturating_add(1);
-    }
-    Ok(recovered)
-}
-
-fn is_verification_command(command: Option<&str>) -> bool {
-    let Some(command) = command else { return false };
-    let command = command.trim_start().to_ascii_lowercase();
-    [
-        "pnpm test",
-        "pnpm build",
-        "pnpm exec tsc",
-        "npm test",
-        "yarn test",
-        "cargo test",
-        "cargo fmt --check",
-        "pytest",
-        "vitest",
-    ]
-    .iter()
-    .any(|prefix| command.starts_with(prefix))
-}
-
-fn attachment_media_type(path: &Path, is_dir: bool) -> String {
-    if is_dir {
-        return "inode/directory".to_owned();
-    }
-    match path
-        .extension()
-        .and_then(|value| value.to_str())
-        .map(str::to_ascii_lowercase)
-        .as_deref()
-    {
-        Some("md" | "markdown") => "text/markdown".to_owned(),
-        Some("txt" | "log") => "text/plain".to_owned(),
-        Some("json") => "application/json".to_owned(),
-        Some("png") => "image/png".to_owned(),
-        Some("jpg" | "jpeg") => "image/jpeg".to_owned(),
-        Some("gif") => "image/gif".to_owned(),
-        Some("svg") => "image/svg+xml".to_owned(),
-        Some("rs") => "text/x-rust".to_owned(),
-        Some("ts" | "tsx" | "js" | "jsx" | "svelte") => "text/javascript".to_owned(),
-        _ => "application/octet-stream".to_owned(),
-    }
 }
 
 #[tauri::command]
@@ -1994,173 +1557,6 @@ async fn get_timeline(
     rows.iter().map(row_to_timeline_item).collect()
 }
 
-#[tauri::command]
-async fn get_turn_change_set(
-    session_id: String,
-    turn_id: Option<String>,
-    state: State<'_, AppState>,
-) -> Result<Option<TurnChangeSet>, CoreError> {
-    session_by_id(&state.db, &session_id).await?;
-    let row = sqlx::query(
-        "SELECT id, schema_version, workspace_id, session_id, turn_id,
-                baseline_head, baseline_dirty, baseline_captured_at,
-                result_head, result_dirty, result_captured_at,
-                attribution, capture_status, capture_error
-         FROM turn_change_sets
-         WHERE session_id = ? AND (? IS NULL OR turn_id = ?)
-         ORDER BY updated_at DESC LIMIT 1",
-    )
-    .bind(&session_id)
-    .bind(&turn_id)
-    .bind(&turn_id)
-    .fetch_optional(&state.db)
-    .await?;
-    let Some(row) = row else { return Ok(None) };
-    let change_set_id: String = row.try_get("id")?;
-    let file_rows = sqlx::query(
-        "SELECT path, previous_path, change_kind, baseline_exists, baseline_hash, baseline_size,
-                baseline_dirty, result_exists, result_hash, result_size
-         FROM file_changes WHERE change_set_id = ? ORDER BY path ASC",
-    )
-    .bind(&change_set_id)
-    .fetch_all(&state.db)
-    .await?;
-    let files = file_rows
-        .iter()
-        .map(|file| {
-            Ok(FileChange {
-                path: file.try_get("path")?,
-                previous_path: file.try_get("previous_path")?,
-                kind: file.try_get("change_kind")?,
-                baseline_exists: file.try_get::<i64, _>("baseline_exists")? != 0,
-                baseline_hash: file.try_get("baseline_hash")?,
-                baseline_size: file.try_get("baseline_size")?,
-                baseline_dirty: file.try_get::<i64, _>("baseline_dirty")? != 0,
-                result_exists: file.try_get::<i64, _>("result_exists")? != 0,
-                result_hash: file.try_get("result_hash")?,
-                result_size: file.try_get("result_size")?,
-            })
-        })
-        .collect::<Result<Vec<_>, sqlx::Error>>()?;
-    let command_rows = sqlx::query(
-        "SELECT id, tool_name, tool_command, tool_cwd, tool_exit_code, status, content FROM messages
-         WHERE session_id = ? AND turn_id = ? AND role = 'tool'
-           AND lower(COALESCE(tool_name, '')) LIKE '%command%'
-         ORDER BY created_at ASC",
-    )
-    .bind(&session_id)
-    .bind(row.try_get::<String, _>("turn_id")?)
-    .fetch_all(&state.db)
-    .await?;
-    let commands = command_rows
-        .iter()
-        .map(|command| {
-            Ok(CommandRunRef {
-                id: command.try_get("id")?,
-                tool_name: command.try_get("tool_name")?,
-                command: command.try_get("tool_command")?,
-                cwd: command.try_get("tool_cwd")?,
-                exit_code: command.try_get("tool_exit_code")?,
-                status: command.try_get("status")?,
-                output: command.try_get("content")?,
-            })
-        })
-        .collect::<Result<Vec<_>, sqlx::Error>>()?;
-    let verification = commands
-        .iter()
-        .filter(|command| is_verification_command(command.command.as_deref()))
-        .map(|command| VerificationRef {
-            id: command.id.clone(),
-            status: if command.exit_code.is_some_and(|code| code != 0) || command.status == "failed"
-            {
-                "failed".to_owned()
-            } else if command.status == "completed" {
-                "passed".to_owned()
-            } else {
-                "running".to_owned()
-            },
-            output: command.output.clone(),
-        })
-        .collect();
-    Ok(Some(TurnChangeSet {
-        id: change_set_id,
-        schema: row.try_get("schema_version")?,
-        workspace_id: row.try_get("workspace_id")?,
-        session_id: row.try_get("session_id")?,
-        turn_id: row.try_get("turn_id")?,
-        baseline: ChangeSetState {
-            head: row.try_get("baseline_head")?,
-            dirty: row
-                .try_get::<Option<i64>, _>("baseline_dirty")?
-                .map(|value| value != 0),
-            captured_at: row.try_get("baseline_captured_at")?,
-        },
-        result: ChangeSetState {
-            head: row.try_get("result_head")?,
-            dirty: row
-                .try_get::<Option<i64>, _>("result_dirty")?
-                .map(|value| value != 0),
-            captured_at: row.try_get("result_captured_at")?,
-        },
-        files,
-        commands,
-        verification,
-        attribution: row.try_get("attribution")?,
-        capture_status: row.try_get("capture_status")?,
-        capture_error: row.try_get("capture_error")?,
-    }))
-}
-
-#[tauri::command]
-async fn list_turn_checkpoints(
-    session_id: String,
-    turn_id: Option<String>,
-    state: State<'_, AppState>,
-) -> Result<Vec<CheckpointFile>, CoreError> {
-    session_by_id(&state.db, &session_id).await?;
-    let rows = sqlx::query(
-        "SELECT schema_version, id, workspace_id, session_id, turn_id, path,
-                file_exists, content_hash, size, storage_path, baseline_dirty, created_at
-         FROM checkpoints
-         WHERE session_id = ? AND (? IS NULL OR turn_id = ?)
-         ORDER BY path ASC",
-    )
-    .bind(&session_id)
-    .bind(&turn_id)
-    .bind(&turn_id)
-    .fetch_all(&state.db)
-    .await?;
-    rows.iter()
-        .map(|row| {
-            let file_exists = row.try_get::<i64, _>("file_exists")? != 0;
-            let storage_path: Option<String> = row.try_get("storage_path")?;
-            let baseline_dirty = row.try_get::<i64, _>("baseline_dirty")? != 0;
-            let available = !file_exists || storage_path.is_some();
-            Ok(CheckpointFile {
-                schema: row.try_get("schema_version")?,
-                id: row.try_get("id")?,
-                workspace_id: row.try_get("workspace_id")?,
-                session_id: row.try_get("session_id")?,
-                turn_id: row.try_get("turn_id")?,
-                path: row.try_get("path")?,
-                file_exists,
-                content_hash: row.try_get("content_hash")?,
-                size: row.try_get("size")?,
-                storage_path,
-                baseline_dirty,
-                available,
-                reason: if available {
-                    None
-                } else {
-                    Some("baseline 文件过大、不可哈希或 checkpoint 文件不可用".to_owned())
-                },
-                created_at: row.try_get("created_at")?,
-            })
-        })
-        .collect::<Result<Vec<_>, sqlx::Error>>()
-        .map_err(Into::into)
-}
-
 #[cfg(test)]
 async fn persist_restore_operation(
     db: &SqlitePool,
@@ -2233,63 +1629,6 @@ async fn restore_turn_change_set(
 }
 
 #[tauri::command]
-async fn list_restore_operations(
-    session_id: String,
-    turn_id: Option<String>,
-    state: State<'_, AppState>,
-) -> Result<Vec<RestoreOperation>, CoreError> {
-    let session = session_by_id(&state.db, &session_id).await?;
-    let rows = sqlx::query(
-        "SELECT schema_version, id, workspace_id, session_id, turn_id, status,
-                restored_json, conflicts_json, unsupported_json, created_at
-         FROM restore_operations
-         WHERE session_id = ? AND (? IS NULL OR turn_id = ?)
-         ORDER BY created_at DESC, id DESC",
-    )
-    .bind(&session_id)
-    .bind(&turn_id)
-    .bind(&turn_id)
-    .fetch_all(&state.db)
-    .await?;
-
-    rows.iter()
-        .map(|row| {
-            let workspace_id: String = row.try_get("workspace_id")?;
-            if workspace_id != session.workspace_id {
-                return Err(sqlx::Error::Protocol(
-                    "restore operation workspace mismatch".to_owned(),
-                ));
-            }
-            let restored_json: String = row.try_get("restored_json")?;
-            let conflicts_json: String = row.try_get("conflicts_json")?;
-            let unsupported_json: String = row.try_get("unsupported_json")?;
-            let restored = serde_json::from_str(&restored_json).map_err(|error| {
-                sqlx::Error::Protocol(format!("invalid restored paths: {error}"))
-            })?;
-            let conflicts = serde_json::from_str(&conflicts_json).map_err(|error| {
-                sqlx::Error::Protocol(format!("invalid restore conflicts: {error}"))
-            })?;
-            let unsupported = serde_json::from_str(&unsupported_json).map_err(|error| {
-                sqlx::Error::Protocol(format!("invalid restore unsupported paths: {error}"))
-            })?;
-            Ok(RestoreOperation {
-                schema: row.try_get("schema_version")?,
-                id: row.try_get("id")?,
-                workspace_id,
-                session_id: row.try_get("session_id")?,
-                turn_id: row.try_get("turn_id")?,
-                status: row.try_get("status")?,
-                restored,
-                conflicts,
-                unsupported,
-                created_at: row.try_get("created_at")?,
-            })
-        })
-        .collect::<Result<Vec<_>, sqlx::Error>>()
-        .map_err(Into::into)
-}
-
-#[tauri::command]
 async fn get_workspace_changes(
     workspace_id: String,
     repository_id: Option<String>,
@@ -2339,690 +1678,6 @@ async fn get_workspace_file_diff(
     tokio::task::spawn_blocking(move || workspace_file_diff(&root, &path, staged))
         .await
         .map_err(|error| CoreError::Database(format!("workspace diff task failed: {error}")))?
-}
-
-const WORKSPACE_DIFF_MAX_BYTES: usize = 200_000;
-const DIFF_TRUNCATION_SUFFIX: &str = "\n… diff 已截断";
-
-fn workspace_file_diff(
-    workspace_path: &str,
-    path: &str,
-    staged: bool,
-) -> Result<WorkspaceFileDiff, CoreError> {
-    let root = Path::new(workspace_path);
-    crate::workspace_guard::canonicalize_target(root, Path::new(path))
-        .map_err(CoreError::InvalidWorkspacePath)?;
-
-    let mut command = Command::new("git");
-    command.args([
-        "-C",
-        workspace_path,
-        "diff",
-        "--no-ext-diff",
-        "--no-color",
-        "--unified=3",
-    ]);
-    if staged {
-        command.arg("--cached");
-    }
-    let output = command_output_bounded(command.args(["--", path]), WORKSPACE_DIFF_MAX_BYTES + 1)
-        .map_err(|error| CoreError::Database(format!("read Git diff: {error}")))?;
-    if !output.status.success() {
-        return Err(CoreError::Database(format!(
-            "git diff exited with {}: {}",
-            output.status,
-            String::from_utf8_lossy(&output.stderr).trim()
-        )));
-    }
-
-    let mut diff = String::from_utf8_lossy(&output.stdout).to_string();
-    let mut diff_truncated = output.stdout_truncated;
-    if diff.is_empty() && !staged {
-        let target = crate::workspace_guard::canonicalize_target(root, Path::new(path))
-            .map_err(CoreError::InvalidWorkspacePath)?;
-        let tracked = Command::new("git")
-            .args([
-                "-C",
-                workspace_path,
-                "ls-files",
-                "--error-unmatch",
-                "--",
-                path,
-            ])
-            .output()
-            .map(|value| value.status.success())
-            .unwrap_or(false);
-        if !tracked && target.is_file() {
-            let metadata = target.metadata().map_err(|error| {
-                CoreError::Database(format!("read untracked file metadata: {error}"))
-            })?;
-            if metadata.len() > WORKSPACE_DIFF_MAX_BYTES as u64 {
-                return Ok(WorkspaceFileDiff {
-                    path: path.to_owned(),
-                    staged,
-                    available: false,
-                    truncated: false,
-                    diff: String::new(),
-                    hunks: Vec::new(),
-                    reason: Some("未跟踪文件过大，暂不生成文本 diff".to_owned()),
-                });
-            }
-            let content = std::fs::read(&target)
-                .map_err(|error| CoreError::Database(format!("read untracked file: {error}")))?;
-            if content.contains(&0) {
-                return Ok(WorkspaceFileDiff {
-                    path: path.to_owned(),
-                    staged,
-                    available: false,
-                    truncated: false,
-                    diff: String::new(),
-                    hunks: Vec::new(),
-                    reason: Some("二进制文件暂不提供文本 diff".to_owned()),
-                });
-            }
-            let generated =
-                run_unified_text_diff_bounded(path, &[], &content, WORKSPACE_DIFF_MAX_BYTES)
-                    .map_err(CoreError::Database)?;
-            diff = generated.0;
-            diff_truncated = generated.1;
-        }
-    }
-
-    if diff.is_empty() {
-        return Ok(WorkspaceFileDiff {
-            path: path.to_owned(),
-            staged,
-            available: false,
-            truncated: false,
-            diff,
-            hunks: Vec::new(),
-            reason: Some("当前状态没有可展示的文件变更".to_owned()),
-        });
-    }
-    if diff_truncated || diff.len() > WORKSPACE_DIFF_MAX_BYTES {
-        diff = truncate_diff_with_marker(&diff, WORKSPACE_DIFF_MAX_BYTES);
-        diff_truncated = true;
-    }
-    Ok(WorkspaceFileDiff {
-        path: path.to_owned(),
-        staged,
-        available: true,
-        truncated: diff_truncated,
-        hunks: parse_unified_hunks(&diff),
-        diff,
-        reason: None,
-    })
-}
-
-struct BoundedCommandOutput {
-    status: ExitStatus,
-    stdout: Vec<u8>,
-    stdout_truncated: bool,
-    stderr: Vec<u8>,
-}
-
-fn read_bounded<R: Read>(mut reader: R, limit: usize) -> io::Result<(Vec<u8>, bool)> {
-    let mut bytes = Vec::with_capacity(limit.min(64 * 1024));
-    let mut truncated = false;
-    let mut buffer = [0_u8; 8192];
-    loop {
-        let read = reader.read(&mut buffer)?;
-        if read == 0 {
-            break;
-        }
-        let remaining = limit.saturating_sub(bytes.len());
-        if remaining > 0 {
-            bytes.extend_from_slice(&buffer[..read.min(remaining)]);
-        }
-        if read > remaining {
-            truncated = true;
-        }
-    }
-    Ok((bytes, truncated))
-}
-
-fn command_output_bounded(
-    command: &mut Command,
-    stdout_limit: usize,
-) -> io::Result<BoundedCommandOutput> {
-    let mut child = command
-        .stdout(Stdio::piped())
-        .stderr(Stdio::piped())
-        .spawn()?;
-    let stdout = child
-        .stdout
-        .take()
-        .ok_or_else(|| io::Error::other("Git stdout was not captured"))?;
-    let stderr = child
-        .stderr
-        .take()
-        .ok_or_else(|| io::Error::other("Git stderr was not captured"))?;
-    let stdout_task = thread::spawn(move || read_bounded(stdout, stdout_limit));
-    let stderr_task = thread::spawn(move || read_bounded(stderr, 64 * 1024));
-    let status = child.wait()?;
-    let (stdout, stdout_truncated) = stdout_task
-        .join()
-        .map_err(|_| io::Error::other("Git stdout reader panicked"))??;
-    let (stderr, _) = stderr_task
-        .join()
-        .map_err(|_| io::Error::other("Git stderr reader panicked"))??;
-    Ok(BoundedCommandOutput {
-        status,
-        stdout,
-        stdout_truncated,
-        stderr,
-    })
-}
-
-#[tauri::command]
-async fn get_turn_file_diff(
-    session_id: String,
-    turn_id: String,
-    path: String,
-    state: State<'_, AppState>,
-) -> Result<TurnFileDiff, CoreError> {
-    let session = session_by_id(&state.db, &session_id).await?;
-    let workspace = workspace_by_id(&state.db, &session.workspace_id).await?;
-    let row = sqlx::query(
-        "SELECT previous_path, baseline_exists, baseline_hash, baseline_dirty,
-                result_exists, result_hash, baseline_head, attribution
-         FROM file_changes
-         JOIN turn_change_sets ON turn_change_sets.id = file_changes.change_set_id
-         WHERE file_changes.path = ? AND turn_change_sets.session_id = ?
-           AND turn_change_sets.turn_id = ?",
-    )
-    .bind(&path)
-    .bind(&session_id)
-    .bind(&turn_id)
-    .fetch_optional(&state.db)
-    .await?;
-    let Some(row) = row else {
-        return Err(CoreError::Database(
-            "requested file is not in the turn change set".to_owned(),
-        ));
-    };
-    let previous_path: Option<String> = row.try_get("previous_path")?;
-    let baseline_path = previous_path.as_deref().unwrap_or(&path);
-    let baseline_exists = row.try_get::<i64, _>("baseline_exists")? != 0;
-    let baseline_hash: Option<String> = row.try_get("baseline_hash")?;
-    let baseline_dirty = row.try_get::<i64, _>("baseline_dirty")? != 0;
-    let result_exists = row.try_get::<i64, _>("result_exists")? != 0;
-    let result_hash: Option<String> = row.try_get("result_hash")?;
-    let baseline_head: Option<String> = row.try_get("baseline_head")?;
-    if (baseline_exists && baseline_hash.is_none()) || (result_exists && result_hash.is_none()) {
-        return Ok(TurnFileDiff {
-            path,
-            available: false,
-            diff: String::new(),
-            hunks: Vec::new(),
-            reason: Some("文件过大或无法安全哈希，暂不生成 inline diff".to_owned()),
-        });
-    }
-    let root = Path::new(&workspace.path);
-    let target = crate::workspace_guard::canonicalize_target(root, Path::new(&path))
-        .map_err(CoreError::InvalidWorkspacePath)?;
-    let baseline_bytes = if !baseline_exists {
-        Vec::new()
-    } else {
-        let checkpoint = checkpoint_file_path(
-            &state.data_dir.join("checkpoints"),
-            &session_id,
-            &turn_id,
-            baseline_path,
-        );
-        if checkpoint.is_file() {
-            fs::read(&checkpoint).map_err(|error| {
-                CoreError::Database(format!("read checkpoint diff source: {error}"))
-            })?
-        } else if baseline_dirty {
-            return Ok(TurnFileDiff {
-                path,
-                available: false,
-                diff: String::new(),
-                hunks: Vec::new(),
-                reason: Some("本轮前已有修改，且 baseline checkpoint 不可用".to_owned()),
-            });
-        } else if let Some(head) = baseline_head.as_deref() {
-            let output = Command::new("git")
-                .args([
-                    "-C",
-                    &workspace.path,
-                    "show",
-                    &format!("{head}:{baseline_path}"),
-                ])
-                .output()
-                .map_err(|error| CoreError::Database(format!("read Git baseline: {error}")))?;
-            if !output.status.success() {
-                return Ok(TurnFileDiff {
-                    path,
-                    available: false,
-                    diff: String::new(),
-                    hunks: Vec::new(),
-                    reason: Some("Git baseline 不可用，暂不生成 diff".to_owned()),
-                });
-            }
-            output.stdout
-        } else {
-            return Ok(TurnFileDiff {
-                path,
-                available: false,
-                diff: String::new(),
-                hunks: Vec::new(),
-                reason: Some("缺少 baseline checkpoint，暂不生成 diff".to_owned()),
-            });
-        }
-    };
-    let result_bytes = if result_exists {
-        fs::read(&target)
-            .map_err(|error| CoreError::Database(format!("read current diff source: {error}")))?
-    } else {
-        Vec::new()
-    };
-    if result_exists {
-        let mut digest = Sha256::new();
-        digest.update(&result_bytes);
-        let current_hash = format!("sha256:{:x}", digest.finalize());
-        if result_hash.as_deref() != Some(current_hash.as_str()) {
-            return Ok(TurnFileDiff {
-                path,
-                available: false,
-                diff: String::new(),
-                hunks: Vec::new(),
-                reason: Some("文件在本轮结束后发生变化，暂不生成 diff".to_owned()),
-            });
-        }
-    }
-    if baseline_bytes.len() > 10 * 1024 * 1024 || result_bytes.len() > 10 * 1024 * 1024 {
-        return Ok(TurnFileDiff {
-            path,
-            available: false,
-            diff: String::new(),
-            hunks: Vec::new(),
-            reason: Some("文件超过 inline diff 限额".to_owned()),
-        });
-    }
-    if std::str::from_utf8(&baseline_bytes).is_err() || std::str::from_utf8(&result_bytes).is_err()
-    {
-        return Ok(TurnFileDiff {
-            path,
-            available: false,
-            diff: String::new(),
-            hunks: Vec::new(),
-            reason: Some("二进制文件暂不提供文本 diff".to_owned()),
-        });
-    }
-    let mut diff = run_unified_text_diff(&path, &baseline_bytes, &result_bytes)
-        .map_err(CoreError::Database)?;
-    if diff.len() > 200_000 {
-        diff = crate::artifact::truncate_utf8(&diff, 200_000, "\n… diff 已截断");
-    }
-    Ok(TurnFileDiff {
-        path,
-        available: true,
-        hunks: parse_unified_hunks(&diff),
-        diff,
-        reason: None,
-    })
-}
-
-struct TurnDiffSources {
-    baseline: Vec<u8>,
-    result: Vec<u8>,
-    baseline_exists: bool,
-    result_exists: bool,
-    baseline_dirty: bool,
-}
-
-enum TurnDiffSourceError {
-    NotChanged,
-    Unavailable(String),
-    UnsafePath(String),
-    Failed(String),
-}
-
-async fn read_turn_diff_file(path: &Path) -> Result<Vec<u8>, std::io::Error> {
-    tokio::time::timeout(std::time::Duration::from_secs(15), async {
-        let mut bytes = Vec::new();
-        tokio::fs::File::open(path).await?.take(10 * 1024 * 1024 + 1).read_to_end(&mut bytes).await?;
-        if bytes.len() > 10 * 1024 * 1024 { return Err(std::io::Error::other("turn diff file exceeds 10 MiB")); }
-        Ok(bytes)
-    }).await.map_err(|_| std::io::Error::other("turn diff file read timed out"))?
-}
-
-async fn load_turn_diff_sources(
-    db: &SqlitePool,
-    data_dir: &Path,
-    workspace_path: &str,
-    session_id: &str,
-    turn_id: &str,
-    path: &str,
-    require_text: bool,
-) -> Result<TurnDiffSources, TurnDiffSourceError> {
-    let row = sqlx::query(
-        "SELECT previous_path, change_kind, baseline_exists, baseline_hash, file_changes.baseline_dirty,
-                result_exists, result_hash, baseline_head, attribution
-         FROM file_changes
-         JOIN turn_change_sets ON turn_change_sets.id = file_changes.change_set_id
-         WHERE file_changes.path = ? AND turn_change_sets.session_id = ?
-           AND turn_change_sets.turn_id = ?",
-    )
-    .bind(path)
-    .bind(session_id)
-    .bind(turn_id)
-    .fetch_optional(db)
-    .await
-    .map_err(|error| TurnDiffSourceError::Failed(format!("read turn diff metadata: {error}")))?;
-    let Some(row) = row else {
-        return Err(TurnDiffSourceError::NotChanged);
-    };
-    let previous_path: Option<String> = row
-        .try_get("previous_path")
-        .map_err(|error| TurnDiffSourceError::Failed(error.to_string()))?;
-    let change_kind: String = row
-        .try_get("change_kind")
-        .map_err(|error| TurnDiffSourceError::Failed(error.to_string()))?;
-    if change_kind == "renamed" {
-        return Err(TurnDiffSourceError::Unavailable(
-            "重命名文件请使用“恢复本轮变更”，以便同时恢复源路径".to_owned(),
-        ));
-    }
-    let baseline_path = previous_path.as_deref().unwrap_or(path);
-    let baseline_exists = row
-        .try_get::<i64, _>("baseline_exists")
-        .map_err(|error| TurnDiffSourceError::Failed(error.to_string()))?
-        != 0;
-    let baseline_hash: Option<String> = row
-        .try_get("baseline_hash")
-        .map_err(|error| TurnDiffSourceError::Failed(error.to_string()))?;
-    let baseline_dirty = row
-        .try_get::<i64, _>("baseline_dirty")
-        .map_err(|error| TurnDiffSourceError::Failed(error.to_string()))?
-        != 0;
-    let result_exists = row
-        .try_get::<i64, _>("result_exists")
-        .map_err(|error| TurnDiffSourceError::Failed(error.to_string()))?
-        != 0;
-    let result_hash: Option<String> = row
-        .try_get("result_hash")
-        .map_err(|error| TurnDiffSourceError::Failed(error.to_string()))?;
-    let baseline_head: Option<String> = row
-        .try_get("baseline_head")
-        .map_err(|error| TurnDiffSourceError::Failed(error.to_string()))?;
-    let attribution: String = row
-        .try_get("attribution")
-        .map_err(|error| TurnDiffSourceError::Failed(error.to_string()))?;
-    if attribution == "unknown" {
-        return Err(TurnDiffSourceError::Unavailable(
-            "本轮变更归属未知，禁止应用 Git 操作".to_owned(),
-        ));
-    }
-    if (baseline_exists && baseline_hash.is_none()) || (result_exists && result_hash.is_none()) {
-        return Err(TurnDiffSourceError::Unavailable(
-            "文件过大或无法安全哈希".to_owned(),
-        ));
-    }
-    let root = Path::new(workspace_path);
-    let target = crate::workspace_guard::canonicalize_target(root, Path::new(path))
-        .map_err(TurnDiffSourceError::UnsafePath)?;
-    let baseline = if !baseline_exists {
-        Vec::new()
-    } else {
-        let checkpoint = checkpoint_file_path(
-            &data_dir.join("checkpoints"),
-            session_id,
-            turn_id,
-            baseline_path,
-        );
-        if checkpoint.is_file() {
-            read_turn_diff_file(&checkpoint).await
-                .map_err(|error| TurnDiffSourceError::Failed(format!("read checkpoint: {error}")))?
-        } else if baseline_dirty {
-            return Err(TurnDiffSourceError::Unavailable(
-                "本轮前已有修改，且 baseline checkpoint 不可用".to_owned(),
-            ));
-        } else if let Some(head) = baseline_head.as_deref() {
-            let command = crate::workspace_git_approval::read_command(workspace_path, &["show", &format!("{head}:{baseline_path}")]);
-            let output = crate::controlled_process::execute(command, std::time::Duration::from_secs(15), 10 * 1024 * 1024 + 1).await
-                .map_err(|error| {
-                    TurnDiffSourceError::Failed(format!("read Git baseline: {error}"))
-                })?;
-            if !output.success || output.timed_out || output.stdout.len() > 10 * 1024 * 1024 || output.stderr.len() > 10 * 1024 * 1024 {
-                return Err(TurnDiffSourceError::Unavailable(
-                    "Git baseline 不可用".to_owned(),
-                ));
-            }
-            output.stdout
-        } else {
-            return Err(TurnDiffSourceError::Unavailable(
-                "缺少 baseline checkpoint".to_owned(),
-            ));
-        }
-    };
-    if baseline_exists {
-        let mut digest = Sha256::new();
-        digest.update(&baseline);
-        let checkpoint_hash = format!("sha256:{:x}", digest.finalize());
-        if baseline_hash.as_deref() != Some(checkpoint_hash.as_str()) {
-            return Err(TurnDiffSourceError::Unavailable(
-                "baseline checkpoint 校验失败，拒绝还原".to_owned(),
-            ));
-        }
-    }
-    let result = if result_exists {
-        let bytes = read_turn_diff_file(&target).await
-            .map_err(|error| TurnDiffSourceError::Failed(format!("read current file: {error}")))?;
-        let current_hash = {
-            let mut digest = Sha256::new();
-            digest.update(&bytes);
-            format!("sha256:{:x}", digest.finalize())
-        };
-        if result_hash.as_deref() != Some(current_hash.as_str()) {
-            return Err(TurnDiffSourceError::Unavailable(
-                "当前文件已在本轮后发生变化，拒绝应用 hunk".to_owned(),
-            ));
-        }
-        bytes
-    } else {
-        if target.exists() {
-            return Err(TurnDiffSourceError::Unavailable(
-                "当前文件已在本轮后重新出现，拒绝覆盖后续修改".to_owned(),
-            ));
-        }
-        Vec::new()
-    };
-    if baseline.len() > 10 * 1024 * 1024 || result.len() > 10 * 1024 * 1024 {
-        return Err(TurnDiffSourceError::Unavailable(
-            "文件超过 inline diff 限额".to_owned(),
-        ));
-    }
-    if require_text
-        && (std::str::from_utf8(&baseline).is_err() || std::str::from_utf8(&result).is_err())
-    {
-        return Err(TurnDiffSourceError::Unavailable(
-            "二进制文件暂不支持 hunk 操作".to_owned(),
-        ));
-    }
-    Ok(TurnDiffSources {
-        baseline,
-        result,
-        baseline_exists,
-        result_exists,
-        baseline_dirty,
-    })
-}
-
-/// Generate a unified text diff without treating the current Git HEAD as the
-/// baseline. This preserves the distinction between pre-existing dirty files
-/// and changes made by the selected turn, and also works in non-Git folders.
-fn run_unified_text_diff(path: &str, baseline: &[u8], result: &[u8]) -> Result<String, String> {
-    run_unified_text_diff_bounded(path, baseline, result, usize::MAX).map(|(diff, _)| diff)
-}
-
-fn run_unified_text_diff_bounded(
-    path: &str,
-    baseline: &[u8],
-    result: &[u8],
-    max_output_bytes: usize,
-) -> Result<(String, bool), String> {
-    let id = Ulid::new();
-    let directory = env::temp_dir();
-    let baseline_path = directory.join(format!("aibo-diff-{id}-baseline"));
-    let result_path = directory.join(format!("aibo-diff-{id}-result"));
-    fs::write(&baseline_path, baseline).map_err(|error| format!("write diff baseline: {error}"))?;
-    fs::write(&result_path, result).map_err(|error| format!("write diff result: {error}"))?;
-    // Keep standard a/ and b/ prefixes so the same diff can be safely fed to
-    // Git's patch machinery when hunk-level actions are added.
-    let baseline_label = format!("a/{path}");
-    let result_label = format!("b/{path}");
-    let mut command = Command::new("git");
-    let output = command_output_bounded(
-        command
-            .args([
-                "diff",
-                "--no-index",
-                "--no-ext-diff",
-                "--no-color",
-                "--unified=3",
-                "--no-prefix",
-            ])
-            .arg(&baseline_path)
-            .arg(&result_path),
-        max_output_bytes.saturating_add(1),
-    );
-    let output = match output {
-        Ok(output) => output,
-        Err(error) => {
-            let _ = fs::remove_file(&baseline_path);
-            let _ = fs::remove_file(&result_path);
-            return Err(format!("run unified diff: {error}"));
-        }
-    };
-    let _ = fs::remove_file(&baseline_path);
-    let _ = fs::remove_file(&result_path);
-    if !output.status.success() && output.status.code() != Some(1) {
-        return Err(format!(
-            "git diff --no-index exited with {}: {}",
-            output.status,
-            String::from_utf8_lossy(&output.stderr).trim()
-        ));
-    }
-    let raw_diff = String::from_utf8_lossy(&output.stdout);
-    let normalized = normalize_unified_diff_headers(&raw_diff, &baseline_label, &result_label);
-    let truncated = output.stdout_truncated || normalized.len() > max_output_bytes;
-    let diff = if truncated {
-        truncate_diff_with_marker(&normalized, max_output_bytes)
-    } else {
-        normalized
-    };
-    Ok((diff, truncated))
-}
-
-fn truncate_diff_with_marker(content: &str, max_bytes: usize) -> String {
-    if max_bytes == 0 {
-        return String::new();
-    }
-    if DIFF_TRUNCATION_SUFFIX.len() >= max_bytes {
-        return crate::artifact::truncate_utf8(DIFF_TRUNCATION_SUFFIX, max_bytes, "");
-    }
-    let content_limit = max_bytes - DIFF_TRUNCATION_SUFFIX.len();
-    let mut truncated = crate::artifact::truncate_utf8(content, content_limit, "");
-    truncated.push_str(DIFF_TRUNCATION_SUFFIX);
-    truncated
-}
-
-fn normalize_unified_diff_headers(diff: &str, baseline_label: &str, result_label: &str) -> String {
-    let mut normalized = String::with_capacity(diff.len());
-    let mut file_header = true;
-    let mut replaced_old_header = false;
-    let mut replaced_new_header = false;
-    let mut lines = diff.split('\n').peekable();
-    while let Some(line) = lines.next() {
-        let line = line.strip_suffix('\r').unwrap_or(line);
-        if file_header && line.starts_with("diff --git ") {
-            normalized.push_str("diff --git ");
-            normalized.push_str(baseline_label);
-            normalized.push(' ');
-            normalized.push_str(result_label);
-        } else if file_header && !replaced_old_header && line.starts_with("--- ") {
-            normalized.push_str("--- ");
-            normalized.push_str(baseline_label);
-            replaced_old_header = true;
-        } else if file_header && !replaced_new_header && line.starts_with("+++ ") {
-            normalized.push_str("+++ ");
-            normalized.push_str(result_label);
-            replaced_new_header = true;
-        } else {
-            normalized.push_str(line);
-        }
-        if line.starts_with("@@ ") {
-            file_header = false;
-        }
-        if lines.peek().is_some() {
-            normalized.push('\n');
-        }
-    }
-    normalized
-}
-
-fn parse_unified_hunks(diff: &str) -> Vec<TurnDiffHunk> {
-    let mut hunks = Vec::new();
-    let mut current_header: Option<String> = None;
-    let mut current_lines: Vec<&str> = Vec::new();
-    for line in diff.lines() {
-        if line.starts_with("@@ ") {
-            if let Some(header) = current_header.take() {
-                hunks.push(TurnDiffHunk {
-                    index: hunks.len() as i64,
-                    header,
-                    content: current_lines.join("\n"),
-                });
-                current_lines.clear();
-            }
-            current_header = Some(line.to_owned());
-            current_lines.push(line);
-        } else if current_header.is_some() {
-            current_lines.push(line);
-        }
-    }
-    if let Some(header) = current_header {
-        hunks.push(TurnDiffHunk {
-            index: hunks.len() as i64,
-            header,
-            content: current_lines.join("\n"),
-        });
-    }
-    hunks
-}
-
-fn select_unified_hunk(diff: &str, hunk_index: usize) -> Result<String, String> {
-    let lines: Vec<&str> = diff.lines().collect();
-    let header_start = lines
-        .iter()
-        .position(|line| line.starts_with("--- "))
-        .ok_or_else(|| "diff 缺少文件头".to_owned())?;
-    let plus_header = header_start + 1;
-    if lines
-        .get(plus_header)
-        .map_or(true, |line| !line.starts_with("+++ "))
-    {
-        return Err("diff 缺少目标文件头".to_owned());
-    }
-    let hunk_starts: Vec<usize> = lines
-        .iter()
-        .enumerate()
-        .filter_map(|(index, line)| line.starts_with("@@ ").then_some(index))
-        .collect();
-    let Some(&start) = hunk_starts.get(hunk_index) else {
-        return Err(format!("hunk index {hunk_index} 超出范围"));
-    };
-    let end = hunk_starts
-        .get(hunk_index + 1)
-        .copied()
-        .unwrap_or(lines.len());
-    let mut patch = Vec::with_capacity(end - header_start + 1);
-    patch.extend_from_slice(&lines[header_start..plus_header + 1]);
-    patch.extend_from_slice(&lines[start..end]);
-    Ok(format!("{}\n", patch.join("\n")))
 }
 
 #[tauri::command]
@@ -3233,226 +1888,6 @@ async fn get_session_attachment_preview(session_id: String, attachment_id: Strin
 #[tauri::command]
 async fn register_session_clipboard_images(session_id: String, images: Vec<clipboard_images::ImageInput>, state: State<'_, AppState>) -> Result<Vec<ContextAttachment>, CoreError> {
     clipboard_images::register(&state.db, &state.data_dir, &session_id, images).await
-}
-
-#[tauri::command]
-async fn register_session_attachments(
-    session_id: String,
-    paths: Vec<String>,
-    state: State<'_, AppState>,
-) -> Result<Vec<ContextAttachment>, CoreError> {
-    let session = session_by_id(&state.db, &session_id).await?;
-    let workspace = workspace_by_id(&state.db, &session.workspace_id).await?;
-    let root = fs::canonicalize(&workspace.path)
-        .map_err(|error| CoreError::InvalidWorkspacePath(error.to_string()))?;
-    let now = now_iso();
-    let mut attachments = Vec::new();
-    for raw_path in paths {
-        let target = crate::workspace_guard::canonicalize_target(&root, Path::new(&raw_path))
-            .map_err(CoreError::InvalidWorkspacePath)?;
-        let metadata = fs::metadata(&target).map_err(|error| {
-            CoreError::InvalidWorkspacePath(format!("attachment is unavailable: {error}"))
-        })?;
-        let is_dir = metadata.is_dir();
-        if !is_dir && !metadata.is_file() {
-            return Err(CoreError::InvalidWorkspacePath(
-                "only files and directories can be attached".to_owned(),
-            ));
-        }
-        let relative = target
-            .strip_prefix(&root)
-            .map_err(|error| CoreError::InvalidWorkspacePath(error.to_string()))?
-            .to_string_lossy()
-            .replace('\\', "/");
-        let size = (!is_dir)
-            .then_some(metadata.len())
-            .map(|value| value as i64);
-        let content_hash = if !is_dir && metadata.len() <= 10 * 1024 * 1024 {
-            let bytes =
-                fs::read(&target).map_err(|error| CoreError::Database(error.to_string()))?;
-            let mut digest = Sha256::new();
-            digest.update(bytes);
-            Some(format!("sha256:{:x}", digest.finalize()))
-        } else {
-            None
-        };
-        let id = Ulid::new().to_string();
-        sqlx::query(
-            "INSERT INTO attachments
-             (id, workspace_id, session_id, turn_id, path, content_hash, size,
-              media_type, source, send_strategy, created_at)
-             VALUES (?, ?, ?, NULL, ?, ?, ?, ?, 'picker', 'reference', ?)",
-        )
-        .bind(&id)
-        .bind(&workspace.id)
-        .bind(&session_id)
-        .bind(&relative)
-        .bind(&content_hash)
-        .bind(size)
-        .bind(attachment_media_type(&target, is_dir))
-        .bind(&now)
-        .execute(&state.db)
-        .await?;
-        attachments.push(ContextAttachment {
-            schema: "aibo.context-attachment/v1".to_owned(),
-            id,
-            workspace_id: workspace.id.clone(),
-            session_id: session_id.clone(),
-            turn_id: None,
-            path: relative,
-            content_hash,
-            size,
-            media_type: attachment_media_type(&target, is_dir),
-            source: "picker".to_owned(),
-            send_strategy: "reference".to_owned(),
-            inline_context: None,
-            created_at: now.clone(),
-        });
-    }
-    Ok(attachments)
-}
-
-#[tauri::command]
-async fn list_session_attachments(
-    session_id: String,
-    state: State<'_, AppState>,
-) -> Result<Vec<ContextAttachment>, CoreError> {
-    session_by_id(&state.db, &session_id).await?;
-    let rows = sqlx::query(
-        "SELECT id, schema_version, workspace_id, session_id, turn_id, path, content_hash, size,
-                media_type, source, send_strategy, created_at, inline_context
-         FROM attachments WHERE session_id = ? AND (queued_message_id IS NULL OR turn_id IS NOT NULL) ORDER BY created_at ASC",
-    )
-    .bind(&session_id)
-    .fetch_all(&state.db)
-    .await?;
-    rows.iter()
-        .map(|row| {
-            Ok(ContextAttachment {
-                schema: row.try_get("schema_version")?,
-                id: row.try_get("id")?,
-                workspace_id: row.try_get("workspace_id")?,
-                session_id: row.try_get("session_id")?,
-                turn_id: row.try_get("turn_id")?,
-                path: row.try_get("path")?,
-                content_hash: row.try_get("content_hash")?,
-                size: row.try_get("size")?,
-                media_type: row.try_get("media_type")?,
-                source: row.try_get("source")?,
-                send_strategy: row.try_get("send_strategy")?,
-                inline_context: row.try_get("inline_context")?,
-                created_at: row.try_get("created_at")?,
-            })
-        })
-        .collect::<Result<Vec<_>, sqlx::Error>>()
-        .map_err(Into::into)
-}
-
-#[tauri::command]
-async fn remove_session_attachment(
-    session_id: String,
-    attachment_id: String,
-    state: State<'_, AppState>,
-) -> Result<(), CoreError> {
-    session_by_id(&state.db, &session_id).await?;
-    let deleted = sqlx::query("DELETE FROM attachments WHERE id = ? AND session_id = ? AND turn_id IS NULL AND queued_message_id IS NULL RETURNING media_type, inline_context")
-        .bind(&attachment_id).bind(&session_id).fetch_optional(&state.db).await?;
-    if let Some(row) = deleted {
-        if row.get::<String,_>("media_type").starts_with("image/") {
-            if let Some(context) = row.get::<Option<String>,_>("inline_context") { clipboard_images::remove_file(&state.data_dir, &context); }
-        }
-    }
-    Ok(())
-}
-
-pub(crate) async fn bind_pending_attachments_to_turn(
-    db: &SqlitePool,
-    session_id: &str,
-    internal_turn_id: &str,
-) -> Result<(), sqlx::Error> {
-    sqlx::query("UPDATE attachments SET turn_id = ? WHERE session_id = ? AND turn_id IS NULL")
-        .bind(internal_turn_id)
-        .bind(session_id)
-        .execute(db)
-        .await?;
-    Ok(())
-}
-
-#[tauri::command]
-async fn validate_session_attachments(
-    session_id: String,
-    state: State<'_, AppState>,
-) -> Result<Vec<ContextAttachmentValidation>, CoreError> {
-    let session = session_by_id(&state.db, &session_id).await?;
-    let workspace = workspace_by_id(&state.db, &session.workspace_id).await?;
-    let root = fs::canonicalize(&workspace.path)
-        .map_err(|error| CoreError::InvalidWorkspacePath(error.to_string()))?;
-    let rows = sqlx::query(
-        "SELECT id, path, content_hash, size FROM attachments
-         WHERE session_id = ? AND turn_id IS NULL AND queued_message_id IS NULL AND inline_context IS NULL ORDER BY created_at ASC",
-    )
-    .bind(&session_id)
-    .fetch_all(&state.db)
-    .await?;
-    rows.iter()
-        .map(|row| {
-            let id: String = row.try_get("id")?;
-            let path: String = row.try_get("path")?;
-            let expected_hash: Option<String> = row.try_get("content_hash")?;
-            let expected_size: Option<i64> = row.try_get("size")?;
-            let result = crate::workspace_guard::canonicalize_target(&root, Path::new(&path));
-            let (status, reason, current_hash, size) = match result {
-                Err(error) => ("missing", Some(error), None, None),
-                Ok(target) => match fs::metadata(&target) {
-                    Err(error) => ("missing", Some(error.to_string()), None, None),
-                    Ok(metadata) => {
-                        let size = (!metadata.is_dir()).then_some(metadata.len() as i64);
-                        if let Some(expected_size) = expected_size {
-                            if size != Some(expected_size) {
-                                return Ok(ContextAttachmentValidation {
-                                    id,
-                                    path,
-                                    status: "changed".to_owned(),
-                                    reason: Some("文件大小已变化".to_owned()),
-                                    current_hash: None,
-                                    size,
-                                });
-                            }
-                        }
-                        let current_hash =
-                            if metadata.is_file() && metadata.len() <= 10 * 1024 * 1024 {
-                                let bytes = fs::read(&target)
-                                    .map_err(|error| sqlx::Error::Protocol(error.to_string()))?;
-                                let mut digest = Sha256::new();
-                                digest.update(bytes);
-                                Some(format!("sha256:{:x}", digest.finalize()))
-                            } else {
-                                None
-                            };
-                        if expected_hash.is_some() && current_hash != expected_hash {
-                            (
-                                "changed",
-                                Some("文件内容已变化".to_owned()),
-                                current_hash,
-                                size,
-                            )
-                        } else {
-                            ("ready", None, current_hash, size)
-                        }
-                    }
-                },
-            };
-            Ok(ContextAttachmentValidation {
-                id,
-                path,
-                status: status.to_owned(),
-                reason,
-                current_hash,
-                size,
-            })
-        })
-        .collect::<Result<Vec<_>, sqlx::Error>>()
-        .map_err(Into::into)
 }
 
 #[tauri::command]
@@ -3945,9 +2380,6 @@ async fn invoke_agent_capability(session_id: String, capability: String, input: 
     state.plugins.invoke_capability_from(window.label(), &session_id, &capability, input).await
 }
 
-
-
-
 #[tauri::command]
 async fn resolve_agent_approval(
     session_id: String,
@@ -3993,21 +2425,6 @@ async fn resolve_agent_user_input(
     }
     Err(CoreError::SessionOperation("history_only: old native session cannot execute".into()))
 }
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 #[tauri::command]
 async fn get_session_models(
@@ -4092,11 +2509,6 @@ fn plugin_model_catalog(result: &serde_json::Value, reasoning: Option<&serde_jso
     Ok(SessionModelCatalog { parameter_scope, current, models, current_reasoning_effort, reasoning_efforts, current_service_tier, current_context_window })
 }
 
-
-
-
-
-
 #[tauri::command]
 async fn get_pi_session_tree(
     session_id: String,
@@ -4134,7 +2546,6 @@ async fn navigate_pi_session_tree(
     }
     Err(CoreError::SessionOperation("legacy Pi session is history-only; tree navigation requires a new Pi SDK plugin session".to_owned()))
 }
-
 
 fn find_executable(name: &str) -> Option<PathBuf> {
     if name == "node" { return node_runtime::executable(); }
@@ -4518,6 +2929,77 @@ async fn get_app_snapshot(state: State<'_, AppState>) -> Result<AppSnapshot, Cor
     })
 }
 
+#[tauri::command]
+async fn get_turn_change_set(
+    session_id: String,
+    turn_id: Option<String>,
+    state: State<'_, AppState>,
+) -> Result<Option<TurnChangeSet>, CoreError> {
+    turn_changes::get_turn_change_set(session_id, turn_id, &state.db).await
+}
+
+#[tauri::command]
+async fn list_turn_checkpoints(
+    session_id: String,
+    turn_id: Option<String>,
+    state: State<'_, AppState>,
+) -> Result<Vec<CheckpointFile>, CoreError> {
+    turn_changes::list_turn_checkpoints(session_id, turn_id, &state.db).await
+}
+
+#[tauri::command]
+async fn list_restore_operations(
+    session_id: String,
+    turn_id: Option<String>,
+    state: State<'_, AppState>,
+) -> Result<Vec<RestoreOperation>, CoreError> {
+    turn_changes::list_restore_operations(session_id, turn_id, &state.db).await
+}
+
+#[tauri::command]
+async fn get_turn_file_diff(
+    session_id: String,
+    turn_id: String,
+    path: String,
+    state: State<'_, AppState>,
+) -> Result<TurnFileDiff, CoreError> {
+    turn_changes::get_turn_file_diff(session_id, turn_id, path, &state.db, &state.data_dir).await
+}
+
+#[tauri::command]
+async fn register_session_attachments(
+    session_id: String,
+    paths: Vec<String>,
+    state: State<'_, AppState>,
+) -> Result<Vec<ContextAttachment>, CoreError> {
+    session_attachments::register_session_attachments(session_id, paths, &state.db).await
+}
+
+#[tauri::command]
+async fn list_session_attachments(
+    session_id: String,
+    state: State<'_, AppState>,
+) -> Result<Vec<ContextAttachment>, CoreError> {
+    session_attachments::list_session_attachments(session_id, &state.db).await
+}
+
+#[tauri::command]
+async fn remove_session_attachment(
+    session_id: String,
+    attachment_id: String,
+    state: State<'_, AppState>,
+) -> Result<(), CoreError> {
+    session_attachments::remove_session_attachment(session_id, attachment_id, &state.db, &state.data_dir).await
+}
+
+#[tauri::command]
+async fn validate_session_attachments(
+    session_id: String,
+    state: State<'_, AppState>,
+) -> Result<Vec<ContextAttachmentValidation>, CoreError> {
+    session_attachments::validate_session_attachments(session_id, &state.db).await
+}
+
 pub fn run() {
     let _ = tracing_subscriber::fmt()
         .with_env_filter(
@@ -4550,18 +3032,9 @@ pub fn run() {
             if let Err(error)=tauri::async_runtime::block_on(presentation_packages::collect_removed(&db,&data_dir)) {
                 warn!(%error,"presentation resource cleanup deferred");
             }
-            tauri::async_runtime::block_on(recover_interrupted_turn_changes(&db)).map_err(
-                |error| {
-                    Box::new(CoreError::Initialization(format!(
-                        "recover interrupted turn changes: {error}"
-                    ))) as Box<dyn Error>
-                },
-            )?;
-            tauri::async_runtime::block_on(recover_interrupted_sessions(&db)).map_err(|error| {
-                Box::new(CoreError::Initialization(format!(
-                    "recover interrupted sessions: {error}"
-                ))) as Box<dyn Error>
-            })?;
+            let recovery = tauri::async_runtime::block_on(session_recovery::recover(&db))
+                .map_err(|error| Box::new(CoreError::Initialization(error)) as Box<dyn Error>)?;
+            info!(sessions = recovery.sessions, change_sets = recovery.change_sets, "interrupted session recovery complete");
             tauri::async_runtime::block_on(project_actions::recover(&db))
                 .map_err(|error| Box::new(CoreError::Initialization(format!("recover project tasks: {error}"))) as Box<dyn Error>)?;
             tauri::async_runtime::block_on(workspace_write_runs::recover(&db))
@@ -4724,17 +3197,16 @@ pub fn run() {
 #[cfg(test)]
 mod tests {
     use super::{
-        auto_name_session_from_first_message, bind_pending_attachments_to_turn,
+        auto_name_session_from_first_message,
         canonical_workspace_path, collect_workspace_capabilities,
-        executable_search_path_from, find_executable, mark_turn_interrupted,
+        executable_search_path_from, find_executable,
         normalize_session_filter, now_iso, open_database,
-        persist_restore_operation, session_snapshot_timeline, plugin_model_catalog, recover_interrupted_sessions,
-        recover_interrupted_turn_changes, require_trusted_workspace,
+        persist_restore_operation, session_snapshot_timeline, plugin_model_catalog,
+         require_trusted_workspace,
         session_execution_profile, session_label_from_first_message,
         workspace_label, CoreError, SessionListFilter, Workspace,
     };
     use crate::change_set::{
-        capture as capture_workspace, persist_baseline_checkpoint, persist_checkpoint_metadata,
         RestoreReport,
     };
     use crate::execution_profile;
@@ -4935,46 +3407,6 @@ mod tests {
         });
     }
 
-    #[test]
-    fn unified_diff_uses_turn_baseline_instead_of_head() {
-        let diff = super::run_unified_text_diff(
-            "src/main.rs",
-            b"fn main() {\n  old();\n}\n",
-            b"fn main() {\n  new();\n}\n",
-        )
-        .expect("unified diff");
-        assert!(diff.contains("a/src/main.rs"));
-        assert!(diff.contains("b/src/main.rs"));
-        assert!(diff.contains("-  old();"));
-        assert!(diff.contains("+  new();"));
-        let hunks = super::parse_unified_hunks(&diff);
-        assert_eq!(hunks.len(), 1);
-        assert!(hunks[0].header.starts_with("@@ "));
-        assert!(hunks[0].content.contains("+  new();"));
-        let patch = super::select_unified_hunk(&diff, 0).expect("select hunk patch");
-        assert!(patch.starts_with("--- a/src/main.rs\n+++ b/src/main.rs\n@@ "));
-    }
-
-    #[test]
-    fn unified_diff_supports_an_empty_baseline_for_untracked_files() {
-        let diff = super::run_unified_text_diff("new.txt", b"", b"new line\n")
-            .expect("untracked file diff");
-        assert!(diff.contains("--- a/new.txt"));
-        assert!(diff.contains("+++ b/new.txt"));
-        assert!(diff.contains("+new line"));
-    }
-
-    #[test]
-    fn bounded_unified_diff_limits_large_output() {
-        let result = vec![b'x'; 10_000];
-        let (diff, truncated) =
-            super::run_unified_text_diff_bounded("large.txt", b"", &result, 1_000)
-                .expect("bounded diff");
-        assert!(truncated);
-        assert!(diff.len() <= 1_000);
-        assert!(diff.ends_with("diff 已截断"));
-    }
-
     #[tokio::test]
     async fn workspace_git_index_actions_stage_and_unstage_files() {
         let root = test_directory();
@@ -5046,322 +3478,6 @@ mod tests {
             SessionListFilter::State("running")
         );
         assert!(normalize_session_filter(Some("unknown")).is_err());
-    }
-
-    #[test]
-    fn startup_recovery_marks_stale_runtime_state_interrupted() {
-        tauri::async_runtime::block_on(async {
-            let directory = test_directory();
-            let database_path = directory.join("aibo.sqlite3");
-            let pool = open_database(&database_path).await.expect("database");
-            let now = now_iso();
-            let directory_path = directory.to_string_lossy().to_string();
-            sqlx::query(
-                "INSERT INTO workspaces (id, path, label, trusted, created_at, updated_at)
-                 VALUES ('workspace', ?, 'workspace', 1, ?, ?)",
-            )
-            .bind(&directory_path)
-            .bind(&now)
-            .bind(&now)
-            .execute(&pool)
-            .await
-            .expect("workspace");
-            for (id, state, archived) in [
-                ("running", "running", 0_i64),
-                ("waiting", "waiting_approval", 0),
-                ("archived", "running", 1),
-            ] {
-                sqlx::query(
-                    "INSERT INTO sessions (id, workspace_id, agent, label, state, archived, created_at, updated_at)
-                     VALUES (?, 'workspace', 'pi', ?, ?, ?, ?, ?)",
-                )
-                .bind(id)
-                .bind(id)
-                .bind(state)
-                .bind(archived)
-                .bind(&now)
-                .bind(&now)
-                .execute(&pool)
-                .await
-                .expect("session");
-            }
-            sqlx::query(
-                "INSERT INTO turns (id, session_id, external_turn_id, status, started_at)
-                 VALUES ('turn', 'running', 'external-turn', 'running', ?)",
-            )
-            .bind(&now)
-            .execute(&pool)
-            .await
-            .expect("turn");
-            sqlx::query(
-                "INSERT INTO messages (id, session_id, role, content, status, created_at, updated_at)
-                 VALUES ('message', 'running', 'assistant', '', 'streaming', ?, ?)",
-            )
-            .bind(&now)
-            .bind(&now)
-            .execute(&pool)
-            .await
-            .expect("message");
-            sqlx::query(
-                "INSERT INTO messages (id, session_id, role, content, status, created_at, updated_at)
-                 VALUES ('queued-message', 'running', 'user', 'pending', 'queued', ?, ?)",
-            )
-            .bind(&now)
-            .bind(&now)
-            .execute(&pool)
-            .await
-            .expect("queued message");
-            sqlx::query(
-                "INSERT INTO process_runs (id, session_id, agent, generation_id, state, started_at)
-                 VALUES ('process', 'running', 'pi', 'generation', 'running', ?)",
-            )
-            .bind(&now)
-            .execute(&pool)
-            .await
-            .expect("process run");
-            let recovered = recover_interrupted_sessions(&pool).await.expect("recovery");
-            assert_eq!(recovered, 2);
-            let state: String =
-                sqlx::query_scalar("SELECT state FROM sessions WHERE id = 'running'")
-                    .fetch_one(&pool)
-                    .await
-                    .expect("running state");
-            assert_eq!(state, "interrupted");
-            let turn_state: String =
-                sqlx::query_scalar("SELECT status FROM turns WHERE id = 'turn'")
-                    .fetch_one(&pool)
-                    .await
-                    .expect("turn state");
-            assert_eq!(turn_state, "interrupted");
-            let message_state: String =
-                sqlx::query_scalar("SELECT status FROM messages WHERE id = 'message'")
-                    .fetch_one(&pool)
-                    .await
-                    .expect("message state");
-            assert_eq!(message_state, "failed");
-            let queued_state: String =
-                sqlx::query_scalar("SELECT status FROM messages WHERE id = 'queued-message'")
-                    .fetch_one(&pool)
-                    .await
-                    .expect("queued message state");
-            assert_eq!(queued_state, "failed");
-            let process_state: String =
-                sqlx::query_scalar("SELECT state FROM process_runs WHERE id = 'process'")
-                    .fetch_one(&pool)
-                    .await
-                    .expect("process state");
-            assert_eq!(process_state, "crashed");
-            let archived_state: String =
-                sqlx::query_scalar("SELECT state FROM sessions WHERE id = 'archived'")
-                    .fetch_one(&pool)
-                    .await
-                    .expect("archived state");
-            assert_eq!(archived_state, "running");
-            pool.close().await;
-            let _ = fs::remove_file(&database_path);
-            let _ = fs::remove_file(database_path.with_extension("sqlite3-wal"));
-            let _ = fs::remove_file(database_path.with_extension("sqlite3-shm"));
-            fs::remove_dir_all(directory).expect("cleanup");
-        });
-    }
-
-    #[test]
-    fn in_process_adapter_crash_marks_active_turn_and_messages_interrupted() {
-        tauri::async_runtime::block_on(async {
-            let directory = test_directory();
-            let database_path = directory.join("aibo.sqlite3");
-            let pool = open_database(&database_path).await.expect("database");
-            let now = now_iso();
-            let workspace_path = directory.to_string_lossy().to_string();
-            sqlx::query(
-                "INSERT INTO workspaces (id, path, label, trusted, created_at, updated_at)
-                 VALUES ('workspace', ?, 'workspace', 1, ?, ?)",
-            )
-            .bind(&workspace_path)
-            .bind(&now)
-            .bind(&now)
-            .execute(&pool)
-            .await
-            .expect("workspace");
-            sqlx::query(
-                "INSERT INTO sessions (id, workspace_id, agent, label, state, archived, created_at, updated_at)
-                 VALUES ('session', 'workspace', 'pi', 'session', 'running', 0, ?, ?)",
-            )
-            .bind(&now)
-            .bind(&now)
-            .execute(&pool)
-            .await
-            .expect("session");
-            sqlx::query(
-                "INSERT INTO turns (id, session_id, external_turn_id, status, started_at)
-                 VALUES ('turn', 'session', 'external-turn', 'running', ?)",
-            )
-            .bind(&now)
-            .execute(&pool)
-            .await
-            .expect("turn");
-            for (id, role, status) in [
-                ("assistant", "assistant", "streaming"),
-                ("queued", "user", "queued"),
-            ] {
-                sqlx::query(
-                    "INSERT INTO messages (id, session_id, turn_id, role, content, status, created_at, updated_at)
-                     VALUES (?, 'session', 'turn', ?, '', ?, ?, ?)",
-                )
-                .bind(id)
-                .bind(role)
-                .bind(status)
-                .bind(&now)
-                .bind(&now)
-                .execute(&pool)
-                .await
-                .expect("message");
-            }
-
-            mark_turn_interrupted(&pool, "session", "turn")
-                .await
-                .expect("mark interrupted");
-            let turn_status: String =
-                sqlx::query_scalar("SELECT status FROM turns WHERE id = 'turn'")
-                    .fetch_one(&pool)
-                    .await
-                    .expect("turn status");
-            assert_eq!(turn_status, "interrupted");
-            let remaining_active: i64 = sqlx::query_scalar(
-                "SELECT COUNT(*) FROM messages WHERE session_id = 'session' AND status IN ('streaming', 'queued')",
-            )
-            .fetch_one(&pool)
-            .await
-            .expect("message statuses");
-            assert_eq!(remaining_active, 0);
-            pool.close().await;
-            let _ = fs::remove_file(&database_path);
-            let _ = fs::remove_file(database_path.with_extension("sqlite3-wal"));
-            let _ = fs::remove_file(database_path.with_extension("sqlite3-shm"));
-            fs::remove_dir_all(directory).expect("cleanup");
-        });
-    }
-
-    #[test]
-    fn startup_recovery_rebuilds_interrupted_turn_change_set_from_checkpoint() {
-        tauri::async_runtime::block_on(async {
-            let directory = test_directory();
-            let database_path = directory.join("aibo.sqlite3");
-            let pool = open_database(&database_path).await.expect("database");
-            let now = now_iso();
-            let workspace_root = directory.join("workspace");
-            fs::create_dir_all(&workspace_root).expect("workspace directory");
-            let workspace_path = workspace_root.to_string_lossy().to_string();
-            fs::write(workspace_root.join("notes.txt"), "before").expect("baseline file");
-            sqlx::query(
-                "INSERT INTO workspaces (id, path, label, trusted, created_at, updated_at)
-                 VALUES ('workspace', ?, 'workspace', 1, ?, ?)",
-            )
-            .bind(&workspace_path)
-            .bind(&now)
-            .bind(&now)
-            .execute(&pool)
-            .await
-            .expect("workspace");
-            sqlx::query(
-                "INSERT INTO sessions (id, workspace_id, agent, label, state, archived, created_at, updated_at)
-                 VALUES ('session', 'workspace', 'pi', 'session', 'running', 0, ?, ?)",
-            )
-            .bind(&now)
-            .bind(&now)
-            .execute(&pool)
-            .await
-            .expect("session");
-            sqlx::query(
-                "INSERT INTO turns (id, session_id, external_turn_id, status, input_text, started_at)
-                 VALUES ('turn', 'session', 'external-turn', 'running', 'update notes', ?)",
-            )
-            .bind(&now)
-            .execute(&pool)
-            .await
-            .expect("turn");
-
-            let baseline = capture_workspace(&workspace_root)
-                .await
-                .expect("baseline snapshot");
-            let checkpoint_root = directory.join("app-data").join("checkpoints");
-            persist_baseline_checkpoint(
-                &checkpoint_root,
-                "session",
-                "turn",
-                &workspace_root,
-                &baseline,
-            )
-            .await
-            .expect("checkpoint bytes");
-            persist_checkpoint_metadata(
-                &pool,
-                &checkpoint_root,
-                "workspace",
-                "session",
-                "turn",
-                &baseline,
-            )
-            .await
-            .expect("checkpoint metadata");
-            fs::write(workspace_root.join("notes.txt"), "agent result").expect("result file");
-            sqlx::query(
-                "INSERT INTO turns (id, session_id, external_turn_id, status, input_text, started_at)
-                 VALUES ('turn-missing-checkpoint', 'session', 'external-turn-2', 'running', 'no checkpoint', ?)",
-            )
-            .bind(&now)
-            .execute(&pool)
-            .await
-            .expect("turn without checkpoint");
-
-            let recovered = recover_interrupted_turn_changes(&pool)
-                .await
-                .expect("reconstruct change set");
-            assert_eq!(recovered, 2);
-            let attribution: String = sqlx::query_scalar(
-                "SELECT attribution FROM turn_change_sets WHERE session_id = 'session' AND turn_id = 'turn'",
-            )
-            .fetch_one(&pool)
-            .await
-            .expect("attribution");
-            assert_eq!(attribution, "unknown");
-            let capture_error: String = sqlx::query_scalar(
-                "SELECT capture_error FROM turn_change_sets WHERE session_id = 'session' AND turn_id = 'turn'",
-            )
-            .fetch_one(&pool)
-            .await
-            .expect("capture error");
-            assert!(capture_error.contains("重启后重建"));
-            let changed_path: String = sqlx::query_scalar(
-                "SELECT path FROM file_changes WHERE change_set_id = (SELECT id FROM turn_change_sets WHERE turn_id = 'turn')",
-            )
-            .fetch_one(&pool)
-            .await
-            .expect("file change");
-            assert_eq!(changed_path, "notes.txt");
-            let missing_checkpoint_error: String = sqlx::query_scalar(
-                "SELECT capture_error FROM turn_change_sets WHERE session_id = 'session' AND turn_id = 'turn-missing-checkpoint'",
-            )
-            .fetch_one(&pool)
-            .await
-            .expect("missing checkpoint error");
-            assert!(missing_checkpoint_error.contains("checkpoint 未持久化"));
-
-            recover_interrupted_sessions(&pool)
-                .await
-                .expect("runtime recovery");
-            let turn_state: String =
-                sqlx::query_scalar("SELECT status FROM turns WHERE id = 'turn'")
-                    .fetch_one(&pool)
-                    .await
-                    .expect("turn state");
-            assert_eq!(turn_state, "interrupted");
-            pool.close().await;
-            let _ = fs::remove_file(&database_path);
-            let _ = fs::remove_file(database_path.with_extension("sqlite3-wal"));
-            let _ = fs::remove_file(database_path.with_extension("sqlite3-shm"));
-            fs::remove_dir_all(directory).expect("cleanup");
-        });
     }
 
     #[test]
@@ -5656,59 +3772,6 @@ mod tests {
             .any(|entry| entry.name == "checkpoint-restore"));
         assert!(inventory.warnings.is_empty());
         fs::remove_dir_all(directory).expect("cleanup");
-    }
-
-    #[test]
-    fn binds_only_pending_attachments_for_the_requested_session() {
-        tauri::async_runtime::block_on(async {
-            let pool = sqlx::SqlitePool::connect("sqlite::memory:")
-                .await
-                .expect("database");
-            sqlx::query(
-                "CREATE TABLE attachments (id TEXT PRIMARY KEY, session_id TEXT, turn_id TEXT)",
-            )
-            .execute(&pool)
-            .await
-            .expect("attachments table");
-            for (id, session_id, turn_id) in [
-                ("pending", "session", None),
-                ("bound", "session", Some("old-turn")),
-                ("other", "other-session", None),
-            ] {
-                sqlx::query("INSERT INTO attachments (id, session_id, turn_id) VALUES (?, ?, ?)")
-                    .bind(id)
-                    .bind(session_id)
-                    .bind(turn_id)
-                    .execute(&pool)
-                    .await
-                    .expect("attachment");
-            }
-
-            bind_pending_attachments_to_turn(&pool, "session", "new-turn")
-                .await
-                .expect("bind pending attachments");
-            let rows = sqlx::query("SELECT id, turn_id FROM attachments ORDER BY id")
-                .fetch_all(&pool)
-                .await
-                .expect("attachment rows");
-            let values = rows
-                .iter()
-                .map(|row| {
-                    (
-                        row.get::<String, _>("id"),
-                        row.get::<Option<String>, _>("turn_id"),
-                    )
-                })
-                .collect::<Vec<_>>();
-            assert_eq!(
-                values,
-                vec![
-                    ("bound".to_owned(), Some("old-turn".to_owned())),
-                    ("other".to_owned(), None),
-                    ("pending".to_owned(), Some("new-turn".to_owned())),
-                ]
-            );
-        });
     }
 
     #[test]

@@ -1065,7 +1065,7 @@ async fn durable_queue_survives_stop_and_restart_until_explicit_resume() {
     let snapshot=queue_state(&host,&session.id).await;
     assert_eq!(snapshot["paused"],true); assert_eq!(snapshot["items"][0]["text"],"after stop");
     broker.stop_session(&session.id).await.unwrap();
-    crate::recover_interrupted_sessions(&db).await.unwrap();
+    crate::session_recovery::recover(&db).await.unwrap();
     let restored=SessionHost::new(db.clone(),broker.clone());
     assert_eq!(queue_state(&restored,&session.id).await["items"][0]["id"],snapshot["items"][0]["id"]);
     restored.invoke_capability_from("main",&session.id,"queue.manage",json!({"action":"resume"})).await.unwrap();
@@ -1151,7 +1151,7 @@ async fn external_queue_survives_restart_and_never_retries_uncertain_delivery() 
     // Simulate a process exit after durable claim but before an acknowledgement.
     sqlx::query("UPDATE queued_messages SET status='sending' WHERE session_id=?").bind(&session.id).execute(&db).await.unwrap();
     broker.stop_session(&session.id).await.unwrap();
-    crate::recover_interrupted_sessions(&db).await.unwrap();
+    crate::session_recovery::recover(&db).await.unwrap();
     let restored = SessionHost::new(db.clone(), broker.clone());
     let snapshot = queue_state(&restored, &session.id).await;
     assert_eq!(snapshot["items"][0]["id"], before["items"][0]["id"]);

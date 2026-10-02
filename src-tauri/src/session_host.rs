@@ -286,11 +286,8 @@ impl SessionHost {
         sqlx::query("INSERT INTO turns(id,session_id,external_turn_id,status,input_text,started_at) VALUES(?,?,?,'running',?,?)").bind(&turn).bind(session_id).bind(&turn).bind(text).bind(&now).execute(&mut *tx).await.map_err(|e|e.to_string())?;
         sqlx::query("INSERT INTO messages(id,session_id,turn_id,role,content,status,created_at,updated_at) VALUES(?,?,?,'user',?,'completed',?,?)").bind(&message).bind(session_id).bind(&turn).bind(text).bind(&now).bind(&now).execute(&mut *tx).await.map_err(|e|e.to_string())?;
         let attachments = if goal_resume { vec![] } else {
-            let rows = sqlx::query("SELECT id,media_type,inline_context,content_hash FROM attachments WHERE session_id=? AND turn_id IS NULL AND queued_message_id IS ? ORDER BY created_at")
-                .bind(session_id).bind(queue_id).fetch_all(&mut *tx).await.map_err(|e|e.to_string())?;
-            rows.iter().map(|row| crate::clipboard_images::turn_attachment(row, &session.capabilities)).collect::<Result<Vec<_>,_>>()?
+            crate::session_attachments::prepare_turn(&mut tx, session_id, queue_id, &turn, &session.capabilities).await?
         };
-        if !goal_resume {sqlx::query("UPDATE attachments SET turn_id=? WHERE session_id=? AND turn_id IS NULL AND queued_message_id IS ?").bind(&turn).bind(session_id).bind(queue_id).execute(&mut *tx).await.map_err(|e|e.to_string())?;}
         if queue_id.is_none() && !goal_resume {
             sqlx::query("UPDATE session_queues SET paused=0 WHERE session_id=? AND NOT EXISTS(SELECT 1 FROM queued_messages WHERE session_id=?)")
                 .bind(session_id).bind(session_id).execute(&mut *tx).await.map_err(|e|e.to_string())?;

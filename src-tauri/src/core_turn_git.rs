@@ -1,5 +1,6 @@
 //! Turn-scoped Git mutations. The host ledger owns approval and execution lifetime.
-use crate::{CoreError, GitFileActionResult, GitHunkActionResult, TurnDiffSourceError, workspace_write_runs::Request};
+use crate::turn_changes::TurnDiffSourceError;
+use crate::{CoreError, GitFileActionResult, GitHunkActionResult, workspace_write_runs::Request};
 use sqlx::SqlitePool;
 use std::path::{Path, PathBuf};
 use tokio::io::AsyncWriteExt;
@@ -32,7 +33,7 @@ pub(crate) async fn apply_file(
             return crate::workspace_git::apply_git_index_action(&workspace.path, path, action, Some(cancel)).await;
         }
         let result = |applied, message: String| GitFileActionResult { path: path.into(), action: action.into(), applied, message };
-        let sources = match crate::load_turn_diff_sources(db, data_dir, &workspace.path, session_id, turn_id.unwrap(), path, false).await {
+        let sources = match crate::turn_changes::load_turn_diff_sources(db, data_dir, &workspace.path, session_id, turn_id.unwrap(), path, false).await {
             Ok(sources) => sources,
             Err(TurnDiffSourceError::NotChanged) => return Ok(result(false, "该文件不在本轮变更记录中".into())),
             Err(TurnDiffSourceError::Unavailable(message)) => return Ok(result(false, message)),
@@ -75,7 +76,7 @@ impl Drop for RestoreTemp {
 }
 
 pub(crate) async fn restore_worktree(
-    workspace_path: &str, path: &str, sources: &crate::TurnDiffSources,
+    workspace_path: &str, path: &str, sources: &crate::turn_changes::TurnDiffSources,
     baseline_mode: Option<u32>,
     cancel: Option<&crate::workspace_write_runs::Cancellation>,
 ) -> Result<(), CoreError> {
@@ -122,7 +123,7 @@ pub(crate) async fn restore_worktree(
     // Recheck after preparing the replacement. An external writer is not covered by
     // the host lock; this reduces the race but is not a filesystem compare-and-swap.
     if sources.result_exists {
-        let current = crate::read_turn_diff_file(&target).await.map_err(|error| CoreError::InvalidWorkspacePath(error.to_string()))?;
+        let current = crate::turn_changes::read_turn_diff_file(&target).await.map_err(|error| CoreError::InvalidWorkspacePath(error.to_string()))?;
         if current != sources.result { return Err(CoreError::InvalidWorkspacePath("文件已在准备恢复期间变化，拒绝覆盖".into())); }
     } else {
         match tokio::fs::symlink_metadata(&target).await {
@@ -188,7 +189,7 @@ pub(crate) async fn apply_hunk(
         let result = |applied, message: String| GitHunkActionResult {
             path: path.into(), hunk_index, action: action.into(), applied, message,
         };
-        let sources = match crate::load_turn_diff_sources(db, data_dir, &workspace.path, session_id, turn_id, path, true).await {
+        let sources = match crate::turn_changes::load_turn_diff_sources(db, data_dir, &workspace.path, session_id, turn_id, path, true).await {
             Ok(sources) => sources,
             Err(TurnDiffSourceError::NotChanged) => return Ok(result(false, "该文件不在本轮变更记录中".into())),
             Err(TurnDiffSourceError::Unavailable(message)) => return Ok(result(false, message)),
@@ -213,12 +214,12 @@ pub(crate) async fn apply_hunk(
         if diff.stdout.len() > 256 * 1024 || diff.stderr.len() > 256 * 1024 {
             return Ok(result(false, "hunk diff 超过 256 KiB，未执行局部修改".into()));
         }
-        let normalized = crate::normalize_unified_diff_headers(
+        let normalized = crate::text_diff::normalize_unified_diff_headers(
             &String::from_utf8_lossy(&diff.stdout),
             &if sources.baseline_exists { patch_label("a", path) } else { "/dev/null".into() },
             &if sources.result_exists { patch_label("b", path) } else { "/dev/null".into() },
         );
-        let patch = crate::select_unified_hunk(&normalized, hunk_index as usize).map_err(CoreError::Database)?;
+        let patch = crate::text_diff::select_unified_hunk(&normalized, hunk_index as usize).map_err(CoreError::Database)?;
         let patch_path = directory.0.join("selected.patch");
         tokio::fs::write(&patch_path, patch).await.map_err(|error| CoreError::Database(error.to_string()))?;
         let mut args = vec!["apply", "--check", "--whitespace=nowarn"];
@@ -576,4 +577,33 @@ mod tests {
             f.close().await;
         }
     }
+
+    #[tokio::test]
+    async fn preview_and_write_share_evidence_checks_without_sharing_authorization() {
+        for restriction in ["unknown", "renamed", "corrupt", "later-edit"] {
+            let f = Fixture::new("review.txt").await;
+            let preview = crate::turn_changes::get_turn_file_diff("session".into(), "turn".into(), f.path.clone(), &f.db, &f.directory.0).await.unwrap();
+            assert!(preview.available);
+            assert_eq!(preview.hunks.len(), 2);
+            match restriction {
+                "unknown" => { sqlx::query("UPDATE turn_change_sets SET attribution='unknown'").execute(&f.db).await.unwrap(); }
+                "renamed" => { sqlx::query("UPDATE file_changes SET change_kind='renamed'").execute(&f.db).await.unwrap(); }
+                "corrupt" => {
+                    let checkpoint = crate::change_set::checkpoint_file_path(&f.directory.0.join("checkpoints"), "session", "turn", &f.path);
+                    std::fs::create_dir_all(checkpoint.parent().unwrap()).unwrap();
+                    std::fs::write(checkpoint, "corrupt baseline").unwrap();
+                }
+                "later-edit" => { std::fs::write(f.root.join(&f.path), "user edit after preview").unwrap(); }
+                _ => unreachable!(),
+            }
+            let preview = crate::turn_changes::get_turn_file_diff("session".into(), "turn".into(), f.path.clone(), &f.db, &f.directory.0).await.unwrap();
+            assert_eq!(preview.available, matches!(restriction, "unknown" | "renamed"), "{restriction}");
+            let before = std::fs::read(f.root.join(&f.path)).unwrap();
+            let result = f.apply("revert", &approve(restriction)).await.unwrap();
+            assert!(!result.applied, "{restriction}");
+            assert_eq!(std::fs::read(f.root.join(&f.path)).unwrap(), before);
+            f.close().await;
+        }
+    }
+
 }

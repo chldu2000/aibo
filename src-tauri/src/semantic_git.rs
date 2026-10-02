@@ -1,5 +1,6 @@
 //! Trusted P1 read-only semantic Git gateway. No Agent session or plugin runtime.
-use crate::{workspace_by_id, workspace_changes, workspace_file_diff};
+use crate::workspace_diff::workspace_file_diff;
+use crate::{workspace_by_id, workspace_changes};
 use serde::{Deserialize, Serialize};
 use sqlx::SqlitePool;
 use std::{

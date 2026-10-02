@@ -312,7 +312,7 @@ mod tests {
         let two = crate::workspace_changes(&root.join("two")).await.unwrap();
         assert!(!one.files[0].staged);
         assert!(two.files[0].staged);
-        let diff = crate::workspace_file_diff(
+        let diff = crate::workspace_diff::workspace_file_diff(
             &resolve(root.to_str().unwrap(), Some("two")).unwrap(),
             "same.txt",
             true,

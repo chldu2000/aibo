@@ -1,5 +1,6 @@
 //! Bounded whole-turn restore planning and execution, including non-Git workspaces.
-use crate::{CoreError, RestoreTurnChangeSetResult, TurnDiffSources, change_set::RestoreReport, workspace_write_runs::{Cancellation, Request}};
+use crate::turn_changes::TurnDiffSources;
+use crate::{CoreError, RestoreTurnChangeSetResult, change_set::RestoreReport, workspace_write_runs::{Cancellation, Request}};
 use serde::Serialize;
 use serde_json::{json, Value};
 use sha2::{Digest, Sha256};
@@ -41,7 +42,7 @@ async fn read_file(root: &Path, path: &str) -> Result<(Option<Vec<u8>>, Value), 
         Err(error) => Err(invalid(error.to_string())),
         Ok(metadata) => {
             if !metadata.is_file() { return Err(invalid(format!("restore target is not a regular file: {path}"))); }
-            let bytes = crate::read_turn_diff_file(&target).await.map_err(|error| invalid(error.to_string()))?;
+            let bytes = crate::turn_changes::read_turn_diff_file(&target).await.map_err(|error| invalid(error.to_string()))?;
             #[cfg(unix)] let permissions = { use std::os::unix::fs::PermissionsExt; metadata.permissions().mode() };
             #[cfg(not(unix))] let permissions = u32::from(metadata.permissions().readonly());
             let proof = json!({"hash":digest(&bytes),"permissions":permissions});
@@ -92,7 +93,7 @@ async fn prepare(db: &SqlitePool, checkpoints: &Path, root: &Path, session: &str
             let baseline = if file.baseline_exists != 0 {
                 let checkpoint = crate::checkpoint_file_path(checkpoints, session, turn, destination);
                 let bytes = if checkpoint.is_file() {
-                    crate::read_turn_diff_file(&checkpoint).await.map_err(|error| invalid(error.to_string()))?
+                    crate::turn_changes::read_turn_diff_file(&checkpoint).await.map_err(|error| invalid(error.to_string()))?
                 } else if let Some(head) = set["baselineHead"].as_str() {
                     git_read(&root, &["show", &format!("{head}:{destination}")], deadline).await?
                 } else { return Err(invalid(format!("checkpoint unavailable for {destination}"))); };
