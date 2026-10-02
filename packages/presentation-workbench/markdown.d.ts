@@ -14,6 +14,7 @@ export type MarkdownBlock = BlockBase & (
   | {kind: 'list'; ordered: boolean; start: number; items: {checked: boolean | null; blocks: MarkdownBlock[]}[]}
   | {kind: 'table'; align: ('left' | 'center' | 'right' | null)[]; header: InlineSegment[][]; rows: InlineSegment[][][]}
 );
+/** Cached by source text with bounded retention; consumers must not mutate the returned blocks. */
 export function parseMarkdown(value: string): MarkdownBlock[];
 export function inlineSegments(value: string): InlineSegment[];
 export function displayMarkdown(value: string): string;

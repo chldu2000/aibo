@@ -3,6 +3,12 @@ import {decodeHTML} from 'entities';
 import {linkTarget} from './links.js';
 
 const options = {gfm: true, breaks: true};
+// Shared by rendering and action discovery. Bound both entry count and source
+// size so streaming revisions and sessions cannot retain unbounded history.
+const parsed = new Map();
+const maxEntries = 256;
+const maxSourceLength = 512 * 1024;
+let sourceLength = 0;
 
 // Only data leaves the lexer. HTML is displayed literally, never interpreted.
 function segments(tokens) {
@@ -31,6 +37,12 @@ export function inlineSegments(value) {
 }
 
 export function parseMarkdown(value) {
+  const cached = parsed.get(value);
+  if (cached) {
+    parsed.delete(value);
+    parsed.set(value, cached);
+    return cached;
+  }
   let index = 0;
   function blocks(tokens) {
     return tokens.filter(token => !['space', 'def', 'checkbox'].includes(token.type)).map(token => {
@@ -48,7 +60,17 @@ export function parseMarkdown(value) {
         ? [{kind: 'text', value: token.raw}] : segments(token.tokens ?? [{type: 'text', text: token.text ?? token.raw}])};
     });
   }
-  return blocks(Lexer.lex(value.replace(/\r\n?/g, '\n'), options));
+  const result = blocks(Lexer.lex(value.replace(/\r\n?/g, '\n'), options));
+  if (value.length <= maxSourceLength) {
+    parsed.set(value, result);
+    sourceLength += value.length;
+    while (parsed.size > maxEntries || sourceLength > maxSourceLength) {
+      const oldest = parsed.keys().next().value;
+      parsed.delete(oldest);
+      sourceLength -= oldest.length;
+    }
+  }
+  return result;
 }
 
 export function displayMarkdown(content) {

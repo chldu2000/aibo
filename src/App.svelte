@@ -173,7 +173,9 @@
   import type { PresentationInput, PresentationIntent } from '../packages/plugin-protocol/src/presentation-runtime';
   let presentationHost: ReturnType<typeof PresentationHost>;
   let presentationPackages = $state<PresentationPackageState>({ releases: [], active: null, themeId: null, busy: false, error: '' });
-  let externalInput = $state<PresentationInput>({ surface: 'workbench', context: { workspaceId: null, sessionId: null, revision: 0 }, data: null, theme: {} });
+  // Published snapshots are replaced as a whole; do not proxy the copied history again.
+  let externalInput = $state.raw<PresentationInput>({ surface: 'workbench', context: { workspaceId: null, sessionId: null, revision: 0 }, data: null, theme: {} });
+  let preparingExternalWorkbench = $state(0);
   const presentationPackagesController = createPresentationPackageController({
     list: listPresentationPackages, read: readPresentationPackage, install: installPresentationPackage,
     enable: setPresentationPackageEnabled, uninstall: async digest => {
@@ -185,7 +187,17 @@
     selection: getPresentationSelection, persist: selectPresentationPackage,
     fallback: releases => builtinSelection(releases, availableUiKits, $appearanceSelection),
     prepare: async (value, theme, failure, signal) => {
-      if (value.release.source !== 'builtin') return presentationHost.prepare(value, theme, failure, signal);
+      if (value.release.source !== 'builtin') {
+        const needsWorkbench = value.release.manifest.surfaces?.includes('workbench') ?? false;
+        if (needsWorkbench) preparingExternalWorkbench += 1;
+        try {
+          // Preflight needs the current history even before the candidate becomes active.
+          await tick();
+          return await presentationHost.prepare(value, theme, failure, signal);
+        } finally {
+          if (needsWorkbench) preparingExternalWorkbench -= 1;
+        }
+      }
       // Built-in kits are trusted host code: activation only switches the compiled kit and theme.
       const appearance = builtinAppearance(value.release, theme, availableUiKits);
       return { activate() { setUiAppearance(appearance); }, dispose() {} };
@@ -194,6 +206,7 @@
   });
   /** Built-in releases are listed through their kits; only isolated packages are external. */
   const externalActive = $derived(presentationPackages.active?.release.source !== 'builtin' ? presentationPackages.active : null);
+  const externalSnapshotNeeded = $derived(preparingExternalWorkbench > 0 || Boolean(externalActive?.release.manifest.surfaces?.includes('workbench')));
   const presentationOptions = $derived([...availableUiKits, ...presentationPackages.releases.filter(release => release.enabled && release.source !== 'builtin').map(release => ({
     id: release.digest, label: release.manifest.displayName, description: release.manifest.version,
     defaultThemeId: release.manifest.defaultThemeId ?? '',
@@ -609,19 +622,33 @@
       if (sessions.some(session => session.id === id && session.workspaceId === selectedWorkspaceId)) selectSession(id);
     }
   }
+  // History depends on message changes, not on the composer draft. Keep both
+  // protocol representations detached and reusable across input-only updates.
+  const externalTimeline = $derived(externalSnapshotNeeded ? $state.snapshot(timeline) : []);
+  const externalLegacyTimeline = $derived(externalTimeline.map(({ id, role, content, status }) => ({ id, role, content, status })));
   $effect(() => {
+    const workspaceId = selectedWorkspaceId, sessionId = selectedSessionId;
+    const history = externalTimeline, legacyHistory = externalLegacyTimeline;
+    if (!externalSnapshotNeeded) {
+      // Default focus/scroll and inherited controls still require a current scope.
+      untrack(() => { externalInput = { surface: 'workbench', context: { workspaceId, sessionId, revision: externalInput.context.revision + 1 }, data: null, theme: {} }; });
+      return;
+    }
     const data = { workspaces: workspaces.map(({ id, label }) => ({ id, label })),
       sessions: sessions.filter(session => session.workspaceId === selectedWorkspaceId).map(({ id, label, state }) => ({ id, label, state })),
-      timeline: timeline.map(({ id, role, content, status }) => ({ id, role, content, status })),
       layout: externalLayout, layoutActions: layoutDirectory.project(externalLayout),
       capability: externalCapability,
       capabilityActions: capabilityWorkbenchDirectory.project(externalCapability),
       inspector: externalInspector, inspectorActions: inspectorDirectory.project(externalInspector),
       git: externalGit, gitActions: gitDirectory.project(externalGit),
-      conversation: externalConversation, conversationActions: conversationDirectory.project(externalConversation),
+      conversation: { ...externalConversation, timeline: [] }, conversationActions: conversationDirectory.project(externalConversation),
       navigation: externalNavigation, navigationActions: externalNavigationActions(externalNavigation),
       draft: composerText, busy, running: sessionRunning, selectedWorkspaceId, selectedSessionId };
-    untrack(() => { externalInput = { surface: 'workbench', context: { workspaceId: data.selectedWorkspaceId, sessionId: data.selectedSessionId, revision: externalInput.context.revision + 1 }, data: $state.snapshot(data), theme: {} }; });
+    untrack(() => {
+      const snapshot = $state.snapshot(data);
+      externalInput = { surface: 'workbench', context: { workspaceId, sessionId, revision: externalInput.context.revision + 1 },
+        data: { ...snapshot, timeline: legacyHistory, conversation: { ...snapshot.conversation, timeline: history } }, theme: {} };
+    });
   });
   $effect(() => {
     if (!desktop) return;

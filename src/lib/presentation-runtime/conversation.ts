@@ -11,7 +11,13 @@ type Spec = Omit<PresentationConversationAction, 'token'>;
 export function conversationActions(state: PresentationConversation): Spec[] {
   const entries: Spec[] = [];
   const add = (operation: Spec['operation'], args: Spec['args'] = [], event: Spec['event'] = 'click') => entries.push({ operation, args, event });
-  for(const entry of state.timelineVisibleCount>0?state.timeline.slice(-state.timelineVisibleCount):[])for(const target of markdownTargets(entry.role === 'user' ? splitSessionReferences(entry.content).body : entry.content))add(target.kind==='code'?'copyCode':'openLink',[entry.id,String(target.index),target.value]);
+  for (const entry of state.timelineVisibleCount > 0 ? state.timeline.slice(-state.timelineVisibleCount) : []) {
+    // Match the timeline renderer: tool payloads are literal text, not Markdown.
+    if (entry.role === 'tool') continue;
+    if (entry.toolName === 'subagent' && parseSubagent(entry.content)) continue;
+    const body = entry.role === 'user' ? splitSessionReferences(entry.content).body : entry.content;
+    for (const target of markdownTargets(body)) add(target.kind === 'code' ? 'copyCode' : 'openLink', [entry.id, String(target.index), target.value]);
+  }
   for (const entry of state.timeline) {
     const child = entry.toolName === 'subagent' ? parseSubagent(entry.content) : null;
     if (child) add('openSubagent', [child.id]);
