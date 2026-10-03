@@ -186,14 +186,26 @@
   let expandedExecutionIds = $state<string[]>([]);
   let timelineFeed: HTMLElement | null = $state(null);
   let timelineContent: HTMLElement | null = $state(null);
+  let showScrollToBottom = $state(false);
 
   function scrollTimelineToBottom(): void {
-    if (timelineFeed && activeTab === 'conversation') timelineStickiness.scrollToBottom(timelineFeed);
+    if (timelineFeed && activeTab === 'conversation') {
+      timelineStickiness.scrollToBottom(timelineFeed);
+      timelineStickiness.updateFromScroll(timelineFeed);
+      showScrollToBottom = !timelineStickiness.shouldStick();
+    }
+  }
+
+  function jumpToLatest(): void {
+    timelineStickiness.reset();
+    scrollTimelineToBottom();
+    timelineFeed?.focus({ preventScroll: true });
   }
 
   function handleTimelineViewportScroll(event: Event): void {
     const viewport = event.currentTarget as HTMLElement;
     timelineStickiness.updateFromScroll(viewport);
+    showScrollToBottom = !timelineStickiness.shouldStick();
     onTimelineScroll(event);
   }
 
@@ -201,6 +213,7 @@
     selectedSessionId;
     const viewport = timelineFeed;
     timelineStickiness.reset();
+    showScrollToBottom = false;
     if (viewport) void tick().then(scrollTimelineToBottom);
   });
 
@@ -454,6 +467,13 @@
     </div>
   {/if}
 
+  {#if timeline.length > 0 && showScrollToBottom}
+    <div class="timeline-bottom-action">
+      <Button variant="secondary" size="sm" type="button" onclick={jumpToLatest} title="回到底部">
+        <Icon name="chevron-down" size={16} /> 回到底部
+      </Button>
+    </div>
+  {/if}
   </div>
   {#if activeTab === 'executions'}
     <div role="tabpanel" id="session-panel-executions" aria-labelledby="session-tab-executions" class="timeline-feed" tabindex="0">
@@ -630,6 +650,8 @@
 </Card>
 
 <style>
-  .conversation-tab-content { display: flex; flex-direction: column; flex: 1; min-height: 0; overflow: hidden; }
+  .conversation-tab-content { position: relative; display: flex; flex-direction: column; flex: 1; min-height: 0; overflow: hidden; }
   .conversation-tab-content[hidden] { display: none; }
+  .timeline-bottom-action { position: absolute; bottom: 12px; left: 0; right: 0; display: flex; justify-content: center; pointer-events: none; }
+  .timeline-bottom-action :global(button) { pointer-events: auto; }
 </style>
