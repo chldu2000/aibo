@@ -1120,6 +1120,96 @@
           }
         }
       }
+    ],
+    "background-tasks.list": [
+      {
+        "inputSchema": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {}
+        },
+        "outputSchema": {
+          "type": "object",
+          "required": [
+            "tasks",
+            "recovery",
+            "capabilities"
+          ],
+          "properties": {
+            "tasks": {
+              "type": "array",
+              "maxItems": 128,
+              "items": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "id",
+                  "rootTurnId",
+                  "name",
+                  "command",
+                  "status",
+                  "activity"
+                ],
+                "properties": {
+                  "id": {
+                    "type": "string",
+                    "maxLength": 4000,
+                    "minLength": 1
+                  },
+                  "rootTurnId": {
+                    "type": "string",
+                    "maxLength": 4000,
+                    "minLength": 1
+                  },
+                  "name": {
+                    "type": "string",
+                    "maxLength": 4000
+                  },
+                  "command": {
+                    "type": "string",
+                    "maxLength": 4000
+                  },
+                  "activity": {
+                    "type": "string",
+                    "maxLength": 12000
+                  },
+                  "outputPath": {
+                    "type": "string",
+                    "maxLength": 4000
+                  },
+                  "status": {
+                    "enum": [
+                      "running",
+                      "completed",
+                      "failed",
+                      "stopped",
+                      "unknown"
+                    ]
+                  },
+                  "exitCode": {
+                    "type": [
+                      "integer",
+                      "null"
+                    ]
+                  }
+                }
+              }
+            },
+            "recovery": {
+              "type": [
+                "object",
+                "null"
+              ]
+            },
+            "capabilities": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            }
+          }
+        }
+      }
     ]
   }
 }

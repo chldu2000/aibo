@@ -1,11 +1,11 @@
 {
   "schema": "aibo.plugin-manifest/v2",
   "pluginId": "dev.aibo.codex",
-  "version": "2.0.17",
+  "version": "2.0.18",
   "displayName": "Codex",
   "description": "Codex session capabilities.",
   "hostSdk": {
-    "min": "0.1.8",
+    "min": "0.1.9",
     "maxExclusive": "0.2.0"
   },
   "host": {
@@ -1140,6 +1140,105 @@
             "properties": {
               "resolved": {
                 "const": true
+              }
+            }
+          },
+          "idempotent": true
+        },
+        {
+          "id": "dev.aibo.codex.operation.background-tasks-list",
+          "capability": {
+            "id": "dev.aibo.codex.background-tasks.list",
+            "version": "1.0.0"
+          },
+          "effect": "read",
+          "permissions": [
+            "workspace.read"
+          ],
+          "timeoutMs": 15000,
+          "inputSchema": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {}
+          },
+          "outputSchema": {
+            "type": "object",
+            "required": [
+              "tasks",
+              "recovery",
+              "capabilities"
+            ],
+            "properties": {
+              "tasks": {
+                "type": "array",
+                "maxItems": 128,
+                "items": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "required": [
+                    "id",
+                    "rootTurnId",
+                    "name",
+                    "command",
+                    "status",
+                    "activity"
+                  ],
+                  "properties": {
+                    "id": {
+                      "type": "string",
+                      "maxLength": 4000,
+                      "minLength": 1
+                    },
+                    "rootTurnId": {
+                      "type": "string",
+                      "maxLength": 4000,
+                      "minLength": 1
+                    },
+                    "name": {
+                      "type": "string",
+                      "maxLength": 4000
+                    },
+                    "command": {
+                      "type": "string",
+                      "maxLength": 4000
+                    },
+                    "activity": {
+                      "type": "string",
+                      "maxLength": 12000
+                    },
+                    "outputPath": {
+                      "type": "string",
+                      "maxLength": 4000
+                    },
+                    "status": {
+                      "enum": [
+                        "running",
+                        "completed",
+                        "failed",
+                        "stopped",
+                        "unknown"
+                      ]
+                    },
+                    "exitCode": {
+                      "type": [
+                        "integer",
+                        "null"
+                      ]
+                    }
+                  }
+                }
+              },
+              "recovery": {
+                "type": [
+                  "object",
+                  "null"
+                ]
+              },
+              "capabilities": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
               }
             }
           },

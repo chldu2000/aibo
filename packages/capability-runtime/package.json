@@ -1,6 +1,6 @@
 {
   "name": "@aibolabs/capability-runtime",
-  "version": "0.1.8",
+  "version": "0.1.9",
   "license": "MIT",
   "repository": {
     "type": "git",
@@ -38,7 +38,7 @@
     }
   },
   "dependencies": {
-    "@aibolabs/plugin-protocol": "0.1.8"
+    "@aibolabs/plugin-protocol": "0.1.9"
   },
   "engines": {
     "node": ">=22"

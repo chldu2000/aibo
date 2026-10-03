@@ -67,6 +67,7 @@ input.on('line', (line) => {
   else if (method === 'thread/resume' && process.env.CODEX_FAKE_REJECT_CONTEXT === '1' && process.argv.includes('model_context_window=872000')) write({id,error:{code:-32000,message:'Native context rejected'}});
   else if (method === 'thread/resume') write({ id, result: { thread: { id: params.threadId }, ...policy } });
   else if (method === 'thread/list') write({id,result:{data:[{id:'catalog-thread',title:'Catalog entry',cwd:params.cwd,status:{type:'idle'}}]}});
+  else if (method === 'thread/backgroundTerminals/list') write({id,error:{code:-32601,message:'Method not found'}});
   else if (method === 'thread/read' && childThreads.has(params.threadId) && process.env.CODEX_FAKE_SUBAGENT_READ_FAIL === '1') write({id,error:{code:-32000,message:'Child history unavailable'}});
   else if (method === 'thread/read' && childThreads.has(params.threadId)) write({id,result:{thread:childThreads.get(params.threadId)}});
   else if (method === 'thread/read' && params.includeTurns && process.env.CODEX_FAKE_NO_TURNS === '1') write({id,error:{code:-32600,message:'list_turns is not supported yet'}});
@@ -101,7 +102,16 @@ input.on('line', (line) => {
     }
     write({ id, result: { turn: { id: nativeTurnId } } });
     write({ method: 'turn/started', params: { threadId: params.threadId, turn: { id: nativeTurnId, status: 'inProgress' } } });
-    if (params.input[0].text === 'host history fixture') {
+    if (params.input[0].text === 'background please') {
+      const item={id:'background-command',type:'commandExecution',command:'python eval.py',processId:'42',status:'inProgress'};
+      write({method:'item/started',params:{threadId:params.threadId,turnId:nativeTurnId,item}});
+      completeTurn(params);
+      nativeTurns.at(-1).items=[item];
+      setTimeout(()=>{
+        Object.assign(item,{status:'completed',exitCode:0,aggregatedOutput:'Eval complete'});
+        write({method:'item/completed',params:{threadId:params.threadId,turnId:nativeTurnId,item}});
+      },600);
+    } else if (params.input[0].text === 'host history fixture') {
       interactiveTurn={kind:'host-history',requestId:'history-call',params};
       write({id:'history-call',method:'item/tool/call',params:{threadId:params.threadId,turnId:nativeTurnId,callId:'history-call',namespace:null,tool:'aibo_read_session',arguments:{referenceId:'ref',sessionId:'source'}}});
     } else if (params.input[0].text === 'host queue delay') { setTimeout(()=>completeTurn(params), 600); }

@@ -27,7 +27,7 @@ export async function sessionCapability(t,name,extraEnv={},existingDirectory,con
     for (const file of await readdir(name)) await cp(path.join(name,file),path.join(pkg,file),{recursive:true});
     if (name.endsWith('acp-echo')) { await copyFile('fixtures/acp/echo-agent.mjs',path.join(directory,'echo-acp'));await chmod(path.join(directory,'echo-acp'),0o755); }
   } else {
-    for (const file of ['engine.mjs','worker.mjs','plugin.json']) await copyFile(`src-tauri/capability-plugins/${name}/${file}`,path.join(pkg,file));
+    for (const file of ['engine.mjs','worker.mjs','plugin.json', ...(name === 'codex' ? ['background-tasks.mjs'] : [])]) await copyFile(`src-tauri/capability-plugins/${name}/${file}`,path.join(pkg,file));
     await copyFile('src-tauri/capability-plugins/session-provider.mjs',path.join(pkg,'session-provider.mjs'));
   }
   if (name==='codex') {

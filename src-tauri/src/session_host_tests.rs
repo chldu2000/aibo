@@ -432,6 +432,7 @@ async fn codex_branch_uses_native_boundary_and_copies_host_history_and_profile()
     for (name, source) in [
         ("worker.mjs",include_str!("../capability-plugins/codex/worker.mjs")),
         ("fake-codex.mjs",include_str!("../../fixtures/plugins/codex/fake-codex.mjs")),
+        ("background-tasks.mjs",include_str!("../capability-plugins/codex/background-tasks.mjs")),
         ("session-provider.mjs",include_str!("../capability-plugins/session-provider.mjs")),
     ] {fs::write(package.join(name),source).unwrap();}
     let db = crate::open_database(&root.join("data/aibo.sqlite3")).await.unwrap();
@@ -905,6 +906,7 @@ async fn goal_resume_and_pause_use_host_execution_ownership_and_policy() {
     for (name, source) in [
         ("worker.mjs",include_str!("../capability-plugins/codex/worker.mjs")),
         ("fake-codex.mjs",include_str!("../../fixtures/plugins/codex/fake-codex.mjs")),
+        ("background-tasks.mjs",include_str!("../capability-plugins/codex/background-tasks.mjs")),
         ("session-provider.mjs",include_str!("../capability-plugins/session-provider.mjs")),
         ("runtime.mjs",include_str!("../../packages/capability-runtime/runtime.mjs")),
         ("stdio.mjs",include_str!("../../packages/capability-runtime/stdio.mjs")),
@@ -980,6 +982,7 @@ async fn subagent_history_survives_restart_without_a_running_provider() {
     for (name, source) in [
         ("worker.mjs",include_str!("../capability-plugins/codex/worker.mjs")),
         ("fake-codex.mjs",include_str!("../../fixtures/plugins/codex/fake-codex.mjs")),
+        ("background-tasks.mjs",include_str!("../capability-plugins/codex/background-tasks.mjs")),
         ("session-provider.mjs",include_str!("../capability-plugins/session-provider.mjs")),
         ("runtime.mjs",include_str!("../../packages/capability-runtime/runtime.mjs")),
         ("stdio.mjs",include_str!("../../packages/capability-runtime/stdio.mjs")),
@@ -1425,4 +1428,27 @@ async fn clear_context_approval_is_recorded_and_the_first_resume_says_what_was_r
     broker.stop_session(&session.id).await.unwrap();
     db.close().await;
     fs::remove_dir_all(root).unwrap();
+}
+
+#[tokio::test]
+async fn background_tasks_update_after_parent_completion_and_reject_stale_ownership() {
+    let (root,db,broker,host,session)=concurrent_session_fixture().await;
+    host.send_from("main", &session.id, "hello", None).await.unwrap();
+    wait_for_turn(&host, &session.id).await;
+    let (generation,binding):(String,String)=sqlx::query_as("SELECT generation_id,plugin_binding_json FROM session_bindings WHERE session_id=?").bind(&session.id).fetch_one(&db).await.unwrap();
+    let binding:Value=serde_json::from_str(&binding).unwrap();
+    let turn:String=sqlx::query_scalar("SELECT id FROM turns WHERE session_id=? LIMIT 1").bind(&session.id).fetch_one(&db).await.unwrap();
+    sqlx::query("UPDATE session_bindings SET plugin_capabilities_json=json_insert(plugin_capabilities_json,'$[#]','background-tasks.list') WHERE session_id=?").bind(&session.id).execute(&db).await.unwrap();
+    let mut event=json!({"nativeSessionId":binding["nativeSessionId"],"turnId":null,"type":"background-task.updated","correlation":null,"payload":{"id":"job","rootTurnId":turn,"name":"Eval","command":"python eval.py","status":"running","activity":""}});
+    for _ in 0..2 { host.project_event(&session.id,"w",&generation,&binding,event.clone(),EventOrigin::Host).await.unwrap(); }
+    let count:i64=sqlx::query_scalar("SELECT count(*) FROM agent_events WHERE session_id=? AND event_type='background-task.updated'").bind(&session.id).fetch_one(&db).await.unwrap();
+    assert_eq!(count,1,"identical observations do not grow history");
+    event["payload"]["status"]=json!("failed"); event["payload"]["exitCode"]=json!(2);
+    host.project_event(&session.id,"w",&generation,&binding,event.clone(),EventOrigin::Host).await.unwrap();
+    let (status,content):(String,String)=sqlx::query_as("SELECT status,content FROM messages WHERE session_id=? AND tool_name='background_task'").bind(&session.id).fetch_one(&db).await.unwrap();
+    assert_eq!(status,"failed"); assert_eq!(serde_json::from_str::<Value>(&content).unwrap()["exitCode"],2);
+    assert!(host.project_event(&session.id,"w","stale",&binding,event.clone(),EventOrigin::Host).await.unwrap_err().contains("stale"));
+    event["payload"]["rootTurnId"]=json!("foreign");
+    assert!(host.project_event(&session.id,"w",&generation,&binding,event,EventOrigin::Host).await.unwrap_err().contains("parent turn"));
+    broker.stop_session(&session.id).await.unwrap(); db.close().await; fs::remove_dir_all(root).unwrap();
 }

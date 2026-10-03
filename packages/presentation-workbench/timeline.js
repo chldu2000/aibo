@@ -1,3 +1,4 @@
+import {parseBackgroundTask,backgroundTaskLabels} from './background-tasks.js';
 import {splitMessageAttachments} from './message-attachments.js';
 import {renderMessageAttachment} from './metadata.js';
 import {splitSessionReferences} from './session-references.js';
@@ -30,6 +31,8 @@ const timelineToolLabels={commandExecution:'命令执行',fileRead:'读取文件
 /** Tool payloads are literal text; only conversational prose uses Markdown. */
 export function renderTimelineEntry(entry,actions,attachments=[]){
  const key='message:'+entry.id;
+ const background = parseBackgroundTask(entry);
+ if(background)return node('article',key,null,[node('strong',key+':name','后台任务 · '+background.name),text(key+':status',backgroundTaskLabels[background.status]),node('pre',key+':command',background.command),node('pre',key+':activity',background.activity),text(key+':id','任务 ID：'+background.id),background.exitCode!=null?text(key+':exit','退出码：'+background.exitCode):null,background.outputPath?node('pre',key+':output',background.outputPath):null]);
  if(entry.toolName==='subagent') {
   try {
    const child=JSON.parse(entry.content);

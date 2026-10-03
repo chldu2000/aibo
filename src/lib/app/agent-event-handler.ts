@@ -1,5 +1,6 @@
 import type { SetNotice } from './notifications';
 import { normalizeMessageQueue } from './message-queue.ts';
+import { parseBackgroundTask } from '../../../packages/presentation-workbench/background-tasks.js';
 import { parseSubagent } from './subagents.ts';
 import type {
   AgentQueueSnapshot,
@@ -46,6 +47,20 @@ export function eventTimelineItemId(event: Pick<AgentEvent, 'turnId'>, itemId: s
 
 export function handleAgentEvent(event: AgentEvent, context: AgentEventHandlerContext): void {
   const selectedSessionId = context.selectedSessionId;
+  if (event.type === 'background-task.updated') {
+    if (event.sessionId !== selectedSessionId) return;
+    const content = JSON.stringify(event.payload);
+    const task = parseBackgroundTask({toolName:'background_task',content,status:'streaming'});
+    if (!task) return;
+    const externalMessageId = `background:${task.id}`;
+    const existing = context.timeline.find(item => item.externalMessageId === externalMessageId);
+    const status: TimelineItem['status'] = task.status === 'running' ? 'streaming' : task.status === 'failed' ? 'failed' : ['unknown','stopped'].includes(task.status) ? 'interrupted' : 'completed';
+    const item: TimelineItem = {...existing,id:existing?.id ?? `${event.sessionId}:background:${task.id}`,sessionId:event.sessionId,
+      turnId:task.rootTurnId,externalMessageId,role:'system',toolName:'background_task',entryType:null,content,status,
+      createdAt:existing?.createdAt ?? event.occurredAt,updatedAt:event.occurredAt};
+    context.setTimeline(existing ? context.timeline.map(old => old === existing ? item : old) : [...context.timeline,item]);
+    return;
+  }
   if (event.type === 'subagent.message') return;
   if (event.type === 'subagent.updated') {
     const content = JSON.stringify(event.payload);

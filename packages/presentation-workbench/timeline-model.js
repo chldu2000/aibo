@@ -22,7 +22,7 @@ export function groupTimelineItems(items, groupSystemItems = false) {
   };
 
   for (const item of items) {
-    if (item.toolName === 'subagent') {
+    if (['subagent','background_task'].includes(item.toolName)) {
       flushTools(); flushSystems();
       grouped.push({ kind: 'entry', id: item.id, item });
     } else if (item.role === 'tool') {

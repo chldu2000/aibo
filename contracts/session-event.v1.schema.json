@@ -53,7 +53,8 @@
         "goal.updated",
         "subagent.updated",
         "subagent.message",
-        "session.control_changed"
+        "session.control_changed",
+        "background-task.updated"
       ]
     },
     "correlation": {
@@ -367,6 +368,77 @@
               },
               "contextReset": {
                 "const": true
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "type": {
+            "const": "background-task.updated"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "turnId": {
+            "type": "null"
+          },
+          "payload": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "id",
+              "rootTurnId",
+              "name",
+              "command",
+              "status",
+              "activity"
+            ],
+            "properties": {
+              "id": {
+                "type": "string",
+                "maxLength": 4000,
+                "minLength": 1
+              },
+              "rootTurnId": {
+                "type": "string",
+                "maxLength": 4000,
+                "minLength": 1
+              },
+              "name": {
+                "type": "string",
+                "maxLength": 4000
+              },
+              "command": {
+                "type": "string",
+                "maxLength": 4000
+              },
+              "activity": {
+                "type": "string",
+                "maxLength": 12000
+              },
+              "outputPath": {
+                "type": "string",
+                "maxLength": 4000
+              },
+              "status": {
+                "enum": [
+                  "running",
+                  "completed",
+                  "failed",
+                  "stopped",
+                  "unknown"
+                ]
+              },
+              "exitCode": {
+                "type": [
+                  "integer",
+                  "null"
+                ]
               }
             }
           }

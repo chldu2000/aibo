@@ -740,6 +740,7 @@
     writePersistedSelection as writeSelectionToStorage,
   } from '$lib/app/selection-storage';
   import { normalizeAgentGoal, goalCanResume } from '$lib/app/session-goal';
+  import { watchBackgroundTasks, reconcileBackgroundTasks } from '$lib/app/background-task-controller';
   import { handleAgentEvent as processAgentEvent } from '$lib/app/agent-event-handler';
   import { createExecutionHistoryController, emptyExecutionHistory } from '$lib/app/execution-history-controller';
   import { createSessionHistoryController, emptySessionHistory } from '$lib/app/session-history-controller';
@@ -1701,6 +1702,25 @@
     }
     return withActivityAge(`${agentLabel} 等待模型响应（可能正在思考）…`);
   });
+  $effect(() => {
+    const id = selectedSessionId;
+    const enabled = desktop && selectedSession?.capabilities.includes('background-tasks.list') && !selectedSession?.archived && !selectedSession?.historyOnly;
+    if (!id || !enabled) return;
+    const session = untrack(() => selectedSession);
+    if (!session) return;
+    return watchBackgroundTasks(session, {
+      invoke: async value => {
+        const result = await agentFacade.invoke(value, 'background-tasks.list');
+        if (selectedSessionId !== id || !Array.isArray(result.tasks)) return;
+        timeline = reconcileBackgroundTasks(timeline, result);
+      },
+      failed: () => {
+        if (selectedSessionId !== id) return;
+        timeline = reconcileBackgroundTasks(timeline);
+      },
+    });
+  });
+
   async function loadSessionCommands(session: Session): Promise<AgentCommand[]> {
     const capability = session.capabilities.includes('command.list') ? 'command.list' : session.capabilities.includes('skill.list') ? 'skill.list' : null;
     if (!capability) return [];

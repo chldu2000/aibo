@@ -18,7 +18,7 @@ impl SessionHost {
                 "workspaceId":workspace_id,"sessionId":session_id,"nativeSessionId":p["nativeSessionId"],"turnId":p["turnId"],"type":p["type"],"correlation":p["correlation"],"payload":p["payload"],"rawRef":null});
             let emitted_event = event.clone();
             let kind = p["type"].as_str().unwrap();
-            if !["subagent.updated","subagent.message","session.started","session.info_changed","goal.updated","turn.started","message.delta","message.completed","reasoning.updated","reasoning.completed","tool.started","tool.updated","tool.completed","turn.completed","turn.failed","approval.requested","approval.resolved","user_input.requested","user_input.resolved","usage.updated","queue.updated","compaction.started","compaction.completed","retry.started","retry.completed","extension.updated","adapter.crashed","session.control_changed"].contains(&kind) {
+            if !["background-task.updated","subagent.updated","subagent.message","session.started","session.info_changed","goal.updated","turn.started","message.delta","message.completed","reasoning.updated","reasoning.completed","tool.started","tool.updated","tool.completed","turn.completed","turn.failed","approval.requested","approval.resolved","user_input.requested","user_input.resolved","usage.updated","queue.updated","compaction.started","compaction.completed","retry.started","retry.completed","extension.updated","adapter.crashed","session.control_changed"].contains(&kind) {
                 return Err("capability_unsupported: event outside minimal lifecycle".into());
             }
             // Only the host commits a session control; a provider cannot announce its own mode switch.
@@ -39,6 +39,25 @@ impl SessionHost {
                 current["updatedAt"] = json!(now);
                 if !crate::session_contract::binding_schema().is_valid(&current) { return Err("invalid_recovery_data: recovery update".into()); }
                 sqlx::query("UPDATE session_bindings SET plugin_binding_json=? WHERE session_id=?").bind(current.to_string()).bind(session_id).execute(&mut *tx).await.map_err(|e|e.to_string())?;
+            }
+            if kind == "background-task.updated" {
+                let payload = &p["payload"];
+                let root = payload["rootTurnId"].as_str().ok_or("invalid_output: background parent turn")?;
+                let exists: i64 = sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM turns WHERE id=? AND session_id=?)")
+                    .bind(root).bind(session_id).fetch_one(&mut *tx).await.map_err(|e|e.to_string())?;
+                if exists == 0 { return Err("invalid_session: background parent turn".into()); }
+                let id = payload["id"].as_str().ok_or("invalid_output: background id")?;
+                let message_id = format!("{session_id}:background:{id}");
+                let status = match payload["status"].as_str() { Some("running") => "streaming", Some("failed") => "failed", Some("unknown" | "stopped") => "interrupted", _ => "completed" };
+                let previous: Option<(String,String)> = sqlx::query_as("SELECT content,status FROM messages WHERE id=?")
+                    .bind(&message_id).fetch_optional(&mut *tx).await.map_err(|e|e.to_string())?;
+                if let Some((previous, previous_status)) = previous {
+                    let old: Value = serde_json::from_str(&previous).map_err(|e|e.to_string())?;
+                    if old["rootTurnId"] != payload["rootTurnId"] { return Err("invalid_session: background task changed parent".into()); }
+                    if old == *payload && previous_status == status { return Ok(()); }
+                }
+                sqlx::query("INSERT INTO messages(id,session_id,turn_id,external_message_id,role,tool_name,content,status,sequence,created_at,updated_at) VALUES(?,?,?,?,'system','background_task',?,?,?,?,?) ON CONFLICT(id) DO UPDATE SET content=excluded.content,status=excluded.status,updated_at=excluded.updated_at")
+                    .bind(message_id).bind(session_id).bind(root).bind(format!("background:{id}")).bind(payload.to_string()).bind(status).bind(sequence).bind(&now).bind(&now).execute(&mut *tx).await.map_err(|e|e.to_string())?;
             }
             if kind.starts_with("subagent.") {
                 let payload = &p["payload"];

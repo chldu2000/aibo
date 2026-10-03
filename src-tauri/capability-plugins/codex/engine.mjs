@@ -1,3 +1,4 @@
+import { CodexBackgroundTasks } from './background-tasks.mjs';
 import { spawn } from 'node:child_process';
 import readline from 'node:readline';
 import { existsSync } from 'node:fs';
@@ -6,9 +7,10 @@ import { homedir } from 'node:os';
 import path from 'node:path';
 
 const pluginId = 'dev.aibo.codex';
-const pluginVersion = '2.0.16';
+const pluginVersion = '2.0.18';
+const backgroundTasks = new CodexBackgroundTasks();
 
-export const capabilities = ['session.create', 'session.resume', 'session.close', 'turn.send', 'image.input', 'turn.cancel', 'queue.manage', 'stream.text', 'goal.manage', 'goal.pause', 'goal.resume', 'model.select', 'model.reasoning', 'model.service-tier', 'model.context-window', 'skill.list', 'approval.respond', 'user-input.respond', 'session.snapshot', 'session.fork'];
+export const capabilities = ['background-tasks.list', 'session.create', 'session.resume', 'session.close', 'turn.send', 'image.input', 'turn.cancel', 'queue.manage', 'stream.text', 'goal.manage', 'goal.pause', 'goal.resume', 'model.select', 'model.reasoning', 'model.service-tier', 'model.context-window', 'skill.list', 'approval.respond', 'user-input.respond', 'session.snapshot', 'session.fork'];
 let child = null;
 let childLines = null;
 let nextId = 1;
@@ -74,6 +76,7 @@ function nativeModels() {
 function recovery() {
   return { schema: 'dev.aibo.codex.recovery', version: 1, data: {
     threadId: session.threadId,
+    backgroundTasks: backgroundTasks.list(),
     model: session.model,
     reasoningEffort: session.reasoningEffort,
     serviceTier: session.serviceTier,
@@ -463,6 +466,7 @@ function onCodex(message) {
   if (message.method === 'thread/goal/updated') { updateGoal(p.goal ?? null); return; }
   if (message.method === 'thread/goal/cleared') { updateGoal(null); return; }
   const turn = session.turn;
+  backgroundTasks.observe(message.method, p, turn && (!p.turnId || p.turnId === turn.nativeId) ? turn.id : null);
   if (turn && collabItem(p.item, session.threadId)) return;
   if (turn && p.turnId && turn.nativeId && p.turnId !== turn.nativeId) return;
   if (turn?.nativeSequence > 1 && message.method.startsWith('item/')) {
@@ -521,6 +525,7 @@ function onCodex(message) {
       const itemId = turn.itemId ?? `assistant-${turn.nativeId}`;
       emit('message.completed', { itemId, text: turn.text }, turn.id, { requestId: turn.requestId, itemId });
     }
+    backgroundTasks.turnEnded(turn.id);
     void finishNativeTurn(turn, p.turn.id, status);
   }
 }
@@ -550,6 +555,7 @@ async function startCodex(cwd, contextWindow = null) {
     // notification queued after the replacement child has started. Only the
     // current provider process may reject the current request set.
     if (child !== startedChild) return;
+    backgroundTasks.unavailable('原生进程已退出，无法确认任务状态。');
     for (const request of pending.values()) request.reject(new Error('Codex exited'));
     pending.clear();
     if (session?.turn) finishTurn(session.turn, 'failed');
@@ -627,6 +633,9 @@ export async function execute(action, p) {
     } else {
       ({threadId, model:nativeModel} = await startThread(p.workspace.path, approvalPolicy, approvalsReviewer, sandbox, model, hostTools));
     }
+    backgroundTasks.restore(p.binding?.recovery?.data?.backgroundTasks);
+    backgroundTasks.commands.clear();
+    backgroundTasks.listSupported = true;
     session = { id: p.sessionId, threadId, eventSessionId:p.eventSessionId, cwd: p.workspace.path,
       model:nativeModel, reasoningEffort, serviceTier, contextWindow, executionProfile:p.executionProfile,hostTools,
       revision: 0, turn: null, goal: null, tokenUsage: null, rateLimitUsage: null };
@@ -635,6 +644,10 @@ export async function execute(action, p) {
     return { nativeSessionId: threadId, recovery: recovery() };
   }
   if (!session || p.sessionId !== session.id) fail('invalid_session');
+  if (action === 'operation' && p.operationId === 'ext.dev.aibo.codex.background-tasks') {
+    try { return {tasks: await backgroundTasks.refresh(rpc, session.threadId)}; }
+    catch { backgroundTasks.unavailable('原生任务状态暂不可用。'); return {tasks:backgroundTasks.list()}; }
+  }
   if (action === 'send') {
     if (session.turn || session.changingContext) fail('busy');
     const turn = newTurn(p);
@@ -691,7 +704,7 @@ export async function execute(action, p) {
     if (nativeTurnId && !thread.turns.some(turn=>turn.id===nativeTurnId)) fail('invalid_input', 'Fork boundary is not in this native thread');
     const forked = (await rpc('thread/fork', {threadId:session.threadId,...(nativeTurnId ? {lastTurnId:nativeTurnId} : {})}))?.thread;
     if (typeof forked?.id !== 'string' || !forked.id || forked.id===session.threadId || (forked.parentThreadId && forked.parentThreadId!==session.threadId)) fail('invalid_output','Invalid fork identity');
-    const binding = recovery(); binding.data.threadId = forked.id;
+    const binding = recovery(); binding.data.threadId = forked.id; binding.data.backgroundTasks = [];
     return {fork:{nativeSessionId:forked.id,recovery:binding}};
   }
   if (action === 'operation' && p.operationId === 'ext.dev.aibo.codex.queue') {

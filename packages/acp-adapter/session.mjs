@@ -1,3 +1,4 @@
+import { BackgroundTasks } from './background-tasks.mjs';
 import { imageInput } from './image-input.mjs';
 import { AcpTransport } from './transport.mjs';
 import { modelParameters, selectValues } from './config.mjs';
@@ -82,6 +83,7 @@ export class AcpSession {
     this.hostPermissionReplies = new Set();
     this.completedTools = new Set();
     this.subagents = new Map();
+    this.backgroundTasks = new BackgroundTasks();
     // Aibo usage snapshot for this process: live context from usage_update, session totals from prompt results.
     this.usage = {};
     this.phase = 'stopped';
@@ -103,6 +105,9 @@ export class AcpSession {
         this.pendingInteractions.set(requestId, { ...interaction, rpcId, turnId: this.turnId });
         return true;
       },
+      get phase() { return session.phase; },
+      get tools() { return session.tools; },
+      updateBackgroundTask: update => session.backgroundTasks.update(update, session.turnId),
       updateSubagent: (subagent, changes) => this.#updateSubagent(subagent, changes),
     };
   }
@@ -115,6 +120,7 @@ export class AcpSession {
     }
     const policy = this.extension.validateExecutionProfile(executionProfile, permissions);
     const restored = mode === 'resume' ? this.#validateRecovery(recovery, workspaceId, workspacePath) : null;
+    this.backgroundTasks.restore(restored?.backgroundTasks);
     this.phase = 'starting';
     this.workspaceId = workspaceId;
     this.workspacePath = workspacePath;
@@ -239,6 +245,10 @@ export class AcpSession {
       this.expectedMode = null;
       this.pendingInteractions.clear();
     }
+  }
+
+  listBackgroundTasks() {
+    return { tasks: this.backgroundTasks.list(), recovery: this.recovery(), capabilities: this.capabilities() };
   }
 
   async cancel() {
@@ -428,7 +438,7 @@ export class AcpSession {
 
   snapshot() { return { nativeSessionId: this.sessionId, recovery: this.recovery(), capabilities: this.capabilities() }; }
   recovery(parameters = this.parameters()) {
-    return { schema: this.extension.recoverySchema, version: 1, data: { nativeSessionId: this.sessionId, workspaceId: this.workspaceId, workspacePath: this.workspacePath, protocolVersion: 1, modeId: this.modeId, hostMcpServerName: this.hostMcpServerName, hasPrompt: this.hasPrompt, ...(this.modelConfig ? { modelId: this.modelConfig.current, reasoningEffort: parameters.current, contextWindow: parameters.context?.currentValue ?? null } : {}) } };
+    return { schema: this.extension.recoverySchema, version: 1, data: { nativeSessionId: this.sessionId, workspaceId: this.workspaceId, workspacePath: this.workspacePath, protocolVersion: 1, backgroundTasks: this.backgroundTasks.list(), modeId: this.modeId, hostMcpServerName: this.hostMcpServerName, hasPrompt: this.hasPrompt, ...(this.modelConfig ? { modelId: this.modelConfig.current, reasoningEffort: parameters.current, contextWindow: parameters.context?.currentValue ?? null } : {}) } };
   }
 
   async close() {
@@ -597,6 +607,7 @@ export class AcpSession {
 
   #handleNotification(message) {
     if (message.method === 'transport/closed') {
+      this.backgroundTasks.unavailable('原生连接已断开，无法确认任务是否仍在运行。');
       this.phase = 'failed';
       for (const done of this.commandWaiters) done();
       if (this.turnId) this.#event('adapter.crashed', { message: message.params?.message ?? `${this.label} ACP exited` });

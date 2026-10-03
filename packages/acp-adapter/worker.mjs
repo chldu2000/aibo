@@ -212,6 +212,7 @@ export function serveAcpAgent({ manifestUrl, configUrl, extension, additionalIns
           return session.snapshot();
         } catch (error) { await session.close(); await closeBridge(); throw error; }
       }
+      if (request.capability === feature('background-tasks.list')) return session.listBackgroundTasks();
       if (request.capability === feature('command.list')) return await commandDirectory();
       if (request.capability === feature('model.reasoning')) return await session.configure('reasoning', input);
       if (request.capability === feature('model.context-window')) return await session.configure('context', input);
@@ -235,6 +236,7 @@ export function serveAcpAgent({ manifestUrl, configUrl, extension, additionalIns
     if (!owner || owner.request.invocationId !== invocation.invocationId) throw Object.assign(new Error(`No matching ${label} invocation`), { kind: 'invalid_input' });
     const input = inputOf(request);
     if (request.capability === 'aibo.session.tool.respond') return hostTools.respond(input);
+    if (request.capability === feature('background-tasks.list')) return session.listBackgroundTasks();
     if (request.capability === feature('command.list')) return await commandDirectory();
     if (request.capability.startsWith(feature('model.'))) throw Object.assign(new Error(`${label} model configuration requires an idle session`), { kind: 'busy' });
     if (request.capability === 'aibo.session.cancel') return session.cancel();

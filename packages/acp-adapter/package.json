@@ -1,6 +1,6 @@
 {
   "name": "@aibolabs/acp-adapter",
-  "version": "0.1.8",
+  "version": "0.1.9",
   "license": "MIT",
   "repository": {
     "type": "git",
@@ -22,7 +22,9 @@
     "elicitation.mjs",
     "worker.mjs",
     "worker.d.ts",
-    "README.md"
+    "README.md",
+    "background-tasks.mjs",
+    "background-tasks.d.ts"
   ],
   "exports": {
     ".": {
@@ -48,13 +50,17 @@
     "./worker": {
       "types": "./worker.d.ts",
       "import": "./worker.mjs"
+    },
+    "./background-tasks": {
+      "types": "./background-tasks.d.ts",
+      "import": "./background-tasks.mjs"
     }
   },
   "engines": {
     "node": ">=22"
   },
   "dependencies": {
-    "@aibolabs/capability-runtime": "0.1.8"
+    "@aibolabs/capability-runtime": "0.1.9"
   },
   "publishConfig": {
     "access": "public",

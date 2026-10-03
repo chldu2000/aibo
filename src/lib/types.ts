@@ -688,6 +688,7 @@ export interface AgentEvent {
     | 'message.completed'
     | 'reasoning.updated'
     | 'reasoning.completed'
+    | 'background-task.updated'
     | 'subagent.updated'
     | 'subagent.message'
     | 'tool.started'

@@ -93,3 +93,5 @@ console.log(JSON.stringify(operation, null, 2));
 | 支持功能但按钮暂不可用 | 检查会话忙碌、运行、归档状态与动作准入 |
 
 实现依据：[协商器](../src-tauri/src/session_contract.rs)、[执行配置](../src-tauri/src/execution_profile.rs)。
+
+后台命令可通过 SDK 0.1.9 的可选 `background-tasks.list` 读取能力暴露，宿主将状态变化保存为独立任务记录；主回合完成不停止所选会话的观察。协议、恢复及插件版本边界见 [后台任务状态](background-tasks.md)。

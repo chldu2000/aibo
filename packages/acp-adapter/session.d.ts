@@ -17,6 +17,9 @@ export type AcpSessionHooks = {
   await(requestId: string, rpcId: string | number, interaction:
     | { kind: 'question'; answer(answers: unknown): unknown; [key: string]: unknown }
     | { kind: string; approve(decision: 'accept' | 'cancel'): unknown; [key: string]: unknown }): boolean;
+  readonly phase: string;
+  readonly tools: Map<string, Record<string, any>>;
+  updateBackgroundTask(update: Partial<import('./background-tasks.mjs').BackgroundTask> & { id: string }): void;
   updateSubagent(subagent: Record<string, any>, changes?: Record<string, any>): void;
 };
 
@@ -70,6 +73,7 @@ export declare class AcpSession {
   hostToolsRegistered?: boolean;
   open(options: { mode: 'create' | 'resume'; workspaceId: string; workspacePath: string; executionProfile: unknown; recovery?: unknown; permissions: readonly string[]; mcpServers?: unknown[]; hostMcpTools?: { providerIdentifier: string; toolName: string }[] }): Promise<{ nativeSessionId: string; recovery: unknown; capabilities: string[] }>;
   prompt(options: { text: string; turnId: string; attachments?: unknown[]; additionalInstructions?: string; writable?: boolean }): Promise<{ status: 'completed' | 'interrupted' | 'failed'; recovery: unknown }>;
+  listBackgroundTasks(): { tasks: import('./background-tasks.mjs').BackgroundTask[]; recovery: unknown; capabilities: string[] };
   cancel(): Promise<{ accepted: true }>;
   respondApproval(requestId: string, answer: 'accept' | 'cancel' | { optionId: string }): { resolved: true; recovery: unknown; capabilities: string[] };
   respondUserInput(requestId: string, answers: unknown): { resolved: true; recovery: unknown; capabilities: string[] };

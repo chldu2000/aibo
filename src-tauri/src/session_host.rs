@@ -27,6 +27,7 @@ fn event_capability_required(kind:&str,origin:EventOrigin)->Option<&'static str>
         "approval.requested"|"approval.resolved"=>Some("approval.respond"),
         "user_input.requested"|"user_input.resolved"=>Some("user-input.respond"),
         "queue.updated"=>Some("queue.manage"),
+        "background-task.updated"=>Some("background-tasks.list"),
         "goal.updated"=>Some("goal.manage"),
         "compaction.started"|"compaction.completed"=>Some("compaction.run"),
         _=>None,
@@ -437,6 +438,14 @@ impl SessionHost {
                 crate::session_context::consume_queued(&self.db, session_id, &turn, input["message"].as_str().unwrap_or_default()).await.map_err(|e|e.to_string())?;
             }
             self.save_recovery(session_id,&response).await?;
+            if capability == "background-tasks.list" {
+                let saved = self.saved_binding(session_id).await?.ok_or("invalid_session")?;
+                let session = crate::session_by_id(&self.db, session_id).await.map_err(|e|e.to_string())?;
+                for task in response.output["tasks"].as_array().ok_or("invalid_output: background tasks")? {
+                    self.project_event(session_id, &session.workspace_id, &response.generation_id, &saved,
+                        json!({"nativeSessionId":saved["nativeSessionId"],"turnId":null,"type":"background-task.updated","correlation":null,"payload":task}), EventOrigin::Plugin).await?;
+                }
+            }
             if input["action"]=="set" && matches!(capability,"model.select"|"model.reasoning") {
                 let mut profile=crate::session_execution_profile(&self.db,session_id).await.map_err(|e|e.to_string())?.profile;
                 if apply_model_configuration(&mut profile,capability,&input,&response.output) {execution_profile::save_for_session(&self.db,session_id,&profile).await.map_err(|e|e.to_string())?;}

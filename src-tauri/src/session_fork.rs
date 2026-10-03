@@ -70,8 +70,10 @@ impl SessionHost {
                     .execute(&mut *tx).await.map_err(|e|e.to_string())?;
             }
             // A branch retains the child history belonging to its copied parent turns.
-            sqlx::query("UPDATE messages SET content=json_set(content,'$.rootTurnId',?) WHERE session_id=? AND turn_id=? AND tool_name='subagent'")
+            sqlx::query("UPDATE messages SET content=json_set(content,'$.rootTurnId',?) WHERE session_id=? AND turn_id=? AND tool_name IN ('subagent','background_task')")
                 .bind(&turn_id).bind(&new_id).bind(&turn_id).execute(&mut *tx).await.map_err(|e|e.to_string())?;
+            sqlx::query("UPDATE messages SET status='interrupted',content=json_set(content,'$.status','unknown','$.activity','任务属于原会话，分支不继承进程状态。') WHERE session_id=? AND turn_id=? AND tool_name='background_task' AND json_extract(content,'$.status')='running'")
+                .bind(&new_id).bind(&turn_id).execute(&mut *tx).await.map_err(|e|e.to_string())?;
             let child_events = sqlx::query("SELECT generation_id,sequence,occurred_at,payload_json FROM agent_events WHERE session_id=? AND event_type='subagent.message' AND json_extract(payload_json,'$.payload.rootTurnId')=? ORDER BY occurred_at,sequence")
                 .bind(session_id).bind(&old_id).fetch_all(&mut *tx).await.map_err(|e|e.to_string())?;
             for child in child_events {

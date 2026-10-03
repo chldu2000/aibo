@@ -1,4 +1,6 @@
 <script lang="ts">
+  import BackgroundTaskCard from './BackgroundTaskCard.svelte';
+  import { parseBackgroundTask } from '../../../../packages/presentation-workbench/background-tasks.js';
   import { AttachmentList } from '$lib/ui-kit';
   import { splitMessageAttachments } from '../../../../packages/presentation-workbench/message-attachments.js';
   import { parseSubagent, subagentStatusLabels } from '$lib/app/subagents';
@@ -289,6 +291,8 @@
     </div>
     <div class="timeline-heading-actions">
       {#if session}
+        {@const runningTasks = timeline.filter(item => parseBackgroundTask(item)?.status === 'running').length}
+        {#if runningTasks}<Badge variant="outline">后台任务 · {runningTasks} 运行中</Badge>{/if}
         <span class="timeline-session-status" data-tone={selectedSessionArchiving ? 'attention' : sessionStatusTone(session)} role="status">
           <span class="timeline-session-signal" aria-hidden="true"></span>
           <span>{selectedSessionArchiving ? '归档中' : sessionStateLabel(session)}</span>
@@ -390,7 +394,10 @@
             {@const item = renderItem.item}
             {@const timing = executionTiming(item)}
             {@const child = item.toolName === 'subagent' ? parseSubagent(item.content) : null}
-            {#if child}
+            {@const backgroundTask = parseBackgroundTask(item)}
+            {#if backgroundTask}
+              <div data-presentation-message={'message:' + item.id}><BackgroundTaskCard task={backgroundTask} /></div>
+            {:else if child}
               <div data-presentation-message={'message:' + item.id}><SubagentCard name={child.name} task={child.task} statusLabel={subagentStatusLabels[child.status]} activity={child.activity} failed={['failed','unavailable'].includes(child.status)} onOpen={() => onOpenSubagent?.(child.id)} /></div>
             {:else}
             <Card
