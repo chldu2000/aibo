@@ -518,6 +518,13 @@ impl Broker {
             invocation["context"]["hostTools"] = crate::session_history_tools::catalog().clone();
         }
         if let Some(settings) = settings { invocation["context"]["settings"] = settings; }
+        // Commit before dispatch. A crash or transport failure after this point is ambiguous.
+        if matches!(request.capability.as_str(), "aibo.session.turn" | "aibo.session.turn.write" | "aibo.session.goal.resume" | "aibo.session.goal.resume.write") {
+            if let Some(turn) = &request.turn_id {
+                sqlx::query("UPDATE turn_delivery SET state='possibly_sent' WHERE turn_id=? AND state='not_sent'")
+                    .bind(turn).execute(&self.db).await.map_err(database)?;
+            }
+        }
         let call = runtime.request("capability.invoke", invocation, chain.deadline.saturating_duration_since(Instant::now()));
         tokio::pin!(call);
         let mut notifications = runtime.notifications.lock().await;
@@ -565,6 +572,12 @@ impl Broker {
         };
         if raw["invocationId"] != id || raw["generationId"] != runtime.generation_id || raw["output"].to_string().len() > MAX_OUTPUT || !raw.as_object().is_some_and(|object|object.len() == 3 && object.contains_key("output")) || !jsonschema::options().build(&provider.operation["outputSchema"]).map_err(database)?.is_valid(&raw["output"]) {
             return Err(fail("invalid_output", "Runtime returned a stale or invalid result"));
+        }
+        if matches!(request.capability.as_str(), "aibo.session.turn" | "aibo.session.turn.write" | "aibo.session.goal.resume" | "aibo.session.goal.resume.write") {
+            if let Some(turn) = &request.turn_id {
+                sqlx::query("UPDATE turn_delivery SET state='responded' WHERE turn_id=?")
+                    .bind(turn).execute(&self.db).await.map_err(database)?;
+            }
         }
         Ok(Response { instance_id: slot.id.clone(), invocation_id: id.into(), installation_id: provider.installation_id.clone(), generation_id: runtime.generation_id.clone(), output: raw["output"].clone(), negotiated_operations })
     }

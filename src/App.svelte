@@ -1196,7 +1196,7 @@
   function backFromCapabilityHistory():void { capabilityHistoryOpen=false;historyOpen=true; }
 
   import {createPluginInstallController, type PluginInstallState} from '$lib/app/plugin-install-controller';
-  let pluginInstall = $state<PluginInstallState>({preview:null,busy:false,error:'',notice:'',undoTargets:[]});
+  let pluginInstall = $state<PluginInstallState>({preview:null,busy:false,error:'',notice:'',undoTargets:[],skipArchived:true});
   const pluginInstallController=createPluginInstallController({
     preview:previewPluginInstall, install:installAgentPlugin, undo:undoPluginReplacement, undoTargets:listPluginUndoTargets,
     refresh:async()=>{await refreshPluginInstallations();for(const workspace of workspaces)await refreshSessions(workspace.id);},
@@ -3360,6 +3360,7 @@
     busy={pluginBusy || pluginLifecycle.busy || pluginInstall.busy || !desktop}
     installation={pluginInstall}
     onInstallConfirm={hostGuard('onInstallConfirm', reinstall=>void pluginInstallController.confirm(reinstall))}
+    onSkipArchivedChange={hostGuard('onSkipArchivedChange', value=>pluginInstallController.setSkipArchived(value))}
     onInstallCancel={hostGuard('onInstallCancel', ()=>pluginInstallController.cancel())}
     onUndo={hostGuard('onUndo', id=>void pluginInstallController.undo(id))}
     lifecycle={pluginLifecycle}

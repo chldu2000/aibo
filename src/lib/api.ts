@@ -114,7 +114,7 @@ export const uninstallPresentationPackage = (digest: string, expectedWindows: st
 export const getPresentationSelection = (): Promise<PresentationSelection | null> => invoke('get_presentation_selection');
 export const selectPresentationPackage = (digest: string | null, themeId: string | null, expectedDigest: string | null): Promise<void> =>
   invoke('select_presentation_package', { digest, themeId, expectedDigest });
-export const installAgentPlugin = (path: string, token?: string, reinstall = false): Promise<PluginInstallation> => invoke('install_agent_plugin', { path, token, reinstall });
+export const installAgentPlugin = (path: string, token?: string, reinstall = false, skipArchived = true): Promise<PluginInstallation> => invoke('install_agent_plugin', { path, token, reinstall, skipArchived });
 export const previewPluginInstall = (path: string): Promise<import('./app/plugin-install-controller').PluginInstallPreview> => invoke('preview_plugin_install', {path});
 export const listPluginUndoTargets = (): Promise<string[]> => invoke('list_plugin_undo_targets');
 export const undoPluginReplacement = (id: string): Promise<void> => invoke('undo_plugin_replacement', {id});

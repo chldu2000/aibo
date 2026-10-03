@@ -285,6 +285,7 @@ impl SessionHost {
         let changed=sqlx::query("UPDATE sessions SET state='running',updated_at=? WHERE id=? AND state IN ('idle','interrupted','failed')").bind(&now).bind(session_id).execute(&mut *tx).await.map_err(|e|e.to_string())?;
         if changed.rows_affected()!=1 {return Err("busy: session is not idle".into());}
         sqlx::query("INSERT INTO turns(id,session_id,external_turn_id,status,input_text,started_at) VALUES(?,?,?,'running',?,?)").bind(&turn).bind(session_id).bind(&turn).bind(text).bind(&now).execute(&mut *tx).await.map_err(|e|e.to_string())?;
+        sqlx::query("INSERT INTO turn_delivery VALUES(?,'not_sent')").bind(&turn).execute(&mut *tx).await.map_err(|e|e.to_string())?;
         sqlx::query("INSERT INTO messages(id,session_id,turn_id,role,content,status,created_at,updated_at) VALUES(?,?,?,'user',?,'completed',?,?)").bind(&message).bind(session_id).bind(&turn).bind(text).bind(&now).bind(&now).execute(&mut *tx).await.map_err(|e|e.to_string())?;
         let attachments = if goal_resume { vec![] } else {
             crate::session_attachments::prepare_turn(&mut tx, session_id, queue_id, &turn, &session.capabilities).await?

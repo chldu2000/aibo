@@ -17,7 +17,7 @@ for(const kitId of ['material3','ak-ui'])for(const themeId of ['light','dark']){
    if(command==='get_app_snapshot')return {platform:'macos',appVersion:'probe',workspaceCount:0,diagnostics:[]};
    if(command==='list_plugin_installations')return [current];
    if(command==='list_plugin_undo_targets')return undo;
-   if(command==='preview_plugin_install')return {pluginId:'third.party',version:window.installKind==='downgrade'?'0.5.0':'2.0.0',kind:window.installKind,previous:[current.pluginVersion],token:'reviewed',blockers:[],impacts:[{id:current.id,sessions:[{id:'s',label:'Important history'}],bindings:[],dependencies:[],active:0,targets:[]}]};
+   if(command==='preview_plugin_install')return {pluginId:'third.party',version:window.installKind==='downgrade'?'0.5.0':'2.0.0',kind:window.installKind,previous:[current.pluginVersion],token:'reviewed',archivedSessions:['archived'],rebuildSessions:['s'],blockers:[],impacts:[{id:current.id,sessions:[{id:'s',label:'Important history'},{id:'archived',label:'Archived history'}],bindings:[],dependencies:[],active:0,targets:[]}]};
    if(command==='install_agent_plugin'){if(args.token!=='reviewed')throw Error('unreviewed');if(window.installKind==='downgrade'&&!args.reinstall)throw Error('unsafe downgrade');current={...current,id:'new',pluginVersion:args.reinstall?'0.5.0':'2.0.0',enabled:!args.reinstall};undo=args.reinstall?[]:['new'];return current;}
    if(command==='undo_plugin_replacement'){current={...current,id:'old',pluginVersion:'1.0.0'};undo=[];return;}
    if(command==='read_workspace_preferences')return {trustNewWorkspaces:true};
@@ -31,9 +31,13 @@ for(const kitId of ['material3','ak-ui'])for(const themeId of ['light','dark']){
  const dialog=page.getByRole('dialog',{name:'工作台设置',exact:true});
  await dialog.getByRole('button',{name:'选择目录安装',exact:true}).click();
  const impact=dialog.getByRole('region',{name:'安装影响'});
- await impact.getByText('会话：Important history',{exact:true}).waitFor();
+ await impact.getByText('会话：Important history（可重建）',{exact:true}).waitFor();
  assert.equal(await page.evaluate(()=>window.calls.some(c=>c.command==='install_agent_plugin')),false);
+ const skip=impact.getByRole('checkbox',{name:'跳过已归档会话（1）',exact:true});
+ assert.equal(await skip.isChecked(),true);
+ await skip.click();assert.equal(await skip.isChecked(),false);
  await impact.getByRole('button',{name:'确认安装',exact:true}).click();
+ assert.equal(await page.evaluate(()=>window.calls.filter(c=>c.command==='install_agent_plugin').at(-1).args.skipArchived),false);
  await dialog.getByRole('button',{name:'撤销本次升级',exact:true}).click();
  await dialog.getByText('已撤销升级并恢复旧版本。',{exact:true}).waitFor();
  await page.evaluate(()=>window.installKind='installed');await dialog.getByRole('button',{name:'选择目录安装',exact:true}).click();

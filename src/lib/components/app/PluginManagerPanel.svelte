@@ -22,6 +22,7 @@
   type Props = {
     installation?: PluginInstallState;
     onInstallConfirm?: (reinstall:boolean)=>void;
+    onSkipArchivedChange?: (value:boolean)=>void;
     onInstallCancel?: ()=>void;
     onUndo?: (id:string)=>void;
     installations: Installation[];
@@ -37,7 +38,7 @@
     onMigrate?: (target: string) => void;
   };
 
-  let { installation, onInstallConfirm, onInstallCancel, onUndo, installations, busy, onInstall, onEnabledChange, onUninstall, onCreateSession, onConfigure, lifecycle, onRemovalCancel, onRemovalConfirm, onMigrate }: Props = $props();
+  let { installation, onInstallConfirm, onSkipArchivedChange, onInstallCancel, onUndo, installations, busy, onInstall, onEnabledChange, onUninstall, onCreateSession, onConfigure, lifecycle, onRemovalCancel, onRemovalConfirm, onMigrate }: Props = $props();
   let selectedId = $state<string | null>(null);
   const installedPlugins = $derived(installations.filter(item => item.installed));
   const selected = $derived(installedPlugins.find(item => item.id === selectedId) ?? installedPlugins[0]);
@@ -60,7 +61,7 @@
           <p>{preview.previous.length ? `${preview.previous.join('、')} → ` : ''}{preview.version}</p>
           {#each preview.impacts as impact}
             <p>引用会话 {impact.sessions.length} 个 · 能力绑定 {impact.bindings.length} 个 · 依赖插件 {impact.dependencies.length} 个</p>
-            {#each impact.sessions as session}<p>会话：{session.label}</p>{/each}
+            {#each impact.sessions as session}<p>会话：{session.label}{preview.archivedSessions?.includes(session.id) ? '（已归档）' : ''}{preview.rebuildSessions?.includes(session.id) ? '（可重建）' : ''}</p>{/each}
             {#each impact.bindings as binding}<p>能力绑定：{binding.label}</p>{/each}
             {#each impact.dependencies as dependency}<p>依赖插件：{dependency.label}</p>{/each}
           {/each}
@@ -68,7 +69,23 @@
           {#if preview.kind === 'downgrade'}
             <p role="alert">旧版不能安全读取新版数据。重装会清除插件私有数据、缓存和全局及项目配置；原会话仅保留历史，不能继续。安装后默认禁用，需要新建会话。</p>
           {:else if preview.previous.length}
-            <p>全部会话恢复和引用检查成功后才替换，失败保留旧版。旧版暂作撤销备份；新版开始调用或产生新数据后，备份会清理，不能再撤销。</p>
+            {#if preview.archivedSessions?.length}
+              <label>
+                <input type="checkbox" checked={installation.skipArchived} disabled={busy}
+                  aria-describedby="skip-archived-description"
+                  onchange={event => {
+                    const checked = event.currentTarget.checked;
+                    event.currentTarget.checked = installation.skipArchived;
+                    onSkipArchivedChange?.(checked);
+                  }} />
+                跳过已归档会话（{preview.archivedSessions.length}）
+              </label>
+              <p id="skip-archived-description">默认跳过。跳过的归档会话仅保留历史，不能继续对话；取消勾选则尝试迁移，任一失败会回滚安装。</p>
+            {/if}
+            {#if preview.rebuildSessions?.length}
+              <p>未发送或确定未投递的首次失败会话将清除原生绑定，保留草稿和附件；升级后由你手动发送，届时创建新版会话。失败记录保留，已有草稿不会被覆盖。</p>
+            {/if}
+            <p>参与迁移的会话恢复和引用检查成功后才替换，失败保留旧版。旧版暂作撤销备份；新版开始调用或产生新数据后，备份会清理，不能再撤销。</p>
           {/if}
           <div class="plugin-actions">
             <Button disabled={busy || !!preview.blockers.length} onclick={()=>onInstallConfirm?.(preview.kind === 'downgrade')}>{preview.kind === 'downgrade' ? '清除插件数据并安装旧版' : '确认安装'}</Button>

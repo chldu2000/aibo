@@ -31,6 +31,12 @@ impl SessionHost {
             }
             let turn_id = p["turnId"].as_str();
             if (kind.starts_with("turn.") || kind.starts_with("message.") || kind.starts_with("reasoning.") || kind.starts_with("tool.")) && turn_id.is_none() { return Err("invalid_session: turn identity required".into()); }
+            if origin == EventOrigin::Plugin {
+                if let Some(turn) = turn_id {
+                    sqlx::query("UPDATE turn_delivery SET state='responded' WHERE turn_id=?")
+                        .bind(turn).execute(&mut *tx).await.map_err(|e|e.to_string())?;
+                }
+            }
             if kind == "session.info_changed" {
                 if turn_id.is_some() { return Err("invalid_session: recovery update cannot belong to a turn".into()); }
                 let previous: String = sqlx::query_scalar("SELECT plugin_binding_json FROM session_bindings WHERE session_id=?").bind(session_id).fetch_one(&mut *tx).await.map_err(|e|e.to_string())?;

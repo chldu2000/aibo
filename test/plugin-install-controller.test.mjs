@@ -9,11 +9,11 @@ function fixture(kind='upgrade') {
 }
 test('replacement requires review and passes the exact confirmation token',async()=>{
   const f=fixture();await f.controller.confirm();assert.equal(f.calls.length,0);
-  await f.controller.review('/package');await f.controller.confirm();assert.deepEqual(f.calls,[['/package','digest-and-references',false]]);assert.equal(f.state.preview,null);assert.deepEqual(f.state.undoTargets,['new']);
+  await f.controller.review('/package');await f.controller.confirm();assert.deepEqual(f.calls,[['/package','digest-and-references',false,true]]);assert.equal(f.state.preview,null);assert.deepEqual(f.state.undoTargets,['new']);
 });
 test('downgrade is only available through explicit destructive reinstall',async()=>{
   const f=fixture('downgrade');await f.controller.review('/old');await f.controller.confirm(false);assert.equal(f.calls.length,0);
-  await f.controller.confirm(true);assert.deepEqual(f.calls,[['/old','digest-and-references',true]]);assert.match(f.state.notice,/仅保留历史/);
+  await f.controller.confirm(true);assert.deepEqual(f.calls,[['/old','digest-and-references',true,true]]);assert.match(f.state.notice,/仅保留历史/);
 });
 test('identical package is a no-op; blocked and cancelled installs make no writes',async()=>{
   const f=fixture('installed');await f.controller.review('/same');assert.match(f.state.notice,/无需重复/);await f.controller.confirm();assert.equal(f.calls.length,0);
@@ -27,4 +27,11 @@ test('undo revalidates through the host and double submit does not duplicate ins
   const f=fixture();let finish;f.ports.install=()=>new Promise(resolve=>finish=resolve);
   await f.controller.review('/new');const pending=f.controller.confirm();await f.controller.confirm();assert.equal(f.state.busy,true);finish();await pending;
   await f.controller.undo('new');assert.deepEqual(f.calls,[['undo','new']]);
+});
+
+test('archived sessions are skipped by default, can be included, and reset for the next review', async () => {
+  const f=fixture(); await f.controller.review('/new'); assert.equal(f.state.skipArchived,true);
+  f.controller.setSkipArchived(false); await f.controller.confirm();
+  assert.deepEqual(f.calls,[['/new','digest-and-references',false,false]]);
+  await f.controller.review('/next'); assert.equal(f.state.skipArchived,true);
 });

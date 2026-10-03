@@ -51,6 +51,7 @@ mod presentation_packages;
 mod plugin_storage;
 mod plugin_lifecycle;
 mod plugin_replacement;
+mod session_rebuild;
 mod workspace_guard;
 mod semantic_git;
 mod semantic_plugins;
@@ -2266,10 +2267,10 @@ async fn select_presentation_package(digest: Option<String>, theme_id: Option<St
 }
 
 #[tauri::command]
-async fn install_agent_plugin(path: String, token: Option<String>, reinstall: Option<bool>, state: State<'_, AppState>) -> Result<plugin_registry::PluginInstallation, String> {
+async fn install_agent_plugin(path: String, token: Option<String>, reinstall: Option<bool>, skip_archived: Option<bool>, state: State<'_, AppState>) -> Result<plugin_registry::PluginInstallation, String> {
     let _guard = state.capability_broker.mutation_guard().await;
     let previous=plugin_replacement::preview(&state.db,Path::new(&path)).await?.impacts;
-    let installed=state.plugins.replace_plugin(&state.data_dir, Path::new(&path), token.as_deref(), reinstall.unwrap_or(false)).await?;
+    let installed=state.plugins.replace_plugin(&state.data_dir, Path::new(&path), token.as_deref(), reinstall.unwrap_or(false), skip_archived.unwrap_or(true)).await?;
     for old in previous {if old.id!=installed.id {state.semantic_plugins.invalidate(&state.capability_broker,&old.id,None).await;}}
     Ok(installed)
 }

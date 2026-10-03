@@ -19,6 +19,8 @@ pub(crate) struct Preview {
     pub kind: String,
     pub token: String,
     pub previous: Vec<String>,
+    pub archived_sessions: Vec<String>,
+    pub rebuild_sessions: Vec<String>,
     pub impacts: Vec<Impact>,
     pub blockers: Vec<String>,
 }
@@ -32,6 +34,10 @@ pub(crate) struct Release {
 pub(crate) struct SavedSession {
     pub id: String,
     pub source: String,
+    #[serde(default)]
+    pub archived: bool,
+    #[serde(default)]
+    pub rebuild: Option<crate::session_rebuild::Plan>,
     pub binding: Option<String>,
     pub capabilities: Option<String>,
     pub bound_at: Option<String>,
@@ -106,6 +112,8 @@ pub(crate) async fn preview(db: &SqlitePool, source: &Path) -> Result<Preview, S
         kind: kind.into(),
         token,
         previous,
+        archived_sessions: snapshot.sessions.iter().filter(|s| s.archived).map(|s| s.id.clone()).collect(),
+        rebuild_sessions: snapshot.sessions.iter().filter(|s| s.rebuild.is_some()).map(|s| s.id.clone()).collect(),
         impacts,
         blockers,
     })
@@ -114,8 +122,11 @@ pub(crate) async fn preview(db: &SqlitePool, source: &Path) -> Result<Preview, S
 pub(crate) async fn snapshot(db: &SqlitePool, plugin: &str) -> Result<Snapshot, String> {
     let releases=sqlx::query("SELECT id,enabled,enabled_at FROM plugin_installations WHERE plugin_id=? AND installed=1 ORDER BY id")
         .bind(plugin).fetch_all(db).await.map_err(error)?.into_iter().map(|r|Release{id:r.get("id"),enabled:r.get::<i64,_>("enabled")!=0,enabled_at:r.get("enabled_at")}).collect();
-    let sessions=sqlx::query("SELECT s.id,s.plugin_installation_id,b.plugin_binding_json,b.plugin_capabilities_json,b.bound_at FROM sessions s JOIN plugin_installations p ON p.id=s.plugin_installation_id LEFT JOIN session_bindings b ON b.session_id=s.id WHERE p.plugin_id=? AND p.installed=1 AND s.id NOT IN (SELECT session_id FROM plugin_session_retirements) ORDER BY s.id")
-        .bind(plugin).fetch_all(db).await.map_err(error)?.into_iter().map(|r|SavedSession{id:r.get("id"),source:r.get("plugin_installation_id"),binding:r.get("plugin_binding_json"),capabilities:r.get("plugin_capabilities_json"),bound_at:r.get("bound_at")}).collect();
+    let mut sessions: Vec<SavedSession>=sqlx::query("SELECT s.id,s.archived,s.plugin_installation_id,b.plugin_binding_json,b.plugin_capabilities_json,b.bound_at FROM sessions s JOIN plugin_installations p ON p.id=s.plugin_installation_id LEFT JOIN session_bindings b ON b.session_id=s.id WHERE p.plugin_id=? AND p.installed=1 AND s.id NOT IN (SELECT session_id FROM plugin_session_retirements) ORDER BY s.id")
+        .bind(plugin).fetch_all(db).await.map_err(error)?.into_iter().map(|r|SavedSession{id:r.get("id"),rebuild:None,archived:r.get::<i64,_>("archived")!=0,source:r.get("plugin_installation_id"),binding:r.get("plugin_binding_json"),capabilities:r.get("plugin_capabilities_json"),bound_at:r.get("bound_at")}).collect();
+    for session in &mut sessions {
+        session.rebuild = crate::session_rebuild::plan(db, &session.id).await?;
+    }
     let bindings:Vec<String>=sqlx::query_scalar("SELECT json_object('scope_kind',b.scope_kind,'scope_id',b.scope_id,'capability_id',b.capability_id,'contract_version',b.contract_version,'installation_id',b.installation_id,'contribution_id',b.contribution_id,'updated_at',b.updated_at) FROM capability_provider_bindings b JOIN plugin_installations p ON p.id=b.installation_id WHERE p.plugin_id=? AND p.installed=1 ORDER BY b.scope_kind,b.scope_id,b.capability_id,b.contract_version")
         .bind(plugin).fetch_all(db).await.map_err(error)?;
     Ok(Snapshot {
@@ -140,6 +151,9 @@ pub(crate) async fn restore(db: &SqlitePool, plugin: &str) -> Result<(), String>
             .bind(old.enabled).bind(&old.enabled_at).bind(&old.id).execute(&mut *tx).await.map_err(error)?;
     }
     for session in &saved.sessions {
+        // Snapshot sessions were executable before replacement, including skipped archives.
+        sqlx::query("DELETE FROM plugin_session_retirements WHERE session_id=?")
+            .bind(&session.id).execute(&mut *tx).await.map_err(error)?;
         sqlx::query("INSERT INTO plugin_session_migrations SELECT ?,s.id,s.plugin_installation_id,?,b.plugin_binding_json,? FROM sessions s LEFT JOIN session_bindings b ON b.session_id=s.id WHERE s.id=? AND s.plugin_installation_id<>?")
             .bind(ulid::Ulid::new().to_string()).bind(&session.source).bind(crate::now_iso()).bind(&session.id).bind(&session.source).execute(&mut *tx).await.map_err(error)?;
         sqlx::query("UPDATE sessions SET plugin_installation_id=? WHERE id=?")
@@ -148,8 +162,8 @@ pub(crate) async fn restore(db: &SqlitePool, plugin: &str) -> Result<(), String>
             .execute(&mut *tx)
             .await
             .map_err(error)?;
-        sqlx::query("UPDATE session_bindings SET plugin_binding_json=?,plugin_capabilities_json=?,generation_id=NULL,bound_at=? WHERE session_id=?")
-            .bind(&session.binding).bind(&session.capabilities).bind(&session.bound_at).bind(&session.id).execute(&mut *tx).await.map_err(error)?;
+        sqlx::query("UPDATE session_bindings SET plugin_binding_json=?,plugin_capabilities_json=?,generation_id=NULL,bound_at=?,external_session_id=json_extract(?,'$.nativeSessionId') WHERE session_id=?")
+            .bind(&session.binding).bind(&session.capabilities).bind(&session.bound_at).bind(&session.binding).bind(&session.id).execute(&mut *tx).await.map_err(error)?;
         sqlx::query("DELETE FROM plugin_session_candidates WHERE session_id=?")
             .bind(&session.id)
             .execute(&mut *tx)
