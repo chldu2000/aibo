@@ -1551,3 +1551,38 @@ async fn background_tasks_update_after_parent_completion_and_reject_stale_owners
     assert!(host.project_event(&session.id,"w",&generation,&binding,event,EventOrigin::Host).await.unwrap_err().contains("parent turn"));
     broker.stop_session(&session.id).await.unwrap(); db.close().await; fs::remove_dir_all(root).unwrap();
 }
+
+#[tokio::test]
+async fn plugin_replacement_confirmation_survives_observational_refresh() {
+    let (root,db,broker,host,session)=concurrent_session_fixture().await;
+    replacement_history(&db).await;
+    // Warm the same metadata read that remains active while management is open.
+    host.invoke_capability_from("main",&session.id,"model.select",json!({"action":"list"})).await.unwrap();
+    replacement_package(&root,"99.0.0");
+    let preview=crate::plugin_replacement::preview(&db,&root.join("package")).await.unwrap();
+    host.invoke_capability_from("main",&session.id,"model.select",json!({"action":"list"})).await.unwrap();
+    let result=host.replace_plugin(&root.join("data"),&root.join("package"),Some(&preview.token),false,true).await;
+    let error=result.as_ref().err().cloned();
+    broker.stop_session(&session.id).await.unwrap();db.close().await;fs::remove_dir_all(root).unwrap();
+    assert!(result.is_ok(),"unchanged metadata must not invalidate installation confirmation: {error:?}");
+}
+
+#[tokio::test]
+async fn plugin_replacement_confirmation_rejects_changed_recovery_and_stale_generation() {
+    let (root,db,broker,host,session)=concurrent_session_fixture().await;
+    replacement_history(&db).await;
+    replacement_package(&root,"99.0.0");
+    let preview=crate::plugin_replacement::preview(&db,&root.join("package")).await.unwrap();
+    let binding=host.saved_binding(&session.id).await.unwrap().unwrap();
+    let generation:String=sqlx::query_scalar("SELECT generation_id FROM session_bindings WHERE session_id=?").bind(&session.id).fetch_one(&db).await.unwrap();
+    let mut response=Response{instance_id:String::new(),invocation_id:String::new(),installation_id:session.plugin_installation_id.clone().unwrap(),generation_id:"stale".into(),output:json!({"recovery":binding["recovery"]}),negotiated_operations:json!([])};
+    assert!(host.save_recovery(&session.id,&response).await.unwrap_err().contains("generation changed"));
+    assert_eq!(host.saved_binding(&session.id).await.unwrap().unwrap(),binding);
+    response.generation_id=generation;
+    response.output["recovery"]["data"]["confirmationTest"]=json!("changed");
+    host.save_recovery(&session.id,&response).await.unwrap();
+    assert_eq!(host.saved_binding(&session.id).await.unwrap().unwrap()["recovery"],response.output["recovery"]);
+    let error=host.replace_plugin(&root.join("data"),&root.join("package"),Some(&preview.token),false,true).await.err().unwrap();
+    assert!(error.contains("请先查看并确认版本替换影响"));
+    broker.stop_session(&session.id).await.unwrap();db.close().await;fs::remove_dir_all(root).unwrap();
+}

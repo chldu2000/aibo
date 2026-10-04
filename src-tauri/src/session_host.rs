@@ -352,6 +352,14 @@ impl SessionHost {
     async fn save_recovery(&self,session_id:&str,response:&Response)->Result<(),String> {
         if response.output.get("recovery").is_none() {return Ok(());}
         let mut binding=self.saved_binding(session_id).await?.ok_or("invalid_session: missing binding")?;
+        if binding["recovery"] == response.output["recovery"] {
+            // Metadata polling is observational when recovery is unchanged. Rewriting
+            // updatedAt would invalidate a pending plugin replacement confirmation.
+            // A no-op must still reject replies from an obsolete runtime generation.
+            let current: bool = sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM session_bindings WHERE session_id=? AND generation_id=?)")
+                .bind(session_id).bind(&response.generation_id).fetch_one(&self.db).await.map_err(|e|e.to_string())?;
+            return if current { Ok(()) } else { Err("invalid_session: recovery generation changed".into()) };
+        }
         binding["recovery"]=response.output["recovery"].clone();binding["updatedAt"]=json!(crate::now_iso());
         if !crate::session_contract::binding_schema().is_valid(&binding) {return Err("invalid_output: recovery".into());}
         let updated=sqlx::query("UPDATE session_bindings SET plugin_binding_json=? WHERE session_id=? AND generation_id=?").bind(binding.to_string()).bind(session_id).bind(&response.generation_id).execute(&self.db).await.map_err(|e|e.to_string())?;
