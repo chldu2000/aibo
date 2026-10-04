@@ -42,6 +42,7 @@ mod plugin_runtime;
 mod plugin_sdk;
 mod plugin_contract;
 mod plugin_manifest;
+mod plugin_authentication;
 mod session_contract;
 mod session_host;
 mod plugin_dependencies;
@@ -2229,6 +2230,12 @@ async fn save_agent_settings(request: agent_settings::Save, state: State<'_, App
 }
 
 #[tauri::command]
+async fn plugin_authentication_action(id: String, action: plugin_authentication::Action, state: State<'_, AppState>) -> Result<plugin_authentication::Status, String> {
+    let _guard = state.capability_broker.mutation_guard().await;
+    plugin_authentication::execute(&state.db, &state.data_dir, &id, action).await
+}
+
+#[tauri::command]
 async fn list_plugin_installations(state: State<'_, AppState>) -> Result<Vec<plugin_registry::PluginInstallation>, String> {
     plugin_registry::list(&state.db).await
 }
@@ -3078,6 +3085,7 @@ pub fn run() {
             list_capability_history_scopes,
             read_capability_history,
             list_plugin_installations,
+            plugin_authentication_action,
             preview_plugin_removal,
             migrate_plugin_sessions,
             read_agent_settings,

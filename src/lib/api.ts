@@ -85,7 +85,7 @@ export interface PluginInstallation {
   packageDependencies?: { dependencies: { pluginId: string; required: boolean; available: boolean; installationId: string | null; version: string | null; issue: string | null; contributionIds: string[] }[]; unavailableContributions: string[] };
   activationIssues?: string[];
   contributions?: { id: string; kind: string; scope: string; required: boolean; metadata: Record<string, unknown> }[];
-  manifest: { displayName: string; agents?: { agentId: string; displayName: string }[]; [key: string]: unknown };
+  manifest: { displayName: string; authentication?: { kind: 'cli-terminal'; executable: string; loginArgs: string[]; statusArgs: string[] }; agents?: { agentId: string; displayName: string }[]; [key: string]: unknown };
 }
 // Caller identity and workspace paths are injected by the desktop host.
 import type { JsonValue as CapabilityValue, CapabilityScope, CapabilityRequest, CapabilityResult } from '../../packages/plugin-protocol/src/index';
@@ -104,6 +104,7 @@ export const bindCapabilityProvider = (scope: CapabilityScope, capability: strin
 export const invokeCapability = (request: CapabilityRequest): Promise<CapabilityResult> => invoke('invoke_capability', { request });
 export const cancelCapability = (requestId: string): Promise<boolean> => invoke('cancel_capability', { requestId });
 
+export const pluginAuthenticationAction = (id: string, action: 'login' | 'status'): Promise<import('./app/plugin-authentication-controller').PluginAuthenticationResult> => invoke('plugin_authentication_action', { id, action });
 export const listPluginInstallations = (): Promise<PluginInstallation[]> => invoke('list_plugin_installations');
 export const listPresentationPackages = (): Promise<PresentationRelease[]> => invoke('list_presentation_packages');
 export const installPresentationPackage = (path: string): Promise<PresentationRelease> => invoke('install_presentation_package', { path });

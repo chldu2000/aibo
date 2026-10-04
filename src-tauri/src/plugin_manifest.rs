@@ -110,6 +110,7 @@ pub(crate) fn normalize(manifest: &Value) -> Result<ManifestModel, String> {
             semver::VersionReq::parse(range).map_err(|_| invalid("invalid executable version range"))?;
         }
     }
+    crate::plugin_authentication::validate_declaration(manifest)?;
     let plugin = manifest["pluginId"].as_str().unwrap();
     if plugin.starts_with("aibo.") { return Err(invalid("aibo namespace is reserved for host contracts")); }
     let mut contributions = Vec::new();

@@ -169,3 +169,41 @@ Control 必须在操作允许列表中；处理取消，并只在有效 invocati
 由宿主管理。基于 `@aibolabs/acp-adapter/worker`（SDK 0.1.3 起）的 ACP 插件自动获得这条接线：宿主在会话上下文中
 下发工具目录时，Worker 启动 MCP bridge 并交给 Agent。
 完整步骤及原生/打包测试见[会话历史工具](session-history-tool-design.md)。
+
+## 登录与授权入口
+
+Manifest v2 可选的顶层 `authentication` 声明由宿主固定的插件管理页消费；没有声明时不显示登录入口。
+此功能需要包含 `plugin_authentication_action` 的宿主构建，旧宿主的严格 manifest 校验会拒绝该字段。
+它是用户主动调用的应用级管理动作，不是会话能力，不通过提示词触发，也不改变会话绑定或执行授权。
+
+```json
+{
+  "authentication": {
+    "kind": "cli-terminal",
+    "executable": "example-agent",
+    "loginArgs": ["auth", "login"],
+    "statusArgs": ["auth", "status"]
+  }
+}
+```
+
+`executable` 必须引用 `executableDependencies` 中 `kind: executable`、`required: true` 的依赖，
+不接受路径。参数按独立 argv 声明，不能依赖 shell 展开；最多 16 项，每项最多 256 字符，不含控制字符。
+`statusArgs` 的退出码合同为 0 已登录、1 未登录，其他退出码或超时为检查失败。
+只接受符合这一合同的 CLI；宿主不解析输出，也不把检查结果当作远端 OAuth 或模型调用成功的证据。
+
+用户在插件管理页启用插件后点击「登录 / 授权」。原生宿主在变更锁内重新读取安装与启用状态、
+验证清单及 CLI 依赖版本，再执行声明的动作。当前登录终端实现支持 macOS：生成权限为 0700 的
+临时 `.command` 文件，通过系统 Terminal 打开，文件在开始执行时删除。若用户始终未打开该终端，
+临时文件保留到系统临时目录清理；其中只包含命令和受限系统身份环境，不包含 OAuth token。
+终端打开成功仅表示 `loginOpened`；用户完成官方交互式登录后点击「检查登录状态」。
+登录与检查都使用用户主目录和与插件相同的身份环境、可执行搜索路径，不继承 API key 等额外变量。
+宿主状态检查限时 15 秒，丢弃 stdout/stderr，不保存账户或凭据。其他平台打开登录明确返回不支持。
+
+凭据仍由官方 CLI 保存。调用认证动作会结束该插件升级的撤销窗口；登录流程交由外部终端管理，
+关闭 aibo 或管理面板不表示取消登录。授权后用户返回原会话手动重试；不自动发送消息、重建会话或更换 release。
+管理页的检查结果是按安装身份隔离的内存快照，不是持续监控的认证状态。
+
+验证入口：`test/plugin-authentication.test.mjs`、Rust `plugin_authentication` 测试及
+`probes/plugin-authentication-browser.mjs`（Material 3 / ak-ui 浅深主题、失败重试、禁用与缺失能力）。
+浏览器替身不证明系统 Terminal 或实际 OAuth 授权成功。

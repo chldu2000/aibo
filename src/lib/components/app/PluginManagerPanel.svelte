@@ -1,5 +1,6 @@
 <script lang="ts">
   import { Badge, Button, Card, CardContent, CardHeader, CardTitle } from '$lib/ui-kit';
+  import type { PluginAuthenticationState } from '$lib/app/plugin-authentication-controller';
   import type { PluginLifecycleState } from '$lib/app/plugin-lifecycle-controller';
 
   import type {PluginInstallState} from '$lib/app/plugin-install-controller';
@@ -16,10 +17,12 @@
     activationIssues?: string[];
     sessionProviders: { id: string; displayName: string }[];
     contributions?: { id: string; metadata: Record<string, unknown> }[];
-    manifest: { displayName: string };
+    manifest: { displayName: string; authentication?: { kind: 'cli-terminal'; executable: string } };
   };
 
   type Props = {
+    authentication?: PluginAuthenticationState;
+    onAuthenticate?: (id: string, action: 'login' | 'status') => void;
     installation?: PluginInstallState;
     onInstallConfirm?: (reinstall:boolean)=>void;
     onSkipArchivedChange?: (value:boolean)=>void;
@@ -38,7 +41,7 @@
     onMigrate?: (target: string) => void;
   };
 
-  let { installation, onInstallConfirm, onSkipArchivedChange, onInstallCancel, onUndo, installations, busy, onInstall, onEnabledChange, onUninstall, onCreateSession, onConfigure, lifecycle, onRemovalCancel, onRemovalConfirm, onMigrate }: Props = $props();
+  let { authentication, onAuthenticate, installation, onInstallConfirm, onSkipArchivedChange, onInstallCancel, onUndo, installations, busy, onInstall, onEnabledChange, onUninstall, onCreateSession, onConfigure, lifecycle, onRemovalCancel, onRemovalConfirm, onMigrate }: Props = $props();
   let selectedId = $state<string | null>(null);
   const installedPlugins = $derived(installations.filter(item => item.installed));
   const selected = $derived(installedPlugins.find(item => item.id === selectedId) ?? installedPlugins[0]);
@@ -167,6 +170,22 @@
                     </p>
                   {/each}
                   {#each installation.activationIssues ?? [] as issue}<p role="status">{issue}</p>{/each}
+                  {#if installation.manifest.authentication}
+                    {@const auth = authentication?.entries[installation.id]}
+                    <section aria-label="登录与授权">
+                      <p>使用官方 CLI 登录，凭据由 Agent 保存。授权完成后返回这里检查状态。</p>
+                      <div class="plugin-actions">
+                        <Button variant="outline" disabled={busy || !installation.enabled || !installation.runnable} onclick={() => onAuthenticate?.(installation.id, 'login')}>登录 / 授权</Button>
+                        <Button variant="outline" disabled={busy || !installation.enabled || !installation.runnable} onclick={() => onAuthenticate?.(installation.id, 'status')}>检查登录状态</Button>
+                      </div>
+                      {#if !installation.enabled}<p>启用插件后可登录或检查状态。</p>{/if}
+                      {#if authentication?.busyId === installation.id}<p role="status">正在处理认证请求…</p>{/if}
+                      {#if auth?.error}<p role="alert">{auth.error}</p>
+                      {:else if auth?.result === 'loginOpened'}<p role="status">已打开登录终端，请完成浏览器授权，再点击“检查登录状态”。</p>
+                      {:else if auth?.result === 'authenticated'}<p role="status">CLI 报告已登录。可以返回原会话重试；若仍提示过期，请重新授权。此检查不验证远端请求。</p>
+                      {:else if auth?.result === 'unauthenticated'}<p role="status">尚未登录或授权未完成，请点击“登录 / 授权”。</p>{/if}
+                    </section>
+                  {/if}
                   <div class="plugin-actions">
                     {#if installation.installed}
                       <Button type="button" variant="outline" disabled={busy || (!installation.enabled && !installation.runnable)} onclick={() => onEnabledChange(installation.id, !installation.enabled)}>{installation.enabled ? '禁用插件' : '启用插件'}</Button>

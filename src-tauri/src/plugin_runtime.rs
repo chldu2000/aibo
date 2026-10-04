@@ -18,7 +18,7 @@ const MAX_MESSAGE: usize = 1_048_576;
 const MAX_PENDING: usize = 64;
 /// Inherited system and user-identity variables. Agent CLIs locate their own login state
 /// through them (macOS keychain entries are keyed by `USER`); everything else stays cleared.
-const PLUGIN_ENVIRONMENT: [&str; 11] = [
+pub(crate) const PLUGIN_ENVIRONMENT: [&str; 11] = [
     "SystemRoot", "WINDIR", "TEMP", "TMP", "TMPDIR", "LANG", "LC_ALL",
     "HOME", "USER", "LOGNAME", "USERPROFILE",
 ];

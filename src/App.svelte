@@ -23,6 +23,12 @@
   }
   import { notificationDuration, type AppNotification, type NotificationType } from '$lib/app/notifications';
   import { createPluginLifecycleController, type PluginLifecycleState } from '$lib/app/plugin-lifecycle-controller';
+  import { createPluginAuthenticationController, emptyPluginAuthentication } from '$lib/app/plugin-authentication-controller';
+  import { pluginAuthenticationAction } from '$lib/api';
+  let pluginAuthentication = $state(emptyPluginAuthentication());
+  const pluginAuthenticationController = createPluginAuthenticationController({
+    execute: pluginAuthenticationAction, publish: value => { pluginAuthentication = value; },
+  });
   import { previewPluginRemoval, migratePluginSessions } from '$lib/api';
   import NodeRuntimePanel from '$lib/components/app/NodeRuntimePanel.svelte';
   import { createNodeRuntimeController, emptyNodeRuntime } from '$lib/app/node-runtime-controller';
@@ -3357,6 +3363,8 @@
 {#snippet extensionManagement()}
   <PluginManagerPanel
     installations={pluginManagerInstallations}
+    authentication={pluginAuthentication}
+    onAuthenticate={hostGuard('onAuthenticate', (id, action) => void pluginOperation(() => pluginAuthenticationController.run(id, action)))}
     busy={pluginBusy || pluginLifecycle.busy || pluginInstall.busy || !desktop}
     installation={pluginInstall}
     onInstallConfirm={hostGuard('onInstallConfirm', reinstall=>void pluginInstallController.confirm(reinstall))}
