@@ -1,6 +1,6 @@
 # Presentation 包合同 v1
 
-本合同已接入 App 安装、隔离执行与故障恢复。独立 shadcn / Material 3 呈现包当前为 0.4.1（hostApi 1.1.0），共享工作台为 0.2.2；
+本合同已接入 App 安装、隔离执行与故障恢复。独立 shadcn / Material 3 呈现包当前为 0.4.2（hostApi 1.1.0），共享工作台为 0.2.3；
 首次交付基线见[0.3.0 交付说明](presentation-release-0.3.0.md)，实现与验收边界见
 [退出审计](presentation-plugin-exit-audit.md)。阶段过程另见[重构记录](presentation-plugin-refactor.md)。
 
@@ -491,3 +491,7 @@ semantic 后，原有内置专业协商恢复；未覆盖 semantic 的包仍继�
 进入皮肤 Worker 的输入。文件不存在或已经变化时保留附件名称，预览显示失败。
 独立 shadcn/material3 皮肤 0.3.1 在输入框和用户消息下显示附件；已安装的旧皮肤
 需要安装新版本才能采用新增渲染逻辑。
+
+## 订阅额度观测
+
+会话 `usage.limits` 保持数值 `usedPercent` 合同，新增可选 `observedAt`（Unix 秒）表示最近观测。宿主对有观测时间的窗口按 `resetsAt` 判定过期，过期窗口从 `limits` 移到新增可选 `usage.unknownLimits`，不提供虚构百分比。旧呈现忽略新字段，更新后的工作台显示“额度未知”。窗口缺少重置时间时仍显示最近观测，并标注“重置时间未知”。呈现不主动查询账号或推算重置后余额。

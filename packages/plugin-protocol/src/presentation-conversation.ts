@@ -255,7 +255,9 @@ export type PresentationConversation = {
     contextLimit: number | null;
     contextEstimated: boolean;
     plan?: string | null;
-    limits?: { id: string; label: string | null; usedPercent: number; windowMinutes: number | null; resetsAt: number | null }[];
+    limits?: { id: string; label: string | null; usedPercent: number; observedAt?: number; windowMinutes: number | null; resetsAt: number | null }[];
+    /** Expired observations, separate so older renderers never coerce unknown to 100% remaining. */
+    unknownLimits?: { id: string; label: string | null; observedAt?: number; windowMinutes: number | null; resetsAt: number | null }[];
     credits?: { balance: string | null; unlimited: boolean } | null;
   } | null;
   retryPrompt: string | null;

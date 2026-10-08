@@ -5,6 +5,19 @@ import { createServer } from 'vite';
 import { chromium } from 'playwright';
 import {buildPresentationSkins} from './lib/build-presentation-skins.mjs';
 import {probePresentationApprovalFault} from './lib/presentation-approval-fault.mjs';
+async function probeQuota(page, frame) {
+  await page.evaluate(() => window.emitAgent('usage.updated', { usage: { totalTokens: 12, limits: [
+    { id: 'five_hour', label: '5 小时', usedPercent: 24, observedAt: Date.now()/1000, resetsAt: Date.now()/1000+2 },
+    { id: 'seven_day', label: '每周', usedPercent: 13, observedAt: Date.now()/1000, resetsAt: null },
+  ] } }));
+  const row = frame.locator('[data-presentation-key="conversation:usage"]');
+  await row.filter({hasText:'5 小时剩余 76%'}).waitFor();
+  await row.filter({hasText:'5 小时额度未知'}).waitFor({timeout:6000});
+  assert.match(await row.textContent(), /每周剩余 87%（最近观测，重置时间未知）/);
+  assert.doesNotMatch(await row.textContent(), /100%/);
+  await page.evaluate(() => window.emitAgent('usage.updated', { usage: null }));
+  await row.waitFor({state:'detached'});
+}
 const built=await buildPresentationSkins();const pkg=built.packages[0];
 pkg.markdownTechnical=await readFile('fixtures/markdown-technical.md','utf8');
 const server=await createServer({server:{host:'127.0.0.1',port:0,strictPort:false,hmr:false,watch:null}});await server.listen();
@@ -161,6 +174,7 @@ try {
       await frame.getByRole('heading',{name:'工作区',exact:true}).waitFor();
       if(!await frame.getByRole('button',{name:'s1',exact:true}).count())await frame.getByRole('button',{name:'w1',exact:true}).click();
       await frame.getByRole('button',{name:'s1',exact:true}).click();
+    await probeQuota(page, frame);
       await page.evaluate(()=>window.setSequentialCatalog());
       if(await frame.locator('[data-presentation-key="conversation:models"]').getAttribute('open')===null)await frame.locator('[data-presentation-key="models:title"]').click();
       await frame.getByRole('button',{name:'刷新模型',exact:true}).click();
@@ -217,6 +231,7 @@ try {
     await frame.getByRole('heading',{name:'工作区',exact:true}).waitFor();
     if(!await frame.getByRole('button',{name:'s1',exact:true}).count())await frame.getByRole('button',{name:'w1',exact:true}).click();
     await frame.getByRole('button',{name:'s1',exact:true}).click();
+    await probeQuota(page, frame);
     const layout=frame.locator('[data-presentation-key="workbench:layout"]');
     if(await layout.getAttribute('open')===null)await frame.getByText('布局',{exact:true}).click();
     const width=frame.getByRole('slider',{name:'导航宽度',exact:true});

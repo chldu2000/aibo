@@ -1,7 +1,27 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
-import { toUsageValues } from '../src/lib/app/session-usage.ts';
+import { toUsageValues, toPresentationUsage, nextUsageReset } from '../src/lib/app/session-usage.ts';
+
+test('observed quota expires without a new provider event; missing reset remains a last observation', () => {
+  const snapshot = { totalTokens: 12, limits: [
+    { id: 'five_hour', usedPercent: 24, observedAt: 1000, resetsAt: 2000 },
+    { id: 'seven_day', usedPercent: 13, observedAt: 1000 },
+  ] };
+  assert.equal(toUsageValues(snapshot, 1999).limits[0].usedPercent, 24);
+  const expired = toUsageValues(snapshot, 2000);
+  assert.equal(expired.limits[0].usedPercent, null);
+  assert.equal(expired.limits[1].usedPercent, 13);
+  assert.equal(expired.limits[1].resetsAt, null);
+  assert.equal(expired.total, 12);
+  assert.equal(nextUsageReset(snapshot, 1999), 2000);
+  assert.equal(nextUsageReset(snapshot, 2000), null);
+  const wire = toPresentationUsage(expired);
+  assert.deepEqual(wire.limits.map(l => l.id), ['seven_day']);
+  assert.equal(wire.unknownLimits[0].id, 'five_hour');
+  assert.ok(!('usedPercent' in wire.unknownLimits[0]));
+  assert.equal(snapshot.limits[0].usedPercent, 24, 'projection never mutates evidence');
+});
 
 test('session usage normalizes context and optional plan limits for every presentation', () => {
   assert.deepEqual(toUsageValues({

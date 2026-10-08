@@ -46,6 +46,9 @@ export type AcpExtension = {
   /** SDK 0.1.7: parameters are discovered after selecting a model. */
   parameterScope?: 'current-model';
   validateExecutionProfile(profile: unknown, permissions: readonly string[]): { mode: string; profile: Record<string, any> };
+  /** SDK 0.1.10: maps vendor usage metadata after live session validation. Limits merge by id;
+   * omitted windows survive subsequent updates. State is cleared on reconnect and never recovered. */
+  mapUsage?(update: Record<string, any>): { limits?: { id: string; label: string; usedPercent: number; windowMinutes: number; resetsAt: number | null; observedAt: number }[] };
   commandCategory?(command: Record<string, any>): string;
   parameterized?(config: Record<string, any>, result: Record<string, any>): boolean;
   /** Approval events carry `options` and replies select one by `optionId` (approval.respond option variant). */

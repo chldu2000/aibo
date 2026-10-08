@@ -70,7 +70,7 @@ test('usage events retain their session identity at the host state seam', async 
       type: 'usage.updated', occurredAt: '2026-09-14T00:00:00.000Z', source: {}, correlation: null,
       payload: { usage: { total: 1200 } },
     }, {
-      selectedSessionId: 'session-a', selectedAgent: 'codex', timeline: [], pendingApprovals: [], pendingUserInputs: [], lastSubmittedPrompt: null,
+      selectedSessionId: 'session-b', selectedAgent: 'codex', timeline: [], pendingApprovals: [], pendingUserInputs: [], lastSubmittedPrompt: null,
       setAgentActivity() {}, updateWorkspaceSessions() {}, setPendingApprovals() {}, setPendingUserInputs() {},
       setUsageSnapshot(sessionId, usage) { received = { sessionId, usage }; },
       setQueueSnapshot() {}, setTimeline() {}, setRetry() {}, setNotice() {}, refreshSessions() {},

@@ -285,7 +285,7 @@
   const externalConversation = $derived<PresentationConversation>({
     workspace: selectedWorkspace, session: selectedSession, goal: codexGoal, goalBusy,
     thread: codexThreadSnapshot && { id: codexThreadSnapshot.id, turnCount: codexThreadSnapshot.turnCount },
-    timeline, timelineVisibleCount, groupSystemItems: selectedSession?.capabilities.includes('session.timeline') ?? false, usage: usageValues, retryPrompt, retryReason,
+    timeline, timelineVisibleCount, groupSystemItems: selectedSession?.capabilities.includes('session.timeline') ?? false, usage: toPresentationUsage(usageValues), retryPrompt, retryReason,
     userInputRequests: selectedUserInputRequests, approvalRequests: selectedApprovals, answerDrafts: Object.fromEntries(selectedUserInputRequests.flatMap(request => request.questions.map(question => {
       const key = userInputDraftKey(request, question.id); return [key, userInputDrafts[key] ?? ''];
     }))), queue: queueSnapshot,
@@ -738,6 +738,7 @@
     toWorkspaceListItems,
     toolLabel,
   } from '$lib/components/app';
+  import { nextUsageReset, toPresentationUsage } from '$lib/app/session-usage';
   import { cacheSessionUsage, usageForSession } from '$lib/app/session-usage-cache';
   import type { SessionUsageCache } from '$lib/app/session-usage-cache';
   import type { SidePanelView } from '$lib/components/app';
@@ -1461,7 +1462,15 @@
     toSessionListItemsByWorkspace(workspaceSessionMap, pluginInstallations),
   );
 
-  const usageValues = $derived(toUsageValues(usageForSession(usageSnapshotsBySession, selectedSessionId)));
+  let usageNow = $state(Date.now() / 1000);
+  $effect(() => {
+    const now = Math.max(usageNow, Date.now() / 1000);
+    const next = nextUsageReset(usageForSession(usageSnapshotsBySession, selectedSessionId), now);
+    if (next === null) return;
+    const timer = setTimeout(() => { usageNow = Date.now() / 1000; }, Math.min(2_147_483_647, Math.ceil((next - now) * 1000)));
+    return () => clearTimeout(timer);
+  });
+  const usageValues = $derived(toUsageValues(usageForSession(usageSnapshotsBySession, selectedSessionId), Math.max(usageNow, Date.now() / 1000)));
   const composerDraftFailed = $derived(
     selectedSessionId ? composerDrafts[selectedSessionId]?.sendFailed === true : false,
   );

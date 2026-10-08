@@ -102,3 +102,7 @@ The adapter returns it on list and set; options still belong only to the current
 The host selects and confirms a model before offering its reasoning options. This adapter does
 not accept `all-models` in acp.json because ACP session configuration is not a complete matrix.
 Omission preserves legacy behavior. Require hostSdk >=0.1.7 for this declaration.
+
+### Vendor usage metadata (SDK 0.1.10)
+
+`AcpExtension.mapUsage(update)` may return generic `limits` observations. The session calls it only for current live `usage_update` notifications, including while idle, and merges limits by ID into the same snapshot as context, cost and turn totals. Omitted windows are preserved; reconnect clears observations and history replay is ignored. No vendor keys belong in this SDK. A limit includes `id`, `label`, numeric `usedPercent`, `windowMinutes`, optional reset time in Unix seconds (`resetsAt`, null if unknown), and observation time in Unix seconds (`observedAt`). Observations never enter recovery.

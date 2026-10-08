@@ -37,6 +37,16 @@ test('presentation plugins render usage inside the composer with optional quota 
  assert.match(row.text,/5 小时剩余 80%/);
  assert.match(row.text,/Credits 12.5/);
 });
+test('presentation quota distinguishes expired observations from fully available quota',()=>{
+ const usage={input:null,output:null,total:12,contextUsed:null,contextLimit:null,contextEstimated:false,limits:[
+    {id:'seven_day',label:'每周',usedPercent:13,observedAt:1000,resetsAt:null},
+ ],unknownLimits:[{id:'five_hour',label:'5 小时',observedAt:1000,resetsAt:2000}]};
+ const tree=renderConversation({...state,usage},[]);
+ const row=tree.children.find(child=>child.key==='conversation:composer').children.find(child=>child.key==='conversation:usage');
+ assert.match(row.text,/5 小时额度未知/);
+ assert.match(row.text,/每周剩余 87%（最近观测，重置时间未知）/);
+ assert.doesNotMatch(row.text,/100%/);
+});
 test('Codex priority service tier is presented as the Fast action',()=>{
  const fastState={...state,
   session:{...state.session,capabilities:[...state.session.capabilities,'model.service-tier']},

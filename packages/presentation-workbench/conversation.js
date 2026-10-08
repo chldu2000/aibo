@@ -98,7 +98,7 @@ export function renderConversation(state,actions){
   if(state.usage){
    const usage=state.usage;
    const percent=usage.contextUsed!==null&&usage.contextLimit?Math.min(100,Math.round(usage.contextUsed/usage.contextLimit*100)):null;
-   const limits=(usage.limits??[]).map(limit=>(limit.label??(limit.windowMinutes?limit.windowMinutes+' 分钟':'套餐'))+'剩余 '+Math.max(0,100-Math.round(limit.usedPercent))+'%');
+   const limits=[...(usage.limits??[]),...(usage.unknownLimits??[]).map(limit=>({...limit,usedPercent:null}))].map(limit=>(limit.label??(limit.windowMinutes?limit.windowMinutes+' 分钟':'套餐'))+(limit.usedPercent===null?'额度未知':'剩余 '+Math.max(0,100-Math.round(limit.usedPercent))+'%')+(limit.observedAt!==undefined?'（最近观测'+(limit.resetsAt===null?'，重置时间未知':'')+'）':''));
    const credits=usage.credits?.unlimited?'Credits 不限量':usage.credits?.balance?'Credits '+usage.credits.balance:null;
    composer.push(node('p','conversation:usage',[percent===null?usage.contextUsed===null?null:'上下文 '+usage.contextUsed:'上下文 '+percent+'%'+(usage.contextEstimated?'（估算）':''),usage.total===null?null:'Token '+usage.total,usage.plan?.toUpperCase(),...limits,credits].filter(Boolean).join(' · '),[],{'aria-label':'会话用量与套餐余量'}));
   }

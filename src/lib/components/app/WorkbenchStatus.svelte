@@ -37,8 +37,8 @@
     if (usage.plan) result.push({ id: 'plan', label: usage.plan.toUpperCase() });
     for (const limit of usage.limits) {
       result.push({
-        id: `limit:${limit.id}`, label: `${limitLabel(limit)}剩余 ${Math.max(0, 100 - Math.round(limit.usedPercent))}%`,
-        detail: limit.resetsAt !== null ? `重置于 ${new Date(limit.resetsAt * 1000).toLocaleString()}` : undefined,
+        id: `limit:${limit.id}`, label: `${limitLabel(limit)}${limit.usedPercent === null ? '额度未知' : `剩余 ${Math.max(0, 100 - Math.round(limit.usedPercent))}%`}${limit.observedAt !== undefined ? ' · 最近观测' : ''}`,
+        detail: limit.usedPercent === null ? '已到重置时间，等待新额度数据' : limit.resetsAt !== null ? `重置于 ${new Date(limit.resetsAt * 1000).toLocaleString()}` : '重置时间未知',
       });
     }
     if (usage.credits?.unlimited) result.push({ id: 'credits', label: 'Credits 不限量' });

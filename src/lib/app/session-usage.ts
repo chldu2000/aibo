@@ -3,7 +3,8 @@ export type UsageSnapshot = Record<string, unknown>;
 export type UsageLimitValue = {
   id: string;
   label: string | null;
-  usedPercent: number;
+  usedPercent: number | null;
+  observedAt?: number;
   windowMinutes: number | null;
   resetsAt: number | null;
 };
@@ -19,6 +20,23 @@ export type UsageValues = {
   limits: UsageLimitValue[];
   credits: { balance: string | null; unlimited: boolean } | null;
 };
+
+/** Keep the existing numeric wire contract safe for older presentation packages. */
+export function toPresentationUsage(usage: UsageValues | null) {
+  if (!usage) return null;
+  return {
+    ...usage,
+    limits: usage.limits.flatMap(limit => limit.usedPercent === null ? [] : [{ ...limit, usedPercent: limit.usedPercent }]),
+    unknownLimits: usage.limits.filter(limit => limit.usedPercent === null).map(({ usedPercent: _unknown, ...limit }) => limit),
+  };
+}
+
+/** Only observed windows expire automatically; legacy provider limits keep their existing semantics. */
+export function nextUsageReset(snapshot: UsageSnapshot | null | undefined, now: number): number | null {
+  const times = readUsageLimits(snapshot?.limits, now)
+    .flatMap(limit => limit.observedAt !== undefined && limit.resetsAt !== null && limit.resetsAt > now ? [limit.resetsAt] : []);
+  return times.length ? Math.min(...times) : null;
+}
 
 export function readUsageValue(snapshot: UsageSnapshot | null | undefined, key: 'input' | 'output' | 'total'): number | null {
   if (!snapshot) return null;
@@ -39,7 +57,7 @@ export function readUsageValue(snapshot: UsageSnapshot | null | undefined, key: 
   return null;
 }
 
-export function toUsageValues(snapshot: UsageSnapshot | null | undefined): UsageValues | null {
+export function toUsageValues(snapshot: UsageSnapshot | null | undefined, now = Date.now() / 1000): UsageValues | null {
   if (!snapshot) return null;
   const explicitContext = firstNumber(snapshot, ['contextTokens', 'contextUsedTokens', 'usedContextTokens']);
   const lastContext = numberFromRecord(snapshot.last, 'totalTokens');
@@ -49,20 +67,24 @@ export function toUsageValues(snapshot: UsageSnapshot | null | undefined): Usage
     contextUsed: explicitContext ?? lastContext ?? readUsageValue(snapshot, 'input'), contextLimit,
     contextEstimated: explicitContext === null && lastContext === null,
     plan: typeof snapshot.plan === 'string' ? snapshot.plan : null,
-    limits: readUsageLimits(snapshot.limits), credits: readCredits(snapshot.credits),
+    limits: readUsageLimits(snapshot.limits, now), credits: readCredits(snapshot.credits),
   };
 }
 
-function readUsageLimits(value: unknown): UsageLimitValue[] {
+function readUsageLimits(value: unknown, now: number): UsageLimitValue[] {
   if (!Array.isArray(value)) return [];
   return value.flatMap((item, index) => {
     if (!item || typeof item !== 'object' || Array.isArray(item)) return [];
     const record = item as Record<string, unknown>;
     const usedPercent = finiteNumber(record.usedPercent);
     if (usedPercent === null) return [];
+    const observedAt = finiteNumber(record.observedAt);
+    const resetsAt = finiteNumber(record.resetsAt);
+    const expired = observedAt !== null && resetsAt !== null && now >= resetsAt;
     return [{ id: typeof record.id === 'string' && record.id ? record.id : `limit-${index}`,
       label: typeof record.label === 'string' && record.label ? record.label : null,
-      usedPercent: Math.min(100, Math.max(0, usedPercent)), windowMinutes: finiteNumber(record.windowMinutes), resetsAt: finiteNumber(record.resetsAt) }];
+      usedPercent: expired ? null : Math.min(100, Math.max(0, usedPercent)), windowMinutes: finiteNumber(record.windowMinutes), resetsAt,
+      ...(observedAt !== null ? { observedAt } : {}) }];
   });
 }
 

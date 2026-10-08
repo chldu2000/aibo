@@ -292,7 +292,9 @@ export function handleAgentEvent(event: AgentEvent, context: AgentEventHandlerCo
     );
   }
 
-  if (event.sessionId === selectedSessionId && event.type === 'usage.updated') {
+  if (event.type === 'adapter.crashed') context.setUsageSnapshot(event.sessionId, null);
+
+  if (event.type === 'usage.updated') {
     const usage = event.payload.usage;
     context.setUsageSnapshot(
       event.sessionId,

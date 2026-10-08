@@ -121,6 +121,7 @@ export class AcpSession {
     const policy = this.extension.validateExecutionProfile(executionProfile, permissions);
     const restored = mode === 'resume' ? this.#validateRecovery(recovery, workspaceId, workspacePath) : null;
     this.backgroundTasks.restore(restored?.backgroundTasks);
+    this.usage = {};
     this.phase = 'starting';
     this.workspaceId = workspaceId;
     this.workspacePath = workspacePath;
@@ -175,6 +176,7 @@ export class AcpSession {
       if (sameModel && restored?.contextWindow != null) await this.#setParameter('context', restored.contextWindow);
       this.phase = 'ready';
       this.#event('session.started', { mode: this.modeId });
+      if (this.extension.mapUsage) this.#event('usage.updated', { usage: { ...this.usage } });
       return this.snapshot();
     } catch (error) {
       await this.close();
@@ -442,6 +444,8 @@ export class AcpSession {
   }
 
   async close() {
+    if (this.extension.mapUsage && this.sessionId) this.#event('usage.updated', { usage: null });
+    this.usage = {};
     clearTimeout(this.cancelTimer);
     const transport = this.transport;
     if (transport && !transport.closed) {
@@ -607,6 +611,8 @@ export class AcpSession {
 
   #handleNotification(message) {
     if (message.method === 'transport/closed') {
+      if (this.extension.mapUsage && this.sessionId) this.#event('usage.updated', { usage: null });
+      this.usage = {};
       this.backgroundTasks.unavailable('原生连接已断开，无法确认任务是否仍在运行。');
       this.phase = 'failed';
       for (const done of this.commandWaiters) done();
@@ -630,6 +636,21 @@ export class AcpSession {
       this.#readModelConfig(message.params.update);
       const mode = Array.isArray(message.params.update.configOptions) ? message.params.update.configOptions.find(option => option?.id === 'mode')?.currentValue : undefined;
       if (typeof mode === 'string' && this.modeApi === 'config') this.#observeMode(mode);
+      return;
+    }
+    // Usage is session-scoped and may arrive while idle; history replay is not a live observation.
+    if (message.method === 'session/update' && ['ready', 'prompting'].includes(this.phase)
+        && this.sessionId && message.params?.sessionId === this.sessionId
+        && message.params?.update?.sessionUpdate === 'usage_update') {
+      const update = message.params.update;
+      const mapped = this.extension.mapUsage?.(update) ?? {};
+      if (Array.isArray(mapped.limits)) {
+        const limits = new Map((this.usage.limits ?? []).map(limit => [limit.id, limit]));
+        for (const limit of mapped.limits) limits.set(limit.id, limit);
+        mapped.limits = [...limits.values()];
+      }
+      this.#updateUsage({ ...mapped, contextTokens: count(update.used), contextWindow: count(update.size),
+        cost: update.cost && typeof update.cost === 'object' ? update.cost : null });
       return;
     }
     if (message.method !== 'session/update' || this.phase === 'loading' || message.params?.sessionId !== this.sessionId || !this.turnId) return;
@@ -685,11 +706,6 @@ export class AcpSession {
       const terminal = ['completed', 'failed'].includes(merged.status);
       if (terminal) this.completedTools.add(update.toolCallId);
       this.#event(terminal ? 'tool.completed' : 'tool.updated', toolPayload(this.label, merged, update), { itemId: update.toolCallId, toolCallId: update.toolCallId });
-      return;
-    }
-    if (update.sessionUpdate === 'usage_update') {
-      // ACP reports the live context as `used` of `size` tokens.
-      this.#updateUsage({ contextTokens: count(update.used), contextWindow: count(update.size), cost: update.cost && typeof update.cost === 'object' ? update.cost : null });
       return;
     }
     if (String(update.sessionUpdate).includes('available_')) return;

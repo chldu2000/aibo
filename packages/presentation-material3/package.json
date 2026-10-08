@@ -1,6 +1,6 @@
 {
   "name": "@aibolabs/presentation-material3",
-  "version": "0.4.1",
+  "version": "0.4.2",
   "private": true,
   "type": "module",
   "files": [
@@ -16,6 +16,6 @@
   },
   "dependencies": {
     "@aibolabs/presentation-tools": "0.1.0",
-    "@aibolabs/presentation-workbench": "0.2.2"
+    "@aibolabs/presentation-workbench": "0.2.3"
   }
 }
