@@ -98,5 +98,5 @@ rules, and workspace trust is not an operating-system sandbox. See the
 - [Development](docs/development.md): architecture, repository map, builds, and verification.
 - [Contributing](CONTRIBUTING.md): report a problem or propose a change.
 
-Licensing is specified by individual packages where a `LICENSE` is present. A repository-wide
-license has not yet been provided; package licenses do not establish a license for the entire application.
+Aibo is licensed under the [MIT License](LICENSE). Third-party dependencies and marks retain
+their respective licenses and ownership.

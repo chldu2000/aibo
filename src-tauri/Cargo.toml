@@ -2,6 +2,7 @@
 name = "aibo"
 version = "0.1.0"
 description = "Aibo local multi-agent workbench"
+license = "MIT"
 authors = ["Aibo"]
 edition = "2021"
 rust-version = "1.77"
