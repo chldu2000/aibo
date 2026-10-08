@@ -1,8 +1,29 @@
 # 文档索引
 
-## 入门与开发
+先按你要做的事情选择入口。用户操作指南与开发合同分开维护；带日期的验收记录只描述当时的检查结果。
 
-- [English README](../README.md)、[中文 README](../README_zh.md)：功能、架构图、运行与目录导航。
+## 使用 Aibo
+
+- [中文入门](getting-started_zh.md) / [English getting started](getting-started.md)：启动应用、准备 Agent、首次会话和常见问题。
+- [引用已有对话](getting-started_zh.md#引用已有对话继续工作)：在新会话中继续已有讨论。
+- [搜索](global-search.md)、[Git 仓库](git-repositories.md)：查找历史、消息和文件，查看多个仓库的变更。
+- [安装外部插件](https://github.com/chldu2000/aibo-plugins/blob/main/docs/installation.md)：安装能力包、呈现包及排查兼容问题。
+- [平台支持](plugin-platform-support-matrix.md)：已验证环境与其他平台限制。
+
+## 扩展 Aibo
+
+- [插件开发指引](plugin-development_zh.md) / [English guide](plugin-development.md)：从样例到安装包。
+- [外部插件与模板](https://github.com/chldu2000/aibo-plugins)：Cursor、Claude Code、ACP 模板与能力/呈现示例。
+- [ACP 适配器](../packages/acp-adapter/README.md)、[呈现包合同](presentation-package.md)：接入 Agent 或定制界面。
+
+## 理解与维护 Aibo
+
+- [开发指南](development.md)：应用架构、目录、构建和验证。
+- [参与贡献](../CONTRIBUTING.md)：反馈问题与提交改动。
+
+### 核心合同与开发参考
+
+- [English README](../README.md)、[中文 README](../README_zh.md)：产品介绍、Agent 接入与使用入口。
 - [领域词汇](../CONTEXT.md)：插件、贡献、会话身份、能力与呈现概念的统一定义。
 - [插件开发指引](plugin-development_zh.md)、[English guide](plugin-development.md)：能力包、会话提供者与呈现扩展。
 - [模型配置与上下文用量](model-configuration.md)：模型、推理、Fast、窗口选择及呈现动作边界。
@@ -43,7 +64,7 @@
 
 - [内置外观并入 Presentation 合同](presentation-unification-migration.md)：内置 kit 成为预装可信 release（P0–P2 已实施，P3 未实施），复合控件统一为纯数据合同。
 - [合同版本收敛](contract-version-consolidation.md)：每个合同族只保留当前版本与兼容读取版本，版本转换在边界完成。
-- [SDK 公开发布与按仓库安装插件](sdk-and-plugin-distribution.md)：D1 已实施，SDK 以 `@aibolabs/*` 0.1.8 发布到 npm 并与宿主 SDK 版本对齐；按 Git 仓库的 Release 索引下载、校验并安装插件（D2–D4）未实施。
+- [SDK 公开发布与按仓库安装插件](sdk-and-plugin-distribution.md)：D1 已实施，已登记的 npm SDK 发布基线为 `@aibolabs/*` 0.1.8；当前源码 SDK 版本见[宿主快照](../packages/plugin-host/sdk.json)，发布记录见[版本登记](../packages/plugin-host/sdk-releases.json)；按 Git 仓库的 Release 索引下载、校验并安装插件（D2–D4）未实施。
 - [ACP 作为 Agent 接入主干](acp-first-agent-integration.md)：A1–A7 已实施（通用适配层、清单驱动 Worker、Claude Code 接入、宿主工具接线、多选项审批与回合内模式转换、清空上下文、表单提问）；剩余缺口见计划正文。
 
 ## 验收记录

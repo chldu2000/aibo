@@ -1,171 +1,102 @@
 # Aibo
 
+**Your coding agents. One workbench.**
+
 [English](README.md) | [简体中文](README_zh.md)
 
-Aibo is a local coding workbench built from a **plugin host, capability plugins,
-and presentation plugins**. Use Codex, Pi, and agents that speak the Agent Client
-Protocol (ACP) in one workspace, with host-owned sessions, permissions, timelines,
-and execution history.
+Aibo is a local desktop workbench for coding agents. Bring Codex, Pi, and plugin-based
+integrations for Claude Code and Cursor into one workspace. Keep conversations organized,
+follow tool activity and approvals, and reference earlier conversations as you continue working.
 
-## What it does
+[Get started](docs/getting-started.md) · [Explore plugins](https://github.com/chldu2000/aibo-plugins) · [Documentation](docs/README.md)
 
-- Manage workspaces and multiple Agent sessions; name conversations from the first message.
-- Stream replies and tool activity, restore sessions, and inspect durable history.
-- Use provider capabilities such as Codex approvals and branching, Pi tree navigation, durable
-  message queues, goals, and subagent history.
-- Control workspace trust and session permissions. Broad access is confirmed when enabled;
-  ordinary messages do not need a separate turn confirmation. Tool approvals follow the selected policy.
-- Search sessions, messages and files globally; inspect and operate multiple Git repositories.
-- Switch workbench layouts and appearances: built-in Material 3 (default) and ak-ui, plus
-  installable shadcn / Material 3 skin packages.
-- Install capability plugins that expose versioned operations and declarative semantic views;
-  replace an installed version with a recoverable upgrade that migrates its sessions.
+## A workspace for the way you work
 
-Capabilities vary by provider. See the [architecture and migration record](docs/capability-session-migration.md)
-and [platform support matrix](docs/plugin-platform-support-matrix.md) for supported behavior and limits.
+- **Use different agents in the same project.** Create separate sessions for investigation,
+  implementation, and review, with a shared place to find their history.
+- **Carry context into the next conversation.** Type `@` in the composer to reference another
+  session in the workspace. Include an earlier discussion when asking a new question or using another agent.
+- **Follow the work as it happens.** Read streamed replies, inspect tool activity, and respond
+  to the approvals and questions your agent exposes.
+- **Find the work you already did.** Search sessions, messages, and files with `⌘ K` / `Ctrl K`.
+  Inspect changes across Git repositories in your workspace.
+- **Make the workbench your own.** Choose built-in Material 3 or ak-ui, install a presentation
+  package, or extend Aibo with agent and capability plugins.
 
-## Architecture
+### Try a complete workflow
 
-```mermaid
-flowchart TB
-    user[User] --> presentation
-    subgraph presentation[Presentation — host defaults and isolated packages]
-        shell[Workbench layout and semantic renderer]
-        kit[UI kit — Material 3 / ak-ui and skin packages]
-        shell --> kit
-    end
-    subgraph host[Aibo plugin host]
-        actions[Semantic actions and session controllers]
-        sessions[Session identity, permissions and history projection]
-        broker[Capability Broker — binding, validation and process lifecycle]
-        gateway[Workspace tool gateway and approvals]
-        storage[(SQLite, artifacts and recovery bindings)]
-        actions --> sessions --> broker
-        sessions <--> storage
-        gateway --> storage
-    end
-    subgraph plugins[Capability plugins — supervised processes]
-        codex[Codex capability provider]
-        pi[Pi capability provider]
-        acp[ACP agent plugins]
-        extra[Other capability providers]
-    end
-    presentation -->|User intents| actions
-    sessions -->|State and semantic views| presentation
-    broker <-->|JSON-RPC requests, streams and controls| plugins
-    broker <-->|Pi workspace tool requests and results| gateway
-    codex <--> native[Codex app-server]
-    pi <--> sdk[Pi SDK]
-    acp <--> agent[ACP agent process]
-```
+1. Open a project and ask an agent to explain the part you want to change.
+2. Create another session in that workspace, using the same agent or a different one.
+3. Type `@`, select the earlier conversation, and ask for a plan using that context.
+4. Continue with implementation, review tool activity and approvals, and inspect the Git diff.
 
-The host owns business state and authorization. Capability plugins implement operations
-and native-engine integration. Presentation plugins decide how information and actions
-are arranged and rendered; they do not grant permissions or execute business operations directly.
-Native-engine enforcement and the host tool gateway are distinct boundaries: workspace
-trust alone is not an operating-system sandbox.
+Session references attach selected saved messages. They do not transfer an agent's native
+session or automatically delegate the task. See the [walkthrough](docs/getting-started.md#continue-from-an-earlier-conversation).
 
-A message travels from the composer through the host's session admission and Broker to
-its pinned provider. Validated events update host history and flow back to the presentation.
-The host keeps history readable when a provider is unavailable. Pi's active timeline combines
-its native branch with persisted messages from the current turn.
+## Choose your agent
 
-**Current extension boundary:** capability and presentation packages can be installed locally
-through separate installation paths. External presentation code runs in a terminable Worker
-and returns a restricted visual tree, drawn by a trusted iframe bridge. It has no direct DOM,
-network, storage or Tauri IPC access. The host retains management and recovery; Agent approvals
-render in their session area and the host revalidates every choice. Unprovided presentation
-surfaces inherit the host defaults. The old Agent Runtime v1 is
-retired, and sessions without current capability bindings remain read-only history.
+| Agent | Integration | Before your first session |
+| --- | --- | --- |
+| Codex | Built in | Install `codex` and complete its native authentication |
+| Pi | Built-in SDK | Configure credentials for your model provider |
+| Cursor | [Plugin](https://github.com/chldu2000/aibo-plugins/tree/main/plugins/cursor) | Install Cursor CLI and log in |
+| Claude Code | [Plugin](https://github.com/chldu2000/aibo-plugins/tree/main/plugins/claude-code) | Install a compatible Claude Code CLI and log in |
+| Other ACP agents | [Adapter template](https://github.com/chldu2000/aibo-plugins/tree/main/plugins/acp-template) | Configure a compatible Agent Client Protocol implementation |
 
-## Presentation packages
+Features vary by agent and model. Branching, goals, image input, model controls, and recovery
+appear according to each integration's supported capabilities. See [agent requirements](docs/getting-started.md#prepare-an-agent)
+and the individual plugin guides before choosing an integration.
 
-Aibo ships two built-in appearances, Material 3 (default) and ak-ui, registered as preinstalled
-trusted releases. The installable shadcn and Material 3 skin packages are **0.4.1** (host API
-**1.1.0**), with shared workbench modules at **0.2.2**. They support three layouts, draft and
-layout persistence, focus and message-anchor restoration, core semantic fallback, and all nine
-public controls. A theme-only Ocean example is also included.
+## Get started
 
-Unzip a skin package, choose “安装皮肤插件” in Aibo settings, select the directory containing
-`presentation.json`, then select the installed skin. See the [package READMEs](packages/presentation-shadcn/README.md)
-for build instructions and the [package contract](docs/presentation-package.md) for the current scope.
-The [0.3.0 release guide](docs/presentation-release-0.3.0.md) and [exit audit](docs/presentation-plugin-exit-audit.md)
-record the first delivery baseline and its verification evidence. Native acceptance covers macOS arm64; it does not establish
-other-platform, physical-input or full screen-reader support.
-
-## Run locally
-
-Development requirements: Node.js 22+, pnpm, a Rust toolchain, and the platform build dependencies
-for Tauri 2. Codex sessions require `codex` on `PATH` and native authentication.
-Pi sessions use the project-locked `@earendil-works/pi-coding-agent` SDK; configure
-provider credentials for model requests. The Pi CLI is only required for its RPC probe.
-Third-party plugins carry their own runtime dependencies; installation does not run npm.
+The reproducible setup below runs Aibo from source. You need Node.js 22+, pnpm, Rust, and
+the build dependencies for Tauri 2 on your platform.
 
 ```sh
+git clone https://github.com/chldu2000/aibo.git
+cd aibo
 pnpm install
 pnpm tauri dev
 ```
 
-Development runs and debug builds use a separate `development/` app data directory,
-starting with an empty database. Release bundles retain the existing production data.
-See [database isolation and migration rules](docs/database-migrations.md).
+Then add a workspace, choose an agent, and send your first message. The
+[getting-started guide](docs/getting-started.md) covers agent setup, runtime diagnostics,
+and common startup problems. If you already have an Aibo desktop build, start with
+[preparing an agent](docs/getting-started.md#prepare-an-agent).
 
-```sh
-pnpm dev          # Browser UI preview; desktop execution requires Tauri
-pnpm run verify   # Migration check, architecture, TypeScript, Node tests, frontend build
-cargo test --manifest-path src-tauri/Cargo.toml
-```
+Native acceptance evidence currently covers **macOS on Apple Silicon**. Other platforms have
+implementation and validation limits; consult the [platform matrix](docs/plugin-platform-support-matrix.md).
+Development builds use a separate app data directory from release builds.
 
-Release packages do not bundle Node. Aibo uses a compatible local Node first (`PATH` and common
-install locations); under Settings → 运行与诊断 (Run & diagnostics) you can download a private
-runtime or select a Node executable. See the [host SDK guide](docs/host-sdk.md).
+## Extend Aibo
 
-macOS arm64 has native acceptance evidence. Other architectures and operating systems
-have different validation and execution limits; consult the [support matrix](docs/plugin-platform-support-matrix.md).
+The [aibo-plugins repository](https://github.com/chldu2000/aibo-plugins) contains Cursor and
+Claude Code integrations, an ACP agent template, and capability and presentation examples.
+Install built capability packages and presentation packages through their respective settings entries.
 
-## Develop plugins
+For appearance, Aibo includes **Material 3** by default and **ak-ui** as an alternative.
+Installable [shadcn](packages/presentation-shadcn/README.md) and
+[Material 3](packages/presentation-material3/README.md) packages provide additional workbench options.
 
-Start with the [plugin development guide](docs/plugin-development.md) or its
-[Chinese version](docs/plugin-development_zh.md). It covers the working example,
-manifest and runtime contracts, packaging, installation, session providers, and presentation extensions.
+Building your own extension? Start with the [plugin guide](docs/plugin-development.md),
+[ACP adapter](packages/acp-adapter/README.md), or [presentation contract](docs/presentation-package.md).
 
-| Resource | Purpose |
-| --- | --- |
-| [Capability example](examples/capability-plugin/) | Standalone TypeScript provider with a semantic view |
-| [Plugin protocol](packages/plugin-protocol/) | Framework-independent data contracts |
-| [Capability runtime](packages/capability-runtime/) | Node stdio runtime helper, including streaming and controls |
-| [Web presentation types](packages/web-presentation/) | Local interface for trusted presentation implementations |
-| [Host SDK](docs/host-sdk.md) | Host-provided runtime modules, version ranges and Node resolution |
-| [ACP adapter](packages/acp-adapter/) | Generic ACP client and Worker for agent plugins |
-| [Presentation packages](docs/presentation-package.md) | Isolated package contract, Worker entry and build tools |
-| [UI architecture](docs/ui-architecture.md) | UI kit boundaries and skin extension rules |
+## Local workspace, connected agents
 
-SDK packages are published on npm under `@aibolabs/*`; their versions equal the host SDK version (currently 0.1.8).
+Aibo stores its workspace and conversation history locally. Agents and model providers may
+send prompts, code, and tool results to their services; local storage does not mean offline inference.
+You bring the authentication and model access required by each integration.
 
-## Validation and engine probes
+Aibo manages session state and host authorization. Native agents retain their own execution
+rules, and workspace trust is not an operating-system sandbox. See the
+[FAQ](docs/getting-started.md#common-questions) and [session controls](docs/session-controls.md).
 
-```sh
-pnpm run probe:session:capabilities # Offline provider workflows; no model requests
-pnpm run probe:session:desktop     # Isolated native desktop probe; currently macOS
-pnpm probe:codex
-pnpm probe:pi:sdk
-```
+## Documentation and contributions
 
-Real-model smoke probes are separate and require credentials. See the
-[native engine probe guide](docs/native-engine-probes.md) for CLI requirements,
-approval probes, executable overrides, and output locations. Raw probe output may contain local
-metadata and is written to the Git-ignored `.aibo/probe/runs/`; commit only redacted summaries and fixtures.
+- [Getting started](docs/getting-started.md) / [中文入门](docs/getting-started_zh.md): first session, conversation references, and troubleshooting.
+- [Documentation index](docs/README.md): user guides, extension development, and technical references.
+- [Development](docs/development.md): architecture, repository map, builds, and verification.
+- [Contributing](CONTRIBUTING.md): report a problem or propose a change.
 
-## Repository map
-
-| Directory | Contents |
-| --- | --- |
-| `src-tauri/src/` | Rust host, Broker, session lifecycle, permissions and persistence |
-| `src-tauri/capability-plugins/` | Built-in Codex and Pi capability packages |
-| `src/lib/app/` | Frontend business controllers |
-| `src/lib/workbench/`, `src/lib/ui-kit/` | Presentation integration and visual adapters |
-| `contracts/`, `packages/` | Versioned schemas and local SDKs |
-| `examples/`, `fixtures/`, `test/`, `probes/` | Examples, test providers and validation tools |
-
-Browse the [documentation index](docs/README.md) for current contracts and decisions.
-Earlier designs and implementation reports live in the [archive](docs/archive/README.md).
+Licensing is specified by individual packages where a `LICENSE` is present. A repository-wide
+license has not yet been provided; package licenses do not establish a license for the entire application.

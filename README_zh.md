@@ -1,152 +1,87 @@
 # Aibo
 
+**你的编程 Agent，同一个工作台。**
+
 [English](README.md) | [简体中文](README_zh.md)
 
-Aibo 是由 **插件宿主、能力插件和呈现插件**组成的本地编程工作台。
-它将 Codex、Pi 以及支持 Agent Client Protocol（ACP）的 Agent 接入同一工作区，由宿主管理会话、权限、时间线和执行历史。
+Aibo 是一个本地桌面编程工作台，将 Codex、Pi，以及通过插件接入的 Claude Code、Cursor
+带进同一个工作区。集中管理对话、查看工具执行与审批，并引用已有会话，让下一段工作带着背景开始。
 
-## 主要能力
+[开始使用](docs/getting-started_zh.md) · [浏览插件](https://github.com/chldu2000/aibo-plugins) · [文档导航](docs/README.md)
 
-- 管理工作区和多个 Agent 会话，根据用户首条消息自动命名会话。
-- 流式展示回复和工具活动，恢复会话，查看持久化历史。
-- 使用不同提供者的能力，例如 Codex 审批与分支、Pi 树导航，以及持久消息队列、目标和子 Agent 历史。
-- 管理工作区信任与会话权限。启用宽泛权限时确认，正常发送不逐条确认；具体工具仍遵循所选审批策略。
-- 全局搜索会话、消息与文件；查看并操作多个 Git 仓库。
-- 切换工作台布局与外观：内置 Material 3（默认）与 ak-ui，也可安装 shadcn / Material 3 皮肤包。
-- 安装提供版本化操作和声明式语义视图的能力插件；可用可恢复的升级替换已安装版本，并迁移其会话。
+## 从讨论到实现，在一个工作区里继续
 
-各提供者的能力并不完全相同，具体支持范围见[架构与迁移记录](docs/capability-session-migration.md)
-和[平台支持矩阵](docs/plugin-platform-support-matrix.md)。
+- **一个项目，多种 Agent。** 为调查、实现和评审创建独立会话，在同一处查找它们的历史。
+- **让下一次对话接上背景。** 在输入框中用 `@` 引用同一工作区的其他会话，把已有讨论带给新的会话或 Agent。
+- **看清工作如何进行。** 阅读流式回复、查看工具活动，处理 Agent 提供的审批和提问。
+- **找回已经做过的工作。** 用 `⌘ K` / `Ctrl K` 搜索会话、消息和文件，在 Git 面板查看工作区内多个仓库的变更。
+- **按自己的习惯组织界面。** 选择内置 Material 3 或 ak-ui，安装呈现包，或用插件扩展 Agent 和工具能力。
 
-## 分层架构与数据流
+### 试一个完整工作流
 
-```mermaid
-flowchart TB
-    user[用户] --> presentation
-    subgraph presentation[呈现层 — 宿主默认实现与隔离包]
-        shell[工作台布局与语义渲染]
-        kit[UI Kit — Material 3 / ak-ui 与皮肤包]
-        shell --> kit
-    end
-    subgraph host[Aibo 插件宿主]
-        actions[语义动作与会话控制器]
-        sessions[会话身份、权限与历史投影]
-        broker[能力 Broker — 绑定、校验与进程生命周期]
-        gateway[工作区工具网关与审批]
-        storage[(SQLite、产物与恢复绑定)]
-        actions --> sessions --> broker
-        sessions <--> storage
-        gateway --> storage
-    end
-    subgraph plugins[能力插件 — 受宿主监督的进程]
-        codex[Codex 能力提供者]
-        pi[Pi 能力提供者]
-        acp[ACP Agent 插件]
-        extra[其他能力提供者]
-    end
-    presentation -->|用户意图| actions
-    sessions -->|状态与语义视图| presentation
-    broker <-->|JSON-RPC 请求、事件流与控制| plugins
-    broker <-->|Pi 工作区工具请求与结果| gateway
-    codex <--> native[Codex app-server]
-    pi <--> sdk[Pi SDK]
-    acp <--> agent[ACP Agent 进程]
-```
+1. 打开项目，请一个 Agent 解释准备修改的模块。
+2. 在同一工作区新建会话，选择相同或另一个 Agent。
+3. 输入 `@`，选中刚才的讨论，请它结合上下文制定修改计划。
+4. 继续实现，查看工具活动与审批，再到 Git 面板检查 diff。
 
-宿主拥有业务状态和授权决定；能力插件实现具体操作及原生引擎接入；呈现插件决定
-信息与操作入口如何布局、渲染，不直接授予权限或执行业务操作。原生引擎的权限执行
-和宿主工具网关是不同边界，工作区可信不等于操作系统沙箱。
+会话引用附带选中的已保存消息，不迁移原生会话，也不会自动委派任务。具体步骤见
+[会话引用教程](docs/getting-started_zh.md#引用已有对话继续工作)。
 
-发送消息时，输入经宿主会话准入和 Broker 到达会话固定绑定的提供者；返回事件经过
-校验，写入宿主历史，再更新呈现层。插件不可用时，历史仍可读取。Pi 的活动时间线
-由原生当前分支和宿主持久化的本轮消息共同组成。
+## 选择你的 Agent
 
-**当前扩展边界：**能力包与呈现包均支持本地安装，使用独立安装入口。外部呈现代码
-在可终止 Worker 中生成受限视觉树，由可信 iframe 桥绘制，不能直接访问 DOM、网络、
-存储或 Tauri IPC。管理和恢复由宿主保留；Agent 审批在所属会话区域呈现，每次选择由宿主复核。
-未覆盖的呈现范围继承宿主默认实现。
-旧 Agent Runtime v1 已退役，没有当前能力绑定的旧会话仅保留历史读取。
+| Agent | 接入方式 | 首次使用前准备 |
+| --- | --- | --- |
+| Codex | 内置 | 安装 `codex` 并完成原生认证 |
+| Pi | 内置 SDK | 配置模型提供商凭据 |
+| Cursor | [插件](https://github.com/chldu2000/aibo-plugins/tree/main/plugins/cursor) | 安装 Cursor CLI 并登录 |
+| Claude Code | [插件](https://github.com/chldu2000/aibo-plugins/tree/main/plugins/claude-code) | 安装兼容版本的 Claude Code CLI 并登录 |
+| 其他 ACP Agent | [适配模板](https://github.com/chldu2000/aibo-plugins/tree/main/plugins/acp-template) | 配置兼容 Agent Client Protocol 的实现 |
 
-## 呈现插件交付
+功能随 Agent 和模型而异。分支、目标、图片、模型参数与恢复能力以对应集成的实际支持为准。
+使用前请查阅[接入要求](docs/getting-started_zh.md#准备-agent)和具体插件说明。
 
-Aibo 内置 Material 3（默认）与 ak-ui 两套外观，以预装可信 release 登记。可安装的
-shadcn 与 Material 3 独立皮肤包当前为 **0.4.1**（宿主 API **1.1.0**），共享工作台模块为
-**0.2.2**。支持三种布局、草稿与布局持久化、焦点和消息锚点恢复、核心语义降级以及全部
-九个公开控件；另有仅定制主题的 Ocean 样例。
+## 开始使用
 
-解压皮肤包，在 Aibo 设置中点击“安装皮肤插件”，选择包含 `presentation.json` 的
-目录，再选中已安装皮肤。构建方式见[皮肤包说明](packages/presentation-shadcn/README.md)，
-当前范围见[呈现包合同](docs/presentation-package.md)。[0.3.0 交付说明](docs/presentation-release-0.3.0.md)
-与[退出审计](docs/presentation-plugin-exit-audit.md)保留首次交付基线及验证证据。原生验收覆盖 macOS arm64，
-不代表其他平台、物理输入或完整屏幕阅读器支持已通过。
-
-## 本地运行
-
-开发需要 Node.js 22+、pnpm、Rust 工具链及 Tauri 2 对应平台的构建依赖。
-Codex 会话需要 `PATH` 中可用的 `codex` 和原生认证；Pi 会话使用项目锁定版本的
-`@earendil-works/pi-coding-agent` SDK，模型调用需要配置提供商凭据。
-Pi CLI 只用于独立的 RPC 探针。第三方插件在构建时携带自己的运行依赖，安装时不执行 npm。
+下面提供可复现的源码运行方式，需要 Node.js 22+、pnpm、Rust，以及所在平台的 Tauri 2 构建依赖。
 
 ```sh
+git clone https://github.com/chldu2000/aibo.git
+cd aibo
 pnpm install
 pnpm tauri dev
 ```
 
-开发运行与 debug 构建使用独立的 `development/` 应用数据目录，首次启动为空数据库；
-正式 release 打包继续使用原有正式数据。详见[数据库隔离与迁移规则](docs/database-migrations.md)。
+启动后添加工作区、选择 Agent，发送第一条消息。[入门指南](docs/getting-started_zh.md)
+介绍接入准备、运行时诊断和常见启动问题。已有 Aibo 桌面构建的用户可直接从[准备 Agent](docs/getting-started_zh.md#准备-agent)开始。
 
-```sh
-pnpm dev          # 浏览器 UI 预览；实际桌面执行需要 Tauri
-pnpm run verify   # 迁移检查、架构、TypeScript、Node 测试与前端构建
-cargo test --manifest-path src-tauri/Cargo.toml
-```
+目前原生验收证据覆盖 **Apple Silicon Mac**。其他平台的实现与验证范围见
+[平台支持矩阵](docs/plugin-platform-support-matrix.md)。开发构建与正式构建使用独立的应用数据目录。
 
-发布包不内置 Node。Aibo 优先使用兼容的本机 Node（`PATH` 与常见安装位置）；必要时在
-设置 → 运行与诊断中下载专用运行时或选择 Node 可执行文件，详见[宿主 SDK](docs/host-sdk.md)。
+## 扩展工作台
 
-目前 macOS arm64 有原生验收证据。其他架构和操作系统的验证、执行限制不同，
-请查阅[平台支持矩阵](docs/plugin-platform-support-matrix.md)。
+[aibo-plugins](https://github.com/chldu2000/aibo-plugins) 提供 Cursor、Claude Code 集成、
+ACP Agent 模板，以及能力和呈现示例。构建好的能力包与呈现包分别通过设置中的对应入口安装。
 
-## 开发插件
+Aibo 默认使用 **Material 3**，也内置 **ak-ui**。还可以构建并安装
+[shadcn](packages/presentation-shadcn/README.md) 或
+[Material 3](packages/presentation-material3/README.md) 呈现包，尝试不同的工作台布局和外观。
 
-从[插件开发指引](docs/plugin-development_zh.md)开始，也可阅读[英文版](docs/plugin-development.md)。
-指引包含可运行样例、清单与运行协议、打包安装、会话提供者和呈现扩展的开发路径。
+想开发扩展？从[插件开发指引](docs/plugin-development_zh.md)、
+[ACP 适配器](packages/acp-adapter/README.md)或[呈现包合同](docs/presentation-package.md)开始。
 
-| 资源 | 用途 |
-| --- | --- |
-| [能力插件样例](examples/capability-plugin/) | 独立 TypeScript 提供者与语义视图 |
-| [插件协议包](packages/plugin-protocol/) | 不依赖 UI 框架的数据契约 |
-| [能力 Runtime](packages/capability-runtime/) | Node stdio helper，支持流与执行中控制 |
-| [Web 呈现类型](packages/web-presentation/) | 可信呈现实现的本地接口 |
-| [宿主 SDK](docs/host-sdk.md) | 宿主提供的运行模块、版本范围与 Node 解析 |
-| [ACP 适配器](packages/acp-adapter/) | 通用 ACP 客户端与 Agent 插件 Worker |
-| [呈现包合同](docs/presentation-package.md) | 隔离包格式、Worker 入口与打包工具 |
-| [UI 架构](docs/ui-architecture.md) | UI Kit 边界与皮肤扩展规则 |
+## 本地工作区，连接你的 Agent
 
-SDK 以 `@aibolabs/*` 发布到 npm，包版本等于宿主 SDK 版本（当前 0.1.8）。
+Aibo 在本地保存工作区记录与会话历史。Agent 和模型提供商仍可能将提示词、代码与工具结果发送到各自服务；
+本地保存不代表离线推理。使用各集成所需的账号、订阅或 API 凭据由你准备。
 
-## 验证与引擎探针
+Aibo 管理会话状态与宿主授权，原生 Agent 保留自己的执行规则。工作区信任不等于操作系统沙箱。
+详见[常见问题](docs/getting-started_zh.md#常见问题)和[会话控制](docs/session-controls.md)。
 
-```sh
-pnpm run probe:session:capabilities # 离线提供者工作流，不调用模型
-pnpm run probe:session:desktop     # 隔离的原生桌面探针，目前用于 macOS
-pnpm probe:codex
-pnpm probe:pi:sdk
-```
+## 文档与参与贡献
 
-真实模型 smoke 探针需单独运行并配置凭据。[原生引擎探针说明](docs/native-engine-probes.md)
-保留了 CLI 要求、审批探针、可执行文件覆盖方式和输出位置。原始探针数据可能含本地
-元数据，输出位于 Git 忽略的 `.aibo/probe/runs/`；只提交脱敏摘要与测试夹具。
+- [入门指南](docs/getting-started_zh.md)：首次会话、对话引用和问题排查。
+- [文档导航](docs/README.md)：使用指南、扩展开发和技术参考。
+- [开发指南](docs/development.md)：架构、目录、构建与验证。
+- [参与贡献](CONTRIBUTING.md)：反馈问题、提出建议或提交改动。
 
-## 目录导航
-
-| 目录 | 内容 |
-| --- | --- |
-| `src-tauri/src/` | Rust 宿主、Broker、会话生命周期、权限和持久化 |
-| `src-tauri/capability-plugins/` | 内置 Codex、Pi 能力包 |
-| `src/lib/app/` | 前端业务控制器 |
-| `src/lib/workbench/`、`src/lib/ui-kit/` | 呈现集成与视觉适配器 |
-| `contracts/`、`packages/` | 版本化 schema 与本地 SDK |
-| `examples/`、`fixtures/`、`test/`、`probes/` | 示例、测试提供者与验证工具 |
-
-当前契约与设计决定见[文档索引](docs/README.md)，历史设计与实施报告见[归档索引](docs/archive/README.md)。
+带有 `LICENSE` 的包按各自许可证说明使用。目前仓库尚未提供覆盖整个应用的许可证，包级许可证不代表整个应用的授权范围。
