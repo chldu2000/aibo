@@ -29,7 +29,7 @@ try {
     assert.ok(Math.abs((await navigation.boundingBox()).width - width - 56) < 1, 'right navigation grows when separator moves left');
     const auxiliary = page.locator('.workspace-grid > :first-child');
     const auxiliaryWidth = (await auxiliary.boundingBox()).width;
-    const auxiliarySplitter = page.getByRole('button',{name:/调整会话与侧边栏宽度/});
+    const auxiliarySplitter = page.getByRole('button',{name:/调整会话与辅助面板宽度/});
     await auxiliarySplitter.focus(); await page.keyboard.press('ArrowRight');
     await page.waitForFunction(width => Math.abs(document.querySelector('.workspace-grid > :first-child').getBoundingClientRect().width - width - 16) < 1, auxiliaryWidth);
     const auxiliaryBox = await auxiliarySplitter.boundingBox();

@@ -27,9 +27,9 @@ export function relativeTimeLabel(value: string, locale: Locale = 'zh-CN'): stri
   if (!Number.isFinite(timestamp)) return '';
   const elapsedSeconds = Math.max(0, Math.floor((Date.now() - timestamp) / 1000));
   if (elapsedSeconds < 60) return translate(locale, 'time.justNow');
-  if (elapsedSeconds < 60 * 60) return translate(locale, 'time.minutes', { count: Math.floor(elapsedSeconds / 60) });
-  if (elapsedSeconds < 24 * 60 * 60) return translate(locale, 'time.hours', { count: Math.floor(elapsedSeconds / (60 * 60)) });
-  if (elapsedSeconds < 30 * 24 * 60 * 60) return translate(locale, 'time.days', { count: Math.floor(elapsedSeconds / (24 * 60 * 60)) });
+  if (elapsedSeconds < 60 * 60) return translate(locale, 'time.minutesAgo', { count: Math.floor(elapsedSeconds / 60) });
+  if (elapsedSeconds < 24 * 60 * 60) return translate(locale, 'time.hoursAgo', { count: Math.floor(elapsedSeconds / (60 * 60)) });
+  if (elapsedSeconds < 30 * 24 * 60 * 60) return translate(locale, 'time.daysAgo', { count: Math.floor(elapsedSeconds / (24 * 60 * 60)) });
   return formatDateTime(locale, timestamp, { month: 'numeric', day: 'numeric' });
 }
 

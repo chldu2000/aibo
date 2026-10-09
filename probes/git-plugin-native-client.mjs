@@ -100,7 +100,7 @@ try {
   const scopePage=await invoke('list_capability_history_scopes',{before:null});
   check(scopePage.items.some(item=>item.scope.kind==='workspace'&&item.scope.id===saved.workspaceId),'audit catalog survives trust revocation');
   for(const kit of ['shadcn','material3']) {
-    setUiKit(kit);await tick();button('执行历史').click();
+    setUiKit(kit);await tick();button('查看执行历史').click();
     (await until(()=>button('插件调用历史'),'audit entry')).click();
     const panel=await until(()=>document.querySelector('.host-capability-history-region'),'independent audit region');
     check(!panel.closest('.workbench-presentation'),'audit is host owned');

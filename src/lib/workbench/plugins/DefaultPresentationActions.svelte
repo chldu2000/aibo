@@ -18,7 +18,7 @@
 {:else if surface === 'diagnostics'}
   <SettingsSection title={$t('workbench.executions')} items={[{
     id: 'history', title: $t('workbench.executionHistory'), description: $t('workbench.executionHistoryDescription'), icon: 'archive',
-    actions: [{ id: 'open', label: $t('workbench.executionHistory'), intent: 'navigate' }],
+    actions: [{ id: 'open', label: $t('workbench.openExecutionHistory'), intent: 'navigate' }],
   }]} onAction={onOpenExecutionHistory} />
 {:else if surface === 'layout'}
   <SettingsSection title={$t('workbench.layout')} items={[

@@ -26,7 +26,7 @@ try{
   const navigationSplitter=await until(()=>document.querySelector('button[aria-label^="调整工作区与会话宽度"]'),'default navigation splitter');
   navigationSplitter.dispatchEvent(new KeyboardEvent('keydown',{key:'ArrowRight',bubbles:true}));
   await until(()=>storedLayout()?.navigationWidth===276,'host stores navigation width');
-  const auxiliarySplitter=await until(()=>document.querySelector('button[aria-label^="调整会话与侧边栏宽度"]'),'default auxiliary splitter');
+  const auxiliarySplitter=await until(()=>document.querySelector('button[aria-label^="调整会话与辅助面板宽度"]'),'default auxiliary splitter');
   // One 16px keyboard step from the 340px default auxiliary width (navigation: 260 + 16).
   auxiliarySplitter.dispatchEvent(new KeyboardEvent('keydown',{key:'ArrowLeft',bubbles:true}));
   await until(()=>storedLayout()?.auxiliaryWidth===356,'host stores auxiliary width');
@@ -64,7 +64,7 @@ try{
   await invoke('set_presentation_package_enabled',{digest:config.expected.digest,enabled:false});
   await until(()=>!frame(),'disabled active skin falls back');await until(builtinSelected,'disable returns to a built-in release');checks.push('native disable returns the window to a built-in release');
   await until(()=>document.querySelector(`button[aria-label="调整工作区与会话宽度，当前 ${config.expected.layout.navigationWidth} 像素"]`),'restored navigation width in default host');
-  await until(()=>document.querySelector(`button[aria-label="调整会话与侧边栏宽度，当前 ${config.expected.layout.auxiliaryWidth} 像素"]`),'restored auxiliary width in default host');
+  await until(()=>document.querySelector(`button[aria-label="调整会话与辅助面板宽度，当前 ${config.expected.layout.auxiliaryWidth} 像素"]`),'restored auxiliary width in default host');
   checks.push('fallback after restart renders persisted host column widths');
   await invoke('set_presentation_package_enabled',{digest:config.expected.digest,enabled:true});await delay(2300);await openSettings();await click('shadcn-svelte 0.4.1');await click('关闭设置');await until(frame,'reenabled skin activates');
   await invoke('uninstall_presentation_package',{digest:config.expected.digest});await until(()=>!frame(),'uninstall falls back');await until(builtinSelected,'uninstall returns to a built-in release');

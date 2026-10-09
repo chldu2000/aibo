@@ -78,7 +78,7 @@ try {
     // Execution history is a non-modal host panel opened from the management center's runtime section.
     await plugins.click();await management.waitFor();
     await management.getByRole('tab',{name:'运行与诊断',exact:true}).click();
-    await management.getByRole('button',{name:'执行历史',exact:true}).click();
+    await management.getByRole('button',{name:'查看执行历史',exact:true}).click();
     const history=page.locator('[data-ui-component="host-panel"]');
     await history.waitFor();await management.waitFor({state:'hidden'});
     await page.waitForTimeout(100);

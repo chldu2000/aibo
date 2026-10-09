@@ -11,14 +11,14 @@ try {
   await page.goto(`http://127.0.0.1:${server.httpServer.address().port}`);
   await page.evaluate(async ({kit,theme}) => { const r = await import('/src/lib/ui-kit/registry.ts'); r.setUiKit(kit); r.setUiTheme(theme); }, {kit,theme});
   const sidebar = page.locator('[data-ui-component="workspace-sidebar"]');
-  const toggle = page.getByRole('button', { name: '收起侧栏', exact: true });
+  const toggle = page.getByRole('button', { name: '收起导航栏', exact: true });
   await toggle.waitFor(); const before = await toggle.boundingBox(); const expanded = await sidebar.boundingBox();
   const create = await page.getByRole('button', { name: '新建会话', exact: true }).boundingBox();
   assert.equal(create.y + create.height / 2, before.y + before.height / 2, 'primary actions share a center line');
   assert(create.x >= before.x + before.width, 'new session sits beside the toggle');
   await page.screenshot({ path: `/tmp/aibo-sidebar-expanded-${kit}-${theme}.png` });
   await toggle.click();
-  const expand = page.getByRole('button', { name: '展开侧栏', exact: true });
+  const expand = page.getByRole('button', { name: '展开导航栏', exact: true });
   await expand.waitFor();
   const after = await expand.boundingBox();
   assert.equal(after.x, before.x); assert.equal(after.y, before.y);

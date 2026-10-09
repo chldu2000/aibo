@@ -157,7 +157,7 @@ try {
     await page.evaluate(()=>delete window.settingsErrorKey);
     await tab('运行与诊断').click();
     await dialog.getByRole('heading',{name:'运行环境',exact:true}).waitFor();
-    await dialog.getByRole('button',{name:'执行历史',exact:true}).waitFor();
+    await dialog.getByRole('button',{name:'查看执行历史',exact:true}).waitFor();
     // Material 3's existing segmented language control overflows at 390px.
     // Keep this probe's original ak-ui coverage; check Material 3 at desktop widths.
     for (const width of kit === 'ak-ui' ? [480,390] : [760,480]) {

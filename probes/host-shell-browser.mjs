@@ -52,7 +52,7 @@ try {
     await page.getByRole('button', {name: '关闭插件工作台', exact: true}).click();
     await panel.waitFor({state: 'detached'});
     await page.locator('.workspace-grid').waitFor();
-    const historyButton = page.getByRole('button', { name: '执行历史', exact: true });
+    const historyButton = page.getByRole('button', { name: '查看执行历史', exact: true });
     await page.getByRole('button',{name:'打开 Agent 诊断',exact:true}).click();
     await historyButton.click();
     const history = page.getByRole('region', { name: '执行历史', exact: true });
