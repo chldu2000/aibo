@@ -12,7 +12,12 @@ try {
   const rail=dock.getByRole('navigation',{name:'工具轨'});
   const tool=name=>rail.getByRole('button',{name,exact:true});
   const menu=page.locator('.sidebar-view-menu:popover-open');
-  const action=async(name,label)=>{await tool(name).click({button:'right'});await menu.getByRole('button',{name:label,exact:true}).click();};
+  const action=async(name,label)=>{await tool(name).click({button:'right'});
+    await menu.waitFor();
+    const alignment=await menu.locator('button').evaluateAll(buttons=>buttons.map(button=>({label:button.textContent.trim(),alignment:getComputedStyle(button).justifyContent})));
+    assert.ok(alignment.every(item=>item.alignment==='flex-start'), 'view menu items must align left: '+JSON.stringify(alignment));
+    if(name==='上下文'&&label==='在下方打开')await menu.screenshot({path:`/tmp/aibo-menu-alignment-${kit}-${theme}.png`});
+    await menu.getByRole('button',{name:label,exact:true}).click();};
   await tool('上下文').click();
   assert.equal(await tool('上下文').getAttribute('aria-pressed'),'true');
   await action('上下文','在下方打开');

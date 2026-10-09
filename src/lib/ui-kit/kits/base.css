@@ -642,7 +642,7 @@ dd { max-width: 68%; overflow: hidden; margin: 0; text-overflow: ellipsis; white
 .sidebar-tool-collapse { margin-top: 8px; }
 .sidebar-view-menu { position: fixed; inset: auto; margin: 0; width: min(248px, calc(100vw - 16px)); max-height: calc(100dvh - 16px); overflow: auto; padding: 4px; }
 .sidebar-view-menu:popover-open { display: flex; flex-direction: column; gap: 2px; }
-.sidebar-view-menu .ui-button { display: flex; flex: none; justify-content: flex-start; gap: 10px; width: 100%; min-height: 40px; padding: 8px 12px; }
+:root .app-shell .sidebar-view-menu .ui-button { display: flex; flex: none; justify-content: flex-start; gap: 10px; width: 100%; min-height: 40px; padding: 8px 12px; }
 .sidebar-menu-title { padding: 8px 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .sidebar-view-picker { max-height: min(380px, calc(100dvh - 16px)); }
 .sidebar-picker-results { overflow-y: auto; min-height: 0; }

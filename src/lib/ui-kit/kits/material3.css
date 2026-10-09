@@ -2982,5 +2982,5 @@
 .app-shell[data-ui-kit='material3'] .sidebar-tool-visible { background: currentColor; border-radius: 50%; }
 .app-shell[data-ui-kit='material3'] .sidebar-tool-row.drop-before { box-shadow: inset 0 2px var(--aibo-accent); }
 .app-shell[data-ui-kit='material3'] .sidebar-view-menu { background: var(--aibo-surface); color: var(--aibo-text); border: 1px solid var(--aibo-border); border-radius: 12px; box-shadow: 0 8px 28px var(--aibo-border); }
-.app-shell[data-ui-kit='material3'] .sidebar-view-menu .ui-button { border-radius: 12px; font-size: var(--aibo-type-ui); }
+.app-shell[data-ui-kit='material3'] .sidebar-view-menu .ui-button { text-align: left; border-radius: 12px; font-size: var(--aibo-type-ui); }
 .app-shell[data-ui-kit='material3'] .sidebar-menu-title, .app-shell[data-ui-kit='material3'] .sidebar-dock-empty { color: var(--aibo-muted); font-size: var(--aibo-type-meta); }
