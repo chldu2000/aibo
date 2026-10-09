@@ -32,6 +32,8 @@ export type UiIconName =
   | 'diagnostics'
   | 'edit'
   | 'eye'
+  | 'moon'
+  | 'sun'
   | 'shield-question'
   | 'shield-alert'
   | 'filter'

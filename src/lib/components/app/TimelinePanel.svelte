@@ -463,15 +463,15 @@
       </div>
     {:else}
       <div class="timeline-empty compact-empty">
-        <div class="empty-symbol">+</div>
-        <h3>{$t('commands.new')}</h3>
+        <h3>{$t('timeline.chooseSession')}</h3>
+        <p>{$t('timeline.chooseSessionDescription')}</p>
       </div>
     {/if}
     {#if timeline.length === 0}{@render activity()}{/if}
   {:else}
     <div class="timeline-empty">
-      <div class="empty-symbol">+</div>
       <h3>{$t('timeline.chooseWorkspace')}</h3>
+      <p>{$t('timeline.chooseWorkspaceDescription')}</p>
     </div>
   {/if}
 

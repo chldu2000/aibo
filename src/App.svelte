@@ -3556,6 +3556,7 @@
     onOpenManagement={() => openManagementCenter('appearance')}
     {managementNeedsAttention}
     themeLabel={$activeTheme.label}
+    colorScheme={$activeTheme.colorScheme}
     onToggleTheme={toggleColorScheme}
     sidePanelOpen={sidePanelOpen}
     onToggleSidePanel={toggleSidePanel}

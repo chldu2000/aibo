@@ -7,6 +7,7 @@
     onOpenSearch?: () => void;
     onToggleTheme?: () => void;
     themeLabel?: string;
+    colorScheme?: 'light' | 'dark';
     managementNeedsAttention: boolean;
     sidePanelOpen: boolean;
     onToggleSidePanel: () => void;
@@ -20,6 +21,7 @@
     onOpenSearch,
     onToggleTheme,
     themeLabel,
+    colorScheme = 'light',
     managementNeedsAttention,
     sidePanelOpen,
     onToggleSidePanel,
@@ -43,7 +45,7 @@
   <span class="window-title">Aibo</span>
   <div class="window-actions">
     {#if onOpenSearch}<Button variant="ghost" size="icon" data-host-navigation="search" aria-label={$t('window.search')} title={$t('window.searchHint')} onclick={onOpenSearch}><Icon name="search" size={15} /></Button>{/if}
-    {#if onToggleTheme}<Button variant="ghost" size="icon" aria-label={$t('window.toggleTheme')} title={themeLabel} onclick={onToggleTheme}><Icon name="eye" size={15} /></Button>{/if}
+    {#if onToggleTheme}<Button variant="ghost" size="icon" aria-label={$t('window.toggleTheme')} title={themeLabel} onclick={onToggleTheme}><Icon name={colorScheme === 'dark' ? 'sun' : 'moon'} size={15} /></Button>{/if}
     <Button variant={managementNeedsAttention ? 'secondary' : 'ghost'} size="icon" type="button" data-host-navigation="management" aria-label={managementNeedsAttention ? $t('window.openSettingsAttention') : $t('window.openSettings')} title={managementNeedsAttention ? $t('window.settingsAttention') : $t('window.settingsHint')} onclick={onOpenManagement}>
       <Icon name="settings" size={15} />
     </Button>

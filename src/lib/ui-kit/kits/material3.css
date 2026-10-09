@@ -1660,7 +1660,7 @@
   font-size: var(--md-aibo-type-data-size);
 }
 
-.app-shell[data-ui-kit='material3'] :is(.workspace-tool-panel, .checkpoint-summary, .artifact-preview, .git-branch-menu, .git-stash-menu, .git-diff-view, .turn-diff-hunk, .empty-symbol, .theme-swatches) {
+.app-shell[data-ui-kit='material3'] :is(.workspace-tool-panel, .checkpoint-summary, .artifact-preview, .git-branch-menu, .git-stash-menu, .git-diff-view, .turn-diff-hunk, .theme-swatches) {
   border-radius: var(--md-sys-shape-corner-small);
 }
 
@@ -1727,6 +1727,11 @@
 .app-shell[data-ui-kit='material3'] :is(.row-action-menu, .composer-menu, .composer-suggestions, .session-agent-wheel) {
   background: var(--md-aibo-surface-raised);
   border-color: var(--aibo-border-strong);
+}
+
+/* Menus use the medium (12px) corner from the spec. */
+.app-shell[data-ui-kit='material3'] :is(.row-action-menu, .composer-menu, .composer-suggestions, .session-agent-wheel) {
+  border-radius: var(--md-sys-shape-corner-medium);
 }
 
 .app-shell[data-ui-kit='material3'] :is(.tool-entry, .system-entry) {

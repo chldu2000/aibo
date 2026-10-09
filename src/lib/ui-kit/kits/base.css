@@ -172,7 +172,6 @@ h1, h2, h3, p { margin: 0; }
 .activity-dots span { width: 4px; height: 4px; }
 .timeline-empty.compact-empty { min-height: 220px; }
 .timeline-empty { flex: 1; display: flex; min-height: 0; flex-direction: column; align-items: center; justify-content: center; padding: 30px; }
-.empty-symbol { width: 48px; height: 48px; display: grid; place-items: center; }
 .orbit { width: 56px; height: 56px; position: relative; }
 .orbit::before, .orbit::after { position: absolute; inset: 8px; }
 .orbit span { width: 7px; height: 7px; position: absolute; top: -3px; left: 24px; }

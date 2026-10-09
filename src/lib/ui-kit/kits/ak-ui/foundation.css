@@ -110,7 +110,6 @@
 @keyframes ak-activity-bounce { 0%, 60%, 100% { opacity: 0.35; transform: translateY(0); } 30% { opacity: 1; transform: translateY(-2px); } }
 @media (prefers-reduced-motion: reduce) { :where(.app-shell[data-ui-kit='ak-ui']) .activity-dots span { animation: none; } }
 :where(.app-shell[data-ui-kit='ak-ui']) .timeline-empty { color: var(--aibo-muted); text-align: center; }
-:where(.app-shell[data-ui-kit='ak-ui']) .empty-symbol { border: 1px solid var(--aibo-border-strong); border-radius: 12px; color: var(--aibo-text); background: var(--aibo-surface-hover); font-size: 21px; }
 :where(.app-shell[data-ui-kit='ak-ui']) .orbit { border: 1px solid var(--aibo-border-strong); border-radius: 50%; }
 :where(.app-shell[data-ui-kit='ak-ui']) .orbit::before, :where(.app-shell[data-ui-kit='ak-ui']) .orbit::after { content: ''; border: 1px solid var(--aibo-border-strong); border-radius: 50%; transform: rotate(60deg); }
 :where(.app-shell[data-ui-kit='ak-ui']) .orbit::after { transform: rotate(-60deg); }

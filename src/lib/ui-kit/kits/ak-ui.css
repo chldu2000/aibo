@@ -1719,7 +1719,7 @@
   font-size: var(--ak-type-data-size);
 }
 
-.app-shell[data-ui-kit='ak-ui'] :is(.workspace-tool-panel, .checkpoint-summary, .artifact-preview, .git-branch-menu, .git-stash-menu, .git-diff-view, .turn-diff-hunk, .empty-symbol, .theme-swatches) {
+.app-shell[data-ui-kit='ak-ui'] :is(.workspace-tool-panel, .checkpoint-summary, .artifact-preview, .git-branch-menu, .git-stash-menu, .git-diff-view, .turn-diff-hunk, .theme-swatches) {
   border-radius: var(--ak-radius-subtle);
 }
 
