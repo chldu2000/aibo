@@ -1,6 +1,6 @@
 {
   "name": "@aibolabs/acp-adapter",
-  "version": "0.1.10",
+  "version": "0.1.11",
   "license": "MIT",
   "repository": {
     "type": "git",
@@ -60,7 +60,7 @@
     "node": ">=22"
   },
   "dependencies": {
-    "@aibolabs/capability-runtime": "0.1.10"
+    "@aibolabs/capability-runtime": "0.1.11"
   },
   "publishConfig": {
     "access": "public",

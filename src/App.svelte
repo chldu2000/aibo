@@ -587,7 +587,7 @@
     switch(action.operation) {
       case 'open': {
         const contribution = installedContributions.find(item => item.installationId === action.args[0] && item.contributionId === action.args[1] && contributionAvailable(item));
-        if (contribution) { installedTool = contribution; }
+        if (contribution) { if (contribution.toolView) openSidebarPlugin(contribution); else installedTool = contribution; }
         break;
       }
       case 'close': installedTool = null; break;
@@ -732,6 +732,10 @@
     setItem: (key, value) => window.localStorage.setItem(key, value),
   }, presentationWindowId());
   import SidebarDock from '$lib/components/app/SidebarDock.svelte';
+  import ToolView from '$lib/components/app/ToolView.svelte';
+  import { createToolViewController } from '$lib/app/tool-view-controller';
+  import { openToolView, requestToolView, closeToolView } from '$lib/api';
+  const toolViews = createToolViewController({open:openToolView,request:requestToolView,close:closeToolView});
   import { createSidebarDirectory } from '$lib/presentation-runtime/sidebar';
   import type { PresentationSidebar } from '../packages/plugin-protocol/src/presentation-layout';
   const sidebarDirectory = createSidebarDirectory();
@@ -740,7 +744,7 @@
   let sidebar = $state(emptySidebar());
   const sidebarController = createSidebarController({ windowId: presentationWindowId(), storage: draftStorage, initialView: savedWorkbenchLayout.activeView, port: installedPort, viewState: presentationState, publish: value => { sidebar = value; } });
   $effect(() => { const workspaceId = selectedWorkspaceId, sessionId = selectedSessionId; untrack(() => sidebarController.setContext({workspaceId,sessionId})); });
-  $effect(() => { const catalog = installedContributions; untrack(() => sidebarController.setCatalog(catalog)); });
+  $effect(() => { const catalog = installedContributions; untrack(() => { sidebarController.setCatalog(catalog); toolViews.reconcile(catalog.filter(item=>item.toolView).map(item=>item.installationId)); }); });
   onDestroy(() => sidebarController.dispose());
   const sidebarTitles = $derived(Object.fromEntries(sidebar.layout.tabs.map(tab => [tab.id, tab.target.kind === 'git' ? 'Git' : tab.target.kind === 'context' ? $t('side.context') : installedContributions.find(item => tab.target.kind === 'plugin' && item.installationId === tab.target.installationId && item.contributionId === tab.target.contributionId)?.title ?? tab.target.contributionId])));
   const sidebarEntries = $derived([{label:'Git',value:JSON.stringify({kind:'git'})},{label:$t('side.context'),value:JSON.stringify({kind:'context'})}, ...installedContributions.map(item => ({label:item.title,value:JSON.stringify({kind:'plugin',installationId:item.installationId,contributionId:item.contributionId}),disabled:!contributionAvailable(item)}))]);
@@ -748,7 +752,21 @@
   const sidebarGitVisible = $derived(sidePanelOpen && sidebar.layout.panes.some(pane => pane.active === 'git' && (!railCollapsed || pane.floating)));
   const sidebarContextVisible = $derived(sidePanelOpen && sidebar.layout.panes.some(pane => pane.active === 'context' && (!railCollapsed || pane.floating)));
   const sidebarScope = $derived(JSON.stringify([selectedWorkspaceId,selectedSessionId]));
-  function sidebarOperation(operation: SidebarOperation) {
+  const externalToolView = $derived.by(() => {
+    if (!externalActive || !sidePanelOpen) return null;
+    const pane = sidebar.layout.panes.find(pane=>pane.id===sidebar.layout.activePane);
+    const tab = sidebar.layout.tabs.find(tab=>tab.id===pane?.active);
+    if (tab?.target.kind !== 'plugin') return null;
+    const target = tab.target;
+    return installedContributions.find(item=>item.toolView && item.installationId===target.installationId && item.contributionId===target.contributionId) ? tab : null;
+  });
+  async function sidebarOperation(operation: SidebarOperation) {
+    if (operation.kind === "close") {
+      const target = sidebar.layout.tabs.find(tab => tab.id === operation.tabId)?.target;
+      if (target?.kind === "plugin" && installedContributions.find(item => item.installationId === target.installationId && item.contributionId === target.contributionId)?.toolView) {
+        if (!await toolViews.close(selectedWorkspaceId ?? "",target)) return;
+      }
+    }
     sidebarController.apply(operation);
     if (operation.kind === 'open' || operation.kind === 'focus') {
       sidePanelOpen = true;
@@ -759,7 +777,7 @@
   }
   function openSidebarPlugin(item: InstalledContribution) {
     // Older workbench packages do not consume the optional sidebar snapshot.
-    if (presentationPackages.active?.release.manifest.surfaces?.includes('workbench')) { installedTool = item; return; }
+    if (!item.toolView && presentationPackages.active?.release.manifest.surfaces?.includes('workbench')) { installedTool = item; return; }
     sidebarController.openPlugin(item); sidePanelOpen = true; sidebarRailCollapsed = false;
   }
   import { onDestroy, onMount, tick, untrack } from 'svelte';
@@ -3635,8 +3653,16 @@
       {/if}
     </HostPanel>
   {/if}
-<PresentationHost readAttachmentPreview={getSessionAttachmentPreview} onPasteImages={(files) => void pasteComposerImages(files)} hideWhenSuspended={sessionHistoryOpen} onRestore={() => void presentationOperation(() => presentationPackagesController.restore())} bind:this={presentationHost} active={externalActive} themeId={externalActive ? presentationPackages.themeId : null} input={externalInput} suspended={historyOpen || sessionHistoryOpen || capabilityHistoryOpen || settingsOpen || globalSearchOpen || archiveConfirmationSessionId !== null || piNavigationEntryId !== null} onIntent={externalIntent}>
-<WorkbenchPresentation hideWhenSuspended={sessionHistoryOpen} onRestore={() => desktop ? presentationPackagesController.restore() : Promise.resolve()} bind:this={workbenchPresentation} bind:layout={presentationLayout} bind:switching={presentationSwitching} bind:gridElement={workspaceGridElement} navigationWidth={navigationDisplayWidth} {navigationCollapsed} auxiliaryWidth={inspectorDisplayWidth} auxiliaryOpen={sidePanelOpen} suspended={historyOpen || sessionHistoryOpen || capabilityHistoryOpen || settingsOpen || globalSearchOpen || archiveConfirmationSessionId !== null || piNavigationEntryId !== null} windowId={presentationWindowId()} snapshot={{ workspaceId: selectedWorkspaceId, sessionId: selectedSessionId, draft: composerText, navigation: sidePanelView, timelineRevision: timeline.length }}>
+{#if externalToolView?.target.kind === 'plugin' && selectedWorkspaceId}
+  {@const toolTarget = externalToolView.target}
+  <HostPanel actions={hostPanelActions} title={sidebarTitles[externalToolView.id]} onClose={()=>void sidebarOperation({kind:'close',tabId:externalToolView!.id})}>
+    {#key JSON.stringify([selectedWorkspaceId,toolTarget])}
+      <ToolView title={sidebarTitles[externalToolView.id]} open={()=>toolViews.open(selectedWorkspaceId!,toolTarget)} request={toolViews.request}/>
+    {/key}
+  </HostPanel>
+{/if}
+<PresentationHost readAttachmentPreview={getSessionAttachmentPreview} onPasteImages={(files) => void pasteComposerImages(files)} hideWhenSuspended={sessionHistoryOpen || Boolean(externalToolView)} onRestore={() => void presentationOperation(() => presentationPackagesController.restore())} bind:this={presentationHost} active={externalActive} themeId={externalActive ? presentationPackages.themeId : null} input={externalInput} suspended={Boolean(externalToolView) || historyOpen || sessionHistoryOpen || capabilityHistoryOpen || settingsOpen || globalSearchOpen || archiveConfirmationSessionId !== null || piNavigationEntryId !== null} onIntent={externalIntent}>
+<WorkbenchPresentation hideWhenSuspended={sessionHistoryOpen || Boolean(externalToolView)} onRestore={() => desktop ? presentationPackagesController.restore() : Promise.resolve()} bind:this={workbenchPresentation} bind:layout={presentationLayout} bind:switching={presentationSwitching} bind:gridElement={workspaceGridElement} navigationWidth={navigationDisplayWidth} {navigationCollapsed} auxiliaryWidth={inspectorDisplayWidth} auxiliaryOpen={sidePanelOpen} suspended={Boolean(externalToolView) || historyOpen || sessionHistoryOpen || capabilityHistoryOpen || settingsOpen || globalSearchOpen || archiveConfirmationSessionId !== null || piNavigationEntryId !== null} windowId={presentationWindowId()} snapshot={{ workspaceId: selectedWorkspaceId, sessionId: selectedSessionId, draft: composerText, navigation: sidePanelView, timelineRevision: timeline.length }}>
 {#snippet navigation(guard)}
     <WorkspaceSidebar
       collapsed={navigationCollapsed}
@@ -3869,6 +3895,7 @@
     {#if sidePanelOpen}
       <SidebarDock collapsed={railCollapsed} onCollapsedChange={guard('onSidebarCollapsedChange', (value: boolean) => { endColumnResize(); sidebarRailCollapsed = value; })} layout={sidebar.layout} titles={sidebarTitles} entries={sidebarEntries} context={JSON.stringify([selectedWorkspaceId,selectedSessionId])} onOperation={guard('onSidebarOperation', sidebarOperation)}>
       {#snippet children(tabId)}
+      {@const target = sidebar.layout.tabs.find(tab => tab.id === tabId)?.target}
       {#if tabId === 'context'}
       <Inspector
       visible={true}
@@ -3963,7 +3990,11 @@
         />
         {/key}
       {:else}
-        {#if sidebar.views[tabId]}
+        {#if target?.kind === 'plugin' && installedContributions.find(item => item.installationId === target.installationId && item.contributionId === target.contributionId)?.toolView && selectedWorkspaceId}
+          {#key JSON.stringify([selectedWorkspaceId, target.installationId, target.contributionId])}
+            <ToolView title={sidebarTitles[tabId]} open={() => toolViews.open(selectedWorkspaceId!, target)} request={toolViews.request} />
+          {/key}
+        {:else if sidebar.views[tabId]}
           {#await loadInstalledWorkbench() then workbench}
             <workbench.default title={sidebarTitles[tabId]} state={sidebar.views[tabId]}
               onAction={guard('onSidebarAction', message => void sidebarController.controller(tabId)?.act(message))}

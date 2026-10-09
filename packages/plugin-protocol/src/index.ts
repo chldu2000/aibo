@@ -23,3 +23,5 @@ export type { PresentationLayout, PresentationLayoutAction } from './presentatio
 export type { AgentSettingValue, AgentSettingField, AgentSettingsDescriptor, AgentSettingsTarget, AgentSettingsSnapshot, AgentSettingsSave, AgentSettingsContext } from './settings.js';
 
 export type { SidebarTarget, SidebarTab, SidebarPane, SidebarLayout, SidebarOperation, PresentationSidebar, PresentationSidebarAction } from './presentation-layout.js';
+
+export type { ToolViewContribution, ToolViewBackendRequest, ToolViewBackendResponse, ToolViewInitialize, ToolViewStatus } from './tool-view.js';

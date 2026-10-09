@@ -4,7 +4,7 @@ import type { LocalizedText, MessageKey } from '../../../packages/i18n/index.js'
 import { assertSnapshot } from './validation.ts';
 import type { ActionMessage, Snapshot } from './contract.ts';
 export type InstalledScope = { kind: 'application' } | { kind: 'workspace' | 'session'; id: string };
-export type InstalledContribution = { scope?: 'application' | 'workspace' | 'session'; extensionPoint?: string; visibility?: 'always' | 'workspaceSelected' | 'sessionSelected'; installationId: string; contributionId: string; title: string; available: boolean; issue: string | null; localizedIssue?: unknown };
+export type InstalledContribution = { toolView?: boolean; scope?: 'application' | 'workspace' | 'session'; extensionPoint?: string; visibility?: 'always' | 'workspaceSelected' | 'sessionSelected'; installationId: string; contributionId: string; title: string; available: boolean; issue: string | null; localizedIssue?: unknown };
 export type InstalledPort = {
   open(workspaceId: string, installationId: string, contributionId: string, requestId: string, scope?: InstalledScope): Promise<Snapshot>;
   cancelOpen(requestId: string): Promise<void>;

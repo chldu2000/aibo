@@ -57,6 +57,7 @@ mod session_rebuild;
 mod workspace_guard;
 mod semantic_git;
 mod semantic_plugins;
+mod tool_views;
 mod git_capability_guard;
 
 // Preserve the existing serialized types at the crate root while their
@@ -1045,10 +1046,12 @@ async fn set_workspace_trust(
 
 #[tauri::command]
 async fn remove_workspace(
+    app: tauri::AppHandle,
     workspace_id: String,
     state: State<'_, AppState>,
 ) -> Result<(), CoreError> {
     let _guard = state.capability_broker.mutation_guard().await;
+    if !tool_views::close_matching(&app,None,Some(&workspace_id),None,None,true).await.map_err(CoreError::SessionOperation)? { return Err(CoreError::SessionOperation("cancelled".into())); }
     state.capability_broker.stop_workspace(&workspace_id).await.map_err(|error|ui_i18n::session_operation_message(error.into_host_message()))?;
     state
         .plugins
@@ -2315,9 +2318,16 @@ async fn select_presentation_package(digest: Option<String>, theme_id: Option<St
 }
 
 #[tauri::command]
-async fn install_agent_plugin(path: String, token: Option<String>, reinstall: Option<bool>, skip_archived: Option<bool>, state: State<'_, AppState>) -> Result<plugin_registry::PluginInstallation,ui_i18n::HostMessage> {
+async fn install_agent_plugin(app: tauri::AppHandle, path: String, token: Option<String>, reinstall: Option<bool>, skip_archived: Option<bool>, state: State<'_, AppState>) -> Result<plugin_registry::PluginInstallation,ui_i18n::HostMessage> {
     let _guard = state.capability_broker.mutation_guard().await;
-    let previous=plugin_replacement::preview(&state.db,Path::new(&path)).await?.impacts;
+    let preview=plugin_replacement::preview(&state.db,Path::new(&path)).await?;
+    // Only stop running tools after the replacement review has passed. An identical
+    // install, stale token or blocked replacement must not interrupt live work.
+    let may_replace = preview.kind != "installed" && preview.blockers.is_empty()
+        && (preview.previous.is_empty() && token.is_none() || token.as_deref() == Some(preview.token.as_str()))
+        && (preview.kind == "downgrade") == reinstall.unwrap_or(false);
+    let previous=preview.impacts;
+    for old in previous.iter().filter(|_| may_replace) { if !tool_views::close_matching(&app,None,None,Some(&old.id),None,true).await.map_err(ui_i18n::HostMessage::from)? { return Err("cancelled".to_owned().into()); } }
     let installed=state.plugins.replace_plugin(&state.data_dir, Path::new(&path), token.as_deref(), reinstall.unwrap_or(false), skip_archived.unwrap_or(true)).await?;
     for old in previous {if old.id!=installed.id {state.semantic_plugins.invalidate(&state.capability_broker,&old.id,None).await;}}
     Ok(installed)
@@ -2341,8 +2351,9 @@ async fn undo_plugin_replacement(id:String,state:State<'_,AppState>)->Result<(),
 }
 
 #[tauri::command]
-async fn set_agent_plugin_enabled(id: String, enabled: bool, state: State<'_, AppState>) -> Result<plugin_lifecycle::MigrationReport, ui_i18n::HostMessage> {
+async fn set_agent_plugin_enabled(app: tauri::AppHandle, id: String, enabled: bool, state: State<'_, AppState>) -> Result<plugin_lifecycle::MigrationReport, ui_i18n::HostMessage> {
     let _guard = state.capability_broker.mutation_guard().await;
+    if !enabled && !tool_views::close_matching(&app,None,None,Some(&id),None,true).await.map_err(ui_i18n::HostMessage::from)? { return Err("cancelled".to_owned().into()); }
     plugin_registry::enable(&state.db, &id, enabled).await?;
     if !enabled {
         for (installation,contributions) in plugin_dependencies::invalidations(&state.db,&id).await? {
@@ -2363,10 +2374,11 @@ async fn migrate_plugin_sessions(id: String, target: String, state: State<'_, Ap
     state.plugins.migrate_release(&state.data_dir,&id,&target).await
 }
 #[tauri::command]
-async fn uninstall_agent_plugin(id: String, token: String, keep_history: bool, state: State<'_, AppState>) -> Result<(),ui_i18n::HostMessage> {
+async fn uninstall_agent_plugin(app: tauri::AppHandle, id: String, token: String, keep_history: bool, state: State<'_, AppState>) -> Result<(),ui_i18n::HostMessage> {
     let _guard = state.capability_broker.mutation_guard().await;
     let impact=plugin_lifecycle::impact(&state.db,&id).await?;
     if impact.token!=token { return Err(ui_i18n::HostMessage::new("native.plugin.removalChanged",serde_json::json!({}))); }
+    if !tool_views::close_matching(&app,None,None,Some(&id),None,true).await.map_err(ui_i18n::HostMessage::from)? { return Err("cancelled".to_owned().into()); }
     state.plugins.remove_release(&state.data_dir,&impact,keep_history).await?;
     state.semantic_plugins.invalidate(&state.capability_broker,&id,None).await;
     Ok(())
@@ -3078,8 +3090,16 @@ pub fn run() {
         .try_init();
 
     tauri::Builder::default()
+        .register_uri_scheme_protocol("aibo-tool", |context, request| tool_views::document(context.webview_label(),request.uri().path()))
         .manage(ui_i18n::WindowLanguages::default())
         .on_window_event(|window, event| {
+            if let tauri::WindowEvent::CloseRequested { api, .. } = event {
+                api.prevent_close();
+                let window = window.clone();
+                tauri::async_runtime::spawn(async move {
+                    if tool_views::close_matching(window.app_handle(),Some(window.label()),None,None,None,true).await.unwrap_or(false) { let _ = window.destroy(); }
+                });
+            }
             if matches!(event, tauri::WindowEvent::Destroyed) { window.state::<ui_i18n::WindowLanguages>().remove(window.label()); }
         })
         .plugin(tauri_plugin_dialog::init())
@@ -3191,6 +3211,9 @@ pub fn run() {
             read_workspace_preferences,
             save_workspace_preferences,
             set_workspace_trust,
+            tool_views::open_tool_view,
+            tool_views::request_tool_view,
+            tool_views::close_tool_view,
             remove_workspace,
             open_workspace_location,
             node_runtime::get_node_runtime,
@@ -3264,8 +3287,21 @@ pub fn run() {
             get_pi_session_tree,
             navigate_pi_session_tree,
         ])
-        .run(tauri::generate_context!())
-        .expect("error while running Aibo");
+        .build(tauri::generate_context!())
+        .expect("error while building Aibo")
+        .run(|app, event| {
+            static EXIT_READY: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+            if let tauri::RunEvent::ExitRequested { api, .. } = event {
+                if EXIT_READY.load(std::sync::atomic::Ordering::SeqCst) { return; }
+                api.prevent_exit();
+                let app = app.clone();
+                tauri::async_runtime::spawn(async move {
+                    if tool_views::close_matching(&app,None,None,None,None,true).await.unwrap_or(false) {
+                        EXIT_READY.store(true,std::sync::atomic::Ordering::SeqCst); app.exit(0);
+                    }
+                });
+            }
+        });
 }
 
 #[cfg(test)]

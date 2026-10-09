@@ -141,6 +141,9 @@
           },
           {
             "$ref": "#/$defs/viewV2"
+          },
+          {
+            "$ref": "#/$defs/toolView"
           }
         ]
       }
@@ -1180,6 +1183,54 @@
         "type": "string",
         "maxLength": 256,
         "pattern": "^[^\\u0000-\\u001f\\u007f]*$"
+      }
+    },
+    "toolView": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "kind",
+        "id",
+        "scope",
+        "required",
+        "title",
+        "contractVersion",
+        "frontend",
+        "backend",
+        "permissions"
+      ],
+      "properties": {
+        "kind": {
+          "const": "toolView"
+        },
+        "id": {
+          "$ref": "#/$defs/namespacedId"
+        },
+        "scope": {
+          "const": "workspace"
+        },
+        "required": {
+          "const": true
+        },
+        "title": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 80
+        },
+        "contractVersion": {
+          "const": "1.0.0"
+        },
+        "frontend": {
+          "$ref": "#/$defs/packagePath"
+        },
+        "backend": {
+          "$ref": "#/$defs/packagePath"
+        },
+        "permissions": {
+          "const": [
+            "local.process"
+          ]
+        }
       }
     }
   },

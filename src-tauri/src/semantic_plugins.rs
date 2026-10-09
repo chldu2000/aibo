@@ -32,6 +32,7 @@ pub(crate) struct Contribution {
     pub installation_id: String,
     pub contribution_id: String,
     pub title: String,
+    pub tool_view: bool,
     pub scope: String,
     pub extension_point: String,
     pub visibility: String,
@@ -54,15 +55,16 @@ pub(crate) async fn catalog(db: &SqlitePool) -> Result<Vec<Contribution>, HostMe
         }
         let dependencies = plugin_dependencies::resolve_metadata(db, row.get("id")).await?;
         for contribution in model.contributions.into_iter().filter(|entry| {
-            entry.kind == "semanticView"
+            entry.kind == "semanticView" || entry.kind == "toolView"
         }) {
-            let available = dependencies.supports(&contribution.id) && plugin_manifest::semantic_supported(&contribution.metadata,&manifest);
+            let available = dependencies.supports(&contribution.id) && plugin_manifest::contribution_supported(&contribution,&manifest);
             result.push(Contribution {
+                tool_view: contribution.kind == "toolView",
                 installation_id: row.get("id"),
                 contribution_id: contribution.id,
                 scope: contribution.scope,
-                extension_point: contribution.metadata["extensionPoint"].as_str().unwrap().into(),
-                visibility: contribution.metadata["visibility"].as_str().unwrap().into(),
+                extension_point: contribution.metadata["extensionPoint"].as_str().unwrap_or("workspace.tool").into(),
+                visibility: contribution.metadata["visibility"].as_str().unwrap_or("workspaceSelected").into(),
                 title: contribution.metadata["title"].as_str().unwrap().into(),
                 available,
                 issue: (!available).then(|| "依赖或语义版本不可用".into()),
@@ -210,7 +212,7 @@ impl SemanticPlugins {
             .find(|item| {
                 item.installation_id == installation
                     && item.contribution_id == contribution
-                    && item.available
+                    && item.available && !item.tool_view
             })
             .ok_or_else(|| owned("native.semantic.unavailable", "provider_unavailable: semantic contribution"))?;
         let dependencies = plugin_dependencies::resolve_metadata_pinned(db, installation).await?;

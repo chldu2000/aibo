@@ -1,7 +1,7 @@
 import type { Locale } from '../../packages/i18n/index.js';
 import { createWorkspaceWriteController } from './app/workspace-write-controller';
 import type { PresentationRelease, InstalledPresentationPackage, PresentationSelection } from './presentation-runtime/types';
-import { invoke } from '@tauri-apps/api/core';
+import { invoke, convertFileSrc } from '@tauri-apps/api/core';
 import { openUrl } from '@tauri-apps/plugin-opener';
 import { listen, type UnlistenFn } from '@tauri-apps/api/event';
 import { getCurrentWindow } from '@tauri-apps/api/window';
@@ -650,3 +650,9 @@ export const downloadNodeRuntime = (): Promise<NodeRuntimeStatus> => invoke('dow
 
 /** Display-only preference, scoped natively to the invoking window. */
 export const setWindowLocale = (locale: Locale): Promise<Locale> => invoke('set_window_locale', {locale});
+
+// Independent tool applications use an ephemeral channel, not capability history.
+export const openToolView = (workspaceId: string, installationId: string, contributionId: string): Promise<import('./app/tool-view-controller').ToolViewHandle> =>
+  invoke<{id:string}>('open_tool_view', {workspaceId, installationId, contributionId}).then(({id})=>({id,url:convertFileSrc(id,'aibo-tool')}));
+export const requestToolView = (id: string, request: unknown): Promise<unknown> => invoke('request_tool_view', {id, request});
+export const closeToolView = (id: string): Promise<boolean> => invoke('close_tool_view', {id});

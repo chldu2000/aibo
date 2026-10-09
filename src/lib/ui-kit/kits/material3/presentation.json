@@ -1,7 +1,7 @@
 {
   "schema": "aibo.presentation-package/v1",
   "id": "dev.aibo.builtin.material3",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "displayName": "Aibo · Material 3",
   "hostApi": "1.0.0",
   "coreSemantics": "1.0.0",

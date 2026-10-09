@@ -174,6 +174,9 @@ pub(crate) fn inspect(root: &Path) -> Result<(Value, Vec<PathBuf>, String), Host
         if range["min"] != "1.0" || range["max"] != "1.0" { return Err(HostMessage::with_diagnostic("native.registry.legacyProtocol", json!({}), "protocol_incompatible: supported protocol is 1.0")); }
     }
     if let Some(executable) = manifest["entrypoint"]["executable"].as_str() { package_path(root, executable)?; }
+    for entry in normalized.contributions.iter().filter(|entry| entry.kind == "toolView") {
+        for field in ["frontend", "backend"] { package_path(root, entry.metadata[field].as_str().unwrap())?; }
+    }
     let mut ids = HashSet::new();
     for agent in normalized.session_agents(manifest["pluginId"].as_str().unwrap()) {
         if !ids.insert(agent["agentId"].as_str().unwrap().to_owned()) { return Err(HostMessage::with_diagnostic("native.registry.duplicateAgent", json!({}), "manifest_mismatch: duplicate Agent ID")); }

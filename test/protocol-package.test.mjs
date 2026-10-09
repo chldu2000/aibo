@@ -16,7 +16,7 @@ test('packed protocol compiles and imports outside the repository without DOM or
     execFileSync(process.execPath,[tsc,'-p',path.join(source,'tsconfig.json'),'--outDir',path.join(staging,'dist')],{stdio:'pipe'});
     const packed = JSON.parse(execFileSync('npm',['pack','--ignore-scripts','--offline','--json','--cache',path.join(root,'cache')],{cwd:staging,encoding:'utf8'}))[0];
     assert.ok(packed.files.some(file=>file.path==='dist/semantic.d.ts'));
-    assert.ok(packed.files.every(file=>file.path==='package.json'||file.path==='README.md'||/^dist\/(?:index|semantic|presentation|renderer|capability|session|settings|agent-icon|presentation-package|presentation-runtime|presentation-controls|presentation-navigation|presentation-conversation|presentation-git|presentation-inspector|presentation-capability|presentation-layout)\.(?:js|d\.ts)$/.test(file.path)), 'archive only contains public built contracts');
+    assert.ok(packed.files.every(file=>file.path==='package.json'||file.path==='README.md'||/^dist\/(?:index|semantic|presentation|renderer|capability|session|settings|agent-icon|presentation-package|presentation-runtime|presentation-controls|presentation-navigation|presentation-conversation|presentation-git|presentation-inspector|presentation-capability|presentation-layout|tool-view)\.(?:js|d\.ts)$/.test(file.path)), 'archive only contains public built contracts');
     assert.ok(packed.files.some(file=>file.path==='dist/agent-icon.d.ts'));
     assert.ok(packed.files.some(file=>file.path==='dist/settings.d.ts'));
     assert.ok(packed.files.some(file=>file.path==='dist/presentation-package.d.ts'));

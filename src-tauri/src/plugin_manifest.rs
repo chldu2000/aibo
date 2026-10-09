@@ -196,6 +196,7 @@ pub(crate) fn semantic_supported(metadata: &Value, manifest: &Value) -> bool {
 
 pub(crate) fn contribution_supported(entry: &Contribution, manifest: &Value) -> bool {
     match entry.kind.as_str() {
+        "toolView" => entry.metadata["contractVersion"] == "1.0.0" && entry.scope == "workspace",
         "semanticView" => semantic_supported(&entry.metadata,manifest),
         "capabilityProvider" => matches!(manifest["protocols"]["runtime"]["min"].as_str(),Some("2.0" | "2.1")) && manifest["protocols"]["runtime"]["max"] == manifest["protocols"]["runtime"]["min"]
             && entry.metadata["operations"].as_array().unwrap().iter().all(|operation| {

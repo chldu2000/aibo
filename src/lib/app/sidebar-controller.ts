@@ -17,12 +17,16 @@ export function createSidebarController(options: {
   let scope: Scope = { workspaceId: null, sessionId: null }, identity = '', disposed = false;
   let state = emptySidebar(), catalog: InstalledContribution[] = [];
   const memory = new Map<string, SidebarLayout>();
+  const toolTabs = new Map<string, SidebarTarget[]>();
+  const toolTabIds = new Set<string>();
   const controllers = new Map<string, ReturnType<typeof createInstalledWorkbenchController>>();
   const key = () => `aibo.sidebar.v1.${encodeURIComponent(options.windowId)}.${encodeURIComponent(identity)}`;
   const publish = () => { if (!disposed) options.publish(state); };
   const save = () => {
     memory.set(identity, state.layout);
-    try { options.storage?.setItem(key(), JSON.stringify(state.layout)); } catch { /* Live layout remains available. */ }
+    let persisted = state.layout;
+    for (const tab of persisted.tabs) if (toolTabIds.has(tab.id)) persisted = changeSidebarLayout(persisted,{kind:"close",tabId:tab.id});
+    try { options.storage?.setItem(key(), JSON.stringify(persisted)); } catch { /* Live layout remains available. */ }
   };
   function contribution(target: SidebarTarget) {
     return target.kind === 'plugin' ? catalog.find(item => item.installationId === target.installationId && item.contributionId === target.contributionId) : undefined;
@@ -43,7 +47,7 @@ export function createSidebarController(options: {
     }
     for (const tab of state.layout.tabs) {
       const item = contribution(tab.target);
-      if (!item || !available(item) || controllers.has(tab.id)) continue;
+      if (!item || item.toolView || !available(item) || controllers.has(tab.id)) continue;
       const currentIdentity = identity;
       const scopedViewState: ViewStateStore = {
         read: value => options.viewState.read({...value, contributionId: JSON.stringify(['sidebar', currentIdentity, value.contributionId])}),
@@ -76,15 +80,19 @@ export function createSidebarController(options: {
         }
         catch { layout = defaultSidebarLayout(); }
       }
+      for (const tab of [...layout.tabs]) { if (toolTabIds.has(tab.id)) layout = changeSidebarLayout(layout, {kind:"close",tabId:tab.id}); }
+      for (const target of toolTabs.get(scope.workspaceId ?? "") ?? []) layout = changeSidebarLayout(layout, {kind:"open",target});
       state = { layout, views: {} }; reconcile();
     },
-    setCatalog(items: InstalledContribution[]) { if (!disposed) { catalog = items; reconcile(); } },
+    setCatalog(items: InstalledContribution[]) { if (!disposed) { catalog = items; for (const item of items) if (item.toolView) toolTabIds.add(sidebarTabId({kind: 'plugin', installationId: item.installationId, contributionId: item.contributionId})); reconcile(); } },
     apply(operation: SidebarOperation) {
       if (disposed) return;
       if (operation.kind === 'open' && operation.target.kind === 'plugin') {
         const item = contribution(operation.target); if (!item || !available(item)) return;
       }
-      state = { ...state, layout: changeSidebarLayout(state.layout, operation) }; save(); reconcile();
+      state = { ...state, layout: changeSidebarLayout(state.layout, operation) };
+      toolTabs.set(scope.workspaceId ?? "",state.layout.tabs.filter(tab => toolTabIds.has(tab.id)).map(tab=>tab.target));
+      save(); reconcile();
     },
     view(id: string) { return state.views[id] ?? emptyInstalledWorkbench(); },
     controller(id: string) { return controllers.get(id); },

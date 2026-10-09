@@ -1,7 +1,7 @@
 {
   "schema": "aibo.presentation-package/v1",
   "id": "dev.aibo.builtin.ak-ui",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "displayName": "Aibo · ak-ui",
   "hostApi": "1.0.0",
   "coreSemantics": "1.0.0",

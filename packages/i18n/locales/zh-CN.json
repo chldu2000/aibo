@@ -2349,5 +2349,10 @@
   "sidebar.moveDown": "下移",
   "sidebar.noViews": "没有匹配的视图",
   "sidebar.returnMain": "移回主面板",
-  "sidebar.viewsEmpty": "从工具轨添加一个视图"
+  "sidebar.viewsEmpty": "从工具轨添加一个视图",
+  "toolView.reload": "重新加载视图",
+  "toolView.navigation": "工具页面发生了意外跳转，请重新加载视图以连接。",
+  "native.toolView.closeTitle": "Aibo · 关闭运行中的工具",
+  "native.toolView.closeMessage": "这将结束以下工具中的 {count} 个运行任务：\n{targets}\n是否继续？",
+  "native.toolView.end": "结束任务"
 }

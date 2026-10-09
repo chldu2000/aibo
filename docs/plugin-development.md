@@ -200,3 +200,11 @@ External workbench packages can consume the optional `sidebar` and `sidebarActio
 in the [presentation contract](presentation-package.md#右侧标签工作区). The shared renderer presents floating panes
 as separate sections; free positioning is a built-in workbench interaction. Existing fixed host file previews
 continue using their independent file-access boundary.
+
+## Independent interactive tools
+
+Host 0.1.1 adds `toolView` for plugin-owned interactive applications with a packaged
+native backend and an isolated frontend. This is a separate contract, not arbitrary
+DOM injection into `semanticView` or a relaxation of PresentationNode. See the
+[tool view contract](tool-view-contract.md) for ownership, permissions, packaging,
+communication, transient state and shutdown requirements.

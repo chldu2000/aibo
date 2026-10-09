@@ -2442,5 +2442,10 @@
   "sidebar.moveDown": "Move down",
   "sidebar.noViews": "No matching views",
   "sidebar.returnMain": "Move to main panel",
-  "sidebar.viewsEmpty": "Add a view from the tool rail"
+  "sidebar.viewsEmpty": "Add a view from the tool rail",
+  "toolView.reload": "Reload view",
+  "toolView.navigation": "The tool navigated unexpectedly. Reload the view to reconnect.",
+  "native.toolView.closeTitle": "Aibo · Close running tools",
+  "native.toolView.closeMessage": "This will end {count} running tasks in:\n{targets}\nContinue?",
+  "native.toolView.end": "End tasks"
 }

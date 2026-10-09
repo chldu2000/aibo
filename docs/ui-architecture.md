@@ -415,3 +415,14 @@ Git 与上下文是内置标签；能力插件的已安装 `semanticView` 贡献
 外部 workbench 快照新增可选 `sidebar` 与 `sidebarActions`；见[呈现包合同](presentation-package.md#右侧标签工作区)。
 内置文件链接预览仍属于固定宿主面板，沿用原来的文件读取与恢复边界。
 验证入口：`test/sidebar-layout.test.mjs`、`probes/sidebar-dock-browser.mjs` 和外部完整皮肤探针。
+
+## 独立工具应用
+
+0.1.1 起的 `toolView` 是能力插件提供的独立工具应用，不是 `semanticView` 或皮肤 Worker。
+插件拥有其 DOM 前端和原生后端；宿主只在独立来源、opaque-origin iframe 中承载前端，
+通过受限 MessagePort 和原生运行实例路由通信。它不向既有视觉树开放 DOM、Tauri 或通用 IPC。
+运行实例按“窗口＋工作区＋安装＋贡献”归属，与聊天和视图挂载解耦，数据不进入聊天历史。
+
+内置工作台在工具面板内装配；外部工作台通过原贡献动作打开后由可替换 surface 之外的
+固定 HostPanel 承载。皮肤切换不得终止后台实例或获得工具正文。具体合同及回归入口见
+[独立工具视图](tool-view-contract.md)。
