@@ -126,6 +126,7 @@
   import { listWorkspaceGitRepositories } from '$lib/api';
   const draftStorage = { getItem: (key: string) => window.localStorage.getItem(key), setItem: (key: string, value: string) => window.localStorage.setItem(key, value) };
   import { readWorkbenchLayout, writeWorkbenchLayout } from '$lib/app/workbench-layout-storage';
+  import { fitColumnWidths } from '$lib/app/workbench-columns';
   const savedWorkbenchLayout = readWorkbenchLayout(draftStorage, presentationWindowId());
   import type { UiManagementSection } from '$lib/ui-kit';
   import { SettingsSection, HostPanel, PresentationHost, WorkbenchPresentation, DefaultPresentationActions, FileChangeMark, Badge, Button } from '$lib/ui-kit';
@@ -609,8 +610,8 @@
   });
   const layoutDirectory = createLayoutDirectory();
   const externalLayout = $derived({
-    navigation: { width: workspaceSidebarWidth, min: workspaceColumnMin, max: Math.max(workspaceColumnMin, maxColumnWidth('workspace')) },
-    auxiliary: { width: inspectorWidth, min: inspectorColumnMin, max: Math.max(inspectorColumnMin, maxColumnWidth('inspector')) },
+    navigation: { width: navigationCollapsed ? workspaceSidebarWidth : navigationDisplayWidth, min: workspaceColumnMin, max: Math.max(workspaceColumnMin, maxColumnWidth('workspace')) },
+    auxiliary: { width: inspectorDisplayWidth, min: inspectorColumnMin, max: Math.max(inspectorColumnMin, maxColumnWidth('inspector')) },
     auxiliaryOpen: sidePanelOpen, mode: presentationLayout === 'focus' ? 'focus' : presentationLayout === 'review' ? 'review' : 'standard', switching: presentationSwitching,
   });
   function externalIntent(intent: PresentationIntent) {
@@ -1380,21 +1381,28 @@
   let sidePanelView = $state<SidePanelView>(savedWorkbenchLayout.activeView);
   const inspectorOpen = $derived(sidePanelOpen);
   let navigationCollapsed = $state(savedWorkbenchLayout.navigationCollapsed);
-  const navigationDisplayWidth = $derived(navigationCollapsed ? 56 : workspaceSidebarWidth);
   function toggleNavigation() {
     endColumnResize();
     createSessionWorkspaceId = null;
     navigationCollapsed = !navigationCollapsed;
   }
+  const workspaceColumnMin = 180;
+  const timelineColumnMin = 320;
+  const inspectorColumnMin = 220;
+  const splitterTrackWidth = 14;
   let workspaceSidebarWidth = $state(savedWorkbenchLayout.navigationWidth);
   let inspectorWidth = $state(savedWorkbenchLayout.auxiliaryWidth);
   let viewportWidth = $state(1280);
   let workspaceGridElement = $state<HTMLElement | null>(null);
   $effect(() => { writeWorkbenchLayout(draftStorage, presentationWindowId(), { navigationCollapsed, navigationWidth: workspaceSidebarWidth, auxiliaryWidth: inspectorWidth, auxiliaryOpen: sidePanelOpen, activeView: sidePanelView }); });
-  $effect(() => {
-    const width = viewportWidth; sidePanelOpen;
-    untrack(() => { if (width >= 700) { if (!navigationCollapsed) setColumnWidth('workspace', workspaceSidebarWidth); setColumnWidth('inspector', inspectorWidth); } });
-  });
+  // Saved widths stay as the user's preference; narrow windows only compress the displayed columns.
+  const displayedColumns = $derived(fitColumnWidths({
+    space: sideColumnSpace(viewportWidth, navigationCollapsed, sidePanelOpen),
+    navigation: { width: workspaceSidebarWidth, min: workspaceColumnMin, collapsed: navigationCollapsed, collapsedWidth: 56 },
+    inspector: { width: inspectorWidth, min: inspectorColumnMin, open: sidePanelOpen },
+  }));
+  const navigationDisplayWidth = $derived(displayedColumns.navigation);
+  const inspectorDisplayWidth = $derived(displayedColumns.inspector);
   type ColumnResizeTarget = 'workspace' | 'inspector';
   type ColumnResizeState = {
     target: ColumnResizeTarget;
@@ -1404,10 +1412,6 @@
   };
   let columnResizeState: ColumnResizeState | null = null;
   $effect(() => { workspaceGridElement; untrack(endColumnResize); });
-  const workspaceColumnMin = 180;
-  const timelineColumnMin = 320;
-  const inspectorColumnMin = 220;
-  const splitterTrackWidth = 14;
   let globalSearchOpen = $state(false);
   let promptInFlight = $state(false);
   let activeAgentSessionIds = $state<string[]>([]);
@@ -1448,12 +1452,15 @@
     return Math.min(Math.max(value, min), Math.max(min, max));
   }
 
-  function maxColumnWidth(target: ColumnResizeTarget): number {
-    const availableWidth = viewportWidth;
+  function sideColumnSpace(availableWidth: number, collapsed: boolean, inspectorOpen: boolean): number {
     const totalWidth = workspaceGridElement?.clientWidth || availableWidth;
-    const splitterWidth = splitterTrackWidth * ((navigationCollapsed ? 0 : 1) + (sidePanelOpen ? 1 : 0));
-    const otherColumnWidth = target === 'workspace' ? (sidePanelOpen ? inspectorWidth : 0) : navigationDisplayWidth;
-    return Math.min(4096, totalWidth - splitterWidth - otherColumnWidth - timelineColumnMin);
+    const splitterWidth = splitterTrackWidth * ((collapsed ? 0 : 1) + (inspectorOpen ? 1 : 0));
+    return totalWidth - splitterWidth - timelineColumnMin;
+  }
+
+  function maxColumnWidth(target: ColumnResizeTarget): number {
+    const otherColumnWidth = target === 'workspace' ? (sidePanelOpen ? inspectorDisplayWidth : 0) : navigationDisplayWidth;
+    return Math.min(4096, sideColumnSpace(viewportWidth, navigationCollapsed, sidePanelOpen) - otherColumnWidth);
   }
 
   function setColumnWidth(target: ColumnResizeTarget, value: number): void {
@@ -1471,7 +1478,7 @@
       target,
       startX: event.clientX,
       growthDirection,
-      startWidth: target === 'workspace' ? workspaceSidebarWidth : inspectorWidth,
+      startWidth: target === 'workspace' ? navigationDisplayWidth : inspectorDisplayWidth,
     };
     window.addEventListener('pointermove', handleColumnResize);
     window.addEventListener('pointerup', endColumnResize);
@@ -1498,7 +1505,7 @@
     event.preventDefault();
     const direction = event.key === 'ArrowRight' ? 1 : -1;
     const delta = direction * growthDirection;
-    const currentWidth = target === 'workspace' ? workspaceSidebarWidth : inspectorWidth;
+    const currentWidth = target === 'workspace' ? navigationDisplayWidth : inspectorDisplayWidth;
     setColumnWidth(target, currentWidth + delta * 16);
   }
 
@@ -3611,7 +3618,7 @@
     </HostPanel>
   {/if}
 <PresentationHost readAttachmentPreview={getSessionAttachmentPreview} onPasteImages={(files) => void pasteComposerImages(files)} hideWhenSuspended={sessionHistoryOpen} onRestore={() => void presentationOperation(() => presentationPackagesController.restore())} bind:this={presentationHost} active={externalActive} themeId={externalActive ? presentationPackages.themeId : null} input={externalInput} suspended={historyOpen || sessionHistoryOpen || capabilityHistoryOpen || settingsOpen || globalSearchOpen || archiveConfirmationSessionId !== null || piNavigationEntryId !== null} onIntent={externalIntent}>
-<WorkbenchPresentation hideWhenSuspended={sessionHistoryOpen} onRestore={() => desktop ? presentationPackagesController.restore() : Promise.resolve()} bind:this={workbenchPresentation} bind:layout={presentationLayout} bind:switching={presentationSwitching} bind:gridElement={workspaceGridElement} navigationWidth={navigationDisplayWidth} {navigationCollapsed} auxiliaryWidth={inspectorWidth} auxiliaryOpen={sidePanelOpen} suspended={historyOpen || sessionHistoryOpen || capabilityHistoryOpen || settingsOpen || globalSearchOpen || archiveConfirmationSessionId !== null || piNavigationEntryId !== null} windowId={presentationWindowId()} snapshot={{ workspaceId: selectedWorkspaceId, sessionId: selectedSessionId, draft: composerText, navigation: sidePanelView, timelineRevision: timeline.length }}>
+<WorkbenchPresentation hideWhenSuspended={sessionHistoryOpen} onRestore={() => desktop ? presentationPackagesController.restore() : Promise.resolve()} bind:this={workbenchPresentation} bind:layout={presentationLayout} bind:switching={presentationSwitching} bind:gridElement={workspaceGridElement} navigationWidth={navigationDisplayWidth} {navigationCollapsed} auxiliaryWidth={inspectorDisplayWidth} auxiliaryOpen={sidePanelOpen} suspended={historyOpen || sessionHistoryOpen || capabilityHistoryOpen || settingsOpen || globalSearchOpen || archiveConfirmationSessionId !== null || piNavigationEntryId !== null} windowId={presentationWindowId()} snapshot={{ workspaceId: selectedWorkspaceId, sessionId: selectedSessionId, draft: composerText, navigation: sidePanelView, timelineRevision: timeline.length }}>
 {#snippet navigation(guard)}
     <WorkspaceSidebar
       collapsed={navigationCollapsed}

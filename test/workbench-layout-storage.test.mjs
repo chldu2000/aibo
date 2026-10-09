@@ -16,3 +16,14 @@ test('invalid or unavailable layout storage cannot break startup and oversized w
  assert.deepEqual(readWorkbenchLayout({getItem:()=>JSON.stringify(corrupted)},'main'),{navigationCollapsed:false,navigationWidth:180,auxiliaryWidth:4096,auxiliaryOpen:true,activeView:'git'});
  assert.doesNotThrow(()=>writeWorkbenchLayout({setItem(){throw Error('full');}},'main',defaultWorkbenchLayout()));
 });
+test('narrow windows compress displayed side columns without rewriting the saved preference',async()=>{
+ const {fitColumnWidths}=await import('../src/lib/app/workbench-columns.ts');
+ const input=space=>({space,navigation:{width:260,min:180,collapsed:false,collapsedWidth:56},inspector:{width:340,min:220,open:true}});
+ assert.deepEqual(fitColumnWidths(input(1000)),{navigation:260,inspector:340},'wide windows keep preferences');
+ assert.deepEqual(fitColumnWidths(input(500)),{navigation:220,inspector:280},'overflow is shared by the slack above each minimum');
+ assert.deepEqual(fitColumnWidths(input(100)),{navigation:180,inspector:220},'columns never go below their minimum');
+ const collapsed={space:300,navigation:{width:260,min:180,collapsed:true,collapsedWidth:56},inspector:{width:340,min:220,open:true}};
+ assert.deepEqual(fitColumnWidths(collapsed),{navigation:56,inspector:244},'a collapsed navigation rail is fixed');
+ const closed={space:200,navigation:{width:260,min:180,collapsed:false,collapsedWidth:56},inspector:{width:340,min:220,open:false}};
+ assert.deepEqual(fitColumnWidths(closed),{navigation:200,inspector:340},'a closed inspector keeps its preference for reopening');
+});
