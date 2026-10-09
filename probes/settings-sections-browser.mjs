@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import { createServer } from 'vite';
 import { chromium } from 'playwright';
 
+const kit = process.env.AIBO_PROBE_UI_KIT ?? 'ak-ui';
 // Real App and host dialog; native persistence is substituted at the IPC boundary.
 const server = await createServer({server:{host:'127.0.0.1',port:0,hmr:false,watch:null}});
 await server.listen();
@@ -12,10 +13,10 @@ try {
     page.setDefaultTimeout(10000);
     const errors = [];
     page.on('pageerror', error => errors.push(error.message));
-    await page.addInitScript(theme => {
+    await page.addInitScript(({theme, kit}) => {
       if (window !== window.top) return;
       localStorage.setItem('aibo.language.v1', 'zh-CN');
-      localStorage.setItem('aibo.appearance.v1', JSON.stringify({kitId:'ak-ui',themeId:theme}));
+      localStorage.setItem('aibo.appearance.v1', JSON.stringify({kitId:kit,themeId:theme}));
       const descriptor = {schema:'aibo.agent-settings/v1',version:1,title:'Third-party settings',scopes:['application','workspace'],fields:[{key:'instructions',label:'附加指令',type:'multiline',default:'Default instructions'}]};
       const contribution = {id:'third.party.agent',kind:'capabilityProvider',scope:'session',metadata:{displayName:'Third Party',settings:descriptor,operations:[]}};
       const installation = {id:'third-party-release',pluginId:'third.party',pluginVersion:'1.0.0',installed:true,enabled:false,runnable:true,dependencies:[],contributions:[contribution],manifest:{displayName:'Third Party'}};
@@ -48,7 +49,7 @@ try {
         if(command==='inspect_workspace_capabilities')return {workspaceId:'w1',inspectedAt:'now',instructions:[],skills:[],tools:[],mcpServers:[],warnings:[]};
         return [];
       }};
-    }, theme);
+    }, {theme, kit});
     await page.goto(`http://127.0.0.1:${server.httpServer.address().port}/`);
     const trigger = page.getByRole('button',{name:'工作台设置',exact:true});
     await trigger.click();
@@ -59,11 +60,39 @@ try {
     assert.equal(await page.getByRole('dialog').count(),1);
     assert.deepEqual(await dialog.getByRole('tab').allInnerTexts(),['外观','布局','工作区','插件与能力','运行与诊断']);
     await selected('外观');
-    assert.equal(await dialog.getByRole('radiogroup',{name:'主题',exact:true}).getByRole('radio').count(),2);
+    assert.equal(await dialog.getByRole('radiogroup',{name:kit === 'ak-ui' ? '主题' : '明暗模式',exact:true}).getByRole('radio').count(),2);
     assert.equal(await dialog.getByRole('radiogroup',{name:'界面语言'}).getByRole('radio').count(),3);
+    const languageOptions = dialog.locator('[aria-labelledby="language-title"] .appearance-mode-option');
+    const checkLanguageLayout = async () => {
+      for (const option of await languageOptions.all()) {
+        const geometry = await option.evaluate(el => {
+          const mark = el.querySelector('.appearance-choice-mark').getBoundingClientRect();
+          const label = el.lastElementChild.getBoundingClientRect();
+          const bounds = el.getBoundingClientRect();
+          return {offset: Math.abs(mark.y + mark.height / 2 - label.y - label.height / 2), height: bounds.height,
+            contained: label.right <= bounds.right && label.left >= bounds.left};
+        });
+        assert.ok(geometry.offset <= 1, 'language checkmark and text are vertically aligned');
+        assert.ok(geometry.height >= (kit === 'ak-ui' ? 44 : 40) && geometry.contained, 'language options have reachable targets and contained text');
+      }
+    };
+    await checkLanguageLayout();
+    const languageRadio = value => dialog.locator(`input[name="interface-language"][value="${value}"]`);
+    await languageRadio('en').click();
+    await dialog.getByRole('heading',{name:'Interface language',exact:true}).waitFor();
+    await checkLanguageLayout();
+    assert.equal(await languageRadio('en').isChecked(),true);
+    await languageRadio('en').focus();
+    assert.equal(await languageRadio('en').evaluate(el => getComputedStyle(el.parentElement).outlineStyle),'solid');
+    await page.keyboard.press('ArrowLeft');
+    assert.equal(await languageRadio('zh-CN').isChecked(),true);
+    await languageRadio('system').click();
+    assert.equal(await languageRadio('system').isChecked(),true);
+    await languageRadio('zh-CN').click();
+    await dialog.getByRole('heading',{name:'界面语言',exact:true}).waitFor();
     assert.equal(await dialog.getByRole('switch').count(),0,'trust is not an appearance preference');
     assert.equal(await dialog.getByRole('button',{name:'安装皮肤插件',exact:true}).count(),0,'appearance selects skins without managing packages');
-    await page.screenshot({path:`/tmp/aibo-settings-${theme}-appearance.png`});
+    await page.screenshot({path:`/tmp/aibo-settings-${kit}-${theme}-appearance.png`});
     await tab('外观').focus();
     await page.keyboard.press('ArrowDown');
     await selected('布局');
@@ -129,7 +158,9 @@ try {
     await tab('运行与诊断').click();
     await dialog.getByRole('heading',{name:'运行环境',exact:true}).waitFor();
     await dialog.getByRole('button',{name:'执行历史',exact:true}).waitFor();
-    for (const width of [480,390]) {
+    // Material 3's existing segmented language control overflows at 390px.
+    // Keep this probe's original ak-ui coverage; check Material 3 at desktop widths.
+    for (const width of kit === 'ak-ui' ? [480,390] : [760,480]) {
       await page.setViewportSize({width,height:820});
       for (const name of ['外观','布局','工作区','插件与能力','运行与诊断']) {
         await tab(name).click();
@@ -141,7 +172,8 @@ try {
         }
       }
       await tab('外观').click();
-      await page.screenshot({path:`/tmp/aibo-settings-${theme}-${width}.png`});
+      await checkLanguageLayout();
+      await page.screenshot({path:`/tmp/aibo-settings-${kit}-${theme}-${width}.png`});
     }
     await dialog.getByRole('button',{name:'关闭设置',exact:true}).click();
     assert.deepEqual(errors,[]);
