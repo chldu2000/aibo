@@ -174,17 +174,15 @@
             ondragover={(event:DragEvent)=>{event.preventDefault();dragOver=tab.id;}} ondragleave={()=>dragOver=null} ondrop={(event:DragEvent)=>drop(event,tab.id)}
             onkeydown={(event:KeyboardEvent)=>navigate(event,tab.id)} oncontextmenu={(event:MouseEvent)=>showMenu(event,tab.id)} onclick={()=>focus(tab.id)}>
             <span class="sidebar-tool-icon"><Icon name={icon(tab.id)} size={20}/>{#if pane?.active===tab.id}<span class="sidebar-tool-visible" aria-hidden="true"></span>{/if}</span>
-            <span class="sidebar-tool-label">{titles[tab.id]??tab.id}</span>
           </Button>
-          <Button class="sidebar-tool-more" variant="ghost" size="icon" aria-label={$t('sidebar.moreActions',{name:titles[tab.id]??tab.id})} aria-haspopup="true" onclick={(event:MouseEvent)=>showMenu(event,tab.id)}><Icon name="more" size={16}/></Button>
         </div>
       {/each}
       <Button id={`${prefix}-add`} class="sidebar-tool" variant="ghost" aria-label={$t('sidebar.addView')} title={$t('sidebar.addView')} popovertarget={`${prefix}-picker`} onclick={(event:MouseEvent)=>{position(event.currentTarget as HTMLElement); search='';}}>
-        <span class="sidebar-tool-icon"><Icon name="add" size={20}/></span><span class="sidebar-tool-label">{$t('sidebar.addView')}</span>
+        <span class="sidebar-tool-icon"><Icon name="add" size={20}/></span>
       </Button>
     </div>
     <Button class="sidebar-tool sidebar-tool-collapse" variant="ghost" aria-label={$t(collapsed?'sidebar.expandViews':'sidebar.collapseViews')} title={$t(collapsed?'sidebar.expandViews':'sidebar.collapseViews')} onclick={()=>onCollapsedChange(!collapsed)}>
-      <span class="sidebar-tool-icon"><Icon name="panel-right" size={20}/></span><span class="sidebar-tool-label">{$t(collapsed?'sidebar.expandViews':'sidebar.collapseViews')}</span>
+      <span class="sidebar-tool-icon"><Icon name="panel-right" size={20}/></span>
     </Button>
   </nav>
 </section>

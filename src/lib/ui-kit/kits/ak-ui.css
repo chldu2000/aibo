@@ -2771,7 +2771,6 @@
 
 .app-shell[data-ui-kit='ak-ui'] .sidebar-dock-header { border-bottom: 1px solid var(--aibo-border); font-size: var(--aibo-type-ui); font-weight: 600; }
 .app-shell[data-ui-kit='ak-ui'] .sidebar-tool-rail { background: var(--ak-surface-panel); border-left: 1px solid var(--aibo-border); }
-.app-shell[data-ui-kit='ak-ui'] .sidebar-tool-rail:is(:hover,:has(:focus-visible)) { box-shadow: -6px 0 18px var(--aibo-border); }
 .app-shell[data-ui-kit='ak-ui'] .sidebar-tool { justify-content: flex-end; text-align: left; padding: 0; border-radius: 0; color: var(--aibo-muted); }
 .app-shell[data-ui-kit='ak-ui'] .sidebar-tool[aria-pressed='true'] { background: var(--aibo-selected); color: var(--aibo-accent); }
 .app-shell[data-ui-kit='ak-ui'] .sidebar-tool-visible { background: currentColor; border-radius: 50%; }

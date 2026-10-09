@@ -55,7 +55,11 @@ try {
   assert.ok(iconBefore.width>=40 && iconBefore.x>=(await rail.boundingBox()).x);
   await gitIcon.hover();
   const iconAfter=await gitIcon.boundingBox();
-  assert.ok(Math.abs(iconAfter.x-iconBefore.x)<2,'expanding labels keeps the icon under the pointer');
+  assert.ok(Math.abs(iconAfter.x-iconBefore.x)<2,'hover keeps the icon under the pointer');
+  assert.equal(Math.round((await rail.boundingBox()).width),56,'hover never expands the rail');
+  await tool('Git').focus();await page.keyboard.press('ArrowDown');
+  assert.equal(Math.round((await rail.boundingBox()).width),56,'keyboard focus never expands the rail');
+  assert.equal(await rail.locator('.sidebar-tool-more:visible').count(),0);
   await page.mouse.click(500,300);
   await page.screenshot({path:`/tmp/aibo-sidebar-rail-${kit}-${theme}.png`});
   await page.setViewportSize({width:900,height:700});
