@@ -43,8 +43,11 @@
             <h2 id="agent-diagnostics-title">{$t('diagnostics.agents')}</h2>
             <p>{$t('diagnostics.description')}</p>
           </div>
-          <Badge variant={diagnostics.length > 0 && readyAgents === diagnostics.length ? 'success' : 'warning'}>{$t('diagnostics.ready', { ready: readyAgents, total: diagnostics.length })}</Badge>
+          {#if desktop && diagnostics.length}<Badge variant={diagnostics.length > 0 && readyAgents === diagnostics.length ? 'success' : 'warning'}>{$t('diagnostics.ready', { ready: readyAgents, total: diagnostics.length })}</Badge>{/if}
         </div>
+        <div class="settings-section-body">
+        {#if !desktop}<p role="status">{$t('diagnostics.preview')}</p>
+        {:else if !diagnostics.length}<p role="status">{$t('diagnostics.empty')}</p>{/if}
         <div class="settings-agent-cards">
           {#each diagnostics as agent (agent.agent)}
             <Card as="article" class="agent-card">
@@ -67,13 +70,14 @@
             </Card>
           {/each}
         </div>
+        </div>
       </section>
       <Separator />
       <section class="settings-section" aria-labelledby="runtime-info-title">
         <div class="settings-section-heading">
           <div><h2 id="runtime-info-title">{$t('diagnostics.environment')}</h2></div>
         </div>
-        <dl class="settings-runtime-list">
+        <dl class="settings-runtime-list settings-section-body">
           <div><dt>{$t('diagnostics.platform')}</dt><dd>{desktop ? 'macOS · Tauri' : $t('diagnostics.web')}</dd></div>
           <div><dt>{$t('scope.workspace')}</dt><dd>{workspaceCount}</dd></div>
           <div><dt>{$t('scope.session')}</dt><dd>{sessionCount}</dd></div>

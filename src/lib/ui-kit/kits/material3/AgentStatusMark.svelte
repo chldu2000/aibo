@@ -12,6 +12,7 @@
   {/if}
   <svg class="agent-status-logo" viewBox="0 0 24 24" aria-hidden="true">
     {#if icon}<path d={icon.path} fill="currentColor" />
-    {:else}<path d="M21 12a9 9 0 1 1-18 0 9 9 0 1 1 18 0" fill="none" stroke="currentColor" stroke-width="1.6" />{/if}
+    {:else}<!-- Generic agent (bot) glyph; an empty circle read as a radio button or status dot. -->
+    <path d="M7 8h10a3 3 0 0 1 3 3v6a3 3 0 0 1-3 3H7a3 3 0 0 1-3-3v-6a3 3 0 0 1 3-3ZM12 4v4M9.5 14h.01M14.5 14h.01" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" />{/if}
   </svg>
 </span>

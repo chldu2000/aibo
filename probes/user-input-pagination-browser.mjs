@@ -9,7 +9,7 @@ let browser;
 try {
   browser = await chromium.launch({headless:true});
   for (const kit of ['material3','ak-ui']) for (const theme of ['light','dark']) {
-    const page = await browser.newPage({viewport:{width:1000,height:600}});
+    const page = await browser.newPage({locale:'zh-CN',viewport:{width:1000,height:600}});
     const errors = [];
     page.on('pageerror', error => errors.push(error.message));
     await page.addInitScript(installDensityFixture);

@@ -24,7 +24,7 @@ let browser;
 try {
   await server.listen();
   browser = await chromium.launch({ headless: true });
-  const page = await browser.newPage({ viewport: { width: 1280, height: 900 } });
+  const page = await browser.newPage({locale:'zh-CN', viewport: { width: 1280, height: 900 } });
   const errors = [];
   page.on('pageerror', error => errors.push(error.message));
   await page.goto(`http://127.0.0.1:${server.httpServer.address().port}`);

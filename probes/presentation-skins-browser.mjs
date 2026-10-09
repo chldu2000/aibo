@@ -5,7 +5,7 @@ import {chromium} from 'playwright';
 import {buildPresentationSkins} from './lib/build-presentation-skins.mjs';
 const built=await buildPresentationSkins({surfaces:'controls,semantic'});
 const server=await createServer({server:{host:'127.0.0.1',port:0,hmr:false,watch:null}});await server.listen();
-const browser=await chromium.launch({headless:true});const page=await browser.newPage();const errors=[];page.on('pageerror',error=>errors.push(error.message));
+const browser=await chromium.launch({headless:true});const page=await browser.newPage({locale:'zh-CN'});const errors=[];page.on('pageerror',error=>errors.push(error.message));
 try {
   await page.goto(`http://127.0.0.1:${server.httpServer.address().port}/probes/presentation-semantic.html`);
   await page.waitForFunction(()=>window.semanticPackageProbe);

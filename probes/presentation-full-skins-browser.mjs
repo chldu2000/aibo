@@ -21,8 +21,8 @@ async function probeQuota(page, frame) {
 const built=await buildPresentationSkins();const pkg=built.packages[0];
 pkg.markdownTechnical=await readFile('fixtures/markdown-technical.md','utf8');
 const server=await createServer({server:{host:'127.0.0.1',port:0,strictPort:false,hmr:false,watch:null}});await server.listen();
-const browser=await chromium.launch({headless:true});const page=await browser.newPage({viewport:{width:1280,height:900}});const errors=[];
-page.on('pageerror',error=>errors.push(error.stack ?? error.message));page.setDefaultTimeout(10000);
+const browser=await chromium.launch({headless:true});const page=await browser.newPage({locale:'zh-CN',viewport:{width:1280,height:900}});const errors=[];
+page.on('pageerror',error=>errors.push(error.stack ?? error.message));page.setDefaultTimeout(10000);page.setDefaultNavigationTimeout(60000);
 try {
   const builtInKit = process.env.AIBO_BUILTIN_KIT ?? 'material3';
   assert.ok(['ak-ui','material3'].includes(builtInKit));
@@ -275,8 +275,8 @@ try {
     await frame.getByRole('option',{name:'/heal',exact:true}).waitFor();
     assert.equal(await frame.getByRole('option',{name:'/hello',exact:true}).isVisible(),false);
     await composer.press('Shift+Tab');await frame.getByRole('option',{name:'/hello',exact:true}).waitFor();
-    await frame.getByRole('button',{name:'Extension (1)',exact:true}).click();
-    assert.equal(await frame.getByRole('button',{name:'Extension (1)',exact:true}).getAttribute('aria-pressed'),'true');
+    await frame.getByRole('button',{name:'扩展 (1)',exact:true}).click();
+    assert.equal(await frame.getByRole('button',{name:'扩展 (1)',exact:true}).getAttribute('aria-pressed'),'true');
     assert.equal(await frame.getByRole('listbox',{name:'命令建议',exact:true}).getByRole('button').count(),0);
     assert.equal(await composer.getAttribute('aria-controls'),await frame.getByRole('listbox',{name:'命令建议',exact:true}).getAttribute('id'));
     await frame.getByRole('option',{name:'/height',exact:true}).click();
@@ -358,6 +358,9 @@ try {
     await page.waitForTimeout(200);assert.equal(await composer.inputValue(),'完整皮肤 keeps draft');
     await composer.press('Control+Enter');
     assert.equal(await composer.inputValue(),'完整皮肤 keeps draft\n');
+    // Wait for the host snapshot to acknowledge the newline before submitting.
+    const editorFrame = await (await page.locator('.presentation-external iframe').elementHandle()).contentFrame();
+    await editorFrame.waitForFunction(() => document.querySelector('textarea[aria-label="消息"]')?.getAttribute('value') === '完整皮肤 keeps draft\n');
     await composer.press('Enter');
     await page.waitForFunction(()=>window.navigationCalls.some(c=>c.command==='send_agent_prompt'&&c.args.input.startsWith('完整皮肤 keeps draft')&&c.args.input.includes('[AIBO_CONTEXT_ATTACHMENTS]')));
     await frame.locator('textarea[aria-label="消息"][value=""]:enabled').waitFor();
@@ -372,7 +375,7 @@ try {
     assert.equal(await inspector.locator('[data-presentation-key="inspector:execution-profile:requested:filesystemPolicy"]').textContent(),'完整文件访问');
     assert.equal(await inspector.locator('[data-presentation-key="inspector:execution-profile:enforced:filesystemPolicy"]').textContent(),'只读');
     await inspector.getByText('待发送 · 工作区引用 · 0 字节',{exact:true}).waitFor();
-    await inspector.getByText('已发送 · 内联 · 12 字节',{exact:true}).waitFor();
+    await inspector.getByText('已发送 · 随消息发送 · 12 字节',{exact:true}).waitFor();
     await inspector.getByText('Diagnostic detail',{exact:true}).waitFor();
     if(await frame.locator('[data-presentation-key="workbench:layout"]').getAttribute('open')!==null)await frame.getByText('布局',{exact:true}).click();
     await frame.locator('[data-presentation-key="conversation:composer"]').evaluate(element=>{element.scrollTop=0;});

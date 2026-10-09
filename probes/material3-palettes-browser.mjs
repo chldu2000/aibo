@@ -7,7 +7,7 @@ const metadata=JSON.parse(await readFile('src/lib/ui-kit/kits/material3/themes.j
 const server=await createBuiltinWorkbenchServer();
 await server.listen();
 const browser=await chromium.launch({headless:true});
-const page=await browser.newPage({viewport:{width:1440,height:960}});
+const page=await browser.newPage({locale:'zh-CN',viewport:{width:1440,height:960}});
 const errors=[];
 page.on('pageerror',error=>errors.push(error.message));
 const output='/tmp/aibo-material3-palettes';

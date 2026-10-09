@@ -4,7 +4,7 @@ import { chromium } from 'playwright';
 const server=await createServer({server:{host:'127.0.0.1',port:0,watch:null}});await server.listen();const browser=await chromium.launch({headless:true});
 try {
   for(const kit of ['shadcn','material3']) {
-    const page=await browser.newPage();const errors=[];page.on('pageerror',error=>errors.push(String(error)));
+    const page=await browser.newPage({locale:'zh-CN'});const errors=[];page.on('pageerror',error=>errors.push(String(error)));
     await page.goto(`http://127.0.0.1:${server.httpServer.address().port}/probes/session-history-browser.html`);
     await page.evaluate(async kit=>{(await import('/src/lib/ui-kit/registry.ts')).setUiKit(kit);document.body.dataset.uiKit=kit;},kit);
     await page.waitForFunction(()=>document.querySelectorAll('article').length===50);

@@ -64,7 +64,7 @@
   <button class="repository-trigger" type="button" data-repository-select-trigger aria-label={$t('repository.choose')} aria-haspopup="listbox" aria-expanded={open} aria-controls={`${uid}-list`} {disabled} onclick={() => onOpenChange(!open)} title={selected ? `${selected.name} · ${selected.relativePath}` : $t('repository.allHint')}>
     <Icon name="folder" size={14} aria-hidden="true" />
     <span class="repository-trigger-name">{selected?.name ?? $t('repository.all')}</span>
-    {#if !selected}<span class="repository-total">{repositories.length}</span>{/if}
+    {#if !selected && repositories.length > 0}<span class="repository-total" title={$t('repository.count', { count: repositories.length })}>{repositories.length}</span>{/if}
     <span class="repository-chevron" class:is-open={open}><Icon name="chevron-down" size={13} aria-hidden="true" /></span>
   </button>
   {#if open}

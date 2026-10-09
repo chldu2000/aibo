@@ -7,7 +7,7 @@ await mkdir(output,{recursive:true});
 const server=await createServer({server:{host:'127.0.0.1',port:0,hmr:false,watch:null}});await server.listen();
 const address=server.httpServer.address();
 const browser=await chromium.launch({headless:true});
-const page=await browser.newPage({viewport:{width:1280,height:900},reducedMotion:'reduce'});
+const page=await browser.newPage({locale:'zh-CN',viewport:{width:1280,height:900},reducedMotion:'reduce'});
 const errors=[];page.on('pageerror',error=>errors.push(String(error)));
 const evidence=[];
 try {

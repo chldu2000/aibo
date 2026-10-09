@@ -5,7 +5,7 @@ const server=await createServer({server:{host:'127.0.0.1',port:0,strictPort:fals
 const browser=await chromium.launch({headless:true});
 try {
  for(const kit of ['ak-ui','material3']) {
-  const page=await browser.newPage();page.setDefaultTimeout(10000);const errors=[];page.on('pageerror',error=>{errors.push(String(error));console.error(String(error));});
+  const page=await browser.newPage({locale:'zh-CN'});page.setDefaultTimeout(10000);const errors=[];page.on('pageerror',error=>{errors.push(String(error));console.error(String(error));});
   await page.goto(`http://127.0.0.1:${server.httpServer.address().port}/probes/session-reference-browser.html`);
   await page.evaluate(async kit=>{(await import('/src/lib/ui-kit/registry.ts')).setUiKit(kit);document.body.dataset.uiKit=kit;},kit);
   const input=page.locator('[data-composer-input]');await input.focus();

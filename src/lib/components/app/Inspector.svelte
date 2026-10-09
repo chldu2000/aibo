@@ -520,7 +520,7 @@
       </Card>
     {/if}
   {:else}
-    <div class="inspector-empty">{$t('inspector.noSession')}</div>
+    <div class="inspector-empty"><span>{$t('inspector.noSession')}</span>{#if workspace}{@render refreshControl()}{/if}</div>
   {/if}
 
   {#if workspace && desktop}
@@ -553,7 +553,7 @@
 
   {#if workspace}
     <Card class="trust-card" data-trust={workspace.trust}>
-      <div class="trust-card-heading"><Icon name="trust" size={16} /><strong>{$t('inspector.workspaceTrust')}</strong>{#if !session}{@render refreshControl()}{/if}</div>
+      <div class="trust-card-heading"><Icon name="trust" size={16} /><strong>{$t('inspector.workspaceTrust')}</strong></div>
       <p>{workspace.trust === 'trusted' ? $t('inspector.trustedDescription') : $t('inspector.untrustedDescription')}</p>
     </Card>
   {/if}

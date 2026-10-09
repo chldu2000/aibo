@@ -9,7 +9,7 @@ try {
   browser = await chromium.launch({headless:true});
   for (const [kit,theme] of [['ak-ui','dark'],['ak-ui','light'],['material3','dark'],['material3','light']]) {
     for (const agent of ['codex', 'pi', 'custom']) {
-      const page = await browser.newPage({viewport:{width:1000,height:760}});
+      const page = await browser.newPage({locale:'zh-CN',viewport:{width:1000,height:760}});
       const errors = [];
       page.on('pageerror', error => errors.push(error.message));
       await page.goto(`http://127.0.0.1:${server.httpServer.address().port}/probes/composer-access.html`);

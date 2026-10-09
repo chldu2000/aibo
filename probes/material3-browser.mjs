@@ -8,7 +8,7 @@ await server.listen();
 const browser = await chromium.launch({headless:true});
 const output = process.env.AIBO_PROBE_OUTPUT ?? '/tmp/aibo-material3';
 await mkdir(output, {recursive:true});
-const page = await browser.newPage({viewport:{width:1440,height:960}});
+const page = await browser.newPage({locale:'zh-CN',viewport:{width:1440,height:960}});
 page.setDefaultTimeout(10000);
 const errors = [];
 page.on('pageerror', error => errors.push(error.message));

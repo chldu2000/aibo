@@ -12,6 +12,7 @@
   {/if}
   <svg class="agent-status-logo" viewBox="0 0 24 24" aria-hidden="true">
     {#if icon}<path d={icon.path} fill="currentColor" />
-    {:else}<path d="M12 3 21 12 12 21 3 12Z" fill="none" stroke="currentColor" stroke-width="1.6" />{/if}
+    {:else}<!-- Generic agent (bot) glyph; a bare diamond read as a status marker. -->
+    <path d="M4 8h16v12H4ZM12 4v4M9 14h.01M15 14h.01" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" />{/if}
   </svg>
 </span>

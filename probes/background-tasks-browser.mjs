@@ -7,7 +7,7 @@ const browser=await chromium.launch({headless:true});
 const errors=[];
 try {
   for (const kit of ['material3','ak-ui']) for (const theme of ['light','dark']) {
-    const page=await browser.newPage({viewport:{width:1280,height:800}});
+    const page=await browser.newPage({locale:'zh-CN',viewport:{width:1280,height:800}});
     page.on('pageerror',error=>errors.push(error.message));
     await page.goto(`http://127.0.0.1:${server.httpServer.address().port}/probes/background-tasks-browser.html`);
     await page.evaluate(async ({kit,theme})=>{const r=await import('/src/lib/ui-kit/registry.ts');r.setUiKit(kit);r.setUiTheme(theme);},{kit,theme});

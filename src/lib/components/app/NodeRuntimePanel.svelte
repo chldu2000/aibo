@@ -11,6 +11,7 @@
 </script>
 <section class="settings-section" aria-labelledby="node-runtime-title" aria-busy={state.pending !== null}>
   <div class="settings-section-heading"><div><h2 id="node-runtime-title">{$t('node.title')}</h2><p>{$t('node.description')}</p></div></div>
+  <div class="settings-section-body">
   {#if state.value?.selected}
     <p><strong>{source[state.value.selected.source]} · {state.value.selected.version}</strong></p>
     <p class="runtime-path">{state.value.selected.path}</p>
@@ -31,6 +32,7 @@
   {:else if state.pending}<p role="status">{state.pending === 'download' ? $t('node.downloading') : state.pending === 'select' ? $t('node.selecting') : $t('node.detecting')}</p>{/if}
   {#if state.error}<p role="alert">{translateMessage($locale, state.error)}</p>{/if}
   {#if state.notice}<p role="status">{translateMessage($locale, state.notice)}</p>{/if}
+  </div>
 </section>
 <style>
   .runtime-buttons { display: flex; flex-wrap: wrap; gap: 8px; }

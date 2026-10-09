@@ -25,7 +25,7 @@ const server=await createServer({server:{host:'127.0.0.1',port:0,strictPort:fals
 await server.listen();const browser=await chromium.launch({headless:true});
 try {
  for(const kit of ['material3','ak-ui'])for(const theme of ['light','dark']){
-  const page=await browser.newPage();const errors=[];page.on('pageerror',e=>errors.push(e.message));
+  const page=await browser.newPage({locale:'zh-CN'});const errors=[];page.on('pageerror',e=>errors.push(e.message));
   await page.addInitScript(({kit,theme})=>localStorage.setItem('aibo.appearance.v1',JSON.stringify({kitId:kit,themeId:theme})),{kit,theme});
   await page.goto(`http://127.0.0.1:${server.httpServer.address().port}`);
   const input=page.locator('[data-composer-input]');await input.waitFor();

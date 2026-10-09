@@ -16,7 +16,7 @@ const server=await createServer({cacheDir:'/tmp/aibo-startup-browser-vite',serve
 await server.listen();const browser=await chromium.launch({headless:true});
 try{
  for(const theme of ['light','dark']){
-  const page=await browser.newPage({viewport:{width:1280,height:800}});const errors=[];
+  const page=await browser.newPage({locale:'zh-CN',viewport:{width:1280,height:800}});const errors=[];
   page.on('pageerror',e=>errors.push(e.message));page.setDefaultTimeout(10000);
   await page.addInitScript(()=>{
    let callback=0;window.modelReads=0;window.startupCalls=[];

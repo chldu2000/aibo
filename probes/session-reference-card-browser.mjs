@@ -5,7 +5,7 @@ const server=await createServer({server:{host:'127.0.0.1',port:0,strictPort:fals
 const browser=await chromium.launch({headless:true});
 try {
  for(const kit of ['ak-ui','material3']) {
-  const page=await browser.newPage();page.setDefaultTimeout(10000);const errors=[];page.on('pageerror',e=>errors.push(String(e)));
+  const page=await browser.newPage({locale:'zh-CN'});page.setDefaultTimeout(10000);const errors=[];page.on('pageerror',e=>errors.push(String(e)));
   await page.goto(`http://127.0.0.1:${server.httpServer.address().port}/probes/session-reference-card.html`);
   await page.evaluate(async kit=>{(await import('/src/lib/ui-kit/registry.ts')).setUiKit(kit);document.body.dataset.uiKit=kit;},kit);
   const summary=page.locator('summary').filter({hasText:'引用会话 · 设计讨论'});await summary.waitFor();

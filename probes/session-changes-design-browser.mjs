@@ -8,7 +8,7 @@ const server=await createServer({server:{host:'127.0.0.1',port:0,strictPort:fals
 await server.listen();
 const browser=await chromium.launch({headless:true});
 const output='/tmp/aibo-session-changes';await mkdir(output,{recursive:true});
-const page=await browser.newPage({viewport:{width:1440,height:960}});
+const page=await browser.newPage({locale:'zh-CN',viewport:{width:1440,height:960}});
 const errors=[];page.on('pageerror',error=>errors.push(error.message));page.setDefaultTimeout(10000);
 try {
   const installFixture=()=>{
@@ -146,7 +146,7 @@ try {
   await panel.getByText('仓库扫描尚未完成，以下仅显示已发现的仓库。',{exact:true}).waitFor();
   assert.equal(await tab.locator('.session-changes-count').count(),0);
   // Coarse-pointer targets grow without enlarging the desktop design.
-  const touch=await browser.newContext({viewport:{width:390,height:844},hasTouch:true,isMobile:true});
+  const touch=await browser.newContext({locale:'zh-CN',viewport:{width:390,height:844},hasTouch:true,isMobile:true});
   await touch.addInitScript(installFixture);
   const touchPage=await touch.newPage();await touchPage.goto(origin);
   await touchPage.getByRole('button',{name:'工作区',exact:true}).click();

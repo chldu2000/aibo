@@ -81,8 +81,8 @@
 :where(.app-shell[data-ui-kit='material3']) .tool-group-items { border-top: 1px solid var(--aibo-border); }
 :where(.app-shell[data-ui-kit='material3']) .tool-output { color: var(--aibo-muted); font-size: var(--aibo-type-meta, 12px); }
 :where(.app-shell[data-ui-kit='material3']) .tool-output summary { color: var(--aibo-subtle); }
-:where(.app-shell[data-ui-kit='material3']) .tool-output summary::before { content: '▸'; transition: transform 120ms ease; }
-:where(.app-shell[data-ui-kit='material3']) .tool-output[open] summary::before { transform: rotate(90deg); }
+:where(.app-shell[data-ui-kit='material3']) .tool-output summary::before { content: ''; width: 6px; height: 6px; margin: 0 8px 2px 2px; border: solid currentColor; border-width: 0 1.6px 1.6px 0; transform: rotate(-45deg); transition: transform 120ms ease; }
+:where(.app-shell[data-ui-kit='material3']) .tool-output[open] summary::before { transform: rotate(45deg); }
 :where(.app-shell[data-ui-kit='material3']) .tool-output-name { color: var(--aibo-muted); font-weight: 500; }
 :where(.app-shell[data-ui-kit='material3']) .tool-output-action { color: var(--aibo-subtle); }
 :where(.app-shell[data-ui-kit='material3']) .tool-output pre { border: 1px solid var(--aibo-border); border-radius: 6px; color: var(--aibo-muted); background: var(--aibo-bg); font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: var(--aibo-type-meta, 12px); line-height: 1.5; }
@@ -244,8 +244,8 @@
 :where(.app-shell[data-ui-kit='material3']) .turn-file-diff pre { border: 1px solid var(--aibo-border); border-radius: 6px; color: var(--aibo-muted); background: var(--aibo-surface); font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: var(--aibo-type-meta, 12px); line-height: 1.45; }
 :where(.app-shell[data-ui-kit='material3']) .turn-diff-hunk { border: 1px solid var(--aibo-border); border-radius: 6px; background: var(--aibo-bg); }
 :where(.app-shell[data-ui-kit='material3']) .turn-diff-hunk summary { cursor: pointer; color: var(--aibo-muted); font-size: var(--aibo-type-meta, 12px); }
-:where(.app-shell[data-ui-kit='material3']) .turn-diff-hunk summary::before { content: '▸'; color: var(--aibo-subtle); transition: transform 120ms ease; }
-:where(.app-shell[data-ui-kit='material3']) .turn-diff-hunk[open] summary::before { transform: rotate(90deg); }
+:where(.app-shell[data-ui-kit='material3']) .turn-diff-hunk summary::before { content: ''; width: 6px; height: 6px; margin: 0 8px 2px 2px; border: solid currentColor; border-width: 0 1.6px 1.6px 0; transform: rotate(-45deg); transition: transform 120ms ease; color: var(--aibo-subtle); }
+:where(.app-shell[data-ui-kit='material3']) .turn-diff-hunk[open] summary::before { transform: rotate(45deg); }
 :where(.app-shell[data-ui-kit='material3']) .turn-diff-hunk summary span { color: var(--aibo-subtle); }
 :where(.app-shell[data-ui-kit='material3']) .change-kind { color: var(--aibo-muted); font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: var(--aibo-type-meta, 12px); font-weight: 700; }
 :where(.app-shell[data-ui-kit='material3']) .change-kind-added { color: var(--aibo-success-text); }

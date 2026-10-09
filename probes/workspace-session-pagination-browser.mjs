@@ -31,7 +31,7 @@ await server.listen();
 const browser = await chromium.launch({ headless: true });
 try {
   for (const theme of ['light', 'dark']) {
-    const page = await browser.newPage({ viewport: { width: 1280, height: 800 } });
+    const page = await browser.newPage({locale:'zh-CN', viewport: { width: 1280, height: 800 } });
     page.setDefaultTimeout(10000);
     const errors = [];
     page.on('pageerror', error => errors.push(error.message));

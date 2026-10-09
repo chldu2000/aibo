@@ -5,7 +5,7 @@ import { writeFile } from 'node:fs/promises';
 const server = await createServer({server:{host:'127.0.0.1',port:0,hmr:false,watch:null}}); await server.listen();
 const browser = await chromium.launch({headless:true}), results = [];
 try {
-  const page = await browser.newPage({viewport:{width:1440,height:1000}}), errors = [];
+  const page = await browser.newPage({locale:'zh-CN',viewport:{width:1440,height:1000}}), errors = [];
   page.on('pageerror', error => errors.push(error.message));
   await page.goto(`http://127.0.0.1:${server.httpServer.address().port}/probes/reduced-motion.html`);
   await page.waitForFunction(() => window.motionProbe);
@@ -24,7 +24,7 @@ try {
     await page.emulateMedia({reducedMotion:'reduce'});
     const reduced = await inspect();
     assert.deepEqual(reduced.filter(item => item.duration > .000011 || item.delay !== 0 || item.transition > .000011 || item.transitionDelay !== 0 || item.iterations.includes('infinite') || item.scroll === 'smooth'), []);
-    await page.getByRole('button', {name:'打开设置',exact:true}).click();
+    await page.getByRole('button', {name:'打开工作台设置',exact:true}).click();
     await page.getByRole('button',{name:'交换工作台侧边区域',exact:true}).click();
     await page.getByRole('button',{name:'关闭设置',exact:true}).click();
     await page.waitForFunction(() => document.querySelector('[data-presentation-layout]')?.dataset.presentationLayout === 'review');

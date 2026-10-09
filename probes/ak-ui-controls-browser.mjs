@@ -5,7 +5,7 @@ import {chromium} from 'playwright';
 const server=await createServer({server:{host:'127.0.0.1',port:0,strictPort:false,hmr:false,watch:null},plugins:[{
   name:'ak-controls-fixture',configureServer(server){server.middlewares.use('/__ak-controls',(_req,res)=>{res.setHeader('Content-Type','text/html');res.end('<html><meta name="viewport" content="width=device-width, initial-scale=1"><body><div id="app"></div><script type="module" src="/probes/fixtures/ak-ui-controls.mjs"></script></body></html>')})}
 }]});
-await server.listen();const browser=await chromium.launch({headless:true});const page=await browser.newPage({viewport:{width:1100,height:1000}});const errors=[];
+await server.listen();const browser=await chromium.launch({headless:true});const page=await browser.newPage({locale:'zh-CN',viewport:{width:1100,height:1000}});const errors=[];
 page.on('pageerror',e=>errors.push(e.message));await mkdir('/tmp/aibo-ak-controls',{recursive:true});
 try {
  await page.goto(`http://127.0.0.1:${server.httpServer.address().port}/__ak-controls`);

@@ -61,5 +61,5 @@
       {/each}
     </div>
   {/if}
-  <span class="workbench-status-theme">{themeLabel}</span>
+  <span class="workbench-status-theme">{$t('workbench.appearanceStatus', { theme: themeLabel })}</span>
 </footer>

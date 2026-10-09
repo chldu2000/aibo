@@ -37,7 +37,7 @@ test('timeline and metadata translate chrome and preserve literal payloads and b
  assert.equal(flatten(en).find(node=>node.tag==='pre').text,entry.content);
  assert.ok(renderTimeline([{...entry,role:'system',toolName:null,content:''},{...entry,id:'n',role:'system',toolName:null,content:'原始系统正文'}],[],true,[],'en').flatMap(flatten).some(node=>node.text==='System message · View details'));
  const attachment=renderAttachment({id:'a',path:'用户路径中文.ts',turnId:null,sendStrategy:'inline',size:12,mediaType:'text/plain',source:'用户来源'},'a','en');
- assert.ok(flatten(attachment).some(node=>node.text==='Pending · Inline · 12 bytes'));
+ assert.ok(flatten(attachment).some(node=>node.text==='Pending · Sent with message · 12 bytes'));
  assert.ok(flatten(attachment).some(node=>node.text==='Source: 用户来源'));
  const profile=renderExecutionProfile({requested:{},enforced:{},adapterCapabilities:[],unsupported:['raw capability 中文'],nativeSandbox:false},'profile','en');
  assert.ok(flatten(profile).some(node=>node.text==='Execution permissions'));assert.ok(flatten(profile).some(node=>node.text==='Not enabled: raw capability 中文'));

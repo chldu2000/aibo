@@ -5,15 +5,16 @@ import { writeFile } from 'node:fs/promises';
 const server = await createServer({server:{host:'127.0.0.1',port:0,hmr:false,watch:null}}); await server.listen();
 const browser = await chromium.launch({headless:true}); const results = [];
 try {
-  for (const kit of ['shadcn','material3']) {
-    const page = await browser.newPage({viewport:{width:1600,height:1000},reducedMotion:'reduce'}), errors = [];
+  for (const kit of ['ak-ui','material3']) {
+    const page = await browser.newPage({locale:'zh-CN',viewport:{width:1600,height:1000},reducedMotion:'reduce'}), errors = [];
     page.on('pageerror', error => errors.push(error.message));
     await page.goto(`http://127.0.0.1:${server.httpServer.address().port}`);
     await page.evaluate(async kit => (await import('/src/lib/ui-kit/registry.ts')).setUiKit(kit), kit);
     const navigation = page.locator('[data-ui-component="workspace-sidebar"]');
     await navigation.waitFor();
     const initial = await navigation.boundingBox();
-    await page.getByRole('button', {name:'打开设置',exact:true}).click();
+    await page.getByRole('button', {name:'打开工作台设置',exact:true}).click();
+    await page.getByRole('tab',{name:'布局',exact:true}).click();
     await page.getByRole('button',{name:'交换工作台侧边区域',exact:true}).click();
     await page.getByRole('button',{name:'关闭设置',exact:true}).click();
     await page.waitForFunction(() => document.querySelector('[data-presentation-layout]')?.dataset.presentationLayout === 'review');
@@ -46,7 +47,8 @@ try {
     // Observe a rendered frame after the old pointer events before checking their absence of effects.
     await page.evaluate(() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))));
     assert.ok(Math.abs((await navigation.boundingBox()).width - keptWidth) < 1, 'renderer disposal stops old drag');
-    await page.getByRole('button', {name:'打开设置',exact:true}).click();
+    await page.getByRole('button', {name:'打开工作台设置',exact:true}).click();
+    await page.getByRole('tab',{name:'布局',exact:true}).click();
     await page.getByRole('button',{name:'交换工作台侧边区域',exact:true}).click();
     await page.getByRole('button',{name:'关闭设置',exact:true}).click();
     await page.reload();

@@ -5,7 +5,7 @@ const server = await createServer({server: {host: '127.0.0.1', port: 0, hmr: fal
 await server.listen();
 const browser = await chromium.launch({headless: true});
 try {
-  const page = await browser.newPage({viewport: {width: 1280, height: 900}});
+  const page = await browser.newPage({locale:'zh-CN',viewport: {width: 1280, height: 900}});
   page.setDefaultTimeout(10000);
   const errors = [];
   const runCommand = async label => {
@@ -30,7 +30,7 @@ try {
     assert.equal(await focus.getAttribute('aria-pressed'), 'true');
     await focus.click();
     await page.locator('[data-presentation-layout="standard"]:not([inert])').waitFor();
-    await page.getByRole('button', {name:'打开设置',exact:true}).click();
+    await page.getByRole('button', {name:'打开工作台设置',exact:true}).click();
     await page.getByRole('dialog', {name:'外观设置'}).getByRole('button', {name:'恢复默认呈现',exact:true}).click();
     await page.locator('[data-presentation-layout="standard"][inert]').waitFor();
     await page.evaluate(() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))));
@@ -85,7 +85,7 @@ try {
     await page.waitForFunction(()=>document.querySelector('[data-presentation-layout="standard"][aria-busy="false"]'));
     assert.equal(await page.evaluate(()=>window.savedSessionHistory===document.querySelector('.host-session-history-region')),true);
     await page.keyboard.press('Escape'); await sessionHistory.waitFor({state:'detached'});
-    assert.equal(await page.getByRole('button',{name:'打开设置',exact:true}).evaluate(node=>document.activeElement===node),true);
+    assert.equal(await page.getByRole('button',{name:'打开工作台设置',exact:true}).evaluate(node=>document.activeElement===node),true);
 
 
   }

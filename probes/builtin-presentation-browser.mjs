@@ -12,7 +12,7 @@ const builtins = [await release('material3', 'm'.repeat(64)), await release('ak-
 const server = await createServer({ server: { host: '127.0.0.1', port: 0, strictPort: false, hmr: false, watch: null } });
 await server.listen();
 const browser = await chromium.launch({ headless: true });
-const page = await browser.newPage({ viewport: { width: 1280, height: 900 } });
+const page = await browser.newPage({locale:'zh-CN', viewport: { width: 1280, height: 900 } });
 const errors = [];
 page.on('pageerror', error => errors.push(error.message));
 try {

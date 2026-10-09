@@ -19,7 +19,7 @@ await server.listen();
 const browser = await chromium.launch({ headless: true });
 try {
   for (const kit of ['light', 'dark']) {
-    const page = await browser.newPage({ viewport: { width: 1280, height: 800 } });
+    const page = await browser.newPage({locale:'zh-CN', viewport: { width: 1280, height: 800 } });
     const errors = []; page.on('pageerror', e => errors.push(e.message));
     await page.goto(`http://127.0.0.1:${server.httpServer.address().port}`);
     await page.evaluate(async kit => (await import('/src/lib/ui-kit/registry.ts')).setUiTheme(kit), kit);

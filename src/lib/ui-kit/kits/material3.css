@@ -110,6 +110,17 @@
   cursor: not-allowed;
 }
 
+/* M3 disabled text and outlined buttons keep no container, so they do not read as tonal actions. */
+.app-shell[data-ui-kit='material3'] .ui-button:disabled:is([data-variant='ghost'], [data-variant='link'], [data-variant='toolbar']) {
+  background: transparent;
+  border-color: transparent;
+}
+
+.app-shell[data-ui-kit='material3'] .ui-button[data-variant='outline']:disabled {
+  background: transparent;
+  border-color: var(--aibo-border);
+}
+
 .app-shell[data-ui-kit='material3'] .window-titlebar {
   margin: 0;
   min-height: var(--aibo-titlebar-height);
@@ -1521,10 +1532,13 @@
   box-shadow: none;
 }
 
-.app-shell[data-ui-kit='material3'] .row-more-mark {
-  font-size: 20px;
-  line-height: 1;
-  letter-spacing: 0;
+/* The whole row owns hover feedback; a separate square fill on the "more" button cut through the rounded row. */
+.app-shell[data-ui-kit='material3'] :is(.workspace-item-actions, .session-item-actions) .ui-button:is(:hover, :active, [aria-expanded='true']):not(:disabled) {
+  background: transparent;
+}
+
+.app-shell[data-ui-kit='material3'] :is(.workspace-item-actions, .session-item-actions) .ui-button {
+  border-radius: var(--md-sys-shape-corner-full);
 }
 
 .app-shell[data-ui-kit='material3'] .row-action-menu {
@@ -1641,7 +1655,7 @@
 }
 
 .app-shell[data-ui-kit='material3'] .workspace-preference-status {
-  margin-inline: 20px;
+  margin-inline: 0;
   font-size: var(--md-aibo-type-label-size);
   color: var(--aibo-muted);
 }
@@ -1787,7 +1801,8 @@
   border: 0;
   border-bottom: 1px solid var(--aibo-border);
   padding: var(--md-aibo-space-2) var(--md-aibo-space-4) var(--md-aibo-space-4);
-  border-radius: var(--md-sys-shape-corner-small);
+  /* Full-bleed sections joined by dividers; rounded corners left notches at each seam. */
+  border-radius: 0;
   background: var(--aibo-surface);
 }
 
@@ -1869,11 +1884,19 @@
   box-shadow: none;
 }
 
+.app-shell[data-ui-kit='material3'] .inspector .inspector-empty {
+  margin: 0;
+  padding: var(--md-aibo-space-4);
+  border-radius: 0;
+  color: var(--aibo-muted);
+}
+
 .app-shell[data-ui-kit='material3'] .inspector .trust-card {
-  margin: 0 var(--md-aibo-space-4);
-  padding: var(--md-aibo-space-3) 0;
+  margin: var(--md-aibo-space-3) var(--md-aibo-space-4);
+  padding: var(--md-aibo-space-3);
+  border-bottom: 0;
+  border-radius: var(--md-sys-shape-corner-medium);
   background: var(--aibo-warning-surface);
-  padding-inline: var(--md-aibo-space-3);
 }
 
 .app-shell[data-ui-kit='material3'] .inspector .trust-card[data-trust='trusted'] {
@@ -2183,7 +2206,7 @@
   display: flex;
   flex-wrap: wrap;
   gap: var(--md-aibo-space-3);
-  margin-inline: 20px;
+  margin-inline: 0;
   font-size: var(--aibo-type-ui);
 }
 
@@ -2860,6 +2883,8 @@
 }
 .app-shell[data-ui-kit='material3'] .theme-swatches { height: 36px; border-radius: var(--md-sys-shape-corner-small); overflow: hidden; }
 .app-shell[data-ui-kit='material3'] :is(.settings-row, .workspace-preference-option) { border-radius: var(--md-sys-shape-corner-medium); background: var(--aibo-surface-hover); }
+/* Rows inside a grouped list share the group's rounded outline; their own corners drew seams between rows. */
+.app-shell[data-ui-kit='material3'] .settings-rows > .settings-row { border-radius: 0; }
 .app-shell[data-ui-kit='material3'] :is(.host-panel, .global-search-panel) { border-radius: var(--md-sys-shape-corner-large); }
 .app-shell[data-ui-kit='material3'] .global-search-heading { border-left-width: 1px; border-radius: var(--md-sys-shape-corner-medium); }
 .app-shell[data-ui-kit='material3'] .global-search-result { border-radius: var(--md-sys-shape-corner-medium); }
@@ -2883,7 +2908,7 @@
 
 /* Brightness and palette are independent choices; their visuals belong to this kit. */
 .app-shell[data-ui-kit='material3'] .appearance-mode-control {
-  display: flex; width: fit-content; margin-inline: 20px; overflow: hidden;
+  display: flex; width: fit-content; margin-inline: 0; overflow: hidden;
   border: 1px solid var(--md-sys-color-outline); border-radius: var(--md-sys-shape-corner-full);
 }
 .app-shell[data-ui-kit='material3'] .appearance-mode-option {
@@ -2897,9 +2922,12 @@
   position: absolute; inset: 0; width: 100%; height: 100%; margin: 0; opacity: 0; cursor: pointer;
 }
 .app-shell[data-ui-kit='material3'] .appearance-mode-option:focus-within { outline: 2px solid var(--aibo-focus); outline-offset: -3px; }
+/* Round the outer segments so the focus outline follows the pill instead of drawing a square inside it. */
+.app-shell[data-ui-kit='material3'] .appearance-mode-option:first-child { border-start-start-radius: var(--md-sys-shape-corner-full); border-end-start-radius: var(--md-sys-shape-corner-full); }
+.app-shell[data-ui-kit='material3'] .appearance-mode-option:last-child { border-start-end-radius: var(--md-sys-shape-corner-full); border-end-end-radius: var(--md-sys-shape-corner-full); }
 .app-shell[data-ui-kit='material3'] .appearance-choice-mark { display: inline-flex; align-items: center; justify-content: center; width: 18px; height: 18px; flex: none; }
 .app-shell[data-ui-kit='material3'] .appearance-palette-heading { margin-top: 24px; }
-.app-shell[data-ui-kit='material3'] .appearance-palette-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 12px; margin-inline: 20px; }
+.app-shell[data-ui-kit='material3'] .appearance-palette-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 12px; margin-inline: 0; }
 .app-shell[data-ui-kit='material3'] .appearance-palette-option {
   position: relative; display: flex; flex-direction: column; gap: 10px; min-width: 0; padding: 12px;
   border: 1px solid var(--md-sys-color-outline-variant); border-radius: var(--md-sys-shape-corner-large);
@@ -2939,3 +2967,6 @@
 .app-shell[data-ui-kit='material3'] .sidebar.sidebar-collapsed .sidebar-footer { margin: auto 6px 8px; padding: 0; }
 .app-shell[data-ui-kit='material3'] .sidebar.sidebar-collapsed .sidebar-footer .ui-button { width: 44px; min-width: 44px; height: 44px; padding: 0; justify-content: center; }
 .app-shell[data-ui-kit='material3'] .sidebar .sidebar-attention { position: absolute; top: 8px; right: 8px; width: 6px; height: 6px; border-radius: 50%; background: var(--aibo-warning-text); }
+
+/* Settings headings sit outside a consistent content surface. */
+.app-shell[data-ui-kit='material3'] .settings-section-body { padding: 16px; border: 1px solid var(--aibo-border); background: var(--aibo-surface-hover); border-radius: var(--md-sys-shape-corner-medium); }

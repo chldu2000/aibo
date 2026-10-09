@@ -7,7 +7,7 @@ await mkdir(output, {recursive:true});
 const server = await createServer({ server:{host:'127.0.0.1',port:0,hmr:false,watch:null} });
 await server.listen();
 const browser = await chromium.launch({headless:true});
-const page = await browser.newPage({viewport:{width:1100,height:900}});
+const page = await browser.newPage({locale:'zh-CN',viewport:{width:1100,height:900}});
 const errors=[],results=[];page.on('pageerror',error=>errors.push(String(error)));
 try {
   await page.goto(`http://127.0.0.1:${server.httpServer.address().port}/probes/plugin-manifest.html`);

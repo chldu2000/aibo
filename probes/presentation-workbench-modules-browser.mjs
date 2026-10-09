@@ -19,7 +19,7 @@ self.aiboPresentation={render(input){return renderers[input.data.kind](input.dat
 `,resolveDir:new URL('../packages/presentation-workbench/',import.meta.url).pathname},bundle:true,write:false,format:'iife',platform:'browser',target:'es2022'});
 const source=bundled.outputFiles[0].text;
 const server=await createServer({server:{host:'127.0.0.1',port:0,hmr:false,watch:null}});await server.listen();
-const browser=await chromium.launch({headless:true});const page=await browser.newPage();page.setDefaultTimeout(15000);page.setDefaultNavigationTimeout(60000);const errors=[];page.on('pageerror',error=>errors.push(error.message));
+const browser=await chromium.launch({headless:true});const page=await browser.newPage({locale:'zh-CN'});page.setDefaultTimeout(15000);page.setDefaultNavigationTimeout(60000);const errors=[];page.on('pageerror',error=>errors.push(error.message));
 try {
  await page.goto(`http://127.0.0.1:${server.httpServer.address().port}/probes/presentation-sandbox.html`);await page.waitForFunction(()=>window.sandboxProbe);
  for(const kind of ['navigation','conversation','git','inspector']){

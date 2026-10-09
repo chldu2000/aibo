@@ -16,7 +16,7 @@ test('attachment metadata preserves pending versus submitted, strategy and zero-
  const pending=flatten(renderAttachment({path:'empty.txt',turnId:null,sendStrategy:'reference',size:0,mediaType:'text/plain',source:'picker'},'pending'));
  assert.ok(pending.some(node=>node.text==='待发送 · 工作区引用 · 0 字节'));
  const sent=flatten(renderAttachment({path:'sent.txt',turnId:'turn',sendStrategy:'inline',size:null},'sent'));
- assert.ok(sent.some(node=>node.text==='已发送 · 内联'));
+ assert.ok(sent.some(node=>node.text==='已发送 · 随消息发送'));
  assert.ok(!sent.some(node=>node.events),'metadata does not introduce business actions');
 });
 test('provider-managed execution explains permission ownership without claiming a sandbox',()=>{

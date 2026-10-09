@@ -8,7 +8,7 @@ import { chromium } from 'playwright';
 const server = await createServer({server:{host:'127.0.0.1',port:0,strictPort:false,hmr:false,watch:null}});
 await server.listen();
 const browser = await chromium.launch({headless:true});
-const page = await browser.newPage({viewport:{width:1440,height:960}});
+const page = await browser.newPage({locale:'zh-CN',viewport:{width:1440,height:960}});
 const errors=[];page.on('pageerror',e=>errors.push(e.message));page.setDefaultTimeout(10000);
 const output='/tmp/aibo-density';await mkdir(output,{recursive:true});
 try {
@@ -238,7 +238,7 @@ try {
   const narrow=await menu.boundingBox();assert(narrow.x>=0&&narrow.x+narrow.width<=1000&&narrow.y+narrow.height<=760,'menu stays within narrow desktop viewport');
   await page.mouse.click(700,40);await menu.waitFor({state:'hidden'});
   assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),true);
-  const touch=await browser.newPage({viewport:{width:390,height:844},hasTouch:true});
+  const touch=await browser.newPage({locale:'zh-CN',viewport:{width:390,height:844},hasTouch:true});
   touch.on('pageerror',e=>errors.push(e.message));await touch.addInitScript(installFixture);
   await touch.goto(`http://127.0.0.1:${server.httpServer.address().port}`);
   await touch.getByRole('navigation',{name:'工作台区域'}).getByRole('button',{name:'工作区',exact:true}).click();

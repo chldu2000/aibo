@@ -969,32 +969,6 @@
     },
   ];
 
-  const previewDiagnostics: AgentDiagnostic[] = [
-    {
-      agent: 'codex',
-      label: 'Codex',
-      status: 'ready',
-      executable: '/usr/local/bin/codex',
-      version: 'detected at runtime',
-      localizedVersion: {schema:'aibo.host-message/v1',key:'native.diagnostics.previewRuntimeVersion',params:{}},
-      capabilities: ['app-server', 'streaming', 'approval'],
-      authState: 'delegated',
-      message: 'Web preview; desktop mode probes the local installation.',
-      localizedMessage: {schema:'aibo.host-message/v1',key:'native.diagnostics.webPreview',params:{}},
-    },
-    {
-      agent: 'pi',
-      label: 'Pi',
-      status: 'ready',
-      executable: null,
-      version: 'SDK 0.84.4',
-      capabilities: ['sdk-host', 'streaming', 'abort', 'session-tree', 'session-tree-navigation', 'session-snapshot', 'slash-commands', 'queue-management', 'read-only-tools', 'workspace-write-gateway', 'workspace-command-gateway', 'aibo-approval'],
-      authState: 'delegated',
-      message: 'Project-locked SDK host; workspace writes are mediated by Aibo Core; native authentication remains with Pi.',
-      localizedMessage: {schema:'aibo.host-message/v1',key:'native.diagnostics.piPreview',params:{}},
-    },
-  ];
-
   function readPersistedSelection(): PersistedSelection | null {
     if (typeof window === 'undefined') return null;
     try {
@@ -1949,8 +1923,8 @@
     ]) items.push({ id: `setting:${id}`, kind: 'setting', title, description, score: 1, target: { source: 'setting', id } });
     for (const workspace of workspaces) items.push({ id: `workspace:${workspace.id}`, kind: 'workspace', title: workspace.label, description: workspace.path,
       score: 1, target: { source: 'workspace', id: workspace.id, workspaceId: workspace.id } });
-    for (const command of visibleAgentCommands) items.push({ id: `agent-command:${selectedSessionId}:${command.name}`, kind: 'command', title: command.name,
-      description: $t('search.insertCommand', {description: command.description ?? '', session: selectedSession?.label ?? ''}), score: 1,
+    for (const command of visibleAgentCommands) items.push({ id: `agent-command:${selectedSessionId}:${command.name}`, kind: 'command', title: command.description?.trim() || commandComposerInsertion(command).trim(),
+      description: `${commandComposerInsertion(command).trim()} · ${selectedSession?.label ?? ''}`, score: 1,
       disabledReason: selectedSession?.archived ? $t('search.archivedCommand') : undefined,
       target: { source: 'agent-command', id: command.name, workspaceId: selectedWorkspaceId, sessionId: selectedSessionId } });
     if (!desktop) for (const session of Object.values(workspaceSessionMap).flat()) items.push({ id: `session:${session.id}`, kind: 'session', title: session.label,
@@ -2151,7 +2125,7 @@
       const runningDesktop = isTauri();
       if (!runningDesktop) {
         workspaces = previewWorkspaces;
-        diagnostics = previewDiagnostics;
+        diagnostics = [];
         setSelectedWorkspace(previewWorkspaces[0]?.id ?? null);
         expandedWorkspaceIds = selectedWorkspaceId ? [selectedWorkspaceId] : [];
         return;
@@ -3555,7 +3529,6 @@
     onOpenSearch={() => openGlobalSearch()}
     onOpenManagement={() => openManagementCenter('appearance')}
     {managementNeedsAttention}
-    themeLabel={$activeTheme.label}
     colorScheme={$activeTheme.colorScheme}
     onToggleTheme={toggleColorScheme}
     sidePanelOpen={sidePanelOpen}
@@ -3664,6 +3637,7 @@
       onRequestArchiveSession={guard('onRequestArchiveSession', requestArchiveSession)}
       onSyncCodexThread={guard('onSyncCodexThread', (sessionId) => void syncCodexThread(sessionId))}
       onBeginRenameSession={guard('onBeginRenameSession', beginRenameSession)}
+      onOpenPlugins={guard('onOpenPlugins', () => openManagementCenter('extensions'))}
       onSaveSessionRename={guard('onSaveSessionRename', () => void saveSessionRename())}
       onCancelRenameSession={guard('onCancelRenameSession', cancelRenameSession)}
     />

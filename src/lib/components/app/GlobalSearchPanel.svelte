@@ -93,9 +93,11 @@
         <Button variant="ghost" aria-pressed={parsed.kind === kind} onclick={() => selectKind(kind)}>{searchKindLabels[kind]}</Button>
       {/each}
     </div>
+    <div class="global-search-scope"><span>{$t('search.scope')}</span>
     <Select aria-label={$t('search.scope')} value={search.workspaceId ?? ''}
       options={[{value:'',label:$t('search.allWorkspaces')}, ...workspaces.map(workspace => ({value:workspace.id,label:workspace.label}))]}
       onSelect={value => { onBack(); onSearch(search.query, search.kind, value || null); }} />
+    </div>
   </div>
   {#if inPreview}
     <section class="global-search-preview" aria-label={$t('search.details')}>
@@ -114,7 +116,7 @@
     <div id="global-search-results" class="global-search-results" role="listbox" aria-label={$t('search.results')} aria-busy={search.pending.length > 0}>
       {#each groups as group}
         <div class="global-search-group" role="group" aria-label={searchKindLabels[group.kind]}>
-          <div class="global-search-group-heading"><span>{searchKindLabels[group.kind]}</span>
+          <div class="global-search-group-heading"><span>{searchKindLabels[group.kind]}{#if group.kind === 'command'} · {$t('search.commandHint')}{/if}</span>
             {#if !parsed.kind && group.items.length > 5}<Button variant="ghost" onclick={() => onSearch(parsed.query, group.kind, search.workspaceId)}>{$t('search.showAll')}</Button>{/if}
           </div>
           {#each (parsed.kind ? group.items : group.items.slice(0, 5)) as item (item.id)}

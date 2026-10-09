@@ -107,6 +107,7 @@ h1, h2, h3, p { margin: 0; }
 .agent-status-mark { position: relative; display: grid; width: 20px; height: 20px; flex: none; place-items: center; }
 .agent-status-logo { position: relative; z-index: 1; width: 13px; height: 13px; }
 .session-agent-empty { position: absolute; top: 100%; left: 50%; width: 220px; padding: 10px; }
+.session-agent-empty-action { margin: 0 12px 8px; justify-self: start; }
 .agent-status-orbit { position: absolute; inset: 0; }
 .agent-status-signal { position: absolute; z-index: 2; right: -1px; bottom: -1px; display: none; width: 6px; height: 6px; }
 .agent-status-mark.tone-attention .agent-status-signal { display: block; }
@@ -257,7 +258,7 @@ h1, h2, h3, p { margin: 0; }
 .approval-card small { overflow-wrap: anywhere; }
 .approval-actions { display: flex; flex: none; flex-wrap: wrap; justify-content: flex-end; gap: 6px; }
 .inspector { min-width: 0; overflow-y: auto; overscroll-behavior: contain; }
-.inspector-empty { margin: 12px; padding: 18px 14px; }
+.inspector-empty { margin: 12px; padding: 18px 14px; display: flex; align-items: center; justify-content: center; gap: 8px; }
 .session-context-card { margin: 12px 12px 10px; }
 .session-context-heading { padding: 13px; }
 .session-context-title { display: flex; min-width: 0; align-items: center; gap: 9px; }
@@ -386,6 +387,7 @@ h1, h2, h3, p { margin: 0; }
 .turn-file-diff pre { max-height: 240px; overflow: auto; padding: 8px; white-space: pre-wrap; }
 .turn-diff-hunks { display: grid; gap: 5px; }
 .turn-diff-hunk summary { display: flex; min-width: 0; align-items: center; gap: 7px; padding: 6px 8px; list-style: none; }
+.turn-diff-hunk summary::before { flex: none; }
 .turn-diff-hunk summary::-webkit-details-marker { display: none; }
 .turn-diff-hunk summary span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .turn-diff-hunk pre { margin: 0 7px 7px; }
@@ -551,8 +553,11 @@ dd { max-width: 68%; overflow: hidden; margin: 0; text-overflow: ellipsis; white
 .global-search[open] { display: flex; flex-direction: column; }
 .global-search-heading { display: flex; align-items: center; gap: 12px; padding: 8px 16px; }
 .global-search-heading [data-slot='input'] { flex: 1; min-width: 0; }
-.global-search-toolbar { display: flex; flex-wrap: wrap; gap: 4px 12px; align-items: center; padding: 4px 12px 8px; }
-.global-search-categories { display: flex; flex-wrap: wrap; flex: 1; }
+.global-search-toolbar { display: flex; flex-direction: column; gap: 8px; align-items: stretch; padding: 4px 12px 8px; }
+.global-search-categories { display: flex; flex-wrap: wrap; gap: 4px; }
+.global-search-scope { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.settings-section-body { display: grid; gap: 12px; min-width: 0; }
+.settings-section-body > p { margin: 0; }
 .global-search-categories [data-slot='button'], .global-search-group-heading [data-slot='button'] { min-height: 32px; height: 32px; padding: 0 8px; }
 .global-search :is(select, .ui-select-trigger) { max-width: 180px; min-height: 32px; }
 .global-search-results { min-height: 100px; overflow: auto; overscroll-behavior: contain; }

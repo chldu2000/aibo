@@ -7,7 +7,7 @@ const server = await createServer({server:{host:'127.0.0.1',port:0,strictPort:fa
 }]});
 await server.listen();
 const browser=await (process.env.AIBO_BROWSER === 'webkit' ? webkit : chromium).launch({headless:true,timeout:15000,...(process.env.AIBO_BROWSER_EXECUTABLE?{executablePath:process.env.AIBO_BROWSER_EXECUTABLE}:{})});
-const page=await browser.newPage({viewport:{width:960,height:720}}),errors=[];
+const page=await browser.newPage({locale:'zh-CN',viewport:{width:960,height:720}}),errors=[];
 page.on('pageerror',error=>errors.push(error.message));
 page.setDefaultTimeout(10000);page.setDefaultNavigationTimeout(15000);
 const base=`http://127.0.0.1:${server.httpServer.address().port}`;

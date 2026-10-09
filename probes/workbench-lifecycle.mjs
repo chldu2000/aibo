@@ -3,7 +3,7 @@ import {createServer} from 'vite';
 import {chromium} from 'playwright';
 import {writeFile} from 'node:fs/promises';
 const server=await createServer({server:{host:'127.0.0.1',port:0,hmr:false,watch:null}});await server.listen();
-const browser=await chromium.launch({headless:true});const page=await browser.newPage();page.setDefaultTimeout(10000);const errors=[];page.on('pageerror',error=>errors.push(error.message));
+const browser=await chromium.launch({headless:true});const page=await browser.newPage({locale:'zh-CN'});page.setDefaultTimeout(10000);const errors=[];page.on('pageerror',error=>errors.push(error.message));
 try{
  await page.goto(`http://127.0.0.1:${server.httpServer.address().port}/probes/workbench-lifecycle.html`);
  await page.getByRole('textbox',{name:'槽位草稿'}).fill('SLOT_DRAFT');

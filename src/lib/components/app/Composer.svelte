@@ -653,12 +653,15 @@
                     {matrixFastTier.label}
                   </Button>
                 {/if}
-                <ModelContextSelect
-                  options={modelCatalog?.current?.contextWindows ?? []}
-                  current={modelCatalog?.currentContextWindow ?? null}
-                  disabled={matrixDisabled || modelCatalogLoading || !sessionCapabilities.includes('model.context-window')}
-                  onSelect={(id) => { if (modelCatalog?.current) void onSelectContextWindow(id, modelCatalog.current.reference); }}
-                />
+                {#if sessionCapabilities.includes('model.context-window') && (modelCatalog?.current?.contextWindows?.length ?? 0) > 0}
+                  <!-- Without a declared capability or choices, there is nothing to select; hide instead of showing a dead control. -->
+                  <ModelContextSelect
+                    options={modelCatalog?.current?.contextWindows ?? []}
+                    current={modelCatalog?.currentContextWindow ?? null}
+                    disabled={matrixDisabled || modelCatalogLoading}
+                    onSelect={(id) => { if (modelCatalog?.current) void onSelectContextWindow(id, modelCatalog.current.reference); }}
+                  />
+                {/if}
                 </div>
               </div>
               {#if sessionRunning}

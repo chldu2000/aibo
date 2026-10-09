@@ -11,7 +11,7 @@ const setLanguage=(page,locale)=>page.evaluate(async locale=>{
 },locale);
 try {
  for(const kit of ['material3','ak-ui']) for(const theme of ['light','dark']) {
-  const context=await browser.newContext();const errors=[];
+  const context=await browser.newContext({locale:'zh-CN'});const errors=[];
   const page=await context.newPage();page.setDefaultTimeout(15000);page.setDefaultNavigationTimeout(60000);page.on('pageerror',e=>errors.push(e.message));
   await page.addInitScript(({kit,theme})=>{if(window===window.top&&location.protocol==='http:')localStorage.setItem('aibo.appearance.v1',JSON.stringify({kitId:kit,themeId:theme}));},{kit,theme});
   const url=`http://127.0.0.1:${server.httpServer.address().port}`;

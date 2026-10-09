@@ -13,7 +13,7 @@ const server = await createServer({server:{host:'127.0.0.1',port:0,strictPort:fa
 }]});
 await server.listen();
 const browser = await chromium.launch({headless:true});
-const page = await browser.newPage({viewport:{width:1100,height:1000}});
+const page = await browser.newPage({locale:'zh-CN',viewport:{width:1100,height:1000}});
 const errors=[];
 page.on('pageerror',e=>errors.push(e.message));
 await mkdir('/tmp/aibo-material3-controls',{recursive:true});
@@ -128,7 +128,7 @@ try {
     await page.setViewportSize({width:1100,height:1000});
     await matrix.evaluate(e=>{e.scrollLeft=0;});
   }
-  const touch=await browser.newPage({viewport:{width:540,height:900},hasTouch:true});
+  const touch=await browser.newPage({locale:'zh-CN',viewport:{width:540,height:900},hasTouch:true});
   await touch.goto(`http://127.0.0.1:${server.httpServer.address().port}/__controls?kit=material3&matrix=expanded`);
   await touch.locator('.ui-model-matrix').waitFor();
   assert(await touch.evaluate(()=>matchMedia('(pointer: coarse)').matches));

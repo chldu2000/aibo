@@ -4,7 +4,7 @@ import { createServer } from 'vite';
 import { chromium } from 'playwright';
 const server=await createServer({server:{host:'127.0.0.1',port:0,hmr:false,watch:null}});await server.listen();
 const browser=await chromium.launch({headless:true});
-const page=await browser.newPage();const evidence=[];
+const page=await browser.newPage({locale:'zh-CN'});const evidence=[];
 try {
   await page.goto(`http://127.0.0.1:${server.httpServer.address().port}/probes/presentation-sandbox.html`);
   await page.waitForFunction(()=>Boolean(window.sandboxProbe));

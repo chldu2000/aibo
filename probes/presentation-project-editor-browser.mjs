@@ -7,7 +7,7 @@ const source="self.aiboPresentation={render(input){const i=input.data.inspector;
 const bytes=Buffer.from(source);
 const pkg={release:{digest:'a'.repeat(64),enabled:true,manifest:{schema:'aibo.presentation-package/v1',id:'dev.example.workbench',version:'1.0.0',displayName:'External skin',hostApi:'1.0.0',coreSemantics:'1.0.0',snapshotSchemas:['aibo.semantic-view/v1'],entry:'skin.js',surfaces:['workbench'],resources:[{path:'skin.js',bytes:bytes.length,sha256:createHash('sha256').update(bytes).digest('hex'),mediaType:'text/javascript'}]}},resources:{'skin.js':bytes.toString('base64')}};
 const server=await createServer({server:{host:'127.0.0.1',port:0,hmr:false,watch:null}});await server.listen();
-const browser=await chromium.launch({headless:true});const page=await browser.newPage({viewport:{width:1280,height:900}});const errors=[];
+const browser=await chromium.launch({headless:true});const page=await browser.newPage({locale:'zh-CN',viewport:{width:1280,height:900}});const errors=[];
 page.on('pageerror',error=>errors.push(error.message));page.setDefaultTimeout(10000);
 try {
   await page.addInitScript(pkg=>{
@@ -78,7 +78,7 @@ try {
       }};
   },pkg);
   await page.goto(`http://127.0.0.1:${server.httpServer.address().port}/`);
-  await page.getByRole('button',{name:'打开设置',exact:true}).click();
+  await page.getByRole('button',{name:'打开工作台设置',exact:true}).click();
   await page.getByRole('tab',{name:'插件与能力',exact:true}).click();
   await page.getByRole('button',{name:'安装皮肤插件',exact:true}).click();
   await page.getByRole('tab',{name:'外观',exact:true}).click();
@@ -93,14 +93,14 @@ try {
   const name=frame.getByRole('textbox',{name:'External name',exact:true});
   await name.pressSequentially('draft across skins',{delay:10});
   await frame.getByRole('textbox',{name:'External args',exact:true}).fill('["run","test with spaces"]');
-  await page.getByRole('button',{name:'打开设置',exact:true}).click();
+  await page.getByRole('button',{name:'打开工作台设置',exact:true}).click();
   await page.getByRole('button',{name:'恢复内置皮肤',exact:true}).click();
   await page.getByRole('button',{name:'关闭设置',exact:true}).click();
   const native=page.getByRole('textbox',{name:'动作名称',exact:true});
   assert.equal(await native.inputValue(),'draft across skins');await native.fill('edited in default');
   await page.getByRole('button',{name:'保存动作',exact:true}).click();
   await page.getByText('probe save failure',{exact:true}).waitFor();assert.equal(await native.inputValue(),'edited in default');
-  await page.getByRole('button',{name:'打开设置',exact:true}).click();
+  await page.getByRole('button',{name:'打开工作台设置',exact:true}).click();
   await page.getByRole('button',{name:'External skin 1.0.0',exact:true}).click();
   await page.getByRole('button',{name:'关闭设置',exact:true}).click();
   assert.equal(await name.inputValue(),'edited in default');assert.equal((await snapshot()).projectEditor.error,'probe save failure');

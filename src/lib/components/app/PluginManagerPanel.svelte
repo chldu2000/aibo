@@ -52,11 +52,10 @@
 
 </script>
 
-<Card aria-label={$t('plugins.title')} aria-busy={busy}>
-  <CardHeader><CardTitle>{$t('plugins.title')}</CardTitle></CardHeader>
-  <CardContent>
+<section class="settings-section" aria-label={$t('plugins.title')} aria-busy={busy}>
+  <div class="settings-section-heading"><div><h2>{$t('plugins.title')}</h2><p>{$t('plugins.description')}</p></div></div>
+  <div class="settings-section-body">
     <div class="plugin-manager">
-      <p>{$t('plugins.description')}</p>
       {#if installation?.error}<p role="alert">{translateMessage($locale, installation.error)}</p>{/if}
       {#if installation?.notice}<p role="status">{translateMessage($locale, installation.notice)}</p>{/if}
       {#if installation?.preview}
@@ -210,8 +209,8 @@
         </div>
       {/if}
     </div>
-  </CardContent>
-</Card>
+  </div>
+</section>
 
 <style>
   .plugin-manager, .plugin-details { display: flex; flex-direction: column; gap: 0.75rem; min-width: 0; }

@@ -275,7 +275,8 @@
 
 <Card as="section" class="timeline" data-ui-component="timeline-panel" aria-label={$t('timeline.title')}>
   <CardHeader class="panel-heading timeline-heading">
-    <div class="timeline-heading-copy"><small>{workspace?.label ?? 'Aibo'}{#if session} / {sessionProviderLabel ?? session.agent}{/if}</small><CardTitle>{session?.label ?? workspace?.label ?? $t('timeline.chooseWorkspace')}</CardTitle></div>
+    <div class="timeline-heading-copy">{#if session}<small>{`${workspace?.label ?? 'Aibo'} / ${sessionProviderLabel ?? session.agent}`}</small>{/if}<CardTitle>{session?.label ?? workspace?.label ?? $t('timeline.chooseWorkspace')}</CardTitle></div>
+    {#if session}
     <div class="conversation-navigation" role="tablist" aria-label={$t('timeline.views')}>
       {#each [{ id: 'conversation', label: $t('timeline.conversation') }, { id: 'executions', label: $t('timeline.executions') }, { id: 'changes', label: $t('timeline.changes') }] as tab}
         <Button variant={activeTab === tab.id ? 'secondary' : 'ghost'} role="tab" id={`session-tab-${tab.id}`} aria-controls={`session-panel-${tab.id}`} aria-selected={activeTab === tab.id} tabindex={activeTab === tab.id ? 0 : -1}
@@ -290,6 +291,7 @@
           }}>{tab.label}{#if tab.id === 'changes' && changesCount !== null}<Badge class="session-changes-count" variant="outline">{changesCount}</Badge>{/if}</Button>
       {/each}
     </div>
+    {/if}
     <div class="timeline-heading-actions">
       {#if session}
         {@const runningTasks = timeline.filter(item => parseBackgroundTask(item, $locale)?.status === 'running').length}
@@ -315,7 +317,7 @@
       {@render presentationActions?.()}
     </div>
   </CardHeader>
-  <div role="tabpanel" id="session-panel-conversation" aria-labelledby="session-tab-conversation" class="conversation-tab-content" hidden={activeTab !== 'conversation'}>
+  <div role={session ? 'tabpanel' : undefined} id="session-panel-conversation" aria-labelledby={session ? 'session-tab-conversation' : undefined} class="conversation-tab-content" hidden={!!session && activeTab !== 'conversation'}>
   {#if workspace}
 
     {#if retryPrompt && session && !sessionRunning && !sessionArchived}
@@ -483,7 +485,7 @@
     </div>
   {/if}
   </div>
-  {#if activeTab === 'executions'}
+  {#if session && activeTab === 'executions'}
     <div role="tabpanel" id="session-panel-executions" aria-labelledby="session-tab-executions" class="timeline-feed" tabindex="0">
       {#if !session}<p role="status">{$t('timeline.selectSession')}</p>
       {:else}
@@ -509,7 +511,7 @@
         {:else}<p role="status">{$t('timeline.noExecutions')}</p>{/if}
       {/if}
     </div>
-  {:else if activeTab === 'changes'}
+  {:else if session && activeTab === 'changes'}
     <div role="tabpanel" id="session-panel-changes" aria-labelledby="session-tab-changes" class="timeline-feed" tabindex="0">
       {#if session && changesPanel}{@render changesPanel()}{:else}<p role="status">{$t('timeline.selectSession')}</p>{/if}
     </div>

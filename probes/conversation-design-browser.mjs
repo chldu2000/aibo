@@ -31,7 +31,7 @@ const server=await createServer({server:{host:'127.0.0.1',port:0,strictPort:fals
 }]});
 await server.listen();
 const browser=await chromium.launch({headless:true});
-const page=await browser.newPage({viewport:{width:1440,height:1000},timezoneId:'Asia/Shanghai'});
+const page=await browser.newPage({locale:'zh-CN',viewport:{width:1440,height:1000},timezoneId:'Asia/Shanghai'});
 page.setDefaultTimeout(10000);
 const errors=[];page.on('pageerror',e=>errors.push(e.message));
 try {
@@ -100,7 +100,7 @@ try {
   await page.evaluate(()=>window.conversationFixture('empty'));
   assert.equal(await page.locator('.agent-activity').count(),1,'activity remains available before the first message');
   assert.deepEqual(errors,[]);
-  const design=await browser.newPage({viewport:{width:1440,height:1000}});
+  const design=await browser.newPage({locale:'zh-CN',viewport:{width:1440,height:1000}});
   await design.goto(origin+'/docs/design/ak-ui-redesign.html');
   await design.locator('#view-chat .assistant').waitFor();
   await design.locator('.feed').screenshot({path:`${output}/reference.png`});

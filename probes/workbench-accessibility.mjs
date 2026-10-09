@@ -6,7 +6,7 @@ const server = await createServer({server:{host:'127.0.0.1',port:0,hmr:false,wat
 const browser = await chromium.launch({headless:true}), results = [];
 try {
  for (const kit of ['shadcn','material3']) {
-  const page = await browser.newPage({viewport:{width:1440,height:1000}});
+  const page = await browser.newPage({locale:'zh-CN',viewport:{width:1440,height:1000}});
   await page.goto(`http://127.0.0.1:${server.httpServer.address().port}`);
   await page.evaluate(async kit => (await import('/src/lib/ui-kit/registry.ts')).setUiKit(kit), kit);
   await page.locator('[data-presentation-layout="standard"]:not([inert])').waitFor();

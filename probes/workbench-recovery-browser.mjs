@@ -5,7 +5,7 @@ const server = await createServer({ server: { host: '127.0.0.1', port: 0, hmr: f
 await server.listen();
 const browser = await chromium.launch({ headless: true });
 try {
-  const page = await browser.newPage();
+  const page = await browser.newPage({locale:'zh-CN'});
   const errors = [];
   page.on('pageerror', error => errors.push(String(error)));
   await page.goto(`http://127.0.0.1:${server.httpServer.address().port}/probes/semantic-ui.html`);

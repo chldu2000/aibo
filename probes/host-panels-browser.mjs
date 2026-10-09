@@ -9,7 +9,7 @@ await server.listen();
 const browser = await chromium.launch({headless:true});
 try {
   for (const kit of ['shadcn','material3','external']) {
-    const page = await browser.newPage({viewport:{width:1280,height:900}});
+    const page = await browser.newPage({locale:'zh-CN',viewport:{width:1280,height:900}});
     page.setDefaultTimeout(10000);
     const errors=[];
     page.on('pageerror',e=>errors.push(e.message));

@@ -97,6 +97,7 @@
   "usage.unlimitedCredits": "Unlimited credits",
   "usage.accessibility": "Session usage and plan quota",
   "workbench.status": "Workbench status",
+  "workbench.appearanceStatus": "Appearance: {theme}",
   "workbench.local": "Local workspace",
   "workbench.preview": "Browser preview",
   "workspace.none": "No workspace selected",
@@ -140,7 +141,7 @@
   "input.progress": "Question {current} / {total}",
   "input.questionStatus": "Question {number}, {status}",
   "appearance.rounded.description": "Rounded controls and soft tones with blue, forest green and violet palettes.",
-  "appearance.angular.description": "A clear, restrained workbench.",
+  "appearance.angular.description": "Square controls with signal-color accents and denser information, in light and dark.",
   "appearance.angular.themeDescription": "Neutral surface levels and functional accent colors distinguish regions and states.",
   "appearance.blue.name": "Classic blue",
   "appearance.blue.description": "Clear blue with cool neutral surfaces.",
@@ -204,6 +205,7 @@
   "sidebar.createWithAgent": "Create a session with {name}",
   "sidebar.ready": "Local · Ready",
   "sidebar.noAgents": "No agents are ready. Install and enable one in Plugins and capabilities.",
+  "sidebar.openPlugins": "Open plugins and capabilities",
   "composer.sessionSettings": "Session settings",
   "composer.permission": "Permissions",
   "composer.mode": "Session mode",
@@ -468,9 +470,9 @@
   "background.status.stopped": "Stopped",
   "background.status.unknown": "Status unknown",
   "diagnostics.runtimeStatus": "Runtime status",
-  "diagnostics.agents": "Agent status",
-  "diagnostics.description": "Check local agent connections and capabilities.",
-  "diagnostics.ready": "{ready}/{total} ready",
+  "diagnostics.agents": "Agent runtime detection",
+  "diagnostics.description": "Checks local runtimes only. Session creation depends on installation, enablement and dependencies in Plugins & capabilities.",
+  "diagnostics.ready": "{ready}/{total} runtimes available",
   "diagnostics.channel": "Channel",
   "diagnostics.auth": "Authentication",
   "diagnostics.systemCredentials": "System credentials",
@@ -693,8 +695,8 @@
   "inspector.currentAttachments": "Current context attachments",
   "inspector.sent": "Sent",
   "inspector.pending": "Pending",
-  "inspector.reference": "Reference",
-  "inspector.inline": "Inline",
+  "inspector.reference": "Referenced by path",
+  "inspector.inline": "Sent with message",
   "inspector.turnChanges": "Turn changes",
   "inspector.fileCount": {
     "one": "{count} file",
@@ -748,7 +750,7 @@
     "one": "{count} more restore record",
     "other": "{count} more restore records"
   },
-  "inspector.noSession": "Select a session on the left to view its context.",
+  "inspector.noSession": "Select a session in the navigation to view its context.",
   "inspector.remoteSessions": "Remote sessions",
   "inspector.noRemoteThreads": "No remote threads yet",
   "inspector.remoteList": "Remote session list",
@@ -1151,7 +1153,7 @@
   "activity.starting": "{agent} is starting the request…",
   "activity.waitingModel": "{agent} is waiting for a model response (it may be thinking)…",
   "search.chooseAgentInWorkspace": "Choose an Agent in {name}",
-  "search.insertCommand": "{description} · {session} · Insert into message input",
+  "search.insertCommand": "{description} · Insert into the {session} message box",
   "app.imagesAdded": {
     "one": "Added {count} image.",
     "other": "Added {count} images."
@@ -2413,5 +2415,8 @@
   "presentation.snapshotVersion": "This presentation does not support the view format.",
   "presentation.invalidState": "The view state is invalid. Reopen the view.",
   "error.projectActionIdentity": "The saved project action has a different identity. Refresh and check the result.",
-  "error.turnDiffIdentity": "The returned diff belongs to a different file. Reload the diff."
+  "error.turnDiffIdentity": "The returned diff belongs to a different file. Reload the diff.",
+  "search.commandHint": "Select a command to insert it into the message box",
+  "diagnostics.preview": "Browser preview cannot detect local Agents. Open the desktop app to check their status.",
+  "diagnostics.empty": "No Agent diagnostics are available. Check installation and enablement in Plugins & capabilities."
 }

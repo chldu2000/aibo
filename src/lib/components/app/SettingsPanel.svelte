@@ -53,6 +53,22 @@
       </div>
     </section>
     <Separator />
+    <section class="settings-section" aria-labelledby="ui-kit-title">
+      <div class="settings-section-heading"><div><h2 id="ui-kit-title">{$t('appearance.skin')}</h2><p>{$t('appearance.skin.description')}</p></div></div>
+      {#if uiKits.length === 1}
+        <div class="appearance-kit-info"><strong>{uiKits[0].label}</strong><span>{uiKits[0].description}</span></div>
+      {:else}
+      <div class="appearance-kit-grid">
+        {#each uiKits as kit (kit.id)}
+          <button class:active={kit.id === activeUiKitName} class="appearance-kit-option" type="button" disabled={appearanceBusy} aria-pressed={kit.id === activeUiKitName} onclick={() => { requestedKit = kit.id; onSelectUiKit(kit.id); }}>
+            <span class="appearance-option-heading"><strong>{kit.label}</strong>{#if kit.id === activeUiKitName}<Icon name="check" size={15} />{/if}</span>
+            <small>{kit.description}</small>
+          </button>
+        {/each}
+      </div>
+      {/if}
+    </section>
+    <Separator />
     <section class="settings-section" aria-labelledby="theme-color-title">
       {#if palettes.length}
       <div class="settings-section-heading"><div><h2 id="theme-color-title">{$t('appearance.mode')}</h2><p>{$t('appearance.mode.description')}</p></div></div>
@@ -92,22 +108,6 @@
         {/each}
       </div>
       {#if !activeKit?.themes.length}<p>{$t('appearance.noThemes')}</p>{/if}
-      {/if}
-    </section>
-    <Separator />
-    <section class="settings-section" aria-labelledby="ui-kit-title">
-      <div class="settings-section-heading"><div><h2 id="ui-kit-title">{$t('appearance.skin')}</h2><p>{$t('appearance.skin.description')}</p></div></div>
-      {#if uiKits.length === 1}
-        <div class="appearance-kit-info"><strong>{uiKits[0].label}</strong><span>{uiKits[0].description}</span></div>
-      {:else}
-      <div class="appearance-kit-grid">
-        {#each uiKits as kit (kit.id)}
-          <button class:active={kit.id === activeUiKitName} class="appearance-kit-option" type="button" disabled={appearanceBusy} aria-pressed={kit.id === activeUiKitName} onclick={() => { requestedKit = kit.id; onSelectUiKit(kit.id); }}>
-            <span class="appearance-option-heading"><strong>{kit.label}</strong>{#if kit.id === activeUiKitName}<Icon name="check" size={15} />{/if}</span>
-            <small>{kit.description}</small>
-          </button>
-        {/each}
-      </div>
       {/if}
     </section>
     {@render appearanceActions?.()}

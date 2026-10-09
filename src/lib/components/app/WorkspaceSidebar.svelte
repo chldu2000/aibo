@@ -47,6 +47,7 @@
     onBeginRenameSession: (sessionId: string) => void;
     onSaveSessionRename: () => void;
     onCancelRenameSession: () => void;
+    onOpenPlugins?: () => void;
   };
 
   let {
@@ -88,6 +89,7 @@
     onBeginRenameSession,
     onSaveSessionRename,
     onCancelRenameSession,
+    onOpenPlugins,
   }: WorkspaceSidebarProps = $props();
   const workspaceLocationLabel = $derived(navigator.platform.startsWith('Mac')
     ? 'Finder'
@@ -301,7 +303,7 @@
               </span>
             </Button>
             <div class="workspace-item-actions" use:registerAgentLauncher={workspace.id} aria-label={$t('sidebar.workspaceActions', { name: workspace.label })}>
-              <Button variant="ghost" size="icon" type="button" aria-label={$t('sidebar.moreActions', { name: workspace.label })} title={$t('sidebar.moreWorkspaceActions')} popovertarget={`${menuPrefix}-workspace-${workspace.id}`} onclick={event => positionRowMenu(event.currentTarget)}><span aria-hidden="true" class="row-more-mark">···</span></Button>
+              <Button variant="ghost" size="icon" type="button" aria-label={$t('sidebar.moreActions', { name: workspace.label })} title={$t('sidebar.moreWorkspaceActions')} popovertarget={`${menuPrefix}-workspace-${workspace.id}`} onclick={event => positionRowMenu(event.currentTarget)}><Icon name="more" size={18} /></Button>
               <div id={`${menuPrefix}-workspace-${workspace.id}`} class="row-action-menu" popover="auto" role="group" aria-label={$t('sidebar.workspaceMenu', { name: workspace.label })} ontoggle={focusRowMenu} style={`--row-menu-left: ${rowMenuPosition.left}px; --row-menu-top: ${rowMenuPosition.top}px`}>
               <Button variant="ghost" size="sm" disabled={busy} onclick={(event) => { event.stopPropagation(); closeRowMenu(event); primaryLauncher = agentLaunchers.get(workspace.id)?.querySelector<HTMLButtonElement>('button') ?? null; onToggleSessionCreator(workspace.id); }}><Icon name="add" size={18} />{$t('sidebar.createHere')}</Button>
               <Button
@@ -403,7 +405,7 @@
                           {/if}
                         </Button>
                         <div class="session-item-actions" aria-label={$t('sidebar.sessionActions', { name: session.label })}>
-                          <Button variant="ghost" size="icon" type="button" aria-label={$t('sidebar.moreActions', { name: session.label })} title={$t('sidebar.moreSessionActions')} popovertarget={`${menuPrefix}-session-${session.id}`} onclick={event => positionRowMenu(event.currentTarget)}><span aria-hidden="true" class="row-more-mark">···</span></Button>
+                          <Button variant="ghost" size="icon" type="button" aria-label={$t('sidebar.moreActions', { name: session.label })} title={$t('sidebar.moreSessionActions')} popovertarget={`${menuPrefix}-session-${session.id}`} onclick={event => positionRowMenu(event.currentTarget)}><Icon name="more" size={18} /></Button>
                           <div id={`${menuPrefix}-session-${session.id}`} class="row-action-menu" popover="auto" role="group" aria-label={$t('sidebar.sessionMenu', { name: session.label })} ontoggle={focusRowMenu} style={`--row-menu-left: ${rowMenuPosition.left}px; --row-menu-top: ${rowMenuPosition.top}px`}>
                           <Button variant="ghost" size="sm" type="button" aria-label={$t('sidebar.rename')} title={$t('sidebar.rename')} onclick={(event) => { closeRowMenu(event); onBeginRenameSession(session.id); }} disabled={busy || archivingSessionId === session.id}>
                             <Icon name="edit" size={18} />{$t('sidebar.rename')}
@@ -481,6 +483,11 @@
       {/each}
       {#if agentChoices.length === 0}
         <span class="session-agent-empty" role="status">{$t('sidebar.noAgents')}</span>
+        {#if onOpenPlugins}
+          <Button variant="outline" size="sm" class="session-agent-empty-action" onclick={() => { closeSessionCreator(); void tick().then(onOpenPlugins); }}>
+            <Icon name="plugins" size={15} />{$t('sidebar.openPlugins')}
+          </Button>
+        {/if}
       {/if}
     </div>
   {/if}

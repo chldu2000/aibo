@@ -30,7 +30,7 @@ async function assertTitlebarGeometry(page) {
  }
 }
 try{
- const page=await browser.newPage({viewport:{width:1440,height:960}});const errors=[];page.on('pageerror',e=>errors.push(e.message));
+ const page=await browser.newPage({locale:'zh-CN',viewport:{width:1440,height:960}});const errors=[];page.on('pageerror',e=>errors.push(e.message));
  await page.addInitScript(()=>{
   if(!localStorage.getItem('aibo.appearance.v1'))localStorage.setItem('aibo.appearance.v1',JSON.stringify({kitId:'material3',themeId:'daylight'}));
   localStorage.setItem('probe.unrelated.draft','保留我的草稿');
@@ -179,7 +179,7 @@ try{
  assert(await page.locator('.sidebar-new-session').evaluate(e=>parseFloat(getComputedStyle(e).transitionDuration)<.001));
  // The mockup has different sample content, so compare the shared design contract
  // and export paired screenshots for visual review instead of a misleading pixel threshold.
- const reference=await browser.newPage();
+ const reference=await browser.newPage({locale:'zh-CN'});
  await reference.goto(`http://127.0.0.1:${server.httpServer.address().port}/docs/design/ak-ui-redesign.html`);
  for(const [size,width,height] of [['desktop',1440,960],['mobile',390,844]]){
   await reference.setViewportSize({width,height});

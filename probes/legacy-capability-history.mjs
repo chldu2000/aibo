@@ -6,7 +6,7 @@ const server=await createServer({server:{host:'127.0.0.1',port:0,hmr:false,watch
 const browser=await chromium.launch({headless:true}),results=[];
 try{
  for(const kit of ['shadcn','material3']){
-  const page=await browser.newPage();const errors=[];page.on('pageerror',error=>errors.push(error.message));
+  const page=await browser.newPage({locale:'zh-CN'});const errors=[];page.on('pageerror',error=>errors.push(error.message));
   await page.goto(`http://127.0.0.1:${server.httpServer.address().port}/probes/legacy-capability-history.html`);
   await page.waitForFunction(()=>window.legacyHistoryProbe);await page.evaluate(kit=>window.legacyHistoryProbe.kit(kit),kit);
   await page.getByRole('button',{name:'旧调用快照',exact:true}).click();

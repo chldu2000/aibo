@@ -7,7 +7,7 @@ const browser = await chromium.launch({headless:true});
 const results = [];
 try {
   for (const kit of ['shadcn','material3']) {
-    const page = await browser.newPage(), errors = [];
+    const page = await browser.newPage({locale:'zh-CN'}), errors = [];
     page.on('pageerror', error => errors.push(error.message));
     await page.goto(`http://127.0.0.1:${server.httpServer.address().port}/probes/specialized-presentation.html`);
     await page.waitForFunction(() => window.specializedProbe);

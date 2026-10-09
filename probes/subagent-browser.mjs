@@ -7,7 +7,7 @@ const browser=await chromium.launch({headless:true});
 const errors=[];
 try {
  for(const skin of ['shadcn','material3']) {
-  const page=await browser.newPage({viewport:{width:1280,height:800}});page.on('pageerror',error=>(errors.push(error.message), console.error(error.message)));
+  const page=await browser.newPage({locale:'zh-CN',viewport:{width:1280,height:800}});page.on('pageerror',error=>(errors.push(error.message), console.error(error.message)));
   await page.goto(`http://127.0.0.1:${server.httpServer.address().port}/probes/subagent-browser.html`);
   await page.getByRole('button',{name:skin,exact:true}).click();
   const card=page.getByRole('button',{name:'查看 Reader 的工作过程'});

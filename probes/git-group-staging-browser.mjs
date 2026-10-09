@@ -6,7 +6,7 @@ const fixture = '<html><body><div id="app"></div><script type="module" src="/pro
 const server=await createServer({server:{host:'127.0.0.1',port:0,strictPort:false,hmr:false,watch:null},plugins:[{name:'git-group-fixture',configureServer(server){server.middlewares.use('/__git-group',(_request,response)=>{response.setHeader('Content-Type','text/html');response.end(fixture);});}}]});
 await server.listen();
 const browser=await chromium.launch({headless:true});
-const page=await browser.newPage({viewport:{width:1000,height:900}});page.setDefaultTimeout(10000);
+const page=await browser.newPage({locale:'zh-CN',viewport:{width:1000,height:900}});page.setDefaultTimeout(10000);
 const errors=[];page.on('pageerror',error=>errors.push(error.message));
 try {
  await page.goto(`http://127.0.0.1:${server.httpServer.address().port}/__git-group`);await page.waitForFunction(()=>Boolean(window.mountGroup));
