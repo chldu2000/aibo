@@ -180,3 +180,23 @@ paging and version consistency stay with the host. ACP plugins built on `@aibola
 get this wiring automatically: when the host passes a tool catalog in the session context, the Worker
 starts the MCP bridge and hands it to the agent. See [session history tools](session-history-tool-design.md) for the full steps
 and native/packaged tests.
+
+## Extending the right sidebar
+
+Enabled capability plugins with valid `semanticView` contributions appear in the sidebar's **Open tab** menu.
+The existing [capability plugin example](../examples/capability-plugin/plugin.json) works without host changes:
+its application-scoped `command` contribution supplies a detail view through its declared capability provider.
+Workspace views continue to use `workspace.tool`; session views use `session.context` or `session.action`.
+Scope, visibility, dependency and version checks remain in force.
+
+Tabs can be closed, reordered, split and floated in the built-in workbench. Opening the same installation and
+contribution focuses its existing tab. Layout is restored per window, workspace and session; snapshots, action
+tokens and capability leases are never persisted as layout. Switching tabs or skins preserves live plugin views;
+closing a tab or leaving its session releases them. Disabled plugins retain an unavailable tab and reopen after
+becoming available. Providers return the existing collection/detail/settings/inspector semantics, while the skin
+renders them; arbitrary DOM/HTML/component injection is not supported. Writes retain the existing v1.1 authorization.
+
+External workbench packages can consume the optional `sidebar` and `sidebarActions` snapshot fields described
+in the [presentation contract](presentation-package.md#右侧标签工作区). The shared renderer presents floating panes
+as separate sections; free positioning is a built-in workbench interaction. Existing fixed host file previews
+continue using their independent file-access boundary.

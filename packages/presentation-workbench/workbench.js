@@ -1,3 +1,4 @@
+import {renderSidebar} from './sidebar.js';
 import {presentationTranslator} from './i18n.js';
 import {node,button,actionFor} from './tree.js';
 import {renderNavigation} from './navigation.js';
@@ -35,7 +36,7 @@ export function renderWorkbench(input,renderSemantic){
  };
  const children=[navigation,splitter('navigation'),main];
  if(data.inspector.open)children.push(splitter('auxiliary'));
- if(data.inspector.open)children.push({...node('aside','workbench:inspector',null,[data.inspector.activeView==='git'?renderGit(data.git,gitActions,locale):renderInspector(data.inspector,inspectorActions,locale)]),className:'workbench-inspector',...(data.layout?{inlineSize:data.layout.auxiliary.width}:{})});
+ if(data.inspector.open)children.push({...node('aside','workbench:inspector',null,[data.sidebar?renderSidebar(data,renderSemantic,locale):data.inspector.activeView==='git'?renderGit(data.git,gitActions,locale):renderInspector(data.inspector,inspectorActions,locale)]),className:'workbench-inspector',...(data.layout?{inlineSize:data.layout.auxiliary.width}:{})});
  const ordered=data.layout?.mode==='focus'?[main]:data.layout?.mode==='review'?[...children].reverse():children;
  return {...node('div','workbench',null,ordered),className:'workbench'+(data.layout?.mode==='review'?' workbench-review':'')};
 }

@@ -207,3 +207,40 @@ Manifest v2 可选的顶层 `authentication` 声明由宿主固定的插件管�
 验证入口：`test/plugin-authentication.test.mjs`、Rust `plugin_authentication` 测试及
 `probes/plugin-authentication-browser.mjs`（Material 3 / ak-ui 浅深主题、失败重试、禁用与缺失能力）。
 浏览器替身不证明系统 Terminal 或实际 OAuth 授权成功。
+
+## 扩展右侧标签工作区
+
+安装并启用的能力插件只要声明有效的 `semanticView` 贡献，就会出现在右侧“打开标签页”菜单。
+无需注册宿主组件或修改 Aibo 源码。多个插件视图可同时打开、切换、分屏和浮动；相同安装与贡献
+再次打开时聚焦已有标签。布局按窗口/工作区/会话恢复，插件内容重新经过宿主读取与权限校验。
+
+可直接参考 [capability-plugin 示例](../examples/capability-plugin/plugin.json) 中的应用级详情贡献：
+
+```json
+{
+  "kind": "semanticView",
+  "id": "dev.example.greeting.view",
+  "scope": "application",
+  "required": true,
+  "title": "External SDK greeting",
+  "extensionPoint": "command",
+  "semanticType": "detail",
+  "contractVersion": "1.0.0",
+  "visibility": "always",
+  "provider": {
+    "capability": "dev.example.greeting.read",
+    "version": { "min": "1.0.0", "maxExclusive": "2.0.0" },
+    "operation": "dev.example.greeting.read"
+  }
+}
+```
+
+上述条目放入 manifest 的 `contributions`，并提供对应 capabilityProvider 和运行实现。
+工作区视图使用 `scope: workspace` / `extensionPoint: workspace.tool`；会话视图使用
+`scope: session` / `extensionPoint: session.context`（或既有 session.action）。作用域、可见性、
+版本和依赖规则沿用现有合同，没有工作区/会话时对应目标不可打开。
+
+插件输出 collection/detail/settings/inspector 语义数据及动作；视觉由当前 UI kit 或 Presentation
+插件提供。切换标签不会重新打开提供者，关闭或切换会话会释放视图。禁用后标签显示不可用，
+重新启用后可恢复。标签声明不授予额外执行权限，写入继续使用现有 v1.1 动作和宿主审批流程。
+任意 HTML、DOM、iframe 或前端组件注入不属于此扩展合同。

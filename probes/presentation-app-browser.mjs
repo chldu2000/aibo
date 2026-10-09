@@ -20,6 +20,7 @@ try {
       async invoke(command,args={}){
         if(command==='read_workspace_preferences')return {trustNewWorkspaces:true};
         window.presentationCommands.push(command);
+        if(command==='plugin:dialog|message')return 'Ok';
         if(command==='plugin:dialog|open')return '/probe/package';
         if(command==='install_presentation_package'){localStorage.setItem('probe.presentation.installed',JSON.stringify(window.presentationInstallable));return window.presentationInstallable.release;}
         if(command==='list_presentation_packages')return read()?[read().release]:[];

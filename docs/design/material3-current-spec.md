@@ -94,3 +94,8 @@ AIBO_BUILTIN_KIT=material3 node probes/presentation-full-skins-browser.mjs
 Material 3 工作台、设置与窄窗口截图默认写入 `/tmp/aibo-material3/`。
 
 配色设置与六个工作台主题截图写入 `/tmp/aibo-material3-palettes/`。
+
+右侧辅助区现使用会话标签工作区：Git、上下文和插件视图共享可关闭标签栏与打开菜单，支持上下分屏
+及窗口内浮动。面板采用 surface 色、细边框与 12px 圆角；活动标签采用 selected 色与底部主色指示条。
+浮动面板保留键盘移动、调整大小和停靠按钮，窗口变小时限制在可见区域。布局与插件生命周期由
+[会话右侧标签工作区](../ui-architecture.md#会话右侧标签工作区)定义。

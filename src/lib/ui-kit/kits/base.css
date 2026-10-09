@@ -610,3 +610,19 @@ dd { max-width: 68%; overflow: hidden; margin: 0; text-overflow: ellipsis; white
 .file-preview-content pre { min-height: 0; margin: 0; overflow: auto; padding: 8px 0; }
 .file-preview-line { display: grid; grid-template-columns: 5em 1fr; min-width: max-content; }
 .file-preview-line-number { text-align: right; padding-inline: 8px 12px; user-select: none; }
+
+/* Session sidebar docking: layout shared by the built-in kits. */
+.sidebar-dock { display: flex; flex-direction: column; height: 100%; min-height: 0; min-width: 0; gap: 4px; overflow: auto; }
+.sidebar-dock-pane { display: flex; flex-direction: column; flex: 1 1 0; min-height: 180px; min-width: 0; overflow: hidden; }
+.sidebar-dock-pane.floating { position: fixed; z-index: 35; flex: none; max-width: 100vw; max-height: calc(100dvh - 60px); }
+.sidebar-dock-toolbar { display: flex; flex-wrap: wrap; align-items: center; gap: 2px; padding: 4px; flex: none; }
+.sidebar-dock-toolbar > :first-child { flex: 1; min-width: 0; }
+.sidebar-dock-tabs { display: flex; overflow-x: auto; flex: none; min-height: 38px; }
+.sidebar-dock-tab { display: flex; align-items: center; flex: none; max-width: 240px; }
+.sidebar-dock-tab > [role='tab'] { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.sidebar-dock-tab > :last-child { flex: none; width: 28px; min-width: 28px; }
+.sidebar-dock-content { flex: 1; min-height: 0; min-width: 0; overflow: auto; }
+.sidebar-dock-content[hidden] { display: none; }
+.sidebar-dock-content > .inspector { height: 100%; min-height: 0; }
+.sidebar-dock-resize { align-self: end; flex: none; touch-action: none; }
+.sidebar-dock-toolbar button { touch-action: none; }

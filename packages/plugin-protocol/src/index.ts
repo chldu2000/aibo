@@ -21,3 +21,5 @@ export type { PresentationCapabilityWorkbench, PresentationCapabilityView, Prese
 export type { PresentationLayout, PresentationLayoutAction } from './presentation-layout.js';
 
 export type { AgentSettingValue, AgentSettingField, AgentSettingsDescriptor, AgentSettingsTarget, AgentSettingsSnapshot, AgentSettingsSave, AgentSettingsContext } from './settings.js';
+
+export type { SidebarTarget, SidebarTab, SidebarPane, SidebarLayout, SidebarOperation, PresentationSidebar, PresentationSidebarAction } from './presentation-layout.js';

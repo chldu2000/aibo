@@ -2325,5 +2325,16 @@
   "error.turnDiffIdentity": "返回的 diff 属于其他文件，请重新加载。",
   "search.commandHint": "选择命令后填入输入框",
   "diagnostics.preview": "浏览器预览无法检测本机 Agent，请在桌面应用中查看实际状态。",
-  "diagnostics.empty": "暂无 Agent 诊断，请在“插件与能力”中检查安装和启用状态。"
+  "diagnostics.empty": "暂无 Agent 诊断，请在“插件与能力”中检查安装和启用状态。",
+  "sidebar.title": "侧边工作区",
+  "sidebar.add": "打开标签页",
+  "sidebar.close": "关闭 {title}",
+  "sidebar.split": "分屏",
+  "sidebar.float": "浮动",
+  "sidebar.dock": "停靠",
+  "sidebar.empty": "打开一个标签页开始使用",
+  "sidebar.unavailable": "此插件当前不可用。启用插件后可恢复此标签页。",
+  "sidebar.move": "移动面板",
+  "sidebar.resize": "调整浮动面板大小",
+  "sidebar.plugins": "插件视图"
 }

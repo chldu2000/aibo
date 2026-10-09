@@ -207,7 +207,7 @@ test('visible Git panel refreshes external repository changes promptly', async (
   assert.match(app, /workspaceGit\.refreshVisible\(forceMetadata\)/, 'The visible panel delegates polling policy to its host controller');
   assert.match(app, /window\.addEventListener\('focus', handleWindowFocus\)/, 'window focus must trigger an immediate Git refresh');
   assert.match(app, /document\.visibilityState !== 'visible'/, 'hidden windows must not keep polling Git');
-  assert.match(app, /sidePanelView !== 'git'/, 'hidden Git panels must not keep polling');
+  assert.match(app, /!sidebarGitVisible/, 'hidden Git panels must not keep polling');
 });
 
 test('session status uses agent-specific marks through the UI kit', async () => {

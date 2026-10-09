@@ -243,7 +243,11 @@ try {
     assert.equal(await frame.locator('.navigation').evaluate(element=>Math.round(element.getBoundingClientRect().width)),resized);
     const dragBoundary=async(label,delta,direction=label==='调整导航宽度'?1:-1)=>{
       const separator=frame.getByRole('separator',{name:label,exact:true});
-      const start=Number(await separator.getAttribute('aria-valuenow')),box=await separator.boundingBox();
+      const start=Number(await separator.getAttribute('aria-valuenow'));
+      await separator.waitFor({state:'visible'});
+      let box=await separator.boundingBox();
+      for(let retry=0;!box&&retry<5;retry++){await separator.waitFor({state:'visible'});box=await separator.boundingBox();}
+      assert.ok(box, 'visible splitter has measurable bounds');
       await page.mouse.move(box.x+box.width/2,box.y+80);await page.mouse.down();
       await page.mouse.move(box.x+box.width/2+delta,box.y+80,{steps:4});await page.mouse.up();
       const expected=start+delta*direction;

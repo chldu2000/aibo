@@ -34,6 +34,7 @@
     restoreOperations: RestoreOperation[];
     workspaceChanges: WorkspaceChanges | null;
     activeView: 'context' | 'git';
+    showTabs?: boolean;
     turnFileDiff: TurnFileDiff | null;
     threadBusy: boolean;
     busy: boolean;
@@ -77,7 +78,7 @@
     checkpoints,
     restoreOperations,
     workspaceChanges,
-    activeView,
+    activeView, showTabs = true,
     turnFileDiff,
     threadBusy,
     busy,
@@ -144,8 +145,8 @@
 {/snippet}
 
 <Card as="aside" class="inspector" hidden={!visible} data-ui-component="inspector" aria-label={$t('inspector.context')}>
-  <SidePanelTabs {activeView} gitCount={workspaceChanges?.files.length} onSelect={onSelectView} />
-  <div id="side-panel-content-context" class="side-panel-view" role="tabpanel" aria-labelledby="side-panel-tab-context">
+  {#if showTabs}<SidePanelTabs {activeView} gitCount={workspaceChanges?.files.length} onSelect={onSelectView} />{/if}
+  <div id="side-panel-content-context" class="side-panel-view" role={showTabs ? 'tabpanel' : undefined} aria-labelledby={showTabs ? 'side-panel-tab-context' : undefined}>
   <ProjectActionsPanel
     workspace={workspace}
     {desktop}

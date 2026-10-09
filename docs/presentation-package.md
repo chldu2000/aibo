@@ -507,3 +507,22 @@ semantic 后，原有内置专业协商恢复；未覆盖 semantic 的包仍继�
 工程任务原生输出可携带内部 `localizedOutput` 的 UTF-8 宿主片段信息。
 该字段不属于公开 inspector 快照；宿主在展示边界投影 output 后移除它，
 外部包继续读取普通字符串。命令正文、任务身份、状态及执行动作不因语言变化而改变。
+
+## 右侧标签工作区
+
+新版宿主在 workbench `data` 中提供可选 `sidebar: PresentationSidebar` 和 `sidebarActions`。
+纯数据类型从 `@aibolabs/plugin-protocol` 导出，定义于 `presentation-layout.ts`：
+
+- `layout` 包含内容目标、标签、面板、活动标签和浮动几何。插件目标由安装 ID 与贡献 ID 标识。
+- `titles` 提供当前标签标题；`entries` 提供可打开目标及禁用状态。
+- `views` 提供每个插件标签的完整语义视图及加载/失败状态；渲染多个快照时必须为节点 key 增加标签命名空间。
+- `sidebarActions` 提供宿主生成的 layout、reload、reading 和 semantic 动作 token。包绑定 token，
+  不自行构造布局 JSON 或插件动作。宿主重新检查窗口上下文、会话、revision、标签存在性和当前语义快照。
+
+缺少字段的旧宿主继续走原 Git/上下文与 capability 工作台；旧包可忽略可选字段，仍保留原工作台
+能力入口。更新后的共享工作台显示同一组标签、分屏和插件内容，使用按钮移动标签；已有浮动面板
+在外部皮肤中按独立分区展示，可重新停靠。自由拖动与浮动几何由内置工作台绘制，外部包可自行
+适配布局，但不拥有租约、权限和会话状态。呈现替换不关闭标签或重新调用提供者。
+
+能力插件仍声明已有 `semanticView` 贡献，不增加运行时 UI 脚本权限或新的 manifest extensionPoint。
+插件开发方式见[开发指引](plugin-development_zh.md#扩展右侧标签工作区)。

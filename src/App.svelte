@@ -600,8 +600,8 @@
   let incompatibleCapabilityRecovery: string | null = null;
   $effect(() => {
     const manifest = presentationPackages.active?.release.manifest;
-    const snapshot = installedWorkbenchState.snapshot;
-    if (manifest?.surfaces?.includes('workbench') && snapshot && !manifest.snapshotSchemas.includes(snapshot.schema)) {
+    const snapshot = [installedWorkbenchState.snapshot, ...Object.values(sidebar.views).map(view => view.snapshot)].find(value => value && manifest && !manifest.snapshotSchemas.includes(value.schema));
+    if (manifest?.surfaces?.includes('workbench') && snapshot) {
       const identity = JSON.stringify([presentationPackages.active?.release.digest, snapshot.schema]);
       if (incompatibleCapabilityRecovery === identity) return;
       incompatibleCapabilityRecovery = identity;
@@ -616,6 +616,15 @@
   });
   function externalIntent(intent: PresentationIntent) {
     if (intent.context.workspaceId !== selectedWorkspaceId || intent.context.sessionId !== selectedSessionId) return;
+    if (intent.id.startsWith('sidebar:')) {
+      const action = sidebarDirectory.resolve(externalSidebar, sidebarScope, externalInput.context, intent);
+      if (!action) return;
+      if (action.operation === 'layout') sidebarOperation(JSON.parse(action.args[0]!));
+      else if (action.operation === 'reload') void sidebarController.controller(action.args[0]!)?.reload();
+      else if (action.operation === 'reading') sidebarController.controller(action.args[0]!)?.toggleReading();
+      else if (action.operation === 'semantic') void sidebarController.controller(action.args[0]!)?.act(JSON.parse(action.args[1]!));
+      return;
+    }
     if (intent.id.startsWith('layout:')) { const change = layoutDirectory.resolve(externalLayout, externalInput.context, intent); if (change?.kind === 'mode') void workbenchPresentation?.switchPresentation(change.mode); else if (change) setColumnWidth(change.target === 'navigation' ? 'workspace' : 'inspector', change.width); return; }
     if (intent.id.startsWith('capability:')) { void presentationOperation(() => externalCapabilityIntent(intent)); return; }
     if (intent.id.startsWith('inspector:')) { void presentationOperation(() => externalInspectorIntent(intent)); return; }
@@ -650,6 +659,7 @@
     const data = { workspaces: workspaces.map(({ id, label }) => ({ id, label })),
       sessions: sessions.filter(session => session.workspaceId === selectedWorkspaceId).map(({ id, label, state }) => ({ id, label, state })),
       layout: externalLayout, layoutActions: layoutDirectory.project(externalLayout),
+      sidebar: externalSidebar, sidebarActions: sidebarDirectory.project(externalSidebar, sidebarScope),
       capability: externalCapability,
       capabilityActions: capabilityWorkbenchDirectory.project(externalCapability),
       inspector: externalInspector, inspectorActions: inspectorDirectory.project(externalInspector),
@@ -721,6 +731,36 @@
     getItem: key => window.localStorage.getItem(key),
     setItem: (key, value) => window.localStorage.setItem(key, value),
   }, presentationWindowId());
+  import SidebarDock from '$lib/components/app/SidebarDock.svelte';
+  import { createSidebarDirectory } from '$lib/presentation-runtime/sidebar';
+  import type { PresentationSidebar } from '../packages/plugin-protocol/src/presentation-layout';
+  const sidebarDirectory = createSidebarDirectory();
+  import { createSidebarController, emptySidebar } from '$lib/app/sidebar-controller';
+  import type { SidebarOperation } from '$lib/app/sidebar-layout';
+  let sidebar = $state(emptySidebar());
+  const sidebarController = createSidebarController({ windowId: presentationWindowId(), storage: draftStorage, initialView: savedWorkbenchLayout.activeView, port: installedPort, viewState: presentationState, publish: value => { sidebar = value; } });
+  $effect(() => { const workspaceId = selectedWorkspaceId, sessionId = selectedSessionId; untrack(() => sidebarController.setContext({workspaceId,sessionId})); });
+  $effect(() => { const catalog = installedContributions; untrack(() => sidebarController.setCatalog(catalog)); });
+  onDestroy(() => sidebarController.dispose());
+  const sidebarTitles = $derived(Object.fromEntries(sidebar.layout.tabs.map(tab => [tab.id, tab.target.kind === 'git' ? 'Git' : tab.target.kind === 'context' ? $t('side.context') : installedContributions.find(item => tab.target.kind === 'plugin' && item.installationId === tab.target.installationId && item.contributionId === tab.target.contributionId)?.title ?? tab.target.contributionId])));
+  const sidebarEntries = $derived([{label:'Git',value:JSON.stringify({kind:'git'})},{label:$t('side.context'),value:JSON.stringify({kind:'context'})}, ...installedContributions.map(item => ({label:item.title,value:JSON.stringify({kind:'plugin',installationId:item.installationId,contributionId:item.contributionId}),disabled:!contributionAvailable(item)}))]);
+  const externalSidebar = $derived<PresentationSidebar>({layout:sidebar.layout,titles:sidebarTitles,entries:sidebarEntries,views:Object.fromEntries(Object.entries(sidebar.views).map(([id,view])=>[id,installedWorkbenchPresentation(view,$locale)]))});
+  const sidebarGitVisible = $derived(sidePanelOpen && sidebar.layout.panes.some(pane => pane.active === 'git'));
+  const sidebarContextVisible = $derived(sidePanelOpen && sidebar.layout.panes.some(pane => pane.active === 'context'));
+  const sidebarScope = $derived(JSON.stringify([selectedWorkspaceId,selectedSessionId]));
+  function sidebarOperation(operation: SidebarOperation) {
+    sidebarController.apply(operation);
+    if (operation.kind === 'open' || operation.kind === 'focus') {
+      sidePanelOpen = true;
+      const id = operation.kind === 'focus' ? operation.tabId : operation.target.kind;
+      if (id === 'git' || id === 'context') sidePanelView = id;
+    }
+  }
+  function openSidebarPlugin(item: InstalledContribution) {
+    // Older workbench packages do not consume the optional sidebar snapshot.
+    if (presentationPackages.active?.release.manifest.surfaces?.includes('workbench')) { installedTool = item; return; }
+    sidebarController.openPlugin(item); sidePanelOpen = true;
+  }
   import { onDestroy, onMount, tick, untrack } from 'svelte';
   import { createLanguageController } from '$lib/app/language-controller';
   import { language, locale, t } from '$lib/i18n/runtime';
@@ -1093,7 +1133,7 @@
     workspaceGit.selectWorkspace(value);
     if (value && desktop) {
       void refreshWorkspaceChanges(value);
-      if (sidePanelOpen && sidePanelView === 'git') {
+      if (sidebarGitVisible) {
         void refreshWorkspaceGitMetadata(value);
       }
     }
@@ -1813,7 +1853,7 @@
     { id: 'execution-history', label: $t('search.executionHistory'), description: $t('search.executionHistoryDescription'), run: openExecutionHistory },
     { id: 'session-history', label: $t('search.sessionHistory'), description: $t('search.sessionHistoryDescription'), run: openSessionHistory },
     ...installedContributions.map(item => ({ id: `installed:${item.installationId}:${item.contributionId}`, label: item.title, description: semanticContributionPresentation(item, $locale).issue ?? $t('search.installedView'), disabled: !contributionAvailable(item),
-      run: () => { installedTool = item; settingsOpen = false; globalSearchOpen = false; } })),
+      run: () => { openSidebarPlugin(item); settingsOpen = false; globalSearchOpen = false; } })),
     {
       id: 'new-session',
       label: $t('search.newSession'),
@@ -2107,7 +2147,7 @@
       if (
         !desktop
         || !sidePanelOpen
-        || sidePanelView !== 'git'
+        || !sidebarGitVisible
         || !selectedWorkspaceId
         || document.visibilityState !== 'visible'
       ) return;
@@ -2362,6 +2402,7 @@
 
   function selectSidePanelView(view: SidePanelView): void {
     sidePanelView = view;
+    sidebarController.apply({kind:'open',target:{kind:view}});
     sidePanelOpen = true;
     if (view !== 'git') closeWorkspaceFileDiff();
     if (view === 'git' && selectedWorkspaceId) {
@@ -3342,7 +3383,7 @@
 
   $effect(() => {
     const workspaceId = selectedWorkspaceId;
-    if (!desktop || !workspaceId || !inspectorOpen || sidePanelView !== 'context') return;
+    if (!desktop || !workspaceId || !sidebarContextVisible) return;
     return observeProjectTaskHistory({
       read: () => listProjectActionRuns(workspaceId),
       publish: (runs) => {
@@ -3823,14 +3864,16 @@
 {/snippet}
 {#snippet auxiliary(guard)}
     {#if sidePanelOpen}
-      {#if sidePanelView === 'context'}
+      <SidebarDock layout={sidebar.layout} titles={sidebarTitles} entries={sidebarEntries} context={JSON.stringify([selectedWorkspaceId,selectedSessionId])} onOperation={guard('onSidebarOperation', sidebarOperation)}>
+      {#snippet children(tabId)}
+      {#if tabId === 'context'}
       <Inspector
       visible={true}
       workspace={selectedWorkspace}
       session={selectedSession}
       sessionProvider={selectedSession ? sessionProviderInfo(pluginInstallations, selectedSession) : undefined}
       desktop={desktop}
-      activeView={sidePanelView}
+      activeView={sidePanelView} showTabs={false}
       diagnostics={displayedDiagnostics}
       workspaceCapabilities={displayedWorkspaceCapabilities}
       codexThreads={codexThreads}
@@ -3867,7 +3910,7 @@
       onRefresh={guard('onRefresh', () => void refresh())}
       onSelectView={guard('onSelectView', selectSidePanelView)}
       />
-      {:else if sidePanelView === 'git'}
+      {:else if tabId === 'git'}
         {#key `${selectedWorkspaceId}:${repositoryId}`}
         <WorkspaceGitPanel draftState={git.draft} onDraftChange={guard('onDraftChange', (value) => workspaceGit.changeDraft(value))}
           repositories={visibleRepositories} {repositoryId} {repositorySearch} {discoveryLimited} {discoveryWarnings}
@@ -3896,7 +3939,7 @@
           operationBusy={workspaceGitOperationBusy}
           reviewBusy={workspaceGitReviewBusy}
           canRequestReview={selectedSession !== null && selectedSession.workspaceId === selectedWorkspaceId && !selectedSession.archived && !sessionRunning}
-          activeView={sidePanelView}
+          activeView={sidePanelView} showTabs={false}
           onRefresh={guard('onRefresh', () => selectedWorkspaceId && void refreshWorkspaceChanges(selectedWorkspaceId))}
           onApplyFileAction={guard('onApplyFileAction', (workspaceId, path, action, repo) => void applyWorkspaceGitAction(workspaceId, path, action, repo))}
           onApplyWorkspaceAction={guard('onApplyWorkspaceAction', (workspaceId, action, repo) => void applyWorkspaceGitWorkspaceAction(workspaceId, action, repo))}
@@ -3916,7 +3959,20 @@
           onSelectView={guard('onSelectView', selectSidePanelView)}
         />
         {/key}
+      {:else}
+        {#if sidebar.views[tabId]}
+          {#await loadInstalledWorkbench() then workbench}
+            <workbench.default title={sidebarTitles[tabId]} state={sidebar.views[tabId]}
+              onAction={guard('onSidebarAction', message => void sidebarController.controller(tabId)?.act(message))}
+              onReload={guard('onSidebarReload', () => void sidebarController.controller(tabId)?.reload())}
+              onToggleLayout={guard('onSidebarLayout', () => sidebarController.controller(tabId)?.toggleLayout())}
+              onToggleReading={guard('onSidebarReading', () => sidebarController.controller(tabId)?.toggleReading())}
+              onClose={guard('onSidebarClose', () => sidebarOperation({kind:'close',tabId}))}/>
+          {/await}
+        {:else}<p role="status">{$t('sidebar.unavailable')}</p>{/if}
       {/if}
+      {/snippet}
+      </SidebarDock>
     {/if}
 {/snippet}
 {#snippet overlays(guard)}

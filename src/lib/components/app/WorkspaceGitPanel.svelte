@@ -54,6 +54,7 @@
     reviewBusy: boolean;
     canRequestReview: boolean;
     activeView: 'context' | 'git';
+    showTabs?: boolean;
     onRefresh: () => void;
     onApplyFileAction: (workspaceId: string, path: string, action: 'stage' | 'unstage', repositoryId?: string) => void;
     onApplyWorkspaceAction: (workspaceId: string, action: GitWorkspaceAction, repositoryId?: string) => void;
@@ -98,7 +99,7 @@
     operationBusy,
     reviewBusy,
     canRequestReview,
-    activeView,
+    activeView, showTabs = true,
     onRefresh,
     onApplyFileAction,
     onApplyWorkspaceAction,
@@ -335,8 +336,8 @@
 {/snippet}
 
 <Card as="aside" class="inspector" data-ui-component="workspace-git-panel" aria-label={$t('git.title')}>
-  <SidePanelTabs {activeView} gitCount={changeCount} onSelect={onSelectView} />
-  <div id="side-panel-content-git" class="side-panel-view" role="tabpanel" aria-labelledby="side-panel-tab-git">
+  {#if showTabs}<SidePanelTabs {activeView} gitCount={changeCount} onSelect={onSelectView} />{/if}
+  <div id="side-panel-content-git" class="side-panel-view" role={showTabs ? 'tabpanel' : undefined} aria-labelledby={showTabs ? 'side-panel-tab-git' : undefined}>
   <div class="git-repository-toolbar">
     <RepositorySelect {repositories} selectedId={repositoryId} open={repositoryMenuOpen} search={repositorySearch} disabled={operationBusy || !workspace || repositories.length === 0}
       onOpenChange={(open) => { repositoryMenuOpen = open; if (!open) { pendingSection = undefined; onRepositorySearch(''); } }}

@@ -387,3 +387,26 @@ UI 实现变化需检查默认 Material 3 与 ak-ui 的浅/深主题，以及受
 
 旧 PluginView 和 P1–P5 迁移过程见[历史归档](archive/README.md)；呈现包交付与当时证据见
 [退出审计](presentation-plugin-exit-audit.md)。旧接口、双内置皮肤和阶段性待办不构成当前实现要求。
+
+## 会话右侧标签工作区
+
+右侧辅助区域由 `sidebar-controller` 持有会话级标签和插件视图，`sidebar-layout` 提供纯布局转移。
+`SidebarDock` 通过 UI kit 绘制标签、打开菜单、上下堆叠的分屏和窗口内浮动面板；拖拽可以重排、
+跨面板移动及分屏，按钮和键盘提供等价操作。浮动面板可移动、调整大小和重新停靠。
+Git 与上下文是内置标签；能力插件的已安装 `semanticView` 贡献自动进入打开菜单，仍通过
+原来的 InstalledPort、Broker、语义快照校验及动作授权链路读取与执行，不把插件组件挂入宿主。
+
+布局按窗口、工作区、会话保存于 `aibo.sidebar.v1` localStorage 键，存储不可用时保持内存内可用。
+仅保存目标身份、顺序、活动标签、面板与浮动几何，不保存插件快照、动作 token、授权或租约。
+无会话的工作区也有独立布局。相同 installation/contribution 在一个布局中只出现一次；再次打开
+会聚焦已有标签。恢复读取最多 64 个标签与面板，损坏偏好降级或清理。颜色、排版和外观切换
+不参与布局身份，也不重建插件租约。
+
+每个已打开插件标签由宿主独立持有一个 installed-workbench controller；切换标签、分屏、
+浮动和换肤不释放它。关闭标签、切换会话/工作区及插件不可用时释放；迟到读取不能恢复旧视图。
+插件禁用或移除时保留不可用标签，目录重新可用后按当前作用域重新读取。恢复的布局本身不授予
+执行权限。Git 与工程任务的可见刷新检查所有面板的活动标签，分屏时两者可同时刷新。
+
+外部 workbench 快照新增可选 `sidebar` 与 `sidebarActions`；见[呈现包合同](presentation-package.md#右侧标签工作区)。
+内置文件链接预览仍属于固定宿主面板，沿用原来的文件读取与恢复边界。
+验证入口：`test/sidebar-layout.test.mjs`、`probes/sidebar-dock-browser.mjs` 和外部完整皮肤探针。

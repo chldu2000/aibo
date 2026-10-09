@@ -2765,3 +2765,8 @@
 
 /* Settings headings sit outside a consistent content surface. */
 .app-shell[data-ui-kit='ak-ui'] .settings-section-body { padding: 16px; border: 1px solid var(--aibo-border); background: var(--aibo-surface-hover); border-radius: 0; }
+
+.app-shell[data-ui-kit='ak-ui'] .sidebar-dock-pane { background: var(--ak-surface-panel); border: 1px solid var(--aibo-border); }
+.app-shell[data-ui-kit='ak-ui'] .sidebar-dock-pane.floating { box-shadow: 0 8px 28px var(--aibo-border); }
+.app-shell[data-ui-kit='ak-ui'] .sidebar-dock-tab.selected { background: var(--aibo-selected); border-bottom: 3px solid var(--aibo-accent); }
+.app-shell[data-ui-kit='ak-ui'] .sidebar-dock-tabs { border-bottom: 1px solid var(--aibo-border); }

@@ -2418,5 +2418,16 @@
   "error.turnDiffIdentity": "The returned diff belongs to a different file. Reload the diff.",
   "search.commandHint": "Select a command to insert it into the message box",
   "diagnostics.preview": "Browser preview cannot detect local Agents. Open the desktop app to check their status.",
-  "diagnostics.empty": "No Agent diagnostics are available. Check installation and enablement in Plugins & capabilities."
+  "diagnostics.empty": "No Agent diagnostics are available. Check installation and enablement in Plugins & capabilities.",
+  "sidebar.title": "Sidebar workspace",
+  "sidebar.add": "Open tab",
+  "sidebar.close": "Close {title}",
+  "sidebar.split": "Split pane",
+  "sidebar.float": "Float",
+  "sidebar.dock": "Dock",
+  "sidebar.empty": "Open a tab to get started",
+  "sidebar.unavailable": "This plugin is unavailable. Enable it to restore this tab.",
+  "sidebar.move": "Move pane",
+  "sidebar.resize": "Resize floating pane",
+  "sidebar.plugins": "Plugin views"
 }

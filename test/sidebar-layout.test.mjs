@@ -1,0 +1,86 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import {defaultSidebarLayout,changeSidebarLayout,restoreSidebarLayout,sidebarTabId} from '../src/lib/app/sidebar-layout.ts';
+import {createSidebarController} from '../src/lib/app/sidebar-controller.ts';
+import {createViewStateStore} from '../src/lib/app/view-state-storage.ts';
+const plugin={kind:'plugin',installationId:'one',contributionId:'example.view'};
+const contribution={...plugin,title:'Example',available:true,issue:null,scope:'workspace'};
+const fixture=()=>({schema:'aibo.semantic-view/v1',context:{workspaceId:'w',contributionId:plugin.contributionId,generation:'lease',revision:1},contribution:{id:plugin.contributionId,extensionPoint:'workspace.tool',title:'Example'},state:{status:'empty',message:''},view:{kind:'collection',properties:[],items:[],selection:null,page:{offset:0,size:50,total:0,truncated:false}},actions:[]});
+const store=()=>{const data=new Map();return {getItem:key=>data.get(key)??null,setItem:(key,value)=>data.set(key,value)}};
+test('open deduplicates content; split, reorder, float, dock and close preserve unique placement',()=>{
+ let state=defaultSidebarLayout();
+ const apply=operation=>state=changeSidebarLayout(state,operation);
+ apply({kind:'open',target:plugin});apply({kind:'open',target:plugin});
+ assert.equal(state.tabs.length,3);
+ apply({kind:'split',tabId:sidebarTabId(plugin)});
+ assert.equal(state.panes.length,2);
+ apply({kind:'move',tabId:'context',paneId:'pane-1',before:sidebarTabId(plugin)});
+ assert.deepEqual(state.panes[1].tabs,['context',sidebarTabId(plugin)]);
+ apply({kind:'float',tabId:'context'});assert.equal(state.panes.at(-1).floating,true);
+ apply({kind:'bounds',paneId:state.panes.at(-1).id,x:-50,y:300,width:10,height:600});
+ assert.equal(state.panes.at(-1).x,0);assert.equal(state.panes.at(-1).width,280);
+ apply({kind:'dock',tabId:'context'});assert.equal(state.panes.length,2);
+ apply({kind:'close',tabId:sidebarTabId(plugin)});assert.equal(state.panes.length,1);
+ assert.deepEqual(state.panes[0].tabs,['git','context']);
+ assert.deepEqual(restoreSidebarLayout(state),state);
+ apply({kind:'close',tabId:'git'});apply({kind:'close',tabId:'context'});
+ assert.equal(state.panes.length,1);assert.equal(state.panes[0].active,null);
+});
+test('corrupt storage is bounded and cannot manufacture duplicate or missing tab references',()=>{
+ assert.deepEqual(restoreSidebarLayout(null),defaultSidebarLayout());
+ const input=defaultSidebarLayout();input.tabs.push(input.tabs[0],{target:{kind:'plugin'}});
+ input.panes[0].tabs.push('git','missing');input.panes.push({...input.panes[0],id:'pane-1',active:'missing'});
+ const result=restoreSidebarLayout(input);
+ assert.equal(result.tabs.length,2);assert.deepEqual(result.panes.flatMap(pane=>pane.tabs),['git','context']);
+});
+test('session and window isolation survives restart; layout changes do not reopen plugin leases',async()=>{
+ const storage=store();let state,opens=0;const released=[];
+ const port={open:async()=>{opens++;return fixture()},cancelOpen:async()=>{},act:async()=>fixture(),release:async id=>released.push(id)};
+ const create=windowId=>createSidebarController({windowId,storage,port,viewState:createViewStateStore(),publish:value=>state=value});
+ const controller=create('main');controller.setContext({workspaceId:'w',sessionId:'s1'});controller.setCatalog([contribution]);controller.openPlugin(contribution);
+ await new Promise(resolve=>setImmediate(resolve));
+ controller.apply({kind:'split',tabId:sidebarTabId(plugin)});controller.apply({kind:'focus',tabId:'git'});
+ assert.equal(opens,1);assert.equal(released.length,0);
+ controller.controller(sidebarTabId(plugin)).toggleLayout();
+ assert.equal(state.views[sidebarTabId(plugin)].layout,'sidebar');
+ controller.setContext({workspaceId:'w',sessionId:'s2'});assert.equal(state.layout.tabs.length,2);assert.equal(released.length,1);
+ controller.openPlugin(contribution);await new Promise(resolve=>setImmediate(resolve));
+ assert.equal(state.views[sidebarTabId(plugin)].layout,'central');
+ controller.setContext({workspaceId:'w',sessionId:'s1'});assert.equal(state.layout.tabs.length,3);assert.equal(state.layout.panes.length,2);
+ await new Promise(resolve=>setImmediate(resolve));assert.equal(state.views[sidebarTabId(plugin)].layout,'sidebar');controller.dispose();
+ const restored=create('main');restored.setContext({workspaceId:'w',sessionId:'s1'});assert.equal(state.layout.tabs.length,3);restored.dispose();
+ const other=create('other');other.setContext({workspaceId:'w',sessionId:'s1'});assert.equal(state.layout.tabs.length,2);other.dispose();
+});
+test('disabled contribution releases its view but retains a recoverable tab; late reads never republish',async()=>{
+ const pending=[],released=[];let state;
+ const controller=createSidebarController({windowId:'test',storage:null,viewState:createViewStateStore(),publish:value=>state=value,port:{open:()=>new Promise(resolve=>pending.push(resolve)),cancelOpen:async()=>{},act:async()=>fixture(),release:async id=>released.push(id)}});
+ controller.setContext({workspaceId:'w',sessionId:'s'});controller.setCatalog([contribution]);controller.openPlugin(contribution);
+ controller.setCatalog([]);pending.shift()(fixture());await new Promise(resolve=>setImmediate(resolve));
+ assert.equal(state.layout.tabs.length,3);assert.deepEqual(state.views,{});assert.deepEqual(released,['lease']);
+ controller.setCatalog([contribution]);pending.shift()(fixture());await new Promise(resolve=>setImmediate(resolve));
+ assert.equal(state.views[sidebarTabId(plugin)].snapshot.context.generation,'lease');
+ controller.apply({kind:'close',tabId:sidebarTabId(plugin)});assert.deepEqual(state.views,{});assert.equal(released.length,2);controller.dispose();
+});
+
+test('external sidebar actions bind current session, open tab and semantic snapshot',async()=>{
+ const {createSidebarDirectory}=await import('../src/lib/presentation-runtime/sidebar.ts');
+ const {renderSidebar}=await import('../packages/presentation-workbench/sidebar.js');
+ let layout=changeSidebarLayout(defaultSidebarLayout(),{kind:'open',target:plugin});
+ layout=changeSidebarLayout(layout,{kind:'split',tabId:sidebarTabId(plugin)});
+ const id=sidebarTabId(plugin),snapshot=fixture();snapshot.actions=[{id:'refresh',label:'Refresh',intent:'refresh',enabled:true}];
+ const state={layout,titles:{git:'Git',context:'Context',[id]:'Example'},entries:[],views:{[id]:{snapshot,error:'',enhanced:true,layout:'sidebar',focusTarget:null,restoring:false}}};
+ const directory=createSidebarDirectory(),actions=directory.project(state,'w/s1'),context={workspaceId:'w',sessionId:'s1',revision:1};
+ const action=actions.find(value=>value.operation==='semantic');
+ assert(directory.resolve(state,'w/s1',context,{id:action.token,event:'click',context}));
+ assert.equal(directory.resolve(state,'w/s2',context,{id:action.token,event:'click',context}),null);
+ const closed={...state,layout:changeSidebarLayout(state.layout,{kind:'close',tabId:id})};
+ assert.equal(directory.resolve(closed,'w/s1',context,{id:action.token,event:'click',context}),null);
+ const stale={...state,views:{[id]:{...state.views[id],snapshot:{...snapshot,context:{...snapshot.context,revision:2}}}}};
+ assert.equal(directory.resolve(stale,'w/s1',context,{id:action.token,event:'click',context}),null);
+ // Empty built-in pane avoids unrelated fixtures; external plugin data/actions remain complete.
+ const only={...state,layout:{...layout,panes:layout.panes.filter(value=>value.active===id)}};
+ const tree=renderSidebar({sidebar:only,sidebarActions:actions},({snapshot,actions})=>({tag:'div',key:'semantic',text:snapshot.contribution.title,children:actions.map(value=>({tag:'button',key:value.token,text:value.label,events:{click:value.token}}))}),'en');
+ const nodes=[];const walk=node=>{nodes.push(node);for(const child of node.children??[])walk(child)};walk(tree);
+ assert(nodes.some(node=>node.text==='Example'));assert(nodes.some(node=>node.events?.click===action.token));
+ assert.equal(new Set(nodes.map(node=>node.key)).size,nodes.length);
+});
